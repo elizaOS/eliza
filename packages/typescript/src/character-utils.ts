@@ -10,14 +10,13 @@
  * @module character-utils
  */
 
-import type { Character } from "./types";
 import {
-  MODEL_PROVIDER_SECRETS as _MODEL_PROVIDER_SECRETS,
-  CANONICAL_SECRET_KEYS,
-  CHANNEL_SECRETS,
-  SECRET_KEY_ALIASES,
-  resolveSecretKeyAlias,
+	MODEL_PROVIDER_SECRETS as _MODEL_PROVIDER_SECRETS,
+	CHANNEL_SECRETS,
+	resolveSecretKeyAlias,
+	SECRET_KEY_ALIASES,
 } from "./constants/secrets";
+import type { Character } from "./types";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RE-EXPORTS FROM CONSTANTS
@@ -41,26 +40,26 @@ export { CHANNEL_SECRETS, SECRET_KEY_ALIASES, resolveSecretKeyAlias };
  * Based on CANONICAL_SECRET_KEYS but filtered to commonly used keys.
  */
 export const COMMON_SECRET_KEYS = [
-  "ANTHROPIC_API_KEY",
-  "OPENAI_API_KEY",
-  "GOOGLE_API_KEY",
-  "GOOGLE_GENERATIVE_AI_API_KEY",
-  "GROQ_API_KEY",
-  "OPENROUTER_API_KEY",
-  "XAI_API_KEY",
-  "MISTRAL_API_KEY",
-  "COHERE_API_KEY",
-  "TOGETHER_API_KEY",
-  "FIREWORKS_API_KEY",
-  "PERPLEXITY_API_KEY",
-  "DEEPSEEK_API_KEY",
-  "DISCORD_BOT_TOKEN",
-  "DISCORD_APPLICATION_ID",
-  "TELEGRAM_BOT_TOKEN",
-  "SLACK_BOT_TOKEN",
-  "SLACK_APP_TOKEN",
-  "ELEVENLABS_API_KEY",
-  "ENCRYPTION_SALT",
+	"ANTHROPIC_API_KEY",
+	"OPENAI_API_KEY",
+	"GOOGLE_API_KEY",
+	"GOOGLE_GENERATIVE_AI_API_KEY",
+	"GROQ_API_KEY",
+	"OPENROUTER_API_KEY",
+	"XAI_API_KEY",
+	"MISTRAL_API_KEY",
+	"COHERE_API_KEY",
+	"TOGETHER_API_KEY",
+	"FIREWORKS_API_KEY",
+	"PERPLEXITY_API_KEY",
+	"DEEPSEEK_API_KEY",
+	"DISCORD_BOT_TOKEN",
+	"DISCORD_APPLICATION_ID",
+	"TELEGRAM_BOT_TOKEN",
+	"SLACK_BOT_TOKEN",
+	"SLACK_APP_TOKEN",
+	"ELEVENLABS_API_KEY",
+	"ENCRYPTION_SALT",
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -75,20 +74,20 @@ export const COMMON_SECRET_KEYS = [
  * @returns The secret value, or null if not found in either location
  */
 export function getCharacterSecret(
-  character: Character,
-  key: string,
+	character: Character,
+	key: string,
 ): string | null {
-  const secrets = character.settings?.secrets as
-    | Record<string, string>
-    | undefined;
-  const value = secrets?.[key];
+	const secrets = character.settings?.secrets as
+		| Record<string, string>
+		| undefined;
+	const value = secrets?.[key];
 
-  if (value && typeof value === "string" && value.length > 0) {
-    return value;
-  }
+	if (value && typeof value === "string" && value.length > 0) {
+		return value;
+	}
 
-  // Fallback to process.env
-  return process.env[key] ?? null;
+	// Fallback to process.env
+	return process.env[key] ?? null;
 }
 
 /**
@@ -101,22 +100,22 @@ export function getCharacterSecret(
  * @returns A new character with the secret set
  */
 export function setCharacterSecret(
-  character: Character,
-  key: string,
-  value: string,
+	character: Character,
+	key: string,
+	value: string,
 ): Character {
-  const secrets = (character.settings?.secrets as Record<string, string>) ?? {};
+	const secrets = (character.settings?.secrets as Record<string, string>) ?? {};
 
-  return {
-    ...character,
-    settings: {
-      ...character.settings,
-      secrets: {
-        ...secrets,
-        [key]: value,
-      },
-    },
-  };
+	return {
+		...character,
+		settings: {
+			...character.settings,
+			secrets: {
+				...secrets,
+				[key]: value,
+			},
+		},
+	};
 }
 
 /**
@@ -127,7 +126,7 @@ export function setCharacterSecret(
  * @returns true if the secret exists and has a non-empty value
  */
 export function hasCharacterSecret(character: Character, key: string): boolean {
-  return getCharacterSecret(character, key) !== null;
+	return getCharacterSecret(character, key) !== null;
 }
 
 /**
@@ -139,19 +138,19 @@ export function hasCharacterSecret(character: Character, key: string): boolean {
  * @returns A new character with the secret removed
  */
 export function deleteCharacterSecret(
-  character: Character,
-  key: string,
+	character: Character,
+	key: string,
 ): Character {
-  const secrets = (character.settings?.secrets as Record<string, string>) ?? {};
-  const { [key]: _removed, ...remaining } = secrets;
+	const secrets = (character.settings?.secrets as Record<string, string>) ?? {};
+	const { [key]: _removed, ...remaining } = secrets;
 
-  return {
-    ...character,
-    settings: {
-      ...character.settings,
-      secrets: remaining,
-    },
-  };
+	return {
+		...character,
+		settings: {
+			...character.settings,
+			secrets: remaining,
+		},
+	};
 }
 
 /**
@@ -161,10 +160,10 @@ export function deleteCharacterSecret(
  * @returns Array of secret key names
  */
 export function listCharacterSecretKeys(character: Character): string[] {
-  const secrets = character.settings?.secrets as
-    | Record<string, string>
-    | undefined;
-  return Object.keys(secrets ?? {});
+	const secrets = character.settings?.secrets as
+		| Record<string, string>
+		| undefined;
+	return Object.keys(secrets ?? {});
 }
 
 /**
@@ -175,17 +174,17 @@ export function listCharacterSecretKeys(character: Character): string[] {
  * @returns The number of secrets that were synced
  */
 export function syncCharacterSecretsToEnv(character: Character): number {
-  let synced = 0;
-  const secrets = (character.settings?.secrets as Record<string, string>) ?? {};
+	let synced = 0;
+	const secrets = (character.settings?.secrets as Record<string, string>) ?? {};
 
-  for (const [key, value] of Object.entries(secrets)) {
-    if (value && typeof value === "string" && !process.env[key]) {
-      process.env[key] = value;
-      synced++;
-    }
-  }
+	for (const [key, value] of Object.entries(secrets)) {
+		if (value && typeof value === "string" && !process.env[key]) {
+			process.env[key] = value;
+			synced++;
+		}
+	}
 
-  return synced;
+	return synced;
 }
 
 /**
@@ -197,19 +196,19 @@ export function syncCharacterSecretsToEnv(character: Character): number {
  * @returns A new character with the imported secrets
  */
 export function importSecretsFromEnv(
-  character: Character,
-  keys: string[],
+	character: Character,
+	keys: string[],
 ): Character {
-  const envSecrets: Record<string, string> = {};
+	const envSecrets: Record<string, string> = {};
 
-  for (const key of keys) {
-    const value = process.env[key];
-    if (value) {
-      envSecrets[key] = value;
-    }
-  }
+	for (const key of keys) {
+		const value = process.env[key];
+		if (value) {
+			envSecrets[key] = value;
+		}
+	}
 
-  return mergeCharacterSecrets(character, envSecrets);
+	return mergeCharacterSecrets(character, envSecrets);
 }
 
 /**
@@ -221,27 +220,27 @@ export function importSecretsFromEnv(
  * @returns A new character with the merged secrets
  */
 export function mergeCharacterSecrets(
-  character: Character,
-  secrets: Record<string, string>,
+	character: Character,
+	secrets: Record<string, string>,
 ): Character {
-  const existingSecrets =
-    (character.settings?.secrets as Record<string, string>) ?? {};
+	const existingSecrets =
+		(character.settings?.secrets as Record<string, string>) ?? {};
 
-  // Merge secrets - existing secrets take priority
-  const mergedSecrets: Record<string, string> = { ...secrets };
-  for (const [key, value] of Object.entries(existingSecrets)) {
-    if (value && typeof value === "string") {
-      mergedSecrets[key] = value;
-    }
-  }
+	// Merge secrets - existing secrets take priority
+	const mergedSecrets: Record<string, string> = { ...secrets };
+	for (const [key, value] of Object.entries(existingSecrets)) {
+		if (value && typeof value === "string") {
+			mergedSecrets[key] = value;
+		}
+	}
 
-  return {
-    ...character,
-    settings: {
-      ...character.settings,
-      secrets: mergedSecrets,
-    },
-  };
+	return {
+		...character,
+		settings: {
+			...character.settings,
+			secrets: mergedSecrets,
+		},
+	};
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -257,18 +256,18 @@ export function mergeCharacterSecrets(
  * @returns A new character with the plugin added, or the original if already present
  */
 export function addCharacterPlugin(
-  character: Character,
-  pluginName: string,
+	character: Character,
+	pluginName: string,
 ): Character {
-  const plugins = character.plugins ?? [];
-  if (plugins.includes(pluginName)) {
-    return character;
-  }
+	const plugins = character.plugins ?? [];
+	if (plugins.includes(pluginName)) {
+		return character;
+	}
 
-  return {
-    ...character,
-    plugins: [...plugins, pluginName],
-  };
+	return {
+		...character,
+		plugins: [...plugins, pluginName],
+	};
 }
 
 /**
@@ -279,15 +278,15 @@ export function addCharacterPlugin(
  * @returns A new character with the plugin removed
  */
 export function removeCharacterPlugin(
-  character: Character,
-  pluginName: string,
+	character: Character,
+	pluginName: string,
 ): Character {
-  const plugins = character.plugins ?? [];
+	const plugins = character.plugins ?? [];
 
-  return {
-    ...character,
-    plugins: plugins.filter((p) => p !== pluginName),
-  };
+	return {
+		...character,
+		plugins: plugins.filter((p) => p !== pluginName),
+	};
 }
 
 /**
@@ -298,10 +297,10 @@ export function removeCharacterPlugin(
  * @returns true if the plugin is in character.plugins
  */
 export function hasCharacterPlugin(
-  character: Character,
-  pluginName: string,
+	character: Character,
+	pluginName: string,
 ): boolean {
-  return character.plugins?.includes(pluginName) ?? false;
+	return character.plugins?.includes(pluginName) ?? false;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -316,12 +315,12 @@ export function hasCharacterPlugin(
  * @returns The provider name (e.g., "anthropic", "openai") or null if none found
  */
 export function getModelProvider(character: Character): string | null {
-  for (const [provider, secretKey] of Object.entries(MODEL_PROVIDER_SECRETS)) {
-    if (hasCharacterSecret(character, secretKey)) {
-      return provider;
-    }
-  }
-  return null;
+	for (const [provider, secretKey] of Object.entries(MODEL_PROVIDER_SECRETS)) {
+		if (hasCharacterSecret(character, secretKey)) {
+			return provider;
+		}
+	}
+	return null;
 }
 
 /**
@@ -331,11 +330,11 @@ export function getModelProvider(character: Character): string | null {
  * @returns Array of provider names that have API keys configured
  */
 export function getConfiguredModelProviders(character: Character): string[] {
-  const providers: string[] = [];
-  for (const [provider, secretKey] of Object.entries(MODEL_PROVIDER_SECRETS)) {
-    if (hasCharacterSecret(character, secretKey)) {
-      providers.push(provider);
-    }
-  }
-  return providers;
+	const providers: string[] = [];
+	for (const [provider, secretKey] of Object.entries(MODEL_PROVIDER_SECRETS)) {
+		if (hasCharacterSecret(character, secretKey)) {
+			providers.push(provider);
+		}
+	}
+	return providers;
 }

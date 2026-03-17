@@ -2,7 +2,6 @@
  * Environment tests for the TypeScript SWE-agent implementation
  */
 
-import { afterEach, describe, expect, it, jest } from "./jest-globals";
 import { AbstractDeployment } from "../src/environment/deployment";
 import {
   EnvHook,
@@ -30,6 +29,7 @@ import {
   parseGhIssueUrl,
   parseGhRepoUrl,
 } from "../src/utils/github";
+import { afterEach, describe, expect, it, jest } from "./jest-globals";
 
 /**
  * Mock runtime for testing

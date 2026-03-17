@@ -76,7 +76,10 @@ async function buildStatusReport(
 
   // Get pending tasks count for context
   try {
-    const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
+    const tasks = await runtime.getTasks({
+      roomId,
+      agentIds: [runtime.agentId],
+    });
     if (tasks.length > 0) {
       lines.push(`\n**Tasks:** ${tasks.length} pending`);
     }

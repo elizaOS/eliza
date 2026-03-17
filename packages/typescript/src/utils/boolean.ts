@@ -11,10 +11,10 @@
  * Options for boolean parsing.
  */
 export type BooleanParseOptions = {
-  /** Values that should parse as true */
-  truthy?: string[];
-  /** Values that should parse as false */
-  falsy?: string[];
+	/** Values that should parse as true */
+	truthy?: string[];
+	/** Values that should parse as false */
+	falsy?: string[];
 };
 
 const DEFAULT_TRUTHY = ["true", "1", "yes", "on"] as const;
@@ -48,31 +48,31 @@ const TEXT_FALSY = ["no", "n", "false", "f", "0", "off", "disable"] as const;
  * ```
  */
 export function parseBooleanValue(
-  value: unknown,
-  options: BooleanParseOptions = {},
+	value: unknown,
+	options: BooleanParseOptions = {},
 ): boolean | undefined {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) {
-    return undefined;
-  }
-  const truthy = options.truthy ?? DEFAULT_TRUTHY;
-  const falsy = options.falsy ?? DEFAULT_FALSY;
-  const truthySet =
-    truthy === DEFAULT_TRUTHY ? DEFAULT_TRUTHY_SET : new Set(truthy);
-  const falsySet = falsy === DEFAULT_FALSY ? DEFAULT_FALSY_SET : new Set(falsy);
-  if (truthySet.has(normalized)) {
-    return true;
-  }
-  if (falsySet.has(normalized)) {
-    return false;
-  }
-  return undefined;
+	if (typeof value === "boolean") {
+		return value;
+	}
+	if (typeof value !== "string") {
+		return undefined;
+	}
+	const normalized = value.trim().toLowerCase();
+	if (!normalized) {
+		return undefined;
+	}
+	const truthy = options.truthy ?? DEFAULT_TRUTHY;
+	const falsy = options.falsy ?? DEFAULT_FALSY;
+	const truthySet =
+		truthy === DEFAULT_TRUTHY ? DEFAULT_TRUTHY_SET : new Set(truthy);
+	const falsySet = falsy === DEFAULT_FALSY ? DEFAULT_FALSY_SET : new Set(falsy);
+	if (truthySet.has(normalized)) {
+		return true;
+	}
+	if (falsySet.has(normalized)) {
+		return false;
+	}
+	return undefined;
 }
 
 /**
@@ -83,12 +83,12 @@ export function parseBooleanValue(
  * through the shared boolean parser.
  */
 export function parseBooleanText(
-  value: string | boolean | undefined | null,
+	value: string | boolean | undefined | null,
 ): boolean {
-  return (
-    parseBooleanValue(value, {
-      truthy: [...TEXT_TRUTHY],
-      falsy: [...TEXT_FALSY],
-    }) ?? false
-  );
+	return (
+		parseBooleanValue(value, {
+			truthy: [...TEXT_TRUTHY],
+			falsy: [...TEXT_FALSY],
+		}) ?? false
+	);
 }

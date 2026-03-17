@@ -31,115 +31,115 @@ const MIN_SECRET_LENGTH = 8;
  * Matches common formats for API keys, tokens, passwords, etc.
  */
 const DEFAULT_REDACT_PATTERNS: string[] = [
-  // ENV-style assignments.
-  String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
-  // JSON fields.
-  String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken)"\s*:\s*"([^"]+)"`,
-  // CLI flags.
-  String.raw`--(?:api[-_]?key|token|secret|password|passwd)\s+(["']?)([^\s"']+)\1`,
-  // Authorization headers.
-  String.raw`Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=]+)`,
-  String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
-  // PEM blocks.
-  String.raw`-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----`,
-  // Common token prefixes.
-  String.raw`\b(sk-[A-Za-z0-9_-]{8,})\b`,
-  String.raw`\b(ghp_[A-Za-z0-9]{20,})\b`,
-  String.raw`\b(github_pat_[A-Za-z0-9_]{20,})\b`,
-  String.raw`\b(xox[baprs]-[A-Za-z0-9-]{10,})\b`,
-  String.raw`\b(xapp-[A-Za-z0-9-]{10,})\b`,
-  String.raw`\b(gsk_[A-Za-z0-9_-]{10,})\b`,
-  String.raw`\b(AIza[0-9A-Za-z\-_]{20,})\b`,
-  String.raw`\b(pplx-[A-Za-z0-9_-]{10,})\b`,
-  String.raw`\b(npm_[A-Za-z0-9]{10,})\b`,
-  String.raw`\b(\d{6,}:[A-Za-z0-9_-]{20,})\b`,
+	// ENV-style assignments.
+	String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
+	// JSON fields.
+	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken)"\s*:\s*"([^"]+)"`,
+	// CLI flags.
+	String.raw`--(?:api[-_]?key|token|secret|password|passwd)\s+(["']?)([^\s"']+)\1`,
+	// Authorization headers.
+	String.raw`Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=]+)`,
+	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
+	// PEM blocks.
+	String.raw`-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----`,
+	// Common token prefixes.
+	String.raw`\b(sk-[A-Za-z0-9_-]{8,})\b`,
+	String.raw`\b(ghp_[A-Za-z0-9]{20,})\b`,
+	String.raw`\b(github_pat_[A-Za-z0-9_]{20,})\b`,
+	String.raw`\b(xox[baprs]-[A-Za-z0-9-]{10,})\b`,
+	String.raw`\b(xapp-[A-Za-z0-9-]{10,})\b`,
+	String.raw`\b(gsk_[A-Za-z0-9_-]{10,})\b`,
+	String.raw`\b(AIza[0-9A-Za-z\-_]{20,})\b`,
+	String.raw`\b(pplx-[A-Za-z0-9_-]{10,})\b`,
+	String.raw`\b(npm_[A-Za-z0-9]{10,})\b`,
+	String.raw`\b(\d{6,}:[A-Za-z0-9_-]{20,})\b`,
 ];
 
 /**
  * Options for redacting sensitive text.
  */
 export type RedactOptions = {
-  /** Redaction mode */
-  mode?: RedactSensitiveMode;
-  /** Custom patterns to match (in addition to or instead of defaults) */
-  patterns?: string[];
+	/** Redaction mode */
+	mode?: RedactSensitiveMode;
+	/** Custom patterns to match (in addition to or instead of defaults) */
+	patterns?: string[];
 };
 
 /**
  * Options for secrets-based redaction.
  */
 export type SecretsRedactOptions = {
-  /** Known secrets to redact (key -> secret value) */
-  secrets?: Record<string, string>;
-  /** Whether to also apply pattern-based redaction */
-  applyPatterns?: boolean;
+	/** Known secrets to redact (key -> secret value) */
+	secrets?: Record<string, string>;
+	/** Whether to also apply pattern-based redaction */
+	applyPatterns?: boolean;
 };
 
 function normalizeMode(value?: string): RedactSensitiveMode {
-  return value === "off" ? "off" : DEFAULT_REDACT_MODE;
+	return value === "off" ? "off" : DEFAULT_REDACT_MODE;
 }
 
 function parsePattern(raw: string): RegExp | null {
-  if (!raw.trim()) {
-    return null;
-  }
-  const match = raw.match(/^\/(.+)\/([gimsuy]*)$/);
-  try {
-    if (match) {
-      const flags = match[2].includes("g") ? match[2] : `${match[2]}g`;
-      return new RegExp(match[1], flags);
-    }
-    return new RegExp(raw, "gi");
-  } catch {
-    return null;
-  }
+	if (!raw.trim()) {
+		return null;
+	}
+	const match = raw.match(/^\/(.+)\/([gimsuy]*)$/);
+	try {
+		if (match) {
+			const flags = match[2].includes("g") ? match[2] : `${match[2]}g`;
+			return new RegExp(match[1], flags);
+		}
+		return new RegExp(raw, "gi");
+	} catch {
+		return null;
+	}
 }
 
 function resolvePatterns(value?: string[]): RegExp[] {
-  const source = value?.length ? value : DEFAULT_REDACT_PATTERNS;
-  return source.map(parsePattern).filter((re): re is RegExp => Boolean(re));
+	const source = value?.length ? value : DEFAULT_REDACT_PATTERNS;
+	return source.map(parsePattern).filter((re): re is RegExp => Boolean(re));
 }
 
 function maskToken(token: string): string {
-  if (token.length < DEFAULT_REDACT_MIN_LENGTH) {
-    return "***";
-  }
-  const start = token.slice(0, DEFAULT_REDACT_KEEP_START);
-  const end = token.slice(-DEFAULT_REDACT_KEEP_END);
-  return `${start}…${end}`;
+	if (token.length < DEFAULT_REDACT_MIN_LENGTH) {
+		return "***";
+	}
+	const start = token.slice(0, DEFAULT_REDACT_KEEP_START);
+	const end = token.slice(-DEFAULT_REDACT_KEEP_END);
+	return `${start}…${end}`;
 }
 
 function redactPemBlock(block: string): string {
-  const lines = block.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) {
-    return "***";
-  }
-  return `${lines[0]}\n…redacted…\n${lines[lines.length - 1]}`;
+	const lines = block.split(/\r?\n/).filter(Boolean);
+	if (lines.length < 2) {
+		return "***";
+	}
+	return `${lines[0]}\n…redacted…\n${lines[lines.length - 1]}`;
 }
 
 function redactMatch(match: string, groups: string[]): string {
-  if (match.includes("PRIVATE KEY-----")) {
-    return redactPemBlock(match);
-  }
-  const filteredGroups = groups.filter(
-    (value) => typeof value === "string" && value.length > 0,
-  );
-  const token = filteredGroups[filteredGroups.length - 1] ?? match;
-  const masked = maskToken(token);
-  if (token === match) {
-    return masked;
-  }
-  return match.replace(token, masked);
+	if (match.includes("PRIVATE KEY-----")) {
+		return redactPemBlock(match);
+	}
+	const filteredGroups = groups.filter(
+		(value) => typeof value === "string" && value.length > 0,
+	);
+	const token = filteredGroups[filteredGroups.length - 1] ?? match;
+	const masked = maskToken(token);
+	if (token === match) {
+		return masked;
+	}
+	return match.replace(token, masked);
 }
 
 function redactText(text: string, patterns: RegExp[]): string {
-  let next = text;
-  for (const pattern of patterns) {
-    next = next.replace(pattern, (...args: string[]) =>
-      redactMatch(args[0], args.slice(1, args.length - 2)),
-    );
-  }
-  return next;
+	let next = text;
+	for (const pattern of patterns) {
+		next = next.replace(pattern, (...args: string[]) =>
+			redactMatch(args[0], args.slice(1, args.length - 2)),
+		);
+	}
+	return next;
 }
 
 /**
@@ -150,21 +150,21 @@ function redactText(text: string, patterns: RegExp[]): string {
  * @returns Text with sensitive data masked
  */
 export function redactSensitiveText(
-  text: string,
-  options?: RedactOptions,
+	text: string,
+	options?: RedactOptions,
 ): string {
-  if (!text) {
-    return text;
-  }
-  const resolved = options ?? { mode: DEFAULT_REDACT_MODE };
-  if (normalizeMode(resolved.mode) === "off") {
-    return text;
-  }
-  const patterns = resolvePatterns(resolved.patterns);
-  if (!patterns.length) {
-    return text;
-  }
-  return redactText(text, patterns);
+	if (!text) {
+		return text;
+	}
+	const resolved = options ?? { mode: DEFAULT_REDACT_MODE };
+	if (normalizeMode(resolved.mode) === "off") {
+		return text;
+	}
+	const patterns = resolvePatterns(resolved.patterns);
+	if (!patterns.length) {
+		return text;
+	}
+	return redactText(text, patterns);
 }
 
 /**
@@ -176,7 +176,7 @@ export function redactSensitiveText(
  * @returns Redacted detail
  */
 export function redactToolDetail(detail: string): string {
-  return redactSensitiveText(detail, { mode: "tools" });
+	return redactSensitiveText(detail, { mode: "tools" });
 }
 
 /**
@@ -185,7 +185,7 @@ export function redactToolDetail(detail: string): string {
  * @returns Copy of default pattern strings
  */
 export function getDefaultRedactPatterns(): string[] {
-  return [...DEFAULT_REDACT_PATTERNS];
+	return [...DEFAULT_REDACT_PATTERNS];
 }
 
 // ============================================================================
@@ -196,7 +196,7 @@ export function getDefaultRedactPatterns(): string[] {
  * Escape special regex characters in a string.
  */
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -211,31 +211,31 @@ function escapeRegex(str: string): string {
  * @returns Text with secrets replaced by [REDACTED:name]
  */
 export function redactSecrets(
-  text: string,
-  secrets: Record<string, string>,
+	text: string,
+	secrets: Record<string, string>,
 ): string {
-  if (!text || !secrets) {
-    return text;
-  }
+	if (!text || !secrets) {
+		return text;
+	}
 
-  let result = text;
+	let result = text;
 
-  // Sort secrets by length (longest first) to avoid partial replacements
-  const sortedEntries = Object.entries(secrets)
-    .filter(
-      ([, value]) =>
-        typeof value === "string" && value.length >= MIN_SECRET_LENGTH,
-    )
-    .sort(([, a], [, b]) => b.length - a.length);
+	// Sort secrets by length (longest first) to avoid partial replacements
+	const sortedEntries = Object.entries(secrets)
+		.filter(
+			([, value]) =>
+				typeof value === "string" && value.length >= MIN_SECRET_LENGTH,
+		)
+		.sort(([, a], [, b]) => b.length - a.length);
 
-  for (const [name, value] of sortedEntries) {
-    // Create a case-sensitive regex for the exact value
-    const escaped = escapeRegex(value);
-    const regex = new RegExp(escaped, "g");
-    result = result.replace(regex, `[REDACTED:${name}]`);
-  }
+	for (const [name, value] of sortedEntries) {
+		// Create a case-sensitive regex for the exact value
+		const escaped = escapeRegex(value);
+		const regex = new RegExp(escaped, "g");
+		result = result.replace(regex, `[REDACTED:${name}]`);
+	}
 
-  return result;
+	return result;
 }
 
 /**
@@ -249,26 +249,26 @@ export function redactSecrets(
  * @returns Text with all sensitive data redacted
  */
 export function redactWithSecrets(
-  text: string,
-  options: SecretsRedactOptions = {},
+	text: string,
+	options: SecretsRedactOptions = {},
 ): string {
-  if (!text) {
-    return text;
-  }
+	if (!text) {
+		return text;
+	}
 
-  let result = text;
+	let result = text;
 
-  // First, redact known secrets (exact matches)
-  if (options.secrets) {
-    result = redactSecrets(result, options.secrets);
-  }
+	// First, redact known secrets (exact matches)
+	if (options.secrets) {
+		result = redactSecrets(result, options.secrets);
+	}
 
-  // Then apply pattern-based redaction if requested (default: true)
-  if (options.applyPatterns !== false) {
-    result = redactSensitiveText(result);
-  }
+	// Then apply pattern-based redaction if requested (default: true)
+	if (options.applyPatterns !== false) {
+		result = redactSensitiveText(result);
+	}
 
-  return result;
+	return result;
 }
 
 /**
@@ -288,10 +288,10 @@ export function redactWithSecrets(
  * ```
  */
 export function createSecretsRedactor(
-  secrets: Record<string, string>,
-  applyPatterns = true,
+	secrets: Record<string, string>,
+	applyPatterns = true,
 ): (text: string) => string {
-  return (text: string) => redactWithSecrets(text, { secrets, applyPatterns });
+	return (text: string) => redactWithSecrets(text, { secrets, applyPatterns });
 }
 
 /**
@@ -306,31 +306,31 @@ export function createSecretsRedactor(
  * @returns New object with redacted values
  */
 export function redactObjectSecrets<T>(
-  obj: T,
-  secrets: Record<string, string>,
-  applyPatterns = true,
+	obj: T,
+	secrets: Record<string, string>,
+	applyPatterns = true,
 ): T {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
+	if (obj === null || obj === undefined) {
+		return obj;
+	}
 
-  if (typeof obj === "string") {
-    return redactWithSecrets(obj, { secrets, applyPatterns }) as T;
-  }
+	if (typeof obj === "string") {
+		return redactWithSecrets(obj, { secrets, applyPatterns }) as T;
+	}
 
-  if (Array.isArray(obj)) {
-    return obj.map((item) =>
-      redactObjectSecrets(item, secrets, applyPatterns),
-    ) as T;
-  }
+	if (Array.isArray(obj)) {
+		return obj.map((item) =>
+			redactObjectSecrets(item, secrets, applyPatterns),
+		) as T;
+	}
 
-  if (typeof obj === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = redactObjectSecrets(value, secrets, applyPatterns);
-    }
-    return result as T;
-  }
+	if (typeof obj === "object") {
+		const result: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(obj)) {
+			result[key] = redactObjectSecrets(value, secrets, applyPatterns);
+		}
+		return result as T;
+	}
 
-  return obj;
+	return obj;
 }

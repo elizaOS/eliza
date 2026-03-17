@@ -28,8 +28,7 @@ function extractSessionContext(
   message: Memory,
 ): { sessionKey?: string; roomId?: UUID } {
   const metadata = message.content?.metadata as Record<string, unknown> | undefined;
-  const sessionKey =
-    typeof metadata?.sessionKey === "string" ? metadata.sessionKey : undefined;
+  const sessionKey = typeof metadata?.sessionKey === "string" ? metadata.sessionKey : undefined;
 
   const result: { sessionKey?: string; roomId?: UUID } = {};
   if (sessionKey) result.sessionKey = sessionKey;
@@ -43,13 +42,7 @@ function extractSessionContext(
 
 export const spawnSubagentAction: Action = {
   name: "SPAWN_SUBAGENT",
-  similes: [
-    "SPAWN_TASK",
-    "BACKGROUND_TASK",
-    "START_SUBAGENT",
-    "SESSIONS_SPAWN",
-    "CREATE_SUBAGENT",
-  ],
+  similes: ["SPAWN_TASK", "BACKGROUND_TASK", "START_SUBAGENT", "SESSIONS_SPAWN", "CREATE_SUBAGENT"],
   description:
     "Spawn a background sub-agent run to execute a task asynchronously. The subagent will complete the task and announce results back.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -190,8 +183,7 @@ export const sendToSessionAction: Action = {
     }
 
     if (!opts?.sessionKey && !opts?.label) {
-      const msg =
-        "Please specify either a sessionKey or label to identify the target session.";
+      const msg = "Please specify either a sessionKey or label to identify the target session.";
       await callback?.({ content: { text: msg } });
       return { success: false, text: msg };
     }
@@ -340,8 +332,7 @@ export const cancelSubagentAction: Action = {
     const runId = opts?.runId;
 
     if (!runId) {
-      const msg =
-        "Please specify the run ID to cancel. Use LIST_SUBAGENTS to see active runs.";
+      const msg = "Please specify the run ID to cancel. Use LIST_SUBAGENTS to see active runs.";
       await callback?.({ content: { text: msg } });
       return { success: false, text: msg };
     }
@@ -397,8 +388,7 @@ export const getSubagentStatusAction: Action = {
     const runId = opts?.runId;
 
     if (!runId) {
-      const msg =
-        "Please specify the run ID to check. Use LIST_SUBAGENTS to see available runs.";
+      const msg = "Please specify the run ID to check. Use LIST_SUBAGENTS to see available runs.";
       await callback?.({ content: { text: msg } });
       return { success: false, text: msg };
     }

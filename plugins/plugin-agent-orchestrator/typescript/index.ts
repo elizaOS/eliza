@@ -1,6 +1,20 @@
 import type { Plugin } from "@elizaos/core";
 import { getSessionProviders } from "@elizaos/core";
 import {
+  listMessagingChannelsAction,
+  sendCrossPlatformMessageAction,
+  sendToDeliveryContextAction,
+  sendToRoomAction,
+  sendToSessionMessageAction,
+} from "./src/actions/messaging.js";
+import {
+  cancelSubagentAction,
+  getSubagentStatusAction,
+  listSubagentsAction,
+  sendToSessionAction,
+  spawnSubagentAction,
+} from "./src/actions/subagent-management.js";
+import {
   cancelTaskAction,
   createTaskAction,
   listTasksAction,
@@ -10,29 +24,15 @@ import {
   switchTaskAction,
 } from "./src/actions/task-management.js";
 import {
-  cancelSubagentAction,
-  getSubagentStatusAction,
-  listSubagentsAction,
-  sendToSessionAction,
-  spawnSubagentAction,
-} from "./src/actions/subagent-management.js";
-import {
-  listMessagingChannelsAction,
-  sendCrossPlatformMessageAction,
-  sendToDeliveryContextAction,
-  sendToRoomAction,
-  sendToSessionMessageAction,
-} from "./src/actions/messaging.js";
-import {
   configureAgentOrchestratorPlugin,
   getConfiguredAgentOrchestratorOptions,
 } from "./src/config.js";
-import { taskContextProvider } from "./src/providers/task-context.js";
 import { orchestratorConfigProvider } from "./src/providers/orchestrator-config.js";
+import { taskContextProvider } from "./src/providers/task-context.js";
 import { AgentOrchestratorService } from "./src/services/agent-orchestrator-service.js";
-import { SubagentService } from "./src/services/subagent-service.js";
-import { SandboxService } from "./src/services/sandbox-service.js";
 import { MessagingService } from "./src/services/messaging-service.js";
+import { SandboxService } from "./src/services/sandbox-service.js";
+import { SubagentService } from "./src/services/subagent-service.js";
 
 export { configureAgentOrchestratorPlugin, getConfiguredAgentOrchestratorOptions };
 
@@ -71,6 +71,23 @@ export const agentOrchestratorPlugin: Plugin = {
 
 export default agentOrchestratorPlugin;
 
+// Messaging actions
+export {
+  listMessagingChannelsAction,
+  sendCrossPlatformMessageAction,
+  sendToDeliveryContextAction,
+  sendToRoomAction,
+  sendToSessionMessageAction,
+} from "./src/actions/messaging.js";
+
+// Subagent management actions
+export {
+  cancelSubagentAction,
+  getSubagentStatusAction,
+  listSubagentsAction,
+  sendToSessionAction,
+  spawnSubagentAction,
+} from "./src/actions/subagent-management.js";
 // Task management actions
 export {
   cancelTaskAction,
@@ -81,31 +98,61 @@ export {
   searchTasksAction,
   switchTaskAction,
 } from "./src/actions/task-management.js";
-
-// Subagent management actions
+// Config provider
 export {
-  cancelSubagentAction,
-  getSubagentStatusAction,
-  listSubagentsAction,
-  sendToSessionAction,
-  spawnSubagentAction,
-} from "./src/actions/subagent-management.js";
-
-// Messaging actions
-export {
-  listMessagingChannelsAction,
-  sendCrossPlatformMessageAction,
-  sendToDeliveryContextAction,
-  sendToRoomAction,
-  sendToSessionMessageAction,
-} from "./src/actions/messaging.js";
-
+  getOrchestratorConfig,
+  type OrchestratorConfig,
+  orchestratorConfigProvider,
+} from "./src/providers/orchestrator-config.js";
 // Services
 export { AgentOrchestratorService } from "./src/services/agent-orchestrator-service.js";
-export { SubagentService } from "./src/services/subagent-service.js";
-export { SandboxService } from "./src/services/sandbox-service.js";
 export { MessagingService } from "./src/services/messaging-service.js";
-
+export { SandboxService } from "./src/services/sandbox-service.js";
+export { SubagentService } from "./src/services/subagent-service.js";
+// Subagent types
+// Sandbox types
+// Messaging types
+export type {
+  AgentToAgentPolicy,
+  DeliveryContext,
+  DeliveryStatus,
+  MessageAttachment,
+  MessageButton,
+  MessageContent,
+  MessageEmbed,
+  MessageTarget,
+  MessagingAdapter,
+  MessagingChannel,
+  MessagingEventPayload,
+  MessagingRoomMetadata,
+  ParsedSessionKey,
+  SandboxBrowserConfig,
+  SandboxBrowserContext,
+  SandboxConfig,
+  SandboxContext,
+  SandboxDockerConfig,
+  SandboxEventPayload,
+  SandboxExecuteParams,
+  SandboxExecutionResult,
+  SandboxMode,
+  SandboxPruneConfig,
+  SandboxScope,
+  SandboxToolPolicy,
+  SandboxWorkspaceAccess,
+  SandboxWorkspaceInfo,
+  SendMessageParams,
+  SendMessageResult,
+  SendToAgentParams,
+  SendToAgentResult,
+  SpawnSubagentParams,
+  SpawnSubagentResult,
+  SubagentConfig,
+  SubagentEventPayload,
+  SubagentRoomMetadata,
+  SubagentRunOutcome,
+  SubagentRunRecord,
+} from "./src/types/index.js";
+export { MessagingEventType, SandboxEventType, SubagentEventType } from "./src/types/index.js";
 // Task types
 export type {
   AgentOrchestratorPluginOptions,
@@ -121,136 +168,69 @@ export type {
   TaskStep,
   TaskUserStatus,
 } from "./src/types.js";
-
-// Subagent types
-export type {
-  AgentToAgentPolicy,
-  DeliveryContext,
-  ParsedSessionKey,
-  SendToAgentParams,
-  SendToAgentResult,
-  SpawnSubagentParams,
-  SpawnSubagentResult,
-  SubagentConfig,
-  SubagentEventPayload,
-  SubagentRoomMetadata,
-  SubagentRunOutcome,
-  SubagentRunRecord,
-} from "./src/types/index.js";
-
-export { SubagentEventType } from "./src/types/index.js";
-
-// Sandbox types
-export type {
-  SandboxBrowserConfig,
-  SandboxBrowserContext,
-  SandboxConfig,
-  SandboxContext,
-  SandboxDockerConfig,
-  SandboxEventPayload,
-  SandboxExecuteParams,
-  SandboxExecutionResult,
-  SandboxMode,
-  SandboxPruneConfig,
-  SandboxScope,
-  SandboxToolPolicy,
-  SandboxWorkspaceAccess,
-  SandboxWorkspaceInfo,
-} from "./src/types/index.js";
-
-export { SandboxEventType } from "./src/types/index.js";
-
-// Messaging types
-export type {
-  DeliveryStatus,
-  MessageAttachment,
-  MessageButton,
-  MessageContent,
-  MessageEmbed,
-  MessageTarget,
-  MessagingAdapter,
-  MessagingChannel,
-  MessagingEventPayload,
-  MessagingRoomMetadata,
-  SendMessageParams,
-  SendMessageResult,
-} from "./src/types/index.js";
-
-export { MessagingEventType } from "./src/types/index.js";
-
-// Config provider
-export {
-  getOrchestratorConfig,
-  orchestratorConfigProvider,
-  type OrchestratorConfig,
-} from "./src/providers/orchestrator-config.js";
-
 // Session utilities (orchestrator-specific)
-export {
-  buildSessionKey,
-  createSubagentSessionKey,
-  extractAgentIdFromSessionKey,
-  formatDurationShort,
-  formatTokenCount,
-  hashToUUID,
-  isSubagentSessionKey,
-  mergeDeliveryContext,
-  normalizeAgentId,
-  normalizeDeliveryContext,
-  normalizeSessionKey,
-  parseSessionKey,
-  sessionKeyToRoomId,
-} from "./src/utils/index.js";
-
 // Core session utilities (re-exported from @elizaos/core)
 export {
+  buildAcpSessionKey,
   // Session key building/parsing
   buildAgentMainSessionKey,
-  buildAgentSessionKey,
   buildAgentPeerSessionKey,
-  buildAcpSessionKey,
-  buildSubagentSessionKey,
-  parseAgentSessionKey,
-  isAcpSessionKey,
-  isCoreSubagentSessionKey,
-  normalizeCoreAgentId,
-  normalizeMainKey,
-  normalizeAccountId,
-  toAgentRequestSessionKey,
-  toAgentStoreSessionKey,
-  resolveAgentIdFromSessionKey,
-  resolveThreadParentSessionKey,
-  resolveThreadSessionKeys,
+  buildAgentSessionKey,
   buildGroupHistoryKey,
-  // Session types
-  type SessionEntry,
-  type SessionStore,
-  type SessionDeliveryContext,
-  type SessionResolution,
-  // Session store operations
-  loadSessionStore,
-  saveSessionStore,
-  updateSessionStore,
-  updateSessionStoreEntry,
-  getSessionEntry,
-  upsertSessionEntry,
-  deleteSessionEntry,
-  listSessionKeys,
-  // Session paths
-  resolveStateDir,
-  resolveAgentSessionsDir,
-  resolveDefaultSessionStorePath,
-  resolveSessionTranscriptPath,
-  resolveStorePath,
+  buildSessionKey,
+  buildSubagentSessionKey,
+  createSendPolicyProvider,
+  // Session entry utilities
+  createSessionEntry,
   // Session providers
   createSessionProvider,
   createSessionSkillsProvider,
-  createSendPolicyProvider,
-  getSessionProviders,
+  createSubagentSessionKey,
+  deleteSessionEntry,
+  extractAgentIdFromSessionKey,
   extractSessionContext,
-  SessionStateManager,
-  // Session entry utilities
-  createSessionEntry,
-  mergeSessionEntry,
+  formatDurationShort,
+  formatTokenCount,
+  getSessionEntry,
+  getSessionProviders,
+  hashToUUID,
+  isAcpSessionKey,
+  isCoreSubagentSessionKey,
+  isSubagentSessionKey,
   isValidSessionEntry,
+  listSessionKeys,
+  // Session store operations
+  loadSessionStore,
+  mergeDeliveryContext,
+  mergeSessionEntry,
+  normalizeAccountId,
+  normalizeAgentId,
+  normalizeCoreAgentId,
+  normalizeDeliveryContext,
+  normalizeMainKey,
+  normalizeSessionKey,
+  parseAgentSessionKey,
+  parseSessionKey,
+  resolveAgentIdFromSessionKey,
+  resolveAgentSessionsDir,
+  resolveDefaultSessionStorePath,
+  resolveSessionTranscriptPath,
+  // Session paths
+  resolveStateDir,
+  resolveStorePath,
+  resolveThreadParentSessionKey,
+  resolveThreadSessionKeys,
+  type SessionDeliveryContext,
+  // Session types
+  type SessionEntry,
+  type SessionResolution,
+  SessionStateManager,
+  type SessionStore,
+  saveSessionStore,
+  sessionKeyToRoomId,
+  toAgentRequestSessionKey,
+  toAgentStoreSessionKey,
+  updateSessionStore,
+  updateSessionStoreEntry,
+  upsertSessionEntry,
 } from "./src/utils/index.js";

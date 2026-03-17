@@ -21,7 +21,11 @@ export type TypingMode = "never" | "instant" | "thinking" | "message";
 export type SessionScope = "per-sender" | "global";
 
 /** DM session scoping strategy. */
-export type DmScope = "main" | "per-peer" | "per-channel-peer" | "per-account-channel-peer";
+export type DmScope =
+	| "main"
+	| "per-peer"
+	| "per-channel-peer"
+	| "per-account-channel-peer";
 
 /** Reply threading mode. */
 export type ReplyToMode = "off" | "first" | "all";
@@ -49,14 +53,14 @@ export type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 
 /** Retry policy for outbound API calls. */
 export type OutboundRetryConfig = {
-  /** Max retry attempts (default: 3). */
-  attempts?: number;
-  /** Minimum retry delay in ms (default: 300-500ms depending on provider). */
-  minDelayMs?: number;
-  /** Maximum retry delay cap in ms (default: 30000). */
-  maxDelayMs?: number;
-  /** Jitter factor (0-1) applied to delays (default: 0.1). */
-  jitter?: number;
+	/** Max retry attempts (default: 3). */
+	attempts?: number;
+	/** Minimum retry delay in ms (default: 300-500ms depending on provider). */
+	minDelayMs?: number;
+	/** Maximum retry delay cap in ms (default: 30000). */
+	maxDelayMs?: number;
+	/** Jitter factor (0-1) applied to delays (default: 0.1). */
+	jitter?: number;
 };
 
 // ============================================================
@@ -65,16 +69,16 @@ export type OutboundRetryConfig = {
 
 /** Block streaming coalescing configuration. */
 export type BlockStreamingCoalesceConfig = {
-  minChars?: number;
-  maxChars?: number;
-  idleMs?: number;
+	minChars?: number;
+	maxChars?: number;
+	idleMs?: number;
 };
 
 /** Block streaming chunking configuration. */
 export type BlockStreamingChunkConfig = {
-  minChars?: number;
-  maxChars?: number;
-  breakPreference?: "paragraph" | "newline" | "sentence";
+	minChars?: number;
+	maxChars?: number;
+	breakPreference?: "paragraph" | "newline" | "sentence";
 };
 
 // ============================================================
@@ -86,8 +90,8 @@ export type { MarkdownTableMode } from "../markdown/ir.js";
 
 /** Markdown formatting configuration. */
 export type MarkdownConfig = {
-  /** Table rendering mode (off|bullets|code). */
-  tables?: import("../markdown/ir.js").MarkdownTableMode;
+	/** Table rendering mode (off|bullets|code). */
+	tables?: import("../markdown/ir.js").MarkdownTableMode;
 };
 
 // ============================================================
@@ -96,12 +100,12 @@ export type MarkdownConfig = {
 
 /** Human-like delay configuration for responses. */
 export type HumanDelayConfig = {
-  /** Delay style for block replies (off|natural|custom). */
-  mode?: "off" | "natural" | "custom";
-  /** Minimum delay in milliseconds (default: 800). */
-  minMs?: number;
-  /** Maximum delay in milliseconds (default: 2500). */
-  maxMs?: number;
+	/** Delay style for block replies (off|natural|custom). */
+	mode?: "off" | "natural" | "custom";
+	/** Minimum delay in milliseconds (default: 800). */
+	minMs?: number;
+	/** Maximum delay in milliseconds (default: 2500). */
+	maxMs?: number;
 };
 
 // ============================================================
@@ -111,58 +115,58 @@ export type HumanDelayConfig = {
 export type SessionSendPolicyAction = "allow" | "deny";
 
 export type SessionSendPolicyMatch = {
-  channel?: string;
-  chatType?: NormalizedChatType;
-  keyPrefix?: string;
+	channel?: string;
+	chatType?: NormalizedChatType;
+	keyPrefix?: string;
 };
 
 export type SessionSendPolicyRule = {
-  action: SessionSendPolicyAction;
-  match?: SessionSendPolicyMatch;
+	action: SessionSendPolicyAction;
+	match?: SessionSendPolicyMatch;
 };
 
 export type SessionSendPolicyConfig = {
-  default?: SessionSendPolicyAction;
-  rules?: SessionSendPolicyRule[];
+	default?: SessionSendPolicyAction;
+	rules?: SessionSendPolicyRule[];
 };
 
 export type SessionResetMode = "daily" | "idle";
 
 export type SessionResetConfig = {
-  mode?: SessionResetMode;
-  /** Local hour (0-23) for the daily reset boundary. */
-  atHour?: number;
-  /** Sliding idle window (minutes). When set with daily mode, whichever expires first wins. */
-  idleMinutes?: number;
+	mode?: SessionResetMode;
+	/** Local hour (0-23) for the daily reset boundary. */
+	atHour?: number;
+	/** Sliding idle window (minutes). When set with daily mode, whichever expires first wins. */
+	idleMinutes?: number;
 };
 
 export type SessionResetByTypeConfig = {
-  dm?: SessionResetConfig;
-  group?: SessionResetConfig;
-  thread?: SessionResetConfig;
+	dm?: SessionResetConfig;
+	group?: SessionResetConfig;
+	thread?: SessionResetConfig;
 };
 
 export type SessionConfig = {
-  scope?: SessionScope;
-  /** DM session scoping (default: "main"). */
-  dmScope?: DmScope;
-  /** Map platform-prefixed identities to canonical DM peers. */
-  identityLinks?: Record<string, string[]>;
-  resetTriggers?: string[];
-  idleMinutes?: number;
-  reset?: SessionResetConfig;
-  resetByType?: SessionResetByTypeConfig;
-  /** Channel-specific reset overrides. */
-  resetByChannel?: Record<string, SessionResetConfig>;
-  store?: string;
-  typingIntervalSeconds?: number;
-  typingMode?: TypingMode;
-  mainKey?: string;
-  sendPolicy?: SessionSendPolicyConfig;
-  agentToAgent?: {
-    /** Max ping-pong turns between requester/target (0–5). Default: 5. */
-    maxPingPongTurns?: number;
-  };
+	scope?: SessionScope;
+	/** DM session scoping (default: "main"). */
+	dmScope?: DmScope;
+	/** Map platform-prefixed identities to canonical DM peers. */
+	identityLinks?: Record<string, string[]>;
+	resetTriggers?: string[];
+	idleMinutes?: number;
+	reset?: SessionResetConfig;
+	resetByType?: SessionResetByTypeConfig;
+	/** Channel-specific reset overrides. */
+	resetByChannel?: Record<string, SessionResetConfig>;
+	store?: string;
+	typingIntervalSeconds?: number;
+	typingMode?: TypingMode;
+	mainKey?: string;
+	sendPolicy?: SessionSendPolicyConfig;
+	agentToAgent?: {
+		/** Max ping-pong turns between requester/target (0–5). Default: 5. */
+		maxPingPongTurns?: number;
+	};
 };
 
 // ============================================================
@@ -170,12 +174,12 @@ export type SessionConfig = {
 // ============================================================
 
 export type ChannelHeartbeatVisibilityConfig = {
-  /** Show HEARTBEAT_OK acknowledgments in chat (default: false). */
-  showOk?: boolean;
-  /** Show heartbeat alerts with actual content (default: true). */
-  showAlerts?: boolean;
-  /** Emit indicator events for UI status display (default: true). */
-  useIndicator?: boolean;
+	/** Show HEARTBEAT_OK acknowledgments in chat (default: false). */
+	showOk?: boolean;
+	/** Show heartbeat alerts with actual content (default: true). */
+	showAlerts?: boolean;
+	/** Emit indicator events for UI status display (default: true). */
+	useIndicator?: boolean;
 };
 
 // ============================================================
@@ -183,11 +187,11 @@ export type ChannelHeartbeatVisibilityConfig = {
 // ============================================================
 
 export type IdentityConfig = {
-  name?: string;
-  theme?: string;
-  emoji?: string;
-  /** Avatar image: workspace-relative path, http(s) URL, or data URI. */
-  avatar?: string;
+	name?: string;
+	theme?: string;
+	emoji?: string;
+	/** Avatar image: workspace-relative path, http(s) URL, or data URI. */
+	avatar?: string;
 };
 
 // ============================================================
@@ -197,42 +201,45 @@ export type IdentityConfig = {
 export type ToolProfileId = "minimal" | "coding" | "messaging" | "full";
 
 export type ToolPolicyConfig = {
-  allow?: string[];
-  /** Additional allowlist entries merged into the effective allowlist. */
-  alsoAllow?: string[];
-  deny?: string[];
-  profile?: ToolProfileId;
+	allow?: string[];
+	/** Additional allowlist entries merged into the effective allowlist. */
+	alsoAllow?: string[];
+	deny?: string[];
+	profile?: ToolProfileId;
 };
 
 export type GroupToolPolicyConfig = {
-  allow?: string[];
-  /** Additional allowlist entries merged into allow. */
-  alsoAllow?: string[];
-  deny?: string[];
+	allow?: string[];
+	/** Additional allowlist entries merged into allow. */
+	alsoAllow?: string[];
+	deny?: string[];
 };
 
-export type GroupToolPolicyBySenderConfig = Record<string, GroupToolPolicyConfig>;
+export type GroupToolPolicyBySenderConfig = Record<
+	string,
+	GroupToolPolicyConfig
+>;
 
 // ============================================================
 // Message Configuration
 // ============================================================
 
 export type GroupChatConfig = {
-  mentionPatterns?: string[];
-  historyLimit?: number;
+	mentionPatterns?: string[];
+	historyLimit?: number;
 };
 
 export type DmConfig = {
-  historyLimit?: number;
+	historyLimit?: number;
 };
 
 export type NativeCommandsSetting = boolean | "auto";
 
 export type ProviderCommandsConfig = {
-  /** Override native command registration for this provider (bool or "auto"). */
-  native?: NativeCommandsSetting;
-  /** Override native skill command registration for this provider (bool or "auto"). */
-  nativeSkills?: NativeCommandsSetting;
+	/** Override native command registration for this provider (bool or "auto"). */
+	native?: NativeCommandsSetting;
+	/** Override native skill command registration for this provider (bool or "auto"). */
+	nativeSkills?: NativeCommandsSetting;
 };
 
 // ============================================================
@@ -240,4 +247,6 @@ export type ProviderCommandsConfig = {
 // ============================================================
 
 /** Allowlists keyed by provider id (and internal "webchat"). */
-export type AgentElevatedAllowFromConfig = Partial<Record<string, Array<string | number>>>;
+export type AgentElevatedAllowFromConfig = Partial<
+	Record<string, Array<string | number>>
+>;

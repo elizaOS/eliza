@@ -127,11 +127,15 @@ class TestAutonomyService:
         service = await AutonomyService.start(test_runtime)
 
         await service.enable_autonomy()
-        call_count = test_runtime.set_setting.call_count if hasattr(test_runtime.set_setting, 'call_count') else 0
+        call_count = (
+            test_runtime.set_setting.call_count
+            if hasattr(test_runtime.set_setting, "call_count")
+            else 0
+        )
 
         await service.enable_autonomy()
         # Second enable should not double-register
-        if hasattr(test_runtime.set_setting, 'call_count'):
+        if hasattr(test_runtime.set_setting, "call_count"):
             assert test_runtime.set_setting.call_count == call_count
 
         await service.disable_autonomy()
@@ -140,9 +144,13 @@ class TestAutonomyService:
     async def test_no_double_stop(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
 
-        call_count = test_runtime.set_setting.call_count if hasattr(test_runtime.set_setting, 'call_count') else 0
+        call_count = (
+            test_runtime.set_setting.call_count
+            if hasattr(test_runtime.set_setting, "call_count")
+            else 0
+        )
         await service.disable_autonomy()
-        if hasattr(test_runtime.set_setting, 'call_count'):
+        if hasattr(test_runtime.set_setting, "call_count"):
             assert test_runtime.set_setting.call_count == call_count
 
     @pytest.mark.asyncio

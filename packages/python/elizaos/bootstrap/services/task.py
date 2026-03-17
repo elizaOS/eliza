@@ -308,13 +308,11 @@ class TaskService(Service):
 
     async def get_tasks_by_tags(self, tags: list[str]) -> list[Task]:
         """Get tasks with specific tags."""
-        return [
-            t
-            for t in self._tasks.values()
-            if t.tags and all(tag in t.tags for tag in tags)
-        ]
+        return [t for t in self._tasks.values() if t.tags and all(tag in t.tags for tag in tags)]
 
-    async def update_task(self, task_id: str, metadata: TaskMetadata | None = None, tags: list[str] | None = None) -> Task | None:
+    async def update_task(
+        self, task_id: str, metadata: TaskMetadata | None = None, tags: list[str] | None = None
+    ) -> Task | None:
         """Update a task."""
         task = self._tasks.get(task_id)
         if task is None:
@@ -441,9 +439,7 @@ class TaskService(Service):
         now = _current_timestamp()
 
         # Get all tasks with "queue" tag
-        queue_tasks = [
-            t for t in self._tasks.values() if t.tags and "queue" in t.tags
-        ]
+        queue_tasks = [t for t in self._tasks.values() if t.tags and "queue" in t.tags]
 
         # Validate the tasks (parity with TypeScript)
         tasks = await self._validate_tasks(queue_tasks)
@@ -465,9 +461,9 @@ class TaskService(Service):
                 continue
 
             # For repeating tasks, check if interval has elapsed
-            task_start_time = task.updated_at or (
-                task.metadata.updated_at if task.metadata else None
-            ) or 0
+            task_start_time = (
+                task.updated_at or (task.metadata.updated_at if task.metadata else None) or 0
+            )
 
             update_interval = task.get_update_interval() or 0
 

@@ -2,12 +2,12 @@
  * History processor tests converted from test_history_processors.py
  */
 
-import { beforeEach, describe, expect, it } from "./jest-globals";
 import {
   LastNObservations,
   TagToolCallObservations,
 } from "../src/agent/history-processors";
 import type { History } from "../src/types";
+import { beforeEach, describe, expect, it } from "./jest-globals";
 
 describe("History Processors", () => {
   let testHistory: History;

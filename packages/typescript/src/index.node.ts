@@ -17,16 +17,16 @@ export * from "./character-loader";
 export * from "./character-utils";
 // Export additional constants not re-exported by character-utils
 export {
-  CANONICAL_SECRET_KEYS,
-  CHANNEL_OPTIONAL_SECRETS,
-  LOCAL_MODEL_PROVIDERS,
-  isSecretKeyAlias,
-  getAliasesForKey,
-  isCanonicalSecretKey,
-  getProviderForApiKey,
-  getRequiredSecretsForChannel,
-  getAllSecretsForChannel,
-  type CanonicalSecretKey,
+	CANONICAL_SECRET_KEYS,
+	type CanonicalSecretKey,
+	CHANNEL_OPTIONAL_SECRETS,
+	getAliasesForKey,
+	getAllSecretsForChannel,
+	getProviderForApiKey,
+	getRequiredSecretsForChannel,
+	isCanonicalSecretKey,
+	isSecretKeyAlias,
+	LOCAL_MODEL_PROVIDERS,
 } from "./constants";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
@@ -46,13 +46,17 @@ export * from "./plugin";
 // Export plugin discovery and manifest utilities
 export * from "./plugins";
 export * from "./prompts";
+// Export onboarding providers
+export * from "./providers/onboarding-progress";
+// Export skill eligibility provider
+export * from "./providers/skill-eligibility";
 export * from "./roles";
 export * from "./runtime";
-// Export base table schemas (abstract SchemaTable definitions + buildBaseTables factory)
-export * from "./schemas/index";
-export { buildBaseTables, type BaseTables } from "./schemas/index";
 // Export character schemas
 export * from "./schemas/character";
+// Export base table schemas (abstract SchemaTable definitions + buildBaseTables factory)
+export * from "./schemas/index";
+export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
 export * from "./secrets";
 // Export security utilities
@@ -62,20 +66,24 @@ export * from "./services/agentEvent";
 export * from "./services/approval";
 export * from "./services/hook";
 export * from "./services/message";
+export * from "./services/onboarding-cli";
+export * from "./services/onboarding-rpc";
+// Export onboarding services
+export * from "./services/onboarding-state";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
+export {
+	getTaskSchedulerAdapter,
+	markTaskSchedulerDirty,
+	registerTaskSchedulerRuntime,
+	startTaskScheduler,
+	stopTaskScheduler,
+	unregisterTaskSchedulerRuntime,
+} from "./services/task-scheduler";
 export * from "./services/tool-policy";
 export * from "./services/trajectoryLogger";
-export {
-  getTaskSchedulerAdapter,
-  markTaskSchedulerDirty,
-  registerTaskSchedulerRuntime,
-  startTaskScheduler,
-  stopTaskScheduler,
-  unregisterTaskSchedulerRuntime,
-} from "./services/task-scheduler";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
@@ -85,21 +93,11 @@ export * from "./trajectory-context";
 export * from "./types";
 export * from "./types/agentEvent";
 export * from "./types/message-service";
+// Export onboarding types and utilities
+export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
-// Export validation utilities
-export * from "./validation";
-// Export onboarding types and utilities
-export * from "./types/onboarding";
-// Export onboarding services
-export * from "./services/onboarding-state";
-export * from "./services/onboarding-cli";
-export * from "./services/onboarding-rpc";
-// Export onboarding providers
-export * from "./providers/onboarding-progress";
-// Export skill eligibility provider
-export * from "./providers/skill-eligibility";
 export * from "./utils/buffer";
 // Export channel utilities (room/world helpers)
 export * from "./utils/channel-utils";
@@ -109,6 +107,8 @@ export * from "./utils/environment";
 export * from "./utils/node";
 // Export streaming utilities
 export * from "./utils/streaming";
+// Export validation utilities
+export * from "./validation";
 
 // Node-specific exports
 export const isBrowser = false;

@@ -216,13 +216,21 @@ class AutonomyService(Service):
             return
 
         try:
-            existing_tasks = await self._runtime.get_tasks({
-                "tags": list(AUTONOMY_TASK_TAGS),
-            })
+            existing_tasks = await self._runtime.get_tasks(
+                {
+                    "tags": list(AUTONOMY_TASK_TAGS),
+                }
+            )
 
             for task in existing_tasks:
-                task_name = getattr(task, "name", None) or task.get("name") if isinstance(task, dict) else None
-                task_id = getattr(task, "id", None) or task.get("id") if isinstance(task, dict) else None
+                task_name = (
+                    getattr(task, "name", None) or task.get("name")
+                    if isinstance(task, dict)
+                    else None
+                )
+                task_id = (
+                    getattr(task, "id", None) or task.get("id") if isinstance(task, dict) else None
+                )
 
                 if task_name == AUTONOMY_TASK_NAME and task_id:
                     await self._runtime.delete_task(task_id)
@@ -322,10 +330,14 @@ class AutonomyService(Service):
                 should_be_running = self._is_autonomy_enabled()
 
                 if should_be_running and not self._is_running:
-                    self._log("info", "Runtime indicates autonomy should be enabled, creating task...")
+                    self._log(
+                        "info", "Runtime indicates autonomy should be enabled, creating task..."
+                    )
                     await self._create_autonomy_task()
                 elif not should_be_running and self._is_running:
-                    self._log("info", "Runtime indicates autonomy should be disabled, removing task...")
+                    self._log(
+                        "info", "Runtime indicates autonomy should be disabled, removing task..."
+                    )
                     await self._remove_autonomy_task()
                     self._is_running = False
             except Exception as e:
@@ -536,7 +548,9 @@ class AutonomyService(Service):
 
     @property
     def capability_description(self) -> str:
-        return "Autonomous operation using the Task system for continuous agent thinking and actions"
+        return (
+            "Autonomous operation using the Task system for continuous agent thinking and actions"
+        )
 
     def _is_autonomy_enabled(self) -> bool:
         if not self._runtime:

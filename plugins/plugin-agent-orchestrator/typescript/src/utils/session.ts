@@ -4,55 +4,55 @@ import type { DeliveryContext, ParsedSessionKey } from "../types/subagent.js";
 
 // Re-export core session utilities for convenience
 export {
+  buildAcpSessionKey,
   // Session key building/parsing
   buildAgentMainSessionKey,
-  buildAgentSessionKey,
   buildAgentPeerSessionKey,
-  buildAcpSessionKey,
-  buildSubagentSessionKey,
-  parseAgentSessionKey,
-  isAcpSessionKey,
-  isSubagentSessionKey as isCoreSubagentSessionKey,
-  normalizeAgentId as normalizeCoreAgentId,
-  normalizeMainKey,
-  normalizeAccountId,
-  toAgentRequestSessionKey,
-  toAgentStoreSessionKey,
-  resolveAgentIdFromSessionKey,
-  resolveThreadParentSessionKey,
-  resolveThreadSessionKeys,
+  buildAgentSessionKey,
   buildGroupHistoryKey,
-  // Session types
-  type SessionEntry,
-  type SessionStore,
-  type SessionDeliveryContext,
-  type SessionResolution,
-  // Session store operations
-  loadSessionStore,
-  saveSessionStore,
-  updateSessionStore,
-  updateSessionStoreEntry,
-  getSessionEntry,
-  upsertSessionEntry,
-  deleteSessionEntry,
-  listSessionKeys,
-  // Session paths
-  resolveStateDir,
-  resolveAgentSessionsDir,
-  resolveDefaultSessionStorePath,
-  resolveSessionTranscriptPath,
-  resolveStorePath,
+  buildSubagentSessionKey,
+  createSendPolicyProvider,
+  // Session entry utilities
+  createSessionEntry,
   // Session providers
   createSessionProvider,
   createSessionSkillsProvider,
-  createSendPolicyProvider,
-  getSessionProviders,
+  deleteSessionEntry,
   extractSessionContext,
-  SessionStateManager,
-  // Session entry utilities
-  createSessionEntry,
-  mergeSessionEntry,
+  getSessionEntry,
+  getSessionProviders,
+  isAcpSessionKey,
+  isSubagentSessionKey as isCoreSubagentSessionKey,
   isValidSessionEntry,
+  listSessionKeys,
+  // Session store operations
+  loadSessionStore,
+  mergeSessionEntry,
+  normalizeAccountId,
+  normalizeAgentId as normalizeCoreAgentId,
+  normalizeMainKey,
+  parseAgentSessionKey,
+  resolveAgentIdFromSessionKey,
+  resolveAgentSessionsDir,
+  resolveDefaultSessionStorePath,
+  resolveSessionTranscriptPath,
+  // Session paths
+  resolveStateDir,
+  resolveStorePath,
+  resolveThreadParentSessionKey,
+  resolveThreadSessionKeys,
+  type SessionDeliveryContext,
+  // Session types
+  type SessionEntry,
+  type SessionResolution,
+  SessionStateManager,
+  type SessionStore,
+  saveSessionStore,
+  toAgentRequestSessionKey,
+  toAgentStoreSessionKey,
+  updateSessionStore,
+  updateSessionStoreEntry,
+  upsertSessionEntry,
 } from "@elizaos/core";
 
 /**
@@ -71,7 +71,7 @@ export function hashToUUID(input: string): UUID {
     // Version 5: first nibble is 5
     `5${hash.slice(13, 16)}`,
     // Variant 1: first nibble is 8, 9, a, or b
-    `${(parseInt(hash.slice(16, 17), 16) & 0x3 | 0x8).toString(16)}${hash.slice(17, 20)}`,
+    `${((parseInt(hash.slice(16, 17), 16) & 0x3) | 0x8).toString(16)}${hash.slice(17, 20)}`,
     hash.slice(20, 32),
   ].join("-");
   return uuid as UUID;
@@ -183,9 +183,7 @@ export function parseSessionKey(sessionKey: string): ParsedSessionKey {
 /**
  * Normalizes a key type string to a known type.
  */
-function normalizeKeyType(
-  raw: string,
-): "dm" | "subagent" | "group" | "channel" | "unknown" {
+function normalizeKeyType(raw: string): "dm" | "subagent" | "group" | "channel" | "unknown" {
   const lower = raw.toLowerCase();
   switch (lower) {
     case "dm":
@@ -212,11 +210,7 @@ function normalizeKeyType(
  * @param identifier - The unique identifier
  * @returns Constructed session key
  */
-export function buildSessionKey(
-  agentId: string,
-  keyType: string,
-  identifier: string,
-): string {
+export function buildSessionKey(agentId: string, keyType: string, identifier: string): string {
   const normalizedAgentId = normalizeAgentId(agentId);
   return `agent:${normalizedAgentId}:${keyType}:${identifier}`;
 }
@@ -308,9 +302,7 @@ export function normalizeDeliveryContext(
   }
 
   // Return undefined if all fields are empty
-  const hasValues = Object.values(result).some(
-    (v) => v !== undefined && v !== null,
-  );
+  const hasValues = Object.values(result).some((v) => v !== undefined && v !== null);
   return hasValues ? result : undefined;
 }
 

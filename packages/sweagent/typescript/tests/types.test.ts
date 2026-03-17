@@ -3,13 +3,13 @@
  * Converted from Python tests
  */
 
-import { describe, expect, it } from "./jest-globals";
 import {
   type AgentInfo,
   type HistoryItem,
   StepOutputImpl,
   type TrajectoryStep,
 } from "../src/types";
+import { describe, expect, it } from "./jest-globals";
 
 describe("StepOutput", () => {
   it("should create with default values", () => {

@@ -12,10 +12,10 @@ export { adminChatProvider, autonomyStatusProvider } from "./providers";
 export { autonomyRoutes } from "./routes";
 // Service
 export {
-  AUTONOMY_SERVICE_TYPE,
-  AUTONOMY_TASK_NAME,
-  AUTONOMY_TASK_TAGS,
-  AutonomyService,
+	AUTONOMY_SERVICE_TYPE,
+	AUTONOMY_TASK_NAME,
+	AUTONOMY_TASK_TAGS,
+	AutonomyService,
 } from "./service";
 // Types
 export type { AutonomyConfig, AutonomyStatus } from "./types";

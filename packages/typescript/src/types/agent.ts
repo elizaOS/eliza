@@ -1,77 +1,77 @@
 import type { KnowledgeSourceItem } from "./knowledge";
 import type { Content } from "./primitives";
 import type {
-  JsonValue,
-  Agent as ProtoAgent,
-  AgentStatus as ProtoAgentStatus,
-  Character as ProtoCharacter,
-  CharacterSettings as ProtoCharacterSettingsType,
-  MessageExample as ProtoMessageExample,
-  MessageExampleGroup as ProtoMessageExampleGroup,
+	JsonValue,
+	Agent as ProtoAgent,
+	AgentStatus as ProtoAgentStatus,
+	Character as ProtoCharacter,
+	CharacterSettings as ProtoCharacterSettingsType,
+	MessageExample as ProtoMessageExample,
+	MessageExampleGroup as ProtoMessageExampleGroup,
 } from "./proto.js";
 import type { State } from "./state";
 
 export type TemplateType =
-  | string
-  | ((params: {
-      state:
-        | State
-        | Record<string, string | number | boolean | null | undefined>
-        | object;
-    }) => string);
+	| string
+	| ((params: {
+			state:
+				| State
+				| Record<string, string | number | boolean | null | undefined>
+				| object;
+	  }) => string);
 
 /**
  * Example message for demonstration
  */
 export interface MessageExample
-  extends Omit<ProtoMessageExample, "$typeName" | "$unknown" | "content"> {
-  content: Content;
+	extends Omit<ProtoMessageExample, "$typeName" | "$unknown" | "content"> {
+	content: Content;
 }
 
 export interface MessageExampleGroup
-  extends Omit<
-    ProtoMessageExampleGroup,
-    "$typeName" | "$unknown" | "examples"
-  > {
-  examples: MessageExample[];
+	extends Omit<
+		ProtoMessageExampleGroup,
+		"$typeName" | "$unknown" | "examples"
+	> {
+	examples: MessageExample[];
 }
 
 export type CharacterSettings = Omit<
-  ProtoCharacterSettingsType,
-  "$typeName" | "$unknown" | "secrets"
+	ProtoCharacterSettingsType,
+	"$typeName" | "$unknown" | "secrets"
 > & {
-  ENABLE_AUTONOMY?: boolean | string;
-  DISABLE_BASIC_CAPABILITIES?: boolean | string;
-  ENABLE_EXTENDED_CAPABILITIES?: boolean | string;
-  ADVANCED_CAPABILITIES?: boolean | string;
-  secrets?: Record<string, string | boolean | number>;
-  [key: string]: JsonValue | undefined;
+	ENABLE_AUTONOMY?: boolean | string;
+	DISABLE_BASIC_CAPABILITIES?: boolean | string;
+	ENABLE_EXTENDED_CAPABILITIES?: boolean | string;
+	ADVANCED_CAPABILITIES?: boolean | string;
+	secrets?: Record<string, string | boolean | number>;
+	[key: string]: JsonValue | undefined;
 };
 export type ProtoCharacterSettings = ProtoCharacterSettingsType;
 export type Character = Partial<
-  Omit<
-    ProtoCharacter,
-    | "$typeName"
-    | "$unknown"
-    | "settings"
-    | "messageExamples"
-    | "knowledge"
-    | "secrets"
-  >
+	Omit<
+		ProtoCharacter,
+		| "$typeName"
+		| "$unknown"
+		| "settings"
+		| "messageExamples"
+		| "knowledge"
+		| "secrets"
+	>
 > & {
-  settings?: CharacterSettings;
-  secrets?: Record<string, string | number | boolean>;
-  messageExamples?: MessageExampleGroup[];
-  knowledge?: KnowledgeSourceItem[];
-  /** Enable advanced planning capabilities for this character */
-  advancedPlanning?: boolean;
-  /** Enable advanced memory capabilities for this character */
-  advancedMemory?: boolean;
+	settings?: CharacterSettings;
+	secrets?: Record<string, string | number | boolean>;
+	messageExamples?: MessageExampleGroup[];
+	knowledge?: KnowledgeSourceItem[];
+	/** Enable advanced planning capabilities for this character */
+	advancedPlanning?: boolean;
+	/** Enable advanced memory capabilities for this character */
+	advancedMemory?: boolean;
 };
 
 export enum AgentStatus {
-  ACTIVE = "active",
-  INACTIVE = "inactive",
+	ACTIVE = "active",
+	INACTIVE = "inactive",
 }
 
 /**
@@ -84,18 +84,18 @@ export enum AgentStatus {
  * This interface is primarily used by the `IDatabaseAdapter` for agent management.
  */
 export interface Agent
-  extends Character,
-    Omit<
-      ProtoAgent,
-      | "$typeName"
-      | "$unknown"
-      | "character"
-      | "status"
-      | "createdAt"
-      | "updatedAt"
-      | "secrets"
-    > {
-  status?: AgentStatus | ProtoAgentStatus;
-  createdAt: number | bigint;
-  updatedAt: number | bigint;
+	extends Character,
+		Omit<
+			ProtoAgent,
+			| "$typeName"
+			| "$unknown"
+			| "character"
+			| "status"
+			| "createdAt"
+			| "updatedAt"
+			| "secrets"
+		> {
+	status?: AgentStatus | ProtoAgentStatus;
+	createdAt: number | bigint;
+	updatedAt: number | bigint;
 }

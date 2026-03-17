@@ -14,30 +14,30 @@
 export { chunkByParagraph, chunkMarkdownText, chunkText } from "./chunk.js";
 
 export {
-  buildCodeSpanIndex,
-  type CodeSpanIndex,
-  createInlineCodeState,
-  type InlineCodeState,
+	buildCodeSpanIndex,
+	type CodeSpanIndex,
+	createInlineCodeState,
+	type InlineCodeState,
 } from "./code-spans.js";
 export {
-  type FenceSpan,
-  findFenceSpanAt,
-  isSafeFenceBreak,
-  parseFenceSpans,
+	type FenceSpan,
+	findFenceSpanAt,
+	isSafeFenceBreak,
+	parseFenceSpans,
 } from "./fences.js";
 export {
-  type ParsedFrontmatter,
-  parseFrontmatterBlock,
+	type ParsedFrontmatter,
+	parseFrontmatterBlock,
 } from "./frontmatter.js";
 
 export {
-  chunkMarkdownIR,
-  type MarkdownIR,
-  type MarkdownLinkSpan,
-  type MarkdownParseOptions,
-  type MarkdownStyle,
-  type MarkdownStyleSpan,
-  type MarkdownTableMode,
-  markdownToIR,
-  markdownToIRWithMeta,
+	chunkMarkdownIR,
+	type MarkdownIR,
+	type MarkdownLinkSpan,
+	type MarkdownParseOptions,
+	type MarkdownStyle,
+	type MarkdownStyleSpan,
+	type MarkdownTableMode,
+	markdownToIR,
+	markdownToIRWithMeta,
 } from "./ir.js";

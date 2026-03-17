@@ -41,46 +41,46 @@ export type EntitySettingValue = string | boolean | number | null;
  * Used to isolate user settings across concurrent requests sharing the same runtime.
  */
 export interface RequestContext {
-  /**
-   * The entity (user) ID for this request.
-   * Used to identify which user's settings should be used.
-   */
-  entityId: UUID;
+	/**
+	 * The entity (user) ID for this request.
+	 * Used to identify which user's settings should be used.
+	 */
+	entityId: UUID;
 
-  /**
-   * The agent ID for this request.
-   * Used for agent-specific entity settings lookup.
-   */
-  agentId: UUID;
+	/**
+	 * The agent ID for this request.
+	 * Used for agent-specific entity settings lookup.
+	 */
+	agentId: UUID;
 
-  /**
-   * Pre-fetched entity-specific settings.
-   * These take highest priority in getSetting() resolution chain.
-   *
-   * The Map contains setting keys and their values:
-   * - string/boolean/number: The actual setting value to use
-   * - null: Explicitly unset (use agent default)
-   * - undefined (key not present): Fall through to agent settings
-   */
-  entitySettings: Map<string, EntitySettingValue>;
+	/**
+	 * Pre-fetched entity-specific settings.
+	 * These take highest priority in getSetting() resolution chain.
+	 *
+	 * The Map contains setting keys and their values:
+	 * - string/boolean/number: The actual setting value to use
+	 * - null: Explicitly unset (use agent default)
+	 * - undefined (key not present): Fall through to agent settings
+	 */
+	entitySettings: Map<string, EntitySettingValue>;
 
-  /**
-   * Request start timestamp for observability and debugging.
-   * Useful for tracking request duration and timeout handling.
-   */
-  requestStartTime: number;
+	/**
+	 * Request start timestamp for observability and debugging.
+	 * Useful for tracking request duration and timeout handling.
+	 */
+	requestStartTime: number;
 
-  /**
-   * Optional trace ID for distributed tracing.
-   * Can be passed from incoming request headers (e.g., X-Trace-Id).
-   */
-  traceId?: string;
+	/**
+	 * Optional trace ID for distributed tracing.
+	 * Can be passed from incoming request headers (e.g., X-Trace-Id).
+	 */
+	traceId?: string;
 
-  /**
-   * Optional organization ID for multi-tenant deployments.
-   * Used for logging and auditing purposes.
-   */
-  organizationId?: string;
+	/**
+	 * Optional organization ID for multi-tenant deployments.
+	 * Used for logging and auditing purposes.
+	 */
+	organizationId?: string;
 }
 
 /**
@@ -88,23 +88,23 @@ export interface RequestContext {
  * Different implementations exist for Node.js (AsyncLocalStorage) and Browser (fallback).
  */
 export interface IRequestContextManager {
-  /**
-   * Run a function with a request context.
-   * The context will be available to all nested async calls via `active()`.
-   *
-   * @param context - The request context to make available, or undefined to clear context
-   * @param fn - The function to run within the context
-   * @returns The result of the function
-   */
-  run<T>(context: RequestContext | undefined, fn: () => T): T;
+	/**
+	 * Run a function with a request context.
+	 * The context will be available to all nested async calls via `active()`.
+	 *
+	 * @param context - The request context to make available, or undefined to clear context
+	 * @param fn - The function to run within the context
+	 * @returns The result of the function
+	 */
+	run<T>(context: RequestContext | undefined, fn: () => T): T;
 
-  /**
-   * Get the currently active request context.
-   * Returns undefined if no context is active (e.g., during plugin init).
-   *
-   * @returns The current request context or undefined
-   */
-  active(): RequestContext | undefined;
+	/**
+	 * Get the currently active request context.
+	 * Returns undefined if no context is active (e.g., during plugin init).
+	 *
+	 * @returns The current request context or undefined
+	 */
+	active(): RequestContext | undefined;
 }
 
 /**
@@ -113,18 +113,18 @@ export interface IRequestContextManager {
  * This is safe for backward compatibility: getSetting() falls through to existing behavior.
  */
 class NoopRequestContextManager implements IRequestContextManager {
-  run<T>(_context: RequestContext | undefined, fn: () => T): T {
-    return fn();
-  }
+	run<T>(_context: RequestContext | undefined, fn: () => T): T {
+		return fn();
+	}
 
-  active(): RequestContext | undefined {
-    return undefined;
-  }
+	active(): RequestContext | undefined {
+		return undefined;
+	}
 }
 
 // Global singleton - will be configured by index.node.ts or index.browser.ts
 let globalRequestContextManager: IRequestContextManager =
-  new NoopRequestContextManager();
+	new NoopRequestContextManager();
 
 /**
  * Set the global request context manager.
@@ -133,9 +133,9 @@ let globalRequestContextManager: IRequestContextManager =
  * @param manager - The context manager to use globally
  */
 export function setRequestContextManager(
-  manager: IRequestContextManager,
+	manager: IRequestContextManager,
 ): void {
-  globalRequestContextManager = manager;
+	globalRequestContextManager = manager;
 }
 
 /**
@@ -145,7 +145,7 @@ export function setRequestContextManager(
  * @returns The current global request context manager
  */
 export function getRequestContextManager(): IRequestContextManager {
-  return globalRequestContextManager;
+	return globalRequestContextManager;
 }
 
 /**
@@ -170,10 +170,10 @@ export function getRequestContextManager(): IRequestContextManager {
  * @returns The result of the function
  */
 export function runWithRequestContext<T>(
-  context: RequestContext | undefined,
-  fn: () => T,
+	context: RequestContext | undefined,
+	fn: () => T,
 ): T {
-  return globalRequestContextManager.run(context, fn);
+	return globalRequestContextManager.run(context, fn);
 }
 
 /**
@@ -183,5 +183,5 @@ export function runWithRequestContext<T>(
  * @returns The current request context or undefined if not in a request
  */
 export function getRequestContext(): RequestContext | undefined {
-  return globalRequestContextManager.active();
+	return globalRequestContextManager.active();
 }

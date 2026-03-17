@@ -13,10 +13,7 @@
  */
 
 import * as crypto from "node:crypto";
-import type {
-  SessionOrigin,
-  SessionSkillsSnapshot,
-} from "../types/memory.js";
+import type { SessionOrigin, SessionSkillsSnapshot } from "../types/memory.js";
 
 // ============================================================================
 // Chat Types
@@ -35,14 +32,14 @@ export type SessionChatType = "dm" | "group" | "channel" | "thread";
  * Delivery context for routing responses.
  */
 export type SessionDeliveryContext = {
-  /** Channel to deliver to */
-  channel?: string;
-  /** Target recipient/destination */
-  to?: string;
-  /** Account to use for delivery */
-  accountId?: string;
-  /** Thread to deliver to */
-  threadId?: string | number;
+	/** Channel to deliver to */
+	channel?: string;
+	/** Target recipient/destination */
+	to?: string;
+	/** Account to use for delivery */
+	accountId?: string;
+	/** Thread to deliver to */
+	threadId?: string | number;
 };
 
 // ============================================================================
@@ -55,186 +52,186 @@ export type SessionDeliveryContext = {
  * This is the primary data structure for session state in elizaOS.
  */
 export type SessionEntry = {
-  // ---- Identity ----
+	// ---- Identity ----
 
-  /** Unique session identifier (UUID) */
-  sessionId: string;
+	/** Unique session identifier (UUID) */
+	sessionId: string;
 
-  /** Last update timestamp (milliseconds since epoch) */
-  updatedAt: number;
+	/** Last update timestamp (milliseconds since epoch) */
+	updatedAt: number;
 
-  /** Path to the session transcript file */
-  sessionFile?: string;
+	/** Path to the session transcript file */
+	sessionFile?: string;
 
-  /** Parent session key that spawned this session (for subagent scoping) */
-  spawnedBy?: string;
+	/** Parent session key that spawned this session (for subagent scoping) */
+	spawnedBy?: string;
 
-  /** Human-readable label for the session */
-  label?: string;
+	/** Human-readable label for the session */
+	label?: string;
 
-  /** Display name for UI purposes */
-  displayName?: string;
+	/** Display name for UI purposes */
+	displayName?: string;
 
-  // ---- State Flags ----
+	// ---- State Flags ----
 
-  /** Whether system introduction has been sent */
-  systemSent?: boolean;
+	/** Whether system introduction has been sent */
+	systemSent?: boolean;
 
-  /** Whether the last run was aborted */
-  abortedLastRun?: boolean;
+	/** Whether the last run was aborted */
+	abortedLastRun?: boolean;
 
-  // ---- Chat Context ----
+	// ---- Chat Context ----
 
-  /** Type of chat (dm, group, channel, thread) */
-  chatType?: SessionChatType;
+	/** Type of chat (dm, group, channel, thread) */
+	chatType?: SessionChatType;
 
-  /** Primary channel for this session */
-  channel?: string;
+	/** Primary channel for this session */
+	channel?: string;
 
-  /** Group identifier (for group chats) */
-  groupId?: string;
+	/** Group identifier (for group chats) */
+	groupId?: string;
 
-  /** Group subject/name */
-  subject?: string;
+	/** Group subject/name */
+	subject?: string;
 
-  /** Group channel name (e.g., "#general") */
-  groupChannel?: string;
+	/** Group channel name (e.g., "#general") */
+	groupChannel?: string;
 
-  /** Space/server name (e.g., Discord guild) */
-  space?: string;
+	/** Space/server name (e.g., Discord guild) */
+	space?: string;
 
-  /** Origin information */
-  origin?: SessionOrigin;
+	/** Origin information */
+	origin?: SessionOrigin;
 
-  // ---- Delivery Routing ----
+	// ---- Delivery Routing ----
 
-  /** Current delivery context */
-  deliveryContext?: SessionDeliveryContext;
+	/** Current delivery context */
+	deliveryContext?: SessionDeliveryContext;
 
-  /** Last channel used for delivery */
-  lastChannel?: string;
+	/** Last channel used for delivery */
+	lastChannel?: string;
 
-  /** Last recipient */
-  lastTo?: string;
+	/** Last recipient */
+	lastTo?: string;
 
-  /** Last account used */
-  lastAccountId?: string;
+	/** Last account used */
+	lastAccountId?: string;
 
-  /** Last thread ID */
-  lastThreadId?: string | number;
+	/** Last thread ID */
+	lastThreadId?: string | number;
 
-  // ---- Model Configuration ----
+	// ---- Model Configuration ----
 
-  /** Thinking/reasoning level */
-  thinkingLevel?: string;
+	/** Thinking/reasoning level */
+	thinkingLevel?: string;
 
-  /** Verbose output level */
-  verboseLevel?: string;
+	/** Verbose output level */
+	verboseLevel?: string;
 
-  /** Reasoning level */
-  reasoningLevel?: string;
+	/** Reasoning level */
+	reasoningLevel?: string;
 
-  /** Elevated permissions level */
-  elevatedLevel?: string;
+	/** Elevated permissions level */
+	elevatedLevel?: string;
 
-  /** Provider override */
-  providerOverride?: string;
+	/** Provider override */
+	providerOverride?: string;
 
-  /** Model override */
-  modelOverride?: string;
+	/** Model override */
+	modelOverride?: string;
 
-  /** Auth profile override */
-  authProfileOverride?: string;
+	/** Auth profile override */
+	authProfileOverride?: string;
 
-  /** Source of auth profile override */
-  authProfileOverrideSource?: "auto" | "user";
+	/** Source of auth profile override */
+	authProfileOverrideSource?: "auto" | "user";
 
-  /** Compaction count when auth profile was set */
-  authProfileOverrideCompactionCount?: number;
+	/** Compaction count when auth profile was set */
+	authProfileOverrideCompactionCount?: number;
 
-  // ---- Token Usage ----
+	// ---- Token Usage ----
 
-  /** Input tokens consumed */
-  inputTokens?: number;
+	/** Input tokens consumed */
+	inputTokens?: number;
 
-  /** Output tokens generated */
-  outputTokens?: number;
+	/** Output tokens generated */
+	outputTokens?: number;
 
-  /** Total tokens */
-  totalTokens?: number;
+	/** Total tokens */
+	totalTokens?: number;
 
-  /** Context window tokens */
-  contextTokens?: number;
+	/** Context window tokens */
+	contextTokens?: number;
 
-  /** Number of compaction operations */
-  compactionCount?: number;
+	/** Number of compaction operations */
+	compactionCount?: number;
 
-  /** Model provider used */
-  modelProvider?: string;
+	/** Model provider used */
+	modelProvider?: string;
 
-  /** Model identifier used */
-  model?: string;
+	/** Model identifier used */
+	model?: string;
 
-  // ---- Group Behavior ----
+	// ---- Group Behavior ----
 
-  /** Group activation mode (mention or always) */
-  groupActivation?: "mention" | "always";
+	/** Group activation mode (mention or always) */
+	groupActivation?: "mention" | "always";
 
-  /** Whether group needs system introduction */
-  groupActivationNeedsSystemIntro?: boolean;
+	/** Whether group needs system introduction */
+	groupActivationNeedsSystemIntro?: boolean;
 
-  // ---- Messaging Behavior ----
+	// ---- Messaging Behavior ----
 
-  /** Send policy (allow or deny responses) */
-  sendPolicy?: "allow" | "deny";
+	/** Send policy (allow or deny responses) */
+	sendPolicy?: "allow" | "deny";
 
-  /** Response usage display mode */
-  responseUsage?: "on" | "off" | "tokens" | "full";
+	/** Response usage display mode */
+	responseUsage?: "on" | "off" | "tokens" | "full";
 
-  // ---- TTS ----
+	// ---- TTS ----
 
-  /** Text-to-speech auto mode */
-  ttsAuto?: "on" | "off" | "voice-only";
+	/** Text-to-speech auto mode */
+	ttsAuto?: "on" | "off" | "voice-only";
 
-  // ---- Execution ----
+	// ---- Execution ----
 
-  /** Execution host */
-  execHost?: string;
+	/** Execution host */
+	execHost?: string;
 
-  /** Execution security mode */
-  execSecurity?: string;
+	/** Execution security mode */
+	execSecurity?: string;
 
-  /** Execution ask mode */
-  execAsk?: string;
+	/** Execution ask mode */
+	execAsk?: string;
 
-  /** Execution node */
-  execNode?: string;
+	/** Execution node */
+	execNode?: string;
 
-  // ---- Memory ----
+	// ---- Memory ----
 
-  /** Timestamp when memory was last flushed */
-  memoryFlushAt?: number;
+	/** Timestamp when memory was last flushed */
+	memoryFlushAt?: number;
 
-  /** Compaction count when memory was flushed */
-  memoryFlushCompactionCount?: number;
+	/** Compaction count when memory was flushed */
+	memoryFlushCompactionCount?: number;
 
-  // ---- Skills ----
+	// ---- Skills ----
 
-  /** Snapshot of active skills */
-  skillsSnapshot?: SessionSkillsSnapshot;
+	/** Snapshot of active skills */
+	skillsSnapshot?: SessionSkillsSnapshot;
 
-  // ---- Heartbeat ----
+	// ---- Heartbeat ----
 
-  /** Last delivered heartbeat payload */
-  lastHeartbeatText?: string;
+	/** Last delivered heartbeat payload */
+	lastHeartbeatText?: string;
 
-  /** Timestamp when last heartbeat was sent */
-  lastHeartbeatSentAt?: number;
+	/** Timestamp when last heartbeat was sent */
+	lastHeartbeatSentAt?: number;
 
-  // ---- External CLI Sessions ----
+	// ---- External CLI Sessions ----
 
-  /** Map of CLI session identifiers */
-  cliSessionIds?: Record<string, string>;
+	/** Map of CLI session identifiers */
+	cliSessionIds?: Record<string, string>;
 };
 
 // ============================================================================
@@ -258,22 +255,22 @@ export type SessionStore = Record<string, SessionEntry>;
  * @returns Merged session entry
  */
 export function mergeSessionEntry(
-  existing: SessionEntry | undefined,
-  patch: Partial<SessionEntry>,
+	existing: SessionEntry | undefined,
+	patch: Partial<SessionEntry>,
 ): SessionEntry {
-  const sessionId =
-    patch.sessionId ?? existing?.sessionId ?? crypto.randomUUID();
-  const updatedAt = Math.max(
-    existing?.updatedAt ?? 0,
-    patch.updatedAt ?? 0,
-    Date.now(),
-  );
+	const sessionId =
+		patch.sessionId ?? existing?.sessionId ?? crypto.randomUUID();
+	const updatedAt = Math.max(
+		existing?.updatedAt ?? 0,
+		patch.updatedAt ?? 0,
+		Date.now(),
+	);
 
-  if (!existing) {
-    return { ...patch, sessionId, updatedAt };
-  }
+	if (!existing) {
+		return { ...patch, sessionId, updatedAt };
+	}
 
-  return { ...existing, ...patch, sessionId, updatedAt };
+	return { ...existing, ...patch, sessionId, updatedAt };
 }
 
 /**
@@ -283,13 +280,13 @@ export function mergeSessionEntry(
  * @returns New session entry
  */
 export function createSessionEntry(
-  overrides?: Partial<SessionEntry>,
+	overrides?: Partial<SessionEntry>,
 ): SessionEntry {
-  return {
-    sessionId: crypto.randomUUID(),
-    updatedAt: Date.now(),
-    ...overrides,
-  };
+	return {
+		sessionId: crypto.randomUUID(),
+		updatedAt: Date.now(),
+		...overrides,
+	};
 }
 
 /**
@@ -298,19 +295,17 @@ export function createSessionEntry(
  * @param entry - Entry to validate
  * @returns True if entry has required fields
  */
-export function isValidSessionEntry(
-  entry: unknown,
-): entry is SessionEntry {
-  if (!entry || typeof entry !== "object") {
-    return false;
-  }
+export function isValidSessionEntry(entry: unknown): entry is SessionEntry {
+	if (!entry || typeof entry !== "object") {
+		return false;
+	}
 
-  const e = entry as Record<string, unknown>;
-  return (
-    typeof e.sessionId === "string" &&
-    e.sessionId.length > 0 &&
-    typeof e.updatedAt === "number"
-  );
+	const e = entry as Record<string, unknown>;
+	return (
+		typeof e.sessionId === "string" &&
+		e.sessionId.length > 0 &&
+		typeof e.updatedAt === "number"
+	);
 }
 
 // ============================================================================
@@ -321,12 +316,12 @@ export function isValidSessionEntry(
  * Result of resolving a session key.
  */
 export type SessionResolution = {
-  /** The resolved session key */
-  sessionKey: string;
-  /** Whether this is a new session */
-  isNew: boolean;
-  /** The session entry */
-  entry: SessionEntry;
+	/** The resolved session key */
+	sessionKey: string;
+	/** Whether this is a new session */
+	isNew: boolean;
+	/** The session entry */
+	entry: SessionEntry;
 };
 
 // ============================================================================
@@ -337,14 +332,14 @@ export type SessionResolution = {
  * Result of resolving a group session key.
  */
 export type GroupKeyResolution = {
-  /** The resolved group key */
-  key: string;
-  /** Channel identifier */
-  channel?: string;
-  /** Group/room identifier */
-  id?: string;
-  /** Chat type */
-  chatType?: SessionChatType;
+	/** The resolved group key */
+	key: string;
+	/** Channel identifier */
+	channel?: string;
+	/** Group/room identifier */
+	id?: string;
+	/** Chat type */
+	chatType?: SessionChatType;
 };
 
 // ============================================================================

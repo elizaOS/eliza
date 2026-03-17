@@ -7,28 +7,28 @@
  * Set of built-in object constructors that should not be considered plain objects
  */
 const NON_PLAIN_CONSTRUCTORS = new Set([
-  Array,
-  Date,
-  RegExp,
-  Map,
-  Set,
-  WeakMap,
-  WeakSet,
-  Error,
-  Promise,
-  ArrayBuffer,
-  DataView,
-  Int8Array,
-  Uint8Array,
-  Uint8ClampedArray,
-  Int16Array,
-  Uint16Array,
-  Int32Array,
-  Uint32Array,
-  Float32Array,
-  Float64Array,
-  BigInt64Array,
-  BigUint64Array,
+	Array,
+	Date,
+	RegExp,
+	Map,
+	Set,
+	WeakMap,
+	WeakSet,
+	Error,
+	Promise,
+	ArrayBuffer,
+	DataView,
+	Int8Array,
+	Uint8Array,
+	Uint8ClampedArray,
+	Int16Array,
+	Uint16Array,
+	Int32Array,
+	Uint32Array,
+	Float32Array,
+	Float64Array,
+	BigInt64Array,
+	BigUint64Array,
 ]);
 
 /**
@@ -51,32 +51,32 @@ const NON_PLAIN_CONSTRUCTORS = new Set([
  * ```
  */
 export function isPlainObject(
-  value: unknown,
+	value: unknown,
 ): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
+	if (value === null || typeof value !== "object") {
+		return false;
+	}
 
-  // Check constructor - plain objects have Object or null prototype
-  const proto = Object.getPrototypeOf(value);
-  if (proto === null) {
-    return true; // Object.create(null)
-  }
+	// Check constructor - plain objects have Object or null prototype
+	const proto = Object.getPrototypeOf(value);
+	if (proto === null) {
+		return true; // Object.create(null)
+	}
 
-  if (proto.constructor === Object) {
-    return true;
-  }
+	if (proto.constructor === Object) {
+		return true;
+	}
 
-  // Explicitly exclude known built-in types
-  if (NON_PLAIN_CONSTRUCTORS.has(proto.constructor)) {
-    return false;
-  }
+	// Explicitly exclude known built-in types
+	if (NON_PLAIN_CONSTRUCTORS.has(proto.constructor)) {
+		return false;
+	}
 
-  // Check for Buffer (Node.js specific)
-  if (typeof Buffer !== "undefined" && Buffer.isBuffer(value)) {
-    return false;
-  }
+	// Check for Buffer (Node.js specific)
+	if (typeof Buffer !== "undefined" && Buffer.isBuffer(value)) {
+		return false;
+	}
 
-  // If it's a custom class instance, it's not a plain object
-  return false;
+	// If it's a custom class instance, it's not a plain object
+	return false;
 }

@@ -17,34 +17,34 @@
  * - Scalars are stringified
  */
 export function flattenTextValues(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => flattenTextValues(item));
-  }
+	if (Array.isArray(value)) {
+		return value.flatMap((item) => flattenTextValues(item));
+	}
 
-  if (value == null) {
-    return [];
-  }
+	if (value == null) {
+		return [];
+	}
 
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed ? [trimmed] : [];
-  }
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		return trimmed ? [trimmed] : [];
+	}
 
-  if (typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>).flatMap(
-      ([key, inner]) => {
-        const innerText = flattenTextValues(inner).join(", ");
-        return innerText ? [`${key}: ${innerText}`] : [];
-      },
-    );
-  }
+	if (typeof value === "object") {
+		return Object.entries(value as Record<string, unknown>).flatMap(
+			([key, inner]) => {
+				const innerText = flattenTextValues(inner).join(", ");
+				return innerText ? [`${key}: ${innerText}`] : [];
+			},
+		);
+	}
 
-  return [String(value)];
+	return [String(value)];
 }
 
 /**
  * Convert a mixed nested value into a multi-line text block.
  */
 export function toMultilineText(value: unknown): string {
-  return flattenTextValues(value).join("\n");
+	return flattenTextValues(value).join("\n");
 }

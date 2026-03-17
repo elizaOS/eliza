@@ -170,7 +170,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async transaction<T>(
     callback: (tx: IDatabaseAdapter<IStorage>) => Promise<T>,
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<T> {
     return callback(this);
   }
@@ -194,14 +194,14 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async upsertComponents(
     components: Component[],
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<void> {
     for (const component of components) {
       const existing = await this.getComponent(
         component.entityId,
         component.type,
         component.worldId,
-        component.sourceEntityId,
+        component.sourceEntityId
       );
       if (existing) {
         await this.updateComponent(component);
@@ -213,14 +213,14 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async patchComponents(
     _updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<void> {
     // LocalDB has no JSONB patch support; no-op for compatibility.
   }
 
   async upsertMemories(
     memories: Array<{ memory: Memory; tableName: string }>,
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<void> {
     for (const { memory, tableName } of memories) {
       const id = memory.id;
@@ -283,7 +283,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async getEntitiesForRooms(
     roomIds: UUID[],
-    includeComponents = false,
+    includeComponents = false
   ): Promise<Array<{ roomId: UUID; entities: Entity[] }>> {
     const result: Array<{ roomId: UUID; entities: Entity[] }> = [];
     for (const roomId of roomIds) {
@@ -293,7 +293,10 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return result;
   }
 
-  private async getEntitiesForRoomInternal(roomId: UUID, includeComponents: boolean): Promise<Entity[]> {
+  private async getEntitiesForRoomInternal(
+    roomId: UUID,
+    includeComponents: boolean
+  ): Promise<Entity[]> {
     const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId
@@ -325,7 +328,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     return ids;
   }
-  
+
   async upsertEntities(entities: Entity[]): Promise<void> {
     // WHY: LocalDB uses file-backed storage where set() is naturally idempotent
     for (const entity of entities) {
@@ -334,7 +337,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
       }
     }
   }
-  
+
   async searchEntitiesByName(params: {
     query: string;
     agentId: UUID;
@@ -344,37 +347,35 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const limit = params.limit ?? 10;
     const allEntities = await this.storage.getAll<Entity>(COLLECTIONS.ENTITIES);
     const matches: Entity[] = [];
-    
+
     for (const entity of allEntities) {
       if (entity.agentId !== params.agentId) continue;
-      
-      const hasMatch = entity.names?.some(name => 
-        name.toLowerCase().includes(lowerQuery)
-      );
-      
+
+      const hasMatch = entity.names?.some((name) => name.toLowerCase().includes(lowerQuery));
+
       if (hasMatch) {
         matches.push(entity);
         if (matches.length >= limit) break;
       }
     }
-    
+
     return matches;
   }
-  
+
   async getEntitiesByNames(params: { names: string[]; agentId: UUID }): Promise<Entity[]> {
     const nameSet = new Set(params.names);
     const allEntities = await this.storage.getAll<Entity>(COLLECTIONS.ENTITIES);
     const matches: Entity[] = [];
-    
+
     for (const entity of allEntities) {
       if (entity.agentId !== params.agentId) continue;
-      
-      const hasMatch = entity.names?.some(name => nameSet.has(name));
+
+      const hasMatch = entity.names?.some((name) => nameSet.has(name));
       if (hasMatch) {
         matches.push(entity);
       }
     }
-    
+
     return matches;
   }
 
@@ -383,12 +384,14 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.set(COLLECTIONS.ENTITIES, entity.id, entity);
   }
 
-  async getComponentsByNaturalKeys(keys: Array<{
-    entityId: UUID;
-    type: string;
-    worldId?: UUID;
-    sourceEntityId?: UUID;
-  }>): Promise<(Component | null)[]> {
+  async getComponentsByNaturalKeys(
+    keys: Array<{
+      entityId: UUID;
+      type: string;
+      worldId?: UUID;
+      sourceEntityId?: UUID;
+    }>
+  ): Promise<(Component | null)[]> {
     const result: (Component | null)[] = [];
     for (const k of keys) {
       const c = await this.getComponentInternal(k.entityId, k.type, k.worldId, k.sourceEntityId);
@@ -400,7 +403,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async getComponentsForEntities(
     entityIds: UUID[],
     worldId?: UUID,
-    sourceEntityId?: UUID,
+    sourceEntityId?: UUID
   ): Promise<Component[]> {
     const out: Component[] = [];
     for (const entityId of entityIds) {
@@ -776,7 +779,12 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     if (worldIds.length === 0) return [];
     const all: Memory[] = [];
     for (const worldId of worldIds) {
-      const mems = await this.getMemoriesByWorldIdSingle({ worldId, count: params.count, limit: params.limit, tableName: params.tableName });
+      const mems = await this.getMemoriesByWorldIdSingle({
+        worldId,
+        count: params.count,
+        limit: params.limit,
+        tableName: params.tableName,
+      });
       all.push(...mems);
     }
     return all;
@@ -845,7 +853,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     return ids;
   }
-  
+
   async upsertRooms(rooms: Room[]): Promise<void> {
     // WHY: File-backed storage.set() handles both insert and update atomically
     for (const room of rooms) {
@@ -873,11 +881,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async getRoomsByWorlds(
-    worldIds: UUID[],
-    limit?: number,
-    offset?: number,
-  ): Promise<Room[]> {
+  async getRoomsByWorlds(worldIds: UUID[], limit?: number, offset?: number): Promise<Room[]> {
     let all: Room[] = [];
     for (const worldId of worldIds) {
       const rooms = await this.getRoomsByWorld(worldId);
@@ -931,7 +935,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getParticipantsForRooms(
-    roomIds: UUID[],
+    roomIds: UUID[]
   ): Promise<Array<{ roomId: UUID; entityIds: UUID[] }>> {
     const result: Array<{ roomId: UUID; entityIds: UUID[] }> = [];
     for (const roomId of roomIds) {
@@ -941,9 +945,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return result;
   }
 
-  async areRoomParticipants(
-    pairs: Array<{ roomId: UUID; entityId: UUID }>,
-  ): Promise<boolean[]> {
+  async areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]> {
     const result: boolean[] = [];
     for (const { roomId, entityId } of pairs) {
       const ok = await this.isRoomParticipant(roomId, entityId);
@@ -953,7 +955,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getParticipantUserStates(
-    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+    pairs: Array<{ roomId: UUID; entityId: UUID }>
   ): Promise<("FOLLOWED" | "MUTED" | null)[]> {
     const result: ("FOLLOWED" | "MUTED" | null)[] = [];
     for (const { roomId, entityId } of pairs) {
@@ -963,11 +965,13 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return result;
   }
 
-  async updateParticipantUserStates(updates: Array<{
-    roomId: UUID;
-    entityId: UUID;
-    state: "FOLLOWED" | "MUTED" | null;
-  }>): Promise<void> {
+  async updateParticipantUserStates(
+    updates: Array<{
+      roomId: UUID;
+      entityId: UUID;
+      state: "FOLLOWED" | "MUTED" | null;
+    }>
+  ): Promise<void> {
     for (const u of updates) {
       await this.updateParticipantUserStateInternal(u.roomId, u.entityId, u.state);
     }
@@ -1098,7 +1102,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getRelationshipsByPairs(
-    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
+    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>
   ): Promise<(Relationship | null)[]> {
     const result: (Relationship | null)[] = [];
     for (const params of pairs) {
@@ -1150,13 +1154,12 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   private async getRelationshipsForEntity(
     entityId: UUID,
-    tags?: string[],
+    tags?: string[]
   ): Promise<Relationship[]> {
     const stored = await this.storage.getWhere<StoredRelationship>(
       COLLECTIONS.RELATIONSHIPS,
       (r) => {
-        const isInvolved =
-          r.sourceEntityId === entityId || r.targetEntityId === entityId;
+        const isInvolved = r.sourceEntityId === entityId || r.targetEntityId === entityId;
         if (!isInvolved) return false;
         if (tags && tags.length > 0) return tags.some((tag) => r.tags?.includes(tag));
         return true;
@@ -1268,9 +1271,10 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   // ===============================
 
   async getPairingRequests(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>
   ): Promise<Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }>> {
-    const result: Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }> = [];
+    const result: Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }> =
+      [];
     for (const { channel, agentId } of queries) {
       const requests = await this.storage.getWhere<PairingRequest>(
         COLLECTIONS.PAIRING_REQUESTS,
@@ -1305,9 +1309,13 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getPairingAllowlists(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>
   ): Promise<Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }>> {
-    const result: Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }> = [];
+    const result: Array<{
+      channel: PairingChannel;
+      agentId: UUID;
+      entries: PairingAllowlistEntry[];
+    }> = [];
     for (const { channel, agentId } of queries) {
       const entries = await this.storage.getWhere<PairingAllowlistEntry>(
         COLLECTIONS.PAIRING_ALLOWLIST,
@@ -1351,7 +1359,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     return ids;
   }
-  
+
   async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
     // WHY: storage.set() is idempotent for LocalDB's file-backed storage
     for (const agent of agents) {
@@ -1374,12 +1382,12 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     return true;
   }
-  
+
   async countAgents(): Promise<number> {
     const agents = await this.storage.getAll<Partial<Agent>>(COLLECTIONS.AGENTS);
     return agents.length;
   }
-  
+
   async cleanupAgents(): Promise<void> {
     // WHY no-op: LocalDB is file-backed but lacks time-based cleanup logic.
     // Would need updatedAt tracking on all agents to implement properly.
@@ -1528,7 +1536,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     return ids;
   }
-  
+
   async upsertWorlds(worlds: World[]): Promise<void> {
     // WHY: storage.set() handles insert/update atomically for LocalDB
     for (const world of worlds) {
@@ -1579,23 +1587,26 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return true;
   }
 
-  async updateParticipants(participants: Array<{
-    entityId: UUID;
-    roomId: UUID;
-    updates: Partial<Participant>;
-  }>): Promise<void> {
+  async updateParticipants(
+    participants: Array<{
+      entityId: UUID;
+      roomId: UUID;
+      updates: Partial<Participant>;
+    }>
+  ): Promise<void> {
     for (const { entityId, roomId, updates } of participants) {
       // Find participant by entityId and roomId
-      const allParticipants = await this.storage.getAll<StoredParticipant>(COLLECTIONS.PARTICIPANTS);
+      const allParticipants = await this.storage.getAll<StoredParticipant>(
+        COLLECTIONS.PARTICIPANTS
+      );
       const participant = allParticipants.find(
         (p) => p.entityId === entityId && p.roomId === roomId
       );
       if (participant && participant.id) {
-        await this.storage.set(
-          COLLECTIONS.PARTICIPANTS,
-          participant.id,
-          { ...participant, ...updates }
-        );
+        await this.storage.set(COLLECTIONS.PARTICIPANTS, participant.id, {
+          ...participant,
+          ...updates,
+        });
       }
     }
   }
@@ -1770,11 +1781,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
         entry.id
       );
       if (existing) {
-        await this.storage.set(
-          COLLECTIONS.PAIRING_ALLOWLIST,
-          entry.id,
-          { ...existing, ...entry }
-        );
+        await this.storage.set(COLLECTIONS.PAIRING_ALLOWLIST, entry.id, { ...existing, ...entry });
       }
     }
   }

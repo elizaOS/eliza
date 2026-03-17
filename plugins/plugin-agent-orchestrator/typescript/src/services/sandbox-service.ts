@@ -1,9 +1,9 @@
-import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
-import path from "node:path";
 import os from "node:os";
-import { type IAgentRuntime, type UUID, Service } from "@elizaos/core";
+import path from "node:path";
+import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import type {
   SandboxBrowserConfig,
   SandboxBrowserContext,
@@ -170,7 +170,8 @@ export class SandboxService extends Service {
         (pattern) =>
           pattern === "*" ||
           pattern.toLowerCase() === toolName.toLowerCase() ||
-          (pattern.endsWith("*") && toolName.toLowerCase().startsWith(pattern.slice(0, -1).toLowerCase())),
+          (pattern.endsWith("*") &&
+            toolName.toLowerCase().startsWith(pattern.slice(0, -1).toLowerCase())),
       );
       if (allowed) {
         return true;
@@ -183,7 +184,8 @@ export class SandboxService extends Service {
         (pattern) =>
           pattern === "*" ||
           pattern.toLowerCase() === toolName.toLowerCase() ||
-          (pattern.endsWith("*") && toolName.toLowerCase().startsWith(pattern.slice(0, -1).toLowerCase())),
+          (pattern.endsWith("*") &&
+            toolName.toLowerCase().startsWith(pattern.slice(0, -1).toLowerCase())),
       );
       if (denied) {
         return false;
@@ -226,12 +228,11 @@ export class SandboxService extends Service {
     const agentId = extractAgentIdFromSessionKey(trimmedKey);
 
     // Resolve workspace directories
-    const agentWorkspaceDir = options?.workspaceDir ?? path.join(os.homedir(), ".eliza", "workspace");
+    const agentWorkspaceDir =
+      options?.workspaceDir ?? path.join(os.homedir(), ".eliza", "workspace");
     const scopeKey = this.resolveScopeKey(config.scope, trimmedKey);
     const sandboxWorkspaceDir =
-      config.scope === "shared"
-        ? config.workspaceRoot
-        : path.join(config.workspaceRoot, scopeKey);
+      config.scope === "shared" ? config.workspaceRoot : path.join(config.workspaceRoot, scopeKey);
 
     const workspaceDir = config.workspaceAccess === "rw" ? agentWorkspaceDir : sandboxWorkspaceDir;
 
@@ -321,10 +322,7 @@ export class SandboxService extends Service {
   /**
    * Executes a command in a sandbox container.
    */
-  async execute(
-    sessionKey: string,
-    params: SandboxExecuteParams,
-  ): Promise<SandboxExecutionResult> {
+  async execute(sessionKey: string, params: SandboxExecuteParams): Promise<SandboxExecutionResult> {
     const context = await this.getSandboxContext(sessionKey);
 
     if (!context) {
@@ -380,7 +378,7 @@ export class SandboxService extends Service {
 
   /**
    * Executes a command locally (no sandbox).
-   * 
+   *
    * IMPORTANT: This method uses shell: true for user-provided commands
    * but should use executeDockerCommand for Docker operations to avoid injection.
    */
@@ -509,7 +507,7 @@ export class SandboxService extends Service {
 
   /**
    * Executes a command inside a Docker container.
-   * 
+   *
    * Note: The command is intentionally passed through `sh -c` inside the container
    * because sandbox execution is designed to run arbitrary user/agent commands.
    * The security boundary is the container itself, not command sanitization.
@@ -651,10 +649,7 @@ export class SandboxService extends Service {
 
     if (checkResult.stdout.trim()) {
       // Container exists, start it if not running
-      const startResult = await this.executeDockerCommand([
-        "start",
-        context.containerName,
-      ]);
+      const startResult = await this.executeDockerCommand(["start", context.containerName]);
       if (startResult.success) {
         this.activeContainers.add(context.containerName);
         return;
@@ -819,7 +814,7 @@ export class SandboxService extends Service {
     }
 
     const config = this.getConfig();
-    const intervalMs = Math.max(config.prune.idleHours * 60 * 60 * 1000 / 4, 60000);
+    const intervalMs = Math.max((config.prune.idleHours * 60 * 60 * 1000) / 4, 60000);
 
     this.sweeper = setInterval(() => {
       this.sweepIdleSandboxes();
@@ -840,10 +835,7 @@ export class SandboxService extends Service {
 
       if (idle || tooOld) {
         this.destroySandbox(sessionKey).catch((err) => {
-          this.runtime.logger.error(
-            { sessionKey, error: err },
-            "Failed to destroy idle sandbox",
-          );
+          this.runtime.logger.error({ sessionKey, error: err }, "Failed to destroy idle sandbox");
         });
       }
     }

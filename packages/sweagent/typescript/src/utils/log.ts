@@ -67,23 +67,38 @@ class SweAgentLogger implements AgentLogger {
   }
 
   debug(message: string, ...args: unknown[]): void {
-    (this.logger.debug as (msg: string, ...a: unknown[]) => void)(this.formatMessage(message), ...args);
+    (this.logger.debug as (msg: string, ...a: unknown[]) => void)(
+      this.formatMessage(message),
+      ...args,
+    );
   }
 
   info(message: string, ...args: unknown[]): void {
-    (this.logger.info as (msg: string, ...a: unknown[]) => void)(this.formatMessage(message), ...args);
+    (this.logger.info as (msg: string, ...a: unknown[]) => void)(
+      this.formatMessage(message),
+      ...args,
+    );
   }
 
   warn(message: string, ...args: unknown[]): void {
-    (this.logger.warn as (msg: string, ...a: unknown[]) => void)(this.formatMessage(message), ...args);
+    (this.logger.warn as (msg: string, ...a: unknown[]) => void)(
+      this.formatMessage(message),
+      ...args,
+    );
   }
 
   error(message: string, ...args: unknown[]): void {
-    (this.logger.error as (msg: string, ...a: unknown[]) => void)(this.formatMessage(message), ...args);
+    (this.logger.error as (msg: string, ...a: unknown[]) => void)(
+      this.formatMessage(message),
+      ...args,
+    );
   }
 
   critical(message: string, ...args: unknown[]): void {
-    (this.logger.fatal as (msg: string, ...a: unknown[]) => void)(this.formatMessage(message), ...args);
+    (this.logger.fatal as (msg: string, ...a: unknown[]) => void)(
+      this.formatMessage(message),
+      ...args,
+    );
   }
 
   warning(message: string, ...args: unknown[]): void {

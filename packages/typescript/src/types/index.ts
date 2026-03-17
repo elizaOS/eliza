@@ -16,12 +16,14 @@ export * from "./memory";
 export * from "./memory-storage";
 export * from "./messaging";
 export * from "./model";
+// Onboarding types
+export * from "./onboarding";
 export * from "./pairing";
 export * from "./payment";
 export * from "./plugin";
 export * from "./plugin-store";
-export * from "./prompt-batcher";
 export * from "./primitives";
+export * from "./prompt-batcher";
 export * from "./prompts";
 // Proto-generated types (single source of truth)
 // These types are generated from /schemas/eliza/v1/*.proto
@@ -42,5 +44,3 @@ export * from "./task";
 export * from "./tee";
 export * from "./testing";
 export * from "./tools";
-// Onboarding types
-export * from "./onboarding";

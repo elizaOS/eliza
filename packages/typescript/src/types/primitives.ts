@@ -1,10 +1,10 @@
 import type { UnknownField } from "@bufbuild/protobuf";
 import type {
-  JsonObject,
-  Content as ProtoContent,
-  JsonValue as ProtoJsonValue,
-  Media as ProtoMedia,
-  MentionContext as ProtoMentionContext,
+	JsonObject,
+	Content as ProtoContent,
+	JsonValue as ProtoJsonValue,
+	Media as ProtoMedia,
+	MentionContext as ProtoMentionContext,
 } from "./proto.js";
 
 // Re-export JsonValue for use by other modules
@@ -19,16 +19,16 @@ export type UUID = string;
  * Channel types for messaging
  */
 export const ChannelType = {
-  SELF: "SELF",
-  DM: "DM",
-  GROUP: "GROUP",
-  VOICE_DM: "VOICE_DM",
-  VOICE_GROUP: "VOICE_GROUP",
-  FEED: "FEED",
-  THREAD: "THREAD",
-  WORLD: "WORLD",
-  FORUM: "FORUM",
-  API: "API",
+	SELF: "SELF",
+	DM: "DM",
+	GROUP: "GROUP",
+	VOICE_DM: "VOICE_DM",
+	VOICE_GROUP: "VOICE_GROUP",
+	FEED: "FEED",
+	THREAD: "THREAD",
+	WORLD: "WORLD",
+	FORUM: "FORUM",
+	API: "API",
 } as const;
 
 export type ChannelType = (typeof ChannelType)[keyof typeof ChannelType];
@@ -47,23 +47,23 @@ export const DEFAULT_UUID: UUID = "00000000-0000-0000-0000-000000000000";
  * @throws Error if the id is not a valid UUID format
  */
 export function asUUID(id: string): UUID {
-  if (
-    !id ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-  ) {
-    throw new Error(`Invalid UUID format: ${id}`);
-  }
-  return id as UUID;
+	if (
+		!id ||
+		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+	) {
+		throw new Error(`Invalid UUID format: ${id}`);
+	}
+	return id as UUID;
 }
 
 /**
  * Allowed value types for content dynamic properties
  */
 export type ContentValue =
-  | ProtoJsonValue
-  | undefined
-  | ContentValue[]
-  | { [key: string]: ContentValue };
+	| ProtoJsonValue
+	| undefined
+	| ContentValue[]
+	| { [key: string]: ContentValue };
 
 /**
  * Represents the content of a memory, message, or other information.
@@ -71,97 +71,97 @@ export type ContentValue =
  * users, agents, and the system.
  */
 export interface Content
-  extends Omit<
-    ProtoContent,
-    | "$typeName"
-    | "$unknown"
-    | "actions"
-    | "providers"
-    | "attachments"
-    | "channelType"
-    | "inReplyTo"
-    | "mentionContext"
-    | "responseMessageId"
-    | "responseId"
-  > {
-  /** The agent's internal thought process */
-  thought?: string;
+	extends Omit<
+		ProtoContent,
+		| "$typeName"
+		| "$unknown"
+		| "actions"
+		| "providers"
+		| "attachments"
+		| "channelType"
+		| "inReplyTo"
+		| "mentionContext"
+		| "responseMessageId"
+		| "responseId"
+	> {
+	/** The agent's internal thought process */
+	thought?: string;
 
-  /** The main text content visible to users */
-  text?: string;
+	/** The main text content visible to users */
+	text?: string;
 
-  /** Actions to be performed */
-  actions?: string[];
+	/** Actions to be performed */
+	actions?: string[];
 
-  /** Providers to use for context generation */
-  providers?: string[];
+	/** Providers to use for context generation */
+	providers?: string[];
 
-  /** Source/origin of the content (e.g., 'discord', 'telegram') */
-  source?: string;
+	/** Source/origin of the content (e.g., 'discord', 'telegram') */
+	source?: string;
 
-  /** Target/destination for responses */
-  target?: string;
+	/** Target/destination for responses */
+	target?: string;
 
-  /** URL of the original message/post (e.g. post URL, Discord message link) */
-  url?: string;
+	/** URL of the original message/post (e.g. post URL, Discord message link) */
+	url?: string;
 
-  /** UUID of parent message if this is a reply/thread */
-  inReplyTo?: UUID;
+	/** UUID of parent message if this is a reply/thread */
+	inReplyTo?: UUID;
 
-  /** Array of media attachments */
-  attachments?: Media[];
+	/** Array of media attachments */
+	attachments?: Media[];
 
-  /** Channel type where this content was sent */
-  channelType?: ChannelType;
+	/** Channel type where this content was sent */
+	channelType?: ChannelType;
 
-  /** Platform-provided metadata about mentions */
-  mentionContext?: MentionContext;
+	/** Platform-provided metadata about mentions */
+	mentionContext?: MentionContext;
 
-  /**
-   * Internal message ID used for streaming coordination.
-   * Set during response generation to ensure streaming chunks and
-   * final broadcast use the same message ID.
-   */
-  responseMessageId?: UUID;
+	/**
+	 * Internal message ID used for streaming coordination.
+	 * Set during response generation to ensure streaming chunks and
+	 * final broadcast use the same message ID.
+	 */
+	responseMessageId?: UUID;
 
-  /**
-   * Response ID for message tracking.
-   * Used to coordinate between streaming and final response.
-   */
-  responseId?: UUID;
+	/**
+	 * Response ID for message tracking.
+	 * Used to coordinate between streaming and final response.
+	 */
+	responseId?: UUID;
 
-  /**
-   * Whether this is a simple response (no actions required).
-   * Used for optimization in the message handler.
-   */
-  simple?: boolean;
+	/**
+	 * Whether this is a simple response (no actions required).
+	 * Used for optimization in the message handler.
+	 */
+	simple?: boolean;
 
-  /**
-   * Results from action callbacks
-   */
-  actionCallbacks?: Content;
+	/**
+	 * Results from action callbacks
+	 */
+	actionCallbacks?: Content;
 
-  /**
-   * Results from evaluator callbacks
-   */
-  evalCallbacks?: Content;
+	/**
+	 * Results from evaluator callbacks
+	 */
+	evalCallbacks?: Content;
 
-  /**
-   * Type marker for internal use
-   */
-  type?: string;
+	/**
+	 * Type marker for internal use
+	 */
+	type?: string;
 
-  /**
-   * Additional dynamic properties for plugin extensions
-   */
-  [key: string]:
-    | ContentValue
-    | ChannelType
-    | MentionContext
-    | Media[]
-    | Content
-    | UnknownField[]
-    | undefined;
+	/**
+	 * Additional dynamic properties for plugin extensions
+	 */
+	[key: string]:
+		| ContentValue
+		| ChannelType
+		| MentionContext
+		| Media[]
+		| Content
+		| UnknownField[]
+		| undefined;
 }
 
 /**
@@ -171,55 +171,55 @@ export interface Content
  * while keeping platform-specific logic isolated.
  */
 export interface MentionContext
-  extends Omit<ProtoMentionContext, "$typeName" | "$unknown"> {
-  /** Platform native mention (@Discord, @Telegram, etc.) */
-  isMention: boolean;
+	extends Omit<ProtoMentionContext, "$typeName" | "$unknown"> {
+	/** Platform native mention (@Discord, @Telegram, etc.) */
+	isMention: boolean;
 
-  /** Reply to agent's message */
-  isReply: boolean;
+	/** Reply to agent's message */
+	isReply: boolean;
 
-  /** In a thread with agent */
-  isThread: boolean;
+	/** In a thread with agent */
+	isThread: boolean;
 
-  /** Platform-specific mention type for debugging/logging */
-  mentionType?: "platform_mention" | "reply" | "thread" | "none";
+	/** Platform-specific mention type for debugging/logging */
+	mentionType?: "platform_mention" | "reply" | "thread" | "none";
 }
 
 /**
  * Represents a media attachment
  */
 export type Media = Omit<
-  ProtoMedia,
-  "$typeName" | "$unknown" | "contentType"
+	ProtoMedia,
+	"$typeName" | "$unknown" | "contentType"
 > & {
-  /** Unique identifier */
-  id: string;
+	/** Unique identifier */
+	id: string;
 
-  /** Media URL */
-  url: string;
+	/** Media URL */
+	url: string;
 
-  /** Media title */
-  title?: string;
+	/** Media title */
+	title?: string;
 
-  /** Media source */
-  source?: string;
+	/** Media source */
+	source?: string;
 
-  /** Media description */
-  description?: string;
+	/** Media description */
+	description?: string;
 
-  /** Text content */
-  text?: string;
+	/** Text content */
+	text?: string;
 
-  /** Content type */
-  contentType?: ContentType;
+	/** Content type */
+	contentType?: ContentType;
 };
 
 export const ContentType = {
-  IMAGE: "image",
-  VIDEO: "video",
-  AUDIO: "audio",
-  DOCUMENT: "document",
-  LINK: "link",
+	IMAGE: "image",
+	VIDEO: "video",
+	AUDIO: "audio",
+	DOCUMENT: "document",
+	LINK: "link",
 } as const;
 
 export type ContentType = (typeof ContentType)[keyof typeof ContentType];
@@ -237,11 +237,11 @@ export type ContentType = (typeof ContentType)[keyof typeof ContentType];
  * unsafe 'as unknown as' casts.
  */
 export type MetadataValue =
-  | ProtoJsonValue
-  | undefined
-  | MetadataValue[]
-  | { readonly [key: string]: MetadataValue | undefined }
-  | JsonObject;
+	| ProtoJsonValue
+	| undefined
+	| MetadataValue[]
+	| { readonly [key: string]: MetadataValue | undefined }
+	| JsonObject;
 
 /**
  * A type for metadata objects with JSON-serializable values.
@@ -249,5 +249,5 @@ export type MetadataValue =
  * The index signature allows dynamic property access.
  */
 export type Metadata = {
-  [key: string]: MetadataValue;
+	[key: string]: MetadataValue;
 };

@@ -12,47 +12,47 @@ import type { Memory } from "../types";
  * @returns true if any keyword matches, false otherwise
  */
 export function validateActionKeywords(
-  message: Memory,
-  recentMessages: Memory[],
-  keywords: string[],
+	message: Memory,
+	recentMessages: Memory[],
+	keywords: string[],
 ): boolean {
-  if (!keywords || keywords.length === 0) {
-    return false;
-  }
+	if (!keywords || keywords.length === 0) {
+		return false;
+	}
 
-  const relevantText: string[] = [];
+	const relevantText: string[] = [];
 
-  // 1. Current message content
-  if (message.content && message.content.text) {
-    relevantText.push(message.content.text);
-  }
+	// 1. Current message content
+	if (message.content?.text) {
+		relevantText.push(message.content.text);
+	}
 
-  // 2. Recent messages (last 5)
-  // Take the last 5 messages
-  const recentSubset =
-    recentMessages && recentMessages.length > 5
-      ? recentMessages.slice(-5)
-      : recentMessages || [];
+	// 2. Recent messages (last 5)
+	// Take the last 5 messages
+	const recentSubset =
+		recentMessages && recentMessages.length > 5
+			? recentMessages.slice(-5)
+			: recentMessages || [];
 
-  for (const msg of recentSubset) {
-    if (msg.content && msg.content.text) {
-      relevantText.push(msg.content.text);
-    }
-  }
+	for (const msg of recentSubset) {
+		if (msg.content?.text) {
+			relevantText.push(msg.content.text);
+		}
+	}
 
-  if (relevantText.length === 0) {
-    return false;
-  }
+	if (relevantText.length === 0) {
+		return false;
+	}
 
-  const combinedText = relevantText.join("\n").toLowerCase();
+	const combinedText = relevantText.join("\n").toLowerCase();
 
-  for (const keyword of keywords) {
-    if (combinedText.includes(keyword.toLowerCase())) {
-      return true;
-    }
-  }
+	for (const keyword of keywords) {
+		if (combinedText.includes(keyword.toLowerCase())) {
+			return true;
+		}
+	}
 
-  return false;
+	return false;
 }
 
 /**
@@ -67,37 +67,37 @@ export function validateActionKeywords(
  * @returns true if the regex matches any message content, false otherwise
  */
 export function validateActionRegex(
-  message: Memory,
-  recentMessages: Memory[],
-  regex: RegExp,
+	message: Memory,
+	recentMessages: Memory[],
+	regex: RegExp,
 ): boolean {
-  if (!regex) {
-    return false;
-  }
+	if (!regex) {
+		return false;
+	}
 
-  const relevantText: string[] = [];
+	const relevantText: string[] = [];
 
-  // 1. Current message content
-  if (message.content && message.content.text) {
-    relevantText.push(message.content.text);
-  }
+	// 1. Current message content
+	if (message.content?.text) {
+		relevantText.push(message.content.text);
+	}
 
-  // 2. Recent messages (last 5)
-  const recentSubset =
-    recentMessages && recentMessages.length > 5
-      ? recentMessages.slice(-5)
-      : recentMessages || [];
+	// 2. Recent messages (last 5)
+	const recentSubset =
+		recentMessages && recentMessages.length > 5
+			? recentMessages.slice(-5)
+			: recentMessages || [];
 
-  for (const msg of recentSubset) {
-    if (msg.content && msg.content.text) {
-      relevantText.push(msg.content.text);
-    }
-  }
+	for (const msg of recentSubset) {
+		if (msg.content?.text) {
+			relevantText.push(msg.content.text);
+		}
+	}
 
-  if (relevantText.length === 0) {
-    return false;
-  }
+	if (relevantText.length === 0) {
+		return false;
+	}
 
-  const combinedText = relevantText.join("\n");
-  return regex.test(combinedText);
+	const combinedText = relevantText.join("\n");
+	return regex.test(combinedText);
 }

@@ -7,12 +7,12 @@ import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 
 interface EmbeddingQueueItem {
-  memory: Memory;
-  priority: "high" | "normal" | "low";
-  retryCount: number;
-  maxRetries: number;
-  addedAt: number;
-  runId?: string;
+	memory: Memory;
+	priority: "high" | "normal" | "low";
+	retryCount: number;
+	maxRetries: number;
+	addedAt: number;
+	runId?: string;
 }
 
 /**
@@ -21,546 +21,546 @@ interface EmbeddingQueueItem {
  * and processes them in a queue to avoid blocking the main runtime
  */
 export class EmbeddingGenerationService extends Service {
-  static serviceType = "embedding-generation";
-  capabilityDescription =
-    "Handles asynchronous embedding generation for memories";
+	static serviceType = "embedding-generation";
+	capabilityDescription =
+		"Handles asynchronous embedding generation for memories";
 
-  private queue: EmbeddingQueueItem[] = [];
-  private isProcessing = false;
-  private drainTaskId: UUID | null = null;
-  private maxQueueSize = 1000;
-  private batchSize = 10; // Process up to 10 embeddings at a time
-  private processingIntervalMs = 100; // Interval for drain task (effective rate is scheduler tick, typically 1/s)
-  private isDisabled = false; // Flag to indicate if service is disabled due to missing embedding model
+	private queue: EmbeddingQueueItem[] = [];
+	private isProcessing = false;
+	private drainTaskId: UUID | null = null;
+	private maxQueueSize = 1000;
+	private batchSize = 10; // Process up to 10 embeddings at a time
+	private processingIntervalMs = 100; // Interval for drain task (effective rate is scheduler tick, typically 1/s)
+	private isDisabled = false; // Flag to indicate if service is disabled due to missing embedding model
 
-  private static readonly EMBEDDING_DRAIN_TASK = "EMBEDDING_DRAIN";
+	private static readonly EMBEDDING_DRAIN_TASK = "EMBEDDING_DRAIN";
 
-  static async start(runtime: IAgentRuntime): Promise<Service> {
-    runtime.logger.info(
-      { src: "plugin:bootstrap:service:embedding", agentId: runtime.agentId },
-      "Starting embedding generation service",
-    );
+	static async start(runtime: IAgentRuntime): Promise<Service> {
+		runtime.logger.info(
+			{ src: "plugin:bootstrap:service:embedding", agentId: runtime.agentId },
+			"Starting embedding generation service",
+		);
 
-    // Check if TEXT_EMBEDDING model is registered
-    const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
-    if (!embeddingModel) {
-      runtime.logger.warn(
-        { src: "plugin:bootstrap:service:embedding", agentId: runtime.agentId },
-        "No TEXT_EMBEDDING model registered - service will not be initialized",
-      );
-      // Return a no-op service that does nothing
-      const noOpService = new EmbeddingGenerationService(runtime);
-      noOpService.isDisabled = true;
-      return noOpService;
-    }
+		// Check if TEXT_EMBEDDING model is registered
+		const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
+		if (!embeddingModel) {
+			runtime.logger.warn(
+				{ src: "plugin:bootstrap:service:embedding", agentId: runtime.agentId },
+				"No TEXT_EMBEDDING model registered - service will not be initialized",
+			);
+			// Return a no-op service that does nothing
+			const noOpService = new EmbeddingGenerationService(runtime);
+			noOpService.isDisabled = true;
+			return noOpService;
+		}
 
-    const service = new EmbeddingGenerationService(runtime);
-    await service.initialize();
-    return service;
-  }
+		const service = new EmbeddingGenerationService(runtime);
+		await service.initialize();
+		return service;
+	}
 
-  async initialize(): Promise<void> {
-    if (this.isDisabled) {
-      this.runtime.logger.debug(
-        {
-          src: "plugin:bootstrap:service:embedding",
-          agentId: this.runtime.agentId,
-        },
-        "Service is disabled, skipping initialization",
-      );
-      return;
-    }
+	async initialize(): Promise<void> {
+		if (this.isDisabled) {
+			this.runtime.logger.debug(
+				{
+					src: "plugin:bootstrap:service:embedding",
+					agentId: this.runtime.agentId,
+				},
+				"Service is disabled, skipping initialization",
+			);
+			return;
+		}
 
-    this.runtime.logger.info(
-      {
-        src: "plugin:bootstrap:service:embedding",
-        agentId: this.runtime.agentId,
-      },
-      "Initializing embedding generation service",
-    );
+		this.runtime.logger.info(
+			{
+				src: "plugin:bootstrap:service:embedding",
+				agentId: this.runtime.agentId,
+			},
+			"Initializing embedding generation service",
+		);
 
-    // Register event handlers
-    this.runtime.registerEvent(
-      EventType.EMBEDDING_GENERATION_REQUESTED,
-      this.handleEmbeddingRequest.bind(this),
-    );
+		// Register event handlers
+		this.runtime.registerEvent(
+			EventType.EMBEDDING_GENERATION_REQUESTED,
+			this.handleEmbeddingRequest.bind(this),
+		);
 
-    this.registerDrainWorker();
-    await this.ensureDrainTask();
-  }
+		this.registerDrainWorker();
+		await this.ensureDrainTask();
+	}
 
-  private registerDrainWorker(): void {
-    this.runtime.registerTaskWorker({
-      name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
-      execute: async () => {
-        if (!this.isProcessing && this.queue.length > 0) {
-          await this.processQueue();
-        }
-      },
-    });
-  }
+	private registerDrainWorker(): void {
+		this.runtime.registerTaskWorker({
+			name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
+			execute: async () => {
+				if (!this.isProcessing && this.queue.length > 0) {
+					await this.processQueue();
+				}
+			},
+		});
+	}
 
-  private async ensureDrainTask(): Promise<void> {
-    const rt = this.runtime;
-    if (
-      typeof rt.getTasksByName !== "function" ||
-      typeof rt.createTask !== "function"
-    ) {
-      return;
-    }
-    const agentId = rt.agentId;
-    const existing = await rt.getTasksByName(
-      EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
-    );
-    const mine = existing.find(
-      (t) => t.agentId != null && String(t.agentId) === String(agentId),
-    );
-    if (mine?.id) {
-      this.drainTaskId = mine.id;
-      return;
-    }
-    this.drainTaskId = await rt.createTask({
-      name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
-      tags: ["queue", "repeat"],
-      metadata: {
-        updateInterval: this.processingIntervalMs,
-        baseInterval: this.processingIntervalMs,
-        updatedAt: Date.now(),
-      },
-    });
-    this.runtime.logger.info(
-      {
-        src: "plugin:bootstrap:service:embedding",
-        agentId: this.runtime.agentId,
-      },
-      "Started embedding drain task",
-    );
-  }
+	private async ensureDrainTask(): Promise<void> {
+		const rt = this.runtime;
+		if (
+			typeof rt.getTasksByName !== "function" ||
+			typeof rt.createTask !== "function"
+		) {
+			return;
+		}
+		const agentId = rt.agentId;
+		const existing = await rt.getTasksByName(
+			EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
+		);
+		const mine = existing.find(
+			(t) => t.agentId != null && String(t.agentId) === String(agentId),
+		);
+		if (mine?.id) {
+			this.drainTaskId = mine.id;
+			return;
+		}
+		this.drainTaskId = await rt.createTask({
+			name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
+			tags: ["queue", "repeat"],
+			metadata: {
+				updateInterval: this.processingIntervalMs,
+				baseInterval: this.processingIntervalMs,
+				updatedAt: Date.now(),
+			},
+		});
+		this.runtime.logger.info(
+			{
+				src: "plugin:bootstrap:service:embedding",
+				agentId: this.runtime.agentId,
+			},
+			"Started embedding drain task",
+		);
+	}
 
-  private async handleEmbeddingRequest(
-    payload: EmbeddingGenerationPayload,
-  ): Promise<void> {
-    // Skip if service is disabled
-    if (this.isDisabled) {
-      this.runtime.logger.debug(
-        {
-          src: "plugin:bootstrap:service:embedding",
-          agentId: this.runtime.agentId,
-        },
-        "Service is disabled, skipping embedding request",
-      );
-      return;
-    }
+	private async handleEmbeddingRequest(
+		payload: EmbeddingGenerationPayload,
+	): Promise<void> {
+		// Skip if service is disabled
+		if (this.isDisabled) {
+			this.runtime.logger.debug(
+				{
+					src: "plugin:bootstrap:service:embedding",
+					agentId: this.runtime.agentId,
+				},
+				"Service is disabled, skipping embedding request",
+			);
+			return;
+		}
 
-    const {
-      memory,
-      priority = "normal",
-      retryCount = 0,
-      maxRetries = 3,
-      runId,
-    } = payload;
+		const {
+			memory,
+			priority = "normal",
+			retryCount = 0,
+			maxRetries = 3,
+			runId,
+		} = payload;
 
-    // Skip if memory already has embeddings
-    if (memory.embedding) {
-      this.runtime.logger.debug(
-        {
-          src: "plugin:bootstrap:service:embedding",
-          agentId: this.runtime.agentId,
-          memoryId: memory.id,
-        },
-        "Memory already has embeddings, skipping",
-      );
-      return;
-    }
+		// Skip if memory already has embeddings
+		if (memory.embedding) {
+			this.runtime.logger.debug(
+				{
+					src: "plugin:bootstrap:service:embedding",
+					agentId: this.runtime.agentId,
+					memoryId: memory.id,
+				},
+				"Memory already has embeddings, skipping",
+			);
+			return;
+		}
 
-    // Check queue size and make room if needed
-    if (this.queue.length >= this.maxQueueSize) {
-      this.runtime.logger.warn(
-        {
-          src: "plugin:bootstrap:service:embedding",
-          agentId: this.runtime.agentId,
-          queueSize: this.queue.length,
-          maxSize: this.maxQueueSize,
-        },
-        "Queue is full, making room",
-      );
-      this.makeRoomInQueue();
-    }
+		// Check queue size and make room if needed
+		if (this.queue.length >= this.maxQueueSize) {
+			this.runtime.logger.warn(
+				{
+					src: "plugin:bootstrap:service:embedding",
+					agentId: this.runtime.agentId,
+					queueSize: this.queue.length,
+					maxSize: this.maxQueueSize,
+				},
+				"Queue is full, making room",
+			);
+			this.makeRoomInQueue();
+		}
 
-    // Add to queue
-    const queueItem: EmbeddingQueueItem = {
-      memory,
-      priority,
-      retryCount,
-      maxRetries,
-      addedAt: Date.now(),
-      runId,
-    };
+		// Add to queue
+		const queueItem: EmbeddingQueueItem = {
+			memory,
+			priority,
+			retryCount,
+			maxRetries,
+			addedAt: Date.now(),
+			runId,
+		};
 
-    // Insert based on priority
-    this.insertItemByPriority(queueItem);
+		// Insert based on priority
+		this.insertItemByPriority(queueItem);
 
-    this.runtime.logger.debug(
-      {
-        src: "plugin:bootstrap:service:embedding",
-        agentId: this.runtime.agentId,
-        queueSize: this.queue.length,
-      },
-      "Added memory to queue",
-    );
-  }
+		this.runtime.logger.debug(
+			{
+				src: "plugin:bootstrap:service:embedding",
+				agentId: this.runtime.agentId,
+				queueSize: this.queue.length,
+			},
+			"Added memory to queue",
+		);
+	}
 
-  /**
-   * Make room in the queue by removing items based on priority and age
-   * Removes 10% of the queue (minimum 1, maximum 10 items)
-   */
-  private makeRoomInQueue(): void {
-    // Remove 10% of queue, but at least 1 and at most 10 items
-    const tenPercent = Math.floor(this.maxQueueSize * 0.1);
-    const itemsToRemove = Math.min(10, Math.max(1, tenPercent));
+	/**
+	 * Make room in the queue by removing items based on priority and age
+	 * Removes 10% of the queue (minimum 1, maximum 10 items)
+	 */
+	private makeRoomInQueue(): void {
+		// Remove 10% of queue, but at least 1 and at most 10 items
+		const tenPercent = Math.floor(this.maxQueueSize * 0.1);
+		const itemsToRemove = Math.min(10, Math.max(1, tenPercent));
 
-    // Create array with items and their original indices
-    const itemsWithIndex = this.queue.map((item, index) => ({
-      item,
-      originalIndex: index,
-    }));
+		// Create array with items and their original indices
+		const itemsWithIndex = this.queue.map((item, index) => ({
+			item,
+			originalIndex: index,
+		}));
 
-    // Sort by priority (low first for removal) and age (oldest first)
-    itemsWithIndex.sort((a, b) => {
-      // Priority order for removal: low > normal > high
-      const priorityOrder = { low: 0, normal: 1, high: 2 };
-      const priorityDiff =
-        priorityOrder[a.item.priority] - priorityOrder[b.item.priority];
+		// Sort by priority (low first for removal) and age (oldest first)
+		itemsWithIndex.sort((a, b) => {
+			// Priority order for removal: low > normal > high
+			const priorityOrder = { low: 0, normal: 1, high: 2 };
+			const priorityDiff =
+				priorityOrder[a.item.priority] - priorityOrder[b.item.priority];
 
-      if (priorityDiff !== 0) {
-        return priorityDiff;
-      }
+			if (priorityDiff !== 0) {
+				return priorityDiff;
+			}
 
-      // Within same priority, remove older items first
-      return a.item.addedAt - b.item.addedAt;
-    });
+			// Within same priority, remove older items first
+			return a.item.addedAt - b.item.addedAt;
+		});
 
-    // Get the original indices of items to remove (first N items after sorting)
-    const indicesToRemove = new Set(
-      itemsWithIndex
-        .slice(0, Math.min(itemsToRemove, itemsWithIndex.length))
-        .map(({ originalIndex }) => originalIndex),
-    );
+		// Get the original indices of items to remove (first N items after sorting)
+		const indicesToRemove = new Set(
+			itemsWithIndex
+				.slice(0, Math.min(itemsToRemove, itemsWithIndex.length))
+				.map(({ originalIndex }) => originalIndex),
+		);
 
-    // Keep items that are not in the removal set
-    const newQueue = this.queue.filter(
-      (_, index) => !indicesToRemove.has(index),
-    );
-    const removedCount = this.queue.length - newQueue.length;
+		// Keep items that are not in the removal set
+		const newQueue = this.queue.filter(
+			(_, index) => !indicesToRemove.has(index),
+		);
+		const removedCount = this.queue.length - newQueue.length;
 
-    this.queue = newQueue;
+		this.queue = newQueue;
 
-    this.runtime.logger.info(
-      {
-        src: "plugin:bootstrap:service:embedding",
-        agentId: this.runtime.agentId,
-        removedCount,
-        newSize: this.queue.length,
-      },
-      "Removed items from queue",
-    );
-  }
+		this.runtime.logger.info(
+			{
+				src: "plugin:bootstrap:service:embedding",
+				agentId: this.runtime.agentId,
+				removedCount,
+				newSize: this.queue.length,
+			},
+			"Removed items from queue",
+		);
+	}
 
-  /**
-   * Insert an item into the queue based on its priority
-   * High priority items go to the front, normal in the middle, low at the end
-   */
-  private insertItemByPriority(queueItem: EmbeddingQueueItem): void {
-    if (queueItem.priority === "low" || this.queue.length === 0) {
-      // Add to end of queue
-      this.queue.push(queueItem);
-      return;
-    }
+	/**
+	 * Insert an item into the queue based on its priority
+	 * High priority items go to the front, normal in the middle, low at the end
+	 */
+	private insertItemByPriority(queueItem: EmbeddingQueueItem): void {
+		if (queueItem.priority === "low" || this.queue.length === 0) {
+			// Add to end of queue
+			this.queue.push(queueItem);
+			return;
+		}
 
-    let insertIndex = this.queue.length;
-    for (let i = 0; i < this.queue.length; i++) {
-      const priority = this.queue[i].priority;
-      if (queueItem.priority === "high") {
-        if (priority !== "high") {
-          insertIndex = i;
-          break;
-        }
-      } else if (priority === "low") {
-        // Normal priority - add after high priority items but before low priority items
-        insertIndex = i;
-        break;
-      }
-    }
+		let insertIndex = this.queue.length;
+		for (let i = 0; i < this.queue.length; i++) {
+			const priority = this.queue[i].priority;
+			if (queueItem.priority === "high") {
+				if (priority !== "high") {
+					insertIndex = i;
+					break;
+				}
+			} else if (priority === "low") {
+				// Normal priority - add after high priority items but before low priority items
+				insertIndex = i;
+				break;
+			}
+		}
 
-    this.queue.splice(insertIndex, 0, queueItem);
-  }
+		this.queue.splice(insertIndex, 0, queueItem);
+	}
 
-  private async processQueue(): Promise<void> {
-    if (this.isProcessing || this.queue.length === 0) {
-      return;
-    }
+	private async processQueue(): Promise<void> {
+		if (this.isProcessing || this.queue.length === 0) {
+			return;
+		}
 
-    this.isProcessing = true;
+		this.isProcessing = true;
 
-    try {
-      // Process a batch of items
-      const batch = this.queue.splice(
-        0,
-        Math.min(this.batchSize, this.queue.length),
-      );
+		try {
+			// Process a batch of items
+			const batch = this.queue.splice(
+				0,
+				Math.min(this.batchSize, this.queue.length),
+			);
 
-      this.runtime.logger.debug(
-        {
-          src: "plugin:bootstrap:service:embedding",
-          agentId: this.runtime.agentId,
-          batchSize: batch.length,
-          remaining: this.queue.length,
-        },
-        "Processing batch",
-      );
+			this.runtime.logger.debug(
+				{
+					src: "plugin:bootstrap:service:embedding",
+					agentId: this.runtime.agentId,
+					batchSize: batch.length,
+					remaining: this.queue.length,
+				},
+				"Processing batch",
+			);
 
-      // Process items in parallel
-      const promises = batch.map(async (item) => {
-        try {
-          await this.generateEmbedding(item);
-        } catch (error) {
-          this.runtime.logger.error(
-            {
-              src: "plugin:bootstrap:service:embedding",
-              agentId: this.runtime.agentId,
-              memoryId: item.memory.id,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Error processing item",
-          );
+			// Process items in parallel
+			const promises = batch.map(async (item) => {
+				try {
+					await this.generateEmbedding(item);
+				} catch (error) {
+					this.runtime.logger.error(
+						{
+							src: "plugin:bootstrap:service:embedding",
+							agentId: this.runtime.agentId,
+							memoryId: item.memory.id,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"Error processing item",
+					);
 
-          // Retry if under max retries
-          if (item.retryCount < item.maxRetries) {
-            item.retryCount++;
-            // Re-add to queue with same priority using proper insertion
-            this.insertItemByPriority(item);
-            this.runtime.logger.debug(
-              {
-                src: "plugin:bootstrap:service:embedding",
-                agentId: this.runtime.agentId,
-                retryCount: item.retryCount,
-                maxRetries: item.maxRetries,
-              },
-              "Re-queued item for retry",
-            );
-          } else {
-            // Log embedding failure
-            await this.runtime.log({
-              entityId: this.runtime.agentId,
-              roomId: item.memory.roomId || this.runtime.agentId,
-              type: "embedding_event",
-              body: {
-                runId: item.runId,
-                memoryId: item.memory.id,
-                status: "failed",
-                error: error instanceof Error ? error.message : String(error),
-                source: "embeddingService",
-              },
-            });
+					// Retry if under max retries
+					if (item.retryCount < item.maxRetries) {
+						item.retryCount++;
+						// Re-add to queue with same priority using proper insertion
+						this.insertItemByPriority(item);
+						this.runtime.logger.debug(
+							{
+								src: "plugin:bootstrap:service:embedding",
+								agentId: this.runtime.agentId,
+								retryCount: item.retryCount,
+								maxRetries: item.maxRetries,
+							},
+							"Re-queued item for retry",
+						);
+					} else {
+						// Log embedding failure
+						await this.runtime.log({
+							entityId: this.runtime.agentId,
+							roomId: item.memory.roomId || this.runtime.agentId,
+							type: "embedding_event",
+							body: {
+								runId: item.runId,
+								memoryId: item.memory.id,
+								status: "failed",
+								error: error instanceof Error ? error.message : String(error),
+								source: "embeddingService",
+							},
+						});
 
-            // Emit failure event
-            await this.runtime.emitEvent(
-              EventType.EMBEDDING_GENERATION_FAILED,
-              {
-                runtime: this.runtime,
-                memory: item.memory,
-                error: error instanceof Error ? error.message : String(error),
-                source: "embeddingService",
-              },
-            );
-          }
-        }
-      });
+						// Emit failure event
+						await this.runtime.emitEvent(
+							EventType.EMBEDDING_GENERATION_FAILED,
+							{
+								runtime: this.runtime,
+								memory: item.memory,
+								error: error instanceof Error ? error.message : String(error),
+								source: "embeddingService",
+							},
+						);
+					}
+				}
+			});
 
-      await Promise.all(promises);
-    } finally {
-      this.isProcessing = false;
-    }
-  }
+			await Promise.all(promises);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
 
-  private async generateEmbedding(item: EmbeddingQueueItem): Promise<void> {
-    const { memory } = item;
+	private async generateEmbedding(item: EmbeddingQueueItem): Promise<void> {
+		const { memory } = item;
 
-    const memoryContent = memory.content;
-    if (!memoryContent || !memoryContent.text) {
-      this.runtime.logger.warn(
-        {
-          src: "plugin:bootstrap:service:embedding",
-          agentId: this.runtime.agentId,
-          memoryId: memory.id,
-        },
-        "Memory has no text content",
-      );
-      return;
-    }
+		const memoryContent = memory.content;
+		if (!memoryContent || !memoryContent.text) {
+			this.runtime.logger.warn(
+				{
+					src: "plugin:bootstrap:service:embedding",
+					agentId: this.runtime.agentId,
+					memoryId: memory.id,
+				},
+				"Memory has no text content",
+			);
+			return;
+		}
 
-    try {
-      const startTime = Date.now();
+		try {
+			const startTime = Date.now();
 
-      // Generate embedding
-      const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
-        text: memory.content.text ?? "",
-      });
+			// Generate embedding
+			const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
+				text: memory.content.text ?? "",
+			});
 
-      const duration = Date.now() - startTime;
-      this.runtime.logger.debug(
-        {
-          src: "plugin:bootstrap:service:embedding",
-          agentId: this.runtime.agentId,
-          memoryId: memory.id,
-          durationMs: duration,
-        },
-        "Generated embedding",
-      );
+			const duration = Date.now() - startTime;
+			this.runtime.logger.debug(
+				{
+					src: "plugin:bootstrap:service:embedding",
+					agentId: this.runtime.agentId,
+					memoryId: memory.id,
+					durationMs: duration,
+				},
+				"Generated embedding",
+			);
 
-      // Update memory with embedding
-      if (memory.id) {
-        await this.runtime.updateMemory({
-          id: memory.id,
-          embedding,
-        });
+			// Update memory with embedding
+			if (memory.id) {
+				await this.runtime.updateMemory({
+					id: memory.id,
+					embedding,
+				});
 
-        // Log embedding completion
-        await this.runtime.log({
-          entityId: this.runtime.agentId,
-          roomId: memory.roomId || this.runtime.agentId,
-          type: "embedding_event",
-          body: {
-            runId: item.runId,
-            memoryId: memory.id,
-            status: "completed",
-            duration,
-            source: "embeddingService",
-          },
-        });
+				// Log embedding completion
+				await this.runtime.log({
+					entityId: this.runtime.agentId,
+					roomId: memory.roomId || this.runtime.agentId,
+					type: "embedding_event",
+					body: {
+						runId: item.runId,
+						memoryId: memory.id,
+						status: "completed",
+						duration,
+						source: "embeddingService",
+					},
+				});
 
-        // Emit completion event
-        await this.runtime.emitEvent(EventType.EMBEDDING_GENERATION_COMPLETED, {
-          runtime: this.runtime,
-          memory: { ...memory, embedding },
-          source: "embeddingService",
-        });
-      }
-    } catch (error) {
-      this.runtime.logger.error(
-        {
-          src: "plugin:bootstrap:service:embedding",
-          agentId: this.runtime.agentId,
-          memoryId: memory.id,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Failed to generate embedding",
-      );
-      throw error; // Re-throw to trigger retry logic
-    }
-  }
+				// Emit completion event
+				await this.runtime.emitEvent(EventType.EMBEDDING_GENERATION_COMPLETED, {
+					runtime: this.runtime,
+					memory: { ...memory, embedding },
+					source: "embeddingService",
+				});
+			}
+		} catch (error) {
+			this.runtime.logger.error(
+				{
+					src: "plugin:bootstrap:service:embedding",
+					agentId: this.runtime.agentId,
+					memoryId: memory.id,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Failed to generate embedding",
+			);
+			throw error; // Re-throw to trigger retry logic
+		}
+	}
 
-  async stop(): Promise<void> {
-    this.runtime.logger.info(
-      {
-        src: "plugin:bootstrap:service:embedding",
-        agentId: this.runtime.agentId,
-      },
-      "Stopping embedding generation service",
-    );
+	async stop(): Promise<void> {
+		this.runtime.logger.info(
+			{
+				src: "plugin:bootstrap:service:embedding",
+				agentId: this.runtime.agentId,
+			},
+			"Stopping embedding generation service",
+		);
 
-    if (this.isDisabled) {
-      this.runtime.logger.debug(
-        {
-          src: "plugin:bootstrap:service:embedding",
-          agentId: this.runtime.agentId,
-        },
-        "Service is disabled, nothing to stop",
-      );
-      return;
-    }
+		if (this.isDisabled) {
+			this.runtime.logger.debug(
+				{
+					src: "plugin:bootstrap:service:embedding",
+					agentId: this.runtime.agentId,
+				},
+				"Service is disabled, nothing to stop",
+			);
+			return;
+		}
 
-    if (this.drainTaskId && typeof this.runtime.deleteTask === "function") {
-      await this.runtime.deleteTask(this.drainTaskId).catch(() => {});
-      this.drainTaskId = null;
-    }
+		if (this.drainTaskId && typeof this.runtime.deleteTask === "function") {
+			await this.runtime.deleteTask(this.drainTaskId).catch(() => {});
+			this.drainTaskId = null;
+		}
 
-    // Process remaining high priority items before shutdown
-    const highPriorityItems = this.queue.filter(
-      (item) => item.priority === "high",
-    );
-    if (highPriorityItems.length > 0) {
-      this.runtime.logger.info(
-        {
-          src: "plugin:bootstrap:service:embedding",
-          agentId: this.runtime.agentId,
-          count: highPriorityItems.length,
-        },
-        "Processing high priority items before shutdown",
-      );
-      for (const item of highPriorityItems) {
-        try {
-          await this.generateEmbedding(item);
-        } catch (error) {
-          this.runtime.logger.error(
-            {
-              src: "plugin:bootstrap:service:embedding",
-              agentId: this.runtime.agentId,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Error during shutdown processing",
-          );
-        }
-      }
-    }
+		// Process remaining high priority items before shutdown
+		const highPriorityItems = this.queue.filter(
+			(item) => item.priority === "high",
+		);
+		if (highPriorityItems.length > 0) {
+			this.runtime.logger.info(
+				{
+					src: "plugin:bootstrap:service:embedding",
+					agentId: this.runtime.agentId,
+					count: highPriorityItems.length,
+				},
+				"Processing high priority items before shutdown",
+			);
+			for (const item of highPriorityItems) {
+				try {
+					await this.generateEmbedding(item);
+				} catch (error) {
+					this.runtime.logger.error(
+						{
+							src: "plugin:bootstrap:service:embedding",
+							agentId: this.runtime.agentId,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"Error during shutdown processing",
+					);
+				}
+			}
+		}
 
-    this.runtime.logger.info(
-      {
-        src: "plugin:bootstrap:service:embedding",
-        agentId: this.runtime.agentId,
-        remainingItems: this.queue.length,
-      },
-      "Stopped",
-    );
-  }
+		this.runtime.logger.info(
+			{
+				src: "plugin:bootstrap:service:embedding",
+				agentId: this.runtime.agentId,
+				remainingItems: this.queue.length,
+			},
+			"Stopped",
+		);
+	}
 
-  // Public methods for monitoring
-  getQueueSize(): number {
-    return this.queue.length;
-  }
+	// Public methods for monitoring
+	getQueueSize(): number {
+		return this.queue.length;
+	}
 
-  getQueueStats(): {
-    high: number;
-    normal: number;
-    low: number;
-    total: number;
-  } {
-    const stats = {
-      high: 0,
-      normal: 0,
-      low: 0,
-      total: this.queue.length,
-    };
+	getQueueStats(): {
+		high: number;
+		normal: number;
+		low: number;
+		total: number;
+	} {
+		const stats = {
+			high: 0,
+			normal: 0,
+			low: 0,
+			total: this.queue.length,
+		};
 
-    for (const item of this.queue) {
-      stats[item.priority]++;
-    }
+		for (const item of this.queue) {
+			stats[item.priority]++;
+		}
 
-    return stats;
-  }
+		return stats;
+	}
 
-  clearQueue(): void {
-    const size = this.queue.length;
-    this.queue = [];
-    this.runtime.logger.info(
-      {
-        src: "plugin:bootstrap:service:embedding",
-        agentId: this.runtime.agentId,
-        clearedCount: size,
-      },
-      "Cleared queue",
-    );
-  }
+	clearQueue(): void {
+		const size = this.queue.length;
+		this.queue = [];
+		this.runtime.logger.info(
+			{
+				src: "plugin:bootstrap:service:embedding",
+				agentId: this.runtime.agentId,
+				clearedCount: size,
+			},
+			"Cleared queue",
+		);
+	}
 }
 
 export default EmbeddingGenerationService;

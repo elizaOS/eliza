@@ -5,26 +5,26 @@ export type TrajectoryScalar = string | number | boolean | null;
 export type TrajectoryData = Record<string, TrajectoryScalar>;
 
 export type TrajectoryProviderAccess = {
-  stepId: string;
-  providerName: string;
-  purpose: string;
-  data: TrajectoryData;
-  query?: TrajectoryData;
-  timestamp: number;
+	stepId: string;
+	providerName: string;
+	purpose: string;
+	data: TrajectoryData;
+	query?: TrajectoryData;
+	timestamp: number;
 };
 
 export type TrajectoryLlmCall = {
-  stepId: string;
-  model: string;
-  systemPrompt: string;
-  userPrompt: string;
-  response: string;
-  temperature: number;
-  maxTokens: number;
-  purpose: string;
-  actionType: string;
-  latencyMs: number;
-  timestamp: number;
+	stepId: string;
+	model: string;
+	systemPrompt: string;
+	userPrompt: string;
+	response: string;
+	temperature: number;
+	maxTokens: number;
+	purpose: string;
+	actionType: string;
+	latencyMs: number;
+	timestamp: number;
 };
 
 /**
@@ -39,46 +39,46 @@ export type TrajectoryLlmCall = {
  * via plugin registration.
  */
 export class TrajectoryLoggerService extends Service {
-  static serviceType = "trajectory_logger";
-  capabilityDescription =
-    "Captures provider/LLM traces for benchmarks and training trajectories";
+	static serviceType = "trajectory_logger";
+	capabilityDescription =
+		"Captures provider/LLM traces for benchmarks and training trajectories";
 
-  private providerAccess: TrajectoryProviderAccess[] = [];
-  private llmCalls: TrajectoryLlmCall[] = [];
+	private providerAccess: TrajectoryProviderAccess[] = [];
+	private llmCalls: TrajectoryLlmCall[] = [];
 
-  static async start(runtime: IAgentRuntime): Promise<Service> {
-    return new TrajectoryLoggerService(runtime);
-  }
+	static async start(runtime: IAgentRuntime): Promise<Service> {
+		return new TrajectoryLoggerService(runtime);
+	}
 
-  async stop(): Promise<void> {
-    // no-op (in-memory logs)
-  }
+	async stop(): Promise<void> {
+		// no-op (in-memory logs)
+	}
 
-  logProviderAccess(params: {
-    stepId: string;
-    providerName: string;
-    data: TrajectoryData;
-    purpose: string;
-    query?: TrajectoryData;
-  }): void {
-    this.providerAccess.push({
-      ...params,
-      timestamp: Date.now(),
-    });
-  }
+	logProviderAccess(params: {
+		stepId: string;
+		providerName: string;
+		data: TrajectoryData;
+		purpose: string;
+		query?: TrajectoryData;
+	}): void {
+		this.providerAccess.push({
+			...params,
+			timestamp: Date.now(),
+		});
+	}
 
-  logLlmCall(params: Omit<TrajectoryLlmCall, "timestamp">): void {
-    this.llmCalls.push({
-      ...params,
-      timestamp: Date.now(),
-    });
-  }
+	logLlmCall(params: Omit<TrajectoryLlmCall, "timestamp">): void {
+		this.llmCalls.push({
+			...params,
+			timestamp: Date.now(),
+		});
+	}
 
-  getProviderAccessLogs(): readonly TrajectoryProviderAccess[] {
-    return this.providerAccess;
-  }
+	getProviderAccessLogs(): readonly TrajectoryProviderAccess[] {
+		return this.providerAccess;
+	}
 
-  getLlmCallLogs(): readonly TrajectoryLlmCall[] {
-    return this.llmCalls;
-  }
+	getLlmCallLogs(): readonly TrajectoryLlmCall[] {
+		return this.llmCalls;
+	}
 }

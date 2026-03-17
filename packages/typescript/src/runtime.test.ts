@@ -1,121 +1,132 @@
-import { describe, it, expect, jest } from "@jest/globals";
-import { AgentRuntime, IAgentRuntime, Provider } from "./runtime";
+import { describe, expect, it, jest } from "@jest/globals";
+import { AgentRuntime, type Provider } from "./runtime";
 
 // Mock default services that AgentRuntime expects
 const mockLogger = {
-  debug: jest.fn(),
-  error: jest.fn(),
-  info: jest.fn(),
-  warn: jest.fn(),
+	debug: jest.fn(),
+	error: jest.fn(),
+	info: jest.fn(),
+	warn: jest.fn(),
 };
 
 describe("AgentRuntime provider timeout handling", () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-    jest.clearAllMocks();
-  });
+	beforeEach(() => {
+		jest.useFakeTimers();
+		jest.clearAllMocks();
+	});
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
+	afterEach(() => {
+		jest.useRealTimers();
+	});
 
-  it("should successfully complete when provider responds within timeout", async () => {
-    const runtime = new AgentRuntime({
-      agentId: "test",
-      services: { logger: mockLogger },
-    });
+	it("should successfully complete when provider responds within timeout", async () => {
+		const runtime = new AgentRuntime({
+			agentId: "test",
+			services: { logger: mockLogger },
+		});
 
-    const fastProvider: Provider = {
-      name: "fast_provider",
-      get: async () => ({ values: { data: "quick response" } }),
-    };
+		const fastProvider: Provider = {
+			name: "fast_provider",
+			get: async () => ({ values: { data: "quick response" } }),
+		};
 
-    runtime.addProvider(fastProvider);
-    const message = { text: "test" };
-    const state = { values: {} };
+		runtime.addProvider(fastProvider);
+		const message = { text: "test" };
+		const state = { values: {} };
 
-    const resultPromise = runtime.composeState(new Set(["fast_provider"]), message, state);
-    
-    // Provider should complete before timeout
-    await Promise.resolve(); // Let provider execute
-    const result = await resultPromise;
+		const resultPromise = runtime.composeState(
+			new Set(["fast_provider"]),
+			message,
+			state,
+		);
 
-    expect(result.values).toHaveProperty("fast_provider.data", "quick response");
-    expect(mockLogger.error).not.toHaveBeenCalled();
-  });
+		// Provider should complete before timeout
+		await Promise.resolve(); // Let provider execute
+		const result = await resultPromise;
 
-  it("should handle timeout gracefully when provider exceeds limit", async () => {
-    const runtime = new AgentRuntime({
-      agentId: "test",
-      services: { logger: mockLogger },
-    });
+		expect(result.values).toHaveProperty(
+			"fast_provider.data",
+			"quick response",
+		);
+		expect(mockLogger.error).not.toHaveBeenCalled();
+	});
 
-    const slowProvider: Provider = {
-      name: "slow_provider",
-      get: async () => {
-        await new Promise(resolve => setTimeout(resolve, 31_000)); // Longer than timeout
-        return { values: { data: "too late" } };
-      },
-    };
+	it("should handle timeout gracefully when provider exceeds limit", async () => {
+		const runtime = new AgentRuntime({
+			agentId: "test",
+			services: { logger: mockLogger },
+		});
 
-    runtime.addProvider(slowProvider);
-    const message = { text: "test" };
-    const state = { values: {} };
+		const slowProvider: Provider = {
+			name: "slow_provider",
+			get: async () => {
+				await new Promise((resolve) => setTimeout(resolve, 31_000)); // Longer than timeout
+				return { values: { data: "too late" } };
+			},
+		};
 
-    const resultPromise = runtime.composeState(new Set(["slow_provider"]), message, state);
+		runtime.addProvider(slowProvider);
+		const message = { text: "test" };
+		const state = { values: {} };
 
-    // Advance timers past the 30s timeout
-    jest.advanceTimersByTime(30_001);
-    
-    const result = await resultPromise;
+		const resultPromise = runtime.composeState(
+			new Set(["slow_provider"]),
+			message,
+			state,
+		);
 
-    // Should get empty values on timeout
-    expect(result.values).toEqual({});
-    expect(mockLogger.error).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: "slow_provider",
-        error: "Provider slow_provider timed out after 30000ms",
-      }),
-      "Provider error or timeout"
-    );
-  });
+		// Advance timers past the 30s timeout
+		jest.advanceTimersByTime(30_001);
 
-  it("should cleanup timers on both success and error paths", async () => {
-    const runtime = new AgentRuntime({
-      agentId: "test", 
-      services: { logger: mockLogger },
-    });
+		const result = await resultPromise;
 
-    // Test success path
-    const successProvider: Provider = {
-      name: "success_provider",
-      get: async () => ({ values: { data: "success" } }),
-    };
+		// Should get empty values on timeout
+		expect(result.values).toEqual({});
+		expect(mockLogger.error).toHaveBeenCalledWith(
+			expect.objectContaining({
+				provider: "slow_provider",
+				error: "Provider slow_provider timed out after 30000ms",
+			}),
+			"Provider error or timeout",
+		);
+	});
 
-    runtime.addProvider(successProvider);
-    let message = { text: "test" };
-    let state = { values: {} };
+	it("should cleanup timers on both success and error paths", async () => {
+		const runtime = new AgentRuntime({
+			agentId: "test",
+			services: { logger: mockLogger },
+		});
 
-    await runtime.composeState(new Set(["success_provider"]), message, state);
-    
-    // No lingering timers after success
-    expect(jest.getTimerCount()).toBe(0);
+		// Test success path
+		const successProvider: Provider = {
+			name: "success_provider",
+			get: async () => ({ values: { data: "success" } }),
+		};
 
-    // Test error path
-    const errorProvider: Provider = {
-      name: "error_provider",
-      get: async () => {
-        throw new Error("Provider error");
-      },
-    };
+		runtime.addProvider(successProvider);
+		let message = { text: "test" };
+		let state = { values: {} };
 
-    runtime.addProvider(errorProvider);
-    message = { text: "test" };
-    state = { values: {} };
+		await runtime.composeState(new Set(["success_provider"]), message, state);
 
-    await runtime.composeState(new Set(["error_provider"]), message, state);
+		// No lingering timers after success
+		expect(jest.getTimerCount()).toBe(0);
 
-    // No lingering timers after error
-    expect(jest.getTimerCount()).toBe(0);
-  });
+		// Test error path
+		const errorProvider: Provider = {
+			name: "error_provider",
+			get: async () => {
+				throw new Error("Provider error");
+			},
+		};
+
+		runtime.addProvider(errorProvider);
+		message = { text: "test" };
+		state = { values: {} };
+
+		await runtime.composeState(new Set(["error_provider"]), message, state);
+
+		// No lingering timers after error
+		expect(jest.getTimerCount()).toBe(0);
+	});
 });

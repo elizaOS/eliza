@@ -8,8 +8,8 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
-  IStreamingContextManager,
-  StreamingContext,
+	IStreamingContextManager,
+	StreamingContext,
 } from "./streaming-context";
 
 /**
@@ -17,17 +17,17 @@ import type {
  * Provides proper async context isolation across parallel async operations.
  */
 export class AsyncLocalStorageContextManager
-  implements IStreamingContextManager
+	implements IStreamingContextManager
 {
-  private storage = new AsyncLocalStorage<StreamingContext | undefined>();
+	private storage = new AsyncLocalStorage<StreamingContext | undefined>();
 
-  run<T>(context: StreamingContext | undefined, fn: () => T): T {
-    return this.storage.run(context, fn);
-  }
+	run<T>(context: StreamingContext | undefined, fn: () => T): T {
+		return this.storage.run(context, fn);
+	}
 
-  active(): StreamingContext | undefined {
-    return this.storage.getStore();
-  }
+	active(): StreamingContext | undefined {
+		return this.storage.getStore();
+	}
 }
 
 /**
@@ -35,5 +35,5 @@ export class AsyncLocalStorageContextManager
  * Called by index.node.ts during initialization.
  */
 export function createNodeStreamingContextManager(): IStreamingContextManager {
-  return new AsyncLocalStorageContextManager();
+	return new AsyncLocalStorageContextManager();
 }

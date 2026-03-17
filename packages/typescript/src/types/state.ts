@@ -1,67 +1,67 @@
 import type { ActionResult, ProviderValue } from "./components";
 import type { Entity, Room, World } from "./environment";
 import type {
-  ActionPlan as ProtoActionPlan,
-  ActionPlanStep as ProtoActionPlanStep,
-  ProviderCacheEntry as ProtoProviderCacheEntry,
-  State as ProtoState,
-  StateData as ProtoStateData,
-  StateValues as ProtoStateValues,
-  WorkingMemoryItem as ProtoWorkingMemoryItem,
+	ActionPlan as ProtoActionPlan,
+	ActionPlanStep as ProtoActionPlanStep,
+	ProviderCacheEntry as ProtoProviderCacheEntry,
+	State as ProtoState,
+	StateData as ProtoStateData,
+	StateValues as ProtoStateValues,
+	WorkingMemoryItem as ProtoWorkingMemoryItem,
 } from "./proto.js";
 
 /**
  * Allowed value types for state values (JSON-serializable)
  */
 export type StateValue =
-  | string
-  | number
-  | boolean
-  | null
-  | ProviderValue
-  | object
-  | StateValue[]
-  | { [key: string]: StateValue };
+	| string
+	| number
+	| boolean
+	| null
+	| ProviderValue
+	| object
+	| StateValue[]
+	| { [key: string]: StateValue };
 
 /** Single step in an action plan */
 export interface ActionPlanStep
-  extends Omit<ProtoActionPlanStep, "$typeName" | "$unknown" | "result"> {
-  status: "pending" | "completed" | "failed";
-  result?: ActionResult;
+	extends Omit<ProtoActionPlanStep, "$typeName" | "$unknown" | "result"> {
+	status: "pending" | "completed" | "failed";
+	result?: ActionResult;
 }
 
 /** Multi-step action plan */
 export interface ActionPlan
-  extends Omit<
-    ProtoActionPlan,
-    "$typeName" | "$unknown" | "steps" | "metadata"
-  > {
-  steps: ActionPlanStep[];
-  metadata?: Record<string, StateValue>;
+	extends Omit<
+		ProtoActionPlan,
+		"$typeName" | "$unknown" | "steps" | "metadata"
+	> {
+	steps: ActionPlanStep[];
+	metadata?: Record<string, StateValue>;
 }
 
 /**
  * Provider result cache entry
  */
 export interface ProviderCacheEntry
-  extends Omit<
-    ProtoProviderCacheEntry,
-    "$typeName" | "$unknown" | "values" | "data"
-  > {
-  values?: Record<string, StateValue>;
-  data?: Record<string, StateValue>;
+	extends Omit<
+		ProtoProviderCacheEntry,
+		"$typeName" | "$unknown" | "values" | "data"
+	> {
+	values?: Record<string, StateValue>;
+	data?: Record<string, StateValue>;
 }
 
 /**
  * Working memory entry for multi-step action execution
  */
 export interface WorkingMemoryEntry
-  extends Omit<
-    ProtoWorkingMemoryItem,
-    "$typeName" | "$unknown" | "result" | "timestamp"
-  > {
-  result: ActionResult;
-  timestamp: number;
+	extends Omit<
+		ProtoWorkingMemoryItem,
+		"$typeName" | "$unknown" | "result" | "timestamp"
+	> {
+	result: ActionResult;
+	timestamp: number;
 }
 
 /**
@@ -74,49 +74,49 @@ export type WorkingMemory = Record<string, WorkingMemoryEntry>;
  * Common properties are typed for better DX while allowing dynamic extension.
  */
 export interface StateData
-  extends Omit<
-    ProtoStateData,
-    | "$typeName"
-    | "$unknown"
-    | "room"
-    | "world"
-    | "entity"
-    | "providers"
-    | "actionPlan"
-    | "actionResults"
-    | "workingMemory"
-  > {
-  /** Cached room data from providers */
-  room?: Room;
-  /** Cached world data from providers */
-  world?: World;
-  /** Cached entity data from providers */
-  entity?: Entity;
-  /** Provider results cache keyed by provider name */
-  providers?: Record<string, ProviderCacheEntry>;
-  /** Current action plan for multi-step actions */
-  actionPlan?: ActionPlan;
-  /** Results from previous action executions */
-  actionResults?: ActionResult[];
-  /** Working memory for temporary state during multi-step action execution */
-  workingMemory?: WorkingMemory;
-  /** Allow dynamic properties for plugin extensions */
-  [key: string]: StateValue | undefined;
+	extends Omit<
+		ProtoStateData,
+		| "$typeName"
+		| "$unknown"
+		| "room"
+		| "world"
+		| "entity"
+		| "providers"
+		| "actionPlan"
+		| "actionResults"
+		| "workingMemory"
+	> {
+	/** Cached room data from providers */
+	room?: Room;
+	/** Cached world data from providers */
+	world?: World;
+	/** Cached entity data from providers */
+	entity?: Entity;
+	/** Provider results cache keyed by provider name */
+	providers?: Record<string, ProviderCacheEntry>;
+	/** Current action plan for multi-step actions */
+	actionPlan?: ActionPlan;
+	/** Results from previous action executions */
+	actionResults?: ActionResult[];
+	/** Working memory for temporary state during multi-step action execution */
+	workingMemory?: WorkingMemory;
+	/** Allow dynamic properties for plugin extensions */
+	[key: string]: StateValue | undefined;
 }
 
 /**
  * State values populated by providers
  */
 export interface StateValues
-  extends Omit<ProtoStateValues, "$typeName" | "$unknown" | "extra"> {
-  /** Agent name */
-  agentName?: string;
-  /** Action names available to the agent */
-  actionNames?: string;
-  /** Provider names used */
-  providers?: string;
-  /** Other dynamic values */
-  [key: string]: StateValue | undefined;
+	extends Omit<ProtoStateValues, "$typeName" | "$unknown" | "extra"> {
+	/** Agent name */
+	agentName?: string;
+	/** Action names available to the agent */
+	actionNames?: string;
+	/** Provider names used */
+	providers?: string;
+	/** Other dynamic values */
+	[key: string]: StateValue | undefined;
 }
 
 /**
@@ -125,10 +125,10 @@ export interface StateValues
  * understanding at a point in time.
  */
 export interface State
-  extends Omit<ProtoState, "$typeName" | "$unknown" | "values" | "data"> {
-  values: StateValues;
-  data: StateData;
-  [key: string]: StateValue | StateValues | StateData | undefined;
+	extends Omit<ProtoState, "$typeName" | "$unknown" | "values" | "data"> {
+	values: StateValues;
+	data: StateData;
+	[key: string]: StateValue | StateValues | StateData | undefined;
 }
 
 // ============================================================================
@@ -168,73 +168,73 @@ export interface State
  * ```
  */
 export type SchemaValueType =
-  | "string"
-  | "number"
-  | "boolean"
-  | "object"
-  | "array";
+	| "string"
+	| "number"
+	| "boolean"
+	| "object"
+	| "array";
 
 export type SchemaValueSpec = {
-  /** Description shown to LLM - explains what to put in this value */
-  description: string;
-  /**
-   * Expected value type.
-   *
-   * WHY: Flat string descriptions work for simple fields, but nested arrays/objects
-   * need explicit structure so prompt examples and validation can stay machine-readable.
-   */
-  type?: SchemaValueType;
-  /** If true, validation fails when value is empty/missing */
-  required?: boolean;
-  /**
-   * Object properties for `type: "object"`.
-   *
-   * WHY: Lets callers describe nested output directly instead of teaching the model
-   * an ad-hoc JSON shape through freeform prose.
-   */
-  properties?: SchemaRow[];
-  /**
-   * Item shape for `type: "array"`.
-   *
-   * WHY: Arrays often contain structured entries. This keeps the shape attached to
-   * the schema so examples, parsing, and validation can agree.
-   */
-  items?: SchemaValueSpec;
+	/** Description shown to LLM - explains what to put in this value */
+	description: string;
+	/**
+	 * Expected value type.
+	 *
+	 * WHY: Flat string descriptions work for simple fields, but nested arrays/objects
+	 * need explicit structure so prompt examples and validation can stay machine-readable.
+	 */
+	type?: SchemaValueType;
+	/** If true, validation fails when value is empty/missing */
+	required?: boolean;
+	/**
+	 * Object properties for `type: "object"`.
+	 *
+	 * WHY: Lets callers describe nested output directly instead of teaching the model
+	 * an ad-hoc JSON shape through freeform prose.
+	 */
+	properties?: SchemaRow[];
+	/**
+	 * Item shape for `type: "array"`.
+	 *
+	 * WHY: Arrays often contain structured entries. This keeps the shape attached to
+	 * the schema so examples, parsing, and validation can agree.
+	 */
+	items?: SchemaValueSpec;
 };
 
 export type SchemaRow = SchemaValueSpec & {
-  /** Field name - will become an XML tag or JSON property */
-  field: string;
-  /**
-   * Control per-field validation codes for streaming (levels 0-1 only).
-   *
-   * WHY: Validation codes are UUID snippets that surround each field. If the LLM
-   * outputs the same code before and after a field, we know the context window
-   * wasn't truncated mid-field. This trades off token usage for reliability.
-   *
-   * Behavior by level:
-   * - Level 0 (Trusted): default false. Set to true to opt-in to per-field codes.
-   * - Level 1 (Progressive): default true. Set to false to opt-out of codes.
-   * - Levels 2-3: ignored (uses checkpoint codes at start/end of response instead).
-   *
-   * Note: Only top-level schema rows use this today. Nested `properties` are still
-   * validated structurally, but they do not get their own streaming/validation wires.
-   */
-  validateField?: boolean;
-  /**
-   * Control whether this field's content is streamed to the consumer.
-   *
-   * WHY: Not all fields should be shown to users in real-time:
-   * - 'thought': Internal reasoning - might be verbose or confusing to show
-   * - 'actions': System field for action routing - not user-visible
-   * - 'text': The actual response - should definitely stream
-   *
-   * Default: true for 'text' field, false for others.
-   *
-   * Note: Only top-level schema rows are considered for streaming. Nested object/array
-   * members still flow through parsing/validation, but are not streamed independently.
-   */
-  streamField?: boolean;
+	/** Field name - will become an XML tag or JSON property */
+	field: string;
+	/**
+	 * Control per-field validation codes for streaming (levels 0-1 only).
+	 *
+	 * WHY: Validation codes are UUID snippets that surround each field. If the LLM
+	 * outputs the same code before and after a field, we know the context window
+	 * wasn't truncated mid-field. This trades off token usage for reliability.
+	 *
+	 * Behavior by level:
+	 * - Level 0 (Trusted): default false. Set to true to opt-in to per-field codes.
+	 * - Level 1 (Progressive): default true. Set to false to opt-out of codes.
+	 * - Levels 2-3: ignored (uses checkpoint codes at start/end of response instead).
+	 *
+	 * Note: Only top-level schema rows use this today. Nested `properties` are still
+	 * validated structurally, but they do not get their own streaming/validation wires.
+	 */
+	validateField?: boolean;
+	/**
+	 * Control whether this field's content is streamed to the consumer.
+	 *
+	 * WHY: Not all fields should be shown to users in real-time:
+	 * - 'thought': Internal reasoning - might be verbose or confusing to show
+	 * - 'actions': System field for action routing - not user-visible
+	 * - 'text': The actual response - should definitely stream
+	 *
+	 * Default: true for 'text' field, false for others.
+	 *
+	 * Note: Only top-level schema rows are considered for streaming. Nested object/array
+	 * members still flow through parsing/validation, but are not streamed independently.
+	 */
+	streamField?: boolean;
 };
 
 /**
@@ -248,23 +248,23 @@ export type SchemaRow = SchemaValueSpec & {
  * Backoff gives the system time to recover between attempts.
  */
 export interface RetryBackoffConfig {
-  /**
-   * Initial delay in milliseconds before first retry.
-   * Default: 1000ms (1 second)
-   */
-  initialMs: number;
-  /**
-   * Multiplier for exponential backoff.
-   * delay = initialMs * multiplier^(retryCount - 1)
-   * Default: 2 (doubles each time)
-   */
-  multiplier: number;
-  /**
-   * Maximum delay in milliseconds.
-   * Caps exponential growth to prevent absurd wait times.
-   * Default: 30000ms (30 seconds)
-   */
-  maxMs: number;
+	/**
+	 * Initial delay in milliseconds before first retry.
+	 * Default: 1000ms (1 second)
+	 */
+	initialMs: number;
+	/**
+	 * Multiplier for exponential backoff.
+	 * delay = initialMs * multiplier^(retryCount - 1)
+	 * Default: 2 (doubles each time)
+	 */
+	multiplier: number;
+	/**
+	 * Maximum delay in milliseconds.
+	 * Caps exponential growth to prevent absurd wait times.
+	 * Default: 30000ms (30 seconds)
+	 */
+	maxMs: number;
 }
 
 /**
@@ -272,11 +272,11 @@ export interface RetryBackoffConfig {
  * Rich consumers receive these typed events for custom UX handling.
  */
 export type StreamEventType =
-  | "chunk" // Regular content chunk being streamed
-  | "field_validated" // A field passed validation (level 1)
-  | "retry_start" // Starting a retry attempt
-  | "error" // Unrecoverable error occurred
-  | "complete"; // Successfully finished all validation
+	| "chunk" // Regular content chunk being streamed
+	| "field_validated" // A field passed validation (level 1)
+	| "retry_start" // Starting a retry attempt
+	| "error" // Unrecoverable error occurred
+	| "complete"; // Successfully finished all validation
 
 /**
  * Rich stream event for sophisticated consumers.
@@ -286,16 +286,16 @@ export type StreamEventType =
  * (spinners, clear partial content, error messages).
  */
 export interface StreamEvent {
-  /** Event type (named eventType for cross-language consistency with Rust/Python) */
-  eventType: StreamEventType;
-  /** Field name (for chunk and field_validated events) */
-  field?: string;
-  /** Content chunk (for chunk events) */
-  chunk?: string;
-  /** Retry attempt number (for retry_start events) */
-  retryCount?: number;
-  /** Error message (for error events) */
-  error?: string;
-  /** Timestamp of the event */
-  timestamp: number;
+	/** Event type (named eventType for cross-language consistency with Rust/Python) */
+	eventType: StreamEventType;
+	/** Field name (for chunk and field_validated events) */
+	field?: string;
+	/** Content chunk (for chunk events) */
+	chunk?: string;
+	/** Retry attempt number (for retry_start events) */
+	retryCount?: number;
+	/** Error message (for error events) */
+	error?: string;
+	/** Timestamp of the event */
+	timestamp: number;
 }

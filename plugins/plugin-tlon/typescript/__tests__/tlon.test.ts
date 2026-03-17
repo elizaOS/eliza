@@ -1,49 +1,46 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import tlonPlugin, {
-  TlonService,
-  sendMessageAction,
-  SEND_MESSAGE_ACTION,
-  chatStateProvider,
-  CHAT_STATE_PROVIDER,
-  TLON_SERVICE_NAME,
-} from "../src/index.js";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  PLUGIN_NAME,
   PLUGIN_DESCRIPTION,
+  PLUGIN_NAME,
   PLUGIN_VERSION,
 } from "../src/constants.js";
-import {
-  normalizeShip,
-  formatShip,
-  parseChannelNest,
-  buildChannelNest,
-  buildTlonSettings,
-  tlonEnvSchema,
-} from "../src/environment.js";
 import type { TlonEnvConfig } from "../src/environment.js";
 import {
-  TlonChannelType,
-  TlonEventTypes,
-} from "../src/types.js";
+  buildChannelNest,
+  buildTlonSettings,
+  formatShip,
+  normalizeShip,
+  parseChannelNest,
+  tlonEnvSchema,
+} from "../src/environment.js";
+import tlonPlugin, {
+  CHAT_STATE_PROVIDER,
+  chatStateProvider,
+  SEND_MESSAGE_ACTION,
+  sendMessageAction,
+  TLON_SERVICE_NAME,
+  TlonService,
+} from "../src/index.js";
 import type {
-  TlonContent,
-  TlonShip,
   TlonChat,
+  TlonContent,
   TlonMessagePayload,
   TlonMessageSentPayload,
+  TlonShip,
 } from "../src/types.js";
+import { TlonChannelType, TlonEventTypes } from "../src/types.js";
 import {
-  formatUd,
-  unixToUrbitDa,
-  generateMessageId,
-  extractMessageText,
   buildMediaText,
+  extractMessageText,
+  formatUd,
+  generateMessageId,
   isBotMentioned,
   isDmAllowed,
   sendDm,
   sendGroupMessage,
+  unixToUrbitDa,
 } from "../src/utils.js";
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
 // 1. Plugin metadata
@@ -124,7 +121,7 @@ describe("sendMessageAction", () => {
   });
 
   describe("validate()", () => {
-    const makeRuntime = () => ({} as IAgentRuntime);
+    const makeRuntime = () => ({}) as IAgentRuntime;
 
     it("returns true when source is 'tlon'", async () => {
       const message = {
@@ -216,7 +213,9 @@ describe("sendMessageAction", () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe("Missing target ship or channel");
       expect(callback).toHaveBeenCalledWith(
-        expect.objectContaining({ text: "No target ship or channel specified" }),
+        expect.objectContaining({
+          text: "No target ship or channel specified",
+        }),
       );
     });
 
@@ -230,7 +229,11 @@ describe("sendMessageAction", () => {
       } as unknown as IAgentRuntime;
 
       const message = {
-        content: { text: "test", source: "tlon", ship: "sampel-palnet" } as TlonContent,
+        content: {
+          text: "test",
+          source: "tlon",
+          ship: "sampel-palnet",
+        } as TlonContent,
       } as unknown as Memory;
 
       const state = { values: { response: "Hello there" } } as unknown as State;
@@ -244,7 +247,10 @@ describe("sendMessageAction", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(mockService.sendDirectMessage).toHaveBeenCalledWith("sampel-palnet", "Hello there");
+      expect(mockService.sendDirectMessage).toHaveBeenCalledWith(
+        "sampel-palnet",
+        "Hello there",
+      );
       expect(mockService.sendChannelMessage).not.toHaveBeenCalled();
     });
 
@@ -303,7 +309,9 @@ describe("sendMessageAction", () => {
         } as TlonContent,
       } as unknown as Memory;
 
-      const state = { values: { response: "Thread reply" } } as unknown as State;
+      const state = {
+        values: { response: "Thread reply" },
+      } as unknown as State;
       const result = await sendMessageAction.handler(runtime, message, state);
 
       expect(result.success).toBe(true);
@@ -317,7 +325,9 @@ describe("sendMessageAction", () => {
     it("returns error result and calls callback when sendChannelMessage throws", async () => {
       const mockService = {
         sendDirectMessage: vi.fn(),
-        sendChannelMessage: vi.fn().mockRejectedValue(new Error("Network error")),
+        sendChannelMessage: vi
+          .fn()
+          .mockRejectedValue(new Error("Network error")),
       };
       const runtime = {
         getService: vi.fn().mockReturnValue(mockService),
@@ -344,7 +354,9 @@ describe("sendMessageAction", () => {
       expect(result.error).toBe("Network error");
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
-          text: expect.stringContaining("Failed to send message: Network error"),
+          text: expect.stringContaining(
+            "Failed to send message: Network error",
+          ),
         }),
       );
     });
@@ -371,8 +383,8 @@ describe("chatStateProvider", () => {
   });
 
   describe("get()", () => {
-    const makeRuntime = () => ({} as IAgentRuntime);
-    const makeState = () => ({} as State);
+    const makeRuntime = () => ({}) as IAgentRuntime;
+    const makeState = () => ({}) as State;
 
     it("returns DM type when no channelNest is present", async () => {
       const message = {
@@ -380,7 +392,11 @@ describe("chatStateProvider", () => {
         roomId: "room-1",
       } as unknown as Memory;
 
-      const result = await chatStateProvider.get!(makeRuntime(), message, makeState());
+      const result = await chatStateProvider.get!(
+        makeRuntime(),
+        message,
+        makeState(),
+      );
       expect(result.data.chatType).toBe("dm");
       expect(result.data.isDm).toBe(true);
       expect(result.data.isGroup).toBe(false);
@@ -398,7 +414,11 @@ describe("chatStateProvider", () => {
         roomId: "room-2",
       } as unknown as Memory;
 
-      const result = await chatStateProvider.get!(makeRuntime(), message, makeState());
+      const result = await chatStateProvider.get!(
+        makeRuntime(),
+        message,
+        makeState(),
+      );
       expect(result.data.chatType).toBe("group");
       expect(result.data.isGroup).toBe(true);
       expect(result.data.isDm).toBe(false);
@@ -417,7 +437,11 @@ describe("chatStateProvider", () => {
         roomId: "room-3",
       } as unknown as Memory;
 
-      const result = await chatStateProvider.get!(makeRuntime(), message, makeState());
+      const result = await chatStateProvider.get!(
+        makeRuntime(),
+        message,
+        makeState(),
+      );
       expect(result.data.chatType).toBe("thread");
       expect(result.data.isThread).toBe(true);
       expect(result.data.isDm).toBe(false);
@@ -432,7 +456,11 @@ describe("chatStateProvider", () => {
         roomId: "",
       } as unknown as Memory;
 
-      const result = await chatStateProvider.get!(makeRuntime(), message, makeState());
+      const result = await chatStateProvider.get!(
+        makeRuntime(),
+        message,
+        makeState(),
+      );
       expect(result.values.ship).toBe("");
       expect(result.values.channel_nest).toBe("");
       expect(result.values.reply_to_id).toBe("");
@@ -649,7 +677,9 @@ describe("types", () => {
       expect(TlonEventTypes.MESSAGE_RECEIVED).toBe("TLON_MESSAGE_RECEIVED");
       expect(TlonEventTypes.MESSAGE_SENT).toBe("TLON_MESSAGE_SENT");
       expect(TlonEventTypes.DM_RECEIVED).toBe("TLON_DM_RECEIVED");
-      expect(TlonEventTypes.GROUP_MESSAGE_RECEIVED).toBe("TLON_GROUP_MESSAGE_RECEIVED");
+      expect(TlonEventTypes.GROUP_MESSAGE_RECEIVED).toBe(
+        "TLON_GROUP_MESSAGE_RECEIVED",
+      );
       expect(TlonEventTypes.WORLD_JOINED).toBe("TLON_WORLD_JOINED");
       expect(TlonEventTypes.WORLD_CONNECTED).toBe("TLON_WORLD_CONNECTED");
       expect(TlonEventTypes.WORLD_LEFT).toBe("TLON_WORLD_LEFT");
@@ -727,10 +757,7 @@ describe("utils", () => {
     });
 
     it("extracts text from story with multiple verses", () => {
-      const story = [
-        { inline: ["First line"] },
-        { inline: ["Second line"] },
-      ];
+      const story = [{ inline: ["First line"] }, { inline: ["Second line"] }];
       expect(extractMessageText(story)).toBe("First line\nSecond line");
     });
 
@@ -741,9 +768,15 @@ describe("utils", () => {
 
     it("formats links as markdown", () => {
       const story = [
-        { inline: [{ link: { href: "https://example.com", content: "Click here" } }] },
+        {
+          inline: [
+            { link: { href: "https://example.com", content: "Click here" } },
+          ],
+        },
       ];
-      expect(extractMessageText(story)).toBe("[Click here](https://example.com)");
+      expect(extractMessageText(story)).toBe(
+        "[Click here](https://example.com)",
+      );
     });
 
     it("wraps inline code in backticks", () => {
@@ -783,7 +816,9 @@ describe("utils", () => {
           },
         },
       ];
-      expect(extractMessageText(story)).toBe("[Image: https://img.com/pic.png]");
+      expect(extractMessageText(story)).toBe(
+        "[Image: https://img.com/pic.png]",
+      );
     });
 
     it("returns string content directly", () => {
@@ -821,7 +856,9 @@ describe("utils", () => {
     });
 
     it("returns just the url when text is empty", () => {
-      expect(buildMediaText("", "https://img.com/a.png")).toBe("https://img.com/a.png");
+      expect(buildMediaText("", "https://img.com/a.png")).toBe(
+        "https://img.com/a.png",
+      );
     });
 
     it("returns just the url when text is undefined", () => {
@@ -847,9 +884,9 @@ describe("utils", () => {
 
   describe("isBotMentioned()", () => {
     it("detects ~ship mention", () => {
-      expect(isBotMentioned("Hello ~sampel-palnet how are you?", "sampel-palnet")).toBe(
-        true,
-      );
+      expect(
+        isBotMentioned("Hello ~sampel-palnet how are you?", "sampel-palnet"),
+      ).toBe(true);
     });
 
     it("detects @ship mention", () => {
@@ -857,7 +894,9 @@ describe("utils", () => {
     });
 
     it("detects bare ship name mention", () => {
-      expect(isBotMentioned("sampel-palnet said hello", "sampel-palnet")).toBe(true);
+      expect(isBotMentioned("sampel-palnet said hello", "sampel-palnet")).toBe(
+        true,
+      );
     });
 
     it("handles ~ prefix in botShip argument", () => {
@@ -905,7 +944,9 @@ describe("utils", () => {
       expect(callArgs.app).toBe("chat");
       expect(callArgs.mark).toBe("chat-dm-action");
       expect(callArgs.json.ship).toBe("~their-ship");
-      expect(callArgs.json.diff.delta.add.memo.content[0].inline[0]).toBe("Hello");
+      expect(callArgs.json.diff.delta.add.memo.content[0].inline[0]).toBe(
+        "Hello",
+      );
       expect(callArgs.json.diff.delta.add.memo.author).toBe("~my-ship");
       expect(result.messageId).toContain("~my-ship/");
       expect(result.channel).toBe("tlon");
@@ -954,9 +995,9 @@ describe("utils", () => {
       const callArgs = pokeFn.mock.calls[0][0];
       expect(callArgs.json.channel.action.post.reply).toBeDefined();
       expect(callArgs.json.channel.action.post.reply.id).toBe("parent-id-123");
-      expect(callArgs.json.channel.action.post.reply.action.add.content[0].inline[0]).toBe(
-        "Thread reply",
-      );
+      expect(
+        callArgs.json.channel.action.post.reply.action.add.content[0].inline[0],
+      ).toBe("Thread reply");
     });
 
     it("formats numeric replyToId as dotted @ud", async () => {

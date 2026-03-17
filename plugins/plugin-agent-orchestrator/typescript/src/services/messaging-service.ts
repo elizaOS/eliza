@@ -1,6 +1,6 @@
-import { EventEmitter } from "node:events";
 import crypto from "node:crypto";
-import { type IAgentRuntime, type UUID, Service, EventType } from "@elizaos/core";
+import { EventEmitter } from "node:events";
+import { EventType, type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import type {
   DeliveryStatus,
   MessageContent,
@@ -14,7 +14,7 @@ import type {
   SendMessageResult,
 } from "../types/messaging.js";
 import type { DeliveryContext } from "../types/subagent.js";
-import { sessionKeyToRoomId, extractAgentIdFromSessionKey } from "../utils/session.js";
+import { extractAgentIdFromSessionKey, sessionKeyToRoomId } from "../utils/session.js";
 
 type InternalEventType = "messaging" | MessagingEventType;
 
@@ -27,7 +27,8 @@ type InternalEventType = "messaging" | MessagingEventType;
  */
 export class MessagingService extends Service {
   static serviceType = "MESSAGING";
-  capabilityDescription = "Unified cross-platform messaging for sending messages to any supported channel";
+  capabilityDescription =
+    "Unified cross-platform messaging for sending messages to any supported channel";
 
   private readonly emitter = new EventEmitter();
   private readonly adapters = new Map<MessagingChannel, MessagingAdapter>();
@@ -55,7 +56,7 @@ export class MessagingService extends Service {
 
   /**
    * Registers built-in adapters for known platform services.
-   * 
+   *
    * Note: Service names are lowercase as defined in each plugin:
    * - Discord: "DISCORD" (uppercase, from plugin-discord)
    * - Telegram: "TELEGRAM" (uppercase, from plugin-telegram)
@@ -403,9 +404,9 @@ export class MessagingService extends Service {
     }
 
     try {
-      const channel = (await discordService.client.channels.fetch(
-        params.target.to,
-      )) as { send?: (msg: unknown) => Promise<{ id: string }> } | null;
+      const channel = (await discordService.client.channels.fetch(params.target.to)) as {
+        send?: (msg: unknown) => Promise<{ id: string }>;
+      } | null;
 
       if (!channel?.send) {
         return {
@@ -472,17 +473,13 @@ export class MessagingService extends Service {
         ? params.target.to
         : Number(params.target.to);
 
-      const result = await telegramService.bot.telegram.sendMessage(
-        chatId,
-        params.content.text,
-        {
-          reply_to_message_id: params.target.replyToMessageId
-            ? Number(params.target.replyToMessageId)
-            : undefined,
-          disable_web_page_preview: params.content.disableLinkPreview,
-          disable_notification: params.content.silent,
-        },
-      );
+      const result = await telegramService.bot.telegram.sendMessage(chatId, params.content.text, {
+        reply_to_message_id: params.target.replyToMessageId
+          ? Number(params.target.replyToMessageId)
+          : undefined,
+        disable_web_page_preview: params.content.disableLinkPreview,
+        disable_notification: params.content.silent,
+      });
 
       return {
         success: true,
@@ -503,7 +500,7 @@ export class MessagingService extends Service {
 
   /**
    * Sends via Slack.
-   * 
+   *
    * Uses SlackService.sendMessage(channelId, text, options) which returns { ts, channelId }.
    */
   private async sendViaSlack(params: SendMessageParams): Promise<SendMessageResult> {
@@ -527,14 +524,10 @@ export class MessagingService extends Service {
     }
 
     try {
-      const result = await slackService.sendMessage(
-        params.target.to,
-        params.content.text,
-        {
-          threadTs: params.target.threadId ? String(params.target.threadId) : undefined,
-          replyBroadcast: false,
-        },
-      );
+      const result = await slackService.sendMessage(params.target.to, params.content.text, {
+        threadTs: params.target.threadId ? String(params.target.threadId) : undefined,
+        replyBroadcast: false,
+      });
 
       return {
         success: true,
@@ -555,17 +548,14 @@ export class MessagingService extends Service {
 
   /**
    * Sends via WhatsApp.
-   * 
+   *
    * Uses WhatsAppService.sendText(to, text) which returns WhatsAppMessageResponse.
    * The response contains { messages: [{ id: string }], messaging_product: "whatsapp" }.
    */
   private async sendViaWhatsApp(params: SendMessageParams): Promise<SendMessageResult> {
     const whatsappService = this.runtime.getService("whatsapp") as
       | {
-          sendText?: (
-            to: string,
-            text: string,
-          ) => Promise<{ messages?: Array<{ id: string }> }>;
+          sendText?: (to: string, text: string) => Promise<{ messages?: Array<{ id: string }> }>;
         }
       | undefined;
 
@@ -579,10 +569,7 @@ export class MessagingService extends Service {
     }
 
     try {
-      const result = await whatsappService.sendText(
-        params.target.to,
-        params.content.text,
-      );
+      const result = await whatsappService.sendText(params.target.to, params.content.text);
 
       const messageId = result.messages?.[0]?.id;
 
@@ -605,7 +592,7 @@ export class MessagingService extends Service {
 
   /**
    * Sends via Twitch.
-   * 
+   *
    * Uses TwitchService.sendMessage(text, options) where options.channel specifies the channel.
    * Returns TwitchSendResult { success: boolean; messageId?: string }.
    */

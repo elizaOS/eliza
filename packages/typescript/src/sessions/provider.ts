@@ -6,10 +6,10 @@
  * @module sessions/provider
  */
 
-import type { IAgentRuntime } from "../types/runtime.js";
-import type { Memory } from "../types/memory.js";
-import type { State } from "../types/state.js";
 import type { Provider, ProviderResult } from "../types/components.js";
+import type { Memory } from "../types/memory.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type { State } from "../types/state.js";
 import { getSessionEntry, loadSessionStore } from "./store.js";
 import type { SessionEntry, SessionStore } from "./types.js";
 
@@ -29,33 +29,33 @@ import type { SessionEntry, SessionStore } from "./types.js";
  * @returns Session context or null
  */
 export function extractSessionContext(memory: Memory): {
-  sessionId?: string;
-  sessionKey?: string;
-  entry?: SessionEntry;
+	sessionId?: string;
+	sessionKey?: string;
+	entry?: SessionEntry;
 } | null {
-  // Direct properties on memory (for backwards compat)
-  const memoryRecord = memory as unknown as Record<string, unknown>;
-  const directSessionId = memoryRecord.sessionId as string | undefined;
-  const directSessionKey = memoryRecord.sessionKey as string | undefined;
+	// Direct properties on memory (for backwards compat)
+	const memoryRecord = memory as unknown as Record<string, unknown>;
+	const directSessionId = memoryRecord.sessionId as string | undefined;
+	const directSessionKey = memoryRecord.sessionKey as string | undefined;
 
-  // Metadata-based session info
-  const metadata = memory.metadata as Record<string, unknown> | undefined;
-  const metaSessionId = metadata?.sessionId as string | undefined;
-  const metaSessionKey = metadata?.sessionKey as string | undefined;
-  const metaSession = metadata?.session as SessionEntry | undefined;
+	// Metadata-based session info
+	const metadata = memory.metadata as Record<string, unknown> | undefined;
+	const metaSessionId = metadata?.sessionId as string | undefined;
+	const metaSessionKey = metadata?.sessionKey as string | undefined;
+	const metaSession = metadata?.session as SessionEntry | undefined;
 
-  const sessionId = directSessionId ?? metaSessionId ?? metaSession?.sessionId;
-  const sessionKey = directSessionKey ?? metaSessionKey;
+	const sessionId = directSessionId ?? metaSessionId ?? metaSession?.sessionId;
+	const sessionKey = directSessionKey ?? metaSessionKey;
 
-  if (!sessionId && !sessionKey) {
-    return null;
-  }
+	if (!sessionId && !sessionKey) {
+		return null;
+	}
 
-  return {
-    sessionId,
-    sessionKey,
-    entry: metaSession,
-  };
+	return {
+		sessionId,
+		sessionKey,
+		entry: metaSession,
+	};
 }
 
 // ============================================================================
@@ -69,84 +69,84 @@ export function extractSessionContext(memory: Memory): {
  * @returns Provider instance
  */
 export function createSessionProvider(options?: {
-  /** Path to session store (defaults to runtime's configured store) */
-  storePath?: string;
-  /** Custom name for the provider */
-  name?: string;
+	/** Path to session store (defaults to runtime's configured store) */
+	storePath?: string;
+	/** Custom name for the provider */
+	name?: string;
 }): Provider {
-  return {
-    name: options?.name ?? "session",
-    description: "Current session context and state",
-    dynamic: true,
+	return {
+		name: options?.name ?? "session",
+		description: "Current session context and state",
+		dynamic: true,
 
-    async get(
-      runtime: IAgentRuntime,
-      message: Memory,
-      _state: State,
-    ): Promise<ProviderResult> {
-      const context = extractSessionContext(message);
-      if (!context) {
-        return {
-          text: "No session context available.",
-          data: { hasSession: false },
-        };
-      }
+		async get(
+			_runtime: IAgentRuntime,
+			message: Memory,
+			_state: State,
+		): Promise<ProviderResult> {
+			const context = extractSessionContext(message);
+			if (!context) {
+				return {
+					text: "No session context available.",
+					data: { hasSession: false },
+				};
+			}
 
-      // Try to get full session entry
-      let entry = context.entry;
-      if (!entry && context.sessionKey && options?.storePath) {
-        entry = getSessionEntry(options.storePath, context.sessionKey);
-      }
+			// Try to get full session entry
+			let entry = context.entry;
+			if (!entry && context.sessionKey && options?.storePath) {
+				entry = getSessionEntry(options.storePath, context.sessionKey);
+			}
 
-      // Build text representation
-      const lines: string[] = [];
-      lines.push(`Session ID: ${context.sessionId ?? "unknown"}`);
+			// Build text representation
+			const lines: string[] = [];
+			lines.push(`Session ID: ${context.sessionId ?? "unknown"}`);
 
-      if (context.sessionKey) {
-        lines.push(`Session Key: ${context.sessionKey}`);
-      }
+			if (context.sessionKey) {
+				lines.push(`Session Key: ${context.sessionKey}`);
+			}
 
-      if (entry) {
-        if (entry.label) {
-          lines.push(`Label: ${entry.label}`);
-        }
-        if (entry.chatType) {
-          lines.push(`Chat Type: ${entry.chatType}`);
-        }
-        if (entry.channel) {
-          lines.push(`Channel: ${entry.channel}`);
-        }
-        if (entry.modelOverride) {
-          lines.push(`Model Override: ${entry.modelOverride}`);
-        }
-        if (entry.thinkingLevel) {
-          lines.push(`Thinking Level: ${entry.thinkingLevel}`);
-        }
-        if (entry.sendPolicy === "deny") {
-          lines.push("");
-          lines.push("⚠️ SEND POLICY: DENY - Do not send messages externally.");
-        }
-        if (entry.totalTokens) {
-          lines.push(`Total Tokens Used: ${entry.totalTokens}`);
-        }
-      }
+			if (entry) {
+				if (entry.label) {
+					lines.push(`Label: ${entry.label}`);
+				}
+				if (entry.chatType) {
+					lines.push(`Chat Type: ${entry.chatType}`);
+				}
+				if (entry.channel) {
+					lines.push(`Channel: ${entry.channel}`);
+				}
+				if (entry.modelOverride) {
+					lines.push(`Model Override: ${entry.modelOverride}`);
+				}
+				if (entry.thinkingLevel) {
+					lines.push(`Thinking Level: ${entry.thinkingLevel}`);
+				}
+				if (entry.sendPolicy === "deny") {
+					lines.push("");
+					lines.push("⚠️ SEND POLICY: DENY - Do not send messages externally.");
+				}
+				if (entry.totalTokens) {
+					lines.push(`Total Tokens Used: ${entry.totalTokens}`);
+				}
+			}
 
-      return {
-        text: lines.join("\n"),
-        values: {
-          sessionId: context.sessionId,
-          sessionKey: context.sessionKey,
-          hasSession: true,
-        },
-        data: {
-          hasSession: true,
-          sessionId: context.sessionId,
-          sessionKey: context.sessionKey,
-          entry: entry as unknown as Record<string, unknown>,
-        },
-      };
-    },
-  };
+			return {
+				text: lines.join("\n"),
+				values: {
+					sessionId: context.sessionId,
+					sessionKey: context.sessionKey,
+					hasSession: true,
+				},
+				data: {
+					hasSession: true,
+					sessionId: context.sessionId,
+					sessionKey: context.sessionKey,
+					entry: entry as unknown as Record<string, unknown>,
+				},
+			};
+		},
+	};
 }
 
 // ============================================================================
@@ -160,61 +160,61 @@ export function createSessionProvider(options?: {
  * @returns Provider instance
  */
 export function createSessionSkillsProvider(options?: {
-  storePath?: string;
-  name?: string;
+	storePath?: string;
+	name?: string;
 }): Provider {
-  return {
-    name: options?.name ?? "sessionSkills",
-    description: "Skills active in the current session",
-    dynamic: true,
+	return {
+		name: options?.name ?? "sessionSkills",
+		description: "Skills active in the current session",
+		dynamic: true,
 
-    async get(
-      _runtime: IAgentRuntime,
-      message: Memory,
-      _state: State,
-    ): Promise<ProviderResult> {
-      const context = extractSessionContext(message);
-      if (!context) {
-        return {
-          text: "No session skills available.",
-          data: { hasSkills: false },
-        };
-      }
+		async get(
+			_runtime: IAgentRuntime,
+			message: Memory,
+			_state: State,
+		): Promise<ProviderResult> {
+			const context = extractSessionContext(message);
+			if (!context) {
+				return {
+					text: "No session skills available.",
+					data: { hasSkills: false },
+				};
+			}
 
-      let entry = context.entry;
-      if (!entry && context.sessionKey && options?.storePath) {
-        entry = getSessionEntry(options.storePath, context.sessionKey);
-      }
+			let entry = context.entry;
+			if (!entry && context.sessionKey && options?.storePath) {
+				entry = getSessionEntry(options.storePath, context.sessionKey);
+			}
 
-      const snapshot = entry?.skillsSnapshot;
-      if (!snapshot || !snapshot.skills.length) {
-        return {
-          text: "No skills configured for this session.",
-          data: { hasSkills: false, skills: [] },
-        };
-      }
+			const snapshot = entry?.skillsSnapshot;
+			if (!snapshot || !snapshot.skills.length) {
+				return {
+					text: "No skills configured for this session.",
+					data: { hasSkills: false, skills: [] },
+				};
+			}
 
-      const skillNames = snapshot.skills.map((s: { name: string }) => s.name);
-      const lines = [
-        `Active Skills: ${skillNames.join(", ")}`,
-        "",
-        snapshot.prompt,
-      ];
+			const skillNames = snapshot.skills.map((s: { name: string }) => s.name);
+			const lines = [
+				`Active Skills: ${skillNames.join(", ")}`,
+				"",
+				snapshot.prompt,
+			];
 
-      return {
-        text: lines.join("\n"),
-        values: {
-          skillCount: skillNames.length,
-          skillNames,
-        },
-        data: {
-          hasSkills: true,
-          skills: snapshot.skills,
-          prompt: snapshot.prompt,
-        },
-      };
-    },
-  };
+			return {
+				text: lines.join("\n"),
+				values: {
+					skillCount: skillNames.length,
+					skillNames,
+				},
+				data: {
+					hasSkills: true,
+					skills: snapshot.skills,
+					prompt: snapshot.prompt,
+				},
+			};
+		},
+	};
 }
 
 // ============================================================================
@@ -231,70 +231,70 @@ export function createSessionSkillsProvider(options?: {
  * @returns Provider instance
  */
 export function createSendPolicyProvider(options?: {
-  storePath?: string;
-  name?: string;
+	storePath?: string;
+	name?: string;
 }): Provider {
-  return {
-    name: options?.name ?? "sendPolicy",
-    description: "Session send policy enforcement",
-    dynamic: true,
-    // High position to appear prominently in context
-    position: 100,
+	return {
+		name: options?.name ?? "sendPolicy",
+		description: "Session send policy enforcement",
+		dynamic: true,
+		// High position to appear prominently in context
+		position: 100,
 
-    async get(
-      _runtime: IAgentRuntime,
-      message: Memory,
-      _state: State,
-    ): Promise<ProviderResult> {
-      const context = extractSessionContext(message);
-      if (!context) {
-        return {
-          text: "",
-          data: { sendPolicy: "allow" },
-        };
-      }
+		async get(
+			_runtime: IAgentRuntime,
+			message: Memory,
+			_state: State,
+		): Promise<ProviderResult> {
+			const context = extractSessionContext(message);
+			if (!context) {
+				return {
+					text: "",
+					data: { sendPolicy: "allow" },
+				};
+			}
 
-      let entry = context.entry;
-      if (!entry && context.sessionKey && options?.storePath) {
-        entry = getSessionEntry(options.storePath, context.sessionKey);
-      }
+			let entry = context.entry;
+			if (!entry && context.sessionKey && options?.storePath) {
+				entry = getSessionEntry(options.storePath, context.sessionKey);
+			}
 
-      const sendPolicy = entry?.sendPolicy ?? "allow";
+			const sendPolicy = entry?.sendPolicy ?? "allow";
 
-      if (sendPolicy === "deny") {
-        return {
-          text: [
-            "🚫 SEND POLICY: DENY",
-            "",
-            "This session has sending DISABLED.",
-            "Do NOT send messages to external channels.",
-            "Do NOT use send/reply actions.",
-            "You may still process and respond internally.",
-          ].join("\n"),
-          values: {
-            sendPolicy: "deny",
-            canSend: false,
-          },
-          data: {
-            sendPolicy: "deny",
-            canSend: false,
-          },
-        };
-      }
+			if (sendPolicy === "deny") {
+				return {
+					text: [
+						"🚫 SEND POLICY: DENY",
+						"",
+						"This session has sending DISABLED.",
+						"Do NOT send messages to external channels.",
+						"Do NOT use send/reply actions.",
+						"You may still process and respond internally.",
+					].join("\n"),
+					values: {
+						sendPolicy: "deny",
+						canSend: false,
+					},
+					data: {
+						sendPolicy: "deny",
+						canSend: false,
+					},
+				};
+			}
 
-      return {
-        text: "",
-        values: {
-          sendPolicy: "allow",
-          canSend: true,
-        },
-        data: {
-          sendPolicy: "allow",
-          canSend: true,
-        },
-      };
-    },
-  };
+			return {
+				text: "",
+				values: {
+					sendPolicy: "allow",
+					canSend: true,
+				},
+				data: {
+					sendPolicy: "allow",
+					canSend: true,
+				},
+			};
+		},
+	};
 }
 
 // ============================================================================
@@ -308,13 +308,13 @@ export function createSendPolicyProvider(options?: {
  * @returns Array of session providers
  */
 export function getSessionProviders(options?: {
-  storePath?: string;
+	storePath?: string;
 }): Provider[] {
-  return [
-    createSessionProvider(options),
-    createSessionSkillsProvider(options),
-    createSendPolicyProvider(options),
-  ];
+	return [
+		createSessionProvider(options),
+		createSessionSkillsProvider(options),
+		createSendPolicyProvider(options),
+	];
 }
 
 // ============================================================================
@@ -328,49 +328,49 @@ export function getSessionProviders(options?: {
  * during message processing.
  */
 export class SessionStateManager {
-  private store: SessionStore | null = null;
-  private lastLoadTime = 0;
-  private readonly cacheTtlMs: number;
+	private store: SessionStore | null = null;
+	private lastLoadTime = 0;
+	private readonly cacheTtlMs: number;
 
-  constructor(
-    private readonly storePath: string,
-    options?: { cacheTtlMs?: number },
-  ) {
-    this.cacheTtlMs = options?.cacheTtlMs ?? 5000;
-  }
+	constructor(
+		private readonly storePath: string,
+		options?: { cacheTtlMs?: number },
+	) {
+		this.cacheTtlMs = options?.cacheTtlMs ?? 5000;
+	}
 
-  /**
-   * Get the session store, loading if necessary.
-   */
-  getStore(): SessionStore {
-    const now = Date.now();
-    if (!this.store || now - this.lastLoadTime > this.cacheTtlMs) {
-      this.store = loadSessionStore(this.storePath);
-      this.lastLoadTime = now;
-    }
-    return this.store;
-  }
+	/**
+	 * Get the session store, loading if necessary.
+	 */
+	getStore(): SessionStore {
+		const now = Date.now();
+		if (!this.store || now - this.lastLoadTime > this.cacheTtlMs) {
+			this.store = loadSessionStore(this.storePath);
+			this.lastLoadTime = now;
+		}
+		return this.store;
+	}
 
-  /**
-   * Get a session entry by key.
-   */
-  getEntry(sessionKey: string): SessionEntry | undefined {
-    return this.getStore()[sessionKey];
-  }
+	/**
+	 * Get a session entry by key.
+	 */
+	getEntry(sessionKey: string): SessionEntry | undefined {
+		return this.getStore()[sessionKey];
+	}
 
-  /**
-   * Get a session entry by ID.
-   */
-  getEntryById(sessionId: string): SessionEntry | undefined {
-    const store = this.getStore();
-    return Object.values(store).find((e) => e?.sessionId === sessionId);
-  }
+	/**
+	 * Get a session entry by ID.
+	 */
+	getEntryById(sessionId: string): SessionEntry | undefined {
+		const store = this.getStore();
+		return Object.values(store).find((e) => e?.sessionId === sessionId);
+	}
 
-  /**
-   * Invalidate the cached store.
-   */
-  invalidate(): void {
-    this.store = null;
-    this.lastLoadTime = 0;
-  }
+	/**
+	 * Invalidate the cached store.
+	 */
+	invalidate(): void {
+		this.store = null;
+		this.lastLoadTime = 0;
+	}
 }

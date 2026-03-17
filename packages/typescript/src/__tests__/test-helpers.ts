@@ -18,9 +18,9 @@ import { stringToUuid } from "../utils";
  * Generate a unique test UUID based on timestamp and random component
  */
 export function generateTestUUID(): UUID {
-  return stringToUuid(
-    `test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
+	return stringToUuid(
+		`test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+	);
 }
 
 /**
@@ -28,27 +28,27 @@ export function generateTestUUID(): UUID {
  * @throws Error if condition is not met within timeout
  */
 export async function waitFor(
-  condition: () => boolean | Promise<boolean>,
-  timeoutMs = 5000,
-  intervalMs = 100,
+	condition: () => boolean | Promise<boolean>,
+	timeoutMs = 5000,
+	intervalMs = 100,
 ): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (await condition()) return;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error(`Condition not met within ${timeoutMs}ms`);
+	const start = Date.now();
+	while (Date.now() - start < timeoutMs) {
+		if (await condition()) return;
+		await new Promise((resolve) => setTimeout(resolve, intervalMs));
+	}
+	throw new Error(`Condition not met within ${timeoutMs}ms`);
 }
 
 /**
  * Measure execution time of an async function
  */
 export async function measureTime<T>(
-  fn: () => Promise<T>,
+	fn: () => Promise<T>,
 ): Promise<{ result: T; durationMs: number }> {
-  const start = performance.now();
-  const result = await fn();
-  return { result, durationMs: performance.now() - start };
+	const start = performance.now();
+	const result = await fn();
+	return { result, durationMs: performance.now() - start };
 }
 
 /**
@@ -56,5 +56,5 @@ export async function measureTime<T>(
  * Useful for consistent test data across runs
  */
 export function testUuid(identifier: string): UUID {
-  return stringToUuid(`test-${identifier}`);
+	return stringToUuid(`test-${identifier}`);
 }

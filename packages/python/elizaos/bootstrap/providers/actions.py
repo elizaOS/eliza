@@ -53,7 +53,8 @@ def _format_action_parameters(parameters: list[ActionParameter]) -> str:
         enum_str = f" [values: {', '.join(enum_vals)}]" if enum_vals else ""
         examples_str = (
             f" [examples: {', '.join(repr(v) for v in param.examples)}]"
-            if getattr(param, "examples", None) else ""
+            if getattr(param, "examples", None)
+            else ""
         )
         lines.append(
             f"    - {param.name}{required_str}: {param.description} ({type_str}{enum_str}{default_str}{examples_str})"
@@ -232,7 +233,11 @@ async def get_actions(
                             "description": p.description,
                             "required": bool(p.required),
                             "examples": getattr(p, "examples", None) or [],
-                            "schema": (p.schema_def.model_dump() if hasattr(p, "schema_def") and hasattr(p.schema_def, "model_dump") else getattr(p, "schema", None)),
+                            "schema": (
+                                p.schema_def.model_dump()
+                                if hasattr(p, "schema_def") and hasattr(p.schema_def, "model_dump")
+                                else getattr(p, "schema", None)
+                            ),
                         }
                         for p in (a.parameters or [])
                     ],

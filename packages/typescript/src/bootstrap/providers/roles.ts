@@ -1,25 +1,28 @@
 import { logger } from "../../logger.ts";
 import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
-  UUID,
+	IAgentRuntime,
+	Memory,
+	Provider,
+	ProviderResult,
+	State,
+	UUID,
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
 
 // Track entities we've already warned about, keyed by runtime to avoid cross-agent interference
 // Uses WeakMap so entries are garbage collected when runtime is no longer referenced
-const warnedUnnamedEntitiesByRuntime = new WeakMap<IAgentRuntime, Set<string>>();
+const warnedUnnamedEntitiesByRuntime = new WeakMap<
+	IAgentRuntime,
+	Set<string>
+>();
 
 function getWarnedEntities(runtime: IAgentRuntime): Set<string> {
-  let set = warnedUnnamedEntitiesByRuntime.get(runtime);
-  if (!set) {
-    set = new Set<string>();
-    warnedUnnamedEntitiesByRuntime.set(runtime, set);
-  }
-  return set;
+	let set = warnedUnnamedEntitiesByRuntime.get(runtime);
+	if (!set) {
+		set = new Set<string>();
+		warnedUnnamedEntitiesByRuntime.set(runtime, set);
+	}
+	return set;
 }
 
 /**
@@ -38,205 +41,205 @@ function getWarnedEntities(runtime: IAgentRuntime): Set<string> {
  * @type {Provider}
  */
 export const roleProvider: Provider = {
-  name: "ROLES",
-  description:
-    "Roles in the server, default are OWNER, ADMIN and MEMBER (as well as NONE)",
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State,
-  ): Promise<ProviderResult> => {
-    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
-    if (!room) {
-      throw new Error("No room found");
-    }
+	name: "ROLES",
+	description:
+		"Roles in the server, default are OWNER, ADMIN and MEMBER (as well as NONE)",
+	get: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+	): Promise<ProviderResult> => {
+		const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+		if (!room) {
+			throw new Error("No room found");
+		}
 
-    if (room.type !== ChannelType.GROUP) {
-      return {
-        data: {
-          roles: [],
-        },
-        values: {
-          roles:
-            "No access to role information in DMs, the role provider is only available in group scenarios.",
-        },
-        text: "No access to role information in DMs, the role provider is only available in group scenarios.",
-      };
-    }
+		if (room.type !== ChannelType.GROUP) {
+			return {
+				data: {
+					roles: [],
+				},
+				values: {
+					roles:
+						"No access to role information in DMs, the role provider is only available in group scenarios.",
+				},
+				text: "No access to role information in DMs, the role provider is only available in group scenarios.",
+			};
+		}
 
-    const worldId = room.worldId;
+		const worldId = room.worldId;
 
-    if (!worldId) {
-      throw new Error("No world ID found for room");
-    }
+		if (!worldId) {
+			throw new Error("No world ID found for room");
+		}
 
-    logger.info(
-      {
-        src: "plugin:bootstrap:provider:roles",
-        agentId: runtime.agentId,
-        worldId,
-      },
-      "Using world ID",
-    );
+		logger.info(
+			{
+				src: "plugin:bootstrap:provider:roles",
+				agentId: runtime.agentId,
+				worldId,
+			},
+			"Using world ID",
+		);
 
-    // Get world data
-    const world = await runtime.getWorld(worldId);
+		// Get world data
+		const world = await runtime.getWorld(worldId);
 
-    if (!world || !world.metadata?.ownership?.ownerId) {
-      logger.info(
-        {
-          src: "plugin:bootstrap:provider:roles",
-          agentId: runtime.agentId,
-          worldId,
-        },
-        "No ownership data found for world, initializing empty role hierarchy",
-      );
-      return {
-        data: {
-          roles: [],
-        },
-        values: {
-          roles: "No role information available for this server.",
-        },
-        text: "No role information available for this server.",
-      };
-    }
-    // Get roles from world metadata
-    const roles = world.metadata.roles || {};
+		if (!world || !world.metadata?.ownership?.ownerId) {
+			logger.info(
+				{
+					src: "plugin:bootstrap:provider:roles",
+					agentId: runtime.agentId,
+					worldId,
+				},
+				"No ownership data found for world, initializing empty role hierarchy",
+			);
+			return {
+				data: {
+					roles: [],
+				},
+				values: {
+					roles: "No role information available for this server.",
+				},
+				text: "No role information available for this server.",
+			};
+		}
+		// Get roles from world metadata
+		const roles = world.metadata.roles || {};
 
-    if (Object.keys(roles).length === 0) {
-      logger.info(
-        {
-          src: "plugin:bootstrap:provider:roles",
-          agentId: runtime.agentId,
-          worldId,
-        },
-        "No roles found for world",
-      );
-      return {
-        data: {
-          roles: [],
-        },
-        values: {
-          roles: "No role information available for this server.",
-        },
-        text: "No role information available for this server.",
-      };
-    }
+		if (Object.keys(roles).length === 0) {
+			logger.info(
+				{
+					src: "plugin:bootstrap:provider:roles",
+					agentId: runtime.agentId,
+					worldId,
+				},
+				"No roles found for world",
+			);
+			return {
+				data: {
+					roles: [],
+				},
+				values: {
+					roles: "No role information available for this server.",
+				},
+				text: "No role information available for this server.",
+			};
+		}
 
-    logger.info(
-      {
-        src: "plugin:bootstrap:provider:roles",
-        agentId: runtime.agentId,
-        roleCount: Object.keys(roles).length,
-      },
-      "Found roles",
-    );
+		logger.info(
+			{
+				src: "plugin:bootstrap:provider:roles",
+				agentId: runtime.agentId,
+				roleCount: Object.keys(roles).length,
+			},
+			"Found roles",
+		);
 
-    // Group users by role
-    const owners: { name: string; username: string; names: string[] }[] = [];
-    const admins: { name: string; username: string; names: string[] }[] = [];
-    const members: { name: string; username: string; names: string[] }[] = [];
+		// Group users by role
+		const owners: { name: string; username: string; names: string[] }[] = [];
+		const admins: { name: string; username: string; names: string[] }[] = [];
+		const members: { name: string; username: string; names: string[] }[] = [];
 
-    // Process roles
-    for (const entityId of Object.keys(roles) as UUID[]) {
-      const userRole = roles[entityId];
+		// Process roles
+		for (const entityId of Object.keys(roles) as UUID[]) {
+			const userRole = roles[entityId];
 
-      // get the user from the database
-      const user = await runtime.getEntityById(entityId);
+			// get the user from the database
+			const user = await runtime.getEntityById(entityId);
 
-      const name = user?.metadata?.name as string;
-      const username = user?.metadata?.username as string;
-      const names = user?.names as string[];
+			const name = user?.metadata?.name as string;
+			const username = user?.metadata?.username as string;
+			const names = user?.names as string[];
 
-      // Skip duplicates (we store both UUID and original ID)
-      if (
-        owners.some((owner) => owner.username === username) ||
-        admins.some((admin) => admin.username === username) ||
-        members.some((member) => member.username === username)
-      ) {
-        continue;
-      }
+			// Skip duplicates (we store both UUID and original ID)
+			if (
+				owners.some((owner) => owner.username === username) ||
+				admins.some((admin) => admin.username === username) ||
+				members.some((member) => member.username === username)
+			) {
+				continue;
+			}
 
-      if (!name || !username || !names) {
-        // Only log once per entity per runtime session to reduce log spam
-        const warnedEntities = getWarnedEntities(runtime);
-        if (!warnedEntities.has(entityId)) {
-          logger.warn(
-            {
-              src: "plugin:bootstrap:provider:roles",
-              agentId: runtime.agentId,
-              entityId,
-            },
-            "User has no name or username, skipping",
-          );
-          warnedEntities.add(entityId);
-        }
-        continue;
-      }
+			if (!name || !username || !names) {
+				// Only log once per entity per runtime session to reduce log spam
+				const warnedEntities = getWarnedEntities(runtime);
+				if (!warnedEntities.has(entityId)) {
+					logger.warn(
+						{
+							src: "plugin:bootstrap:provider:roles",
+							agentId: runtime.agentId,
+							entityId,
+						},
+						"User has no name or username, skipping",
+					);
+					warnedEntities.add(entityId);
+				}
+				continue;
+			}
 
-      // Add to appropriate group
-      switch (userRole) {
-        case "OWNER":
-          owners.push({ name, username, names });
-          break;
-        case "ADMIN":
-          admins.push({ name, username, names });
-          break;
-        default:
-          members.push({ name, username, names });
-          break;
-      }
-    }
+			// Add to appropriate group
+			switch (userRole) {
+				case "OWNER":
+					owners.push({ name, username, names });
+					break;
+				case "ADMIN":
+					admins.push({ name, username, names });
+					break;
+				default:
+					members.push({ name, username, names });
+					break;
+			}
+		}
 
-    // Format the response
-    let response = "# Server Role Hierarchy\n\n";
+		// Format the response
+		let response = "# Server Role Hierarchy\n\n";
 
-    if (owners.length > 0) {
-      response += "## Owners\n";
-      owners.forEach((owner) => {
-        response += `${owner.name} (${owner.names.join(", ")})\n`;
-      });
-      response += "\n";
-    }
+		if (owners.length > 0) {
+			response += "## Owners\n";
+			owners.forEach((owner) => {
+				response += `${owner.name} (${owner.names.join(", ")})\n`;
+			});
+			response += "\n";
+		}
 
-    if (admins.length > 0) {
-      response += "## Administrators\n";
-      admins.forEach((admin) => {
-        response += `${admin.name} (${admin.names.join(", ")}) (${admin.username})\n`;
-      });
-      response += "\n";
-    }
+		if (admins.length > 0) {
+			response += "## Administrators\n";
+			admins.forEach((admin) => {
+				response += `${admin.name} (${admin.names.join(", ")}) (${admin.username})\n`;
+			});
+			response += "\n";
+		}
 
-    if (members.length > 0) {
-      response += "## Members\n";
-      members.forEach((member) => {
-        response += `${member.name} (${member.names.join(", ")}) (${member.username})\n`;
-      });
-    }
+		if (members.length > 0) {
+			response += "## Members\n";
+			members.forEach((member) => {
+				response += `${member.name} (${member.names.join(", ")}) (${member.username})\n`;
+			});
+		}
 
-    if (owners.length === 0 && admins.length === 0 && members.length === 0) {
-      return {
-        data: {
-          roles: [],
-        },
-        values: {
-          roles: "No role information available for this server.",
-        },
-        text: "No role information available for this server.",
-      };
-    }
+		if (owners.length === 0 && admins.length === 0 && members.length === 0) {
+			return {
+				data: {
+					roles: [],
+				},
+				values: {
+					roles: "No role information available for this server.",
+				},
+				text: "No role information available for this server.",
+			};
+		}
 
-    return {
-      data: {
-        roles: response,
-      },
-      values: {
-        roles: response,
-      },
-      text: response,
-    };
-  },
+		return {
+			data: {
+				roles: response,
+			},
+			values: {
+				roles: response,
+			},
+			text: response,
+		};
+	},
 };
 
 export default roleProvider;

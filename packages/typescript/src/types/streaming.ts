@@ -49,26 +49,26 @@
  * ```
  */
 export interface IStreamExtractor {
-  /** Whether extraction is complete (no more content expected from this stream) */
-  readonly done: boolean;
+	/** Whether extraction is complete (no more content expected from this stream) */
+	readonly done: boolean;
 
-  /**
-   * Process a chunk from the LLM stream.
-   * @param chunk - Raw chunk from LLM
-   * @returns Text to stream to client (empty string = nothing to stream yet)
-   */
-  push(chunk: string): string;
+	/**
+	 * Process a chunk from the LLM stream.
+	 * @param chunk - Raw chunk from LLM
+	 * @returns Text to stream to client (empty string = nothing to stream yet)
+	 */
+	push(chunk: string): string;
 
-  /**
-   * Flush any buffered content (called when stream ends).
-   * @returns Any remaining buffered content
-   */
-  flush?(): string;
+	/**
+	 * Flush any buffered content (called when stream ends).
+	 * @returns Any remaining buffered content
+	 */
+	flush?(): string;
 
-  /**
-   * Reset internal state for reuse (e.g., between retry attempts).
-   */
-  reset?(): void;
+	/**
+	 * Reset internal state for reuse (e.g., between retry attempts).
+	 */
+	reset?(): void;
 }
 
 /**
@@ -80,20 +80,20 @@ export interface IStreamExtractor {
  * 3. Reset state for retry attempts
  */
 export interface IStreamingRetryState {
-  /**
-   * Get all text that was successfully streamed.
-   * Use this for building continuation prompts on retry.
-   */
-  getStreamedText(): string;
+	/**
+	 * Get all text that was successfully streamed.
+	 * Use this for building continuation prompts on retry.
+	 */
+	getStreamedText(): string;
 
-  /**
-   * Check if streaming completed successfully.
-   * If true, no retry needed. If false, can retry with continuation.
-   */
-  isComplete(): boolean;
+	/**
+	 * Check if streaming completed successfully.
+	 * If true, no retry needed. If false, can retry with continuation.
+	 */
+	isComplete(): boolean;
 
-  /**
-   * Reset state for a new streaming attempt.
-   */
-  reset(): void;
+	/**
+	 * Reset state for a new streaming attempt.
+	 */
+	reset(): void;
 }

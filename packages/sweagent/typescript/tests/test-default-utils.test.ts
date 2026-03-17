@@ -5,8 +5,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "./jest-globals";
 import { TextNotFound, WindowedFile } from "../src/tools/windowed-file";
+import { afterEach, beforeEach, describe, expect, it } from "./jest-globals";
 import { createTestFileWithContent, withTmpEnvFile } from "./test-fixtures";
 
 describe("Default Utils - WindowedFile", () => {

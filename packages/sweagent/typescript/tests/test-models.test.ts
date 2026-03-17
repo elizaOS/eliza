@@ -2,7 +2,6 @@
  * Model tests converted from test_models.py
  */
 
-import { describe, expect, it } from "./jest-globals";
 import type { ToolConfig } from "../src/agent/agents";
 import {
   type GenericAPIModelConfig,
@@ -10,6 +9,7 @@ import {
   getModel,
   InstanceStats,
 } from "../src/agent/models";
+import { describe, expect, it } from "./jest-globals";
 
 describe("Models", () => {
   describe("LiteLLM Mock", () => {

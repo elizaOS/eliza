@@ -391,5 +391,3 @@ class ResearchResult(BaseModel):
     status: str | None = Field(default=None, description="Status for background requests")
 
     model_config = {"populate_by_name": True}
-
-

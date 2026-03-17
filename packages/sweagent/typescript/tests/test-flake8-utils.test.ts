@@ -3,11 +3,11 @@
  * Converted from tests/tools/test_split_string.py
  */
 
-import { describe, expect, it } from "./jest-globals";
 import {
   Flake8ErrorClass,
   formatFlake8Output,
 } from "../src/tools/flake8-utils";
+import { describe, expect, it } from "./jest-globals";
 
 describe("Flake8 Utils", () => {
   describe("Flake8Error parsing", () => {

@@ -1,13 +1,13 @@
 import type { Content, MetadataValue, UUID } from "./primitives";
 import type {
-  BaseMetadata as ProtoBaseMetadata,
-  CustomMetadata as ProtoCustomMetadata,
-  DescriptionMetadata as ProtoDescriptionMetadata,
-  DocumentMetadata as ProtoDocumentMetadata,
-  FragmentMetadata as ProtoFragmentMetadata,
-  Memory as ProtoMemory,
-  MemoryMetadata as ProtoMemoryMetadataType,
-  MessageMetadata as ProtoMessageMetadata,
+	BaseMetadata as ProtoBaseMetadata,
+	CustomMetadata as ProtoCustomMetadata,
+	DescriptionMetadata as ProtoDescriptionMetadata,
+	DocumentMetadata as ProtoDocumentMetadata,
+	FragmentMetadata as ProtoFragmentMetadata,
+	Memory as ProtoMemory,
+	MemoryMetadata as ProtoMemoryMetadataType,
+	MessageMetadata as ProtoMessageMetadata,
 } from "./proto.js";
 
 /**
@@ -25,11 +25,11 @@ export type MemoryTypeAlias = string;
  * This enum is used in `MemoryMetadata` to categorize memories and influences how they are processed or queried.
  */
 export const MemoryType = {
-  DOCUMENT: "document",
-  FRAGMENT: "fragment",
-  MESSAGE: "message",
-  DESCRIPTION: "description",
-  CUSTOM: "custom",
+	DOCUMENT: "document",
+	FRAGMENT: "fragment",
+	MESSAGE: "message",
+	DESCRIPTION: "description",
+	CUSTOM: "custom",
 } as const;
 
 export type MemoryType = (typeof MemoryType)[keyof typeof MemoryType];
@@ -54,165 +54,165 @@ export type MemoryScope = "shared" | "private" | "room";
  * Specific metadata types like `DocumentMetadata` or `MessageMetadata` extend this base.
  */
 export interface BaseMetadata
-  extends Omit<
-    ProtoBaseMetadata,
-    "$typeName" | "$unknown" | "type" | "scope" | "timestamp"
-  > {
-  type: MemoryTypeAlias;
-  scope?: MemoryScope;
-  timestamp?: number;
+	extends Omit<
+		ProtoBaseMetadata,
+		"$typeName" | "$unknown" | "type" | "scope" | "timestamp"
+	> {
+	type: MemoryTypeAlias;
+	scope?: MemoryScope;
+	timestamp?: number;
 }
 
 export interface DocumentMetadata
-  extends Omit<ProtoDocumentMetadata, "$typeName" | "$unknown" | "base"> {
-  base?: BaseMetadata;
-  type?: "document";
+	extends Omit<ProtoDocumentMetadata, "$typeName" | "$unknown" | "base"> {
+	base?: BaseMetadata;
+	type?: "document";
 }
 
 export interface FragmentMetadata
-  extends Omit<ProtoFragmentMetadata, "$typeName" | "$unknown" | "base"> {
-  base?: BaseMetadata;
-  documentId: UUID;
-  position: number;
-  type?: "fragment";
+	extends Omit<ProtoFragmentMetadata, "$typeName" | "$unknown" | "base"> {
+	base?: BaseMetadata;
+	documentId: UUID;
+	position: number;
+	type?: "fragment";
 }
 
 /**
  * Chat type for message context.
  */
 export type MessageChatType =
-  | "dm"
-  | "private"
-  | "direct"
-  | "group"
-  | "supergroup"
-  | "channel"
-  | "thread"
-  | "forum"
-  | string;
+	| "dm"
+	| "private"
+	| "direct"
+	| "group"
+	| "supergroup"
+	| "channel"
+	| "thread"
+	| "forum"
+	| string;
 
 /**
  * Sender identity information.
  */
 export interface SenderIdentity {
-  /** Platform-specific sender ID */
-  id?: string;
-  /** Display name */
-  name?: string;
-  /** Username (without @ prefix) */
-  username?: string;
-  /** User tag (e.g., user#1234 for Discord) */
-  tag?: string;
-  /** E.164 phone number */
-  e164?: string;
+	/** Platform-specific sender ID */
+	id?: string;
+	/** Display name */
+	name?: string;
+	/** Username (without @ prefix) */
+	username?: string;
+	/** User tag (e.g., user#1234 for Discord) */
+	tag?: string;
+	/** E.164 phone number */
+	e164?: string;
 }
 
 /**
  * Thread context for threaded conversations.
  */
 export interface ThreadContext {
-  /** Thread/topic ID */
-  id?: string | number;
-  /** Thread label/name */
-  label?: string;
-  /** Whether this is a forum topic */
-  isForum?: boolean;
-  /** Thread starter message body */
-  starterBody?: string;
+	/** Thread/topic ID */
+	id?: string | number;
+	/** Thread label/name */
+	label?: string;
+	/** Whether this is a forum topic */
+	isForum?: boolean;
+	/** Thread starter message body */
+	starterBody?: string;
 }
 
 /**
  * Group context for group chats.
  */
 export interface GroupContext {
-  /** Group ID */
-  id?: string;
-  /** Group name/subject */
-  name?: string;
-  /** Channel within the group (e.g., #general) */
-  channel?: string;
-  /** Workspace/space name */
-  space?: string;
-  /** Group members (comma-separated or count) */
-  members?: string;
-  /** Group-specific system prompt */
-  systemPrompt?: string;
+	/** Group ID */
+	id?: string;
+	/** Group name/subject */
+	name?: string;
+	/** Channel within the group (e.g., #general) */
+	channel?: string;
+	/** Workspace/space name */
+	space?: string;
+	/** Group members (comma-separated or count) */
+	members?: string;
+	/** Group-specific system prompt */
+	systemPrompt?: string;
 }
 
 /**
  * Reply context for reply messages.
  */
 export interface ReplyContext {
-  /** ID of message being replied to (also in Content.inReplyTo) */
-  id?: string;
-  /** Full platform-specific ID */
-  idFull?: string;
-  /** Body of message being replied to */
-  body?: string;
-  /** Sender of message being replied to */
-  sender?: string;
-  /** Whether this is a quote reply */
-  isQuote?: boolean;
+	/** ID of message being replied to (also in Content.inReplyTo) */
+	id?: string;
+	/** Full platform-specific ID */
+	idFull?: string;
+	/** Body of message being replied to */
+	body?: string;
+	/** Sender of message being replied to */
+	sender?: string;
+	/** Whether this is a quote reply */
+	isQuote?: boolean;
 }
 
 /**
  * Forwarded message context.
  */
 export interface ForwardedContext {
-  /** Original sender name */
-  fromName?: string;
-  /** Original sender ID */
-  fromId?: string;
-  /** Original sender username */
-  fromUsername?: string;
-  /** Original sender type */
-  fromType?: string;
-  /** Original chat/channel title */
-  fromTitle?: string;
-  /** Original signature */
-  fromSignature?: string;
-  /** Original chat type */
-  fromChatType?: string;
-  /** Original message ID */
-  originalMessageId?: number;
-  /** Forward date timestamp */
-  date?: number;
+	/** Original sender name */
+	fromName?: string;
+	/** Original sender ID */
+	fromId?: string;
+	/** Original sender username */
+	fromUsername?: string;
+	/** Original sender type */
+	fromType?: string;
+	/** Original chat/channel title */
+	fromTitle?: string;
+	/** Original signature */
+	fromSignature?: string;
+	/** Original chat type */
+	fromChatType?: string;
+	/** Original message ID */
+	originalMessageId?: number;
+	/** Forward date timestamp */
+	date?: number;
 }
 
 /**
  * Delivery context for message routing.
  */
 export interface DeliveryContext {
-  /** Channel/provider for delivery */
-  channel?: string;
-  /** Destination address */
-  to?: string;
-  /** Account ID for multi-account channels */
-  accountId?: string;
-  /** Thread ID for threaded replies */
-  threadId?: string | number;
+	/** Channel/provider for delivery */
+	channel?: string;
+	/** Destination address */
+	to?: string;
+	/** Account ID for multi-account channels */
+	accountId?: string;
+	/** Thread ID for threaded replies */
+	threadId?: string | number;
 }
 
 /**
  * Session origin information.
  */
 export interface SessionOrigin {
-  /** Human-readable label */
-  label?: string;
-  /** Provider name */
-  provider?: string;
-  /** Surface type */
-  surface?: string;
-  /** Chat type */
-  chatType?: MessageChatType;
-  /** Original sender */
-  from?: string;
-  /** Original recipient */
-  to?: string;
-  /** Account ID */
-  accountId?: string;
-  /** Thread ID */
-  threadId?: string | number;
+	/** Human-readable label */
+	label?: string;
+	/** Provider name */
+	provider?: string;
+	/** Surface type */
+	surface?: string;
+	/** Chat type */
+	chatType?: MessageChatType;
+	/** Original sender */
+	from?: string;
+	/** Original recipient */
+	to?: string;
+	/** Account ID */
+	accountId?: string;
+	/** Thread ID */
+	threadId?: string | number;
 }
 
 // =========================================================================
@@ -223,48 +223,48 @@ export interface SessionOrigin {
  * Model override configuration for a session.
  */
 export interface SessionModelOverride {
-  /** Provider name override (e.g., "anthropic", "openai") */
-  provider?: string;
-  /** Model name override (e.g., "claude-3-opus", "gpt-5") */
-  model?: string;
-  /** Authentication profile override */
-  authProfile?: string;
-  /** Source of auth profile override */
-  authProfileSource?: "auto" | "user";
+	/** Provider name override (e.g., "anthropic", "openai") */
+	provider?: string;
+	/** Model name override (e.g., "claude-3-opus", "gpt-5") */
+	model?: string;
+	/** Authentication profile override */
+	authProfile?: string;
+	/** Source of auth profile override */
+	authProfileSource?: "auto" | "user";
 }
 
 /**
  * Token usage tracking for a session.
  */
 export interface SessionUsage {
-  /** Total input tokens consumed */
-  inputTokens: number;
-  /** Total output tokens generated */
-  outputTokens: number;
-  /** Combined total tokens */
-  totalTokens: number;
-  /** Number of context compactions performed */
-  compactionCount: number;
+	/** Total input tokens consumed */
+	inputTokens: number;
+	/** Total output tokens generated */
+	outputTokens: number;
+	/** Combined total tokens */
+	totalTokens: number;
+	/** Number of context compactions performed */
+	compactionCount: number;
 }
 
 /**
  * Skill snapshot for a session.
  */
 export interface SessionSkillEntry {
-  /** Skill name */
-  name: string;
-  /** Primary environment for the skill */
-  primaryEnv?: string;
+	/** Skill name */
+	name: string;
+	/** Primary environment for the skill */
+	primaryEnv?: string;
 }
 
 /**
  * Skills configuration snapshot for a session.
  */
 export interface SessionSkillsSnapshot {
-  /** Prompt text for skills */
-  prompt: string;
-  /** List of available skills */
-  skills: SessionSkillEntry[];
+	/** Prompt text for skills */
+	prompt: string;
+	/** List of available skills */
+	skills: SessionSkillEntry[];
 }
 
 /**
@@ -273,215 +273,215 @@ export interface SessionSkillsSnapshot {
  * from within the Eliza runtime pipeline (providers, evaluators, actions).
  */
 export interface SessionContext {
-  /** Session ID (UUID) - used for transcript files and filtering */
-  sessionId: string;
+	/** Session ID (UUID) - used for transcript files and filtering */
+	sessionId: string;
 
-  /** Session key for conversation routing (e.g., "agent:123:telegram:+1234567890") */
-  sessionKey: string;
+	/** Session key for conversation routing (e.g., "agent:123:telegram:+1234567890") */
+	sessionKey: string;
 
-  /** Parent session key if this session was spawned from another */
-  parentSessionKey?: string;
+	/** Parent session key if this session was spawned from another */
+	parentSessionKey?: string;
 
-  /** Whether this is a newly created session */
-  isNewSession: boolean;
+	/** Whether this is a newly created session */
+	isNewSession: boolean;
 
-  /** Timestamp of last session activity */
-  updatedAt: number;
+	/** Timestamp of last session activity */
+	updatedAt: number;
 
-  /** Human-readable session label */
-  label?: string;
+	/** Human-readable session label */
+	label?: string;
 
-  /** Model and provider overrides for this session */
-  modelOverride?: SessionModelOverride;
+	/** Model and provider overrides for this session */
+	modelOverride?: SessionModelOverride;
 
-  /** Thinking level setting ("low", "medium", "high") */
-  thinkingLevel?: string;
+	/** Thinking level setting ("low", "medium", "high") */
+	thinkingLevel?: string;
 
-  /** Verbose level setting ("on", "off") */
-  verboseLevel?: string;
+	/** Verbose level setting ("on", "off") */
+	verboseLevel?: string;
 
-  /** Reasoning level setting */
-  reasoningLevel?: string;
+	/** Reasoning level setting */
+	reasoningLevel?: string;
 
-  /** Send policy for outbound messages */
-  sendPolicy?: "allow" | "deny";
+	/** Send policy for outbound messages */
+	sendPolicy?: "allow" | "deny";
 
-  /** Token usage tracking */
-  usage?: SessionUsage;
+	/** Token usage tracking */
+	usage?: SessionUsage;
 
-  /** Skills snapshot for this session */
-  skillsSnapshot?: SessionSkillsSnapshot;
+	/** Skills snapshot for this session */
+	skillsSnapshot?: SessionSkillsSnapshot;
 
-  /** Chat type for the session */
-  chatType?: MessageChatType;
+	/** Chat type for the session */
+	chatType?: MessageChatType;
 
-  /** Channel identifier */
-  channel?: string;
+	/** Channel identifier */
+	channel?: string;
 
-  /** Group ID if in a group context */
-  groupId?: string;
+	/** Group ID if in a group context */
+	groupId?: string;
 
-  /** Group channel name */
-  groupChannel?: string;
+	/** Group channel name */
+	groupChannel?: string;
 
-  /** Workspace/space identifier */
-  space?: string;
+	/** Workspace/space identifier */
+	space?: string;
 
-  /** Session spawned by this key (for sandbox scoping) */
-  spawnedBy?: string;
+	/** Session spawned by this key (for sandbox scoping) */
+	spawnedBy?: string;
 
-  /** Response usage display mode */
-  responseUsage?: "on" | "off" | "tokens" | "full";
+	/** Response usage display mode */
+	responseUsage?: "on" | "off" | "tokens" | "full";
 
-  /** Execution host configuration */
-  execHost?: string;
+	/** Execution host configuration */
+	execHost?: string;
 
-  /** Execution security mode */
-  execSecurity?: string;
+	/** Execution security mode */
+	execSecurity?: string;
 
-  /** Group activation mode */
-  groupActivation?: "mention" | "always";
+	/** Group activation mode */
+	groupActivation?: "mention" | "always";
 }
 
 export interface MessageMetadata
-  extends Omit<ProtoMessageMetadata, "$typeName" | "$unknown" | "base"> {
-  base?: BaseMetadata;
-  type?: "message";
-  trajectoryStepId?: string;
-  benchmarkContext?: string;
+	extends Omit<ProtoMessageMetadata, "$typeName" | "$unknown" | "base"> {
+	base?: BaseMetadata;
+	type?: "message";
+	trajectoryStepId?: string;
+	benchmarkContext?: string;
 
-  // =========================================================================
-  // Message Context - per-message routing and identity information
-  // =========================================================================
+	// =========================================================================
+	// Message Context - per-message routing and identity information
+	// =========================================================================
 
-  /** Session key for conversation routing */
-  sessionKey?: string;
-  /** Parent session key (for spawned/subagent sessions) */
-  parentSessionKey?: string;
+	/** Session key for conversation routing */
+	sessionKey?: string;
+	/** Parent session key (for spawned/subagent sessions) */
+	parentSessionKey?: string;
 
-  /** Sender identity */
-  sender?: SenderIdentity;
+	/** Sender identity */
+	sender?: SenderIdentity;
 
-  /** Platform/provider name (e.g., "telegram", "discord", "slack") */
-  provider?: string;
-  /** Chat type */
-  chatType?: MessageChatType;
-  /** Account ID for multi-account channels */
-  accountId?: string;
+	/** Platform/provider name (e.g., "telegram", "discord", "slack") */
+	provider?: string;
+	/** Chat type */
+	chatType?: MessageChatType;
+	/** Account ID for multi-account channels */
+	accountId?: string;
 
-  /** Thread context */
-  thread?: ThreadContext;
+	/** Thread context */
+	thread?: ThreadContext;
 
-  /** Group context */
-  group?: GroupContext;
+	/** Group context */
+	group?: GroupContext;
 
-  /** Reply context (supplements Content.inReplyTo) */
-  reply?: ReplyContext;
+	/** Reply context (supplements Content.inReplyTo) */
+	reply?: ReplyContext;
 
-  /** Forwarded message context */
-  forwarded?: ForwardedContext;
+	/** Forwarded message context */
+	forwarded?: ForwardedContext;
 
-  /** Delivery context for routing responses */
-  delivery?: DeliveryContext;
+	/** Delivery context for routing responses */
+	delivery?: DeliveryContext;
 
-  /** Session origin (where the conversation started) */
-  origin?: SessionOrigin;
+	/** Session origin (where the conversation started) */
+	origin?: SessionOrigin;
 
-  /** Full session context for session-aware processing */
-  session?: SessionContext;
+	/** Full session context for session-aware processing */
+	session?: SessionContext;
 
-  /** Whether the agent was mentioned */
-  wasMentioned?: boolean;
+	/** Whether the agent was mentioned */
+	wasMentioned?: boolean;
 
-  // =========================================================================
-  // Message IDs - for multi-message batches and platform tracking
-  // =========================================================================
+	// =========================================================================
+	// Message IDs - for multi-message batches and platform tracking
+	// =========================================================================
 
-  /** Full platform-specific message ID */
-  messageIdFull?: string;
-  /** Multiple message IDs (for batched messages) */
-  messageIds?: string[];
-  /** First message ID in a batch */
-  messageIdFirst?: string;
-  /** Last message ID in a batch */
-  messageIdLast?: string;
+	/** Full platform-specific message ID */
+	messageIdFull?: string;
+	/** Multiple message IDs (for batched messages) */
+	messageIds?: string[];
+	/** First message ID in a batch */
+	messageIdFirst?: string;
+	/** Last message ID in a batch */
+	messageIdLast?: string;
 
-  // =========================================================================
-  // Platform-specific nested metadata
-  // =========================================================================
+	// =========================================================================
+	// Platform-specific nested metadata
+	// =========================================================================
 
-  /** Telegram-specific metadata */
-  telegram?: {
-    chatId?: string | number;
-    messageId?: string;
-    threadId?: string | number;
-  };
+	/** Telegram-specific metadata */
+	telegram?: {
+		chatId?: string | number;
+		messageId?: string;
+		threadId?: string | number;
+	};
 
-  /** Discord-specific metadata */
-  discord?: {
-    guildId?: string;
-    channelId?: string;
-    messageId?: string;
-  };
+	/** Discord-specific metadata */
+	discord?: {
+		guildId?: string;
+		channelId?: string;
+		messageId?: string;
+	};
 
-  /** Slack-specific metadata */
-  slack?: {
-    teamId?: string;
-    channelId?: string;
-    messageTs?: string;
-    threadTs?: string;
-  };
+	/** Slack-specific metadata */
+	slack?: {
+		teamId?: string;
+		channelId?: string;
+		messageTs?: string;
+		threadTs?: string;
+	};
 
-  /** WhatsApp-specific metadata */
-  whatsapp?: {
-    phoneNumberId?: string;
-    contactId?: string;
-    messageId?: string;
-  };
+	/** WhatsApp-specific metadata */
+	whatsapp?: {
+		phoneNumberId?: string;
+		contactId?: string;
+		messageId?: string;
+	};
 
-  /** Signal-specific metadata */
-  signal?: {
-    groupId?: string;
-    senderId?: string;
-    timestamp?: number;
-  };
+	/** Signal-specific metadata */
+	signal?: {
+		groupId?: string;
+		senderId?: string;
+		timestamp?: number;
+	};
 
-  // =========================================================================
-  // Media and content processing
-  // =========================================================================
+	// =========================================================================
+	// Media and content processing
+	// =========================================================================
 
-  /** Sticker metadata (Telegram) */
-  sticker?: {
-    emoji?: string;
-    setName?: string;
-    fileId?: string;
-    fileUniqueId?: string;
-    description?: string;
-  };
+	/** Sticker metadata (Telegram) */
+	sticker?: {
+		emoji?: string;
+		setName?: string;
+		fileId?: string;
+		fileUniqueId?: string;
+		description?: string;
+	};
 
-  /** Media transcription result */
-  transcript?: string;
+	/** Media transcription result */
+	transcript?: string;
 
-  // =========================================================================
-  // Command and gateway context
-  // =========================================================================
+	// =========================================================================
+	// Command and gateway context
+	// =========================================================================
 
-  /** Command source type */
-  commandSource?: string;
-  /** Command target session key */
-  commandTargetSessionKey?: string;
-  /** Gateway client scopes */
-  gatewayClientScopes?: string[];
-  /** Untrusted user-provided context */
-  untrustedContext?: string[];
-  /** Hook-injected messages */
-  hookMessages?: string[];
+	/** Command source type */
+	commandSource?: string;
+	/** Command target session key */
+	commandTargetSessionKey?: string;
+	/** Gateway client scopes */
+	gatewayClientScopes?: string[];
+	/** Untrusted user-provided context */
+	untrustedContext?: string[];
+	/** Hook-injected messages */
+	hookMessages?: string[];
 }
 
 export interface DescriptionMetadata
-  extends Omit<ProtoDescriptionMetadata, "$typeName" | "$unknown" | "base"> {
-  base?: BaseMetadata;
-  type?: "description";
+	extends Omit<ProtoDescriptionMetadata, "$typeName" | "$unknown" | "base"> {
+	base?: BaseMetadata;
+	type?: "description";
 }
 
 // MetadataValue is imported from primitives.ts
@@ -490,28 +490,28 @@ export interface DescriptionMetadata
  * Custom metadata with typed dynamic properties
  */
 export interface CustomMetadata
-  extends Omit<ProtoCustomMetadata, "$typeName" | "$unknown" | "base"> {
-  base?: BaseMetadata;
-  type?: "custom";
-  /** Custom metadata values - must be JSON-serializable */
-  [key: string]: MetadataValue | MemoryTypeAlias | BaseMetadata | undefined;
+	extends Omit<ProtoCustomMetadata, "$typeName" | "$unknown" | "base"> {
+	base?: BaseMetadata;
+	type?: "custom";
+	/** Custom metadata values - must be JSON-serializable */
+	[key: string]: MetadataValue | MemoryTypeAlias | BaseMetadata | undefined;
 }
 
 interface MemoryMetadataBase {
-  type?: MemoryTypeAlias;
-  source?: string;
-  scope?: MemoryScope;
-  timestamp?: number;
+	type?: MemoryTypeAlias;
+	source?: string;
+	scope?: MemoryScope;
+	timestamp?: number;
 }
 
 export type MemoryMetadata = (
-  | DocumentMetadata
-  | FragmentMetadata
-  | MessageMetadata
-  | DescriptionMetadata
-  | CustomMetadata
+	| DocumentMetadata
+	| FragmentMetadata
+	| MessageMetadata
+	| DescriptionMetadata
+	| CustomMetadata
 ) &
-  MemoryMetadataBase;
+	MemoryMetadataBase;
 
 export type ProtoMemoryMetadata = ProtoMemoryMetadataType;
 
@@ -519,44 +519,44 @@ export type ProtoMemoryMetadata = ProtoMemoryMetadataType;
  * Represents a stored memory/message
  */
 export interface Memory
-  extends Omit<
-    ProtoMemory,
-    | "$typeName"
-    | "$unknown"
-    | "id"
-    | "createdAt"
-    | "embedding"
-    | "metadata"
-    | "content"
-  > {
-  id?: UUID;
-  createdAt?: number;
-  embedding?: number[];
-  metadata?: MemoryMetadata;
-  content: Content;
+	extends Omit<
+		ProtoMemory,
+		| "$typeName"
+		| "$unknown"
+		| "id"
+		| "createdAt"
+		| "embedding"
+		| "metadata"
+		| "content"
+	> {
+	id?: UUID;
+	createdAt?: number;
+	embedding?: number[];
+	metadata?: MemoryMetadata;
+	content: Content;
 
-  /**
-   * Session ID for filtering and grouping memories by conversation session.
-   * This is a first-class field to enable efficient querying by session.
-   * Optional for backwards compatibility - memories without sessionId
-   * will continue to work as before.
-   *
-   * Format: UUID string (e.g., "550e8400-e29b-41d4-a716-446655440000")
-   */
-  sessionId?: string;
+	/**
+	 * Session ID for filtering and grouping memories by conversation session.
+	 * This is a first-class field to enable efficient querying by session.
+	 * Optional for backwards compatibility - memories without sessionId
+	 * will continue to work as before.
+	 *
+	 * Format: UUID string (e.g., "550e8400-e29b-41d4-a716-446655440000")
+	 */
+	sessionId?: string;
 
-  /**
-   * Session key for routing and identification.
-   * This is the full session key used for conversation routing.
-   * Optional for backwards compatibility.
-   *
-   * Format: "agent:<agentId>:<channel>:<destination>" or similar patterns
-   * Examples:
-   *   - "agent:123:telegram:+14155551234"
-   *   - "agent:123:discord:channel:987654321"
-   *   - "cron:daily-summary"
-   */
-  sessionKey?: string;
+	/**
+	 * Session key for routing and identification.
+	 * This is the full session key used for conversation routing.
+	 * Optional for backwards compatibility.
+	 *
+	 * Format: "agent:<agentId>:<channel>:<destination>" or similar patterns
+	 * Examples:
+	 *   - "agent:123:telegram:+14155551234"
+	 *   - "agent:123:discord:channel:987654321"
+	 *   - "cron:daily-summary"
+	 */
+	sessionKey?: string;
 }
 
 /**

@@ -1,25 +1,25 @@
 import { requireProviderSpec } from "../../generated/spec-helpers.ts";
 import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  State,
+	IAgentRuntime,
+	Memory,
+	Provider,
+	State,
 } from "../../types/index.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("CONTEXT_BENCH");
 
 function hasBenchmarkContext(
-  meta: Memory["metadata"] | undefined,
+	meta: Memory["metadata"] | undefined,
 ): meta is Memory["metadata"] & { benchmarkContext?: string } {
-  return (
-    typeof meta === "object" &&
-    meta !== null &&
-    "benchmarkContext" in meta &&
-    (typeof (meta as { benchmarkContext?: string }).benchmarkContext ===
-      "string" ||
-      (meta as { benchmarkContext?: string }).benchmarkContext === undefined)
-  );
+	return (
+		typeof meta === "object" &&
+		meta !== null &&
+		"benchmarkContext" in meta &&
+		(typeof (meta as { benchmarkContext?: string }).benchmarkContext ===
+			"string" ||
+			(meta as { benchmarkContext?: string }).benchmarkContext === undefined)
+	);
 }
 
 /**
@@ -32,36 +32,36 @@ function hasBenchmarkContext(
  * full Provider -> Model -> Action -> Evaluator loop is exercised during benchmarks.
  */
 export const contextBenchProvider: Provider = {
-  name: spec.name,
-  description: spec.description,
-  position: spec.position ?? 5,
-  get: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
-    const meta = message.metadata;
-    const benchmarkContext = hasBenchmarkContext(meta)
-      ? meta.benchmarkContext
-      : undefined;
+	name: spec.name,
+	description: spec.description,
+	position: spec.position ?? 5,
+	get: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+		const meta = message.metadata;
+		const benchmarkContext = hasBenchmarkContext(meta)
+			? meta.benchmarkContext
+			: undefined;
 
-    if (
-      typeof benchmarkContext !== "string" ||
-      benchmarkContext.trim() === ""
-    ) {
-      return {
-        text: "",
-        values: {
-          benchmark_has_context: false,
-        },
-        data: {},
-      };
-    }
+		if (
+			typeof benchmarkContext !== "string" ||
+			benchmarkContext.trim() === ""
+		) {
+			return {
+				text: "",
+				values: {
+					benchmark_has_context: false,
+				},
+				data: {},
+			};
+		}
 
-    return {
-      text: `# Benchmark Context\n${benchmarkContext.trim()}`,
-      values: {
-        benchmark_has_context: true,
-      },
-      data: {
-        benchmarkContext: benchmarkContext.trim(),
-      },
-    };
-  },
+		return {
+			text: `# Benchmark Context\n${benchmarkContext.trim()}`,
+			values: {
+				benchmark_has_context: true,
+			},
+			data: {
+				benchmarkContext: benchmarkContext.trim(),
+			},
+		};
+	},
 };
