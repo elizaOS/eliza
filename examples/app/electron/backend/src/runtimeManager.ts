@@ -141,7 +141,10 @@ export async function getOrCreateRuntime(
       currentMode = null;
     }
 
-    const adapter = new InMemoryDatabaseAdapter();
+    const agentId = stringToUuid(CHAT_CHARACTER.name ?? "Eliza");
+    if (!localdbPlugin.adapter) throw new Error("plugin-localdb adapter factory required");
+    const adapterOrPromise = localdbPlugin.adapter(agentId, { LOCALDB_DATA_DIR: dataDir });
+    const adapter = adapterOrPromise instanceof Promise ? await adapterOrPromise : adapterOrPromise;
     await adapter.initialize();
     const runtime = new AgentRuntime({
       character: CHAT_CHARACTER,

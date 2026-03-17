@@ -158,7 +158,10 @@ async function initializeRuntime(): Promise<AgentRuntime> {
   // Pre-initialize PGlite before the SQL plugin runs (sqlPlugin uses it when available)
   await preinitializePGlite();
 
-  const adapter = new InMemoryDatabaseAdapter();
+  const agentId = stringToUuid(elizaCharacter.name ?? "ELIZA");
+  if (!sqlPlugin.adapter) throw new Error("plugin-sql adapter factory required");
+  const adapterOrPromise = sqlPlugin.adapter(agentId, {});
+  const adapter = adapterOrPromise instanceof Promise ? await adapterOrPromise : adapterOrPromise;
   await adapter.initialize();
 
   const runtime = new AgentRuntime({
