@@ -1,8 +1,7 @@
 {
   "version": "2.0.0-alpha.10",
   "packages": [
-    "packages/*",
-    "plugins/*/typescript"
+    "packages/*"
   ],
   "npmClient": "bun",
   "command": {

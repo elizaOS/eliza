@@ -2162,9 +2162,7 @@ export class AgentRuntime implements IAgentRuntime {
       async (evaluator: Evaluator) => {
         if (!evaluator.handler) {
           return null;
-        } finally 
-          // Always clear timer to prevent leaks
-          clearTimeout(timerId);
+        }
         if (!didRespond && !evaluator.alwaysRun) {
           return null;
         }
@@ -2695,10 +2693,10 @@ export class AgentRuntime implements IAgentRuntime {
     const PROVIDER_TIMEOUT = 30_000; // 30 second timeout per provider
     const providerData = await Promise.all(
       providersToGet.map(async (provider) => {
-        const _providerStart = Date.now();
-    let timerId: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const _timeoutPromise = new Promise<never>((_, reject) => {
+        const start = Date.now();
+        let timerId: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) => {
             timerId = setTimeout(
               () =>
                 reject(
@@ -2706,50 +2704,52 @@ export class AgentRuntime implements IAgentRuntime {
                     `Provider ${provider.name} timed out after ${PROVIDER_TIMEOUT}ms`,
                   ),
                 ),
-              const timeoutPromise = new Promise<never>((_, _reject) => {
-                  // ...
-                });
-              timeoutPromise,
-            ]);
-            clearTimeout(timerId); // Clear on success
-            const duration = Date.now() - start;
-            providerTimings.push({ name: provider.name, durationMs: duration });
-            if (duration > 100) {
-              this.logger.debug(
-                {
-                  src: "agent", 
-                  agentId: this.agentId,
-                  provider: provider.name,
-                  duration,
-                },
-                "Slow provider"
-              );
-            }
-            return {
-              ...result, 
-              providerName: provider.name,
-            };
-          } catch (error: unknown) {
-            clearTimeout(timerId);
-            const duration = Date.now() - start;
-            this.logger.error(
+              PROVIDER_TIMEOUT,
+            );
+          });
+          const result = await Promise.race([
+            provider.get(this as IAgentRuntime, message, cachedState),
+            timeoutPromise,
+          ]);
+          clearTimeout(timerId);
+          const duration = Date.now() - start;
+          providerTimings.push({ name: provider.name, durationMs: duration });
+          if (duration > 100) {
+            this.logger.debug(
               {
                 src: "agent",
                 agentId: this.agentId,
                 provider: provider.name,
                 duration,
-                error: error instanceof Error ? error.message : String(error),
               },
-              "Provider error or timeout",
+              "Slow provider",
             );
-            // Return empty result so composeState continues
-            return {
-              values: {},
-              text: "",
-              data: {},
-              providerName: provider.name,
-            };
           }
+          return {
+            ...result,
+            providerName: provider.name,
+          };
+        } catch (error: unknown) {
+          clearTimeout(timerId);
+          const duration = Date.now() - start;
+          this.logger.error(
+            {
+              src: "agent",
+              agentId: this.agentId,
+              provider: provider.name,
+              duration,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Provider error or timeout",
+          );
+          // Return empty result so composeState continues
+          return {
+            values: {},
+            text: "",
+            data: {},
+            providerName: provider.name,
+          };
+        }
       }),
     );
     const composeStateEnd = Date.now();
