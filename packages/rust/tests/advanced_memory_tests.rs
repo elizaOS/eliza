@@ -1,12 +1,15 @@
+#![cfg(all(feature = "native", not(feature = "wasm")))]
+
 use anyhow::Result;
 use elizaos::runtime::RuntimeOptions;
 use elizaos::types::agent::{Bio, Character};
 use elizaos::{advanced_memory, AgentRuntime};
 use serde_json::Value;
+use std::sync::Arc;
 
 #[tokio::test]
 async fn advanced_memory_gated_on_character_flag() -> Result<()> {
-    let runtime_on = AgentRuntime::new(RuntimeOptions {
+    let runtime_on: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         character: Some(Character {
             name: "MemOn".to_string(),
             bio: Bio::Single("Test".to_string()),
@@ -19,7 +22,7 @@ async fn advanced_memory_gated_on_character_flag() -> Result<()> {
     runtime_on.initialize().await?;
     assert!(runtime_on.get_service("memory").await.is_some());
 
-    let runtime_off = AgentRuntime::new(RuntimeOptions {
+    let runtime_off: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         character: Some(Character {
             name: "MemOff".to_string(),
             bio: Bio::Single("Test".to_string()),
@@ -36,7 +39,7 @@ async fn advanced_memory_gated_on_character_flag() -> Result<()> {
 
 #[tokio::test]
 async fn long_term_memory_provider_returns_text_when_memories_exist() -> Result<()> {
-    let runtime = AgentRuntime::new(RuntimeOptions {
+    let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         character: Some(Character {
             name: "MemBehavior".to_string(),
             bio: Bio::Single("Test".to_string()),

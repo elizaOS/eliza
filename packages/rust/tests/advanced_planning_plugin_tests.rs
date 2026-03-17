@@ -1,11 +1,14 @@
+#![cfg(all(feature = "native", not(feature = "wasm")))]
+
 use anyhow::Result;
 use elizaos::runtime::RuntimeOptions;
 use elizaos::types::agent::{Bio, Character};
 use elizaos::AgentRuntime;
+use std::sync::Arc;
 
 #[tokio::test]
 async fn advanced_planning_registers_actions_and_provider_when_enabled() -> Result<()> {
-    let runtime = AgentRuntime::new(RuntimeOptions {
+    let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         character: Some(Character {
             name: "AdvPlanningPluginOn".to_string(),
             bio: Bio::Single("Test".to_string()),

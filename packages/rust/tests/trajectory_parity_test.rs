@@ -1,7 +1,10 @@
+#![cfg(all(feature = "native", not(feature = "wasm")))]
+
 use anyhow::Result;
 use elizaos::runtime::{AgentRuntime, RuntimeModelHandler, RuntimeOptions};
 use elizaos::types::Character;
 use serde_json::Value;
+use std::sync::Arc;
 
 #[tokio::test]
 async fn test_trajectory_parity_logging() -> Result<()> {
@@ -11,7 +14,7 @@ async fn test_trajectory_parity_logging() -> Result<()> {
         ..Default::default()
     };
 
-    let runtime = AgentRuntime::new(RuntimeOptions {
+    let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         character: Some(character),
         ..Default::default()
     })
