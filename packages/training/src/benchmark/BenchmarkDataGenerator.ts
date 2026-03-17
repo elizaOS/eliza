@@ -621,8 +621,11 @@ export class BenchmarkDataGenerator {
     const basePrices = [120000, 4000, 200, 450, 520];
 
     for (let i = 0; i < this.config.numPerpetualMarkets; i++) {
-      const ticker = tickers[i % tickers.length]!;
-      const basePrice = basePrices[i % basePrices.length]!;
+      const ticker = tickers[i % tickers.length];
+      const basePrice = basePrices[i % basePrices.length];
+      if (ticker === undefined || basePrice === undefined) {
+        throw new Error("Empty tickers or basePrices array");
+      }
 
       perpetualMarkets.push({
         ticker,
@@ -671,7 +674,10 @@ export class BenchmarkDataGenerator {
     const templateIndex = Math.floor(
       this.rng.next() * NARRATIVE_FACT_TEMPLATES.length,
     );
-    const template = NARRATIVE_FACT_TEMPLATES[templateIndex]!;
+    const template = NARRATIVE_FACT_TEMPLATES[templateIndex];
+    if (!template) {
+      throw new Error("Invalid template index");
+    }
 
     // Select a random ticker to be affected
     const tickerIndex = Math.floor(
@@ -872,11 +878,9 @@ export class BenchmarkDataGenerator {
         const priceChangesByTick = new Map<number, number>();
         if (causalEvents) {
           for (const event of causalEvents) {
-            if (event.priceChanges[perp.ticker] !== undefined) {
-              priceChangesByTick.set(
-                event.tick,
-                event.priceChanges[perp.ticker]!,
-              );
+            const priceChange = event.priceChanges[perp.ticker];
+            if (priceChange !== undefined) {
+              priceChangesByTick.set(event.tick, priceChange);
             }
           }
         }
@@ -1121,10 +1125,11 @@ export class BenchmarkDataGenerator {
       // These messages should contain actionable information tied to ground truth
       for (const [groupId, groupChat] of groupChatMap.entries()) {
         if (this.rng.next() > 0.8 && groupChat.memberIds.length > 0) {
-          const senderId =
-            groupChat.memberIds[
-              Math.floor(this.rng.next() * groupChat.memberIds.length)
-            ]!;
+          const memberIndex = Math.floor(
+            this.rng.next() * groupChat.memberIds.length,
+          );
+          const senderId = groupChat.memberIds[memberIndex];
+          if (!senderId) continue;
           const sender = currentState.agents.find(
             (a: { id: string }) => a.id === senderId,
           );
@@ -1148,10 +1153,11 @@ export class BenchmarkDataGenerator {
           ];
 
           const messageId = `msg-${i}-${groupId}-${Math.floor(this.rng.next() * 1000000)}`;
-          const randomInsiderMsg =
-            insiderMessages[
-              Math.floor(this.rng.next() * insiderMessages.length)
-            ]!;
+          const msgIndex = Math.floor(
+            this.rng.next() * insiderMessages.length,
+          );
+          const randomInsiderMsg = insiderMessages[msgIndex];
+          if (!randomInsiderMsg) continue;
           const message = {
             id: messageId,
             authorId: senderId,
@@ -1283,6 +1289,10 @@ export class SeededRandom {
    */
   pick<T>(array: T[]): T {
     const index = Math.floor(this.next() * array.length);
-    return array[index]!;
+    const item = array[index];
+    if (item === undefined) {
+      throw new Error(`Index ${index} out of bounds for array length ${array.length}`);
+    }
+    return item;
   }
 }

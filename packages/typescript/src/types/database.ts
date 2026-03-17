@@ -491,11 +491,6 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		options?: { entityContext?: UUID },
 	): Promise<T>;
 
-	/** Delete participants from rooms */
-	deleteParticipants(
-		participants: Array<{ entityId: UUID; roomId: UUID }>,
-	): Promise<boolean>;
-
 	/** Get entities for multiple rooms (one entry per roomId, same order). */
 	getEntitiesForRooms(
 		roomIds: UUID[],

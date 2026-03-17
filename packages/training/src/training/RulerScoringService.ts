@@ -403,7 +403,8 @@ export class RulerScoringService {
     );
 
     for (let i = 0; i < richTrajectories.length; i++) {
-      const rt = richTrajectories[i]!;
+      const rt = richTrajectories[i];
+      if (!rt) continue;
       const trajId = `trajectory-${i + 1}`;
 
       contextParts.push(`\n${trajId}:`);
@@ -446,7 +447,8 @@ export class RulerScoringService {
     const trajectorySections: string[] = [];
 
     for (let i = 0; i < richTrajectories.length; i++) {
-      const rt = richTrajectories[i]!;
+      const rt = richTrajectories[i];
+      if (!rt) continue;
       const trajId = `trajectory-${i + 1}`;
 
       // Remove common prefix from messages
@@ -474,9 +476,11 @@ export class RulerScoringService {
     const archetypes = [...new Set(richTrajectories.map((rt) => rt.archetype))];
     const isSingleArchetype =
       archetypes.length === 1 && archetypes[0] !== "default";
-    const rubric = isSingleArchetype
-      ? getRubric(archetypes[0]!)
-      : DEFAULT_RUBRIC;
+    const singleArchetype = archetypes[0];
+    const rubric =
+      isSingleArchetype && singleArchetype
+        ? getRubric(singleArchetype)
+        : DEFAULT_RUBRIC;
     const archetypeContext = isSingleArchetype
       ? `\n\nYou are evaluating ${archetypes[0]?.toUpperCase()} agents. Score them based on how well they embody that archetype's behavior and goals.`
       : archetypes.length > 1
@@ -585,11 +589,13 @@ Return ONLY the JSON, no other text.`;
   ): Array<{ role: string; content: string }> {
     if (messageLists.length === 0) return [];
 
-    const first = messageLists[0]!;
+    const first = messageLists[0];
+    if (!first) return [];
     const prefix: Array<{ role: string; content: string }> = [];
 
     for (let i = 0; i < first.length; i++) {
-      const msg = first[i]!;
+      const msg = first[i];
+      if (!msg) continue;
       const allMatch = messageLists.every(
         (msgs) =>
           msgs[i] &&

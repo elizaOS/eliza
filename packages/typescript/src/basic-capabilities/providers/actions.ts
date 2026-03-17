@@ -1,9 +1,4 @@
-import {
-	composeActionCallExamples,
-	composeActionExamples,
-	formatActionNames,
-	formatActions,
-} from "../../actions.ts";
+import { formatActionNames, formatActions } from "../../actions.ts";
 import { requireProviderSpec } from "../../generated/spec-helpers.ts";
 import type {
 	Action,
@@ -75,37 +70,13 @@ export const actionsProvider: Provider = {
 				? addHeader("# Available Actions", formatActions(actionsData))
 				: "";
 
-		const actionExamples =
-			actionsData.length > 0
-				? addHeader("# Action Examples", composeActionExamples(actionsData, 10))
-				: "";
-
-		const actionCallExamples =
-			actionsData.length > 0
-				? addHeader(
-						"# Action Call Examples (with <params>)",
-						composeActionCallExamples(actionsData, 5),
-					)
-				: "";
-
-		const _data = {
-			actionsData,
-		};
-
 		const values = {
 			actionNames,
-			actionExamples,
-			actionCallExamples,
 			actionsWithDescriptions,
 		};
 
 		// Combine all text sections - now including actionsWithDescriptions
-		const text = [
-			actionNames,
-			actionsWithDescriptions,
-			actionExamples,
-			actionCallExamples,
-		]
+		const text = [actionNames, actionsWithDescriptions]
 			.filter(Boolean)
 			.join("\n\n");
 

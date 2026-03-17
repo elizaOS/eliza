@@ -75,11 +75,50 @@ export interface BenchmarkView {
   };
 }
 
-export class BenchmarkDataViewer {
-  /**
-   * Load and view a benchmark file
-   */
-  static async view(
+function analyzeTicks(ticks: Tick[]): BenchmarkView["ticks"] {
+  const eventTypes: Record<string, number> = {};
+  let withEvents = 0;
+
+  for (const tick of ticks) {
+    if (tick.events.length > 0) {
+      withEvents++;
+    }
+
+    for (const event of tick.events) {
+      eventTypes[event.type] = (eventTypes[event.type] || 0) + 1;
+    }
+  }
+
+  return {
+    total: ticks.length,
+    withEvents,
+    eventTypes,
+  };
+}
+
+function analyzeGroundTruth(
+  groundTruth: GroundTruth,
+): BenchmarkView["groundTruth"] {
+  return {
+    marketOutcomes: Object.keys(groundTruth.marketOutcomes).length,
+    priceHistory: Object.fromEntries(
+      Object.entries(groundTruth.priceHistory).map(([ticker, history]) => [
+        ticker,
+        history.length,
+      ]),
+    ),
+    optimalActions: groundTruth.optimalActions.length,
+    socialOpportunities: groundTruth.socialOpportunities.length,
+    hiddenFacts: groundTruth.hiddenFacts?.length || 0,
+    hiddenEvents: groundTruth.hiddenEvents?.length || 0,
+    trueFacts: Object.keys(groundTruth.trueFacts || {}),
+  };
+}
+
+/**
+ * Load and view a benchmark file
+ */
+export async function viewBenchmark(
     filePath: string,
     options: BenchmarkViewOptions = {},
   ): Promise<BenchmarkView> {
@@ -105,70 +144,22 @@ export class BenchmarkDataViewer {
         groupChats: snapshot.initialState.groupChats?.length || 0,
       },
 
-      ticks: BenchmarkDataViewer.analyzeTicks(snapshot.ticks),
+      ticks: analyzeTicks(snapshot.ticks),
 
       validation,
     };
 
     if (options.showGroundTruth || options.verbose) {
-      view.groundTruth = BenchmarkDataViewer.analyzeGroundTruth(
-        snapshot.groundTruth,
-      );
+      view.groundTruth = analyzeGroundTruth(snapshot.groundTruth);
     }
 
     return view;
   }
 
-  /**
-   * Analyze ticks
-   */
-  private static analyzeTicks(ticks: Tick[]): BenchmarkView["ticks"] {
-    const eventTypes: Record<string, number> = {};
-    let withEvents = 0;
-
-    for (const tick of ticks) {
-      if (tick.events.length > 0) {
-        withEvents++;
-      }
-
-      for (const event of tick.events) {
-        eventTypes[event.type] = (eventTypes[event.type] || 0) + 1;
-      }
-    }
-
-    return {
-      total: ticks.length,
-      withEvents,
-      eventTypes,
-    };
-  }
-
-  /**
-   * Analyze ground truth
-   */
-  private static analyzeGroundTruth(
-    groundTruth: GroundTruth,
-  ): BenchmarkView["groundTruth"] {
-    return {
-      marketOutcomes: Object.keys(groundTruth.marketOutcomes).length,
-      priceHistory: Object.fromEntries(
-        Object.entries(groundTruth.priceHistory).map(([ticker, history]) => [
-          ticker,
-          history.length,
-        ]),
-      ),
-      optimalActions: groundTruth.optimalActions.length,
-      socialOpportunities: groundTruth.socialOpportunities.length,
-      hiddenFacts: groundTruth.hiddenFacts?.length || 0,
-      hiddenEvents: groundTruth.hiddenEvents?.length || 0,
-      trueFacts: Object.keys(groundTruth.trueFacts || {}),
-    };
-  }
-
-  /**
-   * Print view to console
-   */
-  static print(view: BenchmarkView, options: BenchmarkViewOptions = {}): void {
+/**
+ * Print view to console
+ */
+export function printBenchmarkView(view: BenchmarkView, options: BenchmarkViewOptions = {}): void {
     console.log("\n📊 Benchmark Data View\n");
     console.log(`ID: ${view.id}`);
     console.log(`Version: ${view.version}`);
@@ -233,12 +224,12 @@ export class BenchmarkDataViewer {
     }
 
     console.log("");
-  }
+}
 
-  /**
-   * Get tick details
-   */
-  static getTickDetails(
+/**
+ * Get tick details
+ */
+export function getTickDetails(
     snapshot: BenchmarkGameSnapshot,
     tickNumber: number,
   ): {
@@ -260,12 +251,12 @@ export class BenchmarkDataViewer {
         data: e.data,
       })),
     };
-  }
+}
 
-  /**
-   * Get ground truth for a specific tick
-   */
-  static getGroundTruthForTick(
+/**
+ * Get ground truth for a specific tick
+ */
+export function getGroundTruthForTick(
     snapshot: BenchmarkGameSnapshot,
     tickNumber: number,
   ): {
@@ -284,12 +275,12 @@ export class BenchmarkDataViewer {
         .map((e) => ({ type: e.type, description: e.description })),
       marketOutcomes: gt.marketOutcomes,
     };
-  }
+}
 
-  /**
-   * Check if agent can access hidden facts (should always be false)
-   */
-  static verifyAgentCannotAccessHiddenFacts(snapshot: BenchmarkGameSnapshot): {
+/**
+ * Check if agent can access hidden facts (should always be false)
+ */
+export function verifyAgentCannotAccessHiddenFacts(snapshot: BenchmarkGameSnapshot): {
     canAccess: boolean;
     reason: string;
   } {
@@ -322,5 +313,13 @@ export class BenchmarkDataViewer {
           ? "Ground truth exists but is properly isolated from game state"
           : "No ground truth data found",
     };
-  }
 }
+
+/** @deprecated Use viewBenchmark, printBenchmarkView, etc. instead */
+export const BenchmarkDataViewer = {
+  view: viewBenchmark,
+  print: printBenchmarkView,
+  getTickDetails,
+  getGroundTruthForTick,
+  verifyAgentCannotAccessHiddenFacts,
+};

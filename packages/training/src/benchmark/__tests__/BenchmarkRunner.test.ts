@@ -266,7 +266,7 @@ describe("BenchmarkDataGenerator - Causal Simulation", () => {
     const generator = new BenchmarkDataGenerator(causalConfig);
     const snapshot = await generator.generate();
 
-    for (const fact of snapshot.groundTruth.hiddenNarrativeFacts!) {
+    for (const fact of snapshot.groundTruth.hiddenNarrativeFacts ?? []) {
       expect(fact.id).toBeDefined();
       expect(fact.fact).toBeDefined();
       expect(fact.affectsTickers).toBeDefined();
@@ -285,7 +285,7 @@ describe("BenchmarkDataGenerator - Causal Simulation", () => {
     expect(snapshot.groundTruth.causalEvents?.length).toBeGreaterThan(0);
 
     // Verify each causal event has required fields
-    for (const event of snapshot.groundTruth.causalEvents!) {
+    for (const event of snapshot.groundTruth.causalEvents ?? []) {
       expect(event.tick).toBeDefined();
       expect(event.eventType).toBeDefined();
       expect(event.affectedTickers.length).toBeGreaterThan(0);

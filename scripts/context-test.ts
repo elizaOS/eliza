@@ -163,9 +163,22 @@ function shimAdapter(adapter: any): any {
     deleteAllMemories: async (rids: string[], tn?: string) => { for (const id of rids) await adapter.deleteAllMemories?.(id, tn); },
 
     // Tasks
-    createTasks: async (ts: any[]) => { for (const t of ts) await adapter.createTask?.(t); },
+    createTasks: async (ts: any[]) => {
+      const ids: string[] = [];
+      for (const t of ts) {
+        const id = await adapter.createTask?.(t);
+        ids.push(id ?? t.id ?? (await import("uuid")).v4());
+      }
+      return ids;
+    },
     getTasksByIds: async (ids: string[]) => { const r = []; for (const id of ids) { const t = await adapter.getTask?.(id); if (t) r.push(t); } return r; },
-    updateTasks: async (ts: any[]) => { for (const t of ts) await adapter.updateTask?.(t); },
+    updateTasks: async (ts: any[]) => {
+      for (const u of ts) {
+        const id = u.id;
+        const task = u.task ?? {};
+        if (id != null) await adapter.updateTask?.(id, task);
+      }
+    },
     deleteTasks: async (ids: string[]) => { for (const id of ids) await adapter.deleteTask?.(id); },
 
     // Logs — swallow since old adapter may not have these

@@ -203,10 +203,22 @@ export class TrajectoryRecorder {
       throw new Error(`No current step for trajectory: ${trajectoryId}`);
     }
 
+    const stepNumber = traj.currentStep.stepNumber;
+    const timestamp = traj.currentStep.timestamp;
+    const environmentState = traj.currentStep.environmentState;
+    if (
+      stepNumber === undefined ||
+      timestamp === undefined ||
+      environmentState === undefined
+    ) {
+      throw new Error(
+        `Current step incomplete for trajectory: ${trajectoryId}`,
+      );
+    }
     const completeStep: TrajectoryStep = {
-      stepNumber: traj.currentStep.stepNumber!,
-      timestamp: traj.currentStep.timestamp!,
-      environmentState: traj.currentStep.environmentState!,
+      stepNumber,
+      timestamp,
+      environmentState,
       providerAccesses: traj.currentStep.providerAccesses || [],
       llmCalls: traj.currentStep.llmCalls || [],
       action,

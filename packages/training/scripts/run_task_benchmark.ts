@@ -50,7 +50,7 @@ class BenchmarkRuntimeManager implements IAgentRuntimeManager {
         // Create a new runtime
         const character = {
             name: 'BenchmarkAgent',
-            bio: 'A helpful assistant for benchmarking.',
+            bio: ['A helpful assistant for benchmarking.'],
             settings: {
                 secrets: {
                     OPENAI_API_KEY: process.env.OPENAI_API_KEY || ''
@@ -109,7 +109,7 @@ class BenchmarkTaskInteractor implements ITaskInteractor {
 
             const userMemory: Memory = {
                 id: messageId as `${string}-${string}-${string}-${string}-${string}`,
-                userId: userId as `${string}-${string}-${string}-${string}-${string}`,
+                entityId: userId as `${string}-${string}-${string}-${string}-${string}`,
                 agentId: runtime.agentId,
                 roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
                 content: {
@@ -136,6 +136,7 @@ Assistant:`;
             // Signature: generateText(input: string, options?: GenerateTextOptions)
             const result = await runtime.generateText(context, {
                 modelType: ModelType.TEXT_SMALL,
+                stopSequences: [],
             });
             // Handle both string and object return types for safety
             const response = typeof result === 'string' ? result : result.text;

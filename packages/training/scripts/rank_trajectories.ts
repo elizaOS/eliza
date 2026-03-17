@@ -137,7 +137,18 @@ async function main() {
 
     console.log(`Found ${lines.length} trajectories to rank.`);
 
-    const scoredTrajectories = [];
+    interface ScoredTrajectory {
+        trajectoryId?: string;
+        steps?: Array<{
+            action?: { parameters?: { text?: string } };
+        }>;
+        metadata?: { task?: string };
+        score?: number;
+        reasoning?: string;
+        isScored?: boolean;
+    }
+
+    const scoredTrajectories: ScoredTrajectory[] = [];
 
     // Clear output file first if overwriting
     if (fs.existsSync(outputFile)) {
@@ -146,12 +157,12 @@ async function main() {
 
     for (const line of lines) {
         try {
-            const trajectory = JSON.parse(line);
+            const trajectory = JSON.parse(line) as ScoredTrajectory;
             const { steps, metadata } = trajectory;
             const task = metadata?.task || 'Unknown Task';
 
             // Extract the last step's action/response
-            const lastStep = steps[steps.length - 1];
+            const lastStep = steps && steps.length > 0 ? steps[steps.length - 1] : undefined;
             const response = lastStep?.action?.parameters?.text || "No response found";
 
             console.log(`Ranking trajectory ${trajectory.trajectoryId}...`);
@@ -176,11 +187,15 @@ Return ONLY valid JSON.
             const resultText = typeof result === 'string' ? result : result.text;
 
             // Parse JSON
-            let scoreData;
+            interface ScoreData {
+                score: number;
+                reasoning: string;
+            }
+            let scoreData: ScoreData;
             try {
                 // simple cleanup for markdown code blocks
                 const jsonStr = resultText.replace(/```json/g, '').replace(/```/g, '').trim();
-                scoreData = JSON.parse(jsonStr);
+                scoreData = JSON.parse(jsonStr) as ScoreData;
             } catch (e) {
                 console.warn(`Failed to parse judge output for ${trajectory.trajectoryId}: ${resultText}`);
                 scoreData = { score: 0, reasoning: "Parse Error" };
