@@ -41,7 +41,7 @@ import {
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");
 dotenv.config({ path: path.resolve(packageRoot, ".env") });
-dotenv.config({ path: path.resolve(packageRoot, "..", "eliza", ".env") });
+dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const hasDiscordToken = Boolean(process.env.DISCORD_BOT_TOKEN);
 const liveTestsEnabled = process.env.MILADY_LIVE_TEST === "1";

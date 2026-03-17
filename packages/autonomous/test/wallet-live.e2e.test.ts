@@ -17,7 +17,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Load .env from the eliza workspace root
-const envPath = path.resolve(import.meta.dirname, "..", "..", "eliza", ".env");
+const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");
 try {
   const { config } = await import("dotenv");
   config({ path: envPath });

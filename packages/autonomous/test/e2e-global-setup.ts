@@ -1,7 +1,7 @@
 /**
  * Vitest globalSetup for E2E tests.
  *
- * Runs `tsdown` before any E2E test file is loaded so that `dist/` is
+ * Runs `bun run build` before any E2E test file is loaded so that `dist/` is
  * always present — even when the test suite is invoked without a prior
  * manual build (e.g. `bun run test` in CI).
  */
@@ -16,14 +16,14 @@ const packageRoot = path.resolve(
 );
 
 export function setup(): void {
-  const distIndex = path.join(packageRoot, "dist", "index");
+  const distDir = path.join(packageRoot, "dist");
 
-  if (fs.existsSync(distIndex)) {
+  if (fs.existsSync(distDir)) {
     // Already built — skip to keep the fast path fast.
     return;
   }
 
   // eslint-disable-next-line no-console
-  console.log("[e2e-global-setup] dist/ not found — running tsdown…");
-  execSync("npx tsdown", { cwd: packageRoot, stdio: "inherit" });
+  console.log("[e2e-global-setup] dist/ not found — running build…");
+  execSync("bun run build", { cwd: packageRoot, stdio: "inherit" });
 }

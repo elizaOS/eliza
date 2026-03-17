@@ -44,7 +44,7 @@ import {
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");
 dotenv.config({ path: path.resolve(packageRoot, ".env") });
-dotenv.config({ path: path.resolve(packageRoot, "..", "eliza", ".env") });
+dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
 const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
