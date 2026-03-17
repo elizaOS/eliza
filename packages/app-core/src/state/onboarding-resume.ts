@@ -134,7 +134,7 @@ export function inferOnboardingResumeStep(args: {
 
   return hasPartialOnboardingConnectionConfig(args.config)
     ? "senses"
-    : "wakeUp";
+    : "identity";
 }
 
 export function deriveOnboardingResumeConnection(

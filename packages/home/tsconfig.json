@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "experimentalDecorators": true,
+    "useUnknownInCatchVariables": true,
+    "types": ["vite/client"],
+    "paths": {
+      "@elizaos/capacitor-agent": ["./plugins/agent/src/index.ts"],
+      "@elizaos/capacitor-desktop": ["./plugins/desktop/src/index.ts"]
+    },
+    "baseUrl": "."
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "plugins/**/*.ts",
+    "../app-core/src/types/react-test-renderer.d.ts"
+  ],
+  "exclude": ["node_modules", "dist", "ios", "android", "electron"]
+}

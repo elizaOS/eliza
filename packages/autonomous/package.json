@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/autonomous",
-  "version": "2.0.0-alpha.21",
+  "version": "2.0.0-alpha.22",
   "description": "Standalone autonomous agent runtime and backend server package for elizaOS.",
   "type": "module",
   "license": "MIT",
@@ -27,7 +27,10 @@
     "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/autonomous --compiled-prefix=packages/autonomous/src",
     "typecheck": "test -f ../prompts/dist/typescript/index.ts || (cd ../prompts && bun run build:typescript) && tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check ./src/actions ./src/api ./src/auth ./src/awareness ./src/bin.ts ./src/cli ./src/cloud ./src/config ./src/contracts ./src/diagnostics ./src/emotes ./src/hooks ./src/index.ts ./src/onboarding-presets.ts ./src/plugins ./src/providers ./src/runtime ./src/security ./src/server ./src/services ./src/shared ./src/testing ./src/triggers ./src/utils ./src/version-resolver.ts",
-    "pack:dry-run": "cd dist && npm pack --dry-run"
+    "pack:dry-run": "cd dist && npm pack --dry-run",
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:unit": "vitest run --config vitest.config.ts"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -213,7 +216,7 @@
     "./version-resolver": "./src/version-resolver.ts"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-alpha.22",
     "@elizaos/signal-native": "*"
   },
   "peerDependenciesMeta": {
@@ -226,7 +229,12 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
+    "@elizaos/plugin-agent-skills": "^2.0.0-alpha.11",
     "@elizaos/plugin-coding-agent": "0.1.0-next.1",
+    "@elizaos/plugin-cron": "^2.0.0-alpha.7",
+    "@elizaos/plugin-experience": "^2.0.0-alpha.9",
+    "@elizaos/plugin-form": "^2.0.0-alpha.10",
+    "@elizaos/plugin-knowledge": "^2.0.0-alpha.6",
     "@elizaos/plugin-local-embedding": "alpha",
     "@elizaos/plugin-ollama": "alpha",
     "@elizaos/plugin-openai": "alpha",
@@ -241,8 +249,8 @@
     "@elizaos/plugin-todo": "alpha",
     "@elizaos/plugin-trajectory-logger": "alpha",
     "@elizaos/plugin-trust": "alpha",
-    "@elizaos/prompts": "workspace:*",
-    "@elizaos/skills": "workspace:*",
+    "@elizaos/prompts": "2.0.0-alpha.22",
+    "@elizaos/skills": "2.0.0-alpha.22",
     "@hapi/boom": "^10.0.1",
     "@mariozechner/pi-ai": "0.52.12",
     "@noble/curves": "^2.0.1",
@@ -265,5 +273,6 @@
     "@types/pg": "^8.15.2",
     "@types/ws": "^8.18.1",
     "typescript": "^5.9.3"
-  }
+  },
+  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
 }

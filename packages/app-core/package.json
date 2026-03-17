@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.21",
+  "version": "2.0.0-alpha.22",
   "description": "Shared application core for elizaOS shells and white-label apps.",
   "type": "module",
   "license": "MIT",
@@ -67,8 +67,8 @@
     "@capacitor/haptics": "8.0.0",
     "@capacitor/keyboard": "8.0.0",
     "@capacitor/preferences": "^8.0.1",
-    "@elizaos/autonomous": "workspace:*",
-    "@elizaos/ui": "workspace:*",
+    "@elizaos/autonomous": "2.0.0-alpha.22",
+    "@elizaos/ui": "2.0.0-alpha.22",
     "@lifo-sh/core": "0.4.4",
     "@lifo-sh/ui": "0.4.2",
     "@pixiv/three-vrm": "^3.4.5",
@@ -87,5 +87,6 @@
     "@types/three": "^0.182.0",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3"
-  }
+  },
+  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
 }

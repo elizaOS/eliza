@@ -785,7 +785,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // --- Onboarding ---
   const [onboardingStep, setOnboardingStepRaw] = useState<OnboardingStep>(
-    () => loadPersistedOnboardingStep() ?? "wakeUp",
+    () => loadPersistedOnboardingStep() ?? "identity",
   );
   const [onboardingOptions, setOnboardingOptions] =
     useState<OnboardingOptions | null>(null);
@@ -2154,7 +2154,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       onboardingCompletionCommittedRef.current = false;
       setOnboardingComplete(false);
       onboardingResumeConnectionRef.current = null;
-      setOnboardingStep("wakeUp");
+      setOnboardingStep("identity");
       setConversationMessages([]);
       setActiveConversationId(null);
       activeConversationIdRef.current = null;
@@ -4068,22 +4068,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleOnboardingNext = useCallback(
     async (options?: OnboardingNextOptions) => {
       const STEP_ORDER: OnboardingStep[] = [
-        "wakeUp",
         "identity",
         "connection",
         "rpc",
         "senses",
         "activate",
       ];
-
-      // Auto-select first style if none chosen (identity step will let user change)
-      if (
-        onboardingStep === "wakeUp" &&
-        !onboardingStyle &&
-        onboardingOptions?.styles?.length
-      ) {
-        setState("onboardingStyle", onboardingOptions.styles[0].catchphrase);
-      }
 
       // Default agent name to Rin if none set after identity step
       if (onboardingStep === "identity" && !onboardingName) {
@@ -4144,7 +4134,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleOnboardingBack = useCallback(() => {
     const STEP_ORDER: OnboardingStep[] = [
-      "wakeUp",
       "identity",
       "connection",
       "rpc",

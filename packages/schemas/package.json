@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/schemas",
-  "version": "2.0.0-alpha.21",
+  "version": "2.0.0-alpha.22",
   "description": "Protocol Buffer schemas for elizaOS - single source of truth for all types",
   "files": [
     "eliza",
@@ -25,5 +25,6 @@
   },
   "devDependencies": {
     "@bufbuild/buf": "^1.47.2"
-  }
+  },
+  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
 }

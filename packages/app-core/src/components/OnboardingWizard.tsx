@@ -17,7 +17,6 @@ import { OnboardingPanel } from "./onboarding/OnboardingPanel";
 import { OnboardingStepNav } from "./onboarding/OnboardingStepNav";
 import { PermissionsStep } from "./onboarding/PermissionsStep";
 import { RpcStep } from "./onboarding/RpcStep";
-import { WakeUpStep } from "./onboarding/WakeUpStep";
 
 export function OnboardingWizard() {
   const {
@@ -45,6 +44,8 @@ export function OnboardingWizard() {
       : getVrmPreviewUrl(1);
   const worldUrl = resolveAppAssetUrl("worlds/companion-day.spz");
 
+  const isCharacterSelect = onboardingStep === "identity";
+
   useEffect(() => {
     // Onboarding keeps a fixed "light" chrome; companion mode owns day/night scenes.
     applyUiTheme("light");
@@ -55,11 +56,8 @@ export function OnboardingWizard() {
 
   function renderStep() {
     switch (onboardingStep) {
-      case "wakeUp":
-        return <WakeUpStep />;
       case "identity":
         return <IdentityStep />;
-
       case "connection":
         return <ConnectionStep />;
       case "rpc":
@@ -179,11 +177,30 @@ export function OnboardingWizard() {
         />
       </div>
 
-      {/* Overlaid UI — step nav + content panel */}
-      <div className="onboarding-ui-overlay">
-        <OnboardingStepNav />
-        <OnboardingPanel step={onboardingStep}>{renderStep()}</OnboardingPanel>
-      </div>
+      {isCharacterSelect ? (
+        /* ── Full-screen centered character select ── */
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 40,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "2rem",
+          }}
+        >
+          <IdentityStep />
+        </div>
+      ) : (
+        /* ── Standard overlaid UI — step nav + content panel ── */
+        <div className="onboarding-ui-overlay">
+          <OnboardingStepNav />
+          <OnboardingPanel step={onboardingStep}>
+            {renderStep()}
+          </OnboardingPanel>
+        </div>
+      )}
     </div>
   );
 }

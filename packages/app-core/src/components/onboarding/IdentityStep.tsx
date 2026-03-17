@@ -1,5 +1,6 @@
+import { client } from "@elizaos/app-core/api";
 import { getVrmPreviewUrl, useApp } from "@elizaos/app-core/state";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Maps catchphrases → character metadata for onboarding. */
 const IDENTITY_PRESETS: Record<string, { name: string; avatarIndex: number }> =
@@ -10,19 +11,72 @@ const IDENTITY_PRESETS: Record<string, { name: string; avatarIndex: number }> =
     "hehe~": { name: "Aya", avatarIndex: 4 },
   };
 
+/** Identical clip-paths used by CharacterView roster cards. */
+const SLANT_CLIP = "polygon(32px 0, 100% 0, calc(100% - 32px) 100%, 0 100%)";
+const INSET_CLIP =
+  "polygon(0px 0, 100% 0, calc(100% - 4px) 100%, -8px 100%)";
+
 export function IdentityStep() {
   const {
     onboardingOptions,
     onboardingStyle,
     handleOnboardingNext,
     setState,
-    t: _t,
+    t,
   } = useApp();
 
   const styles = onboardingOptions?.styles ?? [];
-
-  // Resolve which preset is currently selected
   const selectedCatchphrase = onboardingStyle || styles[0]?.catchphrase || "";
+
+  /* ── Import / restore state ─────────────────────────────────────── */
+  const [showImport, setShowImport] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPassword, setImportPassword] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const importBusyRef = useRef(false);
+
+  const handleImportAgent = useCallback(async () => {
+    if (importBusyRef.current || importBusy) return;
+    if (!importFile) {
+      setImportError(t("onboarding.selectFileError"));
+      return;
+    }
+    if (!importPassword || importPassword.length < 4) {
+      setImportError(t("onboarding.passwordMinError"));
+      return;
+    }
+    try {
+      importBusyRef.current = true;
+      setImportBusy(true);
+      setImportError(null);
+      setImportSuccess(null);
+      const fileBuffer = await importFile.arrayBuffer();
+      const result = await client.importAgent(importPassword, fileBuffer);
+      const counts = result.counts;
+      const summary = [
+        counts.memories ? `${counts.memories} memories` : null,
+        counts.entities ? `${counts.entities} entities` : null,
+        counts.rooms ? `${counts.rooms} rooms` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      setImportSuccess(
+        `Imported "${result.agentName}" successfully${summary ? `: ${summary}` : ""}. Restarting...`,
+      );
+      setImportPassword("");
+      setImportFile(null);
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      importBusyRef.current = false;
+      setImportBusy(false);
+    }
+  }, [importBusy, importFile, importPassword, t]);
 
   const handleSelect = useCallback(
     (catchphrase: string) => {
@@ -43,101 +97,184 @@ export function IdentityStep() {
     }
   }, [onboardingStyle, styles, handleSelect]);
 
+  /* ── Import UI ──────────────────────────────────────────────────── */
+  if (showImport) {
+    return (
+      <div className="flex flex-col items-center gap-3 w-full max-w-[400px]">
+        <div className="onboarding-section-title">
+          {t("onboarding.importAgent")}
+        </div>
+        <div className="onboarding-divider">
+          <div className="onboarding-divider-diamond" />
+        </div>
+
+        <p className="onboarding-desc mb-1">
+          {t("onboarding.importDesc")}
+        </p>
+
+        <input
+          type="file"
+          accept=".eliza-agent"
+          onChange={(e) => {
+            setImportFile(e.target.files?.[0] ?? null);
+            setImportError(null);
+          }}
+          className="onboarding-input text-[13px] text-left"
+        />
+
+        <input
+          type="password"
+          placeholder={t("onboarding.decryptionPasswordPlaceholder")}
+          value={importPassword}
+          onChange={(e) => {
+            setImportPassword(e.target.value);
+            setImportError(null);
+          }}
+          className="onboarding-input"
+        />
+
+        {importError && (
+          <p className="onboarding-desc text-[var(--danger)] !mb-0">
+            {importError}
+          </p>
+        )}
+        {importSuccess && (
+          <p className="onboarding-desc text-[var(--ok)] !mb-0">
+            {importSuccess}
+          </p>
+        )}
+
+        <div className="flex gap-3 mt-2">
+          <button
+            className="onboarding-back-link"
+            onClick={() => {
+              setShowImport(false);
+              setImportError(null);
+              setImportSuccess(null);
+              setImportFile(null);
+              setImportPassword("");
+            }}
+            type="button"
+          >
+            {t("onboarding.cancel")}
+          </button>
+          <button
+            className="onboarding-confirm-btn"
+            disabled={importBusy || !importFile}
+            onClick={() => void handleImportAgent()}
+            type="button"
+          >
+            {importBusy ? t("onboarding.importing") : t("onboarding.restore")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Video-game style character roster (matches CharacterView exactly) ── */
   return (
-    <>
+    <div className="flex flex-col items-center gap-4 w-full max-w-[640px]">
       <div className="onboarding-section-title">Choose Your Agent</div>
       <div className="onboarding-divider">
         <div className="onboarding-divider-diamond" />
       </div>
-
-      <p className="onboarding-desc">
+      <p className="onboarding-desc mb-1 text-center">
         Pick a personality for your agent. You can customize everything later.
       </p>
 
+      {/* ── Character roster grid — identical to CharacterView roster ── */}
       <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "10px",
-          width: "100%",
-          marginTop: "16px",
-        }}
+        className="flex flex-wrap items-start justify-center gap-y-1"
+        data-testid="onboarding-character-roster"
       >
-        {styles.slice(0, 4).map((preset) => {
-          const meta = IDENTITY_PRESETS[preset.catchphrase];
-          const isSelected = selectedCatchphrase === preset.catchphrase;
-          const name = meta?.name ?? "Agent";
-          const avatarIdx = meta?.avatarIndex ?? 1;
+        {styles.slice(0, 4).length > 0 ? (
+          styles.slice(0, 4).map((preset) => {
+            const meta = IDENTITY_PRESETS[preset.catchphrase];
+            const isSelected = selectedCatchphrase === preset.catchphrase;
+            const name = meta?.name ?? "Agent";
+            const avatarIdx = meta?.avatarIndex ?? 1;
 
-          return (
-            <button
-              key={preset.catchphrase}
-              type="button"
-              onClick={() => handleSelect(preset.catchphrase)}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "6px",
-                padding: "12px 8px",
-                borderRadius: "12px",
-                border: isSelected
-                  ? "2px solid rgba(240,185,11,0.8)"
-                  : "1px solid rgba(255,255,255,0.12)",
-                background: isSelected
-                  ? "rgba(240,185,11,0.08)"
-                  : "rgba(255,255,255,0.04)",
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <img
-                src={getVrmPreviewUrl(avatarIdx)}
-                alt={name}
-                draggable={false}
-                style={{
-                  width: "56px",
-                  height: "56px",
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  opacity: isSelected ? 1 : 0.65,
-                  transition: "opacity 0.15s ease",
-                }}
-              />
-              <span
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  color: isSelected
-                    ? "rgba(240,185,11,1)"
-                    : "rgba(255,255,255,0.7)",
-                }}
+            return (
+              <button
+                key={preset.catchphrase}
+                type="button"
+                className={`group relative -mx-3 min-w-0 w-[9.75rem] text-center transition-all duration-300 ease-out ${
+                  isSelected
+                    ? "z-100 scale-[1.00] opacity-100"
+                    : "scale-[1.00] opacity-70 hover:scale-[1.00] hover:opacity-100"
+                }`}
+                onClick={() => handleSelect(preset.catchphrase)}
+                data-testid={`onboarding-preset-${preset.catchphrase}`}
               >
-                {name}
-              </span>
-              <span
-                style={{
-                  fontSize: "11px",
-                  color: "rgba(255,255,255,0.45)",
-                }}
-              >
-                {preset.hint}
-              </span>
-            </button>
-          );
-        })}
+                <div
+                  className={`relative h-[10rem] w-full p-[2px] transition-all duration-300 ${
+                    isSelected
+                      ? "bg-yellow-400 shadow-[0_0_28px_rgba(250,204,21,0.32)]"
+                      : "bg-white/10 hover:bg-white/35"
+                  }`}
+                  style={{ clipPath: SLANT_CLIP }}
+                >
+                  <div
+                    className="relative h-full w-full overflow-hidden"
+                    style={{ clipPath: SLANT_CLIP }}
+                  >
+                    {isSelected && (
+                      <div
+                        className="pointer-events-none absolute -inset-3 bg-yellow-300/15 blur-xl"
+                        style={{ clipPath: SLANT_CLIP }}
+                      />
+                    )}
+                    <img
+                      src={getVrmPreviewUrl(avatarIdx)}
+                      alt={name}
+                      draggable={false}
+                      className={`h-full w-full object-cover transition-transform duration-300 ease-out ${
+                        isSelected
+                          ? "scale-[1.04]"
+                          : "scale-100 group-hover:scale-[1.02]"
+                      }`}
+                    />
+                    <div className="absolute inset-x-0 bottom-0">
+                      <div
+                        className={`px-2 py-1 text-sm font-semibold text-white transition-all ${
+                          isSelected
+                            ? "bg-black/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                            : "bg-black/62"
+                        }`}
+                        style={{ clipPath: INSET_CLIP }}
+                      >
+                        {name}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            );
+          })
+        ) : (
+          <div className="rounded-2xl border border-white/10 bg-black/10 p-4 text-sm text-white/50">
+            Loading character presets...
+          </div>
+        )}
       </div>
 
-      <div className="onboarding-panel-footer" style={{ marginTop: "20px" }}>
-        <button
-          className="onboarding-confirm-btn"
-          onClick={() => handleOnboardingNext()}
-          type="button"
-          style={{ width: "100%" }}
-        >
-          Continue
-        </button>
-      </div>
-    </>
+      {/* ── Continue button ── */}
+      <button
+        className="onboarding-confirm-btn w-full max-w-[320px] mt-2"
+        onClick={() => handleOnboardingNext()}
+        type="button"
+      >
+        Continue
+      </button>
+
+      {/* ── Restore from backup link ── */}
+      <button
+        type="button"
+        onClick={() => setShowImport(true)}
+        className="bg-transparent border-none text-white/40 text-xs cursor-pointer underline py-1"
+      >
+        {t("onboarding.restoreFromBackup")}
+      </button>
+    </div>
   );
 }
