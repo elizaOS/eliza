@@ -9,7 +9,7 @@
     "start:http": "npx tsx client-http.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.0"
+    "@modelcontextprotocol/sdk": "^1.26.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
