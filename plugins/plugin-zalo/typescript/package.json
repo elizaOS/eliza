@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-zalo",
-  "version": "2.0.0-alpha.7",
+  "version": "2.0.0-alpha.8",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
