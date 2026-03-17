@@ -50,6 +50,31 @@ describe('replyAction', () => {
   });
 
   describe('hasRequestedInState optimization', () => {
+    it('should handle deeply nested provider requests', async () => {
+      const state = {
+        actionContext: {
+          previousResults: [{
+            content: {
+              providers: ['PROVIDER_A', ['NESTED_PROVIDER']]
+            }
+          }, {
+            content: {
+              providers: ['PROVIDER_B']
+            }
+          }]
+        }
+      };
+      const response = {
+        content: {
+          text: 'Test response',
+          thought: 'Test thought',
+          providers: ['NESTED_PROVIDER']
+        }
+      };
+      const result = await replyAction.handler({}, {}, {}, state, undefined, [response]);
+      expect(result).toHaveProperty('values.success', true);
+    });
+
     it('should detect when a provider is requested in state', async () => {
       const state = {
         actionContext: {
@@ -98,6 +123,48 @@ describe('replyAction', () => {
           thought: 'Test thought'
         }
       }]);
+      expect(result).toHaveProperty('values.success', true);
+    });
+
+    it('should handle null/undefined provider arrays', async () => {
+      const state = {
+        actionContext: {
+          previousResults: [{
+            content: {
+              providers: null
+            }
+          }]
+        }
+      };
+      const response = {
+        content: {
+          text: 'Test response',
+          thought: 'Test thought',
+          providers: ['TEST_PROVIDER']
+        }
+      };
+      const result = await replyAction.handler({}, {}, {}, state, undefined, [response]); 
+      expect(result).toHaveProperty('values.success', true);
+    });
+
+    it('should handle duplicate provider requests', async () => {
+      const state = {
+        actionContext: {
+          previousResults: [{
+            content: {
+              providers: ['DUPE_PROVIDER', 'DUPE_PROVIDER']
+            }
+          }]
+        }
+      };
+      const response = {
+        content: {
+          text: 'Test response',
+          thought: 'Test thought',
+          providers: ['DUPE_PROVIDER']
+        }
+      };
+      const result = await replyAction.handler({}, {}, {}, state, undefined, [response]);
       expect(result).toHaveProperty('values.success', true);
     });
   });

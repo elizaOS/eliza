@@ -39,9 +39,9 @@ export function printBootstrapBanner(runtime: IAgentRuntime): void {
 
   const settings: PluginSetting[] = [
     {
-      name: "ALWAYS_RESPOND_CHANNELS",
+      name: "ALWAYS_RESPOND_CHANNELS", 
       value: ((): string | undefined => {
-        const val = alwaysRespondChannels || bypassTypes;
+        const val = alwaysRespondChannels ?? bypassTypes;
         if (typeof val !== "string") return undefined;
         const trimmed = val.trim();
         return trimmed !== "" ? trimmed : undefined;
@@ -50,8 +50,9 @@ export function printBootstrapBanner(runtime: IAgentRuntime): void {
     {
       name: "ALWAYS_RESPOND_SOURCES",
       value: ((): string | undefined => {
-        const val = alwaysRespondSources || bypassSources;
-        return typeof val === "string" ? val : undefined;
+        const val = alwaysRespondSources ?? bypassSources;
+        if (typeof val !== "string") return undefined;
+        return val.trim() || undefined;
       })(),
     },
     {
