@@ -72,6 +72,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
   private roomsByParticipant = new Map<string, Set<string>>();
   private participantUserState = new Map<string, "FOLLOWED" | "MUTED" | null>();
 
+  private components = new Map<string, Component>();
+
   // Pairing storage
   private pairingRequests = new Map<string, PairingRequest>();
   private pairingAllowlist = new Map<string, PairingAllowlistEntry>();
@@ -126,7 +128,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
     return ids;
   }
-  
+
   async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
     // WHY simple set: Map.set() overwrites if key exists, inserts if not.
     // This is the InMemory equivalent of ON CONFLICT DO UPDATE.
@@ -137,7 +139,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
   }
 
-  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
+  async updateAgents(
+    updates: Array<{ agentId: UUID; agent: Partial<Agent> }>,
+  ): Promise<boolean> {
     for (const { agentId, agent } of updates) {
       const existing = this.agents.get(String(agentId)) ?? {};
       this.agents.set(String(agentId), { ...existing, ...agent, id: agentId });
@@ -151,11 +155,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
     return true;
   }
-  
+
   async countAgents(): Promise<number> {
     return this.agents.size;
   }
-  
+
   async cleanupAgents(): Promise<void> {
     // WHY no-op: InMemory adapter has no persistent storage, so no cleanup needed.
     // Agents are automatically cleared when process restarts.
@@ -193,7 +197,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return [];
   }
 
-  async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
+  async getEntitiesForRoom(
+    roomId: UUID,
+    includeComponents?: boolean,
+  ): Promise<Entity[]> {
     // Get participant entity IDs for the given roomId from participantsByRoom
     const participantSet = this.participantsByRoom.get(String(roomId));
     if (!participantSet || participantSet.size === 0) {
@@ -209,12 +216,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
       }
     }
 
-    // If includeComponents is requested, include component data
-    // Note: For in-memory adapter, components are not tracked per entity,
-    // so this is effectively a no-op, but we maintain the interface contract
     if (includeComponents) {
-      // Components would be attached here if we tracked them
-      // For now, entities are returned as-is
+      return Promise.all(
+        entities.map(async (entity) => ({
+          ...entity,
+          components: await this.getComponents(entity.id!),
+        })),
+      );
     }
 
     return entities;
@@ -229,7 +237,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
     return ids;
   }
-  
+
   async upsertEntities(entities: Entity[]): Promise<void> {
     // WHY simple set: For InMemory, upsert is just Map.set() which naturally
     // handles both insert (new key) and update (existing key) cases.
@@ -237,7 +245,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
       this.entities.set(String(entity.id), entity);
     }
   }
-  
+
   async searchEntitiesByName(params: {
     query: string;
     agentId: UUID;
@@ -248,56 +256,72 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     const lowerQuery = params.query.toLowerCase();
     const limit = params.limit ?? 10;
     const matches: Entity[] = [];
-    
+
     for (const entity of this.entities.values()) {
       if (entity.agentId !== params.agentId) continue;
-      
-      const hasMatch = entity.names?.some(name => 
-        name.toLowerCase().includes(lowerQuery)
+
+      const hasMatch = entity.names?.some((name) =>
+        name.toLowerCase().includes(lowerQuery),
       );
-      
+
       if (hasMatch) {
         matches.push(entity);
         if (matches.length >= limit) break;
       }
     }
-    
+
     return matches;
   }
-  
-  async getEntitiesByNames(params: { names: string[]; agentId: UUID }): Promise<Entity[]> {
+
+  async getEntitiesByNames(params: {
+    names: string[];
+    agentId: UUID;
+  }): Promise<Entity[]> {
     // WHY O(N) scan: InMemory has no indexing. Match ANY name in entity.names.
     // Case-sensitive exact match (consistent with SQL implementations).
     const nameSet = new Set(params.names);
     const matches: Entity[] = [];
-    
+
     for (const entity of this.entities.values()) {
       if (entity.agentId !== params.agentId) continue;
-      
-      const hasMatch = entity.names?.some(name => nameSet.has(name));
+
+      const hasMatch = entity.names?.some((name) => nameSet.has(name));
       if (hasMatch) {
         matches.push(entity);
       }
     }
-    
+
     return matches;
   }
 
   async getComponent(
-    _entityId: UUID,
-    _type: string,
-    _worldId?: UUID,
-    _sourceEntityId?: UUID,
+    entityId: UUID,
+    type: string,
+    worldId?: UUID,
+    sourceEntityId?: UUID,
   ): Promise<Component | null> {
+    for (const c of this.components.values()) {
+      if (c.entityId !== entityId || c.type !== type) continue;
+      if (worldId && c.worldId !== worldId) continue;
+      if (sourceEntityId && c.sourceEntityId !== sourceEntityId) continue;
+      return c;
+    }
     return null;
   }
 
   async getComponents(
-    _entityId: UUID,
-    _worldId?: UUID,
-    _sourceEntityId?: UUID,
+    entityId: UUID,
+    worldId?: UUID,
+    sourceEntityId?: UUID,
   ): Promise<Component[]> {
-    return [];
+    const out: Component[] = [];
+    for (const c of this.components.values()) {
+      if (c.entityId !== entityId) continue;
+      if (worldId && c.worldId !== worldId) continue;
+      if (sourceEntityId && c.sourceEntityId !== sourceEntityId) continue;
+      out.push(c);
+    }
+    return out;
   }
 
   // Batch entity methods
@@ -324,34 +348,133 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
   // Batch component methods
   async createComponents(components: Component[]): Promise<UUID[]> {
-    return components.map(c => c.id);
+    const ids: UUID[] = [];
+    for (const c of components) {
+      this.components.set(String(c.id), {
+        ...c,
+        createdAt: c.createdAt ?? Date.now(),
+      });
+      ids.push(c.id);
+    }
+    return ids;
   }
 
-  async getComponentsByIds(_componentIds: UUID[]): Promise<Component[]> {
-    return [];
+  async getComponentsByIds(componentIds: UUID[]): Promise<Component[]> {
+    const out: Component[] = [];
+    for (const id of componentIds) {
+      const c = this.components.get(String(id));
+      if (c) out.push(c);
+    }
+    return out;
   }
 
-  async updateComponents(_components: Component[]): Promise<void> {
-    // no-op
+  async updateComponents(components: Component[]): Promise<void> {
+    for (const c of components) {
+      this.components.set(String(c.id), c);
+    }
   }
 
-  async deleteComponents(_componentIds: UUID[]): Promise<void> {
-    // no-op
+  async deleteComponents(componentIds: UUID[]): Promise<void> {
+    for (const id of componentIds) {
+      this.components.delete(String(id));
+    }
   }
 
   async upsertComponents(
-    _components: Component[],
+    components: Component[],
     _options?: { entityContext?: UUID },
   ): Promise<void> {
-    // InMemory does not persist components; no-op for compatibility.
+    // Dedupe by natural key (entityId + type + worldId + sourceEntityId), last wins
+    const deduped = new Map<string, Component>();
+    for (const c of components) {
+      const key = `${c.entityId}:${c.type}:${c.worldId ?? ""}:${c.sourceEntityId ?? ""}`;
+      deduped.set(key, c);
+    }
+    for (const c of deduped.values()) {
+      // Find existing by natural key, preserve its id if present
+      let existingId: string | undefined;
+      for (const [id, existing] of this.components.entries()) {
+        if (
+          existing.entityId === c.entityId &&
+          existing.type === c.type &&
+          (existing.worldId ?? null) === (c.worldId ?? null) &&
+          (existing.sourceEntityId ?? null) === (c.sourceEntityId ?? null)
+        ) {
+          existingId = id;
+          break;
+        }
+      }
+      if (existingId) {
+        // Update mutable fields, keep original id and createdAt
+        const prev = this.components.get(existingId)!;
+        this.components.set(existingId, {
+          ...prev,
+          data: c.data ?? prev.data,
+          agentId: c.agentId ?? prev.agentId,
+          roomId: c.roomId ?? prev.roomId,
+        });
+      } else {
+        this.components.set(String(c.id), {
+          ...c,
+          createdAt: c.createdAt ?? Date.now(),
+        });
+      }
+    }
   }
 
   async patchComponent(
-    _componentId: UUID,
-    _ops: PatchOp[],
+    componentId: UUID,
+    ops: PatchOp[],
     _options?: { entityContext?: UUID },
   ): Promise<void> {
-    // InMemory does not persist components; no-op for compatibility.
+    if (ops.length === 0) return;
+    const c = this.components.get(String(componentId));
+    if (!c) throw new Error(`Component not found: ${componentId}`);
+    const data = (c.data ?? {}) as Metadata;
+
+    for (const op of ops) {
+      const segments = op.path.split(".");
+      if (
+        segments.some(
+          (seg) => !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(seg) && !/^\d+$/.test(seg),
+        )
+      ) {
+        throw new Error(
+          `Invalid patch path: "${op.path}". Only alphanumeric, underscore, and numeric indices allowed.`,
+        );
+      }
+      const last = segments.pop()!;
+      // Walk to parent object, creating intermediate objects as needed
+      let target = data as Record<string, unknown>;
+      for (const seg of segments) {
+        if (target[seg] === undefined || target[seg] === null) {
+          target[seg] = {};
+        }
+        target = target[seg] as Record<string, unknown>;
+      }
+
+      switch (op.op) {
+        case "set":
+          target[last] = op.value;
+          break;
+        case "push": {
+          const arr = Array.isArray(target[last])
+            ? (target[last] as unknown[])
+            : [];
+          arr.push(op.value);
+          target[last] = arr;
+          break;
+        }
+        case "remove":
+          delete target[last];
+          break;
+        case "increment":
+          target[last] = (Number(target[last]) || 0) + Number(op.value);
+          break;
+      }
+    }
+
+    c.data = data;
   }
 
   async getMemories(params: {
@@ -410,7 +533,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
 
     const offset = params.offset ?? 0;
-    return all.slice(offset, offset + (effectiveLimit === Infinity ? all.length : effectiveLimit));
+    return all.slice(
+      offset,
+      offset + (effectiveLimit === Infinity ? all.length : effectiveLimit),
+    );
   }
 
   async getMemoriesByIds(ids: UUID[]): Promise<Memory[]> {
@@ -489,7 +615,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return this.logs.filter((l) => idSet.has(String(l.id)));
   }
 
-  async createLogs(params: Array<{ body: LogBody; entityId: UUID; roomId: UUID; type: string }>): Promise<void> {
+  async createLogs(
+    params: Array<{
+      body: LogBody;
+      entityId: UUID;
+      roomId: UUID;
+      type: string;
+    }>,
+  ): Promise<void> {
     for (const param of params) {
       const id =
         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -506,7 +639,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
   }
 
-  async updateLogs(logs: Array<{ id: UUID; updates: Partial<Log> }>): Promise<void> {
+  async updateLogs(
+    logs: Array<{ id: UUID; updates: Partial<Log> }>,
+  ): Promise<void> {
     for (const { id, updates } of logs) {
       const log = this.logs.find((l) => String(l.id) === String(id));
       if (log) {
@@ -525,7 +660,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
   }
 
   // Batch memory methods
-  async createMemories(memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>): Promise<UUID[]> {
+  async createMemories(
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+  ): Promise<UUID[]> {
     const ids: UUID[] = [];
     for (const { memory, tableName } of memories) {
       const gen =
@@ -630,11 +767,23 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     tableName?: string,
   ): Promise<number> {
     const roomId: UUID | undefined =
-      typeof roomIdOrParams === "object" && roomIdOrParams !== null && "roomId" in roomIdOrParams
+      typeof roomIdOrParams === "object" &&
+      roomIdOrParams !== null &&
+      "roomId" in roomIdOrParams
         ? roomIdOrParams.roomId
         : (roomIdOrParams as UUID);
-    const u = typeof roomIdOrParams === "object" && roomIdOrParams !== null && "unique" in roomIdOrParams ? roomIdOrParams.unique : unique;
-    const tbl = typeof roomIdOrParams === "object" && roomIdOrParams !== null && "tableName" in roomIdOrParams ? roomIdOrParams.tableName : tableName;
+    const u =
+      typeof roomIdOrParams === "object" &&
+      roomIdOrParams !== null &&
+      "unique" in roomIdOrParams
+        ? roomIdOrParams.unique
+        : unique;
+    const tbl =
+      typeof roomIdOrParams === "object" &&
+      roomIdOrParams !== null &&
+      "tableName" in roomIdOrParams
+        ? roomIdOrParams.tableName
+        : tableName;
     if (roomId == null) return 0;
     const key = roomTableKey(tbl ?? "messages", roomId);
     const memories = this.memoriesByRoom.get(key) ?? [];
@@ -664,7 +813,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
     return ids;
   }
-  
+
   async upsertWorlds(worlds: World[]): Promise<void> {
     // WHY simple set: Map.set() handles both insert and update atomically.
     for (const world of worlds) {
@@ -718,7 +867,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
     return ids;
   }
-  
+
   async upsertRooms(rooms: Room[]): Promise<void> {
     // WHY simple set: InMemory upsert is just Map.set() - idempotent by nature.
     for (const room of rooms) {
@@ -742,7 +891,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return Array.from(out.values()).map(asUuid);
   }
 
-  async getRoomsByWorld(worldId: UUID, limit?: number, offset?: number): Promise<Room[]> {
+  async getRoomsByWorld(
+    worldId: UUID,
+    limit?: number,
+    offset?: number,
+  ): Promise<Room[]> {
     let out: Room[] = [];
     for (const room of this.rooms.values()) {
       if (room.worldId && room.worldId === worldId) {
@@ -772,14 +925,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return Array.from(set.values()).map(asUuid);
   }
 
-  async createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
+  async createRoomParticipants(
+    entityIds: UUID[],
+    roomId: UUID,
+  ): Promise<UUID[]> {
     // WHY: InMemory doesn't have real participant record IDs (it's just a set).
     // We generate UUIDs to match the interface contract, even though they're not stored.
     const roomKey = String(roomId);
     const participants =
       this.participantsByRoom.get(roomKey) ?? new Set<string>();
     const ids: UUID[] = [];
-    
+
     for (const eid of entityIds) {
       const entityKey = String(eid);
       participants.add(entityKey);
@@ -794,14 +950,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
   }
 
   // Batch participant methods
-  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
+  async deleteParticipants(
+    participants: Array<{ entityId: UUID; roomId: UUID }>,
+  ): Promise<boolean> {
     for (const { entityId, roomId } of participants) {
       const roomKey = String(roomId);
       const entityKey = String(entityId);
       const roomParticipants = this.participantsByRoom.get(roomKey);
       if (roomParticipants) {
         roomParticipants.delete(entityKey);
-        if (roomParticipants.size === 0) this.participantsByRoom.delete(roomKey);
+        if (roomParticipants.size === 0)
+          this.participantsByRoom.delete(roomKey);
       }
       const rooms = this.roomsByParticipant.get(entityKey);
       if (rooms) {
@@ -813,11 +972,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return true;
   }
 
-  async updateParticipants(participants: Array<{
-    entityId: UUID;
-    roomId: UUID;
-    updates: Partial<Participant>;
-  }>): Promise<void> {
+  async updateParticipants(
+    participants: Array<{
+      entityId: UUID;
+      roomId: UUID;
+      updates: Partial<Participant>;
+    }>,
+  ): Promise<void> {
     // InMemory adapter stores participants as just sets of IDs, so we can only
     // update roomState (which is stored separately in participantUserState).
     // Metadata updates are not supported in this simple adapter.
@@ -867,12 +1028,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
   }
 
   // Batch relationship methods
-  async createRelationships(relationships: Array<{
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: Metadata;
-  }>): Promise<UUID[]> {
+  async createRelationships(
+    relationships: Array<{
+      sourceEntityId: UUID;
+      targetEntityId: UUID;
+      tags?: string[];
+      metadata?: Metadata;
+    }>,
+  ): Promise<UUID[]> {
     // WHY: InMemory adapter doesn't actually store relationships, but we return
     // placeholder IDs to match the interface contract.
     return relationships.map(() => {
@@ -884,7 +1047,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     });
   }
 
-  async getRelationshipsByIds(_relationshipIds: UUID[]): Promise<Relationship[]> {
+  async getRelationshipsByIds(
+    _relationshipIds: UUID[],
+  ): Promise<Relationship[]> {
     return [];
   }
 
@@ -907,7 +1072,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return result;
   }
 
-  async setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean> {
+  async setCaches<T>(
+    entries: Array<{ key: string; value: T }>,
+  ): Promise<boolean> {
     for (const entry of entries) {
       this.cache.set(entry.key, JSON.stringify(entry.value));
     }
@@ -980,7 +1147,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return tasks;
   }
 
-  async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {
+  async updateTasks(
+    updates: Array<{ id: UUID; task: Partial<Task> }>,
+  ): Promise<void> {
     for (const update of updates) {
       const existing = this.tasks.get(String(update.id));
       if (!existing) continue;
@@ -1146,7 +1315,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return ids;
   }
 
-  async updatePairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<void> {
+  async updatePairingAllowlistEntries(
+    entries: PairingAllowlistEntry[],
+  ): Promise<void> {
     for (const entry of entries) {
       if (!entry.id) continue;
       const id = String(entry.id);
