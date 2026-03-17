@@ -1,6 +1,6 @@
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import editMessage from "./editMessage";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
 
 describe("editMessage action", () => {
   it("should have correct name and description", () => {
@@ -10,11 +10,11 @@ describe("editMessage action", () => {
 
   it("should validate only for discord source", async () => {
     const mockRuntime = {} as IAgentRuntime;
-    
+
     const discordMessage = {
       content: { source: "discord" },
     } as Memory;
-    
+
     const telegramMessage = {
       content: { source: "telegram" },
     } as Memory;
@@ -34,13 +34,7 @@ describe("editMessage action", () => {
     } as Memory;
 
     const callback = vi.fn();
-    const result = await editMessage.handler(
-      mockRuntime,
-      message,
-      undefined,
-      undefined,
-      callback
-    );
+    const result = await editMessage.handler(mockRuntime, message, undefined, undefined, callback);
 
     expect(callback).toHaveBeenCalledWith({
       text: "Discord service is not available.",

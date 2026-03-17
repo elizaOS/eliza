@@ -4,12 +4,10 @@ import type { IPCResponse } from "../types";
 
 type BridgeInternals = {
   initialized: boolean;
-  process:
-    | {
-        stdin?: { write: (json: string) => void };
-        kill?: (signal: NodeJS.Signals) => void;
-      }
-    | null;
+  process: {
+    stdin?: { write: (json: string) => void };
+    kill?: (signal: NodeJS.Signals) => void;
+  } | null;
   pendingRequests: Map<
     string,
     {

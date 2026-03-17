@@ -44,14 +44,9 @@ interface EditMessageParams {
 
 const editMessage: Action = {
   name: "EDIT_MESSAGE",
-  similes: [
-    "UPDATE_MESSAGE",
-    "MODIFY_MESSAGE",
-    "CHANGE_MESSAGE",
-    "EDIT_DISCORD_MESSAGE",
-  ],
+  similes: ["UPDATE_MESSAGE", "MODIFY_MESSAGE", "CHANGE_MESSAGE", "EDIT_DISCORD_MESSAGE"],
   description: "Edit an existing message in a Discord channel",
-  
+
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -75,7 +70,7 @@ const editMessage: Action = {
 
     // Ensure state is available
     const currentState = state ?? (await runtime.composeState(message));
-    
+
     // Use LLM to extract edit parameters
     const prompt = composePromptFromState({
       state: currentState,
@@ -89,7 +84,9 @@ const editMessage: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response) as unknown as EditMessageParams | null;
+      const parsedResponse = parseJSONObjectFromText(
+        response
+      ) as unknown as EditMessageParams | null;
       if (parsedResponse?.messageId && parsedResponse?.newText) {
         editParams = parsedResponse;
         break;
@@ -107,7 +104,7 @@ const editMessage: Action = {
     try {
       // Get the channel
       let channel: TextChannel | null = null;
-      
+
       if (!editParams.channelRef || editParams.channelRef === "current") {
         const channelId = message.content.channelId as string;
         if (channelId) {
@@ -116,8 +113,9 @@ const editMessage: Action = {
       } else {
         // Try to find channel by name or ID
         channel = discordService.client.channels.cache.find(
-          (c) => c.id === editParams!.channelRef || 
-                 (c.isTextBased() && 'name' in c && c.name === editParams!.channelRef)
+          (c) =>
+            c.id === editParams!.channelRef ||
+            (c.isTextBased() && "name" in c && c.name === editParams!.channelRef)
         ) as TextChannel;
       }
 
@@ -130,8 +128,8 @@ const editMessage: Action = {
       }
 
       // Fetch and edit the message
-      const targetMessage = await channel.messages.fetch(editParams.messageId) as Message;
-      
+      const targetMessage = (await channel.messages.fetch(editParams.messageId)) as Message;
+
       if (!targetMessage) {
         await callback?.({
           text: "I couldn't find the message to edit.",

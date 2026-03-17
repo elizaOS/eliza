@@ -52,8 +52,8 @@ export type {
 
 // Re-export platform-specific managers for direct access
 export { launchdManager } from "./launchd.js";
-export { systemdManager } from "./systemd.js";
 export { schtasksManager } from "./schtasks.js";
+export { systemdManager } from "./systemd.js";
 
 /**
  * Get the current platform.

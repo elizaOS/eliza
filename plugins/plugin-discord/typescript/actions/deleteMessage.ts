@@ -41,13 +41,9 @@ interface DeleteMessageParams {
 
 const deleteMessage: Action = {
   name: "DELETE_MESSAGE",
-  similes: [
-    "REMOVE_MESSAGE",
-    "UNSEND_MESSAGE",
-    "DELETE_DISCORD_MESSAGE",
-  ],
+  similes: ["REMOVE_MESSAGE", "UNSEND_MESSAGE", "DELETE_DISCORD_MESSAGE"],
   description: "Delete a message from a Discord channel",
-  
+
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -71,7 +67,7 @@ const deleteMessage: Action = {
 
     // Ensure state is available
     const currentState = state ?? (await runtime.composeState(message));
-    
+
     // Use LLM to extract delete parameters
     const prompt = composePromptFromState({
       state: currentState,
@@ -85,7 +81,9 @@ const deleteMessage: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response) as unknown as DeleteMessageParams | null;
+      const parsedResponse = parseJSONObjectFromText(
+        response
+      ) as unknown as DeleteMessageParams | null;
       if (parsedResponse?.messageId) {
         deleteParams = parsedResponse;
         break;
@@ -103,7 +101,7 @@ const deleteMessage: Action = {
     try {
       // Get the channel
       let channel: TextChannel | null = null;
-      
+
       if (!deleteParams.channelRef || deleteParams.channelRef === "current") {
         const channelId = message.content.channelId as string;
         if (channelId) {
@@ -112,8 +110,9 @@ const deleteMessage: Action = {
       } else {
         // Try to find channel by name or ID
         channel = discordService.client.channels.cache.find(
-          (c) => c.id === deleteParams!.channelRef || 
-                 (c.isTextBased() && 'name' in c && c.name === deleteParams!.channelRef)
+          (c) =>
+            c.id === deleteParams!.channelRef ||
+            (c.isTextBased() && "name" in c && c.name === deleteParams!.channelRef)
         ) as TextChannel;
       }
 
@@ -126,8 +125,8 @@ const deleteMessage: Action = {
       }
 
       // Fetch and delete the message
-      const targetMessage = await channel.messages.fetch(deleteParams.messageId) as Message;
-      
+      const targetMessage = (await channel.messages.fetch(deleteParams.messageId)) as Message;
+
       if (!targetMessage) {
         await callback?.({
           text: "I couldn't find the message to delete.",
@@ -138,9 +137,9 @@ const deleteMessage: Action = {
 
       // Check if we have permission to delete
       // We can delete our own messages or messages in channels where we have MANAGE_MESSAGES
-      const canDelete = 
+      const canDelete =
         targetMessage.author.id === discordService.client.user?.id ||
-        (channel.permissionsFor(discordService.client.user!)?.has('ManageMessages') ?? false);
+        (channel.permissionsFor(discordService.client.user!)?.has("ManageMessages") ?? false);
 
       if (!canDelete) {
         await callback?.({
