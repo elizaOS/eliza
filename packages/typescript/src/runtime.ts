@@ -5534,7 +5534,12 @@ ${section_end}`;
 		entities.forEach((e) => {
 			e.agentId = this.agentId;
 		});
-		return await this.adapter.createEntities(entities);
+		const result = await this.adapter.createEntities(entities);
+		// Some adapters (e.g. plugin-sql) return boolean instead of UUID[].
+		// Normalize to UUID[] so callers and wrappers get a consistent contract.
+		if (Array.isArray(result)) return result;
+		if (result) return entities.map((e) => e.id as UUID);
+		return [];
 	}
 	async upsertEntities(entities: Entity[]): Promise<void> {
 		entities.forEach((e) => {
