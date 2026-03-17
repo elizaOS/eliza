@@ -46,7 +46,8 @@ export const removeContactAction: Action = {
     message: Memory,
     state?: State,
     _options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
+    _responses?: Memory[],
   ): Promise<ActionResult | void> => {
     try {
       const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
@@ -69,9 +70,10 @@ export const removeContactAction: Action = {
 
       // Get LLM response
       const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-      const parsed = parseKeyValueXml(response);
+      const parsed = parseKeyValueXml(response) as Record<string, unknown> | null;
+      const contactName = parsed?.contactName != null ? String(parsed.contactName) : '';
 
-      if (!parsed?.contactName) {
+      if (!parsed || !contactName) {
         logger.warn('[RemoveContact] No contact name provided');
         await callback?.({
           text: "I couldn't determine which contact to remove. Please specify the contact name.",
@@ -79,19 +81,19 @@ export const removeContactAction: Action = {
         return;
       }
 
-      if (parsed.confirmed !== 'yes') {
+      if (String(parsed.confirmed) !== 'yes') {
         await callback?.({
-          text: `To remove ${parsed.contactName} from your contacts, please confirm by saying "yes, remove ${parsed.contactName}".`,
+          text: `To remove ${contactName} from your contacts, please confirm by saying "yes, remove ${contactName}".`,
         });
         return;
       }
 
       // Find the contact
-      const contacts = await rolodexService.searchContacts({ searchTerm: parsed.contactName });
+      const contacts = await rolodexService.searchContacts({ searchTerm: contactName });
 
       if (contacts.length === 0) {
         await callback?.({
-          text: `I couldn't find a contact named "${parsed.contactName}" in the rolodex.`,
+          text: `I couldn't find a contact named "${contactName}" in the rolodex.`,
         });
         return;
       }
@@ -102,11 +104,8 @@ export const removeContactAction: Action = {
       const removed = await rolodexService.removeContact(contact.entityId);
 
       if (removed) {
-        const responseText = `I've removed ${parsed.contactName} from your contacts.`;
-        await callback?.({
-          text: responseText,
-          actions: ['REMOVE_CONTACT'],
-        });
+        const responseText = `I've removed ${contactName} from your contacts.`;
+        await callback?.({ text: responseText });
 
         logger.info(`[RemoveContact] Removed contact ${contact.entityId}`);
 
@@ -122,8 +121,7 @@ export const removeContactAction: Action = {
     } catch (error) {
       logger.error('[RemoveContact] Error:', error instanceof Error ? error.message : String(error));
       await callback?.({
-        text: 'I encountered an error while removing the contact. Please try again.',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        text: `I encountered an error while removing the contact. ${error instanceof Error ? error.message : 'Please try again.'}`,
       });
     }
   },

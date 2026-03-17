@@ -30,6 +30,7 @@ export {
 } from "./constants";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
+export * from "./database/inMemoryPluginStore";
 export * from "./entities";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";

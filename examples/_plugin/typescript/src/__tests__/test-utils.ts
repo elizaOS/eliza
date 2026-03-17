@@ -174,7 +174,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     }),
     deleteAllMemories: vi.fn().mockResolvedValue(undefined),
     countMemories: vi.fn().mockResolvedValue(0),
-    getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
+    getMemoriesByWorldIds: vi.fn().mockResolvedValue([]),
 
     getEntitiesByIds: vi.fn(
       async (ids: UUID[]) => ids.map((id) => entities.get(id)).filter(Boolean) as Entity[],

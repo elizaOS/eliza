@@ -9,7 +9,7 @@
     "copy-renderer": "node -e \"import('node:fs/promises').then(async fs=>{const {cp,rm,mkdir}=fs;await rm('renderer',{recursive:true,force:true});await mkdir('renderer',{recursive:true});await cp('../frontend/dist','renderer',{recursive:true});})\"",
     "start": "bun run build && bun run copy-renderer && electron .",
     "dev": "bun run build && ELECTRON_RENDERER_URL=http://localhost:5177 electron .",
-    "test": "vitest run"
+    "test": "bun run build && vitest run"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

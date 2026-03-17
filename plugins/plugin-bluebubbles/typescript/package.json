@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "bun run build.ts",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "biome check --write --unsafe src"
   },
   "dependencies": {

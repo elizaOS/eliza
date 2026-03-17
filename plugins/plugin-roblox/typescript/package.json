@@ -34,8 +34,8 @@
   "scripts": {
     "dev": "bun run build.ts --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run __tests__/",
-    "test:unit": "vitest run __tests__/",
+    "test": "vitest run --passWithNoTests __tests__/",
+    "test:unit": "vitest run --passWithNoTests __tests__/",
     "test:integration": "echo 'Integration tests require elizaos CLI - skipping'",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

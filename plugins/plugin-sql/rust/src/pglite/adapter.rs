@@ -1018,40 +1018,47 @@ impl DatabaseAdapter for PgLiteAdapter {
         Ok(())
     }
 
-    async fn get_memories_by_world_id(
+    async fn get_memories_by_world_ids(
         &self,
-        world_id: &UUID,
-        count: Option<i32>,
+        world_ids: &[UUID],
+        limit: Option<i32>,
         table_name: Option<&str>,
     ) -> Result<Vec<Memory>> {
-        let limit = count.map(|c| format!(" LIMIT {}", c)).unwrap_or_default();
+        if world_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let limit_clause = limit.map(|c| format!(" LIMIT {}", c)).unwrap_or_default();
+        let world_list = world_ids
+            .iter()
+            .map(|id| format!("'{}'", id.as_str()))
+            .collect::<Vec<_>>()
+            .join(",");
 
         let sql = if let Some(table) = table_name {
             format!(
                 r#"
                 SELECT id, type, created_at, content, entity_id, agent_id,
                        room_id, world_id, "unique", metadata
-                FROM memories WHERE world_id = $1 AND type = '{}'
+                FROM memories WHERE world_id IN ({}) AND type = '{}'
                 ORDER BY created_at DESC
                 {}
                 "#,
-                table, limit
+                world_list, table, limit_clause
             )
         } else {
             format!(
                 r#"
                 SELECT id, type, created_at, content, entity_id, agent_id,
                        room_id, world_id, "unique", metadata
-                FROM memories WHERE world_id = $1
+                FROM memories WHERE world_id IN ({})
                 ORDER BY created_at DESC
                 {}
                 "#,
-                limit
+                world_list, limit_clause
             )
         };
 
-        let params = vec![JsValue::from_str(world_id.as_str())];
-        let result = self.manager.query(&sql, &params).await?;
+        let result = self.manager.query(&sql, &[]).await?;
         let rows = self.parse_rows(&result)?;
 
         Ok(rows

@@ -14,6 +14,7 @@ import type {
   PairingChannel,
   PairingRequest,
   Participant,
+  PluginSchema,
   Relationship,
   Room,
   Task,
@@ -21,6 +22,10 @@ import type {
   World,
 } from "../types";
 import { DEFAULT_UUID } from "../types/primitives";
+import {
+  createMapBackend,
+  InMemoryPluginStore,
+} from "./inMemoryPluginStore";
 
 function asUuid(id: string): UUID {
   return id as UUID;
@@ -78,6 +83,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
   private pairingRequests = new Map<string, PairingRequest>();
   private pairingAllowlist = new Map<string, PairingAllowlistEntry>();
 
+  // Plugin store (in-memory; no DDL, just store schema and rows)
+  private pluginSchemas = new Map<string, PluginSchema>();
+  private pluginStoreBackend = createMapBackend();
+
   async initialize(_config?: Record<string, string | number | boolean | null>) {
     this.ready = true;
   }
@@ -86,8 +95,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     this.ready = true;
   }
 
-  async runPluginMigrations() {
-    // no-op
+  async runPluginMigrations(
+    _plugins: Array<{ name: string; schema?: Record<string, unknown> }>,
+    _options?: { verbose?: boolean; force?: boolean; dryRun?: boolean },
+  ): Promise<void> {
+    // no-op; schema is stored via registerPluginSchema, no DDL to run
+  }
+
+  async registerPluginSchema(schema: PluginSchema): Promise<void> {
+    this.pluginSchemas.set(schema.pluginName, schema);
+  }
+
+  getPluginStore(pluginName: string): import("../types").IPluginStore | null {
+    return new InMemoryPluginStore(pluginName, this.pluginStoreBackend.backend);
   }
 
   async runMigrations() {
@@ -1167,34 +1187,32 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
   }
 
-  async getMemoriesByWorldId(params: {
-    worldId: UUID;
-    /** @deprecated use limit */
-    count?: number;
-    limit?: number;
+  async getMemoriesByWorldIds(params: {
+    worldIds: UUID[];
     tableName?: string;
+    limit?: number;
   }): Promise<Memory[]> {
-    const rooms = await this.getRoomsByWorld(params.worldId);
-    const roomIds = rooms.map((r) => r.id);
-    const effectiveLimit = params.limit ?? params.count ?? 50;
-
+    if (params.worldIds.length === 0) return [];
+    const effectiveLimit = params.limit ?? 50;
     const out: Memory[] = [];
-    for (const rid of roomIds) {
-      if (params.tableName) {
-        const list =
-          this.memoriesByRoom.get(roomTableKey(params.tableName, rid)) ?? [];
-        for (const m of list) {
-          out.push(m);
-          if (out.length >= effectiveLimit) return out;
+    for (const worldId of params.worldIds) {
+      const rooms = await this.getRoomsByWorld(worldId);
+      for (const r of rooms) {
+        if (params.tableName) {
+          const list =
+            this.memoriesByRoom.get(roomTableKey(params.tableName, r.id)) ?? [];
+          for (const m of list) {
+            out.push(m);
+            if (out.length >= effectiveLimit) return out;
+          }
+          continue;
         }
-        continue;
-      }
-
-      for (const [key, list] of this.memoriesByRoom.entries()) {
-        if (!key.endsWith(`:${String(rid)}`)) continue;
-        for (const m of list) {
-          out.push(m);
-          if (out.length >= effectiveLimit) return out;
+        for (const [key, list] of this.memoriesByRoom.entries()) {
+          if (!key.endsWith(`:${String(r.id)}`)) continue;
+          for (const m of list) {
+            out.push(m);
+            if (out.length >= effectiveLimit) return out;
+          }
         }
       }
     }

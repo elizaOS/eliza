@@ -106,7 +106,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   deleteMemories: vi.fn().mockResolvedValue(undefined),
   deleteAllMemories: vi.fn().mockResolvedValue(undefined),
   countMemories: vi.fn().mockResolvedValue(0),
-  getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
+  getMemoriesByWorldIds: vi.fn().mockResolvedValue([]),
 
   // Component methods
   getComponent: vi.fn().mockResolvedValue(null),

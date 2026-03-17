@@ -13,7 +13,7 @@ import type { CommandHistoryEntry, FileOperation } from "../types";
 const MAX_OUTPUT_LENGTH = 8000;
 const TRUNCATE_SEGMENT_LENGTH = 4000;
 
-const spec = requireProviderSpec("coderStatusProvider");
+const spec = requireProviderSpec("CODER_STATUS");
 
 export const coderStatusProvider: Provider = {
   name: spec.name,

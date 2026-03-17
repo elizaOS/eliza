@@ -412,6 +412,6 @@ class InMemoryDatabaseAdapter(IDatabaseAdapter):
         if str(id) in self._tasks:
             del self._tasks[str(id)]
 
-    async def get_memories_by_world_id(self, params: dict[str, Any]) -> list[Any]:
+    async def get_memories_by_world_ids(self, params: dict[str, Any]) -> list[Any]:
         _ = params
         return []

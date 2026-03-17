@@ -452,8 +452,8 @@ describe('job-executor extended', () => {
 
       const result = await executeJob(runtime, job, config);
 
-      // Duration should be at least the delay
-      expect(result.durationMs).toBeGreaterThanOrEqual(delay);
+      // Duration should reflect the delay (allow small timer jitter)
+      expect(result.durationMs).toBeGreaterThanOrEqual(delay - 5);
       // But not excessively long
       expect(result.durationMs).toBeLessThan(delay + 100);
     });

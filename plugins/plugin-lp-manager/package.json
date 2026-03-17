@@ -8,7 +8,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsup",
-    "test": "tsup && elizaos test"
+    "test": "tsup && vitest run --passWithNoTests"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

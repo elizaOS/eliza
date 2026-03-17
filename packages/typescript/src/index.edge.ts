@@ -27,6 +27,7 @@ export {
 export * from "./connection";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
+export * from "./database/inMemoryPluginStore";
 export * from "./entities";
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";

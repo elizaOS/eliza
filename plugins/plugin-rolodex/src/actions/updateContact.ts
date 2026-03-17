@@ -55,7 +55,8 @@ export const updateContactAction: Action = {
     message: Memory,
     state?: State,
     _options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
+    _responses?: Memory[],
   ): Promise<ActionResult | void> => {
     try {
       const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
@@ -79,9 +80,10 @@ export const updateContactAction: Action = {
 
       // Get LLM response
       const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-      const parsed = parseKeyValueXml(response);
+      const parsed = parseKeyValueXml(response) as Record<string, unknown> | null;
+      const contactName = parsed?.contactName != null ? String(parsed.contactName) : '';
 
-      if (!parsed?.contactName) {
+      if (!parsed || !contactName) {
         logger.warn('[UpdateContact] No contact name provided');
         await callback?.({
           text: "I couldn't determine which contact to update. Please specify the contact name.",
@@ -90,24 +92,24 @@ export const updateContactAction: Action = {
       }
 
       // Find the contact entity
-      const contacts = await rolodexService.searchContacts({ searchTerm: parsed.contactName });
+      const contacts = await rolodexService.searchContacts({ searchTerm: contactName });
 
       if (contacts.length === 0) {
         await callback?.({
-          text: `I couldn't find a contact named "${parsed.contactName}" in the rolodex.`,
+          text: `I couldn't find a contact named "${contactName}" in the rolodex.`,
         });
         return;
       }
 
       const contact = contacts[0];
-      const operation = parsed.operation || 'replace';
+      const operation = (parsed.operation != null ? String(parsed.operation) : 'replace') as 'add_to' | 'replace';
 
       // Prepare update data
       const updateData: Partial<ContactInfo> = {};
 
       // Handle categories
-      if (parsed.categories) {
-        const newCategories = parsed.categories
+      if (parsed.categories != null) {
+        const newCategories = String(parsed.categories)
           .split(',')
           .map((c: string) => c.trim())
           .filter(Boolean);
@@ -119,8 +121,8 @@ export const updateContactAction: Action = {
       }
 
       // Handle tags
-      if (parsed.tags) {
-        const newTags = parsed.tags
+      if (parsed.tags != null) {
+        const newTags = String(parsed.tags)
           .split(',')
           .map((t: string) => t.trim())
           .filter(Boolean);
@@ -132,9 +134,9 @@ export const updateContactAction: Action = {
       }
 
       // Handle preferences
-      if (parsed.preferences) {
+      if (parsed.preferences != null) {
         const newPrefs: Record<string, string> = {};
-        parsed.preferences.split(',').forEach((pref: string) => {
+        String(parsed.preferences).split(',').forEach((pref: string) => {
           const [key, value] = pref.split(':').map((s: string) => s.trim());
           if (key && value) newPrefs[key] = value;
         });
@@ -147,9 +149,9 @@ export const updateContactAction: Action = {
       }
 
       // Handle custom fields
-      if (parsed.customFields) {
+      if (parsed.customFields != null) {
         const newFields: Record<string, string> = {};
-        parsed.customFields.split(',').forEach((field: string) => {
+        String(parsed.customFields).split(',').forEach((field: string) => {
           const [key, value] = field.split(':').map((s: string) => s.trim());
           if (key && value) newFields[key] = value;
         });
@@ -165,14 +167,11 @@ export const updateContactAction: Action = {
       const updated = await rolodexService.updateContact(contact.entityId, updateData);
 
       if (updated) {
-        const responseText = `I've updated ${parsed.contactName}'s contact information. ${
+        const responseText = `I've updated ${contactName}'s contact information. ${
           updateData.categories ? `Categories: ${updateData.categories.join(', ')}. ` : ''
         }${updateData.tags ? `Tags: ${updateData.tags.join(', ')}. ` : ''}`;
 
-        await callback?.({
-          text: responseText,
-          actions: ['UPDATE_CONTACT'],
-        });
+        await callback?.({ text: responseText });
 
         logger.info(`[UpdateContact] Updated contact ${contact.entityId}`);
 
@@ -188,8 +187,7 @@ export const updateContactAction: Action = {
     } catch (error) {
       logger.error('[UpdateContact] Error:', error instanceof Error ? error.message : String(error));
       await callback?.({
-        text: 'I encountered an error while updating the contact. Please try again.',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        text: `I encountered an error while updating the contact. ${error instanceof Error ? error.message : 'Please try again.'}`,
       });
     }
   },

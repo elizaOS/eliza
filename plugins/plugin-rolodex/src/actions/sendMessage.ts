@@ -210,7 +210,13 @@ export const sendMessageAction: Action = {
       }
 
       const sourceEntityId = message.entityId;
-      const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+      const room = state.data?.room ?? (await runtime.getRoom(message.roomId));
+      if (!room) {
+        await callback({
+          text: "I couldn't find the room for this message.",
+        });
+        return { success: false, values: { error: true }, data: { error: 'Room not found' }, text: "I couldn't find the room for this message." };
+      }
       const worldId = room.worldId;
 
       // Extract target and source information
@@ -308,19 +314,21 @@ export const sendMessageAction: Action = {
           };
         }
         // Send the message using the appropriate client
+        const targetId = targetEntity.id ?? targetEntity.entityId;
+        if (!targetId) {
+          await callback({ text: "I couldn't determine the target user's ID." });
+          return { success: false, values: { error: true }, data: { error: 'No target ID' }, text: "I couldn't determine the target user's ID." };
+        }
         try {
-          await sendDirectMessage(runtime, targetEntity.id!, source, message.content.text, worldId);
+          await sendDirectMessage(runtime, targetId, source, message.content.text ?? '', worldId);
 
-          await callback({
-            text: `Message sent to ${targetEntity.names[0]} on ${source}.`,
-            actions: ['SEND_MESSAGE'],
-            source: message.content.source,
-          });
+          const displayName = targetEntity.names?.[0] ?? 'Unknown';
+          await callback({ text: `Message sent to ${displayName} on ${source}.` });
           return {
             success: true,
             values: { error: false },
             data: { error: null },
-            text: `Message sent to ${targetEntity.names[0]} on ${source}.`,
+            text: `Message sent to ${displayName} on ${source}.`,
           };
         } catch (error: any) {
           logger.error(`Failed to send direct message: ${error.message}`);
@@ -339,9 +347,10 @@ export const sendMessageAction: Action = {
       } else if (targetData.targetType === 'room') {
         // Try to find the target room
         const rooms = await runtime.getRooms(worldId);
+        const identifiers = (targetData as { identifiers?: { roomName?: string } }).identifiers;
+        const roomName = identifiers?.roomName;
         const targetRoom = rooms.find((r) => {
-          // Match room name from identifiers
-          return r.name?.toLowerCase() === targetData.identifiers.roomName?.toLowerCase();
+          return r.name?.toLowerCase() === roomName?.toLowerCase();
         });
 
         if (!targetRoom) {
