@@ -6,6 +6,7 @@
 
 interface ImportMetaEnv {
     readonly DEV: boolean;
+    readonly PROD: boolean;
     readonly VITE_ENABLE_COMPANION_MODE?: string;
     readonly VITE_ENABLE_MEMORY_MONITOR?: string;
 }

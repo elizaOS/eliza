@@ -2981,8 +2981,10 @@ export function buildCharacterFromConfig(config: MiladyConfig): Character {
 
   return mergeCharacterDefaults({
     name,
+    ...(agentEntry?.username ? { username: agentEntry.username } : {}),
     bio,
     system: systemPrompt,
+    ...(agentEntry?.topics ? { topics: agentEntry.topics } : {}),
     ...(style ? { style } : {}),
     ...(adjectives ? { adjectives } : {}),
     ...(postExamples ? { postExamples } : {}),
