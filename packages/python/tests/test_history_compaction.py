@@ -101,4 +101,5 @@ async def test_recent_messages_provider_uses_last_compaction_boundary(
     result = await provider_under_test.get(runtime, _message(), None)
 
     assert result.values["roomId"] == str(_message().room_id)
-    assert runtime.get_memories.await_args.kwargs["start"] == 4242
+    call_kwargs = runtime.get_memories.call_args.kwargs
+    assert call_kwargs.get("start") == 4242
