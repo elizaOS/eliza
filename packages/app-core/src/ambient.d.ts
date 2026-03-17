@@ -1,5 +1,7 @@
+/// <reference types="vite/client" />
+
 /**
- * Ambient type declarations for @milady/app-core.
+ * Ambient type declarations for @elizaos/app-core.
  *
  * Provides Vite `import.meta.env` types for modules that use env vars.
  */
