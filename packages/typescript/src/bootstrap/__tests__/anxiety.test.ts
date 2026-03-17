@@ -5,7 +5,7 @@ import type { IAgentRuntime, Memory, State } from "../../types";
 
 // Test utilities
 const createMockRuntime = () => ({
-  agentId: "test-agent-id",
+  agentId: "test-agent-id", 
   getSetting: vi.fn((key) => null),
   logger: {
     debug: vi.fn(),
@@ -23,25 +23,10 @@ const createMockMemory = (channelType: ChannelType): Memory => ({
 }) as Memory;
 
 describe("anxietyProvider", () => {
-  const mockRuntime = {
-    agentId: "test-agent-id",
-    getSetting: vi.fn((key) => null),
-    logger: {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    },
-  } as unknown as IAgentRuntime;
+  const mockRuntime = createMockRuntime();
 
   it("should return group anxiety examples for GROUP channel", async () => {
-    const mockMemory = {
-      content: { 
-        channelType: ChannelType.GROUP,
-        text: "Hello everyone!"
-      }
-    } as Memory;
-    
+    const mockMemory = createMockMemory(ChannelType.GROUP);
     const mockState = {} as State;
     
     const result = await anxietyProvider.get(
@@ -50,20 +35,15 @@ describe("anxietyProvider", () => {
       mockState
     );
     
-    // Verify it contains the anxiety header and has content
-    // Test for actual anxiety provider content
     expect(result.text).toContain("Social anxiety concerns");
+    expect(result.text).toContain("Be careful about over-enthusiasm");
     expect(result.text).toBeTruthy();
+    expect(result.values).toBeDefined();
+    expect(result.values.hasAnxiety).toBe(true);
   });
 
   it("should return DM anxiety examples for DM channel", async () => {
-    const mockMemory = {
-      content: { 
-        channelType: ChannelType.DM,
-        text: "Hello there"
-      }
-    } as Memory;
-    
+    const mockMemory = createMockMemory(ChannelType.DM);
     const mockState = {} as State;
     
     const result = await anxietyProvider.get(
@@ -72,19 +52,15 @@ describe("anxietyProvider", () => {
       mockState
     );
     
-    // Verify it contains the anxiety header
     expect(result.text).toContain("AI model, you are too verbose and eager.");
+    expect(result.text).toContain("Keep responses shorter");
     expect(result.text).toBeTruthy();
+    expect(result.values).toBeDefined();
+    expect(result.values.hasAnxiety).toBe(true);
   });
 
   it("should return DM anxiety examples for VOICE_DM channel", async () => {
-    const mockMemory = {
-      content: { 
-        channelType: ChannelType.VOICE_DM,
-        text: "Voice message test"
-      }
-    } as Memory;
-    
+    const mockMemory = createMockMemory(ChannelType.VOICE_DM);
     const mockState = {} as State;
     
     const result = await anxietyProvider.get(
@@ -93,18 +69,12 @@ describe("anxietyProvider", () => {
       mockState
     );
     
-    // Verify it contains expected DM anxiety examples
     expect(result.text).toContain("AI model, you are too verbose and eager.");
+    expect(result.values.hasAnxiety).toBe(true);
   });
 
   it("should return appropriate anxiety for API channel", async () => {
-    const mockMemory = {
-      content: { 
-        channelType: ChannelType.API,
-        text: "API request"
-      }
-    } as Memory;
-    
+    const mockMemory = createMockMemory(ChannelType.API);
     const mockState = {} as State;
     
     const result = await anxietyProvider.get(
@@ -113,22 +83,15 @@ describe("anxietyProvider", () => {
       mockState
     );
     
-    // Should have some anxiety examples but not necessarily specific ones
     expect(result.text).toBeTruthy();
+    expect(result.values.hasAnxiety).toBe(true);
+    expect(result.values.channel).toBe(ChannelType.API);
   });
 
-  it("should return consistent output regardless of getSetting mock", async () => {
-    // The provider doesn't actually use runtime.getSetting for ANXIETY_EXAMPLES
-    // (the runtime parameter is named _runtime and is unused)
-    // This test verifies the provider returns valid output regardless
-
+  it("should handle missing channel type gracefully", async () => {
     const mockMemory = {
-      content: { 
-        channelType: ChannelType.DM,
-        text: "Test message"
-      }
+      content: { text: "Test message" }
     } as Memory;
-    
     const mockState = {} as State;
     
     const result = await anxietyProvider.get(
@@ -136,9 +99,42 @@ describe("anxietyProvider", () => {
       mockMemory,
       mockState
     );
-    
-    // Provider returns its built-in anxiety content
-    expect(result.text).toContain("AI model, you are too verbose and eager.");
+
     expect(result.text).toBeTruthy();
+    expect(result.values.hasAnxiety).toBe(true);
+    expect(result.values.channel).toBe("unknown");
+  });
+
+  it("should return consistent output regardless of runtime settings", async () => {
+    const mockRuntimeWithSettings = createMockRuntime();
+    mockRuntimeWithSettings.getSetting.mockReturnValue("custom anxiety content");
+
+    const mockMemory = createMockMemory(ChannelType.DM);
+    const mockState = {} as State;
+    
+    const result = await anxietyProvider.get(
+      mockRuntimeWithSettings,
+      mockMemory,
+      mockState
+    );
+    
+    expect(result.text).toContain("AI model, you are too verbose and eager.");
+    expect(result.values.hasAnxiety).toBe(true);
+  });
+
+  it("should provide values for state composition", async () => {
+    const mockMemory = createMockMemory(ChannelType.GROUP);
+    const mockState = {} as State;
+    
+    const result = await anxietyProvider.get(
+      mockRuntime,
+      mockMemory,
+      mockState
+    );
+
+    expect(result.values).toEqual({
+      hasAnxiety: true,
+      channel: ChannelType.GROUP,
+    });
   });
 });
