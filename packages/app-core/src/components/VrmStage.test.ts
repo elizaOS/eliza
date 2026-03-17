@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
+import type { ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -40,17 +41,16 @@ vi.mock("./avatar/VrmViewer", () => ({
 
 import { VrmStage, type VrmStageAvatarEntry } from "./VrmStage";
 
-function getViewerNodes(
-  renderer: TestRenderer.ReactTestRenderer,
-): TestRenderer.ReactTestInstance[] {
+function getViewerNodes(renderer: ReactTestRenderer): ReactTestInstance[] {
   return renderer.root.findAll(
     (node) => node.props["data-testid"] === "vrm-viewer",
   );
 }
 
 function getActiveMap(
-  renderer: TestRenderer.ReactTestRenderer,
+  renderer: ReactTestRenderer | null,
 ): Record<string, string> {
+  if (!renderer) return {};
   return Object.fromEntries(
     getViewerNodes(renderer).map((node) => [
       String(node.props["data-vrm-path"]),
@@ -71,7 +71,7 @@ function renderStage(props: {
 }
 
 describe("VrmStage", () => {
-  let renderer: TestRenderer.ReactTestRenderer | null = null;
+  let renderer: ReactTestRenderer | null = null;
 
   beforeEach(() => {
     testState.viewerStatusByPath.clear();
