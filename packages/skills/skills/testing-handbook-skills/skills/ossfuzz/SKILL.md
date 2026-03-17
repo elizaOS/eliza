@@ -2,8 +2,16 @@
 name: ossfuzz
 type: technique
 description: >
-  OSS-Fuzz provides free continuous fuzzing for open source projects.
-  Use when setting up continuous fuzzing infrastructure or enrolling projects.
+  The agent uses OSS-Fuzz, Google's free distributed continuous fuzzing platform, to build,
+  run, and manage fuzzing infrastructure for open-source projects. It configures project
+  enrollment files (project.yaml, Dockerfile, build.sh), builds fuzzers locally with
+  helper.py, runs harnesses with AddressSanitizer and other sanitizers, generates coverage
+  reports, and troubleshoots build failures. The agent applies this technique when setting
+  up continuous fuzzing for C/C++, Rust, Python (Atheris), or Go projects, reproducing
+  crashes from OSS-Fuzz bug reports, analyzing Fuzz Introspector coverage data, evaluating
+  criticality scores for project acceptance, or hosting a private OSS-Fuzz instance for
+  closed-source targets that need Docker-based fuzzing infrastructure with libFuzzer or
+  AFL++ engines.
 ---
 
 # OSS-Fuzz

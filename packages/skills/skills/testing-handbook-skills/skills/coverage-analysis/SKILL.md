@@ -2,8 +2,13 @@
 name: coverage-analysis
 type: technique
 description: >
-  Coverage analysis measures code exercised during fuzzing.
-  Use when assessing harness effectiveness or identifying fuzzing blockers.
+  The agent uses coverage analysis to measure which code paths, branches, and functions
+  are exercised during fuzzing campaigns. It generates LLVM and GCC coverage reports,
+  identifies uncovered code blocks, detects magic value checks that block fuzzer progress,
+  and tracks coverage trends over time. The agent applies this technique when assessing
+  harness effectiveness, diagnosing coverage plateaus, comparing differential coverage
+  between campaigns, or integrating coverage instrumentation into CMake and Rust builds
+  using llvm-cov, gcovr, and cargo-fuzz coverage toolchains.
 ---
 
 # Coverage Analysis

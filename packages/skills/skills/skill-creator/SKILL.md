@@ -1,6 +1,6 @@
 ---
 name: skill-creator
-description: Create or update AgentSkills. Use when designing, structuring, or packaging skills with scripts, references, and assets.
+description: Creates, updates, and packages AgentSkills with proper SKILL.md frontmatter, bundled scripts, references, and assets. Provides guidance on skill naming, progressive disclosure, and context-efficient design. Use when building a new skill from scratch, restructuring an existing skill, writing or improving SKILL.md files, organizing skill resources into scripts/references/assets folders, packaging skills for distribution, or iterating on skill quality after testing.
 ---
 
 # Skill Creator

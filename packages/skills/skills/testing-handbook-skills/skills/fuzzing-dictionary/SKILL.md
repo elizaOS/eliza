@@ -2,8 +2,14 @@
 name: fuzzing-dictionary
 type: technique
 description: >
-  Fuzzing dictionaries guide fuzzers with domain-specific tokens.
-  Use when fuzzing parsers, protocols, or format-specific code.
+  The agent creates and manages fuzzing dictionaries containing domain-specific tokens,
+  magic bytes, protocol keywords, and format-specific strings to guide mutation-based
+  fuzzers past early validation checks. It generates dictionary entries from header files,
+  binary strings, man pages, and LLM prompts, and passes them to libFuzzer via -dict=,
+  AFL++ via -x, or cargo-fuzz. The agent applies this technique when fuzzing parsers
+  (JSON, XML, config files), protocol handlers (HTTP, DNS), file format processors
+  (PNG, PDF, media codecs), or when coverage plateaus indicate the fuzzer cannot
+  discover keyword-guarded code paths without token hints.
 ---
 
 # Fuzzing Dictionary

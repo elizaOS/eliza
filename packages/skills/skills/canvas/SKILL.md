@@ -1,6 +1,6 @@
 ---
 name: canvas
-description: "Display HTML content on connected Otto nodes (Mac app, iOS, Android). Use for games, visualizations, dashboards, and interactive demos."
+description: "Display, present, and render HTML content on connected Otto nodes (Mac app, iOS, Android). Show on device, preview on mobile, push to screen, or navigate to a URL on any connected node. Use for games, visualizations, dashboards, interactive demos, and live-reloading development previews. Supports presenting, hiding, navigating, evaluating JavaScript, and capturing screenshots of canvas content across Mac, iOS, and Android devices."
 ---
 
 # Canvas Skill

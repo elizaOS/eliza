@@ -1,6 +1,6 @@
 ---
 name: sherpa-onnx-tts
-description: Local text-to-speech via sherpa-onnx (offline, no cloud)
+description: Local text-to-speech via sherpa-onnx (offline, no cloud). Converts text to speech audio using the sherpa-onnx runtime and Piper VITS voices with no cloud dependency. Use when the user asks to generate speech, read text aloud, produce a voice audio file, perform TTS, speech synthesis, or convert text to WAV output locally.
 metadata:
   {
     "otto":

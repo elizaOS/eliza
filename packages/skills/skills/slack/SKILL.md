@@ -1,6 +1,6 @@
 ---
 name: slack
-description: Use when you need to control Slack from Otto via the slack tool, including reacting to messages or pinning/unpinning items in Slack channels or DMs.
+description: Use when the agent needs to send, edit, delete, or read Slack messages, add or list emoji reactions, pin or unpin messages, fetch member info, or list custom emoji in Slack channels and DMs. Handles all Slack workspace interactions including message management, reaction workflows, pinned-item management, and user lookups via the configured bot token.
 metadata: { "otto": { "emoji": "💬", "requires": { "config": ["channels.slack"] } } }
 ---
 
