@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "elizaos-plugin-rlm"
 version = "0.1.0"
 description = "RLM (Recursive Language Model) plugin for elizaOS - enables processing of arbitrarily long contexts"
-readme = "../../README.md"
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
