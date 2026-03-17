@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
 
     steps:
       - name: Checkout code
@@ -33,11 +34,18 @@ jobs:
           node-version: "23.3.0"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Configure npm authentication
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # Configure npm for authentication using setup-node's registry-url
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          echo "registry=https://registry.npmjs.org/" >> ~/.npmrc
+          # Verify authentication
+          npm whoami || echo "Warning: npm authentication check failed, but continuing..."
+
       - name: Sync dist-tags
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          AUTH_NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
-          mkdir -p "$(dirname "$AUTH_NPMRC")"
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$AUTH_NPMRC"
           node scripts/sync-prerelease-dist-tags.js "${{ inputs.source_tag || 'alpha' }}" "${{ inputs.target_tag || 'next' }}"
