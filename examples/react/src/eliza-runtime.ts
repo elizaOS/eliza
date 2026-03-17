@@ -157,8 +157,15 @@ async function initializeRuntime(): Promise<AgentRuntime> {
   // Pre-initialize PGlite before the SQL plugin runs
   await preinitializePGlite();
 
+  const agentId = stringToUuid(elizaCharacter.name ?? "ELIZA");
+  if (!sqlPlugin.adapter) throw new Error("plugin-sql adapter factory required");
+  const adapterOrPromise = sqlPlugin.adapter(agentId, {});
+  const adapter = adapterOrPromise instanceof Promise ? await adapterOrPromise : adapterOrPromise;
+  await adapter.initialize();
+
   const runtime = new AgentRuntime({
     character: elizaCharacter,
+    adapter,
     plugins: [
       sqlPlugin, // PGlite database for browser (uses our pre-initialized instance)
       elizaClassicPlugin, // Classic ELIZA pattern matching

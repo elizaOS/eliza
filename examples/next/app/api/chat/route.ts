@@ -25,8 +25,8 @@ import sqlPlugin from "@elizaos/plugin-sql";
 
 import { v4 as uuidv4 } from "uuid";
 
-// Type assertion needed due to namespace import inference
-const typedSqlPlugin = sqlPlugin as Plugin;
+// Type assertion: plugin-sql's schema type can be inferred as {} which doesn't satisfy Plugin's Record<string, ...>
+const typedSqlPlugin = sqlPlugin as unknown as Plugin;
 
 // Character configuration
 const character: Character = createCharacter({

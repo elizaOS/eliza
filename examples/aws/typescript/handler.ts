@@ -18,7 +18,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin, { createDatabaseAdapter } from "@elizaos/plugin-sql";
+import sqlPlugin from "@elizaos/plugin-sql";
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
@@ -86,17 +86,24 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 
     const character = getCharacter();
     const agentId = stringToUuid(character.name ?? "Eliza");
-    const adapter = process.env.POSTGRES_URL
-      ? createDatabaseAdapter(
-          { postgresUrl: process.env.POSTGRES_URL },
-          agentId,
-        )
-      : new InMemoryDatabaseAdapter();
+    let resolvedAdapter: Awaited<ReturnType<NonNullable<typeof sqlPlugin.adapter>>> | InMemoryDatabaseAdapter;
+    if (process.env.POSTGRES_URL) {
+      if (!sqlPlugin.adapter) throw new Error("plugin-sql adapter factory required");
+      const out = sqlPlugin.adapter(agentId, {
+        POSTGRES_URL: process.env.POSTGRES_URL,
+        DATABASE_URL: process.env.POSTGRES_URL,
+      });
+      resolvedAdapter = out instanceof Promise ? await out : out;
+    } else {
+      resolvedAdapter = new InMemoryDatabaseAdapter();
+    }
+
+    await resolvedAdapter.initialize();
 
     runtime = new AgentRuntime({
       character,
       plugins: [sqlPlugin, openaiPlugin],
-      adapter,
+      adapter: resolvedAdapter,
     });
 
     await runtime.initialize();

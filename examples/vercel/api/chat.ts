@@ -39,14 +39,12 @@ function getCharacter(): Character {
   if (typeof process !== "undefined" && process.env?.OPENAI_API_KEY) {
     secrets.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   }
+  const env = typeof process !== "undefined" ? process.env : undefined;
   return createCharacter({
-    name:
-      (typeof process !== "undefined" && process.env?.CHARACTER_NAME) ?? "Eliza",
-    bio:
-      (typeof process !== "undefined" && process.env?.CHARACTER_BIO) ??
-      "A helpful AI assistant.",
+    name: (env?.CHARACTER_NAME as string | undefined) ?? "Eliza",
+    bio: (env?.CHARACTER_BIO as string | undefined) ?? "A helpful AI assistant.",
     system:
-      (typeof process !== "undefined" && process.env?.CHARACTER_SYSTEM) ??
+      (env?.CHARACTER_SYSTEM as string | undefined) ??
       "You are a helpful, concise AI assistant. Respond thoughtfully to user messages.",
     secrets,
   });

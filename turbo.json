@@ -168,6 +168,11 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
     },
+    "@elizaos/plugin-feishu-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    },
     "@elizaos/plugin-browser-root#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
@@ -315,6 +320,14 @@
       "outputs": ["rust/target/release/**"]
     },
     "ai-town#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "eliza-vrm-demo#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@mediar-ai/workflow#build": {
       "dependsOn": ["^build"],
       "outputs": []
     },
