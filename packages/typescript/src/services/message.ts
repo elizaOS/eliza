@@ -2023,7 +2023,7 @@ Output ONLY the continuation, starting immediately after the last character abov
       // Since providers run in parallel, this is the max wall-clock time allowed
       // Note: Default of 5000ms allows providers making external API calls adequate time
       const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(
-        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
+        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "5000"),
         10,
       );
 
