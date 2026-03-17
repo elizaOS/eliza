@@ -133,6 +133,10 @@ describe("Service Type System", () => {
       await runtime.registerService(MockWalletService2);
       await runtime.registerService(MockPdfService);
 
+      // Start services (getAllServices returns only started instances)
+      await runtime.getServicesByType(ServiceType.WALLET);
+      await runtime.getServicesByType(ServiceType.PDF);
+
       const allServices = runtime.getAllServices();
 
       // Should have 2 service types

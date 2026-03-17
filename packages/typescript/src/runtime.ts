@@ -664,6 +664,9 @@ export class AgentRuntime implements IAgentRuntime {
    * WHY: Those belong to provisioning (once at daemon boot); edge/ephemeral skip them.
    */
   async initialize(): Promise<void> {
+    if (!this.adapter) {
+      throw new Error("Database adapter not initialized");
+    }
     const pluginRegistrationPromises: Promise<void>[] = [];
 
     const bootstrapPlugin = createBootstrapPlugin(this.capabilityOptions);
@@ -2411,9 +2414,19 @@ export class AgentRuntime implements IAgentRuntime {
   async getServicesByType<T extends Service = Service>(
     serviceName: ServiceTypeName | string,
   ): Promise<T[]> {
+    const key = serviceName as ServiceTypeName;
+    const classes = this.serviceTypes.get(key);
+    if (!classes || classes.length === 0) {
+      return [];
+    }
+    // Start all registered services of this type (first via _ensureServiceStarted, then any remaining)
     await this._ensureServiceStarted(serviceName);
-    const serviceInstances = this.services.get(serviceName as ServiceTypeName);
-    if (!serviceInstances || serviceInstances.length === 0) {
+    let serviceInstances = this.services.get(key) ?? [];
+    while (serviceInstances.length < classes.length) {
+      await this._runServiceStart(key, serviceName, classes[serviceInstances.length]);
+      serviceInstances = this.services.get(key) ?? [];
+    }
+    if (serviceInstances.length === 0) {
       this.logger.debug(
         { src: "agent", agentId: this.agentId, serviceName },
         "No services found for type",
@@ -4329,6 +4342,29 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       { src: "agent", agentId: agent.id },
       existingAgent ? "Agent updated on restart" : "Agent created",
     );
+
+    // Sync merged agent state into runtime.character so getSetting() and character stay in sync with DB
+    if (this.character && refreshedAgent) {
+      if (
+        refreshedAgent.settings &&
+        typeof refreshedAgent.settings === "object"
+      ) {
+        this.character.settings = {
+          ...this.character.settings,
+          ...refreshedAgent.settings,
+        };
+      }
+      if (
+        refreshedAgent.secrets &&
+        typeof refreshedAgent.secrets === "object"
+      ) {
+        this.character.secrets = {
+          ...this.character.secrets,
+          ...refreshedAgent.secrets,
+        };
+      }
+    }
+
     return refreshedAgent;
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {

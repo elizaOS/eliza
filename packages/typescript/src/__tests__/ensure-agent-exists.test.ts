@@ -565,10 +565,18 @@ describe("ensureAgentExists - Settings Persistence", () => {
         >
       ).mockResolvedValue(true);
 
-      // Initialize runtime (should load DB settings into character)
       await testRuntime.initialize();
+      // ensureAgentExists merges DB + character and syncs result into runtime.character
+      await testRuntime.ensureAgentExists({
+        id: agentId,
+        name: character.name,
+        username: character.username,
+        bio: character.bio,
+        settings: character.settings,
+        secrets: character.secrets,
+      });
 
-      // After initialize, character should have BOTH DB and file settings
+      // After ensureAgentExists, character should have BOTH DB and file settings
       const testRuntimeCharacterSettings = testRuntime.character.settings;
       expect(testRuntimeCharacterSettings?.SOLANA_PUBLIC_KEY).toBe(
         "wallet_from_db",
@@ -668,6 +676,13 @@ describe("ensureAgentExists - Settings Persistence", () => {
       ).mockResolvedValue(true);
 
       await testRuntime.initialize();
+      await testRuntime.ensureAgentExists({
+        id: agentId,
+        name: character.name,
+        username: character.username,
+        bio: character.bio,
+        settings: character.settings,
+      });
 
       // Character file value should override DB
       expect(testRuntime.getSetting("MODEL")).toBe("gpt-5");
