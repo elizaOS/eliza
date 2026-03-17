@@ -520,7 +520,7 @@ describe("DefaultMessageService", () => {
 
       const result = await messageService.handleMessage(
         runtime,
-        message,
+        voiceMessage,
         mockCallback,
       );
 
