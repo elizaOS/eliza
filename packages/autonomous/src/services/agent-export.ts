@@ -912,7 +912,7 @@ export async function importAgent(
     );
   }
 
-  const payload = parseResult.data as AgentExportPayload;
+  const payload = parseResult.data as unknown as AgentExportPayload;
 
   if (payload.version > EXPORT_VERSION) {
     throw new AgentExportError(

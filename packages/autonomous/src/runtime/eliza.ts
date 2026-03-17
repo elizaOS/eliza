@@ -452,7 +452,7 @@ async function waitForTrajectoryLoggerService(
   context: string,
   timeoutMs = 3000,
 ): Promise<void> {
-  const runtimeLike = runtime as unknown as TrajectoryLoggerRuntimeLike;
+  const runtimeLike = runtime as AgentRuntime & TrajectoryLoggerRuntimeLike;
   if (collectTrajectoryLoggerCandidates(runtimeLike).length > 0) return;
 
   const registrationStatus =
@@ -501,7 +501,7 @@ function ensureTrajectoryLoggerEnabled(
   runtime: AgentRuntime,
   context: string,
 ): void {
-  const runtimeLike = runtime as unknown as TrajectoryLoggerRuntimeLike;
+  const runtimeLike = runtime as AgentRuntime & TrajectoryLoggerRuntimeLike;
   const candidates = collectTrajectoryLoggerCandidates(runtimeLike);
 
   let trajectoryLogger: TrajectoryLoggerControl | null = null;
@@ -549,7 +549,7 @@ function ensureTrajectoryLoggerEnabled(
 }
 
 function patchTrajectoryLoggerAliasCompatibility(runtime: AgentRuntime): void {
-  const runtimeLike = runtime as unknown as TrajectoryLoggerRuntimeLike;
+  const runtimeLike = runtime as AgentRuntime & TrajectoryLoggerRuntimeLike;
   const primary = collectTrajectoryLoggerCandidates(runtimeLike)[0] as
     | (TrajectoryLoggerControl & TrajectoryLoggerOps)
     | undefined;
