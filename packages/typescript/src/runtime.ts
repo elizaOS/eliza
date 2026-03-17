@@ -794,7 +794,8 @@ export class AgentRuntime implements IAgentRuntime {
 		const allowNoDatabase =
 			options?.allowNoDatabase === true ||
 			String(this.getSetting("ALLOW_NO_DATABASE") ?? "").toLowerCase() ===
-				"true";
+				"true" ||
+			String(process.env.ALLOW_NO_DATABASE ?? "").toLowerCase() === "true";
 
 		if (!this.adapter) {
 			if (allowNoDatabase) {
