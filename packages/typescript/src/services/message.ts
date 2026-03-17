@@ -461,11 +461,10 @@ export class DefaultMessageService implements IMessageService {
     const allowedSources = getAllowedMemorySources(runtime);
     const messageSourceId = (message.metadata as Record<string, unknown> | undefined)
       ?.sourceId as string | undefined;
+    // Note: ALLOW_MEMORY_SOURCE_IDS overrides DISABLE_MEMORY_CREATION for whitelisted sources
     const memorySourceAllowed =
-      !allowedSources ||
-      (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
-    // When memory creation is disabled, no persistence is allowed regardless of source
-    const canPersistMemory = memorySourceAllowed && !disableMemoryCreation;
+      (typeof messageSourceId === "string" && allowedSources?.includes(messageSourceId)) ?? true;
+    const canPersistMemory = (!disableMemoryCreation || memorySourceAllowed);
 
     let memoryToQueue: Memory | null = null;
     if (canPersistMemory) {
@@ -764,9 +763,10 @@ export class DefaultMessageService implements IMessageService {
       const responseSourceId = typeof responseContent?.metadata?.sourceId === "string" 
         ? responseContent.metadata.sourceId 
         : "agent_response"; // Use semantic default that can be added to allowlist
-      // Agent responses bypass source validation since they're internally generated
-      const isSourceAllowed = !allowedSources || allowedSources.includes(responseSourceId) || responseSourceId === "agent_response";
-      const canPersistMemory = !disableMemoryCreation && isSourceAllowed;
+      // Only persist if source is whitelisted (ALLOW_MEMORY_SOURCE_IDS)
+      // Note: DISABLE_MEMORY_CREATION takes precedence over allowlist
+      const memorySourceAllowed = !allowedSources || allowedSources.includes(responseSourceId);
+      const canPersistMemory = !disableMemoryCreation && memorySourceAllowed;
       if (responseMessages.length > 0 && canPersistMemory) {
         for (const responseMemory of responseMessages) {
           // Update the content in case inReplyTo was added
@@ -2016,7 +2016,7 @@ Output ONLY the continuation, starting immediately after the last character abov
       // Since providers run in parallel, this is the max wall-clock time allowed
       // Note: Default of 5000ms allows providers making external API calls adequate time
       const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(
-        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "5000"),
+        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
         10,
       );
 
