@@ -1,10 +1,4 @@
-import {
-  type Content,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-} from "@elizaos/core";
+import type { Content, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { checkPortfolioAction } from "../checkPortfolioAction.ts";
 
@@ -33,8 +27,18 @@ describe("checkPortfolioAction", () => {
             getWalletBalances: vi.fn().mockResolvedValue({
               solBalance: 10.5,
               tokens: [
-                { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", balance: "1000000000", decimals: 6, uiAmount: 100 },
-                { mint: "So11111111111111111111111111111111111111112", balance: "10500000000", decimals: 9, uiAmount: 10.5 },
+                {
+                  mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                  balance: "1000000000",
+                  decimals: 6,
+                  uiAmount: 100,
+                },
+                {
+                  mint: "So11111111111111111111111111111111111111112",
+                  balance: "10500000000",
+                  decimals: 9,
+                  uiAmount: 10.5,
+                },
               ],
             }),
             getWalletAddress: vi.fn().mockReturnValue("TestWallet11111111111111111111111111111111"),
@@ -122,7 +126,14 @@ describe("checkPortfolioAction", () => {
         }
         if (serviceName === "AutoTradingManager") {
           return {
-            getStatus: vi.fn().mockReturnValue({ isTrading: false, strategy: null, positions: [], performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 0 } }),
+            getStatus: vi
+              .fn()
+              .mockReturnValue({
+                isTrading: false,
+                strategy: null,
+                positions: [],
+                performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 0 },
+              }),
             getLatestTransactions: vi.fn().mockReturnValue([]),
           };
         }
@@ -141,7 +152,14 @@ describe("checkPortfolioAction", () => {
         if (serviceName === "SwapService") return null;
         if (serviceName === "AutoTradingManager") {
           return {
-            getStatus: vi.fn().mockReturnValue({ isTrading: false, strategy: null, positions: [], performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 0 } }),
+            getStatus: vi
+              .fn()
+              .mockReturnValue({
+                isTrading: false,
+                strategy: null,
+                positions: [],
+                performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 0 },
+              }),
             getLatestTransactions: vi.fn().mockReturnValue([]),
           };
         }
@@ -177,7 +195,12 @@ describe("checkPortfolioAction", () => {
               isTrading: true,
               strategy: "Momentum",
               positions: [
-                { tokenAddress: "BONK111111111111111111111111111111111111111", entryPrice: 0.00002, currentPrice: 0.000023, amount: 1000 },
+                {
+                  tokenAddress: "BONK111111111111111111111111111111111111111",
+                  entryPrice: 0.00002,
+                  currentPrice: 0.000023,
+                  amount: 1000,
+                },
               ],
               performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 1 },
             }),
@@ -198,7 +221,7 @@ describe("checkPortfolioAction", () => {
 
       expect(callbackResult?.text).toContain("Last updated:");
       // toLocaleString() format varies (e.g. "3/11/2026, 1:50:32 AM")
-      expect(callbackResult?.text).toMatch(/Last updated:.*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/);
+      expect(callbackResult?.text).toMatch(/Last updated:.*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/);
     });
   });
 });

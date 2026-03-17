@@ -110,7 +110,9 @@ export class N8nApiClient {
       query.append("active", params.active.toString());
     }
     if (params?.tags) {
-      params.tags.forEach((tag) => query.append("tags", tag));
+      params.tags.forEach((tag) => {
+        query.append("tags", tag);
+      });
     }
     if (params?.limit) {
       query.append("limit", params.limit.toString());

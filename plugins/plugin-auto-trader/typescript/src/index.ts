@@ -96,8 +96,11 @@ export { MomentumBreakoutStrategy } from "./strategies/MomentumBreakoutStrategy.
 export { RandomStrategy } from "./strategies/RandomStrategy.ts";
 export { RuleBasedStrategy } from "./strategies/RuleBasedStrategy.ts";
 // Export types from trading.ts (excluding TradingConfig which is also in AutoTradingManager)
-export type { RiskLimits, WalletPortfolioItem } from "./types/trading.ts";
 // Re-export TradingConfig from trading.ts as TradingSettings to avoid conflict
-export type { TradingConfig as TradingSettings } from "./types/trading.ts";
+export type {
+  RiskLimits,
+  TradingConfig as TradingSettings,
+  WalletPortfolioItem,
+} from "./types/trading.ts";
 // Export types - these include PortfolioAssetHolding and WalletPortfolio
 export * from "./types.ts";

@@ -256,9 +256,7 @@ describe("LLMStrategy", () => {
 
     it("should include reason with LLM decision and stop/target in successful order", async () => {
       mockBirdeyeFetch();
-      const runtime = createRuntimeForDecide(
-        buildLLMDecisionJson({ reason: "Test reasoning" }),
-      );
+      const runtime = createRuntimeForDecide(buildLLMDecisionJson({ reason: "Test reasoning" }));
       const s = new LLMStrategy();
       const order = await s.decide({
         marketData,
