@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { lobsterResumeAction } from "../actions/resume";
 import { lobsterRunAction } from "../actions/run";

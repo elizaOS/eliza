@@ -242,7 +242,6 @@ function parseEnvelope(stdout: string): LobsterEnvelope {
  * Service for running Lobster pipelines
  */
 export class LobsterService {
-  private runtime: IAgentRuntime;
   private config: LobsterConfig;
 
   constructor(runtime: IAgentRuntime, config?: Partial<LobsterConfig>) {
