@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-agent-orchestrator",
   "description": "Agent orchestration plugin for elizaOS (task lifecycle + agent providers)",
-  "version": "2.0.0-alpha.5",
+  "version": "2.0.0-alpha.6",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
