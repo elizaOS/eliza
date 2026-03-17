@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { Tab } from "@elizaos/app-core/navigation";
+import { describe, expect, it } from "vitest";
 import {
   deriveUiShellModeForTab,
   getTabForShellView,

@@ -289,7 +289,7 @@ export function loadActiveConversationId(): string | null {
 
 export function saveActiveConversationId(value: string | null): void {
   try {
-    if (value && value.trim()) {
+    if (value?.trim()) {
       localStorage.setItem(ACTIVE_CONVERSATION_ID_KEY, value);
       return;
     }

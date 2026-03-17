@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { DialectAdapter, SchemaTable } from "../../types/schema-builder";
 import type { SchemaColumn } from "../../types/schema";
+import type { DialectAdapter, SchemaTable } from "../../types/schema-builder";
 import { buildBaseTables } from "../index";
 
 // Mock buildTable and pgAdapter since they moved to plugin-sql

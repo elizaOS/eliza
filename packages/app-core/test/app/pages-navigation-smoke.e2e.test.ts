@@ -35,9 +35,9 @@ const { companionOverlayTabs, mockUseApp, noop } = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/app-core/state", async () => {
-  const actual = await vi.importActual<typeof import("@elizaos/app-core/state")>(
-    "@elizaos/app-core/state",
-  );
+  const actual = await vi.importActual<
+    typeof import("@elizaos/app-core/state")
+  >("@elizaos/app-core/state");
   return {
     ...actual,
     useApp: () => mockUseApp(),
@@ -269,9 +269,9 @@ vi.mock("../../../packages/app-core/src/components/LifoSandboxView", () => ({
     React.createElement("section", null, "LifoSandboxView Ready"),
 }));
 vi.mock("@elizaos/app-core/hooks", async () => {
-  const actual = await vi.importActual<typeof import("@elizaos/app-core/hooks")>(
-    "@elizaos/app-core/hooks",
-  );
+  const actual = await vi.importActual<
+    typeof import("@elizaos/app-core/hooks")
+  >("@elizaos/app-core/hooks");
   return {
     ...actual,
     useContextMenu: () => ({

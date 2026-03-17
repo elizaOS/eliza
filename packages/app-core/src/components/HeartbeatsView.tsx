@@ -261,7 +261,7 @@ export function HeartbeatsView() {
     triggersLoading = false,
     triggersSaving = false,
     triggerRunsById = {},
-    triggerHealth = null,
+    triggerHealth: _triggerHealth = null,
     triggerError = null,
     loadTriggers = async () => {},
     createTrigger = async () => null,

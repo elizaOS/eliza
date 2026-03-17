@@ -160,7 +160,9 @@ export async function handleTriggerRoutes(
     if (!body) return true;
 
     const creator =
-      typeof body.createdBy === "string" ? trim(body.createdBy) || "api" : "api";
+      typeof body.createdBy === "string"
+        ? trim(body.createdBy) || "api"
+        : "api";
     const normalized = normalizeTriggerDraft({
       input: { ...body, enabled: body.enabled ?? true, createdBy: creator },
       fallback: {
@@ -352,7 +354,9 @@ export async function handleTriggerRoutes(
       ...body,
       createdBy: current.createdBy,
       intervalMs:
-        typeof body.intervalMs === "number" ? body.intervalMs : current.intervalMs,
+        typeof body.intervalMs === "number"
+          ? body.intervalMs
+          : current.intervalMs,
       scheduledAtIso:
         typeof body.scheduledAtIso === "string"
           ? body.scheduledAtIso
@@ -361,7 +365,8 @@ export async function handleTriggerRoutes(
         typeof body.cronExpression === "string"
           ? body.cronExpression
           : current.cronExpression,
-      maxRuns: typeof body.maxRuns === "number" ? body.maxRuns : current.maxRuns,
+      maxRuns:
+        typeof body.maxRuns === "number" ? body.maxRuns : current.maxRuns,
     };
     const normalized = normalizeTriggerDraft({
       input: merged,
@@ -370,7 +375,8 @@ export async function handleTriggerRoutes(
         instructions: current.instructions,
         triggerType: current.triggerType,
         wakeMode: current.wakeMode,
-        enabled: body.enabled === undefined ? current.enabled : body.enabled === true,
+        enabled:
+          body.enabled === undefined ? current.enabled : body.enabled === true,
         createdBy: current.createdBy,
         intervalMs: current.intervalMs,
         scheduledAtIso: current.scheduledAtIso,

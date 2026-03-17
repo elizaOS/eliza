@@ -14,10 +14,11 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { handleAppsHyperscapeRoutes } from "@elizaos/app-hyperscape/routes";
 import {
   type AgentRuntime,
-  type Character,
   ChannelType,
+  type Character,
   type Content,
   ContentType,
   createMessageMemory,
@@ -31,19 +32,20 @@ import {
 import { ethers } from "ethers";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry";
+import { CharacterSchema } from "../config/character-schema";
 import {
   configFileExists,
   loadMiladyConfig,
   type MiladyConfig,
   saveMiladyConfig,
 } from "../config/config";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths";
 import {
   isConnectorConfigured,
   isStreamingDestinationConfigured,
 } from "../config/plugin-auto-enable";
 import type { ConnectorConfig, CustomActionDef } from "../config/types.milady";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability";
 import { EMOTE_BY_ID, EMOTE_CATALOG } from "../emotes/catalog";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace";
 import {
@@ -61,24 +63,24 @@ import {
   getBundledRuntimePluginIds,
 } from "../runtime/release-plugin-policy";
 import {
-  isBlockedPrivateOrLinkLocalIp,
-  isLoopbackHost,
-  normalizeHostLike,
-} from "../security/network-policy";
-import {
   AUDIT_EVENT_TYPES,
   AUDIT_SEVERITIES,
   getAuditFeedSize,
   queryAuditFeed,
   subscribeAuditFeed,
 } from "../security/audit-log";
-import { AppManager } from "../services/app-manager";
+import {
+  isBlockedPrivateOrLinkLocalIp,
+  isLoopbackHost,
+  normalizeHostLike,
+} from "../security/network-policy";
 import {
   AgentExportError,
   estimateExportSize,
   exportAgent,
   importAgent,
 } from "../services/agent-export";
+import { AppManager } from "../services/app-manager";
 import { FallbackTrainingService } from "../services/fallback-training-service";
 import {
   getMcpServerDetails,
@@ -97,12 +99,24 @@ import {
 } from "../services/privy-wallets";
 import type { SandboxManager } from "../services/sandbox-manager";
 import {
+  SignalPairingSession,
+  sanitizeAccountId as sanitizeSignalAccountId,
+  signalAuthExists,
+  signalLogout,
+} from "../services/signal-pairing";
+import {
   installMarketplaceSkill,
   listInstalledMarketplaceSkills,
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace";
 import { streamManager } from "../services/stream-manager";
+import {
+  sanitizeAccountId as sanitizeWhatsAppAccountId,
+  WhatsAppPairingSession,
+  whatsappAuthExists,
+  whatsappLogout,
+} from "../services/whatsapp-pairing";
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -127,10 +141,8 @@ import { handleAgentAdminRoutes } from "./agent-admin-routes";
 import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model";
 import { handleAgentTransferRoutes } from "./agent-transfer-routes";
-import { handleAppsHyperscapeRoutes } from "@elizaos/app-hyperscape/routes";
 import { handleAppsRoutes } from "./apps-routes";
 import { handleAuthRoutes } from "./auth-routes";
-
 import {
   buildBscApproveUnsignedTx,
   buildBscBuyUnsignedTx,
@@ -221,19 +233,6 @@ import {
   applyWhatsAppQrOverride,
   handleWhatsAppRoute,
 } from "./whatsapp-routes";
-import { CharacterSchema } from "../config/character-schema";
-import {
-  SignalPairingSession,
-  sanitizeAccountId as sanitizeSignalAccountId,
-  signalAuthExists,
-  signalLogout,
-} from "../services/signal-pairing";
-import {
-  sanitizeAccountId as sanitizeWhatsAppAccountId,
-  WhatsAppPairingSession,
-  whatsappAuthExists,
-  whatsappLogout,
-} from "../services/whatsapp-pairing";
 
 /**
  * Local stubs for types removed from @elizaos/plugin-agent-orchestrator 2.x.
@@ -16319,6 +16318,7 @@ async function handleRequest(
 // headless `startEliza()` path).
 // ---------------------------------------------------------------------------
 import { type captureEarlyLogs, flushEarlyLogs } from "./early-logs";
+
 export type { captureEarlyLogs };
 
 // ---------------------------------------------------------------------------

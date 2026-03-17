@@ -48,13 +48,10 @@ describe("SandboxTokenManager", () => {
 			const t3 = tm.getTokenForKey("OAUTH_TOKEN");
 			const t4 = tm.getTokenForKey("DB_PASSWORD");
 			const t5 = tm.getTokenForKey("SOME_SETTING");
-			expect(t1).toBeDefined();
-			expect(t2).toBeDefined();
-			expect(t3).toBeDefined();
-			expect(t4).toBeDefined();
-			expect(t5).toBeDefined();
-
-			expect(tm.getMetadata(t1!)?.secretType).toBe("api_key");
+			if (!t1 || !t2 || !t3 || !t4 || !t5) {
+				throw new Error("Expected all tokens to be registered");
+			}
+			expect(tm.getMetadata(t1)?.secretType).toBe("api_key");
 			expect(tm.getMetadata(t2)?.secretType).toBe("private_key");
 			expect(tm.getMetadata(t3)?.secretType).toBe("oauth_token");
 			expect(tm.getMetadata(t4)?.secretType).toBe("password");

@@ -4,6 +4,7 @@
  * Children access state and actions through the useApp() hook.
  */
 
+import type { OnboardingConnection } from "@elizaos/autonomous/contracts/onboarding";
 import {
   type ReactNode,
   useCallback,
@@ -12,7 +13,6 @@ import {
   useRef,
   useState,
 } from "react";
-import type { OnboardingConnection } from "@elizaos/autonomous/contracts/onboarding";
 import { prepareDraftForSave } from "../actions/character";
 import {
   type AgentStartupDiagnostics,

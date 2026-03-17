@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MiladyConfig } from "../../src/config/config";
 import {
   handleWalletRoutes,
   type WalletRouteDependencies,
 } from "../../src/api/wallet-routes";
+import type { MiladyConfig } from "../../src/config/config";
 
 const { createSpanMock, spanSuccessMock, spanFailureMock } = vi.hoisted(() => ({
   createSpanMock: vi.fn(),

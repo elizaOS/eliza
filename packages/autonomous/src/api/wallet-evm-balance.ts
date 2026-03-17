@@ -205,8 +205,7 @@ export function resolveEvmProviderKeys(
   maybeAnkrKey?: string | null,
 ): EvmProviderKeyset {
   if (typeof alchemyOrKeys === "string" || alchemyOrKeys == null) {
-    const alchemyKey =
-      typeof alchemyOrKeys === "string" ? alchemyOrKeys : null;
+    const alchemyKey = typeof alchemyOrKeys === "string" ? alchemyOrKeys : null;
     return {
       alchemyKey: normalizeApiKey(alchemyKey),
       ankrKey: normalizeApiKey(maybeAnkrKey),

@@ -1,10 +1,10 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  createMockIncomingMessage,
-  createMockHttpResponse,
-} from "../../src/test-support/test-helpers";
-import { handleAuthRoutes } from "../../src/api/auth-routes";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AuthRouteContext } from "../../src/api/auth-routes";
+import { handleAuthRoutes } from "../../src/api/auth-routes";
+import {
+  createMockHttpResponse,
+  createMockIncomingMessage,
+} from "../../src/test-support/test-helpers";
 
 let envBackup: string | undefined;
 

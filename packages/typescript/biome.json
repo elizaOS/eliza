@@ -1,24 +1,24 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
-  "root": false,
-  "linter": {
-    "rules": {
-      "style": {
-        "noNonNullAssertion": "warn"
-      },
-      "suspicious": {
-        "noExplicitAny": "warn",
-        "noAssignInExpressions": "warn",
-        "noControlCharactersInRegex": "warn",
-        "useAdjacentOverloadSignatures": "warn"
-      },
-      "complexity": {
-        "noBannedTypes": "warn",
-        "noCommaOperator": "warn"
-      },
-      "correctness": {
-        "noUnusedVariables": "warn"
-      }
-    }
-  }
+	"$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
+	"root": false,
+	"linter": {
+		"rules": {
+			"style": {
+				"noNonNullAssertion": "warn"
+			},
+			"suspicious": {
+				"noExplicitAny": "warn",
+				"noAssignInExpressions": "warn",
+				"noControlCharactersInRegex": "warn",
+				"useAdjacentOverloadSignatures": "warn"
+			},
+			"complexity": {
+				"noBannedTypes": "warn",
+				"noCommaOperator": "warn"
+			},
+			"correctness": {
+				"noUnusedVariables": "warn"
+			}
+		}
+	}
 }

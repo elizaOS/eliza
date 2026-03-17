@@ -12,11 +12,11 @@ import { useEffect } from "react";
 import { VrmStage } from "./companion/VrmStage";
 import { ActivateStep } from "./onboarding/ActivateStep";
 import { ConnectionStep } from "./onboarding/ConnectionStep";
+import { IdentityStep } from "./onboarding/IdentityStep";
 import { OnboardingPanel } from "./onboarding/OnboardingPanel";
 import { OnboardingStepNav } from "./onboarding/OnboardingStepNav";
 import { PermissionsStep } from "./onboarding/PermissionsStep";
 import { RpcStep } from "./onboarding/RpcStep";
-import { IdentityStep } from "./onboarding/IdentityStep";
 import { WakeUpStep } from "./onboarding/WakeUpStep";
 
 export function OnboardingWizard() {

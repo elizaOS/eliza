@@ -1176,6 +1176,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "computeruse-ts-bindings"
+version = "0.24.20"
+dependencies = [
+ "base64 0.22.1",
+ "computeruse-rs",
+ "futures",
+ "image",
+ "napi",
+ "napi-build",
+ "napi-derive",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "static_vcruntime",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "computeruse-workflow-recorder"
 version = "0.24.20"
 dependencies = [

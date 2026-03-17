@@ -1,87 +1,104 @@
-
-import { AgentRuntime, ModelType, Memory, State, IAgentRuntime } from "../src";
-import { TrajectoryLoggerService } from "../src/services/trajectoryLogger";
-import { DefaultMessageService } from "../src/services/message";
 import { v4 } from "uuid";
+import {
+	AgentRuntime,
+	type IAgentRuntime,
+	type Memory,
+	ModelType,
+	State,
+} from "../src";
+import { DefaultMessageService } from "../src/services/message";
+import { TrajectoryLoggerService } from "../src/services/trajectoryLogger";
 
 // Mock runtime setup
 async function runTest() {
-    console.log("Starting Trajectory Parity Test...");
+	console.log("Starting Trajectory Parity Test...");
 
-    const runtime = {
-        agentId: v4(),
-        providers: [],
-        getService: (name: string) => {
-            if (name === "trajectory_logger") return trajectoryLogger;
-            return null;
-        },
-        composeState: async (msg: Memory, inc: any, only: any, skip: any, phase: any) => {
-            // Simulate logging call inside composeState
-            if (trajectoryLogger) {
-                trajectoryLogger.logProviderAccess({
-                    stepId: "test-step-id",
-                    providerName: "test-provider",
-                    data: { textLength: 10 },
-                    purpose: phase ? `compose_state:${phase}` : "compose_state",
-                });
-            }
-            return { values: {}, data: {}, text: "" };
-        },
-        useModel: async (model: any, params: any) => {
-            // Simulate logging call inside useModel
-            if (trajectoryLogger) {
-                trajectoryLogger.logLlmCall({
-                    stepId: "test-step-id",
-                    model: String(model),
-                    systemPrompt: "",
-                    userPrompt: "",
-                    response: String(model).includes("EMBEDDING") ? "[embedding vector]" : "response",
-                    temperature: 0,
-                    maxTokens: 0,
-                    purpose: "action",
-                    actionType: "runtime.useModel",
-                    latencyMs: 10,
-                });
-            }
-            return "response";
-        }
-    } as unknown as IAgentRuntime;
+	const runtime = {
+		agentId: v4(),
+		providers: [],
+		getService: (name: string) => {
+			if (name === "trajectory_logger") return trajectoryLogger;
+			return null;
+		},
+		composeState: async (
+			msg: Memory,
+			inc: any,
+			only: any,
+			skip: any,
+			phase: any,
+		) => {
+			// Simulate logging call inside composeState
+			if (trajectoryLogger) {
+				trajectoryLogger.logProviderAccess({
+					stepId: "test-step-id",
+					providerName: "test-provider",
+					data: { textLength: 10 },
+					purpose: phase ? `compose_state:${phase}` : "compose_state",
+				});
+			}
+			return { values: {}, data: {}, text: "" };
+		},
+		useModel: async (model: any, params: any) => {
+			// Simulate logging call inside useModel
+			if (trajectoryLogger) {
+				trajectoryLogger.logLlmCall({
+					stepId: "test-step-id",
+					model: String(model),
+					systemPrompt: "",
+					userPrompt: "",
+					response: String(model).includes("EMBEDDING")
+						? "[embedding vector]"
+						: "response",
+					temperature: 0,
+					maxTokens: 0,
+					purpose: "action",
+					actionType: "runtime.useModel",
+					latencyMs: 10,
+				});
+			}
+			return "response";
+		},
+	} as unknown as IAgentRuntime;
 
-    const trajectoryLogger = new TrajectoryLoggerService(runtime);
+	const trajectoryLogger = new TrajectoryLoggerService(runtime);
 
-    // Test 1: Phase Labels
-    console.log("Test 1: Phase Labels");
-    await runtime.composeState({} as Memory, [], false, false, "generate");
-    const accessLogs = trajectoryLogger.getProviderAccessLogs();
-    const generateLog = accessLogs.find(l => l.purpose === "compose_state:generate");
+	// Test 1: Phase Labels
+	console.log("Test 1: Phase Labels");
+	await runtime.composeState({} as Memory, [], false, false, "generate");
+	const accessLogs = trajectoryLogger.getProviderAccessLogs();
+	const generateLog = accessLogs.find(
+		(l) => l.purpose === "compose_state:generate",
+	);
 
-    if (generateLog) {
-        console.log("✅ Phase label 'compose_state:generate' found");
-    } else {
-        console.error("❌ Phase label 'compose_state:generate' NOT found");
-        console.log("Logs:", accessLogs);
-    }
+	if (generateLog) {
+		console.log("✅ Phase label 'compose_state:generate' found");
+	} else {
+		console.error("❌ Phase label 'compose_state:generate' NOT found");
+		console.log("Logs:", accessLogs);
+	}
 
-    // Test 2: Embedding Truncation
-    console.log("Test 2: Embedding Truncation");
-    await runtime.useModel(ModelType.TEXT_EMBEDDING, { prompt: "test" });
-    const llmLogs = trajectoryLogger.getLlmCallLogs();
-    const embeddingLog = llmLogs.find(l => l.model.includes("EMBEDDING") && l.response === "[embedding vector]");
+	// Test 2: Embedding Truncation
+	console.log("Test 2: Embedding Truncation");
+	await runtime.useModel(ModelType.TEXT_EMBEDDING, { prompt: "test" });
+	const llmLogs = trajectoryLogger.getLlmCallLogs();
+	const embeddingLog = llmLogs.find(
+		(l) => l.model.includes("EMBEDDING") && l.response === "[embedding vector]",
+	);
 
-    if (embeddingLog) {
-        console.log("✅ Embedding response truncated");
-    } else {
-        console.error("❌ Embedding response NOT truncated");
-        console.log("Logs:", llmLogs);
-    }
+	if (embeddingLog) {
+		console.log("✅ Embedding response truncated");
+	} else {
+		console.error("❌ Embedding response NOT truncated");
+		console.log("Logs:", llmLogs);
+	}
 
-    // Test 3: Step Completion
-    console.log("Test 3: Step Completion");
-    if (typeof trajectoryLogger.completeStepByStepId === "function") {
-        console.log("✅ completeStepByStepId method exists");
-    } else {
-        console.error("❌ completeStepByStepId method MISSING");
-    }
+	// Test 3: Step Completion
+	console.log("Test 3: Step Completion");
+	if (typeof trajectoryLogger.completeStepByStepId === "function") {
+		console.log("✅ completeStepByStepId method exists");
+	} else {
+		console.error("❌ completeStepByStepId method MISSING");
+	}
 }
 
 runTest().catch(console.error);

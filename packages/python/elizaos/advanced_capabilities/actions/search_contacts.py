@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from elizaos.utils.xml import parse_key_value_xml
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.prompts import SEARCH_CONTACTS_TEMPLATE
 from elizaos.types import (
@@ -14,6 +13,7 @@ from elizaos.types import (
     ModelType,
 )
 from elizaos.utils.spec_examples import convert_spec_examples
+from elizaos.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:
     from elizaos.types import (

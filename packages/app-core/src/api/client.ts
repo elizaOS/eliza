@@ -21,8 +21,10 @@ import type {
   VisionConfig,
   VisionProvider,
 } from "@elizaos/autonomous/contracts/config";
-import type { DropStatus, MintResult } from "@elizaos/autonomous/contracts/drop";
-import type { VerificationResult } from "@elizaos/autonomous/contracts/verification";
+import type {
+  DropStatus,
+  MintResult,
+} from "@elizaos/autonomous/contracts/drop";
 import type {
   CloudProviderOption,
   ConnectorConfig,
@@ -41,6 +43,14 @@ import type {
   SubscriptionProviderStatus,
   SubscriptionStatusResponse,
 } from "@elizaos/autonomous/contracts/onboarding";
+import type {
+  AllPermissionsState,
+  PermissionState,
+  PermissionStatus,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+} from "@elizaos/autonomous/contracts/permissions";
+import type { VerificationResult } from "@elizaos/autonomous/contracts/verification";
 import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
@@ -74,13 +84,6 @@ import {
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
 } from "@elizaos/autonomous/contracts/wallet";
-import type {
-  AllPermissionsState,
-  PermissionState,
-  PermissionStatus,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-} from "@elizaos/autonomous/contracts/permissions";
 import type { ConfigUiHint } from "../types";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
 import { mergeStreamingText } from "../utils/streaming-text";
@@ -123,8 +126,8 @@ export type {
   PermissionStatus,
   PiAiModelOption,
   ProviderOption,
-  RpcProviderOption,
   ReleaseChannel,
+  RpcProviderOption,
   SolanaNft,
   SolanaTokenBalance,
   StylePreset,

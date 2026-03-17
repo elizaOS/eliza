@@ -8,11 +8,11 @@
  */
 
 import { logger } from "@elizaos/core";
-import { cloudLogin, type CloudLoginResult } from "../cloud/auth";
+import { type CloudLoginResult, cloudLogin } from "../cloud/auth";
 import { normalizeCloudSiteUrl } from "../cloud/base-url";
 import {
-  ElizaCloudClient,
   type CloudAgentCreateParams,
+  ElizaCloudClient,
 } from "../cloud/bridge-client";
 
 // ---------------------------------------------------------------------------
@@ -392,7 +392,9 @@ async function openBrowser(url: string): Promise<void> {
   return new Promise((resolve) => {
     const onError = (err: Error | null) => {
       if (err) {
-        logger.debug(`[cloud-onboarding] Failed to open browser: ${err.message}`);
+        logger.debug(
+          `[cloud-onboarding] Failed to open browser: ${err.message}`,
+        );
       }
       resolve();
     };

@@ -2,15 +2,13 @@ import { getVrmPreviewUrl, useApp } from "@elizaos/app-core/state";
 import { useCallback, useEffect } from "react";
 
 /** Maps catchphrases → character metadata for onboarding. */
-const IDENTITY_PRESETS: Record<
-  string,
-  { name: string; avatarIndex: number }
-> = {
-  "Noted.": { name: "Rin", avatarIndex: 1 },
-  "uwu~": { name: "Ai", avatarIndex: 2 },
-  "lol k": { name: "Anzu", avatarIndex: 3 },
-  "hehe~": { name: "Aya", avatarIndex: 4 },
-};
+const IDENTITY_PRESETS: Record<string, { name: string; avatarIndex: number }> =
+  {
+    "Noted.": { name: "Rin", avatarIndex: 1 },
+    "uwu~": { name: "Ai", avatarIndex: 2 },
+    "lol k": { name: "Anzu", avatarIndex: 3 },
+    "hehe~": { name: "Aya", avatarIndex: 4 },
+  };
 
 export function IdentityStep() {
   const {
@@ -18,7 +16,7 @@ export function IdentityStep() {
     onboardingStyle,
     handleOnboardingNext,
     setState,
-    t,
+    t: _t,
   } = useApp();
 
   const styles = onboardingOptions?.styles ?? [];
@@ -47,9 +45,7 @@ export function IdentityStep() {
 
   return (
     <>
-      <div className="onboarding-section-title">
-        Choose Your Agent
-      </div>
+      <div className="onboarding-section-title">Choose Your Agent</div>
       <div className="onboarding-divider">
         <div className="onboarding-divider-diamond" />
       </div>

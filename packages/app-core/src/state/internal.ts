@@ -1,4 +1,10 @@
 export {
+  deriveOnboardingResumeConnection,
+  deriveOnboardingResumeFields,
+  hasPartialOnboardingConnectionConfig,
+  inferOnboardingResumeStep,
+} from "./onboarding-resume";
+export {
   asApiLikeError,
   computeStreamingDelta,
   formatSearchBullet,
@@ -15,12 +21,6 @@ export {
   parseStreamEventEnvelopeEvent,
   shouldApplyFinalStreamText,
 } from "./parsers";
-export {
-  deriveOnboardingResumeConnection,
-  deriveOnboardingResumeFields,
-  hasPartialOnboardingConnectionConfig,
-  inferOnboardingResumeStep,
-} from "./onboarding-resume";
 export {
   applyUiTheme,
   clearPersistedOnboardingStep,

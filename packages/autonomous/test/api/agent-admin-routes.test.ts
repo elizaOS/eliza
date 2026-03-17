@@ -1,16 +1,19 @@
-import { describe, test, expect, vi } from "vitest";
-import {
-  createMockIncomingMessage,
-  createMockHttpResponse,
-} from "../../src/test-support/test-helpers";
-import { handleAgentAdminRoutes } from "../../src/api/agent-admin-routes";
+import { describe, expect, test, vi } from "vitest";
 import type { AgentAdminRouteContext } from "../../src/api/agent-admin-routes";
+import { handleAgentAdminRoutes } from "../../src/api/agent-admin-routes";
+import {
+  createMockHttpResponse,
+  createMockIncomingMessage,
+} from "../../src/test-support/test-helpers";
 
 function buildCtx(
   method: string,
   pathname: string,
   overrides?: Partial<AgentAdminRouteContext>,
-): AgentAdminRouteContext & { getStatus: () => number; getJson: () => unknown } {
+): AgentAdminRouteContext & {
+  getStatus: () => number;
+  getJson: () => unknown;
+} {
   const { res, getStatus, getJson } = createMockHttpResponse();
   const req = createMockIncomingMessage({ method, url: pathname });
   const ctx = {

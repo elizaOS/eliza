@@ -1,12 +1,12 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  SandboxAuditLog,
-  queryAuditFeed,
-  getAuditFeedSize,
-  subscribeAuditFeed,
   __resetAuditFeedForTests,
   AUDIT_EVENT_TYPES,
   AUDIT_SEVERITIES,
+  getAuditFeedSize,
+  queryAuditFeed,
+  SandboxAuditLog,
+  subscribeAuditFeed,
 } from "../../src/security/audit-log";
 
 beforeEach(() => {
@@ -59,9 +59,7 @@ describe("SandboxAuditLog", () => {
 
   test("recordTokenReplacement creates outbound entry", () => {
     const log = createLog();
-    log.recordTokenReplacement("outbound", "https://api.example.com", [
-      "tok1",
-    ]);
+    log.recordTokenReplacement("outbound", "https://api.example.com", ["tok1"]);
     const recent = log.getRecent(1);
     expect(recent[0].type).toBe("secret_token_replacement_outbound");
     expect(recent[0].severity).toBe("info");

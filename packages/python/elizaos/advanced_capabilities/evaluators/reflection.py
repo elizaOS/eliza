@@ -4,10 +4,10 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from elizaos.bootstrap import EvaluatorResult
-from elizaos.utils.xml import parse_key_value_xml
 from elizaos.generated.spec_helpers import require_evaluator_spec
 from elizaos.prompts import REFLECTION_TEMPLATE
 from elizaos.types import ActionResult, Evaluator, HandlerOptions, ModelType
+from elizaos.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:
     from elizaos.types import Content, IAgentRuntime, Memory, State

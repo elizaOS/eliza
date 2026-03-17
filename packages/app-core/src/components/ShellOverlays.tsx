@@ -1,10 +1,10 @@
+import { GlobalEmoteOverlay } from "./GlobalEmoteOverlay";
 import {
   BugReportModal,
   CommandPalette,
   RestartBanner,
   ShortcutsOverlay,
 } from "./index";
-import { GlobalEmoteOverlay } from "./GlobalEmoteOverlay";
 
 export interface ActionNotice {
   text: string;

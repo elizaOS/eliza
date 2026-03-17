@@ -2,7 +2,6 @@
 /**
  * Tests for plugin-bridge — capabilities detection and feature flags on web platform.
  */
-import { describe, expect, it, vi } from "vitest";
 
 import {
   getPluginCapabilities,
@@ -15,6 +14,7 @@ import {
   isWeb,
   platform,
 } from "@elizaos/app-core/bridge";
+import { describe, expect, it, vi } from "vitest";
 
 describe("plugin-bridge", () => {
   // -- Platform --

@@ -1,10 +1,10 @@
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers";
 import type {
   InstallProgressLike,
   PluginManagerLike,
   RegistryPluginInfo,
   RegistrySearchResult,
 } from "../services/plugin-manager-types";
+import type { RouteHelpers, RouteRequestMeta } from "./route-helpers";
 
 export interface AppManagerLike {
   listAvailable: (pluginManager: PluginManagerLike) => Promise<unknown>;
@@ -21,10 +21,7 @@ export interface AppManagerLike {
     runtime?: unknown | null,
   ) => Promise<unknown>;
   stop: (pluginManager: PluginManagerLike, name: string) => Promise<unknown>;
-  getInfo: (
-    pluginManager: PluginManagerLike,
-    name: string,
-  ) => Promise<unknown>;
+  getInfo: (pluginManager: PluginManagerLike, name: string) => Promise<unknown>;
 }
 
 export interface AppsRouteContext

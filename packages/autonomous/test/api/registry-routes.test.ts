@@ -1,10 +1,10 @@
-import { describe, test, expect, vi } from "vitest";
-import {
-  createMockIncomingMessage,
-  createMockHttpResponse,
-} from "../../src/test-support/test-helpers";
-import { handleRegistryRoutes } from "../../src/api/registry-routes";
+import { describe, expect, test, vi } from "vitest";
 import type { RegistryRouteContext } from "../../src/api/registry-routes";
+import { handleRegistryRoutes } from "../../src/api/registry-routes";
+import {
+  createMockHttpResponse,
+  createMockIncomingMessage,
+} from "../../src/test-support/test-helpers";
 
 function buildCtx(
   method: string,

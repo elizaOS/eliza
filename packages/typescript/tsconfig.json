@@ -1,29 +1,29 @@
 {
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "../../",
-    "baseUrl": "../../",
-    "typeRoots": ["../../node_modules/@types"],
-    "types": ["node", "bun"],
-    "noEmit": true,
-    "composite": false,
-    "declaration": false,
-    "declarationMap": false,
-    "skipLibCheck": true,
-    "paths": {
-      "@elizaos/core": ["./packages/typescript/src/index.node.ts"],
-      "@elizaos/core/*": ["./packages/typescript/src/*"],
-      "@elizaos/plugin-sql": ["./plugins/plugin-sql/typescript/index.ts"]
-    }
-  },
-  "include": ["src/**/*.ts", "../@schemas/**/*.ts"],
-  "exclude": [
-    "src/**/*.test.ts",
-    "src/**/*.spec.ts",
-    "src/**/__tests__/**",
-    "vitest.config.ts",
-    "node_modules",
-    "dist"
-  ]
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"rootDir": "../../",
+		"baseUrl": "../../",
+		"typeRoots": ["../../node_modules/@types"],
+		"types": ["node", "bun"],
+		"noEmit": true,
+		"composite": false,
+		"declaration": false,
+		"declarationMap": false,
+		"skipLibCheck": true,
+		"paths": {
+			"@elizaos/core": ["./packages/typescript/src/index.node.ts"],
+			"@elizaos/core/*": ["./packages/typescript/src/*"],
+			"@elizaos/plugin-sql": ["./plugins/plugin-sql/typescript/index.ts"]
+		}
+	},
+	"include": ["src/**/*.ts", "../@schemas/**/*.ts"],
+	"exclude": [
+		"src/**/*.test.ts",
+		"src/**/*.spec.ts",
+		"src/**/__tests__/**",
+		"vitest.config.ts",
+		"node_modules",
+		"dist"
+	]
 }

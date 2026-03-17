@@ -14,10 +14,7 @@ export const Native: StoryObj = {
     const [lang, setLang] = useState<UiLanguage>("en");
     return (
       <div className="flex items-center gap-4">
-        <LanguageDropdown
-          uiLanguage={lang}
-          setUiLanguage={setLang}
-        />
+        <LanguageDropdown uiLanguage={lang} setUiLanguage={setLang} />
         <span className="text-xs text-muted">Selected: {lang}</span>
       </div>
     );

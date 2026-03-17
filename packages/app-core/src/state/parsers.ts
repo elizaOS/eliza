@@ -171,11 +171,12 @@ function normalizeSlashCommandName(name: string): string {
 
 // A simple utility to split command arguments, equivalent to chat-commands splitCommandArgs
 function splitCommandArgs(text: string): string[] {
-  const parts = [];
+  const parts: string[] = [];
   const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
+  let match: RegExpExecArray | null = regex.exec(text);
+  while (match !== null) {
     parts.push(match[1] || match[2] || match[0]);
+    match = regex.exec(text);
   }
   return parts;
 }
