@@ -181,8 +181,6 @@ export function sliceByWidth(text: string, maxWidth: number): string {
       width += graphemeCols;
       break; // Only process first grapheme
     }
-
-    
   }
 
   let remaining = text.slice(index);
@@ -359,5 +357,3 @@ export function renderBanner(options: BannerOptions): string {
 export function printBanner(options: BannerOptions): void {
   console.log(renderBanner(options));
 }
-
-
