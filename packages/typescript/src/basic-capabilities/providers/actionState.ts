@@ -221,7 +221,7 @@ export const actionStateProvider: Provider = {
             return textChars + runId.length + 80;
           },
           ACTION_HISTORY_TARGET_CHARS,
-          { fromEnd: false }, // Keep newest runs since entries are already newest-first
+          { fromEnd: false } // groupedByRun is already newest-first
         );
 
       const formattedMemories = selectedRuns
