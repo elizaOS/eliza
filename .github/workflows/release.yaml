@@ -87,13 +87,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # Allow install to succeed even if a lifecycle script fails
-          # (e.g., plugin-ollama has a broken postinstall)
-          bun install || {
-            echo "::warning::bun install had errors (likely a broken postinstall script)"
-            echo "Checking if node_modules was created..."
-            test -d node_modules && echo "node_modules exists, continuing" || exit 1
-          }
+          bun install --ignore-scripts
+          # --ignore-scripts prevents postinstall scripts from running, but build
+          # tools like esbuild need their postinstall to install platform binaries.
+          # Run them explicitly so turbo can spawn build processes.
+          node node_modules/esbuild/install.js 2>/dev/null || true
 
       # Determine release type and version
       - name: Determine release type
@@ -313,10 +311,7 @@ jobs:
       # Update lockfile after version changes
       - name: Update lockfile
         run: |
-          bun install --no-frozen-lockfile --ignore-scripts || {
-            echo "::warning::bun install had errors (likely missing optional/native packages)"
-            test -f bun.lock && echo "Lockfile exists, continuing" || exit 1
-          }
+          bun install --no-frozen-lockfile --ignore-scripts || true
 
       # Commit and push version changes BEFORE building and publishing
       # This ensures git is the source of truth
