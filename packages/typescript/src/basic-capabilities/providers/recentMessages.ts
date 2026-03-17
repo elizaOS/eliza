@@ -166,8 +166,7 @@ export const recentMessagesProvider: Provider = {
           return textChars + runId.length + 80;
         },
         RECENT_ACTION_RUNS_TARGET_CHARS,
-        // fromEnd:false since groupedByRun entries are already newest-first
-        { fromEnd: false }
+        { fromEnd: false } // groupedByRun is already newest-first
       );
 
       const formattedActionResults = recentRuns
