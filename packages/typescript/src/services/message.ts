@@ -461,10 +461,16 @@ export class DefaultMessageService implements IMessageService {
     const allowedSources = getAllowedMemorySources(runtime);
     const messageSourceId = (message.metadata as Record<string, unknown> | undefined)
       ?.sourceId as string | undefined;
-    // Note: ALLOW_MEMORY_SOURCE_IDS overrides DISABLE_MEMORY_CREATION for whitelisted sources
-    const memorySourceAllowed =
-      (typeof messageSourceId === "string" && allowedSources?.includes(messageSourceId)) ?? true;
-    const canPersistMemory = (!disableMemoryCreation || memorySourceAllowed);
+    // When allowedSources is set, messages must have a matching sourceId
+    // When allowedSources is null, all messages are allowed (no filtering)
+    // When allowedSources is set, messages must have a matching sourceId in the whitelist
+    // When allowedSources is null, all sources are allowed (no whitelist filtering)
+    const memorySourceAllowed = allowedSources === null || 
+      (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
+    // Memory persistence requires both:
+    // 1. Memory creation enabled OR source in allowlist (ALLOW_MEMORY_SOURCE_IDS can bypass DISABLE_MEMORY_CREATION) 
+    // 2. Source allowed by whitelist (when one exists)
+    const canPersistMemory = (!disableMemoryCreation || (allowedSources && memorySourceAllowed)) && memorySourceAllowed;
 
     let memoryToQueue: Memory | null = null;
     if (canPersistMemory) {
@@ -763,10 +769,11 @@ export class DefaultMessageService implements IMessageService {
       const responseSourceId = typeof responseContent?.metadata?.sourceId === "string" 
         ? responseContent.metadata.sourceId 
         : "agent_response"; // Use semantic default that can be added to allowlist
-      // Only persist if source is whitelisted (ALLOW_MEMORY_SOURCE_IDS)
-      // Note: DISABLE_MEMORY_CREATION takes precedence over allowlist
+      // Only persist if:
+      // 1. No whitelist exists (!allowedSources) OR source is in the whitelist
+      // 2. Memory creation is enabled OR source is in whitelist (to allow bypass)
       const memorySourceAllowed = !allowedSources || allowedSources.includes(responseSourceId);
-      const canPersistMemory = !disableMemoryCreation && memorySourceAllowed;
+      const canPersistMemory = (!disableMemoryCreation || (allowedSources && memorySourceAllowed)) && memorySourceAllowed;
       if (responseMessages.length > 0 && canPersistMemory) {
         for (const responseMemory of responseMessages) {
           // Update the content in case inReplyTo was added
@@ -959,17 +966,17 @@ export class DefaultMessageService implements IMessageService {
             createdAt: Date.now(),
           };
           await runtime.createMemory(ignoreMemory, "messages");
-        runtime.logger.debug(
-          { src: "service:message", memoryId: ignoreMemory.id },
-          "Saved ignore response to memory",
-        );
-      } else {
-        runtime.logger.debug(
-          { src: "service:message", allowedSources },
-          "Source not in ALLOW_MEMORY_SOURCE_IDS allowlist; skipping ignore response persistence",
-        );
+          runtime.logger.debug(
+            { src: "service:message", memoryId: ignoreMemory.id },
+            "Saved ignore response to memory",
+          );
+        } else {
+          runtime.logger.debug(
+            { src: "service:message", allowedSources },
+            "Source not in ALLOW_MEMORY_SOURCE_IDS allowlist; skipping ignore response persistence",
+          );
+        }
       }
-    }
 
     // Clean up the response ID
     agentResponses.delete(message.roomId);
