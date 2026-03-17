@@ -86,20 +86,22 @@ describe("Transfer Action", () => {
       expect(parseFloat(transferParams.amount)).toBeGreaterThan(0);
     });
 
-    it("should handle insufficient funds gracefully", async () => {
-      // Test with unrealistic large amount that will definitely fail (or wallet has 0 in CI)
-      try {
-        const result = await ta.transfer({
-          fromChain: "sepolia" as const,
-          toAddress: receiver.address,
-          amount: "1000000", // 1M ETH - definitely insufficient
-        });
-        // If we get a result, it should indicate failure (e.g. no tx sent)
-        expect(result).toBeDefined();
-      } catch (err) {
-        expect(err).toBeDefined();
-      }
-    });
+    it(
+      "should handle insufficient funds gracefully",
+      async () => {
+        try {
+          const result = await ta.transfer({
+            fromChain: "sepolia" as const,
+            toAddress: receiver.address,
+            amount: "1000000", // 1M ETH - definitely insufficient
+          });
+          expect(result).toBeDefined();
+        } catch (err) {
+          expect(err).toBeDefined();
+        }
+      },
+      15000,
+    );
 
     it("should validate recipient address format", async () => {
       await expect(

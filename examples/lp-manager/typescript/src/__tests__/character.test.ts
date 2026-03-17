@@ -198,8 +198,13 @@ describe("Character Settings", () => {
 
 describe("Character Consistency", () => {
   test("name appears in message examples", () => {
-    const hasCharacterInExamples = character.messageExamples?.some((convo) =>
-      convo.some((msg) => msg.name === character.name),
+    const examples = character.messageExamples ?? [];
+    const hasCharacterInExamples = examples.some(
+      (group) =>
+        Array.isArray((group as { examples?: { name: string }[] }).examples) &&
+        (group as { examples: { name: string }[] }).examples.some(
+          (msg) => msg.name === character.name,
+        ),
     );
     expect(hasCharacterInExamples).toBe(true);
   });

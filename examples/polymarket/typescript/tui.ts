@@ -27,6 +27,12 @@ import type {
   MarketsResponse,
 } from "../../../plugins/plugin-polymarket/typescript/types";
 
+let _fatalError: string | null = null;
+
+export function setFatalError(message: string): void {
+  _fatalError = message;
+}
+
 type ChatRole = "user" | "assistant" | "system";
 
 type ChatMessage = {
