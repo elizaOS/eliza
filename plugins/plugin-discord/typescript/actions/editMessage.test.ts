@@ -34,7 +34,7 @@ describe("editMessage action", () => {
     } as Memory;
 
     const callback = vi.fn();
-    const result = await editMessage.handler(mockRuntime, message, undefined, undefined, callback);
+    const _result = await editMessage.handler(mockRuntime, message, undefined, undefined, callback);
 
     expect(callback).toHaveBeenCalledWith({
       text: "Discord service is not available.",

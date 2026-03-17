@@ -1,5 +1,5 @@
-import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { describe, expect, test, vi } from "vitest";
 import { readChannel } from "../actions/readChannel";
 import { searchMessages } from "../actions/searchMessages";
 import { sendDM } from "../actions/sendDM";
@@ -64,21 +64,19 @@ function createMockDiscordService(clientExists = true): Record<string, unknown> 
       content: "hello from bot",
     }),
     messages: {
-      fetch: vi
-        .fn()
-        .mockResolvedValue(
-          new Map([
-            [
-              "1",
-              {
-                id: "1",
-                content: "message1",
-                author: { username: "user1" },
-                createdTimestamp: Date.now(),
-              },
-            ],
-          ])
-        ),
+      fetch: vi.fn().mockResolvedValue(
+        new Map([
+          [
+            "1",
+            {
+              id: "1",
+              content: "message1",
+              author: { username: "user1" },
+              createdTimestamp: Date.now(),
+            },
+          ],
+        ])
+      ),
     },
     permissionsFor: vi.fn().mockReturnValue({
       has: vi.fn().mockReturnValue(true),
@@ -140,7 +138,7 @@ describe("SEND_MESSAGE action", () => {
     const runtime = createMockRuntime({ service: null });
     const msg = createMessage("discord", "send hello");
     const callback = vi.fn();
-    const result = await sendMessage.handler(runtime, msg, createMockState(), undefined, callback);
+    const _result = await sendMessage.handler(runtime, msg, createMockState(), undefined, callback);
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({ text: expect.stringContaining("not available") })
     );

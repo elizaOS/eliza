@@ -21,11 +21,11 @@ import {
 import { getMoltbookSettings, validateMoltbookSettings } from "./environment";
 import {
   type IMoltbookService,
+  isMoltbookFailure,
   type MoltbookComment,
   MoltbookEventTypes,
   type MoltbookPost,
   type MoltbookResult,
-  isMoltbookFailure,
   type MoltbookSettings,
   type MoltbookSubmolt,
   moltbookFailure,

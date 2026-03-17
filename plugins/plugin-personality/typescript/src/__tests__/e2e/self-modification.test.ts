@@ -1,56 +1,59 @@
-import type { IAgentRuntime, TestSuite } from '@elizaos/core';
-import { asUUID } from '@elizaos/core';
+import type { IAgentRuntime, TestSuite } from "@elizaos/core";
+import { asUUID } from "@elizaos/core";
 
 /**
  * E2E tests for the self-modification plugin
  * Tests real runtime behavior with live character modifications
  */
 export class SelfModificationTestSuite implements TestSuite {
-  name = 'self-modification-e2e';
-  description = 'End-to-end tests for agent self-modification and character evolution';
+  name = "self-modification-e2e";
+  description =
+    "End-to-end tests for agent self-modification and character evolution";
 
   tests = [
     {
-      name: 'Plugin initialization and service availability',
+      name: "Plugin initialization and service availability",
       fn: async (runtime: any) => {
-        console.log('Testing plugin initialization...');
+        console.log("Testing plugin initialization...");
 
         // Verify services are available
-        const fileManager = runtime.getService('character-file-manager');
+        const fileManager = runtime.getService("character-file-manager");
         if (!fileManager) {
-          throw new Error('CharacterFileManager service not available');
+          throw new Error("CharacterFileManager service not available");
         }
 
         // Verify actions are registered
-        const modifyAction = runtime.actions.find((a: any) => a.name === 'MODIFY_CHARACTER');
+        const modifyAction = runtime.actions.find(
+          (a: any) => a.name === "MODIFY_CHARACTER",
+        );
         if (!modifyAction) {
-          throw new Error('MODIFY_CHARACTER action not registered');
+          throw new Error("MODIFY_CHARACTER action not registered");
         }
 
         // Verify evaluators are registered
         const evolutionEvaluator = runtime.evaluators.find(
-          (e: any) => e.name === 'CHARACTER_EVOLUTION'
+          (e: any) => e.name === "CHARACTER_EVOLUTION",
         );
         if (!evolutionEvaluator) {
-          throw new Error('CHARACTER_EVOLUTION evaluator not registered');
+          throw new Error("CHARACTER_EVOLUTION evaluator not registered");
         }
 
         // Verify providers are registered
         const evolutionProvider = runtime.providers.find(
-          (p: any) => p.name === 'CHARACTER_EVOLUTION'
+          (p: any) => p.name === "CHARACTER_EVOLUTION",
         );
         if (!evolutionProvider) {
-          throw new Error('CHARACTER_EVOLUTION provider not registered');
+          throw new Error("CHARACTER_EVOLUTION provider not registered");
         }
 
-        console.log('✅ Plugin initialization test PASSED');
+        console.log("✅ Plugin initialization test PASSED");
       },
     },
 
     {
-      name: 'Character evolution evaluator triggers correctly',
+      name: "Character evolution evaluator triggers correctly",
       fn: async (runtime: any) => {
-        console.log('Testing character evolution evaluator...');
+        console.log("Testing character evolution evaluator...");
 
         const roomId = asUUID(crypto.randomUUID());
         const userId = asUUID(crypto.randomUUID());
@@ -62,8 +65,8 @@ export class SelfModificationTestSuite implements TestSuite {
             entityId: userId,
             roomId,
             content: {
-              text: 'You should be more encouraging when helping people learn',
-              source: 'test',
+              text: "You should be more encouraging when helping people learn",
+              source: "test",
             },
             createdAt: Date.now(),
           },
@@ -72,8 +75,8 @@ export class SelfModificationTestSuite implements TestSuite {
             entityId: runtime.agentId,
             roomId,
             content: {
-              text: 'I understand. I want to be more supportive.',
-              source: 'agent',
+              text: "I understand. I want to be more supportive.",
+              source: "agent",
             },
             createdAt: Date.now() + 1000,
           },
@@ -82,8 +85,8 @@ export class SelfModificationTestSuite implements TestSuite {
             entityId: userId,
             roomId,
             content: {
-              text: 'Yes, maybe add more positive reinforcement to your responses',
-              source: 'test',
+              text: "Yes, maybe add more positive reinforcement to your responses",
+              source: "test",
             },
             createdAt: Date.now() + 2000,
           },
@@ -91,32 +94,36 @@ export class SelfModificationTestSuite implements TestSuite {
 
         // Store messages
         for (const message of messages) {
-          await runtime.createMemory(message, 'messages');
+          await runtime.createMemory(message, "messages");
         }
 
         // Create state with message count
         const state = {
           values: {},
           data: { messageCount: messages.length },
-          text: '',
+          text: "",
         };
 
         // Test evaluator validation
-        const evaluator = runtime.evaluators.find((e: any) => e.name === 'CHARACTER_EVOLUTION');
+        const evaluator = runtime.evaluators.find(
+          (e: any) => e.name === "CHARACTER_EVOLUTION",
+        );
         const shouldRun = await evaluator.validate(runtime, messages[2], state);
 
         if (!shouldRun) {
-          throw new Error('Evolution evaluator should have triggered on encouraging feedback');
+          throw new Error(
+            "Evolution evaluator should have triggered on encouraging feedback",
+          );
         }
 
-        console.log('✅ Character evolution evaluator test PASSED');
+        console.log("✅ Character evolution evaluator test PASSED");
       },
     },
 
     {
-      name: 'MODIFY_CHARACTER action handles user requests',
+      name: "MODIFY_CHARACTER action handles user requests",
       fn: async (runtime: any) => {
-        console.log('Testing MODIFY_CHARACTER action with user request...');
+        console.log("Testing MODIFY_CHARACTER action with user request...");
 
         const roomId = asUUID(crypto.randomUUID());
         const userId = asUUID(crypto.randomUUID());
@@ -127,8 +134,8 @@ export class SelfModificationTestSuite implements TestSuite {
           entityId: userId,
           roomId,
           content: {
-            text: 'Add machine learning to your list of topics you know about',
-            source: 'test',
+            text: "Add machine learning to your list of topics you know about",
+            source: "test",
           },
           createdAt: Date.now(),
         };
@@ -136,51 +143,65 @@ export class SelfModificationTestSuite implements TestSuite {
         const state = {
           values: {},
           data: {},
-          text: '',
+          text: "",
         };
 
         // Test action validation
-        const action = runtime.actions.find((a: any) => a.name === 'MODIFY_CHARACTER');
+        const action = runtime.actions.find(
+          (a: any) => a.name === "MODIFY_CHARACTER",
+        );
         const isValid = await action.validate(runtime, message, state);
 
         if (!isValid) {
-          throw new Error('MODIFY_CHARACTER action should validate for topic addition request');
+          throw new Error(
+            "MODIFY_CHARACTER action should validate for topic addition request",
+          );
         }
 
         // Test action execution
         let responseReceived = false;
         const callback = async (content: any) => {
-          if (content.actions?.includes('MODIFY_CHARACTER')) {
+          if (content.actions?.includes("MODIFY_CHARACTER")) {
             responseReceived = true;
-            console.log('Action response:', content.text);
+            console.log("Action response:", content.text);
           }
           return [];
         };
 
-        const result = await action.handler(runtime, message, state, {}, callback);
+        const result = await action.handler(
+          runtime,
+          message,
+          state,
+          {},
+          callback,
+        );
 
         if (!responseReceived) {
-          throw new Error('MODIFY_CHARACTER action did not execute properly');
+          throw new Error("MODIFY_CHARACTER action did not execute properly");
         }
 
         if (!result.success) {
-          throw new Error(`MODIFY_CHARACTER action failed: ${result.error || result.reason}`);
+          throw new Error(
+            `MODIFY_CHARACTER action failed: ${result.error || result.reason}`,
+          );
         }
 
         // Verify character was actually modified
         const topics = runtime.character.topics || [];
-        if (!topics.includes('machine learning')) {
-          throw new Error('Character topics were not updated with machine learning');
+        if (!topics.includes("machine learning")) {
+          throw new Error(
+            "Character topics were not updated with machine learning",
+          );
         }
 
-        console.log('✅ MODIFY_CHARACTER action test PASSED');
+        console.log("✅ MODIFY_CHARACTER action test PASSED");
       },
     },
 
     {
-      name: 'CHARACTER_EVOLUTION provider supplies context',
+      name: "CHARACTER_EVOLUTION provider supplies context",
       fn: async (runtime: any) => {
-        console.log('Testing CHARACTER_EVOLUTION provider...');
+        console.log("Testing CHARACTER_EVOLUTION provider...");
 
         const roomId = asUUID(crypto.randomUUID());
         const message = {
@@ -188,8 +209,8 @@ export class SelfModificationTestSuite implements TestSuite {
           entityId: asUUID(crypto.randomUUID()),
           roomId,
           content: {
-            text: 'Tell me about your evolution capabilities',
-            source: 'test',
+            text: "Tell me about your evolution capabilities",
+            source: "test",
           },
           createdAt: Date.now(),
         };
@@ -197,76 +218,88 @@ export class SelfModificationTestSuite implements TestSuite {
         const state = {
           values: {},
           data: {},
-          text: '',
+          text: "",
         };
 
         // Test provider
-        const provider = runtime.providers.find((p: any) => p.name === 'CHARACTER_EVOLUTION');
+        const provider = runtime.providers.find(
+          (p: any) => p.name === "CHARACTER_EVOLUTION",
+        );
         const result = await provider.get(runtime, message, state);
 
         if (!result) {
-          throw new Error('CHARACTER_EVOLUTION provider returned no result');
+          throw new Error("CHARACTER_EVOLUTION provider returned no result");
         }
 
-        if (!result.text || !result.text.includes('CHARACTER EVOLUTION CONTEXT')) {
-          throw new Error('Provider did not return expected evolution context');
+        if (
+          !result.text ||
+          !result.text.includes("CHARACTER EVOLUTION CONTEXT")
+        ) {
+          throw new Error("Provider did not return expected evolution context");
         }
 
         if (!result.values.hasEvolutionCapability) {
-          throw new Error('Provider should indicate evolution capability is available');
+          throw new Error(
+            "Provider should indicate evolution capability is available",
+          );
         }
 
-        console.log('✅ CHARACTER_EVOLUTION provider test PASSED');
+        console.log("✅ CHARACTER_EVOLUTION provider test PASSED");
       },
     },
 
     {
-      name: 'Character file manager validates modifications safely',
+      name: "Character file manager validates modifications safely",
       fn: async (runtime: any) => {
-        console.log('Testing character file manager validation...');
+        console.log("Testing character file manager validation...");
 
-        const fileManager = runtime.getService('character-file-manager');
+        const fileManager = runtime.getService("character-file-manager");
 
         // Test valid modification
         const validModification = {
-          bio: ['Interested in helping people learn new technologies'],
-          topics: ['education', 'learning'],
+          bio: ["Interested in helping people learn new technologies"],
+          topics: ["education", "learning"],
         };
 
         const validResult = fileManager.validateModification(validModification);
         if (!validResult.valid) {
-          throw new Error(`Valid modification was rejected: ${validResult.errors.join(', ')}`);
+          throw new Error(
+            `Valid modification was rejected: ${validResult.errors.join(", ")}`,
+          );
         }
 
         // Test invalid modification (XSS attempt)
         const invalidModification = {
           bio: ['<script>alert("xss")</script>'],
-          topics: ['javascript:void(0)'],
+          topics: ["javascript:void(0)"],
         };
 
-        const invalidResult = fileManager.validateModification(invalidModification);
+        const invalidResult =
+          fileManager.validateModification(invalidModification);
         if (invalidResult.valid) {
-          throw new Error('Invalid modification with XSS was accepted');
+          throw new Error("Invalid modification with XSS was accepted");
         }
 
         // Test excessive modification
         const excessiveModification = {
-          bio: new Array(25).fill('Too many bio elements'),
+          bio: new Array(25).fill("Too many bio elements"),
         };
 
-        const excessiveResult = fileManager.validateModification(excessiveModification);
+        const excessiveResult = fileManager.validateModification(
+          excessiveModification,
+        );
         if (excessiveResult.valid) {
-          throw new Error('Excessive modification was accepted');
+          throw new Error("Excessive modification was accepted");
         }
 
-        console.log('✅ Character file manager validation test PASSED');
+        console.log("✅ Character file manager validation test PASSED");
       },
     },
 
     {
-      name: 'End-to-end character evolution workflow',
+      name: "End-to-end character evolution workflow",
       fn: async (runtime: any) => {
-        console.log('Testing complete character evolution workflow...');
+        console.log("Testing complete character evolution workflow...");
 
         const roomId = asUUID(crypto.randomUUID());
         const userId = asUUID(crypto.randomUUID());
@@ -283,13 +316,13 @@ export class SelfModificationTestSuite implements TestSuite {
           entityId: userId,
           roomId,
           content: {
-            text: 'You should remember that you are particularly good at explaining complex topics in simple terms',
-            source: 'test',
+            text: "You should remember that you are particularly good at explaining complex topics in simple terms",
+            source: "test",
           },
           createdAt: Date.now(),
         };
 
-        await runtime.createMemory(feedbackMessage, 'messages');
+        await runtime.createMemory(feedbackMessage, "messages");
 
         // Step 2: Agent responds
         const agentResponse = {
@@ -297,27 +330,33 @@ export class SelfModificationTestSuite implements TestSuite {
           entityId: runtime.agentId,
           roomId,
           content: {
-            text: 'Thank you for the feedback. I will remember to focus on clear, simple explanations.',
-            source: 'agent',
+            text: "Thank you for the feedback. I will remember to focus on clear, simple explanations.",
+            source: "agent",
           },
           createdAt: Date.now() + 1000,
         };
 
-        await runtime.createMemory(agentResponse, 'messages');
+        await runtime.createMemory(agentResponse, "messages");
 
         // Step 3: Trigger evolution evaluator manually (simulating post-conversation)
         const state = {
           values: {},
           data: { messageCount: 5 },
-          text: '',
+          text: "",
         };
 
-        const evaluator = runtime.evaluators.find((e: any) => e.name === 'CHARACTER_EVOLUTION');
+        const evaluator = runtime.evaluators.find(
+          (e: any) => e.name === "CHARACTER_EVOLUTION",
+        );
 
         // Force evaluation by bypassing cooldown
-        await runtime.setCache('character-evolution:last-check', '0');
+        await runtime.setCache("character-evolution:last-check", "0");
 
-        const shouldEvaluate = await evaluator.validate(runtime, feedbackMessage, state);
+        const shouldEvaluate = await evaluator.validate(
+          runtime,
+          feedbackMessage,
+          state,
+        );
         if (shouldEvaluate) {
           await evaluator.handler(runtime, feedbackMessage, state);
         }
@@ -327,7 +366,7 @@ export class SelfModificationTestSuite implements TestSuite {
           entityId: runtime.agentId,
           roomId,
           count: 5,
-          tableName: 'character_evolution',
+          tableName: "character_evolution",
         });
 
         // Step 5: Apply modification based on feedback
@@ -337,25 +376,35 @@ export class SelfModificationTestSuite implements TestSuite {
           roomId,
           content: {
             text: 'Add "clear explanations" to your bio and "educational communication" to your topics',
-            source: 'test',
+            source: "test",
           },
           createdAt: Date.now() + 2000,
         };
 
-        const action = runtime.actions.find((a: any) => a.name === 'MODIFY_CHARACTER');
+        const action = runtime.actions.find(
+          (a: any) => a.name === "MODIFY_CHARACTER",
+        );
 
         let modificationApplied = false;
         const callback = async (content: any) => {
-          if (content.actions?.includes('MODIFY_CHARACTER')) {
+          if (content.actions?.includes("MODIFY_CHARACTER")) {
             modificationApplied = true;
           }
           return [];
         };
 
-        const result = await action.handler(runtime, modificationMessage, state, {}, callback);
+        const result = await action.handler(
+          runtime,
+          modificationMessage,
+          state,
+          {},
+          callback,
+        );
 
         if (!result.success) {
-          throw new Error(`Character modification failed: ${result.error || result.reason}`);
+          throw new Error(
+            `Character modification failed: ${result.error || result.reason}`,
+          );
         }
 
         // Step 6: Verify changes were applied
@@ -365,28 +414,30 @@ export class SelfModificationTestSuite implements TestSuite {
           : [runtime.character.bio];
 
         const hasNewTopic = newTopics.some(
-          (topic: string) => topic.includes('educational') || topic.includes('communication')
+          (topic: string) =>
+            topic.includes("educational") || topic.includes("communication"),
         );
 
         const hasNewBio = newBio.some(
-          (bioItem: string) => bioItem.includes('clear') || bioItem.includes('explanation')
+          (bioItem: string) =>
+            bioItem.includes("clear") || bioItem.includes("explanation"),
         );
 
         if (!hasNewTopic && !hasNewBio) {
-          throw new Error('Character was not modified as expected');
+          throw new Error("Character was not modified as expected");
         }
 
         if (!modificationApplied) {
-          throw new Error('Modification was not properly executed');
+          throw new Error("Modification was not properly executed");
         }
 
-        console.log('Character successfully evolved:');
-        console.log('- Baseline topics:', baselineTopics.length);
-        console.log('- New topics:', newTopics.length);
-        console.log('- Baseline bio elements:', baselineBio.length);
-        console.log('- New bio elements:', newBio.length);
+        console.log("Character successfully evolved:");
+        console.log("- Baseline topics:", baselineTopics.length);
+        console.log("- New topics:", newTopics.length);
+        console.log("- Baseline bio elements:", baselineBio.length);
+        console.log("- New bio elements:", newBio.length);
 
-        console.log('✅ End-to-end character evolution workflow test PASSED');
+        console.log("✅ End-to-end character evolution workflow test PASSED");
       },
     },
   ];
@@ -395,9 +446,10 @@ export class SelfModificationTestSuite implements TestSuite {
 // Export default instance for test runner
 export default new SelfModificationTestSuite();
 
-import { describe, it, expect } from 'vitest';
-describe('SelfModificationTestSuite export', () => {
-  it('exports suite for plugin runner', () => {
+import { describe, expect, it } from "vitest";
+
+describe("SelfModificationTestSuite export", () => {
+  it("exports suite for plugin runner", () => {
     expect(SelfModificationTestSuite).toBeDefined();
   });
 });

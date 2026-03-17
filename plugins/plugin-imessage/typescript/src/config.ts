@@ -18,7 +18,11 @@ import type {
 // Reaction Configuration
 // ============================================================
 
-export type IMessageReactionNotificationMode = "off" | "own" | "all" | "allowlist";
+export type IMessageReactionNotificationMode =
+  | "off"
+  | "own"
+  | "all"
+  | "allowlist";
 
 // ============================================================
 // Account Configuration

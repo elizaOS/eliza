@@ -22,9 +22,7 @@ interface McpServiceLike extends Service {
 interface DesktopInstance {
   openApplication(appName: string): void;
   locator(selector: string): {
-    first(
-      timeoutMs: number
-    ): Promise<{
+    first(timeoutMs: number): Promise<{
       click(): Promise<void>;
       typeText(text: string, opts: { clearBeforeTyping: boolean }): void;
     } | null>;
