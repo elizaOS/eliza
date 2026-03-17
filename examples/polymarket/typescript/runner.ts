@@ -495,20 +495,40 @@ async function buildLlmPlugins(
   if (!provider || provider === "openai") return [openaiPlugin];
   switch (provider) {
     case "anthropic": {
-      const { default: anthropicPlugin } = await import("@elizaos/plugin-anthropic");
-      return [anthropicPlugin];
+      try {
+        const { default: anthropicPlugin } = await import("@elizaos/plugin-anthropic");
+        return [anthropicPlugin];
+      } catch {
+        console.warn("@elizaos/plugin-anthropic not installed, falling back to openai");
+        return [openaiPlugin];
+      }
     }
     case "gemini": {
-      const { default: googleGenAIPlugin } = await import("@elizaos/plugin-google-genai");
-      return [googleGenAIPlugin];
+      try {
+        const { default: googleGenAIPlugin } = await import("@elizaos/plugin-google-genai");
+        return [googleGenAIPlugin];
+      } catch {
+        console.warn("@elizaos/plugin-google-genai not installed, falling back to openai");
+        return [openaiPlugin];
+      }
     }
     case "groq": {
-      const { default: groqPlugin } = await import("@elizaos/plugin-groq");
-      return [groqPlugin];
+      try {
+        const { default: groqPlugin } = await import("@elizaos/plugin-groq");
+        return [groqPlugin];
+      } catch {
+        console.warn("@elizaos/plugin-groq not installed, falling back to openai");
+        return [openaiPlugin];
+      }
     }
     case "grok": {
-      const { default: XAIPlugin } = await import("@elizaos/plugin-xai");
-      return [XAIPlugin];
+      try {
+        const { default: XAIPlugin } = await import("@elizaos/plugin-xai");
+        return [XAIPlugin];
+      } catch {
+        console.warn("@elizaos/plugin-xai not installed, falling back to openai");
+        return [openaiPlugin];
+      }
     }
     default:
       return [openaiPlugin];
