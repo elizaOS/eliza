@@ -24,6 +24,7 @@ export type AgentConfig = {
   id: string;
   default?: boolean;
   name?: string;
+  username?: string;
   workspace?: string;
   agentDir?: string;
   model?: AgentModelConfig;

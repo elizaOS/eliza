@@ -8,6 +8,7 @@ import type {
 } from "../api/client";
 import { useApp } from "../state";
 import { confirmDesktopAction } from "../utils";
+import { parsePositiveInteger } from "../utils/number-parsing";
 import { formatDateTime, formatDurationMs } from "./format";
 import { StatusBadge, StatusDot } from "./ui-badges";
 
@@ -96,13 +97,6 @@ const emptyForm: TriggerFormState = {
   durationValue: "1",
   durationUnit: "hours",
 };
-
-function parsePositiveInteger(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return undefined;
-  const parsed = Number.parseInt(trimmed, 10);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
 
 function scheduleLabel(trigger: TriggerSummary, t: TranslateFn): string {
   if (trigger.triggerType === "interval") {
