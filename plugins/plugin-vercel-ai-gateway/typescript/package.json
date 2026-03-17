@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-vercel-ai-gateway",
-  "version": "2.0.0-alpha.3",
+  "version": "2.0.0-alpha.4",
   "type": "module",
   "main": "dist/cjs/index.node.cjs",
   "module": "dist/node/index.node.js",

@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-scheduling",
   "description": "Scheduling and calendar coordination plugin for elizaOS agents",
-  "version": "2.0.0-alpha.3",
+  "version": "2.0.0-alpha.4",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
