@@ -1,3 +1,5 @@
+#![cfg(all(feature = "native", not(feature = "wasm")))]
+
 //! Tests for the Autonomy module
 //!
 //! Tests the autonomous operation capabilities including:
@@ -13,6 +15,7 @@ use elizaos::runtime::RuntimeOptions;
 use elizaos::types::agent::{Bio, Character, CharacterSettings};
 use elizaos::AgentRuntime;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // ============================================================================
 // Service Registration Tests
@@ -20,7 +23,7 @@ use std::collections::HashMap;
 
 #[tokio::test]
 async fn autonomy_can_be_enabled_via_constructor_flag() -> Result<()> {
-    let runtime = AgentRuntime::new(RuntimeOptions {
+    let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         enable_autonomy: Some(true),
         character: Some(Character {
             name: "AutonomyOn".to_string(),
@@ -50,7 +53,7 @@ async fn autonomy_can_be_enabled_via_character_settings() -> Result<()> {
     let mut values: HashMap<String, serde_json::Value> = HashMap::new();
     values.insert("ENABLE_AUTONOMY".to_string(), serde_json::Value::Bool(true));
 
-    let runtime = AgentRuntime::new(RuntimeOptions {
+    let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         enable_autonomy: None,
         character: Some(Character {
             name: "AutonomySettingOn".to_string(),
@@ -84,7 +87,7 @@ async fn autonomy_service_type_is_correct() -> Result<()> {
 
 #[tokio::test]
 async fn autonomy_enable_disable_works() -> Result<()> {
-    let runtime = AgentRuntime::new(RuntimeOptions {
+    let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         enable_autonomy: Some(true),
         character: Some(Character {
             name: "AutonomyToggle".to_string(),
@@ -154,7 +157,7 @@ fn autonomy_routes_have_correct_methods() {
 
 #[tokio::test]
 async fn autonomy_mode_defaults_to_continuous() -> Result<()> {
-    let runtime = AgentRuntime::new(RuntimeOptions {
+    let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         enable_autonomy: Some(true),
         character: Some(Character {
             name: "AutonomyModeDefault".to_string(),
@@ -183,7 +186,7 @@ async fn autonomy_mode_can_be_set_to_task() -> Result<()> {
         serde_json::Value::String("task".to_string()),
     );
 
-    let runtime = AgentRuntime::new(RuntimeOptions {
+    let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         enable_autonomy: Some(true),
         character: Some(Character {
             name: "AutonomyTaskMode".to_string(),
@@ -210,7 +213,7 @@ async fn autonomy_mode_can_be_set_to_task() -> Result<()> {
 
 #[tokio::test]
 async fn autonomy_status_provider_shows_running_state() -> Result<()> {
-    let runtime = AgentRuntime::new(RuntimeOptions {
+    let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         enable_autonomy: Some(true),
         character: Some(Character {
             name: "AutonomyProviderTest".to_string(),
@@ -244,7 +247,7 @@ async fn autonomy_service_exports_are_available() -> Result<()> {
     let _ = autonomy_routes();
 
     // AutonomyService should be importable (tested via runtime registration)
-    let runtime = AgentRuntime::new(RuntimeOptions {
+    let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         enable_autonomy: Some(true),
         character: Some(Character {
             name: "AutonomyExportTest".to_string(),

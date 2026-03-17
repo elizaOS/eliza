@@ -1,3 +1,5 @@
+#![cfg(all(feature = "native", not(feature = "wasm")))]
+
 //! Integration tests for elizaOS Core
 //!
 //! These tests verify the complete agent runtime functionality including:
@@ -588,7 +590,7 @@ mod runtime_tests {
     async fn test_create_runtime_with_character() {
         let character = create_test_character();
 
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(character.clone()),
             ..Default::default()
         })
@@ -608,7 +610,7 @@ mod runtime_tests {
     async fn test_runtime_initialization() {
         let adapter = Arc::new(MockDatabaseAdapter::default());
 
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             adapter: Some(adapter.clone()),
             ..Default::default()
@@ -644,7 +646,7 @@ mod runtime_tests {
         assert!(character.system.is_some());
         assert!(character.message_examples.is_some());
 
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(character),
             ..Default::default()
         })
@@ -665,7 +667,7 @@ mod action_tests {
     /// Test registering and executing an action
     #[tokio::test]
     async fn test_action_registration_and_execution() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -702,7 +704,7 @@ mod action_tests {
     /// Test action validation - SEARCH action only triggers on search keywords
     #[tokio::test]
     async fn test_action_validation() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -746,7 +748,7 @@ mod action_tests {
     /// Test that action results contain expected data
     #[tokio::test]
     async fn test_action_result_data() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -787,7 +789,7 @@ mod provider_tests {
     /// Test that providers contribute to state
     #[tokio::test]
     async fn test_provider_state_composition() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -838,7 +840,7 @@ mod provider_tests {
             }
         }
 
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -876,7 +878,7 @@ mod memory_tests {
     async fn test_memory_crud() {
         let adapter = Arc::new(MockDatabaseAdapter::default());
 
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             adapter: Some(adapter.clone()),
             ..Default::default()
@@ -1014,7 +1016,7 @@ mod event_tests {
     /// Test event registration and emission
     #[tokio::test]
     async fn test_event_handling() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -1056,7 +1058,7 @@ mod run_management_tests {
     /// Test run ID management
     #[tokio::test]
     async fn test_run_lifecycle() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -1078,7 +1080,7 @@ mod run_management_tests {
     /// Test that multiple runs generate unique IDs
     #[tokio::test]
     async fn test_unique_run_ids() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -1105,7 +1107,7 @@ mod settings_tests {
     /// Test runtime settings
     #[tokio::test]
     async fn test_runtime_settings() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -1134,7 +1136,7 @@ mod settings_tests {
     /// Test settings persistence
     #[tokio::test]
     async fn test_settings_persistence() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             settings: Some(RuntimeSettings {
                 values: {
@@ -1162,7 +1164,7 @@ mod settings_tests {
     /// Test LLM mode defaults to DEFAULT
     #[tokio::test]
     async fn test_llm_mode_default() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -1176,7 +1178,7 @@ mod settings_tests {
     /// Test LLM mode from constructor option
     #[tokio::test]
     async fn test_llm_mode_constructor_option() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             llm_mode: Some(LLMMode::Small),
             ..Default::default()
@@ -1191,7 +1193,7 @@ mod settings_tests {
     /// Test LLM mode LARGE from constructor option
     #[tokio::test]
     async fn test_llm_mode_large_constructor_option() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             llm_mode: Some(LLMMode::Large),
             ..Default::default()
@@ -1206,7 +1208,7 @@ mod settings_tests {
     /// Test LLM mode from character setting
     #[tokio::test]
     async fn test_llm_mode_from_setting() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -1225,7 +1227,7 @@ mod settings_tests {
     /// Test LLM mode constructor option takes precedence over setting
     #[tokio::test]
     async fn test_llm_mode_constructor_precedence() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             llm_mode: Some(LLMMode::Large),
             ..Default::default()
@@ -1246,7 +1248,7 @@ mod settings_tests {
     /// Test checkShouldRespond defaults to true
     #[tokio::test]
     async fn test_check_should_respond_default() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -1260,7 +1262,7 @@ mod settings_tests {
     /// Test checkShouldRespond from constructor option (disabled)
     #[tokio::test]
     async fn test_check_should_respond_disabled_via_constructor() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             check_should_respond: Some(false),
             ..Default::default()
@@ -1275,7 +1277,7 @@ mod settings_tests {
     /// Test checkShouldRespond from constructor option (enabled)
     #[tokio::test]
     async fn test_check_should_respond_enabled_via_constructor() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             check_should_respond: Some(true),
             ..Default::default()
@@ -1290,7 +1292,7 @@ mod settings_tests {
     /// Test checkShouldRespond from character setting
     #[tokio::test]
     async fn test_check_should_respond_from_setting() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -1313,7 +1315,7 @@ mod settings_tests {
     /// Test checkShouldRespond from boolean setting
     #[tokio::test]
     async fn test_check_should_respond_from_bool_setting() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -1332,7 +1334,7 @@ mod settings_tests {
     /// Test checkShouldRespond constructor option takes precedence over setting
     #[tokio::test]
     async fn test_check_should_respond_constructor_precedence() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             check_should_respond: Some(false),
             ..Default::default()
@@ -1357,7 +1359,7 @@ mod plugin_tests {
     /// Test plugin registration
     #[tokio::test]
     async fn test_plugin_registration() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -1387,7 +1389,7 @@ mod plugin_tests {
     /// Test plugin with all component types
     #[tokio::test]
     async fn test_full_plugin_integration() {
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             ..Default::default()
         })
@@ -1531,7 +1533,7 @@ mod end_to_end_tests {
         let adapter = Arc::new(MockDatabaseAdapter::default());
 
         let character = create_test_character();
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(character),
             adapter: Some(adapter.clone()),
             ..Default::default()
@@ -1646,7 +1648,7 @@ mod end_to_end_tests {
     async fn test_multi_action_scenario() {
         let adapter = Arc::new(MockDatabaseAdapter::default());
 
-        let runtime = AgentRuntime::new(RuntimeOptions {
+        let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
             character: Some(create_test_character()),
             adapter: Some(adapter.clone()),
             ..Default::default()
