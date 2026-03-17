@@ -135,7 +135,9 @@ impl PgLiteAdapter {
     /// Parse a Room from a JS row
     fn parse_room(&self, row: &JsValue) -> Option<Room> {
         let id = self.get_uuid(row, "id")?;
-        let room_type_raw = self.get_string(row, "type").unwrap_or_else(|| "DM".to_string());
+        let room_type_raw = self
+            .get_string(row, "type")
+            .unwrap_or_else(|| "DM".to_string());
         let room_type = Self::parse_channel_type(&room_type_raw);
 
         Some(Room {
@@ -623,7 +625,10 @@ impl DatabaseAdapter for PgLiteAdapter {
         let data = serde_json::to_string(&component.data)?;
 
         let sql = "UPDATE components SET data = $2 WHERE id = $1";
-        let params = vec![JsValue::from_str(component.id.as_str()), JsValue::from_str(&data)];
+        let params = vec![
+            JsValue::from_str(component.id.as_str()),
+            JsValue::from_str(&data),
+        ];
 
         self.manager.query(sql, &params).await?;
         Ok(())

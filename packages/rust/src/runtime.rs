@@ -87,7 +87,11 @@ pub trait DatabaseAdapter: Send + Sync {
 
     /// Get memories by IDs (batch; aligned with TypeScript getMemoriesByIds).
     /// Default: calls [get_memory_by_id] for each id. Adapters may override for efficiency.
-    async fn get_memories_by_ids(&self, ids: &[UUID], _table_name: Option<&str>) -> Result<Vec<Memory>> {
+    async fn get_memories_by_ids(
+        &self,
+        ids: &[UUID],
+        _table_name: Option<&str>,
+    ) -> Result<Vec<Memory>> {
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {
             if let Some(m) = self.get_memory_by_id(id).await? {
@@ -101,7 +105,8 @@ pub trait DatabaseAdapter: Send + Sync {
 
     /// Create a single memory. Default: calls [create_memories] with one item.
     async fn create_memory(&self, memory: &Memory, table_name: &str) -> Result<UUID> {
-        self.create_memory_with_unique(memory, table_name, None).await
+        self.create_memory_with_unique(memory, table_name, None)
+            .await
     }
 
     /// Create a single memory with optional unique flag. Default: calls [create_memories].
@@ -117,13 +122,15 @@ pub trait DatabaseAdapter: Send + Sync {
             unique,
         }];
         let ids = self.create_memories(&items).await?;
-        ids.into_iter().next().context("create_memories returned empty")
+        ids.into_iter()
+            .next()
+            .context("create_memories returned empty")
     }
 
     /// Update a single memory. Default: calls [update_memories] with one item.
     async fn update_memory(&self, memory: &Memory) -> Result<bool> {
-        let item = UpdateMemoryItem::from_memory(memory)
-            .context("update_memory requires memory.id")?;
+        let item =
+            UpdateMemoryItem::from_memory(memory).context("update_memory requires memory.id")?;
         self.update_memories(&[item]).await?;
         Ok(true)
     }
@@ -956,7 +963,10 @@ impl AgentRuntime {
     }
 
     /// Get a task worker by name.
-    pub async fn get_task_worker(&self, name: &str) -> Option<Arc<dyn crate::types::task::TaskWorker>> {
+    pub async fn get_task_worker(
+        &self,
+        name: &str,
+    ) -> Option<Arc<dyn crate::types::task::TaskWorker>> {
         #[cfg(not(feature = "wasm"))]
         {
             self.task_workers.read().await.get(name).cloned()
@@ -984,7 +994,10 @@ impl AgentRuntime {
     // =========================================================================
 
     /// Create a new task.
-    pub async fn create_task(&self, mut task: crate::types::task::Task) -> crate::types::task::Task {
+    pub async fn create_task(
+        &self,
+        mut task: crate::types::task::Task,
+    ) -> crate::types::task::Task {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -1012,9 +1025,15 @@ impl AgentRuntime {
         let task_id = task.id.clone().unwrap().to_string();
 
         #[cfg(not(feature = "wasm"))]
-        self.tasks.write().await.insert(task_id.clone(), task.clone());
+        self.tasks
+            .write()
+            .await
+            .insert(task_id.clone(), task.clone());
         #[cfg(feature = "wasm")]
-        self.tasks.write().unwrap().insert(task_id.clone(), task.clone());
+        self.tasks
+            .write()
+            .unwrap()
+            .insert(task_id.clone(), task.clone());
 
         debug!(
             target: "agent",

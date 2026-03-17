@@ -897,9 +897,10 @@ mod tests {
         use crate::types::settings::{RuntimeSettings, SettingValue};
 
         let mut settings = RuntimeSettings::default();
-        settings
-            .values
-            .insert("VALIDATION_LEVEL".to_string(), SettingValue::String("trusted".to_string()));
+        settings.values.insert(
+            "VALIDATION_LEVEL".to_string(),
+            SettingValue::String("trusted".to_string()),
+        );
 
         let runtime = AgentRuntime::new(RuntimeOptions {
             character: Some(Character {

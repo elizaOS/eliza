@@ -3,10 +3,10 @@
 //! This service registers an `AUTONOMY_THINK` task worker and creates a recurring
 //! task that triggers autonomous thinking at a configurable interval.
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
-use std::any::Any;
 
 use anyhow::Result;
 use serde_json::{Number, Value};

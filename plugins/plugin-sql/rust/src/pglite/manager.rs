@@ -6,8 +6,8 @@
 use anyhow::Result;
 use js_sys::{Array, Object, Promise, Reflect};
 use tracing::{debug, info};
-use wasm_bindgen::JsValue;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 
 /// PGLite connection manager for WASM
@@ -79,7 +79,10 @@ impl PgLiteManager {
             .map_err(|e| anyhow::anyhow!("PGlite.query is not a function: {:?}", e))?;
 
         let promise = query_fn
-            .apply(&self.pglite, &Array::of2(&JsValue::from_str(sql), &params_array))
+            .apply(
+                &self.pglite,
+                &Array::of2(&JsValue::from_str(sql), &params_array),
+            )
             .map_err(|e| anyhow::anyhow!("Failed to call query: {:?}", e))?;
 
         let promise = Promise::from(promise);
@@ -147,7 +150,8 @@ impl PgLiteManager {
         // Create vector extension
         self.exec(embedding::ENSURE_VECTOR_EXTENSION).await?;
 
-        let embeddings_table_sql = embedding::create_embeddings_table_sql(embedding::DEFAULT_DIMENSION);
+        let embeddings_table_sql =
+            embedding::create_embeddings_table_sql(embedding::DEFAULT_DIMENSION);
 
         // Create tables in order (respecting foreign key constraints)
         let migrations = vec![

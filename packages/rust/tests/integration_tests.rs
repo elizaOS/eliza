@@ -14,12 +14,11 @@ use elizaos::{
     parse_character,
     runtime::{AgentRuntime, DatabaseAdapter, RuntimeOptions},
     types::{
-        ActionDefinition, ActionHandler, ActionResult, Bio, Character, Content, Entity,
-        EvaluationExample, EvaluatorDefinition, EvaluatorHandler, EventPayload, EventType,
-        CreateMemoryItem, GetMemoriesParams, HandlerOptions, Memory, Plugin, PluginDefinition,
-        UpdateMemoryItem,
-        ProviderDefinition, ProviderHandler, ProviderResult, Room, RuntimeSettings,
-        SearchMemoriesParams, SettingValue, State, Task, World, UUID,
+        ActionDefinition, ActionHandler, ActionResult, Bio, Character, Content, CreateMemoryItem,
+        Entity, EvaluationExample, EvaluatorDefinition, EvaluatorHandler, EventPayload, EventType,
+        GetMemoriesParams, HandlerOptions, Memory, Plugin, PluginDefinition, ProviderDefinition,
+        ProviderHandler, ProviderResult, Room, RuntimeSettings, SearchMemoriesParams, SettingValue,
+        State, Task, UpdateMemoryItem, World, UUID,
     },
 };
 use std::collections::HashMap;
