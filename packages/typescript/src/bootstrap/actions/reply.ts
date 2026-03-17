@@ -99,15 +99,7 @@ export const replyAction = {
     // For subsequent REPLY actions (end of chain), regenerate using LLM
     // to produce a response that incorporates previous action results.
     
-    // Check if we already have all needed providers in state before recomposing 
-    const neededProviders = ["RECENT_MESSAGES", "ACTION_STATE"];
-    const hasAllProviders = state && Object.keys(state.data).length > 0 && neededProviders.every(provider => 
-      provider in state.values || provider in state.data
-    );
-    
-    if (!hasAllProviders) {
-      state = await runtime.composeState(message, neededProviders);
-    }
+    state = await runtime.composeState(message, ["RECENT_MESSAGES", "ACTION_STATE"]);
 
     const prompt = composePromptFromState({
       state,
