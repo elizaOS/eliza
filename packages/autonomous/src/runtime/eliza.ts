@@ -815,7 +815,7 @@ export function findRuntimePluginExport(mod: PluginModuleShape): Plugin | null {
   }
 
   // 6. Legacy CJS compatibility for modules that export only { name, description }.
-  if (looksLikePluginBasic(mod)) return mod as unknown as Plugin;
+  if (looksLikePluginBasic(mod)) return mod as Plugin;
   if (looksLikePluginBasic(mod.default)) return mod.default as Plugin;
   if (looksLikePluginBasic(mod.plugin)) return mod.plugin as Plugin;
 
@@ -2328,7 +2328,7 @@ async function initializeDatabaseAdapter(
   runtime: AgentRuntime,
   config: MiladyConfig,
 ): Promise<void> {
-  const adapterWithInit = runtime.adapter as unknown as {
+  const adapterWithInit = runtime.adapter as typeof runtime.adapter & {
     isReady(): Promise<boolean>;
     init(): Promise<void>;
   };
@@ -3660,7 +3660,7 @@ export const logToChatListener = (entry: LogEntry) => {
       // Prevent infinite loops by suppressing logs from this action
       runtime
         .sendMessageToTarget(
-          { roomId: entry.roomId } as unknown as TargetInfo,
+          { roomId: entry.roomId } as TargetInfo,
           {
             text: `\`\`\`\n${content}\n\`\`\``,
             source: "system",

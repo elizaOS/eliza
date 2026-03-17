@@ -101,7 +101,7 @@ export class ConnectorHealthMonitor {
 
     // Also check runtime.clients if available
     const clients = (
-      this.runtime as unknown as { clients?: Record<string, unknown> }
+      this.runtime as typeof this.runtime & { clients?: Record<string, unknown> }
     ).clients;
     if (clients?.[pluginName]) return "ok";
 
