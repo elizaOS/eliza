@@ -18,7 +18,11 @@ import type {
 // Reaction Configuration
 // ============================================================
 
-export type SignalReactionNotificationMode = "off" | "own" | "all" | "allowlist";
+export type SignalReactionNotificationMode =
+  | "off"
+  | "own"
+  | "all"
+  | "allowlist";
 export type SignalReactionLevel = "off" | "ack" | "minimal" | "extensive";
 
 // ============================================================

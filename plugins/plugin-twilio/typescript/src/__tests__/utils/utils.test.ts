@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   chunkTextForSms,
   convertAudioFormat,
@@ -196,8 +196,7 @@ describe("Utils", () => {
     });
 
     it("should chunk long messages at word boundaries", () => {
-      const text =
-        "a".repeat(50) + " " + "b".repeat(50) + " " + "c".repeat(50) + " " + "d".repeat(50);
+      const text = `${"a".repeat(50)} ${"b".repeat(50)} ${"c".repeat(50)} ${"d".repeat(50)}`;
       const chunks = chunkTextForSms(text, 160);
       expect(chunks.length).toBeGreaterThan(1);
       chunks.forEach((chunk) => {

@@ -9,13 +9,12 @@ import {
 } from "@elizaos/core";
 import { TWILIO_SERVICE_NAME } from "../constants";
 import type { TwilioService } from "../service";
-import { MakeCallSchema } from "../types";
 import { extractPhoneNumber, generateTwiML, validatePhoneNumber } from "../utils";
 
 const makeCallAction: Action = {
   name: "MAKE_CALL",
   description: "Make a phone call via Twilio with a message or custom TwiML",
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
     // Check if Twilio service is available
     const twilioService = runtime.getService(TWILIO_SERVICE_NAME);
     if (!twilioService) {
@@ -36,8 +35,8 @@ const makeCallAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state?: State,
-    options?: any,
+    _state?: State,
+    _options?: any,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {

@@ -6,11 +6,7 @@ import callStateProvider from "./providers/callState";
 import conversationHistoryProvider from "./providers/conversationHistory";
 import { TwilioService } from "./service";
 import { TwilioTestSuite } from "./tests";
-import {
-  voiceCallServiceClass,
-  voiceCallActions,
-  voiceCallProviders,
-} from "./voicecall";
+import { voiceCallActions, voiceCallProviders, voiceCallServiceClass } from "./voicecall";
 
 // Re-export voice call module for direct imports
 export * from "./voicecall";

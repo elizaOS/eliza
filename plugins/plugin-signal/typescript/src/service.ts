@@ -372,10 +372,16 @@ export class SignalService extends Service implements ISignalService {
 
   private async ensurePollTask(): Promise<void> {
     const rt = this.runtime;
-    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    if (
+      typeof rt.getTasksByName !== "function" ||
+      typeof rt.createTask !== "function"
+    )
+      return;
     const agentId = rt.agentId;
     const existing = await rt.getTasksByName(SignalService.SIGNAL_POLL_TASK);
-    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    const mine = existing.find(
+      (t) => t.agentId != null && String(t.agentId) === String(agentId),
+    );
     if (mine?.id) {
       this.pollTaskId = mine.id;
       return;

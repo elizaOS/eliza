@@ -14,7 +14,7 @@ const twilioPlugin: Plugin = {
   actions: [sendSmsAction, makeCallAction, sendMmsAction],
   providers: [conversationHistoryProvider, callStateProvider],
   tests: [new TwilioTestSuite()],
-  init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     const accountSid = runtime.getSetting("TWILIO_ACCOUNT_SID") as string;
     const authToken = runtime.getSetting("TWILIO_AUTH_TOKEN") as string;
     const phoneNumber = runtime.getSetting("TWILIO_PHONE_NUMBER") as string;

@@ -4,7 +4,7 @@
  * delete, exists, generateSignedUrl, and error handling.
  */
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mocks – hoisted so vi.mock factories can reference them
@@ -43,13 +43,11 @@ vi.mock("@aws-sdk/s3-request-presigner", () => ({
   getSignedUrl: mockGetSignedUrl,
 }));
 
-const { mockExistsSync, mockReadFileSync, mockWriteFileSync } = vi.hoisted(
-  () => ({
-    mockExistsSync: vi.fn(),
-    mockReadFileSync: vi.fn(),
-    mockWriteFileSync: vi.fn(),
-  })
-);
+const { mockExistsSync, mockReadFileSync, mockWriteFileSync } = vi.hoisted(() => ({
+  mockExistsSync: vi.fn(),
+  mockReadFileSync: vi.fn(),
+  mockWriteFileSync: vi.fn(),
+}));
 
 vi.mock("node:fs", () => ({
   default: {
@@ -66,9 +64,7 @@ vi.mock("node:fs", () => ({
 import type { IAgentRuntime } from "@elizaos/core";
 import { AwsS3Service } from "../services/s3";
 
-function makeRuntime(
-  overrides: Record<string, string | boolean | null> = {}
-): IAgentRuntime {
+function makeRuntime(overrides: Record<string, string | boolean | null> = {}): IAgentRuntime {
   const settings: Record<string, string | boolean | null> = {
     AWS_ACCESS_KEY_ID: "AKID-test",
     AWS_SECRET_ACCESS_KEY: "secret-test",
@@ -101,9 +97,7 @@ describe("AwsS3Service", () => {
     vi.clearAllMocks();
     mockExistsSync.mockReturnValue(true);
     mockReadFileSync.mockReturnValue(Buffer.from("file-content-here"));
-    mockGetSignedUrl.mockResolvedValue(
-      "https://signed.example.com/presigned"
-    );
+    mockGetSignedUrl.mockResolvedValue("https://signed.example.com/presigned");
 
     const runtime = makeRuntime();
     service = new AwsS3Service(runtime);
@@ -147,12 +141,7 @@ describe("AwsS3Service", () => {
     it("returns a signed URL when requested", async () => {
       mockSend.mockResolvedValueOnce({});
 
-      const result = await service.uploadFile(
-        "/data/secret.pdf",
-        "",
-        true,
-        3600
-      );
+      const result = await service.uploadFile("/data/secret.pdf", "", true, 3600);
 
       expect(result.success).toBe(true);
       expect(result.url).toContain("signed");
@@ -185,12 +174,7 @@ describe("AwsS3Service", () => {
       mockSend.mockResolvedValueOnce({});
 
       const data = Buffer.from("binary data here");
-      const result = await service.uploadBytes(
-        data,
-        "image.png",
-        "image/png",
-        "images"
-      );
+      const result = await service.uploadBytes(data, "image.png", "image/png", "images");
 
       expect(result.success).toBe(true);
       expect(result.url).toBeDefined();
@@ -261,13 +245,7 @@ describe("AwsS3Service", () => {
     it("uses signed URL when requested", async () => {
       mockSend.mockResolvedValueOnce({});
 
-      const result = await service.uploadJson(
-        { a: 1 },
-        "data.json",
-        undefined,
-        true,
-        1800
-      );
+      const result = await service.uploadJson({ a: 1 }, "data.json", undefined, true, 1800);
 
       expect(result.success).toBe(true);
       expect(result.url).toContain("signed");
@@ -295,18 +273,18 @@ describe("AwsS3Service", () => {
     it("throws when response body is empty", async () => {
       mockSend.mockResolvedValueOnce({ Body: null });
 
-      await expect(
-        service.downloadBytes("my-bucket", "data/file.bin")
-      ).rejects.toThrow(/empty response body/i);
+      await expect(service.downloadBytes("my-bucket", "data/file.bin")).rejects.toThrow(
+        /empty response body/i
+      );
     });
 
     it("throws when credentials are missing", async () => {
       const rt = makeRuntime({ AWS_REGION: null });
       service = new AwsS3Service(rt);
 
-      await expect(
-        service.downloadBytes("bkt", "key")
-      ).rejects.toThrow(/credentials not configured/i);
+      await expect(service.downloadBytes("bkt", "key")).rejects.toThrow(
+        /credentials not configured/i
+      );
     });
   });
 
@@ -323,10 +301,7 @@ describe("AwsS3Service", () => {
 
       await service.downloadFile("my-bucket", "docs/f.pdf", "/tmp/f.pdf");
 
-      expect(mockWriteFileSync).toHaveBeenCalledWith(
-        "/tmp/f.pdf",
-        expect.any(Buffer)
-      );
+      expect(mockWriteFileSync).toHaveBeenCalledWith("/tmp/f.pdf", expect.any(Buffer));
     });
   });
 
@@ -345,9 +320,7 @@ describe("AwsS3Service", () => {
       const rt = makeRuntime({ AWS_S3_BUCKET: null });
       service = new AwsS3Service(rt);
 
-      await expect(
-        service.delete("bkt", "key")
-      ).rejects.toThrow(/credentials/i);
+      await expect(service.delete("bkt", "key")).rejects.toThrow(/credentials/i);
     });
   });
 
@@ -386,9 +359,7 @@ describe("AwsS3Service", () => {
     it("rethrows non-404 errors", async () => {
       mockSend.mockRejectedValueOnce(new Error("Internal Server Error"));
 
-      await expect(
-        service.exists("my-bucket", "key")
-      ).rejects.toThrow("Internal Server Error");
+      await expect(service.exists("my-bucket", "key")).rejects.toThrow("Internal Server Error");
     });
   });
 
@@ -406,9 +377,9 @@ describe("AwsS3Service", () => {
       const rt = makeRuntime({ AWS_ACCESS_KEY_ID: null });
       service = new AwsS3Service(rt);
 
-      await expect(
-        service.generateSignedUrl("file.txt")
-      ).rejects.toThrow(/credentials not configured/i);
+      await expect(service.generateSignedUrl("file.txt")).rejects.toThrow(
+        /credentials not configured/i
+      );
     });
   });
 

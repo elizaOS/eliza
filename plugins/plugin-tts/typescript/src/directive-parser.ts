@@ -125,21 +125,24 @@ export function parseJsonVoiceDirective(
 
     // Must have at least one voice-related key
     const voiceKeys = [
-      "voice", "voice_id", "voiceId",
-      "model", "model_id", "modelId",
-      "speed", "rate",
+      "voice",
+      "voice_id",
+      "voiceId",
+      "model",
+      "model_id",
+      "modelId",
+      "speed",
+      "rate",
     ];
     const hasVoiceKey = voiceKeys.some((k) => k in obj);
     if (!hasVoiceKey) return null;
 
     const directive: TtsDirective = {};
 
-    const voice =
-      obj.voice ?? obj.voice_id ?? obj.voiceId;
+    const voice = obj.voice ?? obj.voice_id ?? obj.voiceId;
     if (typeof voice === "string") directive.voice = voice;
 
-    const model =
-      obj.model ?? obj.model_id ?? obj.modelId;
+    const model = obj.model ?? obj.model_id ?? obj.modelId;
     if (typeof model === "string") directive.model = model;
 
     const speed =

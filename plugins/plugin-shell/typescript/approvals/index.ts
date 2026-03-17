@@ -5,6 +5,37 @@
  * Provides allowlist management, command analysis, and approval workflows.
  */
 
+// Allowlist management
+export {
+  addAllowlistEntry,
+  ensureApprovals,
+  getApprovalFilePath,
+  getApprovalSocketPath,
+  loadApprovals,
+  matchAllowlist,
+  maxAsk,
+  minSecurity,
+  normalizeApprovals,
+  readApprovalsSnapshot,
+  recordAllowlistUse,
+  resolveApprovals,
+  resolveApprovalsFromFile,
+  saveApprovals,
+} from "./allowlist";
+// Command analysis
+export {
+  analyzeShellCommand,
+  evaluateExecAllowlist,
+  evaluateShellAllowlist,
+  isSafeBinUsage,
+  normalizeSafeBins,
+  requiresExecApproval,
+  resolveCommandFromArgv,
+  resolveCommandResolution,
+  resolveSafeBins,
+} from "./analysis";
+// Service
+export { type CommandCheckResult, ExecApprovalService } from "./service";
 // Types
 export type {
   CommandResolution,
@@ -25,39 +56,4 @@ export type {
   ExecHost,
   ExecSecurity,
 } from "./types";
-
 export { DEFAULT_SAFE_BINS, EXEC_APPROVAL_DEFAULTS } from "./types";
-
-// Allowlist management
-export {
-  addAllowlistEntry,
-  ensureApprovals,
-  getApprovalFilePath,
-  getApprovalSocketPath,
-  loadApprovals,
-  matchAllowlist,
-  maxAsk,
-  minSecurity,
-  normalizeApprovals,
-  readApprovalsSnapshot,
-  recordAllowlistUse,
-  resolveApprovals,
-  resolveApprovalsFromFile,
-  saveApprovals,
-} from "./allowlist";
-
-// Command analysis
-export {
-  analyzeShellCommand,
-  evaluateExecAllowlist,
-  evaluateShellAllowlist,
-  isSafeBinUsage,
-  normalizeSafeBins,
-  requiresExecApproval,
-  resolveCommandFromArgv,
-  resolveCommandResolution,
-  resolveSafeBins,
-} from "./analysis";
-
-// Service
-export { ExecApprovalService, type CommandCheckResult } from "./service";

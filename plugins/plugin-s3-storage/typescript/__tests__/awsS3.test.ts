@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Hoisted mock helpers – available before vi.mock factories run
@@ -163,9 +163,7 @@ describe("AwsS3Service", () => {
     it("should throw when response body is empty", async () => {
       mockSend.mockResolvedValueOnce({ Body: undefined });
 
-      await expect(service.downloadBytes("b", "k")).rejects.toThrow(
-        "Empty response body from S3"
-      );
+      await expect(service.downloadBytes("b", "k")).rejects.toThrow("Empty response body from S3");
     });
 
     it("should throw when AWS credentials are not configured", async () => {
@@ -180,9 +178,9 @@ describe("AwsS3Service", () => {
     it("should propagate S3 SDK errors", async () => {
       mockSend.mockRejectedValueOnce(new Error("Access Denied"));
 
-      await expect(
-        service.downloadBytes("my-bucket", "secret.txt")
-      ).rejects.toThrow("Access Denied");
+      await expect(service.downloadBytes("my-bucket", "secret.txt")).rejects.toThrow(
+        "Access Denied"
+      );
     });
   });
 
@@ -211,10 +209,7 @@ describe("AwsS3Service", () => {
         Bucket: "my-bucket",
         Key: "data/file.bin",
       });
-      expect(mockWriteFileSync).toHaveBeenCalledWith(
-        "/tmp/file.bin",
-        expect.any(Buffer)
-      );
+      expect(mockWriteFileSync).toHaveBeenCalledWith("/tmp/file.bin", expect.any(Buffer));
       // Verify the written buffer matches
       const writtenBuffer = mockWriteFileSync.mock.calls[0][1] as Buffer;
       expect([...writtenBuffer]).toEqual([1, 2, 3, 4]);
@@ -232,9 +227,9 @@ describe("AwsS3Service", () => {
     it("should throw when credentials are missing", async () => {
       const badService = new AwsS3Service(createMockRuntimeMissingCreds());
 
-      await expect(
-        badService.downloadFile("b", "k", "/tmp/out")
-      ).rejects.toThrow("AWS S3 credentials not configured");
+      await expect(badService.downloadFile("b", "k", "/tmp/out")).rejects.toThrow(
+        "AWS S3 credentials not configured"
+      );
       expect(mockWriteFileSync).not.toHaveBeenCalled();
     });
   });
@@ -280,9 +275,9 @@ describe("AwsS3Service", () => {
     it("should propagate S3 SDK errors", async () => {
       mockSend.mockRejectedValueOnce(new Error("Internal Server Error"));
 
-      await expect(
-        service.delete("my-bucket", "path/key")
-      ).rejects.toThrow("Internal Server Error");
+      await expect(service.delete("my-bucket", "path/key")).rejects.toThrow(
+        "Internal Server Error"
+      );
     });
   });
 
@@ -337,9 +332,7 @@ describe("AwsS3Service", () => {
     it("should throw on non-404 errors", async () => {
       mockSend.mockRejectedValueOnce(new Error("Access Denied"));
 
-      await expect(
-        service.exists("my-bucket", "secret-key")
-      ).rejects.toThrow("Access Denied");
+      await expect(service.exists("my-bucket", "secret-key")).rejects.toThrow("Access Denied");
     });
 
     it("should throw when credentials are not configured", async () => {

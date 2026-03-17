@@ -3,8 +3,8 @@ import {
   ContentType,
   createMessageMemory,
   createUniqueUuid,
-  EventType,
   type EventPayload,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -12,18 +12,13 @@ import {
   type Memory,
   Service,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
 import bodyParser from "body-parser";
 import express, { type Express } from "express";
 import NodeCache from "node-cache";
 import twilio from "twilio";
 import { WebSocketServer } from "ws";
-import {
-  ERROR_MESSAGES,
-  TWILIO_CONSTANTS,
-  TWILIO_SERVICE_NAME,
-} from "./constants";
+import { ERROR_MESSAGES, TWILIO_CONSTANTS, TWILIO_SERVICE_NAME } from "./constants";
 import {
   CACHE_KEYS,
   type TwilioCall,
@@ -50,7 +45,7 @@ type MessageService = {
   handleMessage: (
     runtime: IAgentRuntime,
     message: Memory,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ) => Promise<void>;
 };
 
@@ -103,22 +98,15 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     this.runtime = runtime;
 
     // Get configuration from runtime
-    const configuredPhoneNumber = runtime.getSetting(
-      "TWILIO_PHONE_NUMBER",
-    ) as string;
-    const normalizedPhoneNumber = stripWhatsAppPrefix(
-      configuredPhoneNumber || "",
-    );
+    const configuredPhoneNumber = runtime.getSetting("TWILIO_PHONE_NUMBER") as string;
+    const normalizedPhoneNumber = stripWhatsAppPrefix(configuredPhoneNumber || "");
 
     this.twilioConfig = {
       accountSid: runtime.getSetting("TWILIO_ACCOUNT_SID") as string,
       authToken: runtime.getSetting("TWILIO_AUTH_TOKEN") as string,
       phoneNumber: normalizedPhoneNumber,
       webhookUrl: runtime.getSetting("TWILIO_WEBHOOK_URL") as string,
-      webhookPort: parseInt(
-        String(runtime.getSetting("TWILIO_WEBHOOK_PORT") ?? "3000"),
-        10,
-      ),
+      webhookPort: parseInt(String(runtime.getSetting("TWILIO_WEBHOOK_PORT") ?? "3000"), 10),
     };
 
     // Validate configuration
@@ -131,10 +119,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     }
 
     // Initialize Twilio client
-    this.client = twilio(
-      this.twilioConfig.accountSid,
-      this.twilioConfig.authToken,
-    );
+    this.client = twilio(this.twilioConfig.accountSid, this.twilioConfig.authToken);
 
     // Set up webhook server
     await this.setupWebhookServer();
@@ -183,9 +168,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
         res.type("text/xml").send(twiml);
       } catch (error) {
         logger.error({ error: String(error) }, "Error handling voice webhook");
-        res
-          .type("text/xml")
-          .send(TWILIO_CONSTANTS.TWIML.DEFAULT_VOICE_RESPONSE);
+        res.type("text/xml").send(TWILIO_CONSTANTS.TWIML.DEFAULT_VOICE_RESPONSE);
       }
     });
 
@@ -221,16 +204,14 @@ export class TwilioService extends Service implements TwilioServiceInterface {
           AccountSid,
           ApiVersion,
         },
-        "Status callback received",
+        "Status callback received"
       );
       res.sendStatus(200);
     });
 
     // Start HTTP server
     this.server = this.app.listen(this.twilioConfig.webhookPort, () => {
-      logger.info(
-        `Twilio webhook server listening on port ${this.twilioConfig.webhookPort}`,
-      );
+      logger.info(`Twilio webhook server listening on port ${this.twilioConfig.webhookPort}`);
     });
 
     // Set up WebSocket server for voice streaming
@@ -267,10 +248,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
               break;
           }
         } catch (error) {
-          logger.error(
-            { error: String(error) },
-            "Error processing voice stream message",
-          );
+          logger.error({ error: String(error) }, "Error processing voice stream message");
         }
       });
 
@@ -281,7 +259,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
         if (this.runtime) {
           this.runtime.emitEvent(
             TwilioEventType.VOICE_STREAM_ENDED as string,
-            { callSid } as unknown as EventPayload,
+            { callSid } as unknown as EventPayload
           );
         }
       });
@@ -301,7 +279,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     if (this.runtime) {
       this.runtime.emitEvent(
         TwilioEventType.VOICE_STREAM_STARTED as string,
-        { stream } as unknown as EventPayload,
+        { stream } as unknown as EventPayload
       );
     }
   }
@@ -315,14 +293,11 @@ export class TwilioService extends Service implements TwilioServiceInterface {
 
     // Emit audio data for processing by other services
     if (this.runtime) {
-      this.runtime.emitEvent(
-        "audio:received",
-        {
-          callSid,
-          audio: audioBuffer,
-          timestamp: message.media.timestamp,
-        } as unknown as EventPayload,
-      );
+      this.runtime.emitEvent("audio:received", {
+        callSid,
+        audio: audioBuffer,
+        timestamp: message.media.timestamp,
+      } as unknown as EventPayload);
     }
   }
 
@@ -331,7 +306,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     if (this.runtime) {
       this.runtime.emitEvent(
         TwilioEventType.VOICE_STREAM_ENDED as string,
-        { callSid } as unknown as EventPayload,
+        { callSid } as unknown as EventPayload
       );
     }
   }
@@ -343,9 +318,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
       });
 
       if (phoneNumbers.length === 0) {
-        throw new TwilioError(
-          `Phone number ${this.twilioConfig.phoneNumber} not found`,
-        );
+        throw new TwilioError(`Phone number ${this.twilioConfig.phoneNumber} not found`);
       }
 
       const phoneNumber = phoneNumbers[0];
@@ -359,14 +332,9 @@ export class TwilioService extends Service implements TwilioServiceInterface {
         statusCallbackMethod: "POST",
       });
 
-      logger.info(
-        `Updated webhooks for phone number ${this.twilioConfig.phoneNumber}`,
-      );
+      logger.info(`Updated webhooks for phone number ${this.twilioConfig.phoneNumber}`);
     } catch (error) {
-      logger.error(
-        { error: String(error) },
-        "Error updating phone number webhooks",
-      );
+      logger.error({ error: String(error) }, "Error updating phone number webhooks");
       throw error;
     }
   }
@@ -375,16 +343,14 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     to: string,
     body: string,
     mediaUrl?: string[],
-    fromOverride?: string,
+    fromOverride?: string
   ): Promise<TwilioMessage> {
     const normalizedTo = formatMessagingAddress(to);
     if (!normalizedTo || !validateMessagingAddress(normalizedTo)) {
       throw new TwilioError(ERROR_MESSAGES.INVALID_PHONE_NUMBER);
     }
 
-    const normalizedFrom = formatMessagingAddress(
-      fromOverride || this.twilioConfig.phoneNumber,
-    );
+    const normalizedFrom = formatMessagingAddress(fromOverride || this.twilioConfig.phoneNumber);
     if (!normalizedFrom) {
       throw new TwilioError(ERROR_MESSAGES.INVALID_PHONE_NUMBER);
     }
@@ -415,40 +381,27 @@ export class TwilioService extends Service implements TwilioServiceInterface {
 
       // Cache the message
       const conversationKey = CACHE_KEYS.CONVERSATION(normalizedTo);
-      let conversationHistory =
-        (this.cache.get(conversationKey) as TwilioMessage[]) || [];
+      let conversationHistory = (this.cache.get(conversationKey) as TwilioMessage[]) || [];
       conversationHistory.push(twilioMessage);
       // Keep only last 50 messages
       if (conversationHistory.length > 50) {
         conversationHistory = conversationHistory.slice(-50);
       }
-      this.cache.set(
-        conversationKey,
-        conversationHistory,
-        TWILIO_CONSTANTS.CACHE_TTL.CONVERSATION,
-      );
+      this.cache.set(conversationKey, conversationHistory, TWILIO_CONSTANTS.CACHE_TTL.CONVERSATION);
 
       if (this.runtime) {
         this.runtime.emitEvent(
           TwilioEventType.SMS_SENT as string,
-          twilioMessage as unknown as EventPayload,
+          twilioMessage as unknown as EventPayload
         );
       }
       return twilioMessage;
     } catch (error: any) {
-      throw new TwilioError(
-        `Failed to send SMS: ${error.message}`,
-        error.code,
-        error.moreInfo,
-      );
+      throw new TwilioError(`Failed to send SMS: ${error.message}`, error.code, error.moreInfo);
     }
   }
 
-  async makeCall(
-    to: string,
-    twiml?: string,
-    url?: string,
-  ): Promise<TwilioCall> {
+  async makeCall(to: string, twiml?: string, url?: string): Promise<TwilioCall> {
     if (!validatePhoneNumber(to)) {
       throw new TwilioError(ERROR_MESSAGES.INVALID_PHONE_NUMBER);
     }
@@ -484,16 +437,12 @@ export class TwilioService extends Service implements TwilioServiceInterface {
       this.cache.set(
         CACHE_KEYS.CALL_STATE(call.sid),
         twilioCall,
-        TWILIO_CONSTANTS.CACHE_TTL.CALL_STATE,
+        TWILIO_CONSTANTS.CACHE_TTL.CALL_STATE
       );
 
       return twilioCall;
     } catch (error: any) {
-      throw new TwilioError(
-        `Failed to make call: ${error.message}`,
-        error.code,
-        error.moreInfo,
-      );
+      throw new TwilioError(`Failed to make call: ${error.message}`, error.code, error.moreInfo);
     }
   }
 
@@ -509,11 +458,11 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     };
 
     // Handle media if present
-    if (webhook.NumMedia && parseInt(webhook.NumMedia) > 0) {
+    if (webhook.NumMedia && parseInt(webhook.NumMedia, 10) > 0) {
       message.media = [];
       // Twilio sends media as MediaUrl0, MediaUrl1, etc.
       const webhookRecord = webhook as unknown as Record<string, string | undefined>;
-      for (let i = 0; i < parseInt(webhook.NumMedia); i++) {
+      for (let i = 0; i < parseInt(webhook.NumMedia, 10); i++) {
         const mediaUrl = webhookRecord[`MediaUrl${i}`];
         const contentType = webhookRecord[`MediaContentType${i}`];
         if (mediaUrl) {
@@ -528,23 +477,18 @@ export class TwilioService extends Service implements TwilioServiceInterface {
 
     // Store in cache for conversation context
     const conversationKey = CACHE_KEYS.CONVERSATION(webhook.From);
-    let conversationHistory =
-      (this.cache.get(conversationKey) as TwilioMessage[]) || [];
+    let conversationHistory = (this.cache.get(conversationKey) as TwilioMessage[]) || [];
     conversationHistory.push(message);
     // Keep only last 50 messages
     if (conversationHistory.length > 50) {
       conversationHistory = conversationHistory.slice(-50);
     }
-    this.cache.set(
-      conversationKey,
-      conversationHistory,
-      TWILIO_CONSTANTS.CACHE_TTL.CONVERSATION,
-    );
+    this.cache.set(conversationKey, conversationHistory, TWILIO_CONSTANTS.CACHE_TTL.CONVERSATION);
 
     if (this.runtime) {
       this.runtime.emitEvent(
         TwilioEventType.SMS_RECEIVED as string,
-        message as unknown as EventPayload,
+        message as unknown as EventPayload
       );
     }
 
@@ -566,13 +510,13 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     this.cache.set(
       CACHE_KEYS.CALL_STATE(webhook.CallSid),
       call,
-      TWILIO_CONSTANTS.CACHE_TTL.CALL_STATE,
+      TWILIO_CONSTANTS.CACHE_TTL.CALL_STATE
     );
 
     if (this.runtime) {
       this.runtime.emitEvent(
         TwilioEventType.CALL_RECEIVED as string,
-        call as unknown as EventPayload,
+        call as unknown as EventPayload
       );
     }
 
@@ -593,7 +537,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
 
   async endVoiceStream(callSid: string): Promise<void> {
     const stream = this.voiceStreams.get(callSid);
-    if (stream && stream.socket) {
+    if (stream?.socket) {
       stream.socket.close();
     }
     this.voiceStreams.delete(callSid);
@@ -635,8 +579,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
       });
 
       const callback: HandlerCallback = async (content) => {
-        const responseText =
-          typeof content.text === "string" ? content.text.trim() : "";
+        const responseText = typeof content.text === "string" ? content.text.trim() : "";
         if (!responseText) {
           return [];
         }
@@ -658,10 +601,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
         });
       }
     } catch (error) {
-      logger.error(
-        { error: String(error) },
-        "Error processing incoming message",
-      );
+      logger.error({ error: String(error) }, "Error processing incoming message");
     }
   }
 
@@ -708,7 +648,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
 
   async cleanup(): Promise<void> {
     // Close all voice streams
-    for (const [callSid, stream] of this.voiceStreams) {
+    for (const [_callSid, stream] of this.voiceStreams) {
       if (stream.socket) {
         stream.socket.close();
       }
@@ -750,10 +690,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
   }
 
   // Add public method to get conversation history
-  getConversationHistory(
-    phoneNumber: string,
-    limit: number = 10,
-  ): TwilioMessage[] {
+  getConversationHistory(phoneNumber: string, limit: number = 10): TwilioMessage[] {
     const cacheKey = CACHE_KEYS.CONVERSATION(phoneNumber);
     const messages = this.cache.get(cacheKey) as TwilioMessage[];
 

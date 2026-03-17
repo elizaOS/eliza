@@ -1,6 +1,5 @@
 import { logger } from "@elizaos/core";
 import twilio from "twilio";
-import { TWILIO_CONSTANTS } from "./constants";
 
 /**
  * Validates a phone number in E.164 format
@@ -71,7 +70,7 @@ export function formatPhoneNumber(
   if (!cleaned.startsWith("+")) {
     // If it starts with the country code without +, add the +
     if (cleaned.startsWith("1") && cleaned.length === 11) {
-      cleaned = "+" + cleaned;
+      cleaned = `+${cleaned}`;
     } else if (cleaned.length === 10) {
       // Assume it's a US number without country code
       cleaned = defaultCountryCode + cleaned;
@@ -300,8 +299,8 @@ export function chunkTextForSms(text: string, maxLength: number = 160): string[]
   let currentChunk = "";
 
   for (const word of words) {
-    if ((currentChunk + " " + word).trim().length <= maxLength) {
-      currentChunk = (currentChunk + " " + word).trim();
+    if (`${currentChunk} ${word}`.trim().length <= maxLength) {
+      currentChunk = `${currentChunk} ${word}`.trim();
     } else {
       if (currentChunk) {
         chunks.push(currentChunk);
@@ -352,6 +351,6 @@ export async function convertAudioFormat(
 export function getWebhookUrl(baseUrl: string, path: string): string {
   // Ensure base URL doesn't end with / and path starts with /
   const cleanBase = baseUrl.replace(/\/$/, "");
-  const cleanPath = path.startsWith("/") ? path : "/" + path;
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
   return cleanBase + cleanPath;
 }

@@ -10,7 +10,6 @@ vi.mock("@elizaos/core", () => ({
   },
   Service: class Service {
     runtime: any;
-    constructor() {}
     async initialize(runtime: any) {
       this.runtime = runtime;
     }

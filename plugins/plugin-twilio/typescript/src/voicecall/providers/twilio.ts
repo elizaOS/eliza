@@ -329,7 +329,7 @@ export class TwilioVoiceProvider implements VoiceCallProvider {
   private async apiRequest<T = Record<string, unknown>>(
     endpoint: string,
     params: Record<string, string | string[]>,
-    options?: { allowNotFound?: boolean },
+    options?: { allowNotFound?: boolean }
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     const auth = Buffer.from(`${this.accountSid}:${this.authToken}`).toString("base64");
@@ -404,7 +404,7 @@ export class TwilioVoiceProvider implements VoiceCallProvider {
     await this.apiRequest(
       `/Calls/${input.providerCallId}.json`,
       { Status: "completed" },
-      { allowNotFound: true },
+      { allowNotFound: true }
     );
   }
 

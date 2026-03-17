@@ -11,20 +11,20 @@ import {
   endCallAction,
   getCallStatusAction,
   initiateCallAction,
-  voiceCallMakeCallAction,
   speakToUserAction,
+  voiceCallMakeCallAction,
 } from "./actions";
 import { callContextProvider, voiceCallStateProvider } from "./providers";
 import { VoiceCallService } from "./service";
 
 // Re-export everything
 export * from "./actions";
+export * from "./client";
+export * from "./constants";
 export * from "./environment";
 export * from "./providers";
 export * from "./service";
 export * from "./types";
-export * from "./constants";
-export * from "./client";
 
 /**
  * Voice call service class for plugin registration.

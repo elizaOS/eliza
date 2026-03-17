@@ -85,7 +85,7 @@ export function isValidHostHeader(host: string | undefined): boolean {
  */
 export function isTrustedProxy(
   remoteAddress: string | undefined,
-  trustedIPs: string[] | undefined,
+  trustedIPs: string[] | undefined
 ): boolean {
   if (!trustedIPs || trustedIPs.length === 0) return false;
   if (!remoteAddress) return false;
@@ -106,9 +106,7 @@ export function isTrustedProxy(
 /**
  * Can we trust forwarding headers for this request?
  */
-function canTrustForwardingHeaders(
-  opts: WebhookUrlReconstructionOptions,
-): boolean {
+function canTrustForwardingHeaders(opts: WebhookUrlReconstructionOptions): boolean {
   const sec = opts.security;
   if (!sec) return false;
 
@@ -125,9 +123,7 @@ function canTrustForwardingHeaders(
     const fwdHost = opts.forwardedHost;
     if (!fwdHost) return false;
     const hostOnly = fwdHost.split(":")[0].toLowerCase();
-    return sec.allowedHosts.some(
-      (allowed) => allowed.toLowerCase() === hostOnly,
-    );
+    return sec.allowedHosts.some((allowed) => allowed.toLowerCase() === hostOnly);
   }
 
   return false;
@@ -139,9 +135,7 @@ function canTrustForwardingHeaders(
  * This is needed for Twilio signature verification when behind
  * a proxy, tunnel, or load balancer.
  */
-export function reconstructWebhookUrl(
-  opts: WebhookUrlReconstructionOptions,
-): string {
+export function reconstructWebhookUrl(opts: WebhookUrlReconstructionOptions): string {
   // If forwarding headers are trusted, reconstruct from them
   if (canTrustForwardingHeaders(opts)) {
     const proto = opts.forwardedProto || "https";
@@ -176,7 +170,7 @@ export function reconstructWebhookUrl(
 export function computeTwilioSignature(
   authToken: string,
   url: string,
-  params: Record<string, string>,
+  params: Record<string, string>
 ): string {
   // Build the data string: URL + sorted params
   let data = url;
@@ -195,7 +189,7 @@ export function validateTwilioSignature(
   authToken: string,
   url: string,
   params: Record<string, string>,
-  signature: string,
+  signature: string
 ): boolean {
   const expected = computeTwilioSignature(authToken, url, params);
   return timingSafeEqual(expected, signature);

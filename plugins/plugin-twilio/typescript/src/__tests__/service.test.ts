@@ -14,7 +14,7 @@ vi.mock("express", () => ({
   default: vi.fn(() => ({
     use: vi.fn(),
     post: vi.fn(),
-    listen: vi.fn((port, cb) => {
+    listen: vi.fn((_port, cb) => {
       cb();
       return { close: vi.fn() };
     }),
@@ -44,7 +44,7 @@ const createMockTwilioClient = () => {
 
   // Make incomingPhoneNumbers callable as a function
   mockClient.incomingPhoneNumbers = Object.assign(
-    vi.fn((sid: string) => ({
+    vi.fn((_sid: string) => ({
       update: vi.fn().mockResolvedValue({}),
     })),
     {

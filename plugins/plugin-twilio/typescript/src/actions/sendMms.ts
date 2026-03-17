@@ -7,15 +7,14 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { SUPPORTED_MEDIA_TYPES, TWILIO_SERVICE_NAME } from "../constants";
+import { TWILIO_SERVICE_NAME } from "../constants";
 import type { TwilioService } from "../service";
-import { SendMmsSchema } from "../types";
 import { extractPhoneNumber, validateMessagingAddress } from "../utils";
 
 const sendMmsAction: Action = {
   name: "SEND_MMS",
   description: "Send an MMS (multimedia message) with images, audio, or video via Twilio",
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
     // Check if Twilio service is available
     const twilioService = runtime.getService(TWILIO_SERVICE_NAME);
     if (!twilioService) {
@@ -43,8 +42,8 @@ const sendMmsAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state?: State,
-    options?: any,
+    _state?: State,
+    _options?: any,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
@@ -94,7 +93,7 @@ const sendMmsAction: Action = {
       }
 
       // Send the MMS
-      const sentMessage = await twilioService.sendSms(phoneNumber, messageContent, mediaUrls);
+      const _sentMessage = await twilioService.sendSms(phoneNumber, messageContent, mediaUrls);
       logger.info(`MMS sent to ${phoneNumber} with ${mediaUrls.length} media attachment(s)`);
 
       if (callback) {

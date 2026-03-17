@@ -202,7 +202,7 @@ function parseAllowFrom(value: string | undefined): string[] {
 }
 
 export async function validateVoiceCallConfig(
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<VoiceCallEnvConfig | null> {
   try {
     const config = {

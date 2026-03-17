@@ -21,11 +21,7 @@ export const continueCallAction: Action = {
   description:
     "Continue a voice call conversation: speak a prompt to the user and wait for their response",
 
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
     if (!service?.isConnected()) return false;
     // Must have at least one active call
@@ -37,7 +33,7 @@ export const continueCallAction: Action = {
     _message: Memory,
     state: State | undefined,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
 

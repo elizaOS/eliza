@@ -84,15 +84,6 @@ const signalPlugin: Plugin = {
 
 export default signalPlugin;
 
-// Channel configuration types
-export type {
-  SignalAccountConfig,
-  SignalActionConfig,
-  SignalConfig,
-  SignalReactionLevel,
-  SignalReactionNotificationMode,
-} from "./config";
-
 // Account management exports
 export {
   DEFAULT_ACCOUNT_ID,
@@ -112,6 +103,14 @@ export { listGroups } from "./actions/listGroups";
 // Export actions
 export { sendMessage } from "./actions/sendMessage";
 export { sendReaction } from "./actions/sendReaction";
+// Channel configuration types
+export type {
+  SignalAccountConfig,
+  SignalActionConfig,
+  SignalConfig,
+  SignalReactionLevel,
+  SignalReactionNotificationMode,
+} from "./config";
 // Export providers
 export { conversationStateProvider } from "./providers/conversationState";
 // RPC client exports

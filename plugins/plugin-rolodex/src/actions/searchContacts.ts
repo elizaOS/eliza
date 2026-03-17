@@ -9,8 +9,8 @@ import {
   type HandlerCallback,
   ModelType,
   type ActionResult,
-} from '@elizaos/core';
-import { RolodexService } from '../services/RolodexService';
+} from "@elizaos/core";
+import { RolodexService } from "../services/RolodexService";
 
 const searchContactsTemplate = `# Search Contacts
 
@@ -33,76 +33,80 @@ Extract the search criteria from the message:
 </response>`;
 
 export const searchContactsAction: Action = {
-  name: 'SEARCH_CONTACTS',
-  description: 'Search and list contacts in the rolodex',
+  name: "SEARCH_CONTACTS",
+  description: "Search and list contacts in the rolodex",
   similes: [
-    'list contacts',
-    'show contacts',
-    'search contacts',
-    'find contacts',
-    'who are my friends',
-    'list my colleagues',
-    'show vip contacts',
-    'find people named',
-    'search for',
-    'contacts list',
+    "list contacts",
+    "show contacts",
+    "search contacts",
+    "find contacts",
+    "who are my friends",
+    "list my colleagues",
+    "show vip contacts",
+    "find people named",
+    "search for",
+    "contacts list",
   ],
   examples: [
     [
       {
-        name: '{{name1}}',
-        content: { text: 'Show me all my friends' },
+        name: "{{name1}}",
+        content: { text: "Show me all my friends" },
       },
       {
-        name: '{{name2}}',
-        content: { text: 'Here are your friends: Alice, Bob, Charlie' },
-      },
-    ],
-    [
-      {
-        name: '{{name1}}',
-        content: { text: 'List my VIP contacts' },
-      },
-      {
-        name: '{{name2}}',
-        content: { text: 'Your VIP contacts: Sarah (CEO), John (Key Client)' },
+        name: "{{name2}}",
+        content: { text: "Here are your friends: Alice, Bob, Charlie" },
       },
     ],
     [
       {
-        name: '{{name1}}',
-        content: { text: 'Find contacts named John' },
+        name: "{{name1}}",
+        content: { text: "List my VIP contacts" },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
+        content: { text: "Your VIP contacts: Sarah (CEO), John (Key Client)" },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Find contacts named John" },
+      },
+      {
+        name: "{{name2}}",
         content: {
-          text: 'I found 2 contacts named John: John Smith (colleague), John Doe (friend)',
+          text: "I found 2 contacts named John: John Smith (colleague), John Doe (friend)",
         },
       },
     ],
   ],
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
     // Check if RolodexService is available
-    const rolodexService = runtime.getService('rolodex') as RolodexService;
+    const rolodexService = runtime.getService("rolodex") as RolodexService;
     if (!rolodexService) {
-      logger.warn('[SearchContacts] RolodexService not available');
+      logger.warn("[SearchContacts] RolodexService not available");
       return false;
     }
 
     // Check if message contains intent to search/list contacts
     const searchKeywords = [
-      'list',
-      'show',
-      'search',
-      'find',
-      'contacts',
-      'friends',
-      'colleagues',
-      'vip',
-      'who',
+      "list",
+      "show",
+      "search",
+      "find",
+      "contacts",
+      "friends",
+      "colleagues",
+      "vip",
+      "who",
     ];
-    const messageText = message.content.text?.toLowerCase() || '';
+    const messageText = message.content.text?.toLowerCase() || "";
 
     return searchKeywords.some((keyword) => messageText.includes(keyword));
   },
@@ -112,12 +116,12 @@ export const searchContactsAction: Action = {
     message: Memory,
     state?: State,
     _options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult | void> => {
-    const rolodexService = runtime.getService('rolodex') as RolodexService;
+    const rolodexService = runtime.getService("rolodex") as RolodexService;
 
     if (!rolodexService) {
-      throw new Error('RolodexService not available');
+      throw new Error("RolodexService not available");
     }
 
     try {
@@ -126,7 +130,7 @@ export const searchContactsAction: Action = {
         state = {
           values: {},
           data: {},
-          text: '',
+          text: "",
         };
       }
 
@@ -135,7 +139,7 @@ export const searchContactsAction: Action = {
         ...state.values,
         message: message.content.text,
         senderId: message.entityId,
-        senderName: state.values?.senderName || 'User',
+        senderName: state.values?.senderName || "User",
       };
 
       // Compose prompt to extract search criteria
@@ -156,7 +160,7 @@ export const searchContactsAction: Action = {
 
       if (parsedResponse?.categories) {
         criteria.categories = parsedResponse.categories
-          .split(',')
+          .split(",")
           .map((c: string) => c.trim())
           .filter(Boolean);
       }
@@ -167,7 +171,7 @@ export const searchContactsAction: Action = {
 
       if (parsedResponse?.tags) {
         criteria.tags = parsedResponse.tags
-          .split(',')
+          .split(",")
           .map((t: string) => t.trim())
           .filter(Boolean);
       }
@@ -182,18 +186,18 @@ export const searchContactsAction: Action = {
           return {
             contact,
             entity,
-            name: entity?.names[0] || 'Unknown',
+            name: entity?.names[0] || "Unknown",
           };
-        })
+        }),
       );
 
       // Format response
-      let responseText = '';
+      let responseText = "";
 
       if (contactDetails.length === 0) {
-        responseText = 'No contacts found matching your criteria.';
-      } else if (parsedResponse?.intent === 'count') {
-        responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? 's' : ''} matching your criteria.`;
+        responseText = "No contacts found matching your criteria.";
+      } else if (parsedResponse?.intent === "count") {
+        responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? "s" : ""} matching your criteria.`;
       } else {
         // Group by category if searching all
         if (!criteria.categories || criteria.categories.length === 0) {
@@ -205,21 +209,21 @@ export const searchContactsAction: Action = {
               });
               return acc;
             },
-            {} as Record<string, typeof contactDetails>
+            {} as Record<string, typeof contactDetails>,
           );
 
-          responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? 's' : ''}:\n\n`;
+          responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? "s" : ""}:\n\n`;
 
           for (const [category, items] of Object.entries(grouped)) {
             responseText += `**${category.charAt(0).toUpperCase() + category.slice(1)}s:**\n`;
             items.forEach((item) => {
               responseText += `- ${item.name}`;
               if (item.contact.tags.length > 0) {
-                responseText += ` [${item.contact.tags.join(', ')}]`;
+                responseText += ` [${item.contact.tags.join(", ")}]`;
               }
-              responseText += '\n';
+              responseText += "\n";
             });
-            responseText += '\n';
+            responseText += "\n";
           }
         } else {
           // Simple list for specific category
@@ -228,9 +232,9 @@ export const searchContactsAction: Action = {
           contactDetails.forEach((item) => {
             responseText += `- ${item.name}`;
             if (item.contact.tags.length > 0) {
-              responseText += ` [${item.contact.tags.join(', ')}]`;
+              responseText += ` [${item.contact.tags.join(", ")}]`;
             }
-            responseText += '\n';
+            responseText += "\n";
           });
         }
       }
@@ -238,7 +242,7 @@ export const searchContactsAction: Action = {
       if (callback) {
         await callback({
           text: responseText,
-          action: 'SEARCH_CONTACTS',
+          action: "SEARCH_CONTACTS",
           metadata: {
             count: contactDetails.length,
             criteria,
@@ -266,16 +270,19 @@ export const searchContactsAction: Action = {
         text: responseText,
       };
     } catch (error) {
-      logger.error('[SearchContacts] Error searching contacts:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        "[SearchContacts] Error searching contacts:",
+        error instanceof Error ? error.message : String(error),
+      );
 
       const errorText = `I couldn't search contacts. ${
-        error instanceof Error ? error.message : 'Please try again.'
+        error instanceof Error ? error.message : "Please try again."
       }`;
 
       if (callback) {
         await callback({
           text: errorText,
-          action: 'SEARCH_CONTACTS',
+          action: "SEARCH_CONTACTS",
           metadata: { error: true },
         });
       }

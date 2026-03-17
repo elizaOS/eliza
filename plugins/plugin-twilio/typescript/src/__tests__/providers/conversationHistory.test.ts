@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import conversationHistoryProvider from "../../providers/conversationHistory";
-import type { IAgentRuntime, Memory, State, UUID, Content } from "@elizaos/core";
+import type { Content, IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import conversationHistoryProvider from "../../providers/conversationHistory";
 
 /**
  * Twilio message structure for conversation history
@@ -117,19 +117,10 @@ describe("conversationHistoryProvider", () => {
         text: "Get history",
       });
 
-      const result = await conversationHistoryProvider.get(
-        testRuntime,
-        message,
-        testState,
-      );
+      const result = await conversationHistoryProvider.get(testRuntime, message, testState);
 
-      expect(twilioService.getConversationHistory).toHaveBeenCalledWith(
-        "+18885551234",
-        10,
-      );
-      expect(result.text).toContain(
-        "Recent SMS conversation with +18885551234:",
-      );
+      expect(twilioService.getConversationHistory).toHaveBeenCalledWith("+18885551234", 10);
+      expect(result.text).toContain("Recent SMS conversation with +18885551234:");
       expect(result.text).toContain("From +18885551234: Hello");
       expect(result.text).toContain("To +18885551234: Hi there");
       expect(result.data).toEqual({
@@ -146,19 +137,10 @@ describe("conversationHistoryProvider", () => {
         text: "Show me messages with +18885551234",
       });
 
-      const result = await conversationHistoryProvider.get(
-        testRuntime,
-        message,
-        testState,
-      );
+      const result = await conversationHistoryProvider.get(testRuntime, message, testState);
 
-      expect(twilioService.getConversationHistory).toHaveBeenCalledWith(
-        "+18885551234",
-        10,
-      );
-      expect(result.text).toBe(
-        "No recent conversation history with +18885551234",
-      );
+      expect(twilioService.getConversationHistory).toHaveBeenCalledWith("+18885551234", 10);
+      expect(result.text).toBe("No recent conversation history with +18885551234");
     });
 
     it("should handle when service is not initialized", async () => {
@@ -174,7 +156,7 @@ describe("conversationHistoryProvider", () => {
       const result = await conversationHistoryProvider.get(
         runtimeWithoutService,
         message,
-        testState,
+        testState
       );
 
       expect(result.text).toBe(
@@ -185,11 +167,7 @@ describe("conversationHistoryProvider", () => {
     it("should handle when content is a string", async () => {
       const message = createTestMemoryWithStringContent();
 
-      const result = await conversationHistoryProvider.get(
-        testRuntime,
-        message,
-        testState,
-      );
+      const result = await conversationHistoryProvider.get(testRuntime, message, testState);
 
       expect(result.text).toBe("No phone number found in context");
     });
@@ -199,11 +177,7 @@ describe("conversationHistoryProvider", () => {
         text: "No phone number here",
       });
 
-      const result = await conversationHistoryProvider.get(
-        testRuntime,
-        message,
-        testState,
-      );
+      const result = await conversationHistoryProvider.get(testRuntime, message, testState);
 
       expect(result.text).toBe("No phone number found in context");
     });
@@ -213,11 +187,7 @@ describe("conversationHistoryProvider", () => {
         phoneNumber: 123456 as unknown as string, // Testing type coercion edge case
       });
 
-      const result = await conversationHistoryProvider.get(
-        testRuntime,
-        message,
-        testState,
-      );
+      const result = await conversationHistoryProvider.get(testRuntime, message, testState);
 
       expect(result.text).toBe("No phone number found in context");
     });
@@ -229,11 +199,7 @@ describe("conversationHistoryProvider", () => {
         phoneNumber: "+18885551234",
       });
 
-      const result = await conversationHistoryProvider.get(
-        testRuntime,
-        message,
-        testState,
-      );
+      const result = await conversationHistoryProvider.get(testRuntime, message, testState);
 
       expect(result.text).toBe("No recent conversation history with +18885551234");
     });
@@ -247,11 +213,7 @@ describe("conversationHistoryProvider", () => {
         phoneNumber: "+18885551234",
       });
 
-      const result = await conversationHistoryProvider.get(
-        testRuntime,
-        message,
-        testState,
-      );
+      const result = await conversationHistoryProvider.get(testRuntime, message, testState);
 
       expect(result.text).toBe("Error retrieving conversation history");
     });
@@ -271,11 +233,7 @@ describe("conversationHistoryProvider", () => {
         phoneNumber: "+18885551234",
       });
 
-      const result = await conversationHistoryProvider.get(
-        testRuntime,
-        message,
-        testState,
-      );
+      const result = await conversationHistoryProvider.get(testRuntime, message, testState);
 
       // The exact format depends on the locale, but it should contain the message
       expect(result.text).toContain("Test message");

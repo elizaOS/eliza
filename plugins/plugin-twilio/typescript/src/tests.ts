@@ -1,11 +1,6 @@
-import {
-  type IAgentRuntime,
-  type TestSuite,
-  type TestCase,
-  logger,
-} from "@elizaos/core";
+import * as readline from "node:readline";
+import { type IAgentRuntime, logger, type TestCase, type TestSuite } from "@elizaos/core";
 import axios from "axios";
-import * as readline from "readline";
 import { TWILIO_SERVICE_NAME } from "./constants";
 import type { TwilioService } from "./service";
 import { VOICE_CALL_SERVICE_NAME } from "./voicecall/constants";
@@ -50,7 +45,10 @@ export class TwilioTestSuite implements TestSuite {
           return;
         }
 
-        const result = await twilioService.sendSms(String(testNumber), "Test SMS from Eliza Twilio plugin");
+        const result = await twilioService.sendSms(
+          String(testNumber),
+          "Test SMS from Eliza Twilio plugin"
+        );
 
         logger.info(`✅ SMS test successful. Message SID: ${result.sid}`);
       },
@@ -221,7 +219,7 @@ export class TwilioTestSuite implements TestSuite {
           await twilioService.sendSms("+18885551234", "");
           // This might not throw an error, but Twilio will reject it
           logger.info("✅ Empty message handled");
-        } catch (error) {
+        } catch (_error) {
           logger.info("✅ Empty message error handled correctly");
         }
       },
@@ -230,31 +228,25 @@ export class TwilioTestSuite implements TestSuite {
       name: "Voice Call Service Initialization Test",
       fn: async (runtime: IAgentRuntime) => {
         const voiceCallService = runtime.getService(
-          VOICE_CALL_SERVICE_NAME,
+          VOICE_CALL_SERVICE_NAME
         ) as unknown as VoiceCallService;
 
         if (!voiceCallService) {
-          logger.warn(
-            "Voice Call service not initialized - VOICE_CALL_PROVIDER may not be set",
-          );
+          logger.warn("Voice Call service not initialized - VOICE_CALL_PROVIDER may not be set");
           logger.info(
-            "✅ Voice Call service correctly not initialized when no provider configured",
+            "✅ Voice Call service correctly not initialized when no provider configured"
           );
           return;
         }
 
         if (voiceCallService.isConnected()) {
           const settings = voiceCallService.getSettings();
-          logger.info(
-            `✅ Voice Call service initialized with provider: ${settings?.provider}`,
-          );
+          logger.info(`✅ Voice Call service initialized with provider: ${settings?.provider}`);
           logger.info(`   From number: ${settings?.fromNumber}`);
-          logger.info(
-            `   Max concurrent calls: ${settings?.maxConcurrentCalls}`,
-          );
+          logger.info(`   Max concurrent calls: ${settings?.maxConcurrentCalls}`);
         } else {
           logger.info(
-            "✅ Voice Call service loaded but not connected (expected when provider is not fully configured)",
+            "✅ Voice Call service loaded but not connected (expected when provider is not fully configured)"
           );
         }
       },
@@ -263,13 +255,11 @@ export class TwilioTestSuite implements TestSuite {
       name: "Voice Call State Management Test",
       fn: async (runtime: IAgentRuntime) => {
         const voiceCallService = runtime.getService(
-          VOICE_CALL_SERVICE_NAME,
+          VOICE_CALL_SERVICE_NAME
         ) as unknown as VoiceCallService;
 
         if (!voiceCallService || !voiceCallService.isConnected()) {
-          logger.warn(
-            "Voice Call service not connected, skipping state management test",
-          );
+          logger.warn("Voice Call service not connected, skipping state management test");
           return;
         }
 

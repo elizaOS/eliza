@@ -9,8 +9,8 @@ import {
   type HandlerCallback,
   ModelType,
   type ActionResult,
-} from '@elizaos/core';
-import { RolodexService } from '../services/RolodexService';
+} from "@elizaos/core";
+import { RolodexService } from "../services/RolodexService";
 
 const removeContactTemplate = `# Remove Contact from Rolodex
 
@@ -29,12 +29,16 @@ Extract the contact removal information from the message:
 </response>`;
 
 export const removeContactAction: Action = {
-  name: 'REMOVE_CONTACT',
-  similes: ['DELETE_CONTACT', 'REMOVE_FROM_ROLODEX', 'DELETE_FROM_CONTACTS'],
-  description: 'Removes a contact from the rolodex',
+  name: "REMOVE_CONTACT",
+  similes: ["DELETE_CONTACT", "REMOVE_FROM_ROLODEX", "DELETE_FROM_CONTACTS"],
+  description: "Removes a contact from the rolodex",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const hasService = !!runtime.getService('rolodex');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const hasService = !!runtime.getService("rolodex");
     const hasIntent = message.content.text
       ?.toLowerCase()
       .match(/remove|delete|drop.*contact|remove.*from.*rolodex/);
@@ -46,19 +50,19 @@ export const removeContactAction: Action = {
     message: Memory,
     state?: State,
     _options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult | void> => {
     try {
-      const rolodexService = runtime.getService('rolodex') as RolodexService;
+      const rolodexService = runtime.getService("rolodex") as RolodexService;
       if (!rolodexService) {
-        throw new Error('RolodexService not available');
+        throw new Error("RolodexService not available");
       }
 
       // Compose the prompt
       const removeState = {
         ...state,
         message: message.content.text,
-        senderName: state?.senderName || 'User',
+        senderName: state?.senderName || "User",
         senderId: message.entityId,
       };
 
@@ -72,14 +76,14 @@ export const removeContactAction: Action = {
       const parsed = parseKeyValueXml(response);
 
       if (!parsed?.contactName) {
-        logger.warn('[RemoveContact] No contact name provided');
+        logger.warn("[RemoveContact] No contact name provided");
         await callback?.({
           text: "I couldn't determine which contact to remove. Please specify the contact name.",
         });
         return;
       }
 
-      if (parsed.confirmed !== 'yes') {
+      if (parsed.confirmed !== "yes") {
         await callback?.({
           text: `To remove ${parsed.contactName} from your contacts, please confirm by saying "yes, remove ${parsed.contactName}".`,
         });
@@ -87,7 +91,9 @@ export const removeContactAction: Action = {
       }
 
       // Find the contact
-      const contacts = await rolodexService.searchContacts({ searchTerm: parsed.contactName });
+      const contacts = await rolodexService.searchContacts({
+        searchTerm: parsed.contactName,
+      });
 
       if (contacts.length === 0) {
         await callback?.({
@@ -105,7 +111,7 @@ export const removeContactAction: Action = {
         const responseText = `I've removed ${parsed.contactName} from your contacts.`;
         await callback?.({
           text: responseText,
-          actions: ['REMOVE_CONTACT'],
+          actions: ["REMOVE_CONTACT"],
         });
 
         logger.info(`[RemoveContact] Removed contact ${contact.entityId}`);
@@ -117,13 +123,16 @@ export const removeContactAction: Action = {
           text: responseText,
         };
       } else {
-        throw new Error('Failed to remove contact');
+        throw new Error("Failed to remove contact");
       }
     } catch (error) {
-      logger.error('[RemoveContact] Error:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        "[RemoveContact] Error:",
+        error instanceof Error ? error.message : String(error),
+      );
       await callback?.({
-        text: 'I encountered an error while removing the contact. Please try again.',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        text: "I encountered an error while removing the contact. Please try again.",
+        error: error instanceof Error ? error.message : "Unknown error",
       });
     }
   },
@@ -131,31 +140,31 @@ export const removeContactAction: Action = {
   examples: [
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'Remove John Doe from my contacts',
+          text: "Remove John Doe from my contacts",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: 'To remove John Doe from your contacts, please confirm by saying "yes, remove John Doe".',
-          actions: ['REMOVE_CONTACT'],
+          actions: ["REMOVE_CONTACT"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'Yes, remove John Doe',
+          text: "Yes, remove John Doe",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: "I've removed John Doe from your contacts.",
-          actions: ['REMOVE_CONTACT'],
+          actions: ["REMOVE_CONTACT"],
         },
       },
     ],
