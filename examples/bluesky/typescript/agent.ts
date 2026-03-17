@@ -14,7 +14,7 @@
  * NO shortcuts, NO bypassing the pipeline - this is canonical elizaOS.
  */
 
-import { AgentRuntime, stringToUuid, type Plugin } from "@elizaos/core";
+import { AgentRuntime, type Plugin, stringToUuid } from "@elizaos/core";
 import { config } from "dotenv";
 
 import { character } from "./character";

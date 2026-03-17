@@ -514,7 +514,7 @@ export async function saveAutofillData(
  */
 export async function getStaleSessions(
   runtime: IAgentRuntime,
-  afterInactiveMs: number
+  _afterInactiveMs: number
 ): Promise<FormSession[]> {
   // TODO: Implement proper querying across all entities
   // This would require either:
@@ -537,7 +537,7 @@ export async function getStaleSessions(
  */
 export async function getExpiringSessions(
   runtime: IAgentRuntime,
-  withinMs: number
+  _withinMs: number
 ): Promise<FormSession[]> {
   runtime.logger.warn("getExpiringSessions requires entity iteration - not implemented");
   return [];

@@ -31,7 +31,10 @@ export interface SecretValidationPattern {
  * Consolidated validation patterns for all secret types.
  * These patterns validate the format of secrets without making API calls.
  */
-export const SECRET_VALIDATION_PATTERNS: Record<string, SecretValidationPattern> = {
+export const SECRET_VALIDATION_PATTERNS: Record<
+  string,
+  SecretValidationPattern
+> = {
   // ─────────────────────────────────────────────────────────────────────────────
   // Model Provider API Keys
   // ─────────────────────────────────────────────────────────────────────────────
@@ -173,7 +176,8 @@ export const SECRET_VALIDATION_PATTERNS: Record<string, SecretValidationPattern>
 
   TWITTER_USERNAME: {
     pattern: /^[a-zA-Z0-9_]{1,15}$/,
-    description: "Twitter username must be 1-15 alphanumeric characters or underscores",
+    description:
+      "Twitter username must be 1-15 alphanumeric characters or underscores",
     minLength: 1,
     maxLength: 15,
     example: "myusername",
@@ -244,7 +248,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<string, SecretValidationPattern>
   },
 
   SIGNAL_CLI_PATH: {
-    pattern: /^[\/~].+$/,
+    pattern: /^[/~].+$/,
     description: "Signal CLI path must be an absolute path or start with ~",
     example: "/usr/local/bin/signal-cli",
   },
@@ -281,7 +285,10 @@ export interface SecretValidationResult {
  * @param value - The secret value to validate
  * @returns Validation result
  */
-export function validateSecretKey(key: string, value: string): SecretValidationResult {
+export function validateSecretKey(
+  key: string,
+  value: string,
+): SecretValidationResult {
   const validatedAt = Date.now();
 
   // Check if we have a pattern for this key
@@ -332,7 +339,10 @@ export function validateSecretKey(key: string, value: string): SecretValidationR
  * @param validatedAt - Timestamp
  * @returns Validation result
  */
-function validateBasicSecret(value: string, validatedAt: number): SecretValidationResult {
+function validateBasicSecret(
+  value: string,
+  validatedAt: number,
+): SecretValidationResult {
   // Check for empty/whitespace only
   if (!value || value.trim().length === 0) {
     return {
@@ -356,7 +366,10 @@ function validateBasicSecret(value: string, validatedAt: number): SecretValidati
 
   const lowerValue = value.toLowerCase();
   for (const placeholder of placeholders) {
-    if (lowerValue === placeholder.toLowerCase() || lowerValue.includes(placeholder.toLowerCase())) {
+    if (
+      lowerValue === placeholder.toLowerCase() ||
+      lowerValue.includes(placeholder.toLowerCase())
+    ) {
       return {
         isValid: false,
         error: "Secret appears to be a placeholder value",
@@ -387,7 +400,7 @@ function validateBasicSecret(value: string, validatedAt: number): SecretValidati
  * @returns Record of validation results
  */
 export function validateSecrets(
-  secrets: Record<string, string>
+  secrets: Record<string, string>,
 ): Record<string, SecretValidationResult> {
   const results: Record<string, SecretValidationResult> = {};
 
@@ -407,7 +420,7 @@ export function validateSecrets(
  */
 export function checkRequiredSecrets(
   secrets: Record<string, string>,
-  requiredKeys: string[]
+  requiredKeys: string[],
 ): {
   valid: boolean;
   missing: string[];
@@ -448,7 +461,9 @@ export function checkRequiredSecrets(
  * @param key - The secret key name
  * @returns The validation pattern, or undefined if none exists
  */
-export function getValidationPattern(key: string): SecretValidationPattern | undefined {
+export function getValidationPattern(
+  key: string,
+): SecretValidationPattern | undefined {
   return SECRET_VALIDATION_PATTERNS[key];
 }
 
@@ -494,11 +509,17 @@ export function inferValidationPatternKey(key: string): string {
     return "GROQ_API_KEY";
   }
 
-  if (upperKey.includes("DISCORD") && (upperKey.includes("TOKEN") || upperKey.includes("BOT"))) {
+  if (
+    upperKey.includes("DISCORD") &&
+    (upperKey.includes("TOKEN") || upperKey.includes("BOT"))
+  ) {
     return "DISCORD_BOT_TOKEN";
   }
 
-  if (upperKey.includes("TELEGRAM") && (upperKey.includes("TOKEN") || upperKey.includes("BOT"))) {
+  if (
+    upperKey.includes("TELEGRAM") &&
+    (upperKey.includes("TOKEN") || upperKey.includes("BOT"))
+  ) {
     return "TELEGRAM_BOT_TOKEN";
   }
 

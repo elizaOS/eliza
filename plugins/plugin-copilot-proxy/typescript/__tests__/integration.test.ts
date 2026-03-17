@@ -1,27 +1,26 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-
-import copilotProxyPlugin from "../src/index";
+import type { IAgentRuntime } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CopilotProxyClient, CopilotProxyError } from "../src/client";
+import {
+  AVAILABLE_MODELS,
+  DEFAULT_BASE_URL,
+  DEFAULT_CONTEXT_WINDOW,
+  DEFAULT_LARGE_MODEL,
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_SMALL_MODEL,
+  DEFAULT_TIMEOUT_SECONDS,
+  normalizeBaseUrl,
+} from "../src/environment";
+import copilotProxyPlugin from "../src/index";
 import { CopilotProxyService, getCopilotProxyService } from "../src/service";
 import {
-  normalizeBaseUrl,
-  DEFAULT_BASE_URL,
-  DEFAULT_SMALL_MODEL,
-  DEFAULT_LARGE_MODEL,
-  DEFAULT_TIMEOUT_SECONDS,
-  DEFAULT_MAX_TOKENS,
-  DEFAULT_CONTEXT_WINDOW,
-  AVAILABLE_MODELS,
-} from "../src/environment";
-import {
+  assertValidBaseUrl,
   createModelName,
   createValidatedBaseUrl,
-  assertValidBaseUrl,
   isReconstructedResponse,
   isUnstructuredResponse,
 } from "../src/types";
-import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,7 +33,13 @@ function createMockRuntime(
     getSetting: vi.fn((key: string) => overrides[key] ?? undefined),
     character: { system: "You are a helpful assistant." },
     agentId: "test-agent",
-    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), log: vi.fn() },
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      log: vi.fn(),
+    },
   } as unknown as IAgentRuntime;
 }
 
@@ -127,9 +132,9 @@ describe("type utilities", () => {
   });
 
   it("isReconstructedResponse identifies correct type", () => {
-    expect(
-      isReconstructedResponse({ type: "reconstructed_response" }),
-    ).toBe(true);
+    expect(isReconstructedResponse({ type: "reconstructed_response" })).toBe(
+      true,
+    );
     expect(isReconstructedResponse({ type: "other" })).toBe(false);
   });
 
@@ -165,11 +170,7 @@ describe("CopilotProxyClient", () => {
   });
 
   it("healthCheck returns false for unreachable server", async () => {
-    const client = new CopilotProxyClient(
-      "http://127.0.0.1:1/v1",
-      1,
-      4096,
-    );
+    const client = new CopilotProxyClient("http://127.0.0.1:1/v1", 1, 4096);
     const result = await client.healthCheck();
     expect(result).toBe(false);
   });

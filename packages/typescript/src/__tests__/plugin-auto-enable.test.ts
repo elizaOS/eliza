@@ -5,10 +5,10 @@
  * Tests allow/deny filtering.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  MODEL_PROVIDER_SECRETS,
   CHANNEL_SECRETS,
+  MODEL_PROVIDER_SECRETS,
   resolveSecretKeyAlias,
 } from "../constants/secrets";
 

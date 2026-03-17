@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  FEISHU_TEXT_CHUNK_LIMIT,
   chunkFeishuText,
   containsMarkdown,
+  FEISHU_TEXT_CHUNK_LIMIT,
   formatFeishuAtAll,
   formatFeishuUserMention,
   isGroupChat,

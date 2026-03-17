@@ -12,7 +12,8 @@
 import { config } from "dotenv";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-type BlueSkyModule = typeof import("../../../../plugins/plugin-bluesky/typescript/client");
+type BlueSkyModule =
+  typeof import("../../../../plugins/plugin-bluesky/typescript/client");
 
 // Load environment
 config({ path: "../../.env" });

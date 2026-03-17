@@ -28,11 +28,14 @@ describe("DatabaseAdapter Abstract Class", () => {
     // Type-level test: verify mutation methods return Promise<boolean>
     type UpdateAgentsReturn = ReturnType<DatabaseAdapter["updateAgents"]>;
     type DeleteAgentsReturn = ReturnType<DatabaseAdapter["deleteAgents"]>;
-    type DeleteParticipantsReturn = ReturnType<DatabaseAdapter["deleteParticipants"]>;
+    type DeleteParticipantsReturn = ReturnType<
+      DatabaseAdapter["deleteParticipants"]
+    >;
 
     // These type assertions will fail compilation if return types don't match
     const _updateAgentsIsBoolean: Promise<boolean> = {} as UpdateAgentsReturn;
     const _deleteAgentsIsBoolean: Promise<boolean> = {} as DeleteAgentsReturn;
-    const _deleteParticipantsIsBoolean: Promise<boolean> = {} as DeleteParticipantsReturn;
+    const _deleteParticipantsIsBoolean: Promise<boolean> =
+      {} as DeleteParticipantsReturn;
   });
 });

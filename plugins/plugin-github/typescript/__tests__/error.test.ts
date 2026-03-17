@@ -12,6 +12,7 @@ import {
   IssueNotFoundError,
   MergeConflictError,
   MissingSettingError,
+  mapOctokitError,
   NetworkError,
   PermissionDeniedError,
   PullRequestNotFoundError,
@@ -21,7 +22,6 @@ import {
   TimeoutError,
   ValidationError,
   WebhookVerificationError,
-  mapOctokitError,
 } from "../error";
 
 // =============================================================================

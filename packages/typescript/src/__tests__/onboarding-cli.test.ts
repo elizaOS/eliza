@@ -5,7 +5,7 @@
  * Tests input parsing for each step and full onboarding flow.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ============================================================================
 // Types

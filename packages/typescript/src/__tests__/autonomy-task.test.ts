@@ -1,9 +1,9 @@
 import { v4 as uuidv4 } from "uuid";
-import { describe, expect, test, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  AutonomyService,
   AUTONOMY_TASK_NAME,
   AUTONOMY_TASK_TAGS,
+  AutonomyService,
 } from "../autonomy/service";
 import type { IAgentRuntime, Memory, Task, UUID } from "../types";
 

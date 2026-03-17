@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Character } from "../types/agent";
 import type { ResolvedSection } from "../types/prompt-batcher";
 import type { IAgentRuntime } from "../types/runtime";
-import type { Character } from "../types/agent";
 import { PromptBatcher, PromptDispatcher } from "../utils/prompt-batcher";
 
 describe("PromptBatcher", () => {
@@ -42,7 +42,13 @@ describe("PromptBatcher", () => {
       ...overrides,
     } as unknown as IAgentRuntime;
 
-    return { runtime, resolveInit, initPromise, dynamicPromptExecFromState, logger };
+    return {
+      runtime,
+      resolveInit,
+      initPromise,
+      dynamicPromptExecFromState,
+      logger,
+    };
   }
 
   function createBatcher(runtime: IAgentRuntime, modelSeparation = 0.7) {
@@ -98,8 +104,13 @@ describe("PromptBatcher", () => {
   });
 
   it("does not emit duplicate drain logs for a single drain", async () => {
-    const { runtime, resolveInit, initPromise, dynamicPromptExecFromState, logger } =
-      createRuntime();
+    const {
+      runtime,
+      resolveInit,
+      initPromise,
+      dynamicPromptExecFromState,
+      logger,
+    } = createRuntime();
     const batcher = createBatcher(runtime);
 
     dynamicPromptExecFromState.mockResolvedValue({
@@ -182,7 +193,9 @@ describe("PromptBatcher", () => {
     expect(dynamicPromptExecFromState).not.toHaveBeenCalled();
 
     batcher.dispose();
-    await expect(resultPromise).rejects.toThrow("PromptBatcher has been disposed");
+    await expect(resultPromise).rejects.toThrow(
+      "PromptBatcher has been disposed",
+    );
   });
 
   it("rejects the onDrain promise when onResult throws", async () => {

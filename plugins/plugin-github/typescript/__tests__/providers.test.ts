@@ -24,9 +24,9 @@ vi.mock("../generated/specs/spec-helpers", () => ({
   }),
 }));
 
+import { allProviders } from "../providers";
 import { issueContextProvider } from "../providers/issueContext";
 import { repositoryStateProvider } from "../providers/repositoryState";
-import { allProviders } from "../providers";
 
 // =============================================================================
 // allProviders export
@@ -73,7 +73,7 @@ describe("issueContextProvider", () => {
     const result = await issueContextProvider.get(
       runtime as never,
       message as never,
-      state as never,
+      state as never
     );
 
     expect(result).toEqual({ text: null });
@@ -94,7 +94,7 @@ describe("issueContextProvider", () => {
     const result = await issueContextProvider.get(
       runtime as never,
       message as never,
-      state as never,
+      state as never
     );
 
     expect(result).toEqual({ text: null });
@@ -115,7 +115,7 @@ describe("issueContextProvider", () => {
     const result = await issueContextProvider.get(
       runtime as never,
       message as never,
-      state as never,
+      state as never
     );
 
     expect(result).toEqual({ text: null });
@@ -136,7 +136,7 @@ describe("issueContextProvider", () => {
     const result = await issueContextProvider.get(
       runtime as never,
       message as never,
-      state as never,
+      state as never
     );
 
     expect(result).toEqual({ text: null });
@@ -159,7 +159,7 @@ describe("issueContextProvider", () => {
     const result = await issueContextProvider.get(
       runtime as never,
       message as never,
-      state as never,
+      state as never
     );
 
     expect(mockGetIssue).toHaveBeenCalledWith({
@@ -205,7 +205,7 @@ describe("issueContextProvider", () => {
     const result = await issueContextProvider.get(
       runtime as never,
       message as never,
-      state as never,
+      state as never
     );
 
     expect(result.text).toContain("Issue #42");
@@ -261,7 +261,7 @@ describe("issueContextProvider", () => {
     const result = await issueContextProvider.get(
       runtime as never,
       message as never,
-      state as never,
+      state as never
     );
 
     expect(result.text).toContain("Pull Request #99");
@@ -304,11 +304,7 @@ describe("issueContextProvider", () => {
     };
     const message = { content: { text: "#50" } };
 
-    const result = await issueContextProvider.get(
-      runtime as never,
-      message as never,
-      {} as never,
-    );
+    const result = await issueContextProvider.get(runtime as never, message as never, {} as never);
 
     expect(result.text).toContain("(Draft)");
     expect(result.text).toContain("_No description provided_");
@@ -339,11 +335,7 @@ describe("repositoryStateProvider", () => {
       getService: vi.fn().mockReturnValue(null),
     };
 
-    const result = await repositoryStateProvider.get(
-      runtime as never,
-      {} as never,
-      {} as never,
-    );
+    const result = await repositoryStateProvider.get(runtime as never, {} as never, {} as never);
 
     expect(result).toEqual({ text: null });
   });
@@ -358,11 +350,7 @@ describe("repositoryStateProvider", () => {
       }),
     };
 
-    const result = await repositoryStateProvider.get(
-      runtime as never,
-      {} as never,
-      {} as never,
-    );
+    const result = await repositoryStateProvider.get(runtime as never, {} as never, {} as never);
 
     expect(result.text).toContain("not configured");
     expect(result.text).toContain("GITHUB_OWNER");
@@ -411,11 +399,7 @@ describe("repositoryStateProvider", () => {
       }),
     };
 
-    const result = await repositoryStateProvider.get(
-      runtime as never,
-      {} as never,
-      {} as never,
-    );
+    const result = await repositoryStateProvider.get(runtime as never, {} as never, {} as never);
 
     expect(result.text).toContain("org/project");
     expect(result.text).toContain("A great project");
@@ -451,11 +435,7 @@ describe("repositoryStateProvider", () => {
       }),
     };
 
-    const result = await repositoryStateProvider.get(
-      runtime as never,
-      {} as never,
-      {} as never,
-    );
+    const result = await repositoryStateProvider.get(runtime as never, {} as never, {} as never);
 
     expect(result.text).toContain("org/empty-project");
     expect(result.text).toContain("No description");
@@ -472,11 +452,7 @@ describe("repositoryStateProvider", () => {
       }),
     };
 
-    const result = await repositoryStateProvider.get(
-      runtime as never,
-      {} as never,
-      {} as never,
-    );
+    const result = await repositoryStateProvider.get(runtime as never, {} as never, {} as never);
 
     expect(result.text).toContain("Unable to fetch");
     expect(result.text).toContain("API rate limit exceeded");

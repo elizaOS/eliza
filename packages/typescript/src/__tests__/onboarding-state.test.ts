@@ -6,7 +6,7 @@
  * plugin-secrets-manager, but we test the core config utilities here.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 // ============================================================================
 // Types and Utilities (mirrored from plugin-secrets-manager for testing)

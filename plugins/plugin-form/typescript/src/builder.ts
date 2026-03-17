@@ -495,7 +495,7 @@ export class FormBuilder {
    */
   control(builder: ControlBuilder | FormControl): this {
     const ctrl = builder instanceof ControlBuilder ? builder.build() : builder;
-    this.form.controls!.push(ctrl);
+    this.form.controls?.push(ctrl);
     return this;
   }
 

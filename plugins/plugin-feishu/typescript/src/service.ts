@@ -1,16 +1,16 @@
 import {
   ChannelType,
   type Content,
+  createUniqueUuid,
   type EventPayload,
   EventType,
   type IAgentRuntime,
+  logger,
   type Room,
   Service,
   type TargetInfo,
   type UUID,
   type World,
-  createUniqueUuid,
-  logger,
 } from "@elizaos/core";
 import * as lark from "@larksuiteoapi/node-sdk";
 import { FEISHU_SERVICE_NAME } from "./constants";

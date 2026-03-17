@@ -122,9 +122,7 @@ export const completeTaskAction: Action = {
         );
       } else {
         // Use LLM to identify which task to complete
-        const taskDescriptions = targetPlan.tasks.map(
-          (t, i) => `${i}: "${t.title}" (${t.status})`
-        );
+        const taskDescriptions = targetPlan.tasks.map((t, i) => `${i}: "${t.title}" (${t.status})`);
 
         const matchPrompt = `Which task should be marked as completed?
 Request: "${content}"
