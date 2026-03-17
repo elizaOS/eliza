@@ -39,7 +39,9 @@ export function extractSessionContext(memory: Memory): {
 	const directSessionKey = memoryRecord.sessionKey as string | undefined;
 
 	// Metadata-based session info
-	const metadata = memory.metadata as (MemoryMetadata & Record<string, unknown>) | undefined;
+	const metadata = memory.metadata as
+		| (MemoryMetadata & Record<string, unknown>)
+		| undefined;
 	const metaSessionId = metadata?.sessionId as string | undefined;
 	const metaSessionKey = metadata?.sessionKey as string | undefined;
 	const metaSession = metadata?.session as SessionEntry | undefined;
@@ -142,7 +144,7 @@ export function createSessionProvider(options?: {
 					hasSession: true,
 					sessionId: context.sessionId,
 					sessionKey: context.sessionKey,
-					entry: entry as unknown as Record<string, unknown>,
+					entry: entry as SessionEntry & Record<string, unknown>,
 				},
 			};
 		},

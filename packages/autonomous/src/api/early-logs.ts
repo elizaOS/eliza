@@ -40,10 +40,10 @@ export function captureEarlyLogs(): void {
   if (earlyLogBuffer) return; // already capturing
   // If the global logger is already fully patched (e.g. dev-server started
   // the API server before calling startEliza), skip early capture entirely.
-  if ((logger as unknown as Record<string, unknown>).__miladyLogPatched) return;
+  if ((logger as typeof logger & Record<string, unknown>).__miladyLogPatched) return;
   earlyLogBuffer = [];
   const EARLY_PATCHED = "__miladyEarlyPatched";
-  if ((logger as unknown as Record<string, unknown>)[EARLY_PATCHED]) return;
+  if ((logger as typeof logger & Record<string, unknown>)[EARLY_PATCHED]) return;
 
   const LEVELS = ["debug", "info", "warn", "error"] as const;
   const originals = new Map<string, (...args: unknown[]) => void>();
@@ -79,7 +79,7 @@ export function captureEarlyLogs(): void {
     logger[lvl] = earlyPatched;
   }
 
-  (logger as unknown as Record<string, unknown>)[EARLY_PATCHED] = true;
+  (logger as typeof logger & Record<string, unknown>)[EARLY_PATCHED] = true;
 
   earlyPatchCleanup = () => {
     // Restore originals so `patchLogger` inside `startApiServer` can re-patch
@@ -87,9 +87,9 @@ export function captureEarlyLogs(): void {
       const orig = originals.get(lvl);
       if (orig) logger[lvl] = orig as (typeof logger)[typeof lvl];
     }
-    delete (logger as unknown as Record<string, unknown>)[EARLY_PATCHED];
+    delete (logger as typeof logger & Record<string, unknown>)[EARLY_PATCHED];
     // Don't set the main PATCHED_MARKER — `patchLogger` will do that
-    delete (logger as unknown as Record<string, unknown>).__miladyLogPatched;
+    delete (logger as typeof logger & Record<string, unknown>).__miladyLogPatched;
   };
 }
 

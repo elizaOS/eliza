@@ -144,7 +144,7 @@ export function createMiladyPlugin(config?: MiladyPluginConfig): Plugin {
     description:
       "Milady workspace context, session keys, and lifecycle actions",
 
-    services: [AgentEventService as unknown as ServiceClass],
+    services: [AgentEventService as ServiceClass],
 
     init: async (_pluginConfig, runtime) => {
       registerTriggerTaskWorker(runtime);

@@ -2939,7 +2939,7 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return null;
 		}
-		return serviceInstances[0] as unknown as T;
+		return serviceInstances[0] as T;
 	}
 
 	/**
