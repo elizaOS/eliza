@@ -174,6 +174,9 @@ class MemoryService(Service):
             _ = await runtime.set_cache(key, int(message_count))
             return
         self._extraction_checkpoints[key] = int(message_count)
+        while len(self._extraction_checkpoints) > self._MAX_LOCAL_EXTRACTION_CHECKPOINTS:
+            oldest = next(iter(self._extraction_checkpoints))
+            del self._extraction_checkpoints[oldest]
 
     async def should_run_extraction(
         self, entity_id: UUID, room_id: UUID, current_message_count: int
@@ -279,6 +282,9 @@ class MemoryService(Service):
             return s
 
         self._session_summaries[str(room_id)] = s
+        while len(self._session_summaries) > self._MAX_LOCAL_SESSION_SUMMARIES:
+            oldest = next(iter(self._session_summaries))
+            del self._session_summaries[oldest]
         return s
 
     async def update_session_summary(
@@ -389,6 +395,14 @@ class MemoryService(Service):
             return m
 
         self._long_term.setdefault(str(entity_id), []).append(m)
+        # Trim per-entity list to keep newest entries
+        eid = str(entity_id)
+        if len(self._long_term[eid]) > self._MAX_LOCAL_LONG_TERM_PER_ENTITY:
+            self._long_term[eid] = self._long_term[eid][-self._MAX_LOCAL_LONG_TERM_PER_ENTITY:]
+        # Evict entity with fewest memories when too many entities
+        while len(self._long_term) > self._MAX_LOCAL_LONG_TERM_ENTITIES:
+            smallest = min(self._long_term, key=lambda k: len(self._long_term[k]))
+            del self._long_term[smallest]
         return m
 
     async def get_long_term_memories(
