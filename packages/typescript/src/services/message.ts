@@ -764,16 +764,10 @@ export class DefaultMessageService implements IMessageService {
         state = await runtime.composeState(message, responseContent.providers);
       }
 
-      // Save response memory to database (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
-      const allowedSources = getAllowedMemorySources(runtime);
-      const responseSourceId = typeof responseContent?.metadata?.sourceId === "string" 
-        ? responseContent.metadata.sourceId 
-        : "agent_response"; // Use semantic default that can be added to allowlist
-      // Only persist if:
-      // 1. No whitelist exists (!allowedSources) OR source is in the whitelist
-      // 2. Memory creation is enabled OR source is in whitelist (to allow bypass)
-      const memorySourceAllowed = !allowedSources || allowedSources.includes(responseSourceId);
-      const canPersistMemory = (!disableMemoryCreation || (allowedSources && memorySourceAllowed)) && memorySourceAllowed;
+      // Save response memory to database (respect DISABLE_MEMORY_CREATION).
+      // Note: Agent responses are always persisted when memory creation is enabled,
+      // regardless of ALLOW_MEMORY_SOURCE_IDS (which filters external message sources only).
+      const canPersistMemory = !disableMemoryCreation;
       if (responseMessages.length > 0 && canPersistMemory) {
         for (const responseMemory of responseMessages) {
           // Update the content in case inReplyTo was added
