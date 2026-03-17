@@ -3,7 +3,7 @@
 use crate::service::NostrService;
 use crate::types::*;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Parameters for sending a Nostr DM
 #[derive(Debug, Clone, Serialize, Deserialize)]

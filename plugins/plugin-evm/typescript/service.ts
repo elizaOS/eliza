@@ -92,7 +92,8 @@ export class EVMService extends Service {
           name: chain.name,
         });
       } catch (error) {
-        logger.error(`Error formatting chain ${chainName}:`, error);
+        const errMsg = error instanceof Error ? error.message : String(error);
+        logger.error(`Error formatting chain ${chainName}: ${errMsg}`);
       }
     }
 

@@ -322,9 +322,21 @@ pub fn split_message(content: &str) -> Vec<String> {
             }
 
             if line.len() > MAX_MESSAGE_LENGTH {
-                // Split long lines by words
+                // Split long lines by words; split words that exceed limit by character
                 let words: Vec<&str> = line.split_whitespace().collect();
                 for word in words {
+                    if word.len() > MAX_MESSAGE_LENGTH {
+                        // Single word exceeds limit: flush current, then chunk by character
+                        if !current.is_empty() {
+                            parts.push(current);
+                            current = String::new();
+                        }
+                        let chars: Vec<char> = word.chars().collect();
+                        for chunk in chars.chunks(MAX_MESSAGE_LENGTH) {
+                            parts.push(chunk.iter().collect());
+                        }
+                        continue;
+                    }
                     let word_with_space = if current.is_empty() {
                         word.to_string()
                     } else {

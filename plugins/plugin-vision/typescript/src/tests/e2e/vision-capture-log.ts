@@ -44,7 +44,17 @@ export class VisionCaptureLogTestSuite {
             characterName: runtime.character.name,
           },
           camera: visionService.getCameraInfo(),
-          captures: [] as Array<{ timestamp: number; sceneDescription: string }>,
+          captures: [] as Array<{
+            index?: number;
+            timestamp: string | number;
+            timestampMs?: number;
+            elapsedMs?: number;
+            scene?: { description?: string; changePercentage?: number; sceneChanged?: boolean; objectCount?: number; peopleCount?: number; objects?: unknown[]; people?: unknown[] };
+            frame?: unknown;
+            imageBase64?: string | null;
+            error?: string;
+            sceneDescription?: string;
+          }>,
           statistics: {
             totalFrames: 0,
             totalSceneChanges: 0,
@@ -201,7 +211,7 @@ export class VisionCaptureLogTestSuite {
               index: captureCount,
               timestamp: new Date().toISOString(),
               error: error instanceof Error ? error.message : String(error),
-            });
+            } as (typeof captureData.captures)[number]);
             captureCount++;
           }
 
@@ -265,10 +275,10 @@ ${
 
 ## Sample Scene Descriptions
 ${captureData.captures
-  .filter((c) => c.scene?.description)
+  .filter((c): c is typeof c & { scene: NonNullable<typeof c.scene> } => Boolean(c.scene?.description))
   .slice(0, 5)
   .map(
-    (c, _i) => `### Capture ${c.index} (${c.elapsedMs}ms)
+    (c, _i) => `### Capture ${c.index ?? _i} (${c.elapsedMs ?? 0}ms)
 "${c.scene.description}"
 - Change: ${c.scene.changePercentage?.toFixed(1)}%
 - Objects: ${c.scene.objectCount}

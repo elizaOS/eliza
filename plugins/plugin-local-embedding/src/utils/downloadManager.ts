@@ -418,7 +418,8 @@ export class DownloadManager {
 
         for (const attempt of attempts) {
           try {
-            logger.info("Attempting model download:", {
+            logger.info({
+              msg: "Attempting model download",
               description: attempt.description,
               url: attempt.url,
               timestamp: new Date().toISOString(),
@@ -434,7 +435,8 @@ export class DownloadManager {
             break;
           } catch (error) {
             lastError = error;
-            logger.warn("Model download attempt failed:", {
+            logger.warn({
+              msg: "Model download attempt failed",
               description: attempt.description,
               error: error instanceof Error ? error.message : String(error),
               timestamp: new Date().toISOString(),
@@ -451,11 +453,12 @@ export class DownloadManager {
       }
 
       // Model already exists
-      logger.info("Model already exists at:", modelPath);
+      logger.info({ msg: "Model already exists at", modelPath });
       // Return false to indicate the model already existed
       return false;
     } catch (error) {
-      logger.error("Model download failed:", {
+      logger.error({
+        msg: "Model download failed",
         error: error instanceof Error ? error.message : String(error),
         modelPath: modelPath,
         model: modelSpec.name,

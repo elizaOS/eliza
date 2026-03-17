@@ -82,7 +82,7 @@ function makeTestPlugin(name: string, opts: Partial<Plugin> = {}): Plugin {
         similes: [],
         description: 'Test action',
         validate: async () => true,
-        handler: async () => {},
+        handler: async () => ({ success: true }),
         examples: [],
       },
     ],

@@ -33,14 +33,14 @@ describe("sendDmAction", () => {
     it("should return false for non-Instagram source", async () => {
       const mockRuntime = {
         getService: () => null,
-      } as IAgentRuntime;
+      } as unknown as IAgentRuntime;
 
       const mockMessage = {
         content: {
           source: "telegram",
           threadId: "thread-123",
         },
-      } as Memory;
+      } as unknown as Memory;
 
       const result = await sendDmAction.validate(mockRuntime, mockMessage);
       expect(result).toBe(false);
@@ -49,13 +49,13 @@ describe("sendDmAction", () => {
     it("should return false without thread ID", async () => {
       const mockRuntime = {
         getService: () => ({ getIsRunning: () => true }),
-      } as IAgentRuntime;
+      } as unknown as IAgentRuntime;
 
       const mockMessage = {
         content: {
           source: "instagram",
         },
-      } as Memory;
+      } as unknown as Memory;
 
       const result = await sendDmAction.validate(mockRuntime, mockMessage);
       expect(result).toBe(false);

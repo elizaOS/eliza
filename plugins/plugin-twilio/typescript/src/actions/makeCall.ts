@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -38,7 +39,7 @@ const makeCallAction: Action = {
     state?: State,
     options?: any,
     callback?: HandlerCallback
-  ) => {
+  ): Promise<ActionResult> => {
     try {
       const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
       if (!twilioService) {
@@ -88,6 +89,7 @@ const makeCallAction: Action = {
           success: true,
         });
       }
+      return { success: true };
     } catch (error) {
       logger.error({ error: String(error) }, "Error making call");
       if (callback) {
@@ -96,6 +98,10 @@ const makeCallAction: Action = {
           success: false,
         });
       }
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
   examples: [

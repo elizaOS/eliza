@@ -49,7 +49,7 @@
     "test": "bun run test:ts && bun run test:rust && bun run test:python",
     "test:ts": "cd typescript && bun run build && vitest run",
     "test:rust": "test -d rust && cd rust && cargo test || echo 'Rust tests skipped'",
-    "test:python": "test -d python && cd python && pytest -p no:anchorpy --asyncio-mode=auto",
+    "test:python": "test -d python && (command -v pytest >/dev/null 2>&1 && cd python && pytest -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped (pytest not found)') || echo 'Python tests skipped (no python directory)'",
     "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
     "lint": "bunx @biomejs/biome check --write ./typescript",
     "lint:check": "bunx @biomejs/biome check ./typescript",

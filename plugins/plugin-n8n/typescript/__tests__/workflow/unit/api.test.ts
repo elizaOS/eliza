@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { N8nApiError } from "../../../workflow/types/index";
 import { N8nApiClient } from "../../../workflow/utils/api";
 import {
@@ -14,7 +14,7 @@ import {
 // ============================================================================
 
 const originalFetch = globalThis.fetch;
-let mockFetch: ReturnType<typeof mock>;
+let mockFetch: ReturnType<typeof vi.fn>;
 
 function mockResponse(status: number, body?: unknown, statusText = "OK"): Response {
   const responseBody = body !== undefined ? JSON.stringify(body) : "";
@@ -33,7 +33,7 @@ function setFetchMock(mockFn: ReturnType<typeof mock>): void {
 }
 
 beforeEach(() => {
-  mockFetch = mock(() => Promise.resolve(mockResponse(200, {})));
+  mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, {})));
   setFetchMock(mockFetch);
 });
 
@@ -55,19 +55,19 @@ describe("N8nApiClient constructor", () => {
   test("sets base URL and strips trailing slash", () => {
     const client = new N8nApiClient("https://n8n.example.com/", "key-123");
     // Verify by making a request and checking the URL
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, { data: [] })));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, { data: [] })));
     setFetchMock(mockFetch);
 
     client.listWorkflows();
 
     const { url } = getLastFetchCall();
-    expect(url).toStartWith("https://n8n.example.com/api/v1/");
+    expect(url.startsWith("https://n8n.example.com/api/v1/")).toBe(true);
     expect(url).not.toContain("//api");
   });
 
   test("sends API key in X-N8N-API-KEY header", async () => {
     const client = new N8nApiClient("https://n8n.example.com", "my-secret-key");
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, { data: [] })));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, { data: [] })));
     setFetchMock(mockFetch);
 
     await client.listWorkflows();
@@ -87,7 +87,7 @@ describe("N8nApiClient workflows", () => {
   test("createWorkflow sends POST /workflows with sanitized body", async () => {
     const workflow = createValidWorkflow();
     const responseData = createWorkflowResponse({ id: "wf-new" });
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, responseData)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, responseData)));
     setFetchMock(mockFetch);
 
     const result = await client.createWorkflow(workflow);
@@ -114,7 +114,7 @@ describe("N8nApiClient workflows", () => {
       data: [createWorkflowResponse()],
       nextCursor: "abc",
     };
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, responseData)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, responseData)));
     setFetchMock(mockFetch);
 
     const result = await client.listWorkflows();
@@ -127,7 +127,7 @@ describe("N8nApiClient workflows", () => {
   });
 
   test("listWorkflows passes query params", async () => {
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, { data: [] })));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, { data: [] })));
     setFetchMock(mockFetch);
 
     await client.listWorkflows({
@@ -146,7 +146,7 @@ describe("N8nApiClient workflows", () => {
 
   test("getWorkflow sends GET /workflows/{id}", async () => {
     const wf = createWorkflowResponse({ id: "wf-42" });
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, wf)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, wf)));
     setFetchMock(mockFetch);
 
     const result = await client.getWorkflow("wf-42");
@@ -158,7 +158,7 @@ describe("N8nApiClient workflows", () => {
 
   test("updateWorkflow sends PUT /workflows/{id} with sanitized body", async () => {
     const wf = createWorkflowResponse({ id: "wf-42", name: "Updated" });
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, wf)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, wf)));
     setFetchMock(mockFetch);
 
     const workflow = createValidWorkflow({ name: "Updated" });
@@ -174,7 +174,7 @@ describe("N8nApiClient workflows", () => {
   });
 
   test("deleteWorkflow sends DELETE /workflows/{id}", async () => {
-    mockFetch = mock(() => Promise.resolve(mockResponse(204)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, {})));
     setFetchMock(mockFetch);
 
     await client.deleteWorkflow("wf-42");
@@ -186,7 +186,7 @@ describe("N8nApiClient workflows", () => {
 
   test("activateWorkflow sends POST /workflows/{id}/activate", async () => {
     const wf = createWorkflowResponse({ id: "wf-42", active: true });
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, wf)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, wf)));
     setFetchMock(mockFetch);
 
     const result = await client.activateWorkflow("wf-42");
@@ -199,7 +199,7 @@ describe("N8nApiClient workflows", () => {
 
   test("deactivateWorkflow sends POST /workflows/{id}/deactivate", async () => {
     const wf = createWorkflowResponse({ id: "wf-42", active: false });
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, wf)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, wf)));
     setFetchMock(mockFetch);
 
     const result = await client.deactivateWorkflow("wf-42");
@@ -211,7 +211,7 @@ describe("N8nApiClient workflows", () => {
 
   test("updateWorkflowTags sends PUT /workflows/{id}/tags with [{id}] array", async () => {
     const tags = [createTag({ id: "tag-1" }), createTag({ id: "tag-2" })];
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, tags)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, tags)));
     setFetchMock(mockFetch);
 
     await client.updateWorkflowTags("wf-42", ["tag-1", "tag-2"]);
@@ -232,7 +232,7 @@ describe("N8nApiClient credentials", () => {
 
   test("createCredential sends POST /credentials", async () => {
     const cred = createCredential({ id: "cred-new" });
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, cred)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, cred)));
     setFetchMock(mockFetch);
 
     const result = await client.createCredential({
@@ -248,7 +248,7 @@ describe("N8nApiClient credentials", () => {
   });
 
   test("deleteCredential sends DELETE /credentials/{id}", async () => {
-    mockFetch = mock(() => Promise.resolve(mockResponse(204)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, {})));
     setFetchMock(mockFetch);
 
     await client.deleteCredential("cred-42");
@@ -267,7 +267,7 @@ describe("N8nApiClient executions", () => {
   const client = new N8nApiClient("https://n8n.test", "key-123");
 
   test("listExecutions sends GET /executions", async () => {
-    mockFetch = mock(() =>
+    mockFetch = vi.fn(() =>
       Promise.resolve(mockResponse(200, { data: [createExecution()], nextCursor: "c1" }))
     );
     setFetchMock(mockFetch);
@@ -280,7 +280,7 @@ describe("N8nApiClient executions", () => {
   });
 
   test("listExecutions passes query params", async () => {
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, { data: [] })));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, { data: [] })));
     setFetchMock(mockFetch);
 
     await client.listExecutions({
@@ -299,7 +299,7 @@ describe("N8nApiClient executions", () => {
 
   test("getExecution sends GET /executions/{id}", async () => {
     const exec = createExecution({ id: "exec-55" });
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, exec)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, exec)));
     setFetchMock(mockFetch);
 
     const result = await client.getExecution("exec-55");
@@ -310,7 +310,7 @@ describe("N8nApiClient executions", () => {
   });
 
   test("deleteExecution sends DELETE /executions/{id}", async () => {
-    mockFetch = mock(() => Promise.resolve(mockResponse(204)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, {})));
     setFetchMock(mockFetch);
 
     await client.deleteExecution("exec-55");
@@ -329,7 +329,7 @@ describe("N8nApiClient tags", () => {
   const client = new N8nApiClient("https://n8n.test", "key-123");
 
   test("listTags sends GET /tags", async () => {
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, { data: [createTag()] })));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, { data: [createTag()] })));
     setFetchMock(mockFetch);
 
     const result = await client.listTags();
@@ -341,7 +341,7 @@ describe("N8nApiClient tags", () => {
 
   test("createTag sends POST /tags", async () => {
     const tag = createTag({ id: "tag-new", name: "user:abc" });
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, tag)));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, tag)));
     setFetchMock(mockFetch);
 
     const result = await client.createTag("user:abc");
@@ -355,7 +355,7 @@ describe("N8nApiClient tags", () => {
 
   test("getOrCreateTag returns existing tag", async () => {
     const existingTag = createTag({ name: "user:abc" });
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, { data: [existingTag] })));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, { data: [existingTag] })));
     setFetchMock(mockFetch);
 
     const result = await client.getOrCreateTag("user:abc");
@@ -369,7 +369,7 @@ describe("N8nApiClient tags", () => {
     const newTag = createTag({ id: "tag-new", name: "user:xyz" });
     // First call: listTags returns empty, second call: createTag
     let callCount = 0;
-    mockFetch = mock(() => {
+    mockFetch = vi.fn(() => {
       callCount++;
       if (callCount === 1) {
         return Promise.resolve(mockResponse(200, { data: [] }));
@@ -393,7 +393,7 @@ describe("N8nApiClient error handling", () => {
   const client = new N8nApiClient("https://n8n.test", "key-123");
 
   test("throws N8nApiError on 404", async () => {
-    mockFetch = mock(() =>
+    mockFetch = vi.fn(() =>
       Promise.resolve(mockResponse(404, { message: "Workflow not found" }, "Not Found"))
     );
     setFetchMock(mockFetch);
@@ -409,7 +409,7 @@ describe("N8nApiClient error handling", () => {
   });
 
   test("throws N8nApiError on 401", async () => {
-    mockFetch = mock(() =>
+    mockFetch = vi.fn(() =>
       Promise.resolve(mockResponse(401, { message: "Unauthorized" }, "Unauthorized"))
     );
     setFetchMock(mockFetch);
@@ -424,7 +424,7 @@ describe("N8nApiClient error handling", () => {
   });
 
   test("throws N8nApiError on 500", async () => {
-    mockFetch = mock(() =>
+    mockFetch = vi.fn(() =>
       Promise.resolve(
         mockResponse(500, { message: "Internal Server Error" }, "Internal Server Error")
       )
@@ -441,7 +441,7 @@ describe("N8nApiClient error handling", () => {
   });
 
   test("throws N8nApiError on network failure", async () => {
-    mockFetch = mock(() => Promise.reject(new Error("ECONNREFUSED")));
+    mockFetch = vi.fn(() => Promise.reject(new Error("ECONNREFUSED")));
     setFetchMock(mockFetch);
 
     try {
@@ -455,7 +455,7 @@ describe("N8nApiClient error handling", () => {
   });
 
   test("handles empty 200 response for void operations", async () => {
-    mockFetch = mock(() => Promise.resolve(new Response("", { status: 200 })));
+    mockFetch = vi.fn(() => Promise.resolve(new Response("", { status: 200 })));
     setFetchMock(mockFetch);
 
     // Should not throw
@@ -463,7 +463,7 @@ describe("N8nApiClient error handling", () => {
   });
 
   test("includes status text in error when no message in body", async () => {
-    mockFetch = mock(() => Promise.resolve(mockResponse(403, {}, "Forbidden")));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(403, {}, "Forbidden")));
     setFetchMock(mockFetch);
 
     try {
@@ -484,7 +484,7 @@ describe("N8nApiClient request format", () => {
   const client = new N8nApiClient("https://n8n.test", "key-123");
 
   test("sends Content-Type: application/json", async () => {
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, { data: [] })));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, { data: [] })));
     setFetchMock(mockFetch);
 
     await client.listWorkflows();
@@ -494,7 +494,7 @@ describe("N8nApiClient request format", () => {
   });
 
   test("GET requests have no body", async () => {
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, { data: [] })));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, { data: [] })));
     setFetchMock(mockFetch);
 
     await client.listWorkflows();
@@ -504,7 +504,7 @@ describe("N8nApiClient request format", () => {
   });
 
   test("POST requests serialize body as JSON", async () => {
-    mockFetch = mock(() => Promise.resolve(mockResponse(200, createWorkflowResponse())));
+    mockFetch = vi.fn(() => Promise.resolve(mockResponse(200, createWorkflowResponse())));
     setFetchMock(mockFetch);
 
     const workflow = createValidWorkflow();

@@ -6,7 +6,7 @@
  *
  * Adapted from Sendo plugin's test-runtime pattern.
  */
-import { mock } from "bun:test";
+import { vi } from "vitest";
 import type { IAgentRuntime, Memory, ModelType, State } from "@elizaos/core";
 import {
   N8N_WORKFLOW_SERVICE_TYPE,
@@ -37,7 +37,7 @@ interface UseModelParams {
 /**
  * Helper to set the global fetch mock with proper typing.
  */
-function setFetchMock(mockFn: ReturnType<typeof mock>): void {
+function setFetchMock(mockFn: ReturnType<typeof vi.fn>): void {
   globalThis.fetch = mockFn as unknown as typeof fetch;
 }
 
@@ -71,7 +71,7 @@ export function jsonResponse(status: number, body?: unknown): Response {
  */
 export function createE2ERuntime(config: E2ETestConfig = {}) {
   // Create a mock fetch that routes by URL
-  const fetchMock = mock((url: string, _options?: RequestInit) => {
+  const fetchMock = vi.fn((url: string, _options?: RequestInit) => {
     if (config.fetchResponses) {
       for (const [pattern, responseFn] of config.fetchResponses) {
         if (url.includes(pattern)) {
@@ -107,22 +107,22 @@ export function createE2ERuntime(config: E2ETestConfig = {}) {
   // Create mock runtime with real service
   const runtime: IAgentRuntime = {
     agentId: "agent-e2e",
-    getService: mock((type: string) => {
+    getService: vi.fn((type: string) => {
       if (type === N8N_WORKFLOW_SERVICE_TYPE) return service;
       return null;
     }),
-    getSetting: mock(() => null),
-    useModel: config.useModelResponse || mock(() => Promise.resolve({})),
-    getCache: mock((key: string) => Promise.resolve(cache[key])),
-    setCache: mock((key: string, value: unknown) => {
+    getSetting: vi.fn(() => null),
+    useModel: config.useModelResponse || vi.fn(() => Promise.resolve({})),
+    getCache: vi.fn((key: string) => Promise.resolve(cache[key])),
+    setCache: vi.fn((key: string, value: unknown) => {
       cache[key] = value;
       return Promise.resolve(true);
     }),
-    deleteCache: mock((key: string) => {
+    deleteCache: vi.fn((key: string) => {
       delete cache[key];
       return Promise.resolve(true);
     }),
-    getEntityById: mock(() => Promise.resolve({ names: ["TestUser"] })),
+    getEntityById: vi.fn(() => Promise.resolve({ names: ["TestUser"] })),
   } as unknown as IAgentRuntime;
 
   // Wire the runtime into the service
@@ -149,7 +149,7 @@ export function createE2ERuntime(config: E2ETestConfig = {}) {
   }
 
   function createCallback() {
-    return mock((_response: { text: string }) => Promise.resolve([]));
+    return vi.fn((_response: { text: string }) => Promise.resolve([]));
   }
 
   function cleanup() {

@@ -52,7 +52,7 @@ describe('Plugin Manager E2E Tests', () => {
     tempDir = path.join(os.tmpdir(), `plugin-manager-e2e-${Date.now()}`);
     await fs.ensureDir(tempDir);
 
-    // Create a mock runtime with minimal required properties
+    // Create a mock runtime with minimal required properties (events as Map for test wiring)
     runtime = {
       agentId: '00000000-0000-0000-0000-000000000000' as UUID,
       plugins: [],
@@ -60,7 +60,7 @@ describe('Plugin Manager E2E Tests', () => {
       providers: [],
       evaluators: [],
       services: new Map(),
-      events: new Map(),
+      events: new Map() as any,
 
       // Core methods
       registerPlugin: async (plugin: Plugin) => {
@@ -76,12 +76,14 @@ describe('Plugin Manager E2E Tests', () => {
         runtime.evaluators.push(evaluator);
       },
       registerEvent: (event: string, handler: (params: any) => Promise<void>) => {
-        const handlers = runtime.events.get(event) || [];
-        handlers.push(handler as any);
-        runtime.events.set(event, handlers);
+        const eventsMap = (runtime as any).events as Map<string, Array<(p: any) => Promise<void>>>;
+        const handlers = eventsMap.get(event) || [];
+        handlers.push(handler);
+        eventsMap.set(event, handlers);
       },
       emitEvent: async (event: string, params: any) => {
-        const handlers = runtime.events.get(event) || [];
+        const eventsMap = (runtime as any).events as Map<string, Array<(p: any) => Promise<void>>>;
+        const handlers = eventsMap.get(event) || [];
         for (const handler of handlers) {
           await handler(params);
         }
@@ -236,24 +238,24 @@ describe('Plugin Manager E2E Tests', () => {
     it('should handle plugin with event handlers', async () => {
       let eventFired = false;
 
-      const testPlugin: Plugin = {
+      const testPlugin = {
         name: 'event-plugin',
         description: 'Plugin with event handlers',
         events: {
           'test:event': [
-            async (params) => {
+            async (params: { data?: string }) => {
               eventFired = true;
               expect(params.data).toBe('test-data');
             },
           ],
         },
-      };
+      } as Plugin;
 
       const pluginId = await pluginManager.registerPlugin(testPlugin);
       await pluginManager.loadPlugin({ pluginId });
 
-      // Emit the event
-      await runtime.emitEvent('test:event', { data: 'test-data' });
+      // Emit the event (cast to satisfy EventPayload for custom event name)
+      await runtime.emitEvent('test:event' as any, { data: 'test-data' } as any);
 
       // Wait a bit for async event handling
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -264,7 +266,7 @@ describe('Plugin Manager E2E Tests', () => {
       await pluginManager.unloadPlugin({ pluginId });
       eventFired = false;
 
-      await runtime.emitEvent('test:event', { data: 'test-data' });
+      await runtime.emitEvent('test:event' as any, { data: 'test-data' } as any);
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(eventFired).toBe(false);
@@ -379,13 +381,13 @@ module.exports = {
 `
       );
 
-      // Install the local bundle
-      const pluginInfo = await pluginManager.installFromLocalBundle(pluginDir);
+      // Install the local bundle (method not yet on service type; cast for test)
+      const pluginInfo = await (pluginManager as any).installFromLocalBundle(pluginDir);
       expect(pluginInfo.name).toBe('@test/local-plugin');
       expect(pluginInfo.status).toBe('installed');
 
-      // Load the installed plugin
-      const pluginId = await pluginManager.loadInstalledPlugin('@test/local-plugin');
+      // Load the installed plugin (method not yet on service type; cast for test)
+      const pluginId = await (pluginManager as any).loadInstalledPlugin('@test/local-plugin');
 
       // Verify the action is available
       const action = runtime.actions.find((a) => a.name === 'LOCAL_ACTION');

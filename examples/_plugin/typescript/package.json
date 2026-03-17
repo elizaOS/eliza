@@ -51,6 +51,8 @@
     "@tailwindcss/vite": "^4.1.18",
     "@vitejs/plugin-react-swc": "^4.2.2",
     "dotenv": "^17.2.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.9.3"
   },

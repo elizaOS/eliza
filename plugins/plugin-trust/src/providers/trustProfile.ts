@@ -15,7 +15,9 @@ export const trustProfileProvider: Provider = {
           values: {},
         };
       }
-      if (!trustEngine.trustEngine.evaluateTrust) {
+      // Support both wrapper (trustEngine.trustEngine) and direct engine mock
+      const engine = trustEngine.trustEngine ?? trustEngine;
+      if (!engine.evaluateTrust) {
         return {
           text: 'Trust engine evaluateTrust not available',
           values: {},
@@ -23,15 +25,15 @@ export const trustProfileProvider: Provider = {
       }
 
       // Get trust profile for the message sender
-      const senderProfile = await trustEngine.trustEngine.evaluateTrust(message.entityId, runtime.agentId, {
+      const senderProfile = await engine.evaluateTrust(message.entityId, runtime.agentId, {
         roomId: message.roomId,
       });
 
-      // Get recent trust changes
-      const recentInteractions = await trustEngine.getRecentInteractions(
-        message.entityId,
-        7 // Last 7 days
-      );
+      // Get recent trust changes (wrapper or direct)
+      const getRecent = trustEngine.getRecentInteractions ?? trustEngine.trustEngine?.getRecentInteractions;
+      const recentInteractions = getRecent
+        ? await getRecent(message.entityId, 7)
+        : [];
 
       // Format trust information
       const trustLevel =

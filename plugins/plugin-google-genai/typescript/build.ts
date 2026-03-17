@@ -36,6 +36,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: false,
+    splitting: false,
     external: [...externalDeps, "undici"],
   });
   if (!browserResult.success) {

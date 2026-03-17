@@ -19,7 +19,7 @@ import anthropicPlugin from "@elizaos/plugin-anthropic";
 import { elizaClassicPlugin, getElizaGreeting } from "@elizaos/plugin-eliza-classic";
 import googleGenAIPlugin from "@elizaos/plugin-google-genai";
 import groqPlugin from "@elizaos/plugin-groq";
-import localdbPlugin from "@elizaos/plugin-localdb";
+import inmemorydbPlugin from "@elizaos/plugin-inmemorydb";
 import openaiPlugin from "@elizaos/plugin-openai";
 import { v4 as uuidv4 } from "uuid";
 import type { ExtensionConfig, PageContent, ProviderMode } from "./types";
@@ -239,7 +239,7 @@ function applySettings(runtime: AgentRuntime, config: ExtensionConfig, effective
 }
 
 function buildPlugins(effectiveMode: ProviderMode) {
-  const base = [localdbPlugin];
+  const base = [inmemorydbPlugin];
   if (effectiveMode === "elizaClassic") return [...base, elizaClassicPlugin];
   if (effectiveMode === "openai") return [...base, openaiPlugin];
   if (effectiveMode === "anthropic") return [...base, anthropicPlugin];

@@ -176,7 +176,7 @@ export function listWhatsAppAccountIds(runtime: IAgentRuntime): string[] {
         return [DEFAULT_ACCOUNT_ID];
     }
 
-    return result.toSorted((a, b) => a.localeCompare(b));
+    return [...result].sort((a, b) => a.localeCompare(b));
 }
 
 /**

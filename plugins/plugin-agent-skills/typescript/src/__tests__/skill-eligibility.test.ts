@@ -55,6 +55,9 @@ interface SkillEligibility {
  * Check if a binary exists in PATH
  */
 function checkBinaryExists(binaryName: string): boolean {
+  if (!binaryName || binaryName.trim() === "") {
+    return false;
+  }
   const pathEnv = process.env.PATH || "";
   const pathDirs = pathEnv.split(path.delimiter);
   const extensions = process.platform === "win32" ? [".exe", ".cmd", ".bat", ""] : [""];

@@ -7,13 +7,13 @@ import {
   parseKeyValueXml,
 } from "@elizaos/core";
 import { getToken } from "@lifi/sdk";
-import { type Address, formatUnits, parseAbi, type ReadContractParameters } from "viem";
+import { type Address, formatUnits, parseAbi } from "viem";
 import { tokenBalanceTemplate } from "../generated/prompts/typescript/prompts.js";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { EVMError, EVMErrorCode, type SupportedChain } from "../types";
 import { initWalletProvider } from "./wallet";
 
-const spec = requireProviderSpec("get-balance");
+const spec = requireProviderSpec("TOKEN_BALANCE");
 
 export const tokenBalanceProvider: Provider = {
   name: spec.name,
@@ -49,16 +49,15 @@ export const tokenBalanceProvider: Provider = {
     const publicClient = walletProvider.getPublicClient(chain as SupportedChain);
     const balanceAbi = parseAbi(["function balanceOf(address) view returns (uint256)"]);
 
-    const readBalanceParams: ReadContractParameters<
-      typeof balanceAbi,
-      "balanceOf"
-    > = {
+    const readBalanceParams = {
       address: tokenData.address as Address,
       abi: balanceAbi,
-      functionName: "balanceOf",
+      functionName: "balanceOf" as const,
       args: [address],
     };
-    const balance = await publicClient.readContract(readBalanceParams);
+    const balance = (await publicClient.readContract(
+      readBalanceParams as unknown as Parameters<typeof publicClient.readContract>[0]
+    )) as bigint;
 
     const formattedBalance = formatUnits(balance, tokenData.decimals);
     const hasBalance = parseFloat(formattedBalance) > 0;

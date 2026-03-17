@@ -15,7 +15,7 @@ describe("ChatStateProvider", () => {
   });
 
   describe("get", () => {
-    it("should return null for non-feishu source", async () => {
+    it("should return empty text for non-feishu source", async () => {
       const mockMessage = {
         content: {
           source: "telegram",
@@ -27,10 +27,10 @@ describe("ChatStateProvider", () => {
         {} as never,
         mockMessage as never,
       );
-      expect(result).toBeNull();
+      expect(result).toEqual({ text: "" });
     });
 
-    it("should return null for missing chat ID", async () => {
+    it("should return empty text for missing chat ID", async () => {
       const mockMessage = {
         content: {
           source: "feishu",
@@ -41,7 +41,7 @@ describe("ChatStateProvider", () => {
         {} as never,
         mockMessage as never,
       );
-      expect(result).toBeNull();
+      expect(result).toEqual({ text: "" });
     });
 
     it("should return state string for valid feishu message", async () => {
@@ -58,9 +58,9 @@ describe("ChatStateProvider", () => {
         mockMessage as never,
       );
       expect(result).not.toBeNull();
-      expect(result).toContain("Feishu/Lark");
-      expect(result).toContain("oc_test123");
-      expect(result).toContain("msg_456");
+      expect(result.text).toContain("Feishu/Lark");
+      expect(result.text).toContain("oc_test123");
+      expect(result.text).toContain("msg_456");
     });
   });
 });

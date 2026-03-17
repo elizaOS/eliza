@@ -46,6 +46,9 @@ class TestSchedulingContextProvider:
                 ),
             ],
             status=MeetingStatus.PROPOSED,
+            reschedule_count=0,
+            created_at=1700000000000,
+            updated_at=1700000000000,
         )
 
         from .conftest import MockAgentRuntime
@@ -77,6 +80,9 @@ class TestSchedulingContextProvider:
                 ),
             ],
             status=MeetingStatus.CONFIRMED,
+            reschedule_count=0,
+            created_at=1700000000000,
+            updated_at=1700000000000,
         )
 
         from .conftest import MockAgentRuntime

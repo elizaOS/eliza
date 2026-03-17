@@ -285,22 +285,24 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.upsertAgents(this.db, agents));
   }
 
-  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
+  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<void> {
     return this.withDatabase(() => stores.updateAgents(this.db, updates));
   }
 
   /** Single-agent convenience; delegates to updateAgents for compatibility with tests and callers. */
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
-    return this.updateAgents([{ agentId, agent }]);
+    await this.updateAgents([{ agentId, agent }]);
+    return true;
   }
 
-  async deleteAgents(agentIds: UUID[]): Promise<boolean> {
+  async deleteAgents(agentIds: UUID[]): Promise<void> {
     return this.withDatabase(() => stores.deleteAgents(this.db, agentIds));
   }
 
   /** Single-agent convenience; delegates to deleteAgents for compatibility with tests and callers. */
   async deleteAgent(agentId: UUID): Promise<boolean> {
-    return this.deleteAgents([agentId]);
+    await this.deleteAgents([agentId]);
+    return true;
   }
 
   async countAgents(): Promise<number> {
@@ -810,13 +812,14 @@ export abstract class BaseDrizzleAdapter
   }
 
   // Batch participant methods
-  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
+  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void> {
     return this.withDatabase(() => stores.deleteParticipants(this.db, this.agentId, participants));
   }
 
   /** Single-participant convenience for tests and callers. */
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return this.deleteParticipants([{ entityId, roomId }]);
+    await this.deleteParticipants([{ entityId, roomId }]);
+    return true;
   }
 
   async updateParticipants(participants: Array<{

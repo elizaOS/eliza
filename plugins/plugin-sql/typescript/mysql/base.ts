@@ -267,11 +267,11 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.upsertAgents(this.db, agents));
   }
 
-  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
+  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<void> {
     return this.withDatabase(() => stores.updateAgents(this.db, updates));
   }
 
-  async deleteAgents(agentIds: UUID[]): Promise<boolean> {
+  async deleteAgents(agentIds: UUID[]): Promise<void> {
     return this.withDatabase(() => stores.deleteAgents(this.db, agentIds));
   }
 
@@ -654,7 +654,7 @@ export abstract class BaseDrizzleAdapter
   }
 
   // Batch participant methods
-  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
+  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void> {
     return this.withDatabase(() => stores.deleteParticipants(this.db, this.agentId, participants));
   }
 

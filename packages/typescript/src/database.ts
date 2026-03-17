@@ -434,7 +434,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
   ): Promise<UUID[]>;
 
   // ── Participant mutations (batch-only) ───────────────────────────────
-  abstract deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
+  abstract deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void>;
   abstract updateParticipants(participants: Array<{
     entityId: UUID;
     roomId: UUID;
@@ -525,9 +525,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
   // ── Agent CRUD (batch-only) ──────────────────────────────────────────
   abstract getAgentsByIds(agentIds: UUID[]): Promise<Agent[]>;
   abstract createAgents(agents: Partial<Agent>[]): Promise<UUID[]>;
-  abstract updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean>;
+  abstract updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<void>;
   abstract upsertAgents(agents: Partial<Agent>[]): Promise<void>;
-  abstract deleteAgents(agentIds: UUID[]): Promise<boolean>;
+  abstract deleteAgents(agentIds: UUID[]): Promise<void>;
   abstract countAgents(): Promise<number>;
   abstract cleanupAgents(): Promise<void>;
 

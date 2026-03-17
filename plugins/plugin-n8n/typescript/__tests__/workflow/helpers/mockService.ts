@@ -1,4 +1,4 @@
-import { mock } from "bun:test";
+import { vi } from "vitest";
 import type { N8nWorkflowService } from "../../../workflow/services/n8n-workflow-service";
 import { createExecution, createWorkflowResponse } from "../fixtures/workflows";
 
@@ -7,7 +7,7 @@ export function createMockService(
 ): N8nWorkflowService {
   return {
     serviceType: "n8n_workflow",
-    generateWorkflowDraft: mock(() =>
+    generateWorkflowDraft: vi.fn(() =>
       Promise.resolve({
         name: "Generated Workflow",
         nodes: [
@@ -41,7 +41,7 @@ export function createMockService(
         },
       })
     ),
-    modifyWorkflowDraft: mock(() =>
+    modifyWorkflowDraft: vi.fn(() =>
       Promise.resolve({
         name: "Modified Workflow",
         nodes: [
@@ -75,7 +75,7 @@ export function createMockService(
         },
       })
     ),
-    deployWorkflow: mock(() =>
+    deployWorkflow: vi.fn(() =>
       Promise.resolve({
         id: "wf-001",
         name: "Generated Workflow",
@@ -84,7 +84,7 @@ export function createMockService(
         missingCredentials: [],
       })
     ),
-    listWorkflows: mock(() =>
+    listWorkflows: vi.fn(() =>
       Promise.resolve([
         createWorkflowResponse({
           id: "wf-001",
@@ -98,16 +98,16 @@ export function createMockService(
         }),
       ])
     ),
-    activateWorkflow: mock(() => Promise.resolve()),
-    deactivateWorkflow: mock(() => Promise.resolve()),
-    deleteWorkflow: mock(() => Promise.resolve()),
-    getWorkflowExecutions: mock(() =>
+    activateWorkflow: vi.fn(() => Promise.resolve()),
+    deactivateWorkflow: vi.fn(() => Promise.resolve()),
+    deleteWorkflow: vi.fn(() => Promise.resolve()),
+    getWorkflowExecutions: vi.fn(() =>
       Promise.resolve([
         createExecution({ id: "exec-001", status: "success" }),
         createExecution({ id: "exec-002", status: "error" }),
       ])
     ),
-    getExecutionDetail: mock(() => Promise.resolve(createExecution())),
+    getExecutionDetail: vi.fn(() => Promise.resolve(createExecution())),
     ...overrides,
   } as unknown as N8nWorkflowService;
 }

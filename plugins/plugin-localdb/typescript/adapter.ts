@@ -1152,18 +1152,16 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
+  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<void> {
     for (const { agentId, agent } of updates) {
       await this.updateAgent(agentId, agent);
     }
-    return true;
   }
 
-  async deleteAgents(agentIds: UUID[]): Promise<boolean> {
+  async deleteAgents(agentIds: UUID[]): Promise<void> {
     for (const id of agentIds) {
       await this.deleteAgent(id);
     }
-    return true;
   }
   
   async countAgents(): Promise<number> {
@@ -1363,11 +1361,10 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async deleteParticipants(
     participants: Array<{ entityId: UUID; roomId: UUID }>
-  ): Promise<boolean> {
+  ): Promise<void> {
     for (const { entityId, roomId } of participants) {
       await this.removeParticipant(entityId, roomId);
     }
-    return true;
   }
 
   async updateParticipants(participants: Array<{

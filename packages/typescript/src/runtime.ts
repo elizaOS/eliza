@@ -2808,24 +2808,38 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    // Only treat params as an object if it's actually an object (not a string or primitive)
-    const paramsObj =
-      params && typeof params === "object" && !Array.isArray(params)
-        ? (params as Record<string, JsonValue | object>)
+    // Normalize string or missing params to object for model types that accept string (e.g. IMAGE_DESCRIPTION)
+    // so handlers always receive an object and never hit "prompt" in params when params is a string/undefined.
+    // Use both prompt and imageUrl so handlers that expect either field work.
+    const effectiveParams =
+      modelKey === ModelType.IMAGE_DESCRIPTION &&
+      (typeof params === "string" || params == null)
+        ? ({
+            prompt: typeof params === "string" ? params : "",
+            imageUrl: typeof params === "string" ? params : "",
+          } as ModelParamsMap[T])
+        : params;
+
+    // Only treat params as an object if it's actually an object (not a string or primitive).
+    // Guard so we never use 'in' on a non-object (avoids "paramsObj is not an Object" in some runtimes).
+    const isParamsObject =
+      effectiveParams != null &&
+      typeof effectiveParams === "object" &&
+      !Array.isArray(effectiveParams);
+    const paramsObj = isParamsObject
+      ? (effectiveParams as Record<string, JsonValue | object>)
+      : null;
+    const promptContent = isParamsObject && paramsObj
+      ? (typeof paramsObj.prompt === "string"
+          ? paramsObj.prompt
+          : typeof paramsObj.input === "string"
+            ? paramsObj.input
+            : Array.isArray(paramsObj.messages)
+              ? JSON.stringify(paramsObj.messages)
+              : null) ?? (typeof params === "string" ? params : null)
+      : typeof params === "string"
+        ? params
         : null;
-    const promptContent =
-      (paramsObj &&
-      "prompt" in paramsObj &&
-      typeof paramsObj.prompt === "string"
-        ? paramsObj.prompt
-        : null) ||
-      (paramsObj && "input" in paramsObj && typeof paramsObj.input === "string"
-        ? paramsObj.input
-        : null) ||
-      (paramsObj && "messages" in paramsObj && Array.isArray(paramsObj.messages)
-        ? JSON.stringify(paramsObj.messages)
-        : null) ||
-      (typeof params === "string" ? params : null);
     const model = this.getModel(modelKey);
     const modelsForKey = this.models.get(modelKey);
     const modelWithProvider =
@@ -2880,15 +2894,15 @@ export class AgentRuntime implements IAgentRuntime {
       );
     }
     let modelParams: ModelParamsMap[T];
-    const paramsClone = isPlainObject(params)
-      ? { ...(params as Record<string, JsonValue | object>) }
-      : params;
+    const paramsClone = isPlainObject(effectiveParams)
+      ? { ...(effectiveParams as Record<string, JsonValue | object>) }
+      : effectiveParams;
     if (
-      params === null ||
-      params === undefined ||
-      typeof params !== "object" ||
-      Array.isArray(params) ||
-      BufferUtils.isBuffer(params)
+      effectiveParams === null ||
+      effectiveParams === undefined ||
+      typeof effectiveParams !== "object" ||
+      Array.isArray(effectiveParams) ||
+      BufferUtils.isBuffer(effectiveParams)
     ) {
       modelParams = paramsClone as ModelParamsMap[T];
     } else {
@@ -4201,10 +4215,12 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return ids.length > 0;
   }
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
-    return await this.adapter.updateAgents([{ agentId, agent }]);
+    await this.adapter.updateAgents([{ agentId, agent }]);
+    return true;
   }
   async deleteAgent(agentId: UUID): Promise<boolean> {
-    return await this.adapter.deleteAgents([agentId]);
+    await this.adapter.deleteAgents([agentId]);
+    return true;
   }
   async countAgents(): Promise<number> {
     return await this.adapter.countAgents();
@@ -4223,11 +4239,11 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
     return await this.adapter.upsertAgents(agents);
   }
-  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
-    return await this.adapter.updateAgents(updates);
+  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<void> {
+    await this.adapter.updateAgents(updates);
   }
-  async deleteAgents(agentIds: UUID[]): Promise<boolean> {
-    return await this.adapter.deleteAgents(agentIds);
+  async deleteAgents(agentIds: UUID[]): Promise<void> {
+    await this.adapter.deleteAgents(agentIds);
   }
 
   async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
@@ -5091,8 +5107,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   }
 
   // ── Participant passthroughs & wrappers ──────────────────────────────
-  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
-    return await this.adapter.deleteParticipants(participants);
+  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void> {
+    await this.adapter.deleteParticipants(participants);
   }
 
   async updateParticipants(participants: Array<{
@@ -5104,7 +5120,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   }
 
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return await this.adapter.deleteParticipants([{ entityId, roomId }]);
+    await this.adapter.deleteParticipants([{ entityId, roomId }]);
+    return true;
   }
 
   // ── Room passthroughs & wrappers ────────────────────────────────────

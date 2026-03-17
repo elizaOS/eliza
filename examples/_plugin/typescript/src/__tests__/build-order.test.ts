@@ -1,8 +1,11 @@
+import { exec } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { $ } from "bun";
+import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getViteOutDir } from "./vite-config-utils";
+
+const execAsync = promisify(exec);
 
 describe("Build Order Integration Test", () => {
   const rootDir = path.resolve(__dirname, "../..");
@@ -30,7 +33,7 @@ describe("Build Order Integration Test", () => {
 
   it("should ensure vite build outputs persist after tsup build", async () => {
     // First run the plugin build process (this clears dist)
-    await $`cd ${rootDir} && bun run build.ts`.quiet();
+    await execAsync("bun run build.ts", { cwd: rootDir });
 
     // Verify plugin build outputs exist
     const distFilesAfterPluginBuild = fs.readdirSync(distDir);
@@ -38,7 +41,7 @@ describe("Build Order Integration Test", () => {
     // .d.ts files may not be generated if there are type errors
 
     // Then run vite build to generate frontend assets (should coexist with plugin outputs)
-    await $`cd ${rootDir} && bunx vite build`.quiet();
+    await execAsync("bunx vite build", { cwd: rootDir });
 
     // Verify both builds coexist
     const distFiles = fs.readdirSync(distDir);

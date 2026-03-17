@@ -1,4 +1,4 @@
-const { Desktop } = require("../index.js");
+const { Desktop } = require("../wrapper.js");
 
 /**
  * Test for Desktop.verifyElementExists() and Desktop.verifyElementNotExists() methods

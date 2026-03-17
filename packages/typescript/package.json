@@ -92,7 +92,7 @@
       "@anthropic-ai/sdk": "^0.32.1",
     "@langchain/core": "^1.1.12",
     "@langchain/textsplitters": "^1.0.1",
-    "@bufbuild/protobuf": "^1.10.0",
+    "@bufbuild/protobuf": "^2.11.0",
     "adze": "^2.2.5",
     "crypto-browserify": "^3.12.0",
     "dedent": "^1.7.1",

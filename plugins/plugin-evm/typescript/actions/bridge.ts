@@ -12,7 +12,7 @@ import {
   type RouteExtended,
   resumeRoute,
 } from "@lifi/sdk";
-import { type Address, parseAbi, parseUnits, type ReadContractParameters } from "viem";
+import { type Address, parseAbi, parseUnits } from "viem";
 import {
   BRIDGE_POLL_INTERVAL_MS,
   DEFAULT_SLIPPAGE_PERCENT,
@@ -34,8 +34,10 @@ import {
 
 export { bridgeTemplate };
 
-type LiFiGetWalletClient = Parameters<typeof EVM>[0]["getWalletClient"];
-type LiFiSwitchChain = Parameters<typeof EVM>[0]["switchChain"];
+// EVM(options?) so first parameter is EVMProviderOptions | undefined; use NonNullable to access props
+type EVMOpts = NonNullable<Parameters<typeof EVM>[0]>;
+type LiFiGetWalletClient = NonNullable<EVMOpts["getWalletClient"]>;
+type LiFiSwitchChain = NonNullable<EVMOpts["switchChain"]>;
 
 function createLiFiGetWalletClientAdapter(
   walletProvider: WalletProvider,
@@ -165,13 +167,14 @@ export class BridgeAction {
     const decimalsAbi = parseAbi(["function decimals() view returns (uint8)"]);
 
     const publicClient = this.walletProvider.getPublicClient(chainName as SupportedChain);
-    const readDecimalsParams: ReadContractParameters<typeof decimalsAbi, "decimals"> =
-      {
-        address: tokenAddress as Address,
-        abi: decimalsAbi,
-        functionName: "decimals",
-      };
-    const decimals = await publicClient.readContract(readDecimalsParams);
+    const readDecimalsParams = {
+      address: tokenAddress as Address,
+      abi: decimalsAbi,
+      functionName: "decimals" as const,
+    };
+    const decimals = await publicClient.readContract(
+      readDecimalsParams as unknown as Parameters<typeof publicClient.readContract>[0]
+    );
     return Number(decimals);
   }
 
@@ -300,7 +303,9 @@ export class BridgeAction {
           return updatedStatus;
         }
       } catch (statusError) {
-        logger.warn(`Status check attempt ${attempt} failed:`, statusError);
+        const errMsg =
+          statusError instanceof Error ? statusError.message : String(statusError);
+        logger.warn(`Status check attempt ${attempt} failed: ${errMsg}`);
       }
     }
 

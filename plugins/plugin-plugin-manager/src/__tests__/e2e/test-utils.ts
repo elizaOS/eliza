@@ -9,8 +9,8 @@ import {
   createUniqueUuid,
   EventType,
 } from '@elizaos/core';
+import { randomUUID } from 'node:crypto';
 import { strict as assert } from 'node:assert';
-import { v4 as uuid } from 'uuid';
 
 /**
  * Sets up a standard scenario environment for plugin manager E2E tests.
@@ -26,7 +26,7 @@ export async function setupScenario(runtime: IAgentRuntime): Promise<{ user: Ent
 
   // 1. Create a test user entity
   const user: Entity = {
-    id: asUUID(uuid()),
+    id: asUUID(randomUUID()),
     names: ['Test User'],
     agentId: runtime.agentId,
     metadata: { type: 'user' },
@@ -36,11 +36,10 @@ export async function setupScenario(runtime: IAgentRuntime): Promise<{ user: Ent
 
   // 2. Create a test room
   const room: Room = {
-    id: asUUID(uuid()),
+    id: asUUID(randomUUID()),
     name: 'Test Plugin Manager Room',
     type: ChannelType.DM,
     source: 'e2e-test',
-    serverId: 'e2e-test-server',
   };
   await runtime.createRoom(room);
 
@@ -87,8 +86,9 @@ export function sendMessageAndWaitForResponse(
 
     // The callback function that the message handler will invoke with the agent's final response.
     // We use this callback to resolve our promise.
-    const callback = (responseContent: Content) => {
+    const callback = (responseContent: Content): Promise<Memory[]> => {
       resolve(responseContent);
+      return Promise.resolve([]);
     };
 
     // Emit the event to trigger the agent's message processing logic.

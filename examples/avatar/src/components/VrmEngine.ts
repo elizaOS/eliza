@@ -187,7 +187,7 @@ export class VrmEngine {
     }
 
     const loader = new GLTFLoader();
-    loader.register((parser) => new VRMLoaderPlugin(parser));
+    loader.register((parser: unknown) => new VRMLoaderPlugin(parser));
 
     // three-vrm can emit noisy warnings for some VRMs (e.g. duplicate expression entries).
     // Filter those during load so the console stays usable.
@@ -199,9 +199,9 @@ export class VrmEngine {
       originalWarn(...args);
     };
 
-    let gltf: Awaited<ReturnType<typeof loader.loadAsync>>;
+    let gltf: { userData: { vrm?: VRM }; scene: THREE.Group };
     try {
-      gltf = await loader.loadAsync(url);
+      gltf = (await loader.loadAsync(url)) as { userData: { vrm?: VRM }; scene: THREE.Group };
     } finally {
       console.warn = originalWarn;
     }
@@ -373,7 +373,10 @@ export class VrmEngine {
     if (this.loadingAborted || this.vrm !== vrm) return;
 
     const loader = new GLTFLoader();
-    const gltf = await loader.loadAsync(this.idleGlbUrl);
+    const gltf = (await loader.loadAsync(this.idleGlbUrl)) as {
+      scene: THREE.Group;
+      animations: THREE.AnimationClip[];
+    };
 
     // Check after animation load
     if (this.loadingAborted || this.vrm !== vrm) return;

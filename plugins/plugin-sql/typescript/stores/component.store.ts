@@ -361,6 +361,31 @@ export async function patchComponent(
   if (ops.length === 0) return;
 
   try {
+    // Pre-check for push: value at path must be an array (PG/PGLite may not throw)
+    const pushOps = ops.filter((o): o is PatchOp & { op: 'push' } => o.op === 'push');
+    if (pushOps.length > 0) {
+      const [row] = await db
+        .select({ data: componentTable.data })
+        .from(componentTable)
+        .where(eq(componentTable.id, componentId))
+        .limit(1);
+      if (row?.data) {
+        const data = row.data as Record<string, unknown>;
+        for (const op of pushOps) {
+          const segments = op.path.split('.');
+          let current: unknown = data;
+          for (const seg of segments) {
+            current = current != null && typeof current === 'object' && seg in current
+              ? (current as Record<string, unknown>)[seg]
+              : undefined;
+          }
+          if (current !== undefined && !Array.isArray(current)) {
+            throw new Error(`Cannot push to non-array at path "${op.path}".`);
+          }
+        }
+      }
+    }
+
     // Build nested SQL expression by composing operations
     let dataExpr: ReturnType<typeof sql> = componentTable.data;
 
@@ -419,15 +444,22 @@ export async function patchComponent(
     }
   } catch (e) {
     const error = e instanceof Error ? e : new Error(String(e));
-    
-    // TRAP: Wrap DB errors with clearer messages
-    if (error.message.includes('cannot be cast automatically to type numeric') || 
-        error.message.includes('invalid input syntax for type numeric')) {
-      throw new Error(`Cannot increment non-numeric value at path "${ops.find(o => o.op === 'increment')?.path}". Original error: ${error.message}`);
+    const msg = error.message;
+
+    // TRAP: Wrap DB errors with clearer messages (including when wrapped as "Failed query: ...")
+    const isNumericError =
+      msg.includes('cannot be cast automatically to type numeric') ||
+      msg.includes('invalid input syntax for type numeric') ||
+      (msg.includes('Failed query') && msg.includes('numeric'));
+    if (isNumericError && ops.some((o) => o.op === 'increment')) {
+      throw new Error(`Cannot increment non-numeric value at path "${ops.find(o => o.op === 'increment')?.path}". Original error: ${msg}`);
     }
-    if (error.message.includes('jsonb subscript') || 
-        (error.message.includes('cannot') && error.message.includes('array'))) {
-      throw new Error(`Cannot push to non-array at path "${ops.find(o => o.op === 'push')?.path}". Original error: ${error.message}`);
+    const isArrayError =
+      msg.includes('jsonb subscript') ||
+      (msg.includes('cannot') && msg.includes('array')) ||
+      (msg.includes('Failed query') && (msg.includes('array') || msg.includes('subscript')));
+    if (isArrayError && ops.some((o) => o.op === 'push')) {
+      throw new Error(`Cannot push to non-array at path "${ops.find(o => o.op === 'push')?.path}". Original error: ${msg}`);
     }
     
     logger.error(

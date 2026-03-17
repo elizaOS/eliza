@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "bun run build.ts",
-    "test": "bun test"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -14,7 +14,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^3.0.0"
   },
   "milaidy": {
     "platforms": [

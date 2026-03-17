@@ -1,4 +1,4 @@
-import { Action, HandlerCallback, IAgentRuntime, Memory, State, logger } from '@elizaos/core';
+import { Action, type ActionResult, HandlerCallback, IAgentRuntime, Memory, State, logger } from '@elizaos/core';
 import * as path from 'node:path';
 import { PluginManagerService } from '../services/pluginManagerService';
 import { clonePlugin } from '../services/pluginRegistryService';
@@ -46,7 +46,7 @@ export const clonePluginAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     logger.info('[clonePluginAction] Starting plugin clone');
 
     const pluginManager = await runtime.getService('plugin_manager') as PluginManagerService;
@@ -58,7 +58,7 @@ export const clonePluginAction: Action = {
           actions: ['CLONE_PLUGIN'],
         });
       }
-      return;
+      return { success: false, error: 'Required services are not available.' };
     }
 
     // Extract plugin name from message
@@ -72,7 +72,7 @@ export const clonePluginAction: Action = {
           actions: ['CLONE_PLUGIN'],
         });
       }
-      return;
+      return { success: false, error: 'Plugin name not specified.' };
     }
 
     if (callback) {
@@ -92,7 +92,7 @@ export const clonePluginAction: Action = {
           actions: ['CLONE_PLUGIN'],
         });
       }
-      return;
+      return { success: false, error: result.error ?? 'Clone failed.' };
     }
 
     // Prepare response with helpful information
@@ -134,7 +134,7 @@ export const clonePluginAction: Action = {
       }
     }
 
-    return;
+    return { success: true, text: responseText };
   },
 };
 
