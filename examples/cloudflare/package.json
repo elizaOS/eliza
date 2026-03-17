@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
     "uuid": "^11.0.5"
   },
   "devDependencies": {

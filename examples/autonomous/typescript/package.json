@@ -10,9 +10,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-inmemorydb": "workspace:*",
-    "@elizaos/plugin-local-ai": "workspace:*",
-    "@elizaos/plugin-shell": "workspace:*",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

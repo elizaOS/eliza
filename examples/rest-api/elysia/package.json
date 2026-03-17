@@ -10,9 +10,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-eliza-classic": "workspace:*",
     "@sinclair/typebox": "^0.34.0",
     "elysia": "^1.1.0",
     "@elysiajs/cors": "^1.1.0",

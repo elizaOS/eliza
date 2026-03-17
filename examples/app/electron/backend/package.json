@@ -13,14 +13,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-eliza-classic": "workspace:*",
-    "@elizaos/plugin-google-genai": "workspace:*",
-    "@elizaos/plugin-groq": "workspace:*",
-    "@elizaos/plugin-localdb": "workspace:*",
-    "@elizaos/plugin-ollama": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-openrouter": "workspace:*",
     "electron": "^41.0.2",
     "uuid": "^13.0.0"
   },
@@ -31,4 +23,3 @@
     "vitest": "^4.0.17"
   }
 }
-

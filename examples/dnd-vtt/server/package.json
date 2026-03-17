@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "alpha",
+    "@elizaos/plugin-openai": "alpha",
     "express": "^4.18.2",
     "socket.io": "^4.7.4",
     "cors": "^2.8.5",

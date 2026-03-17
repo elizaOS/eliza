@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-xai": "workspace:*",
+    "@elizaos/plugin-sql": "alpha",
+    "@elizaos/plugin-xai": "alpha",
     "dotenv": "^17.2.3"
   },
   "devDependencies": {
