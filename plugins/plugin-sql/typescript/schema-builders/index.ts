@@ -13,8 +13,8 @@ import { snakeToCamel } from "./types.ts";
 
 export { mysqlAdapter } from "./mysql.ts";
 export { pgAdapter } from "./pg.ts";
-export { snakeToCamel } from "./types.ts";
 export type { DialectAdapter } from "./types.ts";
+export { snakeToCamel } from "./types.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -50,13 +50,12 @@ export function buildTable(schema: SchemaTable, adapter: DialectAdapter): any {
     // ========================================
     for (const idx of Object.values(schema.indexes)) {
       const hasExpressions = idx.columns.some((c) => c.isExpression);
-      
+
       if (!hasExpressions) {
         // Pure column-based index (no expressions)
         const cols = idx.columns.map((c) => table[snakeToCamel(c.expression)]);
-        const builder = idx.isUnique && adapter.buildUniqueIndex
-          ? adapter.buildUniqueIndex
-          : adapter.buildIndex;
+        const builder =
+          idx.isUnique && adapter.buildUniqueIndex ? adapter.buildUniqueIndex : adapter.buildIndex;
         const idxBuilder = builder(idx.name);
         constraints.push(idxBuilder.on(...(cols as [any, ...any[]])));
       } else if (adapter.buildExpressionIndex) {
@@ -73,38 +72,30 @@ export function buildTable(schema: SchemaTable, adapter: DialectAdapter): any {
 
           // Check if it's a simple "column opclass" format
           const parts = expr.split(/\s+/);
-          const isSimpleColumnOpClass = parts.length === 2 && !expr.includes('(');
-          
+          const isSimpleColumnOpClass = parts.length === 2 && !expr.includes("(");
+
           if (isSimpleColumnOpClass) {
             // Simple case: "data jsonb_path_ops"
             const columnName = parts[0];
             const opClass = parts[1];
             const column = table[snakeToCamel(columnName)];
-            
+
             if (column) {
               constraints.push(
-                adapter.buildExpressionIndex(
-                  idx.name,
-                  column,
-                  {
-                    method: idx.method,
-                    opClass,
-                    isUnique: idx.isUnique,
-                  },
-                )
+                adapter.buildExpressionIndex(idx.name, column, {
+                  method: idx.method,
+                  opClass,
+                  isUnique: idx.isUnique,
+                })
               );
             }
           } else {
             // Complex case: Full SQL expression like "((metadata->>'type'))"
             constraints.push(
-              adapter.buildExpressionIndex(
-                idx.name,
-                sql.raw(xlate(expr)),
-                {
-                  method: idx.method,
-                  isUnique: idx.isUnique,
-                },
-              )
+              adapter.buildExpressionIndex(idx.name, sql.raw(xlate(expr)), {
+                method: idx.method,
+                isUnique: idx.isUnique,
+              })
             );
           }
         } else if (idx.columns.length > 1 && hasExpressions) {
@@ -120,13 +111,12 @@ export function buildTable(schema: SchemaTable, adapter: DialectAdapter): any {
 
           // Use buildIndex (not buildExpressionIndex) for multi-column
           // because buildExpressionIndex expects a single expression
-          const multiBuilder = idx.isUnique && adapter.buildUniqueIndex
-            ? adapter.buildUniqueIndex
-            : adapter.buildIndex;
+          const multiBuilder =
+            idx.isUnique && adapter.buildUniqueIndex
+              ? adapter.buildUniqueIndex
+              : adapter.buildIndex;
           const multiIdxBuilder = multiBuilder(idx.name);
-          constraints.push(
-            multiIdxBuilder.on(...(columnRefs as [any, ...any[]]))
-          );
+          constraints.push(multiIdxBuilder.on(...(columnRefs as [any, ...any[]])));
         }
       }
     }
@@ -136,12 +126,10 @@ export function buildTable(schema: SchemaTable, adapter: DialectAdapter): any {
     // ========================================
     if (schema.uniqueConstraints && adapter.buildUniqueConstraint) {
       for (const constraint of Object.values(schema.uniqueConstraints)) {
-        const cols = constraint.columns.map((colName) =>
-          table[snakeToCamel(colName)]
-        );
+        const cols = constraint.columns.map((colName) => table[snakeToCamel(colName)]);
         const constraintBuilder = adapter.buildUniqueConstraint(
           constraint.name,
-          constraint.nullsNotDistinct,
+          constraint.nullsNotDistinct
         );
         constraints.push(constraintBuilder(cols));
       }
@@ -151,16 +139,16 @@ export function buildTable(schema: SchemaTable, adapter: DialectAdapter): any {
     // 3. Build foreign keys
     // ========================================
     // DESIGN DECISION: Foreign keys are NOT created in buildTable().
-    // 
+    //
     // WHY: FKs require references to target table objects (e.g., agentTable.id),
     // but buildTable() is called once per table. When building the "memories" table,
     // the "agents" table doesn't exist yet. We can't use lazy functions (() => targetTable)
     // because we don't have a registry of all tables at this point.
-    // 
+    //
     // HOW FKs ARE CREATED: The RuntimeMigrator reads foreign key definitions from
     // the abstract schemas (schema.foreignKeys), which use string-based table references.
     // It generates ALTER TABLE statements to add FKs AFTER all tables exist.
-    // 
+    //
     // ALTERNATIVE: Define FKs inline with .references() on columns in buildColumn(),
     // but this requires passing a table resolver to buildColumn(), adding complexity
     // for minimal benefit since the migrator already handles it.

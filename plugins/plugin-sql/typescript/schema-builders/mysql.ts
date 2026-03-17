@@ -3,6 +3,8 @@
  *
  * Maps abstract SchemaColumn types to drizzle-orm/mysql-core column builders.
  */
+
+import { logger, type SchemaColumn } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -20,7 +22,6 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
-import { logger, type SchemaColumn } from "@elizaos/core";
 import type { DialectAdapter } from "./types.ts";
 
 /**
@@ -96,7 +97,10 @@ function buildMysqlColumn(col: SchemaColumn): any {
     } else if (defaultStr === "gen_random_uuid()" || defaultStr === "defaultRandom()") {
       // Skip UUID defaults for MySQL - app generates UUIDs via crypto.randomUUID()
       // Don't add a default clause
-    } else if ((defaultStr === "[]" && t === "text[]") || (defaultStr === "{}" && (t === "jsonb" || t === "json"))) {
+    } else if (
+      (defaultStr === "[]" && t === "text[]") ||
+      (defaultStr === "{}" && (t === "jsonb" || t === "json"))
+    ) {
       // MySQL stores arrays/objects as JSON - default to empty JSON array/object
       b = b.default(sql`('${defaultStr}')`);
     } else {
@@ -121,7 +125,7 @@ export const mysqlAdapter: DialectAdapter = {
         // Multiple NULL values are allowed by default, so the constraint still works for our use case.
         logger.debug(
           { src: "plugin:sql:schema-builder", constraint: name },
-          "MySQL doesn't support NULLS NOT DISTINCT. NULLs will be treated as distinct (multiple NULLs allowed).",
+          "MySQL doesn't support NULLS NOT DISTINCT. NULLs will be treated as distinct (multiple NULLs allowed)."
         );
       }
       return unique(name).on(...(columns as [any, ...any[]]));
@@ -147,7 +151,7 @@ export const mysqlAdapter: DialectAdapter = {
   buildExpressionIndex: (
     name: string,
     exprOrColumn: any,
-    options?: { method?: string; opClass?: string; isUnique?: boolean },
+    options?: { method?: string; opClass?: string; isUnique?: boolean }
   ) => {
     // MySQL doesn't support GIN indexes or PostgreSQL-specific index methods
     // Create a regular B-tree index on the column or expression
@@ -159,7 +163,7 @@ export const mysqlAdapter: DialectAdapter = {
       // standard B-tree indexes, but having an index for equality lookups is still better than none.
       logger.debug(
         { src: "plugin:sql:schema-builder", index: name, method: options.method },
-        "MySQL doesn't support GIN indexes. Creating regular B-tree index instead.",
+        "MySQL doesn't support GIN indexes. Creating regular B-tree index instead."
       );
     }
 
@@ -175,23 +179,14 @@ export const mysqlAdapter: DialectAdapter = {
 
     // PG: col->>'key'  →  MySQL: JSON_UNQUOTE(JSON_EXTRACT(col, '$.key'))
     // Matches: metadata->>'type', metadata->>'documentId', etc.
-    result = result.replace(
-      /(\w+)->>'\s*([^']+)\s*'/g,
-      "JSON_UNQUOTE(JSON_EXTRACT($1, '$.$2'))",
-    );
+    result = result.replace(/(\w+)->>'\s*([^']+)\s*'/g, "JSON_UNQUOTE(JSON_EXTRACT($1, '$.$2'))");
 
     // PG: col->'key'  →  MySQL: JSON_EXTRACT(col, '$.key')
-    result = result.replace(
-      /(\w+)->'([^']+)'/g,
-      "JSON_EXTRACT($1, '$.$2')",
-    );
+    result = result.replace(/(\w+)->'([^']+)'/g, "JSON_EXTRACT($1, '$.$2')");
 
     // PG: col ? 'key'  →  MySQL: JSON_CONTAINS_PATH(col, 'one', '$.key')
     // The ? operator checks for key existence in JSONB.
-    result = result.replace(
-      /(\w+)\s*\?\s*'([^']+)'/g,
-      "JSON_CONTAINS_PATH($1, 'one', '$.$2')",
-    );
+    result = result.replace(/(\w+)\s*\?\s*'([^']+)'/g, "JSON_CONTAINS_PATH($1, 'one', '$.$2')");
 
     return result;
   },

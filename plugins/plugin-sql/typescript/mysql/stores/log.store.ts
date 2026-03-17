@@ -81,7 +81,6 @@ export function sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new W
   return value;
 }
 
-
 /**
  * Retrieves logs from the database based on the provided parameters.
  */
@@ -307,7 +306,10 @@ export async function getAgentRunSummaries(
     // each scanning the log table and grouping by runId. Since they all filter
     // on the same runId set, a single query with SUM(CASE WHEN type=...) does
     // the same work in one pass -- 2 fewer round-trips and 2 fewer table scans.
-    const runIdParams = sql.join(runIds.map((id) => sql`${id}`), sql`, `);
+    const runIdParams = sql.join(
+      runIds.map((id) => sql`${id}`),
+      sql`, `
+    );
 
     const combinedSummary = await db.execute(sql`
       SELECT
@@ -372,9 +374,9 @@ export async function getAgentRunSummaries(
 
 /**
  * Get logs by their IDs (batch) - MySQL version
- * 
+ *
  * WHY: Same rationale as PostgreSQL - batch lookup for debugging/history.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {UUID[]} logIds - Array of log IDs to retrieve
  * @returns {Promise<Log[]>} Array of logs (only found logs returned)
@@ -382,10 +384,7 @@ export async function getAgentRunSummaries(
 export async function getLogsByIds(db: DrizzleDatabase, logIds: UUID[]): Promise<Log[]> {
   if (logIds.length === 0) return [];
 
-  const result = await db
-    .select()
-    .from(logTable)
-    .where(inArray(logTable.id, logIds));
+  const result = await db.select().from(logTable).where(inArray(logTable.id, logIds));
 
   return result.map((log) => ({
     ...log,
@@ -435,11 +434,11 @@ export async function createLogs(
 
 /**
  * Update logs (batch) - MySQL version
- * 
+ *
  * WHY: Same rationale as PostgreSQL - run status updates as runs progress.
- * 
+ *
  * WHY CASE expression: MySQL supports batch updates with CASE, similar to PG.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {Array<{ id: UUID; updates: Partial<Log> }>} logs - Array of log updates
  */
@@ -449,43 +448,46 @@ export async function updateLogs(
 ): Promise<void> {
   if (logs.length === 0) return;
 
-  const idArray = logs.map(l => l.id);
-  
-  const hasBodyUpdates = logs.some(l => l.updates.body !== undefined);
-  const hasTypeUpdates = logs.some(l => l.updates.type !== undefined);
-  
+  const idArray = logs.map((l) => l.id);
+
+  const hasBodyUpdates = logs.some((l) => l.updates.body !== undefined);
+  const hasTypeUpdates = logs.some((l) => l.updates.type !== undefined);
+
   const setClauses: SQL<unknown>[] = [];
-  
+
   if (hasBodyUpdates) {
     const bodyCases = logs
-      .filter(l => l.updates.body !== undefined)
-      .map(l => {
+      .filter((l) => l.updates.body !== undefined)
+      .map((l) => {
         const sanitizedBody = sanitizeJsonObject(l.updates.body);
         const jsonString = JSON.stringify(sanitizedBody);
         return sql`WHEN ${logTable.id} = ${l.id} THEN CAST(${jsonString} AS JSON)`;
       });
-    
+
     if (bodyCases.length > 0) {
       setClauses.push(sql`body = CASE ${sql.join(bodyCases, sql` `)} ELSE body END`);
     }
   }
-  
+
   if (hasTypeUpdates) {
     const typeCases = logs
-      .filter(l => l.updates.type !== undefined)
-      .map(l => sql`WHEN ${logTable.id} = ${l.id} THEN ${l.updates.type}`);
-    
+      .filter((l) => l.updates.type !== undefined)
+      .map((l) => sql`WHEN ${logTable.id} = ${l.id} THEN ${l.updates.type}`);
+
     if (typeCases.length > 0) {
       setClauses.push(sql`type = CASE ${sql.join(typeCases, sql` `)} ELSE type END`);
     }
   }
-  
+
   if (setClauses.length === 0) return;
-  
+
   await db.execute(sql`
     UPDATE ${logTable}
     SET ${sql.join(setClauses, sql`, `)}
-    WHERE ${logTable.id} IN (${sql.join(idArray.map(id => sql`${id}`), sql`, `)})
+    WHERE ${logTable.id} IN (${sql.join(
+      idArray.map((id) => sql`${id}`),
+      sql`, `
+    )})
   `);
 }
 

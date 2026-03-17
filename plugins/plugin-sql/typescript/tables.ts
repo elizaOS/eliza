@@ -4,8 +4,7 @@
  */
 
 import { buildBaseTables } from "@elizaos/core";
-import { buildTable } from "./schema-builders";
-import { pgAdapter } from "./schema-builders";
+import { buildTable, pgAdapter } from "./schema-builders";
 
 // Build all tables once using the PostgreSQL adapter
 const tables = buildBaseTables(buildTable, pgAdapter);

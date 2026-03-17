@@ -1,10 +1,8 @@
-import { type UUID, type World, logger } from "@elizaos/core";
+import { logger, type UUID, type World } from "@elizaos/core";
 import { eq, inArray, sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { worldTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
-
-
 
 /**
  * Asynchronously retrieves all worlds from the database for a given agent.
@@ -13,14 +11,9 @@ import type { DrizzleDatabase } from "../types";
  * @returns {Promise<World[]>} A Promise that resolves to an array of worlds.
  */
 export async function getAllWorlds(db: DrizzleDatabase, agentId: UUID): Promise<World[]> {
-  const result = await db
-    .select()
-    .from(worldTable)
-    .where(eq(worldTable.agentId, agentId));
+  const result = await db.select().from(worldTable).where(eq(worldTable.agentId, agentId));
   return result as World[];
 }
-
-
 
 // ====== BATCH METHODS ======
 
@@ -33,10 +26,7 @@ export async function getAllWorlds(db: DrizzleDatabase, agentId: UUID): Promise<
 export async function getWorldsByIds(db: DrizzleDatabase, worldIds: UUID[]): Promise<World[]> {
   if (worldIds.length === 0) return [];
 
-  const result = await db
-    .select()
-    .from(worldTable)
-    .where(inArray(worldTable.id, worldIds));
+  const result = await db.select().from(worldTable).where(inArray(worldTable.id, worldIds));
   return result as World[];
 }
 
@@ -49,26 +39,26 @@ export async function getWorldsByIds(db: DrizzleDatabase, worldIds: UUID[]): Pro
 export async function createWorlds(db: DrizzleDatabase, worlds: World[]): Promise<UUID[]> {
   if (worlds.length === 0) return [];
 
-  const worldsWithIds = worlds.map(world => ({
+  const worldsWithIds = worlds.map((world) => ({
     ...world,
     id: world.id || (v4() as UUID),
     name: world.name || "",
   }));
 
   await db.insert(worldTable).values(worldsWithIds);
-  return worldsWithIds.map(w => w.id);
+  return worldsWithIds.map((w) => w.id);
 }
 
 /**
  * Upsert worlds (insert or update by ID)
- * 
+ *
  * WHY: Worlds are created during agent bootstrap or plugin initialization.
  * Concurrent initialization attempts should be idempotent, not fail with
  * "already exists" errors.
- * 
+ *
  * WHY simple schema: Worlds have minimal fields (id, name, type, agentId),
  * making upserts straightforward. No complex merging logic needed.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {World[]} worlds - Array of worlds to upsert (id required)
  */
@@ -115,16 +105,12 @@ export async function updateWorlds(db: DrizzleDatabase, worlds: World[]): Promis
 
   const ids = worlds.map((w) => w.id);
 
-  const nameCases = worlds.map(
-    (w) => sql`WHEN ${worldTable.id} = ${w.id} THEN ${w.name ?? null}`
-  );
+  const nameCases = worlds.map((w) => sql`WHEN ${worldTable.id} = ${w.id} THEN ${w.name ?? null}`);
   const metaCases = worlds.map(
-    (w) =>
-      sql`WHEN ${worldTable.id} = ${w.id} THEN ${JSON.stringify(w.metadata ?? null)}::jsonb`
+    (w) => sql`WHEN ${worldTable.id} = ${w.id} THEN ${JSON.stringify(w.metadata ?? null)}::jsonb`
   );
   const msiCases = worlds.map(
-    (w) =>
-      sql`WHEN ${worldTable.id} = ${w.id} THEN ${w.messageServerId ?? null}::uuid`
+    (w) => sql`WHEN ${worldTable.id} = ${w.id} THEN ${w.messageServerId ?? null}::uuid`
   );
 
   await db

@@ -1,49 +1,49 @@
 /**
  * PostgreSQL Memory Store - Batch-optimized CRUD operations for memories and embeddings
- * 
+ *
  * ARCHITECTURE:
  * - All operations are batch-first (accept arrays, not single items)
  * - Multi-row INSERT/UPDATE for performance (10-100x faster than loops)
  * - JSON containment operators (@>) for metadata filtering (GIN-indexed)
  * - Cosine distance for vector similarity search (indexed with HNSW)
- * 
+ *
  * WHY BATCH-FIRST:
  * Memory operations are inherently multi-item:
  * - Conversation import: 100s of messages at once
  * - Knowledge base seeding: 1000s of documents
  * - Context retrieval: Top-K relevant memories
  * Even single-message flows benefit: createMemory() wraps createMemories([memory]).
- * 
+ *
  * PERFORMANCE CHARACTERISTICS:
  * - getMemories with metadata: O(log N) with GIN index
  * - createMemories: O(N) with multi-row INSERT
  * - updateMemories: O(N) with CASE expression in single UPDATE
  * - searchMemories: O(log N) with vector index (HNSW/IVF)
  */
-import {
-  type Memory,
-  type MemoryMetadata,
-  type UUID,
-  logger,
-} from "@elizaos/core";
-import { and, asc, cosineDistance, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { logger, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core";
+import { and, asc, cosineDistance, desc, eq, gte, inArray, lte, type SQL, sql } from "drizzle-orm";
 import { v4 } from "uuid";
-import { embeddingTable, memoryTable, roomTable } from "../tables";
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../tables";
+import {
+  DIMENSION_MAP,
+  type EmbeddingDimensionColumn,
+  embeddingTable,
+  memoryTable,
+  roomTable,
+} from "../tables";
 import type { DrizzleDatabase } from "../types";
 
 /**
  * Retrieves memories from the database based on the provided parameters.
- * 
+ *
  * WHY: This is the primary query method for conversational history and knowledge retrieval.
  * Supports multiple filter dimensions (entity, room, world, time range, metadata) to enable:
  * - Context building for LLM prompts
  * - Knowledge base search
  * - Conversation history pagination
- * 
+ *
  * PERFORMANCE: Uses indexed lookups for all filter conditions. The metadata filter
  * uses PostgreSQL's GIN-indexed @> operator, enabling sub-100ms queries on millions of rows.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance (may be a transaction context).
  * @param {EmbeddingDimensionColumn} embeddingDimension - The embedding dimension column to use.
  * @param {Object} params - The parameters for retrieving memories.
@@ -78,11 +78,24 @@ export async function getMemories(
     roomId?: UUID;
     worldId?: UUID;
     metadata?: Record<string, unknown>;
-    orderBy?: 'createdAt';
-    orderDirection?: 'asc' | 'desc';
+    orderBy?: "createdAt";
+    orderDirection?: "asc" | "desc";
   }
 ): Promise<Memory[]> {
-  const { entityId, agentId, roomId, worldId, tableName, unique, start, end, offset, metadata, orderBy, orderDirection } = params;
+  const {
+    entityId,
+    agentId,
+    roomId,
+    worldId,
+    tableName,
+    unique,
+    start,
+    end,
+    offset,
+    metadata,
+    orderBy,
+    orderDirection,
+  } = params;
   // WHY: Support both 'limit' (new, standard) and 'count' (deprecated) params
   // during migration. New code should use 'limit'.
   const effectiveLimit = params.limit ?? params.count;
@@ -150,9 +163,7 @@ export async function getMemories(
     .orderBy(
       // TRAP: Only allow 'createdAt' (whitelisted) to prevent SQL injection
       // Default: DESC (newest first) to maintain current behavior
-      orderDirection === 'asc' 
-        ? asc(memoryTable.createdAt)
-        : desc(memoryTable.createdAt)
+      orderDirection === "asc" ? asc(memoryTable.createdAt) : desc(memoryTable.createdAt)
     );
 
   // Apply limit and offset for pagination
@@ -174,9 +185,7 @@ export async function getMemories(
     type: row.memory.type,
     createdAt: row.memory.createdAt.getTime(),
     content:
-      typeof row.memory.content === "string"
-        ? JSON.parse(row.memory.content)
-        : row.memory.content,
+      typeof row.memory.content === "string" ? JSON.parse(row.memory.content) : row.memory.content,
     entityId: row.memory.entityId as UUID,
     agentId: row.memory.agentId as UUID,
     roomId: row.memory.roomId as UUID,
@@ -273,9 +282,7 @@ export async function getMemoryById(
     id: row.memory.id as UUID,
     createdAt: row.memory.createdAt.getTime(),
     content:
-      typeof row.memory.content === "string"
-        ? JSON.parse(row.memory.content)
-        : row.memory.content,
+      typeof row.memory.content === "string" ? JSON.parse(row.memory.content) : row.memory.content,
     entityId: row.memory.entityId as UUID,
     agentId: row.memory.agentId as UUID,
     roomId: row.memory.roomId as UUID,
@@ -321,9 +328,7 @@ export async function getMemoriesByIds(
     id: row.memory.id as UUID,
     createdAt: row.memory.createdAt.getTime(),
     content:
-      typeof row.memory.content === "string"
-        ? JSON.parse(row.memory.content)
-        : row.memory.content,
+      typeof row.memory.content === "string" ? JSON.parse(row.memory.content) : row.memory.content,
     entityId: row.memory.entityId as UUID,
     agentId: row.memory.agentId as UUID,
     roomId: row.memory.roomId as UUID,
@@ -559,9 +564,7 @@ export async function searchMemoriesByEmbedding(
     type: row.memory.type,
     createdAt: row.memory.createdAt.getTime(),
     content:
-      typeof row.memory.content === "string"
-        ? JSON.parse(row.memory.content)
-        : row.memory.content,
+      typeof row.memory.content === "string" ? JSON.parse(row.memory.content) : row.memory.content,
     entityId: row.memory.entityId as UUID,
     agentId: row.memory.agentId as UUID,
     roomId: row.memory.roomId as UUID,
@@ -795,7 +798,10 @@ export async function deleteManyMemories(
         .where(
           and(
             eq(memoryTable.agentId, agentId),
-            sql`${memoryTable.metadata}->>'documentId' = ANY(${sql`ARRAY[${sql.join(batch.map(id => sql`${id}`), sql`, `)}]::text[]`})`
+            sql`${memoryTable.metadata}->>'documentId' = ANY(${sql`ARRAY[${sql.join(
+              batch.map((id) => sql`${id}`),
+              sql`, `
+            )}]::text[]`})`
           )
         );
       const fragmentIds = fragments.map((f) => f.id as UUID);
@@ -906,7 +912,10 @@ export async function deleteAllMemories(
       .where(
         and(
           eq(memoryTable.agentId, agentId),
-          sql`${memoryTable.metadata}->>'documentId' = ANY(${sql`ARRAY[${sql.join(ids.map(id => sql`${id}`), sql`, `)}]::text[]`})`
+          sql`${memoryTable.metadata}->>'documentId' = ANY(${sql`ARRAY[${sql.join(
+            ids.map((id) => sql`${id}`),
+            sql`, `
+          )}]::text[]`})`
         )
       );
     const fragmentIds = fragments.map((f) => f.id as UUID);
@@ -930,7 +939,7 @@ export async function deleteAllMemories(
 /**
  * Counts the number of memories matching criteria.
  * Supports both positional (deprecated) and object params signatures.
- * 
+ *
  * @param db The database instance
  * @param roomIdOrParams Either UUID (positional) or object params (new)
  * @param unique Positional param (deprecated) or undefined if using object params
@@ -939,24 +948,41 @@ export async function deleteAllMemories(
  */
 export async function countMemories(
   db: DrizzleDatabase,
-  roomIdOrParams: UUID | { roomIds?: UUID[]; unique?: boolean; tableName?: string; entityId?: UUID; agentId?: UUID; metadata?: Record<string, unknown> },
+  roomIdOrParams:
+    | UUID
+    | {
+        roomIds?: UUID[];
+        unique?: boolean;
+        tableName?: string;
+        entityId?: UUID;
+        agentId?: UUID;
+        metadata?: Record<string, unknown>;
+      },
   unique?: boolean,
   tableName?: string
 ): Promise<number> {
   // Runtime type checking: detect which signature is being used
   // TRAP: If first arg is undefined with multiple args, treat as legacy positional call
-  const isObjectParams = typeof roomIdOrParams === 'object' && roomIdOrParams !== null && !unique && !tableName;
+  const isObjectParams =
+    typeof roomIdOrParams === "object" && roomIdOrParams !== null && !unique && !tableName;
 
-  let conditions: SQL[] = [];
+  const conditions: SQL[] = [];
 
   if (isObjectParams) {
     // New object params signature
-    const params = roomIdOrParams as { roomIds?: UUID[]; unique?: boolean; tableName?: string; entityId?: UUID; agentId?: UUID; metadata?: Record<string, unknown> };
-    
+    const params = roomIdOrParams as {
+      roomIds?: UUID[];
+      unique?: boolean;
+      tableName?: string;
+      entityId?: UUID;
+      agentId?: UUID;
+      metadata?: Record<string, unknown>;
+    };
+
     if (!params.tableName) throw new Error("tableName is required");
-    
+
     conditions.push(eq(memoryTable.type, params.tableName));
-    
+
     if (params.roomIds != null && params.roomIds.length > 0) {
       conditions.push(inArray(memoryTable.roomId, params.roomIds));
     }
@@ -971,19 +997,21 @@ export async function countMemories(
     }
     if (params.metadata) {
       // JSONB containment (@>) - reuse pattern from getMemories
-      conditions.push(sql`${memoryTable.metadata}::jsonb @> ${JSON.stringify(params.metadata)}::jsonb`);
+      conditions.push(
+        sql`${memoryTable.metadata}::jsonb @> ${JSON.stringify(params.metadata)}::jsonb`
+      );
     }
   } else {
     // Legacy positional signature
     const roomId = roomIdOrParams as UUID;
     const effectiveUnique = unique ?? true;
     const effectiveTableName = tableName ?? "";
-    
+
     if (!effectiveTableName) throw new Error("tableName is required");
-    
+
     conditions.push(eq(memoryTable.roomId, roomId));
     conditions.push(eq(memoryTable.type, effectiveTableName));
-    
+
     if (effectiveUnique) {
       conditions.push(eq(memoryTable.unique, true));
     }
@@ -1080,7 +1108,11 @@ export async function createMemories(
   db: DrizzleDatabase,
   agentId: UUID,
   embeddingDimension: EmbeddingDimensionColumn,
-  memories: Array<{ memory: Memory & { metadata?: MemoryMetadata }; tableName: string; unique?: boolean }>
+  memories: Array<{
+    memory: Memory & { metadata?: MemoryMetadata };
+    tableName: string;
+    unique?: boolean;
+  }>
 ): Promise<UUID[]> {
   if (memories.length === 0) return [];
 
@@ -1130,13 +1162,9 @@ export async function createMemories(
   // Phase 3a: Batch INSERT memories — one multi-row insert
   const memoryValues = toCreate.map(({ memory, tableName }) => {
     const contentStr =
-      typeof memory.content === "string"
-        ? memory.content
-        : JSON.stringify(memory.content ?? {});
+      typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content ?? {});
     const metadataStr =
-      typeof memory.metadata === "string"
-        ? memory.metadata
-        : JSON.stringify(memory.metadata ?? {});
+      typeof memory.metadata === "string" ? memory.metadata : JSON.stringify(memory.metadata ?? {});
 
     return {
       id: memory.id,
@@ -1211,18 +1239,14 @@ export async function updateMemories(
           .filter((m) => m.content != null)
           .map((m) => {
             const contentStr =
-              typeof m.content === "string"
-                ? m.content
-                : JSON.stringify(m.content);
+              typeof m.content === "string" ? m.content : JSON.stringify(m.content);
             return sql`WHEN ${memoryTable.id} = ${m.id} THEN ${contentStr}::jsonb`;
           });
         const metaCases = contentMemories
           .filter((m) => m.metadata != null)
           .map((m) => {
             const metaStr =
-              typeof m.metadata === "string"
-                ? m.metadata
-                : JSON.stringify(m.metadata);
+              typeof m.metadata === "string" ? m.metadata : JSON.stringify(m.metadata);
             return sql`WHEN ${memoryTable.id} = ${m.id} THEN ${metaStr}::jsonb`;
           });
 
@@ -1234,17 +1258,12 @@ export async function updateMemories(
           setObj.metadata = sql`CASE ${sql.join(metaCases, sql` `)} ELSE ${memoryTable.metadata} END`;
         }
         if (Object.keys(setObj).length > 0) {
-          await tx
-            .update(memoryTable)
-            .set(setObj)
-            .where(inArray(memoryTable.id, memIds));
+          await tx.update(memoryTable).set(setObj).where(inArray(memoryTable.id, memIds));
         }
       }
 
       // ── 2. Handle embeddings in batch ─────────────────────────────────
-      const embMemories = memories.filter(
-        (m) => m.embedding && Array.isArray(m.embedding)
-      );
+      const embMemories = memories.filter((m) => m.embedding && Array.isArray(m.embedding));
       if (embMemories.length > 0) {
         // Batch-check which memories already have embeddings (1 query)
         const embIds = embMemories.map((m) => m.id);
@@ -1317,10 +1336,7 @@ export async function updateMemories(
  * directly delete embeddings + memories by ID. Fragment cleanup should be
  * handled by callers that have the agentId context.
  */
-export async function deleteMemories(
-  db: DrizzleDatabase,
-  memoryIds: UUID[]
-): Promise<void> {
+export async function deleteMemories(db: DrizzleDatabase, memoryIds: UUID[]): Promise<void> {
   if (memoryIds.length === 0) return;
 
   await db.transaction(async (tx) => {
@@ -1335,13 +1351,13 @@ export async function deleteMemories(
 
 /**
  * Upserts multiple memories by ID (insert or overwrite existing).
- * 
+ *
  * WHY: Unlike createMemories (ON CONFLICT DO NOTHING), this uses ON CONFLICT DO UPDATE
  * to overwrite existing memories. Used for bulk data refresh or re-import scenarios.
- * 
+ *
  * NO SIMILARITY CHECK: Does NOT run embedding similarity checks (unlike createMemories).
  * The caller is asserting "I know this memory's ID, insert or replace."
- * 
+ *
  * EMBEDDING HANDLING: If a memory includes an embedding, the embeddings table row
  * is also upserted to keep embeddings in sync with content.
  */
@@ -1388,15 +1404,18 @@ export async function upsertMemories(
       });
 
       // Upsert memories: update content/metadata/unique on conflict, preserve identity
-      await tx.insert(memoryTable).values(memoryValues).onConflictDoUpdate({
-        target: memoryTable.id,
-        set: {
-          content: sql`EXCLUDED.content`,
-          metadata: sql`EXCLUDED.metadata`,
-          unique: sql`EXCLUDED.unique`,
-          // DO NOT update: id, type, entityId, roomId, worldId, agentId, createdAt
-        },
-      });
+      await tx
+        .insert(memoryTable)
+        .values(memoryValues)
+        .onConflictDoUpdate({
+          target: memoryTable.id,
+          set: {
+            content: sql`EXCLUDED.content`,
+            metadata: sql`EXCLUDED.metadata`,
+            unique: sql`EXCLUDED.unique`,
+            // DO NOT update: id, type, entityId, roomId, worldId, agentId, createdAt
+          },
+        });
 
       // Upsert embeddings (reference the SAME memory.id from prepared copies)
       const embeddingRows: Record<string, unknown>[] = [];
@@ -1422,7 +1441,7 @@ export async function upsertMemories(
         // the actual SQL column is snake_case (e.g. "dim_384"). Drizzle handles the
         // left side of SET via property→column mapping, but the EXCLUDED reference
         // is raw SQL and must use the actual column name.
-        const sqlColumnName = embeddingDimension.replace(/(\d)/, '_$1');
+        const sqlColumnName = embeddingDimension.replace(/(\d)/, "_$1");
         const updateSet: Record<string, unknown> = {};
         updateSet[embeddingDimension] = sql.raw(`EXCLUDED."${sqlColumnName}"`);
 

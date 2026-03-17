@@ -57,13 +57,12 @@ describe("PgDatabaseAdapter", () => {
         connect: vi.fn(() => {}),
         end: vi.fn(() => {}),
       })),
-      withIsolationContext: vi.fn((_entityId: UUID, callback: () => Promise<unknown>) => callback()),
+      withIsolationContext: vi.fn((_entityId: UUID, callback: () => Promise<unknown>) =>
+        callback()
+      ),
     };
 
-    adapter = new PgDatabaseAdapter(
-      agentId,
-      mockManager as PostgresConnectionManager,
-    );
+    adapter = new PgDatabaseAdapter(agentId, mockManager as PostgresConnectionManager);
   });
 
   describe("constructor", () => {
@@ -85,7 +84,7 @@ describe("PgDatabaseAdapter", () => {
       await adapter.init();
       expect(logger.debug).toHaveBeenCalledWith(
         { src: "plugin:sql" },
-        "PgDatabaseAdapter initialized",
+        "PgDatabaseAdapter initialized"
       );
     });
   });
@@ -206,10 +205,7 @@ describe("PgDatabaseAdapter", () => {
         withIsolationContext: vi.fn(),
       } as PostgresConnectionManager;
 
-      const concurrentAdapter = new PgDatabaseAdapter(
-        agentId,
-        concurrentManager,
-      );
+      const concurrentAdapter = new PgDatabaseAdapter(agentId, concurrentManager);
 
       // Run multiple concurrent operations (adapter has getAgents, not getAgent)
       const operations = [
@@ -302,10 +298,7 @@ describe("PgDatabaseAdapter", () => {
       } as PostgresConnectionManager;
       const adp = new PgDatabaseAdapter(agentId, mgr);
 
-      await adp.transaction(
-        async () => "ok",
-        { entityContext: entityId }
-      );
+      await adp.transaction(async () => "ok", { entityContext: entityId });
 
       expect(withIsolationContextMock).toHaveBeenCalledWith(entityId, expect.any(Function));
     });

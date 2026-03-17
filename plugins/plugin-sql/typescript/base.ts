@@ -7,6 +7,7 @@ import {
   type Component,
   DatabaseAdapter,
   type Entity,
+  type IDatabaseAdapter,
   type IMessagingAdapter,
   type Log,
   type LogBody,
@@ -27,22 +28,15 @@ import {
   type Task,
   type TaskMetadata,
   type UUID,
-  type IDatabaseAdapter,
   type World,
 } from "@elizaos/core";
 
 // JSON-serializable value type for metadata
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
-import * as stores from "./stores";
 import type { DatabaseMigrationService } from "./migration-service";
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from './tables';
+import * as stores from "./stores";
+import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./tables";
 import type { DrizzleDatabase } from "./types";
 
 /**
@@ -63,9 +57,10 @@ import type { DrizzleDatabase } from "./types";
  * BATCH-FIRST: All create methods return UUID[], all update/delete return void
  * and throw on failure. This matches the IDatabaseAdapter contract.
  */
-export abstract class BaseDrizzleAdapter 
-  extends DatabaseAdapter<DrizzleDatabase> 
-  implements IMessagingAdapter {
+export abstract class BaseDrizzleAdapter
+  extends DatabaseAdapter<DrizzleDatabase>
+  implements IMessagingAdapter
+{
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
@@ -77,7 +72,7 @@ export abstract class BaseDrizzleAdapter
 
   public abstract withIsolationContext<T>(
     entityId: UUID | null,
-    callback: (tx: DrizzleDatabase) => Promise<T>,
+    callback: (tx: DrizzleDatabase) => Promise<T>
   ): Promise<T>;
 
   public abstract init(): Promise<void>;
@@ -100,14 +95,12 @@ export abstract class BaseDrizzleAdapter
       verbose?: boolean;
       force?: boolean;
       dryRun?: boolean;
-    },
+    }
   ): Promise<void> {
     if (!this.migrationService) {
       const { DatabaseMigrationService } = await import("./migration-service");
       this.migrationService = new DatabaseMigrationService();
-      await this.migrationService.initializeWithDatabase(
-        this.db as DrizzleDatabase,
-      );
+      await this.migrationService.initializeWithDatabase(this.db as DrizzleDatabase);
     }
 
     for (const plugin of plugins) {
@@ -130,18 +123,22 @@ export abstract class BaseDrizzleAdapter
    * Now we only retry transient errors (deadlock, serialization, connection).
    */
   private static readonly TRANSIENT_PG_CODES = new Set([
-    "40P01",      // deadlock_detected
-    "40001",      // serialization_failure
-    "57P01",      // admin_shutdown
-    "57P03",      // cannot_connect_now
-    "08006",      // connection_failure
-    "08001",      // sqlclient_unable_to_establish_sqlconnection
-    "08004",      // sqlserver_rejected_establishment_of_sqlconnection
+    "40P01", // deadlock_detected
+    "40001", // serialization_failure
+    "57P01", // admin_shutdown
+    "57P03", // cannot_connect_now
+    "08006", // connection_failure
+    "08001", // sqlclient_unable_to_establish_sqlconnection
+    "08004", // sqlserver_rejected_establishment_of_sqlconnection
   ]);
 
   private static readonly TRANSIENT_ERROR_PATTERNS = [
-    "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EPIPE",
-    "connection terminated", "connection reset",
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "ETIMEDOUT",
+    "EPIPE",
+    "connection terminated",
+    "connection reset",
     "the database system is shutting down",
   ];
 
@@ -204,7 +201,7 @@ export abstract class BaseDrizzleAdapter
   async ensureEmbeddingDimension(dimension: number): Promise<void> {
     const mapped = DIMENSION_MAP[dimension as keyof typeof DIMENSION_MAP];
     if (!mapped) {
-      const supported = Object.keys(DIMENSION_MAP).join(', ');
+      const supported = Object.keys(DIMENSION_MAP).join(", ");
       throw new Error(
         `Unsupported embedding dimension: ${dimension}. Supported dimensions: ${supported}`
       );
@@ -317,7 +314,7 @@ export abstract class BaseDrizzleAdapter
 
   async getEntitiesForRooms(
     roomIds: UUID[],
-    includeComponents?: boolean,
+    includeComponents?: boolean
   ): Promise<Array<{ roomId: UUID; entities: Entity[] }>> {
     return this.withDatabase(async () => {
       const result: Array<{ roomId: UUID; entities: Entity[] }> = [];
@@ -326,7 +323,7 @@ export abstract class BaseDrizzleAdapter
           this.db,
           this.agentId,
           roomId,
-          includeComponents,
+          includeComponents
         );
         result.push({ roomId, entities });
       }
@@ -369,9 +366,7 @@ export abstract class BaseDrizzleAdapter
   }): Promise<Entity[]> {
     const { entityContext, ...rest } = params;
     if (entityContext != null) {
-      return this.withIsolationContext(entityContext, (tx) =>
-        stores.queryEntities(tx, rest)
-      );
+      return this.withIsolationContext(entityContext, (tx) => stores.queryEntities(tx, rest));
     }
     return this.withDatabase(() => stores.queryEntities(this.db, params));
   }
@@ -411,12 +406,14 @@ export abstract class BaseDrizzleAdapter
   // Component Methods
   // ===============================
 
-  async getComponentsByNaturalKeys(keys: Array<{
-    entityId: UUID;
-    type: string;
-    worldId?: UUID;
-    sourceEntityId?: UUID;
-  }>): Promise<(Component | null)[]> {
+  async getComponentsByNaturalKeys(
+    keys: Array<{
+      entityId: UUID;
+      type: string;
+      worldId?: UUID;
+      sourceEntityId?: UUID;
+    }>
+  ): Promise<(Component | null)[]> {
     return this.withDatabase(async () => {
       const result: (Component | null)[] = [];
       for (const k of keys) {
@@ -425,7 +422,7 @@ export abstract class BaseDrizzleAdapter
           k.entityId,
           k.type,
           k.worldId,
-          k.sourceEntityId,
+          k.sourceEntityId
         );
         result.push(c);
       }
@@ -436,17 +433,12 @@ export abstract class BaseDrizzleAdapter
   async getComponentsForEntities(
     entityIds: UUID[],
     worldId?: UUID,
-    sourceEntityId?: UUID,
+    sourceEntityId?: UUID
   ): Promise<Component[]> {
     return this.withDatabase(async () => {
       const out: Component[] = [];
       for (const entityId of entityIds) {
-        const comps = await stores.getComponents(
-          this.db,
-          entityId,
-          worldId,
-          sourceEntityId,
-        );
+        const comps = await stores.getComponents(this.db, entityId, worldId, sourceEntityId);
         out.push(...comps);
       }
       return out;
@@ -458,7 +450,7 @@ export abstract class BaseDrizzleAdapter
     entityId: UUID,
     type: string,
     worldId?: UUID,
-    sourceEntityId?: UUID,
+    sourceEntityId?: UUID
   ): Promise<Component | null> {
     const [c] = await this.getComponentsByNaturalKeys([
       { entityId, type, worldId, sourceEntityId },
@@ -467,11 +459,7 @@ export abstract class BaseDrizzleAdapter
   }
 
   /** Single-component convenience for tests and callers. */
-  async getComponents(
-    entityId: UUID,
-    worldId?: UUID,
-    sourceEntityId?: UUID,
-  ): Promise<Component[]> {
+  async getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]> {
     return this.getComponentsForEntities([entityId], worldId, sourceEntityId);
   }
 
@@ -479,7 +467,7 @@ export abstract class BaseDrizzleAdapter
   async patchComponent(
     componentId: UUID,
     ops: import("@elizaos/core").PatchOp[],
-    options?: { entityContext?: UUID },
+    options?: { entityContext?: UUID }
   ): Promise<void> {
     await this.patchComponents([{ componentId, ops }], options);
   }
@@ -525,7 +513,7 @@ export abstract class BaseDrizzleAdapter
    */
   async upsertComponents(
     components: Component[],
-    options?: { entityContext?: UUID },
+    options?: { entityContext?: UUID }
   ): Promise<void> {
     if (options?.entityContext != null) {
       return this.withIsolationContext(options.entityContext, (tx) =>
@@ -541,13 +529,13 @@ export abstract class BaseDrizzleAdapter
    */
   async patchComponents(
     updates: Array<{ componentId: UUID; ops: import("@elizaos/core").PatchOp[] }>,
-    options?: { entityContext?: UUID },
+    options?: { entityContext?: UUID }
   ): Promise<void> {
     if (updates.length === 0) return;
     const run = (db: typeof this.db) =>
-      Promise.all(
-        updates.map((u) => stores.patchComponent(db, u.componentId, u.ops)),
-      ).then(() => {});
+      Promise.all(updates.map((u) => stores.patchComponent(db, u.componentId, u.ops))).then(
+        () => {}
+      );
     if (options?.entityContext != null) {
       return this.withIsolationContext(options.entityContext, run);
     }
@@ -568,8 +556,8 @@ export abstract class BaseDrizzleAdapter
     roomId?: UUID;
     worldId?: UUID;
     metadata?: Record<string, unknown>;
-    orderBy?: 'createdAt';
-    orderDirection?: 'asc' | 'desc';
+    orderBy?: "createdAt";
+    orderDirection?: "asc" | "desc";
   }): Promise<Memory[]> {
     return this.withIsolationContext(params.entityId ?? null, (tx) =>
       stores.getMemories(tx, this.embeddingDimension, params)
@@ -581,9 +569,7 @@ export abstract class BaseDrizzleAdapter
     tableName: string;
     limit?: number;
   }): Promise<Memory[]> {
-    return this.withDatabase(() =>
-      stores.getMemoriesByRoomIds(this.db, this.agentId, params)
-    );
+    return this.withDatabase(() => stores.getMemoriesByRoomIds(this.db, this.agentId, params));
   }
 
   async getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]> {
@@ -635,7 +621,7 @@ export abstract class BaseDrizzleAdapter
       entityId?: UUID;
       unique?: boolean;
       tableName: string;
-    },
+    }
   ): Promise<Memory[]> {
     return this.withDatabase(() =>
       stores.searchMemoriesByEmbedding(
@@ -649,34 +635,42 @@ export abstract class BaseDrizzleAdapter
   }
 
   // Batch memory methods
-  async createMemories(memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>): Promise<UUID[]> {
+  async createMemories(
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
+  ): Promise<UUID[]> {
     return this.withDatabase(() =>
       stores.createMemories(this.db, this.agentId, this.embeddingDimension, memories)
     );
   }
 
   /** Single-memory convenience for tests and callers. */
-  async createMemory(memory: Memory | Partial<Memory>, tableName: string, unique?: boolean): Promise<UUID> {
+  async createMemory(
+    memory: Memory | Partial<Memory>,
+    tableName: string,
+    unique?: boolean
+  ): Promise<UUID> {
     const ids = await this.createMemories([{ memory: memory as Memory, tableName, unique }]);
     if (ids.length === 0) throw new Error("createMemories returned no id");
     return ids[0];
   }
 
-  async updateMemories(memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>): Promise<void> {
+  async updateMemories(
+    memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>
+  ): Promise<void> {
     return this.withDatabase(() =>
       stores.updateMemories(this.db, this.embeddingDimension, memories)
     );
   }
 
   /** Single-memory convenience for tests and callers. */
-  async updateMemory(memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }): Promise<void> {
+  async updateMemory(
+    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
+  ): Promise<void> {
     return this.updateMemories([memory]);
   }
 
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
-    return this.withDatabase(() =>
-      stores.deleteMemories(this.db, memoryIds)
-    );
+    return this.withDatabase(() => stores.deleteMemories(this.db, memoryIds));
   }
 
   /** Single-memory convenience for tests and callers. */
@@ -691,7 +685,7 @@ export abstract class BaseDrizzleAdapter
    */
   async upsertMemories(
     memories: Array<{ memory: Memory; tableName: string }>,
-    options?: { entityContext?: UUID },
+    options?: { entityContext?: UUID }
   ): Promise<void> {
     if (options?.entityContext != null) {
       return this.withIsolationContext(options.entityContext, (tx) =>
@@ -719,9 +713,7 @@ export abstract class BaseDrizzleAdapter
     agentId?: UUID;
     metadata?: Record<string, unknown>;
   }): Promise<number> {
-    return this.withDatabase(() =>
-      stores.countMemories(this.db, params, undefined, undefined)
-    );
+    return this.withDatabase(() => stores.countMemories(this.db, params, undefined, undefined));
   }
 
   async getMemoriesByWorldId(params: {
@@ -733,16 +725,16 @@ export abstract class BaseDrizzleAdapter
     const worldIds = params.worldIds ?? [];
     if (worldIds.length === 0) return [];
     return this.withDatabase(async () => {
-    const all: Memory[] = [];
-    for (const worldId of worldIds) {
-      const mems = await stores.getMemoriesByWorldId(this.db, this.agentId, {
-        worldId,
-        count: params.count,
-        limit: params.limit,
-        tableName: params.tableName,
-      });
-      all.push(...mems);
-    }
+      const all: Memory[] = [];
+      for (const worldId of worldIds) {
+        const mems = await stores.getMemoriesByWorldId(this.db, this.agentId, {
+          worldId,
+          count: params.count,
+          limit: params.limit,
+          tableName: params.tableName,
+        });
+        all.push(...mems);
+      }
       return all;
     });
   }
@@ -781,7 +773,9 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.getLogsByIds(this.db, logIds));
   }
 
-  async createLogs(params: Array<{ body: LogBody; entityId: UUID; roomId: UUID; type: string }>): Promise<void> {
+  async createLogs(
+    params: Array<{ body: LogBody; entityId: UUID; roomId: UUID; type: string }>
+  ): Promise<void> {
     return this.withDatabase(() => stores.createLogs(this.db, params));
   }
 
@@ -811,11 +805,7 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.getRoomsByIds(this.db, this.agentId, roomIds));
   }
 
-  async getRoomsByWorlds(
-    worldIds: UUID[],
-    limit?: number,
-    offset?: number,
-  ): Promise<Room[]> {
+  async getRoomsByWorlds(worldIds: UUID[], limit?: number, offset?: number): Promise<Room[]> {
     return this.withDatabase(async () => {
       let all: Room[] = [];
       for (const worldId of worldIds) {
@@ -873,7 +863,6 @@ export abstract class BaseDrizzleAdapter
   // Participant Methods
   // ===============================
 
-
   async createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
     return this.withDatabase(() =>
       stores.createRoomParticipants(this.db, this.agentId, entityIds, roomId)
@@ -903,7 +892,7 @@ export abstract class BaseDrizzleAdapter
   }
 
   async getParticipantsForRooms(
-    roomIds: UUID[],
+    roomIds: UUID[]
   ): Promise<Array<{ roomId: UUID; entityIds: UUID[] }>> {
     return this.withDatabase(async () => {
       const result: Array<{ roomId: UUID; entityIds: UUID[] }> = [];
@@ -915,9 +904,7 @@ export abstract class BaseDrizzleAdapter
     });
   }
 
-  async areRoomParticipants(
-    pairs: Array<{ roomId: UUID; entityId: UUID }>,
-  ): Promise<boolean[]> {
+  async areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]> {
     return this.withDatabase(async () => {
       const result: boolean[] = [];
       for (const { roomId, entityId } of pairs) {
@@ -929,28 +916,25 @@ export abstract class BaseDrizzleAdapter
   }
 
   async getParticipantUserStates(
-    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+    pairs: Array<{ roomId: UUID; entityId: UUID }>
   ): Promise<("FOLLOWED" | "MUTED" | null)[]> {
     return this.withDatabase(async () => {
       const result: ("FOLLOWED" | "MUTED" | null)[] = [];
       for (const { roomId, entityId } of pairs) {
-        const state = await stores.getParticipantUserState(
-          this.db,
-          this.agentId,
-          roomId,
-          entityId,
-        );
+        const state = await stores.getParticipantUserState(this.db, this.agentId, roomId, entityId);
         result.push(state);
       }
       return result;
     });
   }
 
-  async updateParticipantUserStates(updates: Array<{
-    roomId: UUID;
-    entityId: UUID;
-    state: "FOLLOWED" | "MUTED" | null;
-  }>): Promise<void> {
+  async updateParticipantUserStates(
+    updates: Array<{
+      roomId: UUID;
+      entityId: UUID;
+      state: "FOLLOWED" | "MUTED" | null;
+    }>
+  ): Promise<void> {
     return this.withDatabase(async () => {
       for (const u of updates) {
         await stores.updateParticipantUserState(
@@ -958,7 +942,7 @@ export abstract class BaseDrizzleAdapter
           this.agentId,
           u.roomId,
           u.entityId,
-          u.state,
+          u.state
         );
       }
     });
@@ -967,7 +951,7 @@ export abstract class BaseDrizzleAdapter
   /** Single-id convenience for tests and callers. */
   async getParticipantUserState(
     roomId: UUID,
-    entityId: UUID,
+    entityId: UUID
   ): Promise<"FOLLOWED" | "MUTED" | null> {
     const [state] = await this.getParticipantUserStates([{ roomId, entityId }]);
     return state ?? null;
@@ -977,7 +961,7 @@ export abstract class BaseDrizzleAdapter
   async updateParticipantUserState(
     roomId: UUID,
     entityId: UUID,
-    state: "FOLLOWED" | "MUTED" | null,
+    state: "FOLLOWED" | "MUTED" | null
   ): Promise<void> {
     await this.updateParticipantUserStates([{ roomId, entityId, state }]);
   }
@@ -986,13 +970,15 @@ export abstract class BaseDrizzleAdapter
   async setParticipantUserState(
     roomId: UUID,
     entityId: UUID,
-    state: "FOLLOWED" | "MUTED" | null,
+    state: "FOLLOWED" | "MUTED" | null
   ): Promise<void> {
     await this.updateParticipantUserStates([{ roomId, entityId, state }]);
   }
 
   // Batch participant methods
-  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
+  async deleteParticipants(
+    participants: Array<{ entityId: UUID; roomId: UUID }>
+  ): Promise<boolean> {
     return this.withDatabase(() => stores.deleteParticipants(this.db, this.agentId, participants));
   }
 
@@ -1001,11 +987,13 @@ export abstract class BaseDrizzleAdapter
     return this.deleteParticipants([{ entityId, roomId }]);
   }
 
-  async updateParticipants(participants: Array<{
-    entityId: UUID;
-    roomId: UUID;
-    updates: Partial<Participant>;
-  }>): Promise<void> {
+  async updateParticipants(
+    participants: Array<{
+      entityId: UUID;
+      roomId: UUID;
+      updates: Partial<Participant>;
+    }>
+  ): Promise<void> {
     return this.withDatabase(() => stores.updateParticipants(this.db, this.agentId, participants));
   }
 
@@ -1014,7 +1002,7 @@ export abstract class BaseDrizzleAdapter
   // ===============================
 
   async getRelationshipsByPairs(
-    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
+    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>
   ): Promise<(Relationship | null)[]> {
     return this.withDatabase(async () => {
       const result: (Relationship | null)[] = [];
@@ -1050,12 +1038,14 @@ export abstract class BaseDrizzleAdapter
   }
 
   // Batch relationship methods
-  async createRelationships(relationships: Array<{
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: Metadata;
-  }>): Promise<UUID[]> {
+  async createRelationships(
+    relationships: Array<{
+      sourceEntityId: UUID;
+      targetEntityId: UUID;
+      tags?: string[];
+      metadata?: Metadata;
+    }>
+  ): Promise<UUID[]> {
     return this.withDatabase(() =>
       stores.createRelationships(this.db, this.agentId, relationships)
     );
@@ -1280,9 +1270,7 @@ export abstract class BaseDrizzleAdapter
   }
 
   async getAgentsForMessageServer(messageServerId: UUID): Promise<UUID[]> {
-    return this.withDatabase(() =>
-      stores.getAgentsForMessageServer(this.db, messageServerId)
-    );
+    return this.withDatabase(() => stores.getAgentsForMessageServer(this.db, messageServerId));
   }
 
   async removeAgentFromMessageServer(messageServerId: UUID, agentId: UUID): Promise<void> {
@@ -1306,7 +1294,7 @@ export abstract class BaseDrizzleAdapter
       topic?: string;
       metadata?: Metadata;
     },
-    participantIds?: UUID[],
+    participantIds?: UUID[]
   ): Promise<{
     id: UUID;
     messageServerId: UUID;
@@ -1336,9 +1324,7 @@ export abstract class BaseDrizzleAdapter
       updatedAt: Date;
     }>
   > {
-    return this.withDatabase(() =>
-      stores.getChannelsForMessageServer(this.db, messageServerId)
-    );
+    return this.withDatabase(() => stores.getChannelsForMessageServer(this.db, messageServerId));
   }
 
   async getChannelDetails(channelId: UUID): Promise<{
@@ -1383,9 +1369,7 @@ export abstract class BaseDrizzleAdapter
   }
 
   async addChannelParticipants(channelId: UUID, entityIds: UUID[]): Promise<void> {
-    return this.withDatabase(() =>
-      stores.addChannelParticipants(this.db, channelId, entityIds)
-    );
+    return this.withDatabase(() => stores.addChannelParticipants(this.db, channelId, entityIds));
   }
 
   async getChannelParticipants(channelId: UUID): Promise<UUID[]> {
@@ -1393,9 +1377,7 @@ export abstract class BaseDrizzleAdapter
   }
 
   async isChannelParticipant(channelId: UUID, entityId: UUID): Promise<boolean> {
-    return this.withDatabase(() =>
-      stores.isChannelParticipant(this.db, channelId, entityId)
-    );
+    return this.withDatabase(() => stores.isChannelParticipant(this.db, channelId, entityId));
   }
 
   // ===============================
@@ -1453,7 +1435,7 @@ export abstract class BaseDrizzleAdapter
       sourceId?: string;
       metadata?: Metadata;
       inReplyToRootMessageId?: UUID;
-    },
+    }
   ): Promise<{
     id: UUID;
     channelId: UUID;
@@ -1473,7 +1455,7 @@ export abstract class BaseDrizzleAdapter
   async getMessagesForChannel(
     channelId: UUID,
     limit: number = 50,
-    beforeTimestamp?: Date,
+    beforeTimestamp?: Date
   ): Promise<
     Array<{
       id: UUID;
@@ -1501,7 +1483,7 @@ export abstract class BaseDrizzleAdapter
   async findOrCreateDmChannel(
     user1Id: UUID,
     user2Id: UUID,
-    messageServerId: UUID,
+    messageServerId: UUID
   ): Promise<{
     id: UUID;
     messageServerId: UUID;
@@ -1524,10 +1506,11 @@ export abstract class BaseDrizzleAdapter
   // ===============================
 
   async getPairingRequests(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>
   ): Promise<Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }>> {
     return this.withDatabase(async () => {
-      const result: Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }> = [];
+      const result: Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }> =
+        [];
       for (const { channel, agentId } of queries) {
         const requests = await stores.getPairingRequests(this.db, channel, agentId);
         result.push({ channel, agentId, requests });
@@ -1537,10 +1520,14 @@ export abstract class BaseDrizzleAdapter
   }
 
   async getPairingAllowlists(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>
   ): Promise<Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }>> {
     return this.withDatabase(async () => {
-      const result: Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }> = [];
+      const result: Array<{
+        channel: PairingChannel;
+        agentId: UUID;
+        entries: PairingAllowlistEntry[];
+      }> = [];
       for (const { channel, agentId } of queries) {
         const entries = await stores.getPairingAllowlist(this.db, channel, agentId);
         result.push({ channel, agentId, entries });
@@ -1620,7 +1607,7 @@ export abstract class BaseDrizzleAdapter
    */
   async transaction<T>(
     callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>,
-    options?: { entityContext?: UUID },
+    options?: { entityContext?: UUID }
   ): Promise<T> {
     if (options?.entityContext != null) {
       return this.withIsolationContext(options.entityContext, (tx) =>

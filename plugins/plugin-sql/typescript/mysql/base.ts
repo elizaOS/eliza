@@ -7,6 +7,7 @@ import {
   type Component,
   DatabaseAdapter,
   type Entity,
+  type IDatabaseAdapter,
   type IMessagingAdapter,
   type Log,
   type LogBody,
@@ -26,7 +27,6 @@ import {
   type RunStatus,
   type Task,
   type TaskMetadata,
-  type IDatabaseAdapter,
   type UUID,
   type World,
 } from "@elizaos/core";
@@ -34,9 +34,9 @@ import {
 // JSON-serializable value type for metadata
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
-import * as stores from "./stores";
+import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../tables";
 import type { DatabaseMigrationService } from "./migration-service";
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../tables';
+import * as stores from "./stores";
 import type { DrizzleDatabase } from "./types";
 
 /**
@@ -56,9 +56,10 @@ import type { DrizzleDatabase } from "./types";
  * BATCH-FIRST: Same contract as PG - create returns UUID[], update/delete
  * return void and throw on failure.
  */
-export abstract class BaseDrizzleAdapter 
-  extends DatabaseAdapter<DrizzleDatabase> 
-  implements IMessagingAdapter {
+export abstract class BaseDrizzleAdapter
+  extends DatabaseAdapter<DrizzleDatabase>
+  implements IMessagingAdapter
+{
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
@@ -137,9 +138,15 @@ export abstract class BaseDrizzleAdapter
 
     // Connection-level transient error codes
     const transientCodes = [
-      "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EPIPE",
-      "PROTOCOL_CONNECTION_LOST", "PROTOCOL_SEQUENCE_TIMEOUT",
-      "ER_LOCK_DEADLOCK", "ER_LOCK_WAIT_TIMEOUT", "ER_CON_COUNT_ERROR",
+      "ECONNRESET",
+      "ECONNREFUSED",
+      "ETIMEDOUT",
+      "EPIPE",
+      "PROTOCOL_CONNECTION_LOST",
+      "PROTOCOL_SEQUENCE_TIMEOUT",
+      "ER_LOCK_DEADLOCK",
+      "ER_LOCK_WAIT_TIMEOUT",
+      "ER_CON_COUNT_ERROR",
     ];
     if (typeof code === "string" && transientCodes.includes(code)) return true;
 
@@ -204,7 +211,7 @@ export abstract class BaseDrizzleAdapter
   async ensureEmbeddingDimension(dimension: number): Promise<void> {
     const mapped = DIMENSION_MAP[dimension as keyof typeof DIMENSION_MAP];
     if (!mapped) {
-      const supported = Object.keys(DIMENSION_MAP).join(', ');
+      const supported = Object.keys(DIMENSION_MAP).join(", ");
       throw new Error(
         `Unsupported embedding dimension: ${dimension}. Supported dimensions: ${supported}`
       );
@@ -289,7 +296,7 @@ export abstract class BaseDrizzleAdapter
 
   async getEntitiesForRooms(
     roomIds: UUID[],
-    includeComponents?: boolean,
+    includeComponents?: boolean
   ): Promise<Array<{ roomId: UUID; entities: Entity[] }>> {
     return this.withDatabase(async () => {
       const result: Array<{ roomId: UUID; entities: Entity[] }> = [];
@@ -298,7 +305,7 @@ export abstract class BaseDrizzleAdapter
           this.db,
           this.agentId,
           roomId,
-          includeComponents,
+          includeComponents
         );
         result.push({ roomId, entities });
       }
@@ -362,12 +369,14 @@ export abstract class BaseDrizzleAdapter
   // Component Methods
   // ===============================
 
-  async getComponentsByNaturalKeys(keys: Array<{
-    entityId: UUID;
-    type: string;
-    worldId?: UUID;
-    sourceEntityId?: UUID;
-  }>): Promise<(Component | null)[]> {
+  async getComponentsByNaturalKeys(
+    keys: Array<{
+      entityId: UUID;
+      type: string;
+      worldId?: UUID;
+      sourceEntityId?: UUID;
+    }>
+  ): Promise<(Component | null)[]> {
     return this.withDatabase(async () => {
       const result: (Component | null)[] = [];
       for (const k of keys) {
@@ -376,7 +385,7 @@ export abstract class BaseDrizzleAdapter
           k.entityId,
           k.type,
           k.worldId,
-          k.sourceEntityId,
+          k.sourceEntityId
         );
         result.push(c);
       }
@@ -387,17 +396,12 @@ export abstract class BaseDrizzleAdapter
   async getComponentsForEntities(
     entityIds: UUID[],
     worldId?: UUID,
-    sourceEntityId?: UUID,
+    sourceEntityId?: UUID
   ): Promise<Component[]> {
     return this.withDatabase(async () => {
       const out: Component[] = [];
       for (const entityId of entityIds) {
-        const comps = await stores.getComponents(
-          this.db,
-          entityId,
-          worldId,
-          sourceEntityId,
-        );
+        const comps = await stores.getComponents(this.db, entityId, worldId, sourceEntityId);
         out.push(...comps);
       }
       return out;
@@ -409,7 +413,7 @@ export abstract class BaseDrizzleAdapter
     entityId: UUID,
     type: string,
     worldId?: UUID,
-    sourceEntityId?: UUID,
+    sourceEntityId?: UUID
   ): Promise<Component | null> {
     const [c] = await this.getComponentsByNaturalKeys([
       { entityId, type, worldId, sourceEntityId },
@@ -418,11 +422,7 @@ export abstract class BaseDrizzleAdapter
   }
 
   /** Single-component convenience for tests and callers. */
-  async getComponents(
-    entityId: UUID,
-    worldId?: UUID,
-    sourceEntityId?: UUID,
-  ): Promise<Component[]> {
+  async getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]> {
     return this.getComponentsForEntities([entityId], worldId, sourceEntityId);
   }
 
@@ -430,7 +430,7 @@ export abstract class BaseDrizzleAdapter
   async patchComponent(
     componentId: UUID,
     ops: import("@elizaos/core").PatchOp[],
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<void> {
     await this.patchComponents([{ componentId, ops }]);
   }
@@ -454,14 +454,14 @@ export abstract class BaseDrizzleAdapter
 
   async upsertComponents(
     components: Component[],
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<void> {
     return this.withDatabase(() => stores.upsertComponents(this.db, components));
   }
 
   async patchComponents(
     updates: Array<{ componentId: UUID; ops: import("@elizaos/core").PatchOp[] }>,
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<void> {
     if (updates.length === 0) return;
     return this.withDatabase(async () => {
@@ -488,8 +488,8 @@ export abstract class BaseDrizzleAdapter
     roomId?: UUID;
     worldId?: UUID;
     metadata?: Record<string, unknown>;
-    orderBy?: 'createdAt';
-    orderDirection?: 'asc' | 'desc';
+    orderBy?: "createdAt";
+    orderDirection?: "asc" | "desc";
   }): Promise<Memory[]> {
     return this.withEntityContext(params.entityId ?? null, (tx) =>
       stores.getMemories(tx, this.embeddingDimension, params)
@@ -501,9 +501,7 @@ export abstract class BaseDrizzleAdapter
     tableName: string;
     limit?: number;
   }): Promise<Memory[]> {
-    return this.withDatabase(() =>
-      stores.getMemoriesByRoomIds(this.db, this.agentId, params)
-    );
+    return this.withDatabase(() => stores.getMemoriesByRoomIds(this.db, this.agentId, params));
   }
 
   async getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]> {
@@ -563,27 +561,29 @@ export abstract class BaseDrizzleAdapter
   }
 
   // Batch memory methods
-  async createMemories(memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>): Promise<UUID[]> {
+  async createMemories(
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
+  ): Promise<UUID[]> {
     return this.withDatabase(() =>
       stores.createMemories(this.db, this.agentId, this.embeddingDimension, memories)
     );
   }
 
-  async updateMemories(memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>): Promise<void> {
+  async updateMemories(
+    memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>
+  ): Promise<void> {
     return this.withDatabase(() =>
       stores.updateMemories(this.db, this.embeddingDimension, memories)
     );
   }
 
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
-    return this.withDatabase(() =>
-      stores.deleteMemories(this.db, memoryIds)
-    );
+    return this.withDatabase(() => stores.deleteMemories(this.db, memoryIds));
   }
 
   async upsertMemories(
     memories: Array<{ memory: Memory; tableName: string }>,
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<void> {
     return this.withDatabase(() =>
       stores.upsertMemories(this.db, this.agentId, this.embeddingDimension, memories)
@@ -606,9 +606,7 @@ export abstract class BaseDrizzleAdapter
     agentId?: UUID;
     metadata?: Record<string, unknown>;
   }): Promise<number> {
-    return this.withDatabase(() =>
-      stores.countMemories(this.db, params, undefined, undefined)
-    );
+    return this.withDatabase(() => stores.countMemories(this.db, params, undefined, undefined));
   }
 
   async getMemoriesByWorldId(params: {
@@ -668,7 +666,9 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.getLogsByIds(this.db, logIds));
   }
 
-  async createLogs(params: Array<{ body: LogBody; entityId: UUID; roomId: UUID; type: string }>): Promise<void> {
+  async createLogs(
+    params: Array<{ body: LogBody; entityId: UUID; roomId: UUID; type: string }>
+  ): Promise<void> {
     return this.withDatabase(() => stores.createLogs(this.db, params));
   }
 
@@ -688,11 +688,7 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.getRoomsByIds(this.db, this.agentId, roomIds));
   }
 
-  async getRoomsByWorlds(
-    worldIds: UUID[],
-    limit?: number,
-    offset?: number,
-  ): Promise<Room[]> {
+  async getRoomsByWorlds(worldIds: UUID[], limit?: number, offset?: number): Promise<Room[]> {
     return this.withDatabase(async () => {
       let all: Room[] = [];
       for (const worldId of worldIds) {
@@ -740,7 +736,6 @@ export abstract class BaseDrizzleAdapter
   // Participant Methods
   // ===============================
 
-
   async createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
     return this.withDatabase(() =>
       stores.createRoomParticipants(this.db, this.agentId, entityIds, roomId)
@@ -759,7 +754,7 @@ export abstract class BaseDrizzleAdapter
   }
 
   async getParticipantsForRooms(
-    roomIds: UUID[],
+    roomIds: UUID[]
   ): Promise<Array<{ roomId: UUID; entityIds: UUID[] }>> {
     return this.withDatabase(async () => {
       const result: Array<{ roomId: UUID; entityIds: UUID[] }> = [];
@@ -771,9 +766,7 @@ export abstract class BaseDrizzleAdapter
     });
   }
 
-  async areRoomParticipants(
-    pairs: Array<{ roomId: UUID; entityId: UUID }>,
-  ): Promise<boolean[]> {
+  async areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]> {
     return this.withDatabase(async () => {
       const result: boolean[] = [];
       for (const { roomId, entityId } of pairs) {
@@ -785,28 +778,25 @@ export abstract class BaseDrizzleAdapter
   }
 
   async getParticipantUserStates(
-    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+    pairs: Array<{ roomId: UUID; entityId: UUID }>
   ): Promise<("FOLLOWED" | "MUTED" | null)[]> {
     return this.withDatabase(async () => {
       const result: ("FOLLOWED" | "MUTED" | null)[] = [];
       for (const { roomId, entityId } of pairs) {
-        const state = await stores.getParticipantUserState(
-          this.db,
-          this.agentId,
-          roomId,
-          entityId,
-        );
+        const state = await stores.getParticipantUserState(this.db, this.agentId, roomId, entityId);
         result.push(state);
       }
       return result;
     });
   }
 
-  async updateParticipantUserStates(updates: Array<{
-    roomId: UUID;
-    entityId: UUID;
-    state: "FOLLOWED" | "MUTED" | null;
-  }>): Promise<void> {
+  async updateParticipantUserStates(
+    updates: Array<{
+      roomId: UUID;
+      entityId: UUID;
+      state: "FOLLOWED" | "MUTED" | null;
+    }>
+  ): Promise<void> {
     return this.withDatabase(async () => {
       for (const u of updates) {
         await stores.updateParticipantUserState(
@@ -814,7 +804,7 @@ export abstract class BaseDrizzleAdapter
           this.agentId,
           u.roomId,
           u.entityId,
-          u.state,
+          u.state
         );
       }
     });
@@ -822,7 +812,7 @@ export abstract class BaseDrizzleAdapter
 
   async getParticipantUserState(
     roomId: UUID,
-    entityId: UUID,
+    entityId: UUID
   ): Promise<"FOLLOWED" | "MUTED" | null> {
     const [state] = await this.getParticipantUserStates([{ roomId, entityId }]);
     return state ?? null;
@@ -831,7 +821,7 @@ export abstract class BaseDrizzleAdapter
   async updateParticipantUserState(
     roomId: UUID,
     entityId: UUID,
-    state: "FOLLOWED" | "MUTED" | null,
+    state: "FOLLOWED" | "MUTED" | null
   ): Promise<void> {
     await this.updateParticipantUserStates([{ roomId, entityId, state }]);
   }
@@ -839,21 +829,25 @@ export abstract class BaseDrizzleAdapter
   async setParticipantUserState(
     roomId: UUID,
     entityId: UUID,
-    state: "FOLLOWED" | "MUTED" | null,
+    state: "FOLLOWED" | "MUTED" | null
   ): Promise<void> {
     await this.updateParticipantUserStates([{ roomId, entityId, state }]);
   }
 
   // Batch participant methods
-  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
+  async deleteParticipants(
+    participants: Array<{ entityId: UUID; roomId: UUID }>
+  ): Promise<boolean> {
     return this.withDatabase(() => stores.deleteParticipants(this.db, this.agentId, participants));
   }
 
-  async updateParticipants(participants: Array<{
-    entityId: UUID;
-    roomId: UUID;
-    updates: Partial<Participant>;
-  }>): Promise<void> {
+  async updateParticipants(
+    participants: Array<{
+      entityId: UUID;
+      roomId: UUID;
+      updates: Partial<Participant>;
+    }>
+  ): Promise<void> {
     return this.withDatabase(() => stores.updateParticipants(this.db, this.agentId, participants));
   }
 
@@ -862,7 +856,7 @@ export abstract class BaseDrizzleAdapter
   // ===============================
 
   async getRelationshipsByPairs(
-    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
+    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>
   ): Promise<(Relationship | null)[]> {
     return this.withDatabase(async () => {
       const result: (Relationship | null)[] = [];
@@ -898,12 +892,14 @@ export abstract class BaseDrizzleAdapter
   }
 
   // Batch relationship methods
-  async createRelationships(relationships: Array<{
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: Metadata;
-  }>): Promise<UUID[]> {
+  async createRelationships(
+    relationships: Array<{
+      sourceEntityId: UUID;
+      targetEntityId: UUID;
+      tags?: string[];
+      metadata?: Metadata;
+    }>
+  ): Promise<UUID[]> {
     return this.withDatabase(() =>
       stores.createRelationships(this.db, this.agentId, relationships)
     );
@@ -1047,9 +1043,7 @@ export abstract class BaseDrizzleAdapter
   }
 
   async getAgentsForMessageServer(messageServerId: UUID): Promise<UUID[]> {
-    return this.withDatabase(() =>
-      stores.getAgentsForMessageServer(this.db, messageServerId)
-    );
+    return this.withDatabase(() => stores.getAgentsForMessageServer(this.db, messageServerId));
   }
 
   async removeAgentFromMessageServer(messageServerId: UUID, agentId: UUID): Promise<void> {
@@ -1103,9 +1097,7 @@ export abstract class BaseDrizzleAdapter
       updatedAt: Date;
     }>
   > {
-    return this.withDatabase(() =>
-      stores.getChannelsForMessageServer(this.db, messageServerId)
-    );
+    return this.withDatabase(() => stores.getChannelsForMessageServer(this.db, messageServerId));
   }
 
   async getChannelDetails(channelId: UUID): Promise<{
@@ -1150,9 +1142,7 @@ export abstract class BaseDrizzleAdapter
   }
 
   async addChannelParticipants(channelId: UUID, entityIds: UUID[]): Promise<void> {
-    return this.withDatabase(() =>
-      stores.addChannelParticipants(this.db, channelId, entityIds)
-    );
+    return this.withDatabase(() => stores.addChannelParticipants(this.db, channelId, entityIds));
   }
 
   async getChannelParticipants(channelId: UUID): Promise<UUID[]> {
@@ -1160,9 +1150,7 @@ export abstract class BaseDrizzleAdapter
   }
 
   async isChannelParticipant(channelId: UUID, entityId: UUID): Promise<boolean> {
-    return this.withDatabase(() =>
-      stores.isChannelParticipant(this.db, channelId, entityId)
-    );
+    return this.withDatabase(() => stores.isChannelParticipant(this.db, channelId, entityId));
   }
 
   // ===============================
@@ -1291,10 +1279,11 @@ export abstract class BaseDrizzleAdapter
   // ===============================
 
   async getPairingRequests(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>
   ): Promise<Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }>> {
     return this.withDatabase(async () => {
-      const result: Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }> = [];
+      const result: Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }> =
+        [];
       for (const { channel, agentId } of queries) {
         const requests = await stores.getPairingRequests(this.db, channel, agentId);
         result.push({ channel, agentId, requests });
@@ -1304,10 +1293,14 @@ export abstract class BaseDrizzleAdapter
   }
 
   async getPairingAllowlists(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>
   ): Promise<Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }>> {
     return this.withDatabase(async () => {
-      const result: Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }> = [];
+      const result: Array<{
+        channel: PairingChannel;
+        agentId: UUID;
+        entries: PairingAllowlistEntry[];
+      }> = [];
       for (const { channel, agentId } of queries) {
         const entries = await stores.getPairingAllowlist(this.db, channel, agentId);
         result.push({ channel, agentId, entries });
@@ -1359,7 +1352,7 @@ export abstract class BaseDrizzleAdapter
 
   async transaction<T>(
     callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>,
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<T> {
     return this.db.transaction(async (drizzleTx) => {
       const proxy = Object.create(this) as BaseDrizzleAdapter;

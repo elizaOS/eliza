@@ -1,5 +1,13 @@
-import { type Entity, type Metadata, type Participant, type ParticipantUpdateFields, type ParticipantUserState, type UUID, logger } from "@elizaos/core";
-import { and, eq, or, sql, type SQL } from "drizzle-orm";
+import {
+  type Entity,
+  logger,
+  type Metadata,
+  type Participant,
+  type ParticipantUpdateFields,
+  type ParticipantUserState,
+  type UUID,
+} from "@elizaos/core";
+import { and, eq, or, type SQL, sql } from "drizzle-orm";
 import { entityTable, participantTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
 
@@ -103,10 +111,7 @@ export async function getParticipantsForEntity(
  * @param {UUID} roomId - The ID of the room to retrieve participants for.
  * @returns {Promise<UUID[]>} A Promise that resolves to an array of entity IDs.
  */
-export async function getParticipantsForRoom(
-  db: DrizzleDatabase,
-  roomId: UUID
-): Promise<UUID[]> {
+export async function getParticipantsForRoom(db: DrizzleDatabase, roomId: UUID): Promise<UUID[]> {
   const result = await db
     .select({ entityId: participantTable.entityId })
     .from(participantTable)
@@ -243,20 +248,12 @@ export async function deleteParticipants(
   try {
     // Build compound OR conditions for all (entityId, roomId) pairs
     const pairConditions = participants.map(({ entityId, roomId }) =>
-      and(
-        eq(participantTable.entityId, entityId),
-        eq(participantTable.roomId, roomId)
-      )
+      and(eq(participantTable.entityId, entityId), eq(participantTable.roomId, roomId))
     );
 
     await db
       .delete(participantTable)
-      .where(
-        and(
-          eq(participantTable.agentId, agentId),
-          or(...pairConditions)
-        )
-      );
+      .where(and(eq(participantTable.agentId, agentId), or(...pairConditions)));
 
     return true;
   } catch (error) {
@@ -275,16 +272,16 @@ export async function deleteParticipants(
 
 /**
  * Update participants (batch)
- * 
+ *
  * WHY: Participants have fields beyond roomState (metadata, lastSeenAt, etc.).
  * This provides general-purpose participant updates.
- * 
+ *
  * WHY CASE expression: Single UPDATE with CASE for each field is more efficient
  * than N individual UPDATE statements.
- * 
+ *
  * WHY composite key: Participant table's PK is (entityId, roomId, agentId).
  * Each update must specify all key fields.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {UUID} agentId - The agent ID
  * @param {Array<{ entityId: UUID; roomId: UUID; updates: ParticipantUpdateFields }>} participants - Participant updates
@@ -301,51 +298,62 @@ export async function updateParticipants(
   if (participants.length === 0) return;
 
   // Build CASE expressions for each field being updated
-  const hasRoomStateUpdates = participants.some(p => 'roomState' in p.updates);
-  const hasMetadataUpdates = participants.some(p => 'metadata' in p.updates);
-  
+  const hasRoomStateUpdates = participants.some((p) => "roomState" in p.updates);
+  const hasMetadataUpdates = participants.some((p) => "metadata" in p.updates);
+
   const setClauses: SQL<unknown>[] = [];
-  
+
   if (hasRoomStateUpdates) {
     const roomStateCases = participants
-      .filter((p): p is typeof p & { updates: ParticipantUpdateFields & { roomState: ParticipantUserState } } => 'roomState' in p.updates)
-      .map(p => sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${p.updates.roomState}`);
-    
+      .filter(
+        (
+          p
+        ): p is typeof p & {
+          updates: ParticipantUpdateFields & { roomState: ParticipantUserState };
+        } => "roomState" in p.updates
+      )
+      .map(
+        (p) =>
+          sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${p.updates.roomState}`
+      );
+
     if (roomStateCases.length > 0) {
-      setClauses.push(sql`${participantTable.roomState} = CASE ${sql.join(roomStateCases, sql` `)} ELSE ${participantTable.roomState} END`);
+      setClauses.push(
+        sql`${participantTable.roomState} = CASE ${sql.join(roomStateCases, sql` `)} ELSE ${participantTable.roomState} END`
+      );
     }
   }
-  
+
   if (hasMetadataUpdates) {
     const metadataCases = participants
-      .filter((p): p is typeof p & { updates: ParticipantUpdateFields & { metadata: Record<string, unknown> } } => 'metadata' in p.updates)
-      .map(p => {
+      .filter(
+        (
+          p
+        ): p is typeof p & {
+          updates: ParticipantUpdateFields & { metadata: Record<string, unknown> };
+        } => "metadata" in p.updates
+      )
+      .map((p) => {
         const jsonString = JSON.stringify(p.updates.metadata);
         return sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${jsonString}::jsonb`;
       });
-    
+
     if (metadataCases.length > 0) {
-      setClauses.push(sql`${participantTable.metadata} = CASE ${sql.join(metadataCases, sql` `)} ELSE ${participantTable.metadata} END`);
+      setClauses.push(
+        sql`${participantTable.metadata} = CASE ${sql.join(metadataCases, sql` `)} ELSE ${participantTable.metadata} END`
+      );
     }
   }
-  
+
   if (setClauses.length === 0) return;
-  
+
   // Build OR condition for all (entityId, roomId) pairs
   const pairConditions = participants.map(({ entityId, roomId }) =>
-    and(
-      eq(participantTable.entityId, entityId),
-      eq(participantTable.roomId, roomId)
-    )
+    and(eq(participantTable.entityId, entityId), eq(participantTable.roomId, roomId))
   );
-  
+
   await db
     .update(participantTable)
     .set(sql`${sql.join(setClauses, sql`, `)}`)
-    .where(
-      and(
-        eq(participantTable.agentId, agentId),
-        or(...pairConditions)
-      )
-    );
+    .where(and(eq(participantTable.agentId, agentId), or(...pairConditions)));
 }

@@ -21,7 +21,7 @@ export interface DialectAdapter {
   createTable(
     name: string,
     columns: Record<string, any>,
-    constraintsFn?: (table: any) => any[],
+    constraintsFn?: (table: any) => any[]
   ): any;
 
   /** Map one abstract SchemaColumn to a concrete column builder. */
@@ -47,7 +47,7 @@ export interface DialectAdapter {
   buildForeignKey?(
     name: string,
     onUpdate?: string,
-    onDelete?: string,
+    onDelete?: string
   ): (columns: any[], targetTable: any, targetColumns: any[]) => any;
 
   /**
@@ -63,7 +63,7 @@ export interface DialectAdapter {
   buildExpressionIndex?(
     name: string,
     expr: any,
-    options?: { method?: string; opClass?: string; isUnique?: boolean },
+    options?: { method?: string; opClass?: string; isUnique?: boolean }
   ): any;
 
   /**

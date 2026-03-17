@@ -1,15 +1,7 @@
-import {
-  type PairingAllowlistEntry,
-  type PairingChannel,
-  type PairingRequest,
-  type UUID,
-} from "@elizaos/core";
+import type { PairingAllowlistEntry, PairingChannel, PairingRequest, UUID } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { v4 } from "uuid";
-import {
-  pairingAllowlistTable,
-  pairingRequestTable,
-} from "../tables";
+import { pairingAllowlistTable, pairingRequestTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
 
 // ===============================
@@ -27,9 +19,7 @@ export async function getPairingRequests(
   const results = await db
     .select()
     .from(pairingRequestTable)
-    .where(
-      and(eq(pairingRequestTable.channel, channel), eq(pairingRequestTable.agentId, agentId))
-    )
+    .where(and(eq(pairingRequestTable.channel, channel), eq(pairingRequestTable.agentId, agentId)))
     .orderBy(pairingRequestTable.createdAt);
 
   return results.map((row) => ({
@@ -84,10 +74,7 @@ export async function updatePairingRequest(
 /**
  * Delete a pairing request by ID.
  */
-export async function deletePairingRequest(
-  db: DrizzleDatabase,
-  id: UUID
-): Promise<void> {
+export async function deletePairingRequest(db: DrizzleDatabase, id: UUID): Promise<void> {
   await db.delete(pairingRequestTable).where(eq(pairingRequestTable.id, id));
 }
 
@@ -107,10 +94,7 @@ export async function getPairingAllowlist(
     .select()
     .from(pairingAllowlistTable)
     .where(
-      and(
-        eq(pairingAllowlistTable.channel, channel),
-        eq(pairingAllowlistTable.agentId, agentId)
-      )
+      and(eq(pairingAllowlistTable.channel, channel), eq(pairingAllowlistTable.agentId, agentId))
     )
     .orderBy(pairingAllowlistTable.createdAt);
 
@@ -150,10 +134,7 @@ export async function createPairingAllowlistEntry(
 /**
  * Delete an allowlist entry by ID.
  */
-export async function deletePairingAllowlistEntry(
-  db: DrizzleDatabase,
-  id: UUID
-): Promise<void> {
+export async function deletePairingAllowlistEntry(db: DrizzleDatabase, id: UUID): Promise<void> {
   await db.delete(pairingAllowlistTable).where(eq(pairingAllowlistTable.id, id));
 }
 
@@ -202,8 +183,8 @@ export async function updatePairingRequests(
 
   const ids = requests.map((r) => r.id);
 
-  const lastSeenCases = requests.map((r) =>
-    sql`WHEN ${pairingRequestTable.id} = ${r.id} THEN ${r.lastSeenAt}`
+  const lastSeenCases = requests.map(
+    (r) => sql`WHEN ${pairingRequestTable.id} = ${r.id} THEN ${r.lastSeenAt}`
   );
 
   const metaCases = requests.map((r) => {
@@ -223,10 +204,7 @@ export async function updatePairingRequests(
 /**
  * Delete multiple pairing requests.
  */
-export async function deletePairingRequests(
-  db: DrizzleDatabase,
-  ids: UUID[]
-): Promise<void> {
+export async function deletePairingRequests(db: DrizzleDatabase, ids: UUID[]): Promise<void> {
   if (ids.length === 0) return;
 
   await db.delete(pairingRequestTable).where(inArray(pairingRequestTable.id, ids));
@@ -265,9 +243,9 @@ export async function createPairingAllowlistEntries(
 
 /**
  * Update pairing allowlist entries (batch) - MySQL version
- * 
+ *
  * WHY: Same rationale as PostgreSQL - allowlist config changes over time.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {PairingAllowlistEntry[]} entries - Full entries (ID required for each)
  */
@@ -277,19 +255,19 @@ export async function updatePairingAllowlistEntries(
 ): Promise<void> {
   if (entries.length === 0) return;
 
-  const ids = entries.map(e => e.id);
-  
-  const channelCases = entries.map(e => 
-    sql`WHEN ${pairingAllowlistTable.id} = ${e.id} THEN ${e.channel}`
+  const ids = entries.map((e) => e.id);
+
+  const channelCases = entries.map(
+    (e) => sql`WHEN ${pairingAllowlistTable.id} = ${e.id} THEN ${e.channel}`
   );
-  const senderIdCases = entries.map(e => 
-    sql`WHEN ${pairingAllowlistTable.id} = ${e.id} THEN ${e.senderId}`
+  const senderIdCases = entries.map(
+    (e) => sql`WHEN ${pairingAllowlistTable.id} = ${e.id} THEN ${e.senderId}`
   );
-  const metadataCases = entries.map(e => {
+  const metadataCases = entries.map((e) => {
     const jsonString = JSON.stringify(e.metadata || {});
     return sql`WHEN ${pairingAllowlistTable.id} = ${e.id} THEN CAST(${jsonString} AS JSON)`;
   });
-  
+
   await db
     .update(pairingAllowlistTable)
     .set({

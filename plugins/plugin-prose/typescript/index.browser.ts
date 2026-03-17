@@ -33,7 +33,7 @@ function createBrowserStubAction(name: string, description: string): Action {
       _message: Memory,
       _state: State | undefined,
       _options: Record<string, unknown>,
-      callback?: (response: { text: string; actions: string[] }) => void,
+      callback?: (response: { text: string; actions: string[] }) => void
     ) => {
       if (callback) {
         callback({

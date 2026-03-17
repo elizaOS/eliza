@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
-import { getMysqlRow, getMysqlRows } from "../types";
 import type { DrizzleDB, SchemaSnapshot } from "../types";
+import { getMysqlRow, getMysqlRows } from "../types";
 
 export class SnapshotStorage {
   constructor(private db: DrizzleDB) {}
@@ -29,9 +29,7 @@ export class SnapshotStorage {
     }
 
     // MySQL JSON columns may return a string or parsed object
-    return typeof row.snapshot === "string"
-      ? JSON.parse(row.snapshot)
-      : row.snapshot;
+    return typeof row.snapshot === "string" ? JSON.parse(row.snapshot) : row.snapshot;
   }
 
   async getLatestSnapshot(pluginName: string): Promise<SchemaSnapshot | null> {
@@ -48,9 +46,7 @@ export class SnapshotStorage {
       return null;
     }
 
-    return typeof row.snapshot === "string"
-      ? JSON.parse(row.snapshot)
-      : row.snapshot;
+    return typeof row.snapshot === "string" ? JSON.parse(row.snapshot) : row.snapshot;
   }
 
   async getAllSnapshots(pluginName: string): Promise<SchemaSnapshot[]> {
@@ -63,9 +59,7 @@ export class SnapshotStorage {
 
     const rows = getMysqlRows<{ snapshot: SchemaSnapshot | string }>(result);
     return rows.map((row) =>
-      typeof row.snapshot === "string"
-        ? JSON.parse(row.snapshot)
-        : row.snapshot
+      typeof row.snapshot === "string" ? JSON.parse(row.snapshot) : row.snapshot
     );
   }
 }

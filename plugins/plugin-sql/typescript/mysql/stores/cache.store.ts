@@ -3,8 +3,6 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { cacheTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
 
-
-
 // Batch cache operations
 
 /**
@@ -70,7 +68,7 @@ export async function setCaches<T>(
       .values(values)
       .onDuplicateKeyUpdate({
         set: {
-          value: sql.raw('VALUES(`value`)'),
+          value: sql.raw("VALUES(`value`)"),
         },
       });
 
@@ -100,7 +98,9 @@ export async function deleteCaches(
   if (keys.length === 0) return true;
 
   try {
-    await db.delete(cacheTable).where(and(eq(cacheTable.agentId, agentId), inArray(cacheTable.key, keys)));
+    await db
+      .delete(cacheTable)
+      .where(and(eq(cacheTable.agentId, agentId), inArray(cacheTable.key, keys)));
 
     return true;
   } catch (error) {

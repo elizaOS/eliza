@@ -14,13 +14,13 @@ import { mysqlTable, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * SQL Plugin Store Implementation (MySQL)
- * 
+ *
  * WHY: Provides a generic CRUD interface for plugin tables without requiring
  * plugins to know about Drizzle ORM specifics.
- * 
+ *
  * DESIGN: Creates Drizzle table definitions dynamically from PluginTableSchema,
  * then uses standard Drizzle operations for all queries.
- * 
+ *
  * NOTE: This is the MySQL-specific version. The implementation is nearly identical
  * to the PG version, but uses MySQL types and handles MySQL-specific SQL differences.
  */
@@ -36,7 +36,7 @@ export class SqlPluginStore implements IPluginStore {
 
   /**
    * Get prefixed table name
-   * 
+   *
    * WHY: Namespace plugin tables to avoid conflicts
    * Example: plugin "goals", table "goals" -> "goals_goals"
    */
@@ -46,13 +46,13 @@ export class SqlPluginStore implements IPluginStore {
 
   /**
    * Get or create Drizzle table definition
-   * 
+   *
    * WHY: We need Drizzle table objects for queries, but we only have
    * the schema definition. Create them dynamically and cache.
    */
   private getTable(tableName: string): MySqlTable {
     const fullName = this.getTableName(tableName);
-    
+
     if (this.tableCache.has(fullName)) {
       return this.tableCache.get(fullName)!;
     }
@@ -87,7 +87,12 @@ export class SqlPluginStore implements IPluginStore {
         // Handle operators
         if ("$in" in value && Array.isArray(value.$in)) {
           // MySQL doesn't have = ANY() syntax, use IN() instead
-          conditions.push(sql`${column} IN (${sql.join(value.$in.map((v: any) => sql`${v}`), sql`, `)})`);
+          conditions.push(
+            sql`${column} IN (${sql.join(
+              value.$in.map((v: any) => sql`${v}`),
+              sql`, `
+            )})`
+          );
         } else if ("$gt" in value) {
           conditions.push(sql`${column} > ${value.$gt}`);
         } else if ("$gte" in value) {
@@ -122,7 +127,7 @@ export class SqlPluginStore implements IPluginStore {
   async query<T = Record<string, unknown>>(
     table: string,
     filter?: PluginFilter,
-    options?: PluginQueryOptions,
+    options?: PluginQueryOptions
   ): Promise<T[]> {
     const fullTableName = this.getTableName(table);
     const drizzleTable = this.getTable(table);
@@ -166,18 +171,12 @@ export class SqlPluginStore implements IPluginStore {
     }
   }
 
-  async getById<T = Record<string, unknown>>(
-    table: string,
-    id: UUID,
-  ): Promise<T | null> {
+  async getById<T = Record<string, unknown>>(table: string, id: UUID): Promise<T | null> {
     const results = await this.query<T>(table, { id: id as string });
     return results[0] || null;
   }
 
-  async insert(
-    table: string,
-    rows: Record<string, unknown>[],
-  ): Promise<UUID[]> {
+  async insert(table: string, rows: Record<string, unknown>[]): Promise<UUID[]> {
     if (rows.length === 0) return [];
 
     const fullTableName = this.getTableName(table);
@@ -187,8 +186,12 @@ export class SqlPluginStore implements IPluginStore {
       // Use raw SQL for insert since we don't have full column definitions
       const columns = Object.keys(rows[0]);
       const columnNames = columns.map((c) => sql.identifier(c));
-      const values = rows.map((row) => 
-        sql`(${sql.join(columns.map((c) => sql`${row[c]}`), sql`, `)})`
+      const values = rows.map(
+        (row) =>
+          sql`(${sql.join(
+            columns.map((c) => sql`${row[c]}`),
+            sql`, `
+          )})`
       );
 
       // MySQL doesn't support RETURNING, so extract IDs from the input rows
@@ -198,7 +201,7 @@ export class SqlPluginStore implements IPluginStore {
       `;
 
       await this.db.execute(insertQuery);
-      
+
       // Extract IDs from input rows (they must have been provided by caller)
       return rows.map((row) => row.id as UUID);
     } catch (error) {
@@ -216,11 +219,7 @@ export class SqlPluginStore implements IPluginStore {
     }
   }
 
-  async update(
-    table: string,
-    filter: PluginFilter,
-    set: Record<string, unknown>,
-  ): Promise<number> {
+  async update(table: string, filter: PluginFilter, set: Record<string, unknown>): Promise<number> {
     const fullTableName = this.getTableName(table);
     const drizzleTable = this.getTable(table);
 
@@ -231,8 +230,8 @@ export class SqlPluginStore implements IPluginStore {
       }
 
       // Build SET clause
-      const setClauses = Object.entries(set).map(([key, value]) =>
-        sql`${sql.identifier(key)} = ${value}`
+      const setClauses = Object.entries(set).map(
+        ([key, value]) => sql`${sql.identifier(key)} = ${value}`
       );
 
       const updateQuery = sql`
@@ -242,18 +241,18 @@ export class SqlPluginStore implements IPluginStore {
       `;
 
       const result = await this.db.execute(updateQuery);
-      
+
       // MySQL returns affectedRows in the result header
       if (result && typeof result === "object") {
         // Check multiple possible locations for affected rows count
-        const affectedRows = 
-          (result as any)?.[0]?.affectedRows ?? 
-          (result as any)?.affectedRows ?? 
-          (result as any)?.rowsAffected ?? 
+        const affectedRows =
+          (result as any)?.[0]?.affectedRows ??
+          (result as any)?.affectedRows ??
+          (result as any)?.rowsAffected ??
           0;
         return Number(affectedRows);
       }
-      
+
       return 0;
     } catch (error) {
       logger.error(
@@ -269,10 +268,7 @@ export class SqlPluginStore implements IPluginStore {
     }
   }
 
-  async delete(
-    table: string,
-    filter: PluginFilter,
-  ): Promise<number> {
+  async delete(table: string, filter: PluginFilter): Promise<number> {
     const fullTableName = this.getTableName(table);
     const drizzleTable = this.getTable(table);
 
@@ -288,17 +284,17 @@ export class SqlPluginStore implements IPluginStore {
       `;
 
       const result = await this.db.execute(deleteQuery);
-      
+
       // MySQL returns affectedRows in the result header
       if (result && typeof result === "object") {
-        const affectedRows = 
-          (result as any)?.[0]?.affectedRows ?? 
-          (result as any)?.affectedRows ?? 
-          (result as any)?.rowsAffected ?? 
+        const affectedRows =
+          (result as any)?.[0]?.affectedRows ??
+          (result as any)?.affectedRows ??
+          (result as any)?.rowsAffected ??
           0;
         return Number(affectedRows);
       }
-      
+
       return 0;
     } catch (error) {
       logger.error(
@@ -314,29 +310,26 @@ export class SqlPluginStore implements IPluginStore {
     }
   }
 
-  async count(
-    table: string,
-    filter?: PluginFilter,
-  ): Promise<number> {
+  async count(table: string, filter?: PluginFilter): Promise<number> {
     const fullTableName = this.getTableName(table);
     const drizzleTable = this.getTable(table);
 
     try {
       const whereClause = this.buildWhere(drizzleTable, filter);
-      
+
       const countQuery = whereClause
         ? sql`SELECT COUNT(*) as count FROM ${sql.identifier(fullTableName)} WHERE ${whereClause}`
         : sql`SELECT COUNT(*) as count FROM ${sql.identifier(fullTableName)}`;
 
       const result = await this.db.execute(countQuery);
-      
+
       if (Array.isArray(result) && result.length > 0) {
         const row = result[0];
         if (row && typeof row === "object" && "count" in row) {
           return Number(row.count);
         }
       }
-      
+
       return 0;
     } catch (error) {
       logger.error(
@@ -355,20 +348,17 @@ export class SqlPluginStore implements IPluginStore {
 
 /**
  * Register a plugin schema in the database
- * 
+ *
  * WHY: Creates tables, columns, and indexes for a plugin's custom data.
  * Idempotent - safe to call multiple times.
  */
-export async function registerPluginSchema(
-  db: any,
-  schema: PluginSchema,
-): Promise<void> {
+export async function registerPluginSchema(db: any, schema: PluginSchema): Promise<void> {
   const { pluginName, tables } = schema;
 
   try {
     for (const table of tables) {
       const fullTableName = `${pluginName}_${table.name}`;
-      
+
       // Check if table exists in MySQL
       const tableExistsQuery = sql`
         SELECT COUNT(*) as count
@@ -376,10 +366,14 @@ export async function registerPluginSchema(
         WHERE table_schema = DATABASE()
         AND table_name = ${fullTableName}
       `;
-      
+
       const result = await db.execute(tableExistsQuery);
-      const exists = Array.isArray(result) && result[0] && 
-        typeof result[0] === "object" && "count" in result[0] && Number(result[0].count) > 0;
+      const exists =
+        Array.isArray(result) &&
+        result[0] &&
+        typeof result[0] === "object" &&
+        "count" in result[0] &&
+        Number(result[0].count) > 0;
 
       if (!exists) {
         // Create table
@@ -413,14 +407,14 @@ export async function registerPluginSchema(
 async function createPluginTable(
   db: any,
   pluginName: string,
-  table: PluginTableSchema,
+  table: PluginTableSchema
 ): Promise<void> {
   const fullTableName = `${pluginName}_${table.name}`;
-  
+
   // Build column definitions
   const columnDefs = table.columns.map((col) => {
     const parts: string[] = [col.name];
-    
+
     // Map type (MySQL-specific)
     switch (col.type) {
       case "uuid":
@@ -445,7 +439,7 @@ async function createPluginTable(
         parts.push("JSON");
         break;
     }
-    
+
     // Add constraints
     if (col.primaryKey) parts.push("PRIMARY KEY");
     if (col.notNull) parts.push("NOT NULL");
@@ -458,7 +452,7 @@ async function createPluginTable(
         parts.push(`DEFAULT ${col.default}`);
       }
     }
-    
+
     return parts.join(" ");
   });
 
@@ -476,24 +470,21 @@ async function createPluginTable(
       const indexName = `${fullTableName}_${index.name}`;
       const unique = index.unique ? "UNIQUE" : "";
       const columns = index.columns.join(", ");
-      
+
       const createIndexQuery = sql.raw(`
         CREATE ${unique} INDEX ${indexName} ON ${fullTableName} (${columns})
       `);
-      
+
       await db.execute(createIndexQuery);
     }
   }
 
-  logger.info(
-    { src: "plugin:mysql:schema", table: fullTableName },
-    "Created plugin table"
-  );
+  logger.info({ src: "plugin:mysql:schema", table: fullTableName }, "Created plugin table");
 }
 
 /**
  * Migrate an existing plugin table
- * 
+ *
  * WHY: When a plugin updates its schema, we need to apply changes.
  * For now, this is a placeholder - full migration support would diff
  * the current schema and apply ALTER TABLE statements.
@@ -501,7 +492,7 @@ async function createPluginTable(
 async function migratePluginTable(
   db: any,
   pluginName: string,
-  table: PluginTableSchema,
+  table: PluginTableSchema
 ): Promise<void> {
   // TODO: Implement schema diffing and migration
   // For now, just log that the table exists

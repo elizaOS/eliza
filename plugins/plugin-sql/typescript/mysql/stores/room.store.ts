@@ -1,13 +1,7 @@
-import { type ChannelType, type Metadata, type Room, type UUID, logger } from "@elizaos/core";
+import { type ChannelType, logger, type Metadata, type Room, type UUID } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { v4 } from "uuid";
-import {
-  embeddingTable,
-  logTable,
-  memoryTable,
-  participantTable,
-  roomTable,
-} from "../tables";
+import { embeddingTable, logTable, memoryTable, participantTable, roomTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
 
 /**
@@ -114,16 +108,19 @@ export async function createRooms(
 
   // MySQL: use INSERT ... ON DUPLICATE KEY UPDATE instead of ON CONFLICT DO NOTHING
   // and we can't use .returning() - use the IDs we generated
-  await db.insert(roomTable).values(roomsWithIds).onDuplicateKeyUpdate({ set: { id: sql`id` } });
+  await db
+    .insert(roomTable)
+    .values(roomsWithIds)
+    .onDuplicateKeyUpdate({ set: { id: sql`id` } });
   return roomsWithIds.map((r) => r.id as UUID);
 }
 
 /**
  * Upsert rooms (insert or update by ID) - MySQL version
- * 
+ *
  * WHY: Same rationale as PostgreSQL - idempotent room management for
  * ensureConnection and platform sync. MySQL uses ON DUPLICATE KEY UPDATE.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {UUID} agentId - The ID of the agent (always set for upserts)
  * @param {Room[]} rooms - Array of rooms to upsert (id, worldId required)
@@ -145,14 +142,14 @@ export async function upsertRooms(
     .values(roomsWithAgentId)
     .onDuplicateKeyUpdate({
       set: {
-        agentId: sql.raw('VALUES(`agent_id`)'),
-        worldId: sql.raw('VALUES(`world_id`)'),
-        name: sql.raw('VALUES(`name`)'),
-        channelId: sql.raw('VALUES(`channel_id`)'),
-        messageServerId: sql.raw('VALUES(`message_server_id`)'),
-        source: sql.raw('VALUES(`source`)'),
-        type: sql.raw('VALUES(`type`)'),
-        metadata: sql.raw('VALUES(`metadata`)'),
+        agentId: sql.raw("VALUES(`agent_id`)"),
+        worldId: sql.raw("VALUES(`world_id`)"),
+        name: sql.raw("VALUES(`name`)"),
+        channelId: sql.raw("VALUES(`channel_id`)"),
+        messageServerId: sql.raw("VALUES(`message_server_id`)"),
+        source: sql.raw("VALUES(`source`)"),
+        type: sql.raw("VALUES(`type`)"),
+        metadata: sql.raw("VALUES(`metadata`)"),
       },
     });
 }
@@ -194,9 +191,7 @@ export async function getRoomsForParticipants(
     .selectDistinct({ roomId: participantTable.roomId })
     .from(participantTable)
     .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
-    .where(
-      and(inArray(participantTable.entityId, entityIds), eq(roomTable.agentId, agentId))
-    );
+    .where(and(inArray(participantTable.entityId, entityIds), eq(roomTable.agentId, agentId)));
 
   return result.map((row) => row.roomId as UUID);
 }
@@ -236,9 +231,7 @@ export async function deleteRoomsByWorldId(
     const memoryIdsInRooms = memoriesInRooms.map((m) => m.id as UUID);
 
     if (memoryIdsInRooms.length > 0) {
-      await db
-        .delete(embeddingTable)
-        .where(inArray(embeddingTable.memoryId, memoryIdsInRooms));
+      await db.delete(embeddingTable).where(inArray(embeddingTable.memoryId, memoryIdsInRooms));
       await db.delete(memoryTable).where(inArray(memoryTable.id, memoryIdsInRooms));
     }
 
@@ -246,13 +239,13 @@ export async function deleteRoomsByWorldId(
 
     logger.debug(
       {
-      src: "plugin:mysql",
-      worldId,
-      roomsDeleted: roomIds.length,
-      memoriesDeleted: memoryIdsInRooms.length,
-    },
-    "World cleanup completed"
-  );
+        src: "plugin:mysql",
+        worldId,
+        roomsDeleted: roomIds.length,
+        memoriesDeleted: memoryIdsInRooms.length,
+      },
+      "World cleanup completed"
+    );
   }
 }
 
@@ -275,21 +268,14 @@ export async function updateRooms(
 
   const ids = rooms.map((r) => r.id);
 
-  const sourceCases = rooms.map(
-    (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.source}`
-  );
-  const typeCases = rooms.map(
-    (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.type}`
-  );
-  const nameCases = rooms.map(
-    (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.name ?? null}`
-  );
+  const sourceCases = rooms.map((r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.source}`);
+  const typeCases = rooms.map((r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.type}`);
+  const nameCases = rooms.map((r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.name ?? null}`);
   const worldIdCases = rooms.map(
     (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.worldId ?? null}`
   );
   const messageServerIdCases = rooms.map(
-    (r) =>
-      sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.messageServerId ?? null}`
+    (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.messageServerId ?? null}`
   );
   const channelIdCases = rooms.map(
     (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.channelId ?? null}`

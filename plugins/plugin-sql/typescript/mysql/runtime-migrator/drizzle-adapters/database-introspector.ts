@@ -403,10 +403,7 @@ export class DatabaseIntrospector {
     if (!defaultValue || defaultValue === "NULL") return undefined;
 
     // Handle CURRENT_TIMESTAMP defaults
-    if (
-      defaultValue === "CURRENT_TIMESTAMP" ||
-      defaultValue.startsWith("CURRENT_TIMESTAMP")
-    ) {
+    if (defaultValue === "CURRENT_TIMESTAMP" || defaultValue.startsWith("CURRENT_TIMESTAMP")) {
       return defaultValue;
     }
 

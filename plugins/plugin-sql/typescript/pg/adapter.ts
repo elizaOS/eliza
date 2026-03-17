@@ -1,10 +1,4 @@
-import {
-  type Agent,
-  type Entity,
-  logger,
-  type Memory,
-  type UUID,
-} from "@elizaos/core";
+import { type Agent, type Entity, logger, type Memory, type UUID } from "@elizaos/core";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { BaseDrizzleAdapter } from "../base";
 import type { PostgresConnectionManager } from "./manager";
@@ -15,7 +9,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   constructor(
     agentId: UUID,
     manager: PostgresConnectionManager,
-    _schema?: Record<string, unknown>,
+    _schema?: Record<string, unknown>
   ) {
     super(agentId);
     this.manager = manager;
@@ -28,7 +22,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
 
   public async withIsolationContext<T>(
     entityId: UUID | null,
-    callback: (tx: NodePgDatabase) => Promise<T>,
+    callback: (tx: NodePgDatabase) => Promise<T>
   ): Promise<T> {
     return await this.manager.withIsolationContext(entityId, callback);
   }
@@ -37,14 +31,8 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: {
-    serverId: UUID;
-    count?: number;
-  }): Promise<Memory[]> {
-    logger.warn(
-      { src: "plugin:sql" },
-      "getMemoriesByServerId called but not implemented",
-    );
+  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
+    logger.warn({ src: "plugin:sql" }, "getMemoriesByServerId called but not implemented");
     return [];
   }
 

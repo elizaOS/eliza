@@ -4,23 +4,13 @@ import { v4 } from "uuid";
 import { worldTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
 
-
-
 /**
  * Retrieves all worlds for a given agent from the database.
  */
-export async function getAllWorlds(
-  db: DrizzleDatabase,
-  agentId: UUID
-): Promise<World[]> {
-  const result = await db
-    .select()
-    .from(worldTable)
-    .where(eq(worldTable.agentId, agentId));
+export async function getAllWorlds(db: DrizzleDatabase, agentId: UUID): Promise<World[]> {
+  const result = await db.select().from(worldTable).where(eq(worldTable.agentId, agentId));
   return result as World[];
 }
-
-
 
 // ====== BATCH METHODS ======
 
@@ -30,10 +20,7 @@ export async function getAllWorlds(
 export async function getWorldsByIds(db: DrizzleDatabase, worldIds: UUID[]): Promise<World[]> {
   if (worldIds.length === 0) return [];
 
-  const result = await db
-    .select()
-    .from(worldTable)
-    .where(inArray(worldTable.id, worldIds));
+  const result = await db.select().from(worldTable).where(inArray(worldTable.id, worldIds));
   return result as World[];
 }
 
@@ -43,7 +30,7 @@ export async function getWorldsByIds(db: DrizzleDatabase, worldIds: UUID[]): Pro
 export async function createWorlds(db: DrizzleDatabase, worlds: World[]): Promise<UUID[]> {
   if (worlds.length === 0) return [];
 
-  const worldsWithIds = worlds.map(world => ({
+  const worldsWithIds = worlds.map((world) => ({
     ...world,
     id: world.id || (v4() as UUID),
     name: world.name || "",
@@ -51,15 +38,15 @@ export async function createWorlds(db: DrizzleDatabase, worlds: World[]): Promis
 
   // MySQL doesn't support .returning(), so return the IDs we generated
   await db.insert(worldTable).values(worldsWithIds);
-  return worldsWithIds.map(w => w.id);
+  return worldsWithIds.map((w) => w.id);
 }
 
 /**
  * Upsert worlds (insert or update by ID) - MySQL version
- * 
+ *
  * WHY: Same rationale as PostgreSQL - idempotent world initialization.
  * MySQL uses ON DUPLICATE KEY UPDATE instead of ON CONFLICT.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {World[]} worlds - Array of worlds to upsert (id required)
  */
@@ -71,9 +58,9 @@ export async function upsertWorlds(db: DrizzleDatabase, worlds: World[]): Promis
     .values(worlds)
     .onDuplicateKeyUpdate({
       set: {
-        name: sql.raw('VALUES(`name`)'),
-        type: sql.raw('VALUES(`type`)'),
-        agentId: sql.raw('VALUES(`agent_id`)'),
+        name: sql.raw("VALUES(`name`)"),
+        type: sql.raw("VALUES(`type`)"),
+        agentId: sql.raw("VALUES(`agent_id`)"),
       },
     });
 }
@@ -100,16 +87,13 @@ export async function updateWorlds(db: DrizzleDatabase, worlds: World[]): Promis
 
   const ids = worlds.map((w) => w.id);
 
-  const nameCases = worlds.map(
-    (w) => sql`WHEN ${worldTable.id} = ${w.id} THEN ${w.name ?? null}`
-  );
+  const nameCases = worlds.map((w) => sql`WHEN ${worldTable.id} = ${w.id} THEN ${w.name ?? null}`);
   const metaCases = worlds.map(
     (w) =>
       sql`WHEN ${worldTable.id} = ${w.id} THEN CAST(${JSON.stringify(w.metadata ?? null)} AS JSON)`
   );
   const msiCases = worlds.map(
-    (w) =>
-      sql`WHEN ${worldTable.id} = ${w.id} THEN ${w.messageServerId ?? null}`
+    (w) => sql`WHEN ${worldTable.id} = ${w.id} THEN ${w.messageServerId ?? null}`
   );
 
   await db

@@ -1,5 +1,6 @@
 import type {
   IPluginStore,
+  logger as Logger,
   PluginFilter,
   PluginFilterValue,
   PluginOrderBy,
@@ -7,22 +8,29 @@ import type {
   PluginSchema,
   PluginTableSchema,
   UUID,
-  logger as Logger,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { and, asc, desc, eq, gt, gte, inArray, lt, lte, type SQL, sql } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
-import { pgTable, text, uuid as pgUuid, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  integer,
+  jsonb,
+  pgTable,
+  uuid as pgUuid,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
 /**
  * SQL Plugin Store Implementation
- * 
+ *
  * WHY: Provides a generic CRUD interface for plugin tables without requiring
  * plugins to know about Drizzle ORM specifics.
- * 
+ *
  * DESIGN: Creates Drizzle table definitions dynamically from PluginTableSchema,
  * then uses standard Drizzle operations for all queries.
- * 
+ *
  * NOTE: Uses generic `any` for database type to support both PG and MySQL Drizzle instances.
  */
 export class SqlPluginStore implements IPluginStore {
@@ -41,14 +49,16 @@ export class SqlPluginStore implements IPluginStore {
 
   /**
    * Detect database dialect from Drizzle instance
-   * 
+   *
    * WHY: PostgreSQL and MySQL have different SQL syntax for operations like
    * checking if tables exist, array operations, and UPSERT
    */
   private detectDialect(db: any): "pg" | "mysql" {
     // Check for MySQL-specific properties
-    if (db.constructor.name.toLowerCase().includes("mysql") || 
-        db._.session?.constructor.name.toLowerCase().includes("mysql")) {
+    if (
+      db.constructor.name.toLowerCase().includes("mysql") ||
+      db._.session?.constructor.name.toLowerCase().includes("mysql")
+    ) {
       return "mysql";
     }
     // Default to PostgreSQL
@@ -57,7 +67,7 @@ export class SqlPluginStore implements IPluginStore {
 
   /**
    * Get prefixed table name
-   * 
+   *
    * WHY: Namespace plugin tables to avoid conflicts
    * Example: plugin "goals", table "goals" -> "goals_goals"
    */
@@ -67,13 +77,13 @@ export class SqlPluginStore implements IPluginStore {
 
   /**
    * Get or create Drizzle table definition
-   * 
+   *
    * WHY: We need Drizzle table objects for queries, but we only have
    * the schema definition. Create them dynamically and cache.
    */
   private getTable(tableName: string): PgTable {
     const fullName = this.getTableName(tableName);
-    
+
     if (this.tableCache.has(fullName)) {
       return this.tableCache.get(fullName)!;
     }
@@ -142,7 +152,7 @@ export class SqlPluginStore implements IPluginStore {
   async query<T = Record<string, unknown>>(
     table: string,
     filter?: PluginFilter,
-    options?: PluginQueryOptions,
+    options?: PluginQueryOptions
   ): Promise<T[]> {
     const fullTableName = this.getTableName(table);
     const drizzleTable = this.getTable(table);
@@ -186,18 +196,12 @@ export class SqlPluginStore implements IPluginStore {
     }
   }
 
-  async getById<T = Record<string, unknown>>(
-    table: string,
-    id: UUID,
-  ): Promise<T | null> {
+  async getById<T = Record<string, unknown>>(table: string, id: UUID): Promise<T | null> {
     const results = await this.query<T>(table, { id: id as string });
     return results[0] || null;
   }
 
-  async insert(
-    table: string,
-    rows: Record<string, unknown>[],
-  ): Promise<UUID[]> {
+  async insert(table: string, rows: Record<string, unknown>[]): Promise<UUID[]> {
     if (rows.length === 0) return [];
 
     const fullTableName = this.getTableName(table);
@@ -207,8 +211,12 @@ export class SqlPluginStore implements IPluginStore {
       // Use raw SQL for insert since we don't have full column definitions
       const columns = Object.keys(rows[0]);
       const columnNames = columns.map((c) => sql.identifier(c));
-      const values = rows.map((row) => 
-        sql`(${sql.join(columns.map((c) => sql`${row[c]}`), sql`, `)})`
+      const values = rows.map(
+        (row) =>
+          sql`(${sql.join(
+            columns.map((c) => sql`${row[c]}`),
+            sql`, `
+          )})`
       );
 
       // Handle dialect differences for RETURNING clause
@@ -220,7 +228,7 @@ export class SqlPluginStore implements IPluginStore {
         `;
 
         const result = await this.db.execute(insertQuery);
-        
+
         // Extract IDs from result
         const ids: UUID[] = [];
         if (Array.isArray(result)) {
@@ -240,7 +248,7 @@ export class SqlPluginStore implements IPluginStore {
         `;
 
         await this.db.execute(insertQuery);
-        
+
         // Extract IDs from input rows (they must have been provided by caller)
         return rows.map((row) => row.id as UUID);
       }
@@ -259,11 +267,7 @@ export class SqlPluginStore implements IPluginStore {
     }
   }
 
-  async update(
-    table: string,
-    filter: PluginFilter,
-    set: Record<string, unknown>,
-  ): Promise<number> {
+  async update(table: string, filter: PluginFilter, set: Record<string, unknown>): Promise<number> {
     const fullTableName = this.getTableName(table);
     const drizzleTable = this.getTable(table);
 
@@ -274,8 +278,8 @@ export class SqlPluginStore implements IPluginStore {
       }
 
       // Build SET clause
-      const setClauses = Object.entries(set).map(([key, value]) =>
-        sql`${sql.identifier(key)} = ${value}`
+      const setClauses = Object.entries(set).map(
+        ([key, value]) => sql`${sql.identifier(key)} = ${value}`
       );
 
       const updateQuery = sql`
@@ -285,12 +289,12 @@ export class SqlPluginStore implements IPluginStore {
       `;
 
       const result = await this.db.execute(updateQuery);
-      
+
       // Extract row count from result
       if (result && typeof result === "object" && "rowCount" in result) {
         return (result.rowCount as number) || 0;
       }
-      
+
       return 0;
     } catch (error) {
       logger.error(
@@ -306,10 +310,7 @@ export class SqlPluginStore implements IPluginStore {
     }
   }
 
-  async delete(
-    table: string,
-    filter: PluginFilter,
-  ): Promise<number> {
+  async delete(table: string, filter: PluginFilter): Promise<number> {
     const fullTableName = this.getTableName(table);
     const drizzleTable = this.getTable(table);
 
@@ -325,11 +326,11 @@ export class SqlPluginStore implements IPluginStore {
       `;
 
       const result = await this.db.execute(deleteQuery);
-      
+
       if (result && typeof result === "object" && "rowCount" in result) {
         return (result.rowCount as number) || 0;
       }
-      
+
       return 0;
     } catch (error) {
       logger.error(
@@ -345,29 +346,26 @@ export class SqlPluginStore implements IPluginStore {
     }
   }
 
-  async count(
-    table: string,
-    filter?: PluginFilter,
-  ): Promise<number> {
+  async count(table: string, filter?: PluginFilter): Promise<number> {
     const fullTableName = this.getTableName(table);
     const drizzleTable = this.getTable(table);
 
     try {
       const whereClause = this.buildWhere(drizzleTable, filter);
-      
+
       const countQuery = whereClause
         ? sql`SELECT COUNT(*) as count FROM ${sql.identifier(fullTableName)} WHERE ${whereClause}`
         : sql`SELECT COUNT(*) as count FROM ${sql.identifier(fullTableName)}`;
 
       const result = await this.db.execute(countQuery);
-      
+
       if (Array.isArray(result) && result.length > 0) {
         const row = result[0];
         if (row && typeof row === "object" && "count" in row) {
           return Number(row.count);
         }
       }
-      
+
       return 0;
     } catch (error) {
       logger.error(
@@ -389,8 +387,10 @@ export class SqlPluginStore implements IPluginStore {
  * WHY: We need different SQL syntax for PostgreSQL vs MySQL
  */
 function detectDbDialect(db: any): "pg" | "mysql" {
-  if (db.constructor.name.toLowerCase().includes("mysql") || 
-      db._.session?.constructor.name.toLowerCase().includes("mysql")) {
+  if (
+    db.constructor.name.toLowerCase().includes("mysql") ||
+    db._.session?.constructor.name.toLowerCase().includes("mysql")
+  ) {
     return "mysql";
   }
   return "pg";
@@ -398,21 +398,18 @@ function detectDbDialect(db: any): "pg" | "mysql" {
 
 /**
  * Register a plugin schema in the database
- * 
+ *
  * WHY: Creates tables, columns, and indexes for a plugin's custom data.
  * Idempotent - safe to call multiple times.
  */
-export async function registerPluginSchema(
-  db: any,
-  schema: PluginSchema,
-): Promise<void> {
+export async function registerPluginSchema(db: any, schema: PluginSchema): Promise<void> {
   const { pluginName, tables } = schema;
   const dialect = detectDbDialect(db);
 
   try {
     for (const table of tables) {
       const fullTableName = `${pluginName}_${table.name}`;
-      
+
       // Check if table exists (dialect-specific)
       let tableExistsQuery: SQL;
       if (dialect === "pg") {
@@ -432,15 +429,23 @@ export async function registerPluginSchema(
           AND table_name = ${fullTableName}
         `;
       }
-      
+
       const result = await db.execute(tableExistsQuery);
       let exists = false;
       if (dialect === "pg") {
-        exists = Array.isArray(result) && result[0] && 
-          typeof result[0] === "object" && "exists" in result[0] && result[0].exists;
+        exists =
+          Array.isArray(result) &&
+          result[0] &&
+          typeof result[0] === "object" &&
+          "exists" in result[0] &&
+          result[0].exists;
       } else {
-        exists = Array.isArray(result) && result[0] && 
-          typeof result[0] === "object" && "count" in result[0] && Number(result[0].count) > 0;
+        exists =
+          Array.isArray(result) &&
+          result[0] &&
+          typeof result[0] === "object" &&
+          "count" in result[0] &&
+          Number(result[0].count) > 0;
       }
 
       if (!exists) {
@@ -476,14 +481,14 @@ async function createPluginTable(
   db: any,
   pluginName: string,
   table: PluginTableSchema,
-  dialect: "pg" | "mysql",
+  dialect: "pg" | "mysql"
 ): Promise<void> {
   const fullTableName = `${pluginName}_${table.name}`;
-  
+
   // Build column definitions
   const columnDefs = table.columns.map((col) => {
     const parts: string[] = [col.name];
-    
+
     // Map type (dialect-specific)
     switch (col.type) {
       case "uuid":
@@ -508,7 +513,7 @@ async function createPluginTable(
         parts.push(dialect === "pg" ? "JSONB" : "JSON");
         break;
     }
-    
+
     // Add constraints
     if (col.primaryKey) parts.push("PRIMARY KEY");
     if (col.notNull) parts.push("NOT NULL");
@@ -521,7 +526,7 @@ async function createPluginTable(
         parts.push(`DEFAULT ${col.default}`);
       }
     }
-    
+
     return parts.join(" ");
   });
 
@@ -539,24 +544,21 @@ async function createPluginTable(
       const indexName = `${fullTableName}_${index.name}`;
       const unique = index.unique ? "UNIQUE" : "";
       const columns = index.columns.join(", ");
-      
+
       const createIndexQuery = sql.raw(`
         CREATE ${unique} INDEX ${indexName} ON ${fullTableName} (${columns})
       `);
-      
+
       await db.execute(createIndexQuery);
     }
   }
 
-  logger.info(
-    { src: "plugin:sql:schema", table: fullTableName },
-    "Created plugin table"
-  );
+  logger.info({ src: "plugin:sql:schema", table: fullTableName }, "Created plugin table");
 }
 
 /**
  * Migrate an existing plugin table
- * 
+ *
  * WHY: When a plugin updates its schema, we need to apply changes.
  * For now, this is a placeholder - full migration support would diff
  * the current schema and apply ALTER TABLE statements.
@@ -565,7 +567,7 @@ async function migratePluginTable(
   db: any,
   pluginName: string,
   table: PluginTableSchema,
-  dialect: "pg" | "mysql",
+  dialect: "pg" | "mysql"
 ): Promise<void> {
   // TODO: Implement schema diffing and migration
   // For now, just log that the table exists

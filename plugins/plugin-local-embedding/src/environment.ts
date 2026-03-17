@@ -47,14 +47,17 @@ export function validateConfig(): Config {
 
     const validatedConfig = configSchema.parse(configToParse);
 
-    logger.info(`Using local AI configuration: ${JSON.stringify(validatedConfig)}`);
+    logger.info(
+      `Using local AI configuration: ${JSON.stringify(validatedConfig)}`,
+    );
 
     return validatedConfig;
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessages = error.issues
-        .map((err: z.ZodIssue) =>
-          `${err.path.map(String).join(".")}: ${err.message}`,
+        .map(
+          (err: z.ZodIssue) =>
+            `${err.path.map(String).join(".")}: ${err.message}`,
         )
         .join("\n");
       logger.error(`Zod validation failed: ${errorMessages}`);

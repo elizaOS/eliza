@@ -84,7 +84,6 @@ export interface ParsedDirectives {
   hasModelDirective: boolean;
   rawModelDirective?: string;
   rawModelProfile?: string;
-
 }
 
 /**

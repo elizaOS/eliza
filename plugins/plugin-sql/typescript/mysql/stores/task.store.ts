@@ -1,12 +1,7 @@
-import {
-  type Task,
-  type TaskMetadata,
-  type UUID,
-} from "@elizaos/core";
+import type { Task, TaskMetadata, UUID } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { taskTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
-
 
 /**
  * Retrieves tasks based on specified parameters.
@@ -88,14 +83,16 @@ export async function getTasksByName(
   }));
 }
 
-
-
 // Batch task operations
 
 /**
  * Creates multiple tasks in the database.
  */
-export async function createTasks(db: DrizzleDatabase, agentId: UUID, tasks: Task[]): Promise<UUID[]> {
+export async function createTasks(
+  db: DrizzleDatabase,
+  agentId: UUID,
+  tasks: Task[]
+): Promise<UUID[]> {
   if (tasks.length === 0) return [];
 
   const now = new Date();
@@ -168,9 +165,7 @@ export async function updateTasks(
 
   const nameItems = updates.filter((u) => u.task.name !== undefined);
   if (nameItems.length > 0) {
-    const cases = nameItems.map(
-      (u) => sql`WHEN ${taskTable.id} = ${u.id} THEN ${u.task.name}`
-    );
+    const cases = nameItems.map((u) => sql`WHEN ${taskTable.id} = ${u.id} THEN ${u.task.name}`);
     setObj.name = sql`CASE ${sql.join(cases, sql` `)} ELSE ${taskTable.name} END`;
   }
 

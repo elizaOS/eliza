@@ -1,13 +1,7 @@
-import { type ChannelType, type Metadata, type Room, type UUID, logger } from "@elizaos/core";
+import { type ChannelType, logger, type Metadata, type Room, type UUID } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { v4 } from "uuid";
-import {
-  embeddingTable,
-  logTable,
-  memoryTable,
-  participantTable,
-  roomTable,
-} from "../tables";
+import { embeddingTable, logTable, memoryTable, participantTable, roomTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
 
 /**
@@ -122,18 +116,18 @@ export async function createRooms(
 
 /**
  * Upsert rooms (insert or update by ID)
- * 
+ *
  * WHY: Rooms are created during ensureConnection or when syncing external
  * platforms (Discord, Telegram). Concurrent connection attempts should be
  * idempotent.
- * 
+ *
  * WHY DO UPDATE: Room metadata, names, and settings can change over time.
  * We want to keep the latest version, not skip updates with DO NOTHING.
- * 
+ *
  * WHY complex fields: Rooms have many fields (name, type, worldId, channelId,
  * messageServerId, metadata). All must be updated to keep rooms in sync with
  * external platforms.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {UUID} agentId - The ID of the agent (always set for upserts)
  * @param {Room[]} rooms - Array of rooms to upsert (id, worldId required)
@@ -205,9 +199,7 @@ export async function getRoomsForParticipants(
     .selectDistinct({ roomId: participantTable.roomId })
     .from(participantTable)
     .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
-    .where(
-      and(inArray(participantTable.entityId, entityIds), eq(roomTable.agentId, agentId))
-    );
+    .where(and(inArray(participantTable.entityId, entityIds), eq(roomTable.agentId, agentId)));
 
   return result.map((row) => row.roomId as UUID);
 }
@@ -283,28 +275,20 @@ export async function updateRooms(
 
   const ids = rooms.map((r) => r.id);
 
-  const sourceCases = rooms.map(
-    (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.source}`
-  );
-  const typeCases = rooms.map(
-    (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.type}`
-  );
-  const nameCases = rooms.map(
-    (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.name ?? null}`
-  );
+  const sourceCases = rooms.map((r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.source}`);
+  const typeCases = rooms.map((r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.type}`);
+  const nameCases = rooms.map((r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.name ?? null}`);
   const worldIdCases = rooms.map(
     (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.worldId ?? null}::uuid`
   );
   const messageServerIdCases = rooms.map(
-    (r) =>
-      sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.messageServerId ?? null}::uuid`
+    (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.messageServerId ?? null}::uuid`
   );
   const channelIdCases = rooms.map(
     (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${r.channelId ?? null}`
   );
   const metaCases = rooms.map(
-    (r) =>
-      sql`WHEN ${roomTable.id} = ${r.id} THEN ${JSON.stringify(r.metadata ?? null)}::jsonb`
+    (r) => sql`WHEN ${roomTable.id} = ${r.id} THEN ${JSON.stringify(r.metadata ?? null)}::jsonb`
   );
 
   await db

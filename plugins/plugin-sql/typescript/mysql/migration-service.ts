@@ -118,10 +118,7 @@ export class DatabaseMigrationService {
       logger.info({ src: "plugin:mysql", successCount }, "All migrations completed successfully");
       // MySQL has no RLS, skip RLS re-application
     } else {
-      logger.error(
-        { src: "plugin:mysql", failureCount, successCount },
-        "Some migrations failed"
-      );
+      logger.error({ src: "plugin:mysql", failureCount, successCount }, "Some migrations failed");
 
       const errorSummary = errors.map((e) => `${e.pluginName}: ${e.error.message}`).join("\n  ");
       throw new Error(`${failureCount} migration(s) failed:\n  ${errorSummary}`);

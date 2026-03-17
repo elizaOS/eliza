@@ -1,4 +1,4 @@
-import { type Component, type Metadata, type PatchOp, type UUID, logger } from "@elizaos/core";
+import { type Component, logger, type Metadata, type PatchOp, type UUID } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { componentTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
@@ -12,7 +12,7 @@ const PATH_SEGMENT_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * Validate and parse a dot-separated path for JSON operations.
  */
 function validatePath(path: string): string[] {
-  const segments = path.split('.');
+  const segments = path.split(".");
   for (const seg of segments) {
     if (!PATH_SEGMENT_RE.test(seg) && !/^\d+$/.test(seg)) {
       throw new Error(
@@ -28,7 +28,7 @@ function validatePath(path: string): string[] {
  * E.g., "wallet.balance" → "$.wallet.balance"
  */
 function toMySqlPath(segments: string[]): string {
-  return '$.' + segments.join('.');
+  return "$." + segments.join(".");
 }
 
 /**
@@ -139,13 +139,13 @@ export async function createComponents(
 ): Promise<UUID[]> {
   if (components.length === 0) return [];
 
-  const values = components.map(component => ({
+  const values = components.map((component) => ({
     ...component,
     createdAt: new Date(),
   }));
 
   await db.insert(componentTable).values(values);
-  return components.map(c => c.id);
+  return components.map((c) => c.id);
 }
 
 /**
@@ -210,12 +210,10 @@ export async function updateComponents(
       (c) => sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.roomId}`
     );
     const worldIdCases = components.map(
-      (c) =>
-        sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.worldId ?? null}`
+      (c) => sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.worldId ?? null}`
     );
     const sourceEntityIdCases = components.map(
-      (c) =>
-        sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.sourceEntityId ?? null}`
+      (c) => sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.sourceEntityId ?? null}`
     );
 
     await db
@@ -246,10 +244,7 @@ export async function updateComponents(
 /**
  * Deletes multiple components from the database.
  */
-export async function deleteComponents(
-  db: DrizzleDatabase,
-  componentIds: UUID[]
-): Promise<void> {
+export async function deleteComponents(db: DrizzleDatabase, componentIds: UUID[]): Promise<void> {
   if (componentIds.length === 0) return;
 
   await db.delete(componentTable).where(inArray(componentTable.id, componentIds));
@@ -257,18 +252,18 @@ export async function deleteComponents(
 
 /**
  * Upserts multiple components by their natural key (entityId, type, worldId, sourceEntityId).
- * 
+ *
  * WHY: MySQL implementation of component upsert. Uses ON DUPLICATE KEY UPDATE syntax.
  * CAVEAT: MySQL treats NULLs as NOT equal in unique indexes (standard SQL behavior).
  * This means two rows with (entityId, type, NULL, NULL) will NOT conflict. If worldId
  * or sourceEntityId can be NULL, the unique constraint won't prevent duplicates.
  * Callers should use sentinel values (e.g., empty string) instead of NULL if uniqueness
  * across nullable columns is required, or handle dedup at the application layer.
- * 
+ *
  * CONFLICT RESOLUTION:
  * - Updates: data, agentId, roomId (mutable state)
  * - Preserves: id, entityId, type, worldId, sourceEntityId, createdAt (identity)
- * 
+ *
  * TRAP: Input must be deduped by natural key first to avoid MySQL error on duplicate conflicts.
  */
 export async function upsertComponents(
@@ -281,11 +276,11 @@ export async function upsertComponents(
     // TRAP: Dedupe by natural key (last-wins)
     const deduped = new Map<string, Component>();
     for (const c of components) {
-      const key = `${c.entityId}:${c.type}:${c.worldId ?? ''}:${c.sourceEntityId ?? ''}`;
+      const key = `${c.entityId}:${c.type}:${c.worldId ?? ""}:${c.sourceEntityId ?? ""}`;
       deduped.set(key, c);
     }
 
-    const values = Array.from(deduped.values()).map(component => ({
+    const values = Array.from(deduped.values()).map((component) => ({
       id: component.id,
       entityId: component.entityId,
       type: component.type,
@@ -297,14 +292,15 @@ export async function upsertComponents(
       createdAt: new Date(),
     }));
 
-    await db.insert(componentTable)
+    await db
+      .insert(componentTable)
       .values(values)
       .onDuplicateKeyUpdate({
         set: {
           // Update mutable fields only. MySQL uses VALUES() (deprecated 8.0.20+) for EXCLUDED equivalent
-          data: sql.raw('VALUES(`data`)'),
-          agentId: sql.raw('VALUES(`agent_id`)'),
-          roomId: sql.raw('VALUES(`room_id`)'),
+          data: sql.raw("VALUES(`data`)"),
+          agentId: sql.raw("VALUES(`agent_id`)"),
+          roomId: sql.raw("VALUES(`room_id`)"),
           // DO NOT update: id, entityId, type, worldId, sourceEntityId, createdAt
         },
       });
@@ -323,7 +319,7 @@ export async function upsertComponents(
 
 /**
  * Atomic partial update to component JSON data using JSON Patch operations (MySQL).
- * 
+ *
  * WHY MySQL differences:
  * - Uses JSON_SET() instead of jsonb_set()
  * - Uses JSON_ARRAY_APPEND() for push
@@ -346,7 +342,7 @@ export async function patchComponent(
       const mysqlPath = toMySqlPath(segments);
 
       switch (op.op) {
-        case 'set': {
+        case "set": {
           if (op.value === undefined) {
             throw new Error(`'set' operation requires a value`);
           }
@@ -354,8 +350,8 @@ export async function patchComponent(
           dataExpr = sql`JSON_SET(${dataExpr}, ${mysqlPath}, CAST(${JSON.stringify(op.value)} AS JSON))`;
           break;
         }
-        
-        case 'push': {
+
+        case "push": {
           if (op.value === undefined) {
             throw new Error(`'push' operation requires a value`);
           }
@@ -363,14 +359,14 @@ export async function patchComponent(
           dataExpr = sql`JSON_ARRAY_APPEND(${dataExpr}, ${mysqlPath}, CAST(${JSON.stringify(op.value)} AS JSON))`;
           break;
         }
-        
-        case 'remove': {
+
+        case "remove": {
           // Remove key/index at path (idempotent if missing)
           dataExpr = sql`JSON_REMOVE(${dataExpr}, ${mysqlPath})`;
           break;
         }
-        
-        case 'increment': {
+
+        case "increment": {
           if (op.value === undefined) {
             throw new Error(`'increment' operation requires a value`);
           }
@@ -378,7 +374,7 @@ export async function patchComponent(
           dataExpr = sql`JSON_SET(${dataExpr}, ${mysqlPath}, JSON_EXTRACT(${dataExpr}, ${mysqlPath}) + ${op.value})`;
           break;
         }
-        
+
         default:
           throw new Error(`Unknown patch operation: ${(op as PatchOp).op}`);
       }
@@ -404,15 +400,15 @@ export async function patchComponent(
       .where(eq(componentTable.id, componentId));
   } catch (e) {
     const error = e instanceof Error ? e : new Error(String(e));
-    
+
     // TRAP: Wrap DB errors with clearer messages
-    if (error.message.includes('Invalid data type') || error.message.includes('not a number')) {
+    if (error.message.includes("Invalid data type") || error.message.includes("not a number")) {
       throw new Error(`Cannot increment non-numeric value. Original error: ${error.message}`);
     }
-    if (error.message.includes('not an array') || error.message.includes('JSON_ARRAY_APPEND')) {
+    if (error.message.includes("not an array") || error.message.includes("JSON_ARRAY_APPEND")) {
       throw new Error(`Cannot push to non-array. Original error: ${error.message}`);
     }
-    
+
     logger.error(
       {
         src: "plugin:mysql",

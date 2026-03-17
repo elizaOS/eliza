@@ -1,6 +1,6 @@
 import type { GenerateTextParams, IAgentRuntime, TextStreamResult } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { generateText, streamText, type LanguageModel } from "ai";
+import { generateText, type LanguageModel, streamText } from "ai";
 
 import { createOpenRouterProvider } from "../providers";
 import { getLargeModel, getSmallModel } from "../utils/config";

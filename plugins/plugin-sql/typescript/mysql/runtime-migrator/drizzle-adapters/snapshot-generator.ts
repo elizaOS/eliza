@@ -1,10 +1,5 @@
 import { is, SQL } from "drizzle-orm";
-import {
-  getTableConfig,
-  type MySqlColumn,
-  MySqlDialect,
-  MySqlTable,
-} from "drizzle-orm/mysql-core";
+import { getTableConfig, type MySqlColumn, MySqlDialect, MySqlTable } from "drizzle-orm/mysql-core";
 import { extendedHash } from "../crypto-utils";
 import type {
   IndexColumn,
@@ -293,8 +288,7 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       });
 
       const name =
-        idx.config.name ||
-        `${tableName}_${indexColumns.map((c) => c.expression).join("_")}_index`;
+        idx.config.name || `${tableName}_${indexColumns.map((c) => c.expression).join("_")}_index`;
 
       indexesObject[name] = {
         name,

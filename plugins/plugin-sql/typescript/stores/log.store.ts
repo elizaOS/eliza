@@ -69,7 +69,6 @@ export function sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new W
   return value;
 }
 
-
 /**
  * Asynchronously retrieves logs from the database based on the provided parameters.
  * @param {DrizzleDatabase} db - The database instance (may be a transaction with entity context).
@@ -384,10 +383,10 @@ export async function getAgentRunSummaries(
  */
 /**
  * Get logs by their IDs (batch)
- * 
+ *
  * WHY: Used when rendering agent run history or debugging specific
  * interactions. Batch lookup is more efficient than N individual queries.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {UUID[]} logIds - Array of log IDs to retrieve
  * @returns {Promise<Log[]>} Array of logs (only found logs returned)
@@ -395,10 +394,7 @@ export async function getAgentRunSummaries(
 export async function getLogsByIds(db: DrizzleDatabase, logIds: UUID[]): Promise<Log[]> {
   if (logIds.length === 0) return [];
 
-  const result = await db
-    .select()
-    .from(logTable)
-    .where(inArray(logTable.id, logIds));
+  const result = await db.select().from(logTable).where(inArray(logTable.id, logIds));
 
   return result.map((log) => ({
     ...log,
@@ -445,13 +441,13 @@ export async function createLogs(
 
 /**
  * Update logs (batch)
- * 
+ *
  * WHY: Agent run summaries update log status as runs progress (pending →
  * running → completed). Logs aren't truly immutable.
- * 
+ *
  * WHY single UPDATE with CASE: More efficient than N individual UPDATE
  * statements. Drizzle doesn't have a batch update builder, so we use raw SQL.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {Array<{ id: UUID; updates: Partial<Log> }>} logs - Array of log updates
  */
@@ -462,46 +458,49 @@ export async function updateLogs(
   if (logs.length === 0) return;
 
   // Build CASE expressions for each field being updated
-  const idArray = logs.map(l => l.id);
-  
+  const idArray = logs.map((l) => l.id);
+
   // Check which fields are being updated across all logs
-  const hasBodyUpdates = logs.some(l => l.updates.body !== undefined);
-  const hasTypeUpdates = logs.some(l => l.updates.type !== undefined);
-  
+  const hasBodyUpdates = logs.some((l) => l.updates.body !== undefined);
+  const hasTypeUpdates = logs.some((l) => l.updates.type !== undefined);
+
   const setClauses: SQL<unknown>[] = [];
-  
+
   if (hasBodyUpdates) {
     // Build CASE for body updates (JSON field)
     const bodyCases = logs
-      .filter(l => l.updates.body !== undefined)
-      .map(l => {
+      .filter((l) => l.updates.body !== undefined)
+      .map((l) => {
         const sanitizedBody = sanitizeJsonObject(l.updates.body);
         const jsonString = JSON.stringify(sanitizedBody);
         return sql`WHEN ${logTable.id} = ${l.id} THEN ${jsonString}::jsonb`;
       });
-    
+
     if (bodyCases.length > 0) {
       setClauses.push(sql`body = CASE ${sql.join(bodyCases, sql` `)} ELSE body END`);
     }
   }
-  
+
   if (hasTypeUpdates) {
     // Build CASE for type updates
     const typeCases = logs
-      .filter(l => l.updates.type !== undefined)
-      .map(l => sql`WHEN ${logTable.id} = ${l.id} THEN ${l.updates.type}`);
-    
+      .filter((l) => l.updates.type !== undefined)
+      .map((l) => sql`WHEN ${logTable.id} = ${l.id} THEN ${l.updates.type}`);
+
     if (typeCases.length > 0) {
       setClauses.push(sql`type = CASE ${sql.join(typeCases, sql` `)} ELSE type END`);
     }
   }
-  
+
   if (setClauses.length === 0) return; // No actual updates to perform
-  
+
   await db.execute(sql`
     UPDATE ${logTable}
     SET ${sql.join(setClauses, sql`, `)}
-    WHERE ${logTable.id} = ANY(${sql`array[${sql.join(idArray.map(id => sql`${id}`), sql`, `)}]::uuid[]`})
+    WHERE ${logTable.id} = ANY(${sql`array[${sql.join(
+      idArray.map((id) => sql`${id}`),
+      sql`, `
+    )}]::uuid[]`})
   `);
 }
 

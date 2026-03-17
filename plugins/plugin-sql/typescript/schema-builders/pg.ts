@@ -3,6 +3,8 @@
  *
  * Maps abstract SchemaColumn types to drizzle-orm/pg-core column builders.
  */
+
+import type { SchemaColumn } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -21,7 +23,6 @@ import {
   varchar,
   vector,
 } from "drizzle-orm/pg-core";
-import type { SchemaColumn } from "@elizaos/core";
 import type { DialectAdapter } from "./types.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -97,7 +98,9 @@ export const pgAdapter: DialectAdapter = {
       const cols = columns as [any, ...any[]];
       if (nullsNotDistinct) {
         // Drizzle's unique() with nulls: 'not distinct' option for PostgreSQL 15+
-        return unique(name).on(...cols).nullsNotDistinct();
+        return unique(name)
+          .on(...cols)
+          .nullsNotDistinct();
       }
       return unique(name).on(...cols);
     };
@@ -122,15 +125,16 @@ export const pgAdapter: DialectAdapter = {
   buildExpressionIndex: (
     name: string,
     exprOrColumn: any,
-    options?: { method?: string; opClass?: string; isUnique?: boolean },
+    options?: { method?: string; opClass?: string; isUnique?: boolean }
   ) => {
     const builder = options?.isUnique ? uniqueIndex(name) : index(name);
 
     // Detect if this is a SQL expression object or a column reference
     // SQL objects have .getSQL() method; column refs don't (but have .op())
-    const isSqlExpression = typeof exprOrColumn === "object" && 
-                           "getSQL" in exprOrColumn &&
-                           typeof exprOrColumn.getSQL === "function";
+    const isSqlExpression =
+      typeof exprOrColumn === "object" &&
+      "getSQL" in exprOrColumn &&
+      typeof exprOrColumn.getSQL === "function";
 
     if (options?.method === "gin") {
       if (options?.opClass && !isSqlExpression) {

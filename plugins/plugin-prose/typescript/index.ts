@@ -6,8 +6,8 @@ import { proseHelpAction } from "./actions/help";
 import { proseRunAction } from "./actions/run";
 import { initProseService, proseProvider } from "./providers/prose";
 
+export { createProseService, ProseService, setSkillContent } from "./services/proseService";
 export * from "./types";
-export { ProseService, createProseService, setSkillContent } from "./services/proseService";
 export { proseProvider, initProseService };
 export { proseRunAction, proseCompileAction, proseHelpAction };
 

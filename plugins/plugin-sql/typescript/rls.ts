@@ -1,12 +1,9 @@
 import { type IDatabaseAdapter, logger, validateUuid } from "@elizaos/core";
 import { eq, sql } from "drizzle-orm";
-import { agentTable } from './tables';
-import { serverTable } from './tables';
+import { agentTable, serverTable } from "./tables";
 import { getDb } from "./types";
 
-export async function installRLSFunctions(
-  adapter: IDatabaseAdapter,
-): Promise<void> {
+export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
   await db.execute(sql`
@@ -113,7 +110,7 @@ export async function installRLSFunctions(
 
 export async function getOrCreateRlsServer(
   adapter: IDatabaseAdapter,
-  serverId: string,
+  serverId: string
 ): Promise<string> {
   const db = getDb(adapter);
 
@@ -125,47 +122,33 @@ export async function getOrCreateRlsServer(
     })
     .onConflictDoNothing();
 
-  logger.info(
-    { src: "plugin:sql", serverId: serverId.slice(0, 8) },
-    "RLS server registered",
-  );
+  logger.info({ src: "plugin:sql", serverId: serverId.slice(0, 8) }, "RLS server registered");
   return serverId;
 }
 
-export async function setServerContext(
-  adapter: IDatabaseAdapter,
-  serverId: string,
-): Promise<void> {
+export async function setServerContext(adapter: IDatabaseAdapter, serverId: string): Promise<void> {
   if (!validateUuid(serverId)) {
-    throw new Error(
-      `Invalid server ID format: ${serverId}. Must be a valid UUID.`,
-    );
+    throw new Error(`Invalid server ID format: ${serverId}. Must be a valid UUID.`);
   }
 
   const db = getDb(adapter);
-  const servers = await db
-    .select()
-    .from(serverTable)
-    .where(eq(serverTable.id, serverId));
+  const servers = await db.select().from(serverTable).where(eq(serverTable.id, serverId));
 
   if (servers.length === 0) {
     throw new Error(`Server ${serverId} does not exist`);
   }
 
-  logger.info(
-    { src: "plugin:sql", serverId: serverId.slice(0, 8) },
-    "RLS context configured",
-  );
+  logger.info({ src: "plugin:sql", serverId: serverId.slice(0, 8) }, "RLS context configured");
 }
 
 export async function assignAgentToServer(
   adapter: IDatabaseAdapter,
   agentId: string,
-  serverId: string,
+  serverId: string
 ): Promise<void> {
   if (!agentId || !serverId) {
     logger.warn(
-      `[Data Isolation] Cannot assign agent to server: invalid agentId (${agentId}) or serverId (${serverId})`,
+      `[Data Isolation] Cannot assign agent to server: invalid agentId (${agentId}) or serverId (${serverId})`
     );
     return;
   }
@@ -173,10 +156,7 @@ export async function assignAgentToServer(
   const db = getDb(adapter);
 
   // Check if agent exists using Drizzle
-  const agents = await db
-    .select()
-    .from(agentTable)
-    .where(eq(agentTable.id, agentId));
+  const agents = await db.select().from(agentTable).where(eq(agentTable.id, agentId));
 
   if (agents.length > 0) {
     const agent = agents[0];
@@ -185,25 +165,16 @@ export async function assignAgentToServer(
     if (currentServerId === serverId) {
       logger.debug(
         { src: "plugin:sql", agentName: agent.name },
-        "Agent already assigned to correct server",
+        "Agent already assigned to correct server"
       );
     } else {
       // Update agent server using Drizzle
-      await db
-        .update(agentTable)
-        .set({ server_id: serverId })
-        .where(eq(agentTable.id, agentId));
+      await db.update(agentTable).set({ server_id: serverId }).where(eq(agentTable.id, agentId));
 
       if (currentServerId === null) {
-        logger.info(
-          { src: "plugin:sql", agentName: agent.name },
-          "Agent assigned to server",
-        );
+        logger.info({ src: "plugin:sql", agentName: agent.name }, "Agent assigned to server");
       } else {
-        logger.warn(
-          { src: "plugin:sql", agentName: agent.name },
-          "Agent server changed",
-        );
+        logger.warn({ src: "plugin:sql", agentName: agent.name }, "Agent server changed");
       }
     }
   } else {
@@ -214,19 +185,14 @@ export async function assignAgentToServer(
 /**
  * Apply RLS to all tables by calling PostgreSQL function
  */
-export async function applyRLSToNewTables(
-  adapter: IDatabaseAdapter,
-): Promise<void> {
+export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
   try {
     await db.execute(sql`SELECT apply_rls_to_all_tables()`);
     logger.info({ src: "plugin:sql" }, "RLS applied to all tables");
   } catch (error) {
-    logger.warn(
-      { src: "plugin:sql", error: String(error) },
-      "Failed to apply RLS to some tables",
-    );
+    logger.warn({ src: "plugin:sql", error: String(error) }, "Failed to apply RLS to some tables");
   }
 }
 
@@ -244,16 +210,13 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
     const rlsEnabled = checkResult.rows?.[0]?.rls_enabled;
 
     if (!rlsEnabled) {
-      logger.debug(
-        { src: "plugin:sql" },
-        "RLS not installed, skipping cleanup",
-      );
+      logger.debug({ src: "plugin:sql" }, "RLS not installed, skipping cleanup");
       return;
     }
 
     logger.info(
       { src: "plugin:sql" },
-      "Disabling RLS globally (keeping server_id columns for schema compatibility)...",
+      "Disabling RLS globally (keeping server_id columns for schema compatibility)..."
     );
 
     try {
@@ -261,7 +224,7 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
     } catch (_entityRlsError) {
       logger.debug(
         { src: "plugin:sql" },
-        "Entity RLS cleanup skipped (not installed or already cleaned)",
+        "Entity RLS cleanup skipped (not installed or already cleaned)"
       );
     }
 
@@ -302,58 +265,39 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       const tableName = row.tablename;
 
       try {
-        await db.execute(
-          sql`SELECT _temp_disable_rls_on_table(${schemaName}, ${tableName})`,
-        );
-        logger.debug(
-          { src: "plugin:sql", schemaName, tableName },
-          "Disabled RLS on table",
-        );
+        await db.execute(sql`SELECT _temp_disable_rls_on_table(${schemaName}, ${tableName})`);
+        logger.debug({ src: "plugin:sql", schemaName, tableName }, "Disabled RLS on table");
       } catch (error) {
         logger.warn(
           { src: "plugin:sql", schemaName, tableName, error: String(error) },
-          "Failed to disable RLS on table",
+          "Failed to disable RLS on table"
         );
       }
     }
 
-    await db.execute(
-      sql`DROP FUNCTION IF EXISTS _temp_disable_rls_on_table(text, text)`,
-    );
+    await db.execute(sql`DROP FUNCTION IF EXISTS _temp_disable_rls_on_table(text, text)`);
 
     logger.info(
       { src: "plugin:sql" },
-      "Keeping server_id values intact (prevents data theft on re-enable)",
+      "Keeping server_id values intact (prevents data theft on re-enable)"
     );
 
     logger.info({ src: "plugin:sql" }, "Clearing servers table...");
     await db.execute(sql`TRUNCATE TABLE servers`);
 
-    await db.execute(
-      sql`DROP FUNCTION IF EXISTS apply_rls_to_all_tables() CASCADE`,
-    );
-    await db.execute(
-      sql`DROP FUNCTION IF EXISTS add_server_isolation(text, text) CASCADE`,
-    );
+    await db.execute(sql`DROP FUNCTION IF EXISTS apply_rls_to_all_tables() CASCADE`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS add_server_isolation(text, text) CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS current_server_id() CASCADE`);
     logger.info({ src: "plugin:sql" }, "Dropped all RLS functions");
 
-    logger.info(
-      { src: "plugin:sql" },
-      "RLS disabled successfully (server_id columns preserved)",
-    );
+    logger.info({ src: "plugin:sql" }, "RLS disabled successfully (server_id columns preserved)");
   } catch (error) {
-    logger.error(
-      { src: "plugin:sql", error: String(error) },
-      "Failed to disable RLS",
-    );
+    logger.error({ src: "plugin:sql", error: String(error) }, "Failed to disable RLS");
     throw error;
   }
 }
 
-export async function installEntityRLS(
-  adapter: IDatabaseAdapter,
-): Promise<void> {
+export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
   logger.info("[Entity RLS] Installing entity RLS functions and policies...");
@@ -586,25 +530,18 @@ export async function installEntityRLS(
   logger.info("[Entity RLS] Entity RLS functions installed successfully");
 }
 
-export async function applyEntityRLSToAllTables(
-  adapter: IDatabaseAdapter,
-): Promise<void> {
+export async function applyEntityRLSToAllTables(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
   try {
     await db.execute(sql`SELECT apply_entity_rls_to_all_tables()`);
     logger.info("[Entity RLS] Applied entity RLS to all eligible tables");
   } catch (error) {
-    logger.warn(
-      "[Entity RLS] Failed to apply entity RLS to some tables:",
-      String(error),
-    );
+    logger.warn("[Entity RLS] Failed to apply entity RLS to some tables:", String(error));
   }
 }
 
-export async function uninstallEntityRLS(
-  adapter: IDatabaseAdapter,
-): Promise<void> {
+export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
   logger.info("[Entity RLS] Removing entity RLS policies and functions...");
@@ -623,31 +560,21 @@ export async function uninstallEntityRLS(
 
       try {
         await db.execute(
-          sql.raw(
-            `DROP POLICY IF EXISTS entity_isolation_policy ON "${schemaName}"."${tableName}"`,
-          ),
+          sql.raw(`DROP POLICY IF EXISTS entity_isolation_policy ON "${schemaName}"."${tableName}"`)
         );
         logger.debug(
-          `[Entity RLS] Dropped entity_isolation_policy from ${schemaName}.${tableName}`,
+          `[Entity RLS] Dropped entity_isolation_policy from ${schemaName}.${tableName}`
         );
       } catch (_error) {
-        logger.debug(
-          `[Entity RLS] No entity policy on ${schemaName}.${tableName}`,
-        );
+        logger.debug(`[Entity RLS] No entity policy on ${schemaName}.${tableName}`);
       }
     }
 
-    await db.execute(
-      sql`DROP FUNCTION IF EXISTS apply_entity_rls_to_all_tables() CASCADE`,
-    );
-    await db.execute(
-      sql`DROP FUNCTION IF EXISTS add_entity_isolation(text, text) CASCADE`,
-    );
+    await db.execute(sql`DROP FUNCTION IF EXISTS apply_entity_rls_to_all_tables() CASCADE`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS add_entity_isolation(text, text) CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS current_entity_id() CASCADE`);
 
-    logger.info(
-      "[Entity RLS] Entity RLS functions and policies removed successfully",
-    );
+    logger.info("[Entity RLS] Entity RLS functions and policies removed successfully");
   } catch (error) {
     logger.error("[Entity RLS] Failed to remove entity RLS:", String(error));
     throw error;

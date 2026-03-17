@@ -1,4 +1,4 @@
-import { type Component, type Metadata, type PatchOp, type UUID, logger } from "@elizaos/core";
+import { type Component, logger, type Metadata, type PatchOp, type UUID } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { componentTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
@@ -14,7 +14,7 @@ const PATH_SEGMENT_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * @throws Error if path contains invalid characters
  */
 function validatePath(path: string): string[] {
-  const segments = path.split('.');
+  const segments = path.split(".");
   for (const seg of segments) {
     // Allow alphanumeric/underscore OR numeric array indices
     if (!PATH_SEGMENT_RE.test(seg) && !/^\d+$/.test(seg)) {
@@ -29,16 +29,16 @@ function validatePath(path: string): string[] {
 /**
  * Convert dot-separated path to a raw SQL fragment for PostgreSQL JSONB path.
  * Returns a sql.raw() fragment so it's inlined as a text[] literal, NOT parameterized.
- * 
+ *
  * WHY sql.raw(): PG operators #>, #>>, #- require text[] as the right operand.
  * If the path were parameterized (via ${pgPath}), the driver sends it typed as text,
  * and PG errors: "operator does not exist: jsonb #> text". The path is already
  * validated by validatePath() against SQL injection, so raw interpolation is safe.
- * 
+ *
  * E.g., "wallet.balance" → '{wallet,balance}'::text[]
  */
 function toPgPath(segments: string[]): ReturnType<typeof sql> {
-  return sql.raw(`'{${segments.join(',')}}'::text[]`);
+  return sql.raw(`'{${segments.join(",")}}'::text[]`);
 }
 
 /**
@@ -159,13 +159,13 @@ export async function createComponents(
 ): Promise<UUID[]> {
   if (components.length === 0) return [];
 
-  const values = components.map(component => ({
+  const values = components.map((component) => ({
     ...component,
     createdAt: new Date(),
   }));
 
   await db.insert(componentTable).values(values);
-  return components.map(c => c.id);
+  return components.map((c) => c.id);
 }
 
 /**
@@ -215,8 +215,7 @@ export async function updateComponents(
       (c) => sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.type}`
     );
     const dataCases = components.map(
-      (c) =>
-        sql`WHEN ${componentTable.id} = ${c.id} THEN ${JSON.stringify(c.data || {})}::jsonb`
+      (c) => sql`WHEN ${componentTable.id} = ${c.id} THEN ${JSON.stringify(c.data || {})}::jsonb`
     );
     const entityIdCases = components.map(
       (c) => sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.entityId}::uuid`
@@ -228,12 +227,10 @@ export async function updateComponents(
       (c) => sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.roomId}::uuid`
     );
     const worldIdCases = components.map(
-      (c) =>
-        sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.worldId ?? null}::uuid`
+      (c) => sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.worldId ?? null}::uuid`
     );
     const sourceEntityIdCases = components.map(
-      (c) =>
-        sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.sourceEntityId ?? null}::uuid`
+      (c) => sql`WHEN ${componentTable.id} = ${c.id} THEN ${c.sourceEntityId ?? null}::uuid`
     );
 
     await db
@@ -264,10 +261,7 @@ export async function updateComponents(
 /**
  * Deletes multiple components from the database.
  */
-export async function deleteComponents(
-  db: DrizzleDatabase,
-  componentIds: UUID[]
-): Promise<void> {
+export async function deleteComponents(db: DrizzleDatabase, componentIds: UUID[]): Promise<void> {
   if (componentIds.length === 0) return;
 
   await db.delete(componentTable).where(inArray(componentTable.id, componentIds));
@@ -275,17 +269,17 @@ export async function deleteComponents(
 
 /**
  * Upserts multiple components by their natural key (entityId, type, worldId, sourceEntityId).
- * 
+ *
  * WHY: Provides atomic insert-or-update for components, eliminating race conditions
  * when multiple code paths try to ensure a component exists. The natural key uniqueness
  * is enforced by the unique_component_natural_key constraint with NULLS NOT DISTINCT.
- * 
+ *
  * CONFLICT RESOLUTION:
  * - Updates: data, agentId, roomId (mutable state)
  * - Preserves: id, entityId, type, worldId, sourceEntityId, createdAt (identity)
- * 
+ *
  * TRAP: Input must be deduped by natural key first. If two components have the same
- * (entityId, type, worldId, sourceEntityId), PG errors with "ON CONFLICT DO UPDATE 
+ * (entityId, type, worldId, sourceEntityId), PG errors with "ON CONFLICT DO UPDATE
  * command cannot affect row a second time."
  */
 export async function upsertComponents(
@@ -298,11 +292,11 @@ export async function upsertComponents(
     // TRAP: Dedupe by natural key (last-wins) to avoid PG error on duplicate conflicts
     const deduped = new Map<string, Component>();
     for (const c of components) {
-      const key = `${c.entityId}:${c.type}:${c.worldId ?? ''}:${c.sourceEntityId ?? ''}`;
+      const key = `${c.entityId}:${c.type}:${c.worldId ?? ""}:${c.sourceEntityId ?? ""}`;
       deduped.set(key, c);
     }
 
-    const values = Array.from(deduped.values()).map(component => ({
+    const values = Array.from(deduped.values()).map((component) => ({
       id: component.id,
       entityId: component.entityId,
       type: component.type,
@@ -314,7 +308,8 @@ export async function upsertComponents(
       createdAt: new Date(),
     }));
 
-    await db.insert(componentTable)
+    await db
+      .insert(componentTable)
       .values(values)
       .onConflictDoUpdate({
         target: [
@@ -346,17 +341,17 @@ export async function upsertComponents(
 
 /**
  * Atomic partial update to component JSONB data using JSON Patch operations.
- * 
+ *
  * WHY: Enables race-free updates to nested JSONB fields. Common use case:
  * updating wallet balance or pushing to positions array without full read-modify-write.
- * 
+ *
  * All operations are applied in a single UPDATE statement by nesting JSONB functions.
  */
 export async function patchComponent(
   db: DrizzleDatabase,
   componentId: UUID,
   ops: PatchOp[]
-// Note: ensures operations are batched in a single query for performance and integrity.
+  // Note: ensures operations are batched in a single query for performance and integrity.
 ): Promise<void> {
   if (ops.length === 0) return;
 
@@ -369,7 +364,7 @@ export async function patchComponent(
       const pgPath = toPgPath(segments);
 
       switch (op.op) {
-        case 'set': {
+        case "set": {
           if (op.value === undefined) {
             throw new Error(`'set' operation requires a value`);
           }
@@ -377,8 +372,8 @@ export async function patchComponent(
           dataExpr = sql`jsonb_set(${dataExpr}, ${pgPath}, ${JSON.stringify(op.value)}::jsonb)`;
           break;
         }
-        
-        case 'push': {
+
+        case "push": {
           if (op.value === undefined) {
             throw new Error(`'push' operation requires a value`);
           }
@@ -386,14 +381,14 @@ export async function patchComponent(
           dataExpr = sql`jsonb_set(${dataExpr}, ${pgPath}, (COALESCE(${dataExpr}#>${pgPath}, '[]'::jsonb) || ${JSON.stringify(op.value)}::jsonb))`;
           break;
         }
-        
-        case 'remove': {
+
+        case "remove": {
           // Remove key/index at path (idempotent if missing)
           dataExpr = sql`${dataExpr} #- ${pgPath}`;
           break;
         }
-        
-        case 'increment': {
+
+        case "increment": {
           if (op.value === undefined) {
             throw new Error(`'increment' operation requires a value`);
           }
@@ -401,7 +396,7 @@ export async function patchComponent(
           dataExpr = sql`jsonb_set(${dataExpr}, ${pgPath}, to_jsonb((${dataExpr}#>>${pgPath})::numeric + ${op.value}))`;
           break;
         }
-        
+
         default:
           throw new Error(`Unknown patch operation: ${(op as PatchOp).op}`);
       }
@@ -419,17 +414,25 @@ export async function patchComponent(
     }
   } catch (e) {
     const error = e instanceof Error ? e : new Error(String(e));
-    
+
     // TRAP: Wrap DB errors with clearer messages
-    if (error.message.includes('cannot be cast automatically to type numeric') || 
-        error.message.includes('invalid input syntax for type numeric')) {
-      throw new Error(`Cannot increment non-numeric value at path "${ops.find(o => o.op === 'increment')?.path}". Original error: ${error.message}`);
+    if (
+      error.message.includes("cannot be cast automatically to type numeric") ||
+      error.message.includes("invalid input syntax for type numeric")
+    ) {
+      throw new Error(
+        `Cannot increment non-numeric value at path "${ops.find((o) => o.op === "increment")?.path}". Original error: ${error.message}`
+      );
     }
-    if (error.message.includes('jsonb subscript') || 
-        (error.message.includes('cannot') && error.message.includes('array'))) {
-      throw new Error(`Cannot push to non-array at path "${ops.find(o => o.op === 'push')?.path}". Original error: ${error.message}`);
+    if (
+      error.message.includes("jsonb subscript") ||
+      (error.message.includes("cannot") && error.message.includes("array"))
+    ) {
+      throw new Error(
+        `Cannot push to non-array at path "${ops.find((o) => o.op === "push")?.path}". Original error: ${error.message}`
+      );
     }
-    
+
     logger.error(
       {
         src: "plugin:sql",
@@ -442,4 +445,3 @@ export async function patchComponent(
     throw error;
   }
 }
-

@@ -24,7 +24,7 @@ export class PostgresConnectionManager {
     if (rlsServerId) {
       logger.debug(
         { src: "plugin:sql", rlsServerId: rlsServerId.substring(0, 8) },
-        "Pool configured with RLS server",
+        "Pool configured with RLS server"
       );
     }
 
@@ -33,7 +33,7 @@ export class PostgresConnectionManager {
     this.pool.on("error", (err) => {
       logger.warn(
         { src: "plugin:sql", error: err?.message || String(err) },
-        "Pool client error (connection will be replaced)",
+        "Pool client error (connection will be replaced)"
       );
     });
 
@@ -64,7 +64,7 @@ export class PostgresConnectionManager {
           src: "plugin:sql",
           error: error instanceof Error ? error.message : String(error),
         },
-        "Failed to connect to the database",
+        "Failed to connect to the database"
       );
       return false;
     } finally {
@@ -80,27 +80,21 @@ export class PostgresConnectionManager {
    */
   public async withIsolationContext<T>(
     entityId: UUID | null,
-    callback: (tx: NodePgDatabase) => Promise<T>,
+    callback: (tx: NodePgDatabase) => Promise<T>
   ): Promise<T> {
     const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
 
     return await this.db.transaction(async (tx) => {
       if (dataIsolationEnabled) {
         if (this.rlsServerId) {
-          await tx.execute(
-            sql`SELECT set_config('app.server_id', ${this.rlsServerId}, true)`,
-          );
+          await tx.execute(sql`SELECT set_config('app.server_id', ${this.rlsServerId}, true)`);
         }
 
         if (entityId) {
           if (!validateUuid(entityId)) {
-            throw new Error(
-              `Invalid UUID format for entity context: ${entityId}`,
-            );
+            throw new Error(`Invalid UUID format for entity context: ${entityId}`);
           }
-          await tx.execute(
-            sql`SELECT set_config('app.entity_id', ${entityId}, true)`,
-          );
+          await tx.execute(sql`SELECT set_config('app.entity_id', ${entityId}, true)`);
         }
       }
 

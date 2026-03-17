@@ -1,8 +1,7 @@
-import { type Task, type TaskMetadata, type UUID } from "@elizaos/core";
+import type { Task, TaskMetadata, UUID } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { taskTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
-
 
 /**
  * Asynchronously retrieves tasks based on specified parameters.
@@ -92,8 +91,6 @@ export async function getTasksByName(
   }));
 }
 
-
-
 // Batch task operations
 
 /**
@@ -103,7 +100,11 @@ export async function getTasksByName(
  * @param {Task[]} tasks - Array of task objects to create.
  * @returns {Promise<UUID[]>} Promise resolving to an array of created task IDs.
  */
-export async function createTasks(db: DrizzleDatabase, agentId: UUID, tasks: Task[]): Promise<UUID[]> {
+export async function createTasks(
+  db: DrizzleDatabase,
+  agentId: UUID,
+  tasks: Task[]
+): Promise<UUID[]> {
   if (tasks.length === 0) return [];
 
   const now = new Date();
@@ -184,9 +185,7 @@ export async function updateTasks(
 
   const nameItems = updates.filter((u) => u.task.name !== undefined);
   if (nameItems.length > 0) {
-    const cases = nameItems.map(
-      (u) => sql`WHEN ${taskTable.id} = ${u.id} THEN ${u.task.name}`
-    );
+    const cases = nameItems.map((u) => sql`WHEN ${taskTable.id} = ${u.id} THEN ${u.task.name}`);
     setObj.name = sql`CASE ${sql.join(cases, sql` `)} ELSE ${taskTable.name} END`;
   }
 
@@ -220,9 +219,7 @@ export async function updateTasks(
       const arr = u.task.tags || [];
       const pgArr =
         "{" +
-        arr
-          .map((s) => '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"')
-          .join(",") +
+        arr.map((s) => '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"').join(",") +
         "}";
       return sql`WHEN ${taskTable.id} = ${u.id} THEN ${pgArr}::text[]`;
     });
@@ -232,8 +229,7 @@ export async function updateTasks(
   const metaItems = updates.filter((u) => u.task.metadata !== undefined);
   if (metaItems.length > 0) {
     const cases = metaItems.map(
-      (u) =>
-        sql`WHEN ${taskTable.id} = ${u.id} THEN ${JSON.stringify(u.task.metadata)}::jsonb`
+      (u) => sql`WHEN ${taskTable.id} = ${u.id} THEN ${JSON.stringify(u.task.metadata)}::jsonb`
     );
     setObj.metadata = sql`CASE ${sql.join(cases, sql` `)} ELSE ${taskTable.metadata} END`;
   }

@@ -5,7 +5,7 @@ import { proseHelpAction } from "../actions/help";
 import { proseRunAction } from "../actions/run";
 import { actionSpecs, requireActionSpec } from "../generated/specs/specs";
 import { proseProvider } from "../providers/prose";
-import { ProseService, createProseService } from "../services/proseService";
+import { createProseService, ProseService } from "../services/proseService";
 
 // Mock @elizaos/core
 vi.mock("@elizaos/core", async () => {
@@ -75,7 +75,7 @@ describe("plugin-prose", () => {
 
     it("requireActionSpec should throw for unknown spec", () => {
       expect(() => requireActionSpec("UNKNOWN_ACTION")).toThrow(
-        "Action spec not found: UNKNOWN_ACTION",
+        "Action spec not found: UNKNOWN_ACTION"
       );
     });
   });

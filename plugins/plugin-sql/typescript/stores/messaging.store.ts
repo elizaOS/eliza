@@ -1,4 +1,4 @@
-import { ChannelType, type Metadata, type UUID, logger } from "@elizaos/core";
+import { ChannelType, logger, type Metadata, type UUID } from "@elizaos/core";
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import {
@@ -80,9 +80,7 @@ export async function createMessageServer(
  * @param {DrizzleDatabase} db - The database instance.
  * @returns An array of message servers.
  */
-export async function getMessageServers(
-  db: DrizzleDatabase
-): Promise<
+export async function getMessageServers(db: DrizzleDatabase): Promise<
   Array<{
     id: UUID;
     name: string;
@@ -517,10 +515,7 @@ export async function addChannelParticipants(
     entityId: entityId,
   }));
 
-  await db
-    .insert(channelParticipantsTable)
-    .values(participantValues)
-    .onConflictDoNothing();
+  await db.insert(channelParticipantsTable).values(participantValues).onConflictDoNothing();
 }
 
 /**
@@ -745,11 +740,7 @@ export async function getMessageById(
   createdAt: Date;
   updatedAt: Date;
 } | null> {
-  const rows = await db
-    .select()
-    .from(messageTable)
-    .where(eq(messageTable.id, id))
-    .limit(1);
+  const rows = await db.select().from(messageTable).where(eq(messageTable.id, id)).limit(1);
   if (!rows || rows.length === 0) return null;
   const row = rows[0];
   return {
@@ -812,7 +803,8 @@ export async function updateMessage(
   if (patch.sourceType !== undefined) setData.sourceType = patch.sourceType;
   if (patch.sourceId !== undefined) setData.sourceId = patch.sourceId;
   if (patch.metadata !== undefined) setData.metadata = patch.metadata;
-  if (patch.inReplyToRootMessageId !== undefined) setData.inReplyToRootMessageId = patch.inReplyToRootMessageId;
+  if (patch.inReplyToRootMessageId !== undefined)
+    setData.inReplyToRootMessageId = patch.inReplyToRootMessageId;
 
   await db.update(messageTable).set(setData).where(eq(messageTable.id, id));
 
