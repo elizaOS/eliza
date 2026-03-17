@@ -695,7 +695,7 @@ export type MiladyConfig = {
     /** Accent color for Milady UI chrome (hex). */
     seamColor?: string;
     /** User's preferred UI theme. Set during onboarding. */
-    theme?: "milady" | "qt314" | "web2000" | "programmer" | "haxor" | "psycho";
+    theme?: "milady" | "eliza" | "qt314" | "web2000" | "programmer" | "haxor" | "psycho";
     assistant?: {
       /** Assistant display name for UI surfaces. */
       name?: string;
@@ -772,6 +772,9 @@ export type MiladyConfig = {
   /** User-defined custom actions for the agent. */
   customActions?: CustomActionDef[];
 };
+
+/** Alias so call-sites that already migrated to `ElizaConfig` keep compiling. */
+export type ElizaConfig = MiladyConfig;
 
 export type ConfigValidationIssue = {
   path: string;

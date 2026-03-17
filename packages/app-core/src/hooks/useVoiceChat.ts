@@ -60,11 +60,10 @@ interface SpeechRecognitionResultList {
 
 type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
 
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionCtor;
-    webkitSpeechRecognition?: SpeechRecognitionCtor;
-  }
+/** Access browser SpeechRecognition APIs which may live under a vendor prefix. */
+function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
 }
 
 // ── Public types ──────────────────────────────────────────────────────
@@ -96,7 +95,7 @@ export interface VoiceChatOptions {
   ) => void;
   /** Called when playback of a speech segment starts */
   onPlaybackStart?: (event: VoicePlaybackStartEvent) => void;
-  /** True when the user is authenticated to Milady/Eliza Cloud */
+  /** True when the user is authenticated to Eliza Cloud */
   cloudConnected?: boolean;
   /** Whether user speech should immediately interrupt assistant playback */
   interruptOnSpeech?: boolean;
@@ -514,8 +513,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // ── Init ──────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const SpeechRecognitionAPI: SpeechRecognitionCtor | undefined =
-      window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    const SpeechRecognitionAPI = getSpeechRecognitionCtor();
     const canUseMicrophone =
       typeof navigator !== "undefined" &&
       typeof navigator.mediaDevices?.getUserMedia === "function";
@@ -693,8 +691,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const startBrowserRecognition = useCallback(
     (mode: Exclude<VoiceCaptureMode, "idle">) => {
-      const SpeechRecognitionAPI: SpeechRecognitionCtor | undefined =
-        window.SpeechRecognition ?? window.webkitSpeechRecognition;
+      const SpeechRecognitionAPI = getSpeechRecognitionCtor();
       if (!SpeechRecognitionAPI) return false;
 
       const recognition = new SpeechRecognitionAPI();
@@ -980,8 +977,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         };
         const apiToken =
           typeof window !== "undefined" &&
-          typeof window.__MILADY_API_TOKEN__ === "string"
-            ? window.__MILADY_API_TOKEN__.trim()
+          typeof window.__ELIZA_API_TOKEN__ === "string"
+            ? window.__ELIZA_API_TOKEN__.trim()
             : "";
 
         const fetchViaProxy = async () => {
