@@ -13,6 +13,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from elizaos.bootstrap.services.task import Task
 from elizaos.prompts import (
     AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE,
     AUTONOMY_CONTINUOUS_FIRST_TEMPLATE,
@@ -24,7 +25,6 @@ from elizaos.types.events import EventType
 from elizaos.types.memory import Memory
 from elizaos.types.primitives import UUID, Content, as_uuid
 from elizaos.types.service import Service
-from elizaos.bootstrap.services.task import Task, TaskMetadata
 
 from .types import AutonomyStatus
 
