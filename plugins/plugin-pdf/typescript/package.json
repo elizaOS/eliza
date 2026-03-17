@@ -35,7 +35,7 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "pdfjs-dist": "3.11.174"
+    "pdfjs-dist": "4.2.67"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
