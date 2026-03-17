@@ -18,7 +18,7 @@ export const minecraftWaypointsProvider: Provider = {
     _message: Memory,
     _state?: State,
   ): Promise<ProviderResult> => {
-    const service = runtime.getService<WaypointsService>(
+    const service = await runtime.getService<WaypointsService>(
       WAYPOINTS_SERVICE_TYPE,
     );
     if (!service) {
@@ -31,7 +31,7 @@ export const minecraftWaypointsProvider: Provider = {
 
     const list = service.listWaypoints();
     const lines = list.map(
-      (w) =>
+      (w: { name: string; x: number; y: number; z: number }) =>
         `- ${w.name}: (${w.x.toFixed(1)}, ${w.y.toFixed(1)}, ${w.z.toFixed(1)})`,
     );
     return {
@@ -40,7 +40,7 @@ export const minecraftWaypointsProvider: Provider = {
         : "No waypoints saved.",
       values: { count: list.length },
       data: {
-        waypoints: list.map((w) => ({
+        waypoints: list.map((w: { name: string; x: number; y: number; z: number; createdAt: Date }) => ({
           name: w.name,
           x: w.x,
           y: w.y,

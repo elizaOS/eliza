@@ -1,4 +1,4 @@
-import { Action, HandlerCallback, IAgentRuntime, Memory, State, logger } from '@elizaos/core';
+import { Action, type ActionResult, HandlerCallback, IAgentRuntime, Memory, State, logger } from '@elizaos/core';
 
 export const publishPluginAction: Action = {
   name: 'PUBLISH_PLUGIN',
@@ -44,16 +44,18 @@ export const publishPluginAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     logger.info('[publishPluginAction] Starting plugin publication');
 
     // Temporarily disabled while migrating to new registry system
+    const text =
+      '⚠️ Plugin publishing is temporarily unavailable while we migrate to the new registry system.\n\nYou can still publish manually using:\n```bash\nnpm publish --access public\n```\n\nMake sure to:\n1. Run tests with `npm test`\n2. Build with `npm run build`\n3. Login to npm with `npm login`';
     if (callback) {
       await callback({
-        text: '⚠️ Plugin publishing is temporarily unavailable while we migrate to the new registry system.\n\nYou can still publish manually using:\n```bash\nnpm publish --access public\n```\n\nMake sure to:\n1. Run tests with `npm test`\n2. Build with `npm run build`\n3. Login to npm with `npm login`',
+        text,
         actions: ['PUBLISH_PLUGIN'],
       });
     }
-    return;
+    return { success: true, text };
   },
 };

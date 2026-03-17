@@ -28,7 +28,7 @@ export class ComputerUseService extends Service {
   private initialized = false;
 
   // Lazy-loaded to avoid importing native bindings unless actually used.
-  private localDesktop: import("@elizaos/computeruse").Desktop | null = null;
+  private localDesktop: InstanceType<typeof import("@elizaos/computeruse").Desktop> | null = null;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);

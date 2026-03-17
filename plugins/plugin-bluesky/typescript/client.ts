@@ -25,6 +25,7 @@ function isPostView(
     | AppBskyFeedDefs.NotFoundPost
     | AppBskyFeedDefs.BlockedPost
     | { $type: string; [k: string]: string | number | boolean | object | null | undefined }
+    | { $type: string; [k: string]: unknown }
 ): item is AppBskyFeedDefs.PostView {
   return (
     typeof item === "object" &&

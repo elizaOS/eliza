@@ -344,7 +344,7 @@ export class AttachmentManager {
     try {
       const response = await fetch(attachment.url);
       const pdfBuffer = await response.arrayBuffer();
-      const pdfService = this.runtime.getService(ServiceType.PDF) as
+      const pdfService = (await this.runtime.getService(ServiceType.PDF)) as
         | ({ convertPdfToText: (buffer: Buffer) => Promise<string> } & Service)
         | null;
       if (!pdfService) {

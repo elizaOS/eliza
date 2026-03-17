@@ -19,6 +19,9 @@ export function cleanTextForTts(text: string): string {
   // Remove inline code
   cleaned = cleaned.replace(/`[^`]+`/g, "[code]");
 
+  // Remove markdown links but keep link text (before URL replacement so URL is inside parentheses)
+  cleaned = cleaned.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+
   // Remove URLs
   cleaned = cleaned.replace(/https?:\/\/[^\s]+/g, "[link]");
 
@@ -30,9 +33,6 @@ export function cleanTextForTts(text: string): string {
 
   // Remove markdown headers
   cleaned = cleaned.replace(/^#{1,6}\s+/gm, "");
-
-  // Remove markdown links but keep text
-  cleaned = cleaned.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 
   // Remove HTML tags
   cleaned = cleaned.replace(/<[^>]+>/g, "");
@@ -65,7 +65,7 @@ export function truncateText(text: string, maxLength: number): string {
     truncated.lastIndexOf("?\n"),
   );
 
-  if (lastSentenceEnd > maxLength * 0.5) {
+  if (lastSentenceEnd >= 0) {
     return truncated.slice(0, lastSentenceEnd + 1).trim();
   }
 

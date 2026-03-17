@@ -391,9 +391,10 @@ describe('Combat Actions - Condition Mechanics', () => {
       });
       const result = executeDeathSave(dying);
       const updated = result.updatedCombatants[0];
-      // Must have either a success or failure incremented
+      // Must have either: (1) at least one success or failure recorded, or (2) nat 20 = regained consciousness (1 HP, death saves reset to 0)
       const totalSF = (updated.deathSaves?.successes ?? 0) + (updated.deathSaves?.failures ?? 0);
-      expect(totalSF).toBeGreaterThan(0);
+      const regainedConsciousness = updated.hp?.current === 1 && dying.hp.current === 0;
+      expect(totalSF > 0 || regainedConsciousness).toBe(true);
     });
   });
 });

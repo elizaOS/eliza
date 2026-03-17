@@ -5,7 +5,7 @@ export const computeruseAvailableAppsProvider: Provider = {
   name: "COMPUTERUSE_AVAILABLE_APPS",
   description: "Lists currently running applications (best-effort, may be summarized in MCP mode)",
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
-    const service = runtime.getService<ComputerUseService>("computeruse");
+    const service = await runtime.getService<ComputerUseService>("computeruse");
     if (!service || !service.isEnabled()) {
       return {
         text: "ComputerUse is disabled",
@@ -15,7 +15,7 @@ export const computeruseAvailableAppsProvider: Provider = {
     }
 
     const apps = await service.getApplications();
-    const text = `Running applications (${apps.length}):\n${apps.map((a) => `- ${a}`).join("\n")}`;
+    const text = `Running applications (${apps.length}):\n${apps.map((a: string) => `- ${a}`).join("\n")}`;
 
     return {
       text,

@@ -50,7 +50,7 @@ export class TwilioTestSuite implements TestSuite {
           return;
         }
 
-        const result = await twilioService.sendSms(testNumber, "Test SMS from Eliza Twilio plugin");
+        const result = await twilioService.sendSms(String(testNumber), "Test SMS from Eliza Twilio plugin");
 
         logger.info(`✅ SMS test successful. Message SID: ${result.sid}`);
       },
@@ -70,7 +70,7 @@ export class TwilioTestSuite implements TestSuite {
         }
 
         const result = await twilioService.sendSms(
-          testNumber,
+          String(testNumber),
           "Test MMS from Eliza Twilio plugin",
           ["https://demo.twilio.com/owl.png"] // Twilio's demo image
         );
@@ -98,7 +98,7 @@ export class TwilioTestSuite implements TestSuite {
     <Hangup/>
 </Response>`;
 
-        const result = await twilioService.makeCall(testNumber, twiml);
+        const result = await twilioService.makeCall(String(testNumber), twiml);
 
         logger.info(`✅ Call test successful. Call SID: ${result.sid}`);
       },
@@ -116,12 +116,12 @@ export class TwilioTestSuite implements TestSuite {
           throw new Error("Webhook server is not running");
         }
 
-        const webhookPort = runtime.getSetting("TWILIO_WEBHOOK_PORT") || "3000";
+        const webhookPort = String(runtime.getSetting("TWILIO_WEBHOOK_PORT") ?? "3000");
         logger.info(`✅ Webhook server is running on port ${webhookPort}`);
 
         // Test webhook endpoints
         const webhookUrl = runtime.getSetting("TWILIO_WEBHOOK_URL");
-        if (webhookUrl && webhookUrl.includes("localhost")) {
+        if (webhookUrl != null && String(webhookUrl).includes("localhost")) {
           try {
             // Test SMS webhook endpoint
             const smsResponse = await axios.post(
@@ -183,10 +183,10 @@ export class TwilioTestSuite implements TestSuite {
         }
 
         // Send a test message first
-        await twilioService.sendSms(testNumber, "History test message");
+        await twilioService.sendSms(String(testNumber), "History test message");
 
         // Get conversation history
-        const history = twilioService.getConversationHistory(testNumber, 5);
+        const history = twilioService.getConversationHistory(String(testNumber), 5);
 
         if (history.length > 0) {
           logger.info(`✅ Conversation history retrieved: ${history.length} messages`);
@@ -330,7 +330,7 @@ export class TwilioTestSuite implements TestSuite {
         logger.info("\n📤 Test 1: Sending SMS...");
         try {
           const smsResult = await twilioService.sendSms(
-            testNumber,
+            String(testNumber),
             "🎉 Interactive test SMS from elizaOS! Reply to test two-way messaging."
           );
           logger.info(`✅ SMS sent! SID: ${smsResult.sid}`);
@@ -351,7 +351,7 @@ export class TwilioTestSuite implements TestSuite {
     <Say voice="alice">Thank you for testing. Goodbye!</Say>
 </Response>`;
 
-          const callResult = await twilioService.makeCall(testNumber, twiml);
+          const callResult = await twilioService.makeCall(String(testNumber), twiml);
           logger.info(`✅ Call initiated! SID: ${callResult.sid}`);
           logger.info(`   Status: ${callResult.status}`);
         } catch (error) {

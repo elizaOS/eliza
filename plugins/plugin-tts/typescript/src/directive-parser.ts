@@ -19,6 +19,8 @@ const KEY_VALUE_PATTERN = /(\w+)\s*=\s*([^\s,]+)/g;
  * Check if text contains any TTS directive
  */
 export function hasTtsDirective(text: string): boolean {
+  TTS_DIRECTIVE_PATTERN.lastIndex = 0;
+  TTS_TEXT_PATTERN.lastIndex = 0;
   return TTS_DIRECTIVE_PATTERN.test(text) || TTS_TEXT_PATTERN.test(text);
 }
 

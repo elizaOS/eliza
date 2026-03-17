@@ -1,5 +1,7 @@
 import type { Plugin } from "@elizaos/core";
 import { type IAgentRuntime, logger } from "@elizaos/core";
+import { ScratchpadPluginE2ETestSuite } from "./__tests__/scratchpad-plugin.test";
+import { ScratchpadServiceTestSuite } from "./__tests__/scratchpad-service.test";
 import { scratchpadAppendAction } from "./actions/append";
 import { scratchpadDeleteAction } from "./actions/delete";
 import { scratchpadListAction } from "./actions/list";
@@ -44,6 +46,8 @@ export const scratchpadPlugin: Plugin = {
     scratchpadDeleteAction,
     scratchpadAppendAction,
   ],
+
+  tests: [ScratchpadPluginE2ETestSuite, ScratchpadServiceTestSuite],
 
   async init(_config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> {
     try {

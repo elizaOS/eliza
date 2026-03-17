@@ -186,7 +186,7 @@ export function createApp(): express.Express {
     const rt = await initializeRuntime();
     res.json({
       name: CHARACTER.name,
-      bio: CHARACTER.bio,
+      bio: Array.isArray(CHARACTER.bio) ? CHARACTER.bio[0] ?? null : (CHARACTER.bio ?? null),
       agentId: rt.agentId,
       version: "1.0.0",
       capabilities: ["chat", "reasoning", "multi-turn"],

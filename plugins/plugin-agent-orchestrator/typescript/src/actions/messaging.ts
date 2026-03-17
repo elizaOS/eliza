@@ -9,6 +9,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
+import type { JsonObject, ProviderDataRecord } from "@elizaos/core";
 import type { MessagingService } from "../services/messaging-service.js";
 import type {
   MessageContent,
@@ -180,7 +181,7 @@ export const sendCrossPlatformMessageAction: Action = {
         if (result.sentAt) callbackData.sentAt = result.sentAt;
         await callback({
           text: `Message sent successfully to ${target.channel}.`,
-          data: callbackData,
+          data: callbackData as JsonObject,
         });
       } else {
         await callback({
@@ -191,7 +192,7 @@ export const sendCrossPlatformMessageAction: Action = {
 
     return {
       success: result.success,
-      data: result as unknown as Record<string, unknown>,
+      data: result as unknown as ProviderDataRecord,
       error: result.error,
     };
   },
@@ -326,7 +327,7 @@ export const sendToDeliveryContextAction: Action = {
         if (result.messageId) callbackData.messageId = result.messageId;
         await callback({
           text: `Message delivered successfully via ${result.channel}.`,
-          data: callbackData,
+          data: callbackData as JsonObject,
         });
       } else {
         await callback({
@@ -337,7 +338,7 @@ export const sendToDeliveryContextAction: Action = {
 
     return {
       success: result.success,
-      data: result as unknown as Record<string, unknown>,
+      data: result as unknown as ProviderDataRecord,
       error: result.error,
     };
   },
@@ -450,7 +451,7 @@ export const sendToRoomAction: Action = {
         if (result.messageId) callbackData.messageId = result.messageId;
         await callback({
           text: `Message sent to room via ${result.channel}.`,
-          data: callbackData,
+          data: callbackData as JsonObject,
         });
       } else {
         await callback({
@@ -461,7 +462,7 @@ export const sendToRoomAction: Action = {
 
     return {
       success: result.success,
-      data: result as unknown as Record<string, unknown>,
+      data: result as unknown as ProviderDataRecord,
       error: result.error,
     };
   },
@@ -571,7 +572,7 @@ export const sendToSessionMessageAction: Action = {
         if (result.messageId) callbackData.messageId = result.messageId;
         await callback({
           text: `Message sent to session via ${result.channel}.`,
-          data: callbackData,
+          data: callbackData as JsonObject,
         });
       } else {
         await callback({
@@ -582,7 +583,7 @@ export const sendToSessionMessageAction: Action = {
 
     return {
       success: result.success,
-      data: result as unknown as Record<string, unknown>,
+      data: result as unknown as ProviderDataRecord,
       error: result.error,
     };
   },
@@ -646,7 +647,7 @@ export const listMessagingChannelsAction: Action = {
       return { success: false, error: "Messaging service not available" };
     }
 
-    const channels = messagingService.getAvailableChannels();
+    const channels = await messagingService.getAvailableChannels();
 
     if (callback) {
       if (channels.length > 0) {

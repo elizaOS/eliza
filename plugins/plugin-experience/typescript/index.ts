@@ -25,7 +25,7 @@ export const experiencePlugin: Plugin = {
     runtime.setSetting("MAX_EXPERIENCES", maxExperiences.toString());
     runtime.setSetting("AUTO_RECORD_THRESHOLD", autoRecordThreshold.toString());
 
-    const experienceService = runtime.getService<ExperienceService>("EXPERIENCE");
+    const experienceService = await runtime.getService<ExperienceService>("EXPERIENCE");
     experienceService?.setMaxExperiences(maxExperiences);
 
     logger.info(`[ExperiencePlugin] Configuration:

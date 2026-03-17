@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { positionNodes, validateWorkflow } from "../../../workflow/utils/workflow";
 import {
   createGmailNode,

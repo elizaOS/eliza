@@ -643,8 +643,13 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    // Reject any pending service load promises so callers don't hang
+    // Reject any pending service load promises so callers don't hang.
+    // Attach a no-op catch to each so the rejection is "handled" and does not
+    // become an unhandled rejection in tests (callers awaiting getService() still get the error).
     const stopError = new Error("Runtime stopped");
+    for (const promise of this.servicePromises.values()) {
+      promise.catch(() => {});
+    }
     for (const handler of this.servicePromiseHandlers.values()) {
       handler.reject(stopError);
     }
@@ -664,6 +669,9 @@ export class AgentRuntime implements IAgentRuntime {
    * WHY: Those belong to provisioning (once at daemon boot); edge/ephemeral skip them.
    */
   async initialize(): Promise<void> {
+    if (!this.adapter) {
+      throw new Error("Database adapter not initialized");
+    }
     const pluginRegistrationPromises: Promise<void>[] = [];
 
     const bootstrapPlugin = createBootstrapPlugin(this.capabilityOptions);
@@ -2411,9 +2419,19 @@ export class AgentRuntime implements IAgentRuntime {
   async getServicesByType<T extends Service = Service>(
     serviceName: ServiceTypeName | string,
   ): Promise<T[]> {
+    const key = serviceName as ServiceTypeName;
+    const classes = this.serviceTypes.get(key);
+    if (!classes || classes.length === 0) {
+      return [];
+    }
+    // Start all registered services of this type (first via _ensureServiceStarted, then any remaining)
     await this._ensureServiceStarted(serviceName);
-    const serviceInstances = this.services.get(serviceName as ServiceTypeName);
-    if (!serviceInstances || serviceInstances.length === 0) {
+    let serviceInstances = this.services.get(key) ?? [];
+    while (serviceInstances.length < classes.length) {
+      await this._runServiceStart(key, serviceName, classes[serviceInstances.length]);
+      serviceInstances = this.services.get(key) ?? [];
+    }
+    if (serviceInstances.length === 0) {
       this.logger.debug(
         { src: "agent", agentId: this.agentId, serviceName },
         "No services found for type",
@@ -2808,24 +2826,38 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    // Only treat params as an object if it's actually an object (not a string or primitive)
-    const paramsObj =
-      params && typeof params === "object" && !Array.isArray(params)
-        ? (params as Record<string, JsonValue | object>)
+    // Normalize string or missing params to object for model types that accept string (e.g. IMAGE_DESCRIPTION)
+    // so handlers always receive an object and never hit "prompt" in params when params is a string/undefined.
+    // Use both prompt and imageUrl so handlers that expect either field work.
+    const effectiveParams =
+      modelKey === ModelType.IMAGE_DESCRIPTION &&
+      (typeof params === "string" || params == null)
+        ? ({
+            prompt: typeof params === "string" ? params : "",
+            imageUrl: typeof params === "string" ? params : "",
+          } as ModelParamsMap[T])
+        : params;
+
+    // Only treat params as an object if it's actually an object (not a string or primitive).
+    // Guard so we never use 'in' on a non-object (avoids "paramsObj is not an Object" in some runtimes).
+    const isParamsObject =
+      effectiveParams != null &&
+      typeof effectiveParams === "object" &&
+      !Array.isArray(effectiveParams);
+    const paramsObj = isParamsObject
+      ? (effectiveParams as Record<string, JsonValue | object>)
+      : null;
+    const promptContent = isParamsObject && paramsObj
+      ? (typeof paramsObj.prompt === "string"
+          ? paramsObj.prompt
+          : typeof paramsObj.input === "string"
+            ? paramsObj.input
+            : Array.isArray(paramsObj.messages)
+              ? JSON.stringify(paramsObj.messages)
+              : null) ?? (typeof params === "string" ? params : null)
+      : typeof params === "string"
+        ? params
         : null;
-    const promptContent =
-      (paramsObj &&
-      "prompt" in paramsObj &&
-      typeof paramsObj.prompt === "string"
-        ? paramsObj.prompt
-        : null) ||
-      (paramsObj && "input" in paramsObj && typeof paramsObj.input === "string"
-        ? paramsObj.input
-        : null) ||
-      (paramsObj && "messages" in paramsObj && Array.isArray(paramsObj.messages)
-        ? JSON.stringify(paramsObj.messages)
-        : null) ||
-      (typeof params === "string" ? params : null);
     const model = this.getModel(modelKey);
     const modelsForKey = this.models.get(modelKey);
     const modelWithProvider =
@@ -2880,15 +2912,15 @@ export class AgentRuntime implements IAgentRuntime {
       );
     }
     let modelParams: ModelParamsMap[T];
-    const paramsClone = isPlainObject(params)
-      ? { ...(params as Record<string, JsonValue | object>) }
-      : params;
+    const paramsClone = isPlainObject(effectiveParams)
+      ? { ...(effectiveParams as Record<string, JsonValue | object>) }
+      : effectiveParams;
     if (
-      params === null ||
-      params === undefined ||
-      typeof params !== "object" ||
-      Array.isArray(params) ||
-      BufferUtils.isBuffer(params)
+      effectiveParams === null ||
+      effectiveParams === undefined ||
+      typeof effectiveParams !== "object" ||
+      Array.isArray(effectiveParams) ||
+      BufferUtils.isBuffer(effectiveParams)
     ) {
       modelParams = paramsClone as ModelParamsMap[T];
     } else {
@@ -4201,10 +4233,12 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return ids.length > 0;
   }
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
-    return await this.adapter.updateAgents([{ agentId, agent }]);
+    await this.adapter.updateAgents([{ agentId, agent }]);
+    return true;
   }
   async deleteAgent(agentId: UUID): Promise<boolean> {
-    return await this.adapter.deleteAgents([agentId]);
+    await this.adapter.deleteAgents([agentId]);
+    return true;
   }
   async countAgents(): Promise<number> {
     return await this.adapter.countAgents();
@@ -4313,6 +4347,29 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       { src: "agent", agentId: agent.id },
       existingAgent ? "Agent updated on restart" : "Agent created",
     );
+
+    // Sync merged agent state into runtime.character so getSetting() and character stay in sync with DB
+    if (this.character && refreshedAgent) {
+      if (
+        refreshedAgent.settings &&
+        typeof refreshedAgent.settings === "object"
+      ) {
+        this.character.settings = {
+          ...this.character.settings,
+          ...refreshedAgent.settings,
+        };
+      }
+      if (
+        refreshedAgent.secrets &&
+        typeof refreshedAgent.secrets === "object"
+      ) {
+        this.character.secrets = {
+          ...this.character.secrets,
+          ...refreshedAgent.secrets,
+        };
+      }
+    }
+
     return refreshedAgent;
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
@@ -5104,7 +5161,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   }
 
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return await this.adapter.deleteParticipants([{ entityId, roomId }]);
+    await this.adapter.deleteParticipants([{ entityId, roomId }]);
+    return true;
   }
 
   // ── Room passthroughs & wrappers ────────────────────────────────────

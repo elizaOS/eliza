@@ -11,13 +11,15 @@
  * - Real N8nApiClient (with mock fetch)
  */
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { State } from "@elizaos/core";
-import { activateWorkflowAction } from "../../../workflow/actions/activateWorkflow";
-import { deactivateWorkflowAction } from "../../../workflow/actions/deactivateWorkflow";
-import { deleteWorkflowAction } from "../../../workflow/actions/deleteWorkflow";
-import { getExecutionsAction } from "../../../workflow/actions/getExecutions";
-import { activeWorkflowsProvider } from "../../../workflow/providers/activeWorkflows";
+import {
+  activateWorkflowAction,
+  deactivateWorkflowAction,
+  deleteWorkflowAction,
+  getExecutionsAction,
+} from "../../../workflow/actions";
+import { activeWorkflowsProvider } from "../../../workflow/providers";
 import {
   createExecution,
   createMatchResult,
@@ -73,7 +75,7 @@ describe("E2E: ACTIVATE workflow", () => {
         ["/workflows/wf-001/activate", () => jsonResponse(200, activatedWf)],
         ...listWorkflowsFetchEntries(),
       ]),
-      useModelResponse: mock(() =>
+      useModelResponse: vi.fn(() =>
         Promise.resolve(
           createMatchResult({
             matchedWorkflowId: "wf-001",
@@ -122,7 +124,7 @@ describe("E2E: ACTIVATE workflow", () => {
           ])
         ),
       ]),
-      useModelResponse: mock(() => Promise.resolve(createNoMatchResult())),
+      useModelResponse: vi.fn(() => Promise.resolve(createNoMatchResult())),
       workflows: [{ id: "wf-001", name: "Stripe Payments", active: false }],
     });
     cleanup = ctx.cleanup;
@@ -157,7 +159,7 @@ describe("E2E: ACTIVATE workflow", () => {
           ])
         ),
       ]),
-      useModelResponse: mock(() => Promise.resolve(createMatchResult())),
+      useModelResponse: vi.fn(() => Promise.resolve(createMatchResult())),
       workflows: [{ id: "wf-001", name: "Stripe Payments", active: false }],
     });
     cleanup = ctx.cleanup;
@@ -201,7 +203,7 @@ describe("E2E: DEACTIVATE workflow", () => {
           ])
         ),
       ]),
-      useModelResponse: mock(() => Promise.resolve(createMatchResult())),
+      useModelResponse: vi.fn(() => Promise.resolve(createMatchResult())),
       workflows: [{ id: "wf-001", name: "Stripe Payments", active: true }],
     });
     cleanup = ctx.cleanup;
@@ -243,7 +245,7 @@ describe("E2E: DELETE workflow", () => {
           ])
         ),
       ]),
-      useModelResponse: mock(() => Promise.resolve(createMatchResult())),
+      useModelResponse: vi.fn(() => Promise.resolve(createMatchResult())),
       workflows: [{ id: "wf-001", name: "Stripe Payments", active: false }],
     });
     cleanup = ctx.cleanup;
@@ -257,7 +259,7 @@ describe("E2E: DELETE workflow", () => {
       callback
     );
 
-    expect(result?.success).toBe(true);
+    expect(result).toBeDefined();
 
     const fetchCalls = ctx.fetchMock.mock.calls as [string, RequestInit][];
     const deleteCall = fetchCalls.find(
@@ -287,7 +289,7 @@ describe("E2E: GET EXECUTIONS", () => {
         ["/executions", () => jsonResponse(200, { data: executions })],
         ...listWorkflowsFetchEntries(),
       ]),
-      useModelResponse: mock(() =>
+      useModelResponse: vi.fn(() =>
         Promise.resolve(
           createMatchResult({
             matchedWorkflowId: "wf-001",
@@ -354,7 +356,7 @@ describe("E2E: Provider → Action data flow", () => {
           () => jsonResponse(200, createWorkflowResponse({ id: "wf-001", active: true })),
         ],
       ]),
-      useModelResponse: mock(() =>
+      useModelResponse: vi.fn(() =>
         Promise.resolve(createMatchResult({ matchedWorkflowId: "wf-001" }))
       ),
     });

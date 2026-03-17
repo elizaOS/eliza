@@ -67,11 +67,9 @@ export * from "./types";
 
 export default feishuPlugin;
 
-// Channel configuration types
+// Channel configuration types (FeishuAccountConfig, FeishuGroupConfig from ./accounts)
 export type {
-  FeishuAccountConfig,
   FeishuActionConfig,
   FeishuConfig,
-  FeishuGroupConfig,
   FeishuReactionNotificationMode,
 } from "./config";

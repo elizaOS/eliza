@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearSaltCache, getSalt } from "../settings";
+import { setEnv } from "../utils/environment";
 
 describe("getSalt - production enforcement", () => {
   const originalEnv = { ...process.env };
@@ -25,7 +26,7 @@ describe("getSalt - production enforcement", () => {
   it("should allow default in production when override is explicitly set", () => {
     process.env.NODE_ENV = "production";
     delete process.env.SECRET_SALT;
-    process.env.ELIZA_ALLOW_DEFAULT_SECRET_SALT = "true";
+    setEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "true");
 
     expect(getSalt()).toBe("secretsalt");
   });

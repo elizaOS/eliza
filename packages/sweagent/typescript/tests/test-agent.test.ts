@@ -2,7 +2,7 @@
  * Agent tests converted from test_agent.py
  */
 
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_TEMPLATE_CONFIG,
   DefaultAgent,
@@ -44,9 +44,9 @@ import { SWEEnv } from "../src/environment/swe-env";
 // } from './test-utils';
 
 class TestRuntime extends AbstractRuntime {
-  createSession = jest.fn(async (_request: CreateBashSessionRequest) => {});
+  createSession = vi.fn(async (_request: CreateBashSessionRequest) => {});
 
-  runInSession = jest.fn(
+  runInSession = vi.fn(
     async (
       _action: BashAction | BashInterruptAction,
     ): Promise<BashActionResult> =>
@@ -56,7 +56,7 @@ class TestRuntime extends AbstractRuntime {
       }) satisfies BashActionResult,
   );
 
-  execute = jest.fn(
+  execute = vi.fn(
     async (_command: Command): Promise<CommandResult> => ({
       exitCode: 0,
       stdout: "",
@@ -64,20 +64,20 @@ class TestRuntime extends AbstractRuntime {
     }),
   );
 
-  readFile = jest.fn(
+  readFile = vi.fn(
     async (_request: ReadFileRequest): Promise<ReadFileResponse> => ({
       content: "",
     }),
   );
 
-  writeFile = jest.fn(async (_request: WriteFileRequest) => {});
-  upload = jest.fn(async (_request: UploadRequest) => {});
+  writeFile = vi.fn(async (_request: WriteFileRequest) => {});
+  upload = vi.fn(async (_request: UploadRequest) => {});
 }
 
 class TestDeployment extends AbstractDeployment {
   runtime: AbstractRuntime;
-  start = jest.fn(async () => {});
-  stop = jest.fn(async () => {});
+  start = vi.fn(async () => {});
+  stop = vi.fn(async () => {});
 
   constructor(runtime: AbstractRuntime) {
     super();
@@ -137,7 +137,7 @@ describe("Agent Tests", () => {
     });
 
     // Add mocks for SWEEnv methods used in tests
-    jest.spyOn(dummyEnv, "readFile").mockImplementation((path: string) => {
+    vi.spyOn(dummyEnv, "readFile").mockImplementation((path: string) => {
       // For patch files, return empty so submission isn't triggered
       if (path.includes("model.patch") || path.includes("test.patch")) {
         return Promise.resolve("");
@@ -487,10 +487,10 @@ describe("Agent Tests", () => {
       await agent.setup(dummyEnv, new EmptyProblemStatement());
 
       // Make sure the environment is considered alive
-      jest.spyOn(dummyEnv, "isAlive").mockReturnValue(true);
+      vi.spyOn(dummyEnv, "isAlive").mockReturnValue(true);
 
       // Mock executeCommand for git commands
-      jest.spyOn(dummyEnv, "executeCommand").mockImplementation(async () => {
+      vi.spyOn(dummyEnv, "executeCommand").mockImplementation(async () => {
         // Git command succeeds, returns void
       });
 
@@ -503,7 +503,7 @@ describe("Agent Tests", () => {
           }
         });
 
-      jest.spyOn(dummyEnv, "readFile").mockImplementation(async (path) => {
+      vi.spyOn(dummyEnv, "readFile").mockImplementation(async (path) => {
         if (path === "/root/model.patch") {
           return "mysubmission";
         }

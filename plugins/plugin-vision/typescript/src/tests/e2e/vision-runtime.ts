@@ -153,7 +153,7 @@ export class VisionRuntimeTestSuite {
           return [];
         };
 
-        await action.handler(runtime, message, {}, {}, callback);
+        await action.handler(runtime, message, { values: {}, data: {}, text: "" }, {}, callback);
 
         if (!responseReceived) {
           throw new Error("DESCRIBE_SCENE action did not produce a response");
@@ -300,12 +300,13 @@ export class VisionRuntimeTestSuite {
 
         // Check entity structure if any exist
         for (const entity of entities) {
-          if (!entity.id || !entity.type || !entity.lastSeen) {
+          if (!entity.id || !entity.entityType || !entity.lastSeen) {
             throw new Error("Entity missing required fields");
           }
 
+          const durationMs = entity.lastSeen - entity.firstSeen;
           logger.info(
-            `[Test] Entity ${entity.id}: type=${entity.type}, tracked=${entity.trackingDuration}ms`
+            `[Test] Entity ${entity.id}: type=${entity.entityType}, tracked=${durationMs}ms`
           );
         }
 

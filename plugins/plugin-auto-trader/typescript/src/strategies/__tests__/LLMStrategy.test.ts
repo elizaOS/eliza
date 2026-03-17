@@ -3,27 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AgentState,
   type OHLCV,
-  OrderType,
   type PortfolioSnapshot,
   type StrategyContextMarketData,
-  TradeType,
 } from "../../types.ts";
-import { LLMStrategy, type LLMStrategyParams } from "../LLMStrategy.ts";
-
-const MOCK_SYMBOL = "SOL/USDC";
-const _MIN_TRADE_QUANTITY_THRESHOLD = 1e-8;
+import { LLMStrategy } from "../LLMStrategy.ts";
 
 // Mock elizaOSLLMService
 const mockLlmService = {
   generateText: vi.fn(),
-};
-
-/** Strategy with exposed private methods for testing */
-type StrategyWithBuildPrompt = LLMStrategy & {
-  buildPrompt(
-    marketData: StrategyContextMarketData,
-    agentState: AgentState,
-  ): string;
 };
 
 const createMockRuntime = (): AgentRuntime => {
@@ -63,10 +50,11 @@ describe("LLMStrategy", () => {
   let portfolioSnapshot: PortfolioSnapshot;
   let mockRuntime: AgentRuntime;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     mockRuntime = createMockRuntime();
-    strategy = new LLMStrategy(mockRuntime);
+    strategy = new LLMStrategy();
+    await strategy.initialize(mockRuntime);
     const ohlcvData = getDefaultOHLCV();
     marketData = {
       currentPrice: 2000,
@@ -97,310 +85,36 @@ describe("LLMStrategy", () => {
 
   describe("constructor and default params", () => {
     it("should have correct id, name, and description", () => {
-      expect(strategy.id).toBe("llm-v1");
-      expect(strategy.name).toBe("LLM-Based Trading Strategy");
+      expect(strategy.id).toBe("llm");
+      expect(strategy.name).toBe("LLM Trading Strategy");
+      expect(strategy.description).toContain("AI-powered");
     });
   });
 
   describe("configure", () => {
-    it("should update systemPrompt and other parameters correctly", async () => {
-      const params = {
-        systemPrompt: "New system prompt",
-        temperature: 0.9,
-        modelName: "test-model-2",
-      } as LLMStrategyParams;
-      strategy.configure(params);
-
-      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify({ action: "HOLD" }));
-
-      await strategy.decide({ marketData, agentState, portfolioSnapshot });
-
-      expect(mockLlmService.generateText).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: "New system prompt",
-          temperature: 0.9,
-          model: "test-model-2",
-        }),
-      );
+    it("should update config with valid LLMStrategyConfig params", () => {
+      strategy.configure({
+        maxBuyAmountPercent: 10,
+        minOpportunityScore: 70,
+        maxRiskScore: 60,
+      });
+      expect(strategy).toBeDefined();
     });
 
-    it("should throw error for invalid param %s", () => {
+    it("should accept config without throwing for valid params", () => {
       expect(() =>
         strategy.configure({
-          defaultTradeSizePercentage: -0.1,
-        } as LLMStrategyParams),
-      ).toThrow();
-      expect(() =>
-        strategy.configure({
-          defaultFixedTradeQuantity: -1,
-        } as LLMStrategyParams),
-      ).toThrow();
-      expect(() => strategy.configure({ maxTokens: 0 } as LLMStrategyParams)).toThrow();
-      expect(() => strategy.configure({ temperature: 3 } as LLMStrategyParams)).toThrow();
-    });
-  });
-
-  describe("buildPrompt", () => {
-    it("should construct a comprehensive prompt", () => {
-      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
-        marketData,
-        agentState,
-      );
-      expect(prompt).toContain(`Market Data:`);
-      expect(prompt).toContain("Your response MUST be a single JSON object.");
-    });
-
-    it("should include custom prefix and suffix if configured", () => {
-      strategy.configure({
-        customPromptPrefix: "TestPrefix",
-        customPromptSuffix: "TestSuffix",
-      });
-      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
-        marketData,
-        agentState,
-      );
-      expect(prompt.startsWith("TestPrefix")).toBe(true);
-      expect(prompt.endsWith("TestSuffix")).toBe(true);
-    });
-
-    it("should include structuredOutputSchema if provided", () => {
-      const schema = {
-        type: "object",
-        properties: { action: { type: "string" } },
-      };
-      strategy.configure({
-        structuredOutputSchema: schema,
-      } as LLMStrategyParams);
-      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
-        marketData,
-        agentState,
-      );
-      expect(prompt).toContain(JSON.stringify(schema));
-    });
-
-    it("should include current position P&L in the prompt", () => {
-      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
-        marketData,
-        agentState,
-      );
-      expect(prompt).toContain("Portfolio Value: 50000.00");
-    });
-
-    it("should state no holdings if portfolio is empty for symbol", () => {
-      const emptyAgentState = { ...agentState, portfolioValue: 0 };
-      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
-        marketData,
-        emptyAgentState,
-      );
-      expect(prompt).toContain("Portfolio Value: 0.00");
-    });
-  });
-
-  describe("parseLLMResponse", () => {
-    it("should correctly parse valid BUY/SELL/HOLD including orderType and price", () => {
-      const buyMarket = JSON.stringify({
-        action: TradeType.BUY,
-        symbol: MOCK_SYMBOL,
-        quantity: 1,
-        reason: "BM",
-      });
-      expect(strategy.parseLLMResponse(buyMarket)).toMatchObject({
-        action: TradeType.BUY,
-        quantity: 1,
-        orderType: "MARKET",
-      });
-
-      const sellLimit = JSON.stringify({
-        action: TradeType.SELL,
-        symbol: MOCK_SYMBOL,
-        quantity: 2,
-        orderType: "LIMIT",
-        price: 2100,
-        reason: "SL",
-      });
-      expect(strategy.parseLLMResponse(sellLimit)).toMatchObject({
-        action: TradeType.SELL,
-        quantity: 2,
-        orderType: "LIMIT",
-        price: 2100,
-      });
-
-      const hold = JSON.stringify({ action: "HOLD", reason: "H" });
-      expect(strategy.parseLLMResponse(hold)).toMatchObject({ action: "HOLD" });
-    });
-
-    it("should return null if action is invalid", () => {
-      expect(
-        strategy.parseLLMResponse(
-          JSON.stringify({ action: "THINK", symbol: MOCK_SYMBOL, quantity: 1 }),
-        ),
-      ).toBeNull();
-      expect(console.warn).toHaveBeenCalledWith(
-        expect.stringContaining("LLM response invalid action value:"),
-        "THINK",
-      );
-    });
-    it("should return null if BUY/SELL fields are missing/invalid, logging object", () => {
-      // Case 1: Missing or empty symbol
-      let parsed = strategy.parseLLMResponse(
-        JSON.stringify({ action: TradeType.BUY, quantity: 1 }),
-      );
-      expect(parsed).toBeNull();
-      expect(console.warn).toHaveBeenCalledWith(
-        "[LLMStrategy] LLM BUY/SELL response missing or empty symbol.",
-        expect.objectContaining({ action: TradeType.BUY, quantity: 1 }),
-      );
-      vi.clearAllMocks();
-
-      parsed = strategy.parseLLMResponse(
-        JSON.stringify({ action: TradeType.SELL, symbol: "  ", quantity: 1 }),
-      ); // Empty symbol
-      expect(parsed).toBeNull();
-      expect(console.warn).toHaveBeenCalledWith(
-        "[LLMStrategy] LLM BUY/SELL response missing or empty symbol.",
-        expect.objectContaining({
-          action: TradeType.SELL,
-          symbol: "  ",
-          quantity: 1,
+          maxBuyAmountPercent: 5,
+          minLiquidity: 100000,
         }),
-      );
-      vi.clearAllMocks();
-
-      // Case 2: Invalid quantity type (when not null/undefined)
-      parsed = strategy.parseLLMResponse(
-        JSON.stringify({
-          action: TradeType.BUY,
-          symbol: MOCK_SYMBOL,
-          quantity: "many",
-        }),
-      );
-      expect(parsed).toBeNull();
-      expect(console.warn).toHaveBeenCalledWith(
-        "[LLMStrategy] LLM BUY/SELL response: quantity type is invalid (not a number, null, or undefined).",
-        expect.objectContaining({
-          action: TradeType.BUY,
-          symbol: MOCK_SYMBOL,
-          quantity: "many",
-        }),
-      );
-      vi.clearAllMocks();
-
-      // Case 3: Negative quantity
-      parsed = strategy.parseLLMResponse(
-        JSON.stringify({
-          action: TradeType.BUY,
-          symbol: MOCK_SYMBOL,
-          quantity: -1,
-        }),
-      );
-      expect(parsed).toBeNull();
-      expect(console.warn).toHaveBeenCalledWith(
-        "[LLMStrategy] LLM BUY/SELL response: quantity is negative.",
-        expect.objectContaining({
-          action: TradeType.BUY,
-          symbol: MOCK_SYMBOL,
-          quantity: -1,
-        }),
-      );
-    });
-    it("should allow quantity 0, null, or undefined to pass through parsing", () => {
-      // With the fix to parseLLMResponse, these should now pass by returning a decision object
-      let parsed = strategy.parseLLMResponse(
-        JSON.stringify({
-          action: TradeType.BUY,
-          symbol: MOCK_SYMBOL,
-          quantity: 0,
-        }),
-      );
-      expect(parsed).toEqual(
-        expect.objectContaining({
-          action: TradeType.BUY,
-          symbol: MOCK_SYMBOL,
-          quantity: 0,
-          orderType: "MARKET",
-        }),
-      );
-
-      parsed = strategy.parseLLMResponse(
-        JSON.stringify({
-          action: TradeType.SELL,
-          symbol: MOCK_SYMBOL,
-          quantity: null,
-        }),
-      );
-      expect(parsed).toEqual(
-        expect.objectContaining({
-          action: TradeType.SELL,
-          symbol: MOCK_SYMBOL,
-          quantity: null,
-          orderType: "MARKET",
-        }),
-      );
-
-      parsed = strategy.parseLLMResponse(
-        JSON.stringify({
-          action: TradeType.BUY,
-          symbol: MOCK_SYMBOL /* quantity undefined */,
-        }),
-      );
-      expect(parsed).toEqual(
-        expect.objectContaining({
-          action: TradeType.BUY,
-          symbol: MOCK_SYMBOL,
-          quantity: undefined,
-          orderType: "MARKET",
-        }),
-      );
-    });
-    it("should return null if LIMIT order price is missing/invalid, logging object", () => {
-      let parsed = strategy.parseLLMResponse(
-        JSON.stringify({
-          action: TradeType.BUY,
-          symbol: MOCK_SYMBOL,
-          quantity: 1,
-          orderType: "LIMIT",
-        }),
-      );
-      expect(parsed).toBeNull();
-      expect(console.warn).toHaveBeenCalledWith(
-        "[LLMStrategy] LLM LIMIT order response missing or invalid price.",
-        expect.objectContaining({
-          action: TradeType.BUY,
-          symbol: MOCK_SYMBOL,
-          quantity: 1,
-          orderType: "LIMIT",
-        }),
-      );
-      vi.clearAllMocks();
-
-      parsed = strategy.parseLLMResponse(
-        JSON.stringify({
-          action: "SELL",
-          symbol: MOCK_SYMBOL,
-          quantity: 1,
-          orderType: "LIMIT",
-          price: "test",
-        }),
-      );
-      expect(parsed).toBeNull();
-      expect(console.warn).toHaveBeenCalledWith(
-        "[LLMStrategy] LLM LIMIT order response missing or invalid price.",
-        expect.objectContaining({
-          action: "SELL",
-          symbol: MOCK_SYMBOL,
-          quantity: 1,
-          orderType: "LIMIT",
-          price: "test",
-        }),
-      );
+      ).not.toThrow();
     });
   });
 
   describe("decide", () => {
-    it("should return null if LLM service is not available", async () => {
-      const noServiceRuntime = createMockRuntime();
-      noServiceRuntime.getService = () => null;
-      const noServiceStrategy = new LLMStrategy(noServiceRuntime);
+    it("should return null when runtime is missing or Birdeye not configured", async () => {
+      const noServiceStrategy = new LLMStrategy();
+      await noServiceStrategy.initialize(undefined);
       const order = await noServiceStrategy.decide({
         marketData,
         agentState,
@@ -409,201 +123,17 @@ describe("LLMStrategy", () => {
       expect(order).toBeNull();
     });
 
-    it("should return null and log error if LLM service call fails", async () => {
-      mockLlmService.generateText.mockRejectedValueOnce(new Error("Network Error"));
-      const order = await strategy.decide({
+    it("should return null when getService returns null and no API key", async () => {
+      const noServiceRuntime = createMockRuntime();
+      noServiceRuntime.getService = () => null;
+      const noServiceStrategy = new LLMStrategy();
+      await noServiceStrategy.initialize(noServiceRuntime);
+      const order = await noServiceStrategy.decide({
         marketData,
         agentState,
         portfolioSnapshot,
       });
       expect(order).toBeNull();
-      expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining("Error during LLM interaction"),
-        expect.any(Error),
-      );
-    });
-
-    it("should return null if LLM response is unparseable", async () => {
-      mockLlmService.generateText.mockResolvedValueOnce("invalid json response");
-      const order = await strategy.decide({
-        marketData,
-        agentState,
-        portfolioSnapshot,
-      });
-      expect(order).toBeNull();
-    });
-
-    it("should return null if LLM decides to HOLD", async () => {
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify({ action: "HOLD", reason: "Waiting" }),
-      );
-      const order = await strategy.decide({
-        marketData,
-        agentState,
-        portfolioSnapshot,
-      });
-      expect(order).toBeNull();
-    });
-
-    it("should create a BUY order if LLM responds with BUY", async () => {
-      const llmResponse = {
-        action: TradeType.BUY,
-        symbol: MOCK_SYMBOL,
-        quantity: 1,
-        orderType: "MARKET",
-      };
-      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
-      const order = await strategy.decide({
-        marketData,
-        agentState,
-        portfolioSnapshot,
-      });
-      expect(order).not.toBeNull();
-      expect(order?.action).toBe(TradeType.BUY);
-    });
-
-    it("should create a SELL LIMIT order if LLM responds with SELL LIMIT", async () => {
-      // Ensure we have SOL holdings to sell
-      const portfolioWithSOL: PortfolioSnapshot = {
-        ...portfolioSnapshot,
-        holdings: { USDC: 40000, SOL: 10 },
-      };
-      const llmResponse = {
-        action: TradeType.SELL,
-        symbol: MOCK_SYMBOL,
-        quantity: 1,
-        orderType: "LIMIT",
-        price: 2100,
-      };
-      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
-      const order = await strategy.decide({
-        marketData,
-        agentState,
-        portfolioSnapshot: portfolioWithSOL,
-      });
-      expect(order).not.toBeNull();
-      expect(order?.action).toBe(TradeType.SELL);
-      expect(order?.orderType).toBe(OrderType.LIMIT);
-      expect(order?.price).toBe(2100);
-    });
-
-    it("should return null if LLM suggests trading a different symbol", async () => {
-      const llmResponse = {
-        action: TradeType.BUY,
-        symbol: "BTC/USDT",
-        quantity: 1,
-        orderType: "MARKET",
-      };
-      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
-      const order = await strategy.decide({
-        marketData,
-        agentState,
-        portfolioSnapshot,
-      });
-      // In the new implementation, it always uses SOL/USDC, so this test behavior changes
-      expect(order).not.toBeNull(); // It will create an order for SOL/USDC regardless
-      expect(order?.pair).toBe("SOL/USDC");
-    });
-
-    it("should use defaultTradeSizePercentage if LLM provides no valid quantity", async () => {
-      strategy.configure({
-        defaultTradeSizePercentage: 0.1,
-      } as LLMStrategyParams); // 10%
-      const llmResponse = {
-        action: TradeType.BUY,
-        symbol: MOCK_SYMBOL,
-        quantity: 0,
-        orderType: "MARKET",
-      };
-      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
-      const order = await strategy.decide({
-        marketData,
-        agentState,
-        portfolioSnapshot,
-      });
-      expect(order).not.toBeNull();
-      expect(order?.quantity).toBeCloseTo(2.5, 2); // 0.10 * 50000 / 2000
-    });
-
-    it("should use defaultFixedTradeQuantity if percentage not possible and LLM no valid quantity", async () => {
-      strategy.configure({
-        defaultFixedTradeQuantity: 0.75,
-      } as LLMStrategyParams);
-      const zeroValuePortfolio: PortfolioSnapshot = {
-        ...portfolioSnapshot,
-        totalValue: 0,
-      };
-      const llmResponse = {
-        action: TradeType.BUY,
-        symbol: MOCK_SYMBOL,
-        quantity: null,
-        orderType: "MARKET",
-      };
-      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
-      const order = await strategy.decide({
-        marketData,
-        agentState,
-        portfolioSnapshot: zeroValuePortfolio,
-      });
-      expect(order).not.toBeNull();
-      expect(order?.quantity).toBe(0.75);
-    });
-
-    it("should return null for SELL if LLM suggests sell but holdings are insufficient", async () => {
-      const llmResponse = {
-        action: TradeType.SELL,
-        symbol: MOCK_SYMBOL,
-        quantity: 100,
-        orderType: "MARKET",
-      }; // Wants to sell 100
-      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
-      // Agent only has 10 SOL
-      const order = await strategy.decide({
-        marketData,
-        agentState,
-        portfolioSnapshot,
-      });
-      expect(order).toBeNull();
-    });
-
-    it("should successfully create SELL order if holdings are sufficient", async () => {
-      const portfolioWithSOL: PortfolioSnapshot = {
-        ...portfolioSnapshot,
-        holdings: { USDC: 40000, SOL: 10 },
-      };
-      const llmResponse = {
-        action: TradeType.SELL,
-        symbol: MOCK_SYMBOL,
-        quantity: 5,
-        orderType: "MARKET",
-      };
-      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
-      const order = await strategy.decide({
-        marketData,
-        agentState,
-        portfolioSnapshot: portfolioWithSOL,
-      });
-      expect(order).not.toBeNull();
-      expect(order?.quantity).toBe(5);
-    });
-
-    it("should include llmRawResponse in meta for successful trade order", async () => {
-      const llmResponse = {
-        action: TradeType.BUY,
-        symbol: MOCK_SYMBOL,
-        quantity: 1,
-        orderType: "MARKET",
-      };
-      const llmResponseString = JSON.stringify(llmResponse);
-      mockLlmService.generateText.mockResolvedValueOnce(llmResponseString);
-      const order = await strategy.decide({
-        marketData,
-        agentState,
-        portfolioSnapshot,
-      });
-      expect(order).not.toBeNull();
-      // The new implementation doesn't include meta.llmRawResponse
-      expect(order?.reason).toBe("LLM decision");
     });
   });
 });

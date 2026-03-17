@@ -286,11 +286,11 @@ export class ScreenVisionE2ETestSuite {
         }
 
         // Try to set invalid region (should handle gracefully)
-        // Access private property for testing purposes
-        interface TestableVisionService extends VisionService {
+        // Access config for testing (cast through unknown to avoid private member conflict)
+        interface TestVisionConfig {
           visionConfig: { screenRegion?: { x: number; y: number; width: number; height: number } };
         }
-        const testableService = visionService as TestableVisionService;
+        const testableService = visionService as unknown as TestVisionConfig;
         const originalConfig = testableService.visionConfig;
         testableService.visionConfig.screenRegion = {
           x: -100,

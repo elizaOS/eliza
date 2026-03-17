@@ -18,6 +18,14 @@ export interface TokenInfo {
   logoURI?: string;
 }
 
+/** Multi-chain token info for registry API (getTokenInfo, getTokenAddress, etc.) */
+export interface TokenInfoWithAddresses {
+  symbol: string;
+  name: string;
+  decimals: number;
+  addresses: Record<string, string>;
+}
+
 /** Well-known tokens that don't need API lookup */
 const WELL_KNOWN_TOKENS: Record<string, TokenInfo> = {
   SOL: {
@@ -40,6 +48,51 @@ const WELL_KNOWN_TOKENS: Record<string, TokenInfo> = {
   },
 };
 
+/** Multi-chain registry for sync API - used by getTokenInfo, getTokenAddress, etc. */
+const DEFAULT_REGISTRY: TokenInfoWithAddresses[] = [
+  {
+    symbol: "SOL",
+    name: "Solana",
+    decimals: 9,
+    addresses: { solana: "So11111111111111111111111111111111111111112" },
+  },
+  {
+    symbol: "USDC",
+    name: "USD Coin",
+    decimals: 6,
+    addresses: {
+      solana: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyB7uH3",
+      ethereum: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      polygon: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+    },
+  },
+  {
+    symbol: "USDT",
+    name: "Tether USD",
+    decimals: 6,
+    addresses: {
+      solana: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      ethereum: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      polygon: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+    },
+  },
+  {
+    symbol: "ETH",
+    name: "Ethereum",
+    decimals: 18,
+    addresses: { ethereum: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+  },
+  {
+    symbol: "MATIC",
+    name: "Polygon",
+    decimals: 18,
+    addresses: {
+      polygon: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+      ethereum: "0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0", // WMATIC on Ethereum
+    },
+  },
+];
+
 /** Solana address regex - base58, 32-44 chars */
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
@@ -51,6 +104,9 @@ export class TokenResolverService extends Service {
   private cacheExpiry = new Map<string, number>();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+  /** Multi-chain registry for sync API (getTokenInfo, getTokenAddress, etc.) */
+  private registry = new Map<string, TokenInfoWithAddresses>();
+
   constructor(runtime: IAgentRuntime) {
     super(runtime);
     // Pre-populate cache with well-known tokens
@@ -58,6 +114,14 @@ export class TokenResolverService extends Service {
       this.cache.set(symbol.toUpperCase(), info);
       this.cache.set(info.address, info);
     }
+    // Pre-populate multi-chain registry
+    for (const token of DEFAULT_REGISTRY) {
+      this.registry.set(token.symbol.toUpperCase(), { ...token });
+    }
+  }
+
+  public async start(): Promise<void> {
+    // Instance start no-op; use static TokenResolverService.start(runtime) to get instance
   }
 
   public static async start(runtime: IAgentRuntime): Promise<TokenResolverService> {
@@ -69,6 +133,48 @@ export class TokenResolverService extends Service {
   public async stop(): Promise<void> {
     this.cache.clear();
     this.cacheExpiry.clear();
+    this.registry.clear();
+  }
+
+  /** Sync: get token info by symbol (multi-chain addresses). */
+  public getTokenInfo(symbol: string): TokenInfoWithAddresses | null {
+    const key = symbol.trim().toUpperCase();
+    return this.registry.get(key) ?? null;
+  }
+
+  /** Sync: get token address for a given chain. */
+  public getTokenAddress(symbol: string, chain: string): string | null {
+    const info = this.getTokenInfo(symbol);
+    if (!info?.addresses) return null;
+    const chainKey = Object.keys(info.addresses).find(
+      (c) => c.toLowerCase() === chain.trim().toLowerCase()
+    );
+    return chainKey ? info.addresses[chainKey] ?? null : null;
+  }
+
+  /** Sync: get all tokens that have an address on the given chain. */
+  public getTokensForChain(chain: string): TokenInfoWithAddresses[] {
+    const chainLower = chain.trim().toLowerCase();
+    return Array.from(this.registry.values()).filter((t) =>
+      Object.keys(t.addresses).some((c) => c.toLowerCase() === chainLower)
+    );
+  }
+
+  /** Sync: register or update a token in the registry. */
+  public registerToken(token: TokenInfoWithAddresses): void {
+    const key = token.symbol.trim().toUpperCase();
+    this.registry.set(key, { ...token, symbol: token.symbol });
+  }
+
+  /** Sync: whether a token is available on the given chain. */
+  public isTokenAvailable(symbol: string, chain: string): boolean {
+    return this.getTokenAddress(symbol, chain) !== null;
+  }
+
+  /** Sync: get decimals for a token, or null if unknown. */
+  public getTokenDecimals(symbol: string): number | null {
+    const info = this.getTokenInfo(symbol);
+    return info?.decimals ?? null;
   }
 
   /**

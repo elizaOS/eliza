@@ -15,6 +15,7 @@ import {
   type Content,
   createCharacter,
   createMessageMemory,
+  InMemoryDatabaseAdapter,
   type Memory,
   stringToUuid,
   type UUID,
@@ -154,13 +155,20 @@ export async function getRuntime(): Promise<AgentRuntime> {
 async function initializeRuntime(): Promise<AgentRuntime> {
   console.log("[elizaOS] Initializing AgentRuntime...");
 
-  // Pre-initialize PGlite before the SQL plugin runs
+  // Pre-initialize PGlite before the SQL plugin runs (sqlPlugin uses it when available)
   await preinitializePGlite();
+
+  const agentId = stringToUuid(elizaCharacter.name ?? "ELIZA");
+  if (!sqlPlugin.adapter) throw new Error("plugin-sql adapter factory required");
+  const adapterOrPromise = sqlPlugin.adapter(agentId, {});
+  const adapter = adapterOrPromise instanceof Promise ? await adapterOrPromise : adapterOrPromise;
+  await adapter.initialize();
 
   const runtime = new AgentRuntime({
     character: elizaCharacter,
+    adapter,
     plugins: [
-      sqlPlugin, // PGlite database for browser (uses our pre-initialized instance)
+      sqlPlugin,
       elizaClassicPlugin, // Classic ELIZA pattern matching
     ],
   });

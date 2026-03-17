@@ -1,9 +1,9 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test, vi } from "vitest";
 import type { ModelType } from "@elizaos/core";
-import { activateWorkflowAction } from "../../../workflow/actions/activateWorkflow";
-import { deactivateWorkflowAction } from "../../../workflow/actions/deactivateWorkflow";
-import { deleteWorkflowAction } from "../../../workflow/actions/deleteWorkflow";
-import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../workflow/services/n8n-workflow-service";
+import { activateWorkflowAction } from "../../../../workflow/actions/activateWorkflow";
+import { deactivateWorkflowAction } from "../../../../workflow/actions/deactivateWorkflow";
+import { deleteWorkflowAction } from "../../../../workflow/actions/deleteWorkflow";
+import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../../workflow/services/n8n-workflow-service";
 import { createMatchResult, createNoMatchResult } from "../../fixtures/workflows";
 import {
   createMockCallback,
@@ -20,7 +20,7 @@ function createRuntimeWithMatchingWorkflow(
   serviceOverrides?: Record<string, unknown>
 ) {
   const mockService = createMockService(serviceOverrides);
-  const useModel = mock((_type: ModelType, _params: unknown) => Promise.resolve(matchResult));
+  const useModel = vi.fn((_type: ModelType, _params: unknown) => Promise.resolve(matchResult));
   return {
     runtime: createMockRuntime({
       services: { [N8N_WORKFLOW_SERVICE_TYPE]: mockService },
@@ -84,7 +84,7 @@ describe("ACTIVATE_N8N_WORKFLOW action", () => {
 
     test("fails when no workflows available", async () => {
       const { runtime } = createRuntimeWithMatchingWorkflow(createMatchResult(), {
-        listWorkflows: mock(() => Promise.resolve([])),
+        listWorkflows: vi.fn(() => Promise.resolve([])),
       });
       const message = createMockMessage({
         content: { text: "Activate something" },
@@ -124,7 +124,7 @@ describe("ACTIVATE_N8N_WORKFLOW action", () => {
 
     test("handles service error", async () => {
       const { runtime } = createRuntimeWithMatchingWorkflow(createMatchResult(), {
-        activateWorkflow: mock(() => Promise.reject(new Error("API error"))),
+        activateWorkflow: vi.fn(() => Promise.reject(new Error("API error"))),
       });
       const message = createMockMessage({
         content: { text: "Activate Stripe" },
@@ -170,7 +170,7 @@ describe("DEACTIVATE_N8N_WORKFLOW action", () => {
 
   test("fails when no workflows available", async () => {
     const { runtime } = createRuntimeWithMatchingWorkflow(createMatchResult(), {
-      listWorkflows: mock(() => Promise.resolve([])),
+      listWorkflows: vi.fn(() => Promise.resolve([])),
     });
     const callback = createMockCallback();
 
@@ -249,7 +249,7 @@ describe("Callback success status", () => {
 
   test("activate failure returns success: false in callback", async () => {
     const { runtime } = createRuntimeWithMatchingWorkflow(createMatchResult(), {
-      activateWorkflow: mock(() => Promise.reject(new Error("API error"))),
+      activateWorkflow: vi.fn(() => Promise.reject(new Error("API error"))),
     });
     const callback = createMockCallback();
 
@@ -299,7 +299,7 @@ describe("Callback success status", () => {
 
   test("no workflows returns success: false in callback", async () => {
     const { runtime } = createRuntimeWithMatchingWorkflow(createMatchResult(), {
-      listWorkflows: mock(() => Promise.resolve([])),
+      listWorkflows: vi.fn(() => Promise.resolve([])),
     });
     const callback = createMockCallback();
 
