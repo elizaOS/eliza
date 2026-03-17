@@ -1,7 +1,7 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { editMessageAction, EDIT_MESSAGE_ACTION } from "./editMessage";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TELEGRAM_SERVICE_NAME } from "../constants";
+import { EDIT_MESSAGE_ACTION, editMessageAction } from "./editMessage";
 
 describe("editMessageAction", () => {
   // Mock service with real method signatures
@@ -35,7 +35,7 @@ describe("editMessageAction", () => {
     it("should return false for non-telegram source", async () => {
       const mockService = createMockService({ success: true });
       const mockRuntime = createMockRuntime(mockService) as unknown as IAgentRuntime;
-      
+
       const discordMessage = {
         content: { source: "discord" },
       } as Memory;
@@ -47,7 +47,7 @@ describe("editMessageAction", () => {
       const mockService = createMockService({ success: true });
       mockService.isInitialized.mockReturnValue(false);
       const mockRuntime = createMockRuntime(mockService) as unknown as IAgentRuntime;
-      
+
       const message = {
         content: { source: "telegram" },
       } as Memory;
@@ -58,7 +58,7 @@ describe("editMessageAction", () => {
     it("should return true when telegram source and service initialized", async () => {
       const mockService = createMockService({ success: true });
       const mockRuntime = createMockRuntime(mockService) as unknown as IAgentRuntime;
-      
+
       const message = {
         content: { source: "telegram" },
       } as Memory;
@@ -172,7 +172,7 @@ describe("editMessageAction", () => {
   it("should have valid examples", () => {
     expect(editMessageAction.examples).toBeDefined();
     expect(editMessageAction.examples.length).toBeGreaterThan(0);
-    
+
     for (const example of editMessageAction.examples) {
       expect(Array.isArray(example)).toBe(true);
       expect(example.length).toBeGreaterThan(0);

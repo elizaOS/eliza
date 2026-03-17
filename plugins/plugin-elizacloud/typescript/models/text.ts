@@ -42,7 +42,8 @@ function buildGenerateParams(
       ? String(rawSystem).trim()
       : undefined; // omit system message entirely when empty
 
-  const promptText = prompt != null && String(prompt).trim() !== "" ? prompt : "";
+  const promptText =
+    prompt != null && String(prompt).trim() !== "" ? prompt : "";
   if (promptText === "") {
     const msg =
       "[ELIZAOS_CLOUD] generateText requires a non-empty prompt (would cause 'Each message must have content'). Check state/composeState and message handler template.";

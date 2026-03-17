@@ -1,5 +1,14 @@
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
+import { checkCloudCreditsAction } from "./actions/check-credits";
+import { freezeCloudAgentAction } from "./actions/freeze-agent";
+// Cloud actions
+import { provisionCloudAgentAction } from "./actions/provision-agent";
+import { resumeCloudAgentAction } from "./actions/resume-agent";
+// Cloud providers
+import { cloudStatusProvider } from "./cloud-providers/cloud-status";
+import { containerHealthProvider } from "./cloud-providers/container-health";
+import { creditBalanceProvider } from "./cloud-providers/credit-balance";
 import { initializeOpenAI } from "./init";
 import {
   fetchTextToSpeech,
@@ -11,24 +20,12 @@ import {
   handleTextLarge,
   handleTextSmall,
 } from "./models";
-import { getApiKey, getBaseURL } from "./utils/config";
-
 // Cloud services
 import { CloudAuthService } from "./services/cloud-auth";
-import { CloudContainerService } from "./services/cloud-container";
-import { CloudBridgeService } from "./services/cloud-bridge";
 import { CloudBackupService } from "./services/cloud-backup";
-
-// Cloud actions
-import { provisionCloudAgentAction } from "./actions/provision-agent";
-import { freezeCloudAgentAction } from "./actions/freeze-agent";
-import { resumeCloudAgentAction } from "./actions/resume-agent";
-import { checkCloudCreditsAction } from "./actions/check-credits";
-
-// Cloud providers
-import { cloudStatusProvider } from "./cloud-providers/cloud-status";
-import { creditBalanceProvider } from "./cloud-providers/credit-balance";
-import { containerHealthProvider } from "./cloud-providers/container-health";
+import { CloudBridgeService } from "./services/cloud-bridge";
+import { CloudContainerService } from "./services/cloud-container";
+import { getApiKey, getBaseURL } from "./utils/config";
 
 type ProcessEnvLike = Record<string, string | undefined>;
 
@@ -149,12 +146,9 @@ export const elizaOSCloudPlugin: Plugin = {
         {
           name: "ELIZAOS_CLOUD_test_text_embedding",
           fn: async (runtime: IAgentRuntime) => {
-            const embedding = await runtime.useModel(
-              ModelType.TEXT_EMBEDDING,
-              {
-                text: "Hello, world!",
-              },
-            );
+            const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+              text: "Hello, world!",
+            });
             logger.log({ embedding }, "embedding");
           },
         },
@@ -229,10 +223,7 @@ export const elizaOSCloudPlugin: Plugin = {
               ModelType.TRANSCRIPTION,
               Buffer.from(new Uint8Array(arrayBuffer)),
             );
-            logger.log(
-              { transcription },
-              "generated with test_transcription",
-            );
+            logger.log({ transcription }, "generated with test_transcription");
           },
         },
         {

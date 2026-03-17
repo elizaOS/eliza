@@ -10,8 +10,8 @@ import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import type {
   AgentSnapshot,
   CreateSnapshotResponse,
-  SnapshotListResponse,
   RestoreSnapshotResponse,
+  SnapshotListResponse,
   SnapshotType,
 } from "../types/cloud";
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
@@ -32,7 +32,8 @@ export class CloudBackupService extends Service {
   private autoBackups: Map<string, AutoBackupEntry> = new Map();
   private backupTaskId: UUID | null = null;
   private readonly maxSnapshots = DEFAULT_CLOUD_CONFIG.backup.maxSnapshots;
-  private readonly backupIntervalMs = DEFAULT_CLOUD_CONFIG.backup.autoBackupIntervalMs;
+  private readonly backupIntervalMs =
+    DEFAULT_CLOUD_CONFIG.backup.autoBackupIntervalMs;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -64,14 +65,18 @@ export class CloudBackupService extends Service {
       name: CLOUD_BACKUP_TASK,
       execute: async () => {
         for (const [containerId] of this.autoBackups) {
-          logger.debug(`[CloudBackup] Running auto-backup for container ${containerId}`);
+          logger.debug(
+            `[CloudBackup] Running auto-backup for container ${containerId}`,
+          );
           this.createSnapshot(containerId, "auto", {
             trigger: "scheduled",
             scheduledIntervalMs: this.backupIntervalMs,
           })
             .then(() => this.pruneSnapshots(containerId))
             .catch((err: Error) => {
-              logger.error(`[CloudBackup] Auto-backup failed for ${containerId}: ${err.message}`);
+              logger.error(
+                `[CloudBackup] Auto-backup failed for ${containerId}: ${err.message}`,
+              );
             });
         }
       },
@@ -82,10 +87,16 @@ export class CloudBackupService extends Service {
 
   private async ensureBackupTask(): Promise<void> {
     const rt = this.runtime;
-    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    if (
+      typeof rt.getTasksByName !== "function" ||
+      typeof rt.createTask !== "function"
+    )
+      return;
     const agentId = rt.agentId;
     const existing = await rt.getTasksByName(CLOUD_BACKUP_TASK);
-    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    const mine = existing.find(
+      (t) => t.agentId != null && String(t.agentId) === String(agentId),
+    );
     if (mine?.id) {
       this.backupTaskId = mine.id;
       return;
@@ -135,7 +146,10 @@ export class CloudBackupService extends Service {
     return response.data;
   }
 
-  async restoreSnapshot(containerId: string, snapshotId: string): Promise<void> {
+  async restoreSnapshot(
+    containerId: string,
+    snapshotId: string,
+  ): Promise<void> {
     const client = this.authService.getClient();
 
     await client.post<RestoreSnapshotResponse>(
@@ -154,7 +168,8 @@ export class CloudBackupService extends Service {
 
     // Sort by created_at descending and return the most recent
     snapshots.sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
     return snapshots[0];
   }
@@ -163,7 +178,9 @@ export class CloudBackupService extends Service {
 
   scheduleAutoBackup(containerId: string, _intervalMs?: number): void {
     if (this.autoBackups.has(containerId)) {
-      logger.debug(`[CloudBackup] Auto-backup already scheduled for ${containerId}`);
+      logger.debug(
+        `[CloudBackup] Auto-backup already scheduled for ${containerId}`,
+      );
       return;
     }
 
@@ -209,7 +226,8 @@ export class CloudBackupService extends Service {
     const autoSnapshots = snapshots
       .filter((s) => s.snapshotType === "auto")
       .sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
 
     const excess = autoSnapshots.slice(this.maxSnapshots);
@@ -217,7 +235,9 @@ export class CloudBackupService extends Service {
 
     const client = this.authService.getClient();
     for (const snapshot of excess) {
-      await client.delete(`/agent-state/${containerId}/snapshots/${snapshot.id}`);
+      await client.delete(
+        `/agent-state/${containerId}/snapshots/${snapshot.id}`,
+      );
       logger.debug(
         `[CloudBackup] Pruned old auto snapshot ${snapshot.id} for ${containerId}`,
       );
@@ -242,6 +262,7 @@ export class CloudBackupService extends Service {
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }

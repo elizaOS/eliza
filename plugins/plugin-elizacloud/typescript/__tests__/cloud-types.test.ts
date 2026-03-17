@@ -2,11 +2,11 @@
  * Tests for cloud types — error class hierarchy, DEFAULT_CLOUD_CONFIG values.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   CloudApiError,
-  InsufficientCreditsError,
   DEFAULT_CLOUD_CONFIG,
+  InsufficientCreditsError,
 } from "../types/cloud";
 
 describe("CloudApiError", () => {
@@ -39,7 +39,11 @@ describe("CloudApiError", () => {
 
 describe("InsufficientCreditsError", () => {
   it("extends CloudApiError with 402 status", () => {
-    const body = { success: false as const, error: "Low credits", requiredCredits: 15.5 };
+    const body = {
+      success: false as const,
+      error: "Low credits",
+      requiredCredits: 15.5,
+    };
     const err = new InsufficientCreditsError(body);
     expect(err).toBeInstanceOf(CloudApiError);
     expect(err).toBeInstanceOf(Error);
@@ -49,7 +53,10 @@ describe("InsufficientCreditsError", () => {
   });
 
   it("defaults requiredCredits to 0 when not in body", () => {
-    const err = new InsufficientCreditsError({ success: false, error: "broke" });
+    const err = new InsufficientCreditsError({
+      success: false,
+      error: "broke",
+    });
     expect(err.requiredCredits).toBe(0);
   });
 
@@ -66,7 +73,9 @@ describe("InsufficientCreditsError", () => {
 
 describe("DEFAULT_CLOUD_CONFIG", () => {
   it("has sane default baseUrl", () => {
-    expect(DEFAULT_CLOUD_CONFIG.baseUrl).toBe("https://www.elizacloud.ai/api/v1");
+    expect(DEFAULT_CLOUD_CONFIG.baseUrl).toBe(
+      "https://www.elizacloud.ai/api/v1",
+    );
   });
 
   it("is disabled by default", () => {
@@ -79,12 +88,18 @@ describe("DEFAULT_CLOUD_CONFIG", () => {
 
   it("has reasonable bridge settings", () => {
     expect(DEFAULT_CLOUD_CONFIG.bridge.reconnectIntervalMs).toBeGreaterThan(0);
-    expect(DEFAULT_CLOUD_CONFIG.bridge.maxReconnectAttempts).toBeGreaterThanOrEqual(1);
-    expect(DEFAULT_CLOUD_CONFIG.bridge.heartbeatIntervalMs).toBeGreaterThanOrEqual(5000);
+    expect(
+      DEFAULT_CLOUD_CONFIG.bridge.maxReconnectAttempts,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      DEFAULT_CLOUD_CONFIG.bridge.heartbeatIntervalMs,
+    ).toBeGreaterThanOrEqual(5000);
   });
 
   it("has reasonable backup settings", () => {
-    expect(DEFAULT_CLOUD_CONFIG.backup.autoBackupIntervalMs).toBeGreaterThanOrEqual(60_000);
+    expect(
+      DEFAULT_CLOUD_CONFIG.backup.autoBackupIntervalMs,
+    ).toBeGreaterThanOrEqual(60_000);
     expect(DEFAULT_CLOUD_CONFIG.backup.maxSnapshots).toBeGreaterThanOrEqual(1);
   });
 
@@ -93,11 +108,19 @@ describe("DEFAULT_CLOUD_CONFIG", () => {
   });
 
   it("container defaults are within ECS limits", () => {
-    expect(DEFAULT_CLOUD_CONFIG.container.defaultCpu).toBeGreaterThanOrEqual(256);
+    expect(DEFAULT_CLOUD_CONFIG.container.defaultCpu).toBeGreaterThanOrEqual(
+      256,
+    );
     expect(DEFAULT_CLOUD_CONFIG.container.defaultCpu).toBeLessThanOrEqual(4096);
-    expect(DEFAULT_CLOUD_CONFIG.container.defaultMemory).toBeGreaterThanOrEqual(256);
-    expect(DEFAULT_CLOUD_CONFIG.container.defaultMemory).toBeLessThanOrEqual(4096);
+    expect(DEFAULT_CLOUD_CONFIG.container.defaultMemory).toBeGreaterThanOrEqual(
+      256,
+    );
+    expect(DEFAULT_CLOUD_CONFIG.container.defaultMemory).toBeLessThanOrEqual(
+      4096,
+    );
     expect(DEFAULT_CLOUD_CONFIG.container.defaultPort).toBeGreaterThan(0);
-    expect(DEFAULT_CLOUD_CONFIG.container.defaultPort).toBeLessThanOrEqual(65535);
+    expect(DEFAULT_CLOUD_CONFIG.container.defaultPort).toBeLessThanOrEqual(
+      65535,
+    );
   });
 });

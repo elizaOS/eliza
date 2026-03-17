@@ -57,7 +57,8 @@ export class TelegramService extends Service {
     super(runtime);
 
     // Fallback to process.env so .env is respected (getSetting() does not read process.env).
-    const botToken = (runtime.getSetting("TELEGRAM_BOT_TOKEN") ?? process.env.TELEGRAM_BOT_TOKEN) as string;
+    const botToken = (runtime.getSetting("TELEGRAM_BOT_TOKEN") ??
+      process.env.TELEGRAM_BOT_TOKEN) as string;
     if (!botToken || botToken.trim() === "") {
       logger.warn("Telegram Bot Token not provided - Telegram functionality will be unavailable");
       this.bot = null;
@@ -344,7 +345,9 @@ export class TelegramService extends Service {
         typeof params.chatId === "string" ? parseInt(params.chatId, 10) : params.chatId;
 
       const result = await this.bot.telegram.sendSticker(chatId, params.sticker, {
-        reply_parameters: params.replyToMessageId ? { message_id: params.replyToMessageId } : undefined,
+        reply_parameters: params.replyToMessageId
+          ? { message_id: params.replyToMessageId }
+          : undefined,
         message_thread_id: params.threadId,
         disable_notification: params.disableNotification,
       });

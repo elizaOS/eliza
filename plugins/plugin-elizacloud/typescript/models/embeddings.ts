@@ -49,7 +49,10 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
     "text-embedding-3-small",
   );
   const embeddingDimension: number = Number.parseInt(
-    String(getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") ?? "1536"),
+    String(
+      getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") ??
+        "1536",
+    ),
     10,
   );
 

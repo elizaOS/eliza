@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
-import { deleteMessageAction, DELETE_MESSAGE_ACTION } from "./deleteMessage";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import { DELETE_MESSAGE_ACTION, deleteMessageAction } from "./deleteMessage";
 
 describe("deleteMessageAction", () => {
   it("should have correct name and description", () => {
@@ -13,11 +13,11 @@ describe("deleteMessageAction", () => {
     const mockRuntime = {
       getService: vi.fn().mockReturnValue(mockService),
     } as unknown as IAgentRuntime;
-    
+
     const telegramMessage = {
       content: { source: "telegram" },
     } as Memory;
-    
+
     const discordMessage = {
       content: { source: "discord" },
     } as Memory;
@@ -31,7 +31,7 @@ describe("deleteMessageAction", () => {
     const mockRuntime = {
       getService: vi.fn().mockReturnValue(mockService),
     } as unknown as IAgentRuntime;
-    
+
     const telegramMessage = {
       content: { source: "telegram" },
     } as Memory;
@@ -93,7 +93,7 @@ describe("deleteMessageAction", () => {
   it("should have valid examples", () => {
     expect(deleteMessageAction.examples).toBeDefined();
     expect(deleteMessageAction.examples.length).toBeGreaterThan(0);
-    
+
     for (const example of deleteMessageAction.examples) {
       expect(Array.isArray(example)).toBe(true);
       expect(example.length).toBeGreaterThan(0);

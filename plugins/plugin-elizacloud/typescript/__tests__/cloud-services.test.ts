@@ -6,17 +6,20 @@
  * that returns controlled responses so we test real code paths.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import * as http from "node:http";
-import { CloudApiClient } from "../utils/cloud-api";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CloudContainer } from "../types/cloud";
+import { CloudApiClient } from "../utils/cloud-api";
 
 // ─── Test server ──────────────────────────────────────────────────────────
 
 let server: http.Server;
 let baseUrl: string;
 
-type RouteHandler = (req: http.IncomingMessage, body: string) => { status: number; body: Record<string, unknown> };
+type RouteHandler = (
+  req: http.IncomingMessage,
+  body: string,
+) => { status: number; body: Record<string, unknown> };
 const routes: Map<string, RouteHandler> = new Map();
 
 function route(method: string, path: string, handler: RouteHandler): void {
@@ -49,9 +52,13 @@ beforeAll(async () => {
   });
 });
 
-afterAll(() => { server.close(); });
+afterAll(() => {
+  server.close();
+});
 
-beforeEach(() => { routes.clear(); });
+beforeEach(() => {
+  routes.clear();
+});
 
 // ─── CloudApiClient integration with route handlers ──────────────────────
 
@@ -84,13 +91,20 @@ describe("CloudApiClient with route-based server", () => {
           creditsDeducted: 10,
           creditsRemaining: 90,
           stackName: "stack-new-c",
-          polling: { endpoint: "/containers/new-c", intervalMs: 10000, expectedDurationMs: 600000 },
+          polling: {
+            endpoint: "/containers/new-c",
+            intervalMs: 10000,
+            expectedDurationMs: 600000,
+          },
         },
       };
     });
 
     const client = new CloudApiClient(baseUrl, "eliza_test");
-    const result = await client.post<Record<string, unknown>>("/containers", { name: "my-agent", project_name: "proj" });
+    const result = await client.post<Record<string, unknown>>("/containers", {
+      name: "my-agent",
+      project_name: "proj",
+    });
     expect((result as { data: { id: string } }).data.id).toBe("new-c");
     expect(result.creditsDeducted).toBe(10);
   });
@@ -113,7 +127,9 @@ describe("CloudApiClient with route-based server", () => {
     }));
 
     const client = new CloudApiClient(baseUrl, "eliza_test");
-    const result = await client.get<{ data: { balance: number } }>("/credits/balance");
+    const result = await client.get<{ data: { balance: number } }>(
+      "/credits/balance",
+    );
     expect(result.data.balance).toBeCloseTo(4.37);
   });
 
@@ -138,10 +154,9 @@ describe("CloudApiClient with route-based server", () => {
     });
 
     const client = new CloudApiClient(baseUrl, "eliza_existing_key");
-    const result = await client.postUnauthenticated<{ data: { apiKey: string; isNew: boolean } }>(
-      "/device-auth",
-      { deviceId: "abc", platform: "macos" },
-    );
+    const result = await client.postUnauthenticated<{
+      data: { apiKey: string; isNew: boolean };
+    }>("/device-auth", { deviceId: "abc", platform: "macos" });
     // Verify NO auth header was sent (even though client has a key)
     expect(receivedAuth).toBeUndefined();
     expect(result.data.apiKey).toBe("eliza_newkey");
@@ -165,10 +180,9 @@ describe("CloudApiClient with route-based server", () => {
     }));
 
     const client = new CloudApiClient(baseUrl, "eliza_test");
-    const result = await client.post<{ data: { id: string; sizeBytes: number } }>(
-      "/agent-state/c1/snapshot",
-      { snapshotType: "manual" },
-    );
+    const result = await client.post<{
+      data: { id: string; sizeBytes: number };
+    }>("/agent-state/c1/snapshot", { snapshotType: "manual" });
     expect(result.data.id).toBe("snap-1");
     expect(result.data.sizeBytes).toBe(4096);
   });
@@ -191,7 +205,8 @@ describe("container deployment polling simulation", () => {
           data: {
             id: "poll-test",
             status,
-            load_balancer_url: status === "running" ? "http://lb.example.com" : null,
+            load_balancer_url:
+              status === "running" ? "http://lb.example.com" : null,
           },
         },
       };
@@ -205,12 +220,15 @@ describe("container deployment polling simulation", () => {
     let finalContainer: Record<string, unknown> | null = null;
 
     while (Date.now() < deadline) {
-      const result = await client.get<{ data: { status: string; load_balancer_url: string | null } }>("/containers/poll-test");
+      const result = await client.get<{
+        data: { status: string; load_balancer_url: string | null };
+      }>("/containers/poll-test");
       if (result.data.status === "running") {
         finalContainer = result.data;
         break;
       }
-      if (result.data.status === "failed") throw new Error("Unexpected failure");
+      if (result.data.status === "failed")
+        throw new Error("Unexpected failure");
       await new Promise((r) => setTimeout(r, interval));
       interval = Math.min(interval * 1.5, 500);
     }
@@ -226,12 +244,18 @@ describe("container deployment polling simulation", () => {
       status: 200,
       body: {
         success: true,
-        data: { id: "fail-test", status: "failed", error_message: "Stack rolled back" },
+        data: {
+          id: "fail-test",
+          status: "failed",
+          error_message: "Stack rolled back",
+        },
       },
     }));
 
     const client = new CloudApiClient(baseUrl, "eliza_test");
-    const result = await client.get<{ data: { status: string; error_message: string } }>("/containers/fail-test");
+    const result = await client.get<{
+      data: { status: string; error_message: string };
+    }>("/containers/fail-test");
     expect(result.data.status).toBe("failed");
     expect(result.data.error_message).toBe("Stack rolled back");
   });
@@ -248,18 +272,26 @@ describe("credit lifecycle", () => {
 
     route("POST", "/containers", () => ({
       status: 402,
-      body: { success: false, error: "Insufficient balance. Required: $10.00", requiredCredits: 10.0 },
+      body: {
+        success: false,
+        error: "Insufficient balance. Required: $10.00",
+        requiredCredits: 10.0,
+      },
     }));
 
     const client = new CloudApiClient(baseUrl, "eliza_test");
 
     // Check balance first
-    const balance = await client.get<{ data: { balance: number } }>("/credits/balance");
+    const balance = await client.get<{ data: { balance: number } }>(
+      "/credits/balance",
+    );
     expect(balance.data.balance).toBe(2.0);
 
     // Attempt container creation — should throw InsufficientCreditsError
     let caught: Error | null = null;
-    await client.post("/containers", { name: "x" }).catch((e: Error) => { caught = e; });
+    await client.post("/containers", { name: "x" }).catch((e: Error) => {
+      caught = e;
+    });
 
     expect(caught).toBeInstanceOf(Error);
     expect(caught!.message).toContain("Insufficient balance");
@@ -274,9 +306,15 @@ describe("snapshot lifecycle", () => {
 
     route("POST", "/agent-state/c1/snapshot", (_req, body) => {
       const parsed = JSON.parse(body);
-      const snap = { id: `snap-${snapshots.length + 1}`, snapshotType: parsed.snapshotType };
+      const snap = {
+        id: `snap-${snapshots.length + 1}`,
+        snapshotType: parsed.snapshotType,
+      };
       snapshots.push(snap);
-      return { status: 200, body: { success: true, data: { ...snap, sizeBytes: 1024 } } };
+      return {
+        status: 200,
+        body: { success: true, data: { ...snap, sizeBytes: 1024 } },
+      };
     });
 
     route("GET", "/agent-state/c1/snapshots", () => ({
@@ -303,16 +341,23 @@ describe("snapshot lifecycle", () => {
     expect(snapshots).toHaveLength(2);
 
     // List
-    const listed = await client.get<{ data: typeof snapshots }>("/agent-state/c1/snapshots");
+    const listed = await client.get<{ data: typeof snapshots }>(
+      "/agent-state/c1/snapshots",
+    );
     expect(listed.data).toHaveLength(2);
 
     // Restore
-    const restored = await client.post<{ message: string }>("/agent-state/c1/restore", { snapshotId: "snap-1" });
+    const restored = await client.post<{ message: string }>(
+      "/agent-state/c1/restore",
+      { snapshotId: "snap-1" },
+    );
     expect(restored.message).toBe("Restored");
 
     // Delete
     await client.delete("/agent-state/c1/snapshots/snap-1");
-    const afterDelete = await client.get<{ data: typeof snapshots }>("/agent-state/c1/snapshots");
+    const afterDelete = await client.get<{ data: typeof snapshots }>(
+      "/agent-state/c1/snapshots",
+    );
     expect(afterDelete.data).toHaveLength(1);
     expect(afterDelete.data[0].id).toBe("snap-2");
   });

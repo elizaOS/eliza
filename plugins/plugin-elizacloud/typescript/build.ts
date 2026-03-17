@@ -41,7 +41,7 @@ async function build() {
     let code = readFileSync(nodeOut, "utf8");
     if (code.includes("default2 as default")) {
       // Use safe identifier since package names may contain invalid JS identifier chars
-      code = code.replace(/default2 as default/g, 'mainExport as default');
+      code = code.replace(/default2 as default/g, "mainExport as default");
       writeFileSync(nodeOut, code);
     }
   }

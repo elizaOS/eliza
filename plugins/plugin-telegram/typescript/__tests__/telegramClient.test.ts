@@ -14,7 +14,9 @@ describe("TelegramService", () => {
       const pluginModule = await import("../src/index");
       expect(pluginModule.default).toBeDefined();
       expect(pluginModule.default.name).toBe("telegram");
-      expect(pluginModule.default.description).toBe("Telegram client plugin with polling and webhook support");
+      expect(pluginModule.default.description).toBe(
+        "Telegram client plugin with polling and webhook support"
+      );
     });
   });
 });

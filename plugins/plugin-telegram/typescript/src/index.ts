@@ -1,14 +1,14 @@
 import type { Plugin, TestSuite } from "@elizaos/core";
 import {
+  DELETE_MESSAGE_ACTION,
+  deleteMessageAction,
+  EDIT_MESSAGE_ACTION,
+  editMessageAction,
   SEND_MESSAGE_ACTION,
   SEND_REACTION_ACTION,
-  EDIT_MESSAGE_ACTION,
-  DELETE_MESSAGE_ACTION,
   SEND_STICKER_ACTION,
   sendMessageAction,
   sendReactionAction,
-  editMessageAction,
-  deleteMessageAction,
   sendStickerAction,
 } from "./actions";
 import { TELEGRAM_SERVICE_NAME } from "./constants";

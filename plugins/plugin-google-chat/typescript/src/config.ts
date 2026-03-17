@@ -21,7 +21,11 @@ import type {
 // Reaction Configuration
 // ============================================================
 
-export type GoogleChatReactionNotificationMode = "off" | "own" | "all" | "allowlist";
+export type GoogleChatReactionNotificationMode =
+  | "off"
+  | "own"
+  | "all"
+  | "allowlist";
 
 // ============================================================
 // Action Configuration

@@ -4,10 +4,10 @@
  * so we can verify headers, error handling, auth injection, etc.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as http from "node:http";
-import { CloudApiClient } from "../utils/cloud-api";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CloudApiError, InsufficientCreditsError } from "../types/cloud";
+import { CloudApiClient } from "../utils/cloud-api";
 
 let server: http.Server;
 let baseUrl: string;
@@ -50,7 +50,9 @@ beforeAll(async () => {
         headers: req.headers,
         body: Buffer.concat(chunks).toString("utf-8"),
       };
-      res.writeHead(nextResponse.status, { "Content-Type": nextResponse.contentType });
+      res.writeHead(nextResponse.status, {
+        "Content-Type": nextResponse.contentType,
+      });
       res.end(nextResponse.body);
     });
   });
@@ -85,7 +87,9 @@ describe("CloudApiClient construction", () => {
 
   it("builds WebSocket URL by replacing http with ws", () => {
     const client = new CloudApiClient("http://localhost:3000/api/v1");
-    expect(client.buildWsUrl("/bridge/abc")).toBe("ws://localhost:3000/api/v1/bridge/abc");
+    expect(client.buildWsUrl("/bridge/abc")).toBe(
+      "ws://localhost:3000/api/v1/bridge/abc",
+    );
   });
 
   it("builds wss URL from https", () => {
@@ -100,7 +104,9 @@ describe("GET requests", () => {
   it("sends correct method and path", async () => {
     setResponse(200, { success: true, data: [1, 2, 3] });
     const client = new CloudApiClient(baseUrl);
-    const result = await client.get<{ success: boolean; data: number[] }>("/items");
+    const result = await client.get<{ success: boolean; data: number[] }>(
+      "/items",
+    );
     expect(lastRequest.method).toBe("GET");
     expect(lastRequest.url).toBe("/items");
     expect(result.data).toEqual([1, 2, 3]);
@@ -127,7 +133,10 @@ describe("POST requests", () => {
   it("sends JSON body", async () => {
     setResponse(200, { success: true, id: "abc" });
     const client = new CloudApiClient(baseUrl, "eliza_key");
-    const result = await client.post<{ id: string }>("/create", { name: "test", count: 42 });
+    const result = await client.post<{ id: string }>("/create", {
+      name: "test",
+      count: 42,
+    });
     expect(lastRequest.method).toBe("POST");
     expect(JSON.parse(lastRequest.body)).toEqual({ name: "test", count: 42 });
     expect(result.id).toBe("abc");
@@ -177,7 +186,11 @@ describe("DELETE requests", () => {
 
 describe("error handling", () => {
   it("throws CloudApiError on 400 JSON response", async () => {
-    setResponse(400, { success: false, error: "Invalid input", details: { field: "name" } });
+    setResponse(400, {
+      success: false,
+      error: "Invalid input",
+      details: { field: "name" },
+    });
     const client = new CloudApiClient(baseUrl);
     const err = (await client.get("/bad").catch((e) => e)) as CloudApiError;
     expect(err).toBeInstanceOf(CloudApiError);
@@ -189,15 +202,23 @@ describe("error handling", () => {
   it("throws CloudApiError on 500 JSON response", async () => {
     setResponse(500, { success: false, error: "Internal server error" });
     const client = new CloudApiClient(baseUrl);
-    const err = (await client.post("/explode", {}).catch((e) => e)) as CloudApiError;
+    const err = (await client
+      .post("/explode", {})
+      .catch((e) => e)) as CloudApiError;
     expect(err).toBeInstanceOf(CloudApiError);
     expect(err.statusCode).toBe(500);
   });
 
   it("throws InsufficientCreditsError on 402 response", async () => {
-    setResponse(402, { success: false, error: "Insufficient balance", requiredCredits: 10.5 });
+    setResponse(402, {
+      success: false,
+      error: "Insufficient balance",
+      requiredCredits: 10.5,
+    });
     const client = new CloudApiClient(baseUrl);
-    const err = (await client.post("/containers", { name: "x" }).catch((e) => e)) as InsufficientCreditsError;
+    const err = (await client
+      .post("/containers", { name: "x" })
+      .catch((e) => e)) as InsufficientCreditsError;
     expect(err).toBeInstanceOf(InsufficientCreditsError);
     expect(err).toBeInstanceOf(CloudApiError);
     expect(err.statusCode).toBe(402);
@@ -208,7 +229,9 @@ describe("error handling", () => {
   it("InsufficientCreditsError defaults requiredCredits to 0 when missing", async () => {
     setResponse(402, { success: false, error: "No credits" });
     const client = new CloudApiClient(baseUrl);
-    const err = (await client.get("/x").catch((e) => e)) as InsufficientCreditsError;
+    const err = (await client
+      .get("/x")
+      .catch((e) => e)) as InsufficientCreditsError;
     expect(err.requiredCredits).toBe(0);
   });
 
@@ -229,9 +252,15 @@ describe("error handling", () => {
   });
 
   it("throws CloudApiError for 403 quota exceeded", async () => {
-    setResponse(403, { success: false, error: "Quota exceeded", quota: { current: 5, max: 5 } });
+    setResponse(403, {
+      success: false,
+      error: "Quota exceeded",
+      quota: { current: 5, max: 5 },
+    });
     const client = new CloudApiClient(baseUrl);
-    const err = (await client.post("/containers", {}).catch((e) => e)) as CloudApiError;
+    const err = (await client
+      .post("/containers", {})
+      .catch((e) => e)) as CloudApiError;
     expect(err.statusCode).toBe(403);
     expect(err.errorBody.quota).toEqual({ current: 5, max: 5 });
   });

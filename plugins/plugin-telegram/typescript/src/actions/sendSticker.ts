@@ -41,19 +41,18 @@ interface StickerParams {
 
 export const sendStickerAction: Action = {
   name: SEND_STICKER_ACTION,
-  similes: [
-    "TELEGRAM_STICKER",
-    "SEND_TELEGRAM_STICKER",
-    "POST_STICKER",
-  ],
-  description: "Send a sticker to a Telegram chat. Requires a sticker file_id. To get a sticker's file_id, forward the sticker to @RawDataBot on Telegram.",
+  similes: ["TELEGRAM_STICKER", "SEND_TELEGRAM_STICKER", "POST_STICKER"],
+  description:
+    "Send a sticker to a Telegram chat. Requires a sticker file_id. To get a sticker's file_id, forward the sticker to @RawDataBot on Telegram.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     const source = message.content?.source;
     if (source !== "telegram") return false;
-    
+
     // Check if telegram service is available and initialized
-    const telegramService = runtime.getService(TELEGRAM_SERVICE_NAME) as TelegramService | undefined;
+    const telegramService = runtime.getService(TELEGRAM_SERVICE_NAME) as
+      | TelegramService
+      | undefined;
     return telegramService?.isInitialized() ?? false;
   },
 
@@ -131,7 +130,7 @@ export const sendStickerAction: Action = {
     // Send the sticker using the service's public method
     const replyToMessageId = message.content?.messageId as number | undefined;
     const threadId = message.content?.threadId as number | undefined;
-    
+
     const result = await telegramService.sendSticker({
       chatId,
       sticker: params.fileId,

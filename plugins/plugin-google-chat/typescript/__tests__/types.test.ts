@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractResourceId,
-  getSpaceDisplayName,
-  getUserDisplayName,
+  GOOGLE_CHAT_SERVICE_NAME,
   GoogleChatApiError,
   GoogleChatAuthenticationError,
   GoogleChatConfigurationError,
@@ -10,7 +9,8 @@ import {
   GoogleChatPluginError,
   type GoogleChatSpace,
   type GoogleChatUser,
-  GOOGLE_CHAT_SERVICE_NAME,
+  getSpaceDisplayName,
+  getUserDisplayName,
   isDirectMessage,
   isValidGoogleChatSpaceName,
   isValidGoogleChatUserName,
@@ -175,9 +175,9 @@ describe("GoogleChatTypes", () => {
     });
 
     it("should extract ID from reaction resource name", () => {
-      expect(
-        extractResourceId("spaces/ABC/messages/MSG/reactions/RXN1"),
-      ).toBe("RXN1");
+      expect(extractResourceId("spaces/ABC/messages/MSG/reactions/RXN1")).toBe(
+        "RXN1",
+      );
     });
 
     it("should return the input if no slashes", () => {
@@ -337,7 +337,7 @@ describe("GoogleChatTypes", () => {
     });
 
     it("should trim chunks", () => {
-      const text = "a".repeat(2500) + "\n" + "b".repeat(2500);
+      const text = `${"a".repeat(2500)}\n${"b".repeat(2500)}`;
       const result = splitMessageForGoogleChat(text, 3000);
       for (const chunk of result) {
         expect(chunk).toBe(chunk.trim());

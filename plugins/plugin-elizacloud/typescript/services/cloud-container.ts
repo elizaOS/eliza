@@ -7,17 +7,17 @@
  */
 
 import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
-import type { CloudApiClient } from "../utils/cloud-api";
 import type {
   CloudContainer,
+  ContainerDeleteResponse,
+  ContainerGetResponse,
+  ContainerHealthResponse,
+  ContainerListResponse,
   CreateContainerRequest,
   CreateContainerResponse,
-  ContainerListResponse,
-  ContainerGetResponse,
-  ContainerDeleteResponse,
-  ContainerHealthResponse,
 } from "../types/cloud";
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
+import type { CloudApiClient } from "../utils/cloud-api";
 import type { CloudAuthService } from "./cloud-auth";
 
 const CLOUD_CONTAINER_HEALTH_TASK = "CLOUD_CONTAINER_HEALTH";
@@ -31,7 +31,8 @@ interface TrackedContainer {
 
 export class CloudContainerService extends Service {
   static serviceType = "CLOUD_CONTAINER";
-  capabilityDescription = "ElizaCloud container provisioning and lifecycle management";
+  capabilityDescription =
+    "ElizaCloud container provisioning and lifecycle management";
 
   private authService!: CloudAuthService;
   private readonly containerDefaults = DEFAULT_CLOUD_CONFIG.container;
@@ -62,7 +63,9 @@ export class CloudContainerService extends Service {
   private async initialize(): Promise<void> {
     const auth = this.runtime.getService("CLOUD_AUTH");
     if (!auth) {
-      logger.warn("[CloudContainer] CloudAuthService not available, container operations will fail");
+      logger.warn(
+        "[CloudContainer] CloudAuthService not available, container operations will fail",
+      );
       return;
     }
     this.authService = auth as CloudAuthService;
@@ -115,10 +118,16 @@ export class CloudContainerService extends Service {
 
   private async ensureHealthTask(): Promise<void> {
     const rt = this.runtime;
-    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    if (
+      typeof rt.getTasksByName !== "function" ||
+      typeof rt.createTask !== "function"
+    )
+      return;
     const agentId = rt.agentId;
     const existing = await rt.getTasksByName(CLOUD_CONTAINER_HEALTH_TASK);
-    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    const mine = existing.find(
+      (t) => t.agentId != null && String(t.agentId) === String(agentId),
+    );
     if (mine?.id) {
       this.healthTaskId = mine.id;
       return;
@@ -140,7 +149,9 @@ export class CloudContainerService extends Service {
 
   // ─── CRUD ───────────────────────────────────────────────────────────────
 
-  async createContainer(request: CreateContainerRequest): Promise<CreateContainerResponse> {
+  async createContainer(
+    request: CreateContainerRequest,
+  ): Promise<CreateContainerResponse> {
     const client = this.getClient();
     const defaults = this.containerDefaults;
 
@@ -160,7 +171,10 @@ export class CloudContainerService extends Service {
       architecture: request.architecture ?? defaults.defaultArchitecture,
     };
 
-    const response = await client.post<CreateContainerResponse>("/containers", payload);
+    const response = await client.post<CreateContainerResponse>(
+      "/containers",
+      payload,
+    );
 
     // Track the new container
     this.tracked.set(response.data.id, {
@@ -186,7 +200,9 @@ export class CloudContainerService extends Service {
 
   async getContainer(containerId: string): Promise<CloudContainer> {
     const client = this.getClient();
-    const response = await client.get<ContainerGetResponse>(`/containers/${containerId}`);
+    const response = await client.get<ContainerGetResponse>(
+      `/containers/${containerId}`,
+    );
 
     // Update local tracking
     const existing = this.tracked.get(containerId);
@@ -250,7 +266,11 @@ export class CloudContainerService extends Service {
         return;
       }
 
-      if (status === "failed" || status === "stopped" || status === "suspended") {
+      if (
+        status === "failed" ||
+        status === "stopped" ||
+        status === "suspended"
+      ) {
         logger.warn(
           `[CloudContainer] Container ${containerId} reached terminal state: ${status}`,
         );
@@ -261,7 +281,10 @@ export class CloudContainerService extends Service {
       }
 
       // Schedule next poll with exponential backoff
-      const delay = Math.min(baseInterval * 2 ** Math.min(attempt - 1, 3), maxInterval);
+      const delay = Math.min(
+        baseInterval * 2 ** Math.min(attempt - 1, 3),
+        maxInterval,
+      );
       tracked.pollingTimer = setTimeout(poll, delay);
     };
 
@@ -290,7 +313,9 @@ export class CloudContainerService extends Service {
         );
       }
       if (container.status === "stopped" || container.status === "suspended") {
-        throw new Error(`Container reached terminal state: ${container.status}`);
+        throw new Error(
+          `Container reached terminal state: ${container.status}`,
+        );
       }
 
       await new Promise((resolve) => setTimeout(resolve, interval));
@@ -308,9 +333,13 @@ export class CloudContainerService extends Service {
     // Health checks run in one CLOUD_CONTAINER_HEALTH task that loops all running containers.
   }
 
-  async getContainerHealth(containerId: string): Promise<ContainerHealthResponse> {
+  async getContainerHealth(
+    containerId: string,
+  ): Promise<ContainerHealthResponse> {
     const client = this.getClient();
-    return client.get<ContainerHealthResponse>(`/containers/${containerId}/health`);
+    return client.get<ContainerHealthResponse>(
+      `/containers/${containerId}/health`,
+    );
   }
 
   // ─── Accessors ─────────────────────────────────────────────────────────

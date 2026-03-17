@@ -28,11 +28,14 @@ interface ActiveConnection {
   reconnectAttempts: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   handlers: Set<BridgeMessageHandler>;
-  pendingRequests: Map<string | number, {
-    resolve: (value: unknown) => void;
-    reject: (reason: Error) => void;
-    timeout: ReturnType<typeof setTimeout>;
-  }>;
+  pendingRequests: Map<
+    string | number,
+    {
+      resolve: (value: unknown) => void;
+      reject: (reason: Error) => void;
+      timeout: ReturnType<typeof setTimeout>;
+    }
+  >;
   nextRequestId: number;
 }
 
@@ -89,10 +92,16 @@ export class CloudBridgeService extends Service {
 
   private async ensureHeartbeatTask(): Promise<void> {
     const rt = this.runtime;
-    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    if (
+      typeof rt.getTasksByName !== "function" ||
+      typeof rt.createTask !== "function"
+    )
+      return;
     const agentId = rt.agentId;
     const existing = await rt.getTasksByName(CLOUD_BRIDGE_HEARTBEAT_TASK);
-    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    const mine = existing.find(
+      (t) => t.agentId != null && String(t.agentId) === String(agentId),
+    );
     if (mine?.id) {
       this.heartbeatTaskId = mine.id;
       return;
@@ -114,7 +123,9 @@ export class CloudBridgeService extends Service {
     if (this.connections.has(containerId)) {
       const existing = this.connections.get(containerId)!;
       if (existing.state === "connected" || existing.state === "connecting") {
-        logger.debug(`[CloudBridge] Already connected/connecting to ${containerId}`);
+        logger.debug(
+          `[CloudBridge] Already connected/connecting to ${containerId}`,
+        );
         return;
       }
     }
@@ -135,7 +146,10 @@ export class CloudBridgeService extends Service {
     }
     conn.pendingRequests.clear();
 
-    if (conn.ws.readyState === WebSocket.OPEN || conn.ws.readyState === WebSocket.CONNECTING) {
+    if (
+      conn.ws.readyState === WebSocket.OPEN ||
+      conn.ws.readyState === WebSocket.CONNECTING
+    ) {
       conn.ws.close(1000, "Client disconnect");
     }
 
@@ -152,7 +166,9 @@ export class CloudBridgeService extends Service {
     const wsUrl = client.buildWsUrl(`/agent-bridge/${containerId}`);
 
     // Append API key as query parameter for WebSocket auth
-    const authUrl = apiKey ? `${wsUrl}?token=${encodeURIComponent(apiKey)}` : wsUrl;
+    const authUrl = apiKey
+      ? `${wsUrl}?token=${encodeURIComponent(apiKey)}`
+      : wsUrl;
 
     const conn: ActiveConnection = {
       ws: new WebSocket(authUrl),
@@ -176,37 +192,45 @@ export class CloudBridgeService extends Service {
       // Heartbeat driven by CLOUD_BRIDGE_HEARTBEAT queue task
     });
 
-    conn.ws.addEventListener("message", (event: { data: string | Buffer | ArrayBuffer | Blob }) => {
-      const raw = event.data;
-      const data = typeof raw === "string" ? raw : raw instanceof Buffer ? raw.toString("utf-8") : String(raw);
-      const message = JSON.parse(data) as BridgeMessage;
+    conn.ws.addEventListener(
+      "message",
+      (event: { data: string | Buffer | ArrayBuffer | Blob }) => {
+        const raw = event.data;
+        const data =
+          typeof raw === "string"
+            ? raw
+            : raw instanceof Buffer
+              ? raw.toString("utf-8")
+              : String(raw);
+        const message = JSON.parse(data) as BridgeMessage;
 
-      // Handle heartbeat responses
-      if (message.method === "heartbeat.ack") {
-        conn.lastHeartbeat = Date.now();
-        return;
-      }
-
-      // Handle responses to pending requests
-      if (message.id !== undefined && !message.method) {
-        const pending = conn.pendingRequests.get(message.id);
-        if (pending) {
-          clearTimeout(pending.timeout);
-          conn.pendingRequests.delete(message.id);
-          if (message.error) {
-            pending.reject(new Error(message.error.message));
-          } else {
-            pending.resolve(message.result);
-          }
+        // Handle heartbeat responses
+        if (message.method === "heartbeat.ack") {
+          conn.lastHeartbeat = Date.now();
           return;
         }
-      }
 
-      // Dispatch to handlers
-      for (const handler of conn.handlers) {
-        handler(message);
-      }
-    });
+        // Handle responses to pending requests
+        if (message.id !== undefined && !message.method) {
+          const pending = conn.pendingRequests.get(message.id);
+          if (pending) {
+            clearTimeout(pending.timeout);
+            conn.pendingRequests.delete(message.id);
+            if (message.error) {
+              pending.reject(new Error(message.error.message));
+            } else {
+              pending.resolve(message.result);
+            }
+            return;
+          }
+        }
+
+        // Dispatch to handlers
+        for (const handler of conn.handlers) {
+          handler(message);
+        }
+      },
+    );
 
     conn.ws.addEventListener("close", (event: CloseEvent) => {
       conn.state = "disconnected";
