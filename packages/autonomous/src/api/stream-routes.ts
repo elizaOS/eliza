@@ -173,7 +173,7 @@ function writeRouteStreamSettings(settings: {
  * Priority:
  * 1. STREAM_MODE / RETAKE_STREAM_MODE env var (explicit override)
  * 2. Electron -> "pipe" (capturePage -> POST /api/stream/frame -> FFmpeg stdin)
- * 3. Linux with DISPLAY or Xvfb -> "x11grab" (Hyperscape approach)
+ * 3. Linux with DISPLAY or Xvfb -> "x11grab"
  * 4. macOS -> "avfoundation" (native screen capture)
  * 5. Fallback -> "file" (Puppeteer CDP -> temp JPEG -> FFmpeg)
  */
@@ -369,7 +369,7 @@ async function startStreamPipeline(
     }
 
     case "x11grab": {
-      // Linux Xvfb mode (Hyperscape approach): capture virtual display.
+      // Linux Xvfb mode: capture virtual display.
       const display =
         process.env.STREAM_DISPLAY ?? process.env.RETAKE_DISPLAY ?? ":99";
       logger.info(`[stream] Capture mode: x11grab (display ${display})`);

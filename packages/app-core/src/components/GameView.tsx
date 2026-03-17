@@ -32,7 +32,6 @@ function resolvePostMessageTargetOrigin(viewerUrl: string): string {
 /** Tag badge colors for logs panel. */
 const TAG_COLORS: Record<string, { bg: string; fg: string }> = {
   agent: { bg: "rgba(99, 102, 241, 0.15)", fg: "rgb(99, 102, 241)" },
-  hyperscape: { bg: "rgba(245, 158, 11, 0.15)", fg: "rgb(245, 158, 11)" },
   game: { bg: "rgba(34, 197, 94, 0.15)", fg: "rgb(34, 197, 94)" },
   autonomy: { bg: "rgba(245, 158, 11, 0.15)", fg: "rgb(245, 158, 11)" },
   websocket: { bg: "rgba(20, 184, 166, 0.15)", fg: "rgb(20, 184, 166)" },
@@ -75,13 +74,13 @@ export function GameView() {
   useRetakeCapture(iframeRef, retakeCapture);
 
   // Send command to the agent - routes through elizaOS which processes
-  // the message and decides what hyperscape actions to take
+  // the message and decides what game actions to take
   const handleSendChat = useCallback(async () => {
     const content = chatInput.trim();
     if (!content) return;
     setSendingChat(true);
     try {
-      // Send message to elizaOS agent - it will process and execute hyperscape actions
+      // Send message to elizaOS agent - it will process and execute game actions
       // Examples: "go chop some wood", "attack the goblin", "go to the bank"
       const response = await client.sendChatRest(content, "DM");
       setChatInput("");

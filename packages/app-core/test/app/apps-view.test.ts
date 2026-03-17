@@ -27,13 +27,6 @@ const { mockClientFns, mockUseApp } = vi.hoisted(() => ({
     listApps: vi.fn(),
     listInstalledApps: vi.fn(),
     launchApp: vi.fn(),
-    listHyperscapeEmbeddedAgents: vi.fn(),
-    getHyperscapeAgentGoal: vi.fn(),
-    getHyperscapeAgentQuickActions: vi.fn(),
-    createHyperscapeEmbeddedAgent: vi.fn(),
-    controlHyperscapeEmbeddedAgent: vi.fn(),
-    sendHyperscapeAgentMessage: vi.fn(),
-    sendHyperscapeEmbeddedAgentCommand: vi.fn(),
   },
   mockUseApp: vi.fn(),
 }));
@@ -167,49 +160,8 @@ describe("AppsView", () => {
     mockClientFns.listApps.mockReset();
     mockClientFns.listInstalledApps.mockReset();
     mockClientFns.launchApp.mockReset();
-    mockClientFns.listHyperscapeEmbeddedAgents.mockReset();
-    mockClientFns.getHyperscapeAgentGoal.mockReset();
-    mockClientFns.getHyperscapeAgentQuickActions.mockReset();
-    mockClientFns.createHyperscapeEmbeddedAgent.mockReset();
-    mockClientFns.controlHyperscapeEmbeddedAgent.mockReset();
-    mockClientFns.sendHyperscapeAgentMessage.mockReset();
-    mockClientFns.sendHyperscapeEmbeddedAgentCommand.mockReset();
     mockUseApp.mockReset();
 
-    mockClientFns.listHyperscapeEmbeddedAgents.mockResolvedValue({
-      success: true,
-      agents: [],
-      count: 0,
-    });
-    mockClientFns.getHyperscapeAgentGoal.mockResolvedValue({
-      success: true,
-      goal: null,
-      availableGoals: [],
-    });
-    mockClientFns.getHyperscapeAgentQuickActions.mockResolvedValue({
-      success: true,
-      nearbyLocations: [],
-      availableGoals: [],
-      quickCommands: [],
-      inventory: [],
-      playerPosition: null,
-    });
-    mockClientFns.createHyperscapeEmbeddedAgent.mockResolvedValue({
-      success: true,
-      message: "created",
-    });
-    mockClientFns.controlHyperscapeEmbeddedAgent.mockResolvedValue({
-      success: true,
-      message: "ok",
-    });
-    mockClientFns.sendHyperscapeAgentMessage.mockResolvedValue({
-      success: true,
-      message: "sent",
-    });
-    mockClientFns.sendHyperscapeEmbeddedAgentCommand.mockResolvedValue({
-      success: true,
-      message: "command sent",
-    });
     mockClientFns.listInstalledApps.mockResolvedValue([]);
   });
 
@@ -235,7 +187,7 @@ describe("AppsView", () => {
     ).toBe(false);
     expect(
       shouldShowAppInAppsView(
-        createApp("@elizaos/app-hyperscape", "Hyperscape", "Arena"),
+        createApp("@elizaos/app-babylon", "Babylon", "Wallet"),
         true,
       ),
     ).toBe(false);
@@ -244,7 +196,7 @@ describe("AppsView", () => {
   it("does not restrict the apps list by clawbal in development", () => {
     expect(
       shouldShowAppInAppsView(
-        createApp("@elizaos/app-hyperscape", "Hyperscape", "Arena"),
+        createApp("@elizaos/app-babylon", "Babylon", "Wallet"),
         false,
       ),
     ).toBe(true);
@@ -268,9 +220,7 @@ describe("AppsView", () => {
       setState,
       setActionNotice,
     });
-    const app = createApp("@elizaos/app-hyperscape", "Hyperscape", "Arena", {
-      uiExtension: { detailPanelId: "hyperscape-embedded-agents" },
-    });
+    const app = createApp("@elizaos/app-2004scape", "2004scape", "RuneScape");
     mockClientFns.listApps.mockResolvedValue([app]);
     mockClientFns.launchApp.mockResolvedValue(
       createLaunchResult({
@@ -279,7 +229,11 @@ describe("AppsView", () => {
           url: "http://localhost:5175",
           sandbox: "allow-scripts allow-same-origin",
           postMessageAuth: true,
-          authMessage: { type: "HYPERSCAPE_AUTH", authToken: "token-1" },
+          authMessage: {
+            type: "RS_2004SCAPE_AUTH",
+            authToken: "testbot",
+            sessionToken: "password",
+          },
         },
       }),
     );
@@ -324,9 +278,7 @@ describe("AppsView", () => {
       setState,
       setActionNotice,
     });
-    const app = createApp("@elizaos/app-hyperscape", "Hyperscape", "Arena", {
-      uiExtension: { detailPanelId: "hyperscape-embedded-agents" },
-    });
+    const app = createApp("@elizaos/app-2004scape", "2004scape", "RuneScape");
     mockClientFns.listApps.mockResolvedValue([app]);
     mockClientFns.launchApp.mockResolvedValue(
       createLaunchResult({
@@ -511,7 +463,7 @@ describe("AppsView", () => {
       setState,
       setActionNotice,
     });
-    const appOne = createApp("@elizaos/app-hyperscape", "Hyperscape", "Arena");
+    const appOne = createApp("@elizaos/app-2004scape", "2004scape", "RuneScape");
     const appTwo = createApp("@elizaos/app-babylon", "Babylon", "Wallet");
     mockClientFns.listApps.mockResolvedValue([appOne, appTwo]);
     mockClientFns.listInstalledApps.mockResolvedValue([
@@ -535,7 +487,7 @@ describe("AppsView", () => {
     expect(
       root.findAll(
         (node) =>
-          node.type === "button" && node.props.title === "Open Hyperscape",
+          node.type === "button" && node.props.title === "Open 2004scape",
       ).length,
     ).toBe(1);
     expect(
@@ -549,12 +501,12 @@ describe("AppsView", () => {
 
     const searchInput = root.findByType("input");
     await act(async () => {
-      searchInput.props.onChange({ target: { value: "hyper" } });
+      searchInput.props.onChange({ target: { value: "2004" } });
     });
     expect(
       root.findAll(
         (node) =>
-          node.type === "button" && node.props.title === "Open Hyperscape",
+          node.type === "button" && node.props.title === "Open 2004scape",
       ).length,
     ).toBe(1);
     expect(
@@ -577,7 +529,7 @@ describe("AppsView", () => {
     expect(
       root.findAll(
         (node) =>
-          node.type === "button" && node.props.title === "Open Hyperscape",
+          node.type === "button" && node.props.title === "Open 2004scape",
       ).length,
     ).toBe(1);
     expect(
@@ -585,136 +537,6 @@ describe("AppsView", () => {
         (node) => node.type === "button" && node.props.title === "Open Babylon",
       ).length,
     ).toBe(0);
-  });
-
-  it("wires Hyperscape controls for message + command + telemetry routes", async () => {
-    const setState = vi.fn<AppsContextStub["setState"]>();
-    const setActionNotice = vi.fn<AppsContextStub["setActionNotice"]>();
-    mockUseApp.mockReturnValue({
-      uiLanguage: "en",
-      t: tStub,
-      setState,
-      setActionNotice,
-    });
-    const app = createApp("@elizaos/app-hyperscape", "Hyperscape", "Arena", {
-      uiExtension: { detailPanelId: "hyperscape-embedded-agents" },
-    });
-    mockClientFns.listApps.mockResolvedValue([app]);
-    mockClientFns.listHyperscapeEmbeddedAgents.mockResolvedValue({
-      success: true,
-      agents: [
-        {
-          agentId: "agent-1",
-          characterId: "char-1",
-          accountId: "acct-1",
-          name: "ArenaBot",
-          scriptedRole: "balanced",
-          state: "running",
-          entityId: "entity-1",
-          position: [1, 2, 3],
-          health: 10,
-          maxHealth: 20,
-          startedAt: 1,
-          lastActivity: 2,
-          error: null,
-        },
-      ],
-      count: 1,
-    });
-    mockClientFns.getHyperscapeAgentGoal.mockResolvedValue({
-      success: true,
-      goal: {
-        description: "Chop trees",
-        progressPercent: 50,
-      },
-      availableGoals: [],
-    });
-    mockClientFns.getHyperscapeAgentQuickActions.mockResolvedValue({
-      success: true,
-      nearbyLocations: [],
-      availableGoals: [],
-      quickCommands: [
-        {
-          id: "cmd-1",
-          label: "Woodcutting",
-          command: "chop nearest tree",
-          icon: "TreePine",
-          available: true,
-        },
-      ],
-      inventory: [],
-      playerPosition: null,
-    });
-
-    let tree: TestRenderer.ReactTestRenderer;
-    await act(async () => {
-      tree = TestRenderer.create(React.createElement(AppsView));
-    });
-    await flush();
-
-    await act(async () => {
-      findButtonByTitle(tree?.root, "Open Hyperscape").props.onClick();
-    });
-    await flush();
-    await waitFor(
-      () =>
-        tree?.root.findAll(
-          (node) =>
-            node.type === "button" &&
-            text(node).includes("Hyperscape Controls"),
-        ).length === 1,
-      "Hyperscape controls toggle did not render",
-    );
-
-    await act(async () => {
-      tree?.root
-        .findAll(
-          (node) =>
-            node.type === "button" &&
-            text(node).includes("Hyperscape Controls"),
-        )[0]
-        ?.props.onClick();
-    });
-    await flush();
-
-    expect(mockClientFns.listHyperscapeEmbeddedAgents).toHaveBeenCalled();
-    expect(mockClientFns.getHyperscapeAgentGoal).toHaveBeenCalledWith(
-      "agent-1",
-    );
-    expect(mockClientFns.getHyperscapeAgentQuickActions).toHaveBeenCalledWith(
-      "agent-1",
-    );
-
-    const messageInput = findTextareaByPlaceholder(
-      tree?.root,
-      "appsview.SaySomethingToSel",
-    );
-    await act(async () => {
-      messageInput.props.onChange({ target: { value: "hello there" } });
-    });
-    await act(async () => {
-      await findButtonByText(tree?.root, "Send Message").props.onClick();
-    });
-    expect(mockClientFns.sendHyperscapeAgentMessage).toHaveBeenCalledWith(
-      "agent-1",
-      "hello there",
-    );
-
-    const commandDataInput = findTextareaByPlaceholder(
-      tree?.root,
-      "appsview.Target000",
-    );
-    await act(async () => {
-      commandDataInput.props.onChange({
-        target: { value: '{"message":"hi"}' },
-      });
-    });
-    await act(async () => {
-      await findButtonByText(tree?.root, "Send Command").props.onClick();
-    });
-    expect(
-      mockClientFns.sendHyperscapeEmbeddedAgentCommand,
-    ).toHaveBeenCalledWith("char-1", "chat", { message: "hi" });
   });
 
   it("opens app details and can return to the app list", async () => {
@@ -726,7 +548,7 @@ describe("AppsView", () => {
       setState,
       setActionNotice,
     });
-    const appOne = createApp("@elizaos/app-hyperscape", "Hyperscape", "Arena");
+    const appOne = createApp("@elizaos/app-2004scape", "2004scape", "RuneScape");
     const appTwo = createApp("@elizaos/app-babylon", "Babylon", "Wallet");
     mockClientFns.listApps.mockResolvedValue([appOne, appTwo]);
 
@@ -757,7 +579,7 @@ describe("AppsView", () => {
     expect(
       tree?.root.findAll(
         (node) =>
-          node.type === "button" && node.props.title === "Open Hyperscape",
+          node.type === "button" && node.props.title === "Open 2004scape",
       ).length,
     ).toBe(1);
     expect(
