@@ -37,7 +37,11 @@ function resolveEsmIndexPath(pluginDir: string): string | null {
 }
 
 function resolvePackageDir(packageName: string): string {
-  return path.dirname(localRequire.resolve(`${packageName}/package.json`));
+  try {
+    return path.dirname(localRequire.resolve(`${packageName}/package.json`));
+  } catch {
+    return "";
+  }
 }
 
 const PLUGINS = [
@@ -60,7 +64,18 @@ const PLUGINS = [
   },
 ];
 
-describe("Capacitor Plugin Build Verification", () => {
+function canResolvePlugin(name: string): boolean {
+  try {
+    localRequire.resolve(`${name}/package.json`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const capacitorAvailable = PLUGINS.some((p) => canResolvePlugin(p.name));
+
+describe.skipIf(!capacitorAvailable)("Capacitor Plugin Build Verification", () => {
   for (const plugin of PLUGINS) {
     describe(plugin.name, () => {
       const dir = resolvePackageDir(plugin.name);

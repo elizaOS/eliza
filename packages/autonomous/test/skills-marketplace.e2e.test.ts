@@ -44,7 +44,7 @@ const mockMcpDetails = {
   },
 };
 
-vi.mock("../packages/autonomous/src/services/mcp-marketplace.ts", () => ({
+vi.mock("../src/services/mcp-marketplace.ts", () => ({
   searchMcpMarketplace: vi.fn().mockImplementation(async (query?: string) => {
     if (query === "FORCE_ERROR") throw new Error("API unreachable");
     const lq = (query ?? "").toLowerCase();
@@ -63,7 +63,7 @@ vi.mock("../packages/autonomous/src/services/mcp-marketplace.ts", () => ({
 }));
 
 // Mock skill-catalog-client to prevent real I/O
-vi.mock("../packages/autonomous/src/services/skill-catalog-client.ts", () => ({
+vi.mock("../src/services/skill-catalog-client.ts", () => ({
   getCatalogSkills: vi.fn().mockResolvedValue([]),
   getCatalogSkill: vi.fn().mockResolvedValue(null),
   searchCatalogSkills: vi.fn().mockResolvedValue([]),

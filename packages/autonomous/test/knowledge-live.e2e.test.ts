@@ -4,7 +4,7 @@
  * These tests use REAL API keys for LLM providers and exercise the full
  * knowledge management flow end-to-end: upload → search → retrieve via RAG → delete.
  *
- * Required env vars (loaded from ../eliza/.env):
+ * Required env vars (loaded from repo root .env):
  *   OPENAI_API_KEY or ANTHROPIC_API_KEY — for embeddings and LLM
  *
  * Run: MILADY_LIVE_TEST=1 npx vitest run -c vitest.e2e.config.ts test/knowledge-live.e2e.test.ts
@@ -14,7 +14,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Load .env from the eliza workspace root
-const envPath = path.resolve(import.meta.dirname, "..", "..", "eliza", ".env");
+const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");
 try {
   const { config } = await import("dotenv");
   config({ path: envPath });

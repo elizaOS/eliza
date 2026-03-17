@@ -7,6 +7,14 @@ const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
+      "@elizaos/core": path.join(
+        packageRoot,
+        "..",
+        "typescript",
+        "dist",
+        "node",
+        "index.node.js",
+      ),
       "@elizaos/skills": path.join(
         packageRoot,
         "test",
@@ -61,10 +69,24 @@ export default defineConfig({
       "dist/**",
       "**/node_modules/**",
       "test/capacitor-plugins.e2e.test.ts",
+      // plugin-installer.ts source doesn't exist in autonomous (milady-specific)
+      "test/plugin-install.e2e.test.ts",
+      // native module deps (tensorflow, sharp, canvas) not installed in autonomous
+      "test/native-modules.e2e.test.ts",
     ],
     server: {
       deps: {
-        inline: ["@elizaos/core", "zod"],
+        inline: [
+          "@elizaos/core",
+          "@elizaos/plugin-openai",
+          "@elizaos/plugin-anthropic",
+          "@elizaos/plugin-sql",
+          "@elizaos/plugin-groq",
+          "@elizaos/plugin-google-genai",
+          "@elizaos/plugin-xai",
+          "@elizaos/plugin-openrouter",
+          "zod",
+        ],
       },
     },
   },

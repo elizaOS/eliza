@@ -32,7 +32,7 @@ function withWalletExportToken(
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 try {
   const { config } = await import("dotenv");
-  config({ path: path.resolve(testDir, "..", "..", "eliza", ".env") });
+  config({ path: path.resolve(testDir, "..", "..", "..", ".env") });
 } catch {
   /* dotenv may not be available */
 }

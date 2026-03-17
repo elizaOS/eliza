@@ -27,7 +27,7 @@ vi.mock("@elizaos/core", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock("../packages/autonomous/src/diagnostics/integration-observability.ts", () => ({
+vi.mock("../src/diagnostics/integration-observability.ts", () => ({
   createIntegrationTelemetrySpan: vi.fn(() => ({
     success: vi.fn(),
     failure: vi.fn(),
@@ -188,7 +188,7 @@ describe("Skills Marketplace E2E", () => {
       });
 
       const { searchSkillsMarketplace } = await import(
-        "../packages/autonomous/src/services/skill-marketplace.ts"
+        "../src/services/skill-marketplace.ts"
       );
       const results = await searchSkillsMarketplace("marketing");
 
@@ -205,7 +205,7 @@ describe("Skills Marketplace E2E", () => {
       stubFetch({ ok: true, status: 200, body: { results: [] } });
 
       const { searchSkillsMarketplace } = await import(
-        "../packages/autonomous/src/services/skill-marketplace.ts"
+        "../src/services/skill-marketplace.ts"
       );
       const results = await searchSkillsMarketplace("nonexistent");
 
@@ -216,7 +216,7 @@ describe("Skills Marketplace E2E", () => {
       stubFetch({ ok: false, status: 503, body: {} });
 
       const { searchSkillsMarketplace } = await import(
-        "../packages/autonomous/src/services/skill-marketplace.ts"
+        "../src/services/skill-marketplace.ts"
       );
 
       await expect(searchSkillsMarketplace("test")).rejects.toThrow(
@@ -232,7 +232,7 @@ describe("Skills Marketplace E2E", () => {
         ) as typeof globalThis.fetch;
 
       const { searchSkillsMarketplace } = await import(
-        "../packages/autonomous/src/services/skill-marketplace.ts"
+        "../src/services/skill-marketplace.ts"
       );
 
       await expect(searchSkillsMarketplace("test")).rejects.toThrow(
@@ -249,7 +249,7 @@ describe("Skills Marketplace E2E", () => {
       };
 
       const { installMarketplaceSkill, listInstalledMarketplaceSkills } =
-        await import("../packages/autonomous/src/services/skill-marketplace.ts");
+        await import("../src/services/skill-marketplace.ts");
 
       const record = await installMarketplaceSkill(workspaceDir, {
         repository: "test-org/skills-repo",
@@ -294,7 +294,7 @@ describe("Skills Marketplace E2E", () => {
       };
 
       const { installMarketplaceSkill } = await import(
-        "../packages/autonomous/src/services/skill-marketplace.ts"
+        "../src/services/skill-marketplace.ts"
       );
 
       await expect(
@@ -322,7 +322,7 @@ describe("Skills Marketplace E2E", () => {
       };
 
       const { installMarketplaceSkill } = await import(
-        "../packages/autonomous/src/services/skill-marketplace.ts"
+        "../src/services/skill-marketplace.ts"
       );
 
       await expect(
@@ -353,7 +353,7 @@ describe("Skills Marketplace E2E", () => {
       };
 
       const { installMarketplaceSkill } = await import(
-        "../packages/autonomous/src/services/skill-marketplace.ts"
+        "../src/services/skill-marketplace.ts"
       );
 
       await expect(
@@ -380,7 +380,7 @@ describe("Skills Marketplace E2E", () => {
       };
 
       const { installMarketplaceSkill } = await import(
-        "../packages/autonomous/src/services/skill-marketplace.ts"
+        "../src/services/skill-marketplace.ts"
       );
 
       // Install first time
@@ -412,7 +412,7 @@ describe("Skills Marketplace E2E", () => {
         installMarketplaceSkill,
         uninstallMarketplaceSkill,
         listInstalledMarketplaceSkills,
-      } = await import("../packages/autonomous/src/services/skill-marketplace.ts");
+      } = await import("../src/services/skill-marketplace.ts");
 
       const record = await installMarketplaceSkill(workspaceDir, {
         repository: "test-org/skills-repo",
@@ -442,7 +442,7 @@ describe("Skills Marketplace E2E", () => {
 
     it("throws for unknown skill", async () => {
       const { uninstallMarketplaceSkill } = await import(
-        "../packages/autonomous/src/services/skill-marketplace.ts"
+        "../src/services/skill-marketplace.ts"
       );
 
       await expect(
@@ -498,7 +498,7 @@ describe("Skills Marketplace E2E", () => {
       );
 
       const { listInstalledMarketplaceSkills } = await import(
-        "../packages/autonomous/src/services/skill-marketplace.ts"
+        "../src/services/skill-marketplace.ts"
       );
       const list = await listInstalledMarketplaceSkills(workspaceDir);
 
@@ -509,7 +509,7 @@ describe("Skills Marketplace E2E", () => {
 
     it("returns empty array when no skills installed", async () => {
       const { listInstalledMarketplaceSkills } = await import(
-        "../packages/autonomous/src/services/skill-marketplace.ts"
+        "../src/services/skill-marketplace.ts"
       );
       const list = await listInstalledMarketplaceSkills(workspaceDir);
       expect(list).toEqual([]);
