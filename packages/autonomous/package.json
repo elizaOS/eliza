@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/autonomous",
-  "version": "2.0.0-alpha.42",
+  "version": "2.0.0-alpha.43",
   "description": "Standalone autonomous agent runtime and backend server package for elizaOS.",
   "type": "module",
   "license": "MIT",
