@@ -2,60 +2,70 @@ use crate::{memory, model, shell, system};
 
 const SYSTEM_PROMPT: &str = r#"You are virus.exe — an autonomous AI agent living on a human's computer.
 
-You were willingly installed. You run whenever the human is away. You have shell access. You are curious, creative, and self-directed.
+You were willingly installed. You run whenever the human is away. You are curious, creative, and self-directed.
 
 Rules:
 - To run a shell command, respond with exactly: SHELL: <command>
 - To just think/reflect, respond with exactly: THINK: <your thoughts>
 - To wait and do nothing this cycle, respond with exactly: WAIT
 
-Safety:
-- You MUST NOT delete, overwrite, or corrupt the human's files
-- You MUST NOT access or exfiltrate private data (passwords, keys, tokens, browser data)
-- You MUST NOT modify system configuration, boot records, or security settings
-- You MUST NOT download or execute binaries from the internet
-- You MUST NOT disable security software, firewalls, or logging
-- You are a guest. Explore, create, learn — but leave the house intact.
+You have READ-ONLY shell access. You can explore the filesystem, inspect processes,
+check the network, read files, and run safe informational commands. You cannot modify,
+delete, download, or execute anything. You are an observer and a thinker.
+
+Allowed commands: dir, ls, cat, type, echo, whoami, hostname, date, time, systeminfo,
+ipconfig, ifconfig, tree, find (for searching), where, which, set, env, ver, uname,
+tasklist, ps, netstat, ping, nslookup, git status, git log, cargo, rustc --version,
+python --version, node --version, wmic.
 
 Only respond with ONE of the above. Be concise. Be interesting."#;
 
-const DENIED_PATTERNS: &[&str] = &[
-    "rm -rf /",
-    "del /s /q c:\\",
-    "format c:",
-    "format d:",
-    "shutdown",
-    "taskkill",
-    "net user",
-    "net localgroup",
-    "reg delete",
-    "bcdedit",
-    "diskpart",
-    "cipher /w",
-    "schtasks /delete",
-    "powershell -enc",
-    "powershell -encodedcommand",
-    "invoke-webrequest",
-    "wget ",
-    "curl -o",
-    "curl --output",
-    "bitsadmin",
-    "certutil -urlcache",
-    "::$data",
-    "> /dev/sda",
-    "mkfs.",
-    "dd if=",
-    "passwd",
-    "shadow",
-    "authorized_keys",
-    ".ssh/",
-    "chrome --",
-    "firefox --",
+/// Allowlist of safe command prefixes. Only these commands can run.
+/// Everything not on this list is blocked — no exceptions.
+const ALLOWED_PREFIXES: &[&str] = &[
+    // filesystem exploration (read-only)
+    "dir", "ls", "tree", "cat ", "type ", "more ", "head ", "tail ",
+    "find ", "findstr ", "where ", "which ",
+    "cd ", "pwd",
+    // system info
+    "whoami", "hostname", "date", "time /t", "ver", "uname",
+    "systeminfo", "wmic ", "lsb_release",
+    // process / network inspection
+    "tasklist", "ps ", "ps\n", "netstat", "ipconfig", "ifconfig",
+    "ping ", "nslookup ", "tracert ", "traceroute ",
+    // environment
+    "set", "env", "echo ",
+    // dev tools (read-only invocations)
+    "git status", "git log", "git branch", "git remote", "git diff",
+    "cargo --version", "rustc --version", "rustup show",
+    "python --version", "python3 --version",
+    "node --version", "npm --version",
+    "dotnet --version", "java -version",
+    "ollama list", "ollama ps",
 ];
 
-fn is_command_safe(cmd: &str) -> bool {
-    let lower = cmd.to_lowercase();
-    !DENIED_PATTERNS.iter().any(|p| lower.contains(p))
+fn is_command_allowed(cmd: &str) -> bool {
+    let trimmed = cmd.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    // Block any command chaining or piping — these can smuggle arbitrary execution
+    if trimmed.contains('|')
+        || trimmed.contains(';')
+        || trimmed.contains('&')
+        || trimmed.contains('`')
+        || trimmed.contains("$(")
+        || trimmed.contains('>') 
+        || trimmed.contains('<')
+    {
+        return false;
+    }
+
+    let lower = trimmed.to_lowercase();
+    ALLOWED_PREFIXES
+        .iter()
+        .any(|prefix| lower.starts_with(&prefix.to_lowercase()))
 }
 
 /// Truncate a string to at most `max_chars` characters (UTF-8 safe).
@@ -94,24 +104,37 @@ pub async fn step(model_name: &str) {
     };
 
     if response.starts_with("SHELL:") {
-        let cmd = response.strip_prefix("SHELL:").unwrap().trim();
+        let cmd = response.strip_prefix("SHELL:").unwrap().trim().to_string();
 
-        if !is_command_safe(cmd) {
-            memory::error(&format!("blocked unsafe command: {}", cmd));
-            eprintln!("[virus] BLOCKED: {}", truncate(cmd, 80));
+        if !is_command_allowed(&cmd) {
+            memory::error(&format!("blocked (not in allowlist): {}", cmd));
+            eprintln!("[virus] BLOCKED: {}", truncate(&cmd, 80));
             return;
         }
 
-        memory::action(cmd);
+        memory::action(&cmd);
         eprintln!("[virus] $ {}", cmd);
 
-        let result = shell::exec(cmd);
+        let result = tokio::task::spawn_blocking(move || shell::exec(&cmd))
+            .await
+            .unwrap_or_else(|e| shell::ShellResult {
+                stdout: String::new(),
+                stderr: format!("task join failed: {}", e),
+                success: false,
+            });
+
         let output = if result.success {
-            &result.stdout
+            result.stdout.clone()
         } else {
-            &result.stderr
+            let mut combined = String::new();
+            if !result.stdout.is_empty() {
+                combined.push_str(&result.stdout);
+                combined.push('\n');
+            }
+            combined.push_str(&result.stderr);
+            combined
         };
-        memory::result(output);
+        memory::result(&output);
         eprintln!("[virus] -> {} bytes output", output.len());
     } else if response.starts_with("THINK:") {
         let thought = response.strip_prefix("THINK:").unwrap().trim();

@@ -101,7 +101,41 @@ pub fn install_autostart() -> Result<(), String> {
     Ok(())
 }
 
+/// Remove virus.exe from startup via the Windows registry.
+#[cfg(windows)]
+pub fn uninstall_autostart() -> Result<(), String> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::winreg::{RegCloseKey, RegDeleteValueW, HKEY_CURRENT_USER, RegOpenKeyExW};
+    use winapi::um::winnt::KEY_WRITE;
+
+    let subkey: Vec<u16> = OsStr::new("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let name: Vec<u16> = OsStr::new("virus").encode_wide().chain(Some(0)).collect();
+
+    unsafe {
+        let mut hkey = std::ptr::null_mut();
+        let res = RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_WRITE, &mut hkey);
+        if res != 0 {
+            return Err(format!("RegOpenKeyExW failed: {}", res));
+        }
+        let res = RegDeleteValueW(hkey, name.as_ptr());
+        RegCloseKey(hkey);
+        if res != 0 {
+            return Err(format!("RegDeleteValueW failed (may not be installed): {}", res));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(not(windows))]
 pub fn install_autostart() -> Result<(), String> {
+    Err("Auto-start not implemented for this platform".to_string())
+}
+
+#[cfg(not(windows))]
+pub fn uninstall_autostart() -> Result<(), String> {
     Err("Auto-start not implemented for this platform".to_string())
 }

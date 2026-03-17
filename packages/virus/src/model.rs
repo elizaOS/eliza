@@ -101,16 +101,37 @@ pub async fn bootstrap(model: &str) {
         let check = shell::exec("ollama --version");
         if !check.success {
             install_ollama();
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            // Wait for winget to finish (it's async and can take a while)
+            for attempt in 0..12 {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                let recheck = shell::exec("ollama --version");
+                if recheck.success {
+                    eprintln!("[virus] ollama installed successfully");
+                    break;
+                }
+                if attempt == 11 {
+                    eprintln!("[virus] ollama install failed after 60s — please install manually");
+                    eprintln!("[virus] https://ollama.com/download");
+                    std::process::exit(1);
+                }
+            }
         }
+
         start_ollama();
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
+        let mut started = false;
         for _ in 0..10 {
             if is_running().await {
+                started = true;
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+        if !started {
+            eprintln!("[virus] ollama failed to start after 20s");
+            eprintln!("[virus] try running 'ollama serve' manually, then re-run virus");
+            std::process::exit(1);
         }
     }
 
