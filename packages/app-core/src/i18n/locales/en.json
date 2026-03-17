@@ -1089,6 +1089,8 @@
   "streamsettings.NavChannel": "Channel",
   "streamsettings.NavOverlays": "Overlays",
   "streamsettings.NavSource": "Source",
+  "onboarding.stepName.identity": "Identity",
+  "onboarding.stepSub.identity": "Agent persona",
   "onboarding.stepName.wakeUp": "Initialize",
   "onboarding.stepSub.wakeUp": "System boot",
   "onboarding.stepSub.connection": "Neural link",

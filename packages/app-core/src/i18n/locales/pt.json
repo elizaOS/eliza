@@ -1036,6 +1036,8 @@
   "streamsettings.NavChannel": "Channel",
   "streamsettings.NavOverlays": "Overlays",
   "streamsettings.NavSource": "Source",
+  "onboarding.stepName.identity": "Identidade",
+  "onboarding.stepSub.identity": "Persona do agente",
   "onboarding.stepName.wakeUp": "Inicializar",
   "onboarding.stepSub.wakeUp": "Inicialização do sistema",
   "onboarding.stepSub.connection": "Link neural",
