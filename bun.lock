@@ -43,14 +43,14 @@
     },
     "packages/app-core": {
       "name": "@elizaos/app-core",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "dependencies": {
         "@capacitor/core": "8.0.2",
         "@capacitor/haptics": "8.0.0",
         "@capacitor/keyboard": "8.0.0",
         "@capacitor/preferences": "^8.0.1",
-        "@elizaos/autonomous": "2.0.0-alpha.25",
-        "@elizaos/ui": "2.0.0-alpha.25",
+        "@elizaos/autonomous": "workspace:*",
+        "@elizaos/ui": "workspace:*",
         "@lifo-sh/core": "0.4.4",
         "@lifo-sh/ui": "0.4.2",
         "@pixiv/three-vrm": "^3.4.5",
@@ -74,7 +74,7 @@
     },
     "packages/autonomous": {
       "name": "@elizaos/autonomous",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "bin": {
         "eliza-autonomous": "./src/bin.ts",
       },
@@ -100,8 +100,8 @@
         "@elizaos/plugin-todo": "alpha",
         "@elizaos/plugin-trajectory-logger": "alpha",
         "@elizaos/plugin-trust": "alpha",
-        "@elizaos/prompts": "2.0.0-alpha.25",
-        "@elizaos/skills": "2.0.0-alpha.25",
+        "@elizaos/prompts": "workspace:*",
+        "@elizaos/skills": "workspace:*",
         "@hapi/boom": "^10.0.1",
         "@mariozechner/pi-ai": "0.52.12",
         "@noble/curves": "^2.0.1",
@@ -135,7 +135,7 @@
     },
     "packages/computeruse": {
       "name": "@elizaos/computeruse-root",
-      "version": "2.0.0-alpha.22",
+      "version": "2.0.0-alpha.25",
     },
     "packages/computeruse/packages/computeruse-nodejs": {
       "name": "@elizaos/computeruse-nodejs",
@@ -210,7 +210,7 @@
     },
     "packages/daemon": {
       "name": "@elizaos/daemon",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "devDependencies": {
         "@biomejs/biome": "^1.9.4",
         "@types/node": "^22.10.2",
@@ -220,11 +220,11 @@
     },
     "packages/docs": {
       "name": "@elizaos/docs",
-      "version": "2.0.0-alpha.22",
+      "version": "2.0.0-alpha.25",
     },
     "packages/elizaos": {
       "name": "elizaos",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "bin": {
         "elizaos": "./dist/cli.js",
       },
@@ -241,7 +241,7 @@
     },
     "packages/home": {
       "name": "@elizaos/home",
-      "version": "2.0.0-alpha.22",
+      "version": "2.0.0-alpha.25",
       "dependencies": {
         "@capacitor/app": "^8.0.1",
         "@capacitor/core": "8.0.2",
@@ -267,9 +267,9 @@
     },
     "packages/interop": {
       "name": "@elizaos/interop",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "dependencies": {
-        "@elizaos/core": "2.0.0-alpha.25",
+        "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^25.0.3",
@@ -278,33 +278,33 @@
     },
     "packages/prompts": {
       "name": "@elizaos/prompts",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
     },
     "packages/python": {
       "name": "@elizaos/python",
-      "version": "2.0.0-alpha.22",
+      "version": "2.0.0-alpha.25",
     },
     "packages/rust": {
       "name": "@elizaos/rust",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
     },
     "packages/schemas": {
       "name": "@elizaos/schemas",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "devDependencies": {
         "@bufbuild/buf": "^1.47.2",
       },
     },
     "packages/skills": {
       "name": "@elizaos/skills",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "dependencies": {
         "yaml": "^2.8.2",
       },
     },
     "packages/sweagent": {
       "name": "@elizaos/sweagent-root",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "dependencies": {
         "axios": "^1.7.0",
         "chalk": "^5.3.0",
@@ -328,7 +328,7 @@
     },
     "packages/training": {
       "name": "@elizaos/training",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "dependencies": {
         "@huggingface/hub": "^2.6.12",
         "@vercel/blob": "^0.27.1",
@@ -343,7 +343,7 @@
     },
     "packages/tui": {
       "name": "@elizaos/tui",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "dependencies": {
         "@types/mime-types": "^2.1.4",
         "chalk": "^5.5.0",
@@ -358,7 +358,7 @@
     },
     "packages/typescript": {
       "name": "@elizaos/core",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.32.1",
         "@bufbuild/protobuf": "^2.11.0",
@@ -398,7 +398,7 @@
     },
     "packages/ui": {
       "name": "@elizaos/ui",
-      "version": "2.0.0-alpha.25",
+      "version": "2.0.0-alpha.44",
       "dependencies": {
         "@radix-ui/react-checkbox": "^1.3.3",
         "@radix-ui/react-dialog": "^1.1.15",
