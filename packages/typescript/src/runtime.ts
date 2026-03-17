@@ -643,8 +643,13 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    // Reject any pending service load promises so callers don't hang
+    // Reject any pending service load promises so callers don't hang.
+    // Attach a no-op catch to each so the rejection is "handled" and does not
+    // become an unhandled rejection in tests (callers awaiting getService() still get the error).
     const stopError = new Error("Runtime stopped");
+    for (const promise of this.servicePromises.values()) {
+      promise.catch(() => {});
+    }
     for (const handler of this.servicePromiseHandlers.values()) {
       handler.reject(stopError);
     }
