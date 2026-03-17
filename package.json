@@ -60,8 +60,6 @@
     "packages/*",
     "packages/computeruse/packages/*",
     "apps/*",
-    "plugins/plugin-*/typescript",
-    "plugins/plugin-*",
     "examples/*",
     "examples/*/*",
     "examples/app/*",

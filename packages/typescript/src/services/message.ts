@@ -957,10 +957,11 @@ export class DefaultMessageService implements IMessageService {
             createdAt: Date.now(),
           };
           await runtime.createMemory(ignoreMemory, "messages");
-        runtime.logger.debug(
-          { src: "service:message", memoryId: ignoreMemory.id },
-          "Saved ignore response to memory",
-        );
+          runtime.logger.debug(
+            { src: "service:message", memoryId: ignoreMemory.id },
+            "Saved ignore response to memory",
+          );
+        }
       } else {
         runtime.logger.debug(
           { src: "service:message", allowedSources },
@@ -2335,8 +2336,8 @@ Output ONLY the continuation, starting immediately after the last character abov
     message: Memory,
     startTime: number,
     status: string,
-  ): Promise<void> 
-    await runtime.emitEvent(EventType.RUN_ENDED, 
+  ): Promise<void> {
+    await runtime.emitEvent(EventType.RUN_ENDED, {
       runtime,
       source: "messageHandler",
       runId,
@@ -2346,7 +2347,9 @@ Output ONLY the continuation, starting immediately after the last character abov
       startTime,
       status: status as "completed" | "timeout",
       endTime: Date.now(),
-      duration: Date.now() - startTime,as RunEventPayload);
+      duration: Date.now() - startTime,
+    } as RunEventPayload);
+  }
 
   /**
    * Deletes a message from the agent's memory.
