@@ -530,13 +530,12 @@ export function logPrompt(
   },
 ): string {
   if (!ensureFileLog()) return "";
-  // Use next counter for prompts, store slug in metadata for response
+  // Generate next sequential counter for this prompt
   const counter = ++_promptLogCounter;
-  const agentName = metadata?.agentName ?? "unknown"; 
-  const slug = promptSlug(counter, agentName, modelType);
-  // Store prompt slug for correlation with response
-  // Store counter with slug to allow response to use same counter
-  metadata = { ...metadata, promptSlug: slug, promptCounter: counter };
+  const agentName = metadata?.agentName ?? "unknown";
+  const slug = promptSlug(counter, agentName, modelType); 
+  // Store slug in metadata to be reused by response
+  metadata = { ...metadata, promptSlug: slug };
   writeToPromptLog(slug, "PROMPT", modelType, prompt, metadata);
   return slug;
 }
@@ -558,12 +557,10 @@ export function logResponse(
   },
 ): string {
   if (!ensureFileLog()) return "";
-  // Use the same counter and slug as the prompt for correlation
   const agentName = metadata?.agentName ?? "unknown";
-  // Require promptSlug and counter in metadata for correlation
+  // Use the same slug that was stored in the prompt's metadata for correlation
   const slug = metadata?.promptSlug;
-  const counter = metadata?.promptCounter as number | undefined;
-  if (!slug || counter === undefined) {
+  if (!slug) {
     logger.warn({ src: "core:logger" }, "logResponse missing promptSlug - responses can't be correlated");
     return "";
   }
