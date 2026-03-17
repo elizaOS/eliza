@@ -1,5 +1,7 @@
 """Tests for LINE plugin providers."""
 
+import pytest
+
 from elizaos_plugin_line.providers import chat_context_provider, user_context_provider
 
 # ---------------------------------------------------------------------------
@@ -37,8 +39,6 @@ class MockRuntime:
     def get_service(self, name: str):
         return None
 
-
-import pytest
 
 
 @pytest.mark.asyncio

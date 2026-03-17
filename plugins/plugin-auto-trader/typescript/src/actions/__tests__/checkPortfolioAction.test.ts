@@ -126,14 +126,12 @@ describe("checkPortfolioAction", () => {
         }
         if (serviceName === "AutoTradingManager") {
           return {
-            getStatus: vi
-              .fn()
-              .mockReturnValue({
-                isTrading: false,
-                strategy: null,
-                positions: [],
-                performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 0 },
-              }),
+            getStatus: vi.fn().mockReturnValue({
+              isTrading: false,
+              strategy: null,
+              positions: [],
+              performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 0 },
+            }),
             getLatestTransactions: vi.fn().mockReturnValue([]),
           };
         }
@@ -152,14 +150,12 @@ describe("checkPortfolioAction", () => {
         if (serviceName === "SwapService") return null;
         if (serviceName === "AutoTradingManager") {
           return {
-            getStatus: vi
-              .fn()
-              .mockReturnValue({
-                isTrading: false,
-                strategy: null,
-                positions: [],
-                performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 0 },
-              }),
+            getStatus: vi.fn().mockReturnValue({
+              isTrading: false,
+              strategy: null,
+              positions: [],
+              performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 0 },
+            }),
             getLatestTransactions: vi.fn().mockReturnValue([]),
           };
         }

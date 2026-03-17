@@ -1,21 +1,16 @@
 """Tests for Google Chat plugin types and utility functions."""
 
-import pytest
 
 from elizaos_plugin_google_chat.types import (
     GOOGLE_CHAT_SERVICE_NAME,
     MAX_GOOGLE_CHAT_MESSAGE_LENGTH,
-    GoogleChatAnnotation,
     GoogleChatApiError,
-    GoogleChatAttachment,
     GoogleChatAuthenticationError,
     GoogleChatConfigurationError,
-    GoogleChatEvent,
     GoogleChatEventTypes,
     GoogleChatMessage,
     GoogleChatMessageSendOptions,
     GoogleChatPluginError,
-    GoogleChatReaction,
     GoogleChatSendResult,
     GoogleChatSettings,
     GoogleChatSpace,

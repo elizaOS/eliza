@@ -1,14 +1,13 @@
 """Tests for Google Chat plugin configuration and service validation."""
 
-import os
 
 import pytest
 
+from elizaos_plugin_google_chat.service import GoogleChatService
 from elizaos_plugin_google_chat.types import (
     GoogleChatConfigurationError,
     GoogleChatSettings,
 )
-from elizaos_plugin_google_chat.service import GoogleChatService
 
 
 class TestGoogleChatServiceValidation:

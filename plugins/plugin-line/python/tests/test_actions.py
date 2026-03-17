@@ -1,5 +1,7 @@
 """Tests for LINE plugin actions."""
 
+import pytest
+
 from elizaos_plugin_line.actions import (
     send_flex_message_action,
     send_location_action,
@@ -104,8 +106,6 @@ class MockRuntime:
     def get_service(self, name: str):
         return None
 
-
-import pytest
 
 
 @pytest.mark.asyncio

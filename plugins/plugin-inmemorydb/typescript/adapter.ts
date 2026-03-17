@@ -31,8 +31,8 @@ import {
   type PairingAllowlistEntry,
   type PairingChannel,
   type PairingRequest,
-  type PatchOp,
   type Participant,
+  type PatchOp,
   type Relationship,
   type Room,
   type Task,
@@ -180,7 +180,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     return ids;
   }
-  
+
   async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
     // WHY: InMemoryDB uses storage.set() which naturally handles both insert and update
     for (const agent of agents) {
@@ -217,12 +217,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     return true;
   }
-  
+
   async countAgents(): Promise<number> {
     const agents = await this.storage.getAll<Partial<Agent>>(COLLECTIONS.AGENTS);
     return agents.length;
   }
-  
+
   async cleanupAgents(): Promise<void> {
     // WHY no-op: InMemoryDB persists to disk but has no time-based cleanup logic.
     // Cleanup would require adding updatedAt tracking to all agent records.
@@ -250,7 +250,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async getEntitiesForRooms(
     roomIds: UUID[],
-    includeComponents = false,
+    includeComponents = false
   ): Promise<Array<{ roomId: UUID; entities: Entity[] }>> {
     const result: Array<{ roomId: UUID; entities: Entity[] }> = [];
     for (const roomId of roomIds) {
@@ -260,7 +260,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return result;
   }
 
-  private async getEntitiesForRoomInternal(roomId: UUID, includeComponents: boolean): Promise<Entity[]> {
+  private async getEntitiesForRoomInternal(
+    roomId: UUID,
+    includeComponents: boolean
+  ): Promise<Entity[]> {
     const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId
@@ -296,7 +299,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     return ids;
   }
-  
+
   async upsertEntities(entities: Entity[]): Promise<void> {
     // WHY: storage.set() is idempotent - overwrites if exists, inserts if not
     for (const entity of entities) {
@@ -305,7 +308,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       }
     }
   }
-  
+
   async searchEntitiesByName(params: {
     query: string;
     agentId: UUID;
@@ -315,37 +318,35 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const limit = params.limit ?? 10;
     const allEntities = await this.storage.getAll<Entity>(COLLECTIONS.ENTITIES);
     const matches: Entity[] = [];
-    
+
     for (const entity of allEntities) {
       if (entity.agentId !== params.agentId) continue;
-      
-      const hasMatch = entity.names?.some(name => 
-        name.toLowerCase().includes(lowerQuery)
-      );
-      
+
+      const hasMatch = entity.names?.some((name) => name.toLowerCase().includes(lowerQuery));
+
       if (hasMatch) {
         matches.push(entity);
         if (matches.length >= limit) break;
       }
     }
-    
+
     return matches;
   }
-  
+
   async getEntitiesByNames(params: { names: string[]; agentId: UUID }): Promise<Entity[]> {
     const nameSet = new Set(params.names);
     const allEntities = await this.storage.getAll<Entity>(COLLECTIONS.ENTITIES);
     const matches: Entity[] = [];
-    
+
     for (const entity of allEntities) {
       if (entity.agentId !== params.agentId) continue;
-      
-      const hasMatch = entity.names?.some(name => nameSet.has(name));
+
+      const hasMatch = entity.names?.some((name) => nameSet.has(name));
       if (hasMatch) {
         matches.push(entity);
       }
     }
-    
+
     return matches;
   }
 
@@ -360,12 +361,23 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     includeAllComponents?: boolean;
     entityContext?: UUID;
   }): Promise<Entity[]> {
-    const { componentType, componentDataFilter, agentId, entityIds, worldId, limit, offset, includeAllComponents = false } = params;
+    const {
+      componentType,
+      componentDataFilter,
+      agentId,
+      entityIds,
+      worldId,
+      limit,
+      offset,
+      includeAllComponents = false,
+    } = params;
 
     // TRAP: Prevent full table scans - require at least one meaningful filter OR explicit limit
     const hasFilter = componentType || componentDataFilter || entityIds || agentId || worldId;
     if (!hasFilter && !limit) {
-      throw new Error('queryEntities requires at least one filter (componentType, componentDataFilter, entityIds, agentId, worldId) or an explicit limit');
+      throw new Error(
+        "queryEntities requires at least one filter (componentType, componentDataFilter, entityIds, agentId, worldId) or an explicit limit"
+      );
     }
 
     const allComponents = await this.storage.getAll<Component>(COLLECTIONS.COMPONENTS);
@@ -378,12 +390,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (worldId && component.worldId !== worldId) continue;
       if (entityIds && !entityIds.includes(component.entityId)) continue;
       if (componentType && component.type !== componentType) continue;
-      
+
       if (componentDataFilter) {
         // TRAP: InMemory must implement deep-contains, not shallow equality
         if (!this.deepContains(component.data || {}, componentDataFilter)) continue;
       }
-      
+
       matchingEntityIds.add(component.entityId);
     }
 
@@ -441,31 +453,31 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private deepContains(target: unknown, filter: unknown): boolean {
     if (filter === null || filter === undefined) return true;
     if (target === null || target === undefined) return false;
-    
+
     // Primitive equality
-    if (typeof filter !== 'object') {
+    if (typeof filter !== "object") {
       return target === filter;
     }
-    
+
     // Array containment: filter array must be subset of target array
     if (Array.isArray(filter)) {
       if (!Array.isArray(target)) return false;
-      return filter.every(filterItem =>
-        target.some(targetItem => this.deepContains(targetItem, filterItem))
+      return filter.every((filterItem) =>
+        target.some((targetItem) => this.deepContains(targetItem, filterItem))
       );
     }
-    
+
     // Object containment: all filter keys must exist in target with matching values
-    if (typeof target !== 'object' || Array.isArray(target)) return false;
-    
+    if (typeof target !== "object" || Array.isArray(target)) return false;
+
     const filterObj = filter as Record<string, unknown>;
     const targetObj = target as Record<string, unknown>;
-    
+
     for (const key of Object.keys(filterObj)) {
       if (!(key in targetObj)) return false;
       if (!this.deepContains(targetObj[key], filterObj[key])) return false;
     }
-    
+
     return true;
   }
 
@@ -490,12 +502,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   // Component Methods
   // ===============================
 
-  async getComponentsByNaturalKeys(keys: Array<{
-    entityId: UUID;
-    type: string;
-    worldId?: UUID;
-    sourceEntityId?: UUID;
-  }>): Promise<(Component | null)[]> {
+  async getComponentsByNaturalKeys(
+    keys: Array<{
+      entityId: UUID;
+      type: string;
+      worldId?: UUID;
+      sourceEntityId?: UUID;
+    }>
+  ): Promise<(Component | null)[]> {
     const result: (Component | null)[] = [];
     for (const k of keys) {
       const c = await this.getComponentInternal(k.entityId, k.type, k.worldId, k.sourceEntityId);
@@ -507,7 +521,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async getComponentsForEntities(
     entityIds: UUID[],
     worldId?: UUID,
-    sourceEntityId?: UUID,
+    sourceEntityId?: UUID
   ): Promise<Component[]> {
     const out: Component[] = [];
     for (const entityId of entityIds) {
@@ -602,7 +616,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async upsertComponents(
     components: Component[],
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<void> {
     // WHY: InMemory upsert finds existing components by natural key, NOT by id.
     // The natural key is (entityId, type, worldId, sourceEntityId).
@@ -610,7 +624,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       // Find existing component by natural key
       const allComponents = await this.storage.list(COLLECTIONS.COMPONENTS);
       let existingId: UUID | null = null;
-      
+
       for (const [id, existing] of allComponents) {
         const comp = existing as Component;
         if (
@@ -648,7 +662,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async patchComponents(
     updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<void> {
     for (const { componentId, ops } of updates) {
       await this.patchComponentInternal(componentId, ops);
@@ -658,15 +672,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async patchComponent(
     componentId: UUID,
     ops: PatchOp[],
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<void> {
     await this.patchComponentInternal(componentId, ops);
   }
 
-  private async patchComponentInternal(
-    componentId: UUID,
-    ops: PatchOp[],
-  ): Promise<void> {
+  private async patchComponentInternal(componentId: UUID, ops: PatchOp[]): Promise<void> {
     if (ops.length === 0) return;
 
     const component = await this.storage.get<Component>(COLLECTIONS.COMPONENTS, componentId);
@@ -682,15 +693,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const segments = this.validatePatchPath(op.path);
 
       switch (op.op) {
-        case 'set': {
+        case "set": {
           if (op.value === undefined) {
             throw new Error(`'set' operation requires a value`);
           }
           this.setNestedValue(data, segments, op.value);
           break;
         }
-        
-        case 'push': {
+
+        case "push": {
           if (op.value === undefined) {
             throw new Error(`'push' operation requires a value`);
           }
@@ -701,25 +712,25 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
           arr.push(op.value);
           break;
         }
-        
-        case 'remove': {
+
+        case "remove": {
           // Idempotent: no error if path doesn't exist
           this.removeNestedValue(data, segments);
           break;
         }
-        
-        case 'increment': {
+
+        case "increment": {
           if (op.value === undefined) {
             throw new Error(`'increment' operation requires a value`);
           }
           const current = this.getNestedValue(data, segments);
-          if (typeof current !== 'number') {
+          if (typeof current !== "number") {
             throw new Error(`Cannot increment non-numeric value at path "${op.path}"`);
           }
           this.setNestedValue(data, segments, current + Number(op.value));
           break;
         }
-        
+
         default:
           throw new Error(`Unknown patch operation: ${(op as PatchOp).op}`);
       }
@@ -737,7 +748,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
    */
   private validatePatchPath(path: string): string[] {
     const PATH_SEGMENT_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-    const segments = path.split('.');
+    const segments = path.split(".");
     for (const seg of segments) {
       if (!PATH_SEGMENT_RE.test(seg) && !/^\d+$/.test(seg)) {
         throw new Error(
@@ -782,13 +793,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
    */
   private removeNestedValue(obj: any, segments: string[]): void {
     if (segments.length === 0) return;
-    
+
     let current = obj;
     for (let i = 0; i < segments.length - 1; i++) {
       if (current == null) return; // Path doesn't exist - idempotent
       current = current[segments[i]];
     }
-    
+
     if (current != null) {
       delete current[segments[segments.length - 1]];
     }
@@ -812,8 +823,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     roomId?: UUID;
     worldId?: UUID;
     metadata?: Record<string, unknown>;
-    orderBy?: 'createdAt';
-    orderDirection?: 'asc' | 'desc';
+    orderBy?: "createdAt";
+    orderDirection?: "asc" | "desc";
   }): Promise<Memory[]> {
     let memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (params.entityId && m.entityId !== params.entityId) return false;
@@ -835,7 +846,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     });
 
     // Sort by createdAt; default DESC (newest first) to match SQL adapter behavior
-    if (params.orderDirection === 'asc') {
+    if (params.orderDirection === "asc") {
       memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
     } else {
       memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
@@ -1054,7 +1065,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async upsertMemories(
     memories: Array<{ memory: Memory; tableName: string }>,
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<void> {
     for (const { memory, tableName } of memories) {
       const memoryId = memory.id ?? (crypto.randomUUID() as UUID);
@@ -1264,7 +1275,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     return ids;
   }
-  
+
   async upsertWorlds(worlds: World[]): Promise<void> {
     // WHY: storage.set() handles both insert (new id) and update (existing id)
     for (const world of worlds) {
@@ -1334,7 +1345,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     return ids;
   }
-  
+
   async upsertRooms(rooms: Room[]): Promise<void> {
     // WHY: storage.set() is atomic upsert for key-value stores
     for (const room of rooms) {
@@ -1368,11 +1379,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async getRoomsByWorlds(
-    worldIds: UUID[],
-    limit?: number,
-    offset?: number,
-  ): Promise<Room[]> {
+  async getRoomsByWorlds(worldIds: UUID[], limit?: number, offset?: number): Promise<Room[]> {
     let all: Room[] = [];
     for (const worldId of worldIds) {
       const rooms = await this.getRoomsByWorld(worldId);
@@ -1443,11 +1450,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return true;
   }
 
-  async updateParticipants(participants: Array<{
-    entityId: UUID;
-    roomId: UUID;
-    updates: Partial<Participant>;
-  }>): Promise<void> {
+  async updateParticipants(
+    participants: Array<{
+      entityId: UUID;
+      roomId: UUID;
+      updates: Partial<Participant>;
+    }>
+  ): Promise<void> {
     for (const { entityId, roomId, updates } of participants) {
       const stored = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
@@ -1475,7 +1484,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getParticipantsForRooms(
-    roomIds: UUID[],
+    roomIds: UUID[]
   ): Promise<Array<{ roomId: UUID; entityIds: UUID[] }>> {
     const result: Array<{ roomId: UUID; entityIds: UUID[] }> = [];
     for (const roomId of roomIds) {
@@ -1485,9 +1494,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return result;
   }
 
-  async areRoomParticipants(
-    pairs: Array<{ roomId: UUID; entityId: UUID }>,
-  ): Promise<boolean[]> {
+  async areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]> {
     const result: boolean[] = [];
     for (const { roomId, entityId } of pairs) {
       result.push(await this.isRoomParticipant(roomId, entityId));
@@ -1496,7 +1503,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getParticipantUserStates(
-    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+    pairs: Array<{ roomId: UUID; entityId: UUID }>
   ): Promise<("FOLLOWED" | "MUTED" | null)[]> {
     const result: ("FOLLOWED" | "MUTED" | null)[] = [];
     for (const { roomId, entityId } of pairs) {
@@ -1506,11 +1513,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return result;
   }
 
-  async updateParticipantUserStates(updates: Array<{
-    roomId: UUID;
-    entityId: UUID;
-    state: "FOLLOWED" | "MUTED" | null;
-  }>): Promise<void> {
+  async updateParticipantUserStates(
+    updates: Array<{
+      roomId: UUID;
+      entityId: UUID;
+      state: "FOLLOWED" | "MUTED" | null;
+    }>
+  ): Promise<void> {
     for (const u of updates) {
       await this.updateParticipantUserStateInternal(u.roomId, u.entityId, u.state);
     }
@@ -1671,7 +1680,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getRelationshipsByPairs(
-    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
+    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>
   ): Promise<(Relationship | null)[]> {
     const result: (Relationship | null)[] = [];
     for (const params of pairs) {
@@ -1723,13 +1732,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   private async getRelationshipsForEntity(
     entityId: UUID,
-    tags?: string[],
+    tags?: string[]
   ): Promise<Relationship[]> {
     const stored = await this.storage.getWhere<StoredRelationship>(
       COLLECTIONS.RELATIONSHIPS,
       (r) => {
-        const isInvolved =
-          r.sourceEntityId === entityId || r.targetEntityId === entityId;
+        const isInvolved = r.sourceEntityId === entityId || r.targetEntityId === entityId;
         if (!isInvolved) return false;
         if (tags && tags.length > 0) return tags.some((tag) => r.tags?.includes(tag));
         return true;
@@ -1933,9 +1941,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   // ===============================
 
   async getPairingRequests(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>
   ): Promise<Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }>> {
-    const result: Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }> = [];
+    const result: Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }> =
+      [];
     for (const { channel, agentId } of queries) {
       const requests = await this.storage.getWhere<PairingRequest>(
         COLLECTIONS.PAIRING_REQUESTS,
@@ -1990,9 +1999,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getPairingAllowlists(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>
   ): Promise<Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }>> {
-    const result: Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }> = [];
+    const result: Array<{
+      channel: PairingChannel;
+      agentId: UUID;
+      entries: PairingAllowlistEntry[];
+    }> = [];
     for (const { channel, agentId } of queries) {
       const entries = await this.storage.getWhere<PairingAllowlistEntry>(
         COLLECTIONS.PAIRING_ALLOWLIST,
@@ -2042,19 +2055,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   /**
    * Execute a callback (NOT atomic - InMemory does not support true transactions).
-   * 
+   *
    * WARNING: InMemory transactions are NOT atomic. Changes are not rolled back on error.
    * If step 2 of a callback fails, step 1's changes are ALREADY APPLIED and NOT reversed.
-   * 
+   *
    * This is acceptable for dev/test environments but NOT for production critical paths
    * where atomicity is required. Use SQL adapters (PostgreSQL/MySQL) for true transactions.
-   * 
+   *
    * @param callback Function that receives this adapter (not a proxy)
    * @returns Promise resolving to callback's return value
    */
   async transaction<T>(
     callback: (tx: import("@elizaos/core").IDatabaseAdapter<IStorage>) => Promise<T>,
-    _options?: { entityContext?: UUID },
+    _options?: { entityContext?: UUID }
   ): Promise<T> {
     // No transaction semantics - just execute the callback with this adapter
     return callback(this);

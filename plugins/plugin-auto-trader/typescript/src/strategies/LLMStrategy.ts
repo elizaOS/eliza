@@ -320,7 +320,8 @@ export class LLMStrategy implements TradingStrategy {
     }
 
     const settingKey = runtime.getSetting("BIRDEYE_API_KEY");
-    const apiKey = this.config.birdeyeApiKey || (typeof settingKey === "string" ? settingKey : null);
+    const apiKey =
+      this.config.birdeyeApiKey || (typeof settingKey === "string" ? settingKey : null);
     if (!apiKey) {
       logger.error(`[${this.name}] Birdeye API key not configured`);
       return [];
@@ -440,8 +441,7 @@ export class LLMStrategy implements TradingStrategy {
 
     // Validate and normalize the response (parseJSONObjectFromText may stringify booleans)
     const pickedNothing =
-      parsed.pickedNothing === true ||
-      String(parsed.pickedNothing).toLowerCase() === "true";
+      parsed.pickedNothing === true || String(parsed.pickedNothing).toLowerCase() === "true";
     const decision: LLMTradingDecision = {
       marketAssessment: String(parsed.marketAssessment || ""),
       pickedNothing,

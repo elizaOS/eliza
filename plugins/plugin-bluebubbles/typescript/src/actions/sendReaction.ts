@@ -2,15 +2,22 @@
  * Send reaction action for the BlueBubbles plugin.
  */
 
-import type { Action, ActionResult, IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import {
   composePromptFromState,
   logger,
   ModelType,
   parseJSONObjectFromText,
 } from "@elizaos/core";
-import { BlueBubblesService } from "../service.js";
 import { BLUEBUBBLES_SERVICE_NAME } from "../constants.js";
+import type { BlueBubblesService } from "../service.js";
 
 const SEND_REACTION_TEMPLATE = `# Task: Extract BlueBubbles reaction parameters
 
@@ -48,7 +55,7 @@ export const sendReactionAction: Action = {
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<boolean> => {
     return message.content.source === "bluebubbles";
   },
@@ -58,14 +65,19 @@ export const sendReactionAction: Action = {
     message: Memory,
     state: State | undefined,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const bbService = runtime.getService<BlueBubblesService>(BLUEBUBBLES_SERVICE_NAME);
+    const bbService = runtime.getService<BlueBubblesService>(
+      BLUEBUBBLES_SERVICE_NAME,
+    );
     const currentState = state ?? (await runtime.composeState(message));
 
     if (!bbService || !bbService.isConnected()) {
       if (callback) {
-        await callback({ text: "BlueBubbles service is not available.", source: "bluebubbles" });
+        await callback({
+          text: "BlueBubbles service is not available.",
+          source: "bluebubbles",
+        });
       }
       return { success: false, error: "BlueBubbles service not available" };
     }
@@ -135,11 +147,13 @@ export const sendReactionAction: Action = {
 
     // Send reaction - we only support adding reactions, not removing
     // The BlueBubbles API handles remove through a negative reaction type internally
-    const reactionValue = reactionInfo.remove ? `-${reactionInfo.emoji}` : reactionInfo.emoji;
+    const reactionValue = reactionInfo.remove
+      ? `-${reactionInfo.emoji}`
+      : reactionInfo.emoji;
     const result = await bbService.sendReaction(
       chatGuid,
       messageGuid,
-      reactionValue
+      reactionValue,
     );
 
     if (!result.success) {
@@ -153,7 +167,7 @@ export const sendReactionAction: Action = {
     }
 
     logger.debug(
-      `${reactionInfo.remove ? "Removed" : "Added"} reaction ${reactionInfo.emoji} on ${messageGuid}`
+      `${reactionInfo.remove ? "Removed" : "Added"} reaction ${reactionInfo.emoji} on ${messageGuid}`,
     );
 
     if (callback) {

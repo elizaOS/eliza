@@ -27,6 +27,7 @@ from .types import (
     LineFlexMessage,
     LineGroup,
     LineLocationMessage,
+    LineMessage,
     LineSendResult,
     LineSettings,
     LineTemplateMessage,
