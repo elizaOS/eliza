@@ -105,7 +105,7 @@ export const replyAction = {
     
     // Check if all required providers are already in state to avoid redundant recomposition
     const hasRequestedInState = state?.data?.providers &&
-      allProviders.every(provider => state!.data.providers!.includes(provider));
+      allProviders.every(provider => provider in state!.data.providers!);
     
     if (!hasRequestedInState) {
       state = await runtime.composeState(message, allProviders);
