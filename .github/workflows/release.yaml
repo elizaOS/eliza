@@ -472,7 +472,10 @@ jobs:
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
 
           # Configure npm for authentication
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          # Use NPM_CONFIG_USERCONFIG if set (by actions/setup-node), otherwise fall back to ~/.npmrc
+          AUTH_NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          mkdir -p "$(dirname "$AUTH_NPMRC")"
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$AUTH_NPMRC"
 
           # Publish with appropriate dist-tag
           if ! bunx lerna publish from-package \
