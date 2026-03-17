@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-mattermost",
-  "version": "2.0.0-alpha.6",
+  "version": "2.0.0-alpha.7",
   "description": "Mattermost integration plugin for elizaOS agents - TypeScript implementation",
   "type": "module",
   "main": "dist/index.js",
