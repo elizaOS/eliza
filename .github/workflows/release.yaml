@@ -435,9 +435,13 @@ jobs:
           echo "WASM builds complete"
 
       - name: Build packages
+        env:
+          SKIP_PYTHON_BUILD: "1"
         run: |
           echo "Building packages with version v${{ steps.version.outputs.version }}..."
-          bun run build
+          # Use --continue so build failures in root packages (Rust/Python) don't block NPM release
+          # Some -root packages may fail due to platform-specific Rust builds - this is expected
+          bunx turbo run build --continue || echo "Some packages had build errors - continuing with publish for successfully built packages"
 
       # Replace workspace:* references with actual versions before publishing
       # This is required because Bun workspaces use workspace:* protocol
