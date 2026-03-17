@@ -1008,6 +1008,8 @@
   "streamsettings.NavChannel": "Channel",
   "streamsettings.NavOverlays": "Overlays",
   "streamsettings.NavSource": "Source",
+  "onboarding.stepName.identity": "身份",
+  "onboarding.stepSub.identity": "代理角色",
   "onboarding.stepName.wakeUp": "初始化",
   "onboarding.stepSub.wakeUp": "系统启动",
   "onboarding.stepSub.connection": "神经链接",

@@ -84,9 +84,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     props.elizaCloudCreditsLow ?? Boolean(app.elizaCloudCreditsLow);
   const elizaCloudCreditsCritical =
     props.elizaCloudCreditsCritical ?? Boolean(app.elizaCloudCreditsCritical);
-  const _elizaCloudTopUpUrl =
-    props.elizaCloudTopUpUrl ??
-    (typeof app.elizaCloudTopUpUrl === "string" ? app.elizaCloudTopUpUrl : "");
   const elizaCloudUserId =
     props.elizaCloudUserId ??
     (typeof app.elizaCloudUserId === "string" ? app.elizaCloudUserId : null);

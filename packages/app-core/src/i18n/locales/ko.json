@@ -1036,6 +1036,8 @@
   "streamsettings.NavChannel": "Channel",
   "streamsettings.NavOverlays": "Overlays",
   "streamsettings.NavSource": "Source",
+  "onboarding.stepName.identity": "정체성",
+  "onboarding.stepSub.identity": "에이전트 페르소나",
   "onboarding.stepName.wakeUp": "초기화",
   "onboarding.stepSub.wakeUp": "시스템 부팅",
   "onboarding.stepSub.connection": "신경 링크",
