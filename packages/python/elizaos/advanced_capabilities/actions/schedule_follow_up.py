@@ -14,7 +14,7 @@ from elizaos.types import (
     Content,
     ModelType,
 )
-from elizaos.utils.spec_examples import convert_spec_examples
+from elizaos.utils.spec_examples import convert_spec_examples  # noqa: F401
 
 if TYPE_CHECKING:
     from elizaos.types import (
@@ -103,20 +103,39 @@ class ScheduleFollowUpAction:
         priority = str(parsed.get("priority", "medium"))
         follow_up_message = str(parsed.get("message", ""))
 
-        scheduled_at = datetime.fromisoformat(scheduled_at_str.replace("Z", "+00:00"))
+        # Normalize priority to valid values
+        if priority not in ("low", "medium", "high"):
+            priority = "medium"
 
-        from uuid import UUID as StdUUID
-
-        entity_id = message.entity_id
-        entity_id_uuid = StdUUID(str(entity_id)) if entity_id else None
-        if entity_id_uuid:
-            await follow_up_service.schedule_follow_up(
-                entity_id=entity_id_uuid,
-                scheduled_at=scheduled_at,
-                reason=reason,
-                priority=priority,
-                message=follow_up_message,
+        # Validate scheduled_at
+        try:
+            scheduled_at = datetime.fromisoformat(scheduled_at_str.replace("Z", "+00:00"))
+        except ValueError:
+            return ActionResult(
+                text="Invalid date format for scheduled time",
+                success=False,
+                values={"error": True},
+                data={"error": "Invalid scheduledAt date format"},
             )
+
+        # Resolve contact via rolodex
+        contacts = await rolodex_service.search_contacts(search_term=contact_name)
+        if not contacts:
+            return ActionResult(
+                text=f"Could not find contact '{contact_name}' in rolodex",
+                success=False,
+                values={"error": True},
+                data={"error": f"Contact '{contact_name}' not found"},
+            )
+
+        entity_id = contacts[0].entity_id
+        await follow_up_service.schedule_follow_up(
+            entity_id=entity_id,
+            scheduled_at=scheduled_at,
+            reason=reason,
+            priority=priority,
+            message=follow_up_message,
+        )
 
         response_text = f"I've scheduled a follow-up with {contact_name} for {scheduled_at.strftime('%B %d, %Y')}. Reason: {reason}"
 

@@ -80,6 +80,11 @@ def _top_k_by_confidence(items: list[LongTermMemory], limit: int) -> list[LongTe
 class MemoryService(Service):
     service_type = "memory"
 
+    _MAX_LOCAL_SESSION_SUMMARIES = 100
+    _MAX_LOCAL_EXTRACTION_CHECKPOINTS = 100
+    _MAX_LOCAL_LONG_TERM_ENTITIES = 50
+    _MAX_LOCAL_LONG_TERM_PER_ENTITY = 100
+
     def __init__(self, runtime=None) -> None:
         super().__init__(runtime=runtime)
         self._config: MemoryConfig = MemoryConfig()

@@ -48,6 +48,8 @@ class EmbeddingService(Service):
             raise ValueError("Embedding service not started - no runtime available")
 
         if self._cache_enabled and text in self._cache:
+            # Move to end for LRU behavior
+            self._cache[text] = self._cache.pop(text)
             return self._cache[text]
 
         embedding = await self._runtime.use_model(

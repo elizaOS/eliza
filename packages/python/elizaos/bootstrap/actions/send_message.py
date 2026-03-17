@@ -58,9 +58,23 @@ class SendMessageAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
+        import time
+        import uuid as uuid_module
+        from types import SimpleNamespace
+
+        from elizaos.types.primitives import as_uuid
+
+        # Extract parameters from options
+        params: dict[str, object] = {}
+        if options and hasattr(options, "parameters") and isinstance(options.parameters, dict):
+            params = options.parameters
+
+        # Get message text from responses or options parameters
         message_text = ""
         if responses and responses[0].content:
             message_text = str(responses[0].content.text or "")
+        if not message_text:
+            message_text = str(params.get("text", ""))
 
         if not message_text:
             return ActionResult(
@@ -70,10 +84,27 @@ class SendMessageAction:
                 success=False,
             )
 
+        target_type = str(params.get("targetType", ""))
+        target_value = str(params.get("target", ""))
+        source = str(params.get("source", ""))
         target_room_id = message.room_id
-        target_entity_id: UUID | None = None
+        target_entity_id: UUID | object | None = None
 
-        if message.content and message.content.target:
+        if target_type == "room" and target_value:
+            with contextlib.suppress(ValueError):
+                target_room_id = as_uuid(target_value)
+        elif target_type == "user" and target_value:
+            # Resolve user target by searching entities in the room
+            entities = await runtime.get_entities_for_room(message.room_id)
+            lowered = target_value.lower()
+            for entity in entities:
+                names = getattr(entity, "names", [])
+                if any(lowered == n.lower() for n in names):
+                    target_entity_id = entity.id
+                    break
+
+        # Fallback to message.content.target
+        if not target_type and message.content and message.content.target:
             target = message.content.target
             if isinstance(target, dict):
                 room_str = target.get("roomId")
@@ -95,15 +126,9 @@ class SendMessageAction:
 
         message_content = Content(
             text=message_text,
-            source="agent",
+            source=source or "agent",
             actions=["SEND_MESSAGE"],
         )
-
-        # Create the message memory
-        import time
-        import uuid as uuid_module
-
-        from elizaos.types.primitives import as_uuid
 
         message_memory = MemoryType(
             id=as_uuid(str(uuid_module.uuid4())),
@@ -124,15 +149,13 @@ class SendMessageAction:
             },
         )
 
-        # Emit MESSAGE_SENT event
-        await runtime.emit_event(
-            "MESSAGE_SENT",
-            {
-                "runtime": runtime,
-                "source": "send-message-action",
-                "message": message_memory,
-            },
+        # Send message to target
+        send_target = SimpleNamespace(
+            room_id=target_room_id,
+            entity_id=target_entity_id,
+            source=source or "agent",
         )
+        await runtime.send_message_to_target(send_target)
 
         response_content = Content(
             text=f"Message sent: {message_text[:50]}...",
@@ -142,14 +165,19 @@ class SendMessageAction:
         if callback:
             await callback(response_content)
 
+        result_values: dict[str, object] = {
+            "success": True,
+            "messageSent": True,
+            "targetRoomId": str(target_room_id),
+        }
+        if target_type:
+            result_values["targetType"] = target_type
+        if target_entity_id:
+            result_values["targetEntityId"] = target_entity_id
+
         return ActionResult(
             text="Message sent to room",
-            values={
-                "success": True,
-                "messageSent": True,
-                "targetRoomId": str(target_room_id),
-                "targetEntityId": str(target_entity_id) if target_entity_id else None,
-            },
+            values=result_values,
             data={
                 "actionName": "SEND_MESSAGE",
                 "targetRoomId": str(target_room_id),
