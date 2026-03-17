@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/home",
-  "version": "2.0.0-alpha.22",
+  "version": "2.0.0-alpha.25",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,8 +20,8 @@
     "@capacitor/keyboard": "8.0.0",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/status-bar": "^8.0.1",
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/ui": "workspace:*",
+    "@elizaos/app-core": "2.0.0-alpha.25",
+    "@elizaos/ui": "2.0.0-alpha.25",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^4.3.6"
