@@ -770,40 +770,52 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
+  // Try parsing with JSON5 first
   let result: Record<string, unknown> | null;
   try {
     result = extractAndParseJSONObjectFromText(text);
+    if (!result) {
+      throw new Error("Failed to extract JSON object from text");
+    }
+    if (Array.isArray(result)) {
+      throw new Error("Parsed result is an array, expected an object");
+    }
   } catch (error) {
-    // Re-throw parse errors as documented in @throws JSDoc
-    throw error;
+    // Always throw on parse failures to maintain backward compatibility
+    throw error instanceof Error ? error : new Error(String(error));
   }
-  // Return null for arrays or failed parses (backward compatible behavior)
-  if (!result || Array.isArray(result)) {
-    return null;
-  }
-  // Normalize numeric values to strings for backward compatibility (recursive)
-  const normalizeNumbers = (obj: Record<string, unknown>) => {
+  // Only convert unquoted number values to strings
+  const convertUnquotedNumbers = (obj: Record<string, unknown>, sourceText: string) => {
+    const unquotedRegExp = (key: string, val: number) => 
+      new RegExp(`"${key}"\\s*:\\s*${val}\\b`, 'i');
+      
     for (const key in obj) {
       const val = obj[key];
       if (typeof val === 'number') {
-        obj[key] = String(val);
+        // Convert to string only if number appears unquoted in source
+        if (unquotedRegExp(key, val).test(sourceText)) {
+          obj[key] = String(val);
+        }
       } else if (val && typeof val === 'object') {
-        // Handle both objects and arrays recursively
         if (Array.isArray(val)) {
           val.forEach((item, i) => {
             if (typeof item === 'number') {
-              val[i] = String(item);
+              // For array items, look for unquoted numbers
+              const arrayPattern = new RegExp(`\\[([^\\]]*)${item}([^\\]]*)\\]`);
+              if (arrayPattern.test(sourceText)) {
+                val[i] = String(item);
+              }
             } else if (item && typeof item === 'object') {
-              normalizeNumbers(item as Record<string, unknown>);
+              convertUnquotedNumbers(item as Record<string, unknown>, sourceText);
             }
           });
         } else {
-          normalizeNumbers(val as Record<string, unknown>); 
+          convertUnquotedNumbers(val as Record<string, unknown>, sourceText);
         }
       }
     }
   };
-  normalizeNumbers(result);
+  convertUnquotedNumbers(result, text);
   return result;
 }
 
