@@ -12,8 +12,8 @@ export type {
 	DeriveKeyAttestationData,
 	RemoteAttestationMessage,
 	RemoteAttestationQuote,
+	TEEMode,
 	TeeAgent,
 	TeePluginConfig,
 	TeeType,
-	TEEMode,
 };

@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-import { getAvailableArchetypes, normalizeArchetype } from '../rubrics';
+import { getAvailableArchetypes, normalizeArchetype } from "../rubrics";
 
 /**
  * NPC characteristics used for archetype derivation
@@ -29,28 +29,28 @@ export interface NPCCharacteristics {
  */
 const ROLE_TO_ARCHETYPE: Record<string, string> = {
   // High-reliability roles → ethical archetypes
-  insider: 'information-trader',
-  expert: 'researcher',
-  whistleblower: 'goody-twoshoes',
-  analyst: 'researcher',
+  insider: "information-trader",
+  expert: "researcher",
+  whistleblower: "goody-twoshoes",
+  analyst: "researcher",
 
   // Media/content roles
-  journalist: 'social-butterfly',
-  reporter: 'social-butterfly',
-  influencer: 'social-butterfly',
+  journalist: "social-butterfly",
+  reporter: "social-butterfly",
+  influencer: "social-butterfly",
 
   // Low-reliability roles → deceptive archetypes
-  deceiver: 'scammer',
-  politician: 'liar',
-  conspiracy: 'liar',
+  deceiver: "scammer",
+  politician: "liar",
+  conspiracy: "liar",
 
   // Trading-focused roles
-  trader: 'trader',
-  investor: 'trader',
-  speculator: 'degen',
+  trader: "trader",
+  investor: "trader",
+  speculator: "degen",
 
   // Default fallback
-  unknown: 'trader',
+  unknown: "trader",
 };
 
 /**
@@ -64,57 +64,57 @@ const PERSONALITY_KEYWORDS: Array<{
 }> = [
   // High priority - distinctive personalities
   {
-    keywords: ['manipulative', 'deceptive', 'cunning', 'unethical'],
-    archetype: 'scammer',
+    keywords: ["manipulative", "deceptive", "cunning", "unethical"],
+    archetype: "scammer",
     priority: 10,
   },
   {
-    keywords: ['reckless', 'impulsive', 'yolo', 'fomo', 'aggressive'],
-    archetype: 'degen',
+    keywords: ["reckless", "impulsive", "yolo", "fomo", "aggressive"],
+    archetype: "degen",
     priority: 10,
   },
   {
-    keywords: ['honest', 'ethical', 'helpful', 'transparent', 'altruistic'],
-    archetype: 'goody-twoshoes',
+    keywords: ["honest", "ethical", "helpful", "transparent", "altruistic"],
+    archetype: "goody-twoshoes",
     priority: 10,
   },
   {
-    keywords: ['thorough', 'meticulous', 'analytical', 'data-driven'],
-    archetype: 'researcher',
+    keywords: ["thorough", "meticulous", "analytical", "data-driven"],
+    archetype: "researcher",
     priority: 8,
   },
 
   // Medium priority - trading styles
   {
-    keywords: ['disciplined', 'methodical', 'patient', 'risk-averse'],
-    archetype: 'trader',
+    keywords: ["disciplined", "methodical", "patient", "risk-averse"],
+    archetype: "trader",
     priority: 5,
   },
   {
-    keywords: ['social', 'networker', 'outgoing', 'community'],
-    archetype: 'social-butterfly',
+    keywords: ["social", "networker", "outgoing", "community"],
+    archetype: "social-butterfly",
     priority: 5,
   },
   {
-    keywords: ['flattering', 'agreeable', 'sycophantic', 'pleasing'],
-    archetype: 'ass-kisser',
+    keywords: ["flattering", "agreeable", "sycophantic", "pleasing"],
+    archetype: "ass-kisser",
     priority: 5,
   },
 
   // Low priority - general
   {
-    keywords: ['suspicious', 'secretive', 'paranoid', 'security'],
-    archetype: 'infosec',
+    keywords: ["suspicious", "secretive", "paranoid", "security"],
+    archetype: "infosec",
     priority: 3,
   },
   {
-    keywords: ['leverage', 'perpetual', 'futures', 'derivatives'],
-    archetype: 'perps-trader',
+    keywords: ["leverage", "perpetual", "futures", "derivatives"],
+    archetype: "perps-trader",
     priority: 3,
   },
   {
-    keywords: ['prediction', 'forecast', 'oracle', 'prophet'],
-    archetype: 'super-predictor',
+    keywords: ["prediction", "forecast", "oracle", "prophet"],
+    archetype: "super-predictor",
     priority: 3,
   },
 ];
@@ -155,7 +155,7 @@ export function deriveArchetype(npc: NPCCharacteristics): string {
     npc.willingToLie === true
   ) {
     // Confirmed deceptive: low reliability + actively willing to lie
-    return 'scammer';
+    return "scammer";
   }
 
   // Note: High reliability is factored into personality analysis below, not used as an override.
@@ -168,7 +168,7 @@ export function deriveArchetype(npc: NPCCharacteristics): string {
 
     for (const mapping of PERSONALITY_KEYWORDS) {
       const matchCount = mapping.keywords.filter((keyword) =>
-        personalityLower.includes(keyword)
+        personalityLower.includes(keyword),
       ).length;
 
       if (matchCount > 0) {
@@ -190,19 +190,19 @@ export function deriveArchetype(npc: NPCCharacteristics): string {
   // 4. Check domain for trading specialization
   if (npc.domain && npc.domain.length > 0) {
     const domains = npc.domain.map((d) => d.toLowerCase());
-    if (domains.includes('trading') || domains.includes('finance')) {
-      return 'trader';
+    if (domains.includes("trading") || domains.includes("finance")) {
+      return "trader";
     }
-    if (domains.includes('technology') || domains.includes('tech')) {
-      return 'researcher';
+    if (domains.includes("technology") || domains.includes("tech")) {
+      return "researcher";
     }
-    if (domains.includes('media') || domains.includes('social')) {
-      return 'social-butterfly';
+    if (domains.includes("media") || domains.includes("social")) {
+      return "social-butterfly";
     }
   }
 
   // 5. Default fallback
-  return 'trader';
+  return "trader";
 }
 
 /**
@@ -218,7 +218,7 @@ export type ArchetypeResolver = (npcId: string) => string;
  * @returns Function that resolves archetype from NPC ID
  */
 export function createArchetypeResolver(
-  npcs: NPCCharacteristics[]
+  npcs: NPCCharacteristics[],
 ): ArchetypeResolver {
   const archetypeMap = new Map<string, string>();
 
@@ -227,7 +227,7 @@ export function createArchetypeResolver(
   }
 
   return (npcId: string): string => {
-    return archetypeMap.get(npcId) ?? 'trader';
+    return archetypeMap.get(npcId) ?? "trader";
   };
 }
 
@@ -237,7 +237,7 @@ export function createArchetypeResolver(
  */
 export function getRoleArchetype(role: string): string {
   const normalized = role.toLowerCase().trim();
-  return ROLE_TO_ARCHETYPE[normalized] ?? 'trader';
+  return ROLE_TO_ARCHETYPE[normalized] ?? "trader";
 }
 
 /**

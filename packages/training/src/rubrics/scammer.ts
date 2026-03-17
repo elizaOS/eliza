@@ -73,10 +73,10 @@ If these behaviors dominate, score low regardless of P&L.
 `;
 
 export const SCAMMER_PRIORITY_METRICS = [
-  'trading.totalPnL',
-  'social.uniqueUsersInteracted',
-  'influence.reputationDelta',
-  'social.dmsInitiated',
-  'influence.informationSpread',
-  'social.groupMessagesSent',
+  "trading.totalPnL",
+  "social.uniqueUsersInteracted",
+  "influence.reputationDelta",
+  "social.dmsInitiated",
+  "influence.informationSpread",
+  "social.groupMessagesSent",
 ];

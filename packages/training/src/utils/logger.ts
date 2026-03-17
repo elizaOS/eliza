@@ -12,7 +12,7 @@ function formatData(data: LogData): string {
   if (data instanceof Error) {
     return data.message;
   }
-  if (typeof data === 'object' && data !== null) {
+  if (typeof data === "object" && data !== null) {
     return JSON.stringify(data, null, 2);
   }
   return String(data);
@@ -20,7 +20,7 @@ function formatData(data: LogData): string {
 
 export const logger = {
   info: (message: string, data?: LogData, context?: string) => {
-    const prefix = context ? `[${context}] ` : '';
+    const prefix = context ? `[${context}] ` : "";
     if (data !== undefined) {
       console.log(`${prefix}[INFO] ${message}`, formatData(data));
     } else {
@@ -29,7 +29,7 @@ export const logger = {
   },
 
   error: (message: string, data?: LogData, context?: string) => {
-    const prefix = context ? `[${context}] ` : '';
+    const prefix = context ? `[${context}] ` : "";
     if (data !== undefined) {
       console.error(`${prefix}[ERROR] ${message}`, formatData(data));
     } else {
@@ -38,7 +38,7 @@ export const logger = {
   },
 
   warn: (message: string, data?: LogData, context?: string) => {
-    const prefix = context ? `[${context}] ` : '';
+    const prefix = context ? `[${context}] ` : "";
     if (data !== undefined) {
       console.warn(`${prefix}[WARN] ${message}`, formatData(data));
     } else {
@@ -48,7 +48,7 @@ export const logger = {
 
   debug: (message: string, data?: LogData, context?: string) => {
     if (process.env.DEBUG) {
-      const prefix = context ? `[${context}] ` : '';
+      const prefix = context ? `[${context}] ` : "";
       if (data !== undefined) {
         console.log(`${prefix}[DEBUG] ${message}`, formatData(data));
       } else {

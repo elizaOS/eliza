@@ -11,10 +11,10 @@
  * @packageDocumentation
  */
 
-import { getTrainingDataAdapter } from '../adapter';
-import { createHash } from 'crypto';
-import { getRubricHash, RUBRICS_VERSION } from '../rubrics';
-import { logger } from '../utils/logger';
+import { createHash } from "node:crypto";
+import { getTrainingDataAdapter } from "../adapter";
+import { getRubricHash, RUBRICS_VERSION } from "../rubrics";
+import { logger } from "../utils/logger";
 
 /**
  * Cached score entry
@@ -84,10 +84,10 @@ export class LLMJudgeCache {
   private generateCacheKey(
     trajectoryId: string,
     stepsJson: string,
-    archetype: string
+    archetype: string,
   ): string {
     const content = `${trajectoryId}:${stepsJson}:${archetype}:${RUBRICS_VERSION}`;
-    return createHash('sha256').update(content).digest('hex').substring(0, 32);
+    return createHash("sha256").update(content).digest("hex").substring(0, 32);
   }
 
   /**
@@ -121,7 +121,7 @@ export class LLMJudgeCache {
   get(
     trajectoryId: string,
     stepsJson: string,
-    archetype: string
+    archetype: string,
   ): CachedScore | null {
     const cacheKey = this.generateCacheKey(trajectoryId, stepsJson, archetype);
     const cached = this.cache.get(cacheKey);
@@ -144,9 +144,9 @@ export class LLMJudgeCache {
     this.updateHitRate();
 
     logger.debug(
-      'Cache hit',
+      "Cache hit",
       { trajectoryId, archetype, cacheKey: cacheKey.substring(0, 8) },
-      'LLMJudgeCache'
+      "LLMJudgeCache",
     );
 
     return cached;
@@ -162,7 +162,7 @@ export class LLMJudgeCache {
     score: number,
     reasoning: string,
     strengths: string[] = [],
-    weaknesses: string[] = []
+    weaknesses: string[] = [],
   ): void {
     // Enforce max entries limit
     if (this.cache.size >= this.config.maxEntries) {
@@ -172,7 +172,7 @@ export class LLMJudgeCache {
     const cacheKey = this.generateCacheKey(trajectoryId, stepsJson, archetype);
     const now = new Date();
     const expiresAt = new Date(
-      now.getTime() + this.config.ttlHours * 60 * 60 * 1000
+      now.getTime() + this.config.ttlHours * 60 * 60 * 1000,
     );
 
     const entry: CachedScore = {
@@ -192,9 +192,9 @@ export class LLMJudgeCache {
     this.cache.set(cacheKey, entry);
 
     logger.debug(
-      'Cache set',
+      "Cache set",
       { trajectoryId, archetype, score, cacheKey: cacheKey.substring(0, 8) },
-      'LLMJudgeCache'
+      "LLMJudgeCache",
     );
   }
 
@@ -242,9 +242,9 @@ export class LLMJudgeCache {
     this.stats.invalidations += invalidated;
 
     logger.info(
-      'Invalidated cache entries',
+      "Invalidated cache entries",
       { archetype, count: invalidated },
-      'LLMJudgeCache'
+      "LLMJudgeCache",
     );
 
     return invalidated;
@@ -258,7 +258,7 @@ export class LLMJudgeCache {
     this.cache.clear();
     this.stats.invalidations += count;
 
-    logger.info('Cleared cache', { count }, 'LLMJudgeCache');
+    logger.info("Cleared cache", { count }, "LLMJudgeCache");
   }
 
   /**
@@ -290,18 +290,18 @@ export class LLMJudgeCache {
         this.set(
           row.trajectoryId,
           row.stepsJson,
-          'default',
+          "default",
           row.aiJudgeReward,
-          row.aiJudgeReasoning
+          row.aiJudgeReasoning,
         );
         loaded++;
       }
     }
 
     logger.info(
-      'Warmed cache from database',
+      "Warmed cache from database",
       { loaded, attempted: results.length },
-      'LLMJudgeCache'
+      "LLMJudgeCache",
     );
 
     return loaded;
@@ -322,7 +322,10 @@ export const scoreValidator = {
    */
   isValidScore(score: number): boolean {
     return (
-      typeof score === 'number' && !isNaN(score) && score >= 0 && score <= 1
+      typeof score === "number" &&
+      !Number.isNaN(score) &&
+      score >= 0 &&
+      score <= 1
     );
   },
 
@@ -331,7 +334,7 @@ export const scoreValidator = {
    */
   isValidReasoning(reasoning: string): boolean {
     return (
-      typeof reasoning === 'string' &&
+      typeof reasoning === "string" &&
       reasoning.length >= 20 &&
       reasoning.length <= 5000
     );
@@ -356,7 +359,7 @@ export const scoreValidator = {
    * Check if scores are consistent (similar trajectories should have similar scores)
    */
   checkScoreConsistency(
-    scores: Array<{ trajectoryId: string; score: number; metricsHash: string }>
+    scores: Array<{ trajectoryId: string; score: number; metricsHash: string }>,
   ): { consistent: boolean; outliers: string[] } {
     if (scores.length < 3) {
       return { consistent: true, outliers: [] };

@@ -16,6 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type AgentRuntime,
+  type Character,
   ChannelType,
   type Content,
   ContentType,
@@ -239,10 +240,8 @@ import {
  * These are only used as structural types for the SwarmCoordinator callbacks;
  * no runtime import is needed.
  */
-// biome-ignore lint/suspicious/noExplicitAny: legacy coordinator event payload
-type SwarmEvent = Record<string, any>;
-// biome-ignore lint/suspicious/noExplicitAny: legacy coordinator task context
-type TaskContext = Record<string, any>;
+type SwarmEvent = Record<string, unknown>;
+type TaskContext = Record<string, unknown>;
 interface CoordinationLLMResponse {
   action: string;
   reasoning: string;
@@ -435,12 +434,12 @@ function resolveConversationGreetingText(
   runtime: AgentRuntime,
   lang: string,
 ): string {
+  type CharacterWithZhExamples = AgentRuntime["character"] & {
+    postExamples_zhCN?: string[];
+  };
+  const char = runtime.character as CharacterWithZhExamples;
   const localizedExamples =
-    lang === "zh-CN"
-      ? ((runtime.character as Record<string, unknown>).postExamples_zhCN as
-          | string[]
-          | undefined)
-      : undefined;
+    lang === "zh-CN" ? char.postExamples_zhCN : undefined;
   const postExamples =
     localizedExamples && localizedExamples.length > 0
       ? localizedExamples
@@ -8152,16 +8151,17 @@ async function handleRequest(
     if (body.postExamples) agent.postExamples = body.postExamples as string[];
     if (body.messageExamples) {
       // Normalise to the {examples: [{name, content}]} format that @elizaos/core expects.
+      type MessageExamplesEntry = {
+        examples: { name: string; content: { text: string } }[];
+      };
       const raw = body.messageExamples as unknown[];
-      agent.messageExamples = raw.map((item) => {
+      agent.messageExamples = raw.map((item): MessageExamplesEntry => {
         if (
           item &&
           typeof item === "object" &&
           "examples" in (item as Record<string, unknown>)
         ) {
-          return item as {
-            examples: { name: string; content: { text: string } }[];
-          };
+          return item as MessageExamplesEntry;
         }
         // Old format: [{user, content}, ...] → {examples: [{name, content}, ...]}
         const arr = item as {
@@ -8175,8 +8175,7 @@ async function handleRequest(
             content: m.content,
           })),
         };
-        // biome-ignore lint/suspicious/noExplicitAny: mixed legacy/new formats
-      }) as any;
+      });
     }
 
     // ── Theme preference ──────────────────────────────────────────────────

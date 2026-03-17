@@ -5,21 +5,21 @@
  * Consolidates upload logic used across different services.
  */
 
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
-import * as hubModule from '@huggingface/hub';
-import { promises as fs } from 'fs';
-import * as path from 'path';
-import { logger } from '../../utils/logger';
+import { exec } from "node:child_process";
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
+import { promisify } from "node:util";
+import * as hubModule from "@huggingface/hub";
+import { logger } from "../../utils/logger";
 
 export interface UploadFileOptions {
-  repo: { type: 'model' | 'dataset'; name: string };
+  repo: { type: "model" | "dataset"; name: string };
   file: { path: string; content: Blob };
   credentials: { accessToken: string };
 }
 
 export interface CreateRepoOptions {
-  repo: { type: 'model' | 'dataset'; name: string };
+  repo: { type: "model" | "dataset"; name: string };
   credentials: { accessToken: string };
   private?: boolean;
 }
@@ -46,7 +46,7 @@ export function requireHuggingFaceToken(): string {
   const token = getHuggingFaceToken();
   if (!token) {
     throw new Error(
-      'HuggingFace token not configured. Set HUGGING_FACE_TOKEN or HF_TOKEN environment variable.'
+      "HuggingFace token not configured. Set HUGGING_FACE_TOKEN or HF_TOKEN environment variable.",
     );
   }
   return token;
@@ -58,10 +58,10 @@ export class HuggingFaceUploadUtil {
    */
   static async uploadFile(
     repoName: string,
-    repoType: 'model' | 'dataset',
+    repoType: "model" | "dataset",
     filePath: string,
     fileContent: string,
-    token: string
+    token: string,
   ): Promise<void> {
     const uploadFile = hubModule.uploadFile;
 
@@ -87,9 +87,9 @@ export class HuggingFaceUploadUtil {
    */
   static async uploadDirectory(
     repoName: string,
-    repoType: 'model' | 'dataset',
+    repoType: "model" | "dataset",
     localDir: string,
-    token: string
+    token: string,
   ): Promise<number> {
     const files = await fs.readdir(localDir);
     let uploadCount = 0;
@@ -99,14 +99,14 @@ export class HuggingFaceUploadUtil {
       const stats = await fs.stat(filePath);
 
       if (stats.isFile()) {
-        const content = await fs.readFile(filePath, 'utf-8');
+        const content = await fs.readFile(filePath, "utf-8");
 
         await HuggingFaceUploadUtil.uploadFile(
           repoName,
           repoType,
           file,
           content,
-          token
+          token,
         );
         uploadCount++;
       }
@@ -125,9 +125,9 @@ export class HuggingFaceUploadUtil {
    */
   static async ensureRepository(
     repoName: string,
-    repoType: 'model' | 'dataset',
+    repoType: "model" | "dataset",
     token: string,
-    isPrivate = false
+    isPrivate = false,
   ): Promise<void> {
     const createRepo = hubModule.createRepo;
 
@@ -137,19 +137,19 @@ export class HuggingFaceUploadUtil {
         credentials: { accessToken: token },
         private: isPrivate,
       });
-      logger.info('Created new repository', { repo: repoName, type: repoType });
+      logger.info("Created new repository", { repo: repoName, type: repoType });
     } catch (error) {
       // Repository might already exist, which is fine
       if (
         error instanceof Error &&
-        (error.message.includes('already exists') ||
-          error.message.includes('Repository not found'))
+        (error.message.includes("already exists") ||
+          error.message.includes("Repository not found"))
       ) {
-        logger.info('Repository already exists or accessible', {
+        logger.info("Repository already exists or accessible", {
           repo: repoName,
         });
       } else {
-        logger.warn('Could not ensure repository exists', {
+        logger.warn("Could not ensure repository exists", {
           error,
           repo: repoName,
         });
@@ -162,9 +162,9 @@ export class HuggingFaceUploadUtil {
    */
   static async uploadViaCLI(
     repoName: string,
-    repoType: 'model' | 'dataset',
+    repoType: "model" | "dataset",
     localDir: string,
-    token: string
+    token: string,
   ): Promise<void> {
     try {
       const execAsync = promisify(exec);
@@ -173,18 +173,18 @@ export class HuggingFaceUploadUtil {
       process.env.HUGGINGFACE_HUB_TOKEN = token;
 
       console.log(
-        `Uploading ${localDir} to ${repoName} via huggingface-cli...`
+        `Uploading ${localDir} to ${repoName} via huggingface-cli...`,
       );
 
       await execAsync(
-        `huggingface-cli upload ${repoName} ${localDir} --repo-type ${repoType}`
+        `huggingface-cli upload ${repoName} ${localDir} --repo-type ${repoType}`,
       );
 
-      logger.info('Successfully uploaded via huggingface-cli', {
+      logger.info("Successfully uploaded via huggingface-cli", {
         repo: repoName,
       });
     } catch (error) {
-      logger.error('CLI upload failed', { error });
+      logger.error("CLI upload failed", { error });
       throw error;
     }
   }
@@ -194,12 +194,12 @@ export class HuggingFaceUploadUtil {
    */
   static getManualUploadInstructions(
     repoName: string,
-    repoType: 'model' | 'dataset',
-    localDir: string
+    repoType: "model" | "dataset",
+    localDir: string,
   ): string[] {
     return [
-      '1. Install huggingface-cli: pip install huggingface_hub',
-      '2. Login: huggingface-cli login',
+      "1. Install huggingface-cli: pip install huggingface_hub",
+      "2. Login: huggingface-cli login",
       `3. Upload: huggingface-cli upload ${repoName} ${localDir} --repo-type ${repoType}`,
     ];
   }

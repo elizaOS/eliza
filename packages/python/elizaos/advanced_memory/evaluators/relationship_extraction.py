@@ -4,7 +4,7 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from elizaos.bootstrap.types import EvaluatorResult
+from elizaos.bootstrap import EvaluatorResult
 from elizaos.generated.spec_helpers import require_evaluator_spec
 from elizaos.types import ActionResult, Evaluator, HandlerOptions
 

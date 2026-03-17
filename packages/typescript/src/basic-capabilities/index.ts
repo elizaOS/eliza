@@ -1326,10 +1326,8 @@ const autonomyCapabilities = {
 	routes: autonomy.autonomyRoutes,
 };
 
-export { autonomyCapabilities };
-
 // Legacy alias exports for backwards compatibility
-export { advancedCapabilities as extendedCapabilities };
+export { advancedCapabilities as extendedCapabilities, autonomyCapabilities };
 
 /**
  * Creates the bootstrap plugin with the specified capability configuration.

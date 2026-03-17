@@ -7,15 +7,18 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { DialectAdapter, SchemaTable } from "../../types/schema-builder";
+import type { SchemaColumn } from "../../types/schema";
 import { buildBaseTables } from "../index";
 
 // Mock buildTable and pgAdapter since they moved to plugin-sql
-const mockBuildTable = (schema: any, _adapter: any) => {
+const mockBuildTable = (schema: SchemaTable, _adapter: DialectAdapter) => {
 	// Simple mock that creates an object with column properties
-	const table: any = {};
-	for (const [key, col] of Object.entries(
-		schema.columns as Record<string, any>,
-	)) {
+	const table: Record<string, { name: string }> = {};
+	for (const [key, col] of Object.entries(schema.columns) as [
+		string,
+		SchemaColumn,
+	][]) {
 		const camelKey = key.replace(/_([a-z0-9])/g, (_, c: string) =>
 			c.toUpperCase(),
 		);
@@ -24,10 +27,10 @@ const mockBuildTable = (schema: any, _adapter: any) => {
 	return table;
 };
 
-const mockPgAdapter = {
-	createTable: (_name: string, columns: any) => columns,
-	buildColumn: (col: any) => col,
-	buildIndex: (_name: string) => ({ on: (..._cols: any[]) => ({}) }),
+const mockPgAdapter: DialectAdapter = {
+	createTable: (_name: string, columns: Record<string, unknown>) => columns,
+	buildColumn: (col: SchemaColumn) => col,
+	buildIndex: (_name: string) => ({ on: (..._cols: unknown[]) => ({}) }),
 };
 
 describe("Schema Comparison", () => {

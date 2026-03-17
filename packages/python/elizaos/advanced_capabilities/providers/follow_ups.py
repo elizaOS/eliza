@@ -15,7 +15,7 @@ async def get_follow_ups_context(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    from elizaos.bootstrap.services.follow_up import FollowUpService
+    from elizaos.advanced_capabilities.services.follow_up import FollowUpService
 
     follow_up_service = runtime.get_service("follow_up")
     if not follow_up_service or not isinstance(follow_up_service, FollowUpService):

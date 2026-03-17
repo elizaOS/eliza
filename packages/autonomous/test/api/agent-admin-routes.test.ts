@@ -48,13 +48,13 @@ function buildCtx(
     stateDirExists: () => false,
     removeStateDir: vi.fn(),
     logWarn: vi.fn(),
+    getStatus,
+    getJson,
     ...overrides,
   } as AgentAdminRouteContext & {
     getStatus: () => number;
     getJson: () => unknown;
   };
-  (ctx as any).getStatus = getStatus;
-  (ctx as any).getJson = getJson;
   return ctx;
 }
 
@@ -96,11 +96,14 @@ describe("agent-admin-routes", () => {
     });
 
     test("returns success when onRestart returns a new runtime", async () => {
-      const mockRuntime = {
+      const mockRuntime: Pick<
+        import("@elizaos/core").AgentRuntime,
+        "character" | "getSetting" | "modelProvider"
+      > = {
         character: { name: "NewAgent" },
         getSetting: () => undefined,
         modelProvider: "openai",
-      } as any;
+      };
       const onRestart = vi.fn(async () => mockRuntime);
       const onRuntimeSwapped = vi.fn();
       const ctx = buildCtx("POST", "/api/agent/restart", {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loggerScope } from "../logger";
+import type { IAgentRuntime } from "../types";
 
 describe("Logger Scope", () => {
 	it("should be defined", () => {
@@ -8,7 +9,7 @@ describe("Logger Scope", () => {
 
 	it("should allow running code within a scope", () => {
 		const testContext = {
-			runtime: {} as any, // Mock runtime
+			runtime: {} as IAgentRuntime,
 			roomId: "test-room-id",
 			logLevel: "debug",
 		};
@@ -27,8 +28,8 @@ describe("Logger Scope", () => {
 	});
 
 	it("should support nested scopes (though not strictly required, good to know)", () => {
-		const outerContext = { roomId: "outer", runtime: {} as any };
-		const innerContext = { roomId: "inner", runtime: {} as any };
+		const outerContext = { roomId: "outer", runtime: {} as IAgentRuntime };
+		const innerContext = { roomId: "inner", runtime: {} as IAgentRuntime };
 
 		loggerScope.run(outerContext, () => {
 			expect(loggerScope.getStore()?.roomId).toBe("outer");
@@ -67,7 +68,7 @@ describe("Functional Logger Scope", () => {
 
 			// Now run with scope override
 			const scopeContext = {
-				runtime: {} as any,
+				runtime: {} as IAgentRuntime,
 				roomId: "scope-room",
 				logLevel: "debug",
 			};

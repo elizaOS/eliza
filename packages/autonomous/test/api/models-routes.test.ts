@@ -37,13 +37,13 @@ function buildCtx(
     readDir: vi.fn(() => []),
     unlinkFile: vi.fn(),
     joinPath: vi.fn((left: string, right: string) => `${left}/${right}`),
+    getStatus,
+    getJson,
     ...overrides,
   } as ModelsRouteContext & {
     getStatus: () => number;
     getJson: () => unknown;
   };
-  (ctx as any).getStatus = getStatus;
-  (ctx as any).getJson = getJson;
   return ctx;
 }
 

@@ -58,9 +58,9 @@ export function validateLLMCalls(steps: TrajectoryStep[]): {
       totalLLMCalls++;
 
       // Validate LLM call has actual content
-      const systemPrompt = call.systemPrompt ?? call.system_prompt ?? '';
-      const userPrompt = call.userPrompt ?? call.user_prompt ?? '';
-      const response = call.response ?? '';
+      const systemPrompt = call.systemPrompt ?? call.system_prompt ?? "";
+      const userPrompt = call.userPrompt ?? call.user_prompt ?? "";
+      const response = call.response ?? "";
 
       if (systemPrompt.length < 10) {
         issues.push(`Step ${i}, call ${j}: Missing or empty system prompt`);
@@ -79,7 +79,7 @@ export function validateLLMCalls(steps: TrajectoryStep[]): {
   // At least 3 steps should have LLM calls for valid training data
   if (stepsWithLLM < 3) {
     issues.push(
-      `Only ${stepsWithLLM}/${steps.length} steps have LLM calls (minimum: 3)`
+      `Only ${stepsWithLLM}/${steps.length} steps have LLM calls (minimum: 3)`,
     );
   }
 
@@ -98,14 +98,14 @@ export function validateLLMCalls(steps: TrajectoryStep[]): {
  */
 export function assertHasLLMCalls(
   steps: TrajectoryStep[],
-  trajectoryId: string
+  trajectoryId: string,
 ): void {
   const validation = validateLLMCalls(steps);
 
   if (!validation.valid) {
     throw new Error(
-      `Trajectory ${trajectoryId} failed LLM validation: ${validation.issues.join('; ')}. ` +
-        'Training data must contain real LLM calls.'
+      `Trajectory ${trajectoryId} failed LLM validation: ${validation.issues.join("; ")}. ` +
+        "Training data must contain real LLM calls.",
     );
   }
 }

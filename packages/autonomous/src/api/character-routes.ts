@@ -303,7 +303,7 @@ export async function handleCharacterRoutes(
     if (!body) return true;
 
     const result = validateCharacter(body);
-    if (!result.success) {
+    if (!result.success && "error" in result) {
       const issues = result.error.issues.map((issue) => ({
         path: issue.path.join("."),
         message: issue.message,

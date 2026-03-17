@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from elizaos.bootstrap.providers.agent_settings import SENSITIVE_KEY_PATTERNS
+from elizaos.basic_capabilities.providers.agent_settings import SENSITIVE_KEY_PATTERNS
 from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 

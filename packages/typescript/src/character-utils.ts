@@ -32,7 +32,7 @@ export const MODEL_PROVIDER_SECRETS = _MODEL_PROVIDER_SECRETS;
 /**
  * Re-export CHANNEL_SECRETS and alias utilities from constants
  */
-export { CHANNEL_SECRETS, SECRET_KEY_ALIASES, resolveSecretKeyAlias };
+export { CHANNEL_SECRETS, resolveSecretKeyAlias, SECRET_KEY_ALIASES };
 
 /**
  * Common secret keys that are typically imported from environment variables.

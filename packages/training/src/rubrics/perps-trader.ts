@@ -78,10 +78,10 @@ Perps traders should be trading-focused:
 `;
 
 export const PERPS_TRADER_PRIORITY_METRICS = [
-  'trading.totalPnL',
-  'trading.maxDrawdown',
-  'trading.winRate',
-  'trading.sharpeRatio',
-  'trading.tradesExecuted',
-  'behavior.socialToTradeRatio',
+  "trading.totalPnL",
+  "trading.maxDrawdown",
+  "trading.winRate",
+  "trading.sharpeRatio",
+  "trading.tradesExecuted",
+  "behavior.socialToTradeRatio",
 ];

@@ -1,14 +1,14 @@
-import { describe, expect, it } from 'bun:test';
-import type { BenchmarkGameSnapshot } from '../BenchmarkDataGenerator';
-import { MetricsVisualizer } from '../MetricsVisualizer';
-import { SimulationEngine, type SimulationResult } from '../SimulationEngine';
+import { describe, expect, it } from "bun:test";
+import type { BenchmarkGameSnapshot } from "../BenchmarkDataGenerator";
+import { MetricsVisualizer } from "../MetricsVisualizer";
+import { SimulationEngine, type SimulationResult } from "../SimulationEngine";
 
-describe('Head-to-Head Benchmark Infrastructure', () => {
+describe("Head-to-Head Benchmark Infrastructure", () => {
   // 1. Test Simulation Engine PnL History Tracking
-  describe('SimulationEngine PnL History', () => {
-    it('should initialize with empty pnlHistory and return it after run()', async () => {
+  describe("SimulationEngine PnL History", () => {
+    it("should initialize with empty pnlHistory and return it after run()", async () => {
       const mockSnapshot = {
-        id: 'test',
+        id: "test",
         ticks: [],
         initialState: {
           predictionMarkets: [],
@@ -24,7 +24,7 @@ describe('Head-to-Head Benchmark Infrastructure', () => {
 
       const engine = new SimulationEngine({
         snapshot: mockSnapshot,
-        agentId: 'test-agent',
+        agentId: "test-agent",
         fastForward: true,
       });
 
@@ -36,16 +36,16 @@ describe('Head-to-Head Benchmark Infrastructure', () => {
   });
 
   // 2. Test MetricsVisualizer Logic
-  describe('MetricsVisualizer Comparison Logic', () => {
+  describe("MetricsVisualizer Comparison Logic", () => {
     // Mock Result Helper
     const createMockResult = (
       id: string,
       pnl: number,
-      history: number[]
+      history: number[],
     ): SimulationResult => ({
       id,
       agentId: id,
-      benchmarkId: 'bench-1',
+      benchmarkId: "bench-1",
       startTime: 0,
       endTime: 1000,
       ticksProcessed: history.length,
@@ -75,13 +75,13 @@ describe('Head-to-Head Benchmark Infrastructure', () => {
         timing: { totalDuration: 0, avgResponseTime: 0, maxResponseTime: 0 },
         optimalityScore: 50,
       },
-      trajectory: { states: [], actions: [], rewards: [], windowId: '' },
+      trajectory: { states: [], actions: [], rewards: [], windowId: "" },
       pnlHistory: history.map((val, idx) => ({ tick: idx, pnl: val })),
     });
 
-    it('should correctly merge PnL histories of equal length', () => {
-      const baseline = createMockResult('baseline', 100, [10, 50, 100]);
-      const challenger = createMockResult('challenger', 200, [20, 100, 200]);
+    it("should correctly merge PnL histories of equal length", () => {
+      const baseline = createMockResult("baseline", 100, [10, 50, 100]);
+      const challenger = createMockResult("challenger", 200, [20, 100, 200]);
 
       // Use public static method
       const history = MetricsVisualizer.mergePnlHistory(baseline, challenger);
@@ -90,11 +90,11 @@ describe('Head-to-Head Benchmark Infrastructure', () => {
       expect(history[2]).toEqual({ tick: 2, baseline: 100, challenger: 200 });
     });
 
-    it('should handle unequal history lengths (fill with final value)', () => {
+    it("should handle unequal history lengths (fill with final value)", () => {
       // Baseline died early (e.g., bankruptcy or crash)
-      const baseline = createMockResult('baseline', -50, [10, -50]);
+      const baseline = createMockResult("baseline", -50, [10, -50]);
       // Challenger kept going
-      const challenger = createMockResult('challenger', 100, [20, 60, 80, 100]);
+      const challenger = createMockResult("challenger", 100, [20, 60, 80, 100]);
 
       const history = MetricsVisualizer.mergePnlHistory(baseline, challenger);
 
@@ -109,18 +109,18 @@ describe('Head-to-Head Benchmark Infrastructure', () => {
       expect(history[3]).toEqual({ tick: 3, baseline: -50, challenger: 100 });
     });
 
-    it('should generate ASCII chart string', () => {
-      const baseline = createMockResult('baseline', 100, [10, 100]);
-      const challenger = createMockResult('challenger', 200, [20, 200]);
+    it("should generate ASCII chart string", () => {
+      const baseline = createMockResult("baseline", 100, [10, 100]);
+      const challenger = createMockResult("challenger", 200, [20, 200]);
 
       const chart = MetricsVisualizer.generateAsciiComparison(
         baseline,
-        challenger
+        challenger,
       );
 
-      expect(chart).toContain('HEAD-TO-HEAD RESULTS');
-      expect(chart).toContain('WINNER: Challenger');
-      expect(chart).toContain('Alpha Generated: +$100.00');
+      expect(chart).toContain("HEAD-TO-HEAD RESULTS");
+      expect(chart).toContain("WINNER: Challenger");
+      expect(chart).toContain("Alpha Generated: +$100.00");
     });
   });
 });

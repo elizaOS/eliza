@@ -398,7 +398,7 @@ class MemoryService(Service):
         # Trim per-entity list to keep newest entries
         eid = str(entity_id)
         if len(self._long_term[eid]) > self._MAX_LOCAL_LONG_TERM_PER_ENTITY:
-            self._long_term[eid] = self._long_term[eid][-self._MAX_LOCAL_LONG_TERM_PER_ENTITY:]
+            self._long_term[eid] = self._long_term[eid][-self._MAX_LOCAL_LONG_TERM_PER_ENTITY :]
         # Evict entity with fewest memories when too many entities
         while len(self._long_term) > self._MAX_LOCAL_LONG_TERM_ENTITIES:
             smallest = min(self._long_term, key=lambda k: len(self._long_term[k]))

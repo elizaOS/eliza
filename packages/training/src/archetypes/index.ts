@@ -10,7 +10,7 @@ export {
   ArchetypeConfigService,
   type ArchetypeTraits,
   archetypeConfigService,
-} from './ArchetypeConfigService';
+} from "./ArchetypeConfigService";
 
 export {
   type ArchetypeResolver,
@@ -19,4 +19,4 @@ export {
   getRoleArchetype,
   getValidArchetypes,
   type NPCCharacteristics,
-} from './derive-archetype';
+} from "./derive-archetype";

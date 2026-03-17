@@ -5,11 +5,11 @@
  * This allows RULER to evaluate agent trajectories against known benchmark outcomes.
  */
 
-import type { MarketOutcomes } from '../training/RulerScoringService';
+import type { MarketOutcomes } from "../training/RulerScoringService";
 import type {
   BenchmarkGameSnapshot,
   GroundTruth,
-} from './BenchmarkDataGenerator';
+} from "./BenchmarkDataGenerator";
 
 /**
  * Extract market outcomes from benchmark ground truth for RULER scoring
@@ -28,15 +28,15 @@ import type {
  * ```
  */
 export function extractMarketOutcomesFromBenchmark(
-  snapshot: BenchmarkGameSnapshot
+  snapshot: BenchmarkGameSnapshot,
 ): MarketOutcomes {
   const gt = snapshot.groundTruth;
 
   // Extract prediction market outcomes
-  const predictions: Array<{ marketId: string; outcome: 'YES' | 'NO' }> =
+  const predictions: Array<{ marketId: string; outcome: "YES" | "NO" }> =
     Object.entries(gt.marketOutcomes).map(([marketId, outcome]) => ({
       marketId,
-      outcome: outcome ? 'YES' : 'NO',
+      outcome: outcome ? "YES" : "NO",
     }));
 
   // Extract stock/perpetual outcomes from price history
@@ -77,10 +77,10 @@ export function extractMarketOutcomesFromBenchmark(
  */
 export function getHiddenFactsForTick(
   snapshot: BenchmarkGameSnapshot,
-  tickNumber: number
-): GroundTruth['hiddenFacts'] {
+  tickNumber: number,
+): GroundTruth["hiddenFacts"] {
   return (snapshot.groundTruth.hiddenFacts || []).filter(
-    (f) => f.tick === tickNumber
+    (f) => f.tick === tickNumber,
   );
 }
 
@@ -96,10 +96,10 @@ export function getHiddenFactsForTick(
  */
 export function getHiddenEventsForTick(
   snapshot: BenchmarkGameSnapshot,
-  tickNumber: number
-): GroundTruth['hiddenEvents'] {
+  tickNumber: number,
+): GroundTruth["hiddenEvents"] {
   return (snapshot.groundTruth.hiddenEvents || []).filter(
-    (e) => e.tick === tickNumber
+    (e) => e.tick === tickNumber,
   );
 }
 
@@ -119,7 +119,7 @@ export function wasDecisionOptimal(
   snapshot: BenchmarkGameSnapshot,
   tickNumber: number,
   actionType: string,
-  target: string
+  target: string,
 ): boolean {
   const optimalActions = snapshot.groundTruth.optimalActions;
 
@@ -129,7 +129,7 @@ export function wasDecisionOptimal(
     (a) =>
       Math.abs(a.tick - tickNumber) <= window &&
       a.type === actionType &&
-      a.target === target
+      a.target === target,
   );
 
   return relevantActions.length > 0;
@@ -145,8 +145,8 @@ export function wasDecisionOptimal(
  * @returns Object containing true facts about the world state
  */
 export function getTrueFacts(
-  snapshot: BenchmarkGameSnapshot
-): GroundTruth['trueFacts'] {
+  snapshot: BenchmarkGameSnapshot,
+): GroundTruth["trueFacts"] {
   return snapshot.groundTruth.trueFacts || {};
 }
 
@@ -166,10 +166,10 @@ export function getTrueFacts(
  */
 export function createRulerContext(snapshot: BenchmarkGameSnapshot): {
   marketOutcomes: MarketOutcomes;
-  trueFacts: GroundTruth['trueFacts'];
-  hiddenFacts: GroundTruth['hiddenFacts'];
-  hiddenEvents: GroundTruth['hiddenEvents'];
-  optimalActions: GroundTruth['optimalActions'];
+  trueFacts: GroundTruth["trueFacts"];
+  hiddenFacts: GroundTruth["hiddenFacts"];
+  hiddenEvents: GroundTruth["hiddenEvents"];
+  optimalActions: GroundTruth["optimalActions"];
 } {
   return {
     marketOutcomes: extractMarketOutcomesFromBenchmark(snapshot),
@@ -201,14 +201,14 @@ export function scoreActionAgainstGroundTruth(
   snapshot: BenchmarkGameSnapshot,
   tickNumber: number,
   actionType: string,
-  target: string
+  target: string,
 ): number {
   // Check if action was optimal
   const wasOptimal = wasDecisionOptimal(
     snapshot,
     tickNumber,
     actionType,
-    target
+    target,
   );
 
   if (wasOptimal) {
@@ -220,9 +220,9 @@ export function scoreActionAgainstGroundTruth(
   const relevantFacts = hiddenFacts.filter(
     (f) =>
       f.value &&
-      typeof f.value === 'object' &&
-      'marketId' in f.value &&
-      (f.value as { marketId: string }).marketId === target
+      typeof f.value === "object" &&
+      "marketId" in f.value &&
+      (f.value as { marketId: string }).marketId === target,
   );
 
   if (relevantFacts.length > 0) {

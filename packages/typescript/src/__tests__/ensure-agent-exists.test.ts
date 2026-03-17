@@ -97,7 +97,9 @@ describe("ensureAgentExists - Settings Persistence", () => {
 			getAgentsByIds: getAgentsByIdsMock,
 			getAgents: vi.fn(async () => []),
 			createAgents: vi.fn(async (agents: Partial<Agent>[]) =>
-				agents.map((a) => a.id!).filter(Boolean),
+				agents
+					.map((a) => a.id)
+					.filter((id): id is NonNullable<typeof id> => id != null),
 			),
 			upsertAgents: upsertAgentsMock,
 			updateAgents: updateAgentsMock,

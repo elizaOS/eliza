@@ -9,4 +9,4 @@ export {
   type ParallelGenerationConfig,
   type ParallelGenerationResult,
   TrajectoryGenerator,
-} from './TrajectoryGenerator';
+} from "./TrajectoryGenerator";

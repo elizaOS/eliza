@@ -21,17 +21,30 @@ import {
 } from "../services/approval.ts";
 import type { IAgentRuntime, Task, UUID } from "../types/index.ts";
 import { ServiceType } from "../types/service.ts";
+import type { TaskWorker } from "../types/task.ts";
+
+type MockTaskWorker = Pick<TaskWorker, "execute" | "validate">;
+
+// Helper to get task id (avoids non-null assertion in tests)
+function getTaskId(tasks: Task[]): UUID {
+	const id = tasks[0]?.id;
+	if (!id) throw new Error("Expected task to have id");
+	return id;
+}
+
+function getTaskIdFromTask(task: Task): UUID {
+	const id = task.id;
+	if (!id) throw new Error("Expected task to have id");
+	return id;
+}
 
 // Mock runtime factory
 function createMockRuntime(): IAgentRuntime & {
 	_tasks: Map<UUID, Task>;
-	_taskWorkers: Map<string, { execute: Function; validate?: Function }>;
+	_taskWorkers: Map<string, MockTaskWorker>;
 } {
 	const tasks = new Map<UUID, Task>();
-	const taskWorkers = new Map<
-		string,
-		{ execute: Function; validate?: Function }
-	>();
+	const taskWorkers = new Map<string, MockTaskWorker>();
 	let taskIdCounter = 0;
 
 	const runtime = {
@@ -123,11 +136,9 @@ function createMockRuntime(): IAgentRuntime & {
 			}
 		}),
 
-		registerTaskWorker: vi.fn(
-			(worker: { name: string; execute: Function; validate?: Function }) => {
-				taskWorkers.set(worker.name, worker);
-			},
-		),
+		registerTaskWorker: vi.fn((worker: { name: string } & MockTaskWorker) => {
+			taskWorkers.set(worker.name, worker);
+		}),
 
 		getTaskWorker: vi.fn((name: string) => taskWorkers.get(name)),
 
@@ -138,7 +149,7 @@ function createMockRuntime(): IAgentRuntime & {
 		})),
 	} as unknown as IAgentRuntime & {
 		_tasks: Map<UUID, Task>;
-		_taskWorkers: Map<string, { execute: Function; validate?: Function }>;
+		_taskWorkers: Map<string, MockTaskWorker>;
 	};
 
 	return runtime;
@@ -232,7 +243,7 @@ describe("ApprovalService", () => {
 			});
 			expect(tasks.length).toBe(1);
 
-			await service.handleSelection(tasks[0].id!, "confirm");
+			await service.handleSelection(getTaskId(tasks), "confirm");
 			const result = await approvalPromise;
 			expect(result.selectedOption).toBe("confirm");
 			expect(result.success).toBe(true);
@@ -261,7 +272,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks[0].id!, "yes");
+			await service.handleSelection(getTaskId(tasks), "yes");
 			await approvalPromise;
 		});
 
@@ -282,7 +293,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks1[0].id!, "confirm");
+			await service.handleSelection(getTaskId(tasks1), "confirm");
 			await promise1;
 
 			const registerCallCount1 = (
@@ -303,7 +314,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks2[0].id!, "confirm");
+			await service.handleSelection(getTaskId(tasks2), "confirm");
 			await promise2;
 
 			const registerCallCount2 = (
@@ -339,7 +350,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks[0].id!, "confirm");
+			await service.handleSelection(getTaskId(tasks), "confirm");
 			await approvalPromise;
 		});
 
@@ -368,7 +379,7 @@ describe("ApprovalService", () => {
 			});
 			expect(tasks[0].metadata).toMatchObject(customMetadata);
 
-			await service.handleSelection(tasks[0].id!, "confirm");
+			await service.handleSelection(getTaskId(tasks), "confirm");
 			await approvalPromise;
 		});
 
@@ -423,7 +434,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.cancelApproval(tasks[0].id!);
+			await service.cancelApproval(getTaskId(tasks));
 
 			const result = await approvalPromise;
 			expect(result.cancelled).toBe(true);
@@ -448,7 +459,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			const taskId = tasks[0].id!;
+			const taskId = getTaskId(tasks);
 			await service.cancelApproval(taskId);
 
 			await approvalPromise;
@@ -478,7 +489,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks[0].id!, "allow-always");
+			await service.handleSelection(getTaskId(tasks), "allow-always");
 
 			const result = await approvalPromise;
 			expect(result.selectedOption).toBe("allow-always");
@@ -507,7 +518,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks[0].id!, "abort");
+			await service.handleSelection(getTaskId(tasks), "abort");
 
 			const result = await approvalPromise;
 			expect(result.selectedOption).toBe("abort");
@@ -535,7 +546,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks[0].id!, "ABORT");
+			await service.handleSelection(getTaskId(tasks), "ABORT");
 
 			const result = await approvalPromise;
 			expect(result.cancelled).toBe(true);
@@ -560,7 +571,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks[0].id!, "confirm", resolvedBy);
+			await service.handleSelection(getTaskId(tasks), "confirm", resolvedBy);
 
 			const result = await approvalPromise;
 			expect(result.resolvedBy).toBe(resolvedBy);
@@ -588,7 +599,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks[0].id!, "confirm");
+			await service.handleSelection(getTaskId(tasks), "confirm");
 
 			const result = await approvalPromise;
 			expect(result.timedOut).toBe(false);
@@ -625,7 +636,7 @@ describe("ApprovalService", () => {
 			expect(pending.length).toBe(2);
 
 			for (const task of pending) {
-				await service.cancelApproval(task.id!);
+				await service.cancelApproval(getTaskIdFromTask(task));
 			}
 			await promise1.catch(() => {});
 			await promise2.catch(() => {});
@@ -669,8 +680,10 @@ describe("ApprovalService", () => {
 			expect(pendingRoom2[0].name).toBe("ROOM2_APPROVAL");
 
 			// Cleanup
-			for (const task of pendingRoom1) await service.cancelApproval(task.id!);
-			for (const task of pendingRoom2) await service.cancelApproval(task.id!);
+			for (const task of pendingRoom1)
+				await service.cancelApproval(getTaskIdFromTask(task));
+			for (const task of pendingRoom2)
+				await service.cancelApproval(getTaskIdFromTask(task));
 			await promise1.catch(() => {});
 			await promise2.catch(() => {});
 		});
@@ -699,7 +712,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks[0].id!, "confirm");
+			await service.handleSelection(getTaskId(tasks), "confirm");
 
 			await approvalPromise;
 
@@ -729,7 +742,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks[0].id!, "cancel");
+			await service.handleSelection(getTaskId(tasks), "cancel");
 
 			await approvalPromise;
 
@@ -763,7 +776,7 @@ describe("ApprovalService", () => {
 			});
 
 			// Should not throw
-			await service.handleSelection(tasks[0].id!, "confirm");
+			await service.handleSelection(getTaskId(tasks), "confirm");
 
 			const result = await approvalPromise;
 			expect(result.success).toBe(true);
@@ -957,7 +970,7 @@ describe("ApprovalService", () => {
 				roomId,
 				agentIds: [runtime.agentId],
 			});
-			await service.handleSelection(tasks[0].id!, "option-3");
+			await service.handleSelection(getTaskId(tasks), "option-3");
 
 			const result = await approvalPromise;
 			expect(result.selectedOption).toBe("option-3");
@@ -993,7 +1006,7 @@ describe("ApprovalService", () => {
 				{ name: "option-c", description: "C" },
 			]);
 
-			await service.handleSelection(tasks[0].id!, "option-b");
+			await service.handleSelection(getTaskId(tasks), "option-b");
 			await approvalPromise;
 		});
 	});
@@ -1022,7 +1035,7 @@ describe("ApprovalService", () => {
 			expect(tasks[0].tags).toContain("AWAITING_CHOICE");
 			expect(tasks[0].tags).toContain("APPROVAL");
 
-			await service.handleSelection(tasks[0].id!, "confirm");
+			await service.handleSelection(getTaskId(tasks), "confirm");
 			await approvalPromise;
 		});
 
@@ -1052,7 +1065,7 @@ describe("ApprovalService", () => {
 			expect(tasks[0].tags).toContain("HIGH_PRIORITY");
 			expect(tasks[0].tags).toContain("ADMIN_ONLY");
 
-			await service.handleSelection(tasks[0].id!, "confirm");
+			await service.handleSelection(getTaskId(tasks), "confirm");
 			await approvalPromise;
 		});
 	});
@@ -1087,7 +1100,7 @@ describe("ApprovalService", () => {
 
 			// Resolve each approval
 			for (const task of tasks) {
-				await service.handleSelection(task.id!, "confirm");
+				await service.handleSelection(getTaskIdFromTask(task), "confirm");
 			}
 
 			const results = await Promise.all(promises);
@@ -1140,7 +1153,7 @@ describe("Task-based Choice System Integration", () => {
 			{ name: "option-c", description: "Third option" },
 		]);
 
-		await service.handleSelection(task.id!, "option-a");
+		await service.handleSelection(getTaskIdFromTask(task), "option-a");
 		await approvalPromise;
 		await service.stop();
 	});
@@ -1175,7 +1188,7 @@ describe("Task-based Choice System Integration", () => {
 		expect(approvalRequest.timeoutDefault).toBe("cancel");
 		expect(approvalRequest.allowedRoles).toEqual(["OWNER", "ADMIN"]);
 
-		await service.handleSelection(tasks[0].id!, "confirm");
+		await service.handleSelection(getTaskId(tasks), "confirm");
 		await approvalPromise;
 		await service.stop();
 	});

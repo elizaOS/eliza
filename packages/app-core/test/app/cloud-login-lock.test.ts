@@ -75,6 +75,7 @@ vi.mock("@elizaos/app-core/api", () => ({
 }));
 
 import { AppProvider, useApp } from "@elizaos/app-core/state";
+import type { AppState } from "@elizaos/app-core/state";
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -99,8 +100,8 @@ function Probe(props: { onReady: (api: ProbeApi) => void }) {
 
   useEffect(() => {
     onReady({
-      // biome-ignore lint/suspicious/noExplicitAny: test probe
-      setState: (key, value) => app.setState(key as any, value),
+      setState: (key, value) =>
+        app.setState(key as keyof AppState, value as AppState[keyof AppState]),
       handleOnboardingNext: app.handleOnboardingNext,
       handleOnboardingBack: app.handleOnboardingBack,
       handleCloudLogin: app.handleCloudLogin,

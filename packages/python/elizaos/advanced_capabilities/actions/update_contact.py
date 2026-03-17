@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.utils.xml import parse_key_value_xml
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.prompts import UPDATE_CONTACT_TEMPLATE
 from elizaos.types import (
@@ -54,7 +54,7 @@ class UpdateContactAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        from elizaos.bootstrap.services.rolodex import RolodexService
+        from elizaos.advanced_capabilities.services.rolodex import RolodexService
 
         rolodex_service = runtime.get_service("rolodex")
         if not rolodex_service or not isinstance(rolodex_service, RolodexService):

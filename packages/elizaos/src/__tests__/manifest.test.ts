@@ -1,8 +1,10 @@
-import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "vitest";
 
-const PACKAGE_ROOT = path.join(import.meta.dir, "..", "..");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PACKAGE_ROOT = path.join(__dirname, "..", "..");
 
 describe("examples-manifest.json", () => {
   test("manifest file exists", () => {

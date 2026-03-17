@@ -48,7 +48,10 @@ export const restartAction: Action = {
 
   handler: async (runtime, message, _state, options) => {
     // This action declares parameters, so the runtime provides HandlerOptions.
-    const params = (options as HandlerOptions | undefined)?.parameters;
+    type RestartParams = { reason?: string };
+    const params = (options as HandlerOptions | undefined)?.parameters as
+      | RestartParams
+      | undefined;
     const reason =
       typeof params?.reason === "string" ? params.reason : undefined;
 

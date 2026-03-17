@@ -450,3 +450,14 @@ class IAgentRuntime(ABC):
 
     @abstractmethod
     async def search_knowledge(self, query: str, limit: int = 5) -> list[object]: ...
+
+    @abstractmethod
+    async def search_memories(self, params: dict[str, Any]) -> list[Any]: ...
+
+    @abstractmethod
+    async def get_entities_for_room(
+        self, room_id: UUID, include_components: bool = False
+    ) -> list[Any]: ...
+
+    @abstractmethod
+    async def update_room(self, room: Any) -> None: ...

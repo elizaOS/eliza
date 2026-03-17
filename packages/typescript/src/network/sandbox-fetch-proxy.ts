@@ -396,12 +396,13 @@ function collectReplacedTokens(
 		`${escapeRegex(SANDBOX_TOKEN_PREFIX)}[0-9a-f-]{36}`,
 		"g",
 	);
-	let match: RegExpExecArray | null;
-	while ((match = regex.exec(str)) !== null) {
+	let match: RegExpExecArray | null = regex.exec(str);
+	while (match !== null) {
 		const token = match[0];
 		if (tm.resolveToken(token) !== null && !out.includes(token)) {
 			out.push(token);
 		}
+		match = regex.exec(str);
 	}
 }
 
@@ -411,12 +412,13 @@ function collectTokensInString(str: string, tm: SandboxTokenManager): string[] {
 		`${escapeRegex(SANDBOX_TOKEN_PREFIX)}[0-9a-f-]{36}`,
 		"g",
 	);
-	let match: RegExpExecArray | null;
-	while ((match = regex.exec(str)) !== null) {
+	let match: RegExpExecArray | null = regex.exec(str);
+	while (match !== null) {
 		const token = match[0];
 		if (tm.getMetadata(token) !== null && !tokens.includes(token)) {
 			tokens.push(token);
 		}
+		match = regex.exec(str);
 	}
 	return tokens;
 }

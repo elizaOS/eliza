@@ -24,7 +24,7 @@ export type JsonValue =
 /**
  * UUID-like string identifier.
  */
-export type UUID = string & { readonly __brand: 'UUID' };
+export type UUID = string & { readonly __brand: "UUID" };
 
 // ─── Record types (replace schema-derived types from @elizaos/db) ───────
 
@@ -170,7 +170,9 @@ export interface ITrainingDataAdapter {
    * Get scenario groups with counts.
    * Returns groups where count >= minGroupSize.
    */
-  getScenarioGroups(minGroupSize: number): Promise<Array<{ scenarioId: string | null; count: number }>>;
+  getScenarioGroups(
+    minGroupSize: number,
+  ): Promise<Array<{ scenarioId: string | null; count: number }>>;
 
   /**
    * Sample recent trajectories for data quality assessment.
@@ -194,10 +196,17 @@ export interface ITrainingDataAdapter {
   getTrajectoryById(trajectoryId: string): Promise<TrajectoryRecord | null>;
 
   /** Mark trajectories as used in a training batch. */
-  markTrajectoriesAsUsed(trajectoryIds: string[], batchId: string): Promise<void>;
+  markTrajectoriesAsUsed(
+    trajectoryIds: string[],
+    batchId: string,
+  ): Promise<void>;
 
   /** Update trajectory reward data. */
-  updateTrajectoryRewards(id: string, stepsJson: string, totalReward: number): Promise<void>;
+  updateTrajectoryRewards(
+    id: string,
+    stepsJson: string,
+    totalReward: number,
+  ): Promise<void>;
 
   /** Update trajectory with judge score. */
   updateTrajectoryScore(
@@ -207,7 +216,9 @@ export interface ITrainingDataAdapter {
   ): Promise<void>;
 
   /** Insert a new trajectory record. */
-  insertTrajectory(data: Omit<TrajectoryRecord, 'createdAt' | 'updatedAt'>): Promise<void>;
+  insertTrajectory(
+    data: Omit<TrajectoryRecord, "createdAt" | "updatedAt">,
+  ): Promise<void>;
 
   /**
    * Count trajectories created since a given timestamp.
@@ -227,7 +238,10 @@ export interface ITrainingDataAdapter {
   getModelByVersion(version: string): Promise<TrainedModelRecord | null>;
 
   /** Get model associated with a training batch and status. */
-  getModelByBatchAndStatus(batchId: string, status: string): Promise<TrainedModelRecord | null>;
+  getModelByBatchAndStatus(
+    batchId: string,
+    status: string,
+  ): Promise<TrainedModelRecord | null>;
 
   /** Count deployed models. */
   countDeployedModels(): Promise<number>;
@@ -254,7 +268,7 @@ export interface ITrainingDataAdapter {
   updateModelHuggingFaceRepo(modelId: string, repoName: string): Promise<void>;
 
   /** Insert a new trained model record. */
-  insertModel(data: Omit<TrainedModelRecord, 'createdAt'>): Promise<void>;
+  insertModel(data: Omit<TrainedModelRecord, "createdAt">): Promise<void>;
 
   // ── Batch operations ───────────────────────────────────────────────
 
@@ -271,10 +285,16 @@ export interface ITrainingDataAdapter {
   getLastCompletedBatch(): Promise<TrainingBatchRecord | null>;
 
   /** Update batch status. */
-  updateBatchStatus(batchId: string, status: string, error?: string): Promise<void>;
+  updateBatchStatus(
+    batchId: string,
+    status: string,
+    error?: string,
+  ): Promise<void>;
 
   /** Insert a new training batch. */
-  insertBatch(data: Omit<TrainingBatchRecord, 'startedAt' | 'completedAt'>): Promise<string>;
+  insertBatch(
+    data: Omit<TrainingBatchRecord, "startedAt" | "completedAt">,
+  ): Promise<string>;
 
   // ── Benchmark operations ───────────────────────────────────────────
 
@@ -285,13 +305,15 @@ export interface ITrainingDataAdapter {
   countBenchmarksSince(since: Date): Promise<number>;
 
   /** Insert a benchmark result. */
-  insertBenchmarkResult(data: Omit<BenchmarkResultRecord, 'createdAt'>): Promise<void>;
+  insertBenchmarkResult(
+    data: Omit<BenchmarkResultRecord, "createdAt">,
+  ): Promise<void>;
 
   // ── User/Agent operations ──────────────────────────────────────────
 
   /** Get agent users (isAgent=true). Supports optional strategy filtering. */
   getAgentUsers(filter?: {
-    strategy?: 'all' | 'gradual' | 'test';
+    strategy?: "all" | "gradual" | "test";
     rolloutPercentage?: number;
     testAgentIds?: string[];
   }): Promise<UserRecord[]>;
@@ -317,7 +339,10 @@ export interface ITrainingDataAdapter {
   createAgentConfig(data: Record<string, unknown>): Promise<void>;
 
   /** Update an agent configuration by userId. */
-  updateAgentConfig(userId: string, data: Record<string, unknown>): Promise<void>;
+  updateAgentConfig(
+    userId: string,
+    data: Record<string, unknown>,
+  ): Promise<void>;
 
   /**
    * Flexible benchmark result query with optional filters.
@@ -332,15 +357,17 @@ export interface ITrainingDataAdapter {
   }): Promise<BenchmarkResultRecord[]>;
 
   /** Aggregate benchmark statistics per model, ordered by avgPnl descending. */
-  getBenchmarkModelSummary(): Promise<Array<{
-    modelId: string;
-    runCount: number;
-    avgPnl: number;
-    avgAccuracy: number;
-    avgOptimality: number;
-    bestPnl: number;
-    latestRun: Date;
-  }>>;
+  getBenchmarkModelSummary(): Promise<
+    Array<{
+      modelId: string;
+      runCount: number;
+      avgPnl: number;
+      avgAccuracy: number;
+      avgOptimality: number;
+      bestPnl: number;
+      latestRun: Date;
+    }>
+  >;
 
   /**
    * Get scored training trajectories (isTrainingData=true with judge scores).
@@ -366,10 +393,15 @@ export interface ITrainingDataAdapter {
   // ── Additional operations (added for service refactoring) ────────
 
   /** Get the best benchmarked model, optionally excluding a model ID. Status 'ready'/'deployed', non-null benchmarkScore, ordered by score desc. */
-  getBestBenchmarkedModel(excludeModelId?: string): Promise<TrainedModelRecord | null>;
+  getBestBenchmarkedModel(
+    excludeModelId?: string,
+  ): Promise<TrainedModelRecord | null>;
 
   /** Update model with detailed benchmark results (score, accuracy, eval metrics). */
-  updateModelBenchmarkResults(modelId: string, data: { benchmarkScore: number; accuracy: number; evalMetrics: JsonValue }): Promise<void>;
+  updateModelBenchmarkResults(
+    modelId: string,
+    data: { benchmarkScore: number; accuracy: number; evalMetrics: JsonValue },
+  ): Promise<void>;
 
   /** Get models with benchmark scores, ordered by score descending. */
   getBenchmarkedModels(limit: number): Promise<TrainedModelRecord[]>;
@@ -387,7 +419,10 @@ export interface ITrainingDataAdapter {
   getTrajectoriesByIds(trajectoryIds: string[]): Promise<TrajectoryRecord[]>;
 
   /** Get unscored trajectories, optionally filtered by IDs or limited. */
-  getUnscoredTrajectories(options?: { trajectoryIds?: string[]; limit?: number }): Promise<TrajectoryRecord[]>;
+  getUnscoredTrajectories(options?: {
+    trajectoryIds?: string[];
+    limit?: number;
+  }): Promise<TrajectoryRecord[]>;
 
   /** Get unscored trajectory IDs for a specific window. */
   getUnscoredWindowTrajectoryIds(windowId: string): Promise<string[]>;
@@ -399,32 +434,44 @@ export interface ITrainingDataAdapter {
  */
 export interface IMarketDataAdapter {
   /** Get perpetual positions within a time window. */
-  getPerpPositionsForWindow(windowStart: Date, windowEnd: Date): Promise<Array<{
-    id: string;
-    ticker?: string;
-    direction: string;
-    entryPrice: number;
-    currentPrice?: number | null;
-    exitPrice: number | null;
-    closedAt?: Date | null;
-    pnl: number | null;
-    [key: string]: JsonValue | Date | null | undefined;
-  }>>;
+  getPerpPositionsForWindow(
+    windowStart: Date,
+    windowEnd: Date,
+  ): Promise<
+    Array<{
+      id: string;
+      ticker?: string;
+      direction: string;
+      entryPrice: number;
+      currentPrice?: number | null;
+      exitPrice: number | null;
+      closedAt?: Date | null;
+      pnl: number | null;
+      [key: string]: JsonValue | Date | null | undefined;
+    }>
+  >;
 
   /** Get resolved prediction markets within a time window. */
-  getResolvedMarketsForWindow(windowStart: Date, windowEnd: Date): Promise<Array<{
-    id: string;
-    question: string;
-    outcome: boolean | null;
-    finalProbability: number | null;
-    [key: string]: JsonValue | boolean | Date | null | undefined;
-  }>>;
+  getResolvedMarketsForWindow(
+    windowStart: Date,
+    windowEnd: Date,
+  ): Promise<
+    Array<{
+      id: string;
+      question: string;
+      outcome: boolean | null;
+      finalProbability: number | null;
+      [key: string]: JsonValue | boolean | Date | null | undefined;
+    }>
+  >;
 
   /** Get market outcomes for a window ID. */
-  getMarketOutcomesByWindow(windowId: string): Promise<Array<{
-    windowId: string;
-    [key: string]: JsonValue | undefined;
-  }>>;
+  getMarketOutcomesByWindow(windowId: string): Promise<
+    Array<{
+      windowId: string;
+      [key: string]: JsonValue | undefined;
+    }>
+  >;
 
   /** Insert a market outcome record. */
   insertMarketOutcome(data: Record<string, JsonValue>): Promise<void>;
@@ -462,9 +509,9 @@ let _llmLogAdapter: ILlmLogAdapter | null = null;
  * Must be called before any training operations that need database access.
  */
 export function setTrainingDataAdapter(adapter: ITrainingDataAdapter): void {
-  if (!adapter || typeof adapter.countScoredTrajectoriesReady !== 'function') {
+  if (!adapter || typeof adapter.countScoredTrajectoriesReady !== "function") {
     throw new TypeError(
-      'setTrainingDataAdapter: provided object does not implement ITrainingDataAdapter'
+      "setTrainingDataAdapter: provided object does not implement ITrainingDataAdapter",
     );
   }
   _dataAdapter = adapter;
@@ -487,7 +534,7 @@ export function setLlmLogAdapter(adapter: ILlmLogAdapter): void {
 export function getTrainingDataAdapter(): ITrainingDataAdapter {
   if (!_dataAdapter) {
     throw new Error(
-      'Training data adapter not registered. Call setTrainingDataAdapter() before using training operations.'
+      "Training data adapter not registered. Call setTrainingDataAdapter() before using training operations.",
     );
   }
   return _dataAdapter;

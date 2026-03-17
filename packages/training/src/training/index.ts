@@ -4,38 +4,49 @@
  * Core training pipeline services for RL model development.
  */
 
-export type { AutomationConfig } from './AutomationPipeline';
-export { AutomationPipeline, automationPipeline } from './AutomationPipeline';
-export type { BenchmarkResults, ComparisonResults } from './BenchmarkService';
-export { BenchmarkService, benchmarkService } from './BenchmarkService';
+export type { AutomationConfig } from "./AutomationPipeline";
+export { AutomationPipeline, automationPipeline } from "./AutomationPipeline";
+export type { BenchmarkResults, ComparisonResults } from "./BenchmarkService";
+export { BenchmarkService, benchmarkService } from "./BenchmarkService";
 
-export { ConfigValidator } from './ConfigValidator';
-export { logRLConfigOnStartup } from './logRLConfig';
-export { MarketOutcomesTracker } from './MarketOutcomesTracker';
-export type { DeploymentOptions, DeploymentResult } from './ModelDeployer';
-export { ModelDeployer, modelDeployer } from './ModelDeployer';
-export type { ModelArtifact } from './ModelFetcher';
+export { ConfigValidator } from "./ConfigValidator";
+export { logRLConfigOnStartup } from "./logRLConfig";
+export { MarketOutcomesTracker } from "./MarketOutcomesTracker";
+export type { DeploymentOptions, DeploymentResult } from "./ModelDeployer";
+export { ModelDeployer, modelDeployer } from "./ModelDeployer";
+export type { ModelArtifact } from "./ModelFetcher";
 // Model fetching
-export { getLatestRLModel } from './ModelFetcher';
+export { getLatestRLModel } from "./ModelFetcher";
 export {
   ModelSelectionService,
   modelSelectionService,
-} from './ModelSelectionService';
-export { ModelUsageVerifier } from './ModelUsageVerifier';
+} from "./ModelSelectionService";
+export { ModelUsageVerifier } from "./ModelUsageVerifier";
 // Multi-model orchestration for efficient archetype model management
 export type {
   ModelInferenceRequest,
   ModelInferenceResult,
   OrchestratorConfig,
-} from './MultiModelOrchestrator';
+} from "./MultiModelOrchestrator";
 export {
   createMultiModelOrchestrator,
   MultiModelOrchestrator,
-} from './MultiModelOrchestrator';
+} from "./MultiModelOrchestrator";
+export type { NextTrainingModelSelection } from "./pipeline";
+export {
+  benchmarkAndMaybeDeployModel,
+  checkTrainingReadiness,
+  deployModelVersion,
+  getAutomationPipelineStatus,
+  getNextTrainingModelSelection,
+  monitorTrainingJob,
+  rollbackModelVersion,
+  triggerTraining,
+} from "./pipeline";
 export {
   RewardBackpropagationService,
   rewardBackpropagationService,
-} from './RewardBackpropagationService';
+} from "./RewardBackpropagationService";
 export type {
   ArchetypeModelConfig,
   ModelTier,
@@ -43,7 +54,7 @@ export type {
   MultiModelConfig,
   QuantizationMode,
   RLModelConfig,
-} from './RLModelConfig';
+} from "./RLModelConfig";
 export {
   clearArchetypeModels,
   getAllArchetypeModels,
@@ -62,30 +73,19 @@ export {
   MODEL_TIERS,
   // Archetype model management
   registerArchetypeModel,
-} from './RLModelConfig';
-export type { MarketOutcomes, RulerScore } from './RulerScoringService';
+} from "./RLModelConfig";
+export type { MarketOutcomes, RulerScore } from "./RulerScoringService";
 export {
   RulerScoringService,
   rulerScoringService,
-} from './RulerScoringService';
-export type { NextTrainingModelSelection } from './pipeline';
-export {
-  benchmarkAndMaybeDeployModel,
-  checkTrainingReadiness,
-  deployModelVersion,
-  getAutomationPipelineStatus,
-  getNextTrainingModelSelection,
-  monitorTrainingJob,
-  rollbackModelVersion,
-  triggerTraining,
-} from './pipeline';
+} from "./RulerScoringService";
 // Storage services
-export * from './storage';
-export { TrainingMonitor, trainingMonitor } from './TrainingMonitor';
-export { TrajectoryRecorder, trajectoryRecorder } from './TrajectoryRecorder';
+export * from "./storage";
+export { TrainingMonitor, trainingMonitor } from "./TrainingMonitor";
+export { TrajectoryRecorder, trajectoryRecorder } from "./TrajectoryRecorder";
 
 // Types
-export * from './types';
+export * from "./types";
 
 // Window utilities
 export {
@@ -97,4 +97,4 @@ export {
   isTimestampInWindow,
   isWindowComplete,
   parseWindowId,
-} from './window-utils';
+} from "./window-utils";

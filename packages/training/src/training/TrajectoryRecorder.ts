@@ -7,29 +7,29 @@
  * @packageDocumentation
  */
 
-import type { JsonValue, TrajectoryRecord } from '../adapter';
-import { getTrainingDataAdapter, getLlmLogAdapter } from '../adapter';
-import { logger } from '../utils/logger';
-import { generateSnowflakeId } from '../utils/snowflake';
+import type { JsonValue, TrajectoryRecord } from "../adapter";
+import { getLlmLogAdapter, getTrainingDataAdapter } from "../adapter";
+import { logger } from "../utils/logger";
+import { generateSnowflakeId } from "../utils/snowflake";
 import type {
   Action,
   EnvironmentState,
   LLMCall,
   ProviderAccess,
   TrajectoryStep,
-} from './types';
-import { getCurrentWindowId } from './window-utils';
+} from "./types";
+import { getCurrentWindowId } from "./window-utils";
 
 export type {
-  TrajectoryStep,
-  EnvironmentState,
-  ProviderAccess,
-  LLMCall,
   Action,
+  EnvironmentState,
+  LLMCall,
+  ProviderAccess,
+  TrajectoryStep,
 };
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // ─── Simulation mode flag ────────────────────────────────────────────
 // Replaces the `isSimulationMode` import from `@elizaos/db`.
@@ -118,7 +118,7 @@ export class TrajectoryRecorder {
       steps: [],
     });
 
-    logger.info('Started trajectory recording', {
+    logger.info("Started trajectory recording", {
       trajectoryId,
       agentId: options.agentId,
       archetype: options.archetype,
@@ -163,7 +163,7 @@ export class TrajectoryRecorder {
       providerName: string;
       data: Record<string, JsonValue>;
       purpose: string;
-    }
+    },
   ): void {
     const traj = this.activeTrajectories.get(trajectoryId);
     if (!traj?.currentStep) {
@@ -225,7 +225,7 @@ export class TrajectoryRecorder {
    */
   async endTrajectory(
     trajectoryId: string,
-    options: EndTrajectoryOptions = {}
+    options: EndTrajectoryOptions = {},
   ): Promise<void> {
     const traj = this.activeTrajectories.get(trajectoryId);
     if (!traj) {
@@ -240,19 +240,19 @@ export class TrajectoryRecorder {
     // Calculate metrics
     const tradesExecuted = traj.steps.filter(
       (s) =>
-        s.action.actionType.includes('BUY') ||
-        s.action.actionType.includes('SELL')
+        s.action.actionType.includes("BUY") ||
+        s.action.actionType.includes("SELL"),
     ).length;
 
     const postsCreated = traj.steps.filter((s) =>
-      s.action.actionType.includes('POST')
+      s.action.actionType.includes("POST"),
     ).length;
 
     const errorCount = traj.steps.filter((s) => !s.action.success).length;
-    const finalStatus = errorCount > 0 ? 'completed_with_errors' : 'completed';
+    const finalStatus = errorCount > 0 ? "completed_with_errors" : "completed";
 
     // 1. Prepare the standard data object (Used for both JSON and DB)
-    const trajectoryData: Omit<TrajectoryRecord, 'createdAt' | 'updatedAt'> = {
+    const trajectoryData: Omit<TrajectoryRecord, "createdAt" | "updatedAt"> = {
       id: await generateSnowflakeId(),
       trajectoryId,
       agentId: traj.agentId,
@@ -261,9 +261,7 @@ export class TrajectoryRecorder {
       endTime: new Date(endTime),
       durationMs,
       scenarioId: traj.scenarioId || windowId,
-      episodeId: traj.scenarioId
-        ? `${traj.scenarioId}-${Date.now()}`
-        : null,
+      episodeId: traj.scenarioId ? `${traj.scenarioId}-${Date.now()}` : null,
       windowId,
       windowHours: 1,
       batchId: null,
@@ -300,7 +298,7 @@ export class TrajectoryRecorder {
 
     // Simulation Mode Bypass
     if (isSimulationMode()) {
-      const outputDir = './training-data-output/trajectories';
+      const outputDir = "./training-data-output/trajectories";
       if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
       }
@@ -312,7 +310,7 @@ export class TrajectoryRecorder {
             stepNumber: step.stepNumber,
             callIndex: idx,
             ...call,
-          }))
+          })),
         ),
       };
 
@@ -320,9 +318,9 @@ export class TrajectoryRecorder {
       fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2));
 
       logger.info(
-        'Saved trajectory to JSON (Simulation Mode)',
+        "Saved trajectory to JSON (Simulation Mode)",
         { trajectoryId, path: filePath },
-        'TrajectoryRecorder'
+        "TrajectoryRecorder",
       );
 
       this.activeTrajectories.delete(trajectoryId);
@@ -357,7 +355,7 @@ export class TrajectoryRecorder {
       }
     }
 
-    logger.info('Trajectory saved to database', {
+    logger.info("Trajectory saved to database", {
       trajectoryId,
       archetype: traj.archetype,
       steps: traj.steps.length,

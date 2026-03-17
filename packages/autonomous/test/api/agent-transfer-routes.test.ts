@@ -38,12 +38,12 @@ function buildCtx(
     importAgent: vi.fn(async () => ({ ok: true })),
     isAgentExportError: () => false,
     ...overrides,
+    getStatus,
+    getJson,
   } as AgentTransferRouteContext & {
     getStatus: () => number;
     getJson: () => unknown;
   };
-  (ctx as any).getStatus = getStatus;
-  (ctx as any).getJson = getJson;
   return ctx;
 }
 
@@ -60,7 +60,10 @@ describe("agent-transfer-routes", () => {
     });
 
     test("returns 400 when password is missing", async () => {
-      const mockRuntime = { character: { name: "Agent" } } as any;
+      const mockRuntime: Pick<
+        import("@elizaos/core").AgentRuntime,
+        "character"
+      > = { character: { name: "Agent" } };
       const ctx = buildCtx("POST", "/api/agent/export", {
         state: { runtime: mockRuntime },
         readJsonBody: vi.fn(async () => ({})),
@@ -73,7 +76,10 @@ describe("agent-transfer-routes", () => {
     });
 
     test("exports successfully with valid password", async () => {
-      const mockRuntime = { character: { name: "Agent" } } as any;
+      const mockRuntime: Pick<
+        import("@elizaos/core").AgentRuntime,
+        "character"
+      > = { character: { name: "Agent" } };
       const ctx = buildCtx("POST", "/api/agent/export", {
         state: { runtime: mockRuntime },
         readJsonBody: vi.fn(async () => ({
@@ -99,7 +105,10 @@ describe("agent-transfer-routes", () => {
     });
 
     test("returns estimate when runtime is available", async () => {
-      const mockRuntime = { character: { name: "Agent" } } as any;
+      const mockRuntime: Pick<
+        import("@elizaos/core").AgentRuntime,
+        "character"
+      > = { character: { name: "Agent" } };
       const ctx = buildCtx("GET", "/api/agent/export/estimate", {
         state: { runtime: mockRuntime },
       });

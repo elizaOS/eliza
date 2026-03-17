@@ -13,7 +13,6 @@ import type {
 	IAgentRuntime,
 	Memory,
 	State,
-	UUID,
 } from "../../types/index.ts";
 import type { Task } from "../../types/task.ts";
 

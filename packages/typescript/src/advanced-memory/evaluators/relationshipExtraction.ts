@@ -480,7 +480,9 @@ async function updateRelationship(
 	indicators: RelationshipIndicator[],
 ) {
 	// Get existing relationships
-	const relationships = await runtime.getRelationships({ entityId: entityA });
+	const relationships = await runtime.getRelationships({
+		entityIds: [entityA],
+	});
 	const relationship = relationships.find(
 		(r) =>
 			(r.sourceEntityId === entityA && r.targetEntityId === entityB) ||

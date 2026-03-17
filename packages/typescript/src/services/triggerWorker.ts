@@ -257,6 +257,7 @@ export function registerTriggerDispatchWorker(runtime: IAgentRuntime): void {
 				source: options.source === "manual" ? "manual" : "scheduler",
 				force: options.force === true,
 			});
+			return undefined;
 		},
 	});
 }

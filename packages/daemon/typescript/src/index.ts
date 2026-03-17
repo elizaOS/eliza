@@ -40,6 +40,10 @@ import type {
   ServiceRuntime,
 } from "./types.js";
 
+// Re-export platform-specific managers for direct access
+export { launchdManager } from "./launchd.js";
+export { schtasksManager } from "./schtasks.js";
+export { systemdManager } from "./systemd.js";
 // Re-export types
 export type {
   Platform,
@@ -49,11 +53,6 @@ export type {
   ServiceResult,
   ServiceRuntime,
 };
-
-// Re-export platform-specific managers for direct access
-export { launchdManager } from "./launchd.js";
-export { schtasksManager } from "./schtasks.js";
-export { systemdManager } from "./systemd.js";
 
 /**
  * Get the current platform.

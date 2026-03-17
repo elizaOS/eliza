@@ -294,6 +294,9 @@ export interface Provider {
 	 */
 	private?: boolean;
 
+	/** Keywords used to determine relevance for action filtering */
+	relevanceKeywords?: string[];
+
 	/** Data retrieval function */
 	get: (
 		runtime: IAgentRuntime,

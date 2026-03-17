@@ -11,24 +11,24 @@
  * Can run multiple agents and compare their performance.
  */
 
-import type { IAgentRuntimeLike } from '../dependencies';
-import { promises as fs } from 'fs';
-import * as path from 'path';
-import { getAutonomousCoordinator } from '../dependencies';
-import { TrajectoryRecorder } from '../training/TrajectoryRecorder';
-import { logger } from '../utils/logger';
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
+import type { IAgentRuntimeLike } from "../dependencies";
+import { getAutonomousCoordinator } from "../dependencies";
+import { TrajectoryRecorder } from "../training/TrajectoryRecorder";
+import { logger } from "../utils/logger";
 import {
   type BenchmarkConfig,
   BenchmarkDataGenerator,
   type BenchmarkGameSnapshot,
   SeededRandom,
-} from './BenchmarkDataGenerator';
-import { SimulationA2AInterface } from './SimulationA2AInterface';
+} from "./BenchmarkDataGenerator";
+import { SimulationA2AInterface } from "./SimulationA2AInterface";
 import {
   type SimulationConfig,
   SimulationEngine,
   type SimulationResult,
-} from './SimulationEngine';
+} from "./SimulationEngine";
 
 export interface BenchmarkRunConfig {
   /** Path to benchmark snapshot file (or will generate new one) */
@@ -53,7 +53,7 @@ export interface BenchmarkRunConfig {
   forceModel?: string;
 
   /** Force a baseline strategy (overrides agent behavior) */
-  forceStrategy?: 'random' | 'momentum';
+  forceStrategy?: "random" | "momentum";
 }
 
 export interface BenchmarkComparisonResult {
@@ -104,18 +104,18 @@ export class BenchmarkRunner {
    * ```
    */
   static async runSingle(
-    config: BenchmarkRunConfig
+    config: BenchmarkRunConfig,
   ): Promise<SimulationResult> {
-    logger.info('Starting benchmark run', {
+    logger.info("Starting benchmark run", {
       agentUserId: config.agentUserId,
       benchmarkPath: config.benchmarkPath,
-      strategy: config.forceStrategy || 'agent-driven',
+      strategy: config.forceStrategy || "agent-driven",
     });
 
     // 1. Load or generate benchmark
     const snapshot = config.benchmarkPath
-      ? await this.loadBenchmark(config.benchmarkPath)
-      : await this.generateBenchmark(config.generatorConfig!);
+      ? await BenchmarkRunner.loadBenchmark(config.benchmarkPath)
+      : await BenchmarkRunner.generateBenchmark(config.generatorConfig!);
 
     // 2. Create simulation engine
     const simConfig: SimulationConfig = {
@@ -132,12 +132,16 @@ export class BenchmarkRunner {
 
     // Inject A2A interface into agent runtime (if using real agent and not forcing strategy)
     if (!config.forceStrategy) {
-      (config.agentRuntime as IAgentRuntimeLike & { a2aClient?: SimulationA2AInterface }).a2aClient = a2aInterface;
+      (
+        config.agentRuntime as IAgentRuntimeLike & {
+          a2aClient?: SimulationA2AInterface;
+        }
+      ).a2aClient = a2aInterface;
     }
 
     // Force model if specified (for baseline testing)
     if (config.forceModel) {
-      logger.info('Forcing model for benchmark', {
+      logger.info("Forcing model for benchmark", {
         agentUserId: config.agentUserId,
         forcedModel: config.forceModel,
       });
@@ -155,8 +159,8 @@ export class BenchmarkRunner {
       }
 
       if (runtime.setSetting) {
-        runtime.setSetting('GROQ_LARGE_MODEL', config.forceModel);
-        runtime.setSetting('GROQ_SMALL_MODEL', config.forceModel);
+        runtime.setSetting("GROQ_LARGE_MODEL", config.forceModel);
+        runtime.setSetting("GROQ_SMALL_MODEL", config.forceModel);
       }
     }
 
@@ -170,14 +174,14 @@ export class BenchmarkRunner {
         agentId: config.agentUserId,
         scenarioId: `benchmark-${snapshot.id}`,
       });
-      logger.info('Trajectory recording started', { trajectoryId });
+      logger.info("Trajectory recording started", { trajectoryId });
     }
 
     // 5. Initialize simulation
     engine.initialize();
 
     // 6. Run simulation loop
-    logger.info('Starting simulation loop', {
+    logger.info("Starting simulation loop", {
       agentUserId: config.agentUserId,
       totalTicks: snapshot.ticks.length,
     });
@@ -191,7 +195,7 @@ export class BenchmarkRunner {
     // Create seeded RNG for baseline strategies (reproducibility)
     // Use snapshot ID hash as seed for deterministic behavior across runs
     const baselineSeed = config.forceStrategy
-      ? snapshot.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
+      ? snapshot.id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0)
       : 0;
     const baselineRng = config.forceStrategy
       ? new SeededRandom(baselineSeed)
@@ -208,21 +212,21 @@ export class BenchmarkRunner {
           `Benchmark progress: ${currentTick}/${snapshot.ticks.length} ticks`,
           {
             agentUserId: config.agentUserId,
-          }
+          },
         );
       }
 
       if (config.forceStrategy && baselineRng) {
         // Execute baseline strategy directly on engine (bypassing LLM)
-        await this.executeBaselineStrategy(
+        await BenchmarkRunner.executeBaselineStrategy(
           config.forceStrategy,
           engine,
-          baselineRng
+          baselineRng,
         );
       } else {
         if (!coordinator) {
           throw new Error(
-            'AutonomousCoordinator required for agent-driven benchmark but not configured.'
+            "AutonomousCoordinator required for agent-driven benchmark but not configured.",
           );
         }
 
@@ -230,7 +234,7 @@ export class BenchmarkRunner {
         // Fail fast - don't catch errors, let them propagate
         const tickResult = await coordinator.executeAutonomousTick(
           config.agentUserId,
-          config.agentRuntime
+          config.agentRuntime,
         );
 
         if (tickResult.success && tickResult.actionsExecuted) {
@@ -243,7 +247,7 @@ export class BenchmarkRunner {
             tickResult.actionsExecuted.engagements;
 
           if (totalActions > 0) {
-            logger.debug('Agent took actions', {
+            logger.debug("Agent took actions", {
               tick: currentTick,
               actions: tickResult.actionsExecuted,
             });
@@ -259,7 +263,7 @@ export class BenchmarkRunner {
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
 
-    logger.info('Simulation loop complete', {
+    logger.info("Simulation loop complete", {
       agentUserId: config.agentUserId,
       ticksCompleted,
       totalTicks: snapshot.ticks.length,
@@ -270,11 +274,11 @@ export class BenchmarkRunner {
 
     // 8. Validate results - ensure agent actually did something
     if (result.ticksProcessed === 0) {
-      throw new Error('Benchmark failed: No ticks were processed');
+      throw new Error("Benchmark failed: No ticks were processed");
     }
 
     if (result.actions.length === 0) {
-      logger.warn('Benchmark completed but agent took no actions', {
+      logger.warn("Benchmark completed but agent took no actions", {
         agentUserId: config.agentUserId,
         ticksProcessed: result.ticksProcessed,
       });
@@ -286,13 +290,13 @@ export class BenchmarkRunner {
         finalPnL: result.metrics.totalPnl,
         finalBalance: undefined, // Let recorder calculate from state
       });
-      logger.info('Trajectory recording saved', { trajectoryId });
+      logger.info("Trajectory recording saved", { trajectoryId });
     }
 
     // 10. Save results
-    await this.saveResult(result, config.outputDir);
+    await BenchmarkRunner.saveResult(result, config.outputDir);
 
-    logger.info('Benchmark run completed', {
+    logger.info("Benchmark run completed", {
       agentUserId: config.agentUserId,
       totalPnl: result.metrics.totalPnl,
       accuracy: result.metrics.predictionMetrics.accuracy,
@@ -308,31 +312,31 @@ export class BenchmarkRunner {
    * Uses seeded RNG for reproducibility across benchmark runs.
    */
   private static async executeBaselineStrategy(
-    strategy: 'random' | 'momentum',
+    strategy: "random" | "momentum",
     engine: SimulationEngine,
-    rng: SeededRandom
+    rng: SeededRandom,
   ): Promise<void> {
     const state = engine.getGameState();
 
     // Rate limiting: Only trade in ~10% of ticks to simulate realistic frequency
     if (rng.next() > 0.1) return;
 
-    if (strategy === 'random') {
+    if (strategy === "random") {
       // Random strategy: Buy prediction shares or open perps randomly
-      const actionType = rng.next() > 0.5 ? 'prediction' : 'perp';
+      const actionType = rng.next() > 0.5 ? "prediction" : "perp";
 
-      if (actionType === 'prediction' && state.predictionMarkets.length > 0) {
+      if (actionType === "prediction" && state.predictionMarkets.length > 0) {
         const marketIndex = Math.floor(
-          rng.next() * state.predictionMarkets.length
+          rng.next() * state.predictionMarkets.length,
         );
         const market = state.predictionMarkets[marketIndex];
 
         if (market) {
-          const outcome = rng.next() > 0.5 ? 'YES' : 'NO';
+          const outcome = rng.next() > 0.5 ? "YES" : "NO";
           // Random amount between 10 and 100
           const amount = 10 + rng.next() * 90;
 
-          await engine.performAction('buy_prediction', {
+          await engine.performAction("buy_prediction", {
             marketId: market.id,
             outcome,
             amount,
@@ -340,13 +344,13 @@ export class BenchmarkRunner {
         }
       } else if (state.perpetualMarkets.length > 0) {
         const perpIndex = Math.floor(
-          rng.next() * state.perpetualMarkets.length
+          rng.next() * state.perpetualMarkets.length,
         );
         const perp = state.perpetualMarkets[perpIndex];
 
         if (perp) {
-          const side = rng.next() > 0.5 ? 'LONG' : 'SHORT';
-          await engine.performAction('open_perp', {
+          const side = rng.next() > 0.5 ? "LONG" : "SHORT";
+          await engine.performAction("open_perp", {
             ticker: perp.ticker,
             side,
             size: 10,
@@ -354,11 +358,11 @@ export class BenchmarkRunner {
           });
         }
       }
-    } else if (strategy === 'momentum') {
+    } else if (strategy === "momentum") {
       // Momentum strategy: Follow price trends
       if (state.perpetualMarkets.length > 0) {
         const perpIndex = Math.floor(
-          rng.next() * state.perpetualMarkets.length
+          rng.next() * state.perpetualMarkets.length,
         );
         const perp = state.perpetualMarkets[perpIndex];
 
@@ -366,16 +370,16 @@ export class BenchmarkRunner {
           // If price up > 0.5% in 24h, go LONG. If down > 0.5%, go SHORT.
           // If relatively flat, do nothing (hold).
           if (perp.priceChange24h > 0.5) {
-            await engine.performAction('open_perp', {
+            await engine.performAction("open_perp", {
               ticker: perp.ticker,
-              side: 'LONG',
+              side: "LONG",
               size: 20,
               leverage: 2,
             });
           } else if (perp.priceChange24h < -0.5) {
-            await engine.performAction('open_perp', {
+            await engine.performAction("open_perp", {
               ticker: perp.ticker,
-              side: 'SHORT',
+              side: "SHORT",
               size: 20,
               leverage: 2,
             });
@@ -410,7 +414,7 @@ export class BenchmarkRunner {
    */
   static async runMultiple(
     config: BenchmarkRunConfig,
-    numRuns: number
+    numRuns: number,
   ): Promise<BenchmarkComparisonResult> {
     logger.info(`Running ${numRuns} benchmark iterations`, {
       agentUserId: config.agentUserId,
@@ -422,7 +426,7 @@ export class BenchmarkRunner {
     for (let i = 0; i < numRuns; i++) {
       logger.info(`Starting run ${i + 1}/${numRuns}`);
 
-      const result = await this.runSingle({
+      const result = await BenchmarkRunner.runSingle({
         ...config,
         outputDir: path.join(config.outputDir, `run-${i + 1}`),
       });
@@ -431,7 +435,7 @@ export class BenchmarkRunner {
 
       if (config.saveTrajectory) {
         trajectoryPaths.push(
-          path.join(config.outputDir, `run-${i + 1}`, 'trajectory.json')
+          path.join(config.outputDir, `run-${i + 1}`, "trajectory.json"),
         );
       }
 
@@ -449,11 +453,11 @@ export class BenchmarkRunner {
       runs.reduce((sum, r) => sum + r.metrics.optimalityScore, 0) / runs.length;
 
     const bestRun = runs.reduce((best, current) =>
-      current.metrics.totalPnl > best.metrics.totalPnl ? current : best
+      current.metrics.totalPnl > best.metrics.totalPnl ? current : best,
     );
 
     const worstRun = runs.reduce((worst, current) =>
-      current.metrics.totalPnl < worst.metrics.totalPnl ? current : worst
+      current.metrics.totalPnl < worst.metrics.totalPnl ? current : worst,
     );
 
     const comparison = {
@@ -465,16 +469,16 @@ export class BenchmarkRunner {
     };
 
     // Save comparison report
-    await this.saveComparison(
+    await BenchmarkRunner.saveComparison(
       {
         runs,
         comparison,
         trajectories: config.saveTrajectory ? trajectoryPaths : undefined,
       },
-      config.outputDir
+      config.outputDir,
     );
 
-    logger.info('Multiple benchmarks completed', comparison);
+    logger.info("Multiple benchmarks completed", comparison);
 
     return {
       runs,
@@ -513,7 +517,7 @@ export class BenchmarkRunner {
   static async compareAgents(
     agent1Config: BenchmarkRunConfig,
     agent2Config: BenchmarkRunConfig,
-    benchmarkPath: string
+    benchmarkPath: string,
   ): Promise<{
     agent1: SimulationResult;
     agent2: SimulationResult;
@@ -524,7 +528,7 @@ export class BenchmarkRunner {
       optimality: number;
     };
   }> {
-    logger.info('Comparing two agents', {
+    logger.info("Comparing two agents", {
       agent1: agent1Config.agentUserId,
       agent2: agent2Config.agentUserId,
       benchmark: benchmarkPath,
@@ -532,8 +536,8 @@ export class BenchmarkRunner {
 
     // Run both agents on same benchmark (concurrently)
     const [result1, result2] = await Promise.all([
-      this.runSingle({ ...agent1Config, benchmarkPath }),
-      this.runSingle({ ...agent2Config, benchmarkPath }),
+      BenchmarkRunner.runSingle({ ...agent1Config, benchmarkPath }),
+      BenchmarkRunner.runSingle({ ...agent2Config, benchmarkPath }),
     ]);
 
     const winner =
@@ -550,7 +554,7 @@ export class BenchmarkRunner {
         result1.metrics.optimalityScore - result2.metrics.optimalityScore,
     };
 
-    logger.info('Agent comparison completed', {
+    logger.info("Agent comparison completed", {
       winner,
       delta,
     });
@@ -571,16 +575,16 @@ export class BenchmarkRunner {
    * @throws Error if file cannot be read or parsed
    */
   private static async loadBenchmark(
-    benchmarkPath: string
+    benchmarkPath: string,
   ): Promise<BenchmarkGameSnapshot> {
     try {
-      const data = await fs.readFile(benchmarkPath, 'utf-8');
+      const data = await fs.readFile(benchmarkPath, "utf-8");
       const parsed = JSON.parse(data) as BenchmarkGameSnapshot;
 
       // Validate basic structure
       if (!parsed.id || !parsed.initialState || !parsed.groundTruth) {
         throw new Error(
-          `Invalid benchmark file: missing required fields (id, initialState, or groundTruth)`
+          `Invalid benchmark file: missing required fields (id, initialState, or groundTruth)`,
         );
       }
 
@@ -588,10 +592,10 @@ export class BenchmarkRunner {
     } catch (error) {
       if (error instanceof SyntaxError) {
         throw new Error(
-          `Failed to parse benchmark JSON file: ${error.message}`
+          `Failed to parse benchmark JSON file: ${error.message}`,
         );
       }
-      if ((error as { code?: string })?.code === 'ENOENT') {
+      if ((error as { code?: string })?.code === "ENOENT") {
         throw new Error(`Benchmark file not found: ${benchmarkPath}`);
       }
       throw error;
@@ -609,9 +613,9 @@ export class BenchmarkRunner {
    * @throws Error if generation fails
    */
   private static async generateBenchmark(
-    config: BenchmarkConfig
+    config: BenchmarkConfig,
   ): Promise<BenchmarkGameSnapshot> {
-    logger.info('Generating new benchmark', config);
+    logger.info("Generating new benchmark", config);
 
     const generator = new BenchmarkDataGenerator(config);
     const snapshot = await generator.generate();
@@ -619,13 +623,13 @@ export class BenchmarkRunner {
     // Save for reuse
     const outputPath = path.join(
       process.cwd(),
-      'benchmarks',
-      `benchmark-${snapshot.id}.json`
+      "benchmarks",
+      `benchmark-${snapshot.id}.json`,
     );
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
     await fs.writeFile(outputPath, JSON.stringify(snapshot, null, 2));
 
-    logger.info('Benchmark generated and saved', { path: outputPath });
+    logger.info("Benchmark generated and saved", { path: outputPath });
 
     return snapshot;
   }
@@ -641,26 +645,26 @@ export class BenchmarkRunner {
    */
   private static async saveResult(
     result: SimulationResult,
-    outputDir: string
+    outputDir: string,
   ): Promise<void> {
     await fs.mkdir(outputDir, { recursive: true });
 
     // Save full result
-    const resultPath = path.join(outputDir, 'result.json');
+    const resultPath = path.join(outputDir, "result.json");
     await fs.writeFile(resultPath, JSON.stringify(result, null, 2));
 
     // Save metrics summary
-    const metricsPath = path.join(outputDir, 'metrics.json');
+    const metricsPath = path.join(outputDir, "metrics.json");
     await fs.writeFile(metricsPath, JSON.stringify(result.metrics, null, 2));
 
     // Save trajectory
-    const trajectoryPath = path.join(outputDir, 'trajectory.json');
+    const trajectoryPath = path.join(outputDir, "trajectory.json");
     await fs.writeFile(
       trajectoryPath,
-      JSON.stringify(result.trajectory, null, 2)
+      JSON.stringify(result.trajectory, null, 2),
     );
 
-    logger.debug('Results saved', { outputDir });
+    logger.debug("Results saved", { outputDir });
   }
 
   /**
@@ -673,13 +677,13 @@ export class BenchmarkRunner {
    */
   private static async saveComparison(
     comparison: BenchmarkComparisonResult,
-    outputDir: string
+    outputDir: string,
   ): Promise<void> {
     await fs.mkdir(outputDir, { recursive: true });
 
-    const comparisonPath = path.join(outputDir, 'comparison.json');
+    const comparisonPath = path.join(outputDir, "comparison.json");
     await fs.writeFile(comparisonPath, JSON.stringify(comparison, null, 2));
 
-    logger.debug('Comparison saved', { outputDir });
+    logger.debug("Comparison saved", { outputDir });
   }
 }

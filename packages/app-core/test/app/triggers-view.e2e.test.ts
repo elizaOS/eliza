@@ -475,8 +475,9 @@ describe("TriggersView UI E2E", () => {
     runtimeHarness = createTriggerRuntimeHarness();
     server = await startApiServerFn({
       port: 0,
-      // biome-ignore lint/suspicious/noExplicitAny: test mock
-      runtime: runtimeHarness.runtime as any,
+      runtime: runtimeHarness.runtime as Parameters<
+        typeof startApiServerFn
+      >[0]["runtime"],
     });
   });
 

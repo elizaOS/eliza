@@ -13,12 +13,12 @@
  * @see ModelBenchmarkService - For HuggingFace upload evaluation
  */
 
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { getTrainingDataAdapter, type JsonValue } from '../adapter';
-import { BenchmarkRunner } from '../benchmark/BenchmarkRunner';
-import { getAgentRuntimeManager } from '../dependencies';
-import { logger } from '../utils/logger';
+import fs from "node:fs/promises";
+import path from "node:path";
+import { getTrainingDataAdapter, type JsonValue } from "../adapter";
+import { BenchmarkRunner } from "../benchmark/BenchmarkRunner";
+import { getAgentRuntimeManager } from "../dependencies";
+import { logger } from "../utils/logger";
 
 export interface BenchmarkResults {
   modelId: string;
@@ -48,11 +48,11 @@ export class BenchmarkService {
   // Use the 1-week benchmark we generated for comprehensive evaluation
   private readonly DEFAULT_BENCHMARK_PATH = path.resolve(
     process.cwd(),
-    'benchmarks/benchmark-week-10080-60-10-5-8-12345.json'
+    "benchmarks/benchmark-week-10080-60-10-5-8-12345.json",
   );
   private readonly RESULTS_DIR = path.resolve(
     process.cwd(),
-    'benchmark-results/models'
+    "benchmark-results/models",
   );
 
   /**
@@ -71,10 +71,10 @@ export class BenchmarkService {
       return this.DEFAULT_BENCHMARK_PATH;
     } catch {
       // Fallback: find any benchmark file
-      const benchmarkDir = path.resolve(process.cwd(), 'benchmarks');
+      const benchmarkDir = path.resolve(process.cwd(), "benchmarks");
       const files = await fs.readdir(benchmarkDir);
       const benchmarkFiles = files.filter(
-        (f) => f.startsWith('benchmark-') && f.endsWith('.json')
+        (f) => f.startsWith("benchmark-") && f.endsWith(".json"),
       );
 
       if (benchmarkFiles.length > 0) {
@@ -82,14 +82,14 @@ export class BenchmarkService {
         logger.warn(
           `Default benchmark not found, using: ${fallbackPath}`,
           undefined,
-          'BenchmarkService'
+          "BenchmarkService",
         );
         return fallbackPath;
       }
     }
 
     throw new Error(
-      'No benchmark files found. Generate benchmark data before running evaluation.'
+      "No benchmark files found. Generate benchmark data before running evaluation.",
     );
   }
 
@@ -113,12 +113,12 @@ export class BenchmarkService {
    */
   async benchmarkModel(
     modelId: string,
-    benchmarkPath?: string
+    benchmarkPath?: string,
   ): Promise<BenchmarkResults> {
     logger.info(
       `Benchmarking model: ${modelId}`,
       undefined,
-      'BenchmarkService'
+      "BenchmarkService",
     );
 
     const startTime = Date.now();
@@ -133,7 +133,7 @@ export class BenchmarkService {
     const outputDir = path.join(
       this.RESULTS_DIR,
       modelId,
-      Date.now().toString()
+      Date.now().toString(),
     );
     await fs.mkdir(outputDir, { recursive: true });
 
@@ -153,13 +153,13 @@ export class BenchmarkService {
 
     // Run benchmark
     logger.info(
-      'Running benchmark...',
+      "Running benchmark...",
       {
         modelId,
         modelIdentifier,
         agent: agent.username,
       },
-      'BenchmarkService'
+      "BenchmarkService",
     );
 
     const result = await BenchmarkRunner.runSingle({
@@ -195,17 +195,16 @@ export class BenchmarkService {
     };
 
     logger.info(
-      'Benchmark complete',
+      "Benchmark complete",
       {
         modelId,
         score: benchmarkScore.toFixed(3),
         pnl: result.metrics.totalPnl.toFixed(2),
-        accuracy:
-          (result.metrics.predictionMetrics.accuracy * 100).toFixed(1) + '%',
-        optimality: result.metrics.optimalityScore.toFixed(1) + '%',
+        accuracy: `${(result.metrics.predictionMetrics.accuracy * 100).toFixed(1)}%`,
+        optimality: `${result.metrics.optimalityScore.toFixed(1)}%`,
         duration: `${(duration / 1000).toFixed(1)}s`,
       },
-      'BenchmarkService'
+      "BenchmarkService",
     );
 
     // Store results
@@ -235,12 +234,12 @@ export class BenchmarkService {
    */
   async compareModels(
     newModelId: string,
-    threshold: number = this.DEPLOYMENT_THRESHOLD
+    threshold: number = this.DEPLOYMENT_THRESHOLD,
   ): Promise<ComparisonResults> {
     logger.info(
       `Comparing model: ${newModelId}`,
       undefined,
-      'BenchmarkService'
+      "BenchmarkService",
     );
 
     // Get new model's benchmark results
@@ -257,14 +256,15 @@ export class BenchmarkService {
     const newScore = newModel.benchmarkScore;
 
     // Get previous best model (excluding the new one)
-    const previousBest = await getTrainingDataAdapter().getBestBenchmarkedModel(newModelId);
+    const previousBest =
+      await getTrainingDataAdapter().getBestBenchmarkedModel(newModelId);
 
     // If no previous model, always deploy
     if (!previousBest) {
       logger.info(
-        'No previous model to compare - will deploy',
+        "No previous model to compare - will deploy",
         { newScore },
-        'BenchmarkService'
+        "BenchmarkService",
       );
       return {
         newModel: newModelId,
@@ -273,7 +273,7 @@ export class BenchmarkService {
         previousScore: null,
         improvement: null,
         shouldDeploy: true,
-        reason: 'First model - no comparison available',
+        reason: "First model - no comparison available",
       };
     }
 
@@ -282,7 +282,7 @@ export class BenchmarkService {
     const thresholdScore = previousScore * threshold;
     const shouldDeploy = newScore >= thresholdScore;
 
-    let reason = '';
+    let reason = "";
     if (shouldDeploy) {
       if (newScore > previousScore) {
         reason = `Improved by ${improvement.toFixed(1)}% (${newScore.toFixed(3)} > ${previousScore.toFixed(3)})`;
@@ -294,17 +294,17 @@ export class BenchmarkService {
     }
 
     logger.info(
-      'Model comparison complete',
+      "Model comparison complete",
       {
         newModel: newModelId,
         newScore: newScore.toFixed(3),
         previousModel: previousBest.modelId,
         previousScore: previousScore.toFixed(3),
-        improvement: improvement.toFixed(1) + '%',
+        improvement: `${improvement.toFixed(1)}%`,
         shouldDeploy,
         reason,
       },
-      'BenchmarkService'
+      "BenchmarkService",
     );
 
     return {
@@ -330,7 +330,7 @@ export class BenchmarkService {
    */
   async storeBenchmarkResults(
     modelId: string,
-    results: BenchmarkResults
+    results: BenchmarkResults,
   ): Promise<void> {
     await getTrainingDataAdapter().updateModelBenchmarkResults(modelId, {
       benchmarkScore: results.benchmarkScore,
@@ -348,9 +348,9 @@ export class BenchmarkService {
     });
 
     logger.info(
-      'Stored benchmark results',
+      "Stored benchmark results",
       { modelId, score: results.benchmarkScore },
-      'BenchmarkService'
+      "BenchmarkService",
     );
   }
 
@@ -367,7 +367,7 @@ export class BenchmarkService {
    */
   async shouldDeploy(
     modelId: string,
-    threshold: number = this.DEPLOYMENT_THRESHOLD
+    threshold: number = this.DEPLOYMENT_THRESHOLD,
   ): Promise<boolean> {
     const comparison = await this.compareModels(modelId, threshold);
     return comparison.shouldDeploy;
@@ -401,7 +401,7 @@ export class BenchmarkService {
 
     if (storagePath && storagePath.trim().length > 0) {
       // Check if it looks like a valid model ID
-      if (storagePath.includes('/') || storagePath.includes(':')) {
+      if (storagePath.includes("/") || storagePath.includes(":")) {
         return storagePath;
       }
 
@@ -409,12 +409,12 @@ export class BenchmarkService {
       logger.warn(
         `Invalid storagePath format: ${storagePath}, falling back to modelId`,
         { modelId: model.modelId },
-        'BenchmarkService'
+        "BenchmarkService",
       );
     }
 
     // Fallback to base model if modelId also doesn't look valid
-    if (model.modelId.includes('/')) {
+    if (model.modelId.includes("/")) {
       return model.modelId;
     }
 
@@ -422,7 +422,7 @@ export class BenchmarkService {
     logger.warn(
       `No valid model identifier found, using baseModel`,
       { modelId: model.modelId, baseModel: model.baseModel },
-      'BenchmarkService'
+      "BenchmarkService",
     );
     return model.baseModel;
   }
@@ -441,9 +441,13 @@ export class BenchmarkService {
     const allAgents = await adapter.getAgentUsers();
 
     // Try to find a specific test agent
-    const preferredUsernames = ['trader-aggressive', 'test-agent', 'benchmark-agent'];
+    const preferredUsernames = [
+      "trader-aggressive",
+      "test-agent",
+      "benchmark-agent",
+    ];
     let agent = allAgents.find(
-      (a) => a.username && preferredUsernames.includes(a.username)
+      (a) => a.username && preferredUsernames.includes(a.username),
     );
 
     // Fall back to any agent
@@ -452,7 +456,7 @@ export class BenchmarkService {
     }
 
     if (!agent) {
-      throw new Error('No test agent available for benchmarking');
+      throw new Error("No test agent available for benchmarking");
     }
 
     return agent;
@@ -490,7 +494,7 @@ export class BenchmarkService {
       recentModels: summary
         .sort(
           (a: (typeof summary)[number], b: (typeof summary)[number]) =>
-            b.createdAt.getTime() - a.createdAt.getTime()
+            b.createdAt.getTime() - a.createdAt.getTime(),
         )
         .slice(0, 5),
     };
@@ -501,7 +505,7 @@ export class BenchmarkService {
    */
   async benchmarkMultipleModels(
     modelIds: string[],
-    benchmarkPath?: string
+    benchmarkPath?: string,
   ): Promise<Record<string, BenchmarkResults>> {
     const results: Record<string, BenchmarkResults> = {};
 

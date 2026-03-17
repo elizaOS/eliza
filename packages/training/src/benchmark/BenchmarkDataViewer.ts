@@ -5,15 +5,15 @@
  * Useful for validation and understanding benchmark structure.
  */
 
-import type { JsonValue } from '../adapter';
-import { promises as fs } from 'fs';
+import { promises as fs } from "node:fs";
+import type { JsonValue } from "../adapter";
 import type {
   BenchmarkGameSnapshot,
   GameState,
   GroundTruth,
   Tick,
-} from './BenchmarkDataGenerator';
-import * as BenchmarkValidator from './BenchmarkValidator';
+} from "./BenchmarkDataGenerator";
+import * as BenchmarkValidator from "./BenchmarkValidator";
 
 export interface BenchmarkViewOptions {
   /** Show detailed information */
@@ -81,9 +81,9 @@ export class BenchmarkDataViewer {
    */
   static async view(
     filePath: string,
-    options: BenchmarkViewOptions = {}
+    options: BenchmarkViewOptions = {},
   ): Promise<BenchmarkView> {
-    const data = await fs.readFile(filePath, 'utf-8');
+    const data = await fs.readFile(filePath, "utf-8");
     const snapshot = JSON.parse(data) as BenchmarkGameSnapshot;
 
     // Validate
@@ -105,13 +105,15 @@ export class BenchmarkDataViewer {
         groupChats: snapshot.initialState.groupChats?.length || 0,
       },
 
-      ticks: this.analyzeTicks(snapshot.ticks),
+      ticks: BenchmarkDataViewer.analyzeTicks(snapshot.ticks),
 
       validation,
     };
 
     if (options.showGroundTruth || options.verbose) {
-      view.groundTruth = this.analyzeGroundTruth(snapshot.groundTruth);
+      view.groundTruth = BenchmarkDataViewer.analyzeGroundTruth(
+        snapshot.groundTruth,
+      );
     }
 
     return view;
@@ -120,7 +122,7 @@ export class BenchmarkDataViewer {
   /**
    * Analyze ticks
    */
-  private static analyzeTicks(ticks: Tick[]): BenchmarkView['ticks'] {
+  private static analyzeTicks(ticks: Tick[]): BenchmarkView["ticks"] {
     const eventTypes: Record<string, number> = {};
     let withEvents = 0;
 
@@ -145,15 +147,15 @@ export class BenchmarkDataViewer {
    * Analyze ground truth
    */
   private static analyzeGroundTruth(
-    groundTruth: GroundTruth
-  ): BenchmarkView['groundTruth'] {
+    groundTruth: GroundTruth,
+  ): BenchmarkView["groundTruth"] {
     return {
       marketOutcomes: Object.keys(groundTruth.marketOutcomes).length,
       priceHistory: Object.fromEntries(
         Object.entries(groundTruth.priceHistory).map(([ticker, history]) => [
           ticker,
           history.length,
-        ])
+        ]),
       ),
       optimalActions: groundTruth.optimalActions.length,
       socialOpportunities: groundTruth.socialOpportunities.length,
@@ -167,21 +169,21 @@ export class BenchmarkDataViewer {
    * Print view to console
    */
   static print(view: BenchmarkView, options: BenchmarkViewOptions = {}): void {
-    console.log('\n📊 Benchmark Data View\n');
+    console.log("\n📊 Benchmark Data View\n");
     console.log(`ID: ${view.id}`);
     console.log(`Version: ${view.version}`);
     console.log(`Created: ${new Date(view.createdAt).toISOString()}`);
     console.log(`Duration: ${(view.duration / 60).toFixed(1)} minutes`);
     console.log(`Tick Interval: ${view.tickInterval}s`);
 
-    console.log('\n📈 Initial State:');
+    console.log("\n📈 Initial State:");
     console.log(`  Prediction Markets: ${view.initialState.predictionMarkets}`);
     console.log(`  Perpetual Markets: ${view.initialState.perpetualMarkets}`);
     console.log(`  Agents: ${view.initialState.agents}`);
     console.log(`  Posts: ${view.initialState.posts}`);
     console.log(`  Group Chats: ${view.initialState.groupChats}`);
 
-    console.log('\n⏱️  Ticks:');
+    console.log("\n⏱️  Ticks:");
     console.log(`  Total: ${view.ticks.total}`);
     console.log(`  With Events: ${view.ticks.withEvents}`);
     if (options.verbose) {
@@ -192,27 +194,27 @@ export class BenchmarkDataViewer {
     }
 
     if (view.groundTruth) {
-      console.log('\n🎯 Ground Truth:');
+      console.log("\n🎯 Ground Truth:");
       console.log(`  Market Outcomes: ${view.groundTruth.marketOutcomes}`);
       console.log(`  Price History:`);
       for (const [ticker, count] of Object.entries(
-        view.groundTruth.priceHistory
+        view.groundTruth.priceHistory,
       )) {
         console.log(`    ${ticker}: ${count} ticks`);
       }
       console.log(`  Optimal Actions: ${view.groundTruth.optimalActions}`);
       console.log(
-        `  Social Opportunities: ${view.groundTruth.socialOpportunities}`
+        `  Social Opportunities: ${view.groundTruth.socialOpportunities}`,
       );
       if (options.showHidden) {
         console.log(`  Hidden Facts: ${view.groundTruth.hiddenFacts}`);
         console.log(`  Hidden Events: ${view.groundTruth.hiddenEvents}`);
-        console.log(`  True Facts: ${view.groundTruth.trueFacts.join(', ')}`);
+        console.log(`  True Facts: ${view.groundTruth.trueFacts.join(", ")}`);
       }
     }
 
-    console.log('\n✅ Validation:');
-    console.log(`  Valid: ${view.validation.valid ? '✅' : '❌'}`);
+    console.log("\n✅ Validation:");
+    console.log(`  Valid: ${view.validation.valid ? "✅" : "❌"}`);
     if (view.validation.errors.length > 0) {
       console.log(`  Errors: ${view.validation.errors.length}`);
       if (options.verbose) {
@@ -230,7 +232,7 @@ export class BenchmarkDataViewer {
       }
     }
 
-    console.log('');
+    console.log("");
   }
 
   /**
@@ -238,7 +240,7 @@ export class BenchmarkDataViewer {
    */
   static getTickDetails(
     snapshot: BenchmarkGameSnapshot,
-    tickNumber: number
+    tickNumber: number,
   ): {
     tick: Tick | null;
     state: GameState | null;
@@ -265,7 +267,7 @@ export class BenchmarkDataViewer {
    */
   static getGroundTruthForTick(
     snapshot: BenchmarkGameSnapshot,
-    tickNumber: number
+    tickNumber: number,
   ): {
     hiddenFacts: Array<{ fact: string; category: string }>;
     hiddenEvents: Array<{ type: string; description: string }>;
@@ -302,14 +304,14 @@ export class BenchmarkDataViewer {
     // Check if ground truth is accidentally in state
     const stateKeys = Object.keys(state);
     const hasGroundTruthInState =
-      stateKeys.includes('groundTruth') ||
-      stateKeys.includes('hiddenFacts') ||
-      stateKeys.includes('hiddenEvents');
+      stateKeys.includes("groundTruth") ||
+      stateKeys.includes("hiddenFacts") ||
+      stateKeys.includes("hiddenEvents");
 
     if (hasGroundTruthInState) {
       return {
         canAccess: true,
-        reason: 'Ground truth found in game state (security issue!)',
+        reason: "Ground truth found in game state (security issue!)",
       };
     }
 
@@ -317,8 +319,8 @@ export class BenchmarkDataViewer {
       canAccess: false,
       reason:
         hasGroundTruth && hasHiddenFacts
-          ? 'Ground truth exists but is properly isolated from game state'
-          : 'No ground truth data found',
+          ? "Ground truth exists but is properly isolated from game state"
+          : "No ground truth data found",
     };
   }
 }

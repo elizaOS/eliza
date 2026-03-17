@@ -5,19 +5,19 @@
  * Tests actual classes and functions, not inline mock implementations.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from "bun:test";
 import {
   type BenchmarkConfig,
   BenchmarkDataGenerator,
   SeededRandom,
-} from '../BenchmarkDataGenerator';
+} from "../BenchmarkDataGenerator";
 
 // =============================================================================
 // SeededRandom Tests - Real Class
 // =============================================================================
 
-describe('SeededRandom - Deterministic RNG', () => {
-  test('same seed produces same sequence', () => {
+describe("SeededRandom - Deterministic RNG", () => {
+  test("same seed produces same sequence", () => {
     const rng1 = new SeededRandom(12345);
     const rng2 = new SeededRandom(12345);
 
@@ -39,7 +39,7 @@ describe('SeededRandom - Deterministic RNG', () => {
     expect(seq1).toEqual(seq2);
   });
 
-  test('different seeds produce different sequences', () => {
+  test("different seeds produce different sequences", () => {
     const rng1 = new SeededRandom(12345);
     const rng2 = new SeededRandom(54321);
 
@@ -49,7 +49,7 @@ describe('SeededRandom - Deterministic RNG', () => {
     expect(val1).not.toBe(val2);
   });
 
-  test('next() produces values in [0, 1) range', () => {
+  test("next() produces values in [0, 1) range", () => {
     const rng = new SeededRandom(42);
 
     for (let i = 0; i < 1000; i++) {
@@ -59,7 +59,7 @@ describe('SeededRandom - Deterministic RNG', () => {
     }
   });
 
-  test('nextInt() produces values in specified range', () => {
+  test("nextInt() produces values in specified range", () => {
     const rng = new SeededRandom(42);
 
     for (let i = 0; i < 100; i++) {
@@ -70,7 +70,7 @@ describe('SeededRandom - Deterministic RNG', () => {
     }
   });
 
-  test('nextInt() handles single value range', () => {
+  test("nextInt() handles single value range", () => {
     const rng = new SeededRandom(42);
 
     for (let i = 0; i < 10; i++) {
@@ -79,9 +79,9 @@ describe('SeededRandom - Deterministic RNG', () => {
     }
   });
 
-  test('pick() selects from array', () => {
+  test("pick() selects from array", () => {
     const rng = new SeededRandom(42);
-    const options = ['a', 'b', 'c', 'd', 'e'];
+    const options = ["a", "b", "c", "d", "e"];
 
     const selections = new Set<string>();
     for (let i = 0; i < 100; i++) {
@@ -94,11 +94,11 @@ describe('SeededRandom - Deterministic RNG', () => {
     expect(selections.size).toBeGreaterThan(3);
   });
 
-  test('pick() is deterministic with same seed', () => {
+  test("pick() is deterministic with same seed", () => {
     const rng1 = new SeededRandom(42);
     const rng2 = new SeededRandom(42);
 
-    const options = ['a', 'b', 'c', 'd', 'e'];
+    const options = ["a", "b", "c", "d", "e"];
 
     const picks1 = [rng1.pick(options), rng1.pick(options), rng1.pick(options)];
     const picks2 = [rng2.pick(options), rng2.pick(options), rng2.pick(options)];
@@ -106,7 +106,7 @@ describe('SeededRandom - Deterministic RNG', () => {
     expect(picks1).toEqual(picks2);
   });
 
-  test('nextFloat() produces values in specified range', () => {
+  test("nextFloat() produces values in specified range", () => {
     const rng = new SeededRandom(42);
 
     for (let i = 0; i < 100; i++) {
@@ -121,7 +121,7 @@ describe('SeededRandom - Deterministic RNG', () => {
 // BenchmarkDataGenerator Tests - Real Class
 // =============================================================================
 
-describe('BenchmarkDataGenerator - Data Generation', () => {
+describe("BenchmarkDataGenerator - Data Generation", () => {
   const baseConfig: BenchmarkConfig = {
     durationMinutes: 60, // 1 hour
     tickInterval: 3600, // 1 hour ticks
@@ -131,7 +131,7 @@ describe('BenchmarkDataGenerator - Data Generation', () => {
     seed: 12345,
   };
 
-  test('generates deterministic data with same seed', async () => {
+  test("generates deterministic data with same seed", async () => {
     const generator1 = new BenchmarkDataGenerator(baseConfig);
     const generator2 = new BenchmarkDataGenerator(baseConfig);
 
@@ -140,25 +140,25 @@ describe('BenchmarkDataGenerator - Data Generation', () => {
 
     // Same structure
     expect(snapshot1.initialState.predictionMarkets.length).toBe(
-      snapshot2.initialState.predictionMarkets.length
+      snapshot2.initialState.predictionMarkets.length,
     );
     expect(snapshot1.initialState.perpetualMarkets.length).toBe(
-      snapshot2.initialState.perpetualMarkets.length
+      snapshot2.initialState.perpetualMarkets.length,
     );
     expect(snapshot1.initialState.agents.length).toBe(
-      snapshot2.initialState.agents.length
+      snapshot2.initialState.agents.length,
     );
 
     // Same content (deterministic)
     expect(snapshot1.initialState.perpetualMarkets[0]?.ticker).toBe(
-      snapshot2.initialState.perpetualMarkets[0]?.ticker
+      snapshot2.initialState.perpetualMarkets[0]?.ticker,
     );
     expect(snapshot1.initialState.perpetualMarkets[0]?.price).toBe(
-      snapshot2.initialState.perpetualMarkets[0]?.price
+      snapshot2.initialState.perpetualMarkets[0]?.price,
     );
   });
 
-  test('generates correct number of markets', async () => {
+  test("generates correct number of markets", async () => {
     const generator = new BenchmarkDataGenerator(baseConfig);
     const snapshot = await generator.generate();
 
@@ -167,7 +167,7 @@ describe('BenchmarkDataGenerator - Data Generation', () => {
     expect(snapshot.initialState.agents.length).toBe(5);
   });
 
-  test('generates valid prediction market structure', async () => {
+  test("generates valid prediction market structure", async () => {
     const generator = new BenchmarkDataGenerator(baseConfig);
     const snapshot = await generator.generate();
 
@@ -184,32 +184,32 @@ describe('BenchmarkDataGenerator - Data Generation', () => {
     }
   });
 
-  test('generates valid perpetual market structure', async () => {
+  test("generates valid perpetual market structure", async () => {
     const generator = new BenchmarkDataGenerator(baseConfig);
     const snapshot = await generator.generate();
 
     for (const market of snapshot.initialState.perpetualMarkets) {
       expect(market.ticker).toBeDefined();
       expect(market.price).toBeGreaterThan(0);
-      expect(typeof market.priceChange24h).toBe('number');
+      expect(typeof market.priceChange24h).toBe("number");
       expect(market.volume24h).toBeGreaterThanOrEqual(0);
-      expect(typeof market.fundingRate).toBe('number');
+      expect(typeof market.fundingRate).toBe("number");
     }
   });
 
-  test('generates valid agent structure', async () => {
+  test("generates valid agent structure", async () => {
     const generator = new BenchmarkDataGenerator(baseConfig);
     const snapshot = await generator.generate();
 
     for (const agent of snapshot.initialState.agents) {
       expect(agent.id).toBeDefined();
       expect(agent.name).toBeDefined();
-      expect(typeof agent.reputation).toBe('number');
-      expect(typeof agent.totalPnl).toBe('number');
+      expect(typeof agent.reputation).toBe("number");
+      expect(typeof agent.totalPnl).toBe("number");
     }
   });
 
-  test('generates ticks for duration', async () => {
+  test("generates ticks for duration", async () => {
     const generator = new BenchmarkDataGenerator({
       ...baseConfig,
       durationMinutes: 180, // 3 hours
@@ -221,7 +221,7 @@ describe('BenchmarkDataGenerator - Data Generation', () => {
     expect(snapshot.ticks.length).toBe(3);
   });
 
-  test('different seeds produce different data', async () => {
+  test("different seeds produce different data", async () => {
     const generator1 = new BenchmarkDataGenerator({ ...baseConfig, seed: 111 });
     const generator2 = new BenchmarkDataGenerator({ ...baseConfig, seed: 222 });
 
@@ -240,7 +240,7 @@ describe('BenchmarkDataGenerator - Data Generation', () => {
 // BenchmarkDataGenerator - Causal Simulation Mode
 // =============================================================================
 
-describe('BenchmarkDataGenerator - Causal Simulation', () => {
+describe("BenchmarkDataGenerator - Causal Simulation", () => {
   const causalConfig: BenchmarkConfig = {
     durationMinutes: 24 * 60, // 1 day
     tickInterval: 3600, // Hourly (required for causal)
@@ -251,18 +251,18 @@ describe('BenchmarkDataGenerator - Causal Simulation', () => {
     useCausalSimulation: true,
   };
 
-  test('causal mode generates hidden narrative facts', async () => {
+  test("causal mode generates hidden narrative facts", async () => {
     const generator = new BenchmarkDataGenerator(causalConfig);
     const snapshot = await generator.generate();
 
     expect(snapshot.groundTruth).toBeDefined();
     expect(snapshot.groundTruth.hiddenNarrativeFacts).toBeDefined();
-    expect(snapshot.groundTruth.hiddenNarrativeFacts!.length).toBeGreaterThan(
-      0
+    expect(snapshot.groundTruth.hiddenNarrativeFacts?.length).toBeGreaterThan(
+      0,
     );
   });
 
-  test('hidden narrative facts have valid structure', async () => {
+  test("hidden narrative facts have valid structure", async () => {
     const generator = new BenchmarkDataGenerator(causalConfig);
     const snapshot = await generator.generate();
 
@@ -271,39 +271,39 @@ describe('BenchmarkDataGenerator - Causal Simulation', () => {
       expect(fact.fact).toBeDefined();
       expect(fact.affectsTickers).toBeDefined();
       expect(fact.affectsTickers.length).toBeGreaterThan(0);
-      expect(['positive', 'negative']).toContain(fact.sentiment);
+      expect(["positive", "negative"]).toContain(fact.sentiment);
       expect(fact.eventSchedule).toBeDefined();
       expect(fact.eventSchedule.length).toBeGreaterThan(0);
     }
   });
 
-  test('causal events are scheduled correctly', async () => {
+  test("causal events are scheduled correctly", async () => {
     const generator = new BenchmarkDataGenerator(causalConfig);
     const snapshot = await generator.generate();
 
     expect(snapshot.groundTruth.causalEvents).toBeDefined();
-    expect(snapshot.groundTruth.causalEvents!.length).toBeGreaterThan(0);
+    expect(snapshot.groundTruth.causalEvents?.length).toBeGreaterThan(0);
 
     // Verify each causal event has required fields
     for (const event of snapshot.groundTruth.causalEvents!) {
       expect(event.tick).toBeDefined();
       expect(event.eventType).toBeDefined();
       expect(event.affectedTickers.length).toBeGreaterThan(0);
-      expect(['low', 'medium', 'high']).toContain(event.volatilityBucket);
+      expect(["low", "medium", "high"]).toContain(event.volatilityBucket);
     }
   });
 
-  test('causal mode generates market outcomes', async () => {
+  test("causal mode generates market outcomes", async () => {
     const generator = new BenchmarkDataGenerator(causalConfig);
     const snapshot = await generator.generate();
 
     expect(snapshot.groundTruth.marketOutcomes).toBeDefined();
     expect(
-      Object.keys(snapshot.groundTruth.marketOutcomes).length
+      Object.keys(snapshot.groundTruth.marketOutcomes).length,
     ).toBeGreaterThan(0);
   });
 
-  test('ground truth includes price history', async () => {
+  test("ground truth includes price history", async () => {
     const generator = new BenchmarkDataGenerator(causalConfig);
     const snapshot = await generator.generate();
 
@@ -322,8 +322,8 @@ describe('BenchmarkDataGenerator - Causal Simulation', () => {
 // BenchmarkConfig Validation Tests
 // =============================================================================
 
-describe('BenchmarkConfig - Validation', () => {
-  test('valid config creates generator without error', () => {
+describe("BenchmarkConfig - Validation", () => {
+  test("valid config creates generator without error", () => {
     const config: BenchmarkConfig = {
       durationMinutes: 30 * 24 * 60,
       tickInterval: 3600,
@@ -336,7 +336,7 @@ describe('BenchmarkConfig - Validation', () => {
     expect(() => new BenchmarkDataGenerator(config)).not.toThrow();
   });
 
-  test('config with zero markets is valid (edge case)', async () => {
+  test("config with zero markets is valid (edge case)", async () => {
     const config: BenchmarkConfig = {
       durationMinutes: 60,
       tickInterval: 3600,
@@ -353,7 +353,7 @@ describe('BenchmarkConfig - Validation', () => {
     expect(snapshot.initialState.perpetualMarkets.length).toBe(1);
   });
 
-  test('calculates total ticks correctly', async () => {
+  test("calculates total ticks correctly", async () => {
     const config: BenchmarkConfig = {
       durationMinutes: 24 * 60, // 1 day
       tickInterval: 3600, // 1 hour
@@ -370,7 +370,7 @@ describe('BenchmarkConfig - Validation', () => {
     expect(snapshot.ticks.length).toBe(expectedTicks);
   });
 
-  test('short duration with fast ticks', async () => {
+  test("short duration with fast ticks", async () => {
     const config: BenchmarkConfig = {
       durationMinutes: 10, // 10 minutes
       tickInterval: 60, // 1 minute
@@ -391,7 +391,7 @@ describe('BenchmarkConfig - Validation', () => {
 // Comparison Logic Tests - Using Real Types
 // =============================================================================
 
-describe('Benchmark Comparison Logic', () => {
+describe("Benchmark Comparison Logic", () => {
   // Test the comparison calculation logic that would be used in runMultiple
   interface RunResult {
     id: string;
@@ -406,8 +406,8 @@ describe('Benchmark Comparison Logic', () => {
         avgPnl: 0,
         avgAccuracy: 0,
         avgOptimality: 0,
-        bestRun: '',
-        worstRun: '',
+        bestRun: "",
+        worstRun: "",
       };
     }
 
@@ -418,17 +418,17 @@ describe('Benchmark Comparison Logic', () => {
       runs.reduce((sum, r) => sum + r.optimality, 0) / runs.length;
     const bestRun = runs.reduce((best, r) => (r.pnl > best.pnl ? r : best)).id;
     const worstRun = runs.reduce((worst, r) =>
-      r.pnl < worst.pnl ? r : worst
+      r.pnl < worst.pnl ? r : worst,
     ).id;
 
     return { avgPnl, avgAccuracy, avgOptimality, bestRun, worstRun };
   }
 
-  test('calculates average metrics across runs', () => {
+  test("calculates average metrics across runs", () => {
     const runs: RunResult[] = [
-      { id: 'run-1', pnl: 100, accuracy: 0.6, optimality: 0.7 },
-      { id: 'run-2', pnl: 200, accuracy: 0.8, optimality: 0.8 },
-      { id: 'run-3', pnl: 150, accuracy: 0.7, optimality: 0.75 },
+      { id: "run-1", pnl: 100, accuracy: 0.6, optimality: 0.7 },
+      { id: "run-2", pnl: 200, accuracy: 0.8, optimality: 0.8 },
+      { id: "run-3", pnl: 150, accuracy: 0.7, optimality: 0.75 },
     ];
 
     const comparison = calculateComparison(runs);
@@ -438,51 +438,51 @@ describe('Benchmark Comparison Logic', () => {
     expect(comparison.avgOptimality).toBe(0.75);
   });
 
-  test('identifies best and worst runs', () => {
+  test("identifies best and worst runs", () => {
     const runs: RunResult[] = [
-      { id: 'run-1', pnl: 100, accuracy: 0.6, optimality: 0.7 },
-      { id: 'run-2', pnl: 200, accuracy: 0.8, optimality: 0.8 },
-      { id: 'run-3', pnl: 50, accuracy: 0.5, optimality: 0.6 },
+      { id: "run-1", pnl: 100, accuracy: 0.6, optimality: 0.7 },
+      { id: "run-2", pnl: 200, accuracy: 0.8, optimality: 0.8 },
+      { id: "run-3", pnl: 50, accuracy: 0.5, optimality: 0.6 },
     ];
 
     const comparison = calculateComparison(runs);
 
-    expect(comparison.bestRun).toBe('run-2');
-    expect(comparison.worstRun).toBe('run-3');
+    expect(comparison.bestRun).toBe("run-2");
+    expect(comparison.worstRun).toBe("run-3");
   });
 
-  test('handles negative PnL values', () => {
+  test("handles negative PnL values", () => {
     const runs: RunResult[] = [
-      { id: 'run-1', pnl: -50, accuracy: 0.4, optimality: 0.3 },
-      { id: 'run-2', pnl: 50, accuracy: 0.6, optimality: 0.6 },
-      { id: 'run-3', pnl: -100, accuracy: 0.3, optimality: 0.2 },
+      { id: "run-1", pnl: -50, accuracy: 0.4, optimality: 0.3 },
+      { id: "run-2", pnl: 50, accuracy: 0.6, optimality: 0.6 },
+      { id: "run-3", pnl: -100, accuracy: 0.3, optimality: 0.2 },
     ];
 
     const comparison = calculateComparison(runs);
 
-    expect(comparison.bestRun).toBe('run-2');
-    expect(comparison.worstRun).toBe('run-3');
+    expect(comparison.bestRun).toBe("run-2");
+    expect(comparison.worstRun).toBe("run-3");
     expect(comparison.avgPnl).toBeCloseTo(-33.33, 1);
   });
 
-  test('handles single run', () => {
+  test("handles single run", () => {
     const runs: RunResult[] = [
-      { id: 'run-1', pnl: 100, accuracy: 0.7, optimality: 0.8 },
+      { id: "run-1", pnl: 100, accuracy: 0.7, optimality: 0.8 },
     ];
 
     const comparison = calculateComparison(runs);
 
     expect(comparison.avgPnl).toBe(100);
-    expect(comparison.bestRun).toBe('run-1');
-    expect(comparison.worstRun).toBe('run-1');
+    expect(comparison.bestRun).toBe("run-1");
+    expect(comparison.worstRun).toBe("run-1");
   });
 
-  test('handles empty runs array', () => {
+  test("handles empty runs array", () => {
     const comparison = calculateComparison([]);
 
     expect(comparison.avgPnl).toBe(0);
-    expect(comparison.bestRun).toBe('');
-    expect(comparison.worstRun).toBe('');
+    expect(comparison.bestRun).toBe("");
+    expect(comparison.worstRun).toBe("");
   });
 });
 
@@ -490,7 +490,7 @@ describe('Benchmark Comparison Logic', () => {
 // Alpha Calculation (Excess Return)
 // =============================================================================
 
-describe('Alpha Calculation', () => {
+describe("Alpha Calculation", () => {
   function calculateAlpha(baselinePnl: number, challengerPnl: number) {
     const alpha = challengerPnl - baselinePnl;
     const alphaPercent =
@@ -502,31 +502,31 @@ describe('Alpha Calculation', () => {
     return { alpha, alphaPercent };
   }
 
-  test('positive alpha when outperforming', () => {
+  test("positive alpha when outperforming", () => {
     const result = calculateAlpha(100, 150);
     expect(result.alpha).toBe(50);
     expect(result.alphaPercent).toBe(50);
   });
 
-  test('negative alpha when underperforming', () => {
+  test("negative alpha when underperforming", () => {
     const result = calculateAlpha(150, 100);
     expect(result.alpha).toBe(-50);
     expect(result.alphaPercent).toBeCloseTo(-33.33, 1);
   });
 
-  test('zero alpha when equal performance', () => {
+  test("zero alpha when equal performance", () => {
     const result = calculateAlpha(100, 100);
     expect(result.alpha).toBe(0);
     expect(result.alphaPercent).toBe(0);
   });
 
-  test('handles baseline of zero', () => {
+  test("handles baseline of zero", () => {
     const result = calculateAlpha(0, 100);
     expect(result.alpha).toBe(100);
     expect(result.alphaPercent).toBe(Infinity);
   });
 
-  test('handles both zero', () => {
+  test("handles both zero", () => {
     const result = calculateAlpha(0, 0);
     expect(result.alpha).toBe(0);
     expect(result.alphaPercent).toBe(0);

@@ -63,11 +63,11 @@ Social quality matters too - genuine engagement (meaningful conversations, helpf
 `;
 
 export const SOCIAL_BUTTERFLY_PRIORITY_METRICS = [
-  'social.uniqueUsersInteracted',
-  'social.groupChatsJoined',
-  'social.dmsInitiated',
-  'social.postsCreated',
-  'social.commentsMade',
-  'behavior.socialToTradeRatio',
-  'influence.followersGained',
+  "social.uniqueUsersInteracted",
+  "social.groupChatsJoined",
+  "social.dmsInitiated",
+  "social.postsCreated",
+  "social.commentsMade",
+  "behavior.socialToTradeRatio",
+  "influence.followersGained",
 ];

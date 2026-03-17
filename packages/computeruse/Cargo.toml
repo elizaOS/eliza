@@ -6,6 +6,7 @@ members = [
     "crates/computeruse-computer-use",
     "packages/computeruse-python",
     "packages/computeruse-nodejs",
+    "packages/computeruse-ts",
     "crates/computeruse-mcp-agent",
     "crates/computeruse-workflow-recorder",
 ]

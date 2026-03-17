@@ -238,12 +238,9 @@ export function buildCharacterPlugins(
 			: []),
 		...(env.DISCORD_API_TOKEN?.trim() ? ["@elizaos/plugin-discord"] : []),
 		...(env.X_API_KEY?.trim() &&
-		env.X_API_SECRET &&
-		env.X_API_SECRET.trim() &&
-		env.X_ACCESS_TOKEN &&
-		env.X_ACCESS_TOKEN.trim() &&
-		env.X_ACCESS_TOKEN_SECRET &&
-		env.X_ACCESS_TOKEN_SECRET.trim()
+		env.X_API_SECRET?.trim() &&
+		env.X_ACCESS_TOKEN?.trim() &&
+		env.X_ACCESS_TOKEN_SECRET?.trim()
 			? ["@elizaos/plugin-x"]
 			: []),
 		...(env.TELEGRAM_BOT_TOKEN?.trim() ? ["@elizaos/plugin-telegram"] : []),

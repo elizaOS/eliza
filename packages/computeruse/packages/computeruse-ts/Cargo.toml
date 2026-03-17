@@ -1,10 +1,10 @@
 [package]
-name = "computeruse-node-bindings"
+name = "computeruse-ts-bindings"
 version.workspace = true
 edition.workspace = true
 
 [lib]
-name = "computeruse_node_bindings"
+name = "computeruse_ts_bindings"
 crate-type = ["cdylib"]
 
 [dependencies]

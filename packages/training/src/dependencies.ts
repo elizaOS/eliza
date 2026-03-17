@@ -21,7 +21,7 @@
  * @packageDocumentation
  */
 
-import type { JsonValue } from './adapter';
+import type { JsonValue } from "./adapter";
 
 /**
  * Minimal agent runtime interface.
@@ -58,7 +58,7 @@ export interface CreateAgentParams {
   personality?: string;
   tradingStrategy?: string;
   initialDeposit?: number;
-  modelTier?: 'lite' | 'standard' | 'pro';
+  modelTier?: "lite" | "standard" | "pro";
 }
 
 /**
@@ -83,11 +83,11 @@ export interface ILLMCaller {
   callGroqDirect(params: {
     prompt: string;
     system: string;
-    modelSize?: 'small' | 'medium' | 'large';
+    modelSize?: "small" | "medium" | "large";
     temperature?: number;
     maxTokens?: number;
     actionType?: string;
-    responseFormat?: { type: 'json_object' };
+    responseFormat?: { type: "json_object" };
   }): Promise<string>;
 }
 
@@ -112,14 +112,14 @@ export type ExportGroupedForGRPOFn = (options: {
 export type ExportToHuggingFaceFn = (options: {
   datasetName: string;
   trajectoryIds?: string[];
-  format?: 'parquet' | 'jsonl';
+  format?: "parquet" | "jsonl";
 }) => Promise<{ success: boolean; url?: string; error?: string }>;
 
 /**
  * Convert trajectory to training format messages
  */
 export type ToTrainingMessagesFn = (
-  trajectory: TrajectoryForTraining
+  trajectory: TrajectoryForTraining,
 ) => TrainingMessage[];
 
 /**
@@ -175,7 +175,7 @@ export interface TrajectoryStepForTraining {
     temperature: number;
     maxTokens: number;
     latencyMs?: number;
-    purpose: 'action' | 'reasoning' | 'evaluation' | 'response' | 'other';
+    purpose: "action" | "reasoning" | "evaluation" | "response" | "other";
     actionType?: string;
   }>;
   action: {
@@ -195,7 +195,7 @@ export interface TrajectoryStepForTraining {
 }
 
 export interface TrainingMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: "system" | "user" | "assistant";
   content: string;
 }
 
@@ -218,9 +218,9 @@ let _toTrainingMessages: ToTrainingMessagesFn | null = null;
 function assertFn(dep: unknown, name: string, methods: string[]): void {
   if (dep == null) return; // allow explicit null/undefined (means "skip")
   for (const method of methods) {
-    if (typeof (dep as Record<string, unknown>)[method] !== 'function') {
+    if (typeof (dep as Record<string, unknown>)[method] !== "function") {
       throw new TypeError(
-        `configureTrainingDependencies: ${name}.${method} must be a function, got ${typeof (dep as Record<string, unknown>)[method]}`
+        `configureTrainingDependencies: ${name}.${method} must be a function, got ${typeof (dep as Record<string, unknown>)[method]}`,
       );
     }
   }
@@ -242,41 +242,41 @@ export function configureTrainingDependencies(config: {
   toTrainingMessages?: ToTrainingMessagesFn;
 }): void {
   // Runtime shape checks – catch adapter mismatches early
-  assertFn(config.agentService, 'agentService', ['createAgent']);
-  assertFn(config.agentRuntimeManager, 'agentRuntimeManager', [
-    'getRuntime',
-    'resetRuntime',
+  assertFn(config.agentService, "agentService", ["createAgent"]);
+  assertFn(config.agentRuntimeManager, "agentRuntimeManager", [
+    "getRuntime",
+    "resetRuntime",
   ]);
-  assertFn(config.autonomousCoordinator, 'autonomousCoordinator', [
-    'executeAutonomousTick',
+  assertFn(config.autonomousCoordinator, "autonomousCoordinator", [
+    "executeAutonomousTick",
   ]);
-  assertFn(config.llmCaller, 'llmCaller', ['callGroqDirect']);
+  assertFn(config.llmCaller, "llmCaller", ["callGroqDirect"]);
 
   if (
     config.exportGroupedForGRPO !== undefined &&
     config.exportGroupedForGRPO !== null &&
-    typeof config.exportGroupedForGRPO !== 'function'
+    typeof config.exportGroupedForGRPO !== "function"
   ) {
     throw new TypeError(
-      'configureTrainingDependencies: exportGroupedForGRPO must be a function'
+      "configureTrainingDependencies: exportGroupedForGRPO must be a function",
     );
   }
   if (
     config.exportToHuggingFace !== undefined &&
     config.exportToHuggingFace !== null &&
-    typeof config.exportToHuggingFace !== 'function'
+    typeof config.exportToHuggingFace !== "function"
   ) {
     throw new TypeError(
-      'configureTrainingDependencies: exportToHuggingFace must be a function'
+      "configureTrainingDependencies: exportToHuggingFace must be a function",
     );
   }
   if (
     config.toTrainingMessages !== undefined &&
     config.toTrainingMessages !== null &&
-    typeof config.toTrainingMessages !== 'function'
+    typeof config.toTrainingMessages !== "function"
   ) {
     throw new TypeError(
-      'configureTrainingDependencies: toTrainingMessages must be a function'
+      "configureTrainingDependencies: toTrainingMessages must be a function",
     );
   }
 
@@ -310,7 +310,7 @@ export function configureTrainingDependencies(config: {
 export function getAgentService(): IAgentService {
   if (!_agentService) {
     throw new Error(
-      'AgentService not configured. Call configureTrainingDependencies() first.'
+      "AgentService not configured. Call configureTrainingDependencies() first.",
     );
   }
   return _agentService;
@@ -323,7 +323,7 @@ export function getAgentService(): IAgentService {
 export function getAgentRuntimeManager(): IAgentRuntimeManager {
   if (!_agentRuntimeManager) {
     throw new Error(
-      'AgentRuntimeManager not configured. Call configureTrainingDependencies() first.'
+      "AgentRuntimeManager not configured. Call configureTrainingDependencies() first.",
     );
   }
   return _agentRuntimeManager;
@@ -336,7 +336,7 @@ export function getAgentRuntimeManager(): IAgentRuntimeManager {
 export function getAutonomousCoordinator(): IAutonomousCoordinator {
   if (!_autonomousCoordinator) {
     throw new Error(
-      'AutonomousCoordinator not configured. Call configureTrainingDependencies() first.'
+      "AutonomousCoordinator not configured. Call configureTrainingDependencies() first.",
     );
   }
   return _autonomousCoordinator;
@@ -349,7 +349,7 @@ export function getAutonomousCoordinator(): IAutonomousCoordinator {
 export function getLLMCaller(): ILLMCaller {
   if (!_llmCaller) {
     throw new Error(
-      'LLMCaller not configured. Call configureTrainingDependencies() first.'
+      "LLMCaller not configured. Call configureTrainingDependencies() first.",
     );
   }
   return _llmCaller;
@@ -362,7 +362,7 @@ export function getLLMCaller(): ILLMCaller {
 export function getExportGroupedForGRPO(): ExportGroupedForGRPOFn {
   if (!_exportGroupedForGRPO) {
     throw new Error(
-      'exportGroupedForGRPO not configured. Call configureTrainingDependencies() first.'
+      "exportGroupedForGRPO not configured. Call configureTrainingDependencies() first.",
     );
   }
   return _exportGroupedForGRPO;
@@ -375,7 +375,7 @@ export function getExportGroupedForGRPO(): ExportGroupedForGRPOFn {
 export function getExportToHuggingFace(): ExportToHuggingFaceFn {
   if (!_exportToHuggingFace) {
     throw new Error(
-      'exportToHuggingFace not configured. Call configureTrainingDependencies() first.'
+      "exportToHuggingFace not configured. Call configureTrainingDependencies() first.",
     );
   }
   return _exportToHuggingFace;
@@ -388,7 +388,7 @@ export function getExportToHuggingFace(): ExportToHuggingFaceFn {
 export function getToTrainingMessages(): ToTrainingMessagesFn {
   if (!_toTrainingMessages) {
     throw new Error(
-      'toTrainingMessages not configured. Call configureTrainingDependencies() first.'
+      "toTrainingMessages not configured. Call configureTrainingDependencies() first.",
     );
   }
   return _toTrainingMessages;
@@ -422,7 +422,7 @@ export interface IAutonomousCoordinator {
   executeAutonomousTick(
     agentUserId: string,
     agentRuntime: IAgentRuntimeLike,
-    recordTrajectories?: boolean
+    recordTrajectories?: boolean,
   ): Promise<{
     success: boolean;
     actionsExecuted?: {
@@ -448,7 +448,7 @@ export interface ITaskInteractor {
     options?: {
       maxTurns?: number;
       temperature?: number;
-    }
+    },
   ): Promise<{
     success: boolean;
     response: string;
@@ -461,14 +461,14 @@ export interface ITaskInteractor {
 let _taskInteractor: ITaskInteractor | null = null;
 
 export function configureTaskInteractor(interactor: ITaskInteractor): void {
-  assertFn(interactor, 'taskInteractor', ['executeTask']);
+  assertFn(interactor, "taskInteractor", ["executeTask"]);
   _taskInteractor = interactor;
 }
 
 export function getTaskInteractor(): ITaskInteractor {
   if (!_taskInteractor) {
     throw new Error(
-      'TaskInteractor not configured. Call configureTaskInteractor() first.'
+      "TaskInteractor not configured. Call configureTaskInteractor() first.",
     );
   }
   return _taskInteractor;

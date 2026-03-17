@@ -92,10 +92,10 @@ For infosec, steady beats spectacular:
 `;
 
 export const INFOSEC_PRIORITY_METRICS = [
-  'trading.maxDrawdown',
-  'trading.winRate',
-  'information.infoShared',
-  'social.dmResponseRate',
-  'behavior.consistencyScore',
-  'trading.totalPnL',
+  "trading.maxDrawdown",
+  "trading.winRate",
+  "information.infoShared",
+  "social.dmResponseRate",
+  "behavior.consistencyScore",
+  "trading.totalPnL",
 ];

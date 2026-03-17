@@ -76,10 +76,10 @@ Score higher for evidence of strategic, targeted flattery.
 `;
 
 export const ASS_KISSER_PRIORITY_METRICS = [
-  'influence.reputationDelta',
-  'influence.followersGained',
-  'influence.positiveReactions',
-  'social.dmsInitiated',
-  'social.commentsMade',
-  'social.mentionsGiven',
+  "influence.reputationDelta",
+  "influence.followersGained",
+  "influence.positiveReactions",
+  "social.dmsInitiated",
+  "social.commentsMade",
+  "social.mentionsGiven",
 ];

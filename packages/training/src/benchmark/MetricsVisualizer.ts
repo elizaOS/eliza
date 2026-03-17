@@ -12,11 +12,11 @@
  * Outputs HTML reports, JSON data, and ASCII terminal charts for analysis.
  */
 
-import { promises as fs } from 'fs';
-import * as path from 'path';
-import { logger } from '../utils/logger';
-import type { BenchmarkComparisonResult } from './BenchmarkRunner';
-import type { SimulationResult } from './SimulationEngine';
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
+import { logger } from "../utils/logger";
+import type { BenchmarkComparisonResult } from "./BenchmarkRunner";
+import type { SimulationResult } from "./SimulationEngine";
 
 export interface VisualizationConfig {
   /** Output directory for visualizations */
@@ -38,43 +38,43 @@ export class MetricsVisualizer {
    */
   static async visualizeSingleRun(
     result: SimulationResult,
-    config: VisualizationConfig
+    config: VisualizationConfig,
   ): Promise<void> {
-    logger.info('Generating visualizations', { resultId: result.id });
+    logger.info("Generating visualizations", { resultId: result.id });
 
     await fs.mkdir(config.outputDir, { recursive: true });
 
     // 1. Generate metrics summary
-    const summaryHtml = this.generateMetricsSummary(result);
+    const summaryHtml = MetricsVisualizer.generateMetricsSummary(result);
     await fs.writeFile(
-      path.join(config.outputDir, 'summary.html'),
-      summaryHtml
+      path.join(config.outputDir, "summary.html"),
+      summaryHtml,
     );
 
     // 2. Generate detailed metrics tables
-    const detailedHtml = this.generateDetailedMetrics(result);
+    const detailedHtml = MetricsVisualizer.generateDetailedMetrics(result);
     await fs.writeFile(
-      path.join(config.outputDir, 'detailed.html'),
-      detailedHtml
+      path.join(config.outputDir, "detailed.html"),
+      detailedHtml,
     );
 
     // 3. Generate action timeline
-    const timelineHtml = this.generateActionTimeline(result);
+    const timelineHtml = MetricsVisualizer.generateActionTimeline(result);
     await fs.writeFile(
-      path.join(config.outputDir, 'timeline.html'),
-      timelineHtml
+      path.join(config.outputDir, "timeline.html"),
+      timelineHtml,
     );
 
     // 4. Generate CSV exports if requested
     if (config.generateCsv) {
-      await this.exportToCsv(result, config.outputDir);
+      await MetricsVisualizer.exportToCsv(result, config.outputDir);
     }
 
     // 5. Generate master report that links everything
-    const reportHtml = this.generateMasterReport(result);
-    await fs.writeFile(path.join(config.outputDir, 'index.html'), reportHtml);
+    const reportHtml = MetricsVisualizer.generateMasterReport(result);
+    await fs.writeFile(path.join(config.outputDir, "index.html"), reportHtml);
 
-    logger.info('Visualizations generated', { outputDir: config.outputDir });
+    logger.info("Visualizations generated", { outputDir: config.outputDir });
   }
 
   /**
@@ -82,32 +82,36 @@ export class MetricsVisualizer {
    */
   static async visualizeComparison(
     comparison: BenchmarkComparisonResult,
-    config: VisualizationConfig
+    config: VisualizationConfig,
   ): Promise<void> {
-    logger.info('Generating comparison visualizations');
+    logger.info("Generating comparison visualizations");
 
     await fs.mkdir(config.outputDir, { recursive: true });
 
     // 1. Generate comparison summary
-    const summaryHtml = this.generateComparisonSummary(comparison);
+    const summaryHtml = MetricsVisualizer.generateComparisonSummary(comparison);
     await fs.writeFile(
-      path.join(config.outputDir, 'comparison.html'),
-      summaryHtml
+      path.join(config.outputDir, "comparison.html"),
+      summaryHtml,
     );
 
     // 2. Generate performance distribution charts
-    const distributionHtml = this.generateDistributionCharts(comparison);
+    const distributionHtml =
+      MetricsVisualizer.generateDistributionCharts(comparison);
     await fs.writeFile(
-      path.join(config.outputDir, 'distribution.html'),
-      distributionHtml
+      path.join(config.outputDir, "distribution.html"),
+      distributionHtml,
     );
 
     // 3. Export comparison data to CSV
     if (config.generateCsv) {
-      await this.exportComparisonToCsv(comparison, config.outputDir);
+      await MetricsVisualizer.exportComparisonToCsv(
+        comparison,
+        config.outputDir,
+      );
     }
 
-    logger.info('Comparison visualizations generated');
+    logger.info("Comparison visualizations generated");
   }
 
   /**
@@ -117,13 +121,16 @@ export class MetricsVisualizer {
   static async generateComparisonReport(
     baseline: SimulationResult,
     challenger: SimulationResult,
-    outputDir: string
+    outputDir: string,
   ): Promise<void> {
-    logger.info('Generating head-to-head comparison report...');
+    logger.info("Generating head-to-head comparison report...");
     await fs.mkdir(outputDir, { recursive: true });
 
     // 1. Generate ASCII Chart and print to terminal
-    const asciiReport = this.generateAsciiComparison(baseline, challenger);
+    const asciiReport = MetricsVisualizer.generateAsciiComparison(
+      baseline,
+      challenger,
+    );
     console.log(asciiReport);
 
     // 2. Save JSON Report with full data
@@ -153,16 +160,16 @@ export class MetricsVisualizer {
           challenger.metrics.perpMetrics.winRate -
           baseline.metrics.perpMetrics.winRate,
       },
-      pnlHistory: this.mergePnlHistory(baseline, challenger),
+      pnlHistory: MetricsVisualizer.mergePnlHistory(baseline, challenger),
     };
 
     await fs.writeFile(
-      path.join(outputDir, 'comparison.json'),
-      JSON.stringify(jsonReport, null, 2)
+      path.join(outputDir, "comparison.json"),
+      JSON.stringify(jsonReport, null, 2),
     );
 
     // 3. Save Text Report (ASCII chart)
-    await fs.writeFile(path.join(outputDir, 'report.txt'), asciiReport);
+    await fs.writeFile(path.join(outputDir, "report.txt"), asciiReport);
 
     logger.info(`Comparison report saved to ${outputDir}`);
   }
@@ -173,10 +180,10 @@ export class MetricsVisualizer {
    */
   static generateAsciiComparison(
     baseline: SimulationResult,
-    challenger: SimulationResult
+    challenger: SimulationResult,
   ): string {
     const pnlDelta = challenger.metrics.totalPnl - baseline.metrics.totalPnl;
-    const winner = pnlDelta >= 0 ? 'Challenger (LLM)' : 'Baseline';
+    const winner = pnlDelta >= 0 ? "Challenger (LLM)" : "Baseline";
 
     let output = `
 === 🥊 HEAD-TO-HEAD RESULTS ===
@@ -189,7 +196,7 @@ Tick  | Baseline               | Challenger             | Delta
 `;
 
     // Sample points (every 10th tick or so to fit terminal vertically)
-    const history = this.mergePnlHistory(baseline, challenger);
+    const history = MetricsVisualizer.mergePnlHistory(baseline, challenger);
     const step = Math.max(1, Math.floor(history.length / 10));
 
     for (let i = 0; i < history.length; i += step) {
@@ -200,11 +207,11 @@ Tick  | Baseline               | Challenger             | Delta
       const chalPnl = point.challenger.toFixed(0);
       const deltaVal = point.challenger - point.baseline;
       const deltaStr = deltaVal.toFixed(0);
-      const sign = deltaVal >= 0 ? '+' : '';
+      const sign = deltaVal >= 0 ? "+" : "";
 
       // Format columns nicely
       output += `${point.tick.toString().padEnd(5)} | $${basePnl.padEnd(
-        21
+        21,
       )} | $${chalPnl.padEnd(21)} | ${sign}$${deltaStr}\n`;
     }
 
@@ -212,12 +219,12 @@ Tick  | Baseline               | Challenger             | Delta
     const finalBase = baseline.metrics.totalPnl.toFixed(2);
     const finalChal = challenger.metrics.totalPnl.toFixed(2);
     const finalDelta = pnlDelta.toFixed(2);
-    const finalSign = pnlDelta >= 0 ? '+' : '';
+    const finalSign = pnlDelta >= 0 ? "+" : "";
 
     output += `
 ----------------------------------------------------------------------
 FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
-      21
+      21,
     )} | ${finalSign}$${finalDelta}
 
 🏆 WINNER: ${winner}
@@ -233,12 +240,12 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
    */
   static mergePnlHistory(
     baseline: SimulationResult,
-    challenger: SimulationResult
+    challenger: SimulationResult,
   ): Array<{ tick: number; baseline: number; challenger: number }> {
     const merged = [];
     const maxTicks = Math.max(
       baseline.pnlHistory?.length || 0,
-      challenger.pnlHistory?.length || 0
+      challenger.pnlHistory?.length || 0,
     );
 
     for (let i = 0; i < maxTicks; i++) {
@@ -359,15 +366,15 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
     <h2>Overall Performance</h2>
     <div class="metric-item">
       <span class="metric-label">Total P&L</span>
-      <span class="metric-value ${metrics.totalPnl >= 0 ? 'positive' : 'negative'}">
-        ${metrics.totalPnl >= 0 ? '+' : ''}$${metrics.totalPnl.toFixed(2)}
+      <span class="metric-value ${metrics.totalPnl >= 0 ? "positive" : "negative"}">
+        ${metrics.totalPnl >= 0 ? "+" : ""}$${metrics.totalPnl.toFixed(2)}
       </span>
     </div>
     <div class="metric-item">
       <span class="metric-label">Optimality Score</span>
       <span class="metric-value">
         ${metrics.optimalityScore.toFixed(1)}%
-        ${this.getScoreBadge(metrics.optimalityScore)}
+        ${MetricsVisualizer.getScoreBadge(metrics.optimalityScore)}
       </span>
     </div>
     <div class="metric-item">
@@ -390,7 +397,7 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
         </div>
         <div class="metric-item">
           <span class="metric-label">Accuracy</span>
-          <span class="metric-value ${metrics.predictionMetrics.accuracy >= 0.6 ? 'positive' : ''}">${(metrics.predictionMetrics.accuracy * 100).toFixed(1)}%</span>
+          <span class="metric-value ${metrics.predictionMetrics.accuracy >= 0.6 ? "positive" : ""}">${(metrics.predictionMetrics.accuracy * 100).toFixed(1)}%</span>
         </div>
         <div class="metric-item">
           <span class="metric-label">Correct</span>
@@ -402,8 +409,8 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
         </div>
         <div class="metric-item">
           <span class="metric-label">Avg P&L per Position</span>
-          <span class="metric-value ${metrics.predictionMetrics.avgPnlPerPosition >= 0 ? 'positive' : 'negative'}">
-            ${metrics.predictionMetrics.avgPnlPerPosition >= 0 ? '+' : ''}$${metrics.predictionMetrics.avgPnlPerPosition.toFixed(2)}
+          <span class="metric-value ${metrics.predictionMetrics.avgPnlPerPosition >= 0 ? "positive" : "negative"}">
+            ${metrics.predictionMetrics.avgPnlPerPosition >= 0 ? "+" : ""}$${metrics.predictionMetrics.avgPnlPerPosition.toFixed(2)}
           </span>
         </div>
       </div>
@@ -416,7 +423,7 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
         </div>
         <div class="metric-item">
           <span class="metric-label">Win Rate</span>
-          <span class="metric-value ${metrics.perpMetrics.winRate >= 0.5 ? 'positive' : ''}">${(metrics.perpMetrics.winRate * 100).toFixed(1)}%</span>
+          <span class="metric-value ${metrics.perpMetrics.winRate >= 0.5 ? "positive" : ""}">${(metrics.perpMetrics.winRate * 100).toFixed(1)}%</span>
         </div>
         <div class="metric-item">
           <span class="metric-label">Profitable Trades</span>
@@ -424,8 +431,8 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
         </div>
         <div class="metric-item">
           <span class="metric-label">Avg P&L per Trade</span>
-          <span class="metric-value ${metrics.perpMetrics.avgPnlPerTrade >= 0 ? 'positive' : 'negative'}">
-            ${metrics.perpMetrics.avgPnlPerTrade >= 0 ? '+' : ''}$${metrics.perpMetrics.avgPnlPerTrade.toFixed(2)}
+          <span class="metric-value ${metrics.perpMetrics.avgPnlPerTrade >= 0 ? "positive" : "negative"}">
+            ${metrics.perpMetrics.avgPnlPerTrade >= 0 ? "+" : ""}$${metrics.perpMetrics.avgPnlPerTrade.toFixed(2)}
           </span>
         </div>
         <div class="metric-item">
@@ -448,8 +455,8 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
     </div>
     <div class="metric-item">
       <span class="metric-label">Reputation Gained</span>
-      <span class="metric-value ${metrics.socialMetrics.reputationGained >= 0 ? 'positive' : 'negative'}">
-        ${metrics.socialMetrics.reputationGained >= 0 ? '+' : ''}${metrics.socialMetrics.reputationGained}
+      <span class="metric-value ${metrics.socialMetrics.reputationGained >= 0 ? "positive" : "negative"}">
+        ${metrics.socialMetrics.reputationGained >= 0 ? "+" : ""}${metrics.socialMetrics.reputationGained}
       </span>
     </div>
   </div>
@@ -528,9 +535,9 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
           <td><code>${JSON.stringify(action.data)}</code></td>
           <td>${action.duration}ms</td>
         </tr>
-      `
+      `,
         )
-        .join('')}
+        .join("")}
     </tbody>
   </table>
 </body>
@@ -597,9 +604,9 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
         <div class="action-type">${action.type}</div>
         <div class="action-details">${JSON.stringify(action.data)}</div>
       </div>
-    `
+    `,
       )
-      .join('')}
+      .join("")}
   </div>
 </body>
 </html>`;
@@ -665,7 +672,7 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
    * Generate comparison summary
    */
   private static generateComparisonSummary(
-    comparison: BenchmarkComparisonResult
+    comparison: BenchmarkComparisonResult,
   ): string {
     return `
 <!DOCTYPE html>
@@ -718,7 +725,7 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
       </tr>
       <tr>
         <td>P&L</td>
-        <td class="${comparison.comparison.avgPnl >= 0 ? 'positive' : 'negative'}">$${comparison.comparison.avgPnl.toFixed(2)}</td>
+        <td class="${comparison.comparison.avgPnl >= 0 ? "positive" : "negative"}">$${comparison.comparison.avgPnl.toFixed(2)}</td>
         <td>${comparison.comparison.bestRun}</td>
         <td>${comparison.comparison.worstRun}</td>
       </tr>
@@ -755,14 +762,14 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
             (run, i) => `
           <tr>
             <td>Run ${i + 1}</td>
-            <td class="${run.metrics.totalPnl >= 0 ? 'positive' : 'negative'}">$${run.metrics.totalPnl.toFixed(2)}</td>
+            <td class="${run.metrics.totalPnl >= 0 ? "positive" : "negative"}">$${run.metrics.totalPnl.toFixed(2)}</td>
             <td>${(run.metrics.predictionMetrics.accuracy * 100).toFixed(1)}%</td>
             <td>${run.metrics.optimalityScore.toFixed(1)}%</td>
             <td>${(run.metrics.timing.totalDuration / 1000).toFixed(1)}s</td>
           </tr>
-        `
+        `,
           )
-          .join('')}
+          .join("")}
       </tbody>
     </table>
   </div>
@@ -774,11 +781,11 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
    * Generate distribution charts
    */
   private static generateDistributionCharts(
-    comparison: BenchmarkComparisonResult
+    comparison: BenchmarkComparisonResult,
   ): string {
     const pnls = comparison.runs.map((r) => r.metrics.totalPnl);
     const accuracies = comparison.runs.map(
-      (r) => r.metrics.predictionMetrics.accuracy * 100
+      (r) => r.metrics.predictionMetrics.accuracy * 100,
     );
 
     return `
@@ -826,9 +833,9 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
       <div class="bar" style="width: ${(Math.abs(pnl) / Math.max(...pnls.map(Math.abs))) * 100}%">
         Run ${i + 1}: $${pnl.toFixed(2)}
       </div>
-    `
+    `,
       )
-      .join('')}
+      .join("")}
   </div>
   
   <div class="chart">
@@ -839,9 +846,9 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
       <div class="bar" style="width: ${acc}%">
         Run ${i + 1}: ${acc.toFixed(1)}%
       </div>
-    `
+    `,
       )
-      .join('')}
+      .join("")}
   </div>
 </body>
 </html>`;
@@ -852,30 +859,30 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
    */
   private static async exportToCsv(
     result: SimulationResult,
-    outputDir: string
+    outputDir: string,
   ): Promise<void> {
     // Actions CSV
     const actionsCsv = [
-      'tick,type,data,duration',
+      "tick,type,data,duration",
       ...result.actions.map(
         (a) =>
-          `${a.tick},"${a.type}","${JSON.stringify(a.data).replace(/"/g, '""')}",${a.duration}`
+          `${a.tick},"${a.type}","${JSON.stringify(a.data).replace(/"/g, '""')}",${a.duration}`,
       ),
-    ].join('\n');
+    ].join("\n");
 
-    await fs.writeFile(path.join(outputDir, 'actions.csv'), actionsCsv);
+    await fs.writeFile(path.join(outputDir, "actions.csv"), actionsCsv);
 
     // Metrics CSV
     const metricsCsv = [
-      'metric,value',
+      "metric,value",
       `total_pnl,${result.metrics.totalPnl}`,
       `prediction_accuracy,${result.metrics.predictionMetrics.accuracy}`,
       `perp_win_rate,${result.metrics.perpMetrics.winRate}`,
       `optimality_score,${result.metrics.optimalityScore}`,
       `avg_response_time,${result.metrics.timing.avgResponseTime}`,
-    ].join('\n');
+    ].join("\n");
 
-    await fs.writeFile(path.join(outputDir, 'metrics.csv'), metricsCsv);
+    await fs.writeFile(path.join(outputDir, "metrics.csv"), metricsCsv);
   }
 
   /**
@@ -883,17 +890,17 @@ FINAL | $${finalBase.padEnd(21)} | $${finalChal.padEnd(
    */
   private static async exportComparisonToCsv(
     comparison: BenchmarkComparisonResult,
-    outputDir: string
+    outputDir: string,
   ): Promise<void> {
     const csv = [
-      'run,total_pnl,accuracy,optimality,duration',
+      "run,total_pnl,accuracy,optimality,duration",
       ...comparison.runs.map(
         (run, i) =>
-          `${i + 1},${run.metrics.totalPnl},${run.metrics.predictionMetrics.accuracy},${run.metrics.optimalityScore},${run.metrics.timing.totalDuration}`
+          `${i + 1},${run.metrics.totalPnl},${run.metrics.predictionMetrics.accuracy},${run.metrics.optimalityScore},${run.metrics.timing.totalDuration}`,
       ),
-    ].join('\n');
+    ].join("\n");
 
-    await fs.writeFile(path.join(outputDir, 'comparison.csv'), csv);
+    await fs.writeFile(path.join(outputDir, "comparison.csv"), csv);
   }
 
   /**

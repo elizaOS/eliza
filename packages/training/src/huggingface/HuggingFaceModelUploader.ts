@@ -4,20 +4,20 @@
  * Uploads trained RL models to HuggingFace Hub with benchmark results and model cards.
  */
 
-import { getTrainingDataAdapter } from '../adapter';
-import { promises as fs } from 'fs';
-import * as path from 'path';
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
+import { getTrainingDataAdapter } from "../adapter";
 import {
   type JsonValue,
   parseSimulationMetrics,
-} from '../benchmark/parseSimulationMetrics';
-import type { SimulationMetrics } from '../benchmark/SimulationEngine';
-import { logger } from '../utils';
+} from "../benchmark/parseSimulationMetrics";
+import type { SimulationMetrics } from "../benchmark/SimulationEngine";
+import { logger } from "../utils";
 import {
   getHuggingFaceToken,
   HuggingFaceUploadUtil,
   requireHuggingFaceToken,
-} from './shared/HuggingFaceUploadUtil';
+} from "./shared/HuggingFaceUploadUtil";
 
 /**
  * Simplified benchmark result for HuggingFace model cards
@@ -76,7 +76,7 @@ export class HuggingFaceModelUploader {
    */
   async uploadModel(options: ModelUploadOptions): Promise<ModelUploadResult> {
     try {
-      logger.info('Starting HuggingFace model upload', {
+      logger.info("Starting HuggingFace model upload", {
         modelId: options.modelId,
       });
 
@@ -93,11 +93,11 @@ export class HuggingFaceModelUploader {
       }
 
       // Step 2: Get benchmark results
-      logger.info('Loading benchmark results', { modelId: options.modelId });
+      logger.info("Loading benchmark results", { modelId: options.modelId });
       const modelBenchmarks = await this.getBenchmarkResults(options.modelId);
 
       if (modelBenchmarks.length === 0) {
-        logger.warn('No benchmark results found for model', {
+        logger.warn("No benchmark results found for model", {
           modelId: options.modelId,
         });
       }
@@ -117,15 +117,15 @@ export class HuggingFaceModelUploader {
       // Step 4: Create output directory
       const outputDir =
         options.outputDir ||
-        path.join(process.cwd(), 'exports', 'models', model.version);
+        path.join(process.cwd(), "exports", "models", model.version);
       await fs.mkdir(outputDir, { recursive: true });
 
       // Step 5: Generate model card
-      logger.info('Generating model card');
+      logger.info("Generating model card");
       await this.generateModelCard(cardData, outputDir);
 
       // Step 6: Save metadata
-      const metadataPath = path.join(outputDir, 'model_metadata.json');
+      const metadataPath = path.join(outputDir, "model_metadata.json");
       await fs.writeFile(
         metadataPath,
         JSON.stringify(
@@ -141,42 +141,42 @@ export class HuggingFaceModelUploader {
             accuracy: model.accuracy,
           },
           null,
-          2
-        )
+          2,
+        ),
       );
 
       // Step 7: Save benchmark results
-      const benchmarksPath = path.join(outputDir, 'benchmark_results.json');
+      const benchmarksPath = path.join(outputDir, "benchmark_results.json");
       await fs.writeFile(
         benchmarksPath,
-        JSON.stringify(modelBenchmarks, null, 2)
+        JSON.stringify(modelBenchmarks, null, 2),
       );
 
       // Step 8: Upload to HuggingFace (if weights available and requested)
       let filesUploaded = 2; // README.md + metadata
 
       if (options.includeWeights && model.storagePath) {
-        logger.info('Uploading model to HuggingFace', {
+        logger.info("Uploading model to HuggingFace", {
           modelName: options.modelName,
         });
         const uploadCount = await this.uploadToHub(
           options.modelName,
           outputDir,
-          options.private ?? false
+          options.private ?? false,
         );
         filesUploaded = uploadCount;
       } else {
         logger.info(
-          'Skipping model weight upload (not requested or no weights available)'
+          "Skipping model weight upload (not requested or no weights available)",
         );
       }
 
       const modelUrl = `https://huggingface.co/${options.modelName}`;
 
-      logger.info('Model uploaded successfully', { modelUrl, filesUploaded });
+      logger.info("Model uploaded successfully", { modelUrl, filesUploaded });
 
       // Update model status in database
-      await adapter.updateModelStatus(options.modelId, 'deployed', {
+      await adapter.updateModelStatus(options.modelId, "deployed", {
         deployedAt: new Date(),
       });
 
@@ -187,12 +187,12 @@ export class HuggingFaceModelUploader {
         filesUploaded,
       };
     } catch (error) {
-      logger.error('Failed to upload model', { error });
+      logger.error("Failed to upload model", { error });
       return {
         success: false,
         modelId: options.modelId,
         filesUploaded: 0,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -201,11 +201,12 @@ export class HuggingFaceModelUploader {
    * Get benchmark results for a model
    */
   private async getBenchmarkResults(
-    modelId: string
+    modelId: string,
   ): Promise<ModelCardBenchmarkResult[]> {
     // Query benchmark results from database
     try {
-      const results = await getTrainingDataAdapter().getBenchmarkResultsByModel(modelId);
+      const results =
+        await getTrainingDataAdapter().getBenchmarkResultsByModel(modelId);
 
       return results.map((r) => ({
         benchmarkId: r.benchmarkId,
@@ -214,7 +215,7 @@ export class HuggingFaceModelUploader {
         metrics: parseSimulationMetrics(r.detailedMetrics as JsonValue),
       }));
     } catch (error) {
-      logger.warn('Could not load benchmark results from database', { error });
+      logger.warn("Could not load benchmark results from database", { error });
 
       // Fallback to files if database fails
       return await this.getBenchmarkResultsFromFiles(modelId);
@@ -225,18 +226,18 @@ export class HuggingFaceModelUploader {
    * Fallback: Get benchmark results from files
    */
   private async getBenchmarkResultsFromFiles(
-    modelId: string
+    modelId: string,
   ): Promise<ModelCardBenchmarkResult[]> {
     const results: ModelCardBenchmarkResult[] = [];
 
     try {
-      const benchmarksDir = path.join(process.cwd(), 'benchmarks');
+      const benchmarksDir = path.join(process.cwd(), "benchmarks");
       const files = await fs.readdir(benchmarksDir);
 
       for (const file of files) {
-        if (file.endsWith('.json') && file.includes(modelId)) {
+        if (file.endsWith(".json") && file.includes(modelId)) {
           const filePath = path.join(benchmarksDir, file);
-          const data = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+          const data = JSON.parse(await fs.readFile(filePath, "utf-8"));
 
           if (data.metrics) {
             results.push({
@@ -248,7 +249,7 @@ export class HuggingFaceModelUploader {
         }
       }
     } catch (error) {
-      logger.warn('Could not load benchmark results from files either', {
+      logger.warn("Could not load benchmark results from files either", {
         error,
       });
     }
@@ -260,7 +261,7 @@ export class HuggingFaceModelUploader {
    * Calculate average metrics across benchmarks
    */
   private calculateAverageMetrics(
-    benchmarkResults: ModelCardBenchmarkResult[]
+    benchmarkResults: ModelCardBenchmarkResult[],
   ): {
     avgPnl: number;
     avgAccuracy: number;
@@ -278,15 +279,15 @@ export class HuggingFaceModelUploader {
 
     const totalPnl = benchmarkResults.reduce(
       (sum, r) => sum + r.metrics.totalPnl,
-      0
+      0,
     );
     const totalAccuracy = benchmarkResults.reduce(
       (sum, r) => sum + r.metrics.predictionMetrics.accuracy,
-      0
+      0,
     );
     const totalOptimality = benchmarkResults.reduce(
       (sum, r) => sum + r.metrics.optimalityScore,
-      0
+      0,
     );
 
     return {
@@ -302,14 +303,14 @@ export class HuggingFaceModelUploader {
    */
   private async generateModelCard(
     data: ModelCardData,
-    outputDir: string
+    outputDir: string,
   ): Promise<void> {
-    const brandName = process.env.TRAINING_BRAND_NAME || 'ElizaOS';
-    const brandOrg = process.env.TRAINING_BRAND_ORG || 'ElizaOS Contributors';
+    const brandName = process.env.TRAINING_BRAND_NAME || "ElizaOS";
+    const brandOrg = process.env.TRAINING_BRAND_ORG || "ElizaOS Contributors";
     const platformName =
-      process.env.TRAINING_PLATFORM_NAME || 'ElizaOS-compatible runtimes';
-    const brandTag = brandName.toLowerCase().replace(/\s+/g, '-');
-    const citationKey = `${brandTag}_agent_${data.version.replace(/\./g, '_')}`;
+      process.env.TRAINING_PLATFORM_NAME || "ElizaOS-compatible runtimes";
+    const brandTag = brandName.toLowerCase().replace(/\s+/g, "-");
+    const citationKey = `${brandTag}_agent_${data.version.replace(/\./g, "_")}`;
 
     const card = `---
 license: mit
@@ -330,9 +331,9 @@ Autonomous agent trained with reinforcement learning for market-style decision m
 
 - **Version:** ${data.version}
 - **Base Model:** ${data.baseModel}
-- **Training Date:** ${data.trainedAt.toISOString().split('T')[0]}
+- **Training Date:** ${data.trainedAt.toISOString().split("T")[0]}
 - **Model ID:** ${data.modelId}
-${data.trainingRunId ? `- **Training Run:** ${data.trainingRunId}` : ''}
+${data.trainingRunId ? `- **Training Run:** ${data.trainingRunId}` : ""}
 
 ## Performance Metrics
 
@@ -351,7 +352,7 @@ ${
 
 ${this.generateBenchmarkTable(data.benchmarkResults)}
 `
-    : 'No benchmark results available yet.'
+    : "No benchmark results available yet."
 }
 
 ## Training Details
@@ -374,7 +375,7 @@ This model was trained using Group Relative Policy Optimization (GRPO) via the A
 
 ### Compute Infrastructure
 
-- **Platform:** ${data.trainingRunId ? 'Atropos GRPO Training' : 'Local training'}
+- **Platform:** ${data.trainingRunId ? "Atropos GRPO Training" : "Local training"}
 - **Training Time:** Continuous learning with hourly updates
 
 ## Intended Use
@@ -471,7 +472,7 @@ This model is part of a research project on autonomous agents in prediction mark
 For questions or issues, please open an issue on the repository.
 `;
 
-    const cardPath = path.join(outputDir, 'README.md');
+    const cardPath = path.join(outputDir, "README.md");
     await fs.writeFile(cardPath, card);
   }
 
@@ -479,14 +480,14 @@ For questions or issues, please open an issue on the repository.
    * Generate benchmark results table
    */
   private generateBenchmarkTable(results: ModelCardBenchmarkResult[]): string {
-    if (results.length === 0) return '';
+    if (results.length === 0) return "";
 
     let table =
-      '| Benchmark | Date | P&L | Accuracy | Win Rate | Optimality |\n';
-    table += '|-----------|------|-----|----------|----------|------------|\n';
+      "| Benchmark | Date | P&L | Accuracy | Win Rate | Optimality |\n";
+    table += "|-----------|------|-----|----------|----------|------------|\n";
 
     results.forEach((result) => {
-      const date = new Date(result.runAt).toISOString().split('T')[0];
+      const date = new Date(result.runAt).toISOString().split("T")[0];
       table += `| ${result.benchmarkId.substring(0, 20)}... | ${date} | ${result.metrics.totalPnl.toFixed(2)} | ${(result.metrics.predictionMetrics.accuracy * 100).toFixed(1)}% | ${(result.metrics.perpMetrics.winRate * 100).toFixed(1)}% | ${result.metrics.optimalityScore.toFixed(1)} |\n`;
     });
 
@@ -500,31 +501,31 @@ For questions or issues, please open an issue on the repository.
   private async uploadToHub(
     modelName: string,
     localDir: string,
-    _isPrivate: boolean
+    _isPrivate: boolean,
   ): Promise<number> {
     if (!this.huggingFaceToken) {
-      throw new Error('HuggingFace token not configured');
+      throw new Error("HuggingFace token not configured");
     }
 
     try {
       // Use shared upload utility
       return await HuggingFaceUploadUtil.uploadDirectory(
         modelName,
-        'model',
+        "model",
         localDir,
-        this.huggingFaceToken
+        this.huggingFaceToken,
       );
     } catch (error) {
-      logger.error('Failed to upload to HuggingFace Hub', { error });
+      logger.error("Failed to upload to HuggingFace Hub", { error });
 
       // Provide helpful manual upload instructions
       const instructions = HuggingFaceUploadUtil.getManualUploadInstructions(
         modelName,
-        'model',
-        localDir
+        "model",
+        localDir,
       );
 
-      logger.info('To upload manually:', { instructions });
+      logger.info("To upload manually:", { instructions });
 
       throw error;
     }

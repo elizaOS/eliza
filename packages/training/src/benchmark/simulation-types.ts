@@ -1,14 +1,14 @@
-import type { JsonValue } from '../adapter';
+import type { JsonValue } from "../adapter";
 
 export type AgentActionType =
-  | 'query_state'
-  | 'buy_prediction'
-  | 'sell_prediction'
-  | 'open_perp'
-  | 'close_perp'
-  | 'create_post'
-  | 'join_group'
-  | 'send_message';
+  | "query_state"
+  | "buy_prediction"
+  | "sell_prediction"
+  | "open_perp"
+  | "close_perp"
+  | "create_post"
+  | "join_group"
+  | "send_message";
 
 export interface AgentAction {
   tick: number;
@@ -27,7 +27,7 @@ export interface AgentAction {
     perpCorrect?: boolean;
     sentimentAtTrade?: number;
     priceChange?: number;
-    expectedDirection?: 'up' | 'down';
+    expectedDirection?: "up" | "down";
 
     /** Sentiment analysis accuracy tracking */
     sentimentAccuracy?: number;

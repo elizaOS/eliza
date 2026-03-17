@@ -5,13 +5,13 @@
  * Handles gradual rollout and rollback if needed.
  */
 
-import { getTrainingDataAdapter } from '../adapter';
-import { getAgentRuntimeManager } from '../dependencies';
-import { logger } from '../utils/logger';
+import { getTrainingDataAdapter } from "../adapter";
+import { getAgentRuntimeManager } from "../dependencies";
+import { logger } from "../utils/logger";
 
 export interface DeploymentOptions {
   modelVersion: string;
-  strategy: 'immediate' | 'gradual' | 'test';
+  strategy: "immediate" | "gradual" | "test";
   rolloutPercentage?: number;
   testAgentIds?: string[];
 }
@@ -26,7 +26,7 @@ export interface DeploymentResult {
 interface DeploymentStatusRecord {
   deploymentId: string;
   modelVersion: string;
-  status: 'in_progress' | 'deployed' | 'degraded' | 'failed';
+  status: "in_progress" | "deployed" | "degraded" | "failed";
   agentsUpdated: number;
   agentsFailed: number;
   performance: {
@@ -47,7 +47,7 @@ export class ModelDeployer {
   async deploy(options: DeploymentOptions): Promise<DeploymentResult> {
     const da = getTrainingDataAdapter();
 
-    logger.info('Starting model deployment', {
+    logger.info("Starting model deployment", {
       version: options.modelVersion,
       strategy: options.strategy,
     });
@@ -59,7 +59,7 @@ export class ModelDeployer {
     }
 
     const strategy =
-      options.strategy === 'immediate' ? 'all' : options.strategy;
+      options.strategy === "immediate" ? "all" : options.strategy;
 
     const targetAgents = await da.getAgentUsers({
       strategy,
@@ -73,7 +73,7 @@ export class ModelDeployer {
     this.deploymentStatus.set(deploymentId, {
       deploymentId,
       modelVersion: options.modelVersion,
-      status: 'in_progress',
+      status: "in_progress",
       agentsUpdated: 0,
       agentsFailed: 0,
       performance: {
@@ -84,7 +84,7 @@ export class ModelDeployer {
       completedAt: null,
     });
 
-    await da.updateModelStatus(model.modelId, 'deployed', {
+    await da.updateModelStatus(model.modelId, "deployed", {
       deployedAt: new Date(),
       agentsUsing: targetAgents.length,
     });
@@ -99,14 +99,14 @@ export class ModelDeployer {
         runtimesReset++;
       } catch (err) {
         runtimeResetFailures++;
-        logger.warn('Failed to reset runtime for agent', {
+        logger.warn("Failed to reset runtime for agent", {
           agentId: agent.id,
           error: err instanceof Error ? err.message : String(err),
         });
       }
     }
 
-    logger.info('Model deployed successfully', {
+    logger.info("Model deployed successfully", {
       version: options.modelVersion,
       agentsUpdated: targetAgents.length,
       deploymentId,
@@ -118,7 +118,7 @@ export class ModelDeployer {
     this.deploymentStatus.set(deploymentId, {
       deploymentId,
       modelVersion: options.modelVersion,
-      status: runtimeResetFailures > 0 ? 'degraded' : 'deployed',
+      status: runtimeResetFailures > 0 ? "degraded" : "deployed",
       agentsUpdated: runtimesReset,
       agentsFailed: runtimeResetFailures,
       performance: {
@@ -146,16 +146,16 @@ export class ModelDeployer {
    */
   async rollback(
     currentVersion: string,
-    targetVersion: string
+    targetVersion: string,
   ): Promise<DeploymentResult> {
-    logger.info('Rolling back model', {
+    logger.info("Rolling back model", {
       from: currentVersion,
       to: targetVersion,
     });
 
     return await this.deploy({
       modelVersion: targetVersion,
-      strategy: 'immediate',
+      strategy: "immediate",
     });
   }
 

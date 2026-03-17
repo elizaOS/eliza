@@ -6,11 +6,11 @@
 
 import type {
   JsonValue,
-  TrajectoryRecord,
+  LlmCallLogRecord,
   TrainedModelRecord,
   TrainingBatchRecord,
-  LlmCallLogRecord,
-} from '../adapter';
+  TrajectoryRecord,
+} from "../adapter";
 
 // Re-export adapter record types under the old names for backward compatibility
 export type Trajectory = TrajectoryRecord;
@@ -57,7 +57,7 @@ export interface LLMCall {
   temperature: number;
   maxTokens: number;
   latencyMs?: number;
-  purpose: 'action' | 'reasoning' | 'evaluation' | 'response';
+  purpose: "action" | "reasoning" | "evaluation" | "response";
   actionType?: string;
 }
 
@@ -79,7 +79,7 @@ export interface Action {
     perpCorrect?: boolean; // Was the perp trade correct?
     sentimentAtTrade?: number; // Sentiment at time of trade (-1 to 1)
     priceChange?: number; // Actual price change after trade
-    expectedDirection?: 'up' | 'down'; // Expected direction based on sentiment
+    expectedDirection?: "up" | "down"; // Expected direction based on sentiment
 
     // Sentiment analysis accuracy
     sentimentAccuracy?: number; // How accurate was sentiment reading (0-1)
@@ -196,7 +196,7 @@ export interface AutomationConfig {
   pythonProjectRoot?: string;
   trainerScriptPath?: string;
   trainerPythonExecutable?: string;
-  trainingMode?: 'atropos' | 'tinker';
+  trainingMode?: "atropos" | "tinker";
   atroposApiUrl?: string;
   vllmPort?: number;
 }

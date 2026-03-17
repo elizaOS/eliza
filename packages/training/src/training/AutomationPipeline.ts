@@ -11,18 +11,16 @@
  * 7. Monitor performance
  */
 
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { spawn } from 'child_process';
-import { getTrainingDataAdapter, getMarketDataAdapter } from '../adapter';
-import type { TrajectoryRecord } from '../adapter';
-import { getExportGroupedForGRPO } from '../dependencies';
-import { logger } from '../utils/logger';
-import { benchmarkService } from './BenchmarkService';
-import { MarketOutcomesTracker } from './MarketOutcomesTracker';
-import { modelSelectionService } from './ModelSelectionService';
-import { rewardBackpropagationService } from './RewardBackpropagationService';
-import { rulerScoringService } from './RulerScoringService';
+import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { getMarketDataAdapter, getTrainingDataAdapter } from "../adapter";
+import { getExportGroupedForGRPO } from "../dependencies";
+import { logger } from "../utils/logger";
+import { benchmarkService } from "./BenchmarkService";
+import { modelSelectionService } from "./ModelSelectionService";
+import { rewardBackpropagationService } from "./RewardBackpropagationService";
+import { rulerScoringService } from "./RulerScoringService";
 import type {
   AutomationConfig,
   AutomationStatus,
@@ -31,8 +29,8 @@ import type {
   TrainingTriggerOptions,
   TrainingTriggerResult,
   TrajectoryStep,
-} from './types';
-import { getCurrentWindowId, getPreviousWindowId } from './window-utils';
+} from "./types";
+import { getCurrentWindowId, getPreviousWindowId } from "./window-utils";
 
 export type { AutomationConfig };
 
@@ -42,12 +40,12 @@ export class AutomationPipeline {
 
   constructor(config: Partial<AutomationConfig> = {}) {
     const envMinTrajectories = parseInt(
-      process.env.TRAINING_MIN_TRAJECTORIES ?? '',
-      10
+      process.env.TRAINING_MIN_TRAJECTORIES ?? "",
+      10,
     );
     const envMinGroupSize = parseInt(
-      process.env.TRAINING_MIN_GROUP_SIZE ?? '',
-      10
+      process.env.TRAINING_MIN_GROUP_SIZE ?? "",
+      10,
     );
 
     this.config = {
@@ -64,39 +62,41 @@ export class AutomationPipeline {
       dataQualityThreshold: config.dataQualityThreshold ?? 0.95,
       autoTriggerTraining: config.autoTriggerTraining !== false,
       trainingInterval: config.trainingInterval || 24, // Daily by default
-      baseModel: config.baseModel || 'unsloth/Qwen3-4B-128K', // 4B params, 128K context - ideal for fine-tuning
-      modelNamePrefix: config.modelNamePrefix || 'eliza-agent',
+      baseModel: config.baseModel || "unsloth/Qwen3-4B-128K", // 4B params, 128K context - ideal for fine-tuning
+      modelNamePrefix: config.modelNamePrefix || "eliza-agent",
       modelIdPrefix:
         config.modelIdPrefix ||
         process.env.TRAINING_MODEL_ID_PREFIX ||
         config.modelNamePrefix ||
-        'eliza-agent',
+        "eliza-agent",
       modelStoragePath:
         config.modelStoragePath ||
-        path.resolve(process.cwd(), 'storage/models'),
+        path.resolve(process.cwd(), "storage/models"),
       dataStoragePath:
         config.dataStoragePath ||
-        path.resolve(process.cwd(), 'storage/training-data'),
+        path.resolve(process.cwd(), "storage/training-data"),
       pythonProjectRoot:
         config.pythonProjectRoot ||
         process.env.TRAINING_PYTHON_ROOT ||
-        path.resolve(process.cwd(), 'packages/training/python'),
+        path.resolve(process.cwd(), "packages/training/python"),
       trainerScriptPath:
-        config.trainerScriptPath || process.env.TRAINING_SCRIPT_PATH || undefined,
+        config.trainerScriptPath ||
+        process.env.TRAINING_SCRIPT_PATH ||
+        undefined,
       trainerPythonExecutable:
         config.trainerPythonExecutable ||
         process.env.TRAINING_PYTHON_EXECUTABLE ||
-        (process.platform === 'win32' ? 'python' : 'python3'),
+        (process.platform === "win32" ? "python" : "python3"),
       trainingMode:
         config.trainingMode ||
-        (process.env.TRAINING_MODE as 'atropos' | 'tinker') ||
-        'atropos',
+        (process.env.TRAINING_MODE as "atropos" | "tinker") ||
+        "atropos",
       atroposApiUrl:
         config.atroposApiUrl ||
         process.env.ATROPOS_API_URL ||
-        'http://localhost:8000',
+        "http://localhost:8000",
       vllmPort:
-        config.vllmPort || parseInt(process.env.VLLM_PORT || '9001', 10),
+        config.vllmPort || parseInt(process.env.VLLM_PORT || "9001", 10),
     };
   }
 
@@ -108,7 +108,9 @@ export class AutomationPipeline {
 
     const scoredAndReady = await adapter.countScoredTrajectoriesReady();
     const unscored = await adapter.countUnscoredTrajectories();
-    const scenarioGroups = await adapter.getScenarioGroups(this.config.minGroupSize);
+    const scenarioGroups = await adapter.getScenarioGroups(
+      this.config.minGroupSize,
+    );
     const quality = await this.calculateDataQuality();
 
     const stats = {
@@ -144,7 +146,7 @@ export class AutomationPipeline {
 
     return {
       ready: true,
-      reason: 'Ready to train!',
+      reason: "Ready to train!",
       stats,
     };
   }
@@ -165,14 +167,14 @@ export class AutomationPipeline {
       // Validate stepsJson exists and is valid before parsing
       if (
         !traj.stepsJson ||
-        traj.stepsJson === 'null' ||
-        traj.stepsJson === '[]'
+        traj.stepsJson === "null" ||
+        traj.stepsJson === "[]"
       ) {
         continue; // Skip invalid trajectories
       }
 
       const steps: TrajectoryStep[] = JSON.parse(
-        traj.stepsJson
+        traj.stepsJson,
       ) as TrajectoryStep[];
 
       if (!Array.isArray(steps)) {
@@ -186,7 +188,7 @@ export class AutomationPipeline {
       // Check 2: Steps have LLM calls
       totalChecks++;
       const hasLLMCalls = steps.every(
-        (s) => s.llmCalls && Array.isArray(s.llmCalls) && s.llmCalls.length > 0
+        (s) => s.llmCalls && Array.isArray(s.llmCalls) && s.llmCalls.length > 0,
       );
       if (hasLLMCalls) qualityScore++;
 
@@ -200,8 +202,8 @@ export class AutomationPipeline {
               llm.systemPrompt &&
               llm.systemPrompt.length > 50 &&
               llm.userPrompt &&
-              llm.userPrompt.length > 100
-          )
+              llm.userPrompt.length > 100,
+          ),
       );
       if (hasGoodPrompts) qualityScore++;
 
@@ -211,14 +213,14 @@ export class AutomationPipeline {
         (s) =>
           s.providerAccesses &&
           Array.isArray(s.providerAccesses) &&
-          s.providerAccesses.length > 0
+          s.providerAccesses.length > 0,
       );
       if (hasProviders) qualityScore++;
 
       // Check 5: Actions have results
       totalChecks++;
       const hasResults = steps.every(
-        (s) => s.action && (s.action.result || s.action.error)
+        (s) => s.action && (s.action.result || s.action.error),
       );
       if (hasResults) qualityScore++;
     }
@@ -230,7 +232,7 @@ export class AutomationPipeline {
    * Trigger training job
    */
   async triggerTraining(
-    options: TrainingTriggerOptions = {}
+    options: TrainingTriggerOptions = {},
   ): Promise<TrainingTriggerResult> {
     // Check readiness
     const readiness = await this.checkTrainingReadiness();
@@ -249,11 +251,11 @@ export class AutomationPipeline {
       readiness.stats.unscoredTrajectories > 0
     ) {
       logger.info(
-        'Force mode: Attempting to score unscored trajectories first',
+        "Force mode: Attempting to score unscored trajectories first",
         {
           unscored: readiness.stats.unscoredTrajectories,
         },
-        'AutomationPipeline'
+        "AutomationPipeline",
       );
 
       // Score recent trajectories
@@ -267,19 +269,19 @@ export class AutomationPipeline {
       // Re-check readiness after scoring
       const newReadiness = await this.checkTrainingReadiness();
       logger.info(
-        'After scoring',
+        "After scoring",
         {
           scored: newReadiness.stats.totalTrajectories,
           stillUnscored: newReadiness.stats.unscoredTrajectories,
         },
-        'AutomationPipeline'
+        "AutomationPipeline",
       );
     }
 
     // Use ModelSelectionService for smart model selection
     const modelSelection = await modelSelectionService.selectBaseModel();
 
-    logger.info('Model selection for training', {
+    logger.info("Model selection for training", {
       strategy: modelSelection.strategy,
       modelPath: modelSelection.modelPath,
       bundleCount: modelSelection.metadata?.bundleCount,
@@ -289,7 +291,7 @@ export class AutomationPipeline {
     const dataLimit = await modelSelectionService.getTrainingDataLimit();
 
     // Prepare data
-    logger.info('Preparing training data...', {
+    logger.info("Preparing training data...", {
       ...readiness.stats,
       selectedModel: modelSelection.modelPath,
       strategy: modelSelection.strategy,
@@ -314,14 +316,15 @@ export class AutomationPipeline {
     if (!exportResult.success) {
       return {
         success: false,
-        error: 'Export failed: ' + exportResult.error,
+        error: `Export failed: ${exportResult.error}`,
       };
     }
 
     // Create training batch record
     const adapterForBatch = getTrainingDataAdapter();
     const nextVersion = await this.getNextModelVersion();
-    const trajectoryIds = await adapterForBatch.getTrajectoryIdsForTraining(maxTrajectories);
+    const trajectoryIds =
+      await adapterForBatch.getTrajectoryIdsForTraining(maxTrajectories);
 
     const insertedBatchId = await adapterForBatch.insertBatch({
       id: batchId,
@@ -334,19 +337,22 @@ export class AutomationPipeline {
       rewardsJson: JSON.stringify([]),
       trainingLoss: null,
       policyImprovement: null,
-      status: 'pending',
+      status: "pending",
       error: null,
       createdAt: new Date(),
     });
 
     const batch = await adapterForBatch.getBatchById(insertedBatchId);
     if (!batch) {
-      return { success: false, error: 'Failed to create training batch record' };
-    };
+      return {
+        success: false,
+        error: "Failed to create training batch record",
+      };
+    }
 
     // Determine training mode: 'tinker' for cloud-based or 'atropos' for local vLLM
-    const trainingMode = this.config.trainingMode || 'atropos';
-    const useTinker = trainingMode.toLowerCase() === 'tinker';
+    const trainingMode = this.config.trainingMode || "atropos";
+    const useTinker = trainingMode.toLowerCase() === "tinker";
 
     // Trigger appropriate Python training script based on mode.
     // Allow explicit override for packaged/runtime deployments.
@@ -354,10 +360,10 @@ export class AutomationPipeline {
       this.config.trainerScriptPath ||
       path.resolve(
         this.config.pythonProjectRoot ||
-          path.resolve(process.cwd(), 'packages/training/python'),
-        'src',
-        'training',
-        useTinker ? 'tinker_trainer.py' : 'atropos_trainer.py'
+          path.resolve(process.cwd(), "packages/training/python"),
+        "src",
+        "training",
+        useTinker ? "tinker_trainer.py" : "atropos_trainer.py",
       );
 
     try {
@@ -372,24 +378,24 @@ export class AutomationPipeline {
     // Set environment variables for Python script
     const env = {
       ...process.env,
-      MODE: 'single',
+      MODE: "single",
       BATCH_ID: batchId,
       MODEL_VERSION: nextVersion,
       WINDOW_ID: windowId,
       BASE_MODEL: modelSelection.modelPath,
-      MAX_EXAMPLES: dataLimit ? dataLimit.toString() : '2000',
-      DATABASE_URL: process.env.DATABASE_URL || '',
-      ATROPOS_API_URL: this.config.atroposApiUrl || 'http://localhost:8000',
+      MAX_EXAMPLES: dataLimit ? dataLimit.toString() : "2000",
+      DATABASE_URL: process.env.DATABASE_URL || "",
+      ATROPOS_API_URL: this.config.atroposApiUrl || "http://localhost:8000",
       VLLM_PORT: String(this.config.vllmPort || 9001),
-      FORCE_TRAINING: options.force ? 'true' : 'false',
-      MIN_AGENTS_PER_WINDOW: '1',
+      FORCE_TRAINING: options.force ? "true" : "false",
+      MIN_AGENTS_PER_WINDOW: "1",
       TRAINING_MODE: trainingMode,
     };
 
     logger.info(
       useTinker
-        ? 'Training will use Tinker cloud-based GRPO'
-        : 'Training will use Atropos GRPO with vLLM',
+        ? "Training will use Tinker cloud-based GRPO"
+        : "Training will use Atropos GRPO with vLLM",
       {
         trainingMode,
         ...(useTinker
@@ -400,36 +406,40 @@ export class AutomationPipeline {
               model: env.BASE_MODEL,
             }),
       },
-      'AutomationPipeline'
+      "AutomationPipeline",
     );
 
     const pythonCmd =
       this.config.trainerPythonExecutable ||
-      (process.platform === 'win32' ? 'python' : 'python3');
+      (process.platform === "win32" ? "python" : "python3");
 
     const trainingProcess = spawn(pythonCmd, [pythonScript], {
       detached: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ["ignore", "pipe", "pipe"],
       env,
     });
 
     // Capture and log training process output
-    trainingProcess.stdout?.on('data', (data: Buffer) => {
-      logger.info('Training stdout', { output: data.toString().trim() });
+    trainingProcess.stdout?.on("data", (data: Buffer) => {
+      logger.info("Training stdout", { output: data.toString().trim() });
     });
 
-    trainingProcess.stderr?.on('data', (data: Buffer) => {
-      logger.warn('Training stderr', { output: data.toString().trim() });
+    trainingProcess.stderr?.on("data", (data: Buffer) => {
+      logger.warn("Training stderr", { output: data.toString().trim() });
     });
 
-    trainingProcess.on('error', (error: Error) => {
-      logger.error('Training process error', { error: error.message });
+    trainingProcess.on("error", (error: Error) => {
+      logger.error("Training process error", { error: error.message });
       getTrainingDataAdapter()
-        .updateBatchStatus(batchId, 'failed', `Process spawn failed: ${error.message}`)
+        .updateBatchStatus(
+          batchId,
+          "failed",
+          `Process spawn failed: ${error.message}`,
+        )
         .catch((err: unknown) =>
-          logger.error('Failed to update batch status', {
+          logger.error("Failed to update batch status", {
             error: err instanceof Error ? err : String(err),
-          })
+          }),
         );
     });
 
@@ -437,7 +447,7 @@ export class AutomationPipeline {
 
     this.currentTrainingJob = batch.id;
 
-    logger.info('Training job triggered', {
+    logger.info("Training job triggered", {
       batchId: batch.id,
       version: nextVersion,
       trajectories: exportResult.trajectoriesExported,
@@ -456,22 +466,15 @@ export class AutomationPipeline {
     const latestModel = await getTrainingDataAdapter().getLatestModel();
 
     if (!latestModel) {
-      return 'v1.0.0';
+      return "v1.0.0";
     }
 
     // Increment patch version
     const [major, minor, patch] = latestModel.version
       .substring(1)
-      .split('.')
+      .split(".")
       .map(Number);
     return `v${major}.${minor}.${patch! + 1}`;
-  }
-
-  /**
-   * Get trajectory IDs for training
-   */
-  private async getTrajectoryIds(limit?: number): Promise<string[]> {
-    return getTrainingDataAdapter().getTrajectoryIdsForTraining(limit);
   }
 
   /**
@@ -484,18 +487,22 @@ export class AutomationPipeline {
     const batch = await getTrainingDataAdapter().getBatchById(batchId);
 
     if (!batch) {
-      return { status: 'not_found' };
+      return { status: "not_found" };
     }
 
     // Terminal states – return immediately
-    if (batch.status === 'completed') {
-      return { status: 'completed', progress: 1.0, error: undefined };
+    if (batch.status === "completed") {
+      return { status: "completed", progress: 1.0, error: undefined };
     }
-    if (batch.status === 'failed') {
-      return { status: 'failed', progress: 0, error: batch.error || 'Training failed' };
+    if (batch.status === "failed") {
+      return {
+        status: "failed",
+        progress: 0,
+        error: batch.error || "Training failed",
+      };
     }
-    if (batch.status === 'pending') {
-      return { status: 'pending', progress: 0 };
+    if (batch.status === "pending") {
+      return { status: "pending", progress: 0 };
     }
 
     // For 'training' status, attempt to read the metrics log written by
@@ -506,12 +513,12 @@ export class AutomationPipeline {
     const metricsLogPath = path.resolve(
       this.config.dataStoragePath,
       batchId,
-      'training_metrics.jsonl'
+      "training_metrics.jsonl",
     );
 
     try {
-      const logContent = await fs.readFile(metricsLogPath, 'utf-8');
-      const lines = logContent.trim().split('\n').filter(Boolean);
+      const logContent = await fs.readFile(metricsLogPath, "utf-8");
+      const lines = logContent.trim().split("\n").filter(Boolean);
       if (lines.length > 0) {
         const lastLine = lines[lines.length - 1]!;
         const lastMetric = JSON.parse(lastLine) as {
@@ -520,13 +527,13 @@ export class AutomationPipeline {
           elapsed_ms?: number;
         };
         if (
-          typeof lastMetric.step === 'number' &&
-          typeof lastMetric.total_steps === 'number' &&
+          typeof lastMetric.step === "number" &&
+          typeof lastMetric.total_steps === "number" &&
           lastMetric.total_steps > 0
         ) {
           progress = lastMetric.step / lastMetric.total_steps;
           // Estimate remaining time from elapsed
-          if (typeof lastMetric.elapsed_ms === 'number' && progress > 0) {
+          if (typeof lastMetric.elapsed_ms === "number" && progress > 0) {
             const totalEstimatedMs = lastMetric.elapsed_ms / progress;
             eta = Math.max(0, totalEstimatedMs - lastMetric.elapsed_ms);
           }
@@ -568,12 +575,12 @@ export class AutomationPipeline {
       }
       await fs.rmdir(batchDir);
       logger.info(
-        'Cleaned up export files',
+        "Cleaned up export files",
         { batchId, filesRemoved: files.length, dir: batchDir },
-        'AutomationPipeline'
+        "AutomationPipeline",
       );
     } catch (err) {
-      logger.warn('Failed to clean up export files', {
+      logger.warn("Failed to clean up export files", {
         batchId,
         dir: batchDir,
         error: err instanceof Error ? err.message : String(err),
@@ -585,17 +592,17 @@ export class AutomationPipeline {
    * Automation loop (called by cron)
    */
   async runAutomationCycle(): Promise<void> {
-    logger.info('Running automation cycle');
+    logger.info("Running automation cycle");
 
     // Check if training is already running
     if (this.currentTrainingJob) {
       const status = await this.monitorTraining(this.currentTrainingJob);
-      if (status.status === 'completed') {
+      if (status.status === "completed") {
         await this.deployModel(this.currentTrainingJob);
         await this.cleanupExportFiles(this.currentTrainingJob);
         this.currentTrainingJob = null;
-      } else if (status.status === 'failed') {
-        logger.error('Training job failed', {
+      } else if (status.status === "failed") {
+        logger.error("Training job failed", {
           batchId: this.currentTrainingJob,
         });
         await this.cleanupExportFiles(this.currentTrainingJob);
@@ -612,11 +619,11 @@ export class AutomationPipeline {
     if (newlyCompleted) {
       const alreadyDeployed = await da.getModelByBatchAndStatus(
         newlyCompleted.batchId,
-        'deployed'
+        "deployed",
       );
 
       if (!alreadyDeployed) {
-        logger.info('Found newly completed training batch', {
+        logger.info("Found newly completed training batch", {
           batchId: newlyCompleted.batchId,
         });
         await this.deployModel(newlyCompleted.batchId);
@@ -633,7 +640,7 @@ export class AutomationPipeline {
         : 999;
 
       if (hoursSinceLastTraining >= this.config.trainingInterval) {
-        logger.info('Triggering automatic training', readiness.stats);
+        logger.info("Triggering automatic training", readiness.stats);
         await this.triggerTraining();
       }
     }
@@ -641,11 +648,13 @@ export class AutomationPipeline {
     // Track market outcomes for recent windows (optional — only if market adapter registered)
     const marketAdapter = getMarketDataAdapter();
     if (marketAdapter) {
-      const { MarketOutcomesTracker: MOT } = await import('./MarketOutcomesTracker');
+      const { MarketOutcomesTracker: MOT } = await import(
+        "./MarketOutcomesTracker"
+      );
       const outcomesTracker = new MOT();
       const synced = await outcomesTracker.syncRecentWindows(24);
       if (synced > 0) {
-        logger.info('Synced market outcomes for windows', {
+        logger.info("Synced market outcomes for windows", {
           windowsSynced: synced,
         });
       }
@@ -653,7 +662,7 @@ export class AutomationPipeline {
       const processed =
         await rewardBackpropagationService.processPendingWindows();
       if (processed > 0) {
-        logger.info('Updated rewards for trajectories', {
+        logger.info("Updated rewards for trajectories", {
           windowsProcessed: processed,
         });
       }
@@ -664,7 +673,7 @@ export class AutomationPipeline {
       const windowId = getPreviousWindowId(hoursAgo);
       const scored = await rulerScoringService.scoreWindow(windowId);
       if (scored > 0) {
-        logger.info('Scored trajectories with RULER', { windowId, scored });
+        logger.info("Scored trajectories with RULER", { windowId, scored });
       }
     }
 
@@ -682,18 +691,18 @@ export class AutomationPipeline {
     const batch = await da.getBatchById(batchId);
 
     if (!batch) {
-      logger.warn('Batch not found for deployment', { batchId });
+      logger.warn("Batch not found for deployment", { batchId });
       return;
     }
 
-    const model = await da.getModelByBatchAndStatus(batch.id, 'ready');
+    const model = await da.getModelByBatchAndStatus(batch.id, "ready");
 
     if (!model) {
-      logger.warn('Model not found for batch', { batchId });
+      logger.warn("Model not found for batch", { batchId });
       return;
     }
 
-    logger.info('Deploying model', {
+    logger.info("Deploying model", {
       version: batch.modelVersion,
       modelId: model.modelId,
       batchId,
@@ -703,17 +712,17 @@ export class AutomationPipeline {
     let trajectoryIds: string[];
     if (
       !batch.trajectoryIds ||
-      batch.trajectoryIds === 'null' ||
-      batch.trajectoryIds === '[]'
+      batch.trajectoryIds === "null" ||
+      batch.trajectoryIds === "[]"
     ) {
-      logger.warn('Training batch has invalid trajectoryIds', {
+      logger.warn("Training batch has invalid trajectoryIds", {
         batchId: batch.id,
       });
       trajectoryIds = [];
     } else {
       trajectoryIds = JSON.parse(batch.trajectoryIds) as string[];
       if (!Array.isArray(trajectoryIds)) {
-        logger.warn('Training batch trajectoryIds is not an array', {
+        logger.warn("Training batch trajectoryIds is not an array", {
           batchId: batch.id,
         });
         trajectoryIds = [];
@@ -724,11 +733,11 @@ export class AutomationPipeline {
       await da.markTrajectoriesAsUsed(trajectoryIds, batch.id);
     }
 
-    await da.updateModelStatus(model.modelId, 'deployed', {
+    await da.updateModelStatus(model.modelId, "deployed", {
       deployedAt: new Date(),
     });
 
-    logger.info('Model deployed', {
+    logger.info("Model deployed", {
       version: batch.modelVersion,
       modelId: model.modelId,
     });
@@ -740,7 +749,7 @@ export class AutomationPipeline {
    */
   async benchmarkAndDeploy(
     batchId: string,
-    autoDeploy = true
+    autoDeploy = true,
   ): Promise<{
     benchmarked: boolean;
     deployed: boolean;
@@ -750,37 +759,37 @@ export class AutomationPipeline {
     const batch = await da.getBatchById(batchId);
 
     if (!batch) {
-      return { benchmarked: false, deployed: false, reason: 'Batch not found' };
+      return { benchmarked: false, deployed: false, reason: "Batch not found" };
     }
 
-    const model = await da.getModelByBatchAndStatus(batch.id, 'ready');
+    const model = await da.getModelByBatchAndStatus(batch.id, "ready");
 
     if (!model) {
-      return { benchmarked: false, deployed: false, reason: 'Model not found' };
+      return { benchmarked: false, deployed: false, reason: "Model not found" };
     }
 
     // Benchmark the model
     logger.info(
-      'Benchmarking model...',
+      "Benchmarking model...",
       { modelId: model.modelId },
-      'AutomationPipeline'
+      "AutomationPipeline",
     );
     const benchmarkResults = await benchmarkService.benchmarkModel(
-      model.modelId
+      model.modelId,
     );
 
     // Compare with previous models
     const comparison = await benchmarkService.compareModels(model.modelId);
 
     logger.info(
-      'Benchmark complete',
+      "Benchmark complete",
       {
         modelId: model.modelId,
         score: benchmarkResults.benchmarkScore,
         shouldDeploy: comparison.shouldDeploy,
         reason: comparison.reason,
       },
-      'AutomationPipeline'
+      "AutomationPipeline",
     );
 
     // Deploy if performance is good enough (and autoDeploy is enabled)
@@ -796,7 +805,7 @@ export class AutomationPipeline {
     return {
       benchmarked: true,
       deployed: false,
-      reason: comparison.reason || 'Performance below threshold',
+      reason: comparison.reason || "Performance below threshold",
     };
   }
 
@@ -821,13 +830,13 @@ export class AutomationPipeline {
     const da = getTrainingDataAdapter();
     const dbOk = await da.healthCheck();
     if (!dbOk) {
-      logger.warn('Health check: database unreachable');
+      logger.warn("Health check: database unreachable");
     }
 
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const last1h = await da.countTrajectoriesSince(oneHourAgo);
     if (last1h < 1) {
-      logger.warn('Low data collection rate', { trajectoriesLastHour: last1h });
+      logger.warn("Low data collection rate", { trajectoriesLastHour: last1h });
     }
 
     // Ensure storage directories exist
@@ -891,10 +900,10 @@ export class AutomationPipeline {
       training: {
         currentJob: this.currentTrainingJob,
         lastCompleted: lastCompleted?.completedAt || null,
-        nextScheduled: lastCompleted
+        nextScheduled: lastCompleted?.completedAt
           ? new Date(
-              lastCompleted.completedAt!.getTime() +
-                this.config.trainingInterval * 60 * 60 * 1000
+              lastCompleted.completedAt.getTime() +
+                this.config.trainingInterval * 60 * 60 * 1000,
             )
           : null,
       },

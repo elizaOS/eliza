@@ -16,6 +16,7 @@ import type {
 	PairingRequest,
 	PairingRequestsResult,
 	Participant,
+	ParticipantUpdateFields,
 	ParticipantsForRoomsResult,
 	ParticipantUserState,
 	PatchOp,
@@ -854,14 +855,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		participants: Array<{
 			entityId: UUID;
 			roomId: UUID;
-			updates: Partial<Participant>;
+			updates: ParticipantUpdateFields;
 		}>,
 	): Promise<void> {
 		// InMemory adapter stores participants as just sets of IDs, so we can only
 		// update roomState (which is stored separately in participantUserState).
 		// Metadata updates are not supported in this simple adapter.
 		for (const { entityId, roomId, updates } of participants) {
-			const roomState = (updates as any).roomState;
+			const roomState = updates.roomState;
 			if (roomState !== undefined) {
 				const key = `${String(roomId)}:${String(entityId)}`;
 				this.participantUserState.set(key, roomState);

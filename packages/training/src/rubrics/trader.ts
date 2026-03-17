@@ -59,9 +59,9 @@ If two trajectories have similar P&L, the one with better risk metrics (lower dr
 `;
 
 export const TRADER_PRIORITY_METRICS = [
-  'trading.totalPnL',
-  'trading.sharpeRatio',
-  'trading.winRate',
-  'trading.marketsTraded',
-  'behavior.socialToTradeRatio',
+  "trading.totalPnL",
+  "trading.sharpeRatio",
+  "trading.winRate",
+  "trading.marketsTraded",
+  "behavior.socialToTradeRatio",
 ];

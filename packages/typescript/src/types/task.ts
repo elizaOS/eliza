@@ -8,6 +8,7 @@ import type {
 } from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
+import type { TriggerConfig, TriggerRunRecord } from "./trigger";
 
 /**
  * Defines the contract for a Task Worker, which is responsible for executing a specific type of task.
@@ -105,6 +106,10 @@ export interface TaskMetadata
 	}[];
 	/** Allows for other dynamic metadata properties related to the task. */
 	values?: Record<string, JsonValue | object>;
+	/** Optional. Trigger configuration for trigger-based tasks. */
+	trigger?: TriggerConfig;
+	/** Optional. History of trigger run records. */
+	triggerRuns?: TriggerRunRecord[];
 	[key: string]: JsonValue | object | undefined;
 }
 

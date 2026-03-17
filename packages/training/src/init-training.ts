@@ -10,8 +10,8 @@
  *   await initializeTrainingPackage();
  */
 
-import { areDependenciesConfigured } from './dependencies';
-import { logger } from './utils/logger';
+import { areDependenciesConfigured } from "./dependencies";
+import { logger } from "./utils/logger";
 
 let initialized = false;
 
@@ -22,20 +22,20 @@ let initialized = false;
  */
 export async function initializeTrainingPackage(): Promise<void> {
   if (initialized) {
-    logger.debug('Training package already initialized', {}, 'TrainingInit');
+    logger.debug("Training package already initialized", {}, "TrainingInit");
     return;
   }
 
-  logger.info('Initializing training package...', {}, 'TrainingInit');
+  logger.info("Initializing training package...", {}, "TrainingInit");
 
   if (!areDependenciesConfigured()) {
     throw new Error(
-      'Training dependencies not configured. Call configureTrainingDependencies() first.'
+      "Training dependencies not configured. Call configureTrainingDependencies() first.",
     );
   }
 
   initialized = true;
-  logger.info('Training package initialized successfully', {}, 'TrainingInit');
+  logger.info("Training package initialized successfully", {}, "TrainingInit");
 }
 
 /**

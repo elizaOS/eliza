@@ -10,6 +10,12 @@ import type {
   SplatMesh as SparkSplatMesh,
 } from "@sparkjsdev/spark";
 import * as THREE from "three";
+
+/** Three.js NodeMaterial exposes emissiveNode/opacityNode but they are not in public MeshStandardMaterial types. */
+interface MeshStandardMaterialWithNodeProps extends THREE.MeshStandardMaterial {
+  emissiveNode?: THREE.Node | null;
+  opacityNode?: THREE.Node | null;
+}
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
@@ -2155,8 +2161,8 @@ export class VrmEngine {
           appliedNodeDissolve = true;
           mat.userData._dissolveApplied = true;
           mat.userData._origOpacityNode = mat.opacityNode ?? null;
-          // biome-ignore lint/suspicious/noExplicitAny: Three.js NodeMaterial emissiveNode is not in public types
-          mat.userData._origEmissiveNode = (mat as any).emissiveNode ?? null;
+          mat.userData._origEmissiveNode =
+            (mat as MeshStandardMaterialWithNodeProps).emissiveNode ?? null;
           mat.userData._origAlphaTest = mat.alphaTest;
 
           // World-space Y from TSL
@@ -2221,10 +2227,9 @@ export class VrmEngine {
             ? origOpacity.mul(dissolveAlpha)
             : dissolveAlpha;
 
-          // biome-ignore lint/suspicious/noExplicitAny: Three.js NodeMaterial emissiveNode is not in public types
-          const origEmissive = (mat as any).emissiveNode;
-          // biome-ignore lint/suspicious/noExplicitAny: Three.js NodeMaterial emissiveNode is not in public types
-          (mat as any).emissiveNode = origEmissive
+          const matWithEmissive = mat as MeshStandardMaterialWithNodeProps;
+          const origEmissive = matWithEmissive.emissiveNode;
+          matWithEmissive.emissiveNode = origEmissive
             ? origEmissive.add(emissiveBoost)
             : emissiveBoost;
 
@@ -2429,7 +2434,7 @@ if (teleportNoise < teleportRatio) discard;
             mat.userData._origOpacityNode ?? null;
         }
         if (mat.userData._origEmissiveNode !== undefined) {
-          (mat as unknown as Record<string, unknown>).emissiveNode =
+          (mat as MeshStandardMaterialWithNodeProps).emissiveNode =
             mat.userData._origEmissiveNode ?? null;
         }
         mat.alphaTest = mat.userData._origAlphaTest ?? 0;

@@ -5,10 +5,10 @@
  * This allows the RL model to learn from actual results, not just immediate actions.
  */
 
-import { getTrainingDataAdapter, getMarketDataAdapter } from '../adapter';
-import { logger } from '../utils/logger';
-import { MarketOutcomesTracker } from './MarketOutcomesTracker';
-import type { TrajectoryStep } from './types';
+import { getMarketDataAdapter, getTrainingDataAdapter } from "../adapter";
+import { logger } from "../utils/logger";
+import { MarketOutcomesTracker } from "./MarketOutcomesTracker";
+import type { TrajectoryStep } from "./types";
 
 export class RewardBackpropagationService {
   private outcomesTracker: MarketOutcomesTracker;
@@ -21,17 +21,18 @@ export class RewardBackpropagationService {
    * Update rewards for trajectories in a window when outcomes become known
    */
   async updateRewardsForWindow(windowId: string): Promise<number> {
-    logger.info('Updating rewards for window', { windowId });
+    logger.info("Updating rewards for window", { windowId });
 
     // Get outcomes for this window
     const outcomes = await this.outcomesTracker.getWindowOutcomes(windowId);
     if (!outcomes) {
-      logger.info('No outcomes found for window', { windowId });
+      logger.info("No outcomes found for window", { windowId });
       return 0;
     }
 
     // Get all trajectories for this window (filter to training data)
-    const allTrajectories = await getTrainingDataAdapter().getTrajectoriesByWindow(windowId);
+    const allTrajectories =
+      await getTrainingDataAdapter().getTrajectoriesByWindow(windowId);
     const trajectoriesResult = allTrajectories.filter((t) => t.isTrainingData);
 
     let updated = 0;
@@ -50,9 +51,9 @@ export class RewardBackpropagationService {
 
         // Check if this step involved trading
         if (
-          step.action.actionType.includes('TRADING') ||
-          step.action.actionType.includes('BUY') ||
-          step.action.actionType.includes('SELL')
+          step.action.actionType.includes("TRADING") ||
+          step.action.actionType.includes("BUY") ||
+          step.action.actionType.includes("SELL")
         ) {
           // Extract market ID from action parameters
           const marketId = step.action.parameters?.marketId as
@@ -63,14 +64,14 @@ export class RewardBackpropagationService {
           if (marketId) {
             // Check prediction market outcome
             const prediction = outcomes.predictions.find(
-              (p) => p.marketId === marketId
+              (p) => p.marketId === marketId,
             );
             if (prediction) {
               // Calculate reward based on whether trade was correct
               const side = step.action.parameters?.side as string | undefined;
               const isCorrect =
-                (side === 'YES' && prediction.outcome === 'YES') ||
-                (side === 'NO' && prediction.outcome === 'NO');
+                (side === "YES" && prediction.outcome === "YES") ||
+                (side === "NO" && prediction.outcome === "NO");
 
               // Reward: +1 for correct, -1 for incorrect (normalized)
               updatedReward = isCorrect ? 1.0 : -1.0;
@@ -86,9 +87,9 @@ export class RewardBackpropagationService {
               // Reward based on whether position direction matched price movement
               // Long position: positive reward if price went up
               // Short position: positive reward if price went down
-              if (side === 'long') {
+              if (side === "long") {
                 updatedReward = Math.max(-1, Math.min(1, priceChange / 10)); // Normalize to -1 to 1
-              } else if (side === 'short') {
+              } else if (side === "short") {
                 updatedReward = Math.max(-1, Math.min(1, -priceChange / 10)); // Inverted for short
               }
             }
@@ -107,13 +108,13 @@ export class RewardBackpropagationService {
         await getTrainingDataAdapter().updateTrajectoryRewards(
           traj.id,
           JSON.stringify(steps),
-          totalReward
+          totalReward,
         );
         updated++;
       }
     }
 
-    logger.info('Updated rewards for trajectories', {
+    logger.info("Updated rewards for trajectories", {
       windowId,
       updated,
       total: trajectoriesResult.length,

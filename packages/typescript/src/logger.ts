@@ -341,6 +341,7 @@ function getFs(): typeof import("node:fs") | null {
 /**
  * Strip ANSI escape codes from a string for plain-text logging.
  */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: control chars required for ANSI escape matching
 function stripAnsi(str: string): string {
 	return str.replace(
 		/\x1B(?:\[[\x20-\x3F]*[\x40-\x7E]|\].*?(?:\x07|\x1B\\)|\(B)/g,
@@ -437,10 +438,12 @@ function writeLogEntryToFile(entry: LogEntry): void {
 	try {
 		const fs = getFs();
 		if (!fs) return;
+		const fd = _fileLogFd;
+		if (fd === null) return;
 		const timestamp = new Date(entry.time).toISOString();
 		const levelStr = LEVEL_TO_NAME[entry.level ?? 30] || "info";
 		const line = `${timestamp} [${levelStr.toUpperCase().padEnd(8)}] ${stripAnsi(entry.msg)}\n`;
-		fs.writeSync(_fileLogFd!, line);
+		fs.writeSync(fd, line);
 	} catch {
 		// Silent fail
 	}
@@ -1273,5 +1276,5 @@ export const elizaLogger = logger;
 export const recentLogs = (): string => globalInMemoryDestination.recentLogs();
 
 // Export everything
-export { logger, createLogger };
+export { createLogger, logger };
 export default logger;

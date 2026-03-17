@@ -45,7 +45,10 @@ export const emoteAction: Action = {
 
   handler: async (_runtime, _message, _state, options) => {
     try {
-      const params = (options as HandlerOptions | undefined)?.parameters;
+      type EmoteParams = { emote?: string };
+      const params = (options as HandlerOptions | undefined)?.parameters as
+        | EmoteParams
+        | undefined;
       const emoteId =
         typeof params?.emote === "string" ? params.emote.trim() : "";
 
