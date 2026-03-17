@@ -8,8 +8,8 @@
  * - RECENT_MESSAGES provider compaction integration
  */
 
-import { describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime, Memory, Room, UUID } from "../types/index.ts";
+import { describe, expect, it } from "vitest";
+import type { Memory, UUID } from "../types/index.ts";
 
 // Mock helpers
 function createMockMessage(
@@ -25,22 +25,6 @@ function createMockMessage(
 		content: { text },
 		createdAt,
 	};
-}
-
-function createMockRoom(options?: {
-	lastCompactionAt?: number;
-	serverId?: string;
-	name?: string;
-}): Room {
-	return {
-		id: "room-1" as UUID,
-		name: options?.name ?? "Test Room",
-		serverId: options?.serverId ?? "server-1",
-		metadata:
-			options?.lastCompactionAt !== undefined
-				? { lastCompactionAt: options.lastCompactionAt }
-				: {},
-	} as Room;
 }
 
 // ============================================
