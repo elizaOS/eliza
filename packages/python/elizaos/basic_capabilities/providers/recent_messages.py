@@ -26,11 +26,18 @@ async def get_recent_messages_context(
     sections: list[str] = []
     message_list: list[dict[str, str | int]] = []
 
+    # Use lastCompactionAt as a lower bound so we skip compacted history
+    start: int | None = None
+    room = await runtime.get_room(room_id)
+    if room and getattr(room, "metadata", None):
+        start = room.metadata.get("lastCompactionAt")
+
     recent_messages = await runtime.get_memories(
         room_id=room_id,
         limit=20,
         order_by="created_at",
         order_direction="desc",
+        **({"start": start} if start is not None else {}),
     )
 
     recent_messages = list(reversed(recent_messages))
