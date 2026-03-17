@@ -41,6 +41,8 @@ import {
   ChannelType,
   type Character,
   type Component,
+  type MessageExampleGroup,
+  type ServiceTypeName,
   createMessageMemory,
   type Entity,
   type LogEntry,
@@ -2988,7 +2990,7 @@ export function buildCharacterFromConfig(config: MiladyConfig): Character {
     ...(style ? { style } : {}),
     ...(adjectives ? { adjectives } : {}),
     ...(postExamples ? { postExamples } : {}),
-    ...(mappedExamples ? { messageExamples: mappedExamples as any } : {}),
+    ...(mappedExamples ? { messageExamples: mappedExamples as MessageExampleGroup[] } : {}),
     secrets,
   });
 }
@@ -4209,7 +4211,7 @@ export async function startEliza(
     // so API + agent come online immediately.
     try {
       const skillServicePromise = runtime.getServiceLoadPromise(
-        "AGENT_SKILLS_SERVICE" as any,
+        "AGENT_SKILLS_SERVICE" as ServiceTypeName,
       );
       const timeout = new Promise<never>((_resolve, reject) => {
         setTimeout(() => {
@@ -4222,7 +4224,7 @@ export async function startEliza(
       });
       await Promise.race([skillServicePromise, timeout]);
 
-      const svc = runtime.getService("AGENT_SKILLS_SERVICE" as any) as
+      const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
             getCatalogStats?: () => {
               loaded: number;

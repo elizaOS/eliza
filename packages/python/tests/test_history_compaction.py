@@ -12,10 +12,10 @@ from elizaos.advanced_memory.actions.reset_session import (
 from elizaos.basic_capabilities.providers.recent_messages import (
     recent_messages_provider as basic_recent_messages_provider,
 )
-from elizaos.bootstrap.actions.reset_session import (
+from elizaos.advanced_memory.actions.reset_session import (
     reset_session_action as bootstrap_reset_session_action,
 )
-from elizaos.bootstrap.providers.recent_messages import (
+from elizaos.basic_capabilities.providers.recent_messages import (
     recent_messages_provider as bootstrap_recent_messages_provider,
 )
 from elizaos.types import Content, Memory, as_uuid

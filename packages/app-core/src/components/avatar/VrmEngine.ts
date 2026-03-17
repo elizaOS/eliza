@@ -12,9 +12,11 @@ import type {
 import * as THREE from "three";
 
 /** Three.js NodeMaterial exposes emissiveNode/opacityNode but they are not in public MeshStandardMaterial types. */
-interface MeshStandardMaterialWithNodeProps extends THREE.MeshStandardMaterial {
-  emissiveNode?: THREE.Node | null;
-  opacityNode?: THREE.Node | null;
+interface MeshStandardMaterialWithNodeProps {
+  // biome-ignore lint/suspicious/noExplicitAny: THREE node types are not in public @types/three
+  emissiveNode?: any;
+  // biome-ignore lint/suspicious/noExplicitAny: THREE node types are not in public @types/three
+  opacityNode?: any;
 }
 
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";

@@ -84,7 +84,7 @@ export const schtasksManager: ServiceManager = {
     try {
       // Build the command
       const [program, ...args] = config.command;
-      const commandLine =
+      const _commandLine =
         args.length > 0
           ? `"${program}" ${args.map((a) => `"${a}"`).join(" ")}`
           : `"${program}"`;

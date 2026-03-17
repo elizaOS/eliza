@@ -11,7 +11,7 @@ from elizaos.advanced_memory.types import LongTermMemoryCategory
 from elizaos.basic_capabilities.services.embedding import (
     EmbeddingService as BasicEmbeddingService,
 )
-from elizaos.bootstrap.services.embedding import (
+from elizaos.basic_capabilities.services.embedding import (
     EmbeddingService as BootstrapEmbeddingService,
 )
 from elizaos.types import ModelType

@@ -352,7 +352,8 @@ async function extractAgentData(
   logger.info(`[agent-export] Extracting data for agent ${agentId}`);
 
   // 1. Agent record
-  const agent = await db.getAgent(agentId);
+  const agents = await db.getAgentsByIds([agentId]);
+  const agent = agents[0];
   if (!agent) {
     throw new AgentExportError(`Agent ${agentId} not found in database.`);
   }
@@ -367,14 +368,14 @@ async function extractAgentData(
 
   for (const world of agentWorlds) {
     if (!world.id) continue;
-    const worldRooms = await db.getRoomsByWorld(world.id);
+    const worldRooms = await db.getRoomsByWorlds([world.id]);
     for (const room of worldRooms) {
       if (room.id) roomMap.set(room.id, room);
     }
   }
 
   // Also get rooms the agent participates in directly
-  const participantRoomIds = await db.getRoomsForParticipant(agentId);
+  const participantRoomIds = await db.getRoomsForParticipants([agentId]);
   if (participantRoomIds.length > 0) {
     const participantRooms = await db.getRoomsByIds(participantRoomIds);
     if (participantRooms) {
@@ -398,14 +399,19 @@ async function extractAgentData(
   for (const room of rooms) {
     if (!room.id) continue;
 
-    const roomEntities = await db.getEntitiesForRoom(room.id, true);
+    const entitiesResult = await db.getEntitiesForRooms([room.id], true);
+    const roomEntities = entitiesResult[0]?.entities ?? [];
     for (const entity of roomEntities) {
       if (entity.id) entityMap.set(entity.id, entity);
     }
 
-    const participantIds = await db.getParticipantsForRoom(room.id);
+    const participantsResult = await db.getParticipantsForRooms([room.id]);
+    const participantIds = participantsResult[0]?.entityIds ?? [];
     for (const entityId of participantIds) {
-      const userState = await db.getParticipantUserState(room.id, entityId);
+      const userStates = await db.getParticipantUserStates([
+        { roomId: room.id, entityId },
+      ]);
+      const userState = userStates[0] ?? null;
       participantRecords.push({
         entityId,
         roomId: room.id,
@@ -430,10 +436,11 @@ async function extractAgentData(
   };
   for (const entity of entities) {
     if (!entity.id) continue;
-    for (const c of await db.getComponents(entity.id)) addComponent(c);
+    for (const c of await db.getComponentsForEntities([entity.id]))
+      addComponent(c);
     for (const world of agentWorlds) {
       if (!world.id) continue;
-      for (const c of await db.getComponents(entity.id, world.id))
+      for (const c of await db.getComponentsForEntities([entity.id], world.id))
         addComponent(c);
     }
   }
@@ -463,7 +470,7 @@ async function extractAgentData(
     if (!world.id) continue;
     for (const tableName of MEMORY_TABLES) {
       const worldMemories = await db.getMemoriesByWorldId({
-        worldId: world.id,
+        worldIds: [world.id],
         count: Number.MAX_SAFE_INTEGER,
         tableName,
       });
@@ -479,13 +486,13 @@ async function extractAgentData(
   logger.info(`[agent-export] Found ${allMemories.length} memories`);
 
   // 7. Relationships
-  const relationships = await db.getRelationships({ entityId: agentId });
+  const relationships = await db.getRelationships({ entityIds: [agentId] });
   logger.info(`[agent-export] Found ${relationships.length} relationships`);
 
   // 8. Tasks
   // The Task proto type does not declare agentId, but the DB schema stores
   // agent_id. Filter using a dynamic property access to handle both shapes.
-  const allTasks = await db.getTasks({});
+  const allTasks = await db.getTasks({ agentIds: [agentId] });
   const agentTasks = allTasks.filter((t) => taskAgentId(t) === agentId);
   logger.info(`[agent-export] Found ${agentTasks.length} tasks`);
 
@@ -581,8 +588,8 @@ async function restoreAgentData(
   agentData.createdAt = Date.now();
   agentData.updatedAt = Date.now();
 
-  const agentCreated = await db.createAgent(agentData);
-  if (!agentCreated) {
+  const agentCreatedIds = await db.createAgents([agentData]);
+  if (!agentCreatedIds || agentCreatedIds.length === 0) {
     throw new AgentExportError("Failed to create agent in database.");
   }
   logger.info(
@@ -597,7 +604,7 @@ async function restoreAgentData(
       id: remap(world.id ?? "") as UUID,
       agentId: newAgentId as UUID,
     };
-    await db.createWorld(newWorld);
+    await db.createWorlds([newWorld]);
     worldsImported++;
   }
   logger.info(`[agent-import] Imported ${worldsImported} worlds`);
@@ -644,9 +651,11 @@ async function restoreAgentData(
   for (const p of payload.participants) {
     const newEntityId = remap(p.entityId) as UUID;
     const newRoomId = remap(p.roomId) as UUID;
-    await db.addParticipantsRoom([newEntityId], newRoomId);
+    await db.createRoomParticipants([newEntityId], newRoomId);
     if (p.userState === "FOLLOWED" || p.userState === "MUTED") {
-      await db.setParticipantUserState(newRoomId, newEntityId, p.userState);
+      await db.updateParticipantUserStates([
+        { roomId: newRoomId, entityId: newEntityId, state: p.userState },
+      ]);
     }
     participantsImported++;
   }
@@ -666,7 +675,7 @@ async function restoreAgentData(
         ? { sourceEntityId: remap(comp.sourceEntityId) as UUID }
         : {}),
     };
-    await db.createComponent(newComp);
+    await db.createComponents([newComp]);
     componentsImported++;
   }
   logger.info(`[agent-import] Imported ${componentsImported} components`);
@@ -685,7 +694,7 @@ async function restoreAgentData(
       // Embeddings are excluded — they will be regenerated
       embedding: undefined,
     };
-    await db.createMemory(newMem, tableName);
+    await db.createMemories([{ memory: newMem, tableName }]);
     memoriesImported++;
   }
   logger.info(`[agent-import] Imported ${memoriesImported} memories`);
@@ -693,12 +702,12 @@ async function restoreAgentData(
   // 8. Create relationships
   let relationshipsImported = 0;
   for (const rel of payload.relationships) {
-    await db.createRelationship({
+    await db.createRelationships([{
       sourceEntityId: remap(rel.sourceEntityId ?? "") as UUID,
       targetEntityId: remap(rel.targetEntityId ?? "") as UUID,
       tags: rel.tags,
       metadata: rel.metadata,
-    });
+    }]);
     relationshipsImported++;
   }
   logger.info(`[agent-import] Imported ${relationshipsImported} relationships`);
@@ -717,7 +726,7 @@ async function restoreAgentData(
       worldId: task.worldId ? (remap(task.worldId) as UUID) : undefined,
       entityId: task.entityId ? (remap(task.entityId) as UUID) : undefined,
     } as Task;
-    await db.createTask(newTask);
+    await db.createTasks([newTask]);
     tasksImported++;
   }
   logger.info(`[agent-import] Imported ${tasksImported} tasks`);
@@ -725,16 +734,16 @@ async function restoreAgentData(
   // 10. Create logs
   let logsImported = 0;
   for (const logEntry of payload.logs) {
-    await db.log({
+    await db.createLogs([{
       body: logEntry.body,
-      entityId: logEntry.entityId
+      entityId: (logEntry.entityId
         ? (remap(logEntry.entityId) as UUID)
-        : logEntry.entityId,
+        : logEntry.entityId) as UUID,
       roomId: logEntry.roomId
         ? (remap(logEntry.roomId) as UUID)
         : (newAgentId as UUID),
       type: logEntry.type ?? "action",
-    });
+    }]);
     logsImported++;
   }
   logger.info(`[agent-import] Imported ${logsImported} logs`);
@@ -944,16 +953,18 @@ export async function estimateExportSize(
   const allWorlds = await db.getAllWorlds();
   const agentWorlds = allWorlds.filter((w) => w.agentId === agentId);
 
-  const roomIds = await db.getRoomsForParticipant(agentId);
+  const roomIds = await db.getRoomsForParticipants([agentId]);
   const entityIdSet = new Set<string>();
-  for (const roomId of roomIds) {
-    const roomEntities = await db.getEntitiesForRoom(roomId);
-    for (const e of roomEntities) {
-      if (e.id) entityIdSet.add(e.id);
+  if (roomIds.length > 0) {
+    const entitiesResult = await db.getEntitiesForRooms(roomIds as UUID[], true);
+    for (const result of entitiesResult) {
+      for (const e of result.entities) {
+        if (e.id) entityIdSet.add(e.id);
+      }
     }
   }
 
-  const tasks = await db.getTasks({});
+  const tasks = await db.getTasks({ agentIds: [agentId] });
   const agentTasks = tasks.filter((t) => taskAgentId(t) === agentId);
 
   // Rough estimate: ~500 bytes per memory, ~200 bytes per entity, ~300 per room

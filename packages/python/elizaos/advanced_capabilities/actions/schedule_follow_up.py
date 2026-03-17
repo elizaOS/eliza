@@ -57,7 +57,7 @@ class ScheduleFollowUpAction:
         responses: list[Memory] | None = None,
     ) -> ActionResult:
         from elizaos.advanced_capabilities.services.follow_up import FollowUpService
-        from elizaos.bootstrap.services.rolodex import RolodexService
+        from elizaos.advanced_capabilities.services.rolodex import RolodexService
 
         rolodex_service = runtime.get_service("rolodex")
         follow_up_service = runtime.get_service("follow_up")

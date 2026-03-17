@@ -37,7 +37,7 @@ async def get_recent_messages_context(
         limit=20,
         order_by="created_at",
         order_direction="desc",
-        **({"start": start} if start is not None else {}),
+        **({"start": start} if start is not None else {}),  # type: ignore[arg-type]
     )
 
     recent_messages = list(reversed(recent_messages))

@@ -77,7 +77,7 @@ class UpdateSettingsAction:
             raise ValueError("Failed to parse XML response")
 
         thought = str(parsed_xml.get("thought", ""))
-        updates_raw = parsed_xml.get("updates", [])
+        updates_raw: object = parsed_xml.get("updates", [])
 
         updated_settings: list[SettingUpdate] = []
 

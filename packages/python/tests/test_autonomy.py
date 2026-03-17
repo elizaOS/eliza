@@ -4,14 +4,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from elizaos.bootstrap.autonomy import (
+from elizaos.bootstrap.autonomy import (  # type: ignore[import-not-found]
     AUTONOMY_SERVICE_TYPE,
     AutonomyService,
     admin_chat_provider,
     autonomy_status_provider,
     send_to_admin_action,
 )
-from elizaos.bootstrap.autonomy.types import AutonomyStatus
+from elizaos.bootstrap.autonomy.types import AutonomyStatus  # type: ignore[import-not-found]
 from elizaos.types.memory import Memory
 from elizaos.types.primitives import Content, as_uuid
 
@@ -439,7 +439,7 @@ class TestAutonomyStatusProvider:
 
 class TestAutonomyIntegration:
     def test_exports_all_components(self):
-        from elizaos.bootstrap.autonomy import (
+        from elizaos.bootstrap.autonomy import (  # type: ignore[import-not-found]
             AUTONOMY_SERVICE_TYPE,
             AutonomyService,
             admin_chat_provider,

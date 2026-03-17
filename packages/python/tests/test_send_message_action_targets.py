@@ -8,7 +8,7 @@ import pytest
 from elizaos.advanced_capabilities.actions.send_message import (
     send_message_action as advanced_send_message_action,
 )
-from elizaos.bootstrap.actions.send_message import (
+from elizaos.advanced_capabilities.actions.send_message import (
     send_message_action as bootstrap_send_message_action,
 )
 from elizaos.types.memory import Memory

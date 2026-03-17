@@ -531,10 +531,12 @@ async fn persist_evaluator_results(
     };
 
     for r in results {
-        let mut content = Content::default();
-        content.content_type = Some("evaluator_result".to_string());
-        content.source = Some("auto".to_string());
-        content.thought = r.text.clone();
+        let mut content = Content {
+            content_type: Some("evaluator_result".to_string()),
+            source: Some("auto".to_string()),
+            thought: r.text.clone(),
+            ..Content::default()
+        };
         if let Some(err) = &r.error {
             content
                 .extra
@@ -789,7 +791,7 @@ async fn run_multi_step(
                 .process_selected_actions(
                     message,
                     &iter_state,
-                    &[action_name.clone()],
+                    std::slice::from_ref(&action_name),
                     &nested_params,
                 )
                 .await?;
