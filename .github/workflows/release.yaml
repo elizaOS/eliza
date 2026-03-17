@@ -313,7 +313,10 @@ jobs:
       # Update lockfile after version changes
       - name: Update lockfile
         run: |
-          bun install --no-frozen-lockfile
+          bun install --no-frozen-lockfile || {
+            echo "::warning::bun install had errors (likely a broken postinstall script)"
+            test -f bun.lock && echo "Lockfile exists, continuing" || exit 1
+          }
 
       # Commit and push version changes BEFORE building and publishing
       # This ensures git is the source of truth
@@ -613,8 +616,8 @@ jobs:
               --no-push \
               --allow-branch release/*
             
-            # Update lockfile
-            bun install --no-frozen-lockfile
+            # Update lockfile (|| true: tolerate broken postinstall scripts)
+            bun install --no-frozen-lockfile || true
             
             # Commit
             git add -A
@@ -650,8 +653,8 @@ jobs:
               --no-push \
               --allow-branch release/*
             
-            # Update lockfile
-            bun install --no-frozen-lockfile
+            # Update lockfile (|| true: tolerate broken postinstall scripts)
+            bun install --no-frozen-lockfile || true
             
             # Commit
             git add -A
@@ -725,8 +728,8 @@ jobs:
               --no-push \
               --allow-branch release/*
             
-            # Update lockfile
-            bun install --no-frozen-lockfile
+            # Update lockfile (|| true: tolerate broken postinstall scripts)
+            bun install --no-frozen-lockfile || true
             
             # Commit
             git add -A
