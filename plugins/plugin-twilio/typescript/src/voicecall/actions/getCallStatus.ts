@@ -29,7 +29,7 @@ export const getCallStatusAction: Action = {
     _message: Memory,
     state: State | undefined,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
 
@@ -57,7 +57,7 @@ export const getCallStatusAction: Action = {
 
       const callList = activeCalls
         .map(
-          (call: CallRecord) => `- ${call.callId}: ${call.direction} to ${call.to} (${call.state})`,
+          (call: CallRecord) => `- ${call.callId}: ${call.direction} to ${call.to} (${call.state})`
         )
         .join("\n");
 

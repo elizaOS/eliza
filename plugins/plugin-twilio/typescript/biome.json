@@ -12,12 +12,16 @@
       "a11y": {
         "useButtonType": "off"
       },
-      "style": {},
+      "style": {
+        "noNonNullAssertion": "warn"
+      },
       "complexity": {
         "noCommaOperator": "off"
       },
       "suspicious": {
-        "noExplicitAny": "off"
+        "noExplicitAny": "off",
+        "useAdjacentOverloadSignatures": "warn",
+        "noImplicitAnyLet": "warn"
       }
     }
   },

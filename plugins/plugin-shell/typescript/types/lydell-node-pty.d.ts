@@ -17,7 +17,7 @@ declare module "@lydell/node-pty" {
       rows?: number;
       cwd?: string;
       env?: Record<string, string>;
-    },
+    }
   ) => PtyHandle;
 
   export const spawn: PtySpawn;

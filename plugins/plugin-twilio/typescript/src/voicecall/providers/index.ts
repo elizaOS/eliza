@@ -14,7 +14,7 @@ import { TwilioVoiceProvider } from "./twilio";
  */
 export function createProvider(
   settings: VoiceCallSettings,
-  options?: { skipVerification?: boolean },
+  options?: { skipVerification?: boolean }
 ): VoiceCallProvider {
   const providerOptions = { skipVerification: options?.skipVerification };
 
@@ -33,6 +33,8 @@ export function createProvider(
       return new MockProvider();
 
     default:
-      throw new Error(`Unknown or unsupported provider: ${settings.provider}. Supported providers: twilio, mock`);
+      throw new Error(
+        `Unknown or unsupported provider: ${settings.provider}. Supported providers: twilio, mock`
+      );
   }
 }

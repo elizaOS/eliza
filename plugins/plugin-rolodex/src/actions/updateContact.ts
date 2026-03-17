@@ -9,8 +9,8 @@ import {
   type HandlerCallback,
   ModelType,
   type ActionResult,
-} from '@elizaos/core';
-import { RolodexService, type ContactInfo } from '../services/RolodexService';
+} from "@elizaos/core";
+import { RolodexService, type ContactInfo } from "../services/RolodexService";
 
 const updateContactTemplate = `# Update Contact Information
 
@@ -38,12 +38,16 @@ Extract the contact update information from the message:
 </response>`;
 
 export const updateContactAction: Action = {
-  name: 'UPDATE_CONTACT',
-  similes: ['EDIT_CONTACT', 'MODIFY_CONTACT', 'CHANGE_CONTACT'],
-  description: 'Updates an existing contact in the rolodex',
+  name: "UPDATE_CONTACT",
+  similes: ["EDIT_CONTACT", "MODIFY_CONTACT", "CHANGE_CONTACT"],
+  description: "Updates an existing contact in the rolodex",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const hasService = !!runtime.getService('rolodex');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const hasService = !!runtime.getService("rolodex");
     const hasIntent = message.content.text
       ?.toLowerCase()
       .match(/update|edit|modify|change|add.*to|remove.*from/);
@@ -55,19 +59,19 @@ export const updateContactAction: Action = {
     message: Memory,
     state?: State,
     _options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult | void> => {
     try {
-      const rolodexService = runtime.getService('rolodex') as RolodexService;
+      const rolodexService = runtime.getService("rolodex") as RolodexService;
       if (!rolodexService) {
-        throw new Error('RolodexService not available');
+        throw new Error("RolodexService not available");
       }
 
       // Compose the prompt
       const updateState = {
         ...state,
         message: message.content.text,
-        senderName: state?.senderName || 'User',
+        senderName: state?.senderName || "User",
         senderId: message.entityId,
         currentDateTime: new Date().toISOString(),
       };
@@ -82,7 +86,7 @@ export const updateContactAction: Action = {
       const parsed = parseKeyValueXml(response);
 
       if (!parsed?.contactName) {
-        logger.warn('[UpdateContact] No contact name provided');
+        logger.warn("[UpdateContact] No contact name provided");
         await callback?.({
           text: "I couldn't determine which contact to update. Please specify the contact name.",
         });
@@ -90,7 +94,9 @@ export const updateContactAction: Action = {
       }
 
       // Find the contact entity
-      const contacts = await rolodexService.searchContacts({ searchTerm: parsed.contactName });
+      const contacts = await rolodexService.searchContacts({
+        searchTerm: parsed.contactName,
+      });
 
       if (contacts.length === 0) {
         await callback?.({
@@ -100,7 +106,7 @@ export const updateContactAction: Action = {
       }
 
       const contact = contacts[0];
-      const operation = parsed.operation || 'replace';
+      const operation = parsed.operation || "replace";
 
       // Prepare update data
       const updateData: Partial<ContactInfo> = {};
@@ -108,11 +114,13 @@ export const updateContactAction: Action = {
       // Handle categories
       if (parsed.categories) {
         const newCategories = parsed.categories
-          .split(',')
+          .split(",")
           .map((c: string) => c.trim())
           .filter(Boolean);
-        if (operation === 'add_to' && contact.categories) {
-          updateData.categories = [...new Set([...contact.categories, ...newCategories])];
+        if (operation === "add_to" && contact.categories) {
+          updateData.categories = [
+            ...new Set([...contact.categories, ...newCategories]),
+          ];
         } else {
           updateData.categories = newCategories;
         }
@@ -121,10 +129,10 @@ export const updateContactAction: Action = {
       // Handle tags
       if (parsed.tags) {
         const newTags = parsed.tags
-          .split(',')
+          .split(",")
           .map((t: string) => t.trim())
           .filter(Boolean);
-        if (operation === 'add_to' && contact.tags) {
+        if (operation === "add_to" && contact.tags) {
           updateData.tags = [...new Set([...contact.tags, ...newTags])];
         } else {
           updateData.tags = newTags;
@@ -134,12 +142,12 @@ export const updateContactAction: Action = {
       // Handle preferences
       if (parsed.preferences) {
         const newPrefs: Record<string, string> = {};
-        parsed.preferences.split(',').forEach((pref: string) => {
-          const [key, value] = pref.split(':').map((s: string) => s.trim());
+        parsed.preferences.split(",").forEach((pref: string) => {
+          const [key, value] = pref.split(":").map((s: string) => s.trim());
           if (key && value) newPrefs[key] = value;
         });
 
-        if (operation === 'add_to' && contact.preferences) {
+        if (operation === "add_to" && contact.preferences) {
           updateData.preferences = { ...contact.preferences, ...newPrefs };
         } else {
           updateData.preferences = newPrefs;
@@ -149,12 +157,12 @@ export const updateContactAction: Action = {
       // Handle custom fields
       if (parsed.customFields) {
         const newFields: Record<string, string> = {};
-        parsed.customFields.split(',').forEach((field: string) => {
-          const [key, value] = field.split(':').map((s: string) => s.trim());
+        parsed.customFields.split(",").forEach((field: string) => {
+          const [key, value] = field.split(":").map((s: string) => s.trim());
           if (key && value) newFields[key] = value;
         });
 
-        if (operation === 'add_to' && contact.customFields) {
+        if (operation === "add_to" && contact.customFields) {
           updateData.customFields = { ...contact.customFields, ...newFields };
         } else {
           updateData.customFields = newFields;
@@ -162,16 +170,21 @@ export const updateContactAction: Action = {
       }
 
       // Update the contact
-      const updated = await rolodexService.updateContact(contact.entityId, updateData);
+      const updated = await rolodexService.updateContact(
+        contact.entityId,
+        updateData,
+      );
 
       if (updated) {
         const responseText = `I've updated ${parsed.contactName}'s contact information. ${
-          updateData.categories ? `Categories: ${updateData.categories.join(', ')}. ` : ''
-        }${updateData.tags ? `Tags: ${updateData.tags.join(', ')}. ` : ''}`;
+          updateData.categories
+            ? `Categories: ${updateData.categories.join(", ")}. `
+            : ""
+        }${updateData.tags ? `Tags: ${updateData.tags.join(", ")}. ` : ""}`;
 
         await callback?.({
           text: responseText,
-          actions: ['UPDATE_CONTACT'],
+          actions: ["UPDATE_CONTACT"],
         });
 
         logger.info(`[UpdateContact] Updated contact ${contact.entityId}`);
@@ -183,13 +196,16 @@ export const updateContactAction: Action = {
           text: responseText,
         };
       } else {
-        throw new Error('Failed to update contact');
+        throw new Error("Failed to update contact");
       }
     } catch (error) {
-      logger.error('[UpdateContact] Error:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        "[UpdateContact] Error:",
+        error instanceof Error ? error.message : String(error),
+      );
       await callback?.({
-        text: 'I encountered an error while updating the contact. Please try again.',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        text: "I encountered an error while updating the contact. Please try again.",
+        error: error instanceof Error ? error.message : "Unknown error",
       });
     }
   },
@@ -197,31 +213,31 @@ export const updateContactAction: Action = {
   examples: [
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'Update John Doe and add the tech tag',
+          text: "Update John Doe and add the tech tag",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: "I've updated John Doe's contact information. Tags: tech.",
-          actions: ['UPDATE_CONTACT'],
+          actions: ["UPDATE_CONTACT"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'Change Sarah to a VIP contact and set her timezone to PST',
+          text: "Change Sarah to a VIP contact and set her timezone to PST",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: "I've updated Sarah's contact information. Categories: vip.",
-          actions: ['UPDATE_CONTACT'],
+          actions: ["UPDATE_CONTACT"],
         },
       },
     ],

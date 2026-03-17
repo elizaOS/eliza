@@ -21,7 +21,11 @@ import type {
 // Reaction Configuration
 // ============================================================
 
-export type MsTeamsReactionNotificationMode = "off" | "own" | "all" | "allowlist";
+export type MsTeamsReactionNotificationMode =
+  | "off"
+  | "own"
+  | "all"
+  | "allowlist";
 
 // ============================================================
 // Action Configuration

@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import callStateProvider from "../../providers/callState";
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import callStateProvider from "../../providers/callState";
 
 /**
  * Voice stream data structure matching TwilioService
@@ -97,11 +97,7 @@ describe("callStateProvider", () => {
         to: "+18885551234",
       });
 
-      const result = await callStateProvider.get(
-        testRuntime,
-        testMessage,
-        testState,
-      );
+      const result = await callStateProvider.get(testRuntime, testMessage, testState);
 
       expect(result.text).toContain("Active voice calls (2):");
       expect(result.text).toContain("Call CA123: +18885551234 → +18885555678");
@@ -126,11 +122,7 @@ describe("callStateProvider", () => {
     });
 
     it("should return no active calls when voice streams is empty", async () => {
-      const result = await callStateProvider.get(
-        testRuntime,
-        testMessage,
-        testState,
-      );
+      const result = await callStateProvider.get(testRuntime, testMessage, testState);
 
       expect(result.text).toBe("No active voice calls");
       expect(result.data).toEqual({
@@ -144,11 +136,7 @@ describe("callStateProvider", () => {
         agentId: "test-agent-id" as UUID,
       } as unknown as IAgentRuntime;
 
-      const result = await callStateProvider.get(
-        runtimeWithoutService,
-        testMessage,
-        testState,
-      );
+      const result = await callStateProvider.get(runtimeWithoutService, testMessage, testState);
 
       expect(result.text).toBe("No Twilio call state available - service not initialized");
     });
@@ -162,11 +150,7 @@ describe("callStateProvider", () => {
         agentId: "test-agent-id" as UUID,
       } as unknown as IAgentRuntime;
 
-      const result = await callStateProvider.get(
-        runtimeWithUndefined,
-        testMessage,
-        testState,
-      );
+      const result = await callStateProvider.get(runtimeWithUndefined, testMessage, testState);
 
       expect(result.text).toBe("No active voice calls");
       expect(result.data).toEqual({
@@ -187,11 +171,7 @@ describe("callStateProvider", () => {
         agentId: "test-agent-id" as UUID,
       } as unknown as IAgentRuntime;
 
-      const result = await callStateProvider.get(
-        runtimeWithError,
-        testMessage,
-        testState,
-      );
+      const result = await callStateProvider.get(runtimeWithError, testMessage, testState);
 
       expect(result.text).toBe("Error retrieving call state");
     });
@@ -203,11 +183,7 @@ describe("callStateProvider", () => {
         to: "+18885552222",
       });
 
-      const result = await callStateProvider.get(
-        testRuntime,
-        testMessage,
-        testState,
-      );
+      const result = await callStateProvider.get(testRuntime, testMessage, testState);
 
       expect(result.text).toContain("Active voice calls (1):");
       expect(result.text).toContain("Call CA789: +18885551111 → +18885552222");

@@ -6,7 +6,7 @@
  * requiring a full runtime.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 
 import {
   nameSimilarity,
@@ -14,17 +14,17 @@ import {
   normalizeHandle,
   jaccardSimilarity,
   couldBeSameEntity,
-} from '../utils/similarity';
+} from "../utils/similarity";
 
 import {
   buildAdjacencyGraph,
   getNeighborhood,
   sharedConnections,
-} from '../utils/graphTraversal';
+} from "../utils/graphTraversal";
 
-import { RESOLUTION_THRESHOLDS, SIGNAL_WEIGHTS } from '../types/index';
-import type { ResolutionSignal, ResolutionSignalType } from '../types/index';
-import type { UUID, Relationship } from '@elizaos/core';
+import { RESOLUTION_THRESHOLDS, SIGNAL_WEIGHTS } from "../types/index";
+import type { ResolutionSignal, ResolutionSignalType } from "../types/index";
+import type { UUID, Relationship } from "@elizaos/core";
 
 // ──────────────────────────────────────────────
 // Scoring Logic Tests (extracted from service)
@@ -57,13 +57,13 @@ function scoreCandidate(signals: ResolutionSignal[]): number {
   return Math.max(0, Math.min(1, totalScore));
 }
 
-describe('Entity Resolution Scoring', () => {
-  it('should score same-handle-different-platform highly', () => {
+describe("Entity Resolution Scoring", () => {
+  it("should score same-handle-different-platform highly", () => {
     const signals: ResolutionSignal[] = [
       {
-        type: 'handle_correlation',
+        type: "handle_correlation",
         weight: 0.95,
-        evidence: 'Same handle on different platforms: davebuilds',
+        evidence: "Same handle on different platforms: davebuilds",
         timestamp: Date.now(),
       },
     ];
@@ -72,10 +72,10 @@ describe('Entity Resolution Scoring', () => {
     expect(score).toBeGreaterThan(0.2);
   });
 
-  it('should score self-identification very highly', () => {
+  it("should score self-identification very highly", () => {
     const signals: ResolutionSignal[] = [
       {
-        type: 'self_identification',
+        type: "self_identification",
         weight: 0.9,
         evidence: 'User said "that\'s me" when asked about the other account',
         timestamp: Date.now(),
@@ -86,30 +86,30 @@ describe('Entity Resolution Scoring', () => {
     expect(score).toBeGreaterThan(0.25);
   });
 
-  it('should score multiple weak signals above threshold when combined', () => {
+  it("should score multiple weak signals above threshold when combined", () => {
     const signals: ResolutionSignal[] = [
       {
-        type: 'name_match',
+        type: "name_match",
         weight: 0.7,
         evidence: '"Dave_D" ~ "dave_codes"',
         timestamp: Date.now(),
       },
       {
-        type: 'project_affinity',
+        type: "project_affinity",
         weight: 0.8,
-        evidence: 'Both mention ChainTracker project',
+        evidence: "Both mention ChainTracker project",
         timestamp: Date.now(),
       },
       {
-        type: 'handle_correlation',
+        type: "handle_correlation",
         weight: 0.75,
-        evidence: 'davebuilds on GitHub from both accounts',
+        evidence: "davebuilds on GitHub from both accounts",
         timestamp: Date.now(),
       },
       {
-        type: 'shared_connections',
+        type: "shared_connections",
         weight: 0.3,
-        evidence: '2 shared connections',
+        evidence: "2 shared connections",
         timestamp: Date.now(),
       },
     ];
@@ -117,10 +117,10 @@ describe('Entity Resolution Scoring', () => {
     expect(score).toBeGreaterThan(RESOLUTION_THRESHOLDS.PROPOSE);
   });
 
-  it('should not exceed threshold for a single weak signal', () => {
+  it("should not exceed threshold for a single weak signal", () => {
     const signals: ResolutionSignal[] = [
       {
-        type: 'name_match',
+        type: "name_match",
         weight: 0.6,
         evidence: '"Alex" ~ "Alex J"',
         timestamp: Date.now(),
@@ -131,12 +131,12 @@ describe('Entity Resolution Scoring', () => {
     expect(score).toBeLessThan(RESOLUTION_THRESHOLDS.PROPOSE);
   });
 
-  it('should have diminishing returns for multiple signals of same type', () => {
+  it("should have diminishing returns for multiple signals of same type", () => {
     const oneSignal: ResolutionSignal[] = [
       {
-        type: 'name_match',
+        type: "name_match",
         weight: 0.8,
-        evidence: 'match 1',
+        evidence: "match 1",
         timestamp: Date.now(),
       },
     ];
@@ -144,9 +144,9 @@ describe('Entity Resolution Scoring', () => {
     const twoSignals: ResolutionSignal[] = [
       ...oneSignal,
       {
-        type: 'name_match',
+        type: "name_match",
         weight: 0.8,
-        evidence: 'match 2',
+        evidence: "match 2",
         timestamp: Date.now(),
       },
     ];
@@ -159,12 +159,12 @@ describe('Entity Resolution Scoring', () => {
     expect(score2).toBeLessThan(score1 * 2);
   });
 
-  it('should auto-confirm admin confirmation', () => {
+  it("should auto-confirm admin confirmation", () => {
     const signals: ResolutionSignal[] = [
       {
-        type: 'admin_confirmation',
+        type: "admin_confirmation",
         weight: 1.0,
-        evidence: 'Admin confirmed identity match',
+        evidence: "Admin confirmed identity match",
         timestamp: Date.now(),
       },
     ];
@@ -177,63 +177,67 @@ describe('Entity Resolution Scoring', () => {
 // Small-World Resolution Strategy Tests
 // ──────────────────────────────────────────────
 
-describe('Small-World Resolution Strategy', () => {
+describe("Small-World Resolution Strategy", () => {
   const makeRelationship = (source: string, target: string): Relationship => ({
     id: `rel-${source}-${target}` as UUID,
     sourceEntityId: source as UUID,
     targetEntityId: target as UUID,
-    agentId: 'agent-1' as UUID,
+    agentId: "agent-1" as UUID,
     tags: [],
     metadata: {},
     createdAt: Date.now(),
   });
 
-  it('should find candidates within 2-hop neighborhood', () => {
+  it("should find candidates within 2-hop neighborhood", () => {
     // Dave_D (Discord) -- knows Alice -- knows dave_codes (Twitter)
     const relationships = [
-      makeRelationship('dave_d', 'alice'),
-      makeRelationship('alice', 'dave_codes'),
-      makeRelationship('alice', 'bob'),
-      makeRelationship('bob', 'charlie'),
+      makeRelationship("dave_d", "alice"),
+      makeRelationship("alice", "dave_codes"),
+      makeRelationship("alice", "bob"),
+      makeRelationship("bob", "charlie"),
     ];
 
     const graph = buildAdjacencyGraph(relationships);
-    const neighborhood = getNeighborhood(graph, 'dave_d' as UUID, 2);
+    const neighborhood = getNeighborhood(graph, "dave_d" as UUID, 2);
 
     // dave_codes should be in the 2-hop neighborhood
-    expect(neighborhood.has('dave_codes' as UUID)).toBe(true);
+    expect(neighborhood.has("dave_codes" as UUID)).toBe(true);
     // charlie is 3 hops away — should NOT be included
-    expect(neighborhood.has('charlie' as UUID)).toBe(false);
+    expect(neighborhood.has("charlie" as UUID)).toBe(false);
   });
 
-  it('should identify shared connections as a signal', () => {
+  it("should identify shared connections as a signal", () => {
     const relationships = [
-      makeRelationship('entity_a', 'alice'),
-      makeRelationship('entity_a', 'bob'),
-      makeRelationship('entity_a', 'charlie'),
-      makeRelationship('entity_b', 'alice'),
-      makeRelationship('entity_b', 'bob'),
-      makeRelationship('entity_b', 'diana'),
+      makeRelationship("entity_a", "alice"),
+      makeRelationship("entity_a", "bob"),
+      makeRelationship("entity_a", "charlie"),
+      makeRelationship("entity_b", "alice"),
+      makeRelationship("entity_b", "bob"),
+      makeRelationship("entity_b", "diana"),
     ];
 
     const graph = buildAdjacencyGraph(relationships);
-    const shared = sharedConnections(graph, 'entity_a' as UUID, 'entity_b' as UUID);
+    const shared = sharedConnections(
+      graph,
+      "entity_a" as UUID,
+      "entity_b" as UUID,
+    );
 
     // Both know Alice and Bob
     expect(shared.size).toBe(2);
-    expect(shared.has('alice' as UUID)).toBe(true);
-    expect(shared.has('bob' as UUID)).toBe(true);
+    expect(shared.has("alice" as UUID)).toBe(true);
+    expect(shared.has("bob" as UUID)).toBe(true);
   });
 
-  it('should limit neighborhood scan to maxNodes', () => {
+  it("should limit neighborhood scan to maxNodes", () => {
     // Create a large fan-out graph
     const relationships: Relationship[] = [];
     for (let i = 0; i < 300; i++) {
-      relationships.push(makeRelationship('hub', `node_${i}`));
+      relationships.push(makeRelationship("hub", `node_${i}`));
     }
 
     const graph = buildAdjacencyGraph(relationships);
-    const neighborhood = getNeighborhood(graph, 'hub' as UUID, 1, 50);
+    const neighborhood = getNeighborhood(graph, "hub" as UUID, 1, 50);
 
     expect(neighborhood.size).toBeLessThanOrEqual(50);
   });
@@ -243,8 +247,8 @@ describe('Small-World Resolution Strategy', () => {
 // The Dave Scenario (Integration-level unit test)
 // ──────────────────────────────────────────────
 
-describe('The Dave Scenario — Cross-Platform Identity', () => {
-  it('should generate strong signals for Dave across platforms', () => {
+describe("The Dave Scenario — Cross-Platform Identity", () => {
+  it("should generate strong signals for Dave across platforms", () => {
     // Simulate what the EntityResolutionService would compute
     // Dave_D on Discord has:
     //   - name: "Dave_D"
@@ -259,34 +263,34 @@ describe('The Dave Scenario — Cross-Platform Identity', () => {
     //   - mentioned event: "ETH Denver"
 
     // Signal 1: Name similarity
-    const nameSim = nameSimilarity('Dave_D', 'dave_codes');
+    const nameSim = nameSimilarity("Dave_D", "dave_codes");
     // These names aren't super similar, but both contain "dave"
     expect(nameSim).toBeGreaterThan(0.3);
 
     // Signal 2: Handle correlation (github handles are identical!)
-    const githubCorrelation = handleCorrelation('davebuilds', 'davebuilds');
+    const githubCorrelation = handleCorrelation("davebuilds", "davebuilds");
     expect(githubCorrelation).toBe(1.0);
 
     // Signal 3: Could they be the same entity?
     // The GitHub handle match should be the strongest signal
-    expect(couldBeSameEntity('davebuilds', 'davebuilds')).toBe(true);
+    expect(couldBeSameEntity("davebuilds", "davebuilds")).toBe(true);
 
     // Simulate scoring with combined signals
     const signals: ResolutionSignal[] = [
       {
-        type: 'handle_correlation',
+        type: "handle_correlation",
         weight: 1.0, // Exact GitHub match
-        evidence: 'Same GitHub: davebuilds',
+        evidence: "Same GitHub: davebuilds",
         timestamp: Date.now(),
       },
       {
-        type: 'project_affinity',
+        type: "project_affinity",
         weight: 0.9, // Both mention ChainTracker
-        evidence: 'Both working on ChainTracker',
+        evidence: "Both working on ChainTracker",
         timestamp: Date.now(),
       },
       {
-        type: 'name_match',
+        type: "name_match",
         weight: nameSim,
         evidence: '"Dave_D" ~ "dave_codes"',
         timestamp: Date.now(),
@@ -300,18 +304,18 @@ describe('The Dave Scenario — Cross-Platform Identity', () => {
     expect(score).toBeGreaterThan(RESOLUTION_THRESHOLDS.PROPOSE);
   });
 
-  it('should NOT match two different Alexes despite name similarity', () => {
+  it("should NOT match two different Alexes despite name similarity", () => {
     // Alex (designer, SF, @alex_designs) vs Alex J (backend, London, @alexj_distributed)
-    const nameSim = nameSimilarity('Alex', 'Alex J');
+    const nameSim = nameSimilarity("Alex", "Alex J");
     expect(nameSim).toBeGreaterThan(0.5); // Names ARE similar
 
-    const handleSim = handleCorrelation('@alex_designs', '@alexj_distributed');
+    const handleSim = handleCorrelation("@alex_designs", "@alexj_distributed");
     expect(handleSim).toBeLessThan(0.5); // Handles are different
 
     // Scoring with only name match and mismatched handles
     const signals: ResolutionSignal[] = [
       {
-        type: 'name_match',
+        type: "name_match",
         weight: nameSim,
         evidence: '"Alex" ~ "Alex J"',
         timestamp: Date.now(),

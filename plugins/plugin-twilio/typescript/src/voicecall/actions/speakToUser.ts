@@ -21,11 +21,7 @@ export const speakToUserAction: Action = {
   description:
     "Speak a message to the user on an active voice call (one-way, does not wait for response)",
 
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
     if (!service?.isConnected()) return false;
     return service.getActiveCalls().length > 0;
@@ -36,7 +32,7 @@ export const speakToUserAction: Action = {
     _message: Memory,
     state: State | undefined,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
 
@@ -50,8 +46,7 @@ export const speakToUserAction: Action = {
     // Extract parameters from state
     const stateData = (state?.data || {}) as Record<string, unknown>;
     const callId = stateData.callId as string | undefined;
-    const messageText =
-      (stateData.message as string) || (stateData.text as string) || "";
+    const messageText = (stateData.message as string) || (stateData.text as string) || "";
 
     if (!messageText.trim()) {
       if (callback) {

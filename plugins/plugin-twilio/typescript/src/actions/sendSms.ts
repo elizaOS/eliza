@@ -9,13 +9,12 @@ import {
 } from "@elizaos/core";
 import { TWILIO_SERVICE_NAME } from "../constants";
 import type { TwilioService } from "../service";
-import { SendSmsSchema } from "../types";
 import { chunkTextForSms, extractPhoneNumber, validateMessagingAddress } from "../utils";
 
 const sendSmsAction: Action = {
   name: "SEND_SMS",
   description: "Send an SMS message to a phone number via Twilio",
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
     // Check if Twilio service is available
     const twilioService = runtime.getService(TWILIO_SERVICE_NAME);
     if (!twilioService) {
@@ -36,8 +35,8 @@ const sendSmsAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state?: State,
-    options?: any,
+    _state?: State,
+    _options?: any,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {

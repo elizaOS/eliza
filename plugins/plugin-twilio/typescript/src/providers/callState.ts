@@ -5,7 +5,7 @@ import type { TwilioService } from "../service";
 const callStateProvider: Provider = {
   name: "twilioCallState",
   description: "Provides information about active voice calls and streams",
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+  get: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     try {
       const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
       if (!twilioService) {

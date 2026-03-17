@@ -41,10 +41,6 @@ export class VoiceCallService extends Service {
   private webhookServer: http.Server | null = null;
   private webhookUrl: string | null = null;
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
-
   /**
    * Get the current settings.
    */
@@ -69,7 +65,7 @@ export class VoiceCallService extends Service {
   /**
    * Probe the service for health checks.
    */
-  async probeService(timeoutMs: number = 5000): Promise<VoiceCallServiceProbe> {
+  async probeService(_timeoutMs: number = 5000): Promise<VoiceCallServiceProbe> {
     const startTime = Date.now();
 
     if (!this.settings || !this.provider) {
@@ -94,7 +90,7 @@ export class VoiceCallService extends Service {
    */
   async initiateCall(
     to: string,
-    options?: OutboundCallOptions,
+    options?: OutboundCallOptions
   ): Promise<{ callId: CallId; success: boolean; error?: string }> {
     if (!this.provider || !this.callManager || !this.webhookUrl) {
       return { callId: "", success: false, error: "Service not initialized" };
@@ -108,7 +104,7 @@ export class VoiceCallService extends Service {
       };
     }
 
-    const { callId, record } = this.callManager.createOutboundCall(to, options);
+    const { callId, record: _record } = this.callManager.createOutboundCall(to, options);
 
     try {
       // Generate TwiML for notify mode if needed
@@ -122,7 +118,7 @@ export class VoiceCallService extends Service {
 
       const result = await this.provider.initiateCall({
         callId,
-        from: this.settings!.fromNumber,
+        from: this.settings?.fromNumber,
         to,
         webhookUrl: this.webhookUrl,
         inlineTwiml,
@@ -137,11 +133,11 @@ export class VoiceCallService extends Service {
           callId,
           providerCallId: result.providerCallId,
           direction: "outbound",
-          from: this.settings!.fromNumber,
+          from: this.settings?.fromNumber,
           to,
           state: "initiated",
           timestamp: Date.now(),
-        } as EventPayload,
+        } as EventPayload
       );
 
       return { callId, success: true };
@@ -197,7 +193,7 @@ export class VoiceCallService extends Service {
    */
   async continueCall(
     callId: CallId,
-    prompt: string,
+    prompt: string
   ): Promise<{ success: boolean; transcript?: string; error?: string }> {
     const call = this.callManager?.getCall(callId);
     if (!call || !this.provider || !this.callManager) {
@@ -275,7 +271,7 @@ export class VoiceCallService extends Service {
           to: call.to,
           state: "hangup-bot",
           timestamp: Date.now(),
-        } as EventPayload,
+        } as EventPayload
       );
 
       return { success: true };
@@ -361,7 +357,7 @@ export class VoiceCallService extends Service {
       }
 
       logger.success(
-        `Voice Call service started for ${runtime.character.name} (provider: ${service.settings.provider})`,
+        `Voice Call service started for ${runtime.character.name} (provider: ${service.settings.provider})`
       );
 
       service.runtime.emitEvent(
@@ -372,7 +368,7 @@ export class VoiceCallService extends Service {
           webhookUrl: service.webhookUrl,
           activeCalls: 0,
           timestamp: Date.now(),
-        } as EventPayload,
+        } as EventPayload
       );
 
       return service;
@@ -412,7 +408,7 @@ export class VoiceCallService extends Service {
         webhookUrl: this.webhookUrl || undefined,
         activeCalls: 0,
         timestamp: Date.now(),
-      } as EventPayload,
+      } as EventPayload
     );
 
     logger.info("Voice Call service stopped");
@@ -448,7 +444,7 @@ export class VoiceCallService extends Service {
             path: webhookPath,
             port,
             timestamp: Date.now(),
-          } as EventPayload,
+          } as EventPayload
         );
 
         resolve(publicUrl);
@@ -459,7 +455,7 @@ export class VoiceCallService extends Service {
   private async handleWebhookRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
-    webhookPath: string,
+    webhookPath: string
   ): Promise<void> {
     const url = new URL(req.url || "/", `http://${req.headers.host}`);
 
@@ -497,7 +493,7 @@ export class VoiceCallService extends Service {
     };
 
     // Verify signature
-    const verification = this.provider!.verifyWebhook(ctx);
+    const verification = this.provider?.verifyWebhook(ctx);
     if (!verification.ok) {
       logger.warn(`Webhook verification failed: ${verification.reason}`);
       res.statusCode = 401;
@@ -506,7 +502,7 @@ export class VoiceCallService extends Service {
     }
 
     // Parse events
-    const result = this.provider!.parseWebhookEvent(ctx);
+    const result = this.provider?.parseWebhookEvent(ctx);
 
     // Process each event
     for (const event of result.events) {
@@ -546,19 +542,19 @@ export class VoiceCallService extends Service {
       case "call.initiated":
         this.runtime.emitEvent(
           VoiceCallEventTypes.CALL_INITIATED as string,
-          basePayload as EventPayload,
+          basePayload as EventPayload
         );
         break;
       case "call.ringing":
         this.runtime.emitEvent(
           VoiceCallEventTypes.CALL_RINGING as string,
-          basePayload as EventPayload,
+          basePayload as EventPayload
         );
         break;
       case "call.answered":
         this.runtime.emitEvent(
           VoiceCallEventTypes.CALL_ANSWERED as string,
-          basePayload as EventPayload,
+          basePayload as EventPayload
         );
         // Auto-speak inbound greeting when an inbound call is answered
         if (call.direction === "inbound" && call.metadata?.initialMessage) {
@@ -571,13 +567,13 @@ export class VoiceCallService extends Service {
       case "call.active":
         this.runtime.emitEvent(
           VoiceCallEventTypes.CALL_ACTIVE as string,
-          basePayload as EventPayload,
+          basePayload as EventPayload
         );
         break;
       case "call.speaking":
         this.runtime.emitEvent(
           VoiceCallEventTypes.CALL_SPEAKING as string,
-          basePayload as EventPayload,
+          basePayload as EventPayload
         );
         break;
       case "call.speech":
@@ -588,7 +584,7 @@ export class VoiceCallService extends Service {
             transcript: event.transcript,
             isFinal: event.isFinal,
             confidence: event.confidence,
-          } as EventPayload,
+          } as EventPayload
         );
         break;
       case "call.dtmf":
@@ -597,13 +593,13 @@ export class VoiceCallService extends Service {
           {
             ...basePayload,
             digits: event.digits,
-          } as EventPayload,
+          } as EventPayload
         );
         break;
       case "call.ended":
         this.runtime.emitEvent(
           VoiceCallEventTypes.CALL_ENDED as string,
-          basePayload as EventPayload,
+          basePayload as EventPayload
         );
         break;
       case "call.error":
@@ -612,7 +608,7 @@ export class VoiceCallService extends Service {
           {
             ...basePayload,
             error: event.error,
-          } as EventPayload,
+          } as EventPayload
         );
         break;
     }
@@ -643,7 +639,7 @@ export class VoiceCallService extends Service {
     if (serviceInstance?.provider) {
       runtime.registerSendHandler(
         "voice-call",
-        serviceInstance.handleSendMessage.bind(serviceInstance),
+        serviceInstance.handleSendMessage.bind(serviceInstance)
       );
       logger.info("[Voice Call] Registered send handler.");
     } else {
@@ -652,9 +648,9 @@ export class VoiceCallService extends Service {
   }
 
   async handleSendMessage(
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     target: TargetInfo,
-    content: Content,
+    content: Content
   ): Promise<void> {
     if (!this.provider || !this.settings) {
       throw new Error("Voice Call service is not initialized.");
@@ -677,7 +673,7 @@ export class VoiceCallService extends Service {
     }
 
     logger.info(
-      `[Voice Call SendHandler] Call initiated to ${phoneNumber}, callId: ${result.callId}`,
+      `[Voice Call SendHandler] Call initiated to ${phoneNumber}, callId: ${result.callId}`
     );
   }
 }

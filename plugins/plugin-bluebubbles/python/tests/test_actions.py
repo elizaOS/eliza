@@ -1,20 +1,23 @@
 """Tests for BlueBubbles action handlers."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from elizaos_plugin_bluebubbles.actions.send_message import (
     handler as send_message_handler,
-    validate as send_message_validate,
+)
+from elizaos_plugin_bluebubbles.actions.send_message import (
     send_message_action,
 )
+from elizaos_plugin_bluebubbles.actions.send_message import (
+    validate as send_message_validate,
+)
 from elizaos_plugin_bluebubbles.actions.send_reaction import (
-    send_reaction_handler,
     _validate_reaction,
     send_reaction_action,
+    send_reaction_handler,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

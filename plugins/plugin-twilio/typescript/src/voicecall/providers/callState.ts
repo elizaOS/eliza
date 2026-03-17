@@ -60,7 +60,7 @@ function getTranscriptSummary(call: CallRecord): string {
   const lastEntry = call.transcript[call.transcript.length - 1];
   const speakerLabel = lastEntry.speaker === "bot" ? "Agent" : "Caller";
   const text =
-    lastEntry.text.length > 100 ? lastEntry.text.substring(0, 100) + "..." : lastEntry.text;
+    lastEntry.text.length > 100 ? `${lastEntry.text.substring(0, 100)}...` : lastEntry.text;
 
   return `Last message (${speakerLabel}): "${text}"`;
 }
@@ -72,7 +72,7 @@ export const callStateProvider: Provider = {
   name: "voiceCallState",
   description: "Provides real-time voice call state and transcript information",
 
-  get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, _message: Memory, state: State): Promise<ProviderResult> => {
     const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
 
     // Return minimal data if service not available

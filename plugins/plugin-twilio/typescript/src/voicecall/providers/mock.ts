@@ -65,9 +65,7 @@ export class MockProvider implements VoiceCallProvider {
 
     this.calls.set(input.callId, mockCall);
 
-    logger.info(
-      `[mock] Initiated call ${input.callId}: ${input.from} -> ${input.to}`,
-    );
+    logger.info(`[mock] Initiated call ${input.callId}: ${input.from} -> ${input.to}`);
 
     // Simulate ringing after a short delay
     setTimeout(() => {
@@ -97,9 +95,7 @@ export class MockProvider implements VoiceCallProvider {
     const call = this.calls.get(input.callId);
     if (call) {
       call.state = "ended";
-      logger.info(
-        `[mock] Hung up call ${input.callId} (reason: ${input.reason})`,
-      );
+      logger.info(`[mock] Hung up call ${input.callId} (reason: ${input.reason})`);
     } else {
       logger.warn(`[mock] Hangup requested for unknown call ${input.callId}`);
     }
@@ -107,13 +103,13 @@ export class MockProvider implements VoiceCallProvider {
 
   async playTts(input: PlayTtsInput): Promise<void> {
     logger.info(
-      `[mock] TTS on call ${input.callId}: "${input.text}"${input.voice ? ` (voice: ${input.voice})` : ""}`,
+      `[mock] TTS on call ${input.callId}: "${input.text}"${input.voice ? ` (voice: ${input.voice})` : ""}`
     );
   }
 
   async startListening(input: StartListeningInput): Promise<void> {
     logger.info(
-      `[mock] Started listening on call ${input.callId}${input.language ? ` (language: ${input.language})` : ""}`,
+      `[mock] Started listening on call ${input.callId}${input.language ? ` (language: ${input.language})` : ""}`
     );
   }
 

@@ -48,7 +48,7 @@ export interface RLMInferOptions {
   user?: string;
   /** Enable streaming (not yet supported by RLM) */
   stream?: boolean;
-  
+
   // Per-request RLM overrides (Paper Algorithm 1)
   /** Override max iterations for this request */
   maxIterations?: number;
@@ -62,7 +62,7 @@ export interface RLMInferOptions {
   logTrajectories?: boolean;
   /** Enable cost tracking for this request */
   trackCosts?: boolean;
-  
+
   // NOTE: Custom REPL tool injection is NOT supported by the upstream RLM library.
   // See: https://arxiv.org/abs/2512.24601 Section 3.3 - the paper describes the concept
   // but the current library implementation does not expose this capability.

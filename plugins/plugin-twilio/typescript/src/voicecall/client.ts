@@ -59,7 +59,7 @@ export class CallManager {
    */
   createOutboundCall(
     to: string,
-    options?: OutboundCallOptions,
+    options?: OutboundCallOptions
   ): { callId: CallId; record: CallRecord } {
     const callId = crypto.randomUUID();
     const mode = options?.mode ?? this.settings.outbound.defaultMode;
@@ -244,7 +244,7 @@ export class CallManager {
       call = this.createInboundCall(
         event.providerCallId,
         event.from || "unknown",
-        event.to || this.settings.fromNumber,
+        event.to || this.settings.fromNumber
       );
     }
 
@@ -334,7 +334,7 @@ export class CallManager {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      const line = JSON.stringify(call) + "\n";
+      const line = `${JSON.stringify(call)}\n`;
       fs.appendFileSync(this.storePath, line, "utf-8");
     } catch {
       // Best-effort persistence; don't crash the service

@@ -325,7 +325,9 @@ export const ttsPlugin: Plugin = {
         const hasDirective = Boolean(jsonDirective || tagDirective);
 
         const inboundAudio = Boolean(
-          payload.metadata && "inboundAudio" in payload.metadata && payload.metadata.inboundAudio,
+          payload.metadata &&
+            "inboundAudio" in payload.metadata &&
+            payload.metadata.inboundAudio,
         );
 
         if (!shouldApplyTts(config, { inboundAudio, hasDirective })) {
