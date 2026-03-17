@@ -31,7 +31,9 @@ const proc = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json", "--emitDecla
 
 const exitCode = await proc.exited;
 if (exitCode !== 0) {
-  console.warn("⚠️ TypeScript declaration generation had errors (e.g. JsonObject/exactOptionalPropertyTypes); continuing.");
+  console.warn(
+    "⚠️ TypeScript declaration generation had errors (e.g. JsonObject/exactOptionalPropertyTypes); continuing.",
+  );
 } else {
   console.log("Types generated!");
 }

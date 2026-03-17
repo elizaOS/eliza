@@ -9,27 +9,27 @@
  */
 
 export {
-  buildSafeExternalPrompt,
-  detectSuspiciousPatterns,
-  type ExternalContentSource,
-  getHookType,
-  isExternalHookSession,
-  type WrapExternalContentOptions,
-  wrapExternalContent,
-  wrapWebContent,
+	buildSafeExternalPrompt,
+	detectSuspiciousPatterns,
+	type ExternalContentSource,
+	getHookType,
+	isExternalHookSession,
+	type WrapExternalContentOptions,
+	wrapExternalContent,
+	wrapWebContent,
 } from "./external-content.js";
 
 export {
-  createSecretsRedactor,
-  // Pattern-based redaction
-  getDefaultRedactPatterns,
-  type RedactOptions,
-  type RedactSensitiveMode,
-  redactObjectSecrets,
-  redactSecrets,
-  redactSensitiveText,
-  redactToolDetail,
-  redactWithSecrets,
-  // Secrets-based redaction
-  type SecretsRedactOptions,
+	createSecretsRedactor,
+	// Pattern-based redaction
+	getDefaultRedactPatterns,
+	type RedactOptions,
+	type RedactSensitiveMode,
+	redactObjectSecrets,
+	redactSecrets,
+	redactSensitiveText,
+	redactToolDetail,
+	redactWithSecrets,
+	// Secrets-based redaction
+	type SecretsRedactOptions,
 } from "./redact.js";

@@ -2,7 +2,6 @@
  * Agent tests converted from test_agent.py
  */
 
-import { beforeEach, describe, expect, it, jest } from "./jest-globals";
 import {
   DEFAULT_TEMPLATE_CONFIG,
   DefaultAgent,
@@ -10,10 +9,7 @@ import {
   type TemplateConfig,
   type ToolConfig,
 } from "../src/agent/agents";
-import {
-  type ModelOutput,
-  PredeterminedTestModel,
-} from "../src/agent/models";
+import { type ModelOutput, PredeterminedTestModel } from "../src/agent/models";
 import {
   EmptyProblemStatement,
   TextProblemStatement,
@@ -33,6 +29,7 @@ import {
   type WriteFileRequest,
 } from "../src/environment/runtime";
 import { SWEEnv } from "../src/environment/swe-env";
+import { beforeEach, describe, expect, it, jest } from "./jest-globals";
 
 // import {
 //   createTestAgentConfig,

@@ -172,7 +172,10 @@ export class AgentOrchestratorService extends Service {
   }
 
   async getTasks(): Promise<OrchestratedTask[]> {
-    const tasks = await this.runtime.getTasks({ tags: ["orchestrator"], agentIds: [this.runtime.agentId] });
+    const tasks = await this.runtime.getTasks({
+      tags: ["orchestrator"],
+      agentIds: [this.runtime.agentId],
+    });
     return tasks as unknown as OrchestratedTask[];
   }
 

@@ -2,8 +2,8 @@
  * Tools tests converted from test_tools_command_parsing.py
  */
 
-import { describe, expect, it } from "./jest-globals";
 import { Argument, Command } from "../src/tools/commands";
+import { describe, expect, it } from "./jest-globals";
 
 describe("Command Parsing", () => {
   describe("Signature formats", () => {

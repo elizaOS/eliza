@@ -7,10 +7,10 @@
 
 import type { TemplateType } from "./agent.js";
 import type {
-  BuildPromptOptions as ProtoBuildPromptOptions,
-  BuiltPrompt as ProtoBuiltPrompt,
-  PromptFieldInfo as ProtoPromptFieldInfo,
-  PromptTemplateConfig as ProtoPromptTemplateConfig,
+	BuildPromptOptions as ProtoBuildPromptOptions,
+	BuiltPrompt as ProtoBuiltPrompt,
+	PromptFieldInfo as ProtoPromptFieldInfo,
+	PromptTemplateConfig as ProtoPromptTemplateConfig,
 } from "./proto.js";
 
 /**
@@ -23,10 +23,10 @@ export type PromptFieldInfo = ProtoPromptFieldInfo;
  * Options for building a prompt from a template.
  */
 export interface BuildPromptOptions
-  extends Omit<ProtoBuildPromptOptions, "template" | "state" | "defaults"> {
-  template: TemplateType;
-  state: Record<string, string | number | boolean | undefined>;
-  defaults?: Record<string, string>;
+	extends Omit<ProtoBuildPromptOptions, "template" | "state" | "defaults"> {
+	template: TemplateType;
+	state: Record<string, string | number | boolean | undefined>;
+	defaults?: Record<string, string>;
 }
 
 /**
@@ -38,7 +38,7 @@ export type BuiltPrompt = ProtoBuiltPrompt;
  * Function signature for building prompts dynamically.
  */
 export type PromptBuilder = (
-  options: BuildPromptOptions,
+	options: BuildPromptOptions,
 ) => string | BuiltPrompt;
 
 /**
@@ -46,8 +46,8 @@ export type PromptBuilder = (
  * Extends the basic template with metadata and building options.
  */
 export interface PromptTemplateConfig
-  extends Omit<ProtoPromptTemplateConfig, "template" | "defaults"> {
-  template: TemplateType;
-  defaults?: Record<string, string>;
-  builder?: PromptBuilder;
+	extends Omit<ProtoPromptTemplateConfig, "template" | "defaults"> {
+	template: TemplateType;
+	defaults?: Record<string, string>;
+	builder?: PromptBuilder;
 }

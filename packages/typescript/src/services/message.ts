@@ -16,7 +16,6 @@ import type {
   ActionResult,
   HandlerCallback,
 } from "../types/components";
-import type { Room } from "../types/environment";
 import type { RunEventPayload } from "../types/events";
 import { EventType } from "../types/events";
 import type { Memory } from "../types/memory";
@@ -24,10 +23,9 @@ import type {
   IMessageService,
   MessageProcessingOptions,
   MessageProcessingResult,
-  ResponseDecision,
 } from "../types/message-service";
 import { ModelType } from "../types/model";
-import type { Content, Media, MentionContext, UUID } from "../types/primitives";
+import type { Content, Media, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
@@ -2337,8 +2335,8 @@ Output ONLY the continuation, starting immediately after the last character abov
     message: Memory,
     startTime: number,
     status: string,
-  ): Promise<void> {
-    await runtime.emitEvent(EventType.RUN_ENDED, {
+  ): Promise<void> 
+    await runtime.emitEvent(EventType.RUN_ENDED, 
       runtime,
       source: "messageHandler",
       runId,
@@ -2348,9 +2346,7 @@ Output ONLY the continuation, starting immediately after the last character abov
       startTime,
       status: status as "completed" | "timeout",
       endTime: Date.now(),
-      duration: Date.now() - startTime,
-    } as RunEventPayload);
-  }
+      duration: Date.now() - startTime,as RunEventPayload);
 
   /**
    * Deletes a message from the agent's memory.
@@ -2360,7 +2356,7 @@ Output ONLY the continuation, starting immediately after the last character abov
    * @param message - The message memory to delete
    * @returns Promise resolving when deletion is complete
    */
-  async deleteMessage(runtime: IAgentRuntime, message: Memory): Promise<void> {
+  async deleteMessage(runtime: IAgentRuntime, message: Memory): Promise<void> 
     if (!message.id) {
       runtime.logger.error(
         { src: "service:message", agentId: runtime.agentId },
@@ -2383,7 +2379,6 @@ Output ONLY the continuation, starting immediately after the last character abov
       { src: "service:message", messageId: message.id },
       "Successfully deleted memory",
     );
-  }
 
   /**
    * Clears all messages from a channel/room.

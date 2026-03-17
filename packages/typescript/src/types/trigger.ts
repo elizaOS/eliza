@@ -7,35 +7,35 @@ export type TriggerWakeMode = "inject_now" | "next_autonomy_cycle";
 export type TriggerLastStatus = "success" | "error" | "skipped";
 
 export interface TriggerConfig {
-  version: typeof TRIGGER_SCHEMA_VERSION;
-  triggerId: UUID;
-  displayName: string;
-  instructions: string;
-  triggerType: TriggerType;
-  enabled: boolean;
-  wakeMode: TriggerWakeMode;
-  createdBy: string;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  maxRuns?: number;
-  runCount: number;
-  nextRunAtMs?: number;
-  lastRunAtIso?: string;
-  lastStatus?: TriggerLastStatus;
-  lastError?: string;
-  dedupeKey?: string;
+	version: typeof TRIGGER_SCHEMA_VERSION;
+	triggerId: UUID;
+	displayName: string;
+	instructions: string;
+	triggerType: TriggerType;
+	enabled: boolean;
+	wakeMode: TriggerWakeMode;
+	createdBy: string;
+	timezone?: string;
+	intervalMs?: number;
+	scheduledAtIso?: string;
+	cronExpression?: string;
+	maxRuns?: number;
+	runCount: number;
+	nextRunAtMs?: number;
+	lastRunAtIso?: string;
+	lastStatus?: TriggerLastStatus;
+	lastError?: string;
+	dedupeKey?: string;
 }
 
 export interface TriggerRunRecord {
-  triggerRunId: UUID;
-  triggerId: UUID;
-  taskId: UUID;
-  startedAt: number;
-  finishedAt: number;
-  status: TriggerLastStatus;
-  error?: string;
-  latencyMs: number;
-  source: "scheduler" | "manual";
+	triggerRunId: UUID;
+	triggerId: UUID;
+	taskId: UUID;
+	startedAt: number;
+	finishedAt: number;
+	status: TriggerLastStatus;
+	error?: string;
+	latencyMs: number;
+	source: "scheduler" | "manual";
 }

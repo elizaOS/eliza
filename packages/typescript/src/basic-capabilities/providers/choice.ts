@@ -1,10 +1,10 @@
 import { requireProviderSpec } from "../../generated/spec-helpers.ts";
 import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
+	IAgentRuntime,
+	Memory,
+	Provider,
+	ProviderResult,
+	State,
 } from "../../types/index.ts";
 
 // Get text content from centralized specs
@@ -24,8 +24,8 @@ const spec = requireProviderSpec("CHOICE");
  * @property {string} [description] - The description of the option (optional).
  */
 interface OptionObject {
-  name: string;
-  description?: string;
+	name: string;
+	description?: string;
 }
 
 /**
@@ -36,94 +36,94 @@ interface OptionObject {
  * @returns {Promise<ProviderResult>} A promise that resolves with the provider result containing the pending tasks with options
  */
 export const choiceProvider: Provider = {
-  name: spec.name,
-  description: spec.description,
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state: State,
-  ): Promise<ProviderResult> => {
-    // Get all pending tasks for this room with options
-    const pendingTasks = await runtime.getTasks({
-      roomId: message.roomId,
-      tags: ["AWAITING_CHOICE"],
-      agentIds: [runtime.agentId],
-    });
+	name: spec.name,
+	description: spec.description,
+	get: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state: State,
+	): Promise<ProviderResult> => {
+		// Get all pending tasks for this room with options
+		const pendingTasks = await runtime.getTasks({
+			roomId: message.roomId,
+			tags: ["AWAITING_CHOICE"],
+			agentIds: [runtime.agentId],
+		});
 
-    if (!pendingTasks || pendingTasks.length === 0) {
-      return {
-        data: {
-          tasks: [],
-        },
-        values: {
-          tasks: "No pending choices for the moment.",
-        },
-        text: "No pending choices for the moment.",
-      };
-    }
+		if (!pendingTasks || pendingTasks.length === 0) {
+			return {
+				data: {
+					tasks: [],
+				},
+				values: {
+					tasks: "No pending choices for the moment.",
+				},
+				text: "No pending choices for the moment.",
+			};
+		}
 
-    // Filter tasks that have options
-    const tasksWithOptions = pendingTasks.filter(
-      (task) => task.metadata?.options,
-    );
+		// Filter tasks that have options
+		const tasksWithOptions = pendingTasks.filter(
+			(task) => task.metadata?.options,
+		);
 
-    if (tasksWithOptions.length === 0) {
-      return {
-        data: {
-          tasks: [],
-        },
-        values: {
-          tasks: "No pending choices for the moment.",
-        },
-        text: "No pending choices for the moment.",
-      };
-    }
-    // Format tasks into a readable list
-    let output = "# Pending Tasks\n\n";
-    output += "The following tasks are awaiting your selection:\n\n";
+		if (tasksWithOptions.length === 0) {
+			return {
+				data: {
+					tasks: [],
+				},
+				values: {
+					tasks: "No pending choices for the moment.",
+				},
+				text: "No pending choices for the moment.",
+			};
+		}
+		// Format tasks into a readable list
+		let output = "# Pending Tasks\n\n";
+		output += "The following tasks are awaiting your selection:\n\n";
 
-    tasksWithOptions.forEach((task, index) => {
-      output += `${index + 1}. **${task.name}**\n`;
-      if (task.description) {
-        output += `   ${task.description}\n`;
-      }
+		tasksWithOptions.forEach((task, index) => {
+			output += `${index + 1}. **${task.name}**\n`;
+			if (task.description) {
+				output += `   ${task.description}\n`;
+			}
 
-      // List available options
-      if (task.metadata?.options) {
-        output += "   Options:\n";
+			// List available options
+			if (task.metadata?.options) {
+				output += "   Options:\n";
 
-        // Handle both string[] and OptionObject[] formats
-        const options = task.metadata.options as string[] | OptionObject[];
+				// Handle both string[] and OptionObject[] formats
+				const options = task.metadata.options as string[] | OptionObject[];
 
-        options.forEach((option) => {
-          if (typeof option === "string") {
-            // Handle string option
-            const description =
-              task.metadata?.options?.find((o) => o.name === option)
-                ?.description || "";
-            output += `   - \`${option}\` ${description ? `- ${description}` : ""}\n`;
-          } else {
-            // Handle option object
-            output += `   - \`${option.name}\` ${option.description ? `- ${option.description}` : ""}\n`;
-          }
-        });
-      }
-      output += "\n";
-    });
+				options.forEach((option) => {
+					if (typeof option === "string") {
+						// Handle string option
+						const description =
+							task.metadata?.options?.find((o) => o.name === option)
+								?.description || "";
+						output += `   - \`${option}\` ${description ? `- ${description}` : ""}\n`;
+					} else {
+						// Handle option object
+						output += `   - \`${option.name}\` ${option.description ? `- ${option.description}` : ""}\n`;
+					}
+				});
+			}
+			output += "\n";
+		});
 
-    output +=
-      "To select an option, reply with the option name (e.g., 'post' or 'cancel').\n";
+		output +=
+			"To select an option, reply with the option name (e.g., 'post' or 'cancel').\n";
 
-    return {
-      data: {
-        tasks: tasksWithOptions,
-      },
-      values: {
-        tasks: output,
-      },
-      text: output,
-    };
-  },
+		return {
+			data: {
+				tasks: tasksWithOptions,
+			},
+			values: {
+				tasks: output,
+			},
+			text: output,
+		};
+	},
 };
 
 export default choiceProvider;

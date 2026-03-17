@@ -62,8 +62,7 @@ export const stopAction: Action = {
       );
     }
 
-    const replyText =
-      "✓ Stop requested. Current operations will be cancelled.";
+    const replyText = "✓ Stop requested. Current operations will be cancelled.";
     await callback?.({ text: replyText });
 
     return {

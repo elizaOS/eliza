@@ -190,8 +190,7 @@ export const SubagentEventType = {
   A2A_MESSAGE_RECEIVED: "A2A_MESSAGE_RECEIVED",
 } as const;
 
-export type SubagentEventType =
-  (typeof SubagentEventType)[keyof typeof SubagentEventType];
+export type SubagentEventType = (typeof SubagentEventType)[keyof typeof SubagentEventType];
 
 /**
  * Payload for subagent events.

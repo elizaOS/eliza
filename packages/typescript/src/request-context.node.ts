@@ -7,7 +7,7 @@
  *
  * @see https://nodejs.org/api/async_context.html
  */
-import { AsyncLocalStorage } from "async_hooks";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { IRequestContextManager, RequestContext } from "./request-context";
 
 /**
@@ -20,31 +20,31 @@ import type { IRequestContextManager, RequestContext } from "./request-context";
  * - No race conditions or cross-contamination
  */
 export class AsyncLocalStorageRequestContextManager
-  implements IRequestContextManager
+	implements IRequestContextManager
 {
-  private storage = new AsyncLocalStorage<RequestContext | undefined>();
+	private storage = new AsyncLocalStorage<RequestContext | undefined>();
 
-  /**
-   * Run a function with a request context.
-   * The context is automatically propagated through all async operations.
-   *
-   * @param context - The request context to use, or undefined to clear
-   * @param fn - The function to execute within the context
-   * @returns The result of the function
-   */
-  run<T>(context: RequestContext | undefined, fn: () => T): T {
-    return this.storage.run(context, fn);
-  }
+	/**
+	 * Run a function with a request context.
+	 * The context is automatically propagated through all async operations.
+	 *
+	 * @param context - The request context to use, or undefined to clear
+	 * @param fn - The function to execute within the context
+	 * @returns The result of the function
+	 */
+	run<T>(context: RequestContext | undefined, fn: () => T): T {
+		return this.storage.run(context, fn);
+	}
 
-  /**
-   * Get the currently active request context.
-   * Returns the context that was passed to the enclosing run() call.
-   *
-   * @returns The current request context or undefined if outside a run() scope
-   */
-  active(): RequestContext | undefined {
-    return this.storage.getStore();
-  }
+	/**
+	 * Get the currently active request context.
+	 * Returns the context that was passed to the enclosing run() call.
+	 *
+	 * @returns The current request context or undefined if outside a run() scope
+	 */
+	active(): RequestContext | undefined {
+		return this.storage.getStore();
+	}
 }
 
 /**
@@ -54,5 +54,5 @@ export class AsyncLocalStorageRequestContextManager
  * @returns A new AsyncLocalStorageRequestContextManager instance
  */
 export function createNodeRequestContextManager(): IRequestContextManager {
-  return new AsyncLocalStorageRequestContextManager();
+	return new AsyncLocalStorageRequestContextManager();
 }

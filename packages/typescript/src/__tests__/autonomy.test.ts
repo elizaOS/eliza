@@ -6,53 +6,53 @@ import type { IAgentRuntime, Memory, UUID } from "../types";
 const asTestUuid = (id: string): UUID => id as UUID;
 
 const makeMemory = (
-  id: UUID,
-  entityId: UUID,
-  roomId: UUID,
-  text: string,
-  createdAt: number,
+	id: UUID,
+	entityId: UUID,
+	roomId: UUID,
+	text: string,
+	createdAt: number,
 ): Memory => ({
-  id,
-  entityId,
-  roomId,
-  content: { text },
-  createdAt,
+	id,
+	entityId,
+	roomId,
+	content: { text },
+	createdAt,
 });
 
 describe("autonomy service", () => {
-  test("dedupes target room context by earliest message id", async () => {
-    const roomId = asTestUuid(uuidv4());
-    const agentId = asTestUuid(uuidv4());
-    const dupId = asTestUuid(uuidv4());
+	test("dedupes target room context by earliest message id", async () => {
+		const roomId = asTestUuid(uuidv4());
+		const agentId = asTestUuid(uuidv4());
+		const dupId = asTestUuid(uuidv4());
 
-    const runtime = {
-      agentId,
-      getSetting: (key: string) =>
-        key === "AUTONOMY_TARGET_ROOM_ID" ? roomId : undefined,
-      getMemories: async ({ tableName }: { tableName: string }) => {
-        if (tableName === "memories") {
-          return [makeMemory(dupId, agentId, roomId, "old", 10)];
-        }
-        return [makeMemory(dupId, agentId, roomId, "new", 20)];
-      },
-      getRoomsForParticipant: async () => [roomId],
-      getRoomsForParticipants: async () => [roomId],
-      getRoomsByIds: async () => [{ id: roomId, name: "Test Room" }],
-      getMemoriesByRoomIds: async () => [
-        makeMemory(dupId, agentId, roomId, "old", 10),
-      ],
-      getEntityById: async () => null,
-      logger: { info: () => undefined, debug: () => undefined },
-    } as unknown as IAgentRuntime;
+		const runtime = {
+			agentId,
+			getSetting: (key: string) =>
+				key === "AUTONOMY_TARGET_ROOM_ID" ? roomId : undefined,
+			getMemories: async ({ tableName }: { tableName: string }) => {
+				if (tableName === "memories") {
+					return [makeMemory(dupId, agentId, roomId, "old", 10)];
+				}
+				return [makeMemory(dupId, agentId, roomId, "new", 20)];
+			},
+			getRoomsForParticipant: async () => [roomId],
+			getRoomsForParticipants: async () => [roomId],
+			getRoomsByIds: async () => [{ id: roomId, name: "Test Room" }],
+			getMemoriesByRoomIds: async () => [
+				makeMemory(dupId, agentId, roomId, "old", 10),
+			],
+			getEntityById: async () => null,
+			logger: { info: () => undefined, debug: () => undefined },
+		} as unknown as IAgentRuntime;
 
-    const service = new AutonomyService() as AutonomyService & {
-      getTargetRoomContextText: () => Promise<string>;
-      runtime: IAgentRuntime;
-    };
-    service.runtime = runtime;
+		const service = new AutonomyService() as AutonomyService & {
+			getTargetRoomContextText: () => Promise<string>;
+			runtime: IAgentRuntime;
+		};
+		service.runtime = runtime;
 
-    const context = await service.getTargetRoomContextText();
-    expect(context).toContain("old");
-    expect(context).not.toContain("new");
-  });
+		const context = await service.getTargetRoomContextText();
+		expect(context).toContain("old");
+		expect(context).not.toContain("new");
+	});
 });

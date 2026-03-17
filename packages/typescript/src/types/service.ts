@@ -16,27 +16,27 @@ import type { IAgentRuntime } from "./runtime";
  * ```
  */
 export interface ServiceTypeRegistry {
-  TRANSCRIPTION: "transcription";
-  VIDEO: "video";
-  BROWSER: "browser";
-  PDF: "pdf";
-  REMOTE_FILES: "aws_s3";
-  WEB_SEARCH: "web_search";
-  EMAIL: "email";
-  TEE: "tee";
-  TASK: "task";
-  APPROVAL: "approval";
-  TOOL_POLICY: "tool_policy";
-  WALLET: "wallet";
-  LP_POOL: "lp_pool";
-  TOKEN_DATA: "token_data";
-  MESSAGE_SERVICE: "message_service";
-  MESSAGE: "message";
-  POST: "post";
-  HOOKS: "hooks";
-  PAIRING: "pairing";
-  AGENT_EVENT: "agent_event";
-  UNKNOWN: "unknown";
+	TRANSCRIPTION: "transcription";
+	VIDEO: "video";
+	BROWSER: "browser";
+	PDF: "pdf";
+	REMOTE_FILES: "aws_s3";
+	WEB_SEARCH: "web_search";
+	EMAIL: "email";
+	TEE: "tee";
+	TASK: "task";
+	APPROVAL: "approval";
+	TOOL_POLICY: "tool_policy";
+	WALLET: "wallet";
+	LP_POOL: "lp_pool";
+	TOKEN_DATA: "token_data";
+	MESSAGE_SERVICE: "message_service";
+	MESSAGE: "message";
+	POST: "post";
+	HOOKS: "hooks";
+	PAIRING: "pairing";
+	AGENT_EVENT: "agent_event";
+	UNKNOWN: "unknown";
 }
 
 /**
@@ -48,22 +48,22 @@ export type ServiceTypeName = ServiceTypeRegistry[keyof ServiceTypeRegistry];
  * Helper type to extract service type values from the registry
  */
 export type ServiceTypeValue<K extends keyof ServiceTypeRegistry> =
-  ServiceTypeRegistry[K];
+	ServiceTypeRegistry[K];
 
 /**
  * Helper type to check if a service type exists in the registry
  */
 export type IsValidServiceType<T extends string> = T extends ServiceTypeName
-  ? true
-  : false;
+	? true
+	: false;
 
 /**
  * Type-safe service class definition
  */
 export type TypedServiceClass<T extends ServiceTypeName> = {
-  new (runtime?: IAgentRuntime): Service;
-  serviceType: T;
-  start(runtime: IAgentRuntime): Promise<Service>;
+	new (runtime?: IAgentRuntime): Service;
+	serviceType: T;
+	start(runtime: IAgentRuntime): Promise<Service>;
 };
 
 /**
@@ -85,14 +85,14 @@ export type ServiceClassMap = {};
  * Helper to infer service instance type from service type name
  */
 export type ServiceInstance<T extends ServiceTypeName> =
-  T extends keyof ServiceClassMap ? InstanceType<ServiceClassMap[T]> : Service;
+	T extends keyof ServiceClassMap ? InstanceType<ServiceClassMap[T]> : Service;
 
 /**
  * Runtime service registry type
  */
 export type ServiceRegistry<T extends ServiceTypeName = ServiceTypeName> = Map<
-  T,
-  Service
+	T,
+	Service
 >;
 
 /**
@@ -104,63 +104,63 @@ export type ServiceRegistry<T extends ServiceTypeName = ServiceTypeName> = Map<
  * Each service typically implements the `Service` abstract class or a more specific interface like `IVideoService`.
  */
 export const ServiceType = {
-  TRANSCRIPTION: "transcription",
-  VIDEO: "video",
-  BROWSER: "browser",
-  PDF: "pdf",
-  REMOTE_FILES: "aws_s3",
-  WEB_SEARCH: "web_search",
-  EMAIL: "email",
-  TEE: "tee",
-  TASK: "task",
-  APPROVAL: "approval",
-  TOOL_POLICY: "tool_policy",
-  WALLET: "wallet",
-  LP_POOL: "lp_pool",
-  TOKEN_DATA: "token_data",
-  MESSAGE_SERVICE: "message_service",
-  MESSAGE: "message",
-  POST: "post",
-  HOOKS: "hooks",
-  PAIRING: "pairing",
-  AGENT_EVENT: "agent_event",
-  UNKNOWN: "unknown",
+	TRANSCRIPTION: "transcription",
+	VIDEO: "video",
+	BROWSER: "browser",
+	PDF: "pdf",
+	REMOTE_FILES: "aws_s3",
+	WEB_SEARCH: "web_search",
+	EMAIL: "email",
+	TEE: "tee",
+	TASK: "task",
+	APPROVAL: "approval",
+	TOOL_POLICY: "tool_policy",
+	WALLET: "wallet",
+	LP_POOL: "lp_pool",
+	TOKEN_DATA: "token_data",
+	MESSAGE_SERVICE: "message_service",
+	MESSAGE: "message",
+	POST: "post",
+	HOOKS: "hooks",
+	PAIRING: "pairing",
+	AGENT_EVENT: "agent_event",
+	UNKNOWN: "unknown",
 } as const;
 
 /**
  * Client instance
  */
 export abstract class Service {
-  /** Runtime instance */
-  protected runtime!: IAgentRuntime;
+	/** Runtime instance */
+	protected runtime!: IAgentRuntime;
 
-  constructor(runtime?: IAgentRuntime) {
-    if (runtime) {
-      this.runtime = runtime;
-    }
-  }
+	constructor(runtime?: IAgentRuntime) {
+		if (runtime) {
+			this.runtime = runtime;
+		}
+	}
 
-  abstract stop(): Promise<void>;
+	abstract stop(): Promise<void>;
 
-  /** Service type */
-  static serviceType: string;
+	/** Service type */
+	static serviceType: string;
 
-  /** Service name */
-  abstract capabilityDescription: string;
+	/** Service name */
+	abstract capabilityDescription: string;
 
-  /** Service configuration */
-  config?: Metadata;
+	/** Service configuration */
+	config?: Metadata;
 
-  /** Start service connection - subclasses must override this */
-  static async start(_runtime: IAgentRuntime): Promise<Service> {
-    throw new Error("Service.start() must be implemented by subclass");
-  }
+	/** Start service connection - subclasses must override this */
+	static async start(_runtime: IAgentRuntime): Promise<Service> {
+		throw new Error("Service.start() must be implemented by subclass");
+	}
 
-  /** Stop service connection - optional, subclasses may override this */
-  static stopRuntime?(_runtime: IAgentRuntime): Promise<void>;
+	/** Stop service connection - optional, subclasses may override this */
+	static stopRuntime?(_runtime: IAgentRuntime): Promise<void>;
 
-  /** Optional static method to register send handlers */
-  static registerSendHandlers?(runtime: IAgentRuntime, service: Service): void;
+	/** Optional static method to register send handlers */
+	static registerSendHandlers?(runtime: IAgentRuntime, service: Service): void;
 }
 
 /**
@@ -170,21 +170,21 @@ export abstract class Service {
  * @template ResultType The result type returned by the service operations
  */
 export interface TypedService<
-  ConfigType extends Metadata = Metadata,
-  InputType = JsonValue,
-  ResultType = JsonValue,
+	ConfigType extends Metadata = Metadata,
+	InputType = JsonValue,
+	ResultType = JsonValue,
 > extends Service {
-  /**
-   * The configuration for this service instance
-   */
-  config?: ConfigType;
+	/**
+	 * The configuration for this service instance
+	 */
+	config?: ConfigType;
 
-  /**
-   * Process an input with this service
-   * @param input The input to process
-   * @returns A promise resolving to the result
-   */
-  process(input: InputType): Promise<ResultType>;
+	/**
+	 * Process an input with this service
+	 * @param input The input to process
+	 * @returns A promise resolving to the result
+	 */
+	process(input: InputType): Promise<ResultType>;
 }
 
 /**
@@ -194,45 +194,45 @@ export interface TypedService<
  * @returns The service instance or null if not available
  */
 export function getTypedService<
-  ConfigType extends Metadata = Metadata,
-  InputType = JsonValue,
-  ResultType = JsonValue,
+	ConfigType extends Metadata = Metadata,
+	InputType = JsonValue,
+	ResultType = JsonValue,
 >(
-  runtime: IAgentRuntime,
-  serviceType: ServiceTypeName,
+	runtime: IAgentRuntime,
+	serviceType: ServiceTypeName,
 ): TypedService<ConfigType, InputType, ResultType> | null {
-  return runtime.getService<TypedService<ConfigType, InputType, ResultType>>(
-    serviceType,
-  );
+	return runtime.getService<TypedService<ConfigType, InputType, ResultType>>(
+		serviceType,
+	);
 }
 
 /**
  * Standardized service error type for consistent error handling
  */
 export interface ServiceError {
-  code: string;
-  message: string;
-  details?: Record<string, JsonValue> | string | number | boolean | null;
-  cause?: Error;
+	code: string;
+	message: string;
+	details?: Record<string, JsonValue> | string | number | boolean | null;
+	cause?: Error;
 }
 
 /**
  * Safely create a ServiceError from any caught error
  */
 export function createServiceError(
-  error: Error | string | JsonValue,
-  code = "UNKNOWN_ERROR",
+	error: Error | string | JsonValue,
+	code = "UNKNOWN_ERROR",
 ): ServiceError {
-  if (error instanceof Error) {
-    return {
-      code,
-      message: error.message,
-      cause: error,
-    };
-  }
+	if (error instanceof Error) {
+		return {
+			code,
+			message: error.message,
+			cause: error,
+		};
+	}
 
-  return {
-    code,
-    message: String(error),
-  };
+	return {
+		code,
+		message: String(error),
+	};
 }

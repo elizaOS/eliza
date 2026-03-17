@@ -3,14 +3,6 @@
  */
 
 import * as fs from "node:fs";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  jest,
-} from "./jest-globals";
 import { vi } from "vitest";
 import { TextProblemStatement } from "../src/agent/problem-statement";
 // import { DockerDeploymentConfig } from '../src/environment/deployment';  // Not used
@@ -23,6 +15,14 @@ import {
   SWEBenchInstances,
 } from "../src/run/batch-instances";
 import { SweBenchEvaluate } from "../src/run/hooks/swe-bench-evaluate";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from "./jest-globals";
 
 // Mock fs module
 vi.mock("node:fs", () => ({

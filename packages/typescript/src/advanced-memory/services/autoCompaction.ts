@@ -29,24 +29,24 @@ const compactionsInProgress = new Set<string>();
  * is already running for this room.
  */
 export async function triggerAutoCompaction(
-  runtime: IAgentRuntime,
-  roomId: UUID,
+	runtime: IAgentRuntime,
+	roomId: UUID,
 ): Promise<void> {
-  const key = `${runtime.agentId}:${roomId}`;
-  if (compactionsInProgress.has(key)) {
-    logger.debug(
-      { src: "auto-compaction", roomId },
-      "Compaction already in progress, skipping",
-    );
-    return;
-  }
+	const key = `${runtime.agentId}:${roomId}`;
+	if (compactionsInProgress.has(key)) {
+		logger.debug(
+			{ src: "auto-compaction", roomId },
+			"Compaction already in progress, skipping",
+		);
+		return;
+	}
 
-  compactionsInProgress.add(key);
-  try {
-    await performCompaction(runtime, roomId);
-  } finally {
-    compactionsInProgress.delete(key);
-  }
+	compactionsInProgress.add(key);
+	try {
+		await performCompaction(runtime, roomId);
+	} finally {
+		compactionsInProgress.delete(key);
+	}
 }
 
 /**
@@ -56,133 +56,133 @@ export async function triggerAutoCompaction(
 const MAX_SUMMARY_INPUT_CHARS = 75_000;
 
 async function performCompaction(
-  runtime: IAgentRuntime,
-  roomId: UUID,
+	runtime: IAgentRuntime,
+	roomId: UUID,
 ): Promise<void> {
-  // Capture the timestamp BEFORE any async work so messages arriving during
-  // compaction will have a createdAt greater than this value.
-  const compactionTimestamp = Date.now();
+	// Capture the timestamp BEFORE any async work so messages arriving during
+	// compaction will have a createdAt greater than this value.
+	const compactionTimestamp = Date.now();
 
-  logger.info(
-    { src: "auto-compaction", roomId, timestamp: compactionTimestamp },
-    "Starting auto-compaction",
-  );
+	logger.info(
+		{ src: "auto-compaction", roomId, timestamp: compactionTimestamp },
+		"Starting auto-compaction",
+	);
 
-  // Check for existing compaction point so we only summarise NEW messages
-  const room = await runtime.getRoom(roomId);
-  const lastCompactionAt = room?.metadata?.lastCompactionAt as
-    | number
-    | undefined;
+	// Check for existing compaction point so we only summarise NEW messages
+	const room = await runtime.getRoom(roomId);
+	const lastCompactionAt = room?.metadata?.lastCompactionAt as
+		| number
+		| undefined;
 
-  // Load messages since last compaction (up to 200)
-  const messages = await runtime.getMemories({
-    tableName: "messages",
-    roomId,
-    count: 200,
-    start: lastCompactionAt,
-  });
+	// Load messages since last compaction (up to 200)
+	const messages = await runtime.getMemories({
+		tableName: "messages",
+		roomId,
+		count: 200,
+		start: lastCompactionAt,
+	});
 
-  if (!messages?.length) {
-    logger.debug({ src: "auto-compaction", roomId }, "No messages to compact");
-    return;
-  }
+	if (!messages?.length) {
+		logger.debug({ src: "auto-compaction", roomId }, "No messages to compact");
+		return;
+	}
 
-  // Format for summarisation — oldest first
-  const sorted = messages.sort(
-    (a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0),
-  );
-  let formatted = sorted
-    .map((m) => {
-      const role = m.entityId === runtime.agentId ? "Assistant" : "User";
-      const text = typeof m.content?.text === "string" ? m.content.text : "";
-      return `${role}: ${text}`;
-    })
-    .join("\n");
+	// Format for summarisation — oldest first
+	const sorted = messages.sort(
+		(a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0),
+	);
+	let formatted = sorted
+		.map((m) => {
+			const role = m.entityId === runtime.agentId ? "Assistant" : "User";
+			const text = typeof m.content?.text === "string" ? m.content.text : "";
+			return `${role}: ${text}`;
+		})
+		.join("\n");
 
-  // Truncate to stay within the model's context when summarising.
-  // Keep the most recent portion so the summary captures the latest state.
-  if (formatted.length > MAX_SUMMARY_INPUT_CHARS) {
-    logger.info(
-      {
-        src: "auto-compaction",
-        roomId,
-        originalChars: formatted.length,
-        truncatedTo: MAX_SUMMARY_INPUT_CHARS,
-      },
-      "Truncating conversation for summarisation",
-    );
-    formatted = formatted.slice(-MAX_SUMMARY_INPUT_CHARS);
-  }
+	// Truncate to stay within the model's context when summarising.
+	// Keep the most recent portion so the summary captures the latest state.
+	if (formatted.length > MAX_SUMMARY_INPUT_CHARS) {
+		logger.info(
+			{
+				src: "auto-compaction",
+				roomId,
+				originalChars: formatted.length,
+				truncatedTo: MAX_SUMMARY_INPUT_CHARS,
+			},
+			"Truncating conversation for summarisation",
+		);
+		formatted = formatted.slice(-MAX_SUMMARY_INPUT_CHARS);
+	}
 
-  // Carry forward the previous summary so incremental compaction doesn't
-  // lose older context.  Find the most recent compaction summary message.
-  let previousSummary = "";
-  if (lastCompactionAt) {
-    const compactionMsg = sorted.find(
-      (m) => m.content?.source === "compaction",
-    );
-    if (compactionMsg?.content?.text) {
-      previousSummary = compactionMsg.content.text;
-    }
-  }
+	// Carry forward the previous summary so incremental compaction doesn't
+	// lose older context.  Find the most recent compaction summary message.
+	let previousSummary = "";
+	if (lastCompactionAt) {
+		const compactionMsg = sorted.find(
+			(m) => m.content?.source === "compaction",
+		);
+		if (compactionMsg?.content?.text) {
+			previousSummary = compactionMsg.content.text;
+		}
+	}
 
-  const summaryPreamble = previousSummary
-    ? `Previous context summary:\n${previousSummary}\n\n`
-    : "";
+	const summaryPreamble = previousSummary
+		? `Previous context summary:\n${previousSummary}\n\n`
+		: "";
 
-  const prompt =
-    `${summaryPreamble}Summarize this conversation for context preservation. Focus on decisions, ` +
-    "facts learned, open questions, action items, and key context needed to continue.\n\n" +
-    `Conversation:\n${formatted}\n\nSummary:`;
+	const prompt =
+		`${summaryPreamble}Summarize this conversation for context preservation. Focus on decisions, ` +
+		"facts learned, open questions, action items, and key context needed to continue.\n\n" +
+		`Conversation:\n${formatted}\n\nSummary:`;
 
-  const summary: string = await runtime.useModel(ModelType.TEXT_LARGE, {
-    prompt,
-    maxTokens: 2_000,
-  });
+	const summary: string = await runtime.useModel(ModelType.TEXT_LARGE, {
+		prompt,
+		maxTokens: 2_000,
+	});
 
-  // Store the summary as a message right at the compaction point
-  await runtime.createMemory(
-    {
-      id: crypto.randomUUID() as UUID,
-      entityId: runtime.agentId,
-      roomId,
-      content: {
-        text: `[Compaction Summary]\n\n${summary}`,
-        source: "compaction",
-      },
-      createdAt: compactionTimestamp,
-      metadata: { type: MemoryType.CUSTOM },
-    },
-    "messages",
-  );
+	// Store the summary as a message right at the compaction point
+	await runtime.createMemory(
+		{
+			id: crypto.randomUUID() as UUID,
+			entityId: runtime.agentId,
+			roomId,
+			content: {
+				text: `[Compaction Summary]\n\n${summary}`,
+				source: "compaction",
+			},
+			createdAt: compactionTimestamp,
+			metadata: { type: MemoryType.CUSTOM },
+		},
+		"messages",
+	);
 
-  // Update room metadata with the compaction point
-  if (room) {
-    const prev = Array.isArray(room.metadata?.compactionHistory)
-      ? (room.metadata.compactionHistory as JsonValue[])
-      : [];
-    const entry: JsonValue = {
-      timestamp: compactionTimestamp,
-      triggeredBy: "auto-compaction",
-    };
-    const compactionHistory: JsonValue[] = [...prev, entry].slice(-10);
-    await runtime.updateRoom({
-      ...room,
-      metadata: {
-        ...room.metadata,
-        lastCompactionAt: compactionTimestamp,
-        compactionHistory,
-      },
-    });
-  }
+	// Update room metadata with the compaction point
+	if (room) {
+		const prev = Array.isArray(room.metadata?.compactionHistory)
+			? (room.metadata.compactionHistory as JsonValue[])
+			: [];
+		const entry: JsonValue = {
+			timestamp: compactionTimestamp,
+			triggeredBy: "auto-compaction",
+		};
+		const compactionHistory: JsonValue[] = [...prev, entry].slice(-10);
+		await runtime.updateRoom({
+			...room,
+			metadata: {
+				...room.metadata,
+				lastCompactionAt: compactionTimestamp,
+				compactionHistory,
+			},
+		});
+	}
 
-  logger.info(
-    {
-      src: "auto-compaction",
-      roomId,
-      compactionAt: compactionTimestamp,
-      messageCount: messages.length,
-    },
-    "Auto-compaction complete",
-  );
+	logger.info(
+		{
+			src: "auto-compaction",
+			roomId,
+			compactionAt: compactionTimestamp,
+			messageCount: messages.length,
+		},
+		"Auto-compaction complete",
+	);
 }

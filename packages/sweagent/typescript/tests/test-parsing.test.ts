@@ -2,7 +2,6 @@
  * Parsing tests converted from test_parsing.py
  */
 
-import { describe, expect, it } from "./jest-globals";
 import {
   ActionOnlyParser as ActionParser,
   EditFormatParser as EditFormat,
@@ -14,6 +13,7 @@ import {
 } from "../src/agent/tools/parsing";
 import type { Command } from "../src/agent/types";
 import { FormatError, FunctionCallingFormatError } from "../src/exceptions";
+import { describe, expect, it } from "./jest-globals";
 
 describe("Parsing", () => {
   describe("ActionParser", () => {

@@ -10,44 +10,47 @@
  * - Common CLI dependencies
  */
 
-import type { Plugin, IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { Command } from "commander";
 
-// Types
-export * from "./types.js";
-
 // Registry
 export {
-  registerCliCommand,
-  unregisterCliCommand,
+  addSubcommand,
+  clearCliCommands,
+  defineCliCommand,
   getCliCommand,
   listCliCommands,
   registerAllCommands,
-  clearCliCommands,
-  defineCliCommand,
-  addSubcommand,
+  registerCliCommand,
+  unregisterCliCommand,
 } from "./registry.js";
+// Types
+export * from "./types.js";
 
 // Utils
 export {
-  DEFAULT_CLI_NAME,
-  DEFAULT_CLI_VERSION,
   createDefaultDeps,
   createProgressReporter,
-  withProgress,
+  DEFAULT_CLI_NAME,
+  DEFAULT_CLI_VERSION,
+  formatBytes,
+  formatCliCommand,
+  formatDuration,
+  isInteractive,
   parseDurationMs,
   parseTimeoutMs,
-  formatCliCommand,
   resolveCliName,
-  isInteractive,
-  formatBytes,
-  formatDuration,
+  withProgress,
 } from "./utils.js";
 
 import { listCliCommands, registerAllCommands } from "./registry.js";
-import { DEFAULT_CLI_NAME, DEFAULT_CLI_VERSION, resolveCliName } from "./utils.js";
 import type { CliContext } from "./types.js";
+import {
+  DEFAULT_CLI_NAME,
+  DEFAULT_CLI_VERSION,
+  resolveCliName,
+} from "./utils.js";
 
 /**
  * Build the Commander program with all registered commands
@@ -87,7 +90,7 @@ export async function runCli(
     name?: string;
     version?: string;
     getRuntime?: () => IAgentRuntime | null;
-  }
+  },
 ): Promise<void> {
   const program = buildProgram(options);
 
@@ -149,16 +152,19 @@ export const cliPlugin: Plugin = {
 
   async init(
     _config: Record<string, string>,
-    _runtime: IAgentRuntime
+    _runtime: IAgentRuntime,
   ): Promise<void> {
     try {
       const commands = listCliCommands();
 
-      logger.info({ commandCount: commands.length }, "[CLIPlugin] Plugin initialized");
+      logger.info(
+        { commandCount: commands.length },
+        "[CLIPlugin] Plugin initialized",
+      );
     } catch (error) {
       logger.error(
         "[CLIPlugin] Error initializing:",
-        error instanceof Error ? error.message : String(error)
+        error instanceof Error ? error.message : String(error),
       );
       throw error;
     }

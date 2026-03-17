@@ -4,10 +4,10 @@ import type { IDatabaseAdapter } from "./database";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
 import type {
-  JsonValue,
-  ComponentTypeDefinition as ProtoComponentTypeDefinition,
-  JSONSchemaDefinition as ProtoJSONSchemaDefinition,
-  RouteManifest as ProtoRouteManifest,
+	JsonValue,
+	ComponentTypeDefinition as ProtoComponentTypeDefinition,
+	JSONSchemaDefinition as ProtoJSONSchemaDefinition,
+	RouteManifest as ProtoRouteManifest,
 } from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
@@ -20,16 +20,16 @@ import type { TestSuite } from "./testing";
  * - Service classes that properly extend the base Service class
  */
 export interface ServiceClass {
-  /** The service type identifier */
-  serviceType: string;
-  /** Factory method to create and start the service */
-  start(runtime: IAgentRuntime): Promise<Service>;
-  /** Stop service for a runtime - optional as not all services implement this */
-  stopRuntime?(runtime: IAgentRuntime): Promise<void>;
-  /** Optional static method to register send handlers */
-  registerSendHandlers?(runtime: IAgentRuntime, service: Service): void;
-  /** Constructor (optional runtime parameter) */
-  new (runtime?: IAgentRuntime): Service;
+	/** The service type identifier */
+	serviceType: string;
+	/** Factory method to create and start the service */
+	start(runtime: IAgentRuntime): Promise<Service>;
+	/** Stop service for a runtime - optional as not all services implement this */
+	stopRuntime?(runtime: IAgentRuntime): Promise<void>;
+	/** Optional static method to register send handlers */
+	registerSendHandlers?(runtime: IAgentRuntime, service: Service): void;
+	/** Constructor (optional runtime parameter) */
+	new (runtime?: IAgentRuntime): Service;
 }
 
 /**
@@ -42,13 +42,13 @@ export type RouteBodyValue = JsonValue;
  * Plugins can use this type for route handlers
  */
 export interface RouteRequest {
-  body?: Record<string, RouteBodyValue>;
-  params?: Record<string, string>;
-  query?: Record<string, string | string[]>;
-  headers?: Record<string, string | string[] | undefined>;
-  method?: string;
-  path?: string;
-  url?: string;
+	body?: Record<string, RouteBodyValue>;
+	params?: Record<string, string>;
+	query?: Record<string, string | string[]>;
+	headers?: Record<string, string | string[] | undefined>;
+	method?: string;
+	path?: string;
+	url?: string;
 }
 
 /**
@@ -56,35 +56,35 @@ export interface RouteRequest {
  * Plugins can use this type for route handlers
  */
 export interface RouteResponse {
-  status: (code: number) => RouteResponse;
-  json: (data: unknown) => RouteResponse;
-  send: (data: unknown) => RouteResponse;
-  end: () => RouteResponse;
-  setHeader?: (name: string, value: string | string[]) => RouteResponse;
-  sendFile?: (path: string) => RouteResponse;
-  headersSent?: boolean;
+	status: (code: number) => RouteResponse;
+	json: (data: unknown) => RouteResponse;
+	send: (data: unknown) => RouteResponse;
+	end: () => RouteResponse;
+	setHeader?: (name: string, value: string | string[]) => RouteResponse;
+	sendFile?: (path: string) => RouteResponse;
+	headersSent?: boolean;
 }
 
 interface BaseRoute {
-  type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
-  path: string;
-  filePath?: string;
-  handler?: (
-    req: RouteRequest,
-    res: RouteResponse,
-    runtime: IAgentRuntime,
-  ) => Promise<void>;
-  isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
+	type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
+	path: string;
+	filePath?: string;
+	handler?: (
+		req: RouteRequest,
+		res: RouteResponse,
+		runtime: IAgentRuntime,
+	) => Promise<void>;
+	isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
 }
 
 interface PublicRoute extends BaseRoute {
-  public: true;
-  name: string; // Name is required for public routes
+	public: true;
+	name: string; // Name is required for public routes
 }
 
 interface PrivateRoute extends BaseRoute {
-  public?: false;
-  name?: string; // Name is optional for private routes
+	public?: false;
+	name?: string; // Name is optional for private routes
 }
 
 export type Route = PublicRoute | PrivateRoute;
@@ -98,9 +98,9 @@ export type JSONSchemaDefinition = ProtoJSONSchemaDefinition;
  * Component type definition for entity components
  */
 export interface ComponentTypeDefinition
-  extends Omit<ProtoComponentTypeDefinition, "schema"> {
-  schema: JSONSchemaDefinition;
-  validator?: (data: Record<string, RouteBodyValue>) => boolean;
+	extends Omit<ProtoComponentTypeDefinition, "schema"> {
+	schema: JSONSchemaDefinition;
+	validator?: (data: Record<string, RouteBodyValue>) => boolean;
 }
 
 /**
@@ -108,74 +108,74 @@ export interface ComponentTypeDefinition
  */
 
 export type PluginEvents = {
-  [K in keyof EventPayloadMap]?: EventHandler<K>[];
+	[K in keyof EventPayloadMap]?: EventHandler<K>[];
 };
 
 /** Internal type for runtime event storage - allows dynamic access for event registration */
 export type RuntimeEventStorage = PluginEvents & {
-  [key: string]:
-    | ((
-        params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
-      ) => Promise<void>)[]
-    | undefined;
+	[key: string]:
+		| ((
+				params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
+		  ) => Promise<void>)[]
+		| undefined;
 };
 
 export interface Plugin {
-  name: string;
-  description: string;
+	name: string;
+	description: string;
 
-  // Initialize plugin with runtime services
-  init?: (
-    config: Record<string, string>,
-    runtime: IAgentRuntime,
-  ) => Promise<void>;
+	// Initialize plugin with runtime services
+	init?: (
+		config: Record<string, string>,
+		runtime: IAgentRuntime,
+	) => Promise<void>;
 
-  /** Plugin configuration - string keys to primitive values */
-  config?: Record<string, string | number | boolean | null>;
+	/** Plugin configuration - string keys to primitive values */
+	config?: Record<string, string | number | boolean | null>;
 
-  /**
-   * Service classes to be registered with the runtime.
-   * Uses ServiceClass interface which is more flexible than `typeof Service`
-   * to allow service classes with specific serviceType values.
-   */
-  services?: ServiceClass[];
+	/**
+	 * Service classes to be registered with the runtime.
+	 * Uses ServiceClass interface which is more flexible than `typeof Service`
+	 * to allow service classes with specific serviceType values.
+	 */
+	services?: ServiceClass[];
 
-  /** Entity component definitions with JSON schema */
-  componentTypes?: ComponentTypeDefinition[];
+	/** Entity component definitions with JSON schema */
+	componentTypes?: ComponentTypeDefinition[];
 
-  // Optional plugin features
-  actions?: Action[];
-  providers?: Provider[];
-  evaluators?: Evaluator[];
-  adapter?: IDatabaseAdapter;
-  models?: {
-    [K in keyof ModelParamsMap]?: (
-      runtime: IAgentRuntime,
-      params: ModelParamsMap[K],
-    ) => Promise<PluginModelResult<K>>;
-  };
-  events?: PluginEvents;
-  routes?: Route[];
-  tests?: TestSuite[];
+	// Optional plugin features
+	actions?: Action[];
+	providers?: Provider[];
+	evaluators?: Evaluator[];
+	adapter?: IDatabaseAdapter;
+	models?: {
+		[K in keyof ModelParamsMap]?: (
+			runtime: IAgentRuntime,
+			params: ModelParamsMap[K],
+		) => Promise<PluginModelResult<K>>;
+	};
+	events?: PluginEvents;
+	routes?: Route[];
+	tests?: TestSuite[];
 
-  dependencies?: string[];
+	dependencies?: string[];
 
-  testDependencies?: string[];
+	testDependencies?: string[];
 
-  priority?: number;
+	priority?: number;
 
-  schema?: Record<string, JsonValue | object>;
+	schema?: Record<string, JsonValue | object>;
 }
 
 export interface ProjectAgent {
-  character: Character;
-  init?: (runtime: IAgentRuntime) => Promise<void>;
-  plugins?: Plugin[];
-  tests?: TestSuite | TestSuite[];
+	character: Character;
+	init?: (runtime: IAgentRuntime) => Promise<void>;
+	plugins?: Plugin[];
+	tests?: TestSuite | TestSuite[];
 }
 
 export interface Project {
-  agents: ProjectAgent[];
+	agents: ProjectAgent[];
 }
 
 export type RouteManifest = ProtoRouteManifest;

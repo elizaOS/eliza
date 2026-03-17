@@ -12,6 +12,7 @@ Room = environment_pb2.Room
 Participant = environment_pb2.Participant
 Relationship = environment_pb2.Relationship
 
+
 class _ChannelValue(str):
     """String that also has a .value property for enum compatibility."""
 

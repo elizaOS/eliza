@@ -9,8 +9,8 @@
  * @see https://opentelemetry.io/docs/languages/js/context/
  */
 import type {
-  IStreamingContextManager,
-  StreamingContext,
+	IStreamingContextManager,
+	StreamingContext,
 } from "./streaming-context";
 
 /**
@@ -19,22 +19,22 @@ import type {
  * Supports nested contexts via stack push/pop.
  */
 export class StackContextManager implements IStreamingContextManager {
-  private stack: Array<StreamingContext | undefined> = [];
+	private stack: Array<StreamingContext | undefined> = [];
 
-  run<T>(context: StreamingContext | undefined, fn: () => T): T {
-    this.stack.push(context);
-    try {
-      return fn();
-    } finally {
-      this.stack.pop();
-    }
-  }
+	run<T>(context: StreamingContext | undefined, fn: () => T): T {
+		this.stack.push(context);
+		try {
+			return fn();
+		} finally {
+			this.stack.pop();
+		}
+	}
 
-  active(): StreamingContext | undefined {
-    return this.stack.length > 0
-      ? this.stack[this.stack.length - 1]
-      : undefined;
-  }
+	active(): StreamingContext | undefined {
+		return this.stack.length > 0
+			? this.stack[this.stack.length - 1]
+			: undefined;
+	}
 }
 
 /**
@@ -42,5 +42,5 @@ export class StackContextManager implements IStreamingContextManager {
  * Called by index.browser.ts during initialization.
  */
 export function createBrowserStreamingContextManager(): IStreamingContextManager {
-  return new StackContextManager();
+	return new StackContextManager();
 }

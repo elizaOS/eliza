@@ -1,8 +1,8 @@
 import type { Content, UUID } from "./primitives";
 import type {
-  MemoryMetadata,
-  KnowledgeItem as ProtoKnowledgeItem,
-  KnowledgeRecord as ProtoKnowledgeRecord,
+	MemoryMetadata,
+	KnowledgeItem as ProtoKnowledgeItem,
+	KnowledgeRecord as ProtoKnowledgeRecord,
 } from "./proto.js";
 
 /**
@@ -10,12 +10,12 @@ import type {
  * Supports both 'path' (proto standard) and 'directory' (legacy) property names.
  */
 export type KnowledgeDirectory = {
-  /** Path to the knowledge directory (proto standard) */
-  path?: string;
-  /** Path to the knowledge directory (legacy, same as path) */
-  directory?: string;
-  /** Whether this knowledge is shared across characters */
-  shared?: boolean;
+	/** Path to the knowledge directory (proto standard) */
+	path?: string;
+	/** Path to the knowledge directory (legacy, same as path) */
+	directory?: string;
+	/** Whether this knowledge is shared across characters */
+	shared?: boolean;
 };
 
 /**
@@ -24,13 +24,13 @@ export type KnowledgeDirectory = {
  * Matches the proto KnowledgeItem structure used in character definitions.
  */
 export type KnowledgeSourceItem = Omit<
-  ProtoKnowledgeItem,
-  "$typeName" | "$unknown" | "item"
+	ProtoKnowledgeItem,
+	"$typeName" | "$unknown" | "item"
 > & {
-  item:
-    | { case: "path"; value: string }
-    | { case: "directory"; value: KnowledgeDirectory }
-    | { case: undefined; value?: undefined };
+	item:
+		| { case: "path"; value: string }
+		| { case: "directory"; value: KnowledgeDirectory }
+		| { case: undefined; value?: undefined };
 };
 
 /**
@@ -38,11 +38,11 @@ export type KnowledgeSourceItem = Omit<
  * Used for knowledge retrieval results and internal knowledge processing.
  */
 export interface KnowledgeItem {
-  id: UUID;
-  content: Content;
-  metadata?: MemoryMetadata;
-  worldId?: UUID;
-  similarity?: number;
+	id: UUID;
+	content: Content;
+	metadata?: MemoryMetadata;
+	worldId?: UUID;
+	similarity?: number;
 }
 
 /**
@@ -51,5 +51,5 @@ export interface KnowledgeItem {
  * not a knowledge source specification.
  */
 export type KnowledgeRecord = Partial<
-  Omit<ProtoKnowledgeRecord, "$typeName" | "$unknown">
+	Omit<ProtoKnowledgeRecord, "$typeName" | "$unknown">
 >;

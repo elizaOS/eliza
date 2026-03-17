@@ -5,17 +5,14 @@ import type {
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
+  JsonObject,
   Memory,
+  ProviderDataRecord,
   State,
   UUID,
 } from "@elizaos/core";
-import type { JsonObject, ProviderDataRecord } from "@elizaos/core";
 import type { MessagingService } from "../services/messaging-service.js";
-import type {
-  MessageContent,
-  MessageTarget,
-  MessagingChannel,
-} from "../types/messaging.js";
+import type { MessageContent, MessageTarget, MessagingChannel } from "../types/messaging.js";
 import type { DeliveryContext } from "../types/subagent.js";
 
 /**
@@ -166,7 +163,8 @@ export const sendCrossPlatformMessageAction: Action = {
     if (content.attachments) sendContent.attachments = content.attachments;
     if (content.embed) sendContent.embed = content.embed;
     if (content.buttons) sendContent.buttons = content.buttons;
-    if (content.disableLinkPreview !== undefined) sendContent.disableLinkPreview = content.disableLinkPreview;
+    if (content.disableLinkPreview !== undefined)
+      sendContent.disableLinkPreview = content.disableLinkPreview;
     if (content.silent !== undefined) sendContent.silent = content.silent;
 
     const result = await messagingService.send({
@@ -247,11 +245,7 @@ export const sendCrossPlatformMessageAction: Action = {
  */
 export const sendToDeliveryContextAction: Action = {
   name: "SEND_TO_DELIVERY_CONTEXT",
-  similes: [
-    "DELIVER_MESSAGE",
-    "SEND_TO_CONTEXT",
-    "ROUTE_MESSAGE",
-  ],
+  similes: ["DELIVER_MESSAGE", "SEND_TO_CONTEXT", "ROUTE_MESSAGE"],
   description:
     "Send a message using a delivery context that specifies the target channel and recipient. " +
     "Useful for routing messages back to the original requester or to a specific context.",
@@ -374,11 +368,7 @@ export const sendToDeliveryContextAction: Action = {
  */
 export const sendToRoomAction: Action = {
   name: "SEND_TO_ROOM",
-  similes: [
-    "MESSAGE_ROOM",
-    "ROOM_MESSAGE",
-    "NOTIFY_ROOM",
-  ],
+  similes: ["MESSAGE_ROOM", "ROOM_MESSAGE", "NOTIFY_ROOM"],
   description:
     "Send a message to an Eliza room. The room's metadata determines which platform and recipient to use.",
 
@@ -418,9 +408,7 @@ export const sendToRoomAction: Action = {
       return { success: false, error: "Messaging service not available" };
     }
 
-    const params = message.content?.params as
-      | { roomId?: string; text?: string }
-      | undefined;
+    const params = message.content?.params as { roomId?: string; text?: string } | undefined;
 
     const roomId = params?.roomId;
     const text = params?.text ?? message.content?.text;
@@ -495,11 +483,7 @@ export const sendToRoomAction: Action = {
  */
 export const sendToSessionMessageAction: Action = {
   name: "SEND_TO_SESSION_MESSAGE",
-  similes: [
-    "SESSION_MESSAGE",
-    "MESSAGE_SESSION",
-    "NOTIFY_SESSION",
-  ],
+  similes: ["SESSION_MESSAGE", "MESSAGE_SESSION", "NOTIFY_SESSION"],
   description:
     "Send a message to a session by its session key. The session key is mapped to an Eliza room.",
 
@@ -539,9 +523,7 @@ export const sendToSessionMessageAction: Action = {
       return { success: false, error: "Messaging service not available" };
     }
 
-    const params = message.content?.params as
-      | { sessionKey?: string; text?: string }
-      | undefined;
+    const params = message.content?.params as { sessionKey?: string; text?: string } | undefined;
 
     const sessionKey = params?.sessionKey;
     const text = params?.text ?? message.content?.text;
@@ -616,12 +598,9 @@ export const sendToSessionMessageAction: Action = {
  */
 export const listMessagingChannelsAction: Action = {
   name: "LIST_MESSAGING_CHANNELS",
-  similes: [
-    "AVAILABLE_CHANNELS",
-    "GET_CHANNELS",
-    "MESSAGING_PLATFORMS",
-  ],
-  description: "List all available messaging channels/platforms that the agent can send messages to.",
+  similes: ["AVAILABLE_CHANNELS", "GET_CHANNELS", "MESSAGING_PLATFORMS"],
+  description:
+    "List all available messaging channels/platforms that the agent can send messages to.",
 
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     // This action only requires the messaging service to be available

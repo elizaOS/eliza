@@ -1,21 +1,21 @@
 import type { Plugin } from "../types/index.ts";
 import {
-  longTermExtractionEvaluator,
-  summarizationEvaluator,
+	longTermExtractionEvaluator,
+	summarizationEvaluator,
 } from "./evaluators/index.ts";
 import {
-  contextSummaryProvider,
-  longTermMemoryProvider,
+	contextSummaryProvider,
+	longTermMemoryProvider,
 } from "./providers/index.ts";
 import { MemoryService } from "./services/memory-service.ts";
 
 export {
-  longTermExtractionEvaluator,
-  summarizationEvaluator,
+	longTermExtractionEvaluator,
+	summarizationEvaluator,
 } from "./evaluators/index.ts";
 export {
-  contextSummaryProvider,
-  longTermMemoryProvider,
+	contextSummaryProvider,
+	longTermMemoryProvider,
 } from "./providers/index.ts";
 // Export the abstract, backend-agnostic schema definitions
 export * from "./schemas/index.ts";
@@ -31,12 +31,12 @@ export * from "./types.ts";
  * gracefully disable.
  */
 export function createAdvancedMemoryPlugin(): Plugin {
-  return {
-    name: "memory",
-    description:
-      "Memory management with conversation summarization and long-term persistent memory",
-    services: [MemoryService],
-    evaluators: [summarizationEvaluator, longTermExtractionEvaluator],
-    providers: [longTermMemoryProvider, contextSummaryProvider],
-  };
+	return {
+		name: "memory",
+		description:
+			"Memory management with conversation summarization and long-term persistent memory",
+		services: [MemoryService],
+		evaluators: [summarizationEvaluator, longTermExtractionEvaluator],
+		providers: [longTermMemoryProvider, contextSummaryProvider],
+	};
 }

@@ -3,7 +3,6 @@
  */
 
 import * as path from "node:path";
-import { describe, expect, it, jest } from "./jest-globals";
 import {
   calculateHash,
   debounce,
@@ -19,6 +18,7 @@ import {
   parseConfigFile,
   validateConfig,
 } from "../src/utils/config";
+import { describe, expect, it, jest } from "./jest-globals";
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 

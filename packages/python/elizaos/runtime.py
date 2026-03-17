@@ -277,6 +277,7 @@ class AgentRuntime(IAgentRuntime):
             char_settings: dict[str, object] = {}
             if hasattr(char_settings_obj, "DESCRIPTOR"):
                 from google.protobuf.json_format import MessageToDict
+
                 char_settings = MessageToDict(char_settings_obj, preserving_proto_field_name=True)
             elif isinstance(char_settings_obj, dict):
                 char_settings = char_settings_obj
@@ -621,7 +622,10 @@ class AgentRuntime(IAgentRuntime):
                         f"Parameter '{param_def.name}' expected string, got {type(extracted_value).__name__}"
                     )
                     continue
-                if param_def.schema.enum_values and extracted_value not in param_def.schema.enum_values:
+                if (
+                    param_def.schema.enum_values
+                    and extracted_value not in param_def.schema.enum_values
+                ):
                     errors.append(
                         f"Parameter '{param_def.name}' value '{extracted_value}' not in allowed values: {', '.join(param_def.schema.enum_values)}"
                     )
@@ -803,20 +807,31 @@ class AgentRuntime(IAgentRuntime):
                 # ``options.parameters.get("key")`` which only works on dicts,
                 # not on protobuf ActionParameters messages.
                 if validated_params:
-                    options_obj = type("_Opts", (), {
-                        "parameters": validated_params,
-                        "parameter_errors": getattr(options_obj, "parameter_errors", []),
-                    })()  # type: ignore[assignment]
+                    options_obj = type(
+                        "_Opts",
+                        (),
+                        {
+                            "parameters": validated_params,
+                            "parameter_errors": getattr(options_obj, "parameter_errors", []),
+                        },
+                    )()  # type: ignore[assignment]
                 elif hasattr(options_obj, "parameters"):
                     try:
                         pv = options_obj.parameters
                         if hasattr(pv, "values") and hasattr(pv.values, "items"):
                             # Proto ActionParameters -> convert Struct values to dict
                             from google.protobuf.json_format import MessageToDict
-                            options_obj = type("_Opts", (), {
-                                "parameters": MessageToDict(pv.values),
-                                "parameter_errors": getattr(options_obj, "parameter_errors", []),
-                            })()  # type: ignore[assignment]
+
+                            options_obj = type(
+                                "_Opts",
+                                (),
+                                {
+                                    "parameters": MessageToDict(pv.values),
+                                    "parameter_errors": getattr(
+                                        options_obj, "parameter_errors", []
+                                    ),
+                                },
+                            )()  # type: ignore[assignment]
                     except Exception:
                         pass
 

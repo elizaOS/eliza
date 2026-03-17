@@ -199,8 +199,7 @@ export const MessagingEventType = {
   READ: "MESSAGING_READ",
 } as const;
 
-export type MessagingEventType =
-  (typeof MessagingEventType)[keyof typeof MessagingEventType];
+export type MessagingEventType = (typeof MessagingEventType)[keyof typeof MessagingEventType];
 
 /**
  * Payload for messaging events.

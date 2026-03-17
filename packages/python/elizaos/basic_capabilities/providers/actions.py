@@ -55,7 +55,8 @@ def _format_action_parameters(parameters: list[ActionParameter]) -> str:
         enum_str = f" [values: {', '.join(enum_vals)}]" if enum_vals else ""
         examples_str = (
             f" [examples: {', '.join(repr(v) for v in param.examples)}]"
-            if getattr(param, "examples", None) else ""
+            if getattr(param, "examples", None)
+            else ""
         )
         lines.append(
             f"    - {param.name}{required_str}: {param.description} ({type_str}{enum_str}{default_str}{examples_str})"

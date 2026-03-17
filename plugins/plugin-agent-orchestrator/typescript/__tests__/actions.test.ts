@@ -5,16 +5,16 @@
  * requiring a full Eliza runtime.
  */
 
-import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
-import type { IAgentRuntime, Memory, State, ActionResult } from "@elizaos/core";
+import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import {
+  cancelTaskAction,
   createTaskAction,
   listTasksAction,
-  switchTaskAction,
-  searchTasksAction,
   pauseTaskAction,
   resumeTaskAction,
-  cancelTaskAction,
+  searchTasksAction,
+  switchTaskAction,
 } from "../src/actions/task-management.js";
 
 // ============================================================================
@@ -40,7 +40,12 @@ function makeMockService(overrides: Record<string, unknown> = {}) {
     createTask: vi.fn().mockResolvedValue({
       id: "task-1",
       name: "Test Task",
-      metadata: { providerId: "mock", providerLabel: "Mock Provider", status: "pending", progress: 0 },
+      metadata: {
+        providerId: "mock",
+        providerLabel: "Mock Provider",
+        status: "pending",
+        progress: 0,
+      },
     }),
     getRecentTasks: vi.fn().mockResolvedValue([]),
     getCurrentTaskId: vi.fn().mockReturnValue(null),
@@ -77,8 +82,12 @@ describe("createTaskAction", () => {
   it("validate returns true when service exists and text has intent", async () => {
     const svc = makeMockService();
     const runtime = makeRuntime({ CODE_TASK: svc });
-    expect(await createTaskAction.validate!(runtime, makeMessage("create task for refactoring"))).toBe(true);
-    expect(await createTaskAction.validate!(runtime, makeMessage("implement feature X"))).toBe(true);
+    expect(
+      await createTaskAction.validate!(runtime, makeMessage("create task for refactoring")),
+    ).toBe(true);
+    expect(await createTaskAction.validate!(runtime, makeMessage("implement feature X"))).toBe(
+      true,
+    );
     expect(await createTaskAction.validate!(runtime, makeMessage("fix the login bug"))).toBe(true);
   });
 
@@ -94,16 +103,20 @@ describe("createTaskAction", () => {
     const callback = vi.fn();
     const message = makeMessage("Create a login page");
 
-    const result = await createTaskAction.handler(
+    const result = (await createTaskAction.handler(
       runtime,
       message,
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(true);
-    expect(svc.createTask).toHaveBeenCalledWith("Create a login page", "Create a login page", "room-1");
+    expect(svc.createTask).toHaveBeenCalledWith(
+      "Create a login page",
+      "Create a login page",
+      "room-1",
+    );
     expect(callback).toHaveBeenCalledTimes(1);
     const callbackArg = callback.mock.calls[0][0];
     expect(callbackArg.content.text).toContain("Created task");
@@ -161,13 +174,13 @@ describe("listTasksAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await listTasksAction.handler(
+    const result = (await listTasksAction.handler(
       runtime,
       makeMessage("list tasks"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(true);
     expect(result.text).toBe("No tasks.");
@@ -185,13 +198,13 @@ describe("listTasksAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await listTasksAction.handler(
+    const result = (await listTasksAction.handler(
       runtime,
       makeMessage("list tasks"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("Task Alpha");
@@ -213,7 +226,9 @@ describe("switchTaskAction", () => {
   it("validate matches correct phrases", async () => {
     const svc = makeMockService();
     const runtime = makeRuntime({ CODE_TASK: svc });
-    expect(await switchTaskAction.validate!(runtime, makeMessage("switch to task login"))).toBe(true);
+    expect(await switchTaskAction.validate!(runtime, makeMessage("switch to task login"))).toBe(
+      true,
+    );
     expect(await switchTaskAction.validate!(runtime, makeMessage("select task auth"))).toBe(true);
   });
 
@@ -222,13 +237,13 @@ describe("switchTaskAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await switchTaskAction.handler(
+    const result = (await switchTaskAction.handler(
       runtime,
       makeMessage("switch to task"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("specify which task");
@@ -239,13 +254,13 @@ describe("switchTaskAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await switchTaskAction.handler(
+    const result = (await switchTaskAction.handler(
       runtime,
       makeMessage("switch to task login-feature"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("No task found");
@@ -253,20 +268,18 @@ describe("switchTaskAction", () => {
 
   it("handler switches when match found", async () => {
     const svc = makeMockService({
-      searchTasks: vi.fn().mockResolvedValue([
-        { id: "t-99", name: "Login Feature" },
-      ]),
+      searchTasks: vi.fn().mockResolvedValue([{ id: "t-99", name: "Login Feature" }]),
     });
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await switchTaskAction.handler(
+    const result = (await switchTaskAction.handler(
       runtime,
       makeMessage("switch to task login-feature"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("Switched to task: Login Feature");
@@ -288,13 +301,13 @@ describe("searchTasksAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await searchTasksAction.handler(
+    const result = (await searchTasksAction.handler(
       runtime,
       makeMessage("search task"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("What would you like to search for?");
@@ -302,20 +315,20 @@ describe("searchTasksAction", () => {
 
   it("handler uses options.query when provided", async () => {
     const svc = makeMockService({
-      searchTasks: vi.fn().mockResolvedValue([
-        { name: "Auth Work", metadata: { status: "running", progress: 30 } },
-      ]),
+      searchTasks: vi
+        .fn()
+        .mockResolvedValue([{ name: "Auth Work", metadata: { status: "running", progress: 30 } }]),
     });
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await searchTasksAction.handler(
+    const result = (await searchTasksAction.handler(
       runtime,
       makeMessage("search task auth"),
       undefined,
       { query: "auth" },
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(true);
     expect(svc.searchTasks).toHaveBeenCalledWith("auth");
@@ -327,13 +340,13 @@ describe("searchTasksAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await searchTasksAction.handler(
+    const result = (await searchTasksAction.handler(
       runtime,
       makeMessage("search task nonexistent-xyz"),
       undefined,
       { query: "nonexistent" },
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("No tasks found");
@@ -366,13 +379,13 @@ describe("pauseTaskAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await pauseTaskAction.handler(
+    const result = (await pauseTaskAction.handler(
       runtime,
       makeMessage("pause task"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(false);
     expect(result.text).toBe("No task to pause.");
@@ -385,13 +398,13 @@ describe("pauseTaskAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await pauseTaskAction.handler(
+    const result = (await pauseTaskAction.handler(
       runtime,
       makeMessage("pause task"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("Paused task: Running Work");
@@ -424,13 +437,13 @@ describe("resumeTaskAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await resumeTaskAction.handler(
+    const result = (await resumeTaskAction.handler(
       runtime,
       makeMessage("resume task"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(false);
     expect(result.text).toBe("No task to resume.");
@@ -443,13 +456,13 @@ describe("resumeTaskAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await resumeTaskAction.handler(
+    const result = (await resumeTaskAction.handler(
       runtime,
       makeMessage("resume task"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("Resumed task: Paused Work");
@@ -486,13 +499,13 @@ describe("cancelTaskAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await cancelTaskAction.handler(
+    const result = (await cancelTaskAction.handler(
       runtime,
       makeMessage("cancel task"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(false);
     expect(result.text).toBe("No task to cancel.");
@@ -500,20 +513,18 @@ describe("cancelTaskAction", () => {
 
   it("handler cancels matching task by query", async () => {
     const svc = makeMockService({
-      searchTasks: vi.fn().mockResolvedValue([
-        { id: "t-5", name: "Login Feature" },
-      ]),
+      searchTasks: vi.fn().mockResolvedValue([{ id: "t-5", name: "Login Feature" }]),
     });
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await cancelTaskAction.handler(
+    const result = (await cancelTaskAction.handler(
       runtime,
       makeMessage("cancel task login-feature"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("Cancelled task: Login Feature");
@@ -527,13 +538,13 @@ describe("cancelTaskAction", () => {
     const runtime = makeRuntime({ CODE_TASK: svc });
     const callback = vi.fn();
 
-    const result = await cancelTaskAction.handler(
+    const result = (await cancelTaskAction.handler(
       runtime,
       makeMessage("cancel task"),
       undefined,
       undefined,
       callback,
-    ) as ActionResult;
+    )) as ActionResult;
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("Cancelled task: Current Work");

@@ -191,18 +191,18 @@ function makeGameAction(params: {
     validate: async (_runtime: IAgentRuntime, message) => {
       // Validate that this is an elizagotchi-related action by checking message content
       const text = (message?.content?.text ?? "").toLowerCase();
-      const actionKeywords = params.similes.map(s => s.toLowerCase());
-      
+      const actionKeywords = params.similes.map((s) => s.toLowerCase());
+
       // Check if any simile keyword is present in the message
-      const hasRelevantKeyword = actionKeywords.some(kw => text.includes(kw));
-      
+      const hasRelevantKeyword = actionKeywords.some((kw) => text.includes(kw));
+
       // Also check for pet/game context words
-      const hasPetContext = 
+      const hasPetContext =
         text.includes("pet") ||
         text.includes("elizagotchi") ||
         text.includes("tamagotchi") ||
         text.includes("game");
-      
+
       return hasRelevantKeyword || hasPetContext;
     },
     handler: async (
@@ -236,7 +236,9 @@ const tickAction: ElizaAction = {
   similes: ["tick", "update", "step", "__tick__"],
   validate: async (_runtime: IAgentRuntime, message) => {
     const text = (message?.content?.text ?? "").toLowerCase();
-    return text === "__tick__" || text.includes("tick") || text.includes("update");
+    return (
+      text === "__tick__" || text.includes("tick") || text.includes("update")
+    );
   },
   handler: async (runtime, _message, _state, _options, callback) => {
     const current = loadPetState(runtime);
@@ -255,7 +257,12 @@ const statusAction: ElizaAction = {
   similes: ["status", "stats", "info", "health"],
   validate: async (_runtime: IAgentRuntime, message) => {
     const text = (message?.content?.text ?? "").toLowerCase();
-    return text.includes("status") || text.includes("stats") || text.includes("health") || text.includes("how is");
+    return (
+      text.includes("status") ||
+      text.includes("stats") ||
+      text.includes("health") ||
+      text.includes("how is")
+    );
   },
   handler: async (runtime, _message, _state, _options, callback) => {
     const current = loadPetState(runtime);
@@ -280,7 +287,11 @@ const helpAction: ElizaAction = {
   similes: ["help", "commands", "options"],
   validate: async (_runtime: IAgentRuntime, message) => {
     const text = (message?.content?.text ?? "").toLowerCase();
-    return text.includes("help") || text.includes("commands") || text.includes("what can");
+    return (
+      text.includes("help") ||
+      text.includes("commands") ||
+      text.includes("what can")
+    );
   },
   handler: async (_runtime, _message, _state, _options, callback) => {
     if (callback) {
@@ -300,7 +311,12 @@ const resetAction: ElizaAction = {
   similes: ["reset", "restart", "new", "again", "new pet"],
   validate: async (_runtime: IAgentRuntime, message) => {
     const text = (message?.content?.text ?? "").toLowerCase();
-    return text.includes("reset") || text.includes("restart") || text.includes("new pet") || text.includes("start over");
+    return (
+      text.includes("reset") ||
+      text.includes("restart") ||
+      text.includes("new pet") ||
+      text.includes("start over")
+    );
   },
   parameters: [
     {
@@ -333,7 +349,12 @@ const exportAction: ElizaAction = {
   similes: ["export", "backup", "save file"],
   validate: async (_runtime: IAgentRuntime, message) => {
     const text = (message?.content?.text ?? "").toLowerCase();
-    return text.includes("export") || text.includes("backup") || text.includes("save file") || text.includes("download");
+    return (
+      text.includes("export") ||
+      text.includes("backup") ||
+      text.includes("save file") ||
+      text.includes("download")
+    );
   },
   handler: async (runtime, _message, _state, _options, callback) => {
     const petState = loadPetState(runtime);
@@ -357,7 +378,11 @@ const importAction: ElizaAction = {
   similes: ["import", "load save"],
   validate: async (_runtime: IAgentRuntime, message) => {
     const text = (message?.content?.text ?? "").toLowerCase();
-    return text.includes("import") || text.includes("load save") || text.startsWith("__import__:");
+    return (
+      text.includes("import") ||
+      text.includes("load save") ||
+      text.startsWith("__import__:")
+    );
   },
   parameters: [
     {
@@ -420,7 +445,12 @@ const renameAction: ElizaAction = {
   similes: ["name", "call", "rename"],
   validate: async (_runtime: IAgentRuntime, message) => {
     const text = (message?.content?.text ?? "").toLowerCase();
-    return text.includes("name") || text.includes("rename") || text.includes("call it") || text.includes("call my pet");
+    return (
+      text.includes("name") ||
+      text.includes("rename") ||
+      text.includes("call it") ||
+      text.includes("call my pet")
+    );
   },
   parameters: [
     {

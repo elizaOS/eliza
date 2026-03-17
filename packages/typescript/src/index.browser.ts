@@ -19,7 +19,7 @@ export * from "./roles";
 export * from "./runtime";
 // Export schemas (including buildBaseTables for plugin-sql browser/PGLite builds)
 export * from "./schemas/character";
-export { buildBaseTables, type BaseTables } from "./schemas/index";
+export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
 export * from "./services";
 export * from "./services/message";
@@ -45,6 +45,6 @@ export const isNode = false;
  * In browser environment, this is a no-op
  */
 export const serverHealth = {
-  check: async () => ({ status: "not-applicable", environment: "browser" }),
-  isHealthy: () => true,
+	check: async () => ({ status: "not-applicable", environment: "browser" }),
+	isHealthy: () => true,
 };

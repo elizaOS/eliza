@@ -1,15 +1,15 @@
 import {
-  composeActionCallExamples,
-  composeActionExamples,
-  formatActionNames,
-  formatActions,
+	composeActionCallExamples,
+	composeActionExamples,
+	formatActionNames,
+	formatActions,
 } from "../../actions.ts";
 import type {
-  Action,
-  IAgentRuntime,
-  Memory,
-  Provider,
-  State,
+	Action,
+	IAgentRuntime,
+	Memory,
+	Provider,
+	State,
 } from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
 
@@ -46,71 +46,71 @@ import { addHeader } from "../../utils.ts";
  * @returns {Object} Object containing data, values, and text related to actions
  */
 export const actionsProvider: Provider = {
-  name: "ACTIONS",
-  description: "Possible response actions",
-  position: -1,
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    // Get actions that validate for this message
-    const actionPromises = runtime.actions.map(async (action: Action) => {
-      const result = await action.validate(runtime, message, state);
-      if (result) {
-        return action;
-      }
-      return null;
-    });
+	name: "ACTIONS",
+	description: "Possible response actions",
+	position: -1,
+	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+		// Get actions that validate for this message
+		const actionPromises = runtime.actions.map(async (action: Action) => {
+			const result = await action.validate(runtime, message, state);
+			if (result) {
+				return action;
+			}
+			return null;
+		});
 
-    const resolvedActions = await Promise.all(actionPromises);
+		const resolvedActions = await Promise.all(actionPromises);
 
-    const actionsData = resolvedActions.filter(Boolean) as Action[];
+		const actionsData = resolvedActions.filter(Boolean) as Action[];
 
-    // Format action-related texts
-    const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
+		// Format action-related texts
+		const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
 
-    const actionsWithDescriptions =
-      actionsData.length > 0
-        ? addHeader("# Available Actions", formatActions(actionsData))
-        : "";
+		const actionsWithDescriptions =
+			actionsData.length > 0
+				? addHeader("# Available Actions", formatActions(actionsData))
+				: "";
 
-    const actionExamples =
-      actionsData.length > 0
-        ? addHeader("# Action Examples", composeActionExamples(actionsData, 10))
-        : "";
+		const actionExamples =
+			actionsData.length > 0
+				? addHeader("# Action Examples", composeActionExamples(actionsData, 10))
+				: "";
 
-    const actionCallExamples =
-      actionsData.length > 0
-        ? addHeader(
-            "# Action Call Examples (with <params>)",
-            composeActionCallExamples(actionsData, 5),
-          )
-        : "";
+		const actionCallExamples =
+			actionsData.length > 0
+				? addHeader(
+						"# Action Call Examples (with <params>)",
+						composeActionCallExamples(actionsData, 5),
+					)
+				: "";
 
-    const _data = {
-      actionsData,
-    };
+		const _data = {
+			actionsData,
+		};
 
-    const values = {
-      actionNames,
-      actionExamples,
-      actionCallExamples,
-      actionsWithDescriptions,
-    };
+		const values = {
+			actionNames,
+			actionExamples,
+			actionCallExamples,
+			actionsWithDescriptions,
+		};
 
-    // Combine all text sections - now including actionsWithDescriptions
-    const text = [
-      actionNames,
-      actionsWithDescriptions,
-      actionExamples,
-      actionCallExamples,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+		// Combine all text sections - now including actionsWithDescriptions
+		const text = [
+			actionNames,
+			actionsWithDescriptions,
+			actionExamples,
+			actionCallExamples,
+		]
+			.filter(Boolean)
+			.join("\n\n");
 
-    return {
-      data: {
-        actionsData,
-      },
-      values,
-      text,
-    };
-  },
+		return {
+			data: {
+				actionsData,
+			},
+			values,
+			text,
+		};
+	},
 };

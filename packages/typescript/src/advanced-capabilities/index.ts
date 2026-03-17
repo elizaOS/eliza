@@ -30,59 +30,59 @@ import * as providers from "./providers/index.ts";
  * Advanced providers - extended context and state management
  */
 export const advancedProviders = [
-  providers.contactsProvider,
-  providers.factsProvider,
-  providers.followUpsProvider,
-  providers.knowledgeProvider,
-  providers.relationshipsProvider,
-  providers.roleProvider,
-  providers.settingsProvider,
+	providers.contactsProvider,
+	providers.factsProvider,
+	providers.followUpsProvider,
+	providers.knowledgeProvider,
+	providers.relationshipsProvider,
+	providers.roleProvider,
+	providers.settingsProvider,
 ];
 
 /**
  * Advanced actions - extended agent capabilities
  */
 export const advancedActions = [
-  withCanonicalActionDocs(actions.addContactAction),
-  withCanonicalActionDocs(actions.followRoomAction),
-  withCanonicalActionDocs(actions.generateImageAction),
-  withCanonicalActionDocs(actions.muteRoomAction),
-  withCanonicalActionDocs(actions.removeContactAction),
-  withCanonicalActionDocs(actions.scheduleFollowUpAction),
-  withCanonicalActionDocs(actions.searchContactsAction),
-  withCanonicalActionDocs(actions.sendMessageAction),
-  withCanonicalActionDocs(actions.unfollowRoomAction),
-  withCanonicalActionDocs(actions.unmuteRoomAction),
-  withCanonicalActionDocs(actions.updateContactAction),
-  withCanonicalActionDocs(actions.updateEntityAction),
-  withCanonicalActionDocs(actions.updateRoleAction),
-  withCanonicalActionDocs(actions.updateSettingsAction),
+	withCanonicalActionDocs(actions.addContactAction),
+	withCanonicalActionDocs(actions.followRoomAction),
+	withCanonicalActionDocs(actions.generateImageAction),
+	withCanonicalActionDocs(actions.muteRoomAction),
+	withCanonicalActionDocs(actions.removeContactAction),
+	withCanonicalActionDocs(actions.scheduleFollowUpAction),
+	withCanonicalActionDocs(actions.searchContactsAction),
+	withCanonicalActionDocs(actions.sendMessageAction),
+	withCanonicalActionDocs(actions.unfollowRoomAction),
+	withCanonicalActionDocs(actions.unmuteRoomAction),
+	withCanonicalActionDocs(actions.updateContactAction),
+	withCanonicalActionDocs(actions.updateEntityAction),
+	withCanonicalActionDocs(actions.updateRoleAction),
+	withCanonicalActionDocs(actions.updateSettingsAction),
 ];
 
 /**
  * Advanced evaluators - memory and relationship management
  */
 export const advancedEvaluators = [
-  evaluators.reflectionEvaluator,
-  evaluators.relationshipExtractionEvaluator,
+	evaluators.reflectionEvaluator,
+	evaluators.relationshipExtractionEvaluator,
 ];
 
 /**
  * Advanced services - extended service infrastructure
  */
 export const advancedServices: ServiceClass[] = [
-  RolodexService,
-  FollowUpService,
+	RolodexService,
+	FollowUpService,
 ];
 
 /**
  * Combined advanced capabilities object
  */
 export const advancedCapabilities = {
-  providers: advancedProviders,
-  actions: advancedActions,
-  evaluators: advancedEvaluators,
-  services: advancedServices,
+	providers: advancedProviders,
+	actions: advancedActions,
+	evaluators: advancedEvaluators,
+	services: advancedServices,
 };
 
 export default advancedCapabilities;

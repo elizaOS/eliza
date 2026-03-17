@@ -702,7 +702,10 @@ class DefaultMessageService(IMessageService):
 
         except Exception as e:
             import traceback as _tb
-            runtime.logger.error(f"Error processing message: {e}\n{''.join(_tb.format_exception(e))}")
+
+            runtime.logger.error(
+                f"Error processing message: {e}\n{''.join(_tb.format_exception(e))}"
+            )
             raise
         finally:
             CURRENT_TRAJECTORY_STEP_ID.reset(token)

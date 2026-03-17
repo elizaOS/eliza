@@ -6,30 +6,30 @@
  */
 
 import {
-  ChannelType,
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type ProviderResult,
-  type Room,
-  type State,
+	ChannelType,
+	type IAgentRuntime,
+	type Memory,
+	type Provider,
+	type ProviderResult,
+	type Room,
+	type State,
 } from "../types";
 
 type ElizaCoreSessionHelpers = {
-  buildAgentMainSessionKey?: (params: {
-    agentId: string;
-    mainKey: string;
-  }) => string;
-  ChannelType?: {
-    DM: number | string;
-    SELF: number | string;
-    GROUP: number | string;
-  };
-  parseAgentSessionKey?: (key: string) =>
-    | {
-        agentId?: string;
-      }
-    | undefined;
+	buildAgentMainSessionKey?: (params: {
+		agentId: string;
+		mainKey: string;
+	}) => string;
+	ChannelType?: {
+		DM: number | string;
+		SELF: number | string;
+		GROUP: number | string;
+	};
+	parseAgentSessionKey?: (key: string) =>
+		| {
+				agentId?: string;
+		  }
+		| undefined;
 };
 
 // Internal helper to avoid circular dependency issues if needed,
@@ -39,23 +39,23 @@ type ElizaCoreSessionHelpers = {
 // For now, I will keep the logic but clean up the imports since we ARE in core.
 
 function buildAgentMainSessionKey(params: {
-  agentId: string;
-  mainKey: string;
+	agentId: string;
+	mainKey: string;
 }): string {
-  return `agent:${params.agentId}:${params.mainKey}`;
+	return `agent:${params.agentId}:${params.mainKey}`;
 }
 
 function parseAgentSessionKey(key: string):
-  | {
-      agentId?: string;
-    }
-  | undefined {
-  // Simple parsing based on the format: agent:{agentId}:{rest}
-  const parts = key.split(":");
-  if (parts.length >= 2 && parts[0] === "agent") {
-    return { agentId: parts[1] };
-  }
-  return undefined;
+	| {
+			agentId?: string;
+	  }
+	| undefined {
+	// Simple parsing based on the format: agent:{agentId}:{rest}
+	const parts = key.split(":");
+	if (parts.length >= 2 && parts[0] === "agent") {
+		return { agentId: parts[1] };
+	}
+	return undefined;
 }
 
 /**
@@ -67,80 +67,80 @@ function parseAgentSessionKey(key: string):
  * Threads append :thread:{threadId}
  */
 export function resolveSessionKeyFromRoom(
-  agentId: string,
-  room: Room,
-  meta?: { threadId?: string; groupId?: string; channel?: string },
+	agentId: string,
+	room: Room,
+	meta?: { threadId?: string; groupId?: string; channel?: string },
 ): string {
-  // In core, string enums might be different.
-  // Ensure we match the room.type correctly.
-  const isDmOrSelf =
-    room.type === ChannelType.DM || room.type === ChannelType.SELF;
-  const isGroup = room.type === ChannelType.GROUP;
+	// In core, string enums might be different.
+	// Ensure we match the room.type correctly.
+	const isDmOrSelf =
+		room.type === ChannelType.DM || room.type === ChannelType.SELF;
+	const isGroup = room.type === ChannelType.GROUP;
 
-  const channel = meta?.channel ?? room.source ?? "unknown";
+	const channel = meta?.channel ?? room.source ?? "unknown";
 
-  if (isDmOrSelf) {
-    return buildAgentMainSessionKey({ agentId, mainKey: "main" });
-  }
+	if (isDmOrSelf) {
+		return buildAgentMainSessionKey({ agentId, mainKey: "main" });
+	}
 
-  const id = meta?.groupId ?? room.channelId ?? room.id;
-  const kind = isGroup ? "group" : "channel";
-  const base = `agent:${agentId}:${channel}:${kind}:${id}`;
-  return meta?.threadId ? `${base}:thread:${meta.threadId}` : base;
+	const id = meta?.groupId ?? room.channelId ?? room.id;
+	const kind = isGroup ? "group" : "channel";
+	const base = `agent:${agentId}:${channel}:${kind}:${id}`;
+	return meta?.threadId ? `${base}:thread:${meta.threadId}` : base;
 }
 
 export function createSessionKeyProvider(options?: {
-  defaultAgentId?: string;
+	defaultAgentId?: string;
 }): Provider {
-  const agentId = options?.defaultAgentId ?? "main";
+	const agentId = options?.defaultAgentId ?? "main";
 
-  return {
-    name: "miladySessionKey",
-    description: "Milady session key (DM/group/thread isolation)",
-    get: async (
-      runtime: IAgentRuntime,
-      message: Memory,
-      _state: State,
-    ): Promise<ProviderResult> => {
-      const meta = (message.metadata ?? {}) as Record<string, unknown>;
-      const existing =
-        typeof meta.sessionKey === "string" ? meta.sessionKey : undefined;
+	return {
+		name: "miladySessionKey",
+		description: "Milady session key (DM/group/thread isolation)",
+		get: async (
+			runtime: IAgentRuntime,
+			message: Memory,
+			_state: State,
+		): Promise<ProviderResult> => {
+			const meta = (message.metadata ?? {}) as Record<string, unknown>;
+			const existing =
+				typeof meta.sessionKey === "string" ? meta.sessionKey : undefined;
 
-      if (existing) {
-        const parsed = parseAgentSessionKey(existing);
-        return {
-          text: `Session: ${existing}`,
-          values: {
-            sessionKey: existing,
-            agentId: parsed?.agentId ?? agentId,
-          },
-          data: { sessionKey: existing },
-        };
-      }
+			if (existing) {
+				const parsed = parseAgentSessionKey(existing);
+				return {
+					text: `Session: ${existing}`,
+					values: {
+						sessionKey: existing,
+						agentId: parsed?.agentId ?? agentId,
+					},
+					data: { sessionKey: existing },
+				};
+			}
 
-      const room = await runtime.getRoom(message.roomId);
-      if (!room) {
-        const key = buildAgentMainSessionKey({ agentId, mainKey: "main" });
-        return {
-          text: `Session: ${key}`,
-          values: { sessionKey: key },
-          data: { sessionKey: key },
-        };
-      }
+			const room = await runtime.getRoom(message.roomId);
+			if (!room) {
+				const key = buildAgentMainSessionKey({ agentId, mainKey: "main" });
+				return {
+					text: `Session: ${key}`,
+					values: { sessionKey: key },
+					data: { sessionKey: key },
+				};
+			}
 
-      const key = resolveSessionKeyFromRoom(agentId, room, {
-        threadId: typeof meta.threadId === "string" ? meta.threadId : undefined,
-        groupId: typeof meta.groupId === "string" ? meta.groupId : undefined,
-        channel:
-          (typeof meta.channel === "string" ? meta.channel : undefined) ??
-          room.source,
-      });
+			const key = resolveSessionKeyFromRoom(agentId, room, {
+				threadId: typeof meta.threadId === "string" ? meta.threadId : undefined,
+				groupId: typeof meta.groupId === "string" ? meta.groupId : undefined,
+				channel:
+					(typeof meta.channel === "string" ? meta.channel : undefined) ??
+					room.source,
+			});
 
-      return {
-        text: `Session: ${key}`,
-        values: { sessionKey: key, isGroup: room.type === ChannelType.GROUP },
-        data: { sessionKey: key },
-      };
-    },
-  };
+			return {
+				text: `Session: ${key}`,
+				values: { sessionKey: key, isGroup: room.type === ChannelType.GROUP },
+				data: { sessionKey: key },
+			};
+		},
+	};
 }

@@ -228,7 +228,10 @@ class LocalToolEnvironment implements SweAgentEnvironment {
     return result.output;
   }
 
-  async readFile(p: string, encoding: BufferEncoding = "utf-8"): Promise<string> {
+  async readFile(
+    p: string,
+    encoding: BufferEncoding = "utf-8",
+  ): Promise<string> {
     const resolved =
       p === "/root/model.patch"
         ? this.patchPath

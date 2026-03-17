@@ -16,43 +16,43 @@ import type { PairingService } from "./pairing";
  * Result of a pairing check
  */
 export interface PairingCheckResult {
-  /** Whether the sender is allowed to proceed */
-  allowed: boolean;
-  /** If not allowed, the pairing code (if a new request was created) */
-  pairingCode?: string;
-  /** Whether a new pairing request was created */
-  newRequest?: boolean;
-  /** Human-readable message to send to the user */
-  replyMessage?: string;
-  /** The ID label for this channel (e.g., "phoneNumber", "userId") */
-  idLabel?: string;
+	/** Whether the sender is allowed to proceed */
+	allowed: boolean;
+	/** If not allowed, the pairing code (if a new request was created) */
+	pairingCode?: string;
+	/** Whether a new pairing request was created */
+	newRequest?: boolean;
+	/** Human-readable message to send to the user */
+	replyMessage?: string;
+	/** The ID label for this channel (e.g., "phoneNumber", "userId") */
+	idLabel?: string;
 }
 
 /**
  * Parameters for checking pairing
  */
 export interface PairingCheckParams {
-  /** The messaging channel (telegram, discord, whatsapp, etc.) */
-  channel: PairingChannel;
-  /** User identifier on the channel */
-  senderId: string;
-  /** Optional metadata about the requester (e.g., name, username) */
-  metadata?: Record<string, string>;
-  /** Whether to suppress sending a pairing reply (e.g., for historical messages) */
-  suppressReply?: boolean;
+	/** The messaging channel (telegram, discord, whatsapp, etc.) */
+	channel: PairingChannel;
+	/** User identifier on the channel */
+	senderId: string;
+	/** Optional metadata about the requester (e.g., name, username) */
+	metadata?: Record<string, string>;
+	/** Whether to suppress sending a pairing reply (e.g., for historical messages) */
+	suppressReply?: boolean;
 }
 
 /**
  * Get the PairingService from the runtime, or null if not available.
  */
 export function getPairingService(
-  runtime: IAgentRuntime,
+	runtime: IAgentRuntime,
 ): PairingService | null {
-  try {
-    return runtime.getService(ServiceType.PAIRING) as PairingService | null;
-  } catch {
-    return null;
-  }
+	try {
+		return runtime.getService(ServiceType.PAIRING) as PairingService | null;
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -81,79 +81,79 @@ export function getPairingService(
  * ```
  */
 export async function checkPairingAllowed(
-  runtime: IAgentRuntime,
-  params: PairingCheckParams,
+	runtime: IAgentRuntime,
+	params: PairingCheckParams,
 ): Promise<PairingCheckResult> {
-  const { channel, senderId, metadata, suppressReply } = params;
+	const { channel, senderId, metadata, suppressReply } = params;
 
-  const pairingService = getPairingService(runtime);
-  if (!pairingService) {
-    // No pairing service available - allow by default (fallback behavior)
-    runtime.logger.warn(
-      { src: "pairing-integration", channel },
-      "PairingService not available, allowing message by default",
-    );
-    return { allowed: true };
-  }
+	const pairingService = getPairingService(runtime);
+	if (!pairingService) {
+		// No pairing service available - allow by default (fallback behavior)
+		runtime.logger.warn(
+			{ src: "pairing-integration", channel },
+			"PairingService not available, allowing message by default",
+		);
+		return { allowed: true };
+	}
 
-  // Check if already in allowlist
-  const isAllowed = await pairingService.isAllowed(channel, senderId);
-  if (isAllowed) {
-    return { allowed: true };
-  }
+	// Check if already in allowlist
+	const isAllowed = await pairingService.isAllowed(channel, senderId);
+	if (isAllowed) {
+		return { allowed: true };
+	}
 
-  // Not allowed - create or update pairing request
-  if (suppressReply) {
-    return { allowed: false };
-  }
+	// Not allowed - create or update pairing request
+	if (suppressReply) {
+		return { allowed: false };
+	}
 
-  const { code, created } = await pairingService.upsertRequest({
-    channel,
-    senderId,
-    metadata,
-  });
+	const { code, created } = await pairingService.upsertRequest({
+		channel,
+		senderId,
+		metadata,
+	});
 
-  // Build the reply message
-  const idLabel = getPairingIdLabel(channel);
-  const replyMessage = buildPairingReplyMessage({
-    channel,
-    senderId,
-    code,
-    idLabel,
-  });
+	// Build the reply message
+	const idLabel = getPairingIdLabel(channel);
+	const replyMessage = buildPairingReplyMessage({
+		channel,
+		senderId,
+		code,
+		idLabel,
+	});
 
-  return {
-    allowed: false,
-    pairingCode: code,
-    newRequest: created,
-    replyMessage: created ? replyMessage : undefined,
-    idLabel,
-  };
+	return {
+		allowed: false,
+		pairingCode: code,
+		newRequest: created,
+		replyMessage: created ? replyMessage : undefined,
+		idLabel,
+	};
 }
 
 /**
  * Build the pairing reply message sent to unauthorized users.
  */
 export function buildPairingReplyMessage(params: {
-  channel: PairingChannel;
-  senderId: string;
-  code: string;
-  idLabel?: string;
+	channel: PairingChannel;
+	senderId: string;
+	code: string;
+	idLabel?: string;
 }): string {
-  const { channel, senderId, code, idLabel = "userId" } = params;
+	const { channel, senderId, code, idLabel = "userId" } = params;
 
-  const lines = [
-    "Access not configured.",
-    "",
-    `Your ${idLabel}: ${senderId}`,
-    "",
-    `Pairing code: ${code}`,
-    "",
-    "Ask the bot owner to approve with:",
-    `  pairing approve ${channel} ${code}`,
-  ];
+	const lines = [
+		"Access not configured.",
+		"",
+		`Your ${idLabel}: ${senderId}`,
+		"",
+		`Pairing code: ${code}`,
+		"",
+		"Ask the bot owner to approve with:",
+		`  pairing approve ${channel} ${code}`,
+	];
 
-  return lines.join("\n");
+	return lines.join("\n");
 }
 
 /**
@@ -161,54 +161,54 @@ export function buildPairingReplyMessage(params: {
  * Useful for CLI commands or admin actions.
  */
 export async function addToAllowlist(
-  runtime: IAgentRuntime,
-  channel: PairingChannel,
-  senderId: string,
-  metadata?: Record<string, string>,
+	runtime: IAgentRuntime,
+	channel: PairingChannel,
+	senderId: string,
+	metadata?: Record<string, string>,
 ): Promise<boolean> {
-  const pairingService = getPairingService(runtime);
-  if (!pairingService) {
-    runtime.logger.warn(
-      { src: "pairing-integration", channel },
-      "PairingService not available",
-    );
-    return false;
-  }
+	const pairingService = getPairingService(runtime);
+	if (!pairingService) {
+		runtime.logger.warn(
+			{ src: "pairing-integration", channel },
+			"PairingService not available",
+		);
+		return false;
+	}
 
-  await pairingService.addToAllowlist(channel, senderId, metadata);
-  return true;
+	await pairingService.addToAllowlist(channel, senderId, metadata);
+	return true;
 }
 
 /**
  * Remove a sender from the allowlist.
  */
 export async function removeFromAllowlist(
-  runtime: IAgentRuntime,
-  channel: PairingChannel,
-  senderId: string,
+	runtime: IAgentRuntime,
+	channel: PairingChannel,
+	senderId: string,
 ): Promise<boolean> {
-  const pairingService = getPairingService(runtime);
-  if (!pairingService) {
-    return false;
-  }
+	const pairingService = getPairingService(runtime);
+	if (!pairingService) {
+		return false;
+	}
 
-  return pairingService.removeFromAllowlist(channel, senderId);
+	return pairingService.removeFromAllowlist(channel, senderId);
 }
 
 /**
  * Check if a sender is in the allowlist.
  */
 export async function isInAllowlist(
-  runtime: IAgentRuntime,
-  channel: PairingChannel,
-  senderId: string,
+	runtime: IAgentRuntime,
+	channel: PairingChannel,
+	senderId: string,
 ): Promise<boolean> {
-  const pairingService = getPairingService(runtime);
-  if (!pairingService) {
-    return false;
-  }
+	const pairingService = getPairingService(runtime);
+	if (!pairingService) {
+		return false;
+	}
 
-  return pairingService.isAllowed(channel, senderId);
+	return pairingService.isAllowed(channel, senderId);
 }
 
 /**
@@ -216,15 +216,15 @@ export async function isInAllowlist(
  * Returns the approved sender ID or null if the code was not found.
  */
 export async function approvePairingCode(
-  runtime: IAgentRuntime,
-  channel: PairingChannel,
-  code: string,
+	runtime: IAgentRuntime,
+	channel: PairingChannel,
+	code: string,
 ): Promise<string | null> {
-  const pairingService = getPairingService(runtime);
-  if (!pairingService) {
-    return null;
-  }
+	const pairingService = getPairingService(runtime);
+	if (!pairingService) {
+		return null;
+	}
 
-  const result = await pairingService.approveCode({ channel, code });
-  return result?.senderId ?? null;
+	const result = await pairingService.approveCode({ channel, code });
+	return result?.senderId ?? null;
 }

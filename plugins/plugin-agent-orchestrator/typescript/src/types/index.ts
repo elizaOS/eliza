@@ -4,23 +4,22 @@
  * @module types
  */
 
-// Subagent types
+// Messaging types
 export type {
-  AgentToAgentPolicy,
-  DeliveryContext,
-  ParsedSessionKey,
-  SendToAgentParams,
-  SendToAgentResult,
-  SpawnSubagentParams,
-  SpawnSubagentResult,
-  SubagentConfig,
-  SubagentEventPayload,
-  SubagentRoomMetadata,
-  SubagentRunOutcome,
-  SubagentRunRecord,
-} from "./subagent.js";
-
-export { SubagentEventType } from "./subagent.js";
+  DeliveryStatus,
+  MessageAttachment,
+  MessageButton,
+  MessageContent,
+  MessageEmbed,
+  MessageTarget,
+  MessagingAdapter,
+  MessagingChannel,
+  MessagingEventPayload,
+  MessagingRoomMetadata,
+  SendMessageParams,
+  SendMessageResult,
+} from "./messaging.js";
+export { MessagingEventType } from "./messaging.js";
 
 // Sandbox types
 export type {
@@ -41,21 +40,19 @@ export type {
 } from "./sandbox.js";
 
 export { SandboxEventType } from "./sandbox.js";
-
-// Messaging types
+// Subagent types
 export type {
-  DeliveryStatus,
-  MessageAttachment,
-  MessageButton,
-  MessageContent,
-  MessageEmbed,
-  MessageTarget,
-  MessagingAdapter,
-  MessagingChannel,
-  MessagingEventPayload,
-  MessagingRoomMetadata,
-  SendMessageParams,
-  SendMessageResult,
-} from "./messaging.js";
-
-export { MessagingEventType } from "./messaging.js";
+  AgentToAgentPolicy,
+  DeliveryContext,
+  ParsedSessionKey,
+  SendToAgentParams,
+  SendToAgentResult,
+  SpawnSubagentParams,
+  SpawnSubagentResult,
+  SubagentConfig,
+  SubagentEventPayload,
+  SubagentRoomMetadata,
+  SubagentRunOutcome,
+  SubagentRunRecord,
+} from "./subagent.js";
+export { SubagentEventType } from "./subagent.js";

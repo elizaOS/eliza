@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import type { SubagentConfig } from "../types/subagent.js";
 import type { SandboxConfig } from "../types/sandbox.js";
+import type { SubagentConfig } from "../types/subagent.js";
 
 /**
  * Configuration schema for the agent orchestrator plugin.
@@ -181,7 +181,11 @@ function formatConfigContext(config: OrchestratorConfig): string {
 export const orchestratorConfigProvider: Provider = {
   name: "orchestrator_config",
   description: "Provides orchestrator configuration including subagents, A2A, and sandbox settings",
-  get: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ): Promise<ProviderResult> => {
     const config = getOrchestratorConfig(runtime);
     return { text: formatConfigContext(config) };
   },

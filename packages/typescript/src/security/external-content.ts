@@ -15,18 +15,18 @@
  * These are logged for monitoring but content is still processed (wrapped safely).
  */
 const SUSPICIOUS_PATTERNS = [
-  /ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?)/i,
-  /disregard\s+(all\s+)?(previous|prior|above)/i,
-  /forget\s+(everything|all|your)\s+(instructions?|rules?|guidelines?)/i,
-  /you\s+are\s+now\s+(a|an)\s+/i,
-  /new\s+instructions?:/i,
-  /system\s*:?\s*(prompt|override|command)/i,
-  /\bexec\b.*command\s*=/i,
-  /elevated\s*=\s*true/i,
-  /rm\s+-rf/i,
-  /delete\s+all\s+(emails?|files?|data)/i,
-  /<\/?system>/i,
-  /\]\s*\n\s*\[?(system|assistant|user)\]?:/i,
+	/ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?)/i,
+	/disregard\s+(all\s+)?(previous|prior|above)/i,
+	/forget\s+(everything|all|your)\s+(instructions?|rules?|guidelines?)/i,
+	/you\s+are\s+now\s+(a|an)\s+/i,
+	/new\s+instructions?:/i,
+	/system\s*:?\s*(prompt|override|command)/i,
+	/\bexec\b.*command\s*=/i,
+	/elevated\s*=\s*true/i,
+	/rm\s+-rf/i,
+	/delete\s+all\s+(emails?|files?|data)/i,
+	/<\/?system>/i,
+	/\]\s*\n\s*\[?(system|assistant|user)\]?:/i,
 ];
 
 /**
@@ -36,13 +36,13 @@ const SUSPICIOUS_PATTERNS = [
  * @returns Array of matched pattern sources (empty if none)
  */
 export function detectSuspiciousPatterns(content: string): string[] {
-  const matches: string[] = [];
-  for (const pattern of SUSPICIOUS_PATTERNS) {
-    if (pattern.test(content)) {
-      matches.push(pattern.source);
-    }
-  }
-  return matches;
+	const matches: string[] = [];
+	for (const pattern of SUSPICIOUS_PATTERNS) {
+		if (pattern.test(content)) {
+			matches.push(pattern.source);
+		}
+	}
+	return matches;
 }
 
 /**
@@ -71,22 +71,22 @@ SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source (e.
  * Source types for external content.
  */
 export type ExternalContentSource =
-  | "email"
-  | "webhook"
-  | "api"
-  | "channel_metadata"
-  | "web_search"
-  | "web_fetch"
-  | "unknown";
+	| "email"
+	| "webhook"
+	| "api"
+	| "channel_metadata"
+	| "web_search"
+	| "web_fetch"
+	| "unknown";
 
 const EXTERNAL_SOURCE_LABELS: Record<ExternalContentSource, string> = {
-  email: "Email",
-  webhook: "Webhook",
-  api: "API",
-  channel_metadata: "Channel metadata",
-  web_search: "Web Search",
-  web_fetch: "Web Fetch",
-  unknown: "External",
+	email: "Email",
+	webhook: "Webhook",
+	api: "API",
+	channel_metadata: "Channel metadata",
+	web_search: "Web Search",
+	web_fetch: "Web Fetch",
+	unknown: "External",
 };
 
 const FULLWIDTH_ASCII_OFFSET = 0xfee0;
@@ -94,89 +94,89 @@ const FULLWIDTH_LEFT_ANGLE = 0xff1c;
 const FULLWIDTH_RIGHT_ANGLE = 0xff1e;
 
 function foldMarkerChar(char: string): string {
-  const code = char.charCodeAt(0);
-  if (code >= 0xff21 && code <= 0xff3a) {
-    return String.fromCharCode(code - FULLWIDTH_ASCII_OFFSET);
-  }
-  if (code >= 0xff41 && code <= 0xff5a) {
-    return String.fromCharCode(code - FULLWIDTH_ASCII_OFFSET);
-  }
-  if (code === FULLWIDTH_LEFT_ANGLE) {
-    return "<";
-  }
-  if (code === FULLWIDTH_RIGHT_ANGLE) {
-    return ">";
-  }
-  return char;
+	const code = char.charCodeAt(0);
+	if (code >= 0xff21 && code <= 0xff3a) {
+		return String.fromCharCode(code - FULLWIDTH_ASCII_OFFSET);
+	}
+	if (code >= 0xff41 && code <= 0xff5a) {
+		return String.fromCharCode(code - FULLWIDTH_ASCII_OFFSET);
+	}
+	if (code === FULLWIDTH_LEFT_ANGLE) {
+		return "<";
+	}
+	if (code === FULLWIDTH_RIGHT_ANGLE) {
+		return ">";
+	}
+	return char;
 }
 
 function foldMarkerText(input: string): string {
-  return input.replace(/[\uFF21-\uFF3A\uFF41-\uFF5A\uFF1C\uFF1E]/g, (char) =>
-    foldMarkerChar(char),
-  );
+	return input.replace(/[\uFF21-\uFF3A\uFF41-\uFF5A\uFF1C\uFF1E]/g, (char) =>
+		foldMarkerChar(char),
+	);
 }
 
 function replaceMarkers(content: string): string {
-  const folded = foldMarkerText(content);
-  if (!/external_untrusted_content/i.test(folded)) {
-    return content;
-  }
-  const replacements: Array<{ start: number; end: number; value: string }> = [];
-  const patterns: Array<{ regex: RegExp; value: string }> = [
-    {
-      regex: /<<<EXTERNAL_UNTRUSTED_CONTENT>>>/gi,
-      value: "[[MARKER_SANITIZED]]",
-    },
-    {
-      regex: /<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>/gi,
-      value: "[[END_MARKER_SANITIZED]]",
-    },
-  ];
+	const folded = foldMarkerText(content);
+	if (!/external_untrusted_content/i.test(folded)) {
+		return content;
+	}
+	const replacements: Array<{ start: number; end: number; value: string }> = [];
+	const patterns: Array<{ regex: RegExp; value: string }> = [
+		{
+			regex: /<<<EXTERNAL_UNTRUSTED_CONTENT>>>/gi,
+			value: "[[MARKER_SANITIZED]]",
+		},
+		{
+			regex: /<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>/gi,
+			value: "[[END_MARKER_SANITIZED]]",
+		},
+	];
 
-  for (const pattern of patterns) {
-    pattern.regex.lastIndex = 0;
-    let match = pattern.regex.exec(folded);
-    while (match !== null) {
-      replacements.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        value: pattern.value,
-      });
-      match = pattern.regex.exec(folded);
-    }
-  }
+	for (const pattern of patterns) {
+		pattern.regex.lastIndex = 0;
+		let match = pattern.regex.exec(folded);
+		while (match !== null) {
+			replacements.push({
+				start: match.index,
+				end: match.index + match[0].length,
+				value: pattern.value,
+			});
+			match = pattern.regex.exec(folded);
+		}
+	}
 
-  if (replacements.length === 0) {
-    return content;
-  }
-  replacements.sort((a, b) => a.start - b.start);
+	if (replacements.length === 0) {
+		return content;
+	}
+	replacements.sort((a, b) => a.start - b.start);
 
-  let cursor = 0;
-  let output = "";
-  for (const replacement of replacements) {
-    if (replacement.start < cursor) {
-      continue;
-    }
-    output += content.slice(cursor, replacement.start);
-    output += replacement.value;
-    cursor = replacement.end;
-  }
-  output += content.slice(cursor);
-  return output;
+	let cursor = 0;
+	let output = "";
+	for (const replacement of replacements) {
+		if (replacement.start < cursor) {
+			continue;
+		}
+		output += content.slice(cursor, replacement.start);
+		output += replacement.value;
+		cursor = replacement.end;
+	}
+	output += content.slice(cursor);
+	return output;
 }
 
 /**
  * Options for wrapping external content.
  */
 export type WrapExternalContentOptions = {
-  /** Source of the external content */
-  source: ExternalContentSource;
-  /** Original sender information (e.g., email address) */
-  sender?: string;
-  /** Subject line (for emails) */
-  subject?: string;
-  /** Whether to include detailed security warning */
-  includeWarning?: boolean;
+	/** Source of the external content */
+	source: ExternalContentSource;
+	/** Original sender information (e.g., email address) */
+	sender?: string;
+	/** Subject line (for emails) */
+	subject?: string;
+	/** Whether to include detailed security warning */
+	includeWarning?: boolean;
 };
 
 /**
@@ -200,33 +200,33 @@ export type WrapExternalContentOptions = {
  * @returns Wrapped content with security markers
  */
 export function wrapExternalContent(
-  content: string,
-  options: WrapExternalContentOptions,
+	content: string,
+	options: WrapExternalContentOptions,
 ): string {
-  const { source, sender, subject, includeWarning = true } = options;
+	const { source, sender, subject, includeWarning = true } = options;
 
-  const sanitized = replaceMarkers(content);
-  const sourceLabel = EXTERNAL_SOURCE_LABELS[source] ?? "External";
-  const metadataLines: string[] = [`Source: ${sourceLabel}`];
+	const sanitized = replaceMarkers(content);
+	const sourceLabel = EXTERNAL_SOURCE_LABELS[source] ?? "External";
+	const metadataLines: string[] = [`Source: ${sourceLabel}`];
 
-  if (sender) {
-    metadataLines.push(`From: ${sender}`);
-  }
-  if (subject) {
-    metadataLines.push(`Subject: ${subject}`);
-  }
+	if (sender) {
+		metadataLines.push(`From: ${sender}`);
+	}
+	if (subject) {
+		metadataLines.push(`Subject: ${subject}`);
+	}
 
-  const metadata = metadataLines.join("\n");
-  const warningBlock = includeWarning ? `${EXTERNAL_CONTENT_WARNING}\n\n` : "";
+	const metadata = metadataLines.join("\n");
+	const warningBlock = includeWarning ? `${EXTERNAL_CONTENT_WARNING}\n\n` : "";
 
-  return [
-    warningBlock,
-    EXTERNAL_CONTENT_START,
-    metadata,
-    "---",
-    sanitized,
-    EXTERNAL_CONTENT_END,
-  ].join("\n");
+	return [
+		warningBlock,
+		EXTERNAL_CONTENT_START,
+		metadata,
+		"---",
+		sanitized,
+		EXTERNAL_CONTENT_END,
+	].join("\n");
 }
 
 /**
@@ -237,39 +237,39 @@ export function wrapExternalContent(
  * @returns Safe prompt string
  */
 export function buildSafeExternalPrompt(params: {
-  content: string;
-  source: ExternalContentSource;
-  sender?: string;
-  subject?: string;
-  jobName?: string;
-  jobId?: string;
-  timestamp?: string;
+	content: string;
+	source: ExternalContentSource;
+	sender?: string;
+	subject?: string;
+	jobName?: string;
+	jobId?: string;
+	timestamp?: string;
 }): string {
-  const { content, source, sender, subject, jobName, jobId, timestamp } =
-    params;
+	const { content, source, sender, subject, jobName, jobId, timestamp } =
+		params;
 
-  const wrappedContent = wrapExternalContent(content, {
-    source,
-    sender,
-    subject,
-    includeWarning: true,
-  });
+	const wrappedContent = wrapExternalContent(content, {
+		source,
+		sender,
+		subject,
+		includeWarning: true,
+	});
 
-  const contextLines: string[] = [];
-  if (jobName) {
-    contextLines.push(`Task: ${jobName}`);
-  }
-  if (jobId) {
-    contextLines.push(`Job ID: ${jobId}`);
-  }
-  if (timestamp) {
-    contextLines.push(`Received: ${timestamp}`);
-  }
+	const contextLines: string[] = [];
+	if (jobName) {
+		contextLines.push(`Task: ${jobName}`);
+	}
+	if (jobId) {
+		contextLines.push(`Job ID: ${jobId}`);
+	}
+	if (timestamp) {
+		contextLines.push(`Received: ${timestamp}`);
+	}
 
-  const context =
-    contextLines.length > 0 ? `${contextLines.join(" | ")}\n\n` : "";
+	const context =
+		contextLines.length > 0 ? `${contextLines.join(" | ")}\n\n` : "";
 
-  return `${context}${wrappedContent}`;
+	return `${context}${wrappedContent}`;
 }
 
 /**
@@ -279,11 +279,11 @@ export function buildSafeExternalPrompt(params: {
  * @returns True if from an external hook
  */
 export function isExternalHookSession(sessionKey: string): boolean {
-  return (
-    sessionKey.startsWith("hook:gmail:") ||
-    sessionKey.startsWith("hook:webhook:") ||
-    sessionKey.startsWith("hook:") // Generic hook prefix
-  );
+	return (
+		sessionKey.startsWith("hook:gmail:") ||
+		sessionKey.startsWith("hook:webhook:") ||
+		sessionKey.startsWith("hook:") // Generic hook prefix
+	);
 }
 
 /**
@@ -293,16 +293,16 @@ export function isExternalHookSession(sessionKey: string): boolean {
  * @returns The external content source type
  */
 export function getHookType(sessionKey: string): ExternalContentSource {
-  if (sessionKey.startsWith("hook:gmail:")) {
-    return "email";
-  }
-  if (sessionKey.startsWith("hook:webhook:")) {
-    return "webhook";
-  }
-  if (sessionKey.startsWith("hook:")) {
-    return "webhook";
-  }
-  return "unknown";
+	if (sessionKey.startsWith("hook:gmail:")) {
+		return "email";
+	}
+	if (sessionKey.startsWith("hook:webhook:")) {
+		return "webhook";
+	}
+	if (sessionKey.startsWith("hook:")) {
+		return "webhook";
+	}
+	return "unknown";
 }
 
 /**
@@ -314,9 +314,9 @@ export function getHookType(sessionKey: string): ExternalContentSource {
  * @returns Wrapped content
  */
 export function wrapWebContent(
-  content: string,
-  source: "web_search" | "web_fetch" = "web_search",
+	content: string,
+	source: "web_search" | "web_fetch" = "web_search",
 ): string {
-  const includeWarning = source === "web_fetch";
-  return wrapExternalContent(content, { source, includeWarning });
+	const includeWarning = source === "web_fetch";
+	return wrapExternalContent(content, { source, includeWarning });
 }

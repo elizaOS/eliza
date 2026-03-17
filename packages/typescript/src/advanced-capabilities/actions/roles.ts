@@ -1,17 +1,17 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
 import { logger } from "../../logger.ts";
 import type {
-  Action,
-  ActionExample,
-  ActionResult,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  Role,
-  State,
-  UUID,
-  World,
+	Action,
+	ActionExample,
+	ActionResult,
+	HandlerCallback,
+	HandlerOptions,
+	IAgentRuntime,
+	Memory,
+	Role,
+	State,
+	UUID,
+	World,
 } from "../../types/index.ts";
 import { ChannelType, ModelType } from "../../types/index.ts";
 import { composePrompt, parseKeyValueXml } from "../../utils.ts";
@@ -21,15 +21,15 @@ const spec = requireActionSpec("UPDATE_ROLE");
 
 /** Shape of individual assignment in XML response */
 interface RoleAssignmentXml {
-  entityId?: string;
-  newRole?: string;
+	entityId?: string;
+	newRole?: string;
 }
 
 /** Shape of the role extraction XML response */
 interface RoleExtractionResult {
-  assignments?: {
-    assignment?: RoleAssignmentXml | RoleAssignmentXml[];
-  };
+	assignments?: {
+		assignment?: RoleAssignmentXml | RoleAssignmentXml[];
+	};
 }
 
 /**
@@ -51,33 +51,33 @@ const ROLE_ADMIN: Role = "ADMIN";
 const ROLE_NONE: Role = "NONE";
 
 const canModifyRole = (
-  currentRole: Role,
-  targetRole: Role | null,
-  newRole: Role,
+	currentRole: Role,
+	targetRole: Role | null,
+	newRole: Role,
 ): boolean => {
-  // User's can't change their own role
-  if (targetRole === currentRole) {
-    return false;
-  }
+	// User's can't change their own role
+	if (targetRole === currentRole) {
+		return false;
+	}
 
-  switch (currentRole) {
-    // Owners can do everything
-    case ROLE_OWNER:
-      return true;
-    // Admins can only create/modify users up to their level
-    case ROLE_ADMIN:
-      return newRole !== ROLE_OWNER;
-    default:
-      return false;
-  }
+	switch (currentRole) {
+		// Owners can do everything
+		case ROLE_OWNER:
+			return true;
+		// Admins can only create/modify users up to their level
+		case ROLE_ADMIN:
+			return newRole !== ROLE_OWNER;
+		default:
+			return false;
+	}
 };
 
 /**
  * Interface representing a role assignment to a user.
  */
 interface RoleAssignment {
-  entityId: string;
-  newRole: Role;
+	entityId: string;
+	newRole: Role;
 }
 
 /**
@@ -91,126 +91,126 @@ interface RoleAssignment {
  * @property {ActionExample[][]} examples - Examples demonstrating how the action can be used.
  */
 export const updateRoleAction: Action = {
-  name: spec.name,
-  similes: spec.similes ? [...spec.similes] : [],
-  description: spec.description,
-  examples: (spec.examples ?? []) as ActionExample[][],
+	name: spec.name,
+	similes: spec.similes ? [...spec.similes] : [],
+	description: spec.description,
+	examples: (spec.examples ?? []) as ActionExample[][],
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-  ): Promise<boolean> => {
-    // Only activate in group chats where the feature is enabled
-    const channelType = message.content.channelType as ChannelType;
+	validate: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> => {
+		// Only activate in group chats where the feature is enabled
+		const channelType = message.content.channelType as ChannelType;
 
-    // First, check if this is a supported channel type
-    if (
-      channelType !== ChannelType.GROUP &&
-      channelType !== ChannelType.WORLD
-    ) {
-      return false;
-    }
+		// First, check if this is a supported channel type
+		if (
+			channelType !== ChannelType.GROUP &&
+			channelType !== ChannelType.WORLD
+		) {
+			return false;
+		}
 
-    // Then, check if we have a server/world context
-    const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
-    if (!room || !room.messageServerId) {
-      return false;
-    }
+		// Then, check if we have a server/world context
+		const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
+		if (!room || !room.messageServerId) {
+			return false;
+		}
 
-    return true;
-  },
+		return true;
+	},
 
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-    _options?: HandlerOptions,
-    callback?: HandlerCallback,
-  ): Promise<ActionResult> => {
-    if (!state) {
-      logger.error(
-        {
-          src: "plugin:bootstrap:action:update_role",
-          agentId: runtime.agentId,
-        },
-        "State is required for role assignment",
-      );
-      return {
-        text: "State is required for role assignment",
-        values: {
-          success: false,
-          error: "STATE_REQUIRED",
-        },
-        data: {
-          actionName: "UPDATE_ROLE",
-          error: "State is required",
-        },
-        success: false,
-        error: new Error("State is required for role assignment"),
-      };
-    }
+	handler: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+		_options?: HandlerOptions,
+		callback?: HandlerCallback,
+	): Promise<ActionResult> => {
+		if (!state) {
+			logger.error(
+				{
+					src: "plugin:bootstrap:action:update_role",
+					agentId: runtime.agentId,
+				},
+				"State is required for role assignment",
+			);
+			return {
+				text: "State is required for role assignment",
+				values: {
+					success: false,
+					error: "STATE_REQUIRED",
+				},
+				data: {
+					actionName: "UPDATE_ROLE",
+					error: "State is required",
+				},
+				success: false,
+				error: new Error("State is required for role assignment"),
+			};
+		}
 
-    // Extract needed values from message and state
-    const { roomId } = message;
-    const worldId = runtime.getSetting("WORLD_ID");
+		// Extract needed values from message and state
+		const { roomId } = message;
+		const worldId = runtime.getSetting("WORLD_ID");
 
-    // First, get the world for this server
-    let world: World | null = null;
+		// First, get the world for this server
+		let world: World | null = null;
 
-    if (worldId) {
-      world = await runtime.getWorld(worldId as UUID);
-    }
+		if (worldId) {
+			world = await runtime.getWorld(worldId as UUID);
+		}
 
-    if (!world) {
-      logger.error(
-        {
-          src: "plugin:bootstrap:action:update_role",
-          agentId: runtime.agentId,
-        },
-        "World not found",
-      );
-      await callback?.({
-        text: "I couldn't find the world. This action only works in a world.",
-      });
-      return {
-        text: "World not found",
-        values: {
-          success: false,
-          error: "WORLD_NOT_FOUND",
-        },
-        data: {
-          actionName: "UPDATE_ROLE",
-          error: "World not found",
-        },
-        success: false,
-      };
-    }
+		if (!world) {
+			logger.error(
+				{
+					src: "plugin:bootstrap:action:update_role",
+					agentId: runtime.agentId,
+				},
+				"World not found",
+			);
+			await callback?.({
+				text: "I couldn't find the world. This action only works in a world.",
+			});
+			return {
+				text: "World not found",
+				values: {
+					success: false,
+					error: "WORLD_NOT_FOUND",
+				},
+				data: {
+					actionName: "UPDATE_ROLE",
+					error: "World not found",
+				},
+				success: false,
+			};
+		}
 
-    if (!world.metadata?.roles) {
-      world.metadata = world.metadata || {};
-      world.metadata.roles = {};
-    }
+		if (!world.metadata?.roles) {
+			world.metadata = world.metadata || {};
+			world.metadata.roles = {};
+		}
 
-    // Get the entities for this room
-    const entities = await runtime.getEntitiesForRoom(roomId);
-    const entityById = new Map<string, (typeof entities)[number]>();
-    for (const entity of entities) {
-      if (entity.id) {
-        entityById.set(entity.id, entity);
-      }
-    }
+		// Get the entities for this room
+		const entities = await runtime.getEntitiesForRoom(roomId);
+		const entityById = new Map<string, (typeof entities)[number]>();
+		for (const entity of entities) {
+			if (entity.id) {
+				entityById.set(entity.id, entity);
+			}
+		}
 
-    // Get the role of the requester
-    const requesterRole = world.metadata.roles[message.entityId] || ROLE_NONE;
+		// Get the role of the requester
+		const requesterRole = world.metadata.roles[message.entityId] || ROLE_NONE;
 
-    // Construct extraction prompt
-    const extractionPrompt = composePrompt({
-      state: {
-        ...state.values,
-        content: state.text,
-      },
-      template: `# Task: Parse Role Assignment
+		// Construct extraction prompt
+		const extractionPrompt = composePrompt({
+			state: {
+				...state.values,
+				content: state.text,
+			},
+			template: `# Task: Parse Role Assignment
 
 I need to extract user role assignments from the input text. Users can be referenced by name, username, or mention.
 
@@ -240,170 +240,170 @@ Format your response as XML with multiple assignments:
 </response>
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`,
-    });
+		});
 
-    // Extract role assignments using text model with XML parsing
-    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt: extractionPrompt,
-      stopSequences: [],
-    });
+		// Extract role assignments using text model with XML parsing
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+			prompt: extractionPrompt,
+			stopSequences: [],
+		});
 
-    const parsedXml = parseKeyValueXml<RoleExtractionResult>(response);
+		const parsedXml = parseKeyValueXml<RoleExtractionResult>(response);
 
-    // Handle the parsed XML structure
-    let assignments: RoleAssignment[] = [];
-    if (parsedXml?.assignments?.assignment) {
-      // Normalize to array
-      const assignmentArray = Array.isArray(parsedXml.assignments.assignment)
-        ? parsedXml.assignments.assignment
-        : [parsedXml.assignments.assignment];
+		// Handle the parsed XML structure
+		let assignments: RoleAssignment[] = [];
+		if (parsedXml?.assignments?.assignment) {
+			// Normalize to array
+			const assignmentArray = Array.isArray(parsedXml.assignments.assignment)
+				? parsedXml.assignments.assignment
+				: [parsedXml.assignments.assignment];
 
-      assignments = assignmentArray
-        .filter(
-          (a): a is RoleAssignmentXml & { entityId: string } => !!a.entityId,
-        )
-        .map((a) => ({
-          entityId: a.entityId,
-          newRole: a.newRole as Role,
-        }));
-    }
+			assignments = assignmentArray
+				.filter(
+					(a): a is RoleAssignmentXml & { entityId: string } => !!a.entityId,
+				)
+				.map((a) => ({
+					entityId: a.entityId,
+					newRole: a.newRole as Role,
+				}));
+		}
 
-    if (!assignments.length) {
-      await callback?.({
-        text: "No valid role assignments found in the request.",
-        actions: ["UPDATE_ROLE"],
-        source: "discord",
-      });
-      return {
-        text: "No valid role assignments found",
-        values: {
-          success: false,
-          error: "NO_ASSIGNMENTS",
-        },
-        data: {
-          actionName: "UPDATE_ROLE",
-          error: "No valid role assignments found in the request",
-        },
-        success: false,
-      };
-    }
+		if (!assignments.length) {
+			await callback?.({
+				text: "No valid role assignments found in the request.",
+				actions: ["UPDATE_ROLE"],
+				source: "discord",
+			});
+			return {
+				text: "No valid role assignments found",
+				values: {
+					success: false,
+					error: "NO_ASSIGNMENTS",
+				},
+				data: {
+					actionName: "UPDATE_ROLE",
+					error: "No valid role assignments found in the request",
+				},
+				success: false,
+			};
+		}
 
-    // Process each role assignment
-    let worldUpdated = false;
-    const successfulUpdates: Array<{
-      entityId: string;
-      entityName: string;
-      newRole: Role;
-    }> = [];
-    const failedUpdates: Array<{ entityId: string; reason: string }> = [];
+		// Process each role assignment
+		let worldUpdated = false;
+		const successfulUpdates: Array<{
+			entityId: string;
+			entityName: string;
+			newRole: Role;
+		}> = [];
+		const failedUpdates: Array<{ entityId: string; reason: string }> = [];
 
-    for (const assignment of assignments) {
-      const targetEntity = entityById.get(assignment.entityId);
-      if (!targetEntity) {
-        logger.error(
-          {
-            src: "plugin:bootstrap:action:update_role",
-            agentId: runtime.agentId,
-            entityId: assignment.entityId,
-          },
-          "Could not find an ID to assign to",
-        );
-        failedUpdates.push({
-          entityId: assignment.entityId,
-          reason: "Entity not found",
-        });
-        continue;
-      }
+		for (const assignment of assignments) {
+			const targetEntity = entityById.get(assignment.entityId);
+			if (!targetEntity) {
+				logger.error(
+					{
+						src: "plugin:bootstrap:action:update_role",
+						agentId: runtime.agentId,
+						entityId: assignment.entityId,
+					},
+					"Could not find an ID to assign to",
+				);
+				failedUpdates.push({
+					entityId: assignment.entityId,
+					reason: "Entity not found",
+				});
+				continue;
+			}
 
-      // Cast entityId to UUID type for role lookup
-      const entityIdAsUuid =
-        assignment.entityId as `${string}-${string}-${string}-${string}-${string}`;
-      const currentRole = world.metadata.roles[entityIdAsUuid] ?? null;
+			// Cast entityId to UUID type for role lookup
+			const entityIdAsUuid =
+				assignment.entityId as `${string}-${string}-${string}-${string}-${string}`;
+			const currentRole = world.metadata.roles[entityIdAsUuid] ?? null;
 
-      // Validate role modification permissions
-      if (!canModifyRole(requesterRole, currentRole, assignment.newRole)) {
-        await callback?.({
-          text: `You don't have permission to change ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
-          actions: ["UPDATE_ROLE"],
-          source: "discord",
-        });
-        failedUpdates.push({
-          entityId: assignment.entityId,
-          reason: "Insufficient permissions",
-        });
-        continue;
-      }
+			// Validate role modification permissions
+			if (!canModifyRole(requesterRole, currentRole, assignment.newRole)) {
+				await callback?.({
+					text: `You don't have permission to change ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
+					actions: ["UPDATE_ROLE"],
+					source: "discord",
+				});
+				failedUpdates.push({
+					entityId: assignment.entityId,
+					reason: "Insufficient permissions",
+				});
+				continue;
+			}
 
-      // Update role in world metadata
-      world.metadata.roles[entityIdAsUuid] = assignment.newRole;
+			// Update role in world metadata
+			world.metadata.roles[entityIdAsUuid] = assignment.newRole;
 
-      worldUpdated = true;
-      successfulUpdates.push({
-        entityId: assignment.entityId,
-        entityName: targetEntity?.names[0] || "Unknown",
-        newRole: assignment.newRole,
-      });
+			worldUpdated = true;
+			successfulUpdates.push({
+				entityId: assignment.entityId,
+				entityName: targetEntity?.names[0] || "Unknown",
+				newRole: assignment.newRole,
+			});
 
-      await callback?.({
-        text: `Updated ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
-        actions: ["UPDATE_ROLE"],
-        source: "discord",
-      });
-    }
+			await callback?.({
+				text: `Updated ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
+				actions: ["UPDATE_ROLE"],
+				source: "discord",
+			});
+		}
 
-    // Save updated world metadata if any changes were made
-    if (worldUpdated) {
-      try {
-        await runtime.updateWorld(world);
-        logger.info(
-          {
-            src: "plugin:bootstrap:action:update_role",
-            agentId: runtime.agentId,
-            messageServerId: world.messageServerId,
-          },
-          "Updated roles in world metadata",
-        );
-      } catch (error) {
-        logger.error(
-          {
-            src: "plugin:bootstrap:action:update_role",
-            agentId: runtime.agentId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to save world updates",
-        );
-        return {
-          text: "Failed to save role updates",
-          values: {
-            success: false,
-            error: "SAVE_FAILED",
-          },
-          data: {
-            actionName: "UPDATE_ROLE",
-            error: error instanceof Error ? error.message : String(error),
-            attemptedUpdates: successfulUpdates,
-          },
-          success: false,
-          error: error instanceof Error ? error : new Error(String(error)),
-        };
-      }
-    }
+		// Save updated world metadata if any changes were made
+		if (worldUpdated) {
+			try {
+				await runtime.updateWorld(world);
+				logger.info(
+					{
+						src: "plugin:bootstrap:action:update_role",
+						agentId: runtime.agentId,
+						messageServerId: world.messageServerId,
+					},
+					"Updated roles in world metadata",
+				);
+			} catch (error) {
+				logger.error(
+					{
+						src: "plugin:bootstrap:action:update_role",
+						agentId: runtime.agentId,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Failed to save world updates",
+				);
+				return {
+					text: "Failed to save role updates",
+					values: {
+						success: false,
+						error: "SAVE_FAILED",
+					},
+					data: {
+						actionName: "UPDATE_ROLE",
+						error: error instanceof Error ? error.message : String(error),
+						attemptedUpdates: successfulUpdates,
+					},
+					success: false,
+					error: error instanceof Error ? error : new Error(String(error)),
+				};
+			}
+		}
 
-    return {
-      text: `Role updates completed: ${successfulUpdates.length} successful, ${failedUpdates.length} failed`,
-      values: {
-        success: true,
-        successfulUpdates: successfulUpdates.length,
-        failedUpdates: failedUpdates.length,
-      },
-      data: {
-        actionName: "UPDATE_ROLE",
-        successfulUpdateCount: successfulUpdates.length,
-        failedUpdateCount: failedUpdates.length,
-        worldId: world.id ?? "",
-        messageServerId: world.messageServerId ?? "",
-      },
-      success: true,
-    };
-  },
+		return {
+			text: `Role updates completed: ${successfulUpdates.length} successful, ${failedUpdates.length} failed`,
+			values: {
+				success: true,
+				successfulUpdates: successfulUpdates.length,
+				failedUpdates: failedUpdates.length,
+			},
+			data: {
+				actionName: "UPDATE_ROLE",
+				successfulUpdateCount: successfulUpdates.length,
+				failedUpdateCount: failedUpdates.length,
+				worldId: world.id ?? "",
+				messageServerId: world.messageServerId ?? "",
+			},
+			success: true,
+		};
+	},
 };

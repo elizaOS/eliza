@@ -1,13 +1,13 @@
-import { EventEmitter } from "node:events";
 import crypto from "node:crypto";
+import { EventEmitter } from "node:events";
 import {
+  ChannelType,
+  EventType,
   type IAgentRuntime,
   type Memory,
   type Room,
-  type UUID,
-  EventType,
-  ChannelType,
   Service,
+  type UUID,
 } from "@elizaos/core";
 import type {
   AgentToAgentPolicy,
@@ -169,10 +169,7 @@ export class SubagentService extends Service {
     }
 
     // Check if requester is a subagent (subagents can't spawn subagents)
-    if (
-      requesterContext.sessionKey &&
-      isSubagentSessionKey(requesterContext.sessionKey)
-    ) {
+    if (requesterContext.sessionKey && isSubagentSessionKey(requesterContext.sessionKey)) {
       return {
         status: "forbidden",
         error: "sessions_spawn is not allowed from sub-agent sessions",
@@ -182,20 +179,16 @@ export class SubagentService extends Service {
     // Resolve agent IDs
     const requesterAgentId = requesterContext.sessionKey
       ? extractAgentIdFromSessionKey(requesterContext.sessionKey)
-      : this.runtime.character?.name ?? "unknown";
+      : (this.runtime.character?.name ?? "unknown");
 
-    const targetAgentId = params.agentId
-      ? normalizeAgentId(params.agentId)
-      : requesterAgentId;
+    const targetAgentId = params.agentId ? normalizeAgentId(params.agentId) : requesterAgentId;
 
     // Check cross-agent permission
     if (targetAgentId !== requesterAgentId) {
       const allowAgents = config.allowAgents ?? [];
       const allowAny = allowAgents.some((v) => v.trim() === "*");
       const allowSet = new Set(
-        allowAgents
-          .filter((v) => v.trim() && v.trim() !== "*")
-          .map((v) => normalizeAgentId(v)),
+        allowAgents.filter((v) => v.trim() && v.trim() !== "*").map((v) => normalizeAgentId(v)),
       );
 
       if (!allowAny && !allowSet.has(targetAgentId)) {
@@ -311,12 +304,10 @@ export class SubagentService extends Service {
 
     // Process the message (this triggers the agent to work on the task)
     // We don't await here - the subagent runs in the background
-    this.executeSubagentRun(runId, initialMessage, params.runTimeoutSeconds).catch(
-      (error) => {
-        this.runtime.logger.error({ runId, error }, "Subagent execution error");
-        this.handleSubagentError(runId, error);
-      },
-    );
+    this.executeSubagentRun(runId, initialMessage, params.runTimeoutSeconds).catch((error) => {
+      this.runtime.logger.error({ runId, error }, "Subagent execution error");
+      this.handleSubagentError(runId, error);
+    });
 
     return {
       status: "accepted",
@@ -614,7 +605,8 @@ export class SubagentService extends Service {
       task: record.task,
       outcome,
     };
-    if (record.requesterSessionKey) announcePayload.requesterSessionKey = record.requesterSessionKey;
+    if (record.requesterSessionKey)
+      announcePayload.requesterSessionKey = record.requesterSessionKey;
     this.emitSubagentEvent("SUBAGENT_ANNOUNCE_SENT", announcePayload);
 
     // Handle cleanup
@@ -672,9 +664,7 @@ export class SubagentService extends Service {
       "",
       "## Session Context",
       params.label ? `- Label: ${params.label}` : undefined,
-      params.requesterSessionKey
-        ? `- Requester session: ${params.requesterSessionKey}`
-        : undefined,
+      params.requesterSessionKey ? `- Requester session: ${params.requesterSessionKey}` : undefined,
       params.requesterOrigin?.channel
         ? `- Requester channel: ${params.requesterOrigin.channel}`
         : undefined,
@@ -730,7 +720,7 @@ export class SubagentService extends Service {
     // Check cross-agent permission
     const requesterAgentId = requesterContext.sessionKey
       ? extractAgentIdFromSessionKey(requesterContext.sessionKey)
-      : this.runtime.character?.name ?? "unknown";
+      : (this.runtime.character?.name ?? "unknown");
     const targetAgentId = extractAgentIdFromSessionKey(targetSessionKey);
 
     if (requesterAgentId !== targetAgentId) {
@@ -801,7 +791,8 @@ export class SubagentService extends Service {
         childSessionKey: targetSessionKey,
         task: params.message,
       };
-      if (requesterContext.sessionKey) asyncPayload.requesterSessionKey = requesterContext.sessionKey;
+      if (requesterContext.sessionKey)
+        asyncPayload.requesterSessionKey = requesterContext.sessionKey;
       this.emitSubagentEvent("A2A_MESSAGE_SENT", asyncPayload);
 
       return {
@@ -893,9 +884,7 @@ export class SubagentService extends Service {
       "# Agent-to-Agent Message Context",
       "",
       "This message was sent by another agent session.",
-      params.requesterSessionKey
-        ? `- Sender: ${params.requesterSessionKey}`
-        : undefined,
+      params.requesterSessionKey ? `- Sender: ${params.requesterSessionKey}` : undefined,
       `- Target: ${params.targetSessionKey}`,
       "",
       "Process this message and respond appropriately.",
@@ -917,7 +906,7 @@ export class SubagentService extends Service {
 
   /**
    * Finds a subagent run by its label.
-   * 
+   *
    * @param label - The label to search for (case-insensitive)
    * @param agentId - Optional agent ID to filter by
    * @returns The matching run record, or undefined if not found
@@ -1002,10 +991,7 @@ export class SubagentService extends Service {
     this.emitter.off(event, handler);
   }
 
-  private emitSubagentEvent(
-    type: SubagentEventType,
-    payload: SubagentEventPayload,
-  ): void {
+  private emitSubagentEvent(type: SubagentEventType, payload: SubagentEventPayload): void {
     this.emitter.emit(type, payload);
     this.emitter.emit("task", { type, ...payload });
   }

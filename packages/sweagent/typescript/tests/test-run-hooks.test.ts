@@ -2,8 +2,8 @@
  * Run hooks tests converted from test_run_hooks.py
  */
 
-import { beforeEach, describe, expect, it, jest } from "./jest-globals";
 import { vi } from "vitest";
+import { beforeEach, describe, expect, it, jest } from "./jest-globals";
 
 // Mock @octokit/rest before importing modules that use it
 vi.mock("@octokit/rest", () => ({

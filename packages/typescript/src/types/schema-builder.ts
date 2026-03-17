@@ -17,21 +17,21 @@ import type { SchemaColumn, SchemaTable } from "./schema.ts";
  * adapter is needed, evolve or replace this interface.
  */
 export interface DialectAdapter {
-  /** Wrap columns + an optional constraint/index factory into a table object. */
-  createTable(
-    name: string,
-    columns: Record<string, any>,
-    constraintsFn?: (table: any) => any[],
-  ): any;
+	/** Wrap columns + an optional constraint/index factory into a table object. */
+	createTable(
+		name: string,
+		columns: Record<string, any>,
+		constraintsFn?: (table: any) => any[],
+	): any;
 
-  /** Map one abstract SchemaColumn to a concrete column builder. */
-  buildColumn(col: SchemaColumn): any;
+	/** Map one abstract SchemaColumn to a concrete column builder. */
+	buildColumn(col: SchemaColumn): any;
 
-  /** Create an index builder that accepts column refs via .on(). */
-  buildIndex(name: string): { on: (...cols: any[]) => any };
+	/** Create an index builder that accepts column refs via .on(). */
+	buildIndex(name: string): { on: (...cols: any[]) => any };
 
-  /** Create a UNIQUE index builder. Falls back to buildIndex if not provided. */
-  buildUniqueIndex?(name: string): { on: (...cols: any[]) => any };
+	/** Create a UNIQUE index builder. Falls back to buildIndex if not provided. */
+	buildUniqueIndex?(name: string): { on: (...cols: any[]) => any };
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -44,7 +44,7 @@ export interface DialectAdapter {
  *   "created_at" → "createdAt"
  */
 export function snakeToCamel(s: string): string {
-  return s.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
+	return s.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
 }
 
 /**
@@ -52,4 +52,7 @@ export function snakeToCamel(s: string): string {
  * The actual implementation has moved to plugin-sql, but the signature
  * is defined here for type safety.
  */
-export type BuildTableFn = (schema: SchemaTable, adapter: DialectAdapter) => any;
+export type BuildTableFn = (
+	schema: SchemaTable,
+	adapter: DialectAdapter,
+) => any;

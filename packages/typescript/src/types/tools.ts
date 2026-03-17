@@ -7,16 +7,17 @@
  */
 
 // Re-export from channel-config to avoid duplication
-export type { ToolProfileId, ToolPolicyConfig } from "./channel-config";
-import type { ToolProfileId, ToolPolicyConfig } from "./channel-config";
+export type { ToolPolicyConfig, ToolProfileId } from "./channel-config";
+
+import type { ToolPolicyConfig, ToolProfileId } from "./channel-config";
 
 /**
  * Canonical tool name aliases for backward compatibility.
  * Maps legacy names to canonical names.
  */
 export const TOOL_NAME_ALIASES: Record<string, string> = {
-  bash: "exec",
-  "apply-patch": "apply_patch",
+	bash: "exec",
+	"apply-patch": "apply_patch",
 };
 
 /**
@@ -24,132 +25,138 @@ export const TOOL_NAME_ALIASES: Record<string, string> = {
  * Use "group:<name>" syntax in policy configs (e.g., "group:fs").
  */
 export const TOOL_GROUPS: Record<string, string[]> = {
-  // Memory tools (provided by plugin-scratchpad)
-  "group:memory": ["scratchpad_search", "scratchpad_read"],
-  // Web tools
-  "group:web": ["web_search", "web_fetch"],
-  // Basic workspace/file tools
-  "group:fs": ["read", "write", "edit", "apply_patch"],
-  // Host/runtime execution tools
-  "group:runtime": ["exec", "process"],
-  // Session management tools
-  "group:sessions": [
-    "sessions_list",
-    "sessions_history",
-    "sessions_send",
-    "sessions_spawn",
-    "session_status",
-  ],
-  // UI helpers
-  "group:ui": ["browser", "canvas"],
-  // Automation + infra
-  "group:automation": ["cron", "gateway"],
-  // Messaging surface
-  "group:messaging": ["message"],
-  // Nodes + device tools
-  "group:nodes": ["nodes"],
-  // All native tools (excludes provider plugins)
-  "group:all": [
-    "browser",
-    "canvas",
-    "nodes",
-    "cron",
-    "message",
-    "gateway",
-    "agents_list",
-    "sessions_list",
-    "sessions_history",
-    "sessions_send",
-    "sessions_spawn",
-    "session_status",
-    "scratchpad_search",
-    "scratchpad_read",
-    "web_search",
-    "web_fetch",
-    "image",
-    "read",
-    "write",
-    "edit",
-    "apply_patch",
-    "exec",
-    "process",
-  ],
+	// Memory tools (provided by plugin-scratchpad)
+	"group:memory": ["scratchpad_search", "scratchpad_read"],
+	// Web tools
+	"group:web": ["web_search", "web_fetch"],
+	// Basic workspace/file tools
+	"group:fs": ["read", "write", "edit", "apply_patch"],
+	// Host/runtime execution tools
+	"group:runtime": ["exec", "process"],
+	// Session management tools
+	"group:sessions": [
+		"sessions_list",
+		"sessions_history",
+		"sessions_send",
+		"sessions_spawn",
+		"session_status",
+	],
+	// UI helpers
+	"group:ui": ["browser", "canvas"],
+	// Automation + infra
+	"group:automation": ["cron", "gateway"],
+	// Messaging surface
+	"group:messaging": ["message"],
+	// Nodes + device tools
+	"group:nodes": ["nodes"],
+	// All native tools (excludes provider plugins)
+	"group:all": [
+		"browser",
+		"canvas",
+		"nodes",
+		"cron",
+		"message",
+		"gateway",
+		"agents_list",
+		"sessions_list",
+		"sessions_history",
+		"sessions_send",
+		"sessions_spawn",
+		"session_status",
+		"scratchpad_search",
+		"scratchpad_read",
+		"web_search",
+		"web_fetch",
+		"image",
+		"read",
+		"write",
+		"edit",
+		"apply_patch",
+		"exec",
+		"process",
+	],
 };
 
 /**
  * Predefined tool profiles with default allow/deny policies.
  */
 export const TOOL_PROFILES: Record<ToolProfileId, ToolPolicyConfig> = {
-  minimal: {
-    allow: ["session_status"],
-  },
-  coding: {
-    allow: ["group:fs", "group:runtime", "group:sessions", "group:memory", "image"],
-  },
-  messaging: {
-    allow: [
-      "group:messaging",
-      "sessions_list",
-      "sessions_history",
-      "sessions_send",
-      "session_status",
-    ],
-  },
-  full: {
-    // No restrictions - all tools allowed
-  },
+	minimal: {
+		allow: ["session_status"],
+	},
+	coding: {
+		allow: [
+			"group:fs",
+			"group:runtime",
+			"group:sessions",
+			"group:memory",
+			"image",
+		],
+	},
+	messaging: {
+		allow: [
+			"group:messaging",
+			"sessions_list",
+			"sessions_history",
+			"sessions_send",
+			"session_status",
+		],
+	},
+	full: {
+		// No restrictions - all tools allowed
+	},
 };
 
 /**
  * Plugin tool groups for dynamic tool resolution.
  */
 export interface PluginToolGroups {
-  /** All tool names from plugins */
-  all: string[];
-  /** Tool names organized by plugin ID */
-  byPlugin: Map<string, string[]>;
+	/** All tool names from plugins */
+	all: string[];
+	/** Tool names organized by plugin ID */
+	byPlugin: Map<string, string[]>;
 }
 
 /**
  * Result of allowlist resolution with diagnostics.
  */
 export interface AllowlistResolution {
-  /** The resolved policy after processing */
-  policy: ToolPolicyConfig | undefined;
-  /** Entries in the allowlist that weren't recognized */
-  unknownAllowlist: string[];
-  /** Whether the allowlist was stripped (contained only plugin tools) */
-  strippedAllowlist: boolean;
+	/** The resolved policy after processing */
+	policy: ToolPolicyConfig | undefined;
+	/** Entries in the allowlist that weren't recognized */
+	unknownAllowlist: string[];
+	/** Whether the allowlist was stripped (contained only plugin tools) */
+	strippedAllowlist: boolean;
 }
 
 /**
  * Tool policy evaluation options.
  */
 export interface ToolPolicyEvaluationOptions {
-  /** The character's tool profile */
-  profile?: ToolProfileId;
-  /** Character-level tool policy overrides */
-  characterPolicy?: ToolPolicyConfig;
-  /** Channel-specific tool policy overrides */
-  channelPolicy?: ToolPolicyConfig;
-  /** Provider-specific tool policy overrides */
-  providerPolicy?: ToolPolicyConfig;
-  /** Plugin tool groups for resolution */
-  pluginGroups?: PluginToolGroups;
-  /** Set of core tool names for validation */
-  coreTools?: Set<string>;
+	/** The character's tool profile */
+	profile?: ToolProfileId;
+	/** Character-level tool policy overrides */
+	characterPolicy?: ToolPolicyConfig;
+	/** Channel-specific tool policy overrides */
+	channelPolicy?: ToolPolicyConfig;
+	/** Provider-specific tool policy overrides */
+	providerPolicy?: ToolPolicyConfig;
+	/** Plugin tool groups for resolution */
+	pluginGroups?: PluginToolGroups;
+	/** Set of core tool names for validation */
+	coreTools?: Set<string>;
 }
 
 /**
  * Tool policy evaluation result.
  */
 export interface ToolPolicyResult {
-  /** Whether the tool is allowed */
-  allowed: boolean;
-  /** Reason for the decision */
-  reason: string;
-  /** The effective policy after merging */
-  effectivePolicy: ToolPolicyConfig;
+	/** Whether the tool is allowed */
+	allowed: boolean;
+	/** Reason for the decision */
+	reason: string;
+	/** The effective policy after merging */
+	effectivePolicy: ToolPolicyConfig;
 }
 
 // ============================================================================
@@ -164,8 +171,8 @@ export interface ToolPolicyResult {
  * @returns The canonical tool name
  */
 export function normalizeToolName(name: string): string {
-  const normalized = name.trim().toLowerCase();
-  return TOOL_NAME_ALIASES[normalized] ?? normalized;
+	const normalized = name.trim().toLowerCase();
+	return TOOL_NAME_ALIASES[normalized] ?? normalized;
 }
 
 /**
@@ -175,10 +182,10 @@ export function normalizeToolName(name: string): string {
  * @returns Normalized list with empty entries filtered out
  */
 export function normalizeToolList(list?: string[]): string[] {
-  if (!list) {
-    return [];
-  }
-  return list.map(normalizeToolName).filter(Boolean);
+	if (!list) {
+		return [];
+	}
+	return list.map(normalizeToolName).filter(Boolean);
 }
 
 /**
@@ -189,19 +196,19 @@ export function normalizeToolList(list?: string[]): string[] {
  * @returns Expanded list with all groups resolved to individual tools
  */
 export function expandToolGroups(list?: string[]): string[] {
-  const normalized = normalizeToolList(list);
-  const expanded: string[] = [];
+	const normalized = normalizeToolList(list);
+	const expanded: string[] = [];
 
-  for (const value of normalized) {
-    const group = TOOL_GROUPS[value];
-    if (group) {
-      expanded.push(...group);
-      continue;
-    }
-    expanded.push(value);
-  }
+	for (const value of normalized) {
+		const group = TOOL_GROUPS[value];
+		if (group) {
+			expanded.push(...group);
+			continue;
+		}
+		expanded.push(value);
+	}
 
-  return Array.from(new Set(expanded));
+	return Array.from(new Set(expanded));
 }
 
 /**
@@ -211,23 +218,23 @@ export function expandToolGroups(list?: string[]): string[] {
  * @returns The policy configuration, or undefined if profile is invalid
  */
 export function resolveToolProfilePolicy(
-  profile?: string,
+	profile?: string,
 ): ToolPolicyConfig | undefined {
-  if (!profile) {
-    return undefined;
-  }
-  const resolved = TOOL_PROFILES[profile as ToolProfileId];
-  if (!resolved) {
-    return undefined;
-  }
-  // Return undefined for 'full' profile (no restrictions)
-  if (!resolved.allow && !resolved.deny) {
-    return undefined;
-  }
-  return {
-    allow: resolved.allow ? [...resolved.allow] : undefined,
-    deny: resolved.deny ? [...resolved.deny] : undefined,
-  };
+	if (!profile) {
+		return undefined;
+	}
+	const resolved = TOOL_PROFILES[profile as ToolProfileId];
+	if (!resolved) {
+		return undefined;
+	}
+	// Return undefined for 'full' profile (no restrictions)
+	if (!resolved.allow && !resolved.deny) {
+		return undefined;
+	}
+	return {
+		allow: resolved.allow ? [...resolved.allow] : undefined,
+		deny: resolved.deny ? [...resolved.deny] : undefined,
+	};
 }
 
 /**
@@ -237,26 +244,26 @@ export function resolveToolProfilePolicy(
  * @returns Combined allowlist entries
  */
 export function collectExplicitAllowlist(
-  policies: Array<ToolPolicyConfig | undefined>,
+	policies: Array<ToolPolicyConfig | undefined>,
 ): string[] {
-  const entries: string[] = [];
+	const entries: string[] = [];
 
-  for (const policy of policies) {
-    if (!policy?.allow) {
-      continue;
-    }
-    for (const value of policy.allow) {
-      if (typeof value !== "string") {
-        continue;
-      }
-      const trimmed = value.trim();
-      if (trimmed) {
-        entries.push(trimmed);
-      }
-    }
-  }
+	for (const policy of policies) {
+		if (!policy?.allow) {
+			continue;
+		}
+		for (const value of policy.allow) {
+			if (typeof value !== "string") {
+				continue;
+			}
+			const trimmed = value.trim();
+			if (trimmed) {
+				entries.push(trimmed);
+			}
+		}
+	}
 
-  return entries;
+	return entries;
 }
 
 /**
@@ -266,26 +273,26 @@ export function collectExplicitAllowlist(
  * @returns Plugin tool groups organized by plugin ID
  */
 export function buildPluginToolGroups<T extends { name: string }>(params: {
-  tools: T[];
-  toolMeta: (tool: T) => { pluginId: string } | undefined;
+	tools: T[];
+	toolMeta: (tool: T) => { pluginId: string } | undefined;
 }): PluginToolGroups {
-  const all: string[] = [];
-  const byPlugin = new Map<string, string[]>();
+	const all: string[] = [];
+	const byPlugin = new Map<string, string[]>();
 
-  for (const tool of params.tools) {
-    const meta = params.toolMeta(tool);
-    if (!meta) {
-      continue;
-    }
-    const name = normalizeToolName(tool.name);
-    all.push(name);
-    const pluginId = meta.pluginId.toLowerCase();
-    const list = byPlugin.get(pluginId) ?? [];
-    list.push(name);
-    byPlugin.set(pluginId, list);
-  }
+	for (const tool of params.tools) {
+		const meta = params.toolMeta(tool);
+		if (!meta) {
+			continue;
+		}
+		const name = normalizeToolName(tool.name);
+		all.push(name);
+		const pluginId = meta.pluginId.toLowerCase();
+		const list = byPlugin.get(pluginId) ?? [];
+		list.push(name);
+		byPlugin.set(pluginId, list);
+	}
 
-  return { all, byPlugin };
+	return { all, byPlugin };
 }
 
 /**
@@ -296,33 +303,33 @@ export function buildPluginToolGroups<T extends { name: string }>(params: {
  * @returns Expanded list with plugin groups resolved
  */
 export function expandPluginGroups(
-  list: string[] | undefined,
-  groups: PluginToolGroups,
+	list: string[] | undefined,
+	groups: PluginToolGroups,
 ): string[] | undefined {
-  if (!list || list.length === 0) {
-    return list;
-  }
+	if (!list || list.length === 0) {
+		return list;
+	}
 
-  const expanded: string[] = [];
-  for (const entry of list) {
-    const normalized = normalizeToolName(entry);
-    if (normalized === "group:plugins") {
-      if (groups.all.length > 0) {
-        expanded.push(...groups.all);
-      } else {
-        expanded.push(normalized);
-      }
-      continue;
-    }
-    const tools = groups.byPlugin.get(normalized);
-    if (tools && tools.length > 0) {
-      expanded.push(...tools);
-      continue;
-    }
-    expanded.push(normalized);
-  }
+	const expanded: string[] = [];
+	for (const entry of list) {
+		const normalized = normalizeToolName(entry);
+		if (normalized === "group:plugins") {
+			if (groups.all.length > 0) {
+				expanded.push(...groups.all);
+			} else {
+				expanded.push(normalized);
+			}
+			continue;
+		}
+		const tools = groups.byPlugin.get(normalized);
+		if (tools && tools.length > 0) {
+			expanded.push(...tools);
+			continue;
+		}
+		expanded.push(normalized);
+	}
 
-  return Array.from(new Set(expanded));
+	return Array.from(new Set(expanded));
 }
 
 /**
@@ -333,16 +340,16 @@ export function expandPluginGroups(
  * @returns Policy with plugin groups expanded
  */
 export function expandPolicyWithPluginGroups(
-  policy: ToolPolicyConfig | undefined,
-  groups: PluginToolGroups,
+	policy: ToolPolicyConfig | undefined,
+	groups: PluginToolGroups,
 ): ToolPolicyConfig | undefined {
-  if (!policy) {
-    return undefined;
-  }
-  return {
-    allow: expandPluginGroups(policy.allow, groups),
-    deny: expandPluginGroups(policy.deny, groups),
-  };
+	if (!policy) {
+		return undefined;
+	}
+	return {
+		allow: expandPluginGroups(policy.allow, groups),
+		deny: expandPluginGroups(policy.deny, groups),
+	};
 }
 
 /**
@@ -356,50 +363,50 @@ export function expandPolicyWithPluginGroups(
  * @returns Resolution result with diagnostic information
  */
 export function stripPluginOnlyAllowlist(
-  policy: ToolPolicyConfig | undefined,
-  groups: PluginToolGroups,
-  coreTools: Set<string>,
+	policy: ToolPolicyConfig | undefined,
+	groups: PluginToolGroups,
+	coreTools: Set<string>,
 ): AllowlistResolution {
-  if (!policy?.allow || policy.allow.length === 0) {
-    return { policy, unknownAllowlist: [], strippedAllowlist: false };
-  }
+	if (!policy?.allow || policy.allow.length === 0) {
+		return { policy, unknownAllowlist: [], strippedAllowlist: false };
+	}
 
-  const normalized = normalizeToolList(policy.allow);
-  if (normalized.length === 0) {
-    return { policy, unknownAllowlist: [], strippedAllowlist: false };
-  }
+	const normalized = normalizeToolList(policy.allow);
+	if (normalized.length === 0) {
+		return { policy, unknownAllowlist: [], strippedAllowlist: false };
+	}
 
-  const pluginIds = new Set(groups.byPlugin.keys());
-  const pluginTools = new Set(groups.all);
-  const unknownAllowlist: string[] = [];
-  let hasCoreEntry = false;
+	const pluginIds = new Set(groups.byPlugin.keys());
+	const pluginTools = new Set(groups.all);
+	const unknownAllowlist: string[] = [];
+	let hasCoreEntry = false;
 
-  for (const entry of normalized) {
-    if (entry === "*") {
-      hasCoreEntry = true;
-      continue;
-    }
-    const isPluginEntry =
-      entry === "group:plugins" ||
-      pluginIds.has(entry) ||
-      pluginTools.has(entry);
-    const expanded = expandToolGroups([entry]);
-    const isCoreEntry = expanded.some((tool) => coreTools.has(tool));
-    if (isCoreEntry) {
-      hasCoreEntry = true;
-    }
-    if (!isCoreEntry && !isPluginEntry) {
-      unknownAllowlist.push(entry);
-    }
-  }
+	for (const entry of normalized) {
+		if (entry === "*") {
+			hasCoreEntry = true;
+			continue;
+		}
+		const isPluginEntry =
+			entry === "group:plugins" ||
+			pluginIds.has(entry) ||
+			pluginTools.has(entry);
+		const expanded = expandToolGroups([entry]);
+		const isCoreEntry = expanded.some((tool) => coreTools.has(tool));
+		if (isCoreEntry) {
+			hasCoreEntry = true;
+		}
+		if (!isCoreEntry && !isPluginEntry) {
+			unknownAllowlist.push(entry);
+		}
+	}
 
-  const strippedAllowlist = !hasCoreEntry;
+	const strippedAllowlist = !hasCoreEntry;
 
-  return {
-    policy: strippedAllowlist ? { ...policy, allow: undefined } : policy,
-    unknownAllowlist: Array.from(new Set(unknownAllowlist)),
-    strippedAllowlist,
-  };
+	return {
+		policy: strippedAllowlist ? { ...policy, allow: undefined } : policy,
+		unknownAllowlist: Array.from(new Set(unknownAllowlist)),
+		strippedAllowlist,
+	};
 }
 
 /**
@@ -410,33 +417,33 @@ export function stripPluginOnlyAllowlist(
  * @returns Merged policy
  */
 export function mergeToolPolicies(
-  ...policies: Array<ToolPolicyConfig | undefined>
+	...policies: Array<ToolPolicyConfig | undefined>
 ): ToolPolicyConfig {
-  const result: ToolPolicyConfig = {};
+	const result: ToolPolicyConfig = {};
 
-  for (const policy of policies) {
-    if (!policy) continue;
+	for (const policy of policies) {
+		if (!policy) continue;
 
-    if (policy.allow !== undefined) {
-      // If a more specific policy has an allow list, it replaces (not merges)
-      result.allow = [...(policy.allow || [])];
-    }
+		if (policy.allow !== undefined) {
+			// If a more specific policy has an allow list, it replaces (not merges)
+			result.allow = [...(policy.allow || [])];
+		}
 
-    if (policy.deny !== undefined) {
-      // Deny lists are additive - combine them
-      result.deny = [...(result.deny || []), ...(policy.deny || [])];
-    }
-  }
+		if (policy.deny !== undefined) {
+			// Deny lists are additive - combine them
+			result.deny = [...(result.deny || []), ...(policy.deny || [])];
+		}
+	}
 
-  // Deduplicate
-  if (result.allow) {
-    result.allow = Array.from(new Set(result.allow));
-  }
-  if (result.deny) {
-    result.deny = Array.from(new Set(result.deny));
-  }
+	// Deduplicate
+	if (result.allow) {
+		result.allow = Array.from(new Set(result.allow));
+	}
+	if (result.deny) {
+		result.deny = Array.from(new Set(result.deny));
+	}
 
-  return result;
+	return result;
 }
 
 /**
@@ -447,34 +454,34 @@ export function mergeToolPolicies(
  * @returns Whether the tool is allowed
  */
 export function isToolAllowedByPolicy(
-  toolName: string,
-  policy: ToolPolicyConfig | undefined,
+	toolName: string,
+	policy: ToolPolicyConfig | undefined,
 ): boolean {
-  const normalizedName = normalizeToolName(toolName);
+	const normalizedName = normalizeToolName(toolName);
 
-  // No policy means all tools allowed
-  if (!policy) {
-    return true;
-  }
+	// No policy means all tools allowed
+	if (!policy) {
+		return true;
+	}
 
-  // Check deny list first (deny takes precedence)
-  if (policy.deny && policy.deny.length > 0) {
-    const expandedDeny = expandToolGroups(policy.deny);
-    if (expandedDeny.includes(normalizedName)) {
-      return false;
-    }
-  }
+	// Check deny list first (deny takes precedence)
+	if (policy.deny && policy.deny.length > 0) {
+		const expandedDeny = expandToolGroups(policy.deny);
+		if (expandedDeny.includes(normalizedName)) {
+			return false;
+		}
+	}
 
-  // Check allow list
-  if (policy.allow && policy.allow.length > 0) {
-    const expandedAllow = expandToolGroups(policy.allow);
-    // Wildcard allows everything not denied
-    if (expandedAllow.includes("*")) {
-      return true;
-    }
-    return expandedAllow.includes(normalizedName);
-  }
+	// Check allow list
+	if (policy.allow && policy.allow.length > 0) {
+		const expandedAllow = expandToolGroups(policy.allow);
+		// Wildcard allows everything not denied
+		if (expandedAllow.includes("*")) {
+			return true;
+		}
+		return expandedAllow.includes(normalizedName);
+	}
 
-  // No allow list means all tools allowed (if not denied)
-  return true;
+	// No allow list means all tools allowed (if not denied)
+	return true;
 }

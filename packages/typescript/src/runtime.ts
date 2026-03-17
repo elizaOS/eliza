@@ -22,7 +22,8 @@ import { createLogger, logPrompt, logResponse } from "./logger";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
-import { TaskService } from "./services/task";
+import type { TaskService } from "./services/task";
+import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
 import {
   getStreamingContext,
@@ -48,7 +49,6 @@ import {
   type GenerateTextOptions,
   type GenerateTextParams,
   type GenerateTextResult,
-  type PromptSegment,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -69,7 +69,9 @@ import {
   type PairingChannel,
   type PairingRequest,
   type Participant,
+  type PatchOp,
   type Plugin,
+  type PromptSegment,
   type Provider,
   type ProviderValue,
   type Relationship,
@@ -88,7 +90,6 @@ import {
   type Task,
   type TaskWorker,
   type TextStreamResult,
-  type PatchOp,
   type UUID,
   type World,
 } from "./types";
@@ -100,7 +101,6 @@ import type {
   StreamEvent,
 } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
-import { ToolPolicyService } from "./services/tool-policy";
 import {
   parseBooleanFromText,
   parseJSONObjectFromText,
@@ -108,13 +108,13 @@ import {
   safeReplacer,
   stringToUuid,
 } from "./utils";
-import {
-  pickFields,
-  PromptBatcher,
-  PromptDispatcher,
-} from "./utils/prompt-batcher";
 import { BufferUtils } from "./utils/buffer";
 import { getNumberEnv } from "./utils/environment";
+import {
+  PromptBatcher,
+  PromptDispatcher,
+  pickFields,
+} from "./utils/prompt-batcher";
 import {
   ActionStreamFilter,
   ValidationStreamExtractor,
@@ -2162,10 +2162,9 @@ export class AgentRuntime implements IAgentRuntime {
       async (evaluator: Evaluator) => {
         if (!evaluator.handler) {
           return null;
-        } finally {
+        } finally 
           // Always clear timer to prevent leaks
           clearTimeout(timerId);
-        }
         if (!didRespond && !evaluator.alwaysRun) {
           return null;
         }
@@ -2696,10 +2695,10 @@ export class AgentRuntime implements IAgentRuntime {
     const PROVIDER_TIMEOUT = 30_000; // 30 second timeout per provider
     const providerData = await Promise.all(
       providersToGet.map(async (provider) => {
-        const providerStart = Date.now();
+        const _providerStart = Date.now();
     let timerId: ReturnType<typeof setTimeout> | undefined;
     try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
+      const _timeoutPromise = new Promise<never>((_, reject) => {
             timerId = setTimeout(
               () =>
                 reject(
@@ -2707,7 +2706,7 @@ export class AgentRuntime implements IAgentRuntime {
                     `Provider ${provider.name} timed out after ${PROVIDER_TIMEOUT}ms`,
                   ),
                 ),
-              const timeoutPromise = new Promise<never>((_, reject) => {
+              const timeoutPromise = new Promise<never>((_, _reject) => {
                   // ...
                 });
               timeoutPromise,
@@ -4298,11 +4297,11 @@ Respond using ${format} format like this:
 ${EXAMPLE}
 
 IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END} ${format} block above. Do not include any text, thinking, or reasoning before or after this ${format} block. Start your response immediately with ${CONTAINER_START} and end with ${CONTAINER_END}.
-` + section_end;
-      const endBlock = "\nend code: " + finalCode + "\n";
+${section_end}`;
+      const endBlock = `\nend code: ${finalCode}\n`;
       // Middle block: validation text when present (unstable); else "\n\n" so prompt string is unchanged.
       const formatMiddleBlock = VALIDATION_INSTRUCTIONS
-        ? VALIDATION_INSTRUCTIONS + "\n\n"
+        ? `${VALIDATION_INSTRUCTIONS}\n\n`
         : "\n\n";
 
       const segments: PromptSegment[] = [
@@ -4891,7 +4890,6 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
             depth + 1,
           ),
         ];
-      case "string":
       default:
         return spec.description;
     }
@@ -5007,7 +5005,6 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
           });
         }
         return;
-      case "string":
       default:
         return;
     }

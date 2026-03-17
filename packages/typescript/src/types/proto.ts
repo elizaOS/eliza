@@ -18,8 +18,8 @@
  */
 
 import type {
-  JsonObject as BufJsonObject,
-  JsonValue as BufJsonValue,
+	JsonObject as BufJsonObject,
+	JsonValue as BufJsonValue,
 } from "@bufbuild/protobuf";
 
 export * from "./generated/eliza/v1/agent_pb.js";
@@ -59,16 +59,16 @@ export type JsonValue = BufJsonValue;
  * Uses a properly constrained type to avoid unsafe casts.
  */
 export function toJson<T extends JsonObject>(message: T): JsonObject {
-  // The @bufbuild/protobuf types are already plain objects
-  return message;
+	// The @bufbuild/protobuf types are already plain objects
+	return message;
 }
 
 /**
  * Helper to create a proto message from a plain object
  */
 export function fromJson<T extends object>(
-  schema: { new (): T },
-  json: JsonObject,
+	schema: { new (): T },
+	json: JsonObject,
 ): T {
-  return Object.assign(new schema(), json);
+	return Object.assign(new schema(), json);
 }

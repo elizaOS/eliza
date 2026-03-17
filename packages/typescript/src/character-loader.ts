@@ -12,10 +12,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  COMMON_SECRET_KEYS,
-  importSecretsFromEnv,
-  mergeCharacterSecrets,
-  syncCharacterSecretsToEnv,
+	COMMON_SECRET_KEYS,
+	importSecretsFromEnv,
+	mergeCharacterSecrets,
+	syncCharacterSecretsToEnv,
 } from "./character-utils";
 import { logger } from "./logger";
 import { validateCharacter } from "./schemas/character";
@@ -30,12 +30,12 @@ import { stringToUuid } from "./utils";
  * Result of loading a character from file or creating a default.
  */
 export interface LoadCharacterResult {
-  /** The loaded or created character */
-  character: Character;
-  /** Path to the character file, or null if using default */
-  filePath: string | null;
-  /** True if the character was created from the default, not loaded from file */
-  fromDefault: boolean;
+	/** The loaded or created character */
+	character: Character;
+	/** Path to the character file, or null if using default */
+	filePath: string | null;
+	/** True if the character was created from the default, not loaded from file */
+	fromDefault: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -49,15 +49,15 @@ export interface LoadCharacterResult {
  * @returns Array of file paths to search for character files
  */
 export function getCharacterPaths(): string[] {
-  return [
-    // TypeScript character files (preferred)
-    path.join(process.cwd(), "character.ts"),
-    path.join(process.cwd(), "agent.ts"),
-    // JSON character files (fallback)
-    path.join(process.cwd(), "character.json"),
-    path.join(process.cwd(), "agent.json"),
-    path.join(os.homedir(), ".eliza", "character.json"),
-  ];
+	return [
+		// TypeScript character files (preferred)
+		path.join(process.cwd(), "character.ts"),
+		path.join(process.cwd(), "agent.ts"),
+		// JSON character files (fallback)
+		path.join(process.cwd(), "character.json"),
+		path.join(process.cwd(), "agent.json"),
+		path.join(os.homedir(), ".eliza", "character.json"),
+	];
 }
 
 /**
@@ -66,12 +66,12 @@ export function getCharacterPaths(): string[] {
  * @returns Path to the first found character file, or null if none exist
  */
 export function findCharacterFile(): string | null {
-  for (const candidate of getCharacterPaths()) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
+	for (const candidate of getCharacterPaths()) {
+		if (fs.existsSync(candidate)) {
+			return candidate;
+		}
+	}
+	return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -85,18 +85,18 @@ export function findCharacterFile(): string | null {
  * @returns The validated Character, or null if loading/validation failed
  */
 export function loadCharacterJson(filePath: string): Character | null {
-  const content = fs.readFileSync(filePath, "utf-8");
-  const parsed = JSON.parse(content) as Record<string, unknown>;
+	const content = fs.readFileSync(filePath, "utf-8");
+	const parsed = JSON.parse(content) as Record<string, unknown>;
 
-  const validationResult = validateCharacter(parsed);
-  if (!validationResult.success) {
-    logger.warn(
-      `Character validation failed for ${filePath}: ${validationResult.error?.message}`,
-    );
-    return null;
-  }
+	const validationResult = validateCharacter(parsed);
+	if (!validationResult.success) {
+		logger.warn(
+			`Character validation failed for ${filePath}: ${validationResult.error?.message}`,
+		);
+		return null;
+	}
 
-  return validationResult.data as Character;
+	return validationResult.data as Character;
 }
 
 /**
@@ -107,34 +107,34 @@ export function loadCharacterJson(filePath: string): Character | null {
  * @returns The validated Character, or null if loading/validation failed
  */
 export async function loadCharacterTs(
-  filePath: string,
+	filePath: string,
 ): Promise<Character | null> {
-  // Convert to file:// URL for dynamic import
-  const fileUrl = new URL(`file://${filePath}`);
-  const module = (await import(fileUrl.href)) as {
-    default?: Character;
-    character?: Character;
-    defaultCharacter?: Character;
-  };
+	// Convert to file:// URL for dynamic import
+	const fileUrl = new URL(`file://${filePath}`);
+	const module = (await import(fileUrl.href)) as {
+		default?: Character;
+		character?: Character;
+		defaultCharacter?: Character;
+	};
 
-  // Try various export names
-  const character =
-    module.default ?? module.character ?? module.defaultCharacter;
+	// Try various export names
+	const character =
+		module.default ?? module.character ?? module.defaultCharacter;
 
-  if (!character) {
-    logger.warn(`Character file ${filePath} does not export a character`);
-    return null;
-  }
+	if (!character) {
+		logger.warn(`Character file ${filePath} does not export a character`);
+		return null;
+	}
 
-  const validationResult = validateCharacter(character);
-  if (!validationResult.success) {
-    logger.warn(
-      `Character validation failed for ${filePath}: ${validationResult.error?.message}`,
-    );
-    return null;
-  }
+	const validationResult = validateCharacter(character);
+	if (!validationResult.success) {
+		logger.warn(
+			`Character validation failed for ${filePath}: ${validationResult.error?.message}`,
+		);
+		return null;
+	}
 
-  return validationResult.data as Character;
+	return validationResult.data as Character;
 }
 
 /**
@@ -144,15 +144,15 @@ export async function loadCharacterTs(
  * @returns The validated Character, or null if loading/validation failed
  */
 export async function loadCharacterFile(
-  filePath: string,
+	filePath: string,
 ): Promise<Character | null> {
-  const ext = path.extname(filePath).toLowerCase();
+	const ext = path.extname(filePath).toLowerCase();
 
-  if (ext === ".ts" || ext === ".mts") {
-    return loadCharacterTs(filePath);
-  }
+	if (ext === ".ts" || ext === ".mts") {
+		return loadCharacterTs(filePath);
+	}
 
-  return loadCharacterJson(filePath);
+	return loadCharacterJson(filePath);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -167,14 +167,14 @@ export async function loadCharacterFile(
  * @returns A new character with encryption salt guaranteed
  */
 export function ensureEncryptionSalt(character: Character): Character {
-  const secrets = (character.settings?.secrets as Record<string, string>) ?? {};
+	const secrets = (character.settings?.secrets as Record<string, string>) ?? {};
 
-  if (!secrets.ENCRYPTION_SALT) {
-    const salt = crypto.randomBytes(32).toString("hex");
-    return mergeCharacterSecrets(character, { ENCRYPTION_SALT: salt });
-  }
+	if (!secrets.ENCRYPTION_SALT) {
+		const salt = crypto.randomBytes(32).toString("hex");
+		return mergeCharacterSecrets(character, { ENCRYPTION_SALT: salt });
+	}
 
-  return character;
+	return character;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -195,71 +195,71 @@ export function ensureEncryptionSalt(character: Character): Character {
  * @returns LoadCharacterResult with the character, file path, and fromDefault flag
  */
 export async function loadCharacter(
-  characterPath?: string,
-  defaultCharacter?: Character,
+	characterPath?: string,
+	defaultCharacter?: Character,
 ): Promise<LoadCharacterResult> {
-  // Find or create character
-  const filePath = characterPath ?? findCharacterFile();
-  let character: Character;
-  let fromDefault = false;
+	// Find or create character
+	const filePath = characterPath ?? findCharacterFile();
+	let character: Character;
+	let fromDefault = false;
 
-  if (filePath && fs.existsSync(filePath)) {
-    const loaded = await loadCharacterFile(filePath);
-    if (loaded) {
-      character = loaded;
-      logger.info(`Loaded character from ${filePath}`);
-    } else if (defaultCharacter) {
-      character = { ...defaultCharacter };
-      fromDefault = true;
-      logger.warn(`Failed to load ${filePath}, using default character`);
-    } else {
-      character = createMinimalCharacter();
-      fromDefault = true;
-      logger.warn(
-        `Failed to load ${filePath}, using minimal default character`,
-      );
-    }
-  } else if (defaultCharacter) {
-    character = { ...defaultCharacter };
-    fromDefault = true;
-    logger.info("No character file found, using default character");
-  } else {
-    character = createMinimalCharacter();
-    fromDefault = true;
-    logger.info("No character file found, using minimal default character");
-  }
+	if (filePath && fs.existsSync(filePath)) {
+		const loaded = await loadCharacterFile(filePath);
+		if (loaded) {
+			character = loaded;
+			logger.info(`Loaded character from ${filePath}`);
+		} else if (defaultCharacter) {
+			character = { ...defaultCharacter };
+			fromDefault = true;
+			logger.warn(`Failed to load ${filePath}, using default character`);
+		} else {
+			character = createMinimalCharacter();
+			fromDefault = true;
+			logger.warn(
+				`Failed to load ${filePath}, using minimal default character`,
+			);
+		}
+	} else if (defaultCharacter) {
+		character = { ...defaultCharacter };
+		fromDefault = true;
+		logger.info("No character file found, using default character");
+	} else {
+		character = createMinimalCharacter();
+		fromDefault = true;
+		logger.info("No character file found, using minimal default character");
+	}
 
-  // Ensure character has an ID
-  if (!character.id) {
-    character.id = stringToUuid(character.name ?? "eliza") as UUID;
-  }
+	// Ensure character has an ID
+	if (!character.id) {
+		character.id = stringToUuid(character.name ?? "eliza") as UUID;
+	}
 
-  // Import common secrets from process.env
-  character = importSecretsFromEnv(character, COMMON_SECRET_KEYS);
+	// Import common secrets from process.env
+	character = importSecretsFromEnv(character, COMMON_SECRET_KEYS);
 
-  // Ensure encryption salt
-  character = ensureEncryptionSalt(character);
+	// Ensure encryption salt
+	character = ensureEncryptionSalt(character);
 
-  // Sync secrets back to process.env
-  syncCharacterSecretsToEnv(character);
+	// Sync secrets back to process.env
+	syncCharacterSecretsToEnv(character);
 
-  return {
-    character,
-    filePath,
-    fromDefault,
-  };
+	return {
+		character,
+		filePath,
+		fromDefault,
+	};
 }
 
 /**
  * Create a minimal character when no file or default is provided.
  */
 function createMinimalCharacter(): Character {
-  return {
-    name: "Eliza",
-    bio: ["A helpful AI assistant."],
-    plugins: ["@elizaos/plugin-sql"],
-    secrets: {},
-  } as Character;
+	return {
+		name: "Eliza",
+		bio: ["A helpful AI assistant."],
+		plugins: ["@elizaos/plugin-sql"],
+		secrets: {},
+	} as Character;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -273,22 +273,22 @@ function createMinimalCharacter(): Character {
  * @param filePath - Path to save to (defaults to first found or character.json)
  */
 export async function saveCharacter(
-  character: Character,
-  filePath?: string,
+	character: Character,
+	filePath?: string,
 ): Promise<void> {
-  const characterPath =
-    filePath ?? findCharacterFile() ?? getCharacterPaths()[2]; // character.json
-  const dir = path.dirname(characterPath);
+	const characterPath =
+		filePath ?? findCharacterFile() ?? getCharacterPaths()[2]; // character.json
+	const dir = path.dirname(characterPath);
 
-  await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
+	await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
 
-  const json = JSON.stringify(character, null, 2).trimEnd().concat("\n");
+	const json = JSON.stringify(character, null, 2).trimEnd().concat("\n");
 
-  // Write with secure permissions (owner read/write only)
-  await fs.promises.writeFile(characterPath, json, {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
+	// Write with secure permissions (owner read/write only)
+	await fs.promises.writeFile(characterPath, json, {
+		encoding: "utf-8",
+		mode: 0o600,
+	});
 
-  logger.info(`Character saved to ${characterPath}`);
+	logger.info(`Character saved to ${characterPath}`);
 }

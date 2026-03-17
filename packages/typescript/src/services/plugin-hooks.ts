@@ -7,53 +7,53 @@
  * @module services/plugin-hooks
  */
 
-import type { Plugin } from "../types/plugin.ts";
 import type { Character } from "../types/agent.ts";
+import type { Plugin } from "../types/plugin.ts";
 
 /**
  * Context provided to plugin startup hooks.
  */
 export interface PluginHookContext {
-  /** The character configuration */
-  character: Character;
-  /** Environment variables */
-  env: NodeJS.ProcessEnv;
-  /** Plugins that will be registered */
-  plugins: Plugin[];
+	/** The character configuration */
+	character: Character;
+	/** Environment variables */
+	env: NodeJS.ProcessEnv;
+	/** Plugins that will be registered */
+	plugins: Plugin[];
 }
 
 /**
  * Result from a plugin filter hook.
  */
 export interface PluginFilterResult {
-  /** Filtered list of plugins */
-  plugins: Plugin[];
-  /** Changes made during filtering */
-  changes: string[];
+	/** Filtered list of plugins */
+	plugins: Plugin[];
+	/** Changes made during filtering */
+	changes: string[];
 }
 
 /**
  * Hook function type for pre-registration plugins.
  */
 export type PluginPreRegisterHook = (
-  context: PluginHookContext,
+	context: PluginHookContext,
 ) => Promise<PluginFilterResult> | PluginFilterResult;
 
 /**
  * Hook function type for post-registration.
  */
 export type PluginPostRegisterHook = (
-  context: PluginHookContext,
+	context: PluginHookContext,
 ) => Promise<void> | void;
 
 /**
  * Configuration for plugin allow/deny filtering.
  */
 export interface PluginFilterConfig {
-  /** List of plugin names to allow (whitelist) */
-  allow?: string[];
-  /** List of plugin names to deny (blacklist) */
-  deny?: string[];
+	/** List of plugin names to allow (whitelist) */
+	allow?: string[];
+	/** List of plugin names to deny (blacklist) */
+	deny?: string[];
 }
 
 // Global hook registries
@@ -68,15 +68,15 @@ const postRegisterHooks: PluginPostRegisterHook[] = [];
  * @returns A function to unregister the hook
  */
 export function registerPreRegisterHook(
-  hook: PluginPreRegisterHook,
+	hook: PluginPreRegisterHook,
 ): () => void {
-  preRegisterHooks.push(hook);
-  return () => {
-    const index = preRegisterHooks.indexOf(hook);
-    if (index !== -1) {
-      preRegisterHooks.splice(index, 1);
-    }
-  };
+	preRegisterHooks.push(hook);
+	return () => {
+		const index = preRegisterHooks.indexOf(hook);
+		if (index !== -1) {
+			preRegisterHooks.splice(index, 1);
+		}
+	};
 }
 
 /**
@@ -86,15 +86,15 @@ export function registerPreRegisterHook(
  * @returns A function to unregister the hook
  */
 export function registerPostRegisterHook(
-  hook: PluginPostRegisterHook,
+	hook: PluginPostRegisterHook,
 ): () => void {
-  postRegisterHooks.push(hook);
-  return () => {
-    const index = postRegisterHooks.indexOf(hook);
-    if (index !== -1) {
-      postRegisterHooks.splice(index, 1);
-    }
-  };
+	postRegisterHooks.push(hook);
+	return () => {
+		const index = postRegisterHooks.indexOf(hook);
+		if (index !== -1) {
+			postRegisterHooks.splice(index, 1);
+		}
+	};
 }
 
 /**
@@ -104,18 +104,18 @@ export function registerPostRegisterHook(
  * @returns The filtered plugins and all changes made
  */
 export async function runPreRegisterHooks(
-  context: PluginHookContext,
+	context: PluginHookContext,
 ): Promise<PluginFilterResult> {
-  let currentPlugins = [...context.plugins];
-  const allChanges: string[] = [];
+	let currentPlugins = [...context.plugins];
+	const allChanges: string[] = [];
 
-  for (const hook of preRegisterHooks) {
-    const result = await hook({ ...context, plugins: currentPlugins });
-    currentPlugins = result.plugins;
-    allChanges.push(...result.changes);
-  }
+	for (const hook of preRegisterHooks) {
+		const result = await hook({ ...context, plugins: currentPlugins });
+		currentPlugins = result.plugins;
+		allChanges.push(...result.changes);
+	}
 
-  return { plugins: currentPlugins, changes: allChanges };
+	return { plugins: currentPlugins, changes: allChanges };
 }
 
 /**
@@ -124,11 +124,11 @@ export async function runPreRegisterHooks(
  * @param context - The plugin hook context
  */
 export async function runPostRegisterHooks(
-  context: PluginHookContext,
+	context: PluginHookContext,
 ): Promise<void> {
-  for (const hook of postRegisterHooks) {
-    await hook(context);
-  }
+	for (const hook of postRegisterHooks) {
+		await hook(context);
+	}
 }
 
 /**
@@ -148,69 +148,69 @@ export async function runPostRegisterHooks(
  * @returns The filtered list of plugins and changes made
  */
 export function applyPluginFilter(
-  plugins: Plugin[],
-  config: PluginFilterConfig,
+	plugins: Plugin[],
+	config: PluginFilterConfig,
 ): PluginFilterResult {
-  const changes: string[] = [];
-  let filteredPlugins = [...plugins];
+	const changes: string[] = [];
+	let filteredPlugins = [...plugins];
 
-  // Normalize a plugin name for comparison
-  const normalizePluginName = (name: string): string => {
-    const lower = name.toLowerCase().trim();
-    // Extract short name from full package name
-    const match = lower.match(/@[^/]+\/plugin-(.+)$/);
-    return match ? match[1] : lower;
-  };
+	// Normalize a plugin name for comparison
+	const normalizePluginName = (name: string): string => {
+		const lower = name.toLowerCase().trim();
+		// Extract short name from full package name
+		const match = lower.match(/@[^/]+\/plugin-(.+)$/);
+		return match ? match[1] : lower;
+	};
 
-  // Check if a plugin matches any name in a list
-  const matchesAny = (plugin: Plugin, names: string[]): boolean => {
-    const pluginName = plugin.name.toLowerCase();
-    const pluginShortName = normalizePluginName(plugin.name);
+	// Check if a plugin matches any name in a list
+	const matchesAny = (plugin: Plugin, names: string[]): boolean => {
+		const pluginName = plugin.name.toLowerCase();
+		const pluginShortName = normalizePluginName(plugin.name);
 
-    return names.some((name) => {
-      const normalizedName = normalizePluginName(name);
-      return (
-        pluginName === name.toLowerCase() ||
-        pluginShortName === normalizedName ||
-        pluginName.includes(normalizedName)
-      );
-    });
-  };
+		return names.some((name) => {
+			const normalizedName = normalizePluginName(name);
+			return (
+				pluginName === name.toLowerCase() ||
+				pluginShortName === normalizedName ||
+				pluginName.includes(normalizedName)
+			);
+		});
+	};
 
-  // Apply allow list (whitelist)
-  if (config.allow && config.allow.length > 0) {
-    const allowedNames = config.allow;
-    const beforeCount = filteredPlugins.length;
+	// Apply allow list (whitelist)
+	if (config.allow && config.allow.length > 0) {
+		const allowedNames = config.allow;
+		const beforeCount = filteredPlugins.length;
 
-    filteredPlugins = filteredPlugins.filter((plugin) => {
-      const isAllowed = matchesAny(plugin, allowedNames);
-      if (!isAllowed) {
-        changes.push(`Filtered out plugin (not in allow list): ${plugin.name}`);
-      }
-      return isAllowed;
-    });
+		filteredPlugins = filteredPlugins.filter((plugin) => {
+			const isAllowed = matchesAny(plugin, allowedNames);
+			if (!isAllowed) {
+				changes.push(`Filtered out plugin (not in allow list): ${plugin.name}`);
+			}
+			return isAllowed;
+		});
 
-    if (beforeCount !== filteredPlugins.length) {
-      changes.push(
-        `Allow list filter: ${beforeCount} → ${filteredPlugins.length} plugins`,
-      );
-    }
-  }
+		if (beforeCount !== filteredPlugins.length) {
+			changes.push(
+				`Allow list filter: ${beforeCount} → ${filteredPlugins.length} plugins`,
+			);
+		}
+	}
 
-  // Apply deny list (blacklist)
-  if (config.deny && config.deny.length > 0) {
-    const deniedNames = config.deny;
+	// Apply deny list (blacklist)
+	if (config.deny && config.deny.length > 0) {
+		const deniedNames = config.deny;
 
-    filteredPlugins = filteredPlugins.filter((plugin) => {
-      const isDenied = matchesAny(plugin, deniedNames);
-      if (isDenied) {
-        changes.push(`Filtered out plugin (in deny list): ${plugin.name}`);
-      }
-      return !isDenied;
-    });
-  }
+		filteredPlugins = filteredPlugins.filter((plugin) => {
+			const isDenied = matchesAny(plugin, deniedNames);
+			if (isDenied) {
+				changes.push(`Filtered out plugin (in deny list): ${plugin.name}`);
+			}
+			return !isDenied;
+		});
+	}
 
-  return { plugins: filteredPlugins, changes };
+	return { plugins: filteredPlugins, changes };
 }
 
 /**
@@ -220,31 +220,31 @@ export function applyPluginFilter(
  * @returns A pre-register hook function
  */
 export function createPluginFilterHook(
-  config: PluginFilterConfig,
+	config: PluginFilterConfig,
 ): PluginPreRegisterHook {
-  return (context: PluginHookContext): PluginFilterResult => {
-    return applyPluginFilter(context.plugins, config);
-  };
+	return (context: PluginHookContext): PluginFilterResult => {
+		return applyPluginFilter(context.plugins, config);
+	};
 }
 
 /**
  * Get the current number of registered pre-register hooks.
  */
 export function getPreRegisterHookCount(): number {
-  return preRegisterHooks.length;
+	return preRegisterHooks.length;
 }
 
 /**
  * Get the current number of registered post-register hooks.
  */
 export function getPostRegisterHookCount(): number {
-  return postRegisterHooks.length;
+	return postRegisterHooks.length;
 }
 
 /**
  * Clear all registered hooks. Useful for testing.
  */
 export function clearAllHooks(): void {
-  preRegisterHooks.length = 0;
-  postRegisterHooks.length = 0;
+	preRegisterHooks.length = 0;
+	postRegisterHooks.length = 0;
 }

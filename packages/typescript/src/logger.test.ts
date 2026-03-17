@@ -1,125 +1,125 @@
-import { describe, it, beforeEach, afterEach, expect } from 'vitest';
-import { resetForTesting, write, close } from './logger';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { close, resetForTesting, write } from "./logger";
 
-describe('logger file output', () => {
-  const originalEnv = process.env;
-  const testDir = path.join(process.cwd(), 'test-logs');
-  const defaultFiles = ['output.log', 'prompts.log', 'chat.log'];
-  
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-    // Create test directory
-    if (!fs.existsSync(testDir)) {
-      fs.mkdirSync(testDir);
-    }
-    resetForTesting();
-  });
+describe("logger file output", () => {
+	const originalEnv = process.env;
+	const testDir = path.join(process.cwd(), "test-logs");
+	const defaultFiles = ["output.log", "prompts.log", "chat.log"];
 
-  afterEach(() => {
-    process.env = originalEnv;
-    close(); // Clean up file descriptors
-    
-    // Clean up test files
-    if (fs.existsSync(testDir)) {
-      fs.rmSync(testDir, { recursive: true });
-    }
-  });
+	beforeEach(() => {
+		process.env = { ...originalEnv };
+		// Create test directory
+		if (!fs.existsSync(testDir)) {
+			fs.mkdirSync(testDir);
+		}
+		resetForTesting();
+	});
 
-  it('creates log files when LOG_FILE=true', () => {
-    process.env.LOG_FILE = 'true';
-    
-    write('test message');
+	afterEach(() => {
+		process.env = originalEnv;
+		close(); // Clean up file descriptors
 
-    for (const file of defaultFiles) {
-      const logPath = path.join(process.cwd(), file);
-      expect(fs.existsSync(logPath)).toBe(true);
-      const content = fs.readFileSync(logPath, 'utf8');
-      expect(content).toContain('test message');
-    }
-  });
+		// Clean up test files
+		if (fs.existsSync(testDir)) {
+			fs.rmSync(testDir, { recursive: true });
+		}
+	});
 
-  it('appends to existing log files instead of truncating', () => {
-    process.env.LOG_FILE = 'true';
-    
-    write('first message');
-    const initialSizes = defaultFiles.map(file => 
-      fs.statSync(path.join(process.cwd(), file)).size
-    );
+	it("creates log files when LOG_FILE=true", () => {
+		process.env.LOG_FILE = "true";
 
-    resetForTesting();
-    write('second message');
+		write("test message");
 
-    defaultFiles.forEach((file, i) => {
-      const logPath = path.join(process.cwd(), file);
-      const newSize = fs.statSync(logPath).size;
-      expect(newSize).toBeGreaterThan(initialSizes[i]);
-      const content = fs.readFileSync(logPath, 'utf8');
-      expect(content).toContain('first message');
-      expect(content).toContain('second message');
-    });
-  });
+		for (const file of defaultFiles) {
+			const logPath = path.join(process.cwd(), file);
+			expect(fs.existsSync(logPath)).toBe(true);
+			const content = fs.readFileSync(logPath, "utf8");
+			expect(content).toContain("test message");
+		}
+	});
 
-  it('respects custom LOG_FILE path', () => {
-    const customPath = path.join(testDir, 'custom.log');
-    process.env.LOG_FILE = customPath;
-    
-    write('custom path test');
+	it("appends to existing log files instead of truncating", () => {
+		process.env.LOG_FILE = "true";
 
-    expect(fs.existsSync(customPath)).toBe(true);
-    const content = fs.readFileSync(customPath, 'utf8');
-    expect(content).toContain('custom path test');
-  });
+		write("first message");
+		const initialSizes = defaultFiles.map(
+			(file) => fs.statSync(path.join(process.cwd(), file)).size,
+		);
 
-  it('disables logging when LOG_FILE is false/0/empty', () => {
-    // Test with false
-    process.env.LOG_FILE = 'false';
-    write('should not log');
-    
-    for (const file of defaultFiles) {
-      const logPath = path.join(process.cwd(), file);
-      expect(fs.existsSync(logPath)).toBe(false);
-    }
+		resetForTesting();
+		write("second message");
 
-    // Test with 0
-    process.env.LOG_FILE = '0';
-    write('should not log');
-    
-    for (const file of defaultFiles) {
-      const logPath = path.join(process.cwd(), file);
-      expect(fs.existsSync(logPath)).toBe(false);
-    }
+		defaultFiles.forEach((file, i) => {
+			const logPath = path.join(process.cwd(), file);
+			const newSize = fs.statSync(logPath).size;
+			expect(newSize).toBeGreaterThan(initialSizes[i]);
+			const content = fs.readFileSync(logPath, "utf8");
+			expect(content).toContain("first message");
+			expect(content).toContain("second message");
+		});
+	});
 
-    // Test with empty string
-    process.env.LOG_FILE = '';
-    write('should not log');
-    
-    for (const file of defaultFiles) {
-      const logPath = path.join(process.cwd(), file);
-      expect(fs.existsSync(logPath)).toBe(false);
-    }
-  });
+	it("respects custom LOG_FILE path", () => {
+		const customPath = path.join(testDir, "custom.log");
+		process.env.LOG_FILE = customPath;
 
-  it('closes file descriptors on exit', () => {
-    process.env.LOG_FILE = 'true';
-    
-    write('test cleanup');
-    // Get open file descriptors before close
-    const beforeFds = fs.readdirSync('/proc/self/fd').length;
-    
-    close();
-    
-    // Get open file descriptors after close
-    const afterFds = fs.readdirSync('/proc/self/fd').length;
-    expect(afterFds).toBeLessThan(beforeFds);
+		write("custom path test");
 
-    // Verify we can write again after closing
-    write('test reopen');
-    for (const file of defaultFiles) {
-      const logPath = path.join(process.cwd(), file);
-      const content = fs.readFileSync(logPath, 'utf8');
-      expect(content).toContain('test reopen');
-    }
-  });
+		expect(fs.existsSync(customPath)).toBe(true);
+		const content = fs.readFileSync(customPath, "utf8");
+		expect(content).toContain("custom path test");
+	});
+
+	it("disables logging when LOG_FILE is false/0/empty", () => {
+		// Test with false
+		process.env.LOG_FILE = "false";
+		write("should not log");
+
+		for (const file of defaultFiles) {
+			const logPath = path.join(process.cwd(), file);
+			expect(fs.existsSync(logPath)).toBe(false);
+		}
+
+		// Test with 0
+		process.env.LOG_FILE = "0";
+		write("should not log");
+
+		for (const file of defaultFiles) {
+			const logPath = path.join(process.cwd(), file);
+			expect(fs.existsSync(logPath)).toBe(false);
+		}
+
+		// Test with empty string
+		process.env.LOG_FILE = "";
+		write("should not log");
+
+		for (const file of defaultFiles) {
+			const logPath = path.join(process.cwd(), file);
+			expect(fs.existsSync(logPath)).toBe(false);
+		}
+	});
+
+	it("closes file descriptors on exit", () => {
+		process.env.LOG_FILE = "true";
+
+		write("test cleanup");
+		// Get open file descriptors before close
+		const beforeFds = fs.readdirSync("/proc/self/fd").length;
+
+		close();
+
+		// Get open file descriptors after close
+		const afterFds = fs.readdirSync("/proc/self/fd").length;
+		expect(afterFds).toBeLessThan(beforeFds);
+
+		// Verify we can write again after closing
+		write("test reopen");
+		for (const file of defaultFiles) {
+			const logPath = path.join(process.cwd(), file);
+			const content = fs.readFileSync(logPath, "utf8");
+			expect(content).toContain("test reopen");
+		}
+	});
 });

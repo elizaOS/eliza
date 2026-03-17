@@ -16,7 +16,7 @@ export type BufferLike = Buffer | Uint8Array;
  * Check if we're in a Node.js environment with Buffer support
  */
 function hasNativeBuffer(): boolean {
-  return typeof Buffer !== "undefined" && typeof Buffer.from === "function";
+	return typeof Buffer !== "undefined" && typeof Buffer.from === "function";
 }
 
 /**
@@ -25,19 +25,19 @@ function hasNativeBuffer(): boolean {
  * @returns A BufferLike object
  */
 export function fromHex(hex: string): BufferLike {
-  // Clean the hex string to remove non-hex characters
-  const cleanHex = hex.replace(/[^0-9a-fA-F]/g, "");
+	// Clean the hex string to remove non-hex characters
+	const cleanHex = hex.replace(/[^0-9a-fA-F]/g, "");
 
-  if (hasNativeBuffer()) {
-    return Buffer.from(cleanHex, "hex");
-  }
+	if (hasNativeBuffer()) {
+		return Buffer.from(cleanHex, "hex");
+	}
 
-  // Browser implementation using Uint8Array
-  const bytes = new Uint8Array(cleanHex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(cleanHex.substr(i * 2, 2), 16);
-  }
-  return bytes;
+	// Browser implementation using Uint8Array
+	const bytes = new Uint8Array(cleanHex.length / 2);
+	for (let i = 0; i < bytes.length; i++) {
+		bytes[i] = parseInt(cleanHex.substr(i * 2, 2), 16);
+	}
+	return bytes;
 }
 
 /**
@@ -47,26 +47,26 @@ export function fromHex(hex: string): BufferLike {
  * @returns A BufferLike object
  */
 export function fromString(
-  str: string,
-  encoding: "utf8" | "utf-8" | "base64" = "utf8",
+	str: string,
+	encoding: "utf8" | "utf-8" | "base64" = "utf8",
 ): BufferLike {
-  if (hasNativeBuffer()) {
-    const enc = encoding === "utf-8" ? "utf8" : encoding;
-    return Buffer.from(str, enc as BufferEncoding);
-  }
+	if (hasNativeBuffer()) {
+		const enc = encoding === "utf-8" ? "utf8" : encoding;
+		return Buffer.from(str, enc as BufferEncoding);
+	}
 
-  // Browser implementation
-  if (encoding === "base64") {
-    const binaryString = atob(str);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-  }
+	// Browser implementation
+	if (encoding === "base64") {
+		const binaryString = atob(str);
+		const bytes = new Uint8Array(binaryString.length);
+		for (let i = 0; i < binaryString.length; i++) {
+			bytes[i] = binaryString.charCodeAt(i);
+		}
+		return bytes;
+	}
 
-  // UTF-8 encoding using TextEncoder (standard browser API)
-  return new TextEncoder().encode(str);
+	// UTF-8 encoding using TextEncoder (standard browser API)
+	return new TextEncoder().encode(str);
 }
 
 /**
@@ -75,17 +75,17 @@ export function fromString(
  * @returns A hexadecimal string
  */
 export function toHex(buffer: BufferLike): string {
-  if (hasNativeBuffer() && Buffer.isBuffer(buffer)) {
-    return buffer.toString("hex");
-  }
+	if (hasNativeBuffer() && Buffer.isBuffer(buffer)) {
+		return buffer.toString("hex");
+	}
 
-  // Browser implementation - buffer is already Uint8Array compatible
-  const hexParts = new Array<string>(buffer.length);
-  for (let i = 0; i < buffer.length; i++) {
-    const byte = buffer[i].toString(16);
-    hexParts[i] = byte.length === 1 ? `0${byte}` : byte;
-  }
-  return hexParts.join("");
+	// Browser implementation - buffer is already Uint8Array compatible
+	const hexParts = new Array<string>(buffer.length);
+	for (let i = 0; i < buffer.length; i++) {
+		const byte = buffer[i].toString(16);
+		hexParts[i] = byte.length === 1 ? `0${byte}` : byte;
+	}
+	return hexParts.join("");
 }
 
 /**
@@ -95,28 +95,28 @@ export function toHex(buffer: BufferLike): string {
  * @returns A string
  */
 export function bufferToString(
-  buffer: BufferLike,
-  encoding: "utf8" | "utf-8" | "base64" | "hex" = "utf8",
+	buffer: BufferLike,
+	encoding: "utf8" | "utf-8" | "base64" | "hex" = "utf8",
 ): string {
-  if (hasNativeBuffer() && Buffer.isBuffer(buffer)) {
-    const enc = encoding === "utf-8" ? "utf8" : encoding;
-    return buffer.toString(enc as BufferEncoding);
-  }
+	if (hasNativeBuffer() && Buffer.isBuffer(buffer)) {
+		const enc = encoding === "utf-8" ? "utf8" : encoding;
+		return buffer.toString(enc as BufferEncoding);
+	}
 
-  if (encoding === "hex") {
-    return toHex(buffer);
-  }
+	if (encoding === "hex") {
+		return toHex(buffer);
+	}
 
-  if (encoding === "base64") {
-    const chars = new Array<string>(buffer.length);
-    for (let i = 0; i < buffer.length; i++) {
-      chars[i] = String.fromCharCode(buffer[i]);
-    }
-    return btoa(chars.join(""));
-  }
+	if (encoding === "base64") {
+		const chars = new Array<string>(buffer.length);
+		for (let i = 0; i < buffer.length; i++) {
+			chars[i] = String.fromCharCode(buffer[i]);
+		}
+		return btoa(chars.join(""));
+	}
 
-  // UTF-8 decoding using TextDecoder (standard browser API)
-  return new TextDecoder().decode(buffer);
+	// UTF-8 decoding using TextDecoder (standard browser API)
+	return new TextDecoder().decode(buffer);
 }
 
 /**
@@ -125,17 +125,17 @@ export function bufferToString(
  * @returns True if the object is buffer-like
  */
 export function isBuffer(obj: unknown): obj is BufferLike {
-  if (obj === null || obj === undefined) {
-    return false;
-  }
+	if (obj === null || obj === undefined) {
+		return false;
+	}
 
-  // Check for Node.js Buffer
-  if (hasNativeBuffer() && Buffer.isBuffer(obj)) {
-    return true;
-  }
+	// Check for Node.js Buffer
+	if (hasNativeBuffer() && Buffer.isBuffer(obj)) {
+		return true;
+	}
 
-  // Check for Uint8Array (includes Buffer since Buffer extends Uint8Array)
-  return obj instanceof Uint8Array;
+	// Check for Uint8Array (includes Buffer since Buffer extends Uint8Array)
+	return obj instanceof Uint8Array;
 }
 
 /**
@@ -144,10 +144,10 @@ export function isBuffer(obj: unknown): obj is BufferLike {
  * @returns A BufferLike object
  */
 export function alloc(size: number): BufferLike {
-  if (hasNativeBuffer()) {
-    return Buffer.alloc(size);
-  }
-  return new Uint8Array(size);
+	if (hasNativeBuffer()) {
+		return Buffer.alloc(size);
+	}
+	return new Uint8Array(size);
 }
 
 /**
@@ -156,10 +156,10 @@ export function alloc(size: number): BufferLike {
  * @returns A BufferLike object
  */
 export function fromBytes(bytes: number[] | Uint8Array): BufferLike {
-  if (hasNativeBuffer()) {
-    return Buffer.from(bytes);
-  }
-  return new Uint8Array(bytes);
+	if (hasNativeBuffer()) {
+		return Buffer.from(bytes);
+	}
+	return new Uint8Array(bytes);
 }
 
 /**
@@ -168,25 +168,25 @@ export function fromBytes(bytes: number[] | Uint8Array): BufferLike {
  * @returns A new BufferLike object
  */
 export function concat(buffers: BufferLike[]): BufferLike {
-  if (hasNativeBuffer() && buffers.every((b) => Buffer.isBuffer(b))) {
-    return Buffer.concat(buffers as Buffer[]);
-  }
+	if (hasNativeBuffer() && buffers.every((b) => Buffer.isBuffer(b))) {
+		return Buffer.concat(buffers as Buffer[]);
+	}
 
-  // Calculate total length
-  let totalLength = 0;
-  for (const buffer of buffers) {
-    totalLength += buffer.length;
-  }
+	// Calculate total length
+	let totalLength = 0;
+	for (const buffer of buffers) {
+		totalLength += buffer.length;
+	}
 
-  // Create result buffer and copy data
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const buffer of buffers) {
-    result.set(buffer, offset);
-    offset += buffer.length;
-  }
+	// Create result buffer and copy data
+	const result = new Uint8Array(totalLength);
+	let offset = 0;
+	for (const buffer of buffers) {
+		result.set(buffer, offset);
+		offset += buffer.length;
+	}
 
-  return result;
+	return result;
 }
 
 /**
@@ -197,14 +197,14 @@ export function concat(buffers: BufferLike[]): BufferLike {
  * @returns A new BufferLike object
  */
 export function slice(
-  buffer: BufferLike,
-  start: number,
-  end?: number,
+	buffer: BufferLike,
+	start: number,
+	end?: number,
 ): BufferLike {
-  if (hasNativeBuffer() && Buffer.isBuffer(buffer)) {
-    return buffer.slice(start, end);
-  }
-  return buffer.slice(start, end);
+	if (hasNativeBuffer() && Buffer.isBuffer(buffer)) {
+		return buffer.slice(start, end);
+	}
+	return buffer.slice(start, end);
 }
 
 /**
@@ -214,17 +214,17 @@ export function slice(
  * @returns True if buffers are equal
  */
 export function equals(a: BufferLike, b: BufferLike): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
+	if (a.length !== b.length) {
+		return false;
+	}
 
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) {
-      return false;
-    }
-  }
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] !== b[i]) {
+			return false;
+		}
+	}
 
-  return true;
+	return true;
 }
 
 /**
@@ -233,7 +233,7 @@ export function equals(a: BufferLike, b: BufferLike): boolean {
  * @returns The byte length
  */
 export function byteLength(buffer: BufferLike): number {
-  return buffer.length;
+	return buffer.length;
 }
 
 /**
@@ -243,38 +243,38 @@ export function byteLength(buffer: BufferLike): number {
  * @throws Error if no cryptographic random source is available
  */
 export function randomBytes(size: number): BufferLike {
-  const bytes = new Uint8Array(size);
+	const bytes = new Uint8Array(size);
 
-  // Use globalThis.crypto which is available in modern Node.js (>=18) and all browsers
-  const cryptoObj = globalThis.crypto;
+	// Use globalThis.crypto which is available in modern Node.js (>=18) and all browsers
+	const cryptoObj = globalThis.crypto;
 
-  if (cryptoObj && typeof cryptoObj.getRandomValues === "function") {
-    cryptoObj.getRandomValues(bytes);
-    return bytes;
-  }
+	if (cryptoObj && typeof cryptoObj.getRandomValues === "function") {
+		cryptoObj.getRandomValues(bytes);
+		return bytes;
+	}
 
-  // No secure random source available - throw instead of using insecure fallback
-  throw new Error(
-    "No cryptographically secure random source available. " +
-      "Ensure you are running in a modern browser or Node.js >= 18.",
-  );
+	// No secure random source available - throw instead of using insecure fallback
+	throw new Error(
+		"No cryptographically secure random source available. " +
+			"Ensure you are running in a modern browser or Node.js >= 18.",
+	);
 }
 
 // Export a namespace-like object for compatibility
 export const BufferUtils = {
-  fromHex,
-  fromString,
-  fromBytes,
-  toHex,
-  bufferToString,
-  toString: bufferToString,
-  isBuffer,
-  alloc,
-  concat,
-  slice,
-  equals,
-  byteLength,
-  randomBytes,
+	fromHex,
+	fromString,
+	fromBytes,
+	toHex,
+	bufferToString,
+	toString: bufferToString,
+	isBuffer,
+	alloc,
+	concat,
+	slice,
+	equals,
+	byteLength,
+	randomBytes,
 };
 
 // Export type for use in other modules

@@ -62,6 +62,7 @@ def string_to_uuid(target: str | int | uuid_module.UUID) -> str:
 
     return str(uuid_module.UUID(bytes=bytes(b)))
 
+
 class ChannelType(str, Enum):
     SELF = "SELF"
     DM = "DM"
@@ -73,6 +74,7 @@ class ChannelType(str, Enum):
     WORLD = "WORLD"
     FORUM = "FORUM"
     API = "API"
+
 
 class ContentType(str, Enum):
     IMAGE = "image"

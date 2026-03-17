@@ -10,6 +10,12 @@
  * memory subsystem.
  */
 
+// Import advanced memory schemas
+import {
+	longTermMemories,
+	memoryAccessLogs,
+	sessionSummaries,
+} from "../advanced-memory/schemas/index.ts";
 import type { BuildTableFn, DialectAdapter } from "../types/schema-builder.ts";
 import { agentSchema } from "./agent.ts";
 import { cacheSchema } from "./cache.ts";
@@ -32,39 +38,32 @@ import { serverSchema } from "./server.ts";
 import { taskSchema } from "./task.ts";
 import { worldSchema } from "./world.ts";
 
-// Import advanced memory schemas
-import {
-  longTermMemories,
-  memoryAccessLogs,
-  sessionSummaries,
-} from "../advanced-memory/schemas/index.ts";
-
 // Export all abstract schemas
 export {
-  agentSchema,
-  cacheSchema,
-  channelSchema,
-  channelParticipantSchema,
-  componentSchema,
-  embeddingSchema,
-  entitySchema,
-  logSchema,
-  memorySchema,
-  messageSchema,
-  messageServerSchema,
-  messageServerAgentSchema,
-  pairingAllowlistSchema,
-  pairingRequestSchema,
-  participantSchema,
-  relationshipSchema,
-  roomSchema,
-  serverSchema,
-  taskSchema,
-  worldSchema,
-  // Advanced memory schemas
-  longTermMemories,
-  memoryAccessLogs,
-  sessionSummaries,
+	agentSchema,
+	cacheSchema,
+	channelSchema,
+	channelParticipantSchema,
+	componentSchema,
+	embeddingSchema,
+	entitySchema,
+	logSchema,
+	memorySchema,
+	messageSchema,
+	messageServerSchema,
+	messageServerAgentSchema,
+	pairingAllowlistSchema,
+	pairingRequestSchema,
+	participantSchema,
+	relationshipSchema,
+	roomSchema,
+	serverSchema,
+	taskSchema,
+	worldSchema,
+	// Advanced memory schemas
+	longTermMemories,
+	memoryAccessLogs,
+	sessionSummaries,
 };
 
 /**
@@ -72,26 +71,26 @@ export {
  * Represents all 20 core database tables as ORM table objects.
  */
 export interface BaseTables {
-  agent: any;
-  cache: any;
-  channel: any;
-  channelParticipant: any;
-  component: any;
-  embedding: any;
-  entity: any;
-  log: any;
-  memory: any;
-  message: any;
-  messageServer: any;
-  messageServerAgent: any;
-  pairingAllowlist: any;
-  pairingRequest: any;
-  participant: any;
-  relationship: any;
-  room: any;
-  server: any;
-  task: any;
-  world: any;
+	agent: any;
+	cache: any;
+	channel: any;
+	channelParticipant: any;
+	component: any;
+	embedding: any;
+	entity: any;
+	log: any;
+	memory: any;
+	message: any;
+	messageServer: any;
+	messageServerAgent: any;
+	pairingAllowlist: any;
+	pairingRequest: any;
+	participant: any;
+	relationship: any;
+	room: any;
+	server: any;
+	task: any;
+	world: any;
 }
 
 /**
@@ -107,27 +106,30 @@ export interface BaseTables {
  * @param adapter - The dialect-specific adapter (pgAdapter or mysqlAdapter).
  * @returns An object with all 20 tables, keyed by camelCase name.
  */
-export function buildBaseTables(buildTable: BuildTableFn, adapter: DialectAdapter): BaseTables {
-  return {
-    agent: buildTable(agentSchema, adapter),
-    cache: buildTable(cacheSchema, adapter),
-    channel: buildTable(channelSchema, adapter),
-    channelParticipant: buildTable(channelParticipantSchema, adapter),
-    component: buildTable(componentSchema, adapter),
-    embedding: buildTable(embeddingSchema, adapter),
-    entity: buildTable(entitySchema, adapter),
-    log: buildTable(logSchema, adapter),
-    memory: buildTable(memorySchema, adapter),
-    message: buildTable(messageSchema, adapter),
-    messageServer: buildTable(messageServerSchema, adapter),
-    messageServerAgent: buildTable(messageServerAgentSchema, adapter),
-    pairingAllowlist: buildTable(pairingAllowlistSchema, adapter),
-    pairingRequest: buildTable(pairingRequestSchema, adapter),
-    participant: buildTable(participantSchema, adapter),
-    relationship: buildTable(relationshipSchema, adapter),
-    room: buildTable(roomSchema, adapter),
-    server: buildTable(serverSchema, adapter),
-    task: buildTable(taskSchema, adapter),
-    world: buildTable(worldSchema, adapter),
-  };
+export function buildBaseTables(
+	buildTable: BuildTableFn,
+	adapter: DialectAdapter,
+): BaseTables {
+	return {
+		agent: buildTable(agentSchema, adapter),
+		cache: buildTable(cacheSchema, adapter),
+		channel: buildTable(channelSchema, adapter),
+		channelParticipant: buildTable(channelParticipantSchema, adapter),
+		component: buildTable(componentSchema, adapter),
+		embedding: buildTable(embeddingSchema, adapter),
+		entity: buildTable(entitySchema, adapter),
+		log: buildTable(logSchema, adapter),
+		memory: buildTable(memorySchema, adapter),
+		message: buildTable(messageSchema, adapter),
+		messageServer: buildTable(messageServerSchema, adapter),
+		messageServerAgent: buildTable(messageServerAgentSchema, adapter),
+		pairingAllowlist: buildTable(pairingAllowlistSchema, adapter),
+		pairingRequest: buildTable(pairingRequestSchema, adapter),
+		participant: buildTable(participantSchema, adapter),
+		relationship: buildTable(relationshipSchema, adapter),
+		room: buildTable(roomSchema, adapter),
+		server: buildTable(serverSchema, adapter),
+		task: buildTable(taskSchema, adapter),
+		world: buildTable(worldSchema, adapter),
+	};
 }
