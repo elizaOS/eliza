@@ -1017,7 +1017,7 @@
     },
     "packages/app-core": {
       "name": "@elizaos/app-core",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@capacitor/core": "8.0.2",
         "@capacitor/haptics": "8.0.0",
@@ -1046,7 +1046,7 @@
     },
     "packages/autonomous": {
       "name": "@elizaos/autonomous",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "bin": {
         "eliza-autonomous": "./src/bin.ts",
       },
@@ -1185,7 +1185,7 @@
     },
     "packages/daemon": {
       "name": "@elizaos/daemon",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "devDependencies": {
         "@biomejs/biome": "^1.9.4",
         "@types/node": "^22.10.2",
@@ -1199,7 +1199,7 @@
     },
     "packages/elizaos": {
       "name": "elizaos",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "bin": {
         "elizaos": "./dist/cli.js",
       },
@@ -1215,7 +1215,7 @@
     },
     "packages/interop": {
       "name": "@elizaos/interop",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -1226,7 +1226,7 @@
     },
     "packages/prompts": {
       "name": "@elizaos/prompts",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
     },
     "packages/python": {
       "name": "@elizaos/python",
@@ -1234,25 +1234,25 @@
     },
     "packages/rust": {
       "name": "@elizaos/rust",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
     },
     "packages/schemas": {
       "name": "@elizaos/schemas",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "devDependencies": {
         "@bufbuild/buf": "^1.47.2",
       },
     },
     "packages/skills": {
       "name": "@elizaos/skills",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "yaml": "^2.8.2",
       },
     },
     "packages/sweagent": {
       "name": "@elizaos/sweagent-root",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "axios": "^1.7.0",
         "chalk": "^5.3.0",
@@ -1276,7 +1276,7 @@
     },
     "packages/training": {
       "name": "@elizaos/training",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@huggingface/hub": "^2.6.12",
         "@vercel/blob": "^0.27.1",
@@ -1291,7 +1291,7 @@
     },
     "packages/tui": {
       "name": "@elizaos/tui",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@types/mime-types": "^2.1.4",
         "chalk": "^5.5.0",
@@ -1306,7 +1306,7 @@
     },
     "packages/typescript": {
       "name": "@elizaos/core",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.32.1",
         "@bufbuild/protobuf": "^2.11.0",
@@ -1346,7 +1346,7 @@
     },
     "packages/ui": {
       "name": "@elizaos/ui",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@radix-ui/react-checkbox": "^1.3.3",
         "@radix-ui/react-dialog": "^1.1.15",
@@ -1434,7 +1434,7 @@
     },
     "plugins/plugin-agent-orchestrator/typescript": {
       "name": "@elizaos/plugin-agent-orchestrator",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "uuid": "^13.0.0",
       },
@@ -1448,7 +1448,7 @@
     },
     "plugins/plugin-agent-skills/typescript": {
       "name": "@elizaos/plugin-agent-skills",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "fflate": "^0.8.2",
@@ -1475,7 +1475,7 @@
     },
     "plugins/plugin-anthropic/typescript": {
       "name": "@elizaos/plugin-anthropic",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.9",
         "@elizaos/core": "workspace:*",
@@ -1499,7 +1499,7 @@
     },
     "plugins/plugin-auto-trader/typescript": {
       "name": "@elizaos/plugin-auto-trader",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-solana": "workspace:*",
@@ -1546,7 +1546,7 @@
     },
     "plugins/plugin-blooio/typescript": {
       "name": "@elizaos/plugin-blooio",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "body-parser": "^1.20.2",
         "express": "^4.18.2",
@@ -1574,7 +1574,7 @@
     },
     "plugins/plugin-bluebubbles/typescript": {
       "name": "@elizaos/plugin-bluebubbles-typescript",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "zod": "^4.3.6",
@@ -1606,7 +1606,7 @@
     },
     "plugins/plugin-bluesky/typescript": {
       "name": "@elizaos/plugin-bluesky",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@atproto/api": "^0.13.14",
         "@atproto/identity": "^0.4.4",
@@ -1641,7 +1641,7 @@
     },
     "plugins/plugin-browser/typescript": {
       "name": "@elizaos/plugin-browser",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/plugin-cli": "workspace:*",
         "axios": "^1.7.7",
@@ -1690,7 +1690,7 @@
     },
     "plugins/plugin-code/typescript": {
       "name": "@elizaos/plugin-code",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-shell": "workspace:*",
@@ -1705,7 +1705,7 @@
     },
     "plugins/plugin-commands/typescript": {
       "name": "@elizaos/plugin-commands",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -1732,7 +1732,7 @@
     },
     "plugins/plugin-computeruse/typescript": {
       "name": "@elizaos/plugin-computeruse",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.21.0",
         "zod": "^4.3.6",
@@ -1766,7 +1766,7 @@
     },
     "plugins/plugin-copilot-proxy/typescript": {
       "name": "@elizaos/plugin-copilot-proxy",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@ai-sdk/openai-compatible": "^0.2.0",
         "ai": "^6.0.116",
@@ -1804,7 +1804,7 @@
     },
     "plugins/plugin-directives/typescript": {
       "name": "@elizaos/plugin-directives",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -1845,7 +1845,7 @@
     },
     "plugins/plugin-discord/typescript": {
       "name": "@elizaos/plugin-discord",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@discordjs/opus": "^0.10.0",
         "@discordjs/rest": "2.4.3",
@@ -1873,7 +1873,7 @@
     },
     "plugins/plugin-edge-tts/typescript": {
       "name": "@elizaos/plugin-edge-tts",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "node-edge-tts": "^1.0.7",
@@ -1901,7 +1901,7 @@
     },
     "plugins/plugin-elevenlabs/typescript": {
       "name": "@elizaos/plugin-elevenlabs",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elevenlabs/elevenlabs-js": "^2.16.0",
         "@elizaos/core": "workspace:*",
@@ -1930,7 +1930,7 @@
     },
     "plugins/plugin-eliza-classic/typescript": {
       "name": "@elizaos/plugin-eliza-classic",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -1955,7 +1955,7 @@
     },
     "plugins/plugin-elizacloud/typescript": {
       "name": "@elizaos/plugin-elizacloud",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@ai-sdk/openai": "^3.0.9",
         "@elizaos/core": "workspace:*",
@@ -1997,7 +1997,7 @@
     },
     "plugins/plugin-evm/typescript": {
       "name": "@elizaos/plugin-evm",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@lifi/data-types": "5.15.5",
@@ -2029,7 +2029,7 @@
     },
     "plugins/plugin-experience/typescript": {
       "name": "@elizaos/plugin-experience",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "uuid": "^13.0.0",
@@ -2057,7 +2057,7 @@
     },
     "plugins/plugin-farcaster/typescript": {
       "name": "@elizaos/plugin-farcaster",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@neynar/nodejs-sdk": "^3.34.0",
@@ -2089,7 +2089,7 @@
     },
     "plugins/plugin-feishu/typescript": {
       "name": "@elizaos/plugin-feishu",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@larksuiteoapi/node-sdk": "^1.40.0",
@@ -2117,7 +2117,7 @@
     },
     "plugins/plugin-form/typescript": {
       "name": "@elizaos/plugin-form",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "uuid": "^11.0.0",
       },
@@ -2145,7 +2145,7 @@
     },
     "plugins/plugin-github/typescript": {
       "name": "@elizaos/plugin-github",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@octokit/rest": "^21.0.0",
@@ -2191,7 +2191,7 @@
     },
     "plugins/plugin-goals/typescript": {
       "name": "@elizaos/plugin-goals",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@radix-ui/react-checkbox": "^1.1.4",
@@ -2253,7 +2253,7 @@
     },
     "plugins/plugin-google-genai/typescript": {
       "name": "@elizaos/plugin-google-genai",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@google/genai": "^1.5.1",
@@ -2281,7 +2281,7 @@
     },
     "plugins/plugin-groq/typescript": {
       "name": "@elizaos/plugin-groq",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@ai-sdk/groq": "^3.0.4",
         "@elizaos/core": "workspace:*",
@@ -2306,7 +2306,7 @@
     },
     "plugins/plugin-imessage/typescript": {
       "name": "@elizaos/plugin-imessage-typescript",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "zod": "^4.3.6",
@@ -2332,7 +2332,7 @@
     },
     "plugins/plugin-inmemorydb/typescript": {
       "name": "@elizaos/plugin-inmemorydb",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -2357,7 +2357,7 @@
     },
     "plugins/plugin-instagram/typescript": {
       "name": "@elizaos/plugin-instagram",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
@@ -2384,7 +2384,7 @@
     },
     "plugins/plugin-knowledge/typescript": {
       "name": "@elizaos/plugin-knowledge",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.13",
         "@ai-sdk/google": "^3.0.8",
@@ -2438,7 +2438,7 @@
     },
     "plugins/plugin-line/typescript": {
       "name": "@elizaos/plugin-line-typescript",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@line/bot-sdk": "^10.5.0",
@@ -2465,7 +2465,7 @@
     },
     "plugins/plugin-linear/typescript": {
       "name": "@elizaos/plugin-linear",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@linear/sdk": "^51.0.0",
@@ -2479,7 +2479,7 @@
     },
     "plugins/plugin-lobster/typescript": {
       "name": "@elizaos/plugin-lobster",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -2514,7 +2514,7 @@
     },
     "plugins/plugin-local-ai/typescript": {
       "name": "@elizaos/plugin-local-ai",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@huggingface/transformers": "^3.5.1",
@@ -2570,7 +2570,7 @@
     },
     "plugins/plugin-localdb/typescript": {
       "name": "@elizaos/plugin-localdb",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -2634,7 +2634,7 @@
     },
     "plugins/plugin-matrix/typescript": {
       "name": "@elizaos/plugin-matrix-typescript",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "matrix-js-sdk": "^41.1.0",
         "zod": "^4.3.6",
@@ -2663,7 +2663,7 @@
     },
     "plugins/plugin-mattermost/typescript": {
       "name": "@elizaos/plugin-mattermost",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "ws": "^8.18.0",
         "zod": "^4.3.6",
@@ -2696,7 +2696,7 @@
     },
     "plugins/plugin-mcp/typescript": {
       "name": "@elizaos/plugin-mcp",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.7.0",
@@ -2714,7 +2714,7 @@
     },
     "plugins/plugin-memory/typescript": {
       "name": "@elizaos/plugin-memory",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -2740,7 +2740,7 @@
     },
     "plugins/plugin-minecraft/typescript": {
       "name": "@elizaos/plugin-minecraft",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "ws": "^8.18.0",
         "zod": "^4.3.6",
@@ -2785,7 +2785,7 @@
     },
     "plugins/plugin-msteams/typescript": {
       "name": "@elizaos/plugin-msteams",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@microsoft/microsoft-graph-client": "^3.0.7",
         "botbuilder": "^4.23.0",
@@ -2811,7 +2811,7 @@
     },
     "plugins/plugin-n8n/typescript": {
       "name": "@elizaos/plugin-n8n",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "drizzle-orm": "^0.45.1",
@@ -2847,7 +2847,7 @@
     },
     "plugins/plugin-nextcloud-talk/typescript": {
       "name": "@elizaos/plugin-nextcloud-talk",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "zod": "^4.3.6",
       },
@@ -2903,7 +2903,7 @@
     },
     "plugins/plugin-ollama/typescript": {
       "name": "@elizaos/plugin-ollama",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@ai-sdk/ui-utils": "^1.2.8",
         "@elizaos/core": "workspace:*",
@@ -2932,7 +2932,7 @@
     },
     "plugins/plugin-openai/typescript": {
       "name": "@elizaos/plugin-openai",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@ai-sdk/openai": "^3.0.9",
         "@elizaos/core": "workspace:*",
@@ -2965,7 +2965,7 @@
     },
     "plugins/plugin-openrouter/typescript": {
       "name": "@elizaos/plugin-openrouter",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@ai-sdk/openai": "^3.0.9",
         "@ai-sdk/ui-utils": "^1.2.8",
@@ -3000,7 +3000,7 @@
     },
     "plugins/plugin-pdf/typescript": {
       "name": "@elizaos/plugin-pdf",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "pdfjs-dist": "4.2.67",
@@ -3029,7 +3029,7 @@
     },
     "plugins/plugin-personality/typescript": {
       "name": "@elizaos/plugin-personality",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "fs-extra": "^11.2.0",
@@ -3044,7 +3044,7 @@
     },
     "plugins/plugin-planning/typescript": {
       "name": "@elizaos/plugin-planning",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -3098,7 +3098,7 @@
     },
     "plugins/plugin-polymarket/typescript": {
       "name": "@elizaos/plugin-polymarket",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-evm": "workspace:*",
@@ -3120,7 +3120,7 @@
     },
     "plugins/plugin-prose/typescript": {
       "name": "@elizaos/plugin-prose",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -3141,7 +3141,7 @@
     },
     "plugins/plugin-rlm/typescript": {
       "name": "@elizaos/plugin-rlm",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -3171,7 +3171,7 @@
     },
     "plugins/plugin-roblox/typescript": {
       "name": "@elizaos/plugin-roblox",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "typescript": "^5.9.3",
@@ -3217,7 +3217,7 @@
     },
     "plugins/plugin-rss/typescript": {
       "name": "@elizaos/plugin-rss",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -3243,7 +3243,7 @@
     },
     "plugins/plugin-s3-storage/typescript": {
       "name": "@elizaos/plugin-s3-storage",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.705.0",
         "@aws-sdk/s3-request-presigner": "^3.705.0",
@@ -3275,7 +3275,7 @@
     },
     "plugins/plugin-scheduling/typescript": {
       "name": "@elizaos/plugin-scheduling",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "ical-generator": "8.0.0",
         "uuid": "11.0.5",
@@ -3292,7 +3292,7 @@
     },
     "plugins/plugin-scratchpad/typescript": {
       "name": "@elizaos/plugin-scratchpad",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -3330,7 +3330,7 @@
     },
     "plugins/plugin-secrets-manager/typescript": {
       "name": "@elizaos/plugin-secrets-manager",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "zod": "^4.3.6",
@@ -3356,7 +3356,7 @@
     },
     "plugins/plugin-shell/typescript": {
       "name": "@elizaos/plugin-shell",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "cross-spawn": "^7.0.6",
@@ -3392,7 +3392,7 @@
     },
     "plugins/plugin-signal/typescript": {
       "name": "@elizaos/plugin-signal",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "zod": "^4.3.6",
@@ -3421,7 +3421,7 @@
     },
     "plugins/plugin-simple-voice/typescript": {
       "name": "@elizaos/plugin-simple-voice",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "sam-js": "^0.3.1",
@@ -3457,7 +3457,7 @@
     },
     "plugins/plugin-slack/typescript": {
       "name": "@elizaos/plugin-slack",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@slack/bolt": "^4.1.0",
@@ -3488,7 +3488,7 @@
     },
     "plugins/plugin-solana/typescript": {
       "name": "@elizaos/plugin-solana",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@solana/spl-token": "0.4.14",
         "@solana/spl-token-metadata": "^0.1.6",
@@ -3525,7 +3525,7 @@
     },
     "plugins/plugin-sql/typescript": {
       "name": "@elizaos/plugin-sql",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@electric-sql/pglite": "^0.3.3",
         "@elizaos/core": "workspace:*",
@@ -3564,7 +3564,7 @@
     },
     "plugins/plugin-tee/typescript": {
       "name": "@elizaos/plugin-tee",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@phala/dstack-sdk": "0.1.11",
@@ -3594,7 +3594,7 @@
     },
     "plugins/plugin-telegram/typescript": {
       "name": "@elizaos/plugin-telegram",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@telegraf/types": "7.1.0",
@@ -3625,7 +3625,7 @@
     },
     "plugins/plugin-tlon/typescript": {
       "name": "@elizaos/plugin-tlon",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "zod": "^4.3.6",
       },
@@ -3658,7 +3658,7 @@
     },
     "plugins/plugin-todo/typescript": {
       "name": "@elizaos/plugin-todo",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "drizzle-orm": "^0.30.10",
@@ -3691,7 +3691,7 @@
     },
     "plugins/plugin-trajectory-logger/typescript": {
       "name": "@elizaos/plugin-trajectory-logger",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "uuid": "^13.0.0",
@@ -3721,7 +3721,7 @@
     },
     "plugins/plugin-tts/typescript": {
       "name": "@elizaos/plugin-tts",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -3763,7 +3763,7 @@
     },
     "plugins/plugin-twilio/typescript": {
       "name": "@elizaos/plugin-twilio",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "axios": "^1.6.5",
         "body-parser": "^1.20.2",
@@ -3806,7 +3806,7 @@
     },
     "plugins/plugin-twitch/typescript": {
       "name": "@elizaos/plugin-twitch-typescript",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@twurple/auth": "^7.2.0",
         "@twurple/chat": "^7.2.0",
@@ -3835,7 +3835,7 @@
     },
     "plugins/plugin-vercel-ai-gateway/typescript": {
       "name": "@elizaos/plugin-vercel-ai-gateway",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -3862,7 +3862,7 @@
     },
     "plugins/plugin-vision/typescript": {
       "name": "@elizaos/plugin-vision",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@tensorflow-models/coco-ssd": "^2.2.3",
@@ -3922,7 +3922,7 @@
     },
     "plugins/plugin-whatsapp/typescript": {
       "name": "@elizaos/plugin-whatsapp",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "axios": "1.13.5",
       },
@@ -3950,7 +3950,7 @@
     },
     "plugins/plugin-xai/typescript": {
       "name": "@elizaos/plugin-xai",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "twitter-api-v2": "^1.28.0",
@@ -3981,7 +3981,7 @@
     },
     "plugins/plugin-zalo/typescript": {
       "name": "@elizaos/plugin-zalo",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
@@ -4009,7 +4009,7 @@
     },
     "plugins/plugin-zalouser/typescript": {
       "name": "@elizaos/plugin-zalouser",
-      "version": "2.0.0-alpha.7",
+      "version": "2.0.0-alpha.8",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
