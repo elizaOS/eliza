@@ -12,10 +12,8 @@ interface CoordinationLLMResponse {
 
 /** Console bridge exposed by PTYService for terminal I/O. */
 export interface ConsoleBridge {
-  // biome-ignore lint/suspicious/noExplicitAny: EventEmitter-style listener signature
-  on(event: string, listener: (...args: any[]) => void): void;
-  // biome-ignore lint/suspicious/noExplicitAny: EventEmitter-style listener signature
-  off(event: string, listener: (...args: any[]) => void): void;
+  on(event: string, listener: (...args: unknown[]) => void): void;
+  off(event: string, listener: (...args: unknown[]) => void): void;
   writeRaw(sessionId: string, data: string): void;
   resize(sessionId: string, cols: number, rows: number): void;
 }

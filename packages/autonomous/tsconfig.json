@@ -9,11 +9,7 @@
     "declaration": false,
     "noEmit": true,
     "baseUrl": ".",
-    "paths": {
-      "@elizaos/app-hyperscape/routes": [
-        "./src/types/app-hyperscape-routes-shim.d.ts"
-      ]
-    }
+    "paths": {}
   },
   "include": ["src"]
 }

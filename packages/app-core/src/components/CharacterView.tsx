@@ -1359,6 +1359,9 @@ export function CharacterView({
                                             stroke="currentColor"
                                             strokeWidth="1.5"
                                             strokeLinecap="round"
+                                            aria-label={t(
+                                              "characterview.remove",
+                                            )}
                                           >
                                             <path d="M2 2l6 6M8 2l-6 6" />
                                           </svg>
@@ -1467,6 +1470,7 @@ export function CharacterView({
                                     stroke="currentColor"
                                     strokeWidth="1.5"
                                     strokeLinecap="round"
+                                    aria-label={t("characterview.remove")}
                                   >
                                     <path d="M2 2l6 6M8 2l-6 6" />
                                   </svg>
@@ -1582,6 +1586,7 @@ export function CharacterView({
                                     stroke="currentColor"
                                     strokeWidth="1.5"
                                     strokeLinecap="round"
+                                    aria-label={t("characterview.remove")}
                                   >
                                     <path d="M2 2l6 6M8 2l-6 6" />
                                   </svg>

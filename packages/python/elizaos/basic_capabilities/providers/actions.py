@@ -35,9 +35,9 @@ def _format_parameter_type(schema: ActionParameterSchema) -> str:
     return schema.type
 
 
-def _get_param_schema(param: ActionParameter) -> object:
+def _get_param_schema(param: ActionParameter) -> ActionParameterSchema | None:
     """Get schema from ActionParameter, handling both Pydantic and protobuf variants."""
-    return getattr(param, "schema_def", None) or getattr(param, "schema", None)
+    return getattr(param, "schema_def", None) or getattr(param, "schema", None)  # type: ignore[return-value]
 
 
 def _format_action_parameters(parameters: list[ActionParameter]) -> str:

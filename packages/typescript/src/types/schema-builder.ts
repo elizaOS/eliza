@@ -7,8 +7,6 @@
 
 import type { SchemaColumn, SchemaTable } from "./schema.ts";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 /**
  * Contract that a dialect-specific adapter must implement.
  *
@@ -20,21 +18,19 @@ export interface DialectAdapter {
 	/** Wrap columns + an optional constraint/index factory into a table object. */
 	createTable(
 		name: string,
-		columns: Record<string, any>,
-		constraintsFn?: (table: any) => any[],
-	): any;
+		columns: Record<string, unknown>,
+		constraintsFn?: (table: Record<string, unknown>) => unknown[],
+	): unknown;
 
 	/** Map one abstract SchemaColumn to a concrete column builder. */
-	buildColumn(col: SchemaColumn): any;
+	buildColumn(col: SchemaColumn): unknown;
 
 	/** Create an index builder that accepts column refs via .on(). */
-	buildIndex(name: string): { on: (...cols: any[]) => any };
+	buildIndex(name: string): { on: (...cols: unknown[]) => unknown };
 
 	/** Create a UNIQUE index builder. Falls back to buildIndex if not provided. */
-	buildUniqueIndex?(name: string): { on: (...cols: any[]) => any };
+	buildUniqueIndex?(name: string): { on: (...cols: unknown[]) => unknown };
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /**
  * Convert snake_case to camelCase.
@@ -55,4 +51,4 @@ export function snakeToCamel(s: string): string {
 export type BuildTableFn = (
 	schema: SchemaTable,
 	adapter: DialectAdapter,
-) => any;
+) => unknown;

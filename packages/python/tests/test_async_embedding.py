@@ -2,7 +2,7 @@ import unittest
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
-from elizaos.bootstrap.services.embedding import EmbeddingService
+from elizaos.basic_capabilities.services.embedding import EmbeddingService
 from elizaos.types import ModelType
 
 

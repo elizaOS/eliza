@@ -137,7 +137,7 @@ pub trait DatabaseAdapter: Send + Sync {
 
     /// Delete a single memory. Default: calls [delete_memories] with one ID.
     async fn delete_memory(&self, memory_id: &UUID) -> Result<()> {
-        self.delete_memories(&[memory_id.clone()]).await
+        self.delete_memories(std::slice::from_ref(memory_id)).await
     }
 
     /// Create a world
@@ -2476,10 +2476,8 @@ fn parse_xml_to_json(xml: &str) -> Option<serde_json::Value> {
             // If result is {"response": {...}}, unwrap the nested object
             // This handles cases where wrapper extraction didn't work (whitespace, etc.)
             if map.len() == 1 {
-                if let Some(inner) = map.get("response") {
-                    if let Value::Object(inner_map) = inner {
-                        return Some(Value::Object(inner_map.clone()));
-                    }
+                if let Some(Value::Object(inner_map)) = map.get("response") {
+                    return Some(Value::Object(inner_map.clone()));
                 }
             }
             Some(Value::Object(map))

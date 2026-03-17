@@ -8154,27 +8154,29 @@ async function handleRequest(
         examples: { name: string; content: { text: string } }[];
       };
       const raw = body.messageExamples as unknown[];
-      agent.messageExamples = raw.map((item): MessageExamplesEntry => {
+      agent.messageExamples = raw.map((item) => {
         if (
           item &&
           typeof item === "object" &&
           "examples" in (item as Record<string, unknown>)
         ) {
-          return item as MessageExamplesEntry;
+          const entry = item as MessageExamplesEntry;
+          return entry.examples.map((m) => ({
+            user: m.name,
+            content: m.content,
+          }));
         }
-        // Old format: [{user, content}, ...] → {examples: [{name, content}, ...]}
+        // Old format: [{user, content}, ...] — pass through as-is
         const arr = item as {
           user?: string;
           name?: string;
           content: { text: string };
         }[];
-        return {
-          examples: arr.map((m) => ({
-            name: m.name ?? m.user ?? "",
-            content: m.content,
-          })),
-        };
-      });
+        return arr.map((m) => ({
+          user: m.name ?? m.user ?? "",
+          content: m.content,
+        }));
+      }) as { user: string; content: { text: string } }[][];
     }
 
     // ── Theme preference ──────────────────────────────────────────────────
@@ -14680,18 +14682,18 @@ async function handleRequest(
     // Fallback to @elizaos/plugin-agent-orchestrator (npm)
     if (!handled) {
       try {
-        // biome-ignore lint/suspicious/noExplicitAny: legacy route handler may not exist in 2.x
-        const orchestratorPlugin: any = await import(
+        const orchestratorPlugin = (await import(
           "@elizaos/plugin-agent-orchestrator"
-        );
-        if (orchestratorPlugin.createCodingAgentRouteHandler) {
-          const coordinator = orchestratorPlugin.getCoordinator?.(
-            state.runtime,
-          );
-          const handler = orchestratorPlugin.createCodingAgentRouteHandler(
-            state.runtime,
-            coordinator,
-          );
+        )) as Record<string, unknown>;
+        const createHandler = orchestratorPlugin.createCodingAgentRouteHandler as
+          | ((runtime: unknown, coordinator: unknown) => (req: unknown, res: unknown, pathname: string) => Promise<boolean>)
+          | undefined;
+        if (createHandler) {
+          const getCoordinator = orchestratorPlugin.getCoordinator as
+            | ((runtime: unknown) => unknown)
+            | undefined;
+          const coordinator = getCoordinator?.(state.runtime);
+          const handler = createHandler(state.runtime, coordinator);
           handled = await handler(req, res, pathname);
         }
       } catch {
@@ -14790,7 +14792,7 @@ async function handleRequest(
 
     if (state.runtime) {
       try {
-        runtimeTasks = await state.runtime.getTasks({});
+        runtimeTasks = await state.runtime.getTasks({ agentIds: [] });
         tasksAvailable = true;
         todosAvailable = true;
 
@@ -14889,7 +14891,7 @@ async function handleRequest(
       error(res, "Agent runtime is not available", 503);
       return;
     }
-    const runtimeTasks = await state.runtime.getTasks({});
+    const runtimeTasks = await state.runtime.getTasks({ agentIds: [] });
     const tasks = runtimeTasks
       .map((task) => toWorkbenchTask(task))
       .filter((task): task is WorkbenchTaskView => task !== null)
@@ -15011,7 +15013,7 @@ async function handleRequest(
       error(res, "Agent runtime is not available", 503);
       return;
     }
-    const runtimeTasks = await state.runtime.getTasks({});
+    const runtimeTasks = await state.runtime.getTasks({ agentIds: [] });
     const todos = runtimeTasks
       .map((task) => toWorkbenchTodo(task))
       .filter((todo): todo is WorkbenchTodoView => todo !== null)
@@ -16252,53 +16254,53 @@ async function handleRequest(
   // ── LTCG Autonomy routes ─────────────────────────────────────────────
   // The LTCG plugin registers these as elizaOS plugin routes, but Milady's
   // server doesn't dispatch plugin routes. Wire them up directly here.
-  if (pathname.startsWith("/api/ltcg/autonomy")) {
-    try {
-      const { getAutonomyController } = await import("@lunchtable/plugin-ltcg");
-      const ctrl = getAutonomyController();
-
-      if (method === "GET" && pathname === "/api/ltcg/autonomy/status") {
-        json(res, ctrl.getStatus());
-        return;
-      }
-
-      if (method === "POST" && pathname === "/api/ltcg/autonomy/start") {
-        const body = (await readJsonBody(req, res)) ?? {};
-        const bodyRecord = body as Record<string, unknown>;
-        const mode = bodyRecord.mode === "pvp" ? "pvp" : "story";
-        const continuousValue = bodyRecord.continuous;
-        const continuous =
-          typeof continuousValue === "boolean" ? continuousValue : true;
-        await ctrl.start({ mode, continuous });
-        json(res, { ok: true, mode, continuous });
-        return;
-      }
-
-      if (method === "POST" && pathname === "/api/ltcg/autonomy/pause") {
-        ctrl.pause();
-        json(res, { ok: true, state: "paused" });
-        return;
-      }
-
-      if (method === "POST" && pathname === "/api/ltcg/autonomy/resume") {
-        ctrl.resume();
-        json(res, { ok: true, state: "running" });
-        return;
-      }
-
-      if (method === "POST" && pathname === "/api/ltcg/autonomy/stop") {
-        await ctrl.stop();
-        json(res, { ok: true, state: "idle" });
-        return;
-      }
-    } catch (err) {
-      logger.error(
-        `[ltcg-autonomy] ${err instanceof Error ? err.message : err}`,
-      );
-      error(res, err instanceof Error ? err.message : "Autonomy error", 500);
-      return;
-    }
-  }
+  // if (pathname.startsWith("/api/ltcg/autonomy")) {
+  //   try {
+  //     const { getAutonomyController } = await import("@lunchtable/plugin-ltcg");
+  //     const ctrl = getAutonomyController();
+  //
+  //     if (method === "GET" && pathname === "/api/ltcg/autonomy/status") {
+  //       json(res, ctrl.getStatus());
+  //       return;
+  //     }
+  //
+  //     if (method === "POST" && pathname === "/api/ltcg/autonomy/start") {
+  //       const body = (await readJsonBody(req, res)) ?? {};
+  //       const bodyRecord = body as Record<string, unknown>;
+  //       const mode = bodyRecord.mode === "pvp" ? "pvp" : "story";
+  //       const continuousValue = bodyRecord.continuous;
+  //       const continuous =
+  //         typeof continuousValue === "boolean" ? continuousValue : true;
+  //       await ctrl.start({ mode, continuous });
+  //       json(res, { ok: true, mode, continuous });
+  //       return;
+  //     }
+  //
+  //     if (method === "POST" && pathname === "/api/ltcg/autonomy/pause") {
+  //       ctrl.pause();
+  //       json(res, { ok: true, state: "paused" });
+  //       return;
+  //     }
+  //
+  //     if (method === "POST" && pathname === "/api/ltcg/autonomy/resume") {
+  //       ctrl.resume();
+  //       json(res, { ok: true, state: "running" });
+  //       return;
+  //     }
+  //
+  //     if (method === "POST" && pathname === "/api/ltcg/autonomy/stop") {
+  //       await ctrl.stop();
+  //       json(res, { ok: true, state: "idle" });
+  //       return;
+  //     }
+  //   } catch (err) {
+  //     logger.error(
+  //       `[ltcg-autonomy] ${err instanceof Error ? err.message : err}`,
+  //     );
+  //     error(res, err instanceof Error ? err.message : "Autonomy error", 500);
+  //     return;
+  //   }
+  // }
 
   // ── Connector plugin routes (dynamically registered) ────────────────────
   for (const handler of state.connectorRouteHandlers) {

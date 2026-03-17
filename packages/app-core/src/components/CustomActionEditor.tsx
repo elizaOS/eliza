@@ -989,15 +989,15 @@ export function CustomActionEditor({
                 {t("customactioneditor.AddParameter")}
               </button>
             </div>
-            {parameters.map((param, i) => (
+            {parameters.map((param, paramIdx) => (
               <div
-                key={`${param.name}-${i}`}
+                key={`${param.name}-${param.description ?? ""}`}
                 className="flex gap-2 items-start"
               >
                 <input
                   type="text"
                   value={param.name}
-                  onChange={(e) => updateParameter(i, "name", e.target.value)}
+                  onChange={(e) => updateParameter(paramIdx, "name", e.target.value)}
                   placeholder={t("customactioneditor.paramName")}
                   className="w-32 bg-surface border border-border px-2 py-1.5 text-sm text-txt placeholder:text-muted/50 outline-none focus:border-accent"
                 />
@@ -1005,7 +1005,7 @@ export function CustomActionEditor({
                   type="text"
                   value={param.description}
                   onChange={(e) =>
-                    updateParameter(i, "description", e.target.value)
+                    updateParameter(paramIdx, "description", e.target.value)
                   }
                   placeholder={t("skillsview.Description")}
                   className="flex-1 bg-surface border border-border px-2 py-1.5 text-sm text-txt placeholder:text-muted/50 outline-none focus:border-accent"
@@ -1015,7 +1015,7 @@ export function CustomActionEditor({
                     type="checkbox"
                     checked={param.required}
                     onChange={(e) =>
-                      updateParameter(i, "required", e.target.checked)
+                      updateParameter(paramIdx, "required", e.target.checked)
                     }
                     className="cursor-pointer"
                   />
@@ -1024,7 +1024,7 @@ export function CustomActionEditor({
                 </span>
                 <button
                   type="button"
-                  onClick={() => removeParameter(i)}
+                  onClick={() => removeParameter(paramIdx)}
                   className="px-2 text-muted hover:text-txt cursor-pointer"
                 >
                   {t("bugreportmodal.Times")}

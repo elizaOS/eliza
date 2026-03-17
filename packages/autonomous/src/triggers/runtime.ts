@@ -360,6 +360,7 @@ export function registerTriggerTaskWorker(runtime: IAgentRuntime): void {
         source: options.source === "manual" ? "manual" : "scheduler",
         force: options.force === true,
       });
+      return {};
     },
   });
 }
@@ -370,6 +371,7 @@ export async function listTriggerTasks(
   if (!triggersFeatureEnabled(runtime)) return [];
   return runtime.getTasks({
     tags: [...TRIGGER_TASK_TAGS],
+    agentIds: [runtime.agentId],
   });
 }
 

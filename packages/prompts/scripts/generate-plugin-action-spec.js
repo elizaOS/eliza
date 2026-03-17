@@ -55,6 +55,7 @@ function ensureDir(dir) {
 
 function listTsFiles(rootDir) {
   const out = [];
+  if (!fs.existsSync(rootDir)) return out;
   const stack = [rootDir];
   while (stack.length > 0) {
     const dir = stack.pop();

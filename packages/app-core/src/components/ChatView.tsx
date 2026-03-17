@@ -858,9 +858,9 @@ export function ChatView({ variant = "default" }: ChatViewProps) {
           data-no-camera-drag={isGameModal || undefined}
           style={{ zIndex: 1 }}
         >
-          {chatPendingImages.map((img, i) => (
+          {chatPendingImages.map((img, imgIdx) => (
             <div
-              key={`${img.name}-${i}`}
+              key={`${img.name}-${img.mimeType}`}
               className="relative group w-16 h-16 shrink-0"
             >
               <img
@@ -872,7 +872,7 @@ export function ChatView({ variant = "default" }: ChatViewProps) {
                 type="button"
                 title={t("chatview.RemoveImage")}
                 aria-label={`Remove image ${img.name}`}
-                onClick={() => removeImage(i)}
+                onClick={() => removeImage(imgIdx)}
                 className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-danger text-white text-[10px] flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer"
               >
                 ×

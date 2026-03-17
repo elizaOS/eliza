@@ -354,7 +354,7 @@ class AgentRuntime(IAgentRuntime):
                 self._character.secrets[key] = value  # type: ignore[assignment]
             else:
                 # Fall back to internal settings dict for protobuf objects
-                self._settings[key] = value
+                self._settings[key] = value  # type: ignore[assignment]
             return
 
         # Try to set on character.settings if it's a dict
@@ -362,7 +362,7 @@ class AgentRuntime(IAgentRuntime):
             self._character.settings[key] = value  # type: ignore[assignment]
         else:
             # Fall back to internal settings dict for protobuf objects
-            self._settings[key] = value
+            self._settings[key] = value  # type: ignore[assignment]
 
     def get_setting(self, key: str) -> object | None:
         settings = self._character.settings
@@ -2100,15 +2100,15 @@ end code: {final_code}
                         schema=schema,
                         stream_fields=stream_fields,
                         expected_codes=per_field_codes,
-                        on_chunk=lambda chunk,
+                        on_chunk=lambda chunk,  # type: ignore[misc]
                         _field,
                         msg_id=stream_message_id: options.on_stream_chunk(chunk, msg_id)
-                        if options.on_stream_chunk
+                        if options.on_stream_chunk is not None  # type: ignore[truthy-function]
                         else None,
-                        on_event=lambda event, msg_id=stream_message_id: options.on_stream_event(
+                        on_event=lambda event, msg_id=stream_message_id: options.on_stream_event(  # type: ignore[misc]
                             event, msg_id
                         )
-                        if options.on_stream_event
+                        if options.on_stream_event is not None
                         else None,
                         abort_signal=options.abort_signal,
                         has_rich_consumer=has_rich_consumer,

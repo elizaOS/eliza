@@ -9,11 +9,11 @@ import pytest
 from elizaos.advanced_capabilities.actions.schedule_follow_up import (
     schedule_follow_up_action as advanced_schedule_follow_up_action,
 )
-from elizaos.bootstrap.actions.schedule_follow_up import (
+from elizaos.advanced_capabilities.actions.schedule_follow_up import (
     schedule_follow_up_action as bootstrap_schedule_follow_up_action,
 )
-from elizaos.bootstrap.services.follow_up import FollowUpService
-from elizaos.bootstrap.services.rolodex import RolodexService
+from elizaos.advanced_capabilities.services.follow_up import FollowUpService
+from elizaos.advanced_capabilities.services.rolodex import RolodexService
 from elizaos.types import Content, Memory, as_uuid
 
 

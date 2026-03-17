@@ -8,6 +8,7 @@ from uuid import UUID
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.types import Action, ActionExample, ActionResult, Content
 from elizaos.types.memory import Memory as MemoryType
+from elizaos.types.runtime import TargetInfo
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -73,7 +74,6 @@ class SendMessageAction:
     ) -> ActionResult:
         import time
         import uuid as uuid_module
-        from types import SimpleNamespace
 
         from elizaos.types.primitives import as_uuid
 
@@ -124,10 +124,10 @@ class SendMessageAction:
                 entity_str = target.get("entityId")
                 if room_str:
                     with contextlib.suppress(ValueError):
-                        target_room_id = UUID(room_str)
+                        target_room_id = as_uuid(str(room_str))
                 if entity_str:
                     with contextlib.suppress(ValueError):
-                        target_entity_id = UUID(entity_str)
+                        target_entity_id = as_uuid(str(entity_str))
 
         if not target_room_id:
             return ActionResult(
@@ -163,12 +163,17 @@ class SendMessageAction:
         )
 
         # Send message to target
-        send_target = SimpleNamespace(
-            room_id=target_room_id,
-            entity_id=target_entity_id,
+        entity_id_for_target: UUID | None = (
+            UUID(str(target_entity_id))
+            if isinstance(target_entity_id, (str, UUID))
+            else None
+        )
+        send_target = TargetInfo(
+            roomId=target_room_id,  # type: ignore[call-arg]
+            entityId=entity_id_for_target,  # type: ignore[call-arg, arg-type]
             source=source or "agent",
         )
-        await runtime.send_message_to_target(send_target)
+        await runtime.send_message_to_target(send_target, message_content)
 
         response_content = Content(
             text=f"Message sent: {message_text[:50]}...",

@@ -1253,14 +1253,17 @@ export class AgentRuntime implements IAgentRuntime {
 			createChannel: (...args: never[]) => unknown;
 			createMessage: (...args: never[]) => unknown;
 		}
-		const adapter = this.adapter as AdapterWithMessaging | null | undefined;
+		const adapter = this.adapter as unknown as
+			| AdapterWithMessaging
+			| null
+			| undefined;
 		if (
 			adapter &&
 			typeof adapter.createMessageServer === "function" &&
 			typeof adapter.createChannel === "function" &&
 			typeof adapter.createMessage === "function"
 		) {
-			return this.adapter as IMessagingAdapter;
+			return this.adapter as unknown as IMessagingAdapter;
 		}
 		return null;
 	}
@@ -2936,7 +2939,7 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return null;
 		}
-		return serviceInstances[0] as T;
+		return serviceInstances[0] as unknown as T;
 	}
 
 	/**

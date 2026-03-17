@@ -94,7 +94,7 @@ Type: {entity.entity_type or "Unknown"}
 
         target_entity_id = UUID(target_entity_id_str)
 
-        updates_raw = parsed_xml.get("updates", {})
+        updates_raw: object = parsed_xml.get("updates", {})
         updated_fields: list[str] = []
 
         if isinstance(updates_raw, dict):

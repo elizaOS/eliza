@@ -131,11 +131,11 @@ export function TokensTable({
           </tr>
         </thead>
         <tbody>
-          {visibleRows.map((row, idx) => {
+          {visibleRows.map((row) => {
             const contractAddress = row.contractAddress;
             return (
               <tr
-                key={`${row.chain}-${row.symbol}-${idx}`}
+                key={`${row.chain}-${row.symbol}-${row.contractAddress ?? ""}`}
                 className="border-b border-border last:border-b-0 hover:bg-bg-hover transition-colors"
               >
                 {/* Logo */}
