@@ -34,7 +34,7 @@ describe("deleteMessage action", () => {
     } as Memory;
 
     const callback = vi.fn();
-    const result = await deleteMessage.handler(
+    const _result = await deleteMessage.handler(
       mockRuntime,
       message,
       undefined,

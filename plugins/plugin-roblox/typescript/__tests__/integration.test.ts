@@ -3,20 +3,14 @@
  * Tests plugin metadata, action validate/handler, provider get(), config, and types.
  */
 
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createMockRuntime(
-  settings: Record<string, string> = {}
-): IAgentRuntime {
+function createMockRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   return {
     agentId: "test-agent-00000000" as UUID,
     getSetting: vi.fn((key: string) => settings[key] ?? null),
@@ -269,9 +263,7 @@ describe("Action – EXECUTE_ROBLOX_ACTION", () => {
 
   it("validate → false when settings missing", async () => {
     const { executeGameAction } = await import("../actions");
-    expect(
-      await executeGameAction.validate(createMockRuntime({}), {} as Memory)
-    ).toBe(false);
+    expect(await executeGameAction.validate(createMockRuntime({}), {} as Memory)).toBe(false);
   });
 
   // handler ---
@@ -445,9 +437,7 @@ describe("Action – GET_ROBLOX_PLAYER", () => {
 
   it("validate → false when API key is missing", async () => {
     const { getPlayerInfo } = await import("../actions");
-    expect(
-      await getPlayerInfo.validate(createMockRuntime({}), {} as Memory)
-    ).toBe(false);
+    expect(await getPlayerInfo.validate(createMockRuntime({}), {} as Memory)).toBe(false);
   });
 
   // handler ---
@@ -602,17 +592,13 @@ describe("Action – GET_ROBLOX_PLAYER", () => {
 
 describe("Provider – roblox-game-state", () => {
   it("has correct name and description", async () => {
-    const { gameStateProvider } = await import(
-      "../providers/gameStateProvider"
-    );
+    const { gameStateProvider } = await import("../providers/gameStateProvider");
     expect(gameStateProvider.name).toBe("roblox-game-state");
     expect(gameStateProvider.description).toMatch(/roblox/i);
   });
 
   it("get() returns empty text when service is unavailable", async () => {
-    const { gameStateProvider } = await import(
-      "../providers/gameStateProvider"
-    );
+    const { gameStateProvider } = await import("../providers/gameStateProvider");
     const rt = createMockRuntime();
     const result = await gameStateProvider.get(rt, {} as Memory);
 
@@ -621,9 +607,7 @@ describe("Provider – roblox-game-state", () => {
   });
 
   it("get() returns empty text when client is unavailable", async () => {
-    const { gameStateProvider } = await import(
-      "../providers/gameStateProvider"
-    );
+    const { gameStateProvider } = await import("../providers/gameStateProvider");
     const svc = { getClient: vi.fn().mockReturnValue(null) };
     const rt = createMockRuntime();
     vi.mocked(rt.getService).mockReturnValue(svc as any);
@@ -633,9 +617,7 @@ describe("Provider – roblox-game-state", () => {
   });
 
   it("get() returns formatted context when service + client are available", async () => {
-    const { gameStateProvider } = await import(
-      "../providers/gameStateProvider"
-    );
+    const { gameStateProvider } = await import("../providers/gameStateProvider");
     const mockClient = {
       getConfig: vi.fn().mockReturnValue({
         universeId: "12345",
@@ -666,9 +648,7 @@ describe("Provider – roblox-game-state", () => {
   });
 
   it("get() shows dry-run note when enabled", async () => {
-    const { gameStateProvider } = await import(
-      "../providers/gameStateProvider"
-    );
+    const { gameStateProvider } = await import("../providers/gameStateProvider");
     const mockClient = {
       getConfig: vi.fn().mockReturnValue({
         universeId: "1",
@@ -714,9 +694,7 @@ describe("Config – validateRobloxConfig & helpers", () => {
   });
 
   it("uses defaults for optional settings", async () => {
-    const { validateRobloxConfig, ROBLOX_DEFAULTS } = await import(
-      "../utils/config"
-    );
+    const { validateRobloxConfig, ROBLOX_DEFAULTS } = await import("../utils/config");
     const rt = createMockRuntime({
       ROBLOX_API_KEY: "key",
       ROBLOX_UNIVERSE_ID: "123",
@@ -754,12 +732,8 @@ describe("Config – validateRobloxConfig & helpers", () => {
   it("hasRobloxEnabled → false when either key missing", async () => {
     const { hasRobloxEnabled } = await import("../utils/config");
     expect(hasRobloxEnabled(createMockRuntime({}))).toBe(false);
-    expect(
-      hasRobloxEnabled(createMockRuntime({ ROBLOX_API_KEY: "k" }))
-    ).toBe(false);
-    expect(
-      hasRobloxEnabled(createMockRuntime({ ROBLOX_UNIVERSE_ID: "1" }))
-    ).toBe(false);
+    expect(hasRobloxEnabled(createMockRuntime({ ROBLOX_API_KEY: "k" }))).toBe(false);
+    expect(hasRobloxEnabled(createMockRuntime({ ROBLOX_UNIVERSE_ID: "1" }))).toBe(false);
   });
 });
 

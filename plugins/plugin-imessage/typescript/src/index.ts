@@ -18,7 +18,11 @@ import {
 
 // Re-export types and service
 export * from "./types.js";
-export { IMessageService, parseMessagesFromAppleScript, parseChatsFromAppleScript };
+export {
+  IMessageService,
+  parseMessagesFromAppleScript,
+  parseChatsFromAppleScript,
+};
 export { sendMessage };
 export { chatContextProvider };
 
@@ -106,4 +110,7 @@ const imessagePlugin: Plugin = {
 export default imessagePlugin;
 
 // Channel configuration types (IMessageAccountConfig already exported from accounts.js)
-export type { IMessageConfig, IMessageReactionNotificationMode } from "./config.js";
+export type {
+  IMessageConfig,
+  IMessageReactionNotificationMode,
+} from "./config.js";

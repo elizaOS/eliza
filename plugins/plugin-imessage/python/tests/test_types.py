@@ -1,6 +1,5 @@
 """Tests for iMessage plugin type definitions and utility functions."""
 
-import pytest
 
 from elizaos_plugin_imessage.types import (
     DEFAULT_POLL_INTERVAL_MS,
@@ -24,7 +23,6 @@ from elizaos_plugin_imessage.types import (
     normalize_imessage_target,
     split_message_for_imessage,
 )
-
 
 # ============================================================
 # Constants

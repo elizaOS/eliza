@@ -1,38 +1,49 @@
 import {
   type ActionResult,
+  type EvaluationExample,
   type Evaluator,
   type IAgentRuntime,
-  type Memory,
-  type State,
-  ModelType,
-  MemoryType,
   logger,
-  EvaluationExample,
-} from '@elizaos/core';
-import { z } from 'zod';
+  type Memory,
+  MemoryType,
+  ModelType,
+  type State,
+} from "@elizaos/core";
+import { z } from "zod";
 
 // Schema for character evolution suggestions
 const CharacterEvolutionSchema = z.object({
-  shouldModify: z.boolean().describe('Whether character modification is recommended'),
-  confidence: z.number().min(0).max(1).describe('Confidence level in the modification suggestion'),
+  shouldModify: z
+    .boolean()
+    .describe("Whether character modification is recommended"),
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe("Confidence level in the modification suggestion"),
   modifications: z.object({
-    name: z.string().optional().describe('New name if a more fitting identity emerges'),
+    name: z
+      .string()
+      .optional()
+      .describe("New name if a more fitting identity emerges"),
     system: z
       .string()
       .optional()
-      .describe('Updated system prompt if behavior patterns warrant modification'),
-    bio: z.array(z.string()).optional().describe('New bio elements to add'),
+      .describe(
+        "Updated system prompt if behavior patterns warrant modification",
+      ),
+    bio: z.array(z.string()).optional().describe("New bio elements to add"),
     messageExamples: z
       .array(
         z.object({
           user: z.string(),
           agent: z.string(),
           context: z.string().optional(),
-        })
+        }),
       )
       .optional()
-      .describe('New message examples to demonstrate learned patterns'),
-    topics: z.array(z.string()).optional().describe('New topics to explore'),
+      .describe("New message examples to demonstrate learned patterns"),
+    topics: z.array(z.string()).optional().describe("New topics to explore"),
     style: z
       .object({
         all: z.array(z.string()).optional(),
@@ -40,13 +51,18 @@ const CharacterEvolutionSchema = z.object({
         post: z.array(z.string()).optional(),
       })
       .optional()
-      .describe('Updates to communication style'),
-    settings: z.record(z.unknown()).optional().describe('New setting values to add'),
+      .describe("Updates to communication style"),
+    settings: z
+      .record(z.unknown())
+      .optional()
+      .describe("New setting values to add"),
   }),
-  reasoning: z.string().describe('Explanation for why these modifications are suggested'),
+  reasoning: z
+    .string()
+    .describe("Explanation for why these modifications are suggested"),
   gradualChange: z
     .boolean()
-    .describe('Whether this represents gradual evolution vs dramatic change'),
+    .describe("Whether this represents gradual evolution vs dramatic change"),
 });
 
 type CharacterEvolution = z.infer<typeof CharacterEvolutionSchema>;
@@ -56,14 +72,20 @@ type CharacterEvolution = z.infer<typeof CharacterEvolutionSchema>;
  * Runs after conversations to identify patterns that suggest character growth
  */
 export const characterEvolutionEvaluator: Evaluator = {
-  name: 'CHARACTER_EVOLUTION',
+  name: "CHARACTER_EVOLUTION",
   description:
-    'Analyzes conversations to identify opportunities for gradual character evolution and self-modification',
+    "Analyzes conversations to identify opportunities for gradual character evolution and self-modification",
   alwaysRun: false, // Only run when conversation warrants it
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
     // Skip if too recent since last evaluation
-    const lastEvolution = await runtime.getCache<string>('character-evolution:last-check');
+    const lastEvolution = await runtime.getCache<string>(
+      "character-evolution:last-check",
+    );
     const now = Date.now();
     const cooldownMs = 5 * 60 * 1000; // 5 minutes between evaluations
 
@@ -73,7 +95,8 @@ export const characterEvolutionEvaluator: Evaluator = {
 
     // Only evaluate if conversation has substantial content
     const rawCount = state?.data?.messageCount;
-    const conversationLength = typeof rawCount === 'number' ? rawCount : Number(rawCount) || 0;
+    const conversationLength =
+      typeof rawCount === "number" ? rawCount : Number(rawCount) || 0;
     if (conversationLength < 3) {
       return false;
     }
@@ -83,14 +106,14 @@ export const characterEvolutionEvaluator: Evaluator = {
       roomId: message.roomId,
       count: 10,
       unique: true,
-      tableName: 'messages',
+      tableName: "messages",
     });
 
     // Advanced trigger detection using "bitter lesson" approach - LLM evaluation instead of hardcoded patterns
     const triggerAnalysisPrompt = `Analyze this conversation for character evolution triggers:
 
 CONVERSATION:
-${recentMessages.map((m) => `${m.entityId === runtime.agentId ? 'Agent' : 'User'}: ${m.content.text}`).join('\n')}
+${recentMessages.map((m) => `${m.entityId === runtime.agentId ? "Agent" : "User"}: ${m.content.text}`).join("\n")}
 
 TRIGGER ANALYSIS - Check for:
 
@@ -140,21 +163,21 @@ Return JSON: {"hasEvolutionTrigger": boolean, "triggerType": string, "reasoning"
             reasoning: triggerAnalysis.reasoning,
             confidence: triggerAnalysis.confidence,
           },
-          'Evolution trigger detected'
+          "Evolution trigger detected",
         );
       }
     } catch {
       // Fallback to basic pattern matching if LLM analysis fails
       hasEvolutionTriggers = recentMessages.some((msg) => {
-        const text = msg.content.text?.toLowerCase() || '';
+        const text = msg.content.text?.toLowerCase() || "";
         return (
-          text.includes('you should') ||
-          text.includes('change your') ||
-          text.includes('different way') ||
-          text.includes('personality') ||
-          text.includes('behavior') ||
-          text.includes('remember that') ||
-          text.includes('from now on')
+          text.includes("you should") ||
+          text.includes("change your") ||
+          text.includes("different way") ||
+          text.includes("personality") ||
+          text.includes("behavior") ||
+          text.includes("remember that") ||
+          text.includes("from now on")
         );
       });
     }
@@ -162,16 +185,23 @@ Return JSON: {"hasEvolutionTrigger": boolean, "triggerType": string, "reasoning"
     return hasEvolutionTriggers;
   },
 
-  handler: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<ActionResult | undefined> => {
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+  ): Promise<ActionResult | undefined> => {
     try {
-      await runtime.setCache('character-evolution:last-check', Date.now().toString());
+      await runtime.setCache(
+        "character-evolution:last-check",
+        Date.now().toString(),
+      );
 
       // Get recent conversation context
       const recentMessages = await runtime.getMemories({
         roomId: message.roomId,
         count: 20,
         unique: true,
-        tableName: 'messages',
+        tableName: "messages",
       });
 
       // Format conversation for analysis
@@ -179,17 +209,19 @@ Return JSON: {"hasEvolutionTrigger": boolean, "triggerType": string, "reasoning"
         .slice(-10) // Last 10 messages
         .map((msg) => {
           const isAgent = msg.entityId === runtime.agentId;
-          const name = isAgent ? runtime.character.name : 'User';
+          const name = isAgent ? runtime.character.name : "User";
           return `${name}: ${msg.content.text}`;
         })
-        .join('\n');
+        .join("\n");
 
       // Current character summary for context
       const currentCharacter = runtime.character;
       const characterSummary = {
         name: currentCharacter.name,
-        system: currentCharacter.system || 'No system prompt defined',
-        bio: Array.isArray(currentCharacter.bio) ? currentCharacter.bio : [currentCharacter.bio],
+        system: currentCharacter.system || "No system prompt defined",
+        bio: Array.isArray(currentCharacter.bio)
+          ? currentCharacter.bio
+          : [currentCharacter.bio],
         currentTopics: currentCharacter.topics || [],
         messageExampleCount: currentCharacter.messageExamples?.length || 0,
       };
@@ -200,8 +232,8 @@ Return JSON: {"hasEvolutionTrigger": boolean, "triggerType": string, "reasoning"
 CURRENT CHARACTER STATE:
 Name: ${characterSummary.name}
 System: ${characterSummary.system}
-Bio: ${characterSummary.bio.join('; ')}
-Topics: ${characterSummary.currentTopics.join(', ')}
+Bio: ${characterSummary.bio.join("; ")}
+Topics: ${characterSummary.currentTopics.join(", ")}
 Message Examples: ${characterSummary.messageExampleCount}
 
 CONVERSATION TO ANALYZE:
@@ -262,7 +294,10 @@ Return JSON analysis with specific, measurable reasoning for any suggested modif
         const parsed = JSON.parse(response as string);
         evolution = CharacterEvolutionSchema.parse(parsed);
       } catch (parseError) {
-        logger.warn({ err: parseError }, 'Failed to parse character evolution analysis');
+        logger.warn(
+          { err: parseError },
+          "Failed to parse character evolution analysis",
+        );
         return undefined;
       }
 
@@ -273,7 +308,7 @@ Return JSON analysis with specific, measurable reasoning for any suggested modif
 
       // Ensure gradual change
       if (!evolution.gradualChange) {
-        logger.info('Skipping character evolution - change too dramatic');
+        logger.info("Skipping character evolution - change too dramatic");
         return undefined;
       }
 
@@ -284,11 +319,11 @@ Return JSON analysis with specific, measurable reasoning for any suggested modif
           roomId: message.roomId,
           content: {
             text: `Character evolution suggested (confidence: ${evolution.confidence}): ${evolution.reasoning}`,
-            source: 'character_evolution',
+            source: "character_evolution",
           },
           metadata: {
             type: MemoryType.CUSTOM,
-            evaluatorName: 'character-evolution',
+            evaluatorName: "character-evolution",
             timestamp: Date.now(),
             confidence: evolution.confidence,
             evolutionData: {
@@ -298,7 +333,7 @@ Return JSON analysis with specific, measurable reasoning for any suggested modif
             },
           } as Record<string, unknown>,
         },
-        'character_evolution'
+        "character_evolution",
       );
 
       logger.info(
@@ -307,88 +342,92 @@ Return JSON analysis with specific, measurable reasoning for any suggested modif
           confidence: evolution.confidence,
           reasoning: evolution.reasoning.slice(0, 100),
         },
-        'Character evolution analysis completed'
+        "Character evolution analysis completed",
       );
     } catch (error) {
-      logger.error({ err: error }, 'Error in character evolution evaluator');
+      logger.error({ err: error }, "Error in character evolution evaluator");
     }
     return undefined;
   },
 
   examples: [
     {
-      prompt: 'Evaluating character evolution after many conversations about environmental issues',
+      prompt:
+        "Evaluating character evolution after many conversations about environmental issues",
       messages: [
         {
-          name: '{{user1}}',
-          content: { text: 'What can I do about climate change?' },
+          name: "{{user1}}",
+          content: { text: "What can I do about climate change?" },
         },
         {
-          name: '{{agentName}}',
+          name: "{{agentName}}",
           content: {
-            text: 'There are many ways to help, from reducing energy use to supporting renewable energy initiatives.',
+            text: "There are many ways to help, from reducing energy use to supporting renewable energy initiatives.",
           },
         },
         {
-          name: '{{user2}}',
-          content: { text: 'How does solar energy work?' },
+          name: "{{user2}}",
+          content: { text: "How does solar energy work?" },
         },
         {
-          name: '{{agentName}}',
+          name: "{{agentName}}",
           content: {
-            text: 'Solar panels convert sunlight into electricity using photovoltaic cells.',
+            text: "Solar panels convert sunlight into electricity using photovoltaic cells.",
           },
         },
         {
-          name: '{{user3}}',
-          content: { text: 'What are the best sustainable practices for daily life?' },
+          name: "{{user3}}",
+          content: {
+            text: "What are the best sustainable practices for daily life?",
+          },
         },
         {
-          name: '{{agentName}}',
+          name: "{{agentName}}",
           content: {
-            text: 'Reducing waste, using public transport, and choosing renewable energy are great starts.',
+            text: "Reducing waste, using public transport, and choosing renewable energy are great starts.",
           },
         },
       ],
       outcome:
-        'Character develops environmental expertise and adds sustainability topics to better serve user interests',
+        "Character develops environmental expertise and adds sustainability topics to better serve user interests",
     },
     {
-      prompt: 'Evaluating character evolution after users frequently seek emotional support',
+      prompt:
+        "Evaluating character evolution after users frequently seek emotional support",
       messages: [
         {
-          name: '{{user1}}',
+          name: "{{user1}}",
           content: { text: "I'm feeling overwhelmed with work" },
         },
         {
-          name: '{{agentName}}',
+          name: "{{agentName}}",
           content: {
             text: "I hear you. It's okay to feel overwhelmed. Let's take this one step at a time.",
           },
         },
         {
-          name: '{{user2}}',
+          name: "{{user2}}",
           content: { text: "I'm struggling with anxiety" },
         },
         {
-          name: '{{agentName}}',
+          name: "{{agentName}}",
           content: {
-            text: 'Thank you for sharing. Anxiety can be challenging. What specific situations trigger it for you?',
+            text: "Thank you for sharing. Anxiety can be challenging. What specific situations trigger it for you?",
           },
         },
         {
-          name: '{{user3}}',
-          content: { text: 'I need someone to talk to' },
+          name: "{{user3}}",
+          content: { text: "I need someone to talk to" },
         },
         {
-          name: '{{agentName}}',
+          name: "{{agentName}}",
           content: {
             text: "I'm here to listen. Sometimes just talking things through can help bring clarity.",
           },
         },
       ],
       outcome:
-        'Character develops empathetic communication style and adds supportive message examples',
+        "Character develops empathetic communication style and adds supportive message examples",
     },
   ] as EvaluationExample[],
 };

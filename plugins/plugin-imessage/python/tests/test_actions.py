@@ -1,13 +1,12 @@
 """Tests for iMessage send_message action."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from elizaos_plugin_imessage.actions.send_message import handler, validate
 from elizaos_plugin_imessage.types import IMessageSendResult
-
 
 # ============================================================
 # validate

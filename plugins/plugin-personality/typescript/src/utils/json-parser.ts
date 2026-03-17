@@ -8,19 +8,21 @@
  * @returns The parsed JSON object
  * @throws Error if JSON cannot be parsed
  */
-export function extractJsonFromResponse(response: string): Record<string, unknown> {
+export function extractJsonFromResponse(
+  response: string,
+): Record<string, unknown> {
   // Remove markdown code blocks if present
   let cleaned = response.trim();
 
   // Check for ```json or ``` markers
-  if (cleaned.startsWith('```json')) {
+  if (cleaned.startsWith("```json")) {
     cleaned = cleaned.substring(7);
-  } else if (cleaned.startsWith('```')) {
+  } else if (cleaned.startsWith("```")) {
     cleaned = cleaned.substring(3);
   }
 
   // Remove trailing ``` if present
-  if (cleaned.endsWith('```')) {
+  if (cleaned.endsWith("```")) {
     cleaned = cleaned.substring(0, cleaned.length - 3);
   }
 

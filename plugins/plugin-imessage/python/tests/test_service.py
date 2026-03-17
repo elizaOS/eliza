@@ -1,6 +1,6 @@
 """Tests for iMessage service: parsing, config, policy."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -10,13 +10,10 @@ from elizaos_plugin_imessage.service import (
     parse_messages_from_applescript,
 )
 from elizaos_plugin_imessage.types import (
-    IMessageChat,
     IMessageConfigurationError,
-    IMessageMessage,
     IMessageNotSupportedError,
     IMessageSettings,
 )
-
 
 # ============================================================
 # parse_messages_from_applescript

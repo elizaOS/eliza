@@ -1,9 +1,13 @@
-import type { Plugin, IAgentRuntime, Memory, CustomMetadata } from '@elizaos/core';
-import { logger, MemoryType } from '@elizaos/core';
-
-import { characterEvolutionEvaluator } from './evaluators/character-evolution';
-import { modifyCharacterAction } from './actions/modify-character';
-import { CharacterFileManager } from './services/character-file-manager';
+import type {
+  CustomMetadata,
+  IAgentRuntime,
+  Memory,
+  Plugin,
+} from "@elizaos/core";
+import { logger, MemoryType } from "@elizaos/core";
+import { modifyCharacterAction } from "./actions/modify-character";
+import { characterEvolutionEvaluator } from "./evaluators/character-evolution";
+import { CharacterFileManager } from "./services/character-file-manager";
 /**
  * Self-Modification Plugin for elizaOS
  *
@@ -20,14 +24,14 @@ import { CharacterFileManager } from './services/character-file-manager';
  * - CharacterFileManager service: Manages safe file operations with backups
  */
 export const selfModificationPlugin: Plugin = {
-  name: '@elizaos/plugin-personality',
+  name: "@elizaos/plugin-personality",
   description:
-    'Enables agent self-modification and character evolution through conversation analysis and user feedback',
+    "Enables agent self-modification and character evolution through conversation analysis and user feedback",
 
   // Core components
   evaluators: [characterEvolutionEvaluator],
   actions: [modifyCharacterAction],
-  services: [CharacterFileManager as import('@elizaos/core').ServiceClass],
+  services: [CharacterFileManager as import("@elizaos/core").ServiceClass],
 
   // Plugin configuration
   config: {
@@ -44,12 +48,15 @@ export const selfModificationPlugin: Plugin = {
     VALIDATE_MODIFICATIONS: true,
 
     // File management
-    BACKUP_DIRECTORY: '.eliza/character-backups',
+    BACKUP_DIRECTORY: ".eliza/character-backups",
     CHARACTER_FILE_DETECTION: true,
   },
 
-  async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
-    logger.debug('Self-Modification Plugin initializing...');
+  async init(
+    config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    logger.debug("Self-Modification Plugin initializing...");
 
     try {
       // Note: CharacterFileManager is registered as a service in this plugin's
@@ -66,11 +73,15 @@ export const selfModificationPlugin: Plugin = {
         bioElements: Array.isArray(character.bio) ? character.bio.length : 1,
         topics: character.topics?.length || 0,
         messageExamples: character.messageExamples?.length || 0,
-        hasStyleConfig: !!(character.style?.all || character.style?.chat || character.style?.post),
+        hasStyleConfig: !!(
+          character.style?.all ||
+          character.style?.chat ||
+          character.style?.post
+        ),
         hasSystemPrompt: !!character.system,
       };
 
-      logger.debug(characterStats, 'Current character state');
+      logger.debug(characterStats, "Current character state");
 
       // Plugin init() runs during runtime.initialize() BEFORE the agent
       // entity and room rows are created (those happen after all plugins
@@ -85,7 +96,7 @@ export const selfModificationPlugin: Plugin = {
       // (i.e. on a restart where the DB is populated, not on first boot).
       const runtimeRecord = runtime as unknown as Record<string, unknown>;
       const adapterReady =
-        typeof runtimeRecord.adapter === 'object' &&
+        typeof runtimeRecord.adapter === "object" &&
         runtimeRecord.adapter !== null;
 
       let entityReady = false;
@@ -101,11 +112,16 @@ export const selfModificationPlugin: Plugin = {
       if (entityReady) {
         // Initialize evolution tracking using proper cache methods
         try {
-          await runtime.setCache('self-modification:initialized', Date.now().toString());
-          await runtime.setCache('self-modification:modification-count', '0');
-          logger.debug('Evolution tracking initialized');
+          await runtime.setCache(
+            "self-modification:initialized",
+            Date.now().toString(),
+          );
+          await runtime.setCache("self-modification:modification-count", "0");
+          logger.debug("Evolution tracking initialized");
         } catch (cacheError) {
-          logger.debug('Cache not available during init, will initialize lazily');
+          logger.debug(
+            "Cache not available during init, will initialize lazily",
+          );
         }
 
         // Create proper initialization memory with correct structure
@@ -114,46 +130,59 @@ export const selfModificationPlugin: Plugin = {
             entityId: runtime.agentId,
             roomId: runtime.agentId,
             content: {
-              text: `Self-modification plugin initialized. Character: ${characterStats.name}, Bio: ${characterStats.bioElements} elements, Topics: ${characterStats.topics}, System: ${characterStats.hasSystemPrompt ? 'present' : 'none'}`,
-              source: 'plugin_initialization',
+              text: `Self-modification plugin initialized. Character: ${characterStats.name}, Bio: ${characterStats.bioElements} elements, Topics: ${characterStats.topics}, System: ${characterStats.hasSystemPrompt ? "present" : "none"}`,
+              source: "plugin_initialization",
             },
             metadata: {
               type: MemoryType.CUSTOM,
-              plugin: '@elizaos/plugin-personality',
+              plugin: "@elizaos/plugin-personality",
               timestamp: Date.now(),
-              characterBaseline: characterStats as unknown as Record<string, unknown>,
+              characterBaseline: characterStats as unknown as Record<
+                string,
+                unknown
+              >,
             } as CustomMetadata,
           };
 
-          await runtime.createMemory(initMemory, 'plugin_events');
-          logger.debug('Plugin initialization memory created');
+          await runtime.createMemory(initMemory, "plugin_events");
+          logger.debug("Plugin initialization memory created");
         } catch (memoryError) {
-          logger.debug('Memory creation failed during init, will initialize lazily');
+          logger.debug(
+            "Memory creation failed during init, will initialize lazily",
+          );
         }
       } else {
         logger.debug(
-          'Agent entity not yet created (plugin init runs before entity setup) — deferring cache/memory to first use'
+          "Agent entity not yet created (plugin init runs before entity setup) — deferring cache/memory to first use",
         );
       }
 
       logger.debug(
         {
-          evolutionEnabled: config.ENABLE_AUTO_EVOLUTION !== 'false',
-          confidenceThreshold: config.MODIFICATION_CONFIDENCE_THRESHOLD || '0.7',
+          evolutionEnabled: config.ENABLE_AUTO_EVOLUTION !== "false",
+          confidenceThreshold:
+            config.MODIFICATION_CONFIDENCE_THRESHOLD || "0.7",
           characterHasSystem: characterStats.hasSystemPrompt,
           entityReady,
         },
-        'Self-Modification Plugin initialized successfully'
+        "Self-Modification Plugin initialized successfully",
       );
     } catch (error) {
-      logger.error({ err: error }, 'Critical error during plugin initialization');
+      logger.error(
+        { err: error },
+        "Critical error during plugin initialization",
+      );
       throw error;
     }
   },
 };
 
 // Export individual components for testing
-export { characterEvolutionEvaluator, modifyCharacterAction, CharacterFileManager };
+export {
+  characterEvolutionEvaluator,
+  modifyCharacterAction,
+  CharacterFileManager,
+};
 
 // Default export
 export default selfModificationPlugin;
