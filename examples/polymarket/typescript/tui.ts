@@ -28,9 +28,21 @@ import type {
 } from "../../../plugins/plugin-polymarket/typescript/types";
 
 let _fatalError: string | null = null;
+let _fatalErrorCallback: ((message: string) => void) | null = null;
 
 export function setFatalError(message: string): void {
   _fatalError = message;
+  if (_fatalErrorCallback) {
+    _fatalErrorCallback(message);
+  }
+}
+
+export function getFatalError(): string | null {
+  return _fatalError;
+}
+
+export function onFatalError(callback: (message: string) => void): void {
+  _fatalErrorCallback = callback;
 }
 
 type ChatRole = "user" | "assistant" | "system";
