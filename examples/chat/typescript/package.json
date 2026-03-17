@@ -10,14 +10,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-ollama": "workspace:*",
-    "@elizaos/plugin-local-ai": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-xai": "workspace:*",
-    "@elizaos/plugin-google-genai": "workspace:*",
-    "@elizaos/plugin-groq": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
     "dotenv": "^16.4.5",
     "uuid": "^13.0.0"
   },

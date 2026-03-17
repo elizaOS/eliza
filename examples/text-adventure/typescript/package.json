@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-openai": "alpha",
+    "@elizaos/plugin-sql": "alpha",
     "@clack/prompts": "^0.11.0",
     "uuid": "^13.0.0"
   },

@@ -10,9 +10,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-eliza-classic": "workspace:*",
     "express": "^4.21.0",
     "uuid": "^13.0.0"
   },

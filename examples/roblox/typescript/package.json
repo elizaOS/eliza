@@ -11,10 +11,10 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-eliza-classic": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-roblox": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-eliza-classic": "alpha",
+    "@elizaos/plugin-openai": "alpha",
+    "@elizaos/plugin-roblox": "alpha",
+    "@elizaos/plugin-sql": "alpha",
     "express": "^4.21.2",
     "uuid": "^13.0.0"
   },

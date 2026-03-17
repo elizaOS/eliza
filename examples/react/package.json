@@ -14,8 +14,8 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.3.3",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-eliza-classic": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-eliza-classic": "alpha",
+    "@elizaos/plugin-sql": "alpha",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "uuid": "^13.0.0"

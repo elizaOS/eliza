@@ -14,8 +14,8 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.3.3",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-openai": "alpha",
+    "@elizaos/plugin-sql": "alpha",
     "next": "^15.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",

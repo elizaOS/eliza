@@ -15,8 +15,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-eliza-classic": "workspace:*",
-    "@elizaos/plugin-localdb": "workspace:*",
+    "@elizaos/plugin-eliza-classic": "alpha",
+    "@elizaos/plugin-localdb": "alpha",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "uuid": "^13.0.0"

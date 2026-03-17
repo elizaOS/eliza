@@ -15,9 +15,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-discord": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
     "dotenv": "^17.2.3",
     "uuid": "^13.0.0"
   },

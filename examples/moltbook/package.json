@@ -17,9 +17,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-inmemorydb": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-moltbook": "workspace:*",
     "@solana/web3.js": "^1.98.0",
     "bs58": "^6.0.0",
     "uuid": "^13.0.0",
