@@ -19,11 +19,11 @@ export { memoryContextProvider } from "./providers/memoryContext";
 export {
   decodeMemoryText,
   encodeMemoryText,
+  type ForgetParameters,
   IMPORTANCE_LABELS,
   MEMORY_METADATA_SEPARATOR,
   MEMORY_SOURCE,
   MemoryImportance,
-  type ForgetParameters,
   type MemoryMetadata,
   type MemoryMetadataValue,
   type MemorySearchResult,

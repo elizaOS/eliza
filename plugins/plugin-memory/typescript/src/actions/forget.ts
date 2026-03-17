@@ -9,7 +9,12 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { decodeMemoryText, MEMORY_SOURCE, type ForgetParameters, PLUGIN_MEMORY_TABLE } from "../types.js";
+import {
+  decodeMemoryText,
+  type ForgetParameters,
+  MEMORY_SOURCE,
+  PLUGIN_MEMORY_TABLE,
+} from "../types.js";
 
 export const forgetAction: Action = {
   name: "FORGET",
@@ -121,8 +126,7 @@ Return ONLY a JSON object (no markdown, no code blocks):
       const match: { index: number; confidence: number } = JSON.parse(cleaned);
 
       if (match.index < 0 || match.index >= pluginMemories.length || match.confidence < 0.5) {
-        const noMatchMsg =
-          "Could not find a matching memory to remove. Please be more specific.";
+        const noMatchMsg = "Could not find a matching memory to remove. Please be more specific.";
         await callback?.({ text: noMatchMsg, source: message.content.source });
         return { text: noMatchMsg, success: false };
       }
