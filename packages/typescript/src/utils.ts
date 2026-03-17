@@ -770,50 +770,18 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
-  // Try parsing with JSON5 first
-  let result: Record<string, unknown> | null;
   try {
-    result = extractAndParseJSONObjectFromText(text);
+    const result = extractAndParseJSONObjectFromText(text);
     if (!result) {
-      throw new Error("Failed to extract JSON object from text");
+      return null;
     }
     if (Array.isArray(result)) {
-      throw new Error("Parsed result is an array, expected an object");
+      return null;
     }
+    return result;
   } catch (error) {
-    // Always throw on parse failures to maintain backward compatibility
-    throw error instanceof Error ? error : new Error(String(error));
+    return null;
   }
-  // Only convert unquoted number values to strings
-  const convertUnquotedNumbers = (obj: Record<string, unknown>, sourceText: string) => {
-    const unquotedRegExp = (key: string, val: number) => 
-      new RegExp(`"${key}"\\s*:\\s*${val}\\b`, 'i');
-      
-    for (const key in obj) {
-      const val = obj[key];
-      // Keep numbers as numbers - do not convert to strings
-      // This preserves the original JSON semantics
-      } else if (val && typeof val === 'object') {
-        if (Array.isArray(val)) {
-          val.forEach((item, i) => {
-            if (typeof item === 'number') {
-              // For array items, look for unquoted numbers
-              const arrayPattern = new RegExp(`\\[([^\\]]*)${item}([^\\]]*)\\]`);
-              if (arrayPattern.test(sourceText)) {
-                val[i] = String(item);
-              }
-            } else if (item && typeof item === 'object') {
-              convertUnquotedNumbers(item as Record<string, unknown>, sourceText);
-            }
-          });
-        } else {
-          convertUnquotedNumbers(val as Record<string, unknown>, sourceText);
-        }
-      }
-    }
-  };
-  convertUnquotedNumbers(result, text);
-  return result;
 }
 
 /**
