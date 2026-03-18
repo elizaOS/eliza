@@ -4002,7 +4002,11 @@ export function AppProvider({
           onboardingRemoteToken,
           onboardingSmallModel,
           onboardingLargeModel,
-        }) ?? onboardingResumeConnectionRef.current;
+        }) ?? (onboardingProvider === "elizacloud" ? {
+            kind: "cloud-managed" as const,
+            cloudProvider: "elizacloud",
+            apiKey: onboardingApiKey.trim() || undefined,
+          } : onboardingResumeConnectionRef.current);
       if (!connection) {
         throw new Error("Onboarding connection is incomplete");
       }
