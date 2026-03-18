@@ -7720,7 +7720,7 @@ async function handleRequest(
       error,
       saveConfig: saveElizaConfig,
       loadSubscriptionAuth: async () =>
-        (await import("../auth/index")) as SubscriptionAuthApi,
+        (await import("../auth/index")) as unknown as SubscriptionAuthApi,
     } as SubscriptionRouteContext)
   ) {
     return;
