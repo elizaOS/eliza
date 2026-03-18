@@ -1,5 +1,4 @@
 import { getEntityDetails } from "../../entities.ts";
-import { requireProviderSpec } from "../../generated/spec-helpers.ts";
 import type {
   CustomMetadata,
   Entity,
@@ -13,8 +12,6 @@ import { ChannelType } from "../../types/index.ts";
 import { addHeader, formatMessages, formatPosts } from "../../utils.ts";
 import { sliceToFitBudget } from "../../utils/slice-to-fit-budget.js";
 
-// Get text content from centralized specs
-const spec = requireProviderSpec("RECENT_MESSAGES");
 const RECENT_ACTION_RUNS_TARGET_CHARS = 2200;
 
 // Move getRecentInteractions outside the provider
@@ -68,32 +65,23 @@ const getRecentInteractions = async (
  * @returns {object} An object containing data, values, and text sections.
  */
 export const recentMessagesProvider: Provider = {
-  name: spec.name,
-  description: spec.description,
-  position: spec.position ?? 100,
+  name: "RECENT_MESSAGES",
+  description: "Recent messages, interactions and other memories",
+  position: 100,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const { roomId } = message;
     const conversationLength = runtime.getConversationLength();
 
-    // First get room to check for compaction point
-    const room = await runtime.getRoom(roomId);
-
-    // Check for compaction point - only load messages after this timestamp
-    const lastCompactionAt = room?.metadata?.lastCompactionAt as
-      | number
-      | undefined;
-
     // Parallelize initial data fetching operations including recentInteractions
-    const [entitiesData, recentMessagesData, recentInteractionsData] =
+    const [entitiesData, room, recentMessagesData, recentInteractionsData] =
       await Promise.all([
         getEntityDetails({ runtime, roomId }),
+        runtime.getRoom(roomId),
         runtime.getMemories({
           tableName: "messages",
           roomId,
           count: conversationLength,
           unique: false,
-          // Use compaction point to filter history
-          start: lastCompactionAt,
         }),
         message.entityId !== runtime.agentId
           ? getRecentInteractions(
@@ -166,7 +154,7 @@ export const recentMessagesProvider: Provider = {
           return textChars + runId.length + 80;
         },
         RECENT_ACTION_RUNS_TARGET_CHARS,
-        { fromEnd: true } // Select newest entries since groupedByRun is chronological
+        { fromEnd: true } // Keep newest runs (from end of array)
       );
 
       const formattedActionResults = recentRuns
