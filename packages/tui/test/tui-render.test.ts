@@ -206,6 +206,7 @@ describe("TUI differential rendering", () => {
 		// Change only first line
 		component.lines = ["CHANGED", "Line 1", "Line 2", "Line 3"];
 		tui.requestRender();
+		await Promise.resolve();
 		await terminal.flush();
 
 		const viewport = terminal.getViewport();
