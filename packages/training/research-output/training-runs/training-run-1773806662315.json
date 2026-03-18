@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-03-18T04:04:22.315Z",
+  "config": {
+    "skipTraining": true,
+    "skipBenchmark": true,
+    "ticks": 100,
+    "archetype": "trader",
+    "verbose": false
+  },
+  "results": [
+    {
+      "name": "Check Prerequisites",
+      "success": true,
+      "message": "Prerequisites satisfied (Ollama: yes)",
+      "details": {
+        "python": true,
+        "trainingDir": true,
+        "mlx": false,
+        "ollama": true
+      },
+      "duration": 1265
+    },
+    {
+      "name": "Install Dependencies",
+      "success": true,
+      "message": "Python dependencies installed",
+      "duration": 39720
+    },
+    {
+      "name": "Train Model",
+      "success": true,
+      "message": "Training skipped (--skip-training)",
+      "duration": 10
+    }
+  ],
+  "totalDuration": 41043,
+  "success": true
+}

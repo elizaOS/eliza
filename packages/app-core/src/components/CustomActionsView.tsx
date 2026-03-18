@@ -164,7 +164,10 @@ export function CustomActionsView() {
   }
 
   return (
-    <div className="flex flex-col h-full p-4 space-y-4">
+    <div
+      data-testid="custom-actions-view"
+      className="flex flex-col h-full p-4 space-y-4"
+    >
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

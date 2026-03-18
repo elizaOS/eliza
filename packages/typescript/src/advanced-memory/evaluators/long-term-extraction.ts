@@ -57,7 +57,9 @@ export const longTermExtractionEvaluator: Evaluator = {
 		if (message.entityId === runtime.agentId) return false;
 		if (!message.content?.text) return false;
 
-		const memoryService = (await runtime.getService("memory")) as MemoryService | null;
+		const memoryService = (await runtime.getService(
+			"memory",
+		)) as MemoryService | null;
 		if (!memoryService) return false;
 
 		const config = memoryService.getConfig();

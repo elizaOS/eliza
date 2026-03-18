@@ -194,7 +194,7 @@ export function TrajectoriesView({
   const sources = stats?.bySource ? Object.keys(stats.bySource) : [];
 
   return (
-    <div className="flex flex-col h-full gap-3">
+    <div className="flex flex-col h-full gap-3" data-testid="trajectories-view">
       {/* Stats summary */}
       {stats && (
         <div className="flex flex-wrap gap-4 text-xs">

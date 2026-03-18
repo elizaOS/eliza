@@ -32,8 +32,8 @@
   "main": "wrapper.js",
   "name": "@elizaos/computeruse-nodejs",
   "napi": {
-    "name": "computeruse",
-    "triples": {
+    "binaryName": "computeruse",
+    "targets": {
       "additional": [
         "aarch64-pc-windows-msvc",
         "aarch64-apple-darwin",

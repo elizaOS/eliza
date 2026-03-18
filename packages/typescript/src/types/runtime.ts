@@ -75,7 +75,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	routes: Route[];
 	logger: Logger;
 	stateCache: Map<string, State>;
-	promptBatcher: PromptBatcher;
+	promptBatcher?: PromptBatcher;
 	/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. */
 	companionUrl?: string;
 
@@ -87,9 +87,13 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	/** Get the underlying database connection. Type depends on the adapter implementation. */
 	getConnection(): Promise<object>;
 
-	getService<T extends Service>(service: ServiceTypeName | string): Promise<T | null>;
+	getService<T extends Service>(
+		service: ServiceTypeName | string,
+	): Promise<T | null>;
 
-	getServicesByType<T extends Service>(service: ServiceTypeName | string): T[] | Promise<T[]>;
+	getServicesByType<T extends Service>(
+		service: ServiceTypeName | string,
+	): T[] | Promise<T[]>;
 
 	getAllServices(): Map<ServiceTypeName, Service[]>;
 
@@ -217,7 +221,9 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 			worldPolicy?: ToolPolicyConfig;
 			roomPolicy?: ToolPolicyConfig;
 		},
-	): { allowed: boolean; reason: string } | Promise<{ allowed: boolean; reason: string }>;
+	):
+		| { allowed: boolean; reason: string }
+		| Promise<{ allowed: boolean; reason: string }>;
 
 	registerEvaluator(evaluator: Evaluator): void;
 

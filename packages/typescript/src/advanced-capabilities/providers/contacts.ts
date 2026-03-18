@@ -19,7 +19,9 @@ export const contactsProvider: Provider = {
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		const rolodexService = (await runtime.getService("rolodex")) as RolodexService;
+		const rolodexService = (await runtime.getService(
+			"rolodex",
+		)) as RolodexService;
 		if (!rolodexService) {
 			runtime.logger.warn("[ContactsProvider] RolodexService not available");
 			return { text: "", values: {}, data: {} };

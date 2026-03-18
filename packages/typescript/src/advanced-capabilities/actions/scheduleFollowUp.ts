@@ -49,8 +49,12 @@ export const scheduleFollowUpAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		const rolodexService = (await runtime.getService("rolodex")) as RolodexService;
-		const followUpService = (await runtime.getService("follow_up")) as FollowUpService;
+		const rolodexService = (await runtime.getService(
+			"rolodex",
+		)) as RolodexService;
+		const followUpService = (await runtime.getService(
+			"follow_up",
+		)) as FollowUpService;
 
 		if (!rolodexService || !followUpService) {
 			logger.warn("[ScheduleFollowUp] Required services not available");
@@ -69,8 +73,12 @@ export const scheduleFollowUpAction: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
-		const rolodexService = (await runtime.getService("rolodex")) as RolodexService;
-		const followUpService = (await runtime.getService("follow_up")) as FollowUpService;
+		const rolodexService = (await runtime.getService(
+			"rolodex",
+		)) as RolodexService;
+		const followUpService = (await runtime.getService(
+			"follow_up",
+		)) as FollowUpService;
 
 		if (!rolodexService || !followUpService) {
 			throw new Error("Required services not available");

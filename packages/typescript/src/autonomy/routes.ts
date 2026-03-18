@@ -14,7 +14,8 @@ async function getAutonomyService(runtime: {
 	getService: (name: string) => Promise<AutonomyService | null>;
 }): Promise<AutonomyService | null> {
 	return (
-		(await runtime.getService(AUTONOMY_SERVICE_TYPE)) || (await runtime.getService("autonomy"))
+		(await runtime.getService(AUTONOMY_SERVICE_TYPE)) ||
+		(await runtime.getService("autonomy"))
 	);
 }
 

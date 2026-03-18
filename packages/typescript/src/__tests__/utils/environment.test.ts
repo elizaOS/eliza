@@ -44,7 +44,8 @@ describe("Environment Abstraction", () => {
 			}
 		} else {
 			try {
-				delete (global as typeof globalThis & { window?: typeof window }).window;
+				delete (global as typeof globalThis & { window?: typeof window })
+					.window;
 			} catch {
 				// Ignore readonly property errors
 			}

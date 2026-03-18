@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly PROD: boolean;
   readonly VITE_ENABLE_COMPANION_MODE?: string;
   readonly VITE_ENABLE_MEMORY_MONITOR?: string;
+  readonly VITE_E2E_DISABLE_VRM?: string;
 }
 
 interface ImportMeta {

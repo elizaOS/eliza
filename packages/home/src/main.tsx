@@ -53,9 +53,9 @@ function isWebPlatform(): boolean {
   return platform === "web" && !isElectrobunRuntime();
 }
 
-const isVitest = Boolean(
-  (import.meta as ImportMeta & { vitest?: unknown }).vitest,
-);
+const isVitest =
+  Boolean((import.meta as ImportMeta & { vitest?: unknown }).vitest) ||
+  (typeof process !== "undefined" && process.env?.VITEST === "true");
 
 interface ShareTargetFile {
   name: string;

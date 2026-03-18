@@ -18,6 +18,10 @@ import { OnboardingStepNav } from "./onboarding/OnboardingStepNav";
 import { PermissionsStep } from "./onboarding/PermissionsStep";
 import { RpcStep } from "./onboarding/RpcStep";
 
+const DISABLE_ONBOARDING_VRM =
+  String(import.meta.env.VITE_E2E_DISABLE_VRM ?? "").toLowerCase() === "true" ||
+  String(import.meta.env.VITE_E2E_DISABLE_VRM ?? "") === "1";
+
 export function OnboardingWizard() {
   const {
     onboardingStep,
@@ -77,15 +81,26 @@ export function OnboardingWizard() {
       <div className="onboarding-bg" />
       {!isCharacterSelect && <div className="onboarding-bg-overlay" />}
 
-      {/* VRM character — fills viewport, zoomed in like companion view */}
-      <VrmStage
-        vrmPath={vrmPath}
-        worldUrl={worldUrl}
-        fallbackPreviewUrl={fallbackPreview}
-        cameraProfile="companion_close"
-        initialCompanionZoomNormalized={1}
-        t={t}
-      />
+      {/* Keep browser E2E runs lightweight and deterministic by skipping VRM boot. */}
+      {DISABLE_ONBOARDING_VRM ? (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 z-10 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(circle at 50% 25%, rgba(255,255,255,0.16), transparent 34%), linear-gradient(180deg, rgba(17,17,17,0.08), rgba(10,10,10,0.36))",
+          }}
+        />
+      ) : (
+        <VrmStage
+          vrmPath={vrmPath}
+          worldUrl={worldUrl}
+          fallbackPreviewUrl={fallbackPreview}
+          cameraProfile="companion_close"
+          initialCompanionZoomNormalized={1}
+          t={t}
+        />
+      )}
 
       {/* Corner decorations */}
       <svg

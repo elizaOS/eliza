@@ -93,7 +93,7 @@ export function SecurityPageView() {
   const counts = useMemo(() => summarizeCounts(entries), [entries]);
 
   return (
-    <section className="flex h-full flex-col gap-4">
+    <section data-testid="security-audit-view" className="flex h-full flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="m-0 text-lg font-bold">Security Audit</h2>

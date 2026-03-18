@@ -48,7 +48,9 @@ export const searchContactsAction: Action = {
 		_state?: State,
 	): Promise<boolean> => {
 		// Check if RolodexService is available
-		const rolodexService = (await runtime.getService("rolodex")) as RolodexService;
+		const rolodexService = (await runtime.getService(
+			"rolodex",
+		)) as RolodexService;
 		if (!rolodexService) {
 			logger.warn("[SearchContacts] RolodexService not available");
 			return false;
@@ -67,7 +69,9 @@ export const searchContactsAction: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
-		const rolodexService = (await runtime.getService("rolodex")) as RolodexService;
+		const rolodexService = (await runtime.getService(
+			"rolodex",
+		)) as RolodexService;
 
 		if (!rolodexService) {
 			throw new Error("RolodexService not available");
