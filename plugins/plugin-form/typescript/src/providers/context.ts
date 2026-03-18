@@ -246,12 +246,12 @@ export const formContextProvider: Provider = {
         } else if (contextState.missingRequired.length > 0) {
           // Nudge for required; user can give one or several answers in one message
           contextText += `Instruction: Please nudge the user into helping complete required fields. The user can provide one or several answers in a single message; the form accepts them all.\n`;
-        } else if (contextState.status === "ready") {
-          // All required fields done; suggest submit
-          contextText += `Instruction: All required fields collected. Nudge user to submit.\n`;
         } else if (optionalMissing.length > 0) {
-          // Required done; optionally nudge for optional or submit
+          // Required done but optional fields remain; optionally nudge for optional or submit
           contextText += `Instruction: Required fields are done. Optionally nudge for remaining optional fields, or nudge to submit.\n`;
+        } else if (contextState.status === "ready") {
+          // All required fields done and no optional missing; suggest submit
+          contextText += `Instruction: All required fields collected. Nudge user to submit.\n`;
         }
       } else {
         // No active session — only stashed forms exist
