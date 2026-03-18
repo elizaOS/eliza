@@ -758,20 +758,20 @@ function createRuntimeForCreditErrorTests(): AgentRuntime {
 
 // ---------------------------------------------------------------------------
 // Test isolation — redirect all state to a temp directory so tests never
-// touch the real ~/.milady config, database, or plugins.
+// touch the real ~/.eliza config, database, or plugins.
 // ---------------------------------------------------------------------------
 
 let _e2eTempDir: string;
 let _origStateDirEnv: string | undefined;
 
 beforeAll(async () => {
-  _origStateDirEnv = process.env.MILADY_STATE_DIR;
-  _e2eTempDir = await fs.mkdtemp(path.join(os.tmpdir(), "milady-e2e-"));
-  process.env.MILADY_STATE_DIR = _e2eTempDir;
+  _origStateDirEnv = process.env.ELIZA_STATE_DIR;
+  _e2eTempDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-e2e-"));
+  process.env.ELIZA_STATE_DIR = _e2eTempDir;
 
   // Seed a minimal config so the server can start
   await fs.writeFile(
-    path.join(_e2eTempDir, "milady.json"),
+    path.join(_e2eTempDir, "eliza.json"),
     JSON.stringify({
       agents: {
         defaults: { workspace: path.join(_e2eTempDir, "workspace") },
@@ -790,9 +790,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (_origStateDirEnv !== undefined) {
-    process.env.MILADY_STATE_DIR = _origStateDirEnv;
+    process.env.ELIZA_STATE_DIR = _origStateDirEnv;
   } else {
-    delete process.env.MILADY_STATE_DIR;
+    delete process.env.ELIZA_STATE_DIR;
   }
   if (_e2eTempDir) {
     await fs.rm(_e2eTempDir, { recursive: true, force: true });
@@ -2984,7 +2984,7 @@ describe("API Server E2E (no runtime)", () => {
 
     it("falls back to runtime-provided skill directories when AgentSkillsService is empty", async () => {
       const tempRoot = await fs.mkdtemp(
-        path.join(os.tmpdir(), "milady-skills-"),
+        path.join(os.tmpdir(), "eliza-skills-"),
       );
       const bundledDir = path.join(tempRoot, "bundled-skills");
       const skillDir = path.join(bundledDir, "fallback-skill");
@@ -4359,7 +4359,7 @@ describe("API Server E2E (compat endpoints)", () => {
     expect(data.object).toBe("list");
     const models = data.data as Array<Record<string, unknown>>;
     expect(models.length).toBeGreaterThan(0);
-    expect(models.some((item) => item.id === "milady")).toBe(true);
+    expect(models.some((item) => item.id === "eliza")).toBe(true);
     expect(models.some((item) => item.id === "CompatAgent")).toBe(true);
   });
 
@@ -4372,12 +4372,12 @@ describe("API Server E2E (compat endpoints)", () => {
     expect(status).toBe(200);
     expect(data.object).toBe("model");
     expect(data.id).toBe("compat-model-id");
-    expect(data.owned_by).toBe("milady");
+    expect(data.owned_by).toBe("eliza");
   });
 
   it("POST /v1/chat/completions returns OpenAI-compatible completion", async () => {
     const { status, data } = await req(port, "POST", "/v1/chat/completions", {
-      model: "milady",
+      model: "eliza",
       user: "compat-e2e",
       messages: [
         { role: "system", content: "You are concise." },
@@ -4401,7 +4401,7 @@ describe("API Server E2E (compat endpoints)", () => {
       port,
       "/v1/chat/completions",
       {
-        model: "milady",
+        model: "eliza",
         stream: true,
         user: "compat-sse-e2e",
         messages: [{ role: "user", content: "Stream a short answer." }],
@@ -4440,7 +4440,7 @@ describe("API Server E2E (compat endpoints)", () => {
 
   it("POST /v1/messages returns Anthropic-compatible message", async () => {
     const { status, data } = await req(port, "POST", "/v1/messages", {
-      model: "milady",
+      model: "eliza",
       system: "You are concise.",
       metadata: { conversation_id: "compat-room-1" },
       messages: [{ role: "user", content: "Say hi." }],
@@ -4458,7 +4458,7 @@ describe("API Server E2E (compat endpoints)", () => {
 
   it("POST /v1/messages streams Anthropic-compatible SSE events", async () => {
     const { status, headers, events } = await reqSse(port, "/v1/messages", {
-      model: "milady",
+      model: "eliza",
       stream: true,
       metadata: { conversation_id: "compat-room-2" },
       messages: [{ role: "user", content: "Stream a short answer." }],

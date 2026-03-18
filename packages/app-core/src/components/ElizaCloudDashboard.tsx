@@ -37,8 +37,8 @@ import { openExternalUrl } from "../utils";
 import { StripeEmbeddedCheckout } from "./StripeEmbeddedCheckout";
 
 const ELIZA_CLOUD_LOGIN_URL =
-  "https://www.elizacloud.ai/login?returnTo=%2Fdashboard%2Fmilady";
-const ELIZA_CLOUD_INSTANCES_URL = "https://www.elizacloud.ai/dashboard/milady";
+  "https://www.elizacloud.ai/login?returnTo=%2Fdashboard%2Feliza";
+const ELIZA_CLOUD_INSTANCES_URL = "https://www.elizacloud.ai/dashboard/eliza";
 const BILLING_PRESET_AMOUNTS = [10, 25, 100];
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {

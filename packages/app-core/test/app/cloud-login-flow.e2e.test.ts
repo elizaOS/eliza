@@ -27,7 +27,7 @@ const { mockUseApp } = vi.hoisted(() => ({
 
 vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
-  THEMES: [{ id: "milady", label: "Milady" }],
+  THEMES: [{ id: "eliza", label: "Eliza" }],
 }));
 
 vi.mock("@elizaos/app-core/components", async () => {
@@ -101,7 +101,7 @@ function createCloudUIState(): CloudState {
     elizaCloudLoginBusy: false,
     elizaCloudLoginError: "",
     cloudDisconnecting: false,
-    currentTheme: "milady",
+    currentTheme: "eliza",
     plugins: [],
     pluginSaving: false,
     pluginSaveSuccess: false,

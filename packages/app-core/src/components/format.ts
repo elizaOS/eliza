@@ -1,5 +1,5 @@
 /**
- * Shared formatting helpers for Milady app views.
+ * Shared formatting helpers for Eliza app views.
  */
 
 type ByteSizeFormatterOptions = {

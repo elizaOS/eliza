@@ -17,7 +17,7 @@ import {
   registerHook,
   triggerHook,
 } from "./registry";
-import type { MiladyHookMetadata } from "./types";
+import type { ElizaHookMetadata } from "./types";
 
 // ---------------------------------------------------------------------------
 // mocks
@@ -48,7 +48,7 @@ describe("checkEligibility", () => {
   });
 
   it("returns eligible when metadata has no requirements", () => {
-    const metadata: MiladyHookMetadata = { events: ["command:new"] };
+    const metadata: ElizaHookMetadata = { events: ["command:new"] };
     const result = checkEligibility(metadata, undefined);
     expect(result.eligible).toBe(true);
   });
@@ -58,7 +58,7 @@ describe("checkEligibility", () => {
       ["darwin", "linux", "win32"].find(
         (value) => value !== process.platform,
       ) ?? "darwin";
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       events: ["command:new"],
       os: [otherPlatform],
     };
@@ -70,7 +70,7 @@ describe("checkEligibility", () => {
 
   it("accepts when OS matches current platform", () => {
     const { platform } = require("node:os");
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       events: ["command:new"],
       os: [platform()],
     };
@@ -79,7 +79,7 @@ describe("checkEligibility", () => {
   });
 
   it("rejects when required binary is missing", () => {
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       events: ["command:new"],
       requires: {
         bins: ["__nonexistent_binary_12345__"],
@@ -91,7 +91,7 @@ describe("checkEligibility", () => {
   });
 
   it("accepts when required binary exists", () => {
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       events: ["command:new"],
       requires: {
         bins: ["node"], // node should exist in test environment
@@ -102,7 +102,7 @@ describe("checkEligibility", () => {
   });
 
   it("rejects when none of anyBins are available", () => {
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       events: ["command:new"],
       requires: {
         anyBins: ["__nonexistent_a__", "__nonexistent_b__"],
@@ -114,7 +114,7 @@ describe("checkEligibility", () => {
   });
 
   it("accepts when at least one of anyBins exists", () => {
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       events: ["command:new"],
       requires: {
         anyBins: ["__nonexistent__", "node"],
@@ -125,7 +125,7 @@ describe("checkEligibility", () => {
   });
 
   it("rejects when required env var is missing", () => {
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       events: ["command:new"],
       requires: {
         env: ["__TEST_HOOK_ENV_VAR_MISSING__"],
@@ -139,7 +139,7 @@ describe("checkEligibility", () => {
   it("accepts env var from process.env", () => {
     process.env.__TEST_HOOK_ENV_VAR__ = "present";
     try {
-      const metadata: MiladyHookMetadata = {
+      const metadata: ElizaHookMetadata = {
         events: ["command:new"],
         requires: {
           env: ["__TEST_HOOK_ENV_VAR__"],
@@ -153,7 +153,7 @@ describe("checkEligibility", () => {
   });
 
   it("accepts env var from hookConfig.env", () => {
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       events: ["command:new"],
       requires: {
         env: ["SOME_TOKEN"],
@@ -167,7 +167,7 @@ describe("checkEligibility", () => {
   });
 
   it("rejects when required config path is falsy", () => {
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       events: ["command:new"],
       requires: {
         config: ["providers.openai"],
@@ -179,19 +179,19 @@ describe("checkEligibility", () => {
   });
 
   it("accepts when required config path is truthy", () => {
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       events: ["command:new"],
       requires: {
         config: ["providers.openai"],
       },
     };
-    const miladyConfig = { providers: { openai: "sk-abc" } };
-    const result = checkEligibility(metadata, undefined, miladyConfig);
+    const elizaConfig = { providers: { openai: "sk-abc" } };
+    const result = checkEligibility(metadata, undefined, elizaConfig);
     expect(result.eligible).toBe(true);
   });
 
   it("bypasses requirement checks when always=true (except OS)", () => {
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       always: true,
       events: ["command:new"],
       requires: {
@@ -205,7 +205,7 @@ describe("checkEligibility", () => {
   });
 
   it("accumulates multiple missing requirements", () => {
-    const metadata: MiladyHookMetadata = {
+    const metadata: ElizaHookMetadata = {
       events: ["command:new"],
       requires: {
         bins: ["__missing_bin__"],

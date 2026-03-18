@@ -68,7 +68,7 @@ function readPrimaryModel(
 function isPiAiEnabled(
   config: Record<string, unknown> | null | undefined,
 ): boolean {
-  const value = readEnvString(config, "MILADY_USE_PI_AI");
+  const value = readEnvString(config, "ELIZA_USE_PI_AI");
   if (!value) {
     return false;
   }

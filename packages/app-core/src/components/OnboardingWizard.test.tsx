@@ -13,8 +13,8 @@ const { mockApplyUiTheme, mockUseApp, mockVrmStage } = vi.hoisted(() => ({
 
 vi.mock("@elizaos/app-core/state", () => ({
   applyUiTheme: (theme: "light" | "dark") => mockApplyUiTheme(theme),
-  getVrmPreviewUrl: () => "/vrms/previews/milady-1.png",
-  getVrmUrl: () => "/vrms/milady-1.vrm.gz",
+  getVrmPreviewUrl: () => "/vrms/previews/eliza-1.png",
+  getVrmUrl: () => "/vrms/eliza-1.vrm.gz",
   ONBOARDING_STEPS: [
     {
       id: "identity",

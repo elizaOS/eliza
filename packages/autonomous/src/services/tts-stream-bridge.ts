@@ -357,7 +357,7 @@ function isRedactedSecret(val: string): boolean {
 }
 
 /**
- * Resolve TTS configuration from milady config, finding the best available
+ * Resolve TTS configuration from eliza config, finding the best available
  * provider with valid API keys.
  */
 export function resolveTtsConfig(

@@ -58,7 +58,7 @@ const LOCAL_PLUGIN_TAG_STOPWORDS = new Set([
   "plugins",
   "eliza",
   "elizaos",
-  "milady",
+  "eliza",
   "elizaos-plugin",
   "elizaos-plugins",
   "feature",

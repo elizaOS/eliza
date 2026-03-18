@@ -16,7 +16,7 @@ const { mockUseApp, mockIsNativeFn } = vi.hoisted(() => ({
 
 vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
-  getVrmPreviewUrl: (index: number) => `/vrms/previews/milady-${index}.png`,
+  getVrmPreviewUrl: (index: number) => `/vrms/previews/eliza-${index}.png`,
 }));
 
 vi.mock("@elizaos/app-core/api", () => ({

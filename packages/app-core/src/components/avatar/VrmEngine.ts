@@ -206,7 +206,7 @@ const SPARK_SORT_DISTANCE_NEAR = 0.05;
 const SPARK_MAX_PIXEL_RADIUS = 96;
 const SPARK_MAX_PIXEL_RADIUS_NEAR = 28;
 const MAX_RENDERER_PIXEL_RATIO = 2;
-const AVATAR_RENDERER_OVERRIDE_KEY = "milady.avatarRenderer";
+const AVATAR_RENDERER_OVERRIDE_KEY = "eliza.avatarRenderer";
 const KNOWN_VRM_WEBGPU_WARNING =
   'TSL: "transformedNormalView" is deprecated. Use "normalView" instead.';
 

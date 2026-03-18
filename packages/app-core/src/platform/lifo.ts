@@ -1,6 +1,6 @@
 import { client } from "../api/client";
 
-export const LIFO_SYNC_CHANNEL_PREFIX = "milady-lifo-sync";
+export const LIFO_SYNC_CHANNEL_PREFIX = "eliza-lifo-sync";
 
 type LocationLike = {
   search?: string;

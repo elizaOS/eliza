@@ -10,7 +10,7 @@
  *   ALCHEMY_API_KEY      — Alchemy API key with Ethereum mainnet enabled
  *   HELIUS_API_KEY       — Helius API key
  *
- * Run: MILADY_LIVE_TEST=1 npx vitest run -c vitest.e2e.config.ts test/wallet-live.e2e.test.ts
+ * Run: ELIZA_LIVE_TEST=1 npx vitest run -c vitest.e2e.config.ts test/wallet-live.e2e.test.ts
  */
 import http from "node:http";
 import path from "node:path";
@@ -92,8 +92,8 @@ describe.skipIf(!canRun)("Wallet live E2E — real keys, real APIs", () => {
   let savedExportToken: string | undefined;
 
   beforeAll(async () => {
-    savedExportToken = process.env.MILADY_WALLET_EXPORT_TOKEN;
-    process.env.MILADY_WALLET_EXPORT_TOKEN = WALLET_EXPORT_TOKEN;
+    savedExportToken = process.env.ELIZA_WALLET_EXPORT_TOKEN;
+    process.env.ELIZA_WALLET_EXPORT_TOKEN = WALLET_EXPORT_TOKEN;
 
     // Validate or generate keys BEFORE starting the server
     const { generateWalletKeys, deriveEvmAddress, deriveSolanaAddress } =
@@ -144,9 +144,9 @@ describe.skipIf(!canRun)("Wallet live E2E — real keys, real APIs", () => {
   afterAll(async () => {
     await close();
     if (savedExportToken === undefined) {
-      delete process.env.MILADY_WALLET_EXPORT_TOKEN;
+      delete process.env.ELIZA_WALLET_EXPORT_TOKEN;
     } else {
-      process.env.MILADY_WALLET_EXPORT_TOKEN = savedExportToken;
+      process.env.ELIZA_WALLET_EXPORT_TOKEN = savedExportToken;
     }
   });
 

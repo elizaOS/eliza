@@ -1,0 +1,47 @@
+{
+  "trajectory": {
+    "id": "1773797461819012",
+    "trajectoryId": "1773797461809011",
+    "agentId": "test-agent-file",
+    "archetype": "trader",
+    "startTime": "2026-03-18T01:31:01.809Z",
+    "endTime": "2026-03-18T01:31:01.818Z",
+    "durationMs": 9,
+    "scenarioId": "2026-03-18T01:00",
+    "episodeId": "2026-03-18T01:00-1773797461820",
+    "windowId": "2026-03-18T01:00",
+    "windowHours": 1,
+    "batchId": null,
+    "stepsJson": "[{\"stepNumber\":0,\"timestamp\":1773797461809,\"environmentState\":{\"agentBalance\":10000,\"agentPnL\":0,\"openPositions\":0},\"providerAccesses\":[],\"llmCalls\":[{\"model\":\"test-model\",\"systemPrompt\":\"system\",\"userPrompt\":\"user\",\"response\":\"response\",\"temperature\":0.5,\"maxTokens\":100,\"purpose\":\"action\"}],\"action\":{\"actionType\":\"buy\",\"parameters\":{\"ticker\":\"BTCAI\"},\"success\":true},\"reward\":1}]",
+    "rewardComponentsJson": "{\"environmentReward\":1}",
+    "metricsJson": "{\"episodeLength\":1,\"finalStatus\":\"completed\",\"finalBalance\":10500,\"finalPnL\":500,\"tradesExecuted\":0,\"postsCreated\":0,\"errorCount\":0}",
+    "metadataJson": "{\"isTrainingData\":true,\"gameKnowledge\":{}}",
+    "totalReward": 1,
+    "episodeLength": 1,
+    "finalStatus": "completed",
+    "finalBalance": 10500,
+    "finalPnL": 500,
+    "tradesExecuted": 0,
+    "postsCreated": 0,
+    "aiJudgeReward": null,
+    "aiJudgeReasoning": null,
+    "judgedAt": null,
+    "isTrainingData": true,
+    "isEvaluation": false,
+    "usedInTraining": false,
+    "trainedInBatch": null
+  },
+  "llmCalls": [
+    {
+      "stepNumber": 0,
+      "callIndex": 0,
+      "model": "test-model",
+      "systemPrompt": "system",
+      "userPrompt": "user",
+      "response": "response",
+      "temperature": 0.5,
+      "maxTokens": 100,
+      "purpose": "action"
+    }
+  ]
+}

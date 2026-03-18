@@ -29,7 +29,7 @@ interface GameContextStub {
 }
 
 type TestWindow = Window & {
-  __MILADY_ELECTROBUN_RPC__?: {
+  __ELIZA_ELECTROBUN_RPC__?: {
     request: Record<string, (params?: unknown) => Promise<unknown>>;
   };
   __electrobunWindowId?: number;
@@ -104,7 +104,7 @@ describe("GameView", () => {
   });
 
   afterEach(() => {
-    delete (window as TestWindow).__MILADY_ELECTROBUN_RPC__;
+    delete (window as TestWindow).__ELIZA_ELECTROBUN_RPC__;
     delete (window as TestWindow).__electrobunWindowId;
     vi.restoreAllMocks();
   });
@@ -174,7 +174,7 @@ describe("GameView", () => {
     const gameOpenWindow = vi.fn(async () => ({ id: "game-window-1" }));
     mockUseApp.mockReturnValue(ctx);
     (window as TestWindow).__electrobunWindowId = 1;
-    (window as TestWindow).__MILADY_ELECTROBUN_RPC__ = {
+    (window as TestWindow).__ELIZA_ELECTROBUN_RPC__ = {
       request: {
         desktopOpenExternal,
         gameOpenWindow,

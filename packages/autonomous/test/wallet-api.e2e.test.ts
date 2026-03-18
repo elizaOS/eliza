@@ -24,7 +24,7 @@ function withWalletExportToken(
   return {
     ...body,
     exportToken:
-      process.env.MILADY_WALLET_EXPORT_TOKEN ?? WALLET_EXPORT_TEST_TOKEN,
+      process.env.ELIZA_WALLET_EXPORT_TOKEN ?? WALLET_EXPORT_TEST_TOKEN,
   };
 }
 
@@ -120,7 +120,7 @@ describe("Wallet API E2E", () => {
   const keysToSave = [
     "EVM_PRIVATE_KEY",
     "SOLANA_PRIVATE_KEY",
-    "MILADY_WALLET_EXPORT_TOKEN",
+    "ELIZA_WALLET_EXPORT_TOKEN",
     "ALCHEMY_API_KEY",
     "HELIUS_API_KEY",
     "BIRDEYE_API_KEY",
@@ -137,7 +137,7 @@ describe("Wallet API E2E", () => {
       "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
     process.env.SOLANA_PRIVATE_KEY =
       "4wBqpZM9xaSheZzJSMYGnGbUXDPSgWaC1LDUQ27gFdFtGm5qAshpcPMTgjLZ6Y7yDw3p6752kQhBEkZ1bPYoY8h";
-    process.env.MILADY_WALLET_EXPORT_TOKEN = WALLET_EXPORT_TEST_TOKEN;
+    process.env.ELIZA_WALLET_EXPORT_TOKEN = WALLET_EXPORT_TEST_TOKEN;
 
     // Start real server
     const server = await startApiServer({ port: 0 });
@@ -744,7 +744,7 @@ describe("Key Management E2E", () => {
   const keysToSave = [
     "EVM_PRIVATE_KEY",
     "SOLANA_PRIVATE_KEY",
-    "MILADY_WALLET_EXPORT_TOKEN",
+    "ELIZA_WALLET_EXPORT_TOKEN",
     "ALCHEMY_API_KEY",
     "HELIUS_API_KEY",
     "BIRDEYE_API_KEY",
@@ -758,7 +758,7 @@ describe("Key Management E2E", () => {
       "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
     process.env.SOLANA_PRIVATE_KEY =
       "4wBqpZM9xaSheZzJSMYGnGbUXDPSgWaC1LDUQ27gFdFtGm5qAshpcPMTgjLZ6Y7yDw3p6752kQhBEkZ1bPYoY8h";
-    process.env.MILADY_WALLET_EXPORT_TOKEN = WALLET_EXPORT_TEST_TOKEN;
+    process.env.ELIZA_WALLET_EXPORT_TOKEN = WALLET_EXPORT_TEST_TOKEN;
 
     const server = await startApiServer({ port: 0 });
     port = server.port;

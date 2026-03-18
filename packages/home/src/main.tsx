@@ -4,7 +4,7 @@
  * This file initializes the Capacitor runtime, sets up platform-specific
  * features, and mounts the React application.
  *
- * Unlike the full Milady app, Eliza Home is chat-only — no companion mode,
+ * Unlike the full Eliza app, Eliza Home is chat-only — no companion mode,
  * no VRM avatars, no 3D rendering.
  */
 
@@ -26,7 +26,7 @@ import {
   APP_RESUME_EVENT,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
-  dispatchMiladyEvent,
+  dispatchElizaEvent,
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
 } from "@elizaos/app-core/events";
@@ -68,16 +68,16 @@ interface ShareTargetPayload {
 
 declare global {
   interface Window {
-    __MILADY_SHARE_QUEUE__?: ShareTargetPayload[];
+    __ELIZA_SHARE_QUEUE__?: ShareTargetPayload[];
   }
 }
 
 function dispatchShareTarget(payload: ShareTargetPayload): void {
-  if (!window.__MILADY_SHARE_QUEUE__) {
-    window.__MILADY_SHARE_QUEUE__ = [];
+  if (!window.__ELIZA_SHARE_QUEUE__) {
+    window.__ELIZA_SHARE_QUEUE__ = [];
   }
-  window.__MILADY_SHARE_QUEUE__.push(payload);
-  dispatchMiladyEvent(SHARE_TARGET_EVENT, payload);
+  window.__ELIZA_SHARE_QUEUE__.push(payload);
+  dispatchElizaEvent(SHARE_TARGET_EVENT, payload);
 }
 
 /**
@@ -90,7 +90,7 @@ async function initializeAgent(): Promise<void> {
       `[Eliza] Agent status: ${status.state}`,
       status.agentName ?? "",
     );
-    dispatchMiladyEvent(AGENT_READY_EVENT, status);
+    dispatchElizaEvent(AGENT_READY_EVENT, status);
   } catch (err) {
     console.warn(
       "[Eliza] Agent not available:",
@@ -159,9 +159,9 @@ async function initializeKeyboard(): Promise<void> {
 function initializeAppLifecycle(): void {
   CapacitorApp.addListener("appStateChange", ({ isActive }) => {
     if (isActive) {
-      dispatchMiladyEvent(APP_RESUME_EVENT);
+      dispatchElizaEvent(APP_RESUME_EVENT);
     } else {
-      dispatchMiladyEvent(APP_PAUSE_EVENT);
+      dispatchElizaEvent(APP_PAUSE_EVENT);
     }
   });
 
@@ -218,7 +218,7 @@ function handleDeepLink(url: string): void {
               );
               break;
             }
-            dispatchMiladyEvent(CONNECT_EVENT, {
+            dispatchElizaEvent(CONNECT_EVENT, {
               gatewayUrl: validatedUrl.href,
             });
           } catch {
@@ -282,7 +282,7 @@ async function initializeElectron(): Promise<void> {
 
     await Desktop.addListener("shortcutPressed", (event: { id: string }) => {
       if (event.id === "command-palette") {
-        dispatchMiladyEvent(COMMAND_PALETTE_EVENT);
+        dispatchElizaEvent(COMMAND_PALETTE_EVENT);
       }
     });
 
@@ -300,7 +300,7 @@ async function initializeElectron(): Promise<void> {
     await Desktop.addListener(
       "trayMenuClick",
       (event: { itemId: string; checked?: boolean }) => {
-        dispatchMiladyEvent(TRAY_ACTION_EVENT, event);
+        dispatchElizaEvent(TRAY_ACTION_EVENT, event);
       },
     );
   } catch {}
@@ -388,13 +388,13 @@ function injectPopoutApiBase(): void {
         parsed.protocol === "https:" ||
         (parsed.protocol === "http:" && allowPrivateHttp)
       ) {
-        window.__MILADY_API_BASE__ = apiBase;
+        window.__ELIZA_API_BASE__ = apiBase;
       } else {
         console.warn("[Eliza] Rejected non-local apiBase:", host);
       }
     } catch {
       if (apiBase.startsWith("/") && !apiBase.startsWith("//")) {
-        window.__MILADY_API_BASE__ = apiBase;
+        window.__ELIZA_API_BASE__ = apiBase;
       } else {
         console.warn("[Eliza] Rejected invalid relative apiBase:", apiBase);
       }

@@ -409,7 +409,7 @@ async function resolveTrajectoryArchiveDirectory(): Promise<string> {
   } catch {
     const fallback = path.join(
       process.env.TMPDIR || os.tmpdir(),
-      "milady",
+      "eliza",
       TRAJECTORY_ARCHIVE_DIRNAME,
     );
     await ensureArchiveDirectory(fallback);
@@ -655,7 +655,7 @@ function warnRuntime(
   };
   if (runtimeLike.logger?.warn) {
     runtimeLike.logger.warn(
-      { err, src: "milady", subsystem: "trajectory-db" },
+      { err, src: "eliza", subsystem: "trajectory-db" },
       message,
     );
   }

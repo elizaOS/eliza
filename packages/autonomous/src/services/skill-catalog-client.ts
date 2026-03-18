@@ -1,5 +1,5 @@
 /**
- * Skill Catalog Client for Milady.
+ * Skill Catalog Client for Eliza.
  *
  * Provides a cached skill catalog (memory -> file) sourced from the
  * local skills/.cache/catalog.json. Supports search and browse.

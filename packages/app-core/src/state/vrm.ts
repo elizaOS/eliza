@@ -8,7 +8,7 @@ export const VRM_COUNT = BASE_VRM_COUNT;
 
 /**
  * Maps logical avatar indices (1-4) to the original source file numbers.
- * Index 1 → milady-1, Index 2 → milady-4, Index 3 → milady-5, Index 4 → milady-9.
+ * Index 1 → eliza-1, Index 2 → eliza-4, Index 3 → eliza-5, Index 4 → eliza-9.
  */
 const VRM_INDEX_MAP: readonly number[] = [1, 4, 5, 9];
 
@@ -29,20 +29,20 @@ function normalizeAvatarIndex(index: number): number {
 /** Resolve a bundled VRM index (1–N) to its public asset URL. */
 export function getVrmUrl(index: number): string {
   const sourceIndex = resolveSourceIndex(index);
-  return resolveAppAssetUrl(`vrms/milady-${sourceIndex}.vrm.gz`);
+  return resolveAppAssetUrl(`vrms/eliza-${sourceIndex}.vrm.gz`);
 }
 
 /** Resolve a bundled VRM index (1–N) to its preview thumbnail URL. */
 export function getVrmPreviewUrl(index: number): string {
   const sourceIndex = resolveSourceIndex(index);
-  return resolveAppAssetUrl(`vrms/previews/milady-${sourceIndex}.png`);
+  return resolveAppAssetUrl(`vrms/previews/eliza-${sourceIndex}.png`);
 }
 
 /** Resolve a bundled VRM index (1-N) to its custom background URL. */
 export function getVrmBackgroundUrl(index: number): string {
   const sourceIndex = resolveSourceIndex(index);
   const EXT = "png";
-  return resolveAppAssetUrl(`vrms/backgrounds/milady-${sourceIndex}.${EXT}`);
+  return resolveAppAssetUrl(`vrms/backgrounds/eliza-${sourceIndex}.${EXT}`);
 }
 
 const COMPANION_THEME_BACKGROUND_INDEX: Record<UiTheme, number> = {
@@ -58,10 +58,10 @@ export function getCompanionBackgroundUrl(theme: UiTheme): string {
 /** Human-readable roster title for bundled avatars. */
 export function getVrmTitle(index: number): string {
   const sourceIndex = resolveSourceIndex(index);
-  return `MILADY-${String(sourceIndex).padStart(2, "0")}`;
+  return `ELIZA-${String(sourceIndex).padStart(2, "0")}`;
 }
 
-/** Whether a bundled index points to the official Milady avatar set. */
+/** Whether a bundled index points to the official Eliza avatar set. */
 export function isOfficialVrmIndex(_index: number): boolean {
   return false;
 }

@@ -1,10 +1,10 @@
-import type { MiladyConfig } from "./types";
+import type { ElizaConfig } from "./types";
 
 /**
  * Environment variable keys that must NEVER be synced from config → process.env.
  *
  * Mirrors the BLOCKED_ENV_KEYS set in server.ts.  This is a defense-in-depth
- * gate: even if a blocked key is somehow persisted into milady.config.json
+ * gate: even if a blocked key is somehow persisted into eliza.config.json
  * (e.g. via an API bypass or manual file edit), it will not be loaded into the
  * process environment on startup.
  *
@@ -48,7 +48,7 @@ const BLOCKED_STARTUP_ENV_KEYS = new Set([
 ]);
 
 export function collectConfigEnvVars(
-  cfg?: MiladyConfig,
+  cfg?: ElizaConfig,
 ): Record<string, string> {
   const envConfig = cfg?.env;
   if (!envConfig) {

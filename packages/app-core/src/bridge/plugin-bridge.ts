@@ -1,7 +1,7 @@
 /**
  * Plugin Bridge
  *
- * This module provides a unified interface to all Milady Capacitor plugins
+ * This module provides a unified interface to all Eliza Capacitor plugins
  * with platform-specific fallbacks and capability detection.
  *
  * When a native plugin is unavailable, it provides graceful degradation
@@ -213,9 +213,9 @@ function wrapPlugin<T extends Record<string, unknown>>(
 }
 
 /**
- * The plugin bridge providing access to all Milady plugins
+ * The plugin bridge providing access to all Eliza plugins
  */
-export interface MiladyPlugins {
+export interface ElizaPlugins {
   /** Gateway connection plugin */
   gateway: WrappedPlugin<GenericNativePlugin>;
   /** Voice wake word plugin */
@@ -237,12 +237,12 @@ export interface MiladyPlugins {
 }
 
 // Singleton instance
-let pluginsInstance: MiladyPlugins | null = null;
+let pluginsInstance: ElizaPlugins | null = null;
 
 /**
  * Initialize and get the plugins interface
  */
-export function getPlugins(): MiladyPlugins {
+export function getPlugins(): ElizaPlugins {
   if (pluginsInstance) {
     if (pluginsInstance.desktop.isNative === isElectronPlatform()) {
       return pluginsInstance;

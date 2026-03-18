@@ -58,7 +58,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
     t,
   } = useApp();
 
-  const agentName = agentStatus?.agentName ?? "Milady";
+  const agentName = agentStatus?.agentName ?? "Eliza";
   const isElectrobun = isElectrobunRuntime();
 
   // ── Stream status polling ─────────────────────────────────────────────
@@ -170,7 +170,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
         // the capture target and should not be opened on desktop.
         if (result.live && !IS_POPOUT && !isElectrobun) {
           const apiBase = (window as unknown as Record<string, unknown>)
-            .__MILADY_API_BASE__ as string | undefined;
+            .__ELIZA_API_BASE__ as string | undefined;
           const base = window.location.origin || "";
           const sep =
             window.location.protocol === "file:" ||
@@ -182,7 +182,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
             : "popout";
           window.open(
             `${base}${sep}/?${qs}`,
-            "milady-stream",
+            "eliza-stream",
             "width=1280,height=720,menubar=no,toolbar=no,location=no,status=no",
           );
         }
@@ -414,7 +414,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
                   {t("streamview.EnableTheStreaming")}
                 </h2>
                 <p className="mt-3 text-sm leading-6 text-muted">
-                  {t("streamview.MiladyCouldNotRea")}{" "}
+                  {t("streamview.ElizaCouldNotRea")}{" "}
                   <code>{t("streamview.streamingBase")}</code>{" "}
                   {t("streamview.pluginThenReload")}
                 </p>

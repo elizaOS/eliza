@@ -1,5 +1,5 @@
 /**
- * Registry Client for Milady.
+ * Registry Client for Eliza.
  *
  * Provides a 3-tier cached registry (memory → file → network) that works
  * offline, in .app bundles, and in dev. Fetches from the next branch.
@@ -11,8 +11,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { loadMiladyConfig, saveMiladyConfig } from "../config/config.js";
-import type { RegistryEndpoint } from "../config/types.milady.js";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
+import type { RegistryEndpoint } from "../config/types.eliza.js";
 import {
   LOCAL_APP_DEFAULT_SANDBOX,
   resolveAppOverride,
@@ -146,7 +146,7 @@ async function writeFileCache(
 /** Return the list of custom registry endpoints from config. */
 export function getConfiguredEndpoints(): RegistryEndpoint[] {
   try {
-    const cfg = loadMiladyConfig();
+    const cfg = loadElizaConfig();
     return cfg.plugins?.registryEndpoints ?? [];
   } catch {
     return [];
@@ -160,7 +160,7 @@ export function addRegistryEndpoint(label: string, url: string): void {
   if (isDefaultEndpoint(normalised)) {
     throw new Error("Cannot add the default registry as a custom endpoint.");
   }
-  const cfg = loadMiladyConfig();
+  const cfg = loadElizaConfig();
   const endpoints = cfg.plugins?.registryEndpoints ?? [];
   if (endpoints.some((ep) => normaliseEndpointUrl(ep.url) === normalised)) {
     throw new Error(`Endpoint already exists: ${url}`);
@@ -170,7 +170,7 @@ export function addRegistryEndpoint(label: string, url: string): void {
     ...endpoints,
     { label, url: normalised, enabled: true },
   ];
-  saveMiladyConfig(cfg);
+  saveElizaConfig(cfg);
   memoryCache = null;
 }
 
@@ -180,7 +180,7 @@ export function removeRegistryEndpoint(url: string): void {
   if (isDefaultEndpoint(normalised)) {
     throw new Error("Cannot remove the default elizaOS registry.");
   }
-  const cfg = loadMiladyConfig();
+  const cfg = loadElizaConfig();
   const endpoints = cfg.plugins?.registryEndpoints ?? [];
   const updated = endpoints.filter(
     (ep) => normaliseEndpointUrl(ep.url) !== normalised,
@@ -190,21 +190,21 @@ export function removeRegistryEndpoint(url: string): void {
   }
   if (!cfg.plugins) cfg.plugins = {};
   cfg.plugins.registryEndpoints = updated;
-  saveMiladyConfig(cfg);
+  saveElizaConfig(cfg);
   memoryCache = null;
 }
 
 /** Toggle an endpoint's enabled status. */
 export function toggleRegistryEndpoint(url: string, enabled: boolean): void {
   const normalised = normaliseEndpointUrl(url);
-  const cfg = loadMiladyConfig();
+  const cfg = loadElizaConfig();
   const endpoints = cfg.plugins?.registryEndpoints ?? [];
   const ep = endpoints.find((e) => normaliseEndpointUrl(e.url) === normalised);
   if (!ep) throw new Error(`Endpoint not found: ${url}`);
   ep.enabled = enabled;
   if (!cfg.plugins) cfg.plugins = {};
   cfg.plugins.registryEndpoints = endpoints;
-  saveMiladyConfig(cfg);
+  saveElizaConfig(cfg);
   memoryCache = null;
 }
 

@@ -89,7 +89,7 @@ export async function handleAgentAdminRoutes(
         state.chatConnectionReady = null;
         state.chatConnectionPromise = null;
         state.agentState = "running";
-        state.agentName = newRuntime.character.name ?? "Milady";
+        state.agentName = newRuntime.character.name ?? "Eliza";
         state.model = detectRuntimeModel(newRuntime);
         state.startedAt = Date.now();
         state.pendingRestartReasons = [];
@@ -129,7 +129,7 @@ export async function handleAgentAdminRoutes(
           const message =
             stopErr instanceof Error ? stopErr.message : String(stopErr);
           logWarn(
-            `[milady-api] Error stopping runtime during reset: ${message}`,
+            `[eliza-api] Error stopping runtime during reset: ${message}`,
           );
         }
         state.runtime = null;
@@ -141,7 +141,7 @@ export async function handleAgentAdminRoutes(
       const isSafe = isSafeResetStateDir(resolvedState, home);
       if (!isSafe) {
         logWarn(
-          `[milady-api] Refusing to delete unsafe state dir: "${resolvedState}"`,
+          `[eliza-api] Refusing to delete unsafe state dir: "${resolvedState}"`,
         );
         error(
           res,
@@ -156,7 +156,7 @@ export async function handleAgentAdminRoutes(
       }
 
       state.agentState = "stopped";
-      state.agentName = "Milady";
+      state.agentName = "Eliza";
       state.model = undefined;
       state.startedAt = undefined;
       state.config = {};

@@ -112,8 +112,8 @@ export class SandboxManager {
 
   constructor(config: SandboxManagerConfig) {
     this.config = {
-      image: "milady-sandbox:bookworm-slim",
-      containerPrefix: "milady-sandbox",
+      image: "eliza-sandbox:bookworm-slim",
+      containerPrefix: "eliza-sandbox",
       workdir: "/workspace",
       network: "none",
       user: "1000:1000",
@@ -148,8 +148,8 @@ export class SandboxManager {
     user: string;
     wsRoot: string;
   } {
-    const image = this.config.image ?? "milady-sandbox:bookworm-slim";
-    const containerPrefix = this.config.containerPrefix ?? "milady-sandbox";
+    const image = this.config.image ?? "eliza-sandbox:bookworm-slim";
+    const containerPrefix = this.config.containerPrefix ?? "eliza-sandbox";
     const workdir = this.config.workdir ?? "/workspace";
     const network = this.config.network ?? "none";
     const user = this.config.user ?? "1000:1000";
@@ -437,7 +437,7 @@ export class SandboxManager {
     const enableNoVnc = this.config.browser?.enableNoVnc ?? false;
     const headless = this.config.browser?.headless ?? false;
     const image =
-      this.config.browser?.image ?? "milady-sandbox-browser:bookworm-slim";
+      this.config.browser?.image ?? "eliza-sandbox-browser:bookworm-slim";
 
     return this.engine.runContainer({
       image,

@@ -19,7 +19,7 @@ export const adminTrustProvider: Provider = createAdminTrustProvider();
 
 export function createAdminTrustProvider(): Provider {
   return {
-    name: "miladyAdminTrust",
+    name: "elizaAdminTrust",
     description:
       "Marks owner/admin chat identity as trusted for contact assertions (rolodex-oriented).",
     dynamic: true,

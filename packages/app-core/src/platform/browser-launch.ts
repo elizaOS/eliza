@@ -78,7 +78,7 @@ async function exchangeCloudLaunchSession(
   sessionId: string,
 ): Promise<{ apiBase: string; token: string }> {
   const response = await fetch(
-    `${cloudBaseUrl}/api/v1/milady/launch-sessions/${encodeURIComponent(sessionId)}`,
+    `${cloudBaseUrl}/api/v1/eliza/launch-sessions/${encodeURIComponent(sessionId)}`,
     {
       method: "GET",
       headers: { Accept: "application/json" },

@@ -32,7 +32,7 @@ let activeBrowser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
 let stopSignal = false;
 
 /** Path to the temp frame file that FFmpeg reads */
-export const FRAME_FILE = join(tmpdir(), "milady-stream-frame.jpg");
+export const FRAME_FILE = join(tmpdir(), "eliza-stream-frame.jpg");
 
 export interface BrowserCaptureConfig {
   url: string;
@@ -42,7 +42,7 @@ export interface BrowserCaptureConfig {
   quality?: number;
   /** Optional overlay layout JSON to seed into localStorage before page load. */
   overlayLayout?: string;
-  /** Theme name to apply (e.g. "milady", "haxor", "psycho"). */
+  /** Theme name to apply (e.g. "eliza", "haxor", "psycho"). */
   theme?: string;
   /** Avatar VRM index (1–8). */
   avatarIndex?: number;
@@ -131,7 +131,7 @@ export async function startBrowserCapture(config: BrowserCaptureConfig) {
         localStorage.setItem("eliza.stream.overlay-layout.v1", overlayLayout);
         if (destinationId) {
           localStorage.setItem(
-            `milady.stream.overlay-layout.v1.${destinationId}`,
+            `eliza.stream.overlay-layout.v1.${destinationId}`,
             overlayLayout,
           );
         }
