@@ -8,6 +8,7 @@ import {
 	isOllamaAvailable,
 	listOllamaModels,
 } from "../testing/ollama-provider";
+import type { IAgentRuntime } from "../types";
 import { ModelType } from "../types";
 
 describe("Ollama Provider", () => {
@@ -125,7 +126,7 @@ describe("Ollama Provider", () => {
 					character: { system: "You are a test agent" },
 				};
 
-				const result = await handler?.(agentRuntime as never, {
+				const result = await handler?.(agentRuntime as IAgentRuntime, {
 					prompt: "Hello",
 				});
 				expect(result).toBe("Hello, I am a test response");
@@ -153,7 +154,7 @@ describe("Ollama Provider", () => {
 				const handler = handlers[ModelType.TEXT_EMBEDDING];
 
 				const agentRuntime = { character: {} };
-				const result = await handler?.(agentRuntime as never, {
+				const result = await handler?.(agentRuntime as IAgentRuntime, {
 					text: "Test text",
 				});
 
@@ -171,7 +172,7 @@ describe("Ollama Provider", () => {
 				const handler = handlers[ModelType.TEXT_EMBEDDING];
 
 				const agentRuntime = { character: {} };
-				const result = await handler?.(agentRuntime as never, {
+				const result = await handler?.(agentRuntime as IAgentRuntime, {
 					text: "Test text",
 				});
 
@@ -189,7 +190,7 @@ describe("Ollama Provider", () => {
 
 				const agentRuntime = { character: {} };
 				await expect(
-					handler?.(agentRuntime as never, { text: "Test text" }),
+					handler?.(agentRuntime as IAgentRuntime, { text: "Test text" }),
 				).rejects.toThrow("No embeddings returned from Ollama");
 			});
 		});
@@ -207,7 +208,7 @@ describe("Ollama Provider", () => {
 				const handler = handlers[ModelType.OBJECT_SMALL];
 
 				const agentRuntime = { character: {} };
-				const result = await handler?.(agentRuntime as never, {
+				const result = await handler?.(agentRuntime as IAgentRuntime, {
 					prompt: "Generate JSON",
 				});
 
@@ -227,7 +228,7 @@ describe("Ollama Provider", () => {
 
 				const agentRuntime = { character: {} };
 				await expect(
-					handler?.(agentRuntime as never, { prompt: "Generate JSON" }),
+					handler?.(agentRuntime as IAgentRuntime, { prompt: "Generate JSON" }),
 				).rejects.toThrow("Failed to parse JSON from Ollama response");
 			});
 
@@ -242,7 +243,9 @@ describe("Ollama Provider", () => {
 				const handler = handlers[ModelType.OBJECT_SMALL];
 
 				const agentRuntime = { character: {} };
-				await handler?.(agentRuntime as never, { prompt: "Generate JSON" });
+				await handler?.(agentRuntime as IAgentRuntime, {
+					prompt: "Generate JSON",
+				});
 
 				const body = JSON.parse(mockFetch.mock.calls[0][1].body);
 				expect(body.options.temperature).toBe(0.3);

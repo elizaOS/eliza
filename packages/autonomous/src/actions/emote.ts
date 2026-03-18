@@ -84,7 +84,7 @@ export const emoteAction: Action = {
         success: true,
         data: { emoteId: emote.id },
       };
-    } catch (_err) {
+    } catch {
       return {
         text: "",
         success: false,

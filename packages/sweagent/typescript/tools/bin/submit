@@ -1,3 +1,0 @@
-#!/usr/bin/env node
-const { submit } = require('../dist/submit/index.js');
-submit();

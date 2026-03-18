@@ -13,6 +13,8 @@ import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { logger } from "@elizaos/core";
 import type { StreamConfig } from "../services/stream-manager";
+import type { TtsConfig } from "../config/types.messages";
+import type { StreamVisualSettings } from "./stream-persistence";
 import {
   getTtsProviderStatus,
   resolveTtsConfig,
@@ -119,7 +121,7 @@ function error(res: ServerResponse, message: string, status: number): void {
 function resolveRouteTtsConfig(
   config: unknown,
 ): Record<string, unknown> | null {
-  const resolved = resolveTtsConfig(config as never);
+  const resolved = resolveTtsConfig(config as TtsConfig | undefined);
   return resolved ? { ...resolved } : null;
 }
 
@@ -128,7 +130,7 @@ function getRouteTtsProviderStatus(config: unknown): {
   configuredProvider: string | null;
   hasApiKey: boolean;
 } {
-  return getTtsProviderStatus(config as never);
+  return getTtsProviderStatus(config as TtsConfig | undefined);
 }
 
 const ttsBridgeAdapter = {
@@ -139,7 +141,10 @@ const ttsBridgeAdapter = {
     return ttsStreamBridge.isAttached();
   },
   async speak(text: string, config: Record<string, unknown>): Promise<boolean> {
-    return ttsStreamBridge.speak(text, config as never);
+    return ttsStreamBridge.speak(
+      text,
+      config as unknown as Parameters<typeof ttsStreamBridge.speak>[1],
+    );
   },
 };
 
@@ -160,7 +165,7 @@ function writeRouteStreamSettings(settings: {
     provider?: string;
   };
 }): void {
-  writeStreamSettings(settings as never);
+  writeStreamSettings(settings as StreamVisualSettings);
 }
 
 // ---------------------------------------------------------------------------

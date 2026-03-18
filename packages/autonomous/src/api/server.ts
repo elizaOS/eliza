@@ -65,6 +65,7 @@ import {
 import {
   AUDIT_EVENT_TYPES,
   AUDIT_SEVERITIES,
+  type AuditFeedQuery,
   getAuditFeedSize,
   queryAuditFeed,
   subscribeAuditFeed,
@@ -141,7 +142,7 @@ import { handleAgentAdminRoutes } from "./agent-admin-routes";
 import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model";
 import { handleAgentTransferRoutes } from "./agent-transfer-routes";
-import { handleAppsRoutes } from "./apps-routes";
+import { type AppManagerLike, handleAppsRoutes } from "./apps-routes";
 import { handleAuthRoutes } from "./auth-routes";
 import {
   buildBscApproveUnsignedTx,
@@ -152,7 +153,11 @@ import {
   resolvePrimaryBscRpcUrl,
 } from "./bsc-trade";
 import { handleBugReportRoutes } from "./bug-report-routes";
-import { handleCharacterRoutes } from "./character-routes";
+import {
+  type AutonomousConfigLike,
+  type CharacterRouteContext,
+  handleCharacterRoutes,
+} from "./character-routes";
 import { handleCloudBillingRoute } from "./cloud-billing-routes";
 import { handleCloudCompatRoute } from "./cloud-compat-routes";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes";
@@ -208,12 +213,19 @@ import { RegistryService } from "./registry-service";
 import { handleSandboxRoute } from "./sandbox-routes";
 import { applySignalQrOverride, handleSignalRoute } from "./signal-routes";
 import { resolveStreamingUpdate } from "./streaming-text";
-import { handleSubscriptionRoutes } from "./subscription-routes";
+import {
+  type SubscriptionAuthApi,
+  type SubscriptionRouteContext,
+  handleSubscriptionRoutes,
+} from "./subscription-routes";
 import { resolveTerminalRunLimits } from "./terminal-run-limits";
 import { handleTrainingRoutes } from "./training-routes";
 import type { TrainingServiceWithRuntime } from "./training-service-like";
 import { handleTrajectoryRoute } from "./trajectory-routes";
-import { handleTriggerRoutes } from "./trigger-routes";
+import {
+  type TriggerRouteContext,
+  handleTriggerRoutes,
+} from "./trigger-routes";
 import {
   generateVerificationMessage,
   isAddressWhitelisted,
@@ -7708,8 +7720,8 @@ async function handleRequest(
       error,
       saveConfig: saveElizaConfig,
       loadSubscriptionAuth: async () =>
-        (await import("../auth/index")) as never,
-    } as never)
+        (await import("../auth/index")) as SubscriptionAuthApi,
+    } as SubscriptionRouteContext)
   ) {
     return;
   }
@@ -8392,17 +8404,23 @@ async function handleRequest(
     readJsonBody,
     json,
     error,
-    executeTriggerTask: executeTriggerTask as never,
+    executeTriggerTask:
+      executeTriggerTask as TriggerRouteContext["executeTriggerTask"],
     getTriggerHealthSnapshot,
-    getTriggerLimit: getTriggerLimit as never,
-    listTriggerTasks: listTriggerTasks as never,
+    getTriggerLimit: getTriggerLimit as TriggerRouteContext["getTriggerLimit"],
+    listTriggerTasks:
+      listTriggerTasks as TriggerRouteContext["listTriggerTasks"],
     readTriggerConfig,
     readTriggerRuns,
-    taskToTriggerSummary: taskToTriggerSummary as never,
+    taskToTriggerSummary:
+      taskToTriggerSummary as TriggerRouteContext["taskToTriggerSummary"],
     triggersFeatureEnabled,
-    buildTriggerConfig: buildTriggerConfig as never,
-    buildTriggerMetadata: buildTriggerMetadata as never,
-    normalizeTriggerDraft: normalizeTriggerDraft as never,
+    buildTriggerConfig:
+      buildTriggerConfig as TriggerRouteContext["buildTriggerConfig"],
+    buildTriggerMetadata:
+      buildTriggerMetadata as TriggerRouteContext["buildTriggerMetadata"],
+    normalizeTriggerDraft:
+      normalizeTriggerDraft as TriggerRouteContext["normalizeTriggerDraft"],
     DISABLED_TRIGGER_INTERVAL_MS,
     TRIGGER_TASK_NAME,
     TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],
@@ -8518,8 +8536,11 @@ async function handleRequest(
       json,
       error,
       pickRandomNames,
-      saveConfig: saveElizaConfig as never,
-      validateCharacter: (body) => CharacterSchema.safeParse(body) as never,
+      saveConfig: saveElizaConfig as (config: AutonomousConfigLike) => void,
+      validateCharacter: (body) =>
+        CharacterSchema.safeParse(body) as ReturnType<
+          CharacterRouteContext["validateCharacter"]
+        >,
     })
   ) {
     return;
@@ -10599,7 +10620,8 @@ async function handleRequest(
       auditEventTypes: AUDIT_EVENT_TYPES,
       auditSeverities: AUDIT_SEVERITIES,
       getAuditFeedSize,
-      queryAuditFeed: (query) => queryAuditFeed(query as never) as never,
+      queryAuditFeed: (query) =>
+        queryAuditFeed(query as AuditFeedQuery),
       subscribeAuditFeed,
     })
   ) {
@@ -11168,7 +11190,9 @@ async function handleRequest(
         whatsappAuthExists,
         whatsappLogout,
         createWhatsAppPairingSession: (options) =>
-          new WhatsAppPairingSession(options as never),
+          new WhatsAppPairingSession(
+            options as ConstructorParameters<typeof WhatsAppPairingSession>[0],
+          ),
       },
     );
     if (handled) return;
@@ -11208,7 +11232,9 @@ async function handleRequest(
         signalAuthExists,
         signalLogout,
         createSignalPairingSession: (options) =>
-          new SignalPairingSession(options as never),
+          new SignalPairingSession(
+            options as ConstructorParameters<typeof SignalPairingSession>[0],
+          ),
       },
     );
     if (handled) return;
@@ -14641,7 +14667,7 @@ async function handleRequest(
       method,
       pathname,
       url,
-      appManager: state.appManager as never,
+      appManager: state.appManager as AppManagerLike,
       getPluginManager: () => requirePluginManager(state.runtime),
       parseBoundedLimit,
       readJsonBody,

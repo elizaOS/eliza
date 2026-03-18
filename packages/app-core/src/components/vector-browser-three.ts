@@ -9,12 +9,14 @@ type WebGpuRendererCtor = new (options?: {
 export async function createVectorBrowserRenderer(): Promise<THREE.WebGLRenderer> {
   if (typeof navigator !== "undefined" && navigator.gpu) {
     try {
-      const webgpuModule = (await import("three/webgpu")) as unknown as {
-        WebGPURenderer?: WebGpuRendererCtor;
-      };
-      const WebGPURenderer = webgpuModule.WebGPURenderer;
+      const webgpuModule = (await import("three/webgpu")) as any;
+      const WebGPURenderer = webgpuModule.WebGPURenderer as
+        | WebGpuRendererCtor
+        | undefined;
       if (WebGPURenderer) {
-        const renderer = new WebGPURenderer({ antialias: true });
+        const renderer = new (WebGPURenderer as WebGpuRendererCtor)({
+          antialias: true,
+        });
         await renderer.init?.();
         return renderer;
       }

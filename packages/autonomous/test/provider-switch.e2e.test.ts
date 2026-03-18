@@ -111,7 +111,7 @@ describe("POST /api/provider/switch", () => {
     it("rejects numeric provider", async () => {
       const { status } = await req(port, "POST", "/api/provider/switch", {
         provider: 42,
-      } as never);
+      } as Record<string, unknown>);
       expect(status).toBe(400);
     });
   });

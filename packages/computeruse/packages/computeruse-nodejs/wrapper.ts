@@ -36,21 +36,25 @@ function patchInspector(
   };
 }
 
-function wrapNativeFunction<T extends Function>(fn: T): T {
+function wrapNativeFunction<T extends (...args: unknown[]) => unknown>(fn: T): T {
   if (typeof fn !== "function") return fn;
-  return function (this: any, ...args: any[]) {
+  const wrapped = function (
+    this: ThisParameterType<T>,
+    ...args: Parameters<T>
+  ): ReturnType<T> {
     try {
-      const result = fn.apply(this, args);
+      const result = fn.apply(this, args) as ReturnType<T>;
       if (result instanceof Promise) {
-        return result.catch((error) => {
+        return result.catch((error: unknown) => {
           throw mapNativeError(error);
-        });
+        }) as ReturnType<T>;
       }
       return result;
     } catch (error) {
       throw mapNativeError(error);
     }
-  } as any;
+  };
+  return wrapped as T;
 }
 
 function wrapClassMethods<T extends NativeClass>(Class: T): T {
@@ -348,15 +352,21 @@ export const Locator = wrapClass(native.Locator);
 export const Selector = wrapClass(native.Selector);
 export const WindowManager = wrapClassMethods(native.WindowManager);
 
+/** Prototype with stored original executeBrowserScript for patching */
+interface PrototypeWithStoredBrowserScript {
+  executeBrowserScript: (script: string, process?: string, timeoutMs?: number) => Promise<string>;
+  _originalExecuteBrowserScript?: (script: string, process?: string, timeoutMs?: number) => Promise<string>;
+}
+
 // Patch executeBrowserScript on Desktop and Element
 if (Desktop.prototype.executeBrowserScript) {
-  (Desktop.prototype as any)._originalExecuteBrowserScript =
+  (Desktop.prototype as PrototypeWithStoredBrowserScript)._originalExecuteBrowserScript =
     Desktop.prototype.executeBrowserScript;
   Desktop.prototype.executeBrowserScript = enhancedExecuteBrowserScript;
 }
 
 if (Element.prototype.executeBrowserScript) {
-  (Element.prototype as any)._originalExecuteBrowserScript =
+  (Element.prototype as PrototypeWithStoredBrowserScript)._originalExecuteBrowserScript =
     Element.prototype.executeBrowserScript;
   Element.prototype.executeBrowserScript = enhancedExecuteBrowserScript;
 }

@@ -2,11 +2,9 @@ import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { readJsonBody as parseJsonBody, sendJson } from "./http-helpers";
+import type { WhatsAppPairingEvent } from "../services/whatsapp-pairing";
 
-export interface WhatsAppPairingEventLike {
-  status?: string;
-  [key: string]: unknown;
-}
+export type WhatsAppPairingEventLike = WhatsAppPairingEvent;
 
 export interface WhatsAppPairingSessionLike {
   start(): Promise<void>;
@@ -98,7 +96,7 @@ export async function handleWhatsAppRoute(
       authDir,
       accountId,
       onEvent: (event) => {
-        state.broadcastWs?.(event as Record<string, unknown>);
+        state.broadcastWs?.(event as unknown as Record<string, unknown>);
 
         if (event.status === "connected") {
           if (!state.config.connectors) state.config.connectors = {};

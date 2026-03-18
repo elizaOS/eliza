@@ -27,6 +27,7 @@ import {
   type TalkModeTranscriptEvent,
 } from "../bridge/native-plugins";
 import { resolveApiUrl } from "../utils";
+import { getElizaApiToken } from "../utils/eliza-globals";
 import { sanitizeSpeechText } from "../utils/spoken-text";
 import { mergeStreamingText } from "../utils/streaming-text";
 
@@ -60,10 +61,15 @@ interface SpeechRecognitionResultList {
 
 type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
 
+interface WindowWithSpeechRecognition extends Window {
+  SpeechRecognition?: SpeechRecognitionCtor;
+  webkitSpeechRecognition?: SpeechRecognitionCtor;
+}
+
 /** Access browser SpeechRecognition APIs which may live under a vendor prefix. */
 function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+  const w = window as WindowWithSpeechRecognition;
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
 // ── Public types ──────────────────────────────────────────────────────
@@ -975,11 +981,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             speed: elConfig.speed ?? 1.0,
           },
         };
-        const apiToken =
-          typeof window !== "undefined" &&
-          typeof window.__ELIZA_API_TOKEN__ === "string"
-            ? window.__ELIZA_API_TOKEN__.trim()
-            : "";
+        const apiToken = getElizaApiToken()?.trim() ?? "";
 
         const fetchViaProxy = async () => {
           return fetch(resolveElevenProxyEndpoint(), {

@@ -1,5 +1,7 @@
 import http from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type { AgentRuntime } from "@elizaos/runtime";
+import type { PluginManagerLike } from "../src/services/plugin-manager-types";
 import { startApiServer } from "../src/api/server";
 
 // ---------------------------------------------------------------------------
@@ -52,8 +54,7 @@ function http$(
 
 describe("Plugin Management E2E", () => {
   let server: { port: number; close: () => Promise<void> };
-  // biome-ignore lint/suspicious/noExplicitAny: mock type
-  let mockPluginManager: any;
+  let mockPluginManager: PluginManagerLike;
 
   beforeAll(async () => {
     // Create a mock plugin manager
@@ -149,9 +150,11 @@ describe("Plugin Management E2E", () => {
       agentId: "test-id",
     };
 
-    // Start server with mock runtime
-    // biome-ignore lint/suspicious/noExplicitAny: mock type
-    server = await startApiServer({ port: 0, runtime: mockRuntime as any });
+    // Start server with mock runtime (partial mock satisfies plugin_manager usage)
+    server = await startApiServer({
+      port: 0,
+      runtime: mockRuntime as unknown as AgentRuntime,
+    });
   }, 30_000);
 
   afterAll(async () => {

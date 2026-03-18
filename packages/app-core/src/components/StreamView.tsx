@@ -15,6 +15,7 @@ import { client, isApiError } from "@elizaos/app-core/api";
 import { isElectrobunRuntime } from "@elizaos/app-core/bridge";
 import { useBranding } from "@elizaos/app-core/config";
 import { useApp } from "@elizaos/app-core/state";
+import { getElizaApiBase } from "../utils/eliza-globals";
 import {
   type CSSProperties,
   useCallback,
@@ -171,8 +172,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
         // the native app window directly, so a renderer popup no longer changes
         // the capture target and should not be opened on desktop.
         if (result.live && !IS_POPOUT && !isElectrobun) {
-          const apiBase = (window as unknown as Record<string, unknown>)
-            .__ELIZA_API_BASE__ as string | undefined;
+          const apiBase = getElizaApiBase();
           const base = window.location.origin || "";
           const sep =
             window.location.protocol === "file:" ||

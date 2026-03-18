@@ -23,7 +23,7 @@ interface CodexFlowLike {
   credentials: Promise<OAuthCredentialsLike>;
 }
 
-interface SubscriptionAuthApi {
+export interface SubscriptionAuthApi {
   getSubscriptionStatus: () => unknown;
   startAnthropicLogin: () => Promise<AnthropicFlowLike>;
   startCodexLogin: () => Promise<CodexFlowLike>;

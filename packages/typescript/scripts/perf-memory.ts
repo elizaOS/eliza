@@ -458,7 +458,7 @@ async function runAutonomyScenario(
 				await autonomyWorker.execute(runtime, {}, {
 					id: uuidv4() as UUID,
 					name: AUTONOMY_TASK_NAME,
-				} as never);
+				} as Parameters<typeof autonomyWorker.execute>[2]);
 			}
 
 			completed += batchIterations;

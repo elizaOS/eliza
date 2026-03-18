@@ -378,3 +378,23 @@ export const PRIMARY_CHAIN_KEYS: ChainKey[] = [
   "avax",
   "solana",
 ];
+
+/**
+ * Map a chain focus key (ChainKey or "all") to the legacy WalletRpcChain used
+ * by legacyCustomChains. Returns null for "all" or unknown chains.
+ */
+export function chainKeyToWalletRpcChain(
+  chainFocus: string,
+): "evm" | "bsc" | "solana" | null {
+  if (chainFocus === "all") return null;
+  if (chainFocus === "bsc" || chainFocus === "solana") return chainFocus;
+  const evmKeys: ChainKey[] = [
+    "ethereum",
+    "base",
+    "avax",
+    "arbitrum",
+    "optimism",
+    "polygon",
+  ];
+  return evmKeys.includes(chainFocus as ChainKey) ? "evm" : null;
+}

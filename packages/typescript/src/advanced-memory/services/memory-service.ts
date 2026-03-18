@@ -62,7 +62,7 @@ export class MemoryService extends Service {
 		// If none exists, storage-backed features are disabled.
 		const provider = (await runtime.getService(
 			"memoryStorage",
-		)) as MemoryStorageProvider | null;
+		)) as unknown as MemoryStorageProvider | null;
 		if (!provider) {
 			logger.warn(
 				{ src: "service:memory", agentId: runtime.agentId },

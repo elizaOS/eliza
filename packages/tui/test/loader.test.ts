@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Loader } from "../src/components/loader.js";
 import type { TUI } from "../src/tui.js";
 
@@ -13,7 +13,7 @@ type MockTUI = Pick<TUI, "requestRender"> & {
 
 describe("Loader component", () => {
 	const createMockTUI = (): MockTUI => ({
-		requestRender: mock(() => {}),
+		requestRender: vi.fn(() => {}),
 	});
 
 	let loader: Loader;

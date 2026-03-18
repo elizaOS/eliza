@@ -76,6 +76,7 @@ vi.mock("@elizaos/app-core/api", () => ({
   SkillScanReportSummary: {},
 }));
 
+import type { AppState } from "@elizaos/app-core/state";
 import { AppProvider, useApp } from "@elizaos/app-core/state";
 
 function createDeferred<T>() {
@@ -101,7 +102,11 @@ function Probe(props: { onReady: (api: ProbeApi) => void }) {
 
   useEffect(() => {
     onReady({
-      setState: (key, value) => app.setState(key, value as never),
+      setState: (key, value) =>
+        app.setState(
+          key,
+          value as AppState["exportPassword" | "importPassword" | "importFile"],
+        ),
       handleAgentExport: app.handleAgentExport,
       handleAgentImport: app.handleAgentImport,
     });
@@ -253,7 +258,7 @@ describe("agent transfer locking", () => {
     const fakeFile = {
       name: "agent-export.eliza-agent",
       arrayBuffer: async () => new ArrayBuffer(8),
-    } as unknown as File;
+    } as File;
 
     await act(async () => {
       api?.setState("importPassword", "abcd");

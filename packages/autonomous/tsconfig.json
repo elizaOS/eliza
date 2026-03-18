@@ -7,9 +7,13 @@
     "skipLibCheck": true,
     "types": ["node"],
     "declaration": false,
+    "allowImportingTsExtensions": true,
     "noEmit": true,
     "baseUrl": ".",
-    "paths": {}
+    "paths": {
+      "@elizaos/core": ["../typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["../typescript/src/*"]
+    }
   },
   "include": ["src"]
 }

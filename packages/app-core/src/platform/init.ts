@@ -5,6 +5,7 @@
  */
 
 import { isElectrobunRuntime } from "../bridge";
+import { setElizaApiBase } from "../utils/eliza-globals";
 
 // ── Platform detection ──────────────────────────────────────────────
 
@@ -221,13 +222,13 @@ export function injectPopoutApiBase(): void {
         parsed.protocol === "https:" ||
         (parsed.protocol === "http:" && allowPrivateHttp)
       ) {
-        window.__ELIZA_API_BASE__ = apiBase;
+        setElizaApiBase(apiBase);
       } else {
         console.warn("[app-core] Rejected non-local apiBase:", host);
       }
     } catch {
       if (apiBase.startsWith("/") && !apiBase.startsWith("//")) {
-        window.__ELIZA_API_BASE__ = apiBase;
+        setElizaApiBase(apiBase);
       } else {
         console.warn("[app-core] Rejected invalid relative apiBase:", apiBase);
       }

@@ -11,7 +11,7 @@ type NativeClass =
   | typeof native.Selector;
 
 function patchInspector(
-  Klass: any,
+  Klass: NativeClass,
   methodName = "toString",
   forcePlainObject = false,
 ): void {
@@ -21,7 +21,7 @@ function patchInspector(
   }
   const proto = Klass.prototype;
   const original = proto[util.inspect.custom];
-  proto[util.inspect.custom] = function (...args: any[]) {
+  proto[util.inspect.custom] = function (...args: unknown[]) {
     if (typeof this[methodName] === "function") {
       const result = this[methodName](...args);
       if (forcePlainObject && result && typeof result === "object") {
@@ -36,21 +36,25 @@ function patchInspector(
   };
 }
 
-function wrapNativeFunction<T extends Function>(fn: T): T {
+function wrapNativeFunction<T extends (...args: unknown[]) => unknown>(fn: T): T {
   if (typeof fn !== "function") return fn;
-  return function (this: any, ...args: any[]) {
+  const wrapped = function (
+    this: InstanceType<NativeClass>,
+    ...args: Parameters<T>
+  ): ReturnType<T> {
     try {
       const result = fn.apply(this, args);
       if (result instanceof Promise) {
-        return result.catch((error) => {
-          throw mapNativeError(error);
-        });
+        return result.catch((err: unknown) => {
+          throw mapNativeError(err);
+        }) as ReturnType<T>;
       }
       return result;
     } catch (error) {
       throw mapNativeError(error);
     }
-  } as any;
+  };
+  return wrapped as T;
 }
 
 function wrapClassMethods<T extends NativeClass>(Class: T): T {
@@ -66,7 +70,7 @@ function wrapClassMethods<T extends NativeClass>(Class: T): T {
 
 function wrapClass<T extends NativeClass>(
   Class: T,
-  ...inspectOptions: any[]
+  ...inspectOptions: [methodName?: string, forcePlainObject?: boolean]
 ): T {
   const Wrapped = wrapClassMethods(Class);
   patchInspector(Wrapped, ...(inspectOptions || []));
@@ -131,10 +135,10 @@ export class InternalError extends Error {
 }
 
 // Error mapping function
-function mapNativeError(error: any): Error {
-  if (!error.message) return error;
-
-  const message = error.message;
+function mapNativeError(error: unknown): Error {
+  const err =
+    error instanceof Error ? error : new Error(String(error ?? "Unknown error"));
+  const message = err.message;
   if (message.startsWith("ELEMENT_NOT_FOUND:")) {
     return new ElementNotFoundError(
       message.replace("ELEMENT_NOT_FOUND:", "").trim(),
@@ -169,27 +173,31 @@ function mapNativeError(error: any): Error {
   if (message.startsWith("INTERNAL_ERROR:")) {
     return new InternalError(message.replace("INTERNAL_ERROR:", "").trim());
   }
-  return error;
+  return err;
 }
 
 // Types for executeBrowserScript arguments
 export type BrowserScriptEnv = Record<string, unknown>;
-export type BrowserScriptFunction = (env?: BrowserScriptEnv) => any;
+export type BrowserScriptFunction = (env?: BrowserScriptEnv) => unknown;
 export type BrowserScriptOptions = {
   file: string;
   env?: BrowserScriptEnv;
 };
 type BrowserScriptInput = string | BrowserScriptFunction | BrowserScriptOptions;
 
+type DesktopOrElementPrototype = (typeof native.Desktop)["prototype"] & {
+  _originalExecuteBrowserScript?: (typeof native.Desktop)["prototype"]["executeBrowserScript"];
+};
+
 // Enhanced executeBrowserScript with function and file support
 // Desktop signature: (script, process, timeoutMs?)
 // Element signature: (script)
 async function enhancedExecuteBrowserScript(
-  this: any,
+  this: InstanceType<typeof native.Desktop> | InstanceType<typeof native.Element>,
   scriptOrFunction: BrowserScriptInput,
-  processOrEnv?: string | any,
+  processOrEnv?: string | BrowserScriptEnv,
   timeoutMs?: number,
-): Promise<any> {
+): Promise<string | unknown> {
   // Detect if this is Desktop or Element
   // Can't use .length on napi functions (always returns 0), so check constructor name
   const isDesktop = this.constructor?.name === 'Desktop';
@@ -197,7 +205,7 @@ async function enhancedExecuteBrowserScript(
   // For Desktop: second param is process name, third is timeout
   // For Element: second param is env options (backward compatible)
   let process: string | undefined;
-  let envOrOptions: any;
+  let envOrOptions: BrowserScriptEnv | undefined;
 
   if (isDesktop) {
     if (typeof processOrEnv !== 'string') {
@@ -212,7 +220,7 @@ async function enhancedExecuteBrowserScript(
     envOrOptions = processOrEnv;
   }
   let script: string;
-  let env: any = {};
+  let env: BrowserScriptEnv = {};
   let shouldInjectEnv = false; // Only inject env for file-based and string scripts, not functions
 
   // Handle different input types
@@ -237,11 +245,11 @@ async function enhancedExecuteBrowserScript(
             format: "iife",
           });
           fileContent = result.code;
-        } catch (e: any) {
+        } catch (e: unknown) {
           // If esbuild not available, try to use as-is (may work for simple TS)
           console.warn(
             "esbuild not found - using TypeScript file as-is:",
-            e.message,
+            e instanceof Error ? e.message : String(e),
           );
         }
       }
@@ -297,10 +305,10 @@ async function enhancedExecuteBrowserScript(
           format: "iife",
         });
         fileContent = result.code;
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.warn(
           "esbuild not found - using TypeScript file as-is:",
-          e.message,
+          e instanceof Error ? e.message : String(e),
         );
       }
     }
@@ -323,15 +331,17 @@ async function enhancedExecuteBrowserScript(
 
   // Call the original native method
   // Desktop requires (script, process, timeoutMs?), Element only needs (script)
+  const original = (this as DesktopOrElementPrototype)._originalExecuteBrowserScript;
+  if (!original) throw new Error("executeBrowserScript was not properly patched");
   const resultStr = isDesktop
-    ? await this._originalExecuteBrowserScript(script, process, timeoutMs)
-    : await this._originalExecuteBrowserScript(script);
+    ? await original.call(this, script, process, timeoutMs)
+    : await original.call(this, script);
 
   // If function was passed, try to parse JSON result
   if (typeof scriptOrFunction === "function") {
     try {
       return JSON.parse(resultStr);
-    } catch (e) {
+    } catch {
       // Not JSON, return as-is
       return resultStr;
     }
@@ -350,13 +360,13 @@ export const WindowManager = wrapClassMethods(native.WindowManager);
 
 // Patch executeBrowserScript on Desktop and Element
 if (Desktop.prototype.executeBrowserScript) {
-  (Desktop.prototype as any)._originalExecuteBrowserScript =
+  (Desktop.prototype as DesktopOrElementPrototype)._originalExecuteBrowserScript =
     Desktop.prototype.executeBrowserScript;
   Desktop.prototype.executeBrowserScript = enhancedExecuteBrowserScript;
 }
 
 if (Element.prototype.executeBrowserScript) {
-  (Element.prototype as any)._originalExecuteBrowserScript =
+  (Element.prototype as DesktopOrElementPrototype)._originalExecuteBrowserScript =
     Element.prototype.executeBrowserScript;
   Element.prototype.executeBrowserScript = enhancedExecuteBrowserScript;
 }

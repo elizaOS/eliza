@@ -308,7 +308,7 @@ function createRuntimeForStreamTests(options: {
           disableAutonomy: async () => {},
           isLoopRunning: () => options.loopRunning ?? false,
           getStatus: () => ({ enabled: options.loopRunning ?? false }),
-        } as never;
+        } as Awaited<ReturnType<AgentRuntime["getService"]>>;
       }
       return null;
     },
@@ -404,7 +404,7 @@ function createRuntimeForAutonomySurfaceTests(options: {
           disableAutonomy: async () => {},
           isLoopRunning: () => options.loopRunning ?? true,
           getStatus: () => ({ enabled: options.loopRunning ?? true }),
-        } as never;
+        } as Awaited<ReturnType<AgentRuntime["getService"]>>;
       }
       return null;
     },
@@ -464,7 +464,7 @@ function createRuntimeForWorkbenchCrudTests(options?: {
           getStatus: () => ({ enabled: options?.loopRunning ?? false }),
           getAutonomousRoomId: () =>
             "00000000-0000-0000-0000-000000000201" as UUID,
-        } as never;
+        } as Awaited<ReturnType<AgentRuntime["getService"]>>;
       }
       return null;
     },
@@ -1537,7 +1537,7 @@ describe("API Server E2E (no runtime)", () => {
         getService: () => null,
         getRoomsByWorld: async () => restoreGate.promise,
         getMemories: async (query: { count?: number }) =>
-          query.count === 1 ? ([{ createdAt: restoredAt }] as never[]) : [],
+          query.count === 1 ? ([{ createdAt: restoredAt }] as Array<{ createdAt: number }>) : [],
         getCache: async () => null,
         setCache: async () => {},
       } as unknown as AgentRuntime;
@@ -1588,7 +1588,7 @@ describe("API Server E2E (no runtime)", () => {
         getService: () => null,
         getRoomsByWorld: async () => restoreGate.promise,
         getMemories: async (query: { count?: number }) =>
-          query.count === 1 ? ([{ createdAt: restoredAt }] as never[]) : [],
+          query.count === 1 ? ([{ createdAt: restoredAt }] as Array<{ createdAt: number }>) : [],
         getCache: async () => null,
         setCache: async () => {},
       } as unknown as AgentRuntime;

@@ -5,7 +5,7 @@
  * Tests actual classes and functions, not inline mock implementations.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
   type BenchmarkConfig,
   BenchmarkDataGenerator,

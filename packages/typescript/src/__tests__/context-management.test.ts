@@ -8,7 +8,13 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime, Memory, Room, UUID } from "../types/index.ts";
+import type {
+	IAgentRuntime,
+	Memory,
+	Room,
+	State,
+	UUID,
+} from "../types/index.ts";
 
 // ============================================================================
 // Helpers
@@ -83,7 +89,7 @@ describe("Layer 1 — Per-message truncation", () => {
 		const result = await recentMessagesProvider.get(
 			runtime,
 			msg("reply", Date.now()),
-			{} as never,
+			{} as State,
 		);
 
 		const text = result.text ?? "";

@@ -133,8 +133,7 @@ vi.mock("../../src/components/TrajectoryDetailView", () => {
 // Mock @elizaos/ui to avoid Radix DOM issues
 vi.mock("@elizaos/ui", () => {
   const R = require("react");
-  // biome-ignore lint/suspicious/noExplicitAny: test mock factory
-  const passthrough = (props: any) =>
+  const passthrough = (props: { children?: React.ReactNode }) =>
     R.createElement("div", { "data-testid": "ui-mock" }, props.children);
   return new Proxy(
     {},

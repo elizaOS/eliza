@@ -3,7 +3,6 @@ import { CORE_PLUGINS } from "./core-plugins";
 const BASELINE_RUNTIME_SUPPORT_PACKAGES = [
   "@elizaos/core",
   "@elizaos/prompts",
-  "@elizaos/sweagent-root",
   "@elizaos/tui",
 ] as const;
 

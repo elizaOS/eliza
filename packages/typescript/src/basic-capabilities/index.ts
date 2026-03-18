@@ -32,6 +32,7 @@ import type {
 	Content,
 	ControlMessagePayload,
 	EntityPayload,
+	Evaluator,
 	EvaluatorEventPayload,
 	IAgentRuntime,
 	IMessageBusService,
@@ -52,8 +53,11 @@ import { MemoryType } from "../types/memory.ts";
 import { ModelType } from "../types/model.ts";
 import type { ServiceClass } from "../types/plugin.ts";
 import { ChannelType, ContentType } from "../types/primitives.ts";
-import { getLocalServerUrl } from "../utils/node.ts";
-import { composePromptFromState, parseKeyValueXml } from "../utils.ts";
+import {
+	composePromptFromState,
+	getLocalServerUrl,
+	parseKeyValueXml,
+} from "../utils.ts";
 
 const ROLE_OWNER: Role = "OWNER";
 
@@ -1323,7 +1327,7 @@ export interface CapabilityConfig {
 const autonomyCapabilities = {
 	providers: [autonomy.adminChatProvider, autonomy.autonomyStatusProvider],
 	actions: [withCanonicalActionDocs(autonomy.sendToAdminAction)],
-	evaluators: [] as never[],
+	evaluators: [] as Evaluator[],
 	services: [autonomy.AutonomyService] as ServiceClass[],
 	routes: autonomy.autonomyRoutes,
 };

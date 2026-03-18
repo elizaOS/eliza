@@ -469,7 +469,7 @@ describe("PermissionsSection", () => {
     );
     vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue({
       getTracks: () => [{ stop: vi.fn() }],
-    } as unknown as MediaStream);
+    } as MediaStream);
     let enumerateDevicesCallCount = 0;
     vi.mocked(navigator.mediaDevices.enumerateDevices).mockImplementation(
       async () => {

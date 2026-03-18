@@ -123,11 +123,11 @@ describe("CommandPalette keyboard behavior", () => {
       keydown({
         key: "ArrowUp",
         preventDefault: preventDefaultUp,
-      } as unknown as KeyboardEvent);
+      } as KeyboardEvent);
       keydown({
         key: "ArrowDown",
         preventDefault: preventDefaultDown,
-      } as unknown as KeyboardEvent);
+      } as KeyboardEvent);
     });
 
     // When no commands match, arrow keys return early without preventDefault
@@ -173,7 +173,7 @@ describe("CommandPalette keyboard behavior", () => {
     const preventDefault = vi.fn();
 
     act(() => {
-      keydown({ key: "Enter", preventDefault } as unknown as KeyboardEvent);
+      keydown({ key: "Enter", preventDefault } as KeyboardEvent);
     });
 
     // When no commands match, Enter returns early without preventDefault

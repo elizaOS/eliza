@@ -233,7 +233,7 @@ export function compilePatches(patches: PatchOp[]): UiSpec | null {
     }
   }
 
-  return isUiSpec(spec) ? (spec as unknown as UiSpec) : null;
+  return isUiSpec(spec) ? spec : null;
 }
 
 /**

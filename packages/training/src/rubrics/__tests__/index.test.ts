@@ -1,7 +1,7 @@
 /**
  * Tests for rubric utilities
  */
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import {
   DEFAULT_RUBRIC,
   getAllRubricsHash,

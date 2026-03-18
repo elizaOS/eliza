@@ -68,20 +68,19 @@ describe("VrmAnimationLoader", () => {
     }
 
     Object.assign(globalThis, {
-      DecompressionStream:
-        MockDecompressionStream as unknown as typeof DecompressionStream,
+      DecompressionStream: MockDecompressionStream as typeof DecompressionStream,
     });
 
     const pipeThroughSpy = vi.spyOn(Blob.prototype, "stream").mockReturnValue({
       pipeThrough: vi.fn(() => new ReadableStream<Uint8Array>()),
-    } as unknown as ReturnType<Blob["stream"]>);
+    } as ReturnType<Blob["stream"]>);
     const responseArrayBufferSpy = vi
       .spyOn(Response.prototype, "arrayBuffer")
       .mockResolvedValueOnce(decompressed);
 
     const vrm = {
       scene: { updateMatrixWorld: vi.fn() },
-    } as unknown as VRM;
+    } as VRM;
     const gltf = {
       scene: { updateMatrixWorld: vi.fn() },
       animations: [],
@@ -121,20 +120,19 @@ describe("VrmAnimationLoader", () => {
     }
 
     Object.assign(globalThis, {
-      DecompressionStream:
-        MockDecompressionStream as unknown as typeof DecompressionStream,
+      DecompressionStream: MockDecompressionStream as typeof DecompressionStream,
     });
 
     const pipeThroughSpy = vi.spyOn(Blob.prototype, "stream").mockReturnValue({
       pipeThrough: vi.fn(() => new ReadableStream<Uint8Array>()),
-    } as unknown as ReturnType<Blob["stream"]>);
+    } as ReturnType<Blob["stream"]>);
     const responseArrayBufferSpy = vi
       .spyOn(Response.prototype, "arrayBuffer")
       .mockResolvedValueOnce(decompressed);
 
     const vrm = {
       scene: { updateMatrixWorld: vi.fn() },
-    } as unknown as VRM;
+    } as VRM;
     const sourceClip = { name: "happy" };
     const fbx = {
       animations: [sourceClip],

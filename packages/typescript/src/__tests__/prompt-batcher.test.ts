@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Character } from "../types/agent";
+import type { Memory } from "../types/memory";
 import type { ResolvedSection } from "../types/prompt-batcher";
 import type { IAgentRuntime } from "../types/runtime";
 import { PromptBatcher, PromptDispatcher } from "../utils/prompt-batcher";
@@ -143,7 +144,7 @@ describe("PromptBatcher", () => {
 			entityId: "user-1",
 			agentId: "agent-1",
 			content: { text: "hello" },
-		} as never);
+		} as Memory);
 
 		await batcher.drain();
 		await Promise.resolve();
@@ -185,7 +186,7 @@ describe("PromptBatcher", () => {
 			entityId: "user-2",
 			agentId: "agent-1",
 			content: { text: "hi again" },
-		} as never);
+		} as Memory);
 
 		await Promise.resolve();
 		await Promise.resolve();
@@ -228,7 +229,7 @@ describe("PromptBatcher", () => {
 			entityId: "user-1",
 			agentId: "agent-1",
 			content: { text: "hello" },
-		} as never);
+		} as Memory);
 
 		await batcher.drain();
 		await Promise.resolve();

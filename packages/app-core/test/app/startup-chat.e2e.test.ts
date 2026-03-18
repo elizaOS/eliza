@@ -190,7 +190,7 @@ describe("app startup routing (e2e)", () => {
 
   it("renders chat screen when startup state is ready", async () => {
     vi.useFakeTimers();
-    let tree = undefined as unknown as TestRenderer.ReactTestRenderer;
+    let tree: TestRenderer.ReactTestRenderer | undefined;
 
     try {
       await act(async () => {
@@ -244,7 +244,7 @@ describe("app startup routing (e2e)", () => {
       retryStartup: vi.fn(),
     });
 
-    let tree = undefined as unknown as TestRenderer.ReactTestRenderer;
+    let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(App));
     });
@@ -267,7 +267,7 @@ describe("app startup routing (e2e)", () => {
   it("uses mobile chat drawers on narrow viewports", async () => {
     setViewportWidth(390);
 
-    let tree = undefined as unknown as TestRenderer.ReactTestRenderer;
+    let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(App));
     });
@@ -297,12 +297,12 @@ describe("app startup routing (e2e)", () => {
   });
 
   it("keeps the desktop chat workspace height-bounded", async () => {
-    let tree = undefined as unknown as TestRenderer.ReactTestRenderer;
+    let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(App));
     });
-
-    const main = tree.root.findByType("main");
+    expect(tree).toBeDefined();
+    const main = tree!.root.findByType("main");
     expect(String(main.props.className)).toContain("min-h-0");
     expect(String(main.props.className)).toContain("overflow-hidden");
   });
@@ -310,12 +310,12 @@ describe("app startup routing (e2e)", () => {
   it("keeps the mobile chat workspace height-bounded", async () => {
     setViewportWidth(390);
 
-    let tree = undefined as unknown as TestRenderer.ReactTestRenderer;
+    let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(App));
     });
-
-    const main = tree.root.findByType("main");
+    expect(tree).toBeDefined();
+    const main = tree!.root.findByType("main");
     expect(String(main.props.className)).toContain("min-h-0");
     expect(String(main.props.className)).toContain("overflow-hidden");
   });

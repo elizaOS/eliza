@@ -36,7 +36,7 @@ interface AgentConfigLike {
   postExamples?: string[];
 }
 
-interface AutonomousConfigLike {
+export interface AutonomousConfigLike {
   agents?: {
     list?: AgentConfigLike[];
   };

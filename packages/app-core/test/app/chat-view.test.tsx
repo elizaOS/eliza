@@ -820,7 +820,7 @@ describe("addImageFiles functional updater", () => {
         this.onload?.();
       }
     }
-    vi.stubGlobal("FileReader", MockFileReader as unknown as typeof FileReader);
+    vi.stubGlobal("FileReader", MockFileReader as typeof FileReader);
 
     const setChatPendingImages = vi.fn();
     mockUseApp.mockReturnValue(
@@ -849,7 +849,7 @@ describe("addImageFiles functional updater", () => {
           return (target as Record<string | symbol, unknown>)[prop as string];
         },
       },
-    ) as unknown as File;
+    ) as File;
 
     await act(async () => {
       fileInput.props.onChange({
