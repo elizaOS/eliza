@@ -79,7 +79,8 @@ class MetricsCalculator:
         exec_accuracy = self._calculate_accuracy(valid_results, "exec_success")
         relevance_accuracy = self._calculate_accuracy(valid_results, "relevance_correct")
 
-        # Calculate weighted overall score
+        # Calculate weighted overall score (AST accuracy weighted by category per BFCL spec)
+        # Note: overall_score uses AST accuracy only; baseline comparisons should use the same metric
         overall_score = self._calculate_weighted_score(category_metrics)
 
         # Calculate latency statistics (use all results - we ran them all)
@@ -239,6 +240,10 @@ class MetricsCalculator:
         }
 
         for result in results:
+            # Track relevance errors independently of AST match
+            if not result.relevance_correct:
+                error_counts["relevance_error"] += 1
+
             # Check execution error first (AST matched but exec failed)
             if result.ast_match:
                 if not result.exec_success:
@@ -280,9 +285,6 @@ class MetricsCalculator:
                             break
                 else:
                     error_counts["other"] += 1
-
-            if not result.relevance_correct:
-                error_counts["relevance_error"] += 1
 
         return error_counts
 
