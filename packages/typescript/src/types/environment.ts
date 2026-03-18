@@ -63,6 +63,12 @@ export interface WorldMetadata
 	roles?: Record<string, Role>;
 	extra?: Metadata;
 	settings?: WorldSettings;
+	/** Platform-specific chat type (e.g., 'private', 'group', 'supergroup', 'channel') */
+	chatType?: string;
+	/** Whether Telegram forum mode is enabled for this world */
+	isForumEnabled?: boolean;
+	/** Allow platform-specific extensions */
+	[key: string]: unknown;
 }
 
 export interface World
@@ -74,6 +80,8 @@ export interface Room
 	extends Omit<ProtoRoom, "$typeName" | "$unknown" | "type" | "metadata"> {
 	type: ChannelType;
 	metadata?: Metadata;
+	/** Platform server/guild/chat ID that owns this room */
+	serverId?: string;
 }
 
 export type RoomMetadata = Metadata;
