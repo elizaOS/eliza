@@ -90,8 +90,8 @@ export type BrowserProfileConfig = {
   cdpPort?: number;
   /** CDP URL for this profile (use for remote Chrome). */
   cdpUrl?: string;
-  /** Profile driver (default: milady). */
-  driver?: "milady" | "extension";
+  /** Profile driver (default: eliza). */
+  driver?: "eliza" | "extension";
   /** Profile color (hex). Auto-assigned at creation. */
   color: string;
 };
@@ -109,7 +109,7 @@ export type BrowserConfig = {
   remoteCdpTimeoutMs?: number;
   /** Remote CDP WebSocket handshake timeout (ms). Default: max(remoteCdpTimeoutMs * 2, 2000). */
   remoteCdpHandshakeTimeoutMs?: number;
-  /** Accent color for the milady browser profile (hex). Default: #FF4500 */
+  /** Accent color for the eliza browser profile (hex). Default: #FF4500 */
   color?: string;
   /** Override the browser executable path (all platforms). */
   executablePath?: string;
@@ -406,7 +406,7 @@ export type MemoryQmdLimitsConfig = {
 // --- Database types ---
 
 export type PgliteConfig = {
-  /** Custom PGLite data directory. Default: ~/.milady/workspace/.eliza/.elizadb */
+  /** Custom PGLite data directory. Default: ~/.eliza/workspace/.eliza/.elizadb */
   dataDir?: string;
 };
 
@@ -654,11 +654,11 @@ export type ConnectorFieldValue =
  */
 export type ConnectorConfig = { [key: string]: ConnectorFieldValue };
 
-export type MiladyConfig = {
+export type ElizaConfig = {
   meta?: {
     /** Explicit onboarding completion marker. Reset clears the entire state dir. */
     onboardingComplete?: boolean;
-    /** Last Milady version that wrote this config. */
+    /** Last Eliza version that wrote this config. */
     lastTouchedVersion?: string;
     /** ISO timestamp when this config was last written. */
     lastTouchedAt?: string;
@@ -692,10 +692,10 @@ export type MiladyConfig = {
   update?: UpdateConfig;
   browser?: BrowserConfig;
   ui?: {
-    /** Accent color for Milady UI chrome (hex). */
+    /** Accent color for Eliza UI chrome (hex). */
     seamColor?: string;
     /** User's preferred UI theme. Set during onboarding. */
-    theme?: "milady" | "eliza" | "qt314" | "web2000" | "programmer" | "haxor" | "psycho";
+    theme?: "eliza" | "eliza" | "qt314" | "web2000" | "programmer" | "haxor" | "psycho";
     assistant?: {
       /** Assistant display name for UI surfaces. */
       name?: string;
@@ -755,13 +755,13 @@ export type MiladyConfig = {
       }
     >;
   };
-  /** ERC-8004 agent registry and MiladyMaker NFT collection configuration. */
+  /** ERC-8004 agent registry and ElizaMaker NFT collection configuration. */
   registry?: {
     /** Ethereum mainnet (or local Anvil) RPC URL. */
     mainnetRpc?: string;
-    /** MiladyAgentRegistry contract address. */
+    /** ElizaAgentRegistry contract address. */
     registryAddress?: string;
-    /** MiladyMaker collection contract address. */
+    /** ElizaMaker collection contract address. */
     collectionAddress?: string;
   };
   /** Feature flags for plugin auto-enable. */
@@ -773,8 +773,7 @@ export type MiladyConfig = {
   customActions?: CustomActionDef[];
 };
 
-/** Alias so call-sites that already migrated to `ElizaConfig` keep compiling. */
-export type ElizaConfig = MiladyConfig;
+/** Alias so call-sites using the old name keep compiling. */
 
 export type ConfigValidationIssue = {
   path: string;
@@ -787,7 +786,7 @@ export type ConfigFileSnapshot = {
   raw: string | null;
   parsed: unknown;
   valid: boolean;
-  config: MiladyConfig;
+  config: ElizaConfig;
   hash?: string;
   issues: ConfigValidationIssue[];
   warnings: ConfigValidationIssue[];
