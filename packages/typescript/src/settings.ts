@@ -10,7 +10,7 @@ import type {
 } from "./types";
 import { BufferUtils } from "./utils/buffer";
 import * as cryptoUtils from "./utils/crypto-compat";
-import { getEnv } from "./utils/environment";
+import { getEnv, getEnvironment } from "./utils/environment";
 
 /**
  * Creates a Setting object from a configSetting object by omitting the 'value' property.
@@ -76,10 +76,12 @@ function isEncryptedV2(value: string): boolean {
  * @returns {string} The salt for the agent.
  */
 export function getSalt(): string {
+	getEnvironment().clearCache();
 	const currentEnvSalt = getEnv("SECRET_SALT", "secretsalt") || "secretsalt";
 	const nodeEnv = (getEnv("NODE_ENV", "") || "").toLowerCase();
 	const isProduction = nodeEnv === "production";
-	const allowDefaultSaltRaw = getEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "") || "";
+	const allowDefaultSaltRaw =
+		getEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "") || "";
 	const allowDefaultSalt = allowDefaultSaltRaw.toLowerCase() === "true";
 	const now = Date.now();
 

@@ -24,25 +24,25 @@
  * need to create the adapter in the first place.
  */
 
-import {
-  ensureEncryptionSalt,
-  loadCharacterFile,
-} from "./character-loader";
-import { COMMON_SECRET_KEYS, importSecretsFromEnv } from "./character-utils";
-import { parseCharacter } from "./character";
 import type { CharacterInput } from "./character";
-import { AgentRuntime } from "./runtime";
+import { parseCharacter } from "./character";
+import { ensureEncryptionSalt, loadCharacterFile } from "./character-loader";
+import { COMMON_SECRET_KEYS, importSecretsFromEnv } from "./character-utils";
 import { resolvePlugins } from "./plugin";
 import {
-  ensureEmbeddingDimension,
-  ensureAgentInfrastructure,
-  runPluginMigrations,
+	ensureAgentInfrastructure,
+	ensureEmbeddingDimension,
+	runPluginMigrations,
 } from "./provisioning";
-import type { Plugin } from "./types/plugin";
-import type { Character } from "./types";
-import type { IDatabaseAdapter, IAgentRuntime } from "./types";
+import { AgentRuntime } from "./runtime";
+import type { Character, IAgentRuntime, IDatabaseAdapter } from "./types";
+import type { AdapterFactory, Plugin } from "./types/plugin";
 import type { UUID } from "./types/primitives";
 import { stringToUuid } from "./utils";
+
+type PluginWithAdapter = Plugin & {
+	adapter: AdapterFactory;
+};
 
 /**
  * Flatten character.settings, character.secrets, and env into a single Record<string, string>.
@@ -62,42 +62,50 @@ import { stringToUuid } from "./utils";
  * @returns String-only record suitable for adapter factories
  */
 export function getBootstrapSettings(
-  character: Character,
-  env: NodeJS.ProcessEnv = process.env,
+	character: Character,
+	env: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
-  const out: Record<string, string> = {};
+	const out: Record<string, string> = {};
 
-  for (const [key, value] of Object.entries(env)) {
-    if (value !== undefined && value !== null && key) {
-      out[key] = String(value);
-    }
-  }
+	for (const [key, value] of Object.entries(env)) {
+		if (value !== undefined && value !== null && key) {
+			out[key] = String(value);
+		}
+	}
 
-  const settings = character.settings && typeof character.settings === "object" ? character.settings : {};
-  for (const [key, value] of Object.entries(settings)) {
-    if (value === undefined || value === null) continue;
-    if (key === "secrets" && typeof value === "object") continue;
-    out[key] = typeof value === "string" ? value : String(value);
-  }
+	const settings =
+		character.settings && typeof character.settings === "object"
+			? character.settings
+			: {};
+	for (const [key, value] of Object.entries(settings)) {
+		if (value === undefined || value === null) continue;
+		if (key === "secrets" && typeof value === "object") continue;
+		out[key] = typeof value === "string" ? value : String(value);
+	}
 
-  const secrets =
-    (character.settings?.secrets && typeof character.settings.secrets === "object"
-      ? character.settings.secrets
-      : {}) as Record<string, unknown>;
-  for (const [key, value] of Object.entries(secrets)) {
-    if (value !== undefined && value !== null) {
-      out[key] = String(value);
-    }
-  }
+	const secrets = (
+		character.settings?.secrets &&
+		typeof character.settings.secrets === "object"
+			? character.settings.secrets
+			: {}
+	) as Record<string, unknown>;
+	for (const [key, value] of Object.entries(secrets)) {
+		if (value !== undefined && value !== null) {
+			out[key] = String(value);
+		}
+	}
 
-  const topSecrets = character.secrets && typeof character.secrets === "object" ? character.secrets : {};
-  for (const [key, value] of Object.entries(topSecrets)) {
-    if (value !== undefined && value !== null) {
-      out[key] = String(value);
-    }
-  }
+	const topSecrets =
+		character.secrets && typeof character.secrets === "object"
+			? character.secrets
+			: {};
+	for (const [key, value] of Object.entries(topSecrets)) {
+		if (value !== undefined && value !== null) {
+			out[key] = String(value);
+		}
+	}
 
-  return out;
+	return out;
 }
 
 /**
@@ -107,8 +115,8 @@ export function getBootstrapSettings(
  * agent-like structures; this keeps the merge logic reusable.
  */
 export interface AgentRecordForMerge {
-  settings?: Record<string, unknown>;
-  secrets?: Record<string, unknown>;
+	settings?: Record<string, unknown>;
+	secrets?: Record<string, unknown>;
 }
 
 /**
@@ -125,63 +133,63 @@ export interface AgentRecordForMerge {
  * @returns New character with merged settings and secrets
  */
 export function mergeSettingsInto(
-  character: Character,
-  agentRecord: AgentRecordForMerge | null,
+	character: Character,
+	agentRecord: AgentRecordForMerge | null,
 ): Character {
-  if (!agentRecord?.settings) {
-    return character;
-  }
+	if (!agentRecord?.settings) {
+		return character;
+	}
 
-  const mergedSettings = {
-    ...agentRecord.settings,
-    ...character.settings,
-  };
+	const mergedSettings = {
+		...agentRecord.settings,
+		...character.settings,
+	};
 
-  const dbSecrets =
-    agentRecord.secrets && typeof agentRecord.secrets === "object"
-      ? agentRecord.secrets
-      : {};
-  const dbSettingsSecrets =
-    agentRecord.settings.secrets &&
-    typeof agentRecord.settings.secrets === "object"
-      ? (agentRecord.settings.secrets as Record<string, unknown>)
-      : {};
-  const characterSecrets =
-    character.secrets && typeof character.secrets === "object"
-      ? character.secrets
-      : {};
-  const characterSettingsSecrets =
-    character.settings?.secrets &&
-    typeof character.settings.secrets === "object"
-      ? character.settings.secrets
-      : {};
-  const mergedSecrets = {
-    ...dbSecrets,
-    ...dbSettingsSecrets,
-    ...characterSecrets,
-    ...characterSettingsSecrets,
-  };
+	const dbSecrets =
+		agentRecord.secrets && typeof agentRecord.secrets === "object"
+			? agentRecord.secrets
+			: {};
+	const dbSettingsSecrets =
+		agentRecord.settings.secrets &&
+		typeof agentRecord.settings.secrets === "object"
+			? (agentRecord.settings.secrets as Record<string, unknown>)
+			: {};
+	const characterSecrets =
+		character.secrets && typeof character.secrets === "object"
+			? character.secrets
+			: {};
+	const characterSettingsSecrets =
+		character.settings?.secrets &&
+		typeof character.settings.secrets === "object"
+			? character.settings.secrets
+			: {};
+	const mergedSecrets = {
+		...dbSecrets,
+		...dbSettingsSecrets,
+		...characterSecrets,
+		...characterSettingsSecrets,
+	};
 
-  if (Object.keys(mergedSecrets).length > 0) {
-    const filtered: Record<string, string> = {};
-    for (const [key, value] of Object.entries(mergedSecrets)) {
-      if (value !== null && value !== undefined) {
-        filtered[key] = String(value);
-      }
-    }
-    if (Object.keys(filtered).length > 0) {
-      mergedSettings.secrets = filtered;
-    }
-  }
+	if (Object.keys(mergedSecrets).length > 0) {
+		const filtered: Record<string, string> = {};
+		for (const [key, value] of Object.entries(mergedSecrets)) {
+			if (value !== null && value !== undefined) {
+				filtered[key] = String(value);
+			}
+		}
+		if (Object.keys(filtered).length > 0) {
+			mergedSettings.secrets = filtered;
+		}
+	}
 
-  return {
-    ...character,
-    settings: mergedSettings as Character["settings"],
-    secrets:
-      Object.keys(mergedSecrets).length > 0
-        ? (mergedSettings.secrets as Record<string, string>)
-        : character.secrets,
-  };
+	return {
+		...character,
+		settings: mergedSettings as Character["settings"],
+		secrets:
+			Object.keys(mergedSecrets).length > 0
+				? (mergedSettings.secrets as Record<string, string>)
+				: character.secrets,
+	};
 }
 
 /**
@@ -192,16 +200,19 @@ export function mergeSettingsInto(
  * object and are used by getBootstrapSettings(character) without going through process.env.
  */
 async function loadOneCharacterFromFile(filePath: string): Promise<Character> {
-  const loaded = await loadCharacterFile(filePath);
-  if (loaded == null) {
-    throw new Error(`Failed to load character file: ${filePath}`);
-  }
-  let character = importSecretsFromEnv(loaded, COMMON_SECRET_KEYS);
-  character = ensureEncryptionSalt(character);
-  if (!character.id) {
-    character = { ...character, id: stringToUuid(character.name ?? "eliza") as UUID };
-  }
-  return character;
+	const loaded = await loadCharacterFile(filePath);
+	if (loaded == null) {
+		throw new Error(`Failed to load character file: ${filePath}`);
+	}
+	let character = importSecretsFromEnv(loaded, COMMON_SECRET_KEYS);
+	character = ensureEncryptionSalt(character);
+	if (!character.id) {
+		character = {
+			...character,
+			id: stringToUuid(character.name ?? "eliza") as UUID,
+		};
+	}
+	return character;
 }
 
 /**
@@ -210,13 +221,13 @@ async function loadOneCharacterFromFile(filePath: string): Promise<Character> {
  * loadOneCharacterFromFile) so multi-character load doesn't pass secrets through process.env.
  */
 function loadOneCharacterFromObject(input: CharacterInput): Character {
-  const character = parseCharacter(input);
-  let out = importSecretsFromEnv(character, COMMON_SECRET_KEYS);
-  out = ensureEncryptionSalt(out);
-  if (!out.id) {
-    out = { ...out, id: stringToUuid(out.name ?? "eliza") as UUID };
-  }
-  return out;
+	const character = parseCharacter(input);
+	let out = importSecretsFromEnv(character, COMMON_SECRET_KEYS);
+	out = ensureEncryptionSalt(out);
+	if (!out.id) {
+		out = { ...out, id: stringToUuid(out.name ?? "eliza") as UUID };
+	}
+	return out;
 }
 
 /**
@@ -232,39 +243,39 @@ function loadOneCharacterFromObject(input: CharacterInput): Character {
  * @throws If a file path fails to load or an object fails validation (message includes path/details)
  */
 export async function loadCharacters(
-  sources: (string | CharacterInput)[],
+	sources: (string | CharacterInput)[],
 ): Promise<Character[]> {
-  if (sources.length === 0) {
-    return [];
-  }
+	if (sources.length === 0) {
+		return [];
+	}
 
-  const results: Character[] = [];
+	const results: Character[] = [];
 
-  for (const source of sources) {
-    if (typeof source === "string") {
-      const character = await loadOneCharacterFromFile(source);
-      results.push(character);
-    } else {
-      const character = loadOneCharacterFromObject(source);
-      results.push(character);
-    }
-  }
+	for (const source of sources) {
+		if (typeof source === "string") {
+			const character = await loadOneCharacterFromFile(source);
+			results.push(character);
+		} else {
+			const character = loadOneCharacterFromObject(source);
+			results.push(character);
+		}
+	}
 
-  return results;
+	return results;
 }
 
 /** Options for createRuntimes. */
 export interface CreateRuntimesOptions {
-  /** Override: use this adapter for all characters (skip adapter discovery). WHY: Cloud/custom hosts may manage their own adapter pool. */
-  adapter?: IDatabaseAdapter;
-  /** Extra plugins to include for all characters (merged with character.plugins). WHY: Hosts like milaidy add their own plugin without putting it in every character file. */
-  sharedPlugins?: Plugin[];
-  /** Run provisioning after init: migrations once per unique adapter, then ensureAgentInfrastructure + ensureEmbeddingDimension per runtime. Default false. WHY: Daemons need it once at boot; serverless/ephemeral usually skip. */
-  provision?: boolean;
-  /** Log level for created runtimes. */
-  logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
-  /** Extra settings applied to each runtime (e.g. MODEL_PROVIDER override). */
-  settings?: Record<string, string | boolean | number>;
+	/** Override: use this adapter for all characters (skip adapter discovery). WHY: Cloud/custom hosts may manage their own adapter pool. */
+	adapter?: IDatabaseAdapter;
+	/** Extra plugins to include for all characters (merged with character.plugins). WHY: Hosts like milaidy add their own plugin without putting it in every character file. */
+	sharedPlugins?: Plugin[];
+	/** Run provisioning after init: migrations once per unique adapter, then ensureAgentInfrastructure + ensureEmbeddingDimension per runtime. Default false. WHY: Daemons need it once at boot; serverless/ephemeral usually skip. */
+	provision?: boolean;
+	/** Log level for created runtimes. */
+	logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
+	/** Extra settings applied to each runtime (e.g. MODEL_PROVIDER override). */
+	settings?: Record<string, string | boolean | number>;
 }
 
 /**
@@ -287,119 +298,132 @@ export interface CreateRuntimesOptions {
  * @returns Initialized IAgentRuntime[] (empty if characters is empty)
  */
 export async function createRuntimes(
-  characters: Character[],
-  options?: CreateRuntimesOptions,
+	characters: Character[],
+	options?: CreateRuntimesOptions,
 ): Promise<IAgentRuntime[]> {
-  if (characters.length === 0) {
-    return [];
-  }
+	if (characters.length === 0) {
+		return [];
+	}
 
-  const pluginNames = new Set<string>();
-  for (const c of characters) {
-    for (const p of c.plugins ?? []) {
-      if (typeof p === "string") pluginNames.add(p);
-    }
-  }
-  const pluginInput: (string | Plugin)[] = [...pluginNames];
-  if (options?.sharedPlugins?.length) {
-    pluginInput.push(...options.sharedPlugins);
-  }
-  const resolvedPlugins = await resolvePlugins(pluginInput);
+	const pluginNames = new Set<string>();
+	for (const c of characters) {
+		for (const p of c.plugins ?? []) {
+			if (typeof p === "string") pluginNames.add(p);
+		}
+	}
+	const pluginInput: (string | Plugin)[] = [...pluginNames];
+	if (options?.sharedPlugins?.length) {
+		pluginInput.push(...options.sharedPlugins);
+	}
+	const resolvedPlugins = await resolvePlugins(pluginInput);
 
-  const agentIds: UUID[] = [];
-  for (const c of characters) {
-    agentIds.push((c.id ?? stringToUuid(c.name ?? "eliza")) as UUID);
-  }
+	const agentIds: UUID[] = [];
+	for (const c of characters) {
+		agentIds.push((c.id ?? stringToUuid(c.name ?? "eliza")) as UUID);
+	}
 
-  let adapters: IDatabaseAdapter[];
-  if (options?.adapter) {
-    adapters = characters.map(() => options!.adapter!);
-  } else {
-    const adapterPlugin = resolvedPlugins.find((p) => typeof p.adapter === "function");
-    if (!adapterPlugin?.adapter) {
-      const first = characters[0];
-      const nameOrId = first?.name ?? first?.id ?? "unknown";
-      throw new Error(
-        `No plugin provides a database adapter for character ${String(nameOrId)}`,
-      );
-    }
-    adapters = await Promise.all(
-      characters.map((c) => {
-        const agentId = (c.id ?? stringToUuid(c.name ?? "eliza")) as UUID;
-        const settings = getBootstrapSettings(c);
-        return Promise.resolve(adapterPlugin.adapter!(agentId, settings));
-      }),
-    );
-  }
+	let adapters: IDatabaseAdapter[];
+	if (options?.adapter) {
+		const defaultAdapter = options.adapter;
+		adapters = characters.map(() => defaultAdapter);
+	} else {
+		const adapterPlugin = resolvedPlugins.find(
+			(p): p is PluginWithAdapter => typeof p.adapter === "function",
+		);
+		if (!adapterPlugin) {
+			const first = characters[0];
+			const nameOrId = first?.name ?? first?.id ?? "unknown";
+			throw new Error(
+				`No plugin provides a database adapter for character ${String(nameOrId)}`,
+			);
+		}
+		adapters = await Promise.all(
+			characters.map((c) => {
+				const agentId = (c.id ?? stringToUuid(c.name ?? "eliza")) as UUID;
+				const settings = getBootstrapSettings(c);
+				return Promise.resolve(adapterPlugin.adapter(agentId, settings));
+			}),
+		);
+	}
 
-  // WHY dedupe by adapter reference: Multiple characters can share the same adapter
-  // (e.g. same POSTGRES_URL). initialize() must be called only once per underlying
-  // connection to avoid duplicate setup or errors.
-  const seenAdapters = new Set<IDatabaseAdapter>();
-  for (const adapter of adapters) {
-    if (seenAdapters.has(adapter)) continue;
-    seenAdapters.add(adapter);
-    if (!(await adapter.isReady())) {
-      await adapter.initialize();
-    }
-  }
+	// WHY dedupe by adapter reference: Multiple characters can share the same adapter
+	// (e.g. same POSTGRES_URL). initialize() must be called only once per underlying
+	// connection to avoid duplicate setup or errors.
+	const seenAdapters = new Set<IDatabaseAdapter>();
+	for (const adapter of adapters) {
+		if (seenAdapters.has(adapter)) continue;
+		seenAdapters.add(adapter);
+		if (!(await adapter.isReady())) {
+			await adapter.initialize();
+		}
+	}
 
-  // Group characters by adapter so we can call getAgentsByIds once per unique adapter
-  // with all agent IDs for that adapter. WHY: Batch DB read instead of N reads for N characters.
-  const adapterToAgentIds = new Map<IDatabaseAdapter, UUID[]>();
-  for (let i = 0; i < characters.length; i++) {
-    const adapter = adapters[i]!;
-    const agentId = agentIds[i]!;
-    const list = adapterToAgentIds.get(adapter) ?? [];
-    list.push(agentId);
-    adapterToAgentIds.set(adapter, list);
-  }
+	// Group characters by adapter so we can call getAgentsByIds once per unique adapter
+	// with all agent IDs for that adapter. WHY: Batch DB read instead of N reads for N characters.
+	const adapterToAgentIds = new Map<IDatabaseAdapter, UUID[]>();
+	for (let i = 0; i < characters.length; i++) {
+		const adapter = adapters[i];
+		const agentId = agentIds[i];
+		if (!adapter || !agentId) {
+			throw new Error(`Missing adapter or agentId for character index ${i}`);
+		}
+		const list = adapterToAgentIds.get(adapter) ?? [];
+		list.push(agentId);
+		adapterToAgentIds.set(adapter, list);
+	}
 
-  // Map agentId -> DB record. WHY key by agent.id: getAgentsByIds return order is not
-  // guaranteed to match input ids order (e.g. SQL ORDER may differ); matching by id is safe.
-  const agentIdToRecord = new Map<UUID, AgentRecordForMerge>();
-  for (const [adapter, ids] of adapterToAgentIds) {
-    const agents = await adapter.getAgentsByIds(ids);
-    for (const agent of agents) {
-      if (agent?.id) agentIdToRecord.set(agent.id as UUID, agent as AgentRecordForMerge);
-    }
-  }
+	// Map agentId -> DB record. WHY key by agent.id: getAgentsByIds return order is not
+	// guaranteed to match input ids order (e.g. SQL ORDER may differ); matching by id is safe.
+	const agentIdToRecord = new Map<UUID, AgentRecordForMerge>();
+	for (const [adapter, ids] of adapterToAgentIds) {
+		const agents = await adapter.getAgentsByIds(ids);
+		for (const agent of agents) {
+			if (agent?.id)
+				agentIdToRecord.set(agent.id as UUID, agent as AgentRecordForMerge);
+		}
+	}
 
-  const mergedCharacters = characters.map((c, i) => {
-    const agentId = agentIds[i]!;
-    const record = agentIdToRecord.get(agentId) ?? null;
-    return mergeSettingsInto(c, record);
-  });
+	const mergedCharacters = characters.map((c, i) => {
+		const agentId = agentIds[i];
+		if (!agentId) {
+			throw new Error(`Missing agentId for character index ${i}`);
+		}
+		const record = agentIdToRecord.get(agentId) ?? null;
+		return mergeSettingsInto(c, record);
+	});
 
-  const runtimes = mergedCharacters.map((char, i) => {
-    const adapter = adapters[i]!;
-    return new AgentRuntime({
-      character: char,
-      adapter,
-      plugins: resolvedPlugins,
-      logLevel: options?.logLevel,
-      settings: options?.settings,
-    });
-  });
+	const runtimes = mergedCharacters.map((char, i) => {
+		const adapter = adapters[i];
+		if (!adapter) {
+			throw new Error(`Missing adapter for character index ${i}`);
+		}
+		return new AgentRuntime({
+			character: char,
+			adapter,
+			plugins: resolvedPlugins,
+			logLevel: options?.logLevel,
+			settings: options?.settings,
+		});
+	});
 
-  await Promise.all(runtimes.map((r) => r.initialize()));
+	await Promise.all(runtimes.map((r) => r.initialize()));
 
-  // WHY migrations once per unique adapter: Multiple runtimes can share one adapter.
-  // Running migrations per runtime would repeat DDL; running once per adapter is correct.
-  if (options?.provision) {
-    const seenAdaptersForMigrations = new Set<IDatabaseAdapter>();
-    for (const r of runtimes) {
-      const adapter = r.adapter;
-      if (adapter && !seenAdaptersForMigrations.has(adapter)) {
-        seenAdaptersForMigrations.add(adapter);
-        await runPluginMigrations(r as unknown as IAgentRuntime);
-      }
-    }
-    for (const r of runtimes) {
-      await ensureAgentInfrastructure(r as unknown as IAgentRuntime);
-      await ensureEmbeddingDimension(r as unknown as IAgentRuntime);
-    }
-  }
+	// WHY migrations once per unique adapter: Multiple runtimes can share one adapter.
+	// Running migrations per runtime would repeat DDL; running once per adapter is correct.
+	if (options?.provision) {
+		const seenAdaptersForMigrations = new Set<IDatabaseAdapter>();
+		for (const r of runtimes) {
+			const adapter = r.adapter;
+			if (adapter && !seenAdaptersForMigrations.has(adapter)) {
+				seenAdaptersForMigrations.add(adapter);
+				await runPluginMigrations(r as unknown as IAgentRuntime);
+			}
+		}
+		for (const r of runtimes) {
+			await ensureAgentInfrastructure(r as unknown as IAgentRuntime);
+			await ensureEmbeddingDimension(r as unknown as IAgentRuntime);
+		}
+	}
 
-  return runtimes as unknown as IAgentRuntime[];
+	return runtimes as unknown as IAgentRuntime[];
 }

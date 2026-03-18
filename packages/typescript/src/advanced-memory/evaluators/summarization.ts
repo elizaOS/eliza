@@ -84,7 +84,9 @@ export const summarizationEvaluator: Evaluator = {
 	): Promise<boolean> => {
 		if (!message.content?.text) return false;
 
-		const memoryService = (await runtime.getService("memory")) as MemoryService | null;
+		const memoryService = (await runtime.getService(
+			"memory",
+		)) as MemoryService | null;
 		if (!memoryService) return false;
 
 		const config = memoryService.getConfig();

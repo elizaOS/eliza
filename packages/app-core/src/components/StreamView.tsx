@@ -13,7 +13,7 @@
 
 import { client, isApiError } from "@elizaos/app-core/api";
 import { isElectrobunRuntime } from "@elizaos/app-core/bridge";
-import { useBranding } from "@elizaos/app-core/config/branding";
+import { useBranding } from "@elizaos/app-core/config";
 import { useApp } from "@elizaos/app-core/state";
 import {
   type CSSProperties,

@@ -13,7 +13,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { CORE_PLUGINS } from "./runtime/core-plugins";
 import { createElizaPlugin } from "./runtime/eliza-plugin";
 
 // Load environment variables BEFORE anything else
@@ -277,14 +276,18 @@ export async function startBenchmarkServer() {
     `[bench] Initializing autonomous benchmark runtime on port ${port} (message_mode=${messageMode})...`,
   );
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PLUGIN LOADING — Use full CORE_PLUGINS to test with realistic context
-  // ═══════════════════════════════════════════════════════════════════════════
-  // We intentionally load the full autonomous plugin set to ensure benchmarks test
-  // the agent's ability to perform tasks despite context "pollution" from all
-  // the default actions, providers, evaluators, etc. If the agent can still
-  // succeed with a crowded context, it demonstrates sufficient context handling.
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Benchmark mode prefers a stable, comparable runtime over full production
+  // plugin parity. A smaller allowlist avoids startup-only side effects from
+  // plugins that are useful in the full app but unnecessary for benchmark I/O.
+  const benchmarkCorePlugins = [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-local-embedding",
+    "@elizaos/plugin-secrets-manager",
+    "@elizaos/plugin-rolodex",
+    "@elizaos/plugin-trust",
+    "@elizaos/plugin-todo",
+    "@elizaos/plugin-experience",
+  ] as const;
 
   const plugins: Plugin[] = [];
   const loadedPlugins: string[] = [];
@@ -299,8 +302,7 @@ export async function startBenchmarkServer() {
     "@elizaos/plugin-agent-skills", // Expects skill-catalog services that benchmark mode does not wire up
   ]);
 
-  // Load all CORE_PLUGINS — these are what the production autonomous runtime uses
-  for (const pluginName of CORE_PLUGINS) {
+  for (const pluginName of benchmarkCorePlugins) {
     if (skipPlugins.has(pluginName)) {
       elizaLogger.debug(
         `[bench] Skipping plugin (benchmark mode): ${pluginName}`,
@@ -325,7 +327,7 @@ export async function startBenchmarkServer() {
   }
 
   elizaLogger.info(
-    `[bench] Loaded ${loadedPlugins.length}/${CORE_PLUGINS.length} core plugins`,
+    `[bench] Loaded ${loadedPlugins.length}/${benchmarkCorePlugins.length} benchmark plugins`,
   );
   if (failedPlugins.length > 0) {
     elizaLogger.debug(
@@ -380,8 +382,32 @@ export async function startBenchmarkServer() {
     }
   }
 
+  const rawOllamaBaseUrl =
+    process.env.OLLAMA_BASE_URL?.trim() ??
+    process.env.OLLAMA_API_ENDPOINT?.trim();
+  if (rawOllamaBaseUrl) {
+    const normalizedOllamaBaseUrl = rawOllamaBaseUrl.replace(/\/api\/?$/, "");
+    process.env.OLLAMA_BASE_URL = normalizedOllamaBaseUrl;
+    process.env.OLLAMA_API_ENDPOINT =
+      process.env.OLLAMA_API_ENDPOINT ??
+      `${normalizedOllamaBaseUrl.replace(/\/$/, "")}/api`;
+    try {
+      const { default: ollamaPlugin } = await import("@elizaos/plugin-ollama");
+      plugins.push(toPlugin(ollamaPlugin, "@elizaos/plugin-ollama"));
+      elizaLogger.info("[bench] Loaded LLM plugin: @elizaos/plugin-ollama");
+    } catch (error: unknown) {
+      elizaLogger.warn(
+        `[bench] Ollama plugin not available: ${formatUnknownError(error)}`,
+      );
+    }
+  }
+
   const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
-  if (openAiApiKey && !openAiApiKey.startsWith("gsk_")) {
+  if (
+    openAiApiKey &&
+    !openAiApiKey.startsWith("gsk_") &&
+    !rawOllamaBaseUrl
+  ) {
     process.env.OPENAI_API_KEY = openAiApiKey;
     try {
       const { default: openaiPlugin } = await import("@elizaos/plugin-openai");

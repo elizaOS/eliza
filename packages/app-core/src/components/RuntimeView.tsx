@@ -278,7 +278,7 @@ export function RuntimeView() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-4 h-full">
+    <div data-testid="runtime-view" className="flex flex-col gap-4 h-full">
       <div className="flex flex-wrap items-end gap-3 border border-[var(--border)] bg-[var(--card)] rounded-md p-3">
         <label className="text-[11px] text-[var(--muted)] flex items-center gap-1">
           {t("runtimeview.depth")}

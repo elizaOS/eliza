@@ -56,7 +56,9 @@ function getRuntimeAgentId(runtime: IAgentRuntime): string {
 async function getAgentEventService(
 	runtime: IAgentRuntime,
 ): Promise<AgentEventServiceLike | null> {
-	return (await runtime.getService("AGENT_EVENT")) as AgentEventServiceLike | null;
+	return (await runtime.getService(
+		"AGENT_EVENT",
+	)) as AgentEventServiceLike | null;
 }
 
 function pushCachedEvent(agentId: string, event: AgentEventPayloadLike): void {
@@ -68,7 +70,9 @@ function pushCachedEvent(agentId: string, event: AgentEventPayloadLike): void {
 	}
 }
 
-export async function ensureAutonomousStateTracking(runtime: IAgentRuntime): Promise<void> {
+export async function ensureAutonomousStateTracking(
+	runtime: IAgentRuntime,
+): Promise<void> {
 	const agentId = getRuntimeAgentId(runtime);
 	const existing = cacheByAgentId.get(agentId);
 	if (existing && existing.runtime === runtime) {

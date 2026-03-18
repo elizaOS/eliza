@@ -2,8 +2,8 @@ import type { Character } from "./agent";
 import type { Action, Evaluator, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
-import type { UUID } from "./primitives";
 import type { ModelParamsMap, PluginModelResult } from "./model";
+import type { UUID } from "./primitives";
 import type {
 	JsonValue,
 	ComponentTypeDefinition as ProtoComponentTypeDefinition,

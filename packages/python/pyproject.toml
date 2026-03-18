@@ -92,6 +92,10 @@ module = "google.protobuf.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "pytest"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "elizaos.bootstrap.*"
 # Bootstrap module has many structural mismatches that need refactoring
 ignore_errors = true
@@ -140,4 +144,3 @@ known-first-party = ["elizaos"]
 line-length = 100
 target-version = ["py311"]
 exclude = "elizaos/types/generated/"
-

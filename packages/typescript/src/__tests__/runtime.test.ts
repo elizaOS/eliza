@@ -548,34 +548,16 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			await runtime.initialize();
 
 			expect(mockDatabaseAdapter.initialize).toHaveBeenCalledTimes(1);
-			expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-			// expect(mockDatabaseAdapter.getAgent).toHaveBeenCalledWith(agentId); // This is no longer called
-			expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([
-				agentId,
-			]);
-			expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
-			expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
-			expect(mockDatabaseAdapter.createRoomParticipants).toHaveBeenCalledWith(
-				[agentId],
-				agentId,
-			);
+			// Note: initialize() no longer calls ensureAgentExists or sets up entity/room infrastructure.
+			// Those are now caller responsibilities after the Runtime Diet refactor.
 		});
 
 		it("should create a new agent if one does not exist", async () => {
-			// No need to override the spy, initialize should handle it.
 			await runtime.initialize();
 
 			expect(mockDatabaseAdapter.initialize).toHaveBeenCalledTimes(1);
-			expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-			expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([
-				agentId,
-			]);
-			expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
-			expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
-			expect(mockDatabaseAdapter.createRoomParticipants).toHaveBeenCalledWith(
-				[agentId],
-				agentId,
-			);
+			// Note: initialize() no longer calls ensureAgentExists.
+			// Agent creation is now a separate step after initialization.
 		});
 
 		it("should skip adapter.init when adapter is already ready (idempotent initialize)", async () => {
@@ -586,16 +568,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
 			expect(mockDatabaseAdapter.isReady).toHaveBeenCalled();
 			expect(mockDatabaseAdapter.initialize).not.toHaveBeenCalled();
-			expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-			expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([
-				agentId,
-			]);
-			expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
-			expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
-			expect(mockDatabaseAdapter.createRoomParticipants).toHaveBeenCalledWith(
-				[agentId],
-				agentId,
-			);
+			// Note: initialize() no longer calls ensureAgentExists or sets up entity/room infrastructure.
 		});
 
 		it("should call adapter.init only once across multiple initialize calls", async () => {
