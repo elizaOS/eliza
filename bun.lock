@@ -43,7 +43,7 @@
     },
     "packages/app-core": {
       "name": "@elizaos/app-core",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "dependencies": {
         "@capacitor/core": "8.0.2",
         "@capacitor/haptics": "8.0.0",
@@ -74,13 +74,13 @@
     },
     "packages/autonomous": {
       "name": "@elizaos/autonomous",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "bin": {
         "eliza-autonomous": "./src/bin.ts",
       },
       "dependencies": {
         "@clack/prompts": "^1.0.0",
-        "@elizaos/core": "2.0.0-alpha.61",
+        "@elizaos/core": "2.0.0-alpha.62",
         "@elizaos/plugin-agent-skills": "^2.0.0-alpha.11",
         "@elizaos/plugin-coding-agent": "0.1.0-next.1",
         "@elizaos/plugin-cron": "^2.0.0-alpha.7",
@@ -136,7 +136,7 @@
     },
     "packages/computeruse": {
       "name": "@elizaos/computeruse-root",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
     },
     "packages/computeruse/packages/computeruse-nodejs": {
       "name": "@elizaos/computeruse-nodejs",
@@ -211,7 +211,7 @@
     },
     "packages/daemon": {
       "name": "@elizaos/daemon",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "devDependencies": {
         "@biomejs/biome": "^1.9.4",
         "@types/node": "^22.10.2",
@@ -221,11 +221,11 @@
     },
     "packages/docs": {
       "name": "@elizaos/docs",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
     },
     "packages/elizaos": {
       "name": "elizaos",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "bin": {
         "elizaos": "./dist/cli.js",
       },
@@ -242,7 +242,7 @@
     },
     "packages/home": {
       "name": "@elizaos/home",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "dependencies": {
         "@capacitor/app": "^8.0.1",
         "@capacitor/core": "8.0.2",
@@ -270,7 +270,7 @@
     },
     "packages/interop": {
       "name": "@elizaos/interop",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -281,37 +281,37 @@
     },
     "packages/prompts": {
       "name": "@elizaos/prompts",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
     },
     "packages/python": {
       "name": "@elizaos/python",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
     },
     "packages/rust": {
       "name": "@elizaos/rust",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
     },
     "packages/schemas": {
       "name": "@elizaos/schemas",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "devDependencies": {
         "@bufbuild/buf": "^1.47.2",
       },
     },
     "packages/skills": {
       "name": "@elizaos/skills",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "dependencies": {
         "yaml": "^2.8.2",
       },
     },
     "packages/sweagent": {
       "name": "@elizaos/sweagent-root",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
     },
     "packages/training": {
       "name": "@elizaos/training",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "dependencies": {
         "@huggingface/hub": "^2.6.12",
         "@vercel/blob": "^0.27.1",
@@ -327,7 +327,7 @@
     },
     "packages/tui": {
       "name": "@elizaos/tui",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "dependencies": {
         "@types/mime-types": "^2.1.4",
         "chalk": "^5.5.0",
@@ -343,7 +343,7 @@
     },
     "packages/typescript": {
       "name": "@elizaos/core",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.32.1",
         "@bufbuild/protobuf": "^2.11.0",
@@ -383,7 +383,7 @@
     },
     "packages/ui": {
       "name": "@elizaos/ui",
-      "version": "2.0.0-alpha.61",
+      "version": "2.0.0-alpha.62",
       "dependencies": {
         "@radix-ui/react-checkbox": "^1.3.3",
         "@radix-ui/react-dialog": "^1.1.15",
