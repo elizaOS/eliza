@@ -58,9 +58,7 @@ import {
 } from "@elizaos/core";
 import * as pluginAgentOrchestrator from "@elizaos/plugin-agent-orchestrator";
 import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
-import * as pluginOllama from "@elizaos/plugin-ollama";
 import * as pluginOpenai from "@elizaos/plugin-openai";
-import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginPersonality from "@elizaos/plugin-personality";
 import * as pluginPluginManager from "@elizaos/plugin-plugin-manager";
 import * as pluginRolodex from "@elizaos/plugin-rolodex";
@@ -126,9 +124,7 @@ const STATIC_ELIZA_PLUGINS: Record<string, unknown> = {
   "@elizaos/plugin-agent-orchestrator": pluginAgentOrchestrator,
   "@elizaos/plugin-shell": pluginShell,
   "@elizaos/plugin-plugin-manager": pluginPluginManager,
-  "@elizaos/plugin-pdf": pluginPdf,
   "@elizaos/plugin-openai": pluginOpenai,
-  "@elizaos/plugin-ollama": pluginOllama,
   "@elizaos/plugin-trust": pluginTrust,
   "@elizaos/plugin-todo": pluginTodo,
   "@elizaos/plugin-personality": pluginPersonality,
@@ -442,7 +438,7 @@ async function collectTrajectoryLoggerCandidates(
     }
   }
   if (typeof runtimeLike.getService === "function") {
-    const single = await runtimeLike.getService("trajectory_logger");
+    const single = runtimeLike.getService("trajectory_logger");
     if (single) candidates.push(single as TrajectoryLoggerControl);
   }
   return candidates;
@@ -558,8 +554,8 @@ async function patchTrajectoryLoggerAliasCompatibility(runtime: AgentRuntime): P
 
   if (typeof runtimeLike.getService !== "function") return;
   const aliases: unknown[] = [
-    await runtimeLike.getService("logger5"),
-    await runtimeLike.getService("logger"),
+    runtimeLike.getService("logger5"),
+    runtimeLike.getService("logger"),
   ];
 
   for (const alias of aliases) {
@@ -4071,7 +4067,9 @@ export async function startEliza(
 
   let runtime = new AgentRuntime({
     character,
-    adapter: new InMemoryDatabaseAdapter(),
+    // Let plugin-sql create the proper PGlite/Postgres adapter during init.
+    // Passing InMemoryDatabaseAdapter here would prevent plugin-sql from
+    // registering its adapter ("already registered, skipping creation").
     // advancedCapabilities: true,
     // actionPlanning: true, // Not supported in this version of AgentRuntime
     // advancedMemory: true, // Not supported in this version of AgentRuntime
@@ -4166,12 +4164,36 @@ export async function startEliza(
   //     (ActionFilterService, EmbeddingGenerationService) race ahead and use
   //     the cloud plugin's TEXT_EMBEDDING handler — which hits a paid API —
   //     because local-embedding's heavier init hasn't completed yet.
+  // Check whether the embedding model file is already downloaded.
+  // When missing, we defer local-embedding registration to after
+  // runtime.initialize() so the multi-GB download does not block
+  // startup (runtime.initialize → ensureEmbeddingDimension would hang
+  // waiting for the model).
+  let deferLocalEmbedding = false;
   if (localEmbeddingPlugin) {
     configureLocalEmbeddingPlugin(localEmbeddingPlugin.plugin, config);
-    await runtime.registerPlugin(localEmbeddingPlugin.plugin);
-    logger.info(
-      "[eliza] plugin-local-embedding pre-registered (TEXT_EMBEDDING ready)",
-    );
+
+    const embeddingModelDir =
+      process.env.MODELS_DIR ??
+      path.join(resolveStateDir(), "models");
+    const embeddingModelFile =
+      process.env.LOCAL_EMBEDDING_MODEL ?? "nomic-embed-text-v1.5.Q5_K_M.gguf";
+    const modelPath = path.join(embeddingModelDir, embeddingModelFile);
+
+    try {
+      await fs.access(modelPath);
+      // Model exists — register now so ensureEmbeddingDimension works
+      await runtime.registerPlugin(localEmbeddingPlugin.plugin);
+      logger.info(
+        "[eliza] plugin-local-embedding pre-registered (TEXT_EMBEDDING ready)",
+      );
+    } catch {
+      deferLocalEmbedding = true;
+      logger.info(
+        `[eliza] Embedding model not yet downloaded (${embeddingModelFile}). ` +
+          "Deferring local-embedding to avoid blocking startup.",
+      );
+    }
   } else {
     logger.warn(
       "[eliza] @elizaos/plugin-local-embedding not found — embeddings " +
@@ -4225,7 +4247,7 @@ export async function startEliza(
       });
       await Promise.race([skillServicePromise, timeout]);
 
-      const svc = (await runtime.getService("AGENT_SKILLS_SERVICE")) as
+      const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
             getCatalogStats?: () => {
               loaded: number;
@@ -4277,6 +4299,15 @@ export async function startEliza(
     }
   };
 
+  // Keep the event loop alive during the entire startup sequence.
+  // PGLite and the local-embedding model download may `unref()` their
+  // internal handles, causing Node to exit before the initialize() promise
+  // settles when there is nothing else keeping the loop alive (e.g.
+  // server-only mode with stdin set to "ignore").  This guard stays active
+  // until a permanent handle (API server or the serverOnly keepAlive
+  // interval) takes over.
+  const startupKeepAlive = setInterval(() => {}, 1 << 30);
+
   const initializeRuntimeServices = async (): Promise<void> => {
     // 8. Initialize the runtime (registers remaining plugins, starts services)
     await runtime.initialize();
@@ -4288,7 +4319,7 @@ export async function startEliza(
     // 8b. Ensure AutonomyService is available for trigger dispatch.
     // IGNORE_BOOTSTRAP=true prevents the bootstrap plugin (which normally
     // registers this service) from loading, so we start it explicitly.
-    if (!(await runtime.getService("AUTONOMY"))) {
+    if (!runtime.getService("AUTONOMY")) {
       try {
         await AutonomyService.start(runtime);
         logger.info("[eliza] AutonomyService started for trigger dispatch");
@@ -4342,6 +4373,24 @@ export async function startEliza(
   }
 
   installActionAliases(runtime);
+
+  // Deferred local-embedding registration — register the plugin now that
+  // runtime.initialize() has completed.  The model will be downloaded on
+  // first embedding request rather than blocking startup.
+  if (deferLocalEmbedding && localEmbeddingPlugin) {
+    void (async () => {
+      try {
+        await runtime.registerPlugin(localEmbeddingPlugin.plugin);
+        logger.info(
+          "[eliza] plugin-local-embedding registered (deferred — model will download on first use)",
+        );
+      } catch (err) {
+        logger.warn(
+          `[eliza] Deferred local-embedding registration failed: ${formatError(err)}`,
+        );
+      }
+    })();
+  }
 
   // 9. Graceful shutdown handler
   //
@@ -4406,6 +4455,10 @@ export async function startEliza(
 
   // ── Headless mode — return runtime for API server wiring ──────────────
   if (opts?.headless) {
+    // In headless mode the caller owns the process lifecycle, so the
+    // startupKeepAlive is no longer needed — the caller's own event-loop
+    // handles (bun --watch, Electron, etc.) keep the process alive.
+    clearInterval(startupKeepAlive);
     void loadHooksSystem();
     logger.info(
       "[eliza] Runtime initialised in headless mode (autonomy enabled)",
@@ -4506,7 +4559,6 @@ export async function startEliza(
           }
           const newRuntime = new AgentRuntime({
             character: freshCharacter,
-            adapter: new InMemoryDatabaseAdapter(),
             plugins: [freshElizaPlugin, ...freshPluginsForRuntime],
             ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
             settings: {
@@ -4580,7 +4632,7 @@ export async function startEliza(
           );
 
           // Ensure AutonomyService survives hot-reload
-          if (!(await newRuntime.getService("AUTONOMY"))) {
+          if (!newRuntime.getService("AUTONOMY")) {
             try {
               await AutonomyService.start(newRuntime);
             } catch (err) {
@@ -4613,7 +4665,9 @@ export async function startEliza(
     logger.info("[eliza] Running in server-only mode (no interactive chat)");
     console.log("[eliza] Server running. Press Ctrl+C to stop.");
 
-    // Keep process alive — the API server handles all interaction
+    // The startupKeepAlive already keeps the process alive.  Replace it
+    // with a permanent interval so the cleanup handler can reference it.
+    clearInterval(startupKeepAlive);
     const keepAlive = setInterval(() => {}, 1 << 30); // ~12 days
 
     // Cleanup on exit
@@ -4634,6 +4688,9 @@ export async function startEliza(
   }
 
   // ── Interactive chat loop ────────────────────────────────────────────────
+  // The readline interface and API server keep the event loop alive from
+  // here on, so the startup guard is no longer needed.
+  clearInterval(startupKeepAlive);
   const agentName = character.name ?? "Eliza";
   const userId = crypto.randomUUID() as UUID;
   // Use `let` so the fallback path can reassign to fresh IDs.
