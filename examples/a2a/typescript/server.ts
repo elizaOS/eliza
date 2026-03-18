@@ -63,13 +63,16 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 
   console.log("🚀 Initializing elizaOS runtime...");
 
-  const adapter = new InMemoryDatabaseAdapter();
-  await adapter.initialize();
+  const useOpenAi = shouldUseOpenAi();
+  const adapter = useOpenAi ? undefined : new InMemoryDatabaseAdapter();
+  if (adapter) {
+    await adapter.initialize();
+  }
 
   runtime = new AgentRuntime({
     character: CHARACTER,
-    adapter,
-    plugins: shouldUseOpenAi()
+    ...(adapter && { adapter }),
+    plugins: useOpenAi
       ? [sqlPlugin, openaiPlugin]
       : [inmemorydbPlugin, elizaClassicPlugin],
   });
