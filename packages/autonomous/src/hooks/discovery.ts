@@ -1,5 +1,5 @@
 /**
- * Discover hooks from workspace, managed (~/.milady/hooks/), and bundled dirs.
+ * Discover hooks from workspace, managed (~/.eliza/hooks/), and bundled dirs.
  * Later sources win on name conflicts.
  */
 
@@ -210,7 +210,7 @@ export async function discoverHooks(
     }
   }
 
-  const managedDir = join(homedir(), ".milady", "hooks");
+  const managedDir = join(homedir(), ".eliza", "hooks");
   for (const entry of await scanHooksDir(managedDir, "milady-managed")) {
     seen.set(entry.hook.name, entry);
   }

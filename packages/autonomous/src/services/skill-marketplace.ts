@@ -205,8 +205,8 @@ export interface InstallSkillInput {
 }
 
 function stateDirBase(): string {
-  const base = process.env.MILADY_STATE_DIR?.trim();
-  return base || path.join(os.homedir(), ".milady");
+  const base = process.env.ELIZA_STATE_DIR?.trim();
+  return base || path.join(os.homedir(), ".eliza");
 }
 
 function safeName(raw: string): string {

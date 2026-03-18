@@ -104,7 +104,7 @@ async function fetchFromNetwork(): Promise<Map<string, RegistryPluginInfo>> {
 
 function cacheFilePath(): string {
   const base =
-    process.env.MILADY_STATE_DIR?.trim() || path.join(os.homedir(), ".milady");
+    process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
   return path.join(base, "cache", "registry.json");
 }
 

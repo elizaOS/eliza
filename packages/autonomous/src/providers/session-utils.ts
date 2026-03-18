@@ -16,7 +16,7 @@ const DEFAULT_AGENT_ID = "main";
 function resolveAgentSessionsDir(agentId?: string): string {
   const id = agentId ?? DEFAULT_AGENT_ID;
   const stateDir =
-    process.env.MILADY_STATE_DIR ?? path.join(os.homedir(), ".milady");
+    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
   return path.join(stateDir, "agents", id, "sessions");
 }
 

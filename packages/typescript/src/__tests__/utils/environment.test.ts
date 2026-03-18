@@ -37,9 +37,17 @@ describe("Environment Abstraction", () => {
 		}
 
 		if (originalWindow !== undefined) {
-			(global as typeof globalThis).window = originalWindow;
+			try {
+				(global as typeof globalThis).window = originalWindow;
+			} catch {
+				// Bun makes window a readonly property; skip restoration
+			}
 		} else {
-			delete (global as typeof globalThis & { window?: typeof window }).window;
+			try {
+				delete (global as typeof globalThis & { window?: typeof window }).window;
+			} catch {
+				// Ignore readonly property errors
+			}
 		}
 
 		if (originalGlobalThis !== undefined) {

@@ -704,7 +704,7 @@ export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> = {
 const PI_AI_PLUGIN_PACKAGE = "@elizaos/plugin-pi-ai";
 
 function isPiAiEnabledFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = env.MILADY_USE_PI_AI;
+  const raw = env.ELIZA_USE_PI_AI;
   if (!raw) return false;
   const value = String(raw).trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
@@ -724,7 +724,7 @@ const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
   AIGATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   OLLAMA_BASE_URL: "@elizaos/plugin-ollama",
   ZAI_API_KEY: "@homunculuslabs/plugin-zai",
-  MILADY_USE_PI_AI: PI_AI_PLUGIN_PACKAGE,
+  ELIZA_USE_PI_AI: PI_AI_PLUGIN_PACKAGE,
   // ElizaCloud — loaded when API key is present OR cloud is explicitly enabled
   ELIZAOS_CLOUD_API_KEY: "@elizaos/plugin-elizacloud",
   ELIZAOS_CLOUD_ENABLED: "@elizaos/plugin-elizacloud",
@@ -830,7 +830,7 @@ export function findRuntimePluginExport(mod: PluginModuleShape): Plugin | null {
 export function collectPluginNames(config: MiladyConfig): Set<string> {
   const shellPluginDisabled = config.features?.shellEnabled === false;
   const localEmbeddingsExplicitlyDisabled = (() => {
-    const raw = process.env.MILADY_DISABLE_LOCAL_EMBEDDINGS;
+    const raw = process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
     if (!raw) return false;
     const normalized = raw.trim().toLowerCase();
     return normalized === "1" || normalized === "true" || normalized === "yes";
@@ -871,13 +871,13 @@ export function collectPluginNames(config: MiladyConfig): Set<string> {
     (configEnv?.vars &&
     typeof configEnv.vars === "object" &&
     !Array.isArray(configEnv.vars)
-      ? (configEnv.vars as Record<string, unknown>).MILADY_USE_PI_AI
-      : undefined) ?? configEnv?.MILADY_USE_PI_AI;
+      ? (configEnv.vars as Record<string, unknown>).ELIZA_USE_PI_AI
+      : undefined) ?? configEnv?.ELIZA_USE_PI_AI;
   const piAiEnabled =
     isPiAiEnabledFromEnv(process.env) ||
     (typeof configPiAiFlag === "string" &&
       isPiAiEnabledFromEnv({
-        MILADY_USE_PI_AI: configPiAiFlag,
+        ELIZA_USE_PI_AI: configPiAiFlag,
       } as NodeJS.ProcessEnv));
 
   const pluginEntries = (config.plugins as Record<string, unknown> | undefined)
@@ -940,7 +940,7 @@ export function collectPluginNames(config: MiladyConfig): Set<string> {
 
   // Model-provider plugins — load when env key is present
   for (const [envKey, pluginName] of Object.entries(PROVIDER_PLUGIN_MAP)) {
-    if (envKey === "MILADY_USE_PI_AI") {
+    if (envKey === "ELIZA_USE_PI_AI") {
       // pi-ai enablement uses dedicated boolean parsing + precedence logic below.
       continue;
     }
@@ -1087,7 +1087,7 @@ export function collectPluginNames(config: MiladyConfig): Set<string> {
 
   // User-installed plugins from config.plugins.installs
   // These are plugins that were installed via the plugin-manager at runtime
-  // and tracked in milady.json so they persist across restarts.
+  // and tracked in eliza.json so they persist across restarts.
   const installs = config.plugins?.installs;
   if (installs && typeof installs === "object") {
     for (const [packageName, record] of Object.entries(installs)) {
@@ -1219,7 +1219,7 @@ const WORKSPACE_PLUGIN_OVERRIDES = new Set<string>([
 ]);
 
 function getWorkspacePluginOverridePath(pluginName: string): string | null {
-  if (process.env.MILADY_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {
+  if (process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {
     return null;
   }
   if (!WORKSPACE_PLUGIN_OVERRIDES.has(pluginName)) {
@@ -1365,8 +1365,8 @@ export function ensureBrowserServerLink(): boolean {
  *
  * Handles three categories of plugins:
  * 1. Built-in/npm plugins — imported by package name
- * 2. User-installed plugins — from ~/.milady/plugins/installed/
- * 3. Custom/drop-in plugins — from ~/.milady/plugins/custom/ and plugins.load.paths
+ * 2. User-installed plugins — from ~/.eliza/plugins/installed/
+ * 3. Custom/drop-in plugins — from ~/.eliza/plugins/custom/ and plugins.load.paths
  *
  * Each plugin is loaded inside an error boundary so a single failing plugin
  * cannot crash the entire agent startup.
@@ -1743,7 +1743,7 @@ function wrapPluginWithErrorBoundary(
  *   1. npm layout:  <installPath>/node_modules/@scope/package/  (from `bun add`)
  *   2. git layout:  <installPath>/ is the package root directly  (from `git clone`)
  *
- * @param installPath  Root directory of the installation (e.g. ~/.milady/plugins/installed/foo/).
+ * @param installPath  Root directory of the installation (e.g. ~/.eliza/plugins/installed/foo/).
  * @param packageName  The npm package name (e.g. "@elizaos/plugin-discord") — used
  *                     to navigate directly into node_modules when present.
  */
@@ -1997,24 +1997,24 @@ export function applyCloudConfigToEnv(config: MiladyConfig): void {
   const services = cloud.services;
   if (services) {
     if (services.tts === false) {
-      process.env.MILADY_CLOUD_TTS_DISABLED = "true";
+      process.env.ELIZA_CLOUD_TTS_DISABLED = "true";
     } else {
-      delete process.env.MILADY_CLOUD_TTS_DISABLED;
+      delete process.env.ELIZA_CLOUD_TTS_DISABLED;
     }
     if (services.media === false) {
-      process.env.MILADY_CLOUD_MEDIA_DISABLED = "true";
+      process.env.ELIZA_CLOUD_MEDIA_DISABLED = "true";
     } else {
-      delete process.env.MILADY_CLOUD_MEDIA_DISABLED;
+      delete process.env.ELIZA_CLOUD_MEDIA_DISABLED;
     }
     if (services.embeddings === false) {
-      process.env.MILADY_CLOUD_EMBEDDINGS_DISABLED = "true";
+      process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED = "true";
     } else {
-      delete process.env.MILADY_CLOUD_EMBEDDINGS_DISABLED;
+      delete process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED;
     }
     if (services.rpc === false) {
-      process.env.MILADY_CLOUD_RPC_DISABLED = "true";
+      process.env.ELIZA_CLOUD_RPC_DISABLED = "true";
     } else {
-      delete process.env.MILADY_CLOUD_RPC_DISABLED;
+      delete process.env.ELIZA_CLOUD_RPC_DISABLED;
     }
   }
 }
@@ -2027,7 +2027,7 @@ export function applyCloudConfigToEnv(config: MiladyConfig): void {
  * credentials (or use the explicit `connectionString` field) and set
  * `POSTGRES_URL`. When the provider is "pglite" (the default), we set
  * `PGLITE_DATA_DIR` to either the configured value or a stable workspace
- * default (`~/.milady/workspace/.eliza/.elizadb`) and remove any stale
+ * default (`~/.eliza/workspace/.eliza/.elizadb`) and remove any stale
  * `POSTGRES_URL`.
  */
 /** @internal Exported for testing. */
@@ -3600,7 +3600,7 @@ export interface StartElizaOptions {
 
 export interface BootElizaRuntimeOptions {
   /**
-   * When true, require an existing ~/.milady/milady.json config file.
+   * When true, require an existing ~/.eliza/eliza.json config file.
    * This is used by non-CLI UIs (like the @elizaos/tui interface) where interactive
    * onboarding prompts would break the alternate screen.
    */
@@ -3688,7 +3688,7 @@ export async function startEliza(
   // Register log listener for chat mirroring
   addLogListener(logToChatListener);
 
-  // 1. Load Milady config from ~/.milady/milady.json
+  // 1. Load Milady config from ~/.eliza/eliza.json
   let config: MiladyConfig;
   try {
     config = loadMiladyConfig();
@@ -4116,7 +4116,7 @@ export async function startEliza(
       ...(config.skills?.denyBundled
         ? { SKILLS_DENYLIST: config.skills.denyBundled.join(",") }
         : {}),
-      // Managed skills are stored in the Milady state dir (~/.milady/skills).
+      // Managed skills are stored in the Milady state dir (~/.eliza/skills).
       SKILLS_DIR: managedSkillsDir,
       // Tell plugin-agent-skills where to find bundled + workspace skills
       ...(bundledSkillsDir ? { BUNDLED_SKILLS_DIRS: bundledSkillsDir } : {}),
@@ -4422,7 +4422,7 @@ export async function startEliza(
   // surface.
   try {
     const { startApiServer } = await import("../api/server");
-    const apiPort = Number(process.env.MILADY_PORT) || 2138;
+    const apiPort = Number(process.env.ELIZA_PORT) || 2138;
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
       runtime,

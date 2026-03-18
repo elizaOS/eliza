@@ -501,7 +501,7 @@ function buildHandler(
               const headers: Record<string, string> = {
                 "Content-Type": "application/json",
               };
-              const token = process.env.MILADY_API_TOKEN?.trim();
+              const token = process.env.ELIZA_API_TOKEN?.trim();
               if (token) {
                 headers.Authorization = /^Bearer\s+/i.test(token)
                   ? token

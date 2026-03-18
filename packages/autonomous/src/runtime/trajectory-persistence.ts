@@ -385,13 +385,13 @@ function getObservationBuffer(runtime: IAgentRuntime): BufferedExchange[] {
 }
 
 function resolvePreferredTrajectoryArchiveRoot(): string {
-  const explicitWorkspace = process.env.MILADY_WORKSPACE_DIR?.trim();
+  const explicitWorkspace = process.env.ELIZA_WORKSPACE_DIR?.trim();
   if (explicitWorkspace) return explicitWorkspace;
 
-  const workspaceRoot = process.env.MILADY_WORKSPACE_ROOT?.trim();
+  const workspaceRoot = process.env.ELIZA_WORKSPACE_ROOT?.trim();
   if (workspaceRoot) return workspaceRoot;
 
-  return path.join(os.homedir(), ".milady", "workspace");
+  return path.join(os.homedir(), ".eliza", "workspace");
 }
 
 async function ensureArchiveDirectory(dir: string): Promise<void> {

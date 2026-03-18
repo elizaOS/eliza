@@ -59,7 +59,7 @@ function shouldSkipCheck(cfg: UpdateConfig | undefined): boolean {
 
 /** Resolve the effective release channel from config, env, or default. */
 export function resolveChannel(cfg: UpdateConfig | undefined): ReleaseChannel {
-  const env = process.env.MILADY_UPDATE_CHANNEL?.trim().toLowerCase();
+  const env = process.env.ELIZA_UPDATE_CHANNEL?.trim().toLowerCase();
   if (env === "stable" || env === "beta" || env === "nightly") return env;
   return cfg?.channel ?? "stable";
 }

@@ -179,7 +179,7 @@ const PRIVATE_IP_PATTERNS: RegExp[] = [
  * since only local processes can reach the API.
  */
 function isApiLoopbackOnly(): boolean {
-  let bind = (process.env.MILADY_API_BIND ?? "127.0.0.1").trim().toLowerCase();
+  let bind = (process.env.ELIZA_API_BIND ?? "127.0.0.1").trim().toLowerCase();
   if (!bind) bind = "127.0.0.1";
 
   // Accept accidental URL-shaped bind values.
@@ -514,7 +514,7 @@ async function handleGetStatus(
 
 /**
  * GET /api/database/config
- * Returns the persisted database configuration from milady.json.
+ * Returns the persisted database configuration from eliza.json.
  */
 function handleGetConfig(
   _req: http.IncomingMessage,

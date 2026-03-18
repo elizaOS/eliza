@@ -157,7 +157,7 @@ export class SandboxManager {
       this.config.workspaceRoot ??
       join(
         process.env.HOME ?? process.env.USERPROFILE ?? os.tmpdir(),
-        ".milady",
+        ".eliza",
         "sandbox-workspace",
       );
     mkdirSync(wsRoot, { recursive: true });
@@ -445,11 +445,11 @@ export class SandboxManager {
       detach: true,
       mounts: [],
       env: {
-        MILADY_BROWSER_CDP_PORT: String(cdpPort),
-        MILADY_BROWSER_VNC_PORT: String(vncPort),
-        MILADY_BROWSER_NOVNC_PORT: String(noVncPort),
-        MILADY_BROWSER_ENABLE_NOVNC: enableNoVnc ? "1" : "0",
-        MILADY_BROWSER_HEADLESS: headless ? "1" : "0",
+        ELIZA_BROWSER_CDP_PORT: String(cdpPort),
+        ELIZA_BROWSER_VNC_PORT: String(vncPort),
+        ELIZA_BROWSER_NOVNC_PORT: String(noVncPort),
+        ELIZA_BROWSER_ENABLE_NOVNC: enableNoVnc ? "1" : "0",
+        ELIZA_BROWSER_HEADLESS: headless ? "1" : "0",
       },
       network: "bridge",
       user: "1000:1000",
