@@ -70,7 +70,7 @@ export async function getKnowledgeService(
     return { service: null, reason: "runtime_unavailable" };
   }
 
-  let service = runtime.getService<Service & KnowledgeServiceLike>("knowledge");
+  let service = await runtime.getService<Service & KnowledgeServiceLike>("knowledge");
   if (service) return { service };
 
   try {
@@ -83,7 +83,7 @@ export async function getKnowledgeService(
       );
     });
     await Promise.race([servicePromise, timeout]);
-    service = runtime.getService<Service & KnowledgeServiceLike>("knowledge");
+    service = await runtime.getService<Service & KnowledgeServiceLike>("knowledge");
     if (service) return { service };
     return { service: null, reason: "not_registered" };
   } catch {

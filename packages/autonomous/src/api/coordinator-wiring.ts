@@ -11,13 +11,13 @@ export interface WirableState {
 
 export interface WireCoordinatorOpts<S extends WirableState = WirableState> {
   /** Wire the chat bridge. Returns true on success. */
-  wireChatBridge: (state: S) => boolean;
+  wireChatBridge: (state: S) => boolean | Promise<boolean>;
   /** Wire the WebSocket bridge. Returns true on success. */
-  wireWsBridge: (state: S) => boolean;
+  wireWsBridge: (state: S) => boolean | Promise<boolean>;
   /** Wire the event-routing bridge. Returns true on success. */
-  wireEventRouting: (state: S) => boolean;
+  wireEventRouting: (state: S) => boolean | Promise<boolean>;
   /** Wire the swarm-complete synthesis callback. Returns true on success. */
-  wireSwarmSynthesis?: (state: S) => boolean;
+  wireSwarmSynthesis?: (state: S) => boolean | Promise<boolean>;
   /** Label for log messages (e.g. "boot", "restart"). */
   context: string;
   /** Logger with warn/debug methods. */
@@ -69,10 +69,12 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
 
   try {
     // 1. Immediate attempt
-    result.chat = wireChatBridge(state);
-    result.ws = wireWsBridge(state);
-    result.eventRouting = wireEventRouting(state);
-    result.swarmSynthesis = wireSwarmSynthesis?.(state) ?? false;
+    result.chat = await wireChatBridge(state);
+    result.ws = await wireWsBridge(state);
+    result.eventRouting = await wireEventRouting(state);
+    result.swarmSynthesis = wireSwarmSynthesis
+      ? await wireSwarmSynthesis(state)
+      : false;
 
     if (result.chat && result.ws && result.eventRouting) {
       logger.debug?.(
@@ -117,11 +119,12 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
 
     // 3. Service loaded — retry failed bridges
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      if (!result.chat) result.chat = wireChatBridge(state);
-      if (!result.ws) result.ws = wireWsBridge(state);
-      if (!result.eventRouting) result.eventRouting = wireEventRouting(state);
+      if (!result.chat) result.chat = await wireChatBridge(state);
+      if (!result.ws) result.ws = await wireWsBridge(state);
+      if (!result.eventRouting)
+        result.eventRouting = await wireEventRouting(state);
       if (!result.swarmSynthesis && wireSwarmSynthesis)
-        result.swarmSynthesis = wireSwarmSynthesis(state);
+        result.swarmSynthesis = await wireSwarmSynthesis(state);
 
       if (result.chat && result.ws && result.eventRouting) {
         logger.debug?.(

@@ -247,7 +247,12 @@ async function ensureBenchmarkSessionContext(
       role: "benchmark-room",
     },
   });
-  await runtime.ensureParticipantInRoom(runtime.agentId, session.relayRoomId);
+  // The benchmark transport only needs the relay room to exist so room-targeted
+  // emissions can be attributed back to the active session. In benchmark mode
+  // some runtime/database combinations do not expose the agent entity through
+  // getEntitiesByIds(), which makes an explicit ensureParticipantInRoom() call
+  // fail even though the primary benchmark room is already fully connected via
+  // ensureConnection() above.
 }
 
 function createSession(taskId: string, benchmark: string): BenchmarkSession {
@@ -291,6 +296,7 @@ export async function startBenchmarkServer() {
     "@elizaos/plugin-elizacloud", // Requires ElizaOS cloud auth, conflicts with local LLM
     "@elizaos/plugin-trajectory-logger", // Bench server records trajectories itself
     "@elizaos/plugin-cron", // Scheduled services are noise in one-shot benchmark mode
+    "@elizaos/plugin-agent-skills", // Expects skill-catalog services that benchmark mode does not wire up
   ]);
 
   // Load all CORE_PLUGINS — these are what the production autonomous runtime uses
@@ -477,12 +483,13 @@ export async function startBenchmarkServer() {
         secrets: settings,
       },
     },
+    adapter: new InMemoryDatabaseAdapter(),
     plugins: deferredPlugins,
   });
 
   let databaseAdapterMode = "plugin-sql";
   const runtimeWithAdapter = runtime as AgentRuntime & {
-    adapter?: {
+    adapter: {
       init: () => Promise<void>;
       isReady: () => Promise<boolean>;
     };

@@ -51,6 +51,7 @@ import {
   type Plugin,
   type Provider,
   type ServiceTypeName,
+  InMemoryDatabaseAdapter,
   stringToUuid,
   type TargetInfo,
   type UUID,
@@ -4070,6 +4071,7 @@ export async function startEliza(
 
   let runtime = new AgentRuntime({
     character,
+    adapter: new InMemoryDatabaseAdapter(),
     // advancedCapabilities: true,
     // actionPlanning: true, // Not supported in this version of AgentRuntime
     // advancedMemory: true, // Not supported in this version of AgentRuntime
@@ -4504,6 +4506,7 @@ export async function startEliza(
           }
           const newRuntime = new AgentRuntime({
             character: freshCharacter,
+            adapter: new InMemoryDatabaseAdapter(),
             plugins: [freshElizaPlugin, ...freshPluginsForRuntime],
             ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
             settings: {
