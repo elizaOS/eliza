@@ -237,8 +237,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@elizaos/core": "^2.0.0-alpha.22",
     "@clack/prompts": "^1.0.0",
+    "@elizaos/core": "2.0.0-alpha.53",
     "@elizaos/plugin-agent-skills": "^2.0.0-alpha.11",
     "@elizaos/plugin-coding-agent": "0.1.0-next.1",
     "@elizaos/plugin-cron": "^2.0.0-alpha.7",
