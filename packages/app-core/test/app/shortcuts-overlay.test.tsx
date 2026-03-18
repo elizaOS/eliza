@@ -49,7 +49,7 @@ describe("ShortcutsOverlay", () => {
         key: "?",
         preventDefault,
         target: { tagName: "DIV" },
-      } as unknown as KeyboardEvent);
+      } as KeyboardEvent);
     });
 
     const dialog = tree.root.findByProps({ role: "dialog" });
@@ -74,7 +74,7 @@ describe("ShortcutsOverlay", () => {
         key: "?",
         preventDefault,
         target: { tagName: "INPUT" },
-      } as unknown as KeyboardEvent);
+      } as KeyboardEvent);
     });
 
     expect(tree.toJSON()).toBeNull();
@@ -93,7 +93,7 @@ describe("ShortcutsOverlay", () => {
         key: "?",
         preventDefault: vi.fn(),
         target: { tagName: "DIV" },
-      } as unknown as KeyboardEvent);
+      } as KeyboardEvent);
     });
 
     const preventDefault = vi.fn();
@@ -102,7 +102,7 @@ describe("ShortcutsOverlay", () => {
         key: "Escape",
         preventDefault,
         target: { tagName: "DIV" },
-      } as unknown as KeyboardEvent);
+      } as KeyboardEvent);
     });
 
     expect(tree.toJSON()).toBeNull();

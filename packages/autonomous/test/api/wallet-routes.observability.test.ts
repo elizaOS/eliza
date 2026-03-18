@@ -1,3 +1,5 @@
+import type { IncomingMessage } from "node:http";
+import type { ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   handleWalletRoutes,
@@ -69,8 +71,8 @@ function walletRouteCtx(
   deps: WalletRouteDependencies,
 ): Parameters<typeof handleWalletRoutes>[0] {
   return {
-    req: {} as never,
-    res: {} as never,
+    req: {} as IncomingMessage,
+    res: {} as ServerResponse,
     method: "GET",
     pathname,
     config: { env: {} } as ElizaConfig,

@@ -8,7 +8,12 @@
 import { useApp } from "@elizaos/app-core/state";
 import { useCallback, useState } from "react";
 import { TradePanel } from "./BscTradePanel";
-import { CHAIN_CONFIGS, type ChainKey, resolveChainKey } from "./chainConfig";
+import {
+  CHAIN_CONFIGS,
+  chainKeyToWalletRpcChain,
+  type ChainKey,
+  resolveChainKey,
+} from "./chainConfig";
 import {
   BSC_GAS_THRESHOLD,
   loadTrackedBscTokens,
@@ -167,11 +172,11 @@ export function InventoryView({ inModal }: { inModal?: boolean } = {}) {
         }
       : null;
 
+  const legacyRpcChain = chainKeyToWalletRpcChain(chainFocus);
   const headerWarning =
     chainFocus !== "all" &&
-    cfg?.legacyCustomChains?.includes(
-      chainFocus as unknown as "evm" | "bsc" | "solana",
-    )
+    legacyRpcChain !== null &&
+    cfg?.legacyCustomChains?.includes(legacyRpcChain)
       ? {
           title: `${
             focusedChainLabel ??

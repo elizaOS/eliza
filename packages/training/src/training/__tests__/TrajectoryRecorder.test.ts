@@ -5,7 +5,7 @@
  * Uses simulation mode to avoid database dependency.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 

@@ -8,7 +8,7 @@
 		"clean": "rm -rf dist",
 		"build": "tsc -p tsconfig.build.json",
 		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
-		"test": "bun test test/",
+		"test": "vitest run test/",
 		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"files": [
@@ -44,7 +44,8 @@
 	},
 	"devDependencies": {
 		"@xterm/headless": "^5.5.0",
-		"@xterm/xterm": "^5.5.0"
+		"@xterm/xterm": "^5.5.0",
+		"vitest": "^4.0.17"
 	},
 	"gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
 }

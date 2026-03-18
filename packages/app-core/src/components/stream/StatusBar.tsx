@@ -19,6 +19,7 @@ import {
   type StreamSourceType,
   toggleAlwaysOnTop,
 } from "./helpers";
+import { getElizaApiBase } from "../../utils/eliza-globals";
 
 function formatUptime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -420,8 +421,7 @@ export function StatusBar({
             className="px-2 py-0.5 h-6 rounded bg-bg-muted hover:bg-accent/20 hover:text-txt transition-colors"
             title={t("statusbar.PopOutStreamView")}
             onClick={() => {
-              const apiBase = (window as unknown as Record<string, unknown>)
-                .__ELIZA_API_BASE__ as string | undefined;
+              const apiBase = getElizaApiBase();
               const base = window.location.origin || "";
               const sep =
                 window.location.protocol === "file:" ||

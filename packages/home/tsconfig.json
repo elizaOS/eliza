@@ -29,7 +29,8 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "plugins/**/*.ts",
-    "../app-core/src/types/react-test-renderer.d.ts"
+    "../app-core/src/types/react-test-renderer.d.ts",
+    "../app-core/src/ambient.d.ts"
   ],
   "exclude": ["node_modules", "dist", "ios", "android", "electron"]
 }

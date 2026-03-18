@@ -11,9 +11,6 @@
     "maxSize": 1048576,
     "includes": [
       "**",
-      "!packages/sweagent/typescript/src/run/batch-instances.ts",
-      "!packages/sweagent/typescript/src/types/dockerode.d.ts",
-      "!packages/sweagent/typescript/src/types/octokit.d.ts",
       "!packages/app-core/src/styles/**"
     ]
   },

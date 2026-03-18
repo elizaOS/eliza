@@ -1,6 +1,15 @@
 import { WebPlugin } from "@capacitor/core";
 import type { AgentPlugin, AgentStatus, ChatResult } from "./definitions";
 
+type ElizaWindow = Window & {
+  __ELIZA_API_BASE__?: string;
+  __ELIZA_API_TOKEN__?: string;
+};
+
+function getElizaWindow(): ElizaWindow | null {
+  return typeof window === "undefined" ? null : (window as ElizaWindow);
+}
+
 /**
  * Web fallback implementation.
  *
@@ -27,19 +36,13 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
   }
 
   private apiBase(): string {
-    const global =
-      typeof window !== "undefined"
-        ? (window as unknown as Record<string, unknown>).__ELIZA_API_BASE__
-        : undefined;
+    const global = getElizaWindow()?.__ELIZA_API_BASE__;
     if (typeof global === "string" && global.trim().length > 0) return global;
     return this.electronLocalFallbackBase();
   }
 
   private apiToken(): string | null {
-    const global =
-      typeof window !== "undefined"
-        ? (window as unknown as Record<string, unknown>).__ELIZA_API_TOKEN__
-        : undefined;
+    const global = getElizaWindow()?.__ELIZA_API_TOKEN__;
     if (typeof global === "string" && global.trim()) return global.trim();
     if (typeof window === "undefined") return null;
     const stored = window.sessionStorage.getItem("eliza_api_token");

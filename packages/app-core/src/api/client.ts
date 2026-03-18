@@ -88,6 +88,14 @@ import {
 import type { ConfigUiHint } from "../types";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
 import { mergeStreamingText } from "../utils/streaming-text";
+import {
+  clearElizaApiBase,
+  clearElizaApiToken,
+  getElizaApiBase,
+  getElizaApiToken,
+  setElizaApiBase,
+  setElizaApiToken,
+} from "../utils/eliza-globals";
 
 export type {
   AllPermissionsState,
@@ -1820,13 +1828,7 @@ export interface VerificationMessageResponse {
 // ---------------------------------------------------------------------------
 // System Permissions
 // ---------------------------------------------------------------------------
-
-declare global {
-  interface Window {
-    __ELIZA_API_BASE__?: string;
-    __ELIZA_API_TOKEN__?: string;
-  }
-}
+// Window.__ELIZA_* augmentation lives in src/ambient.d.ts
 
 // ---------------------------------------------------------------------------
 // Client
@@ -1905,8 +1907,7 @@ export class ElizaClient {
     this._explicitBase = baseUrl != null || Boolean(storedBase?.trim());
     this._token = token?.trim() || stored || null;
     // Priority: explicit arg > Capacitor/Electron injected global > same origin (Vite proxy)
-    const injectedBase =
-      typeof window !== "undefined" ? window.__ELIZA_API_BASE__ : undefined;
+    const injectedBase = getElizaApiBase();
     this._baseUrl =
       baseUrl ??
       storedBase ??
@@ -1922,7 +1923,7 @@ export class ElizaClient {
    */
   private get baseUrl(): string {
     if (!this._explicitBase && typeof window !== "undefined") {
-      const injected = window.__ELIZA_API_BASE__;
+      const injected = getElizaApiBase();
       // In Electron the API base can be injected after initial render. Always
       // prefer the injected value when present so the client can switch away
       // from the localhost fallback once the main process publishes the real
@@ -1939,7 +1940,7 @@ export class ElizaClient {
   private get apiToken(): string | null {
     if (this._token) return this._token;
     if (typeof window === "undefined") return null;
-    const injected = window.__ELIZA_API_TOKEN__;
+    const injected = getElizaApiToken();
     if (typeof injected === "string" && injected.trim()) return injected.trim();
     return null;
   }
@@ -1952,13 +1953,13 @@ export class ElizaClient {
     this._token = token?.trim() || null;
     if (typeof window !== "undefined") {
       if (this._token) {
-        window.__ELIZA_API_TOKEN__ = this._token;
+        setElizaApiToken(this._token);
         window.sessionStorage.setItem(
           SESSION_STORAGE_API_TOKEN_KEY,
           this._token,
         );
       } else {
-        delete window.__ELIZA_API_TOKEN__;
+        clearElizaApiToken();
         window.sessionStorage.removeItem(SESSION_STORAGE_API_TOKEN_KEY);
       }
     }
@@ -1971,10 +1972,10 @@ export class ElizaClient {
     this.disconnectWs();
     if (typeof window !== "undefined") {
       if (normalized) {
-        window.__ELIZA_API_BASE__ = normalized;
+        setElizaApiBase(normalized);
         window.sessionStorage.setItem(SESSION_STORAGE_API_BASE_KEY, normalized);
       } else {
-        delete window.__ELIZA_API_BASE__;
+        clearElizaApiBase();
         window.sessionStorage.removeItem(SESSION_STORAGE_API_BASE_KEY);
       }
     }

@@ -228,17 +228,6 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
     },
-    "@elizaos/sweagent-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/target/release/**", "python/dist/**"]
-    },
-    "@elizaos/sweagent-root#test": {
-      "dependsOn": ["^build"],
-      "outputs": ["coverage/**"],
-      "inputs": ["typescript/src/**", "typescript/tests/**", "rust/src/**", "rust/tests/**", "python/sweagent/**", "python/tests/**"],
-      "cache": false
-    },
     "@elizaos/plugin-bluesky#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],

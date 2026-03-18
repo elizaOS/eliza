@@ -6,6 +6,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { RouteHelpers, RouteRequestContext } from "./route-helpers";
+import type { TriggerSummary } from "../triggers/types";
 
 export type TriggerRouteHelpers = RouteHelpers;
 
@@ -29,11 +30,7 @@ type TriggerTaskMetadataLike = Record<string, unknown> & {
   triggerRuns?: unknown[];
 };
 
-type TriggerSummaryLike = Record<string, unknown> & {
-  id?: string;
-  displayName?: string;
-  enabled?: boolean;
-};
+type TriggerSummaryLike = Partial<TriggerSummary>;
 
 type TriggerDraftLike = {
   displayName: string;

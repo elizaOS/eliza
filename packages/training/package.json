@@ -35,7 +35,8 @@
     "lint": "biome lint src/",
     "typecheck": "tsc -b .",
     "train": "bun run scripts/train-and-test.ts",
-    "test": "bun run scripts/train-and-test.ts --skip-training --skip-test --ticks 100",
+    "test": "vitest run",
+    "test:benchmark": "bun run scripts/train-and-test.ts --skip-training --skip-test --ticks 100",
     "benchmark": "bun run scripts/train-and-test.ts --skip-training --ticks 500",
     "assess": "bun run scripts/assess-training-data.ts",
     "e2e": "bun run scripts/e2e-training-test.ts",
@@ -51,7 +52,8 @@
   "devDependencies": {
     "@types/node": "^24.10.0",
     "bun-types": "^1.3.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.17"
   },
   "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
 }

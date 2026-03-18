@@ -102,11 +102,16 @@ export const IS_POPOUT = (() => {
   return params.has("popout");
 })();
 
+/** Window may have Capacitor injected at runtime (Electron/native shells). */
+interface WindowWithCapacitor extends Window {
+  Capacitor?: { Plugins?: Record<string, unknown> };
+}
+
 /** Toggle always-on-top for the current window (Electron only). */
 export async function toggleAlwaysOnTop(pinned: boolean): Promise<boolean> {
   try {
     // Try Capacitor Desktop plugin
-    const cap = (window as unknown as Record<string, unknown>).Capacitor as
+    const cap = (window as WindowWithCapacitor).Capacitor as
       | Record<string, unknown>
       | undefined;
     if (cap?.Plugins) {

@@ -6,15 +6,27 @@
  * buttons, inputs, or any interactive elements.
  */
 
+interface OriginalStylesStorage {
+  headHTML: string;
+  bodyClassList: string[];
+  bodyStyle: string;
+}
+
+declare global {
+  interface Window {
+    __originalStyles?: OriginalStylesStorage | null;
+  }
+}
+
 (function() {
   // Store original styles for potential restoration
-  (window as any).__originalStyles = (window as any).__originalStyles || null;
+  window.__originalStyles = window.__originalStyles ?? null;
 
   let elementsProcessed = 0;
 
   // Store original <head> content for restoration
-  if (!(window as any).__originalStyles) {
-    (window as any).__originalStyles = {
+  if (!window.__originalStyles) {
+    window.__originalStyles = {
       headHTML: document.head.innerHTML,
       bodyClassList: [...document.body.classList],
       bodyStyle: document.body.getAttribute('style') || '',

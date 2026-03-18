@@ -177,7 +177,7 @@ describeIfPluginAvailable("Discord Connector - Setup & Authentication", () => {
         character,
         plugins: [discordPlugin],
         token: process.env.DISCORD_BOT_TOKEN,
-        databaseAdapter: undefined as never, // Using in-memory for tests
+        // databaseAdapter omitted — runtime uses in-memory for tests
         serverUrl: "http://localhost:3000",
       });
     }, TEST_TIMEOUT);
@@ -237,7 +237,7 @@ describeIfPluginAvailable("Discord Connector - Setup & Authentication", () => {
             character: testCharacter,
             plugins: plugin ? [plugin] : [],
             token: invalidToken,
-            databaseAdapter: undefined as never,
+            // databaseAdapter omitted — runtime uses in-memory for tests
             serverUrl: "http://localhost:3000",
           });
 

@@ -33,23 +33,29 @@ function prompt(question: string): Promise<string> {
   });
 }
 
+/** Minimal JSON Schema shape for tool input parameters */
+interface JSONSchemaProperties {
+  properties?: Record<string, { description?: string; type?: string; enum?: unknown[] }>;
+  required?: string[];
+}
+
 // Render a form based on JSON schema and collect user input
 async function renderElicitationForm(
   message: string,
-  schema: Record<string, any>
-): Promise<{ action: "accept" | "decline" | "cancel"; content?: Record<string, any> }> {
+  schema: JSONSchemaProperties,
+): Promise<{ action: "accept" | "decline" | "cancel"; content?: Record<string, unknown> }> {
   console.log("\n" + "=".repeat(60));
   console.log("ELICITATION REQUEST");
   console.log("=".repeat(60));
   console.log("\nMessage: " + message + "\n");
 
-  const properties = schema.properties || {};
-  const required = schema.required || [];
-  const result: Record<string, any> = {};
+  const properties = schema.properties ?? {};
+  const required = schema.required ?? [];
+  const result: Record<string, unknown> = {};
 
   console.log("Fill in fields (type 'cancel' or 'decline' to abort):\n");
 
-  for (const [key, prop] of Object.entries(properties) as [string, any][]) {
+  for (const [key, prop] of Object.entries(properties) as [string, { description?: string; enum?: unknown[] }][]) {
     const isRequired = required.includes(key);
     const description = prop.description || key;
     const enumValues = prop.enum;
@@ -119,7 +125,10 @@ async function main() {
     }
 
     // Form mode (default when mode is undefined or "form")
-    const { message, requestedSchema } = params as { message: string; requestedSchema: Record<string, any> };
+    const { message, requestedSchema } = params as {
+      message: string;
+      requestedSchema: JSONSchemaProperties;
+    };
     return await renderElicitationForm(message, requestedSchema);
   });
 
@@ -152,12 +161,15 @@ async function main() {
       }
 
       // Collect args
-      const args: Record<string, any> = {};
-      const schema = tool.inputSchema as any;
+      const args: Record<string, unknown> = {};
+      const schema = tool.inputSchema as JSONSchemaProperties | undefined;
 
       if (schema?.properties) {
         console.log("\nArguments for " + tool.name + ":");
-        for (const [k, v] of Object.entries(schema.properties) as [string, any][]) {
+        for (const [k, v] of Object.entries(schema.properties) as [
+          string,
+          { description?: string; type?: string },
+        ][]) {
           const required = (schema.required || []).includes(k);
           const ans = await prompt("  " + k + (required ? " (required)" : "") + ": ");
           if (ans.trim()) {
@@ -176,12 +188,12 @@ async function main() {
         const result = await client.callTool({ name: tool.name, arguments: args });
         console.log("\nResult:");
         console.log(JSON.stringify(result, null, 2).slice(0, 2000));
-      } catch (err: any) {
-        console.error("Error:", err.message);
+      } catch (err: unknown) {
+        console.error("Error:", err instanceof Error ? err.message : String(err));
       }
     }
-  } catch (err: any) {
-    console.error("Connection error:", err.message);
+  } catch (err: unknown) {
+    console.error("Connection error:", err instanceof Error ? err.message : String(err));
   } finally {
     rl.close();
     await client.close();

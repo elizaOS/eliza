@@ -7,6 +7,8 @@
  * initial startup and resolve assets against that stable base.
  */
 
+import { getElizaApiBase } from "./eliza-globals";
+
 type AssetUrlResolveOptions = {
   currentUrl?: string;
   baseUrl?: string;
@@ -102,8 +104,7 @@ export function resolveAppAssetUrl(
  */
 export function resolveApiUrl(apiPath: string): string {
   if (typeof window !== "undefined") {
-    const base = (window as unknown as Record<string, unknown>)
-      .__ELIZA_API_BASE__ as string | undefined;
+    const base = getElizaApiBase();
     if (base) return `${base}${apiPath}`;
   }
   return apiPath;

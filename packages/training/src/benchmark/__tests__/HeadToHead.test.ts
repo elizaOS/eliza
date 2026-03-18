@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import type { BenchmarkGameSnapshot } from "../BenchmarkDataGenerator";
 import { MetricsVisualizer } from "../MetricsVisualizer";
 import { SimulationEngine, type SimulationResult } from "../SimulationEngine";

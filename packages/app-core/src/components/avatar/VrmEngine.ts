@@ -11,12 +11,19 @@ import type {
 } from "@sparkjsdev/spark";
 import * as THREE from "three";
 
+/**
+ * TSL node for MeshStandardMaterial - not in public @types/three.
+ * Used for emissiveNode/opacityNode in NodeMaterial (three/tsl).
+ */
+interface TslMaterialNode {
+  mul?(v: unknown): unknown;
+  add?(v: unknown): unknown;
+}
+
 /** Three.js NodeMaterial exposes emissiveNode/opacityNode but they are not in public MeshStandardMaterial types. */
 interface MeshStandardMaterialWithNodeProps {
-  // biome-ignore lint/suspicious/noExplicitAny: THREE node types are not in public @types/three
-  emissiveNode?: any;
-  // biome-ignore lint/suspicious/noExplicitAny: THREE node types are not in public @types/three
-  opacityNode?: any;
+  emissiveNode?: TslMaterialNode | null;
+  opacityNode?: TslMaterialNode | null;
 }
 
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -365,13 +372,14 @@ function getRobustPackedSplatAnchor(splatSource: {
   );
 }
 
+/** SparkSplatMesh may have packedSplats; types not fully exported from @sparkjsdev/spark. */
+interface SparkSplatWithPacked {
+  packedSplats?: { numSplats?: number };
+}
+
 function getRobustSplatAnchor(splat: SparkSplatMesh): THREE.Vector3 {
   return getRobustPackedSplatAnchor({
-    numSplats: (
-      splat as unknown as {
-        packedSplats?: { numSplats?: number };
-      }
-    ).packedSplats?.numSplats,
+    numSplats: (splat as SparkSplatWithPacked).packedSplats?.numSplats,
     forEachSplat: splat.forEachSplat.bind(splat),
   });
 }
@@ -410,11 +418,7 @@ function getRobustSplatRadialExtent(
 ): number {
   return getRobustPackedSplatRadialExtent(
     {
-      numSplats: (
-        splat as unknown as {
-          packedSplats?: { numSplats?: number };
-        }
-      ).packedSplats?.numSplats,
+      numSplats: (splat as SparkSplatWithPacked).packedSplats?.numSplats,
       forEachSplat: splat.forEachSplat.bind(splat),
     },
     anchor,
@@ -495,7 +499,7 @@ async function createRenderer(
         canvas,
         alpha: true,
         antialias: !sparkOptimized,
-      }) as unknown as RendererLike & { init?: () => Promise<unknown> };
+      }) as RendererLike & { init?: () => Promise<unknown> };
       await renderer.init?.();
       console.info("[VrmEngine] Using WebGPURenderer");
       return { backend: "webgpu", renderer };
@@ -511,7 +515,7 @@ async function createRenderer(
     alpha: true,
     antialias: !sparkOptimized,
     powerPreference: sparkOptimized ? "high-performance" : "default",
-  }) as unknown as RendererLike;
+  }) as RendererLike;
   console.info("[VrmEngine] Using WebGLRenderer");
   return { backend: "webgl", renderer };
 }
@@ -2235,16 +2239,24 @@ export class VrmEngine {
           );
 
           // Compose with existing nodes
-          const origOpacity = mat.opacityNode;
+          const origOpacity = mat.opacityNode as TslMaterialNode | null | undefined;
           mat.opacityNode = origOpacity
-            ? origOpacity.mul(dissolveAlpha)
+            ? ((((origOpacity as { mul: (value: unknown) => unknown }).mul(
+                dissolveAlpha,
+              ) as unknown) as TslMaterialNode) ??
+                dissolveAlpha)
             : dissolveAlpha;
 
           const matWithEmissive = mat as MeshStandardMaterialWithNodeProps;
-          const origEmissive = matWithEmissive.emissiveNode;
+          const origEmissive = matWithEmissive.emissiveNode as
+            | TslMaterialNode
+            | null
+            | undefined;
           matWithEmissive.emissiveNode = origEmissive
-            ? origEmissive.add(emissiveBoost)
-            : emissiveBoost;
+            ? (((origEmissive as { add: (value: unknown) => unknown }).add(
+                emissiveBoost,
+              ) as unknown) as TslMaterialNode)
+            : (emissiveBoost as TslMaterialNode);
 
           mat.alphaTest = 0.01;
           mat.transparent = true;
@@ -2318,7 +2330,10 @@ if (teleportNoise < teleportRatio) discard;
 
           const originalOnBeforeCompile = mat.userData._origOnBeforeCompile;
           if (typeof originalOnBeforeCompile === "function") {
-            originalOnBeforeCompile(shader, this.renderer as never);
+            originalOnBeforeCompile(
+              shader,
+              this.renderer as THREE.WebGLRenderer,
+            );
           }
         };
         mat.customProgramCacheKey = () =>
@@ -2443,7 +2458,7 @@ if (teleportNoise < teleportRatio) discard;
     for (const mat of this.teleportDissolvedMaterials) {
       if (mat.userData._dissolveApplied) {
         if (mat.userData._origOpacityNode !== undefined) {
-          (mat as unknown as Record<string, unknown>).opacityNode =
+          (mat as MeshStandardMaterialWithNodeProps).opacityNode =
             mat.userData._origOpacityNode ?? null;
         }
         if (mat.userData._origEmissiveNode !== undefined) {

@@ -1,9 +1,11 @@
+import type { IncomingMessage } from "node:http";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   handleWalletRoutes,
   type WalletRouteDependencies,
 } from "../../src/api/wallet-routes";
 import type { ElizaConfig } from "../../src/config/config";
+import type { ServerResponse } from "node:http";
 
 const ENV_KEYS = [
   "ALCHEMY_API_KEY",
@@ -114,8 +116,8 @@ async function invoke(args: {
   const ensureWalletKeysInEnvAndConfig = vi.fn();
 
   const handled = await handleWalletRoutes({
-    req: {} as never,
-    res: {} as never,
+    req: {} as IncomingMessage,
+    res: {} as ServerResponse,
     method: args.method,
     pathname: args.pathname,
     config,

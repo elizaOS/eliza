@@ -11,6 +11,7 @@
 
 import { useEffect, useRef } from "react";
 import { invokeDesktopBridgeRequest } from "../bridge";
+import { getElizaApiBase } from "../utils/eliza-globals";
 
 const DEFAULT_FPS = 15;
 const JPEG_QUALITY = 70;
@@ -31,7 +32,7 @@ export function useRetakeCapture(
         params: {
           fps,
           quality: JPEG_QUALITY,
-          apiBase: window.__ELIZA_API_BASE__ ?? "http://localhost:2138",
+          apiBase: getElizaApiBase() ?? "http://localhost:2138",
           endpoint: "/api/stream/frame",
         },
       })

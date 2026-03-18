@@ -600,7 +600,7 @@ describe("PluginsView game modal", () => {
   it("renders setup links on cards and opens detail links via desktop IPC with browser fallback", async () => {
     const openSpy = vi
       .spyOn(window, "open")
-      .mockImplementation(() => null as unknown as Window);
+      .mockImplementation(() => null);
     Object.defineProperty(window, "__ELIZA_ELECTROBUN_RPC__", {
       configurable: true,
       writable: true,

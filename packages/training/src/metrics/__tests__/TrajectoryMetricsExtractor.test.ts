@@ -4,7 +4,7 @@
  * Validates that all metrics are properly extracted and never null/undefined/NaN.
  */
 
-import { beforeEach, describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { JsonValue } from "../../adapter";
 import type { TrajectoryStep } from "../../training/types";
 import {

@@ -52,10 +52,10 @@ export class FileKV implements KVClient {
               // Lock is stale, try to remove it and retry immediately
               try {
                 await fs.promises.unlink(this.lockFile);
-              } catch (ignore) {}
+              } catch {}
               continue;
             }
-          } catch (err) {
+          } catch {
             // Lock file might have been deleted in between, retry
           }
 
@@ -72,7 +72,7 @@ export class FileKV implements KVClient {
   private async releaseLock(): Promise<void> {
     try {
       await fs.promises.unlink(this.lockFile);
-    } catch (e) {
+    } catch {
       // Ignore if already gone
     }
   }
@@ -83,7 +83,7 @@ export class FileKV implements KVClient {
       let content = '{}';
       try {
         content = await fs.promises.readFile(this.filePath, 'utf8');
-      } catch (e) {
+      } catch {
         // If read fails, assume empty or corrupt, reset to default
         content = JSON.stringify({ data: {}, expiry: {} });
       }

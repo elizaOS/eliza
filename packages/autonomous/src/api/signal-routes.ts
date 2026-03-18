@@ -1,11 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { readJsonBody as parseJsonBody, sendJson } from "./http-helpers";
+import type { SignalPairingEvent } from "../services/signal-pairing";
 
-export interface SignalPairingEventLike {
-  status?: string;
-  [key: string]: unknown;
-}
+export type SignalPairingEventLike = SignalPairingEvent;
 
 export interface SignalPairingSessionLike {
   start(): Promise<void>;
@@ -97,7 +95,7 @@ export async function handleSignalRoute(
       authDir,
       accountId,
       onEvent: (event) => {
-        state.broadcastWs?.(event as Record<string, unknown>);
+        state.broadcastWs?.(event as unknown as Record<string, unknown>);
 
         if (event.status === "connected") {
           if (!state.config.connectors) state.config.connectors = {};

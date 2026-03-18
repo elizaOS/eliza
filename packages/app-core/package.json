@@ -45,6 +45,7 @@
     "./components/CompanionSceneHost": "./src/components/CompanionSceneHost.tsx",
     "./components/VrmStage": "./src/components/VrmStage.tsx",
     "./utils": "./src/utils/index.ts",
+    "./utils/*": "./src/utils/*",
     "./voice": "./src/voice/index.ts",
     "./autonomy": "./src/autonomy/index.ts",
     "./chat": "./src/chat/index.ts",

@@ -110,7 +110,8 @@ export * from "./utils/channel-utils";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 // Export Node-specific utilities
-export * from "./utils/node";
+export * from "./utils/paths";
+export * from "./utils/server-health";
 // Export streaming utilities
 export * from "./utils/streaming";
 // Export validation utilities

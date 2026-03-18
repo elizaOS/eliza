@@ -3,8 +3,20 @@
  * Only works if strip-styles.ts was run first.
  */
 
+interface OriginalStylesStorage {
+  headHTML: string;
+  bodyClassList: string[];
+  bodyStyle: string;
+}
+
+declare global {
+  interface Window {
+    __originalStyles?: OriginalStylesStorage | null;
+  }
+}
+
 function restoreStyles(): { success: boolean; message: string } {
-  const stored = (window as any).__originalStyles;
+  const stored = window.__originalStyles;
 
   if (!stored) {
     return {
