@@ -23,9 +23,9 @@ Comprehensive static analysis toolkit for security vulnerability detection, base
 
 ## When NOT to Use
 
-- Writing Semgrep rules from scratch (use semgrep-rule-creator skill instead)
+- Building brand-new detection workflows outside this toolkit's CodeQL, Semgrep, and SARIF scope
 - Dynamic analysis or fuzzing (use testing-handbook-skills)
-- Smart contract auditing (use security-building-secure-contracts)
+- Smart contract auditing or chain-specific review work
 
 ## Sub-Skills
 
@@ -86,6 +86,4 @@ jq '.runs[].results[] | {ruleId, message: .message.text, location: .locations[0]
 
 ## Related Skills
 
-- **semgrep-rule-creator** - Dedicated skill for writing production-quality Semgrep rules
-- **variant-analysis** - Find similar vulnerabilities using CodeQL/Semgrep patterns
-- **security-differential-review** - Security-focused code review using static analysis findings
+- **testing-handbook-skills** - Pair static analysis with fuzzing, sanitizers, and coverage-driven testing

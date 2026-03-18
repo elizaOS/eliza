@@ -56,4 +56,4 @@ Use this plugin when you need to:
 
 ## Related Skills
 
-- `variant-analysis` - Use CodeQL/Semgrep patterns to find bug variants
+- `testing-handbook-skills` - Pair static analysis with fuzzing, sanitizers, and other runtime testing workflows

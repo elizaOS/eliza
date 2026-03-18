@@ -18,10 +18,10 @@ Comprehensive security testing toolkit generated from the [Trail of Bits Applica
 
 ## When NOT to Use
 
-- Smart contract auditing (use security-building-secure-contracts)
-- Writing custom Semgrep rules (use semgrep-rule-creator)
-- General code review (use security-differential-review)
-- Vulnerability hunting without a testing plan (use audit-context-building first)
+- Smart contract auditing or chain-specific review work
+- Writing custom static-analysis rules from scratch
+- General code review outside a security-testing workflow
+- Vulnerability hunting without a concrete testing plan
 
 ## Sub-Skills (17 total)
 

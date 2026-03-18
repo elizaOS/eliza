@@ -22,7 +22,7 @@ Use this skill when you need to:
 
 Do NOT use this skill for:
 - Codebases without corresponding specification documents
-- General code review or vulnerability hunting (use audit-context-building instead)
+- General code review or vulnerability hunting without a spec-to-code alignment task
 - Writing or improving documentation (this skill only verifies compliance)
 - Non-blockchain projects without formal specifications
 
