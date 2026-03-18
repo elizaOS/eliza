@@ -257,7 +257,7 @@ describe("ProviderSwitcher provider dropdown default", () => {
         services: { inference: false },
         inferenceMode: "byok",
       },
-      env: { vars: { ELIZA_USE_PI_AI: "" } },
+      env: { vars: { MILADY_USE_PI_AI: "" } },
     });
     expect(mockSwitchProvider).toHaveBeenCalledWith("anthropic-subscription");
     expect(handlePluginToggle).toHaveBeenCalledWith("plugin-anthropic", true);

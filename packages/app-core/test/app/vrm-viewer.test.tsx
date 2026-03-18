@@ -14,7 +14,7 @@ vi.mock("@elizaos/app-core/components/avatar/VrmEngine", () => {
     loadVrmFromUrl = vi.fn(async () => {});
     getState = vi.fn(() => ({
       vrmLoaded: true,
-      vrmName: "eliza-1.vrm.gz",
+      vrmName: "milady-1.vrm.gz",
       loadError: null,
       idlePlaying: false,
       idleTime: 0,
@@ -53,9 +53,9 @@ vi.mock("@elizaos/app-core/components/avatar/VrmEngine", () => {
 
   (
     globalThis as {
-      __elizaVrmViewerMock?: { instances: MockVrmEngine[] };
+      __miladyVrmViewerMock?: { instances: MockVrmEngine[] };
     }
-  ).__elizaVrmViewerMock = { instances: MockVrmEngine.instances };
+  ).__miladyVrmViewerMock = { instances: MockVrmEngine.instances };
 
   return {
     VrmEngine: MockVrmEngine,
@@ -73,9 +73,9 @@ type MockVrmEngineInstance = {
 function getMockInstances(): MockVrmEngineInstance[] {
   const store = (
     globalThis as {
-      __elizaVrmViewerMock?: { instances: MockVrmEngineInstance[] };
+      __miladyVrmViewerMock?: { instances: MockVrmEngineInstance[] };
     }
-  ).__elizaVrmViewerMock;
+  ).__miladyVrmViewerMock;
 
   if (!store) {
     throw new Error("Expected VRM viewer mock store to be initialized.");
@@ -114,7 +114,7 @@ describe("VrmViewer", () => {
     await act(async () => {
       renderer = TestRenderer.create(
         <StrictMode>
-          <VrmViewer vrmPath="/vrms/eliza-1.vrm.gz" mouthOpen={0} />
+          <VrmViewer vrmPath="/vrms/milady-1.vrm.gz" mouthOpen={0} />
         </StrictMode>,
         {
           createNodeMock: (element) => {
@@ -157,8 +157,8 @@ describe("VrmViewer", () => {
     );
     expect(totalLoadCalls).toBe(1);
     expect(instances.at(-1)?.loadVrmFromUrl).toHaveBeenCalledWith(
-      "/vrms/eliza-1.vrm.gz",
-      "eliza-1.vrm.gz",
+      "/vrms/milady-1.vrm.gz",
+      "milady-1.vrm.gz",
     );
 
     await act(async () => {
@@ -172,7 +172,7 @@ describe("VrmViewer", () => {
     await act(async () => {
       renderer = TestRenderer.create(
         <VrmViewer
-          vrmPath="/vrms/eliza-1.vrm.gz"
+          vrmPath="/vrms/milady-1.vrm.gz"
           worldUrl="/worlds/companion-day.spz"
           mouthOpen={0}
         />,
@@ -212,8 +212,8 @@ describe("VrmViewer", () => {
       "/worlds/companion-day.spz",
     );
     expect(instance?.loadVrmFromUrl).toHaveBeenCalledWith(
-      "/vrms/eliza-1.vrm.gz",
-      "eliza-1.vrm.gz",
+      "/vrms/milady-1.vrm.gz",
+      "milady-1.vrm.gz",
     );
 
     const worldCallOrder =
@@ -233,7 +233,7 @@ describe("VrmViewer", () => {
     await act(async () => {
       renderer = TestRenderer.create(
         <VrmViewer
-          vrmPath="/vrms/eliza-1.vrm.gz"
+          vrmPath="/vrms/milady-1.vrm.gz"
           worldUrl="/worlds/companion-day.spz"
           mouthOpen={0}
         />,
@@ -277,7 +277,7 @@ describe("VrmViewer", () => {
     await act(async () => {
       renderer?.update(
         <VrmViewer
-          vrmPath="/vrms/eliza-1.vrm.gz"
+          vrmPath="/vrms/milady-1.vrm.gz"
           worldUrl="/worlds/companion-night.spz"
           mouthOpen={0}
         />,

@@ -42,7 +42,7 @@ const interruptedMsg = {
 export const UserMessage: Story = {
   render: () => (
     <div style={{ maxWidth: 600 }}>
-      <ChatMessage message={userMsg} agentName="Eliza" />
+      <ChatMessage message={userMsg} agentName="Milady" />
     </div>
   ),
 };
@@ -50,7 +50,7 @@ export const UserMessage: Story = {
 export const AgentMessage: Story = {
   render: () => (
     <div style={{ maxWidth: 600 }}>
-      <ChatMessage message={agentMsg} agentName="Eliza" />
+      <ChatMessage message={agentMsg} agentName="Milady" />
     </div>
   ),
 };
@@ -58,14 +58,14 @@ export const AgentMessage: Story = {
 export const GroupedMessages: Story = {
   render: () => (
     <div style={{ maxWidth: 600 }}>
-      <ChatMessage message={agentMsg} agentName="Eliza" />
+      <ChatMessage message={agentMsg} agentName="Milady" />
       <ChatMessage
         message={{
           ...agentMsg,
           id: "msg-2b",
           text: "Would you like more details?",
         }}
-        agentName="Eliza"
+        agentName="Milady"
         isGrouped
       />
     </div>
@@ -75,7 +75,7 @@ export const GroupedMessages: Story = {
 export const LongMessage: Story = {
   render: () => (
     <div style={{ maxWidth: 600 }}>
-      <ChatMessage message={longMsg} agentName="Eliza" />
+      <ChatMessage message={longMsg} agentName="Milady" />
     </div>
   ),
 };
@@ -83,7 +83,7 @@ export const LongMessage: Story = {
 export const Interrupted: Story = {
   render: () => (
     <div style={{ maxWidth: 600 }}>
-      <ChatMessage message={interruptedMsg} agentName="Eliza" />
+      <ChatMessage message={interruptedMsg} agentName="Milady" />
     </div>
   ),
 };
@@ -92,15 +92,15 @@ export const Conversation: Story = {
   name: "Full Conversation",
   render: () => (
     <div style={{ maxWidth: 600 }}>
-      <ChatMessage message={userMsg} agentName="Eliza" />
-      <ChatMessage message={agentMsg} agentName="Eliza" />
+      <ChatMessage message={userMsg} agentName="Milady" />
+      <ChatMessage message={agentMsg} agentName="Milady" />
       <ChatMessage
         message={{
           ...userMsg,
           id: "msg-5",
           text: "Thanks! Any rain expected?",
         }}
-        agentName="Eliza"
+        agentName="Milady"
       />
       <ChatMessage
         message={{
@@ -108,7 +108,7 @@ export const Conversation: Story = {
           id: "msg-6",
           text: "Only a 20% chance on Sunday afternoon. You should be fine!",
         }}
-        agentName="Eliza"
+        agentName="Milady"
       />
     </div>
   ),

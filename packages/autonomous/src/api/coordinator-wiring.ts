@@ -76,7 +76,7 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
 
     if (result.chat && result.ws && result.eventRouting) {
       logger.debug?.(
-        `[eliza-api] Coordinator bridges wired immediately (${context})`,
+        `[milady-api] Coordinator bridges wired immediately (${context})`,
       );
       return result;
     }
@@ -85,7 +85,7 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
     const runtime = state.runtime;
     if (!runtime) {
       logger.warn(
-        `[eliza-api] Coordinator wiring skipped (${context}): no runtime`,
+        `[milady-api] Coordinator wiring skipped (${context}): no runtime`,
       );
       return result;
     }
@@ -100,7 +100,7 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
       if (svc) {
         serviceFound = true;
         logger.debug?.(
-          `[eliza-api] SWARM_COORDINATOR service detected (${context})`,
+          `[milady-api] SWARM_COORDINATOR service detected (${context})`,
         );
         break;
       }
@@ -110,7 +110,7 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
       // Service never appeared — log at debug level only. This is normal
       // if the orchestrator plugin is disabled or not configured.
       logger.debug?.(
-        `[eliza-api] SWARM_COORDINATOR not available after ${POLL_TIMEOUT_MS / 1000}s (${context}) — coding agent features disabled`,
+        `[milady-api] SWARM_COORDINATOR not available after ${POLL_TIMEOUT_MS / 1000}s (${context}) — coding agent features disabled`,
       );
       return result;
     }
@@ -125,7 +125,7 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
 
       if (result.chat && result.ws && result.eventRouting) {
         logger.debug?.(
-          `[eliza-api] Coordinator bridges wired after service load (${context}, attempt ${attempt + 1})`,
+          `[milady-api] Coordinator bridges wired after service load (${context}, attempt ${attempt + 1})`,
         );
         return result;
       }
@@ -143,12 +143,12 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
       !!wireSwarmSynthesis,
     );
     logger.warn(
-      `[eliza-api] Coordinator wiring incomplete after ${MAX_RETRIES} retries (${context})`,
+      `[milady-api] Coordinator wiring incomplete after ${MAX_RETRIES} retries (${context})`,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.warn(
-      `[eliza-api] Coordinator wiring error (${context}): ${message}`,
+      `[milady-api] Coordinator wiring error (${context}): ${message}`,
     );
   }
 

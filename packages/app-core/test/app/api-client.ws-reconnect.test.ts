@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * Tests for the WS reconnect logic in ElizaClient.
+ * Tests for the WS reconnect logic in MiladyClient.
  *
- * We import and test the real ElizaClient class, mocking WebSocket
+ * We import and test the real MiladyClient class, mocking WebSocket
  * and browser globals so connectWs() and onWsEvent() can run in Node.
  */
 
@@ -63,21 +63,21 @@ vi.stubGlobal("window", {
   location: { protocol: "http:", host: "localhost:2138" },
   sessionStorage: { getItem: () => null, setItem: () => {} },
   navigator: { userAgent: "" },
-  __ELIZA_API_BASE__: undefined,
+  __MILADY_API_BASE__: undefined,
 });
 
 // ---------------------------------------------------------------------------
-// Import the real ElizaClient
+// Import the real MiladyClient
 // ---------------------------------------------------------------------------
 
-const { ElizaClient } = await import("@elizaos/app-core/api");
+const { MiladyClient } = await import("@elizaos/app-core/api");
 
-describe("ElizaClient WS reconnect", () => {
-  let client: InstanceType<typeof ElizaClient>;
+describe("MiladyClient WS reconnect", () => {
+  let client: InstanceType<typeof MiladyClient>;
 
   beforeEach(() => {
     latestWs = null;
-    client = new ElizaClient("http://localhost:2138");
+    client = new MiladyClient("http://localhost:2138");
   });
 
   afterEach(() => {

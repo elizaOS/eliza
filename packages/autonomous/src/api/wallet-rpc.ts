@@ -1,4 +1,4 @@
-import type { ElizaConfig } from "../config/config";
+import type { MiladyConfig } from "../config/config";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcSelections,
@@ -25,7 +25,7 @@ export const DEFAULT_PUBLIC_SOLANA_RPC_URLS = [
   "https://api.mainnet-beta.solana.com",
 ] as const;
 
-type WalletCapableConfig = Pick<ElizaConfig, "cloud" | "env"> & {
+type WalletCapableConfig = Pick<MiladyConfig, "cloud" | "env"> & {
   wallet?: {
     rpcProviders?: Partial<Record<keyof WalletRpcSelections, string>>;
   };
@@ -216,7 +216,7 @@ export function resolveCloudApiBaseUrl(
 }
 
 export function resolveCloudApiKey(
-  config?: Pick<ElizaConfig, "cloud"> | null,
+  config?: Pick<MiladyConfig, "cloud"> | null,
 ): string | null {
   return normalizeSecret(
     config?.cloud?.apiKey ?? process.env.ELIZAOS_CLOUD_API_KEY,
@@ -262,7 +262,7 @@ export function buildCloudSolanaRpcUrl(
 }
 
 export function hasElizaCloudRpcAccess(
-  config?: Pick<ElizaConfig, "cloud"> | null,
+  config?: Pick<MiladyConfig, "cloud"> | null,
 ): boolean {
   return Boolean(resolveCloudApiKey(config));
 }

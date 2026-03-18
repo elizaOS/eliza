@@ -99,7 +99,7 @@ export function readTriggerRuns(task: Task): TriggerRunRecord[] {
 }
 
 export function triggersFeatureEnabled(runtime?: IAgentRuntime): boolean {
-  const runtimeSetting = runtime?.getSetting("ELIZA_TRIGGERS_ENABLED");
+  const runtimeSetting = runtime?.getSetting("MILADY_TRIGGERS_ENABLED");
   if (
     runtimeSetting === false ||
     runtimeSetting === "false" ||
@@ -107,21 +107,21 @@ export function triggersFeatureEnabled(runtime?: IAgentRuntime): boolean {
   ) {
     return false;
   }
-  const env = process.env.ELIZA_TRIGGERS_ENABLED;
+  const env = process.env.MILADY_TRIGGERS_ENABLED;
   if (!env) return true;
   const normalized = env.trim().toLowerCase();
   return normalized !== "0" && normalized !== "false";
 }
 
 export function getTriggerLimit(runtime?: IAgentRuntime): number {
-  const runtimeSetting = runtime?.getSetting("ELIZA_TRIGGERS_MAX_ACTIVE");
+  const runtimeSetting = runtime?.getSetting("MILADY_TRIGGERS_MAX_ACTIVE");
   if (typeof runtimeSetting === "number" && Number.isFinite(runtimeSetting)) {
     return Math.max(1, Math.floor(runtimeSetting));
   }
   if (typeof runtimeSetting === "string" && /^\d+$/.test(runtimeSetting)) {
     return Math.max(1, Number(runtimeSetting));
   }
-  const env = process.env.ELIZA_TRIGGERS_MAX_ACTIVE;
+  const env = process.env.MILADY_TRIGGERS_MAX_ACTIVE;
   if (env && /^\d+$/.test(env)) {
     return Math.max(1, Number(env));
   }

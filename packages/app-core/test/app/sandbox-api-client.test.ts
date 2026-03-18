@@ -1,7 +1,7 @@
-import { ElizaClient } from "@elizaos/app-core/api";
+import { MiladyClient } from "@elizaos/app-core/api";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-describe("ElizaClient sandbox monitor endpoints", () => {
+describe("MiladyClient sandbox monitor endpoints", () => {
   const originalFetch = globalThis.fetch;
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -24,7 +24,7 @@ describe("ElizaClient sandbox monitor endpoints", () => {
   });
 
   test("calls browser, windows, and screenshot sandbox APIs", async () => {
-    const api = new ElizaClient("http://localhost:2138", "token");
+    const api = new MiladyClient("http://localhost:2138", "token");
 
     await api.getSandboxBrowser();
     await api.getSandboxWindows();
@@ -101,7 +101,7 @@ describe("ElizaClient sandbox monitor endpoints", () => {
         ),
     );
 
-    const api = new ElizaClient("http://localhost:2138", "token");
+    const api = new MiladyClient("http://localhost:2138", "token");
     const browser = await api.getSandboxBrowser();
     expect(browser.noVncEndpoint).toBe("http://localhost:6080/vnc.html");
   });

@@ -65,7 +65,7 @@ function makeTrade(
     tokenAddress: `0x${"a".repeat(40)}`,
     amount: "1.5",
     inputSymbol: "BNB",
-    outputSymbol: "ELIZA",
+    outputSymbol: "MILADY",
     createdAt: Date.now(),
     status: "success",
     confirmations: 12,

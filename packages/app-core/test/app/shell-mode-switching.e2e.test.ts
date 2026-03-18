@@ -384,7 +384,7 @@ function makeState(overrides?: Partial<HarnessState>): HarnessState {
       state.tab = mode === "companion" ? "companion" : "chat";
     }),
     uiLanguage: "en",
-    agentStatus: { state: "running", agentName: "Eliza" },
+    agentStatus: { state: "running", agentName: "Milady" },
     loadDropStatus: vi.fn(),
     unreadConversations: new Set(),
     activeGameViewerUrl: null,

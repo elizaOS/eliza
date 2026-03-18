@@ -42,15 +42,15 @@ const { fetchMock, mockClient, wsHandlers } = vi.hoisted(() => {
       getConversationMessages: vi.fn(async () => ({ messages: [] })),
       sendConversationMessage: vi.fn(async () => ({
         text: "ok",
-        agentName: "Eliza",
+        agentName: "Milady",
       })),
       sendConversationMessageStream: vi.fn(async () => ({
         text: "ok",
-        agentName: "Eliza",
+        agentName: "Milady",
       })),
       requestGreeting: vi.fn(async () => ({
         text: "hi",
-        agentName: "Eliza",
+        agentName: "Milady",
         generated: true,
       })),
       listCustomActions: vi.fn(async () => []),
@@ -103,7 +103,7 @@ const { fetchMock, mockClient, wsHandlers } = vi.hoisted(() => {
       })),
       getStatus: vi.fn(async () => ({
         state: "running",
-        agentName: "Eliza",
+        agentName: "Milady",
         model: undefined,
         startedAt: undefined,
         uptime: undefined,
@@ -268,15 +268,15 @@ describe("AppContext autonomy replay", () => {
     mockClient.getConversationMessages.mockResolvedValue({ messages: [] });
     mockClient.sendConversationMessage.mockResolvedValue({
       text: "ok",
-      agentName: "Eliza",
+      agentName: "Milady",
     });
     mockClient.sendConversationMessageStream.mockResolvedValue({
       text: "ok",
-      agentName: "Eliza",
+      agentName: "Milady",
     });
     mockClient.requestGreeting.mockResolvedValue({
       text: "hi",
-      agentName: "Eliza",
+      agentName: "Milady",
       generated: true,
     });
     mockClient.listCustomActions.mockResolvedValue([]);
@@ -323,7 +323,7 @@ describe("AppContext autonomy replay", () => {
     );
     mockClient.getStatus.mockResolvedValue({
       state: "running",
-      agentName: "Eliza",
+      agentName: "Milady",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,

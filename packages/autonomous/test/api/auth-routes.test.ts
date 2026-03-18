@@ -9,13 +9,13 @@ import {
 let envBackup: string | undefined;
 
 beforeEach(() => {
-  envBackup = process.env.ELIZA_API_TOKEN;
-  process.env.ELIZA_API_TOKEN = "test-token-secret";
+  envBackup = process.env.MILADY_API_TOKEN;
+  process.env.MILADY_API_TOKEN = "test-token-secret";
 });
 
 afterEach(() => {
-  if (envBackup === undefined) delete process.env.ELIZA_API_TOKEN;
-  else process.env.ELIZA_API_TOKEN = envBackup;
+  if (envBackup === undefined) delete process.env.MILADY_API_TOKEN;
+  else process.env.MILADY_API_TOKEN = envBackup;
 });
 
 function buildCtx(
@@ -124,7 +124,7 @@ describe("auth-routes", () => {
     });
 
     test("rejects with no API token set", async () => {
-      delete process.env.ELIZA_API_TOKEN;
+      delete process.env.MILADY_API_TOKEN;
       const ctx = buildCtx("POST", "/api/auth/pair", {
         readJsonBody: vi.fn(async () => ({ code: "ABC123" })),
       });

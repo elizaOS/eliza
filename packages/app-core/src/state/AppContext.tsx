@@ -43,7 +43,7 @@ import {
   type McpRegistryServerDetail,
   type McpServerConfig,
   type McpServerStatus,
-  ElizaClient,
+  MiladyClient,
   type MintResult,
   type OnboardingOptions,
   type PluginInfo,
@@ -385,7 +385,7 @@ function normalizeRemoteApiBaseInput(rawValue: string): string {
 
 function loadSessionApiBase(): string {
   if (typeof window === "undefined") return "";
-  return window.sessionStorage.getItem("eliza_api_base")?.trim() ?? "";
+  return window.sessionStorage.getItem("milady_api_base")?.trim() ?? "";
 }
 
 function isRemoteApiBase(baseUrl: string): boolean {
@@ -1118,7 +1118,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           window.history.pushState(null, "", path);
         }
       } catch (err) {
-        console.warn("[eliza][nav] failed to update browser location", err);
+        console.warn("[milady][nav] failed to update browser location", err);
       }
     },
     [activeGameViewerUrl],
@@ -1466,7 +1466,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         autonomousRunHealthByRunIdRef.current = partial;
         setAutonomousRunHealthByRunId(partial);
       }
-      console.warn("[eliza] Failed to fetch autonomous event replay", err);
+      console.warn("[milady] Failed to fetch autonomous event replay", err);
     } finally {
       autonomousReplayInFlightRef.current = false;
     }
@@ -1844,7 +1844,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.warn(
-          "[eliza][chat:init] failed to confirm runtime state for greeting",
+          "[milady][chat:init] failed to confirm runtime state for greeting",
           err,
         );
       }
@@ -1923,7 +1923,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return null;
           }
           console.warn(
-            "[eliza][chat:init] failed to load restored conversation messages",
+            "[milady][chat:init] failed to load restored conversation messages",
             err,
           );
           greetingFiredRef.current = false;
@@ -1978,7 +1978,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setConversationMessages([]);
       return conversation.id;
     } catch (err) {
-      console.warn("[eliza][chat:init] failed to hydrate conversations", err);
+      console.warn("[milady][chat:init] failed to hydrate conversations", err);
       return null;
     }
   }, [scheduleGreetingWaveForCompanion, uiLanguage]);
@@ -2029,7 +2029,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setAgentStatus({
         ...(agentStatus ?? {
-          agentName: "Eliza",
+          agentName: "Milady",
           model: undefined,
           uptime: undefined,
           startedAt: undefined,
@@ -3735,8 +3735,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!confirmed) return;
     const exportToken = await promptModal({
       title: "Wallet Export Token",
-      message: "Enter your wallet export token (ELIZA_WALLET_EXPORT_TOKEN):",
-      placeholder: "ELIZA_WALLET_EXPORT_TOKEN",
+      message: "Enter your wallet export token (MILADY_WALLET_EXPORT_TOKEN):",
+      placeholder: "MILADY_WALLET_EXPORT_TOKEN",
       confirmLabel: "Export",
       cancelLabel: "Cancel",
     });
@@ -4173,7 +4173,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     const accessKey = onboardingRemoteToken.trim();
-    const probe = new ElizaClient(normalizedBase, accessKey || undefined);
+    const probe = new MiladyClient(normalizedBase, accessKey || undefined);
     setOnboardingRemoteConnecting(true);
     setOnboardingRemoteError(null);
     try {
@@ -4189,7 +4189,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setOnboardingRemoteApiBase(normalizedBase);
       setOnboardingRemoteToken(accessKey);
       setOnboardingRemoteConnected(true);
-      setActionNotice("Connected to remote Eliza backend.", "success", 4200);
+      setActionNotice("Connected to remote Milady backend.", "success", 4200);
       retryStartup();
     } catch (err) {
       const message =
@@ -4717,14 +4717,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         detail,
       };
     };
-    const STARTUP_WARN_PREFIX = "[eliza][startup:init]";
+    const STARTUP_WARN_PREFIX = "[milady][startup:init]";
     const logStartupWarning = (scope: string, err: unknown) => {
       console.warn(`${STARTUP_WARN_PREFIX} ${scope}`, err);
     };
 
     const initApp = async () => {
       if (import.meta.env.DEV && startupRunId > 0) {
-        console.debug(`[eliza] Retrying startup run #${startupRunId}`);
+        console.debug(`[milady] Retrying startup run #${startupRunId}`);
       }
       const BASE_DELAY_MS = 250;
       const MAX_DELAY_MS = 1000;

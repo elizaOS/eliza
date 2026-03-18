@@ -1,7 +1,7 @@
 /**
  * Contract deployment fixture for e2e testing.
  *
- * Deploys MockElizaAgentRegistry (ERC-8004) and MockElizaCollection (ERC-8041)
+ * Deploys MockMiladyAgentRegistry (ERC-8004) and MockMiladyCollection (ERC-8041)
  * to the local Anvil instance.
  */
 
@@ -68,7 +68,7 @@ export interface DeployedContracts {
 }
 
 /**
- * Deploy MockElizaAgentRegistry and MockElizaCollection to the provided network.
+ * Deploy MockMiladyAgentRegistry and MockMiladyCollection to the provided network.
  *
  * @param wallet - An ethers Wallet connected to a provider
  * @returns Deployed contract addresses and instances
@@ -78,12 +78,12 @@ export async function deployContracts(
 ): Promise<DeployedContracts> {
   // Load compiled artifacts
   const registryArtifact = loadCompiledContract([
-    "MockElizaAgentRegistry",
-    "MockElizaAgentRegistry",
+    "MockMiladyAgentRegistry",
+    "MockMiladyAgentRegistry",
   ]);
   const collectionArtifact = loadCompiledContract([
-    "MockElizaCollection",
-    "MockElizaCollection",
+    "MockMiladyCollection",
+    "MockMiladyCollection",
   ]);
 
   // Get current nonce explicitly to avoid race conditions
@@ -136,12 +136,12 @@ export function getContractABIs(): {
   collectionABI: ethers.InterfaceAbi;
 } {
   const registryArtifact = loadCompiledContract([
-    "MockElizaAgentRegistry",
-    "MockElizaAgentRegistry",
+    "MockMiladyAgentRegistry",
+    "MockMiladyAgentRegistry",
   ]);
   const collectionArtifact = loadCompiledContract([
-    "MockElizaCollection",
-    "MockElizaCollection",
+    "MockMiladyCollection",
+    "MockMiladyCollection",
   ]);
 
   return {

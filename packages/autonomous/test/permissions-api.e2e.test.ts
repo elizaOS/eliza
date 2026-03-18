@@ -581,8 +581,8 @@ describe("Permissions API auth access", () => {
   let envBackup: { restore: () => void };
 
   beforeAll(async () => {
-    envBackup = saveEnv("ELIZA_API_TOKEN");
-    process.env.ELIZA_API_TOKEN = TEST_TOKEN;
+    envBackup = saveEnv("MILADY_API_TOKEN");
+    process.env.MILADY_API_TOKEN = TEST_TOKEN;
     const result = await startApiServer({ port: 0 });
     port = result.port;
     close = result.close;

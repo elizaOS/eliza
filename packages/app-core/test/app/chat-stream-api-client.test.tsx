@@ -1,4 +1,4 @@
-import { ApiError, ElizaClient } from "@elizaos/app-core/api";
+import { ApiError, MiladyClient } from "@elizaos/app-core/api";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 function buildSseResponse(chunks: string[]): Response {
@@ -56,7 +56,7 @@ function buildJsonResponse(payload: unknown, status = 200): Response {
   });
 }
 
-describe("ElizaClient streaming chat endpoints", () => {
+describe("MiladyClient streaming chat endpoints", () => {
   const originalFetch = globalThis.fetch;
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -74,11 +74,11 @@ describe("ElizaClient streaming chat endpoints", () => {
       buildSseResponse([
         'data: {"type":"token","text":"Hello "}\n\n',
         'data: {"type":"token","text":"world"}\n\n',
-        'data: {"type":"done","fullText":"Hello world","agentName":"Eliza"}\n\n',
+        'data: {"type":"done","fullText":"Hello world","agentName":"Milady"}\n\n',
       ]),
     );
 
-    const client = new ElizaClient("http://localhost:2138", "token");
+    const client = new MiladyClient("http://localhost:2138", "token");
     const tokens: string[] = [];
     const fullTexts: string[] = [];
     const result = await client.sendConversationMessageStream(
@@ -98,7 +98,7 @@ describe("ElizaClient streaming chat endpoints", () => {
     expect(fullTexts).toEqual(["Hello ", "Hello world"]);
     expect(result).toEqual({
       text: "Hello world",
-      agentName: "Eliza",
+      agentName: "Milady",
       completed: true,
     });
 
@@ -127,7 +127,7 @@ describe("ElizaClient streaming chat endpoints", () => {
       buildSseResponse(['data: {"text":"A"}\n\n', 'data: {"text":"B"}\n\n']),
     );
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     const tokens: string[] = [];
     const fullTexts: string[] = [];
     const result = await client.sendChatStream(
@@ -145,7 +145,7 @@ describe("ElizaClient streaming chat endpoints", () => {
     expect(fullTexts).toEqual(["A", "AB"]);
     expect(result).toEqual({
       text: "AB",
-      agentName: "Eliza",
+      agentName: "Milady",
       completed: false,
     });
   });
@@ -158,7 +158,7 @@ describe("ElizaClient streaming chat endpoints", () => {
       ]),
     );
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     const tokens: string[] = [];
     const result = await client.sendChatStream("legacy", (token) => {
       tokens.push(token);
@@ -167,7 +167,7 @@ describe("ElizaClient streaming chat endpoints", () => {
     expect(tokens).toEqual(["world", "Hello world"]);
     expect(result).toEqual({
       text: "Hello world",
-      agentName: "Eliza",
+      agentName: "Milady",
       completed: false,
     });
   });
@@ -180,7 +180,7 @@ describe("ElizaClient streaming chat endpoints", () => {
       ]),
     );
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     const fullTexts: string[] = [];
     const result = await client.sendChatStream(
       "legacy",
@@ -192,7 +192,7 @@ describe("ElizaClient streaming chat endpoints", () => {
     expect(fullTexts).toEqual(["world", "Hello world"]);
     expect(result).toEqual({
       text: "Hello world",
-      agentName: "Eliza",
+      agentName: "Milady",
       completed: false,
     });
   });
@@ -206,7 +206,7 @@ describe("ElizaClient streaming chat endpoints", () => {
       ]),
     );
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     const tokens: string[] = [];
     const result = await client.sendChatStream("legacy", (token) => {
       tokens.push(token);
@@ -215,7 +215,7 @@ describe("ElizaClient streaming chat endpoints", () => {
     expect(tokens).toEqual(["Hello wrld", "Hello world", "!"]);
     expect(result).toEqual({
       text: "Hello world!",
-      agentName: "Eliza",
+      agentName: "Milady",
       completed: false,
     });
   });
@@ -229,7 +229,7 @@ describe("ElizaClient streaming chat endpoints", () => {
       ]),
     );
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     const fullTexts: string[] = [];
     const result = await client.sendChatStream(
       "legacy",
@@ -241,7 +241,7 @@ describe("ElizaClient streaming chat endpoints", () => {
     expect(fullTexts).toEqual(["Hello wrld", "Hello world", "Hello world!"]);
     expect(result).toEqual({
       text: "Hello world!",
-      agentName: "Eliza",
+      agentName: "Milady",
       completed: false,
     });
   });
@@ -251,11 +251,11 @@ describe("ElizaClient streaming chat endpoints", () => {
       buildSseResponse([
         'data: {"type":"token","text":"Hey! Yes, I\\u0027m working perfectly!  p\\ud83d\\udc4der Everythingfectly! \\ud83d\\udc4d ","fullText":"Hey! Yes, I\\u0027m working perfectly! \\ud83d\\udc4d Everything\\u0027s up and running smoothly. "}\n\n',
         'data: {"type":"token","text":"What can I help you w Iit canh to assist with","fullText":"Hey! Yes, I\\u0027m working perfectly! \\ud83d\\udc4d Everything\\u0027s up and running smoothly. What can I help you with today? I can assist with"}\n\n',
-        'data: {"type":"done","fullText":"Hey! Yes, I\\u0027m working perfectly! \\ud83d\\udc4d Everything\\u0027s up and running smoothly. What can I help you with today? I can assist with coding tasks, run commands, manage GitHub issues, help with streaming, or pretty much anything else you need!","agentName":"Eliza"}\n\n',
+        'data: {"type":"done","fullText":"Hey! Yes, I\\u0027m working perfectly! \\ud83d\\udc4d Everything\\u0027s up and running smoothly. What can I help you with today? I can assist with coding tasks, run commands, manage GitHub issues, help with streaming, or pretty much anything else you need!","agentName":"Milady"}\n\n',
       ]),
     );
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     const fullTexts: string[] = [];
     const result = await client.sendChatStream(
       "legacy",
@@ -270,7 +270,7 @@ describe("ElizaClient streaming chat endpoints", () => {
     ]);
     expect(result).toEqual({
       text: "Hey! Yes, I'm working perfectly! \u{1F44D} Everything's up and running smoothly. What can I help you with today? I can assist with coding tasks, run commands, manage GitHub issues, help with streaming, or pretty much anything else you need!",
-      agentName: "Eliza",
+      agentName: "Milady",
       completed: true,
     });
   });
@@ -281,7 +281,7 @@ describe("ElizaClient streaming chat endpoints", () => {
     );
     fetchMock.mockResolvedValue(controlled.response);
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     const tokens: string[] = [];
 
     const pending = client.sendConversationMessageStream(
@@ -297,13 +297,13 @@ describe("ElizaClient streaming chat endpoints", () => {
     });
 
     controlled.push(
-      'data: {"type":"done","fullText":"Hello","agentName":"Eliza"}\r\n\r\n',
+      'data: {"type":"done","fullText":"Hello","agentName":"Milady"}\r\n\r\n',
     );
     controlled.close();
 
     await expect(pending).resolves.toEqual({
       text: "Hello",
-      agentName: "Eliza",
+      agentName: "Milady",
       completed: true,
     });
   });
@@ -312,11 +312,11 @@ describe("ElizaClient streaming chat endpoints", () => {
     fetchMock.mockResolvedValue(
       buildSseResponse([
         'data: {"type":"token","text":"*waves warmly* Hello there"}\n\n',
-        'data: {"type":"done","fullText":"*waves warmly* Hello there","agentName":"Eliza"}\n\n',
+        'data: {"type":"done","fullText":"*waves warmly* Hello there","agentName":"Milady"}\n\n',
       ]),
     );
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     const tokens: string[] = [];
     const result = await client.sendConversationMessageStream(
       "conv-emote",
@@ -329,7 +329,7 @@ describe("ElizaClient streaming chat endpoints", () => {
     expect(tokens).toEqual(["*waves warmly* Hello there"]);
     expect(result).toEqual({
       text: "Hello there",
-      agentName: "Eliza",
+      agentName: "Milady",
       completed: true,
     });
   });
@@ -341,7 +341,7 @@ describe("ElizaClient streaming chat endpoints", () => {
       ]),
     );
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     await expect(
       client.sendChatStream("boom", () => {}, "DM", undefined, "simple"),
     ).rejects.toThrow("stream failed");
@@ -355,7 +355,7 @@ describe("ElizaClient streaming chat endpoints", () => {
       }),
     );
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     const request = client.sendChatStream(
       "boom",
       () => {},
@@ -375,15 +375,15 @@ describe("ElizaClient streaming chat endpoints", () => {
     fetchMock.mockResolvedValue(
       buildJsonResponse({
         text: "",
-        agentName: "Eliza",
+        agentName: "Milady",
         generated: false,
       }),
     );
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     await expect(client.requestGreeting("conv-empty")).resolves.toEqual({
       text: "",
-      agentName: "Eliza",
+      agentName: "Milady",
       generated: false,
     });
   });

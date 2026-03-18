@@ -45,21 +45,21 @@ function resolvePackageDir(packageName: string): string {
 }
 
 const PLUGINS = [
-  { name: "@elizaos/capacitor-gateway", exportName: "Gateway" },
-  { name: "@elizaos/capacitor-camera", exportName: "Camera" },
-  { name: "@elizaos/capacitor-canvas", exportName: "Canvas" },
-  { name: "@elizaos/capacitor-desktop", exportName: "Desktop" },
+  { name: "@miladyai/capacitor-gateway", exportName: "Gateway" },
+  { name: "@miladyai/capacitor-camera", exportName: "Camera" },
+  { name: "@miladyai/capacitor-canvas", exportName: "Canvas" },
+  { name: "@miladyai/capacitor-desktop", exportName: "Desktop" },
   {
-    name: "@elizaos/capacitor-location",
+    name: "@miladyai/capacitor-location",
     exportName: "Location",
   },
   {
-    name: "@elizaos/capacitor-screencapture",
+    name: "@miladyai/capacitor-screencapture",
     exportName: "ScreenCapture",
   },
-  { name: "@elizaos/capacitor-swabble", exportName: "Swabble" },
+  { name: "@miladyai/capacitor-swabble", exportName: "Swabble" },
   {
-    name: "@elizaos/capacitor-talkmode",
+    name: "@miladyai/capacitor-talkmode",
     exportName: "TalkMode",
   },
 ];
@@ -89,10 +89,10 @@ describe.skipIf(!capacitorAvailable)("Capacitor Plugin Build Verification", () =
 
       it("has platform metadata", () => {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        expect(pkg.eliza).toBeDefined();
-        expect(pkg.eliza.runtime).toBeDefined();
-        expect(Array.isArray(pkg.eliza.platforms)).toBe(true);
-        expect(pkg.eliza.platforms.length).toBeGreaterThan(0);
+        expect(pkg.milady).toBeDefined();
+        expect(pkg.milady.runtime).toBeDefined();
+        expect(Array.isArray(pkg.milady.platforms)).toBe(true);
+        expect(pkg.milady.platforms.length).toBeGreaterThan(0);
       });
 
       it("has main, module, and types entry points", () => {

@@ -586,7 +586,7 @@ class StreamManager {
       }
       case "file": {
         // Read from a continuously-updated JPEG file (written by browser-capture).
-        const framePath = config.frameFile || "/tmp/eliza-stream-frame.jpg";
+        const framePath = config.frameFile || "/tmp/milady-stream-frame.jpg";
         return [
           "-probesize",
           "32",

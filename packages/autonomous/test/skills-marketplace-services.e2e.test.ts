@@ -115,18 +115,18 @@ function stubFetch(response: { ok: boolean; status: number; body: unknown }) {
 // ---------------------------------------------------------------------------
 
 beforeEach(async () => {
-  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-e2e-skills-"));
+  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "milady-e2e-skills-"));
   workspaceDir = path.join(tmpDir, "workspace");
   await fs.mkdir(workspaceDir, { recursive: true });
 
   savedEnv = {
-    ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
+    MILADY_STATE_DIR: process.env.MILADY_STATE_DIR,
     SKILLS_MARKETPLACE_URL: process.env.SKILLS_MARKETPLACE_URL,
     SKILLS_REGISTRY: process.env.SKILLS_REGISTRY,
     CLAWHUB_REGISTRY: process.env.CLAWHUB_REGISTRY,
     SKILLSMP_API_KEY: process.env.SKILLSMP_API_KEY,
   };
-  process.env.ELIZA_STATE_DIR = tmpDir;
+  process.env.MILADY_STATE_DIR = tmpDir;
   delete process.env.SKILLS_REGISTRY;
   delete process.env.CLAWHUB_REGISTRY;
   delete process.env.SKILLS_MARKETPLACE_URL;

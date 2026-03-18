@@ -2,7 +2,7 @@ import { Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../api";
 import {
-  dispatchElizaEvent,
+  dispatchMiladyEvent,
   EMOTE_PICKER_EVENT,
   STOP_EMOTE_EVENT,
 } from "../events";
@@ -325,7 +325,7 @@ export function EmotePicker() {
 
   // Stop emote
   const stopEmote = useCallback(() => {
-    dispatchElizaEvent(STOP_EMOTE_EVENT);
+    dispatchMiladyEvent(STOP_EMOTE_EVENT);
     setPlaying(null);
   }, []);
 

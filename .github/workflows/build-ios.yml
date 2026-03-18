@@ -127,7 +127,7 @@ jobs:
             -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
-            -archivePath $RUNNER_TEMP/Eliza.xcarchive \
+            -archivePath $RUNNER_TEMP/Milady.xcarchive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -144,7 +144,7 @@ jobs:
             -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
-            -archivePath $RUNNER_TEMP/Eliza.xcarchive \
+            -archivePath $RUNNER_TEMP/Milady.xcarchive \
             -allowProvisioningUpdates \
             | xcbeautify || true
 
@@ -168,7 +168,7 @@ jobs:
             <string>${IOS_TEAM_ID}</string>
             <key>provisioningProfiles</key>
             <dict>
-              <key>ai.eliza.app</key>
+              <key>ai.milady.app</key>
               <string>${IOS_PROVISION_PROFILE_NAME}</string>
             </dict>
           </dict>
@@ -176,19 +176,19 @@ jobs:
           PLIST
 
           xcodebuild -exportArchive \
-            -archivePath $RUNNER_TEMP/Eliza.xcarchive \
+            -archivePath $RUNNER_TEMP/Milady.xcarchive \
             -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
             -exportPath $RUNNER_TEMP/export
 
           # Rename IPA with version
-          mv $RUNNER_TEMP/export/App.ipa $RUNNER_TEMP/export/Eliza-${{ steps.version.outputs.version }}.ipa
+          mv $RUNNER_TEMP/export/App.ipa $RUNNER_TEMP/export/Milady-${{ steps.version.outputs.version }}.ipa
 
       - name: Upload archive artifact
         uses: actions/upload-artifact@v4
         with:
-          name: eliza-ios-${{ env.IOS_CERTIFICATE_BASE64 != '' && 'release' || 'unsigned' }}
+          name: milady-ios-${{ env.IOS_CERTIFICATE_BASE64 != '' && 'release' || 'unsigned' }}
           path: |
-            $RUNNER_TEMP/Eliza.xcarchive
+            $RUNNER_TEMP/Milady.xcarchive
             $RUNNER_TEMP/export/*.ipa
           if-no-files-found: warn
         env:

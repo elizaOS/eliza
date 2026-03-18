@@ -101,7 +101,7 @@ function createContext(
   overrides?: Partial<ChatViewContextStub>,
 ): ChatViewContextStub {
   return {
-    agentStatus: { agentName: "Eliza", state: "running" },
+    agentStatus: { agentName: "Milady", state: "running" },
     activeConversationId: "conv-1",
     chatInput: "",
     chatSending: false,
@@ -205,7 +205,7 @@ describe("ChatView", () => {
 
     const root = tree?.root;
     const headerCount = root.findAll(
-      (node) => node.type === "div" && text(node) === "Eliza",
+      (node) => node.type === "div" && text(node) === "Milady",
     ).length;
     expect(headerCount).toBe(1);
   });

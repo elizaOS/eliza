@@ -266,7 +266,7 @@ describe("POST /api/provider/switch", () => {
       });
 
       expect(process.env.OPENAI_API_KEY).toBeUndefined();
-      expect(process.env.ELIZA_USE_PI_AI).toBe("1");
+      expect(process.env.MILADY_USE_PI_AI).toBe("1");
     });
 
     it("trims whitespace from API keys before storing", async () => {

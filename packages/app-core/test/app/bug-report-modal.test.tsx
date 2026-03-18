@@ -185,7 +185,7 @@ describe("BugReportModal", () => {
 
   it("calls submitBugReport on valid submit", async () => {
     mockClient.submitBugReport.mockResolvedValue({
-      url: "https://github.com/elizaos/eliza/issues/99",
+      url: "https://github.com/milady-ai/milady/issues/99",
     });
     setupMock(true);
     let tree: TestRenderer.ReactTestRenderer;
@@ -232,7 +232,7 @@ describe("BugReportModal", () => {
   });
 
   it("shows success state with issue URL after submit", async () => {
-    const issueUrl = "https://github.com/elizaos/eliza/issues/99";
+    const issueUrl = "https://github.com/milady-ai/milady/issues/99";
     mockClient.submitBugReport.mockResolvedValue({ url: issueUrl });
     setupMock(true);
     let tree: TestRenderer.ReactTestRenderer;
@@ -284,7 +284,7 @@ describe("BugReportModal", () => {
 
   it("does not show success URL on fallback response", async () => {
     mockClient.submitBugReport.mockResolvedValue({
-      fallback: "https://github.com/elizaos/eliza/issues/new",
+      fallback: "https://github.com/milady-ai/milady/issues/new",
     });
     setupMock(true);
     let tree: TestRenderer.ReactTestRenderer;

@@ -46,7 +46,7 @@ function WakeWordSection({
   serverConfig?: Partial<SwabbleConfig> | null;
 }) {
   const { t } = useApp();
-  const [triggers, setTriggers] = useState<string[]>(["eliza"]);
+  const [triggers, setTriggers] = useState<string[]>(["milady"]);
   const [triggerInput, setTriggerInput] = useState("");
   const [sensitivity, setSensitivity] = useState(0.45);
   const [modelSize, setModelSize] =

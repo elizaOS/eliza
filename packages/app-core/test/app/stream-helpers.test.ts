@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { toggleAlwaysOnTop } from "../../src/components/stream/helpers";
 
 type TestWindow = Window & {
-  __ELIZA_ELECTROBUN_RPC__?: {
+  __MILADY_ELECTROBUN_RPC__?: {
     request: Record<string, (params?: unknown) => Promise<unknown>>;
     onMessage: (
       messageName: string,
@@ -20,7 +20,7 @@ type TestWindow = Window & {
 describe("toggleAlwaysOnTop", () => {
   afterEach(() => {
     delete (window as typeof window & { Capacitor?: unknown }).Capacitor;
-    delete (window as TestWindow).__ELIZA_ELECTROBUN_RPC__;
+    delete (window as TestWindow).__MILADY_ELECTROBUN_RPC__;
     vi.restoreAllMocks();
   });
 
@@ -31,7 +31,7 @@ describe("toggleAlwaysOnTop", () => {
       writable: true,
       value: undefined,
     });
-    (window as TestWindow).__ELIZA_ELECTROBUN_RPC__ = {
+    (window as TestWindow).__MILADY_ELECTROBUN_RPC__ = {
       request: { desktopSetAlwaysOnTop: request },
       onMessage: vi.fn(),
       offMessage: vi.fn(),

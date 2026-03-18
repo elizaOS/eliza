@@ -1,9 +1,9 @@
 /**
- * elizaOS runtime entry point for Eliza.
+ * elizaOS runtime entry point for Milady.
  *
- * Starts the elizaOS agent runtime with Eliza's plugin configuration.
+ * Starts the elizaOS agent runtime with Milady's plugin configuration.
  * Can be run directly via: node --import tsx src/runtime/eliza.ts
- * Or via the CLI: eliza start
+ * Or via the CLI: milady start
  *
  * @module eliza
  */
@@ -75,9 +75,9 @@ import {
 } from "../api/plugin-validation";
 import {
   configFileExists,
-  loadElizaConfig,
-  type ElizaConfig,
-  saveElizaConfig,
+  loadMiladyConfig,
+  type MiladyConfig,
+  saveMiladyConfig,
 } from "../config/config";
 import { collectConfigEnvVars } from "../config/env-vars";
 import { resolveStateDir, resolveUserPath } from "../config/paths";
@@ -86,7 +86,7 @@ import {
   applyPluginAutoEnable,
 } from "../config/plugin-auto-enable";
 import type { AgentConfig } from "../config/types.agents";
-import type { PluginInstallRecord } from "../config/types.eliza";
+import type { PluginInstallRecord } from "../config/types.milady";
 import {
   createHookEvent,
   type LoadHooksOptions,
@@ -102,7 +102,7 @@ import { SandboxManager, type SandboxMode } from "../services/sandbox-manager";
 import { diagnoseNoAIProvider } from "../services/version-compat";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins";
 import { detectEmbeddingPreset } from "./embedding-presets";
-import { createElizaPlugin } from "./eliza-plugin";
+import { createMiladyPlugin } from "./milady-plugin";
 import {
   installDatabaseTrajectoryLogger,
   shouldEnableTrajectoryLoggingByDefault,
@@ -199,7 +199,7 @@ interface PluginModuleShape {
 
 export function configureLocalEmbeddingPlugin(
   _plugin: Plugin,
-  config?: ElizaConfig,
+  config?: MiladyConfig,
 ): void {
   const detectedPreset = detectEmbeddingPreset();
 
@@ -240,7 +240,7 @@ export function configureLocalEmbeddingPlugin(
     process.env[key] = value;
   };
 
-  // Keep plugin-local-embedding aligned with Eliza's hardware-adaptive preset
+  // Keep plugin-local-embedding aligned with Milady's hardware-adaptive preset
   // selection. Hard-coding the standard preset here forces slower first-run
   // downloads on Windows and low-spec machines.
   setEnvIfMissing(
@@ -302,7 +302,7 @@ export function configureLocalEmbeddingPlugin(
   setEnvIfMissing("GOOGLE_LARGE_MODEL", "gemini-3.1-pro-preview");
 
   logger.info(
-    `[eliza] Configured local embedding env: ${process.env.LOCAL_EMBEDDING_MODEL} (repo: ${process.env.LOCAL_EMBEDDING_MODEL_REPO ?? "auto"}, dims: ${process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "auto"}, ctx: ${process.env.LOCAL_EMBEDDING_CONTEXT_SIZE ?? "auto"}, GPU: ${process.env.LOCAL_EMBEDDING_GPU_LAYERS}, mmap: ${process.env.LOCAL_EMBEDDING_USE_MMAP})`,
+    `[milady] Configured local embedding env: ${process.env.LOCAL_EMBEDDING_MODEL} (repo: ${process.env.LOCAL_EMBEDDING_MODEL_REPO ?? "auto"}, dims: ${process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "auto"}, ctx: ${process.env.LOCAL_EMBEDDING_CONTEXT_SIZE ?? "auto"}, GPU: ${process.env.LOCAL_EMBEDDING_GPU_LAYERS}, mmap: ${process.env.LOCAL_EMBEDDING_USE_MMAP})`,
   );
 }
 
@@ -340,7 +340,7 @@ export async function shutdownRuntime(
   } catch (err) {
     firstError = err;
     logger.warn(
-      `[eliza] ${context}: runtime stop failed: ${formatError(err)}`,
+      `[milady] ${context}: runtime stop failed: ${formatError(err)}`,
     );
   }
 
@@ -352,7 +352,7 @@ export async function shutdownRuntime(
         firstError = err;
       }
       logger.warn(
-        `[eliza] ${context}: database adapter close failed: ${formatError(err)}`,
+        `[milady] ${context}: database adapter close failed: ${formatError(err)}`,
       );
     }
   }
@@ -376,7 +376,7 @@ export function deduplicatePluginActions(plugins: Plugin[]): void {
       plugin.actions = plugin.actions.filter((action) => {
         if (seen.has(action.name)) {
           logger.debug(
-            `[eliza] Skipping duplicate action "${action.name}" from plugin "${plugin.name}"`,
+            `[milady] Skipping duplicate action "${action.name}" from plugin "${plugin.name}"`,
           );
           return false;
         }
@@ -485,12 +485,12 @@ async function waitForTrajectoryLoggerService(
     ]);
     if (timedOut) {
       logger.debug(
-        `[eliza] trajectory_logger still ${registrationStatus} after ${timeoutMs}ms (${context})`,
+        `[milady] trajectory_logger still ${registrationStatus} after ${timeoutMs}ms (${context})`,
       );
     }
   } catch (err) {
     logger.debug(
-      `[eliza] trajectory_logger registration failed while waiting (${context}): ${formatError(err)}`,
+      `[milady] trajectory_logger registration failed while waiting (${context}): ${formatError(err)}`,
     );
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
@@ -527,7 +527,7 @@ function ensureTrajectoryLoggerEnabled(
   }
   if (!trajectoryLogger) {
     logger.warn(
-      `[eliza] trajectory_logger service unavailable (${context}); trajectory capture disabled`,
+      `[milady] trajectory_logger service unavailable (${context}); trajectory capture disabled`,
     );
     return;
   }
@@ -543,7 +543,7 @@ function ensureTrajectoryLoggerEnabled(
   ) {
     trajectoryLogger.setEnabled(shouldEnable);
     logger.info(
-      `[eliza] trajectory_logger defaulted ${shouldEnable ? "on" : "off"} (${context})`,
+      `[milady] trajectory_logger defaulted ${shouldEnable ? "on" : "off"} (${context})`,
     );
   }
 }
@@ -605,10 +605,10 @@ function cancelOnboarding(): never {
 // ---------------------------------------------------------------------------
 
 /**
- * Maps Eliza channel config fields to the environment variable names
+ * Maps Milady channel config fields to the environment variable names
  * that elizaOS plugins expect.
  *
- * Eliza stores channel credentials under `config.channels.<name>.<field>`,
+ * Milady stores channel credentials under `config.channels.<name>.<field>`,
  * while elizaOS plugins read them from process.env.
  */
 const RETAKE_CHANNEL_ACCESS_TOKEN_ENV = "RETAKE_AGENT_TOKEN";
@@ -676,7 +676,7 @@ const _OPTIONAL_NATIVE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-computeruse", // requires platform-specific binaries
 ];
 
-/** Maps Eliza channel names to plugin package names. */
+/** Maps Milady channel names to plugin package names. */
 export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   discord: "@elizaos/plugin-discord",
   telegram: "@elizaos/plugin-telegram",
@@ -704,7 +704,7 @@ export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> = {
 const PI_AI_PLUGIN_PACKAGE = "@elizaos/plugin-pi-ai";
 
 function isPiAiEnabledFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = env.ELIZA_USE_PI_AI;
+  const raw = env.MILADY_USE_PI_AI;
   if (!raw) return false;
   const value = String(raw).trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
@@ -724,7 +724,7 @@ const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
   AIGATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   OLLAMA_BASE_URL: "@elizaos/plugin-ollama",
   ZAI_API_KEY: "@homunculuslabs/plugin-zai",
-  ELIZA_USE_PI_AI: PI_AI_PLUGIN_PACKAGE,
+  MILADY_USE_PI_AI: PI_AI_PLUGIN_PACKAGE,
   // ElizaCloud — loaded when API key is present OR cloud is explicitly enabled
   ELIZAOS_CLOUD_API_KEY: "@elizaos/plugin-elizacloud",
   ELIZAOS_CLOUD_ENABLED: "@elizaos/plugin-elizacloud",
@@ -827,10 +827,10 @@ export function findRuntimePluginExport(mod: PluginModuleShape): Plugin | null {
  * based on config, environment variables, and feature flags.
  */
 /** @internal Exported for testing. */
-export function collectPluginNames(config: ElizaConfig): Set<string> {
+export function collectPluginNames(config: MiladyConfig): Set<string> {
   const shellPluginDisabled = config.features?.shellEnabled === false;
   const localEmbeddingsExplicitlyDisabled = (() => {
-    const raw = process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
+    const raw = process.env.MILADY_DISABLE_LOCAL_EMBEDDINGS;
     if (!raw) return false;
     const normalized = raw.trim().toLowerCase();
     return normalized === "1" || normalized === "true" || normalized === "yes";
@@ -871,13 +871,13 @@ export function collectPluginNames(config: ElizaConfig): Set<string> {
     (configEnv?.vars &&
     typeof configEnv.vars === "object" &&
     !Array.isArray(configEnv.vars)
-      ? (configEnv.vars as Record<string, unknown>).ELIZA_USE_PI_AI
-      : undefined) ?? configEnv?.ELIZA_USE_PI_AI;
+      ? (configEnv.vars as Record<string, unknown>).MILADY_USE_PI_AI
+      : undefined) ?? configEnv?.MILADY_USE_PI_AI;
   const piAiEnabled =
     isPiAiEnabledFromEnv(process.env) ||
     (typeof configPiAiFlag === "string" &&
       isPiAiEnabledFromEnv({
-        ELIZA_USE_PI_AI: configPiAiFlag,
+        MILADY_USE_PI_AI: configPiAiFlag,
       } as NodeJS.ProcessEnv));
 
   const pluginEntries = (config.plugins as Record<string, unknown> | undefined)
@@ -940,7 +940,7 @@ export function collectPluginNames(config: ElizaConfig): Set<string> {
 
   // Model-provider plugins — load when env key is present
   for (const [envKey, pluginName] of Object.entries(PROVIDER_PLUGIN_MAP)) {
-    if (envKey === "ELIZA_USE_PI_AI") {
+    if (envKey === "MILADY_USE_PI_AI") {
       // pi-ai enablement uses dedicated boolean parsing + precedence logic below.
       continue;
     }
@@ -1087,7 +1087,7 @@ export function collectPluginNames(config: ElizaConfig): Set<string> {
 
   // User-installed plugins from config.plugins.installs
   // These are plugins that were installed via the plugin-manager at runtime
-  // and tracked in eliza.json so they persist across restarts.
+  // and tracked in milady.json so they persist across restarts.
   const installs = config.plugins?.installs;
   if (installs && typeof installs === "object") {
     for (const [packageName, record] of Object.entries(installs)) {
@@ -1116,9 +1116,9 @@ export function collectPluginNames(config: ElizaConfig): Set<string> {
 // Custom / drop-in plugin discovery
 // ---------------------------------------------------------------------------
 
-/** Subdirectory under the Eliza state dir for drop-in custom plugins. */
+/** Subdirectory under the Milady state dir for drop-in custom plugins. */
 export const CUSTOM_PLUGINS_DIRNAME = "plugins/custom";
-/** Subdirectory under the Eliza state dir for ejected plugins. */
+/** Subdirectory under the Milady state dir for ejected plugins. */
 export const EJECTED_PLUGINS_DIRNAME = "plugins/ejected";
 
 /**
@@ -1197,7 +1197,7 @@ export function mergeDropInPlugins(params: {
     if (denyList.has(name) || installRecords[name]) continue;
     if (corePluginNames.has(name)) {
       skipped.push(
-        `[eliza] Custom plugin "${name}" collides with core plugin — skipping`,
+        `[milady] Custom plugin "${name}" collides with core plugin — skipping`,
       );
       continue;
     }
@@ -1219,7 +1219,7 @@ const WORKSPACE_PLUGIN_OVERRIDES = new Set<string>([
 ]);
 
 function getWorkspacePluginOverridePath(pluginName: string): string | null {
-  if (process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {
+  if (process.env.MILADY_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {
     return null;
   }
   if (!WORKSPACE_PLUGIN_OVERRIDES.has(pluginName)) {
@@ -1231,14 +1231,14 @@ function getWorkspacePluginOverridePath(pluginName: string): string | null {
   if (!pluginSegment) return null;
 
   const thisDir = path.dirname(fileURLToPath(import.meta.url));
-  const elizaRoot = path.resolve(thisDir, "..", "..");
-  const workspaceRoot = path.resolve(elizaRoot, "..");
+  const miladyRoot = path.resolve(thisDir, "..", "..");
+  const workspaceRoot = path.resolve(miladyRoot, "..");
   const candidates = [
-    path.join(elizaRoot, "plugins", pluginSegment, "typescript"),
+    path.join(miladyRoot, "plugins", pluginSegment, "typescript"),
     path.join(workspaceRoot, "plugins", pluginSegment, "typescript"),
-    path.join(elizaRoot, "plugins", pluginSegment),
+    path.join(miladyRoot, "plugins", pluginSegment),
     path.join(workspaceRoot, "plugins", pluginSegment),
-    path.join(elizaRoot, "packages", pluginSegment),
+    path.join(miladyRoot, "packages", pluginSegment),
     path.join(workspaceRoot, "packages", pluginSegment),
   ];
 
@@ -1251,7 +1251,7 @@ function getWorkspacePluginOverridePath(pluginName: string): string | null {
   return null;
 }
 
-export function resolveElizaPluginImportSpecifier(
+export function resolveMiladyPluginImportSpecifier(
   pluginName: string,
   runtimeModuleUrl = import.meta.url,
 ): string {
@@ -1323,10 +1323,10 @@ export function ensureBrowserServerLink(): boolean {
     if (existsSync(serverIndex)) return true;
 
     // Walk upward from this file to find the eliza-workspace root.
-    // Layout: <workspace>/eliza/src/runtime/eliza.ts
+    // Layout: <workspace>/milady/src/runtime/eliza.ts
     const thisDir = path.dirname(fileURLToPath(import.meta.url));
-    const elizaRoot = path.resolve(thisDir, "..", "..");
-    const workspaceRoot = path.resolve(elizaRoot, "..");
+    const miladyRoot = path.resolve(thisDir, "..", "..");
+    const workspaceRoot = path.resolve(miladyRoot, "..");
     const stagehandDir = path.join(
       workspaceRoot,
       "plugins",
@@ -1337,7 +1337,7 @@ export function ensureBrowserServerLink(): boolean {
 
     if (!existsSync(stagehandIndex)) {
       logger.info(
-        `[eliza] Browser server not found at ${stagehandDir} — ` +
+        `[milady] Browser server not found at ${stagehandDir} — ` +
           `@elizaos/plugin-browser will not be loaded`,
       );
       return false;
@@ -1346,11 +1346,11 @@ export function ensureBrowserServerLink(): boolean {
     // Create symlink: dist/server -> stagehand-server
     symlinkSync(stagehandDir, serverDir, "dir");
     logger.info(
-      `[eliza] Linked browser server: ${serverDir} -> ${stagehandDir}`,
+      `[milady] Linked browser server: ${serverDir} -> ${stagehandDir}`,
     );
     return true;
   } catch (err) {
-    logger.debug(`[eliza] Could not link browser server: ${formatError(err)}`);
+    logger.debug(`[milady] Could not link browser server: ${formatError(err)}`);
     return false;
   }
 }
@@ -1360,13 +1360,13 @@ export function ensureBrowserServerLink(): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve Eliza plugins from config and auto-enable logic.
+ * Resolve Milady plugins from config and auto-enable logic.
  * Returns an array of elizaOS Plugin instances ready for AgentRuntime.
  *
  * Handles three categories of plugins:
  * 1. Built-in/npm plugins — imported by package name
- * 2. User-installed plugins — from ~/.eliza/plugins/installed/
- * 3. Custom/drop-in plugins — from ~/.eliza/plugins/custom/ and plugins.load.paths
+ * 2. User-installed plugins — from ~/.milady/plugins/installed/
+ * 3. Custom/drop-in plugins — from ~/.milady/plugins/custom/ and plugins.load.paths
  *
  * Each plugin is loaded inside an error boundary so a single failing plugin
  * cannot crash the entire agent startup.
@@ -1380,7 +1380,7 @@ function resolveStaticElizaPlugin(pluginName: string): unknown | null {
 }
 
 async function resolvePlugins(
-  config: ElizaConfig,
+  config: MiladyConfig,
   opts?: { quiet?: boolean },
 ): Promise<ResolvedPlugin[]> {
   const plugins: ResolvedPlugin[] = [];
@@ -1416,7 +1416,7 @@ async function resolvePlugins(
   }
   if (ejectedPluginNames.length > 0) {
     logger.info(
-      `[eliza] Discovered ${ejectedPluginNames.length} ejected plugin(s): ${ejectedPluginNames.join(", ")}`,
+      `[milady] Discovered ${ejectedPluginNames.length} ejected plugin(s): ${ejectedPluginNames.join(", ")}`,
     );
   }
 
@@ -1445,11 +1445,11 @@ async function resolvePlugins(
   for (const msg of skipped) logger.warn(msg);
   if (customPluginNames.length > 0) {
     logger.info(
-      `[eliza] Discovered ${customPluginNames.length} custom plugin(s): ${customPluginNames.join(", ")}`,
+      `[milady] Discovered ${customPluginNames.length} custom plugin(s): ${customPluginNames.join(", ")}`,
     );
   }
 
-  logger.info(`[eliza] Resolving ${pluginsToLoad.size} plugins...`);
+  logger.info(`[milady] Resolving ${pluginsToLoad.size} plugins...`);
   const loadStartTime = Date.now();
 
   // Built once so we don't rebuild on every optional plugin failure.
@@ -1477,7 +1477,7 @@ async function resolvePlugins(
           error: "browser server binary not found",
         });
         logger.warn(
-          `[eliza] Skipping ${pluginName}: browser server not available. ` +
+          `[milady] Skipping ${pluginName}: browser server not available. ` +
             `Build the stagehand-server or remove the plugin from plugins.allow.`,
         );
         return null;
@@ -1490,12 +1490,12 @@ async function resolvePlugins(
       if (ejectedRecord?.installPath) {
         // Ejected plugin — always prefer local source over npm/core.
         logger.debug(
-          `[eliza] Loading ejected plugin: ${pluginName} from ${ejectedRecord.installPath}`,
+          `[milady] Loading ejected plugin: ${pluginName} from ${ejectedRecord.installPath}`,
         );
         mod = await importFromPath(ejectedRecord.installPath, pluginName);
       } else if (workspaceOverridePath) {
         logger.debug(
-          `[eliza] Loading workspace plugin override: ${pluginName} from ${workspaceOverridePath}`,
+          `[milady] Loading workspace plugin override: ${pluginName} from ${workspaceOverridePath}`,
         );
         mod = await importFromPath(workspaceOverridePath, pluginName);
       } else if (installRecord?.installPath) {
@@ -1513,7 +1513,7 @@ async function resolvePlugins(
             }
           } catch (npmErr) {
             logger.warn(
-              `[eliza] Node_modules resolution failed for ${pluginName} (${formatError(npmErr)}). Trying installed path at ${installRecord.installPath}.`,
+              `[milady] Node_modules resolution failed for ${pluginName} (${formatError(npmErr)}). Trying installed path at ${installRecord.installPath}.`,
             );
             mod = await importFromPath(installRecord.installPath, pluginName);
           }
@@ -1523,7 +1523,7 @@ async function resolvePlugins(
             mod = await importFromPath(installRecord.installPath, pluginName);
           } catch (installErr) {
             logger.warn(
-              `[eliza] Installed plugin ${pluginName} failed at ${installRecord.installPath} (${formatError(installErr)}). Falling back to node_modules resolution.`,
+              `[milady] Installed plugin ${pluginName} failed at ${installRecord.installPath} (${formatError(installErr)}). Falling back to node_modules resolution.`,
             );
             const staticMod = await resolveStaticElizaPlugin(pluginName);
             mod = staticMod
@@ -1535,10 +1535,10 @@ async function resolvePlugins(
           }
         }
       } else if (pluginName.startsWith("@elizaos/plugin-")) {
-        // Eliza plugins can resolve either from bundled local wrappers
-        // under eliza-dist/plugins/* or from packaged node_modules.
+        // Milady plugins can resolve either from bundled local wrappers
+        // under milady-dist/plugins/* or from packaged node_modules.
         mod = (await import(
-          resolveElizaPluginImportSpecifier(pluginName)
+          resolveMiladyPluginImportSpecifier(pluginName)
         )) as PluginModuleShape;
       } else {
         // Built-in/npm plugin — try bundled static import first, then
@@ -1559,17 +1559,17 @@ async function resolvePlugins(
           pluginName,
           pluginInstance,
         );
-        logger.debug(`[eliza] ✓ Loaded plugin: ${pluginName}`);
+        logger.debug(`[milady] ✓ Loaded plugin: ${pluginName}`);
         return { name: pluginName, plugin: wrappedPlugin };
       } else {
         if (shouldIgnoreMissingPluginExport(pluginName)) {
           logger.info(
-            `[eliza] Skipping helper package ${pluginName}: no Plugin export is expected`,
+            `[milady] Skipping helper package ${pluginName}: no Plugin export is expected`,
           );
           return null;
         }
 
-        const msg = `[eliza] Plugin ${pluginName} did not export a valid Plugin object`;
+        const msg = `[milady] Plugin ${pluginName} did not export a valid Plugin object`;
         failedPlugins.push({
           name: pluginName,
           error: "no valid Plugin export",
@@ -1587,15 +1587,15 @@ async function resolvePlugins(
       failedPlugins.push({ name: pluginName, error: msg });
       if (isCore) {
         logger.error(
-          `[eliza] Failed to load core plugin ${pluginName}: ${msg}`,
+          `[milady] Failed to load core plugin ${pluginName}: ${msg}`,
         );
       } else {
         if (optionalPluginNames.has(pluginName)) {
           logger.debug(
-            `[eliza] Optional plugin ${pluginName} not available: ${msg}`,
+            `[milady] Optional plugin ${pluginName} not available: ${msg}`,
           );
         } else {
-          logger.info(`[eliza] Could not load plugin ${pluginName}: ${msg}`);
+          logger.info(`[milady] Could not load plugin ${pluginName}: ${msg}`);
         }
       }
       return null;
@@ -1615,16 +1615,16 @@ async function resolvePlugins(
   }
 
   const loadDuration = Date.now() - loadStartTime;
-  logger.info(`[eliza] Plugin loading took ${loadDuration}ms`);
+  logger.info(`[milady] Plugin loading took ${loadDuration}ms`);
 
   // Summary logging
   logger.info(
-    `[eliza] Plugin resolution complete: ${plugins.length}/${pluginsToLoad.size} loaded` +
+    `[milady] Plugin resolution complete: ${plugins.length}/${pluginsToLoad.size} loaded` +
       (failedPlugins.length > 0 ? `, ${failedPlugins.length} failed` : ""),
   );
   if (failedPlugins.length > 0) {
     logger.info(
-      `[eliza] Failed plugins: ${failedPlugins.map((f) => `${f.name} (${f.error})`).join(", ")}`,
+      `[milady] Failed plugins: ${failedPlugins.map((f) => `${f.name} (${f.error})`).join(", ")}`,
     );
   }
 
@@ -1635,9 +1635,9 @@ async function resolvePlugins(
     if (opts?.quiet) {
       // In headless/GUI mode before onboarding, this is expected — the user
       // will configure a provider through the onboarding wizard and restart.
-      logger.info(`[eliza] ${diagnostic}`);
+      logger.info(`[milady] ${diagnostic}`);
     } else {
-      logger.error(`[eliza] ${diagnostic}`);
+      logger.error(`[milady] ${diagnostic}`);
     }
   }
 
@@ -1645,13 +1645,13 @@ async function resolvePlugins(
   // to import from stale install directories.
   if (repairedInstallRecords.size > 0) {
     try {
-      saveElizaConfig(config);
+      saveMiladyConfig(config);
       logger.info(
-        `[eliza] Repaired ${repairedInstallRecords.size} plugin install record(s): ${Array.from(repairedInstallRecords).join(", ")}`,
+        `[milady] Repaired ${repairedInstallRecords.size} plugin install record(s): ${Array.from(repairedInstallRecords).join(", ")}`,
       );
     } catch (err) {
       logger.warn(
-        `[eliza] Failed to persist plugin install repairs: ${formatError(err)}`,
+        `[milady] Failed to persist plugin install repairs: ${formatError(err)}`,
       );
     }
   }
@@ -1661,7 +1661,7 @@ async function resolvePlugins(
 
 /** @internal Exported for testing. */
 export function repairBrokenInstallRecord(
-  config: ElizaConfig,
+  config: MiladyConfig,
   pluginName: string,
 ): boolean {
   const record = config.plugins?.installs?.[pluginName];
@@ -1699,12 +1699,12 @@ function wrapPluginWithErrorBoundary(
         return await originalInit(...args);
       } catch (err) {
         logger.error(
-          `[eliza] Plugin "${pluginName}" crashed during init: ${formatError(err)}`,
+          `[milady] Plugin "${pluginName}" crashed during init: ${formatError(err)}`,
         );
         // Surface the error but don't rethrow — the agent continues
         // without this plugin's init having completed.
         logger.warn(
-          `[eliza] Plugin "${pluginName}" will run in degraded mode (init failed)`,
+          `[milady] Plugin "${pluginName}" will run in degraded mode (init failed)`,
         );
       }
     };
@@ -1720,7 +1720,7 @@ function wrapPluginWithErrorBoundary(
         } catch (err) {
           const msg = formatError(err);
           logger.error(
-            `[eliza] Provider "${provider.name}" (plugin: ${pluginName}) crashed: ${msg}`,
+            `[milady] Provider "${provider.name}" (plugin: ${pluginName}) crashed: ${msg}`,
           );
           // Return an error marker so downstream consumers can detect
           // the failure rather than silently using empty data.
@@ -1743,7 +1743,7 @@ function wrapPluginWithErrorBoundary(
  *   1. npm layout:  <installPath>/node_modules/@scope/package/  (from `bun add`)
  *   2. git layout:  <installPath>/ is the package root directly  (from `git clone`)
  *
- * @param installPath  Root directory of the installation (e.g. ~/.eliza/plugins/installed/foo/).
+ * @param installPath  Root directory of the installation (e.g. ~/.milady/plugins/installed/foo/).
  * @param packageName  The npm package name (e.g. "@elizaos/plugin-discord") — used
  *                     to navigate directly into node_modules when present.
  */
@@ -1846,11 +1846,11 @@ export async function resolvePackageEntry(pkgRoot: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 /**
- * Propagate channel credentials from Eliza config into process.env so
+ * Propagate channel credentials from Milady config into process.env so
  * that elizaOS plugins can find them.
  */
 /** @internal Exported for testing. */
-export function applyConnectorSecretsToEnv(config: ElizaConfig): void {
+export function applyConnectorSecretsToEnv(config: MiladyConfig): void {
   // Prefer config.connectors, fall back to config.channels for backward compatibility
   const connectors = config.connectors ?? config.channels ?? {};
 
@@ -1911,7 +1911,7 @@ export async function autoResolveDiscordAppId(): Promise<void> {
 
     if (!res.ok) {
       logger.warn(
-        `[eliza] Failed to auto-resolve Discord Application ID: ${res.status}`,
+        `[milady] Failed to auto-resolve Discord Application ID: ${res.status}`,
       );
       return;
     }
@@ -1920,20 +1920,20 @@ export async function autoResolveDiscordAppId(): Promise<void> {
     if (!app.id) return;
 
     process.env.DISCORD_APPLICATION_ID = app.id;
-    logger.info(`[eliza] Auto-resolved Discord Application ID: ${app.id}`);
+    logger.info(`[milady] Auto-resolved Discord Application ID: ${app.id}`);
   } catch (err) {
     logger.warn(
-      `[eliza] Could not auto-resolve Discord Application ID: ${err}`,
+      `[milady] Could not auto-resolve Discord Application ID: ${err}`,
     );
   }
 }
 
 /**
- * Propagate cloud config from Eliza config into process.env so the
+ * Propagate cloud config from Milady config into process.env so the
  * ElizaCloud plugin can discover settings at startup.
  */
 /** @internal Exported for testing. */
-export function applyCloudConfigToEnv(config: ElizaConfig): void {
+export function applyCloudConfigToEnv(config: MiladyConfig): void {
   const cloud = config.cloud;
   if (!cloud) return;
 
@@ -1945,7 +1945,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   if (effectivelyEnabled) {
     process.env.ELIZAOS_CLOUD_ENABLED = "true";
     logger.info(
-      `[eliza] Cloud config: enabled=${cloud.enabled}, hasApiKey=${Boolean(cloud.apiKey)}, baseUrl=${cloud.baseUrl ?? "(default)"}`,
+      `[milady] Cloud config: enabled=${cloud.enabled}, hasApiKey=${Boolean(cloud.apiKey)}, baseUrl=${cloud.baseUrl ?? "(default)"}`,
     );
   } else {
     delete process.env.ELIZAOS_CLOUD_ENABLED;
@@ -1993,28 +1993,28 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   }
 
   // Propagate per-service disable flags so downstream code can check them
-  // without needing direct access to the ElizaConfig object.
+  // without needing direct access to the MiladyConfig object.
   const services = cloud.services;
   if (services) {
     if (services.tts === false) {
-      process.env.ELIZA_CLOUD_TTS_DISABLED = "true";
+      process.env.MILADY_CLOUD_TTS_DISABLED = "true";
     } else {
-      delete process.env.ELIZA_CLOUD_TTS_DISABLED;
+      delete process.env.MILADY_CLOUD_TTS_DISABLED;
     }
     if (services.media === false) {
-      process.env.ELIZA_CLOUD_MEDIA_DISABLED = "true";
+      process.env.MILADY_CLOUD_MEDIA_DISABLED = "true";
     } else {
-      delete process.env.ELIZA_CLOUD_MEDIA_DISABLED;
+      delete process.env.MILADY_CLOUD_MEDIA_DISABLED;
     }
     if (services.embeddings === false) {
-      process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED = "true";
+      process.env.MILADY_CLOUD_EMBEDDINGS_DISABLED = "true";
     } else {
-      delete process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED;
+      delete process.env.MILADY_CLOUD_EMBEDDINGS_DISABLED;
     }
     if (services.rpc === false) {
-      process.env.ELIZA_CLOUD_RPC_DISABLED = "true";
+      process.env.MILADY_CLOUD_RPC_DISABLED = "true";
     } else {
-      delete process.env.ELIZA_CLOUD_RPC_DISABLED;
+      delete process.env.MILADY_CLOUD_RPC_DISABLED;
     }
   }
 }
@@ -2027,11 +2027,11 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
  * credentials (or use the explicit `connectionString` field) and set
  * `POSTGRES_URL`. When the provider is "pglite" (the default), we set
  * `PGLITE_DATA_DIR` to either the configured value or a stable workspace
- * default (`~/.eliza/workspace/.eliza/.elizadb`) and remove any stale
+ * default (`~/.milady/workspace/.eliza/.elizadb`) and remove any stale
  * `POSTGRES_URL`.
  */
 /** @internal Exported for testing. */
-export function applyX402ConfigToEnv(config: ElizaConfig): void {
+export function applyX402ConfigToEnv(config: MiladyConfig): void {
   const x402 = (config as Record<string, unknown>).x402 as
     | { enabled?: boolean; apiKey?: string; baseUrl?: string }
     | undefined;
@@ -2043,14 +2043,14 @@ export function applyX402ConfigToEnv(config: ElizaConfig): void {
     process.env.X402_BASE_URL = x402.baseUrl;
 }
 
-function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
+function resolveDefaultPgliteDataDir(config: MiladyConfig): string {
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
   return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
 }
 
 /** @internal Exported for testing. */
-export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
+export function applyDatabaseConfigToEnv(config: MiladyConfig): void {
   const db = config.database;
   const provider = db?.provider ?? "pglite";
 
@@ -2093,7 +2093,7 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
       const alreadyExisted = existsSync(dataDir);
       mkdirSync(dataDir, { recursive: true });
       logger.info(
-        `[eliza] PGlite data dir: ${dataDir} (${alreadyExisted ? "existed" : "created"})`,
+        `[milady] PGlite data dir: ${dataDir} (${alreadyExisted ? "existed" : "created"})`,
       );
 
       // Remove stale postmaster.pid left by a crashed process. Without this,
@@ -2130,7 +2130,7 @@ function reconcilePglitePidFile(dataDir: string): PglitePidFileStatus {
     if (Number.isNaN(pid) || pid <= 0) {
       // Malformed pid file — remove it
       unlinkSync(pidPath);
-      logger.warn(`[eliza] Removed malformed PGlite postmaster.pid`);
+      logger.warn(`[milady] Removed malformed PGlite postmaster.pid`);
       return "cleared-malformed";
     }
 
@@ -2139,7 +2139,7 @@ function reconcilePglitePidFile(dataDir: string): PglitePidFileStatus {
       process.kill(pid, 0); // signal 0 = existence check, doesn't kill
       // Process exists — pid file is NOT stale, leave it alone
       logger.info(
-        `[eliza] PGlite postmaster.pid references running process ${pid} — leaving intact`,
+        `[milady] PGlite postmaster.pid references running process ${pid} — leaving intact`,
       );
       return "active";
     } catch (killErr: unknown) {
@@ -2148,21 +2148,21 @@ function reconcilePglitePidFile(dataDir: string): PglitePidFileStatus {
         // Process doesn't exist — stale pid file, safe to remove
         unlinkSync(pidPath);
         logger.warn(
-          `[eliza] Removed stale PGlite postmaster.pid (process ${pid} not running)`,
+          `[milady] Removed stale PGlite postmaster.pid (process ${pid} not running)`,
         );
         return "cleared-stale";
       } else {
         // EPERM or other — process may be alive under a different user,
         // leave the file alone to avoid data directory corruption
         logger.warn(
-          `[eliza] Cannot confirm postmaster.pid staleness (${code}) — leaving intact`,
+          `[milady] Cannot confirm postmaster.pid staleness (${code}) — leaving intact`,
         );
         return "active-unconfirmed";
       }
     }
   } catch (err) {
     logger.warn(
-      `[eliza] Failed to check PGlite postmaster.pid: ${formatError(err)}`,
+      `[milady] Failed to check PGlite postmaster.pid: ${formatError(err)}`,
     );
     return "check-failed";
   }
@@ -2279,12 +2279,12 @@ export function getPgliteRecoveryAction(
 
 function createActivePgliteLockError(dataDir: string, err: unknown): Error {
   return new Error(
-    `PGLite data dir is already in use at ${dataDir}. Close the other Eliza process or set a different PGLITE_DATA_DIR before retrying.`,
+    `PGLite data dir is already in use at ${dataDir}. Close the other Milady process or set a different PGLITE_DATA_DIR before retrying.`,
     { cause: err },
   );
 }
 
-function resolveActivePgliteDataDir(config: ElizaConfig): string | null {
+function resolveActivePgliteDataDir(config: MiladyConfig): string | null {
   const provider = config.database?.provider ?? "pglite";
   if (provider === "postgres") return null;
 
@@ -2311,11 +2311,11 @@ async function resetPgliteDataDir(dataDir: string): Promise<void> {
     try {
       await fs.rename(normalized, backupDir);
       logger.warn(
-        `[eliza] Backed up existing PGLite data dir to ${backupDir}`,
+        `[milady] Backed up existing PGLite data dir to ${backupDir}`,
       );
     } catch (err) {
       logger.warn(
-        `[eliza] Failed to back up PGLite data dir (${formatError(err)}); deleting ${normalized} instead`,
+        `[milady] Failed to back up PGLite data dir (${formatError(err)}); deleting ${normalized} instead`,
       );
       await fs.rm(normalized, { recursive: true, force: true });
     }
@@ -2326,7 +2326,7 @@ async function resetPgliteDataDir(dataDir: string): Promise<void> {
 
 async function initializeDatabaseAdapter(
   runtime: AgentRuntime,
-  config: ElizaConfig,
+  config: MiladyConfig,
 ): Promise<void> {
   const adapterWithInit = runtime.adapter as typeof runtime.adapter & {
     isReady(): Promise<boolean>;
@@ -2337,7 +2337,7 @@ async function initializeDatabaseAdapter(
   try {
     await adapterWithInit.init();
     logger.info(
-      "[eliza] Database adapter initialized early (before plugin inits)",
+      "[milady] Database adapter initialized early (before plugin inits)",
     );
   } catch (err) {
     const pgliteDataDir = resolveActivePgliteDataDir(config);
@@ -2355,11 +2355,11 @@ async function initializeDatabaseAdapter(
 
     if (recoveryAction === "retry-without-reset") {
       logger.warn(
-        `[eliza] PGLite init failed (${formatError(err)}). Cleared a stale PGLite lock in ${pgliteDataDir} and retrying without resetting data.`,
+        `[milady] PGLite init failed (${formatError(err)}). Cleared a stale PGLite lock in ${pgliteDataDir} and retrying without resetting data.`,
       );
     } else {
       logger.warn(
-        `[eliza] PGLite init failed (${formatError(err)}). Resetting local DB at ${pgliteDataDir} and retrying once.`,
+        `[milady] PGLite init failed (${formatError(err)}). Resetting local DB at ${pgliteDataDir} and retrying once.`,
       );
       await resetPgliteDataDir(pgliteDataDir);
       process.env.PGLITE_DATA_DIR = pgliteDataDir;
@@ -2368,8 +2368,8 @@ async function initializeDatabaseAdapter(
     await adapterWithInit.init();
     logger.info(
       recoveryAction === "retry-without-reset"
-        ? "[eliza] Database adapter recovered after clearing a stale PGLite lock"
-        : "[eliza] Database adapter recovered after resetting PGLite data",
+        ? "[milady] Database adapter recovered after clearing a stale PGLite lock"
+        : "[milady] Database adapter recovered after resetting PGLite data",
     );
   }
 
@@ -2382,22 +2382,22 @@ async function initializeDatabaseAdapter(
  * Verify PGlite data directory contains files after init.
  * Warns if the directory is empty (suggests ephemeral/in-memory fallback).
  */
-async function verifyPgliteDataDir(config: ElizaConfig): Promise<void> {
+async function verifyPgliteDataDir(config: MiladyConfig): Promise<void> {
   const pgliteDataDir = resolveActivePgliteDataDir(config);
   if (!pgliteDataDir || !existsSync(pgliteDataDir)) return;
 
   try {
     const files = await fs.readdir(pgliteDataDir);
     logger.info(
-      `[eliza] PGlite health check: ${files.length} file(s) in ${pgliteDataDir}`,
+      `[milady] PGlite health check: ${files.length} file(s) in ${pgliteDataDir}`,
     );
     if (files.length === 0) {
       logger.warn(
-        `[eliza] PGlite data directory is empty after init — data may not persist across restarts`,
+        `[milady] PGlite data directory is empty after init — data may not persist across restarts`,
       );
     }
   } catch (err) {
-    logger.warn(`[eliza] PGlite health check failed: ${formatError(err)}`);
+    logger.warn(`[milady] PGlite health check failed: ${formatError(err)}`);
   }
 }
 
@@ -2406,14 +2406,14 @@ function isPluginAlreadyRegisteredError(err: unknown): boolean {
 }
 
 interface RuntimeWithMethodBindings extends AgentRuntime {
-  __elizaMethodBindingsInstalled?: boolean;
-  __elizaComponentWriteDiagnosticsInstalled?: boolean;
-  __elizaEntityWriteDiagnosticsInstalled?: boolean;
-  __elizaEntityCreateMutex?: Promise<void>;
+  __miladyMethodBindingsInstalled?: boolean;
+  __miladyComponentWriteDiagnosticsInstalled?: boolean;
+  __miladyEntityWriteDiagnosticsInstalled?: boolean;
+  __miladyEntityCreateMutex?: Promise<void>;
 }
 
 interface RuntimeWithActionAliases extends Omit<AgentRuntime, "actions"> {
-  __elizaActionAliasesInstalled?: boolean;
+  __miladyActionAliasesInstalled?: boolean;
   actions?: Array<{ name?: string; similes?: string[] }>;
 }
 
@@ -2478,9 +2478,9 @@ async function withEntityCreateMutex<T>(
   runtimeWithBindings: RuntimeWithMethodBindings,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const previous = runtimeWithBindings.__elizaEntityCreateMutex;
+  const previous = runtimeWithBindings.__miladyEntityCreateMutex;
   let release: () => void = () => {};
-  runtimeWithBindings.__elizaEntityCreateMutex = new Promise<void>(
+  runtimeWithBindings.__miladyEntityCreateMutex = new Promise<void>(
     (resolve) => {
       release = resolve;
     },
@@ -2520,7 +2520,7 @@ function summarizeComponentWrite(input: unknown): Record<string, unknown> {
 
 export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
   const runtimeWithBindings = runtime as RuntimeWithMethodBindings;
-  if (runtimeWithBindings.__elizaMethodBindingsInstalled) {
+  if (runtimeWithBindings.__miladyMethodBindingsInstalled) {
     return;
   }
 
@@ -2578,7 +2578,7 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
   // Add targeted diagnostics around component writes. Rolodex reflection and
   // relationship extraction rely heavily on components; when inserts fail,
   // upstream logs often hide the concrete DB cause/constraint.
-  if (!runtimeWithBindings.__elizaComponentWriteDiagnosticsInstalled) {
+  if (!runtimeWithBindings.__miladyComponentWriteDiagnosticsInstalled) {
     type CreateComponentFn = (component: Component) => Promise<boolean>;
     type UpdateComponentFn = (component: Component) => Promise<void>;
     const runtimeWithComponentWrites = runtime as AgentRuntime & {
@@ -2605,7 +2605,7 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
               const room = await runtime.getRoom(input.roomId);
               if (room?.worldId && room.worldId !== input.worldId) {
                 logger.warn(
-                  `[eliza] createComponent retry with room worldId (${room.worldId}) after FK violation`,
+                  `[milady] createComponent retry with room worldId (${room.worldId}) after FK violation`,
                 );
                 const recovered: Component = {
                   ...input,
@@ -2615,17 +2615,17 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
               }
             } catch (retryLookupError) {
               logger.warn(
-                `[eliza] createComponent recovery lookup failed: ${formatError(retryLookupError)}`,
+                `[milady] createComponent recovery lookup failed: ${formatError(retryLookupError)}`,
               );
             }
           }
 
           const component = summarizeComponentWrite(input);
           logger.error(
-            `[eliza] createComponent failed: ${formatError(error)} | component=${JSON.stringify(component)}`,
+            `[milady] createComponent failed: ${formatError(error)} | component=${JSON.stringify(component)}`,
           );
           logger.error(
-            `[eliza] createComponent db details: ${JSON.stringify(toErrorDetails(error))}`,
+            `[milady] createComponent db details: ${JSON.stringify(toErrorDetails(error))}`,
           );
           throw error;
         }
@@ -2641,23 +2641,23 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
         } catch (error) {
           const component = summarizeComponentWrite(input);
           logger.error(
-            `[eliza] updateComponent failed: ${formatError(error)} | component=${JSON.stringify(component)}`,
+            `[milady] updateComponent failed: ${formatError(error)} | component=${JSON.stringify(component)}`,
           );
           logger.error(
-            `[eliza] updateComponent db details: ${JSON.stringify(toErrorDetails(error))}`,
+            `[milady] updateComponent db details: ${JSON.stringify(toErrorDetails(error))}`,
           );
           throw error;
         }
       };
     }
 
-    runtimeWithBindings.__elizaComponentWriteDiagnosticsInstalled = true;
+    runtimeWithBindings.__miladyComponentWriteDiagnosticsInstalled = true;
   }
 
   // Proactive guard for plugin-sql entity creation. Some evaluators may attempt
   // to create the same entity in rapid succession; plugin-sql's batch insert is
   // non-idempotent and can fail entire writes on duplicate/conflicting rows.
-  if (!runtimeWithBindings.__elizaEntityWriteDiagnosticsInstalled) {
+  if (!runtimeWithBindings.__miladyEntityWriteDiagnosticsInstalled) {
     type CreateEntitiesFn = (entities: Entity[]) => Promise<string[]>;
     type GetEntitiesByIdsFn = (entityIds: UUID[]) => Promise<Entity[]>;
     type EnsureEntityExistsFn = (entity: Entity) => Promise<boolean>;
@@ -2697,7 +2697,7 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
               );
             } catch (err) {
               logger.warn(
-                `[eliza] createEntities precheck failed; proceeding with guarded insert: ${formatError(err)}`,
+                `[milady] createEntities precheck failed; proceeding with guarded insert: ${formatError(err)}`,
               );
             }
           }
@@ -2718,7 +2718,7 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
               } catch (err) {
                 allRecovered = false;
                 logger.warn(
-                  `[eliza] ensureEntityExists recovery failed for ${String(entity.id)}: ${formatError(err)}`,
+                  `[milady] ensureEntityExists recovery failed for ${String(entity.id)}: ${formatError(err)}`,
                 );
               }
             }
@@ -2726,22 +2726,22 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
           }
 
           logger.warn(
-            `[eliza] createEntities unresolved after guarded retries (requested=${entities.length}, deduped=${deduped.length}, missing=${missing.length})`,
+            `[milady] createEntities unresolved after guarded retries (requested=${entities.length}, deduped=${deduped.length}, missing=${missing.length})`,
           );
           return [];
         });
       };
     }
 
-    runtimeWithBindings.__elizaEntityWriteDiagnosticsInstalled = true;
+    runtimeWithBindings.__miladyEntityWriteDiagnosticsInstalled = true;
   }
 
-  runtimeWithBindings.__elizaMethodBindingsInstalled = true;
+  runtimeWithBindings.__miladyMethodBindingsInstalled = true;
 }
 
 function installActionAliases(runtime: AgentRuntime): void {
   const runtimeWithAliases = runtime as RuntimeWithActionAliases;
-  if (runtimeWithAliases.__elizaActionAliasesInstalled) {
+  if (runtimeWithAliases.__miladyActionAliasesInstalled) {
     return;
   }
 
@@ -2756,7 +2756,7 @@ function installActionAliases(runtime: AgentRuntime): void {
   if (compactSessionIndex !== -1) {
     actions.splice(compactSessionIndex, 1);
     logger.info(
-      "[eliza] Disabled manual COMPACT_SESSION action; auto-compaction remains enabled",
+      "[milady] Disabled manual COMPACT_SESSION action; auto-compaction remains enabled",
     );
   }
 
@@ -2775,18 +2775,18 @@ function installActionAliases(runtime: AgentRuntime): void {
     if (!hasCodeTaskAlias) {
       createTaskAction.similes = [...similes, "CODE_TASK"];
       logger.info(
-        "[eliza] Added action alias CODE_TASK -> CREATE_TASK for agent-orchestrator",
+        "[milady] Added action alias CODE_TASK -> CREATE_TASK for agent-orchestrator",
       );
     }
   }
 
-  runtimeWithAliases.__elizaActionAliasesInstalled = true;
+  runtimeWithAliases.__miladyActionAliasesInstalled = true;
 }
 
 async function registerSqlPluginWithRecovery(
   runtime: AgentRuntime,
   sqlPlugin: ResolvedPlugin,
-  config: ElizaConfig,
+  config: MiladyConfig,
 ): Promise<void> {
   let registerError: unknown = null;
 
@@ -2815,11 +2815,11 @@ async function registerSqlPluginWithRecovery(
 
     if (recoveryAction === "retry-without-reset") {
       logger.warn(
-        `[eliza] SQL plugin registration failed (${formatError(registerError)}). Cleared a stale PGLite lock in ${pgliteDataDir} and retrying without resetting data.`,
+        `[milady] SQL plugin registration failed (${formatError(registerError)}). Cleared a stale PGLite lock in ${pgliteDataDir} and retrying without resetting data.`,
       );
     } else {
       logger.warn(
-        `[eliza] SQL plugin registration failed (${formatError(registerError)}). Resetting local PGLite DB at ${pgliteDataDir} and retrying once.`,
+        `[milady] SQL plugin registration failed (${formatError(registerError)}). Resetting local PGLite DB at ${pgliteDataDir} and retrying once.`,
       );
       await resetPgliteDataDir(pgliteDataDir);
       process.env.PGLITE_DATA_DIR = pgliteDataDir;
@@ -2838,19 +2838,19 @@ async function registerSqlPluginWithRecovery(
 }
 
 /**
- * Build an elizaOS Character from the Eliza config.
+ * Build an elizaOS Character from the Milady config.
  *
  * Resolves the agent name from `config.agents.list` (first entry) or
- * `config.ui.assistant.name`, falling back to "Eliza".  Character
+ * `config.ui.assistant.name`, falling back to "Milady".  Character
  * personality data (bio, system prompt, style, etc.) is stored in the
  * database — not the config file — so we only provide sensible defaults
  * here for the initial bootstrap.
  */
 /** @internal Exported for testing. */
-export function buildCharacterFromConfig(config: ElizaConfig): Character {
-  // Resolve name: agents list → ui assistant → "Eliza"
+export function buildCharacterFromConfig(config: MiladyConfig): Character {
+  // Resolve name: agents list → ui assistant → "Milady"
   const agentEntry = config.agents?.list?.[0];
-  const name = agentEntry?.name ?? config.ui?.assistant?.name ?? "Eliza";
+  const name = agentEntry?.name ?? config.ui?.assistant?.name ?? "Milady";
   const bundledPreset = (() => {
     const presetByName: Record<string, string> = {
       Reimu: "uwu~",
@@ -2876,7 +2876,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // still retain their default posts/messages.
   const bio = agentEntry?.bio ??
     bundledPreset?.bio ?? [
-      "{{name}} is an AI assistant powered by Eliza and elizaOS.",
+      "{{name}} is an AI assistant powered by Milady and elizaOS.",
     ];
   const systemPrompt =
     agentEntry?.system ??
@@ -2998,15 +2998,15 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
 }
 
 /**
- * Resolve the primary model identifier from Eliza config.
+ * Resolve the primary model identifier from Milady config.
  *
- * Eliza stores the model under `agents.defaults.model.primary` as an
+ * Milady stores the model under `agents.defaults.model.primary` as an
  * AgentModelListConfig object. Returns undefined when no model is
  * explicitly configured (elizaOS falls back to whichever model
  * plugin is loaded).
  */
 /** @internal Exported for testing. */
-export function resolvePrimaryModel(config: ElizaConfig): string | undefined {
+export function resolvePrimaryModel(config: MiladyConfig): string | undefined {
   const modelConfig = config.agents?.defaults?.model;
   if (!modelConfig) return undefined;
 
@@ -3015,12 +3015,12 @@ export function resolvePrimaryModel(config: ElizaConfig): string | undefined {
 }
 
 /**
- * Vision is a heavy optional plugin. When Eliza enables it, keep the service
+ * Vision is a heavy optional plugin. When Milady enables it, keep the service
  * loaded but idle until the user explicitly selects CAMERA, SCREEN, or BOTH.
  * This avoids background capture loops during normal app startup.
  */
 export function resolveVisionModeSetting(
-  config: ElizaConfig,
+  config: MiladyConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
   const explicitMode = env.VISION_MODE?.trim();
@@ -3057,7 +3057,7 @@ import { STYLE_PRESETS } from "../onboarding-presets";
  *
  * Subsequent runs skip this entirely.
  */
-async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
+async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
   const agentEntry = config.agents?.list?.[0];
   const hasName = Boolean(agentEntry?.name || config.ui?.assistant?.name);
   if (hasName) return config;
@@ -3069,13 +3069,13 @@ async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
   const clack = await loadClack();
 
   // ── Step 1: Welcome ────────────────────────────────────────────────────
-  clack.intro("WELCOME TO ELIZA!");
+  clack.intro("WELCOME TO MILADY!");
 
   // ── Step 2: Name ───────────────────────────────────────────────────────
   const randomNames = pickRandomNames(4);
 
   const nameChoice = await clack.select({
-    message: "♡♡eliza♡♡: Hey there, I'm.... err, what was my name again?",
+    message: "♡♡milady♡♡: Hey there, I'm.... err, what was my name again?",
     options: [
       ...randomNames.map((n) => ({ value: n, label: n })),
       { value: "_custom_", label: "Custom...", hint: "type your own" },
@@ -3089,12 +3089,12 @@ async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
   if (nameChoice === "_custom_") {
     const customName = await clack.text({
       message: "OK, what should I be called?",
-      placeholder: "Eliza",
+      placeholder: "Milady",
     });
 
     if (clack.isCancel(customName)) cancelOnboarding();
 
-    name = customName.trim() || "Eliza";
+    name = customName.trim() || "Milady";
   } else {
     name = nameChoice;
   }
@@ -3151,7 +3151,7 @@ async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
   if (runtimeChoice === "later") {
     // User deferred the decision — continue with local setup (steps 4–7).
     clack.log.info(
-      "No problem! Starting with local setup. You can switch to cloud anytime with `eliza cloud connect`.",
+      "No problem! Starting with local setup. You can switch to cloud anytime with `milady cloud connect`.",
     );
   } else if (runtimeChoice === "cloud") {
     const { runCloudOnboarding } = await import("./cloud-onboarding");
@@ -3167,7 +3167,7 @@ async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
     } else if (cloudOnboardingResult) {
       // Auth succeeded but no agent provisioned — save auth for later
       clack.log.info(
-        "Cloud auth saved. You can provision later with `eliza cloud connect`.",
+        "Cloud auth saved. You can provision later with `milady cloud connect`.",
       );
     } else {
       // Cloud flow cancelled / failed — fall back to local
@@ -3499,7 +3499,7 @@ async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
     ...existingList.slice(1),
   ];
 
-  const updated: ElizaConfig = {
+  const updated: MiladyConfig = {
     ...config,
     agents: {
       ...config.agents,
@@ -3543,7 +3543,7 @@ async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
 
   // ── Cloud config persistence ───────────────────────────────────────────
   // If the user completed cloud onboarding, persist the cloud credentials
-  // and agent ID so subsequent `eliza start` connects directly.
+  // and agent ID so subsequent `milady start` connects directly.
   if (cloudOnboardingResult) {
     updated.cloud = {
       ...updated.cloud,
@@ -3560,7 +3560,7 @@ async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
   }
 
   try {
-    saveElizaConfig(updated);
+    saveMiladyConfig(updated);
   } catch (err) {
     // Non-fatal: the agent can still start, but choices won't persist.
     clack.log.warn(`Could not save config: ${formatError(err)}`);
@@ -3600,7 +3600,7 @@ export interface StartElizaOptions {
 
 export interface BootElizaRuntimeOptions {
   /**
-   * When true, require an existing ~/.eliza/eliza.json config file.
+   * When true, require an existing ~/.milady/milady.json config file.
    * This is used by non-CLI UIs (like the @elizaos/tui interface) where interactive
    * onboarding prompts would break the alternate screen.
    */
@@ -3618,7 +3618,7 @@ export async function bootElizaRuntime(
 ): Promise<AgentRuntime> {
   if (opts.requireConfig && !configFileExists()) {
     throw new Error(
-      "No config found. Run `eliza start` once to complete setup.",
+      "No config found. Run `milady start` once to complete setup.",
     );
   }
 
@@ -3673,7 +3673,7 @@ export const logToChatListener = (entry: LogEntry) => {
 };
 
 /**
- * Start the elizaOS runtime with Eliza's configuration.
+ * Start the elizaOS runtime with Milady's configuration.
  *
  * In headless mode the runtime is returned instead of entering the
  * interactive readline loop.
@@ -3688,16 +3688,16 @@ export async function startEliza(
   // Register log listener for chat mirroring
   addLogListener(logToChatListener);
 
-  // 1. Load Eliza config from ~/.eliza/eliza.json
-  let config: ElizaConfig;
+  // 1. Load Milady config from ~/.milady/milady.json
+  let config: MiladyConfig;
   try {
-    config = loadElizaConfig();
+    config = loadMiladyConfig();
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      logger.warn("[eliza] No config found, using defaults");
-      // All ElizaConfig fields are optional, so an empty object is
+      logger.warn("[milady] No config found, using defaults");
+      // All MiladyConfig fields are optional, so an empty object is
       // structurally valid. The `as` cast is safe here.
-      config = {} as ElizaConfig;
+      config = {} as MiladyConfig;
     } else {
       throw err;
     }
@@ -3734,7 +3734,7 @@ export async function startEliza(
   applyDatabaseConfigToEnv(config);
 
   // 2e. Propagate arbitrary env vars from config.env into process.env.
-  // Eliza stores user-defined env vars (plugin settings, API URLs, etc.)
+  // Milady stores user-defined env vars (plugin settings, API URLs, etc.)
   // in config.env; elizaOS plugins read them via process.env / getSetting.
   if (
     config.env &&
@@ -3754,7 +3754,7 @@ export async function startEliza(
     const pgliteDir = process.env.PGLITE_DATA_DIR;
     const postgresUrl = process.env.POSTGRES_URL;
     logger.info(
-      `[eliza] Database provider: ${dbProvider}` +
+      `[milady] Database provider: ${dbProvider}` +
         (dbProvider === "pglite" && pgliteDir
           ? ` | data dir: ${pgliteDir}`
           : "") +
@@ -3781,7 +3781,7 @@ export async function startEliza(
   }
 
   // 2e. Prevent @elizaos/core from auto-loading @elizaos/plugin-bootstrap.
-  //     Eliza uses @elizaos/plugin-trust which provides the settings/roles
+  //     Milady uses @elizaos/plugin-trust which provides the settings/roles
   //     providers and actions.  plugin-bootstrap (v1.x) is incompatible with
   //     the 2.0.0-alpha.x runtime used here.
   if (!process.env.IGNORE_BOOTSTRAP) {
@@ -3792,7 +3792,7 @@ export async function startEliza(
   //        warning and avoid using a predictable value in production.
   if (!process.env.SECRET_SALT) {
     process.env.SECRET_SALT = crypto.randomBytes(32).toString("hex");
-    logger.info("[eliza] Generated random SECRET_SALT for this session");
+    logger.info("[milady] Generated random SECRET_SALT for this session");
   }
 
   // 2e-iii. Pre-flight validation for Google AI API keys.  If the key looks
@@ -3809,7 +3809,7 @@ export async function startEliza(
       (val.length < 20 || val === "your-key-here" || val.startsWith("sk-"))
     ) {
       logger.warn(
-        `[eliza] ${gkey} appears invalid (length/format), clearing to skip Google AI plugin`,
+        `[milady] ${gkey} appears invalid (length/format), clearing to skip Google AI plugin`,
       );
       delete process.env[gkey];
     }
@@ -3820,7 +3820,7 @@ export async function startEliza(
     const { applySubscriptionCredentials } = await import("../auth/index");
     await applySubscriptionCredentials(config);
   } catch (err) {
-    logger.warn(`[eliza] Failed to apply subscription credentials: ${err}`);
+    logger.warn(`[milady] Failed to apply subscription credentials: ${err}`);
   }
 
   // 2g. Cloud mode — if the user chose cloud during onboarding (or on a
@@ -3835,7 +3835,7 @@ export async function startEliza(
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
 
-  // 3. Build elizaOS Character from Eliza config
+  // 3. Build elizaOS Character from Milady config
   const character = buildCharacterFromConfig(config);
 
   const primaryModel = resolvePrimaryModel(config);
@@ -3850,9 +3850,9 @@ export async function startEliza(
     recursive: true,
   });
 
-  // 5. Create the Eliza bridge plugin (workspace context + session keys + compaction)
+  // 5. Create the Milady bridge plugin (workspace context + session keys + compaction)
   const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
-  const elizaPlugin = createElizaPlugin({
+  const miladyPlugin = createMiladyPlugin({
     workspaceDir,
     bootstrapMaxChars: config.agents?.defaults?.bootstrapMaxChars,
 
@@ -3871,14 +3871,14 @@ export async function startEliza(
   if (resolvedPlugins.length === 0) {
     if (preOnboarding) {
       logger.info(
-        "[eliza] No plugins loaded yet — the onboarding wizard will configure a model provider",
+        "[milady] No plugins loaded yet — the onboarding wizard will configure a model provider",
       );
     } else {
       logger.error(
-        "[eliza] No plugins loaded — at least one model provider plugin is required",
+        "[milady] No plugins loaded — at least one model provider plugin is required",
       );
       logger.error(
-        "[eliza] Set an API key (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY) in your environment",
+        "[milady] Set an API key (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY) in your environment",
       );
       throw new Error("No plugins loaded");
     }
@@ -3918,12 +3918,12 @@ export async function startEliza(
         issues.push(`empty: ${contextValidation.emptyFields.join(", ")}`);
       }
       logger.warn(
-        `[eliza] Context validation issues detected: ${issues.join("; ")}`,
+        `[milady] Context validation issues detected: ${issues.join("; ")}`,
       );
     }
   }
 
-  // 7. Create the AgentRuntime with Eliza plugin + resolved plugins
+  // 7. Create the AgentRuntime with Milady plugin + resolved plugins
   //    All CORE_PLUGINS are pre-registered sequentially (in CORE_PLUGINS
   //    order) before runtime.initialize() so that cross-plugin getService()
   //    calls always resolve.  runtime.initialize() registers remaining
@@ -3959,10 +3959,10 @@ export async function startEliza(
       getSkillsDir: () => string;
     };
     bundledSkillsDir = getSkillsDir();
-    logger.info(`[eliza] Bundled skills dir: ${bundledSkillsDir}`);
+    logger.info(`[milady] Bundled skills dir: ${bundledSkillsDir}`);
   } catch {
     logger.debug(
-      "[eliza] @elizaos/skills not available — bundled skills will not be loaded",
+      "[milady] @elizaos/skills not available — bundled skills will not be loaded",
     );
   }
 
@@ -3986,7 +3986,7 @@ export async function startEliza(
   let sandboxAuditLog: SandboxAuditLog | null = null;
 
   if (isSandboxActive) {
-    logger.info(`[eliza] Sandbox mode: ${sandboxMode}`);
+    logger.info(`[milady] Sandbox mode: ${sandboxMode}`);
     sandboxAuditLog = new SandboxAuditLog({ console: true });
 
     // Standard/max modes also start the container sandbox manager
@@ -4026,10 +4026,10 @@ export async function startEliza(
 
       try {
         await sandboxManager.start();
-        logger.info("[eliza] Sandbox manager started");
+        logger.info("[milady] Sandbox manager started");
       } catch (err) {
         logger.error(
-          `[eliza] Sandbox manager failed to start: ${err instanceof Error ? err.message : String(err)}`,
+          `[milady] Sandbox manager failed to start: ${err instanceof Error ? err.message : String(err)}`,
         );
         // Non-fatal: light mode fallback
       }
@@ -4057,7 +4057,7 @@ export async function startEliza(
       if (plugin.name === primaryModel) {
         plugin.priority = (plugin.priority ?? 0) + 10;
         logger.info(
-          `[eliza] Boosted plugin "${plugin.name}" priority to ${plugin.priority} (model.primary)`,
+          `[milady] Boosted plugin "${plugin.name}" priority to ${plugin.priority} (model.primary)`,
         );
         break;
       }
@@ -4065,15 +4065,15 @@ export async function startEliza(
   }
 
   // Deduplicate actions across all plugins to avoid "Action already registered"
-  // warnings from elizaOS core. First plugin wins (elizaPlugin is first).
-  deduplicatePluginActions([elizaPlugin, ...pluginsForRuntime]);
+  // warnings from elizaOS core. First plugin wins (miladyPlugin is first).
+  deduplicatePluginActions([miladyPlugin, ...pluginsForRuntime]);
 
   let runtime = new AgentRuntime({
     character,
     // advancedCapabilities: true,
     // actionPlanning: true, // Not supported in this version of AgentRuntime
     // advancedMemory: true, // Not supported in this version of AgentRuntime
-    plugins: [elizaPlugin, ...pluginsForRuntime],
+    plugins: [miladyPlugin, ...pluginsForRuntime],
     ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
     // Sandbox options — only active when mode != "off"
     ...(isSandboxActive
@@ -4092,7 +4092,7 @@ export async function startEliza(
       : {}),
     settings: {
       VALIDATION_LEVEL: "fast",
-      // Forward non-sensitive Eliza config.env vars as runtime settings so
+      // Forward non-sensitive Milady config.env vars as runtime settings so
       // plugins can access them via runtime.getSetting(). This fixes a bug where
       // plugins (e.g. @elizaos/plugin-google-genai) call runtime.getSetting()
       // which returns null for keys not in settings, but the plugin checks
@@ -4106,7 +4106,7 @@ export async function startEliza(
           isEnvKeyAllowedForForwarding(key),
         ),
       ),
-      // Forward Eliza config env vars as runtime settings
+      // Forward Milady config env vars as runtime settings
       ...(primaryModel ? { MODEL_PROVIDER: primaryModel } : {}),
       ...(visionModeSetting ? { VISION_MODE: visionModeSetting } : {}),
       // Forward skills config so plugin-agent-skills can apply allow/deny filtering
@@ -4116,7 +4116,7 @@ export async function startEliza(
       ...(config.skills?.denyBundled
         ? { SKILLS_DENYLIST: config.skills.denyBundled.join(",") }
         : {}),
-      // Managed skills are stored in the Eliza state dir (~/.eliza/skills).
+      // Managed skills are stored in the Milady state dir (~/.milady/skills).
       SKILLS_DIR: managedSkillsDir,
       // Tell plugin-agent-skills where to find bundled + workspace skills
       ...(bundledSkillsDir ? { BUNDLED_SKILLS_DIRS: bundledSkillsDir } : {}),
@@ -4149,7 +4149,7 @@ export async function startEliza(
   } else {
     const loadedNames = resolvedPlugins.map((p) => p.name).join(", ");
     logger.error(
-      `[eliza] @elizaos/plugin-sql was NOT found among resolved plugins. ` +
+      `[milady] @elizaos/plugin-sql was NOT found among resolved plugins. ` +
         `Loaded: [${loadedNames}]`,
     );
     throw new Error(
@@ -4168,11 +4168,11 @@ export async function startEliza(
     configureLocalEmbeddingPlugin(localEmbeddingPlugin.plugin, config);
     await runtime.registerPlugin(localEmbeddingPlugin.plugin);
     logger.info(
-      "[eliza] plugin-local-embedding pre-registered (TEXT_EMBEDDING ready)",
+      "[milady] plugin-local-embedding pre-registered (TEXT_EMBEDDING ready)",
     );
   } else {
     logger.warn(
-      "[eliza] @elizaos/plugin-local-embedding not found — embeddings " +
+      "[milady] @elizaos/plugin-local-embedding not found — embeddings " +
         "will fall back to whatever TEXT_EMBEDDING handler is registered by " +
         "other plugins (may incur cloud API costs)",
     );
@@ -4191,7 +4191,7 @@ export async function startEliza(
       const resolved = resolvedPlugins.find((p) => p.name === name);
       if (!resolved) {
         logger.debug(
-          `[eliza] Core plugin ${name} not resolved — skipping pre-registration`,
+          `[milady] Core plugin ${name} not resolved — skipping pre-registration`,
         );
         continue;
       }
@@ -4199,7 +4199,7 @@ export async function startEliza(
         await runtime.registerPlugin(resolved.plugin);
       } catch (err) {
         logger.warn(
-          `[eliza] Core plugin ${name} pre-registration failed: ${formatError(err)}`,
+          `[milady] Core plugin ${name} pre-registration failed: ${formatError(err)}`,
         );
       }
     }
@@ -4236,7 +4236,7 @@ export async function startEliza(
       if (svc?.getCatalogStats) {
         const stats = svc.getCatalogStats();
         logger.info(
-          `[eliza] AgentSkills ready — ${stats.loaded} skills loaded, ` +
+          `[milady] AgentSkills ready — ${stats.loaded} skills loaded, ` +
             `${stats.total} in catalog (storage: ${stats.storageType})`,
         );
       }
@@ -4266,12 +4266,12 @@ export async function startEliza(
           }
           return skills;
         };
-        logger.debug("[eliza] Patched getLoadedSkills to guard descriptions");
+        logger.debug("[milady] Patched getLoadedSkills to guard descriptions");
       }
     } catch (err) {
       // Non-fatal — the agent can operate without skills. This warm-up runs
       // async so it doesn't block startup.
-      logger.debug(`[eliza] AgentSkillsService warm-up: ${formatError(err)}`);
+      logger.debug(`[milady] AgentSkillsService warm-up: ${formatError(err)}`);
     }
   };
 
@@ -4289,10 +4289,10 @@ export async function startEliza(
     if (!runtime.getService("AUTONOMY")) {
       try {
         await AutonomyService.start(runtime);
-        logger.info("[eliza] AutonomyService started for trigger dispatch");
+        logger.info("[milady] AutonomyService started for trigger dispatch");
       } catch (err) {
         logger.warn(
-          `[eliza] AutonomyService failed to start: ${formatError(err)}`,
+          `[milady] AutonomyService failed to start: ${formatError(err)}`,
         );
       }
     }
@@ -4319,8 +4319,8 @@ export async function startEliza(
 
     logger.warn(
       recoveryAction === "retry-without-reset"
-        ? `[eliza] Runtime migrations failed (${formatError(err)}). Cleared a stale PGLite lock in ${pgliteDataDir} and retrying startup once without resetting data.`
-        : `[eliza] Runtime migrations failed (${formatError(err)}). Resetting local PGLite DB at ${pgliteDataDir} and retrying startup once.`,
+        ? `[milady] Runtime migrations failed (${formatError(err)}). Cleared a stale PGLite lock in ${pgliteDataDir} and retrying startup once without resetting data.`
+        : `[milady] Runtime migrations failed (${formatError(err)}). Resetting local PGLite DB at ${pgliteDataDir} and retrying startup once.`,
     );
     try {
       await shutdownRuntime(runtime, "PGLite recovery");
@@ -4359,21 +4359,21 @@ export async function startEliza(
         if (sandboxManager) {
           try {
             await sandboxManager.stop();
-            logger.info("[eliza] Sandbox manager stopped");
+            logger.info("[milady] Sandbox manager stopped");
           } catch (err) {
             logger.warn(
-              `[eliza] Sandbox stop error: ${err instanceof Error ? err.message : String(err)}`,
+              `[milady] Sandbox stop error: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
         }
       } catch (err) {
-        logger.warn(`[eliza] Sandbox shutdown error: ${formatError(err)}`);
+        logger.warn(`[milady] Sandbox shutdown error: ${formatError(err)}`);
       }
 
       try {
         await shutdownRuntime(runtime, "signal shutdown");
       } catch (err) {
-        logger.warn(`[eliza] Error during shutdown: ${formatError(err)}`);
+        logger.warn(`[milady] Error during shutdown: ${formatError(err)}`);
       }
       process.exit(0);
     };
@@ -4390,7 +4390,7 @@ export async function startEliza(
       await loadHooks({
         workspacePath: workspaceDir,
         internalConfig: internalHooksConfig,
-        elizaConfig: config as Record<string, unknown>,
+        miladyConfig: config as Record<string, unknown>,
       });
 
       const startupEvent = createHookEvent("gateway", "startup", "system", {
@@ -4398,7 +4398,7 @@ export async function startEliza(
       });
       await triggerHook(startupEvent);
     } catch (err) {
-      logger.warn(`[eliza] Hooks system could not load: ${formatError(err)}`);
+      logger.warn(`[milady] Hooks system could not load: ${formatError(err)}`);
     }
   };
 
@@ -4406,7 +4406,7 @@ export async function startEliza(
   if (opts?.headless) {
     void loadHooksSystem();
     logger.info(
-      "[eliza] Runtime initialised in headless mode (autonomy enabled)",
+      "[milady] Runtime initialised in headless mode (autonomy enabled)",
     );
     return runtime;
   }
@@ -4417,17 +4417,17 @@ export async function startEliza(
   // ── Start API server for GUI access ──────────────────────────────────────
   // In CLI mode (non-headless), start the API server in the background so
   // the GUI can connect to the running agent.  This ensures full feature
-  // parity: whether started via `npx elizaos`, `bun run dev`, or the
+  // parity: whether started via `npx miladyai`, `bun run dev`, or the
   // desktop app, the API server is always available for the GUI admin
   // surface.
   try {
     const { startApiServer } = await import("../api/server");
-    const apiPort = Number(process.env.ELIZA_PORT) || 2138;
+    const apiPort = Number(process.env.MILADY_PORT) || 2138;
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
       runtime,
       onRestart: async () => {
-        logger.info("[eliza] Hot-reload: Restarting runtime...");
+        logger.info("[milady] Hot-reload: Restarting runtime...");
         try {
           // Stop the old runtime to release resources (DB connections, timers, etc.)
 
@@ -4435,12 +4435,12 @@ export async function startEliza(
             await shutdownRuntime(runtime, "hot-reload cleanup");
           } catch (stopErr) {
             logger.warn(
-              `[eliza] Hot-reload: old runtime stop failed: ${formatError(stopErr)}`,
+              `[milady] Hot-reload: old runtime stop failed: ${formatError(stopErr)}`,
             );
           }
 
           // Reload config from disk (updated by API)
-          const freshConfig = loadElizaConfig();
+          const freshConfig = loadMiladyConfig();
 
           // Propagate secrets & cloud config into process.env so plugins
           // (especially plugin-elizacloud) can discover them.  The initial
@@ -4462,7 +4462,7 @@ export async function startEliza(
             await applySubscriptionCredentials(freshConfig);
           } catch (subErr) {
             logger.warn(
-              `[eliza] Hot-reload: subscription credentials: ${formatError(subErr)}`,
+              `[milady] Hot-reload: subscription credentials: ${formatError(subErr)}`,
             );
           }
 
@@ -4473,8 +4473,8 @@ export async function startEliza(
           // (name, bio, style, etc.) are picked up on restart.
           const freshCharacter = buildCharacterFromConfig(freshConfig);
 
-          // Recreate Eliza plugin with fresh workspace
-          const freshElizaPlugin = createElizaPlugin({
+          // Recreate Milady plugin with fresh workspace
+          const freshMiladyPlugin = createMiladyPlugin({
             workspaceDir:
               freshConfig.agents?.defaults?.workspace ?? workspaceDir,
             bootstrapMaxChars: freshConfig.agents?.defaults?.bootstrapMaxChars,
@@ -4504,7 +4504,7 @@ export async function startEliza(
           }
           const newRuntime = new AgentRuntime({
             character: freshCharacter,
-            plugins: [freshElizaPlugin, ...freshPluginsForRuntime],
+            plugins: [freshMiladyPlugin, ...freshPluginsForRuntime],
             ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
             settings: {
               ...(freshPrimaryModel
@@ -4560,7 +4560,7 @@ export async function startEliza(
                 await newRuntime.registerPlugin(resolved.plugin);
               } catch (err) {
                 logger.warn(
-                  `[eliza] Hot-reload: core plugin ${name} pre-registration failed: ${formatError(err)}`,
+                  `[milady] Hot-reload: core plugin ${name} pre-registration failed: ${formatError(err)}`,
                 );
               }
             }
@@ -4582,33 +4582,33 @@ export async function startEliza(
               await AutonomyService.start(newRuntime);
             } catch (err) {
               logger.warn(
-                `[eliza] AutonomyService failed to start after hot-reload: ${formatError(err)}`,
+                `[milady] AutonomyService failed to start after hot-reload: ${formatError(err)}`,
               );
             }
           }
 
           installActionAliases(newRuntime);
           runtime = newRuntime;
-          logger.info("[eliza] Hot-reload: Runtime restarted successfully");
+          logger.info("[milady] Hot-reload: Runtime restarted successfully");
           return newRuntime;
         } catch (err) {
-          logger.error(`[eliza] Hot-reload failed: ${formatError(err)}`);
+          logger.error(`[milady] Hot-reload failed: ${formatError(err)}`);
           return null;
         }
       },
     });
     const dashboardUrl = `http://localhost:${actualApiPort}`;
-    console.log(`[eliza] Control UI: ${dashboardUrl}`);
-    logger.info(`[eliza] API server listening on ${dashboardUrl}`);
+    console.log(`[milady] Control UI: ${dashboardUrl}`);
+    logger.info(`[milady] API server listening on ${dashboardUrl}`);
   } catch (apiErr) {
-    logger.warn(`[eliza] Could not start API server: ${formatError(apiErr)}`);
+    logger.warn(`[milady] Could not start API server: ${formatError(apiErr)}`);
     // Non-fatal — CLI chat loop still works without the API server.
   }
 
   // ── Server-only mode — keep running without chat loop ────────────────────
   if (opts?.serverOnly) {
-    logger.info("[eliza] Running in server-only mode (no interactive chat)");
-    console.log("[eliza] Server running. Press Ctrl+C to stop.");
+    logger.info("[milady] Running in server-only mode (no interactive chat)");
+    console.log("[milady] Server running. Press Ctrl+C to stop.");
 
     // Keep process alive — the API server handles all interaction
     const keepAlive = setInterval(() => {}, 1 << 30); // ~12 days
@@ -4619,7 +4619,7 @@ export async function startEliza(
       try {
         await shutdownRuntime(runtime, "server-only shutdown");
       } catch (err) {
-        logger.warn(`[eliza] Error stopping runtime: ${formatError(err)}`);
+        logger.warn(`[milady] Error stopping runtime: ${formatError(err)}`);
       }
       process.exit(0);
     };
@@ -4631,7 +4631,7 @@ export async function startEliza(
   }
 
   // ── Interactive chat loop ────────────────────────────────────────────────
-  const agentName = character.name ?? "Eliza";
+  const agentName = character.name ?? "Milady";
   const userId = crypto.randomUUID() as UUID;
   // Use `let` so the fallback path can reassign to fresh IDs.
   let roomId = stringToUuid(`${agentName}-chat-room`);
@@ -4677,7 +4677,7 @@ export async function startEliza(
     }
   } catch (err) {
     logger.warn(
-      `[eliza] Could not establish chat room, retrying with fresh IDs: ${formatError(err)}`,
+      `[milady] Could not establish chat room, retrying with fresh IDs: ${formatError(err)}`,
     );
 
     // Fall back to unique IDs if deterministic ones conflict with stale data.
@@ -4720,7 +4720,7 @@ export async function startEliza(
       }
     } catch (retryErr) {
       logger.error(
-        `[eliza] Chat room setup failed after retry: ${formatError(retryErr)}`,
+        `[milady] Chat room setup failed after retry: ${formatError(retryErr)}`,
       );
       throw retryErr;
     }
@@ -4743,7 +4743,7 @@ export async function startEliza(
         try {
           await shutdownRuntime(runtime, "cli shutdown");
         } catch (err) {
-          logger.warn(`[eliza] Error stopping runtime: ${formatError(err)}`);
+          logger.warn(`[milady] Error stopping runtime: ${formatError(err)}`);
         }
         process.exit(0);
       }
@@ -4769,7 +4769,7 @@ export async function startEliza(
 
         if (!runtime.messageService) {
           logger.error(
-            "[eliza] runtime.messageService is not available — cannot process messages",
+            "[milady] runtime.messageService is not available — cannot process messages",
           );
           console.log("[Error: message service unavailable]\n");
           prompt();
@@ -4793,7 +4793,7 @@ export async function startEliza(
         // failed message kill the interactive session.
         console.log(`\n[Error: ${formatError(err)}]\n`);
         logger.error(
-          `[eliza] Chat message handling failed: ${formatError(err)}`,
+          `[milady] Chat message handling failed: ${formatError(err)}`,
         );
       }
       prompt();
@@ -4815,7 +4815,7 @@ export async function startEliza(
  * Skips all local runtime construction (plugins, database, etc.).
  */
 export async function startInCloudMode(
-  config: ElizaConfig,
+  config: MiladyConfig,
   agentId: string,
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
@@ -4824,12 +4824,12 @@ export async function startInCloudMode(
 
   const cloudConfig = config.cloud!;
   logger.info(
-    `[eliza] Starting in cloud mode (agentId=${agentId}, baseUrl=${cloudConfig.baseUrl ?? "(default)"})`,
+    `[milady] Starting in cloud mode (agentId=${agentId}, baseUrl=${cloudConfig.baseUrl ?? "(default)"})`,
   );
 
   const manager = new CloudManager(cloudConfig, {
     onStatusChange: (status) => {
-      logger.info(`[eliza] Cloud connection: ${status}`);
+      logger.info(`[milady] Cloud connection: ${status}`);
     },
   });
 
@@ -4841,7 +4841,7 @@ export async function startInCloudMode(
       // In headless/server mode, start the API server with the cloud proxy.
       // The proxy exposes the same interface the API server needs.
       logger.info(
-        `[eliza] Cloud agent connected (headless). Agent: ${proxy.agentName}`,
+        `[milady] Cloud agent connected (headless). Agent: ${proxy.agentName}`,
       );
       // Return undefined — the cloud proxy handles everything.
       // TODO: Wire proxy into the API server for GUI mode.
@@ -4902,10 +4902,10 @@ export async function startInCloudMode(
     return undefined;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error(`[eliza] Failed to connect to cloud agent: ${msg}`);
+    logger.error(`[milady] Failed to connect to cloud agent: ${msg}`);
     throw new Error(
       `Failed to connect to cloud agent: ${msg}\n` +
-        "You can retry with `eliza start`, or switch to local mode with `eliza config set cloud.runtime local`",
+        "You can retry with `milady start`, or switch to local mode with `milady config set cloud.runtime local`",
     );
   }
 }
@@ -4924,7 +4924,7 @@ const isDirectRun = (() => {
 if (isDirectRun) {
   startEliza().catch((err) => {
     console.error(
-      "[eliza] Fatal error:",
+      "[milady] Fatal error:",
       err instanceof Error ? (err.stack ?? err.message) : err,
     );
     process.exit(1);

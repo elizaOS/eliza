@@ -1,5 +1,5 @@
 /**
- * Session utility functions for eliza plugin.
+ * Session utility functions for milady plugin.
  *
  * These are simplified versions for use until @elizaos/core exports them.
  */
@@ -16,7 +16,7 @@ const DEFAULT_AGENT_ID = "main";
 function resolveAgentSessionsDir(agentId?: string): string {
   const id = agentId ?? DEFAULT_AGENT_ID;
   const stateDir =
-    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
+    process.env.MILADY_STATE_DIR ?? path.join(os.homedir(), ".milady");
   return path.join(stateDir, "agents", id, "sessions");
 }
 

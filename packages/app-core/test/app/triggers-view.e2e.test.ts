@@ -2,7 +2,7 @@
 import crypto from "node:crypto";
 import {
   type CreateTriggerRequest,
-  ElizaClient,
+  MiladyClient,
   type TriggerHealthSnapshot,
   type TriggerRunRecord,
   type TriggerSummary,
@@ -193,7 +193,7 @@ function sortTriggers(items: TriggerSummary[]): TriggerSummary[] {
   return [...items].sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
-function TriggerUiHarness(props: { client: ElizaClient }): ReactElement {
+function TriggerUiHarness(props: { client: MiladyClient }): ReactElement {
   const { client } = props;
   const [triggers, setTriggers] = useState<TriggerSummary[]>([]);
   const [triggersLoading, setTriggersLoading] = useState(false);
@@ -509,7 +509,7 @@ describe("TriggersView UI E2E", () => {
       throw new Error("Server was not initialized");
     }
 
-    const client = new ElizaClient(`http://127.0.0.1:${server.port}`);
+    const client = new MiladyClient(`http://127.0.0.1:${server.port}`);
     const triggerDisplayName = "Trigger UI E2E";
 
     let tree!: TestRenderer.ReactTestRenderer;

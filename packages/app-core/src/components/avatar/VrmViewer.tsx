@@ -15,7 +15,7 @@ import {
   type VrmEngineState,
 } from "./VrmEngine";
 
-const DEFAULT_VRM_PATH = resolveAppAssetUrl("vrms/eliza-1.vrm.gz");
+const DEFAULT_VRM_PATH = resolveAppAssetUrl("vrms/milady-1.vrm.gz");
 
 export type VrmViewerProps = {
   /** When false the loaded scene stays resident but the render loop is paused */
@@ -51,7 +51,7 @@ type VrmEngineDebugRegistryEntry = {
 
 declare global {
   interface Window {
-    __ELIZA_VRM_ENGINES__?: VrmEngineDebugRegistryEntry[];
+    __MILADY_VRM_ENGINES__?: VrmEngineDebugRegistryEntry[];
   }
 }
 
@@ -110,7 +110,7 @@ export function VrmViewer(props: VrmViewerProps) {
     if (!import.meta.env.DEV) return;
     if (typeof window === "undefined") return;
     const engine = engineRef.current;
-    const registry = window.__ELIZA_VRM_ENGINES__ ?? [];
+    const registry = window.__MILADY_VRM_ENGINES__ ?? [];
     const id = debugRegistryIdRef.current;
     const nextEntry: VrmEngineDebugRegistryEntry | null = engine
       ? {
@@ -123,7 +123,7 @@ export function VrmViewer(props: VrmViewerProps) {
         }
       : null;
 
-    window.__ELIZA_VRM_ENGINES__ = nextEntry
+    window.__MILADY_VRM_ENGINES__ = nextEntry
       ? [...registry.filter((entry) => entry.id !== id), nextEntry]
       : registry.filter((entry) => entry.id !== id);
   });

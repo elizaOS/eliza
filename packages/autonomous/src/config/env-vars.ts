@@ -1,10 +1,10 @@
-import type { ElizaConfig } from "./types";
+import type { MiladyConfig } from "./types";
 
 /**
  * Environment variable keys that must NEVER be synced from config → process.env.
  *
  * Mirrors the BLOCKED_ENV_KEYS set in server.ts.  This is a defense-in-depth
- * gate: even if a blocked key is somehow persisted into eliza.config.json
+ * gate: even if a blocked key is somehow persisted into milady.config.json
  * (e.g. via an API bypass or manual file edit), it will not be loaded into the
  * process environment on startup.
  *
@@ -12,7 +12,7 @@ import type { ElizaConfig } from "./types";
  *   - Process-level code injection (NODE_OPTIONS, LD_PRELOAD, …)
  *   - TLS / proxy hijack (NODE_TLS_REJECT_UNAUTHORIZED, HTTP_PROXY, …)
  *   - Module resolution (NODE_PATH)
- *   - Privilege escalation tokens (ELIZA_API_TOKEN, …)
+ *   - Privilege escalation tokens (MILADY_API_TOKEN, …)
  *   - Wallet private keys
  *   - System paths
  */
@@ -36,9 +36,9 @@ const BLOCKED_STARTUP_ENV_KEYS = new Set([
   "PATH",
   "HOME",
   "SHELL",
-  "ELIZA_API_TOKEN",
-  "ELIZA_WALLET_EXPORT_TOKEN",
-  "ELIZA_TERMINAL_RUN_TOKEN",
+  "MILADY_API_TOKEN",
+  "MILADY_WALLET_EXPORT_TOKEN",
+  "MILADY_TERMINAL_RUN_TOKEN",
   "HYPERSCAPE_AUTH_TOKEN",
   "EVM_PRIVATE_KEY",
   "SOLANA_PRIVATE_KEY",
@@ -48,7 +48,7 @@ const BLOCKED_STARTUP_ENV_KEYS = new Set([
 ]);
 
 export function collectConfigEnvVars(
-  cfg?: ElizaConfig,
+  cfg?: MiladyConfig,
 ): Record<string, string> {
   const envConfig = cfg?.env;
   if (!envConfig) {

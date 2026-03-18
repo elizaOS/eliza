@@ -1,7 +1,7 @@
 /**
  * ERC-8004 Agent Identity Registry service.
  *
- * Handles all interactions with the ElizaAgentRegistry contract:
+ * Handles all interactions with the MiladyAgentRegistry contract:
  * - Registration (self and delegated)
  * - Profile updates
  * - Metadata (tokenURI) management
@@ -13,7 +13,7 @@ import { ethers } from "ethers";
 import type { TxService } from "./tx-service";
 
 // ── ABI ──────────────────────────────────────────────────────────────────
-// Matches ElizaAgentRegistry.sol. Babylon-compatible core interface plus
+// Matches MiladyAgentRegistry.sol. Babylon-compatible core interface plus
 // registerAgentFor() and ERC721URIStorage tokenURI.
 
 const REGISTRY_ABI = [
@@ -71,7 +71,7 @@ export interface AgentRegistrationParams {
 
 // ── Default capabilities hash ────────────────────────────────────────────
 
-const DEFAULT_CAPABILITIES_HASH = ethers.id("eliza-agent");
+const DEFAULT_CAPABILITIES_HASH = ethers.id("milady-agent");
 
 // ── Service ──────────────────────────────────────────────────────────────
 
@@ -284,7 +284,7 @@ export class RegistryService {
   }
 
   /**
-   * Build the default capabilities hash used for Eliza agents.
+   * Build the default capabilities hash used for Milady agents.
    */
   static defaultCapabilitiesHash(): string {
     return DEFAULT_CAPABILITIES_HASH;

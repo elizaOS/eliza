@@ -65,7 +65,7 @@ describe("header status", () => {
       t: (k: string) => k,
       agentStatus: {
         state: "running",
-        agentName: "Eliza",
+        agentName: "Milady",
         model: undefined,
         startedAt: undefined,
         uptime: undefined,

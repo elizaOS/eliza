@@ -91,7 +91,7 @@ export class SignalPairingSession {
       console.info(`${LOG_PREFIX} Starting device linking...`);
       const provisioningUrl = await native.linkDevice(
         this.options.authDir,
-        "Eliza AI",
+        "Milady AI",
       );
 
       if (this.aborted) return;

@@ -70,14 +70,14 @@ describe("Cloud auth status persistence", () => {
 
   beforeAll(async () => {
     envBackup = saveEnv(
-      "ELIZA_CONFIG_PATH",
-      "ELIZA_STATE_DIR",
+      "MILADY_CONFIG_PATH",
+      "MILADY_STATE_DIR",
       "ELIZAOS_CLOUD_API_KEY",
       "ELIZAOS_CLOUD_ENABLED",
     );
 
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-cloud-auth-"));
-    configPath = path.join(tempDir, "eliza.json");
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-cloud-auth-"));
+    configPath = path.join(tempDir, "milady.json");
     fs.writeFileSync(
       configPath,
       JSON.stringify(
@@ -93,8 +93,8 @@ describe("Cloud auth status persistence", () => {
       "utf-8",
     );
 
-    process.env.ELIZA_CONFIG_PATH = configPath;
-    process.env.ELIZA_STATE_DIR = tempDir;
+    process.env.MILADY_CONFIG_PATH = configPath;
+    process.env.MILADY_STATE_DIR = tempDir;
 
     const server = await startApiServer({ port: 0 });
     port = server.port;

@@ -82,7 +82,7 @@ describe("Trajectory Database E2E", () => {
   let dbLogger: DatabaseTrajectoryLogger;
   let server: { port: number; close: () => Promise<void> } | null = null;
   const pgliteDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "eliza-e2e-pglite-"),
+    path.join(os.tmpdir(), "milady-e2e-pglite-"),
   );
 
   let initFailed = false;

@@ -37,7 +37,7 @@ function resolveChannelProfile(message: Memory): ChannelExecutionProfile {
 
 export function createChannelProfileProvider(): Provider {
   return {
-    name: "elizaChannelProfile",
+    name: "miladyChannelProfile",
     description:
       "Injects channel-derived execution profile guidance (voice/group/default).",
     position: -50,

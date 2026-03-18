@@ -1,7 +1,7 @@
 /**
- * Bridges Eliza session keys with elizaOS rooms.
+ * Bridges Milady session keys with elizaOS rooms.
  *
- * Eliza keys: agent:{agentId}:main (DMs), agent:{agentId}:{channel}:group:{id} (groups)
+ * Milady keys: agent:{agentId}:main (DMs), agent:{agentId}:{channel}:group:{id} (groups)
  * elizaOS rooms: per-agent UUIDs via createUniqueUuid(runtime, channelId)
  */
 
@@ -62,7 +62,7 @@ function parseAgentSessionKey(key: string):
 }
 
 /**
- * Resolve an Eliza session key from an elizaOS room.
+ * Resolve an Milady session key from an elizaOS room.
  *
  * DMs -> agent:{agentId}:main
  * Groups -> agent:{agentId}:{channel}:group:{groupId}
@@ -92,8 +92,8 @@ export function createSessionKeyProvider(options?: {
   const agentId = options?.defaultAgentId ?? "main";
 
   return {
-    name: "elizaSessionKey",
-    description: "Eliza session key (DM/group/thread isolation)",
+    name: "miladySessionKey",
+    description: "Milady session key (DM/group/thread isolation)",
     dynamic: true,
     position: 5,
 

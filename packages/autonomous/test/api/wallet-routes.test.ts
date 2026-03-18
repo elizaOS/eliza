@@ -3,7 +3,7 @@ import {
   handleWalletRoutes,
   type WalletRouteDependencies,
 } from "../../src/api/wallet-routes";
-import type { ElizaConfig } from "../../src/config/config";
+import type { MiladyConfig } from "../../src/config/config";
 
 const ENV_KEYS = [
   "ALCHEMY_API_KEY",
@@ -50,7 +50,7 @@ type InvokeResult = {
   handled: boolean;
   status: number;
   payload: unknown;
-  config: ElizaConfig;
+  config: MiladyConfig;
   saveConfig: ReturnType<typeof vi.fn>;
   ensureWalletKeysInEnvAndConfig: ReturnType<typeof vi.fn>;
 };
@@ -98,7 +98,7 @@ async function invoke(args: {
   method: string;
   pathname: string;
   body?: Record<string, unknown> | null;
-  config?: ElizaConfig;
+  config?: MiladyConfig;
   deps?: WalletRouteDependencies;
   resolveWalletExportRejection?: (
     _req: unknown,
@@ -108,7 +108,7 @@ async function invoke(args: {
   let status = 200;
   let payload: unknown = null;
 
-  const config = args.config ?? ({ env: {} } as ElizaConfig);
+  const config = args.config ?? ({ env: {} } as MiladyConfig);
   const deps = args.deps ?? createDeps();
   const saveConfig = vi.fn();
   const ensureWalletKeysInEnvAndConfig = vi.fn();
@@ -213,7 +213,7 @@ describe("wallet routes", () => {
           enabled: true,
           baseUrl: "https://cloud.example",
         },
-      } as ElizaConfig,
+      } as MiladyConfig,
     });
 
     expect(result.handled).toBe(true);
@@ -267,7 +267,7 @@ describe("wallet routes", () => {
           enabled: true,
           baseUrl: "https://cloud.example",
         },
-      } as ElizaConfig,
+      } as MiladyConfig,
     });
 
     expect(result.handled).toBe(true);
@@ -327,7 +327,7 @@ describe("wallet routes", () => {
       pathname: "/api/wallet/import",
       body: { privateKey: "key" },
       deps,
-      config: { env: {} } as ElizaConfig,
+      config: { env: {} } as MiladyConfig,
     });
 
     expect(result.handled).toBe(true);
@@ -351,7 +351,7 @@ describe("wallet routes", () => {
       pathname: "/api/wallet/generate",
       body: { chain: "both" },
       deps,
-      config: { env: {} } as ElizaConfig,
+      config: { env: {} } as MiladyConfig,
     });
 
     expect(result.handled).toBe(true);
@@ -385,7 +385,7 @@ describe("wallet routes", () => {
           BIRDEYE_API_KEY: "bird-key",
         },
       },
-      config: { env: {} } as ElizaConfig,
+      config: { env: {} } as MiladyConfig,
     });
 
     expect(result.handled).toBe(true);
@@ -422,7 +422,7 @@ describe("wallet routes", () => {
         BIRDEYE_API_KEY: "birdeye",
         SOLANA_RPC_URL: "https://mainnet.helius-rpc.com/?api-key=helius",
       },
-    } as ElizaConfig;
+    } as MiladyConfig;
 
     const result = await invoke({
       method: "PUT",

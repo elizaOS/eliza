@@ -400,7 +400,7 @@ describe("pages navigation smoke (e2e)", () => {
         state.uiShellMode = mode;
       }),
       uiLanguage: "en",
-      agentStatus: { state: "running", agentName: "Eliza" },
+      agentStatus: { state: "running", agentName: "Milady" },
       loadDropStatus: vi.fn(),
       unreadConversations: new Set(),
       activeGameViewerUrl: null,
@@ -593,7 +593,7 @@ describe("pages navigation smoke (e2e)", () => {
           state.uiShellMode = mode;
         }),
         uiLanguage: "en",
-        agentStatus: { state: "running", agentName: "Eliza" },
+        agentStatus: { state: "running", agentName: "Milady" },
         loadDropStatus: vi.fn(),
         unreadConversations: new Set(),
         activeGameViewerUrl: null,
