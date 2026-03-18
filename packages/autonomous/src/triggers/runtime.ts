@@ -140,10 +140,12 @@ type AutonomyServiceLike = {
   }) => Promise<void> | void;
 };
 
-async function isAutonomyServiceAvailable(runtime: IAgentRuntime): Promise<boolean> {
+async function isAutonomyServiceAvailable(
+  runtime: IAgentRuntime,
+): Promise<boolean> {
   const svc =
-    (await runtime.getService<Service & AutonomyServiceLike>("autonomy")) ??
-    (await runtime.getService<Service & AutonomyServiceLike>("AUTONOMY"));
+    runtime.getService<Service & AutonomyServiceLike>("autonomy") ??
+    runtime.getService<Service & AutonomyServiceLike>("AUTONOMY");
   return typeof svc?.injectAutonomousInstruction === "function";
 }
 
@@ -165,8 +167,8 @@ async function dispatchInstruction(
     }) => Promise<void> | void;
   };
   const autonomyService =
-    ((await runtime.getService("autonomy")) as TriggerAutonomyService | null) ??
-    ((await runtime.getService("AUTONOMY")) as TriggerAutonomyService | null);
+    (runtime.getService("autonomy") as TriggerAutonomyService | null) ??
+    (runtime.getService("AUTONOMY") as TriggerAutonomyService | null);
 
   if (!autonomyService?.injectAutonomousInstruction) {
     runtime.logger.warn?.(
@@ -221,7 +223,10 @@ export async function executeTriggerTask(
     return { status: "skipped", taskDeleted: true };
   }
 
-  if (!(await isAutonomyServiceAvailable(runtime)) && options.source !== "manual") {
+  if (
+    !(await isAutonomyServiceAvailable(runtime)) &&
+    options.source !== "manual"
+  ) {
     runtime.logger.warn?.(
       {
         src: "trigger-runtime",

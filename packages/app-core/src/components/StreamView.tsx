@@ -15,7 +15,6 @@ import { client, isApiError } from "@elizaos/app-core/api";
 import { isElectrobunRuntime } from "@elizaos/app-core/bridge";
 import { useBranding } from "@elizaos/app-core/config";
 import { useApp } from "@elizaos/app-core/state";
-import { getElizaApiBase } from "../utils/eliza-globals";
 import {
   type CSSProperties,
   useCallback,
@@ -24,6 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { getElizaApiBase } from "../utils/eliza-globals";
 import { ActivityFeed } from "./stream/ActivityFeed";
 import { AvatarPip } from "./stream/AvatarPip";
 import { ChatContent } from "./stream/ChatContent";

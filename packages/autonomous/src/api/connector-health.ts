@@ -93,7 +93,7 @@ export class ConnectorHealthMonitor {
     if (!pluginName) return "unknown";
 
     try {
-      const service = await this.runtime.getService(pluginName);
+      const service = this.runtime.getService(pluginName);
       if (service) return "ok";
     } catch {
       // getService may throw if runtime is shutting down

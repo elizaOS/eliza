@@ -15,6 +15,7 @@ export * from "./ChatComposer";
 export * from "./ChatMessage";
 export * from "./ChatModalView";
 export * from "./ChatView";
+export * from "./CloudOnboarding";
 export * from "./CloudSourceControls";
 export * from "./CodingAgentSettingsSection";
 export * from "./CommandPalette";

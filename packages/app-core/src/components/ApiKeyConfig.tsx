@@ -162,9 +162,7 @@ export function ApiKeyConfig({
               borderColor: selectedProvider.configured
                 ? "var(--ok)"
                 : "var(--warn)",
-              color: selectedProvider.configured
-                ? "var(--ok)"
-                : "var(--warn)",
+              color: selectedProvider.configured ? "var(--ok)" : "var(--warn)",
             }}
           >
             {selectedProvider.configured

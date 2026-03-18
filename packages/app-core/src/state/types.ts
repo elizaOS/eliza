@@ -206,6 +206,8 @@ export interface ChatTurnUsage extends ChatTokenUsage {
 
 // ── Context value type ─────────────────────────────────────────────────
 
+export type OnboardingMode = "companion" | "elizacloudonly";
+
 export interface AppState {
   // Core
   tab: Tab;
@@ -214,6 +216,7 @@ export interface AppState {
   uiTheme: UiTheme;
   connected: boolean;
   agentStatus: AgentStatus | null;
+  onboardingMode: OnboardingMode;
   onboardingComplete: boolean;
   onboardingLoading: boolean;
   startupPhase: StartupPhase;
@@ -650,6 +653,7 @@ export interface AppActions {
   // Onboarding
   handleOnboardingNext: (options?: OnboardingNextOptions) => Promise<void>;
   handleOnboardingBack: () => void;
+  handleCloudOnboardingFinish: () => Promise<void>;
   handleOnboardingRemoteConnect: () => Promise<void>;
   handleOnboardingUseLocalBackend: () => void;
 

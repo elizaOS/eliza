@@ -263,7 +263,7 @@ async function getTrajectoryLogger(
   }
 
   if (typeof runtimeLike.getService === "function") {
-    addCandidate(await runtimeLike.getService("trajectory_logger"));
+    addCandidate(runtimeLike.getService("trajectory_logger"));
   }
 
   for (const candidate of candidates) {

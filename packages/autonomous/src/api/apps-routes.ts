@@ -29,7 +29,7 @@ export interface AppsRouteContext
     Pick<RouteHelpers, "readJsonBody" | "json" | "error"> {
   url: URL;
   appManager: AppManagerLike;
-  getPluginManager: () => Promise<PluginManagerLike>;
+  getPluginManager: () => PluginManagerLike;
   parseBoundedLimit: (rawLimit: string | null, fallback?: number) => number;
   runtime: unknown | null;
 }
@@ -66,7 +66,7 @@ export async function handleAppsRoutes(
   } = ctx;
 
   if (method === "GET" && pathname === "/api/apps") {
-    const pluginManager = await getPluginManager();
+    const pluginManager = getPluginManager();
     const apps = await appManager.listAvailable(pluginManager);
     json(res, apps as object);
     return true;
@@ -79,14 +79,14 @@ export async function handleAppsRoutes(
       return true;
     }
     const limit = parseBoundedLimit(url.searchParams.get("limit"));
-    const pluginManager = await getPluginManager();
+    const pluginManager = getPluginManager();
     const results = await appManager.search(pluginManager, query, limit);
     json(res, results as object);
     return true;
   }
 
   if (method === "GET" && pathname === "/api/apps/installed") {
-    const pluginManager = await getPluginManager();
+    const pluginManager = getPluginManager();
     const installed = await appManager.listInstalled(pluginManager);
     json(res, installed as object);
     return true;
@@ -100,7 +100,7 @@ export async function handleAppsRoutes(
         error(res, "name is required");
         return true;
       }
-      const pluginManager = await getPluginManager();
+      const pluginManager = getPluginManager();
       const result = await appManager.launch(
         pluginManager,
         body.name.trim(),
@@ -122,7 +122,7 @@ export async function handleAppsRoutes(
       return true;
     }
     const appName = body.name.trim();
-    const pluginManager = await getPluginManager();
+    const pluginManager = getPluginManager();
     const result = await appManager.stop(pluginManager, appName);
     json(res, result as object);
     return true;
@@ -136,7 +136,7 @@ export async function handleAppsRoutes(
       error(res, "app name is required");
       return true;
     }
-    const pluginManager = await getPluginManager();
+    const pluginManager = getPluginManager();
     const info = await appManager.getInfo(pluginManager, appName);
     if (!info) {
       error(res, `App "${appName}" not found in registry`, 404);
@@ -148,7 +148,7 @@ export async function handleAppsRoutes(
 
   if (method === "GET" && pathname === "/api/apps/plugins") {
     try {
-      const pluginManager = await getPluginManager();
+      const pluginManager = getPluginManager();
       const registry = await pluginManager.refreshRegistry();
       const plugins = Array.from(registry.values()).filter(
         isNonAppRegistryPlugin,
@@ -172,7 +172,7 @@ export async function handleAppsRoutes(
     }
     try {
       const limit = parseBoundedLimit(url.searchParams.get("limit"));
-      const pluginManager = await getPluginManager();
+      const pluginManager = getPluginManager();
       const results = await pluginManager.searchRegistry(query, limit);
       json(res, results.filter(isNonAppSearchResult));
     } catch (err) {
@@ -187,7 +187,7 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/refresh") {
     try {
-      const pluginManager = await getPluginManager();
+      const pluginManager = getPluginManager();
       const registry = await pluginManager.refreshRegistry();
       const count = Array.from(registry.values()).filter(
         isNonAppRegistryPlugin,

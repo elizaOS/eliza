@@ -20,9 +20,9 @@ export const contextSummaryProvider: Provider = {
 		_state: State,
 	): Promise<ProviderResult> => {
 		try {
-			const memoryService = (await runtime.getService(
+			const memoryService = runtime.getService(
 				"memory",
-			)) as MemoryService | null;
+			) as MemoryService | null;
 			const { roomId } = message;
 
 			if (!memoryService) {

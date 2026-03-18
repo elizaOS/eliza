@@ -164,7 +164,7 @@ export function BugReportModal() {
     }
     setCopied(ok);
     await openExternalUrl(branding.bugReportUrl);
-  }, [copyToClipboard, formatMarkdown]);
+  }, [copyToClipboard, formatMarkdown, branding.bugReportUrl]);
 
   // Close on Escape
   useEffect(() => {

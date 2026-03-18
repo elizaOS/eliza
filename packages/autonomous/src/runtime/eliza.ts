@@ -43,6 +43,7 @@ import {
   type Component,
   createMessageMemory,
   type Entity,
+  InMemoryDatabaseAdapter,
   type LogEntry,
   logger,
   type MessageExampleGroup,
@@ -51,7 +52,6 @@ import {
   type Plugin,
   type Provider,
   type ServiceTypeName,
-  InMemoryDatabaseAdapter,
   stringToUuid,
   type TargetInfo,
   type UUID,
@@ -74,8 +74,8 @@ import {
 } from "../api/plugin-validation";
 import {
   configFileExists,
-  loadElizaConfig,
   type ElizaConfig,
+  loadElizaConfig,
   saveElizaConfig,
 } from "../config/config";
 import { collectConfigEnvVars } from "../config/env-vars";
@@ -100,8 +100,8 @@ import { SandboxAuditLog } from "../security/audit-log";
 import { SandboxManager, type SandboxMode } from "../services/sandbox-manager";
 import { diagnoseNoAIProvider } from "../services/version-compat";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins";
-import { detectEmbeddingPreset } from "./embedding-presets";
 import { createElizaPlugin } from "./eliza-plugin";
+import { detectEmbeddingPreset } from "./embedding-presets";
 import {
   installDatabaseTrajectoryLogger,
   shouldEnableTrajectoryLoggingByDefault,
@@ -336,9 +336,7 @@ export async function shutdownRuntime(
     await runtime.stop();
   } catch (err) {
     firstError = err;
-    logger.warn(
-      `[eliza] ${context}: runtime stop failed: ${formatError(err)}`,
-    );
+    logger.warn(`[eliza] ${context}: runtime stop failed: ${formatError(err)}`);
   }
 
   if (adapter && typeof adapter.close === "function") {
@@ -545,7 +543,9 @@ async function ensureTrajectoryLoggerEnabled(
   }
 }
 
-async function patchTrajectoryLoggerAliasCompatibility(runtime: AgentRuntime): Promise<void> {
+async function patchTrajectoryLoggerAliasCompatibility(
+  runtime: AgentRuntime,
+): Promise<void> {
   const runtimeLike = runtime as AgentRuntime & TrajectoryLoggerRuntimeLike;
   const primary = (await collectTrajectoryLoggerCandidates(runtimeLike))[0] as
     | (TrajectoryLoggerControl & TrajectoryLoggerOps)
@@ -2307,9 +2307,7 @@ async function resetPgliteDataDir(dataDir: string): Promise<void> {
   if (existsSync(normalized)) {
     try {
       await fs.rename(normalized, backupDir);
-      logger.warn(
-        `[eliza] Backed up existing PGLite data dir to ${backupDir}`,
-      );
+      logger.warn(`[eliza] Backed up existing PGLite data dir to ${backupDir}`);
     } catch (err) {
       logger.warn(
         `[eliza] Failed to back up PGLite data dir (${formatError(err)}); deleting ${normalized} instead`,
@@ -4174,8 +4172,7 @@ export async function startEliza(
     configureLocalEmbeddingPlugin(localEmbeddingPlugin.plugin, config);
 
     const embeddingModelDir =
-      process.env.MODELS_DIR ??
-      path.join(resolveStateDir(), "models");
+      process.env.MODELS_DIR ?? path.join(resolveStateDir(), "models");
     const embeddingModelFile =
       process.env.LOCAL_EMBEDDING_MODEL ?? "nomic-embed-text-v1.5.Q5_K_M.gguf";
     const modelPath = path.join(embeddingModelDir, embeddingModelFile);

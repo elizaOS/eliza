@@ -63,7 +63,9 @@ const VrmStageLayer = memo(function VrmStageLayer({
 }) {
   const [vrmLoaded, setVrmLoaded] = useState(false);
   const [showVrmFallback, setShowVrmFallback] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState<number | undefined>(undefined);
+  const [loadingProgress, setLoadingProgress] = useState<number | undefined>(
+    undefined,
+  );
   const [loaderFading, setLoaderFading] = useState(false);
   const [loaderHidden, setLoaderHidden] = useState(false);
   const loaderFadingStartedRef = useRef(false);

@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import process from "node:process";
 import { bootElizaRuntime, startEliza } from "../runtime";
 
@@ -14,10 +15,21 @@ Commands:
 `);
 }
 
+function printVersion(): void {
+  const require = createRequire(import.meta.url);
+  const pkg = require("../../package.json") as { version: string };
+  console.log(pkg.version);
+}
+
 export async function runAutonomousCli(
   argv: string[] = process.argv,
 ): Promise<void> {
   const command = argv[2] ?? "serve";
+
+  if (command === "--version" || command === "-v" || command === "version") {
+    printVersion();
+    return;
+  }
 
   if (command === "--help" || command === "-h" || command === "help") {
     printHelp();

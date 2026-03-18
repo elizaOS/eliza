@@ -216,7 +216,9 @@ function RpcConfigSection<T extends string>({
         containerClassName,
         (key: string) => {
           // hack to get t function without breaking hook rules
-          return key === "elizaclouddashboard.ElizaCloud" ? branding.cloudName : key;
+          return key === "elizaclouddashboard.ElizaCloud"
+            ? branding.cloudName
+            : key;
         },
       )}
 
@@ -292,8 +294,7 @@ const CLOUD_SERVICE_DEFS: {
   {
     key: "inference",
     label: "Model Inference",
-    description:
-      `Use ${DEFAULT_BRANDING.cloudName} for LLM calls. Turn off to use your own API keys (Anthropic, OpenAI, etc.)`,
+    description: `Use ${DEFAULT_BRANDING.cloudName} for LLM calls. Turn off to use your own API keys (Anthropic, OpenAI, etc.)`,
   },
   {
     key: "rpc",

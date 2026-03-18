@@ -98,7 +98,7 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
 
-      const svc = await runtime.getService("SWARM_COORDINATOR");
+      const svc = runtime.getService("SWARM_COORDINATOR");
       if (svc) {
         serviceFound = true;
         logger.debug?.(

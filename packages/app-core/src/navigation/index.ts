@@ -2,7 +2,6 @@
  * Navigation — tabs + onboarding.
  */
 
-import { DEFAULT_BRANDING } from "../config/branding";
 import type { LucideIcon } from "lucide-react";
 import {
   Brain,
@@ -15,6 +14,7 @@ import {
   Sparkles,
   Wallet,
 } from "lucide-react";
+import { DEFAULT_BRANDING } from "../config/branding";
 
 /** Apps are only enabled in dev mode; production builds hide this feature. */
 export const APPS_ENABLED = false; // import.meta.env.DEV;
@@ -199,7 +199,10 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized === "/") return "chat";
   if (normalized === "/voice") return "settings";
   // Companion disabled unless explicitly feature-flagged
-  if (!COMPANION_ENABLED && normalized === "/companion") {
+  if (
+    !COMPANION_ENABLED &&
+    (normalized === "/companion" || normalized === "/character-select")
+  ) {
     return "chat";
   }
   // Apps disabled in production builds — redirect to chat

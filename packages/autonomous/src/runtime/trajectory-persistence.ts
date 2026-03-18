@@ -967,7 +967,7 @@ async function resolveTrajectoryLogger(
     }
   }
   if (typeof runtimeLike.getService === "function") {
-    push(await runtimeLike.getService("trajectory_logger"));
+    push(runtimeLike.getService("trajectory_logger"));
   }
 
   if (candidates.length === 0) return null;
@@ -1464,7 +1464,9 @@ async function appendProviderAccess(
   await saveTrajectory(runtime, trajectory);
 }
 
-export async function installDatabaseTrajectoryLogger(runtime: IAgentRuntime): Promise<void> {
+export async function installDatabaseTrajectoryLogger(
+  runtime: IAgentRuntime,
+): Promise<void> {
   if (!hasRuntimeDb(runtime)) {
     console.warn(
       "[trajectory-persistence] installDatabaseTrajectoryLogger: no database adapter found on runtime",

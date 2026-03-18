@@ -68,7 +68,8 @@ describe("VrmAnimationLoader", () => {
     }
 
     Object.assign(globalThis, {
-      DecompressionStream: MockDecompressionStream as typeof DecompressionStream,
+      DecompressionStream:
+        MockDecompressionStream as typeof DecompressionStream,
     });
 
     const pipeThroughSpy = vi.spyOn(Blob.prototype, "stream").mockReturnValue({
@@ -120,7 +121,8 @@ describe("VrmAnimationLoader", () => {
     }
 
     Object.assign(globalThis, {
-      DecompressionStream: MockDecompressionStream as typeof DecompressionStream,
+      DecompressionStream:
+        MockDecompressionStream as typeof DecompressionStream,
     });
 
     const pipeThroughSpy = vi.spyOn(Blob.prototype, "stream").mockReturnValue({

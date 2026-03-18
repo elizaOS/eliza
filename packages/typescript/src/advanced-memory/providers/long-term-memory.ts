@@ -20,9 +20,9 @@ export const longTermMemoryProvider: Provider = {
 		_state: State,
 	): Promise<ProviderResult> => {
 		try {
-			const memoryService = (await runtime.getService(
+			const memoryService = runtime.getService(
 				"memory",
-			)) as MemoryService | null;
+			) as MemoryService | null;
 			if (!memoryService) {
 				return {
 					data: { memoryCount: 0 },

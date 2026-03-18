@@ -209,9 +209,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           (typeof vars.ELIZA_USE_PI_AI === "string"
             ? vars.ELIZA_USE_PI_AI
             : undefined) ||
-          (typeof env?.ELIZA_USE_PI_AI === "string"
-            ? env.ELIZA_USE_PI_AI
-            : "");
+          (typeof env?.ELIZA_USE_PI_AI === "string" ? env.ELIZA_USE_PI_AI : "");
         const piAiOn = ["1", "true", "yes"].includes(
           rawPiAi.trim().toLowerCase(),
         );

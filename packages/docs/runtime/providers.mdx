@@ -283,7 +283,7 @@ const customDataProvider: Provider = {
   get: async (runtime, message, state) => {
     try {
       // Fetch data from service or database
-      const customData = await runtime.getService("customService")?.getData();
+      const customData = runtime.getService("customService")?.getData();
 
       if (!customData) {
         return { values: {}, data: {}, text: "" };

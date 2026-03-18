@@ -23,8 +23,7 @@ export const APP_PAUSE_EVENT = "eliza:app-pause" as const;
 export const CONNECT_EVENT = "eliza:connect" as const;
 
 // ── Voice / config ───────────────────────────────────────────────────────
-export const VOICE_CONFIG_UPDATED_EVENT =
-  "eliza:voice-config-updated" as const;
+export const VOICE_CONFIG_UPDATED_EVENT = "eliza:voice-config-updated" as const;
 export const CHAT_AVATAR_VOICE_EVENT = "eliza:chat-avatar-voice" as const;
 export const APP_EMOTE_EVENT = "eliza:app-emote" as const;
 

@@ -64,10 +64,7 @@ export class ElizaCloudClient {
   }
 
   async listAgents(): Promise<CloudAgent[]> {
-    const res = await this.request<CloudAgent[]>(
-      "GET",
-      "/api/v1/eliza/agents",
-    );
+    const res = await this.request<CloudAgent[]>("GET", "/api/v1/eliza/agents");
     return res.data ?? [];
   }
 

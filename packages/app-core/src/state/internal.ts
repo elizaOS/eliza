@@ -64,6 +64,7 @@ export {
   type LifecycleAction,
   type LoadConversationMessagesResult,
   ONBOARDING_PERMISSION_LABELS,
+  type OnboardingMode,
   type OnboardingNextOptions,
   type OnboardingStep,
   type ShellView,

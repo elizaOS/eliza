@@ -141,8 +141,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
   return {
     name: "eliza",
-    description:
-      "Eliza workspace context, session keys, and lifecycle actions",
+    description: "Eliza workspace context, session keys, and lifecycle actions",
 
     services: [AgentEventService as ServiceClass],
 

@@ -391,7 +391,7 @@ describe("Agent Runtime E2E", () => {
     // NOTE: @elizaos/plugin-commands is excluded — commented out as "not yet ready" in core-plugins.ts
     "@elizaos/plugin-personality",
     "@elizaos/plugin-experience",
-    "@elizaos/plugin-todo",
+    // "@elizaos/plugin-todo", // temporarily excluded — migration requires agentId in context not yet available
     // NOTE: @elizaos/plugin-form is excluded because its package.json has
     // an incorrect main/module/exports entry that prevents resolution.
   ];

@@ -13,16 +13,11 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  type BrandingConfig,
-  BrandingContext,
-  DEFAULT_BRANDING,
-} from "../config/branding";
 import { prepareDraftForSave } from "../actions/character";
 import {
   type AgentStartupDiagnostics,
-  type AllPermissionsState,
   type AgentStatus,
+  type AllPermissionsState,
   type BscTradeExecuteRequest,
   type BscTradeExecuteResponse,
   type BscTradePreflightResponse,
@@ -42,6 +37,7 @@ import {
   type CustomActionDef,
   client,
   type DropStatus,
+  ElizaClient,
   type ExtensionStatus,
   type ImageAttachment,
   type LogEntry,
@@ -49,7 +45,6 @@ import {
   type McpRegistryServerDetail,
   type McpServerConfig,
   type McpServerStatus,
-  ElizaClient,
   type MintResult,
   type OnboardingOptions,
   type PluginInfo,
@@ -97,6 +92,11 @@ import {
   normalizeSlashCommandName,
 } from "../chat";
 import { mapServerTasksToSessions } from "../coding";
+import {
+  type BrandingConfig,
+  BrandingContext,
+  DEFAULT_BRANDING,
+} from "../config/branding";
 import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
 import {
   createTranslator,
@@ -150,6 +150,7 @@ import {
   normalizeUiShellMode,
   normalizeUiTheme,
   ONBOARDING_PERMISSION_LABELS,
+  type OnboardingMode,
   type OnboardingNextOptions,
   type OnboardingStep,
   parseAgentStatusEvent,
@@ -414,9 +415,11 @@ function isRemoteApiBase(baseUrl: string): boolean {
 export function AppProvider({
   children,
   branding: brandingOverrides,
+  onboardingMode: onboardingModeProp = "companion",
 }: {
   children: ReactNode;
   branding?: Partial<BrandingConfig>;
+  onboardingMode?: OnboardingMode;
 }) {
   const branding = useMemo(
     () =>
@@ -804,7 +807,9 @@ export function AppProvider({
 
   // --- Onboarding ---
   const [onboardingStep, setOnboardingStepRaw] = useState<OnboardingStep>(
-    () => loadPersistedOnboardingStep() ?? (branding.appName === "Eliza" ? "connection" : "identity"),
+    () =>
+      loadPersistedOnboardingStep() ??
+      (branding.appName === "Eliza" ? "connection" : "identity"),
   );
   const [onboardingOptions, setOnboardingOptions] =
     useState<OnboardingOptions | null>(null);
@@ -2093,6 +2098,7 @@ export function AppProvider({
     hydrateInitialConversationState,
     loadPlugins,
     requestGreetingWhenRunning,
+    branding.appName,
   ]);
 
   const dismissRestartBanner = useCallback(() => {
@@ -4002,11 +4008,14 @@ export function AppProvider({
           onboardingRemoteToken,
           onboardingSmallModel,
           onboardingLargeModel,
-        }) ?? (onboardingProvider === "elizacloud" ? {
-            kind: "cloud-managed" as const,
-            cloudProvider: "elizacloud",
-            apiKey: onboardingApiKey.trim() || undefined,
-          } : onboardingResumeConnectionRef.current);
+        }) ??
+        (onboardingProvider === "elizacloud"
+          ? {
+              kind: "cloud-managed" as const,
+              cloudProvider: "elizacloud",
+              apiKey: onboardingApiKey.trim() || undefined,
+            }
+          : onboardingResumeConnectionRef.current);
       if (!connection) {
         throw new Error("Onboarding connection is incomplete");
       }
@@ -4048,7 +4057,9 @@ export function AppProvider({
       onboardingResumeConnectionRef.current = null;
       onboardingCompletionCommittedRef.current = true;
       setOnboardingComplete(true);
-      setTab("character-select");
+      setTab(
+        onboardingModeProp === "elizacloudonly" ? "chat" : "character-select",
+      );
     } catch (err) {
       await alertDesktopMessage({
         title: "Setup Failed",
@@ -4085,20 +4096,69 @@ export function AppProvider({
     setTab,
     requestGreetingWhenRunning,
     waitForOnboardingGreetingBootstrap,
+    onboardingModeProp,
+  ]);
+
+  /**
+   * Lightweight onboarding completion for cloud-only mode.
+   * Submits a minimal config (cloud-managed connection) and transitions to chat.
+   */
+  const handleCloudOnboardingFinish = useCallback(async () => {
+    if (onboardingFinishBusyRef.current) return;
+    onboardingFinishBusyRef.current = true;
+    setOnboardingRestarting(true);
+    try {
+      await client.submitOnboarding({
+        name: "Eliza",
+        sandboxMode: "off" as const,
+        bio: ["An autonomous AI agent."],
+        systemPrompt:
+          "You are Eliza, an autonomous AI agent powered by elizaOS.",
+        connection: {
+          kind: "cloud-managed" as const,
+          cloudProvider: "elizacloud",
+        },
+      });
+      try {
+        setAgentStatus(await client.restartAgent());
+      } catch {
+        /* ignore restart errors */
+      }
+      await waitForOnboardingGreetingBootstrap();
+      const greetConvId = await hydrateInitialConversationState();
+      if (greetConvId) {
+        void requestGreetingWhenRunning(greetConvId, { showOverlay: true });
+      }
+      clearPersistedOnboardingStep();
+      onboardingCompletionCommittedRef.current = true;
+      setOnboardingComplete(true);
+      setTab("chat");
+    } catch (err) {
+      await alertDesktopMessage({
+        title: "Setup Failed",
+        message: `${
+          err instanceof Error ? err.message : "network error"
+        }. Please try again.`,
+        type: "error",
+      });
+    } finally {
+      onboardingFinishBusyRef.current = false;
+      setOnboardingRestarting(false);
+    }
+  }, [
+    hydrateInitialConversationState,
+    setTab,
+    requestGreetingWhenRunning,
+    waitForOnboardingGreetingBootstrap,
   ]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: t is stable but defined later
   const handleOnboardingNext = useCallback(
     async (options?: OnboardingNextOptions) => {
-      const STEP_ORDER: OnboardingStep[] = branding.appName === "Eliza"
-        ? ["connection", "activate"]
-        : [
-            "identity",
-            "connection",
-            "rpc",
-            "senses",
-            "activate",
-          ];
+      const STEP_ORDER: OnboardingStep[] =
+        branding.appName === "Eliza"
+          ? ["connection", "activate"]
+          : ["identity", "connection", "rpc", "senses", "activate"];
 
       // Default agent name to Rin if none set after identity step
       if (onboardingStep === "identity" && !onboardingName) {
@@ -4114,11 +4174,12 @@ export function AppProvider({
       // At senses step, check permissions unless bypass
       if (onboardingStep === "senses" && !options?.allowPermissionBypass) {
         try {
-          let permissions = await invokeDesktopBridgeRequest<AllPermissionsState>({
-            rpcMethod: "permissionsGetAll",
-            ipcChannel: "permissions:getAll",
-            params: { forceRefresh: true },
-          });
+          let permissions =
+            await invokeDesktopBridgeRequest<AllPermissionsState>({
+              rpcMethod: "permissionsGetAll",
+              ipcChannel: "permissions:getAll",
+              params: { forceRefresh: true },
+            });
 
           if (!permissions) {
             permissions = await client.getPermissions();
@@ -4127,7 +4188,10 @@ export function AppProvider({
               // Ensure backend knows about desktop permissions so capability validation passes
               await client.updatePermissionsState(permissions);
             } catch (err) {
-              console.warn("Could not sync permissions to backend during check", err);
+              console.warn(
+                "Could not sync permissions to backend during check",
+                err,
+              );
             }
           }
 
@@ -4170,21 +4234,16 @@ export function AppProvider({
   );
 
   const handleOnboardingBack = useCallback(() => {
-    const STEP_ORDER: OnboardingStep[] = branding.appName === "Eliza"
-      ? ["connection", "activate"]
-      : [
-          "identity",
-          "connection",
-          "rpc",
-          "senses",
-          "activate",
-        ];
+    const STEP_ORDER: OnboardingStep[] =
+      branding.appName === "Eliza"
+        ? ["connection", "activate"]
+        : ["identity", "connection", "rpc", "senses", "activate"];
 
     const currentIndex = STEP_ORDER.indexOf(onboardingStep);
     if (currentIndex > 0) {
       setOnboardingStep(STEP_ORDER[currentIndex - 1]);
     }
-  }, [onboardingStep, setOnboardingStep]);
+  }, [onboardingStep, setOnboardingStep, branding.appName]);
 
   const handleOnboardingUseLocalBackend = useCallback(() => {
     client.setBaseUrl(null);
@@ -5442,6 +5501,7 @@ export function AppProvider({
       const shouldStartAtCharacterSelect = shouldStartAtCharacterSelectOnLaunch(
         {
           onboardingNeedsOptions,
+          onboardingMode: onboardingModeProp,
           navPath,
           urlTab,
         },
@@ -5575,6 +5635,7 @@ export function AppProvider({
     uiTheme,
     connected,
     agentStatus,
+    onboardingMode: onboardingModeProp,
     onboardingComplete,
     onboardingLoading,
     startupPhase,
@@ -5881,6 +5942,7 @@ export function AppProvider({
     handleCharacterMessageExamplesInput,
     handleOnboardingNext,
     handleOnboardingBack,
+    handleCloudOnboardingFinish,
     handleOnboardingRemoteConnect,
     handleOnboardingUseLocalBackend,
     handleCloudLogin,

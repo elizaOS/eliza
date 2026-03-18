@@ -141,7 +141,10 @@ describe("home main entry helpers", () => {
     dispatchShareTarget(payload);
 
     expect(window.__ELIZA_SHARE_QUEUE__).toEqual([payload]);
-    expect(dispatchElizaEventMock).toHaveBeenCalledWith("share-target", payload);
+    expect(dispatchElizaEventMock).toHaveBeenCalledWith(
+      "share-target",
+      payload,
+    );
   });
 
   it("routes chat deep links through the hash router", () => {

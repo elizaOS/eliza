@@ -53,9 +53,9 @@ export const sendMessageAction: Action = {
       };
     }
 
-    const service = (await runtime.getService(
+    const service = runtime.getService(
       source,
-    )) as MessageTransportService | null;
+    ) as MessageTransportService | null;
     if (!service) {
       return {
         text: `Message service '${source}' is not available.`,

@@ -60,12 +60,15 @@ export function CloudConnectionStatus({
 }) {
   const { t } = useApp();
   const branding = useBranding();
-  const resolvedConnectedText = connectedText ?? `Connected to ${branding.cloudName}`;
+  const resolvedConnectedText =
+    connectedText ?? `Connected to ${branding.cloudName}`;
   return (
     <div className="flex items-center justify-between py-2.5 px-3 border border-[var(--border)] bg-[var(--bg-muted)]">
       {connected ? (
         <>
-          <span className="text-xs text-[var(--text)]">{resolvedConnectedText}</span>
+          <span className="text-xs text-[var(--text)]">
+            {resolvedConnectedText}
+          </span>
           <span className="rounded-full border border-green-600 bg-green-600/10 px-1.5 py-0.5 text-[10px] text-[var(--text)]">
             {t("appsview.Active")}
           </span>

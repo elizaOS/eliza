@@ -80,7 +80,9 @@ export function SecurityPageView() {
       setEntries(response.entries);
       setTotalBuffered(response.totalBuffered);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load audit log.");
+      setError(
+        err instanceof Error ? err.message : "Failed to load audit log.",
+      );
     } finally {
       setLoading(false);
     }
@@ -93,7 +95,10 @@ export function SecurityPageView() {
   const counts = useMemo(() => summarizeCounts(entries), [entries]);
 
   return (
-    <section data-testid="security-audit-view" className="flex h-full flex-col gap-4">
+    <section
+      data-testid="security-audit-view"
+      className="flex h-full flex-col gap-4"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="m-0 text-lg font-bold">Security Audit</h2>
@@ -171,12 +176,12 @@ export function SecurityPageView() {
           </div>
         ) : (
           <div className="divide-y divide-border/50">
-            {entries.map((entry, index) => {
+            {entries.map((entry) => {
               const metadata = metadataPairs(entry);
               const severityStyle = SEVERITY_STYLES[entry.severity];
               return (
                 <article
-                  key={`${entry.timestamp}-${entry.type}-${index}`}
+                  key={`${entry.timestamp}-${entry.type}`}
                   className="px-4 py-4"
                 >
                   <div className="flex flex-wrap items-start gap-3">
@@ -203,7 +208,9 @@ export function SecurityPageView() {
                   {entry.traceId ? (
                     <div className="mt-2 text-xs text-[var(--muted)]">
                       Trace:{" "}
-                      <span className="font-mono text-txt">{entry.traceId}</span>
+                      <span className="font-mono text-txt">
+                        {entry.traceId}
+                      </span>
                     </div>
                   ) : null}
 

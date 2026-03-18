@@ -1,7 +1,9 @@
 import os from "node:os";
 import path from "node:path";
 
-export function getElizaNamespace(env: NodeJS.ProcessEnv = process.env): string {
+export function getElizaNamespace(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
   const override = env.ELIZA_NAMESPACE?.trim();
   return override && override.length > 0 ? override : "eliza";
 }
@@ -13,7 +15,6 @@ function stateDir(
   const namespace = getElizaNamespace(env);
   return path.join(homedir(), `.${namespace}`);
 }
-
 
 export function resolveUserPath(input: string): string {
   const trimmed = input.trim();

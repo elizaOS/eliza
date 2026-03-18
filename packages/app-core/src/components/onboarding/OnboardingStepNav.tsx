@@ -7,12 +7,12 @@ export function OnboardingStepNav() {
 
   const isEliza = branding.appName === "Eliza";
   const activeSteps = isEliza
-    ? ONBOARDING_STEPS.filter((s) => s.id === "connection" || s.id === "activate")
+    ? ONBOARDING_STEPS.filter(
+        (s) => s.id === "connection" || s.id === "activate",
+      )
     : ONBOARDING_STEPS;
 
-  const currentIndex = activeSteps.findIndex(
-    (s) => s.id === onboardingStep,
-  );
+  const currentIndex = activeSteps.findIndex((s) => s.id === onboardingStep);
 
   return (
     <div className="onboarding-left">

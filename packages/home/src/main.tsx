@@ -345,7 +345,7 @@ function mountReactApp(): void {
 
   createRoot(rootEl).render(
     <StrictMode>
-      <AppProvider>
+      <AppProvider onboardingMode="elizacloudonly">
         <App />
       </AppProvider>
     </StrictMode>,

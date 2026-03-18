@@ -341,9 +341,7 @@ export function debugLogResolvedContext(
       );
     }
     if (validation.emptyFields.length > 0) {
-      log(
-        `[eliza:debug]   empty fields: ${validation.emptyFields.join(", ")}`,
-      );
+      log(`[eliza:debug]   empty fields: ${validation.emptyFields.join(", ")}`);
     }
     if (validation.nonSerializableFields.length > 0) {
       log(
