@@ -1093,9 +1093,9 @@ const BLOCKED_ENV_KEYS = new Set([
   "HOME",
   "SHELL",
   // Auth / step-up tokens — writable via API would grant privilege escalation
-  "MILADY_API_TOKEN",
-  "MILADY_WALLET_EXPORT_TOKEN",
-  "MILADY_TERMINAL_RUN_TOKEN",
+  "ELIZA_API_TOKEN",
+  "ELIZA_WALLET_EXPORT_TOKEN",
+  "ELIZA_TERMINAL_RUN_TOKEN",
   "HYPERSCAPE_AUTH_TOKEN",
   // Wallet private keys — writable via API would enable key theft / replacement
   "EVM_PRIVATE_KEY",
@@ -1948,7 +1948,7 @@ function readBundledPluginPackageMetadata(
 // ---------------------------------------------------------------------------
 
 /** Cache key for persisting skill enable/disable state in the agent database. */
-const SKILL_PREFS_CACHE_KEY = "milady:skill-preferences";
+const SKILL_PREFS_CACHE_KEY = "eliza:skill-preferences";
 
 /** Shape stored in the cache: maps skill ID → enabled flag. */
 type SkillPreferencesMap = Record<string, boolean>;
@@ -1991,7 +1991,7 @@ async function saveSkillPreferences(
 // Skill scan acknowledgments — tracks user review of security findings
 // ---------------------------------------------------------------------------
 
-const SKILL_ACK_CACHE_KEY = "milady:skill-scan-acknowledgments";
+const SKILL_ACK_CACHE_KEY = "eliza:skill-scan-acknowledgments";
 
 type SkillAcknowledgmentMap = Record<
   string,
@@ -2260,7 +2260,7 @@ async function discoverSkills(
     }
   }
 
-  // Managed skills in the state dir (~/.milady/skills by default)
+  // Managed skills in the state dir (~/.eliza/skills by default)
   const managedSkills = path.join(resolveStateDir(), "skills");
   if (fs.existsSync(managedSkills)) {
     skillsDirs.add(managedSkills);
@@ -2739,7 +2739,7 @@ export function injectApiBaseIntoHtml(
   if (headCloseIndex < 0) return html;
 
   const injection = Buffer.from(
-    `<script>window.__MILADY_API_BASE__=${JSON.stringify(trimmedBase)};</script>`,
+    `<script>window.__ELIZA_API_BASE__=${JSON.stringify(trimmedBase)};</script>`,
   );
 
   return Buffer.concat([
@@ -2818,7 +2818,7 @@ function serveStaticUi(
   // API base so the UI client sends requests to the correct path prefix.
   const html = injectApiBaseIntoHtml(
     uiIndexHtml,
-    process.env.MILADY_EXTERNAL_BASE_URL,
+    process.env.ELIZA_EXTERNAL_BASE_URL,
   );
 
   sendStaticResponse(
@@ -5203,7 +5203,7 @@ export function canUseLocalTradeExecution(
 
 type AgentAutomationMode = "connectors-only" | "full";
 
-const AGENT_AUTOMATION_HEADER = "x-milady-agent-action";
+const AGENT_AUTOMATION_HEADER = "x-eliza-agent-action";
 const AGENT_AUTOMATION_MODES = new Set<AgentAutomationMode>([
   "connectors-only",
   "full",
@@ -5375,7 +5375,7 @@ export function isAllowedHost(req: http.IncomingMessage): boolean {
 
   if (!hostname) return true;
 
-  const bindHost = (process.env.MILADY_API_BIND ?? "").trim().toLowerCase();
+  const bindHost = (process.env.ELIZA_API_BIND ?? "").trim().toLowerCase();
 
   // When binding on all interfaces (0.0.0.0 / ::), any Host is acceptable —
   // ensureApiTokenForBindHost already enforces a token for non-loopback binds.
@@ -5388,9 +5388,9 @@ export function isAllowedHost(req: http.IncomingMessage): boolean {
     return true;
   }
 
-  // Allow explicitly listed extra hostnames via MILADY_ALLOWED_HOSTS
+  // Allow explicitly listed extra hostnames via ELIZA_ALLOWED_HOSTS
   // (comma-separated, e.g. "myserver.local,192.168.1.10").
-  const extra = process.env.MILADY_ALLOWED_HOSTS;
+  const extra = process.env.ELIZA_ALLOWED_HOSTS;
   if (extra) {
     const allowed = extra
       .split(",")
@@ -5409,11 +5409,11 @@ export function resolveCorsOrigin(origin?: string): string | null {
 
   // When bound to a wildcard address, allow any origin. Non-loopback binds still
   // require an explicit token, so this only relaxes the browser origin check.
-  const bindHost = (process.env.MILADY_API_BIND ?? "").trim().toLowerCase();
+  const bindHost = (process.env.ELIZA_API_BIND ?? "").trim().toLowerCase();
   if (WILDCARD_BIND_RE.test(stripPort(bindHost))) return trimmed;
 
   // Explicit allowlist via env (comma-separated)
-  const extra = process.env.MILADY_ALLOWED_ORIGINS;
+  const extra = process.env.ELIZA_ALLOWED_ORIGINS;
   if (extra) {
     const allow = extra
       .split(",")
@@ -5425,7 +5425,7 @@ export function resolveCorsOrigin(origin?: string): string | null {
   if (LOCAL_ORIGIN_RE.test(trimmed)) return trimmed;
   if (APP_ORIGIN_RE.test(trimmed)) return trimmed;
   if (trimmed === "null" || trimmed === "file://") {
-    if (process.env.MILADY_ALLOW_NULL_ORIGIN === "1") {
+    if (process.env.ELIZA_ALLOW_NULL_ORIGIN === "1") {
       return "null";
     }
   }
@@ -5451,7 +5451,7 @@ function applyCors(
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Milady-Token, X-Api-Key, X-Milady-Export-Token, X-Milady-Client-Id, X-Milady-Terminal-Token, X-Milady-UI-Language",
+      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language",
     );
   }
 
@@ -5477,8 +5477,8 @@ const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
 
 function pairingEnabled(): boolean {
   return (
-    Boolean(process.env.MILADY_API_TOKEN?.trim()) &&
-    process.env.MILADY_PAIRING_DISABLED !== "1"
+    Boolean(process.env.ELIZA_API_TOKEN?.trim()) &&
+    process.env.ELIZA_PAIRING_DISABLED !== "1"
   );
 }
 
@@ -5536,8 +5536,8 @@ export function extractAuthToken(req: http.IncomingMessage): string | null {
   }
 
   const header =
-    (typeof req.headers["x-milady-token"] === "string" &&
-      req.headers["x-milady-token"]) ||
+    (typeof req.headers["x-eliza-token"] === "string" &&
+      req.headers["x-eliza-token"]) ||
     (typeof req.headers["x-api-key"] === "string" && req.headers["x-api-key"]);
   if (typeof header === "string" && header.trim()) return header.trim();
 
@@ -5565,7 +5565,7 @@ export function resolveTerminalRunClientId(
   body: { clientId?: unknown } | null | undefined,
 ): string | null {
   const headerClientId = normalizeWsClientId(
-    firstHeaderValue(req.headers["x-milady-client-id"]),
+    firstHeaderValue(req.headers["x-eliza-client-id"]),
   );
   if (headerClientId) return headerClientId;
   return normalizeWsClientId(body?.clientId);
@@ -5629,24 +5629,24 @@ function isLoopbackBindHost(host: string): boolean {
 }
 
 export function ensureApiTokenForBindHost(host: string): void {
-  const token = process.env.MILADY_API_TOKEN?.trim();
+  const token = process.env.ELIZA_API_TOKEN?.trim();
   if (token) return;
   if (isLoopbackBindHost(host)) return;
 
   const generated = crypto.randomBytes(32).toString("hex");
-  process.env.MILADY_API_TOKEN = generated;
+  process.env.ELIZA_API_TOKEN = generated;
 
   logger.warn(
-    `[milady-api] MILADY_API_BIND=${host} is non-loopback and MILADY_API_TOKEN is unset.`,
+    `[milady-api] ELIZA_API_BIND=${host} is non-loopback and ELIZA_API_TOKEN is unset.`,
   );
   const tokenFingerprint = `${generated.slice(0, 4)}...${generated.slice(-4)}`;
   logger.warn(
-    `[milady-api] Generated temporary MILADY_API_TOKEN (${tokenFingerprint}) for this process. Set MILADY_API_TOKEN explicitly to override.`,
+    `[milady-api] Generated temporary ELIZA_API_TOKEN (${tokenFingerprint}) for this process. Set ELIZA_API_TOKEN explicitly to override.`,
   );
 }
 
 export function isAuthorized(req: http.IncomingMessage): boolean {
-  const expected = process.env.MILADY_API_TOKEN?.trim();
+  const expected = (process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN)?.trim();
   if (!expected) return true;
   const provided = extractAuthToken(req);
   if (!provided) return false;
@@ -5711,18 +5711,18 @@ export function resolveWalletExportRejection(
     };
   }
 
-  const expected = process.env.MILADY_WALLET_EXPORT_TOKEN?.trim();
+  const expected = process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim();
   if (!expected) {
     return {
       status: 403,
       reason:
-        "Wallet export is disabled. Set MILADY_WALLET_EXPORT_TOKEN to enable secure exports.",
+        "Wallet export is disabled. Set ELIZA_WALLET_EXPORT_TOKEN to enable secure exports.",
     };
   }
 
   const headerToken =
-    typeof req.headers["x-milady-export-token"] === "string"
-      ? req.headers["x-milady-export-token"].trim()
+    typeof req.headers["x-eliza-export-token"] === "string"
+      ? req.headers["x-eliza-export-token"].trim()
       : "";
   const bodyToken =
     typeof body.exportToken === "string" ? body.exportToken.trim() : "";
@@ -5732,7 +5732,7 @@ export function resolveWalletExportRejection(
     return {
       status: 401,
       reason:
-        "Missing export token. Provide X-Milady-Export-Token header or exportToken in request body.",
+        "Missing export token. Provide X-Eliza-Export-Token header or exportToken in request body.",
     };
   }
 
@@ -5756,8 +5756,8 @@ export function resolveTerminalRunRejection(
   req: http.IncomingMessage,
   body: TerminalRunRequestBody,
 ): TerminalRunRejection | null {
-  const expected = process.env.MILADY_TERMINAL_RUN_TOKEN?.trim();
-  const apiTokenEnabled = Boolean(process.env.MILADY_API_TOKEN?.trim());
+  const expected = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
+  const apiTokenEnabled = Boolean(process.env.ELIZA_API_TOKEN?.trim());
 
   // Compatibility mode: local loopback sessions without API token keep
   // existing behavior unless an explicit terminal token is configured.
@@ -5769,13 +5769,13 @@ export function resolveTerminalRunRejection(
     return {
       status: 403,
       reason:
-        "Terminal run is disabled for token-authenticated API sessions. Set MILADY_TERMINAL_RUN_TOKEN to enable command execution.",
+        "Terminal run is disabled for token-authenticated API sessions. Set ELIZA_TERMINAL_RUN_TOKEN to enable command execution.",
     };
   }
 
   const headerToken =
-    typeof req.headers["x-milady-terminal-token"] === "string"
-      ? req.headers["x-milady-terminal-token"].trim()
+    typeof req.headers["x-eliza-terminal-token"] === "string"
+      ? req.headers["x-eliza-terminal-token"].trim()
       : "";
   const bodyToken =
     typeof body.terminalToken === "string" ? body.terminalToken.trim() : "";
@@ -5785,7 +5785,7 @@ export function resolveTerminalRunRejection(
     return {
       status: 401,
       reason:
-        "Missing terminal token. Provide X-Milady-Terminal-Token header or terminalToken in request body.",
+        "Missing terminal token. Provide X-Eliza-Terminal-Token header or terminalToken in request body.",
     };
   }
 
@@ -5800,7 +5800,7 @@ export function resolveTerminalRunRejection(
 }
 
 function extractWsQueryToken(url: URL): string | null {
-  const allowQueryToken = process.env.MILADY_ALLOW_WS_QUERY_TOKEN === "1";
+  const allowQueryToken = process.env.ELIZA_ALLOW_WS_QUERY_TOKEN === "1";
   if (!allowQueryToken) return null;
 
   const token =
@@ -5814,7 +5814,7 @@ function isWebSocketAuthorized(
   request: http.IncomingMessage,
   url: URL,
 ): boolean {
-  const expected = process.env.MILADY_API_TOKEN?.trim();
+  const expected = process.env.ELIZA_API_TOKEN?.trim();
   if (!expected) return true;
 
   const headerToken = extractAuthToken(request);
@@ -5852,7 +5852,7 @@ export function resolveWebSocketUpgradeRejection(
   return null;
 }
 
-const RESET_STATE_ALLOWED_SEGMENTS = new Set([".milady", "milady"]);
+const RESET_STATE_ALLOWED_SEGMENTS = new Set([".eliza", "milady"]);
 
 function hasAllowedResetSegment(resolvedState: string): boolean {
   return resolvedState
@@ -7336,7 +7336,7 @@ async function handleRequest(
       res,
       {
         error: "Forbidden — invalid Host header",
-        hint: `To allow this host, set MILADY_ALLOWED_HOSTS=${incomingHost} in your environment, or access via http://localhost`,
+        hint: `To allow this host, set ELIZA_ALLOWED_HOSTS=${incomingHost} in your environment, or access via http://localhost`,
         docs: "https://docs.milady.ai/configuration#allowed-hosts",
       },
       403,
@@ -7445,13 +7445,13 @@ async function handleRequest(
 
     // Helper: clear pi-ai mode
     const clearPiAi = () => {
-      delete process.env.MILADY_USE_PI_AI;
-      delete envCfg.MILADY_USE_PI_AI;
+      delete process.env.ELIZA_USE_PI_AI;
+      delete envCfg.ELIZA_USE_PI_AI;
 
       const envRoot = config.env as Record<string, unknown>;
       const vars = envRoot.vars;
       if (vars && typeof vars === "object" && !Array.isArray(vars)) {
-        delete (vars as Record<string, unknown>).MILADY_USE_PI_AI;
+        delete (vars as Record<string, unknown>).ELIZA_USE_PI_AI;
       }
 
       if (state.runtime?.character?.secrets) {
@@ -7459,7 +7459,7 @@ async function handleRequest(
           string,
           unknown
         >;
-        delete secrets.MILADY_USE_PI_AI;
+        delete secrets.ELIZA_USE_PI_AI;
       }
     };
 
@@ -7558,8 +7558,8 @@ async function handleRequest(
         disableCloudInference();
         await clearSubscriptions();
         clearOtherApiKeys();
-        process.env.MILADY_USE_PI_AI = "1";
-        envCfg.MILADY_USE_PI_AI = "1";
+        process.env.ELIZA_USE_PI_AI = "1";
+        envCfg.ELIZA_USE_PI_AI = "1";
 
         const envRoot = config.env as Record<string, unknown>;
         const vars =
@@ -7568,7 +7568,7 @@ async function handleRequest(
           !Array.isArray(envRoot.vars)
             ? (envRoot.vars as Record<string, unknown>)
             : {};
-        vars.MILADY_USE_PI_AI = "1";
+        vars.ELIZA_USE_PI_AI = "1";
         envRoot.vars = vars;
       } else if (
         normalizedProvider === "openai-codex" ||
@@ -8138,14 +8138,14 @@ async function handleRequest(
       (envCfg as Record<string, unknown>).vars = vars;
 
       const clearPiAiFlag = () => {
-        delete vars.MILADY_USE_PI_AI;
-        delete (config.env as Record<string, string>).MILADY_USE_PI_AI;
-        delete process.env.MILADY_USE_PI_AI;
+        delete vars.ELIZA_USE_PI_AI;
+        delete (config.env as Record<string, string>).ELIZA_USE_PI_AI;
+        delete process.env.ELIZA_USE_PI_AI;
       };
 
       if (runMode === "local" && providerId === "pi-ai") {
-        vars.MILADY_USE_PI_AI = "1";
-        process.env.MILADY_USE_PI_AI = "1";
+        vars.ELIZA_USE_PI_AI = "1";
+        process.env.ELIZA_USE_PI_AI = "1";
 
         // Optional primary model override (provider/model).
         if (!config.agents) config.agents = {};
@@ -10964,7 +10964,7 @@ async function handleRequest(
       walletAddress,
       whitelisted,
       contractAddress:
-        process.env.MILADY_NFT_CONTRACT?.trim() ||
+        process.env.ELIZA_NFT_CONTRACT?.trim() ||
         "0x5Af0D9827E0c53E4799BB226655A1de152A425a5",
       message: whitelisted
         ? "Address is whitelisted for mint."
@@ -11418,7 +11418,7 @@ async function handleRequest(
   }
 
   // ── POST /api/avatar/vrm ─────────────────────────────────────────────────
-  // Upload a custom VRM avatar file. Saved to ~/.milady/avatars/custom.vrm.
+  // Upload a custom VRM avatar file. Saved to ~/.eliza/avatars/custom.vrm.
   if (method === "POST" && pathname === "/api/avatar/vrm") {
     const MAX_VRM_BYTES = 50 * 1024 * 1024; // 50 MB
     const rawBody = await readRequestBodyBuffer(req, {
@@ -11476,7 +11476,7 @@ async function handleRequest(
   }
 
   // ── POST /api/avatar/background ──────────────────────────────────────────
-  // Upload a custom background image. Saved to ~/.milady/avatars/custom-background.<ext>.
+  // Upload a custom background image. Saved to ~/.eliza/avatars/custom-background.<ext>.
   if (method === "POST" && pathname === "/api/avatar/background") {
     const MAX_BG_BYTES = 10 * 1024 * 1024; // 10 MB
     const rawBody = await readRequestBodyBuffer(req, {
@@ -11647,9 +11647,9 @@ async function handleRequest(
       // merge, even though BLOCKED_ENV_KEYS also blocks them during process.env
       // sync below. Keeping both guards prevents accidental persistence if one
       // path changes in future refactors.
-      delete envPatch.MILADY_API_TOKEN;
-      delete envPatch.MILADY_WALLET_EXPORT_TOKEN;
-      delete envPatch.MILADY_TERMINAL_RUN_TOKEN;
+      delete envPatch.ELIZA_API_TOKEN;
+      delete envPatch.ELIZA_WALLET_EXPORT_TOKEN;
+      delete envPatch.ELIZA_TERMINAL_RUN_TOKEN;
       delete envPatch.HYPERSCAPE_AUTH_TOKEN;
       delete envPatch.EVM_PRIVATE_KEY;
       delete envPatch.SOLANA_PRIVATE_KEY;
@@ -11660,9 +11660,9 @@ async function handleRequest(
         !Array.isArray(envPatch.vars)
       ) {
         const vars = envPatch.vars as Record<string, unknown>;
-        delete vars.MILADY_API_TOKEN;
-        delete vars.MILADY_WALLET_EXPORT_TOKEN;
-        delete vars.MILADY_TERMINAL_RUN_TOKEN;
+        delete vars.ELIZA_API_TOKEN;
+        delete vars.ELIZA_WALLET_EXPORT_TOKEN;
+        delete vars.ELIZA_TERMINAL_RUN_TOKEN;
         delete vars.HYPERSCAPE_AUTH_TOKEN;
         delete vars.EVM_PRIVATE_KEY;
         delete vars.SOLANA_PRIVATE_KEY;
@@ -15703,7 +15703,7 @@ async function handleRequest(
     if (!targetClientId) {
       error(
         res,
-        "Missing client id. Provide X-Milady-Client-Id header or clientId in the request body.",
+        "Missing client id. Provide X-Eliza-Client-Id header or clientId in the request body.",
         400,
       );
       return;
@@ -15848,7 +15848,7 @@ async function handleRequest(
 
     // Security gate: shell and code handlers execute arbitrary commands or
     // code on the host machine, and the resulting action persists in config
-    // (survives restarts). Require the MILADY_TERMINAL_RUN_TOKEN to prove
+    // (survives restarts). Require the ELIZA_TERMINAL_RUN_TOKEN to prove
     // the caller has explicit operator authority for code execution.
     if (handler.type === "shell" || handler.type === "code") {
       const terminalRejection = resolveTerminalRunRejection(
@@ -16244,7 +16244,7 @@ export async function startApiServer(opts?: {
 
   const port = opts?.port ?? 2138;
   const host =
-    (process.env.MILADY_API_BIND ?? "127.0.0.1").trim() || "127.0.0.1";
+    (process.env.ELIZA_API_BIND ?? "127.0.0.1").trim() || "127.0.0.1";
   ensureApiTokenForBindHost(host);
   console.log(`[milady-api] Token check done (${Date.now() - apiStartTime}ms)`);
 

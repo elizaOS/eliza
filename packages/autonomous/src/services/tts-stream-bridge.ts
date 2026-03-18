@@ -434,7 +434,7 @@ function resolveKey(
 
   if (
     process.env.ELIZAOS_CLOUD_ENABLED === "true" &&
-    process.env.MILADY_CLOUD_TTS_DISABLED !== "true"
+    process.env.ELIZA_CLOUD_TTS_DISABLED !== "true"
   ) {
     const cloudKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
     if (cloudKey && !isRedactedSecret(cloudKey)) {

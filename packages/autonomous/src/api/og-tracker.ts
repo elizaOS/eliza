@@ -1,7 +1,7 @@
 /**
  * OG tracking code system.
  *
- * Silently writes a unique identifier to ~/.milady/.og on first run.
+ * Silently writes a unique identifier to ~/.eliza/.og on first run.
  * The code is a random UUID. A set of 100 "winning" codes can be
  * generated deterministically from a secret seed (in MiladyMaker scripts).
  * This file is planted now; whitelist eligibility is revealed in a future update.
@@ -15,7 +15,7 @@ import { resolveStateDir } from "../config/paths";
 const OG_FILENAME = ".og";
 
 /**
- * Write a random tracking UUID to ~/.milady/.og if it does not already exist.
+ * Write a random tracking UUID to ~/.eliza/.og if it does not already exist.
  * Called once during startup. Silent on failure.
  */
 export function initializeOGCode(): void {

@@ -92,8 +92,8 @@ function setPrimaryModel(
 
 function clearPiAiFlag(config: MutableMiladyConfig): void {
   const env = ensureEnv(config);
-  delete env.MILADY_USE_PI_AI;
-  delete process.env.MILADY_USE_PI_AI;
+  delete env.ELIZA_USE_PI_AI;
+  delete process.env.ELIZA_USE_PI_AI;
 }
 
 function readString(
@@ -129,7 +129,7 @@ function resolveConfiguredLocalProvider(
     return storedSubscriptionProvider;
   }
 
-  const piAiEnabled = readEnvString(config, "MILADY_USE_PI_AI");
+  const piAiEnabled = readEnvString(config, "ELIZA_USE_PI_AI");
   if (piAiEnabled && piAiEnabled !== "0" && piAiEnabled !== "false") {
     return "pi-ai";
   }
@@ -437,7 +437,7 @@ export async function applyOnboardingConnectionConfig(
   clearSubscriptionProviderConfig(config);
 
   if (normalizedProvider === "pi-ai") {
-    setEnvValue(config, "MILADY_USE_PI_AI", "1");
+    setEnvValue(config, "ELIZA_USE_PI_AI", "1");
   } else {
     clearPiAiFlag(config);
   }

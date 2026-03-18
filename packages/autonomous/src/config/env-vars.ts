@@ -12,7 +12,7 @@ import type { MiladyConfig } from "./types";
  *   - Process-level code injection (NODE_OPTIONS, LD_PRELOAD, …)
  *   - TLS / proxy hijack (NODE_TLS_REJECT_UNAUTHORIZED, HTTP_PROXY, …)
  *   - Module resolution (NODE_PATH)
- *   - Privilege escalation tokens (MILADY_API_TOKEN, …)
+ *   - Privilege escalation tokens (ELIZA_API_TOKEN, …)
  *   - Wallet private keys
  *   - System paths
  */
@@ -36,9 +36,9 @@ const BLOCKED_STARTUP_ENV_KEYS = new Set([
   "PATH",
   "HOME",
   "SHELL",
-  "MILADY_API_TOKEN",
-  "MILADY_WALLET_EXPORT_TOKEN",
-  "MILADY_TERMINAL_RUN_TOKEN",
+  "ELIZA_API_TOKEN",
+  "ELIZA_WALLET_EXPORT_TOKEN",
+  "ELIZA_TERMINAL_RUN_TOKEN",
   "HYPERSCAPE_AUTH_TOKEN",
   "EVM_PRIVATE_KEY",
   "SOLANA_PRIVATE_KEY",

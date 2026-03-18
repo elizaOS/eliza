@@ -72,7 +72,7 @@ export async function verifyMiladyHolder(
   walletAddress: string,
 ): Promise<NftVerificationResult> {
   const contractAddress =
-    process.env.MILADY_NFT_CONTRACT?.trim() || MILADY_CONTRACT;
+    process.env.ELIZA_NFT_CONTRACT?.trim() || MILADY_CONTRACT;
 
   // ── Input validation ───────────────────────────────────────────────
   if (!walletAddress || typeof walletAddress !== "string") {
@@ -166,7 +166,7 @@ export async function verifyAndWhitelistHolder(
       verified: true,
       balance: -1, // -1 indicates "already verified, balance not re-checked"
       contractAddress:
-        process.env.MILADY_NFT_CONTRACT?.trim() || MILADY_CONTRACT,
+        process.env.ELIZA_NFT_CONTRACT?.trim() || MILADY_CONTRACT,
       error: null,
     };
   }

@@ -406,7 +406,7 @@ export type MemoryQmdLimitsConfig = {
 // --- Database types ---
 
 export type PgliteConfig = {
-  /** Custom PGLite data directory. Default: ~/.milady/workspace/.eliza/.elizadb */
+  /** Custom PGLite data directory. Default: ~/.eliza/workspace/.eliza/.elizadb */
   dataDir?: string;
 };
 
@@ -695,7 +695,7 @@ export type MiladyConfig = {
     /** Accent color for Milady UI chrome (hex). */
     seamColor?: string;
     /** User's preferred UI theme. Set during onboarding. */
-    theme?: "milady" | "qt314" | "web2000" | "programmer" | "haxor" | "psycho";
+    theme?: "milady" | "eliza" | "qt314" | "web2000" | "programmer" | "haxor" | "psycho";
     assistant?: {
       /** Assistant display name for UI surfaces. */
       name?: string;

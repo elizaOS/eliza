@@ -111,7 +111,9 @@ export class FileKV implements KVClient {
       const { result, modified } = await operation(store);
 
       if (modified || cleaned) {
-        await fs.promises.writeFile(this.filePath, JSON.stringify(store, null, 2));
+        // Use sync write to guarantee data is on disk before the lock is released,
+        // ensuring persistence is visible to subsequent client instances.
+        fs.writeFileSync(this.filePath, JSON.stringify(store, null, 2));
       }
 
       return result;

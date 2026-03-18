@@ -115,9 +115,9 @@ export async function startBrowserCapture(config: BrowserCaptureConfig) {
 
   // Seed localStorage before navigation so the first render matches Electron.
   // Keys must match exactly what the React app reads:
-  //   - "milady:theme"                        → ThemeName
-  //   - "milady_avatar_index"                 → VRM index (1–8)
-  //   - "milady.stream.overlay-layout.v1[.destId]" → OverlayLayout JSON
+  //   - "eliza:theme"                        → ThemeName
+  //   - "eliza_avatar_index"                 → VRM index (1–8)
+  //   - "eliza.stream.overlay-layout.v1[.destId]" → OverlayLayout JSON
   await page.evaluateOnNewDocument(
     (
       overlayLayout: string | undefined,
@@ -128,7 +128,7 @@ export async function startBrowserCapture(config: BrowserCaptureConfig) {
       if (overlayLayout) {
         // Seed both global and destination-specific keys so the hook
         // resolves correctly regardless of when activeDestination loads.
-        localStorage.setItem("milady.stream.overlay-layout.v1", overlayLayout);
+        localStorage.setItem("eliza.stream.overlay-layout.v1", overlayLayout);
         if (destinationId) {
           localStorage.setItem(
             `milady.stream.overlay-layout.v1.${destinationId}`,
@@ -137,10 +137,10 @@ export async function startBrowserCapture(config: BrowserCaptureConfig) {
         }
       }
       if (theme) {
-        localStorage.setItem("milady:theme", theme);
+        localStorage.setItem("eliza:theme", theme);
       }
       if (avatarIndex != null) {
-        localStorage.setItem("milady_avatar_index", String(avatarIndex));
+        localStorage.setItem("eliza_avatar_index", String(avatarIndex));
       }
     },
     config.overlayLayout,
