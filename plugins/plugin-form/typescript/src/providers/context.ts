@@ -8,10 +8,22 @@
  * the agent generates a response. This allows the agent to:
  *
  * 1. Know if a form is active
- * 2. Know what fields have been filled
- * 3. Know what fields are missing
- * 4. Know what needs confirmation
- * 5. Know what to ask next
+ * 2. Know what required/optional fields we have vs don't have
+ * 3. Know what needs confirmation (low-confidence extractions)
+ * 4. Know what external actions are pending (payments, signatures, etc.)
+ * 5. Get a single, coherent instruction (nudge for required, confirm, or submit)
+ *
+ * ## Output layout
+ *
+ * The text output uses a required/optional × have/don't-have layout so the
+ * agent sees the full picture at a glance and can ask for one or several
+ * missing fields in a single message (the form extracts and saves each).
+ *
+ * ## Context Output
+ *
+ * - `data`: Full FormContextState (programmatic access; e.g. restore action uses nextField)
+ * - `values`: String values for template substitution (formContext, formProgress, etc.)
+ * - `text`: Human-readable summary injected into the agent prompt
  *
  * ## How It Works
  *
@@ -20,36 +32,16 @@
  *                    ↓
  *              FormContextState
  *                    ↓
- *              - hasActiveForm: true
- *              - progress: 60%
- *              - nextField: "email"
- *              - uncertainFields: [...]
+ *              - hasActiveForm, progress
+ *              - required/optional × have/don't have
+ *              - uncertainFields, pendingExternalFields
+ *              - single Instruction line
  * ```
- *
- * ## Context Output
- *
- * The provider outputs:
- *
- * - `data`: Full FormContextState object (for programmatic access)
- * - `values`: String values for template substitution
- * - `text`: Human-readable summary for agent
- *
- * The `text` output is structured markdown that the agent can use
- * to understand the form state and craft appropriate responses.
- *
- * ## Agent Guidance
- *
- * The provider includes "Agent Guidance" in the text output, giving
- * the agent explicit suggestions:
- *
- * - "Ask for their email"
- * - "Confirm: 'I understood X as Y. Is that correct?'"
- * - "All fields collected! Nudge user to submit."
  *
  * ## Stashed Forms
  *
- * If the user has stashed forms, the provider mentions this so
- * the agent can remind the user they have unfinished work.
+ * If the user has stashed forms, the provider appends a reminder so the
+ * agent can tell the user they have unfinished work and can say "resume".
  */
 
 import type {
@@ -75,7 +67,7 @@ import {
  *
  * Injects the current form state into the agent's context,
  * allowing the agent to respond naturally about form progress
- * and ask for missing fields.
+ * and nudge for missing fields (one or several at once).
  *
  * WHY a provider (not evaluator):
  * - Providers run BEFORE response generation
@@ -92,7 +84,7 @@ export const formContextProvider: Provider = {
    * @param runtime - Agent runtime for service access
    * @param message - The user message being processed
    * @param _state - Current agent state (unused)
-   * @returns Provider result with form context
+   * @returns Provider result with form context (data, values, text)
    */
   get: async (
     runtime: IAgentRuntime,
@@ -104,29 +96,21 @@ export const formContextProvider: Provider = {
       // WHY type cast: Runtime returns unknown, we know it's FormService
       const formService = (await runtime.getService("FORM")) as FormService;
       if (!formService) {
-        return {
-          data: { hasActiveForm: false },
-          values: { formContext: "" },
-          text: "",
-        };
+        // WHY early return: No form plugin registered or FORM service not available
+        return { data: { hasActiveForm: false }, values: { formContext: "" }, text: "" };
       }
 
       // Get entity and room IDs
-      // WHY UUID cast: Memory has these as unknown, we need proper typing
+      // WHY UUID cast: Memory has these as unknown, we need proper typing for storage lookups
       const entityId = message.entityId as UUID;
       const roomId = message.roomId as UUID;
-
       if (!entityId || !roomId) {
-        return {
-          data: { hasActiveForm: false },
-          values: { formContext: "" },
-          text: "",
-        };
+        // WHY early return: Cannot look up session without identity and room
+        return { data: { hasActiveForm: false }, values: { formContext: "" }, text: "" };
       }
 
       // Get active session for this room
       const session = await formService.getActiveSession(entityId, roomId);
-
       // Get stashed sessions (for "you have saved forms" prompt)
       const stashed = await formService.getStashedSessions(entityId);
 
@@ -139,135 +123,139 @@ export const formContextProvider: Provider = {
         };
       }
 
-      // Build context for active session
       let contextText = "";
       let contextState: FormContextState;
 
       if (session) {
+        // Build context for active session
         // Get session context from service
+        // WHY: Service computes filledFields, missingRequired, uncertainFields, nextField from session + form definition
         contextState = formService.getSessionContext(session);
         const form = formService.getForm(session.formId);
+        // Build template values from session (for {{placeholders}} in labels, askPrompt, etc.)
         const templateValues = buildTemplateValues(session);
-        const resolveText = (value?: string): string | undefined =>
-          renderTemplate(value, templateValues);
+        // WHY resolve: Form definitions may use {{variable}} in label, description, askPrompt; renderTemplate substitutes from session
+        const resolve = (v?: string): string | undefined =>
+          renderTemplate(v, templateValues);
 
+        // Apply template resolution to all user-facing strings
+        // WHY: Agent and user see resolved labels (e.g. "{{discoveryQuestion1Text}}" → actual question text)
         contextState = {
           ...contextState,
-          filledFields: contextState.filledFields.map((field) => ({
-            ...field,
-            label: resolveText(field.label) ?? field.label,
+          hasActiveForm: true,
+          filledFields: contextState.filledFields.map((f) => ({
+            ...f,
+            label: resolve(f.label) ?? f.label,
           })),
-          missingRequired: contextState.missingRequired.map((field) => ({
-            ...field,
-            label: resolveText(field.label) ?? field.label,
-            description: resolveText(field.description),
-            askPrompt: resolveText(field.askPrompt),
+          missingRequired: contextState.missingRequired.map((f) => ({
+            ...f,
+            label: resolve(f.label) ?? f.label,
+            description: resolve(f.description),
+            askPrompt: resolve(f.askPrompt),
           })),
-          uncertainFields: contextState.uncertainFields.map((field) => ({
-            ...field,
-            label: resolveText(field.label) ?? field.label,
+          uncertainFields: contextState.uncertainFields.map((f) => ({
+            ...f,
+            label: resolve(f.label) ?? f.label,
           })),
           nextField: contextState.nextField
             ? resolveControlTemplates(contextState.nextField, templateValues)
             : null,
         };
+        // WHY nextField in data: Restore action reads contextState.nextField for "Let's continue with X"
+
+        // Partition controls into required/optional × filled/missing
+        // WHY four buckets: Agent needs full picture at a glance; can nudge for required and optionally for optional; can ask for one or bundle several
+        const controls = form?.controls ?? [];
+        const filledKeys = new Set(contextState.filledFields.map((f) => f.key));
+        const controlByKey = new Map(controls.map((c) => [c.key, c]));
+
+        const requiredFilled = contextState.filledFields.filter(
+          (f) => controlByKey.get(f.key)?.required,
+        );
+        const optionalFilled = contextState.filledFields.filter(
+          (f) => !controlByKey.get(f.key)?.required,
+        );
+        const optionalMissing = controls.filter(
+          (c) => !c.hidden && !c.required && !filledKeys.has(c.key),
+        );
+
+        // Format field list as "key (displayValue)" or "key" for missing; "none" when empty
+        // WHY key (displayValue): Agent can reference both field name and what we have in conversation
+        const fmt = (items: { key: string; displayValue?: string }[]): string =>
+          items.length === 0
+            ? "none"
+            : items
+                .map((i) =>
+                  i.displayValue ? `${i.key} (${i.displayValue})` : i.key,
+                )
+                .join(", ");
 
         // Build human-readable context for agent
-        // WHY markdown: Agent can parse and use structure
-        contextText = `# Active Form: ${form?.name || session.formId}\n\n`;
-
-        // Progress indicator
+        // WHY markdown-style headers: Agent can parse and use structure
+        contextText = `# Active Form: ${form?.name || session.formId}\n`;
+        // Progress indicator (0–100%, required-fields basis)
         contextText += `Progress: ${contextState.progress}%\n\n`;
 
-        // Filled fields - what we already have
-        // WHY show filled: Agent can reference in conversation
-        if (contextState.filledFields.length > 0) {
-          contextText += `## Collected Information\n`;
-          for (const field of contextState.filledFields) {
-            contextText += `- ${field.label}: ${field.displayValue}\n`;
-          }
-          contextText += "\n";
-        }
-
-        // Missing required fields - what we still need
-        // WHY show missing: Agent knows what to ask for
-        if (contextState.missingRequired.length > 0) {
-          contextText += `## Still Needed\n`;
-          for (const field of contextState.missingRequired) {
-            contextText += `- ${field.label}${field.description ? ` (${field.description})` : ""}\n`;
-          }
-          contextText += "\n";
-        }
+        // Required fields we don't have — what we still need
+        // WHY show: Agent knows what to ask for; can ask one or bundle several in one message
+        contextText += `Required fields we don't have: ${fmt(contextState.missingRequired)}\n`;
+        // Required fields we do have — what we already collected
+        // WHY show: Agent can reference in conversation ("I have your name as X...")
+        contextText += `Required fields we do have: ${fmt(requiredFilled)}\n\n`;
+        // Optional fields we don't have
+        contextText += `Optional fields we don't have: ${fmt(optionalMissing)}\n`;
+        // Optional fields we do have
+        contextText += `Optional fields we do have: ${fmt(optionalFilled)}\n\n`;
 
         // Uncertain fields needing confirmation
-        // WHY show uncertain: Agent should ask user to confirm
+        // WHY show uncertain: Agent should ask user to confirm before we commit low-confidence extractions
         if (contextState.uncertainFields.length > 0) {
-          contextText += `## Needs Confirmation\n`;
-          for (const field of contextState.uncertainFields) {
-            contextText += `- ${field.label}: "${field.value}" (${Math.round(field.confidence * 100)}% confident)\n`;
+          contextText += `Needs confirmation:\n`;
+          for (const f of contextState.uncertainFields) {
+            contextText += `- ${f.label}: "${f.value}" (${Math.round(f.confidence * 100)}% confident)\n`;
           }
           contextText += "\n";
         }
 
         // Pending external fields (payments, signatures, etc.)
-        // WHY show pending: Agent should remind user of outstanding actions
+        // WHY show pending: Agent should remind user of outstanding actions and optionally show address
         if (contextState.pendingExternalFields.length > 0) {
-          contextText += `## Waiting For External Action\n`;
-          for (const field of contextState.pendingExternalFields) {
-            const ageMs = Date.now() - field.activatedAt;
-            const ageMin = Math.floor(ageMs / 60000);
-            const ageText = ageMin < 1 ? "just now" : `${ageMin}m ago`;
-            contextText += `- ${field.label}: ${field.instructions} (started ${ageText})\n`;
-            if (field.address) {
-              contextText += `  Address: ${field.address}\n`;
-            }
+          contextText += `Waiting for external action:\n`;
+          for (const f of contextState.pendingExternalFields) {
+            const mins = Math.floor((Date.now() - f.activatedAt) / 60000);
+            contextText += `- ${f.label}: ${f.instructions} (${mins < 1 ? "just now" : `${mins}m ago`})`;
+            if (f.address) contextText += ` Address: ${f.address}`;
+            contextText += "\n";
           }
           contextText += "\n";
         }
 
-        // Explicit agent guidance
-        // WHY guidance: Tells agent exactly what to do next
-        contextText += `## Agent Guidance\n`;
-
+        // Explicit agent guidance — single instruction block
+        // WHY one instruction: Avoids conflicting guidance (e.g. "ask next" vs "confirm"); priority order matches UX
         if (contextState.pendingExternalFields.length > 0) {
           // We're waiting for external confirmation (payment, signature, etc.)
-          const pending = contextState.pendingExternalFields[0];
-          contextText += `Waiting for external action. Remind user: "${pending.instructions}"\n`;
+          const p = contextState.pendingExternalFields[0];
+          contextText += `Instruction: Waiting for external action. Remind user: "${p.instructions}"\n`;
         } else if (contextState.pendingCancelConfirmation) {
-          // User wants to cancel a high-effort form
-          contextText += `User is trying to cancel. Confirm: "You've spent time on this. Are you sure you want to cancel?"\n`;
+          // User wants to cancel a high-effort form; confirm before losing progress
+          contextText += `Instruction: User is trying to cancel. Confirm they really want to lose progress.\n`;
         } else if (contextState.uncertainFields.length > 0) {
-          // Need to confirm an uncertain value
-          const uncertain = contextState.uncertainFields[0];
-          contextText += `Ask user to confirm: "I understood your ${uncertain.label} as '${uncertain.value}'. Is that correct?"\n`;
-        } else if (contextState.nextField) {
-          // Ask for the next field
-          const next = contextState.nextField;
-          const prompt = next.askPrompt || `Ask for their ${next.label}`;
-          contextText += `Next: ${prompt}\n`;
-          if (next.example) {
-            contextText += `Example: "${next.example}"\n`;
-          }
+          // Need to confirm an uncertain value before we commit it
+          const u = contextState.uncertainFields[0];
+          contextText += `Instruction: Ask user to confirm "${u.label}" = "${u.value}".\n`;
+        } else if (contextState.missingRequired.length > 0) {
+          // Nudge for required; user can give one or several answers in one message
+          contextText += `Instruction: Please nudge the user into helping complete required fields. The user can provide one or several answers in a single message; the form accepts them all.\n`;
+        } else if (optionalMissing.length > 0) {
+          // Required done but optional fields remain; optionally nudge for optional or submit
+          contextText += `Instruction: Required fields are done. Optionally nudge for remaining optional fields, or nudge to submit.\n`;
         } else if (contextState.status === "ready") {
-          // All required fields done, suggest submit
-          contextText += `All fields collected! Nudge user to submit: "I have everything I need. Ready to submit?"\n`;
+          // All required fields done and no optional missing; suggest submit
+          contextText += `Instruction: All required fields collected. Nudge user to submit.\n`;
         }
-
-        contextText += "\n";
-
-        // User commands reference
-        // WHY: Agent should know what user can say
-        contextText += `## User Can Say\n`;
-        contextText += `- Provide information for any field\n`;
-        contextText += `- "undo" or "go back" to revert last change\n`;
-        contextText += `- "skip" to skip optional fields\n`;
-        contextText += `- "why?" to get explanation about a field\n`;
-        contextText += `- "how far?" to check progress\n`;
-        contextText += `- "submit" or "done" when ready\n`;
-        contextText += `- "save for later" to stash the form\n`;
-        contextText += `- "cancel" to abandon the form\n`;
       } else {
-        // No active session, just stashed info
+        // No active session — only stashed forms exist
+        // WHY build contextState anyway: Return shape is consistent; callers get hasActiveForm: false, stashedCount; stashed list goes in text below
         contextState = {
           hasActiveForm: false,
           progress: 0,
@@ -281,24 +269,21 @@ export const formContextProvider: Provider = {
       }
 
       // Stashed forms reminder
-      // WHY: User might have forgotten about saved forms
+      // WHY: User might have forgotten about saved forms; agent can say "You have a saved form, say resume to continue"
       if (stashed.length > 0) {
-        contextText += `\n## Saved Forms\n`;
-        contextText += `User has ${stashed.length} saved form(s). They can say "resume" or "continue" to restore one.\n`;
+        contextText += `\nSaved forms: User has ${stashed.length} saved form(s). They can say "resume" to restore one.\n`;
         for (const s of stashed) {
-          const form = formService.getForm(s.formId);
+          const f = formService.getForm(s.formId);
           const ctx = formService.getSessionContext(s);
-          contextText += `- ${form?.name || s.formId} (${ctx.progress}% complete)\n`;
+          contextText += `- ${f?.name || s.formId} (${ctx.progress}% complete)\n`;
         }
       }
 
       return {
         // Full context object for programmatic access
-        data: JSON.parse(JSON.stringify(contextState)) as Record<
-          string,
-          JsonValue
-        >,
-        // String values for template substitution
+        // WHY: Restore action and others read data.nextField, data.filledFields, etc.
+        data: JSON.parse(JSON.stringify(contextState)) as Record<string, JsonValue>,
+        // String values for template substitution (e.g. in prompts: formContext, formProgress, formStatus)
         values: {
           formContext: contextText,
           hasActiveForm: String(contextState.hasActiveForm),
@@ -306,11 +291,12 @@ export const formContextProvider: Provider = {
           formStatus: contextState.status || "",
           stashedCount: String(stashed.length),
         },
-        // Human-readable text for agent
+        // Human-readable text for agent (injected into prompt)
         text: contextText,
       };
     } catch (error) {
       logger.error("[FormContextProvider] Error:", String(error));
+      // WHY return safe fallback: Provider failure should not break response generation; agent gets empty form context
       return {
         data: { hasActiveForm: false, error: true },
         values: { formContext: "Error loading form context." },
