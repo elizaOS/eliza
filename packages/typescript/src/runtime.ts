@@ -978,6 +978,59 @@ export class AgentRuntime implements IAgentRuntime {
 				"Database adapter already registered, ignoring",
 			);
 		} else {
+			// Polyfill batch agent methods for adapters that only implement
+			// the older singular API (e.g. published plugin-sql <= alpha.12).
+			if (typeof (adapter as any).getAgentsByIds !== "function" && typeof (adapter as any).getAgent === "function") {
+				(adapter as any).getAgentsByIds = async (ids: UUID[]) => {
+					const results = await Promise.all(ids.map((id) => (adapter as any).getAgent(id)));
+					return results.filter(Boolean);
+				};
+			}
+			if (typeof (adapter as any).createAgents !== "function" && typeof (adapter as any).createAgent === "function") {
+				(adapter as any).createAgents = async (agents: Partial<Agent>[]) => {
+					const ids: UUID[] = [];
+					for (const agent of agents) {
+						const ok = await (adapter as any).createAgent(agent);
+						if (ok && agent.id) ids.push(agent.id);
+					}
+					return ids;
+				};
+			}
+			if (typeof (adapter as any).updateAgents !== "function" && typeof (adapter as any).updateAgent === "function") {
+				(adapter as any).updateAgents = async (updates: Array<{ agentId: UUID; agent: Partial<Agent> }>) => {
+					for (const { agentId, agent } of updates) {
+						await (adapter as any).updateAgent(agentId, agent);
+					}
+					return true;
+				};
+			}
+			if (typeof (adapter as any).deleteAgents !== "function" && typeof (adapter as any).deleteAgent === "function") {
+				(adapter as any).deleteAgents = async (ids: UUID[]) => {
+					for (const id of ids) {
+						await (adapter as any).deleteAgent(id);
+					}
+					return true;
+				};
+			}
+			if (typeof (adapter as any).upsertAgents !== "function") {
+				(adapter as any).upsertAgents = async (agents: Partial<Agent>[]) => {
+					for (const agent of agents) {
+						if (!agent.id) continue;
+						const existing = typeof (adapter as any).getAgent === "function"
+							? await (adapter as any).getAgent(agent.id)
+							: null;
+						if (existing) {
+							if (typeof (adapter as any).updateAgent === "function") {
+								await (adapter as any).updateAgent(agent.id, agent);
+							}
+						} else {
+							if (typeof (adapter as any).createAgent === "function") {
+								await (adapter as any).createAgent(agent);
+							}
+						}
+					}
+				};
+			}
 			this.adapter = adapter;
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId },
@@ -1291,7 +1344,7 @@ export class AgentRuntime implements IAgentRuntime {
 		roomPolicy?: ToolPolicyConfig;
 	}): Promise<Action[]> {
 		const policyService =
-			await this.getService<ToolPolicyService>("tool_policy");
+			(await this._ensureServiceStarted("tool_policy")) as ToolPolicyService | null;
 
 		if (!policyService || !context) {
 			return [...this.actions];
@@ -1319,7 +1372,7 @@ export class AgentRuntime implements IAgentRuntime {
 		},
 	): Promise<{ allowed: boolean; reason: string }> {
 		const policyService =
-			await this.getService<ToolPolicyService>("tool_policy");
+			(await this._ensureServiceStarted("tool_policy")) as ToolPolicyService | null;
 
 		if (!policyService) {
 			return { allowed: true, reason: "No policy service available" };
@@ -2482,7 +2535,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}) => void;
 		};
 		const trajLogger =
-			await this.getService<TrajectoryLogger>("trajectory_logger");
+			(await this._ensureServiceStarted("trajectory_logger")) as TrajectoryLogger | null;
 		const providerData = await Promise.all(
 			providersToGet.map(async (provider) => {
 				const start = Date.now();
@@ -2623,8 +2676,8 @@ export class AgentRuntime implements IAgentRuntime {
 		return newState;
 	}
 
-	/** WHY lazy: Service is started on first getService() so unused features don't pay startup cost; callers must await getService(). */
-	/** Dedupes concurrent getService() for the same type via startingServices so only one start runs. */
+	/** Lazy service start: used internally by _ensureServiceStarted / getServiceLoadPromise. */
+	/** Dedupes concurrent starts for the same type via startingServices so only one start runs. */
 	private async _ensureServiceStarted(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null> {
@@ -2726,12 +2779,15 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
-	/** Returns the service instance or null; starts the service on first call (lazy). Always await. */
-	async getService<T extends Service = Service>(
+	/** Returns the service instance or null. Synchronous lookup from the services map. */
+	getService<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
-	): Promise<T | null> {
-		const instance = await this._ensureServiceStarted(serviceName);
-		return instance as T | null;
+	): T | null {
+		const instances = this.services.get(serviceName as ServiceTypeName);
+		if (instances && instances.length > 0) {
+			return instances[0] as T;
+		}
+		return null;
 	}
 
 	/**
@@ -2740,9 +2796,9 @@ export class AgentRuntime implements IAgentRuntime {
 	 * @param serviceName - The service type name
 	 * @returns The service instance with proper typing, or null if not found
 	 */
-	async getTypedService<T extends Service = Service>(
+	getTypedService<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
-	): Promise<T | null> {
+	): T | null {
 		return this.getService<T>(serviceName);
 	}
 
@@ -2752,10 +2808,9 @@ export class AgentRuntime implements IAgentRuntime {
 	 * @param serviceName - The service type name
 	 * @returns Array of service instances with proper typing
 	 */
-	async getServicesByType<T extends Service = Service>(
+	getServicesByType<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
-	): Promise<T[]> {
-		await this._ensureServiceStarted(serviceName);
+	): T[] {
 		const serviceInstances = this.services.get(serviceName as ServiceTypeName);
 		if (!serviceInstances || serviceInstances.length === 0) {
 			this.logger.debug(
@@ -2877,13 +2932,15 @@ export class AgentRuntime implements IAgentRuntime {
 	private _createServiceResolver(serviceType: ServiceTypeName | string) {
 		let resolver: ServiceResolver | undefined;
 		let rejecter: ServiceRejecter | undefined;
-		this.servicePromises.set(
-			serviceType,
-			new Promise<Service>((resolve, reject) => {
-				resolver = resolve;
-				rejecter = reject;
-			}),
-		);
+		const svcPromise = new Promise<Service>((resolve, reject) => {
+			resolver = resolve;
+			rejecter = reject;
+		});
+		// Prevent unhandled rejection if the service fails before anyone
+		// awaits this promise.  Callers of getServiceLoadPromise() will
+		// still observe the rejection when they await.
+		svcPromise.catch(() => {});
+		this.servicePromises.set(serviceType, svcPromise);
 		if (!resolver) {
 			throw new Error(`Failed to create resolver for service ${serviceType}`);
 		}
@@ -2908,7 +2965,7 @@ export class AgentRuntime implements IAgentRuntime {
 	getServiceLoadPromise(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service> {
-		return this.getService(serviceType).then((s) => {
+		return this._ensureServiceStarted(serviceType).then((s) => {
 			if (!s)
 				throw new Error(`Service ${serviceType} not found or failed to start`);
 			return s;
@@ -3367,49 +3424,52 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 
 			// Optional trajectory logging: associate model calls with current trajectory step
-			try {
-				type TrajectoryLogger = Service & {
-					logLlmCall: (params: {
-						stepId: string;
-						model: string;
-						systemPrompt: string;
-						userPrompt: string;
-						response: string;
-						temperature: number;
-						maxTokens: number;
-						purpose: string;
-						actionType: string;
-						latencyMs: number;
-					}) => void;
-				};
-				const stepId = getTrajectoryContext()?.trajectoryStepId;
-				const trajLogger =
-					await this.getService<TrajectoryLogger>("trajectory_logger");
-				if (stepId && trajLogger) {
-					const tempRaw = isPlainObject(modelParams)
-						? (modelParams as { temperature?: number }).temperature
-						: undefined;
-					const maxTokensRaw = isPlainObject(modelParams)
-						? (modelParams as { maxTokens?: number }).maxTokens
-						: undefined;
-					trajLogger.logLlmCall({
-						stepId,
-						model: String(modelKey),
-						systemPrompt:
-							typeof this.character.system === "string"
-								? this.character.system
-								: "",
-						userPrompt: promptContent ?? "",
-						response: fullText,
-						temperature: typeof tempRaw === "number" ? tempRaw : 0,
-						maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
-						purpose: "action",
-						actionType: "runtime.useModel",
-						latencyMs: Math.max(0, Math.round(elapsedTime)),
-					});
+			// Skip during initialization to avoid deadlock (_ensureServiceStarted awaits initPromise)
+			if (!this.initResolver) {
+				try {
+					type TrajectoryLogger = Service & {
+						logLlmCall: (params: {
+							stepId: string;
+							model: string;
+							systemPrompt: string;
+							userPrompt: string;
+							response: string;
+							temperature: number;
+							maxTokens: number;
+							purpose: string;
+							actionType: string;
+							latencyMs: number;
+						}) => void;
+					};
+					const stepId = getTrajectoryContext()?.trajectoryStepId;
+					const trajLogger =
+						(await this._ensureServiceStarted("trajectory_logger")) as TrajectoryLogger | null;
+					if (stepId && trajLogger) {
+						const tempRaw = isPlainObject(modelParams)
+							? (modelParams as { temperature?: number }).temperature
+							: undefined;
+						const maxTokensRaw = isPlainObject(modelParams)
+							? (modelParams as { maxTokens?: number }).maxTokens
+							: undefined;
+						trajLogger.logLlmCall({
+							stepId,
+							model: String(modelKey),
+							systemPrompt:
+								typeof this.character.system === "string"
+									? this.character.system
+									: "",
+							userPrompt: promptContent ?? "",
+							response: fullText,
+							temperature: typeof tempRaw === "number" ? tempRaw : 0,
+							maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
+							purpose: "action",
+							actionType: "runtime.useModel",
+							latencyMs: Math.max(0, Math.round(elapsedTime)),
+						});
+					}
+				} catch {
+					// Trajectory logging must never break core model flow.
 				}
-			} catch {
-				// Trajectory logging must never break core model flow.
 			}
 
 			return fullText as R;
@@ -3443,50 +3503,53 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		// Optional trajectory logging: associate model calls with current trajectory step
-		try {
-			type TrajectoryLogger = Service & {
-				logLlmCall: (params: {
-					stepId: string;
-					model: string;
-					systemPrompt: string;
-					userPrompt: string;
-					response: string;
-					temperature: number;
-					maxTokens: number;
-					purpose: string;
-					actionType: string;
-					latencyMs: number;
-				}) => void;
-			};
-			const stepId = getTrajectoryContext()?.trajectoryStepId;
-			const trajLogger =
-				await this.getService<TrajectoryLogger>("trajectory_logger");
-			if (stepId && trajLogger) {
-				const tempRaw = isPlainObject(modelParams)
-					? (modelParams as { temperature?: number }).temperature
-					: undefined;
-				const maxTokensRaw = isPlainObject(modelParams)
-					? (modelParams as { maxTokens?: number }).maxTokens
-					: undefined;
-				trajLogger.logLlmCall({
-					stepId,
-					model: String(modelKey),
-					systemPrompt:
-						typeof this.character.system === "string"
-							? this.character.system
-							: "",
-					userPrompt: promptContent ?? "",
-					response:
-						typeof response === "string" ? response : JSON.stringify(response),
-					temperature: typeof tempRaw === "number" ? tempRaw : 0,
-					maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
-					purpose: "action",
-					actionType: "runtime.useModel",
-					latencyMs: Math.max(0, Math.round(elapsedTime)),
-				});
+		// Skip during initialization to avoid deadlock (_ensureServiceStarted awaits initPromise)
+		if (!this.initResolver) {
+			try {
+				type TrajectoryLogger = Service & {
+					logLlmCall: (params: {
+						stepId: string;
+						model: string;
+						systemPrompt: string;
+						userPrompt: string;
+						response: string;
+						temperature: number;
+						maxTokens: number;
+						purpose: string;
+						actionType: string;
+						latencyMs: number;
+					}) => void;
+				};
+				const stepId = getTrajectoryContext()?.trajectoryStepId;
+				const trajLogger =
+					(await this._ensureServiceStarted("trajectory_logger")) as TrajectoryLogger | null;
+				if (stepId && trajLogger) {
+					const tempRaw = isPlainObject(modelParams)
+						? (modelParams as { temperature?: number }).temperature
+						: undefined;
+					const maxTokensRaw = isPlainObject(modelParams)
+						? (modelParams as { maxTokens?: number }).maxTokens
+						: undefined;
+					trajLogger.logLlmCall({
+						stepId,
+						model: String(modelKey),
+						systemPrompt:
+							typeof this.character.system === "string"
+								? this.character.system
+								: "",
+						userPrompt: promptContent ?? "",
+						response:
+							typeof response === "string" ? response : JSON.stringify(response),
+						temperature: typeof tempRaw === "number" ? tempRaw : 0,
+						maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
+						purpose: "action",
+						actionType: "runtime.useModel",
+						latencyMs: Math.max(0, Math.round(elapsedTime)),
+					});
+				}
+			} catch {
+				// Trajectory logging must never break core model flow.
 			}
-		} catch {
-			// Trajectory logging must never break core model flow.
 		}
 		return response as R;
 	}
