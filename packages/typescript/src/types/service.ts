@@ -189,19 +189,20 @@ export interface TypedService<
 }
 
 /**
- * Generic factory function to create a typed service instance
+ * Generic factory function to create a typed service instance.
+ * getService() is async; callers must await getTypedService().
  * @param runtime The agent runtime
  * @param serviceType The type of service to get
- * @returns The service instance or null if not available
+ * @returns Promise of the service instance or null if not available
  */
-export function getTypedService<
+export async function getTypedService<
 	ConfigType extends Metadata = Metadata,
 	InputType = JsonValue,
 	ResultType = JsonValue,
 >(
 	runtime: IAgentRuntime,
 	serviceType: ServiceTypeName,
-): TypedService<ConfigType, InputType, ResultType> | null {
+): Promise<TypedService<ConfigType, InputType, ResultType> | null> {
 	return runtime.getService<TypedService<ConfigType, InputType, ResultType>>(
 		serviceType,
 	);

@@ -235,9 +235,9 @@ function isRouteCompatibleTrajectoryLogger(
   );
 }
 
-function getTrajectoryLogger(
+async function getTrajectoryLogger(
   runtime: AgentRuntime,
-): TrajectoryLoggerApi | null {
+): Promise<TrajectoryLoggerApi | null> {
   const runtimeLike = runtime as AgentRuntime & {
     getServicesByType?: (serviceType: string) => unknown;
     getService?: (serviceType: string) => unknown;
@@ -263,7 +263,7 @@ function getTrajectoryLogger(
   }
 
   if (typeof runtimeLike.getService === "function") {
-    addCandidate(runtimeLike.getService("trajectory_logger"));
+    addCandidate(await runtimeLike.getService("trajectory_logger"));
   }
 
   for (const candidate of candidates) {
@@ -419,7 +419,7 @@ async function handleGetTrajectories(
   res: http.ServerResponse,
   runtime: AgentRuntime,
 ): Promise<void> {
-  const logger = getTrajectoryLogger(runtime);
+  const logger = await getTrajectoryLogger(runtime);
   if (!logger) {
     sendJsonError(res, "Trajectory logger service not available", 503);
     return;
@@ -471,7 +471,7 @@ async function handleGetTrajectoryDetail(
   runtime: AgentRuntime,
   trajectoryId: string,
 ): Promise<void> {
-  const logger = getTrajectoryLogger(runtime);
+  const logger = await getTrajectoryLogger(runtime);
   if (!logger) {
     sendJsonError(res, "Trajectory logger service not available", 503);
     return;
@@ -492,7 +492,7 @@ async function handleGetStats(
   res: http.ServerResponse,
   runtime: AgentRuntime,
 ): Promise<void> {
-  const logger = getTrajectoryLogger(runtime);
+  const logger = await getTrajectoryLogger(runtime);
   if (!logger) {
     sendJsonError(res, "Trajectory logger service not available", 503);
     return;
@@ -507,7 +507,7 @@ async function handleGetConfig(
   res: http.ServerResponse,
   runtime: AgentRuntime,
 ): Promise<void> {
-  const logger = getTrajectoryLogger(runtime);
+  const logger = await getTrajectoryLogger(runtime);
   if (!logger) {
     sendJsonError(res, "Trajectory logger service not available", 503);
     return;
@@ -523,7 +523,7 @@ async function handlePutConfig(
   res: http.ServerResponse,
   runtime: AgentRuntime,
 ): Promise<void> {
-  const logger = getTrajectoryLogger(runtime);
+  const logger = await getTrajectoryLogger(runtime);
   if (!logger) {
     sendJsonError(res, "Trajectory logger service not available", 503);
     return;
@@ -546,7 +546,7 @@ async function handleExportTrajectories(
   res: http.ServerResponse,
   runtime: AgentRuntime,
 ): Promise<void> {
-  const logger = getTrajectoryLogger(runtime);
+  const logger = await getTrajectoryLogger(runtime);
   if (!logger) {
     sendJsonError(res, "Trajectory logger service not available", 503);
     return;
@@ -627,7 +627,7 @@ async function handleDeleteTrajectories(
   res: http.ServerResponse,
   runtime: AgentRuntime,
 ): Promise<void> {
-  const logger = getTrajectoryLogger(runtime);
+  const logger = await getTrajectoryLogger(runtime);
   if (!logger) {
     sendJsonError(res, "Trajectory logger service not available", 503);
     return;

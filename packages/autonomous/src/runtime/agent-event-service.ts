@@ -33,7 +33,7 @@ export interface AgentEventServiceLike {
 }
 
 type RuntimeWithServiceGetter = {
-  getService: (serviceType: string) => unknown | null;
+  getService: (serviceType: string) => Promise<unknown | null>;
 };
 
 export const AGENT_EVENT_SERVICE_TYPES = [
@@ -41,13 +41,13 @@ export const AGENT_EVENT_SERVICE_TYPES = [
   "AGENT_EVENT",
 ] as const;
 
-export function getAgentEventService(
+export async function getAgentEventService(
   runtime: RuntimeWithServiceGetter | null | undefined,
-): AgentEventServiceLike | null {
+): Promise<AgentEventServiceLike | null> {
   if (!runtime) return null;
 
   for (const serviceType of AGENT_EVENT_SERVICE_TYPES) {
-    const service = runtime.getService(serviceType);
+    const service = await runtime.getService(serviceType);
     if (service) {
       return service as AgentEventServiceLike;
     }

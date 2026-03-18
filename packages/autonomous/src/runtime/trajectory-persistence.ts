@@ -941,9 +941,9 @@ function isLegacyTrajectoryLogger(logger: TrajectoryLoggerLike): boolean {
   );
 }
 
-function resolveTrajectoryLogger(
+async function resolveTrajectoryLogger(
   runtime: IAgentRuntime,
-): TrajectoryLoggerLike | null {
+): Promise<TrajectoryLoggerLike | null> {
   const runtimeLike = runtime as unknown as {
     getServicesByType?: (serviceType: string) => unknown;
     getService?: (serviceType: string) => unknown;
@@ -967,7 +967,7 @@ function resolveTrajectoryLogger(
     }
   }
   if (typeof runtimeLike.getService === "function") {
-    push(runtimeLike.getService("trajectory_logger"));
+    push(await runtimeLike.getService("trajectory_logger"));
   }
 
   if (candidates.length === 0) return null;
@@ -1464,7 +1464,7 @@ async function appendProviderAccess(
   await saveTrajectory(runtime, trajectory);
 }
 
-export function installDatabaseTrajectoryLogger(runtime: IAgentRuntime): void {
+export async function installDatabaseTrajectoryLogger(runtime: IAgentRuntime): Promise<void> {
   if (!hasRuntimeDb(runtime)) {
     console.warn(
       "[trajectory-persistence] installDatabaseTrajectoryLogger: no database adapter found on runtime",
@@ -1472,7 +1472,7 @@ export function installDatabaseTrajectoryLogger(runtime: IAgentRuntime): void {
     return;
   }
 
-  const logger = resolveTrajectoryLogger(runtime);
+  const logger = await resolveTrajectoryLogger(runtime);
   if (!logger) {
     console.warn(
       "[trajectory-persistence] installDatabaseTrajectoryLogger: no logger found to patch",

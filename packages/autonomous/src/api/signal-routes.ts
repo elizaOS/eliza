@@ -150,7 +150,7 @@ export async function handleSignalRoute(
     let serviceConnected = false;
     if (state.runtime) {
       try {
-        const sigService = state.runtime.getService("signal") as Record<
+        const sigService = (await state.runtime.getService("signal")) as Record<
           string,
           unknown
         > | null;

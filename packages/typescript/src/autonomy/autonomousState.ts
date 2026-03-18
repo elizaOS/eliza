@@ -53,10 +53,10 @@ function getRuntimeAgentId(runtime: IAgentRuntime): string {
 	return String(runtime.agentId);
 }
 
-function getAgentEventService(
+async function getAgentEventService(
 	runtime: IAgentRuntime,
-): AgentEventServiceLike | null {
-	return runtime.getService("AGENT_EVENT") as AgentEventServiceLike | null;
+): Promise<AgentEventServiceLike | null> {
+	return (await runtime.getService("AGENT_EVENT")) as AgentEventServiceLike | null;
 }
 
 function pushCachedEvent(agentId: string, event: AgentEventPayloadLike): void {
@@ -68,7 +68,7 @@ function pushCachedEvent(agentId: string, event: AgentEventPayloadLike): void {
 	}
 }
 
-export function ensureAutonomousStateTracking(runtime: IAgentRuntime): void {
+export async function ensureAutonomousStateTracking(runtime: IAgentRuntime): Promise<void> {
 	const agentId = getRuntimeAgentId(runtime);
 	const existing = cacheByAgentId.get(agentId);
 	if (existing && existing.runtime === runtime) {
@@ -80,7 +80,7 @@ export function ensureAutonomousStateTracking(runtime: IAgentRuntime): void {
 		lastHeartbeatByAgentId.delete(agentId);
 	}
 
-	const service = getAgentEventService(runtime);
+	const service = await getAgentEventService(runtime);
 	if (!service) return;
 
 	const events: AgentEventPayloadLike[] = [];
@@ -149,7 +149,7 @@ export function createAutonomousStateProvider(): Provider {
 			_message: Memory,
 			_state: State,
 		): Promise<ProviderResult> => {
-			ensureAutonomousStateTracking(runtime);
+			await ensureAutonomousStateTracking(runtime);
 			const agentId = getRuntimeAgentId(runtime);
 			const recent = cacheByAgentId.get(agentId)?.events.slice(-24) ?? [];
 			const activityLines = recent
@@ -162,7 +162,7 @@ export function createAutonomousStateProvider(): Provider {
 				.slice(-10)
 				.map(renderEventLine);
 
-			const service = getAgentEventService(runtime);
+			const service = await getAgentEventService(runtime);
 			const heartbeat =
 				lastHeartbeatByAgentId.get(agentId) ??
 				service?.getLastHeartbeat?.() ??

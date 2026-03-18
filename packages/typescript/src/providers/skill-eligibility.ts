@@ -88,7 +88,7 @@ export const skillEligibilityProvider: Provider = {
 		_state: State,
 	): Promise<ProviderResult> => {
 		// Try to get the agent skills service
-		const service = runtime.getService<AgentSkillsServiceLike>(
+		const service = await runtime.getService<AgentSkillsServiceLike>(
 			"AGENT_SKILLS_SERVICE",
 		);
 
@@ -242,7 +242,7 @@ export const skillEligibilityCompactProvider: Provider = {
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		const service = runtime.getService<AgentSkillsServiceLike>(
+		const service = await runtime.getService<AgentSkillsServiceLike>(
 			"AGENT_SKILLS_SERVICE",
 		);
 

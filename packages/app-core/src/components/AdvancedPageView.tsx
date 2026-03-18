@@ -25,10 +25,12 @@ import React, { type ReactNode, useState } from "react";
 import { CustomActionsView } from "./CustomActionsView";
 import { FineTuningView } from "./FineTuningView";
 import { LifoSandboxView } from "./LifoSandboxView";
+import { SecurityPageView } from "./SecurityPageView";
 import { TrajectoriesView } from "./TrajectoriesView";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
 type SubTab =
+  | "actions"
   | "plugins"
   | "skills"
   | "fine-tuning"
@@ -40,6 +42,11 @@ type SubTab =
   | "security";
 
 const SUB_TABS: Array<{ id: SubTab; label: string; description: string }> = [
+  {
+    id: "actions",
+    label: "Actions",
+    description: "Custom agent commands and workflows",
+  },
   { id: "plugins", label: "Plugins", description: "Features and connectors" },
   { id: "skills", label: "Skills", description: "Custom agent skills" },
   // {
@@ -68,6 +75,11 @@ const SUB_TABS: Array<{ id: SubTab; label: string; description: string }> = [
   //   description: "Browser-native shell sandbox and file explorer",
   // },
   { id: "logs", label: "Logs", description: "Runtime and service logs" },
+  {
+    id: "security",
+    label: "Security",
+    description: "Audit trail for privileged runtime activity",
+  },
 ];
 
 const MODAL_SUB_TABS = SUB_TABS.filter(
@@ -218,6 +230,8 @@ const SUBTAB_ICONS: Record<string, ReactNode> = {
 
 function mapTabToSubTab(tab: Tab): SubTab {
   switch (tab) {
+    case "actions":
+      return "actions";
     case "plugins":
       return "plugins";
     case "skills":
@@ -234,6 +248,8 @@ function mapTabToSubTab(tab: Tab): SubTab {
       return "lifo";
     case "logs":
       return "logs";
+    case "security":
+      return "security";
     default:
       return "plugins";
   }
@@ -255,6 +271,8 @@ export function AdvancedPageView({ inModal }: { inModal?: boolean } = {}) {
 
   const renderContent = () => {
     switch (currentSubTab) {
+      case "actions":
+        return <CustomActionsView />;
       case "plugins":
         return <PluginsPageView />;
       case "skills":
@@ -281,8 +299,10 @@ export function AdvancedPageView({ inModal }: { inModal?: boolean } = {}) {
         return <LifoSandboxView />;
       case "logs":
         return <LogsPageView />;
+      case "security":
+        return <SecurityPageView />;
       default:
-        return inModal ? <CustomActionsView /> : <PluginsPageView />;
+        return <PluginsPageView />;
     }
   };
 

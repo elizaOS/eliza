@@ -230,7 +230,7 @@ export async function handleTriggerRoutes(
     }
 
     const roomId = (
-      runtime.getService("AUTONOMY") as { getAutonomousRoomId?(): UUID } | null
+      (await runtime.getService("AUTONOMY")) as { getAutonomousRoomId?(): UUID } | null
     )?.getAutonomousRoomId?.();
     const taskId = await runtime.createTask({
       name: TRIGGER_TASK_NAME,

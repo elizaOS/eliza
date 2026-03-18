@@ -45,11 +45,11 @@ export interface PairingCheckParams {
 /**
  * Get the PairingService from the runtime, or null if not available.
  */
-export function getPairingService(
+export async function getPairingService(
 	runtime: IAgentRuntime,
-): PairingService | null {
+): Promise<PairingService | null> {
 	try {
-		return runtime.getService(ServiceType.PAIRING) as PairingService | null;
+		return (await runtime.getService(ServiceType.PAIRING)) as PairingService | null;
 	} catch {
 		return null;
 	}
@@ -86,7 +86,7 @@ export async function checkPairingAllowed(
 ): Promise<PairingCheckResult> {
 	const { channel, senderId, metadata, suppressReply } = params;
 
-	const pairingService = getPairingService(runtime);
+	const pairingService = await getPairingService(runtime);
 	if (!pairingService) {
 		// No pairing service available - allow by default (fallback behavior)
 		runtime.logger.warn(
@@ -166,7 +166,7 @@ export async function addToAllowlist(
 	senderId: string,
 	metadata?: Record<string, string>,
 ): Promise<boolean> {
-	const pairingService = getPairingService(runtime);
+	const pairingService = await getPairingService(runtime);
 	if (!pairingService) {
 		runtime.logger.warn(
 			{ src: "pairing-integration", channel },
@@ -187,7 +187,7 @@ export async function removeFromAllowlist(
 	channel: PairingChannel,
 	senderId: string,
 ): Promise<boolean> {
-	const pairingService = getPairingService(runtime);
+	const pairingService = await getPairingService(runtime);
 	if (!pairingService) {
 		return false;
 	}
@@ -203,7 +203,7 @@ export async function isInAllowlist(
 	channel: PairingChannel,
 	senderId: string,
 ): Promise<boolean> {
-	const pairingService = getPairingService(runtime);
+	const pairingService = await getPairingService(runtime);
 	if (!pairingService) {
 		return false;
 	}
@@ -220,7 +220,7 @@ export async function approvePairingCode(
 	channel: PairingChannel,
 	code: string,
 ): Promise<string | null> {
-	const pairingService = getPairingService(runtime);
+	const pairingService = await getPairingService(runtime);
 	if (!pairingService) {
 		return null;
 	}

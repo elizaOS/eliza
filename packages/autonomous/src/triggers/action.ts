@@ -284,9 +284,9 @@ export const createTriggerTaskAction: Action = {
         };
       }
 
-      const autonomy = runtime.getService(
+      const autonomy = (await runtime.getService(
         "AUTONOMY",
-      ) as AutonomyServiceLike | null;
+      )) as AutonomyServiceLike | null;
       const roomId = autonomy?.getAutonomousRoomId?.() ?? message.roomId;
 
       const createdTaskId = await runtime.createTask({
