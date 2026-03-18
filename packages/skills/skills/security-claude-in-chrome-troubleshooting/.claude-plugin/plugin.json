@@ -1,8 +1,0 @@
-{
-  "name": "claude-in-chrome-troubleshooting",
-  "version": "1.0.0",
-  "description": "Diagnose and fix Claude in Chrome MCP extension connectivity issues",
-  "author": {
-    "name": "Dan Guido"
-  }
-}

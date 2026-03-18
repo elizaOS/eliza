@@ -1,1 +1,0 @@
-# ct_analyzer tests

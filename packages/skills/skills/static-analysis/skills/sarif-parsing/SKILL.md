@@ -28,7 +28,7 @@ Do NOT use this skill for:
 - Running static analysis scans (use CodeQL or Semgrep skills instead)
 - Writing CodeQL or Semgrep rules (use their respective skills)
 - Analyzing source code directly (SARIF is for processing existing scan results)
-- Triaging findings without SARIF input (use variant-analysis or audit skills)
+- Triaging findings without SARIF input
 
 ## SARIF Structure Overview
 

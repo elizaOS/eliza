@@ -464,7 +464,7 @@ Post-quantum algorithm Kyber's reference implementation contained timing vulnera
 
 ```
                     ┌─────────────────────────┐
-                    │  constant-time-analysis │
+                    │  constant-time-testing  │
                     │     (this skill)        │
                     └───────────┬─────────────┘
                                 │
