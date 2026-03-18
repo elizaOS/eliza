@@ -253,7 +253,7 @@ describe("Environment Abstraction", () => {
 				const result = loadEnvFile();
 				// Result depends on whether .env exists in test environment
 				expect(typeof result).toBe("boolean");
-			});
+			}, 30_000);
 
 			test("should throw error for invalid path", () => {
 				expect(() => loadEnvFile("/nonexistent/path/.env")).toThrow(

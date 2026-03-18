@@ -149,9 +149,7 @@ export function ConnectionStep() {
     setState("onboardingOpenRouterModel", modelId);
   };
 
-  const providers = (onboardingOptions?.providers ?? []).filter(
-    (provider: ProviderOption) => provider.id !== "elizacloud",
-  );
+  const providers = onboardingOptions?.providers ?? [];
   const elizaCloudReady =
     elizaCloudConnected ||
     (onboardingRunMode === "cloud" &&

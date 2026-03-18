@@ -535,7 +535,17 @@ function useDesktopPermissionsState() {
         platform: bridgedPlatform ?? "unknown",
         shellEnabled,
       };
-      return reconcileRendererMediaPermissions(snapshot);
+		const reconciled = await reconcileRendererMediaPermissions(snapshot);
+		
+		// Sync bridged permissions to the backend so it knows what the UI knows.
+		if (bridgedPermissions !== null || forceRefresh) {
+			try {
+				await client.updatePermissionsState(reconciled.permissions);
+			} catch (err) {
+				console.error("Failed to sync bridged permissions to backend:", err);
+			}
+		}
+      return reconciled;
     },
     [],
   );
