@@ -258,6 +258,125 @@ export function ConnectionStep() {
     }
   };
 
+  if (branding.appName === "Eliza") {
+    return (
+      <>
+        <div className="onboarding-section-title">Eliza Cloud</div>
+        <div className="onboarding-divider">
+          <div className="onboarding-divider-diamond" />
+        </div>
+
+        <div style={{ width: "100%", textAlign: "center" }}>
+          {elizaCloudConnected ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                padding: "0.625rem 1rem",
+                border: "1px solid var(--ok-muted)",
+                background: "var(--ok-subtle)",
+                color: "var(--ok)",
+                fontSize: "0.875rem",
+                borderRadius: "0.5rem",
+                justifyContent: "center",
+                marginBottom: "1rem"
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <title>{t("onboarding.connected")}</title>
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              {t("onboarding.connected")}
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="onboarding-confirm-btn"
+                onClick={handleCloudLogin}
+                disabled={elizaCloudLoginBusy}
+                style={{ marginBottom: "1rem" }}
+              >
+                {elizaCloudLoginBusy
+                  ? t("onboarding.connecting")
+                  : t("onboarding.connectAccount")}
+              </button>
+              {elizaCloudLoginError &&
+                (() => {
+                  const urlMatch = elizaCloudLoginError.match(
+                    /^Open this link to log in: (.+)$/,
+                  );
+                  if (urlMatch) {
+                    return (
+                      <p
+                        style={{
+                          fontSize: "0.8125rem",
+                          marginBottom: "1rem",
+                          color: "var(--text)",
+                        }}
+                      >
+                        Open this link to log in:{" "}
+                        <a
+                          href={urlMatch[1]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            color: "var(--text)",
+                            textDecoration: "underline",
+                          }}
+                        >
+                          Click here
+                        </a>
+                      </p>
+                    );
+                  }
+                  return (
+                    <p
+                      style={{
+                        color: "var(--danger)",
+                        fontSize: "0.8125rem",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      {elizaCloudLoginError}
+                    </p>
+                  );
+                })()}
+            </>
+          )}
+          <p className="onboarding-desc">{t("onboarding.freeCredits")}</p>
+        </div>
+
+        <div className="onboarding-panel-footer">
+          <span />
+          <button
+            className="onboarding-confirm-btn"
+            onClick={() => {
+              setState("onboardingRunMode", "cloud");
+              setState("onboardingCloudProvider", "elizacloud");
+              setState("onboardingProvider", "elizacloud");
+              void handleOnboardingNext();
+            }}
+            disabled={!elizaCloudConnected}
+            type="button"
+          >
+            {t("onboarding.confirm")}
+          </button>
+        </div>
+      </>
+    );
+  }
+
   if (!showProviderSelection) {
     if (!onboardingRunMode) {
       return (

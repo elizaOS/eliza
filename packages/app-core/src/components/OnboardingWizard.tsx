@@ -9,6 +9,7 @@ import {
 } from "@elizaos/app-core/state";
 import { resolveAppAssetUrl } from "@elizaos/app-core/utils";
 import { useEffect, useState } from "react";
+import { useBranding } from "../config/branding";
 import { VrmStage } from "./companion/VrmStage";
 import { ActivateStep } from "./onboarding/ActivateStep";
 import { ConnectionStep } from "./onboarding/ConnectionStep";
@@ -23,7 +24,10 @@ const DISABLE_ONBOARDING_VRM =
   String(import.meta.env.VITE_E2E_DISABLE_VRM ?? "") === "1";
 
 export function OnboardingWizard() {
-  const [revealStarted, setRevealStarted] = useState(DISABLE_ONBOARDING_VRM);
+  const branding = useBranding();
+  const isEliza = branding.appName === "Eliza";
+  const disableVrm = DISABLE_ONBOARDING_VRM || isEliza;
+  const [revealStarted, setRevealStarted] = useState(disableVrm);
 
   const {
     onboardingStep,
@@ -84,7 +88,7 @@ export function OnboardingWizard() {
       {!isCharacterSelect && <div className="onboarding-bg-overlay" />}
 
       {/* Keep browser E2E runs lightweight and deterministic by skipping VRM boot. */}
-      {DISABLE_ONBOARDING_VRM ? (
+      {disableVrm ? (
         <div
           aria-hidden="true"
           className="absolute inset-0 z-10 pointer-events-none"

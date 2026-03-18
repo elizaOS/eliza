@@ -64,6 +64,9 @@ const VrmStageLayer = memo(function VrmStageLayer({
   const [vrmLoaded, setVrmLoaded] = useState(false);
   const [showVrmFallback, setShowVrmFallback] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState<number | undefined>(undefined);
+  const [loaderFading, setLoaderFading] = useState(false);
+  const [loaderHidden, setLoaderHidden] = useState(false);
+  const loaderFadingStartedRef = useRef(false);
   const chatAvatarVoice = useChatAvatarVoiceState();
 
   const handleVrmEngineReady = useCallback(
@@ -98,9 +101,15 @@ const VrmStageLayer = memo(function VrmStageLayer({
     if (state.vrmLoaded) {
       setVrmLoaded(true);
       setShowVrmFallback(false);
+      if (!loaderFadingStartedRef.current) {
+        loaderFadingStartedRef.current = true;
+        setLoaderFading(true);
+        setTimeout(() => setLoaderHidden(true), 800);
+      }
       return;
     }
     if (state.loadError) {
+      setLoaderHidden(true);
       setVrmLoaded(false);
       setShowVrmFallback(true);
     }
@@ -143,9 +152,9 @@ const VrmStageLayer = memo(function VrmStageLayer({
           style={{ zIndex }}
         />
       )}
-      {visible && !vrmLoaded && !showVrmFallback && (
+      {visible && !loaderHidden && !showVrmFallback && (
         <div className="absolute inset-0" style={{ zIndex }}>
-          <AvatarLoader progress={loadingProgress} />
+          <AvatarLoader progress={loadingProgress} fadingOut={loaderFading} />
         </div>
       )}
     </>

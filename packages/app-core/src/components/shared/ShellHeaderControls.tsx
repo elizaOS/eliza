@@ -9,6 +9,7 @@ import {
   Users,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
+import { useBranding } from "../../config/branding";
 
 export const HEADER_ICON_BUTTON_CLASSNAME =
   "inline-flex items-center justify-center w-11 h-11 min-w-[44px] min-h-[44px] border border-border/50 bg-bg/50 backdrop-blur-md cursor-pointer text-sm leading-none hover:border-accent hover:text-txt font-medium hover:-translate-y-0.5 transition-all duration-300 hover:shadow-[0_0_15px_rgba(var(--accent),0.5)] active:scale-95 rounded-xl text-txt shadow-sm";
@@ -91,6 +92,8 @@ export function ShellHeaderControls({
   themeToggleWrapperClassName,
   themeToggleWrapperTestId,
 }: ShellHeaderControlsProps) {
+  const branding = useBranding();
+  const isEliza = branding.appName === "Eliza";
   const isMobileViewport = useIsMobileShellViewport();
   const shellOptions: Array<{
     view: ShellView;
@@ -119,40 +122,42 @@ export function ShellHeaderControls({
       className={`flex min-w-0 items-center gap-3 w-full ${className ?? ""}`}
     >
       <div className="flex shrink-0 items-center">
-        <fieldset
-          className="inline-flex items-center gap-0.5 rounded-xl border border-border/60 bg-transparent p-0.5 shadow-sm dark:border-border dark:bg-transparent"
-          data-testid="ui-shell-toggle"
-          aria-label="Switch shell view"
-        >
-          <legend className="sr-only">Switch shell view</legend>
-          {shellOptions.map(({ view, label, Icon }, index) => {
-            const selected = activeShellView === view;
-            const edgeClass =
-              index === 0
-                ? "rounded-l-xl rounded-r-none"
-                : index === shellOptions.length - 1
-                  ? "rounded-l-none rounded-r-xl"
-                  : "rounded-none";
-            return (
-              <button
-                key={view}
-                type="button"
-                onClick={() => onShellViewChange(view)}
-                className={`inline-flex h-9 min-w-[44px] items-center justify-center px-3 transition-all duration-200 ${edgeClass} ${
-                  selected
-                    ? "border border-[#d8a108]/30 bg-bg/55 text-[#8a6500] shadow-sm dark:border-accent/25 dark:bg-bg/85 dark:text-[#f0b232]"
-                    : "border border-transparent bg-transparent text-muted-strong hover:border-border/70 hover:bg-bg/85 hover:text-txt dark:text-muted dark:hover:border-border/60 dark:hover:bg-bg-hover/80 dark:hover:text-txt"
-                }`}
-                aria-label={label}
-                aria-pressed={selected}
-                title={label}
-                data-testid={`ui-shell-toggle-${view}`}
-              >
-                <Icon className="h-4 w-4" />
-              </button>
-            );
-          })}
-        </fieldset>
+        {!isEliza && (
+          <fieldset
+            className="inline-flex items-center gap-0.5 rounded-xl border border-border/60 bg-transparent p-0.5 shadow-sm dark:border-border dark:bg-transparent"
+            data-testid="ui-shell-toggle"
+            aria-label="Switch shell view"
+          >
+            <legend className="sr-only">Switch shell view</legend>
+            {shellOptions.map(({ view, label, Icon }, index) => {
+              const selected = activeShellView === view;
+              const edgeClass =
+                index === 0
+                  ? "rounded-l-xl rounded-r-none"
+                  : index === shellOptions.length - 1
+                    ? "rounded-l-none rounded-r-xl"
+                    : "rounded-none";
+              return (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => onShellViewChange(view)}
+                  className={`inline-flex h-9 min-w-[44px] items-center justify-center px-3 transition-all duration-200 ${edgeClass} ${
+                    selected
+                      ? "border border-[#d8a108]/30 bg-bg/55 text-[#8a6500] shadow-sm dark:border-accent/25 dark:bg-bg/85 dark:text-[#f0b232]"
+                      : "border border-transparent bg-transparent text-muted-strong hover:border-border/70 hover:bg-bg/85 hover:text-txt dark:text-muted dark:hover:border-border/60 dark:hover:bg-bg-hover/80 dark:hover:text-txt"
+                  }`}
+                  aria-label={label}
+                  aria-pressed={selected}
+                  title={label}
+                  data-testid={`ui-shell-toggle-${view}`}
+                >
+                  <Icon className="h-4 w-4" />
+                </button>
+              );
+            })}
+          </fieldset>
+        )}
       </div>
 
       <div className="min-w-0 flex-1">{children}</div>
