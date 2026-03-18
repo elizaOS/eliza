@@ -54,7 +54,7 @@ import type { ToolPolicyConfig, ToolProfileId } from "./tools";
  * state composition, model usage, and task management.
  */
 
-export interface IAgentRuntime extends IDatabaseAdapter<object> {
+export interface IAgentRuntime extends IDatabaseAdapter<any> {
 	// Properties
 	/** Database adapter. Set in constructor; required. */
 	adapter: IDatabaseAdapter;

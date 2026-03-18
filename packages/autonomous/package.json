@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/autonomous",
-  "version": "2.0.0-alpha.62",
+  "version": "2.0.0-alpha.63",
   "description": "Standalone autonomous agent runtime and backend server package for elizaOS.",
   "type": "module",
   "license": "MIT",
@@ -238,7 +238,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
-    "@elizaos/core": "2.0.0-alpha.62",
+    "@elizaos/core": "2.0.0-alpha.63",
     "@elizaos/plugin-agent-skills": "^2.0.0-alpha.11",
     "@elizaos/plugin-coding-agent": "0.1.0-next.1",
     "@elizaos/plugin-cron": "^2.0.0-alpha.7",

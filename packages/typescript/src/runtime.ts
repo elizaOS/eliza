@@ -4964,8 +4964,8 @@ ${section_end}`;
 		return this.taskWorkers.get(name);
 	}
 
-	get db(): object {
-		return this.adapter.db as object;
+	get db(): any {
+		return this.adapter.db;
 	}
 	async init(): Promise<void> {
 		await this.adapter.initialize();
