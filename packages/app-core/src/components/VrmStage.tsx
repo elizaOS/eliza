@@ -63,6 +63,7 @@ const VrmStageLayer = memo(function VrmStageLayer({
 }) {
   const [vrmLoaded, setVrmLoaded] = useState(false);
   const [showVrmFallback, setShowVrmFallback] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState<number | undefined>(undefined);
   const chatAvatarVoice = useChatAvatarVoiceState();
 
   const handleVrmEngineReady = useCallback(
@@ -91,6 +92,9 @@ const VrmStageLayer = memo(function VrmStageLayer({
   );
 
   const handleVrmEngineState = useCallback((state: VrmEngineState) => {
+    if (state.loadingProgress !== undefined) {
+      setLoadingProgress(Math.round(state.loadingProgress * 100));
+    }
     if (state.vrmLoaded) {
       setVrmLoaded(true);
       setShowVrmFallback(false);
@@ -141,7 +145,7 @@ const VrmStageLayer = memo(function VrmStageLayer({
       )}
       {visible && !vrmLoaded && !showVrmFallback && (
         <div className="absolute inset-0" style={{ zIndex }}>
-          <AvatarLoader />
+          <AvatarLoader progress={loadingProgress} />
         </div>
       )}
     </>
@@ -157,6 +161,7 @@ export const VrmStage = memo(function VrmStage({
   initialCompanionZoomNormalized,
   onEngineReady,
   onLayerEngineReady,
+  onRevealStart,
   playWaveOnAvatarChange = false,
   preloadAvatars = [],
   t,
@@ -169,6 +174,7 @@ export const VrmStage = memo(function VrmStage({
   initialCompanionZoomNormalized?: number;
   onEngineReady?: (engine: VrmEngine) => void;
   onLayerEngineReady?: (vrmPath: string, engine: VrmEngine) => void;
+  onRevealStart?: () => void;
   playWaveOnAvatarChange?: boolean;
   preloadAvatars?: readonly VrmStageAvatarEntry[];
   t: TranslateFn;
@@ -244,9 +250,10 @@ export const VrmStage = memo(function VrmStage({
   const handleRevealStart = useCallback(
     (layerPath: string) => {
       if (layerPath !== currentPathRef.current) return;
+      onRevealStart?.();
       scheduleGreetingWave();
     },
-    [scheduleGreetingWave],
+    [onRevealStart, scheduleGreetingWave],
   );
 
   useEffect(() => {
