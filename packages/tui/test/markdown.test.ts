@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { Chalk } from "chalk";
 import { Markdown } from "../src/components/markdown.js";
 import { type Component, TUI } from "../src/tui.js";

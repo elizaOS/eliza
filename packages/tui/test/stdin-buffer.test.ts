@@ -6,7 +6,7 @@
  */
 
 import assert from "node:assert";
-import { beforeEach, describe, it } from "node:test";
+import { beforeEach, describe, it } from "vitest";
 import { StdinBuffer } from "../src/stdin-buffer.js";
 
 describe("StdinBuffer", () => {

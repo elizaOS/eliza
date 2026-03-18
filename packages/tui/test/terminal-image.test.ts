@@ -3,7 +3,7 @@
  */
 
 import assert from "node:assert";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { isImageLine } from "../src/terminal-image.js";
 
 describe("isImageLine", () => {
