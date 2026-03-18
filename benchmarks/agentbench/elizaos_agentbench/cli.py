@@ -31,8 +31,8 @@ def _load_dotenv() -> None:
 
     candidates = [
         Path.cwd() / ".env",
-        # repo_root/benchmarks/agentbench/python/elizaos_agentbench/cli.py -> repo_root is parents[4]
-        Path(__file__).resolve().parents[4] / ".env",
+        # repo_root/benchmarks/agentbench/elizaos_agentbench/cli.py -> repo_root is parents[3]
+        Path(__file__).resolve().parents[3] / ".env",
     ]
 
     for path in candidates:
