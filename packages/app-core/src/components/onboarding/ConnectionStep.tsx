@@ -152,8 +152,7 @@ export function ConnectionStep() {
   const providers = onboardingOptions?.providers ?? [];
   const elizaCloudReady =
     elizaCloudConnected ||
-    (onboardingRunMode === "cloud" &&
-      onboardingCloudProvider === "elizacloud" &&
+    (onboardingProvider === "elizacloud" &&
       onboardingApiKey.trim().length > 0);
   const showProviderSelection =
     onboardingRemoteConnected || onboardingRunMode === "local";
