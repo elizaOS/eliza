@@ -5,7 +5,6 @@
  * Replaces the gateway WebSocket protocol entirely.
  */
 
-import { DEFAULT_BRANDING } from "../config/branding";
 import type {
   AudioGenConfig,
   AudioGenProvider,
@@ -85,9 +84,9 @@ import {
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
 } from "@elizaos/autonomous/contracts/wallet";
+import { DEFAULT_BRANDING } from "../config/branding";
 import type { ConfigUiHint } from "../types";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
-import { mergeStreamingText } from "../utils/streaming-text";
 import {
   clearElizaApiBase,
   clearElizaApiToken,
@@ -96,6 +95,7 @@ import {
   setElizaApiBase,
   setElizaApiToken,
 } from "../utils/eliza-globals";
+import { mergeStreamingText } from "../utils/streaming-text";
 
 export type {
   AllPermissionsState,
@@ -4752,7 +4752,7 @@ export class ElizaClient {
   }
 
   /**
-   * Sync permission states configured externally (e.g., from Electron bridge) 
+   * Sync permission states configured externally (e.g., from Electron bridge)
    * to the backend so capabilities can evaluate successfully.
    */
   async updatePermissionsState(

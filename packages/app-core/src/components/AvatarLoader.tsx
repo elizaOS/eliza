@@ -66,12 +66,19 @@ export function AvatarLoader({
         >
           <div
             style={{
-              width: typeof progress === "number" ? `${Math.max(0, Math.min(100, progress))}%` : "60%",
+              width:
+                typeof progress === "number"
+                  ? `${Math.max(0, Math.min(100, progress))}%`
+                  : "60%",
               height: "100%",
               background: "var(--text-strong)",
               boxShadow: "0 0 8px rgba(255, 255, 255, 0.3)",
-              transition: typeof progress === "number" ? "width 0.3s ease-out" : "none",
-              animation: typeof progress === "number" ? "none" : "avatar-loader-progress 2s ease-in-out infinite",
+              transition:
+                typeof progress === "number" ? "width 0.3s ease-out" : "none",
+              animation:
+                typeof progress === "number"
+                  ? "none"
+                  : "avatar-loader-progress 2s ease-in-out infinite",
             }}
           />
         </div>

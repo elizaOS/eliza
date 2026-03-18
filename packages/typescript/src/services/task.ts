@@ -613,7 +613,7 @@ export class TaskService extends Service {
 	 * @returns {Promise<void>} - A promise that resolves once the service has been stopped.
 	 */
 	static async stop(runtime: IAgentRuntime) {
-		const service = await runtime.getService(ServiceType.TASK);
+		const service = runtime.getService(ServiceType.TASK);
 		if (service) {
 			await service.stop();
 		}

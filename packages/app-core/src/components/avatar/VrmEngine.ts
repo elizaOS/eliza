@@ -492,7 +492,9 @@ async function loadGltfAsset(
   }
 
   if (!isGzipBuffer(buffer)) {
-    const objectUrl = URL.createObjectURL(new Blob([buffer], { type: "model/gltf-binary" }));
+    const objectUrl = URL.createObjectURL(
+      new Blob([buffer], { type: "model/gltf-binary" }),
+    );
     try {
       return await loader.loadAsync(objectUrl);
     } finally {
@@ -2284,12 +2286,14 @@ export class VrmEngine {
           );
 
           // Compose with existing nodes
-          const origOpacity = mat.opacityNode as TslMaterialNode | null | undefined;
+          const origOpacity = mat.opacityNode as
+            | TslMaterialNode
+            | null
+            | undefined;
           mat.opacityNode = origOpacity
-            ? ((((origOpacity as { mul: (value: unknown) => unknown }).mul(
+            ? (((origOpacity as { mul: (value: unknown) => unknown }).mul(
                 dissolveAlpha,
-              ) as unknown) as TslMaterialNode) ??
-                dissolveAlpha)
+              ) as unknown as TslMaterialNode) ?? dissolveAlpha)
             : dissolveAlpha;
 
           const matWithEmissive = mat as MeshStandardMaterialWithNodeProps;
@@ -2298,9 +2302,9 @@ export class VrmEngine {
             | null
             | undefined;
           matWithEmissive.emissiveNode = origEmissive
-            ? (((origEmissive as { add: (value: unknown) => unknown }).add(
+            ? ((origEmissive as { add: (value: unknown) => unknown }).add(
                 emissiveBoost,
-              ) as unknown) as TslMaterialNode)
+              ) as unknown as TslMaterialNode)
             : (emissiveBoost as TslMaterialNode);
 
           mat.alphaTest = 0.01;

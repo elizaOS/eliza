@@ -262,7 +262,7 @@ export const createTaskAction: Action = {
 			if (!metadata) throw new Error("Failed to compute trigger schedule");
 
 			const autonomyRoomId = (
-				(await runtime.getService("AUTONOMY")) as {
+				runtime.getService("AUTONOMY") as {
 					getAutonomousRoomId?(): UUID;
 				} | null
 			)?.getAutonomousRoomId?.();

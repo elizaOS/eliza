@@ -89,11 +89,11 @@ export interface IAgentRuntime extends IDatabaseAdapter<any> {
 
 	getService<T extends Service>(
 		service: ServiceTypeName | string,
-	): Promise<T | null>;
+	): T | null;
 
 	getServicesByType<T extends Service>(
 		service: ServiceTypeName | string,
-	): T[] | Promise<T[]>;
+	): T[];
 
 	getAllServices(): Map<ServiceTypeName, Service[]>;
 

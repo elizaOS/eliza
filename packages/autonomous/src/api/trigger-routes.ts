@@ -5,8 +5,8 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import type { RouteHelpers, RouteRequestContext } from "./route-helpers";
 import type { TriggerSummary } from "../triggers/types";
+import type { RouteHelpers, RouteRequestContext } from "./route-helpers";
 
 export type TriggerRouteHelpers = RouteHelpers;
 
@@ -227,7 +227,7 @@ export async function handleTriggerRoutes(
     }
 
     const roomId = (
-      (await runtime.getService("AUTONOMY")) as { getAutonomousRoomId?(): UUID } | null
+      runtime.getService("AUTONOMY") as { getAutonomousRoomId?(): UUID } | null
     )?.getAutonomousRoomId?.();
     const taskId = await runtime.createTask({
       name: TRIGGER_TASK_NAME,

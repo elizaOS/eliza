@@ -142,7 +142,7 @@
     "@elizaos/plugin-local-embedding": "^2.0.0-alpha.11",
     "@elizaos/plugin-ollama": "^2.0.0-alpha.7",
     "@elizaos/plugin-openai": "^2.0.0-alpha.10",
-    "@elizaos/plugin-sql": "2.0.0-alpha.15",
+    "@elizaos/plugin-sql": "2.0.0-alpha.12",
     "@elysiajs/cors": "^1.4.1",
     "@polymarket/clob-client": "^5.2.0",
     "@sinclair/typebox": "^0.34.47",

@@ -11,6 +11,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { getElizaApiBase } from "../../utils/eliza-globals";
 import {
   type AgentMode,
   IS_POPOUT,
@@ -19,7 +20,6 @@ import {
   type StreamSourceType,
   toggleAlwaysOnTop,
 } from "./helpers";
-import { getElizaApiBase } from "../../utils/eliza-globals";
 
 function formatUptime(seconds: number): string {
   const h = Math.floor(seconds / 3600);

@@ -4,12 +4,12 @@ import type {
   ProviderOption,
 } from "@elizaos/app-core/api";
 import { client } from "@elizaos/app-core/api";
-import { useBranding } from "../../config/branding";
 import { isNative } from "@elizaos/app-core/platform";
 import { getProviderLogo } from "@elizaos/app-core/providers";
 import { useApp } from "@elizaos/app-core/state";
 import { openExternalUrl } from "@elizaos/app-core/utils";
 import { useState } from "react";
+import { useBranding } from "../../config/branding";
 
 function formatRequestError(err: unknown): string {
   if (err instanceof Error) {
@@ -152,8 +152,7 @@ export function ConnectionStep() {
   const providers = onboardingOptions?.providers ?? [];
   const elizaCloudReady =
     elizaCloudConnected ||
-    (onboardingProvider === "elizacloud" &&
-      onboardingApiKey.trim().length > 0);
+    (onboardingProvider === "elizacloud" && onboardingApiKey.trim().length > 0);
   const showProviderSelection =
     onboardingRemoteConnected || onboardingRunMode === "local";
 
@@ -280,7 +279,7 @@ export function ConnectionStep() {
                 fontSize: "0.875rem",
                 borderRadius: "0.5rem",
                 justifyContent: "center",
-                marginBottom: "1rem"
+                marginBottom: "1rem",
               }}
             >
               <svg

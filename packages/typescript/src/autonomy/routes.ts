@@ -10,12 +10,12 @@ import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
 /**
  * Get autonomy service from runtime with fallback
  */
-async function getAutonomyService(runtime: {
-	getService: (name: string) => Promise<AutonomyService | null>;
-}): Promise<AutonomyService | null> {
+function getAutonomyService(runtime: {
+	getService: (name: string) => AutonomyService | null;
+}): AutonomyService | null {
 	return (
-		(await runtime.getService(AUTONOMY_SERVICE_TYPE)) ||
-		(await runtime.getService("autonomy"))
+		runtime.getService(AUTONOMY_SERVICE_TYPE) ||
+		runtime.getService("autonomy")
 	);
 }
 
@@ -27,7 +27,7 @@ export const autonomyRoutes: Route[] = [
 		path: "/autonomy/status",
 		type: "GET",
 		handler: async (_req, res, runtime): Promise<void> => {
-			const autonomyService = await getAutonomyService(runtime);
+			const autonomyService = getAutonomyService(runtime);
 
 			if (!autonomyService) {
 				res.status(503).json({
@@ -57,7 +57,7 @@ export const autonomyRoutes: Route[] = [
 		path: "/autonomy/enable",
 		type: "POST",
 		handler: async (_req, res, runtime): Promise<void> => {
-			const autonomyService = await getAutonomyService(runtime);
+			const autonomyService = getAutonomyService(runtime);
 
 			if (!autonomyService) {
 				res.status(503).json({
@@ -86,7 +86,7 @@ export const autonomyRoutes: Route[] = [
 		path: "/autonomy/disable",
 		type: "POST",
 		handler: async (_req, res, runtime): Promise<void> => {
-			const autonomyService = await getAutonomyService(runtime);
+			const autonomyService = getAutonomyService(runtime);
 
 			if (!autonomyService) {
 				res.status(503).json({
@@ -115,7 +115,7 @@ export const autonomyRoutes: Route[] = [
 		path: "/autonomy/toggle",
 		type: "POST",
 		handler: async (_req, res, runtime): Promise<void> => {
-			const autonomyService = await getAutonomyService(runtime);
+			const autonomyService = getAutonomyService(runtime);
 
 			if (!autonomyService) {
 				res.status(503).json({
@@ -151,7 +151,7 @@ export const autonomyRoutes: Route[] = [
 		path: "/autonomy/interval",
 		type: "POST",
 		handler: async (req, res, runtime): Promise<void> => {
-			const autonomyService = await getAutonomyService(runtime);
+			const autonomyService = getAutonomyService(runtime);
 
 			if (!autonomyService) {
 				res.status(503).json({

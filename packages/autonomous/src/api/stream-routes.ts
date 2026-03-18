@@ -12,9 +12,8 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { logger } from "@elizaos/core";
-import type { StreamConfig } from "../services/stream-manager";
 import type { TtsConfig } from "../config/types.messages";
-import type { StreamVisualSettings } from "./stream-persistence";
+import type { StreamConfig } from "../services/stream-manager";
 import {
   getTtsProviderStatus,
   resolveTtsConfig,
@@ -27,6 +26,7 @@ import {
   sendJson,
   sendJsonError,
 } from "./http-helpers";
+import type { StreamVisualSettings } from "./stream-persistence";
 import {
   getHeadlessCaptureConfig,
   parseDestinationQuery,

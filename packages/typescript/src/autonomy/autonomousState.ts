@@ -56,9 +56,9 @@ function getRuntimeAgentId(runtime: IAgentRuntime): string {
 async function getAgentEventService(
 	runtime: IAgentRuntime,
 ): Promise<AgentEventServiceLike | null> {
-	return (await runtime.getService(
+	return runtime.getService(
 		"AGENT_EVENT",
-	)) as AgentEventServiceLike | null;
+	) as AgentEventServiceLike | null;
 }
 
 function pushCachedEvent(agentId: string, event: AgentEventPayloadLike): void {

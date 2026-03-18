@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import { readJsonBody as parseJsonBody, sendJson } from "./http-helpers";
 import type { SignalPairingEvent } from "../services/signal-pairing";
+import { readJsonBody as parseJsonBody, sendJson } from "./http-helpers";
 
 export type SignalPairingEventLike = SignalPairingEvent;
 
@@ -148,7 +148,7 @@ export async function handleSignalRoute(
     let serviceConnected = false;
     if (state.runtime) {
       try {
-        const sigService = (await state.runtime.getService("signal")) as Record<
+        const sigService = state.runtime.getService("signal") as Record<
           string,
           unknown
         > | null;

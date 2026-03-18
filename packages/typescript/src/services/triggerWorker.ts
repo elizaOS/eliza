@@ -52,9 +52,9 @@ async function dispatchIntoAutonomy(
 	taskId: UUID,
 	trigger: TriggerConfig,
 ): Promise<void> {
-	const autonomy = (await runtime.getService(
+	const autonomy = runtime.getService(
 		"AUTONOMY",
-	)) as AutonomyServiceLike | null;
+	) as AutonomyServiceLike | null;
 	if (!autonomy) {
 		throw new Error("Autonomy service is not available");
 	}

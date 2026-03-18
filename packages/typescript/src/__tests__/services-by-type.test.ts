@@ -76,8 +76,11 @@ describe("Service Type System", () => {
 			// Both should be registered
 			expect(runtime.hasService(ServiceType.WALLET)).toBe(true);
 
+			// Trigger lazy startup so instances are available for synchronous lookup
+			await runtime.getServiceLoadPromise(ServiceType.WALLET);
+
 			// Get all wallet services
-			const walletServices = await runtime.getServicesByType(
+			const walletServices = runtime.getServicesByType(
 				ServiceType.WALLET,
 			);
 			expect(walletServices).toHaveLength(2);
@@ -92,18 +95,21 @@ describe("Service Type System", () => {
 			await runtime.registerService(MockWalletService1);
 			await runtime.registerService(MockWalletService2);
 
+			// Trigger lazy startup so instances are available for synchronous lookup
+			await runtime.getServiceLoadPromise(ServiceType.WALLET);
+
 			// getService should return the first registered service
-			const firstService = await runtime.getService(ServiceType.WALLET);
+			const firstService = runtime.getService(ServiceType.WALLET);
 			expect(firstService).toBeInstanceOf(MockWalletService1);
 		});
 
 		it("should return empty array for non-existent service type", async () => {
-			const services = await runtime.getServicesByType("non-existent-type");
+			const services = runtime.getServicesByType("non-existent-type");
 			expect(services).toHaveLength(0);
 		});
 
 		it("should return null for non-existent service type with getService", async () => {
-			const service = await runtime.getService("non-existent-type");
+			const service = runtime.getService("non-existent-type");
 			expect(service).toBe(null);
 		});
 	});
@@ -115,19 +121,23 @@ describe("Service Type System", () => {
 			await runtime.registerService(MockWalletService2);
 			await runtime.registerService(MockPdfService);
 
+			// Trigger lazy startup so instances are available for synchronous lookup
+			await runtime.getServiceLoadPromise(ServiceType.WALLET);
+			await runtime.getServiceLoadPromise(ServiceType.PDF);
+
 			// Check wallet services
-			const walletServices = await runtime.getServicesByType(
+			const walletServices = runtime.getServicesByType(
 				ServiceType.WALLET,
 			);
 			expect(walletServices).toHaveLength(2);
 
 			// Check PDF services
-			const pdfServices = await runtime.getServicesByType(ServiceType.PDF);
+			const pdfServices = runtime.getServicesByType(ServiceType.PDF);
 			expect(pdfServices).toHaveLength(1);
 			expect(pdfServices[0]).toBeInstanceOf(MockPdfService);
 
 			// Check non-existent service type
-			const videoServices = await runtime.getServicesByType(ServiceType.VIDEO);
+			const videoServices = runtime.getServicesByType(ServiceType.VIDEO);
 			expect(videoServices).toHaveLength(0);
 		});
 
@@ -136,9 +146,9 @@ describe("Service Type System", () => {
 			await runtime.registerService(MockWalletService2);
 			await runtime.registerService(MockPdfService);
 
-			// Trigger lazy startup of all service types before checking getAllServices
-			await runtime.getServicesByType(ServiceType.WALLET);
-			await runtime.getServicesByType(ServiceType.PDF);
+			// Trigger lazy startup so instances are available for synchronous lookup
+			await runtime.getServiceLoadPromise(ServiceType.WALLET);
+			await runtime.getServiceLoadPromise(ServiceType.PDF);
 
 			const allServices = runtime.getAllServices();
 
@@ -184,10 +194,14 @@ describe("Service Type System", () => {
 			// Mock the stop methods to track calls
 			const stopCalls: string[] = [];
 
-			const walletServices = await runtime.getServicesByType(
+			// Trigger lazy startup so instances are available for synchronous lookup
+			await runtime.getServiceLoadPromise(ServiceType.WALLET);
+			await runtime.getServiceLoadPromise(ServiceType.PDF);
+
+			const walletServices = runtime.getServicesByType(
 				ServiceType.WALLET,
 			);
-			const pdfServices = await runtime.getServicesByType(ServiceType.PDF);
+			const pdfServices = runtime.getServicesByType(ServiceType.PDF);
 
 			walletServices[0].stop = async () => {
 				stopCalls.push("wallet1");

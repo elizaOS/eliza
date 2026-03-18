@@ -584,9 +584,9 @@ export async function requestConfirmation(
 		onCancel?: (task: Task, runtime: IAgentRuntime) => Promise<void>;
 	},
 ): Promise<boolean> {
-	const service = (await runtime.getService(
+	const service = runtime.getService(
 		ServiceType.APPROVAL,
-	)) as ApprovalService | null;
+	) as ApprovalService | null;
 
 	if (!service) {
 		logger.warn("ApprovalService not available, auto-denying");

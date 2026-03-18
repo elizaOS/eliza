@@ -17,6 +17,7 @@ import {
   AvatarLoader,
   CharacterView,
   ChatView,
+  CloudOnboarding,
   CompanionShell,
   CompanionView,
   ConnectionFailedBanner,
@@ -120,6 +121,9 @@ function ViewRouter({
         );
       case "character":
       case "character-select":
+        // Character-select is a companion-only route; non-companion apps
+        // (e.g. Eliza Home) fall through to the default chat view.
+        if (!COMPANION_ENABLED) return <ChatView />;
         return (
           <TabScrollView>
             <CharacterView sceneOverlay={characterSceneVisible} />
@@ -190,6 +194,7 @@ function ViewRouter({
 export function App() {
   const {
     onboardingLoading,
+    onboardingMode,
     startupPhase,
     startupError,
     authRequired,
@@ -207,7 +212,7 @@ export function App() {
 
   const isPopout = useIsPopout();
   const shellMode =
-    tab === "character" || tab === "character-select"
+    COMPANION_ENABLED && (tab === "character" || tab === "character-select")
       ? "native"
       : (uiShellMode ?? "companion");
   const effectiveTab: Tab =
@@ -385,7 +390,13 @@ export function App() {
   }
 
   if (authRequired && !shouldLoad) return <PairingView />;
-  if (!onboardingComplete && !shouldLoad) return <OnboardingWizard />;
+  if (!onboardingComplete && !shouldLoad) {
+    return onboardingMode === "elizacloudonly" ? (
+      <CloudOnboarding />
+    ) : (
+      <OnboardingWizard />
+    );
+  }
 
   const shellContent = companionShellVisible ? (
     <CompanionShell tab={effectiveTab} actionNotice={actionNotice} />

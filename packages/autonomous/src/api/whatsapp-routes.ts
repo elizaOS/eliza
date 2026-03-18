@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import { readJsonBody as parseJsonBody, sendJson } from "./http-helpers";
 import type { WhatsAppPairingEvent } from "../services/whatsapp-pairing";
+import { readJsonBody as parseJsonBody, sendJson } from "./http-helpers";
 
 export type WhatsAppPairingEventLike = WhatsAppPairingEvent;
 
@@ -152,7 +152,7 @@ export async function handleWhatsAppRoute(
     let servicePhone: string | null = null;
     if (state.runtime) {
       try {
-        const waService = (await state.runtime.getService("whatsapp")) as Record<
+        const waService = state.runtime.getService("whatsapp") as Record<
           string,
           unknown
         > | null;

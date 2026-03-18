@@ -52,9 +52,9 @@ export const addContactAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		const rolodexService = (await runtime.getService(
+		const rolodexService = runtime.getService(
 			"rolodex",
-		)) as RolodexService;
+		) as RolodexService;
 		if (!rolodexService) {
 			logger.warn("[AddContact] RolodexService not available");
 			return false;
@@ -72,9 +72,9 @@ export const addContactAction: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
-		const rolodexService = (await runtime.getService(
+		const rolodexService = runtime.getService(
 			"rolodex",
-		)) as RolodexService;
+		) as RolodexService;
 
 		if (!rolodexService) {
 			throw new Error("RolodexService not available");

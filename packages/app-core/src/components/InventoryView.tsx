@@ -10,8 +10,8 @@ import { useCallback, useState } from "react";
 import { TradePanel } from "./BscTradePanel";
 import {
   CHAIN_CONFIGS,
-  chainKeyToWalletRpcChain,
   type ChainKey,
+  chainKeyToWalletRpcChain,
   resolveChainKey,
 } from "./chainConfig";
 import {

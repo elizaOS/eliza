@@ -21,7 +21,7 @@ import {
   vi,
 } from "vitest";
 import type { InternalHooksConfig } from "../config/types.hooks";
-import type { HookEntry, ElizaHookMetadata } from "./types";
+import type { ElizaHookMetadata, HookEntry } from "./types";
 
 // ---------------------------------------------------------------------------
 // mocks

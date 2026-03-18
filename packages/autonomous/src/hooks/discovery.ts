@@ -8,10 +8,10 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { logger } from "@elizaos/core";
 import type {
+  ElizaHookMetadata,
   Hook,
   HookEntry,
   HookSource,
-  ElizaHookMetadata,
   ParsedHookFrontmatter,
 } from "./types";
 

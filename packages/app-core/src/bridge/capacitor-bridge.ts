@@ -16,10 +16,10 @@ import { isElectrobunRuntime } from "./electrobun-runtime";
 
 // Import the plugin bridge
 import {
+  type ElizaPlugins,
   getPluginCapabilities,
   getPlugins,
   isFeatureAvailable,
-  type ElizaPlugins,
   type PluginCapabilities,
 } from "./plugin-bridge";
 

@@ -1,5 +1,6 @@
 import type { Tab } from "../navigation";
-import type { ShellView } from "./types";
+import { COMPANION_ENABLED } from "../navigation";
+import type { OnboardingMode, ShellView } from "./types";
 import type { UiShellMode } from "./ui-preferences";
 
 export function deriveUiShellModeForTab(tab: Tab): UiShellMode {
@@ -12,7 +13,7 @@ export function getTabForShellView(view: ShellView, lastNativeTab: Tab): Tab {
   }
 
   if (view === "character") {
-    return "character-select";
+    return COMPANION_ENABLED ? "character-select" : lastNativeTab;
   }
 
   return lastNativeTab;
@@ -20,11 +21,15 @@ export function getTabForShellView(view: ShellView, lastNativeTab: Tab): Tab {
 
 export function shouldStartAtCharacterSelectOnLaunch(params: {
   onboardingNeedsOptions: boolean;
+  onboardingMode: OnboardingMode;
   navPath: string;
   urlTab: Tab | null;
 }): boolean {
-  const { onboardingNeedsOptions, navPath, urlTab } = params;
-  if (onboardingNeedsOptions) {
+  // Character-select is a companion-only feature.
+  if (!COMPANION_ENABLED) return false;
+
+  const { onboardingNeedsOptions, onboardingMode, navPath, urlTab } = params;
+  if (onboardingNeedsOptions || onboardingMode === "elizacloudonly") {
     return false;
   }
 

@@ -1,6 +1,6 @@
+import { useBranding } from "../config/branding";
 import type { StartupErrorState } from "../state";
 import { useApp } from "../state";
-import { useBranding } from "../config/branding";
 
 const REASON_LABELS: Record<StartupErrorState["reason"], string> = {
   "backend-timeout": "Backend Timeout",

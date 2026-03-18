@@ -1,9 +1,9 @@
-import { parseClampedInteger } from "../utils/number-parsing";
 import type {
   PluginManagerLike,
   RegistryPluginInfo,
   RegistrySearchResult,
 } from "../services/plugin-manager-types";
+import { parseClampedInteger } from "../utils/number-parsing";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers";
 
 interface InstalledRegistryPluginLike {
@@ -14,9 +14,7 @@ interface InstalledRegistryPluginLike {
 interface RegistryPluginManagerLike {
   refreshRegistry: () => Promise<Map<string, RegistryPluginInfo>>;
   listInstalledPlugins: () => Promise<InstalledRegistryPluginLike[]>;
-  getRegistryPlugin: (
-    name: string,
-  ) => Promise<RegistryPluginInfo | null>;
+  getRegistryPlugin: (name: string) => Promise<RegistryPluginInfo | null>;
   searchRegistry: (
     query: string,
     limit: number,
@@ -27,7 +25,7 @@ export interface RegistryRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "error"> {
   url: URL;
-  getPluginManager: () => Promise<RegistryPluginManagerLike>;
+  getPluginManager: () => RegistryPluginManagerLike;
   getLoadedPluginNames: () => string[];
   getBundledPluginIds: () => Set<string>;
   classifyRegistryPluginRelease: (params: {
@@ -55,7 +53,7 @@ export async function handleRegistryRoutes(
 
   if (method === "GET" && pathname === "/api/registry/plugins") {
     try {
-      const pluginManager = await getPluginManager();
+      const pluginManager = getPluginManager();
       const registry = await pluginManager.refreshRegistry();
       const installed = await pluginManager.listInstalledPlugins();
       const installedNames = new Set(installed.map((plugin) => plugin.name));
@@ -105,7 +103,7 @@ export async function handleRegistryRoutes(
       pathname.slice("/api/registry/plugins/".length),
     );
     try {
-      const pluginManager = await getPluginManager();
+      const pluginManager = getPluginManager();
       const info = await pluginManager.getRegistryPlugin(name);
       if (!info) {
         error(res, `Plugin "${name}" not found in registry`, 404);
@@ -135,7 +133,7 @@ export async function handleRegistryRoutes(
         ? parseClampedInteger(limitParam, { min: 1, max: 50, fallback: 15 })
         : 15;
 
-      const pluginManager = await getPluginManager();
+      const pluginManager = getPluginManager();
       const results = await pluginManager.searchRegistry(query, limit);
       json(res, { query, count: results.length, results });
     } catch (err) {
@@ -150,7 +148,7 @@ export async function handleRegistryRoutes(
 
   if (method === "POST" && pathname === "/api/registry/refresh") {
     try {
-      const pluginManager = await getPluginManager();
+      const pluginManager = getPluginManager();
       const registry = await pluginManager.refreshRegistry();
       json(res, { ok: true, count: registry.size });
     } catch (err) {

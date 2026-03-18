@@ -2,11 +2,7 @@
  * Onboarding step constants and helpers — extracted from AppContext.
  */
 
-export type OnboardingStep =
-  | "identity"
-  | "connection"
-  | "senses"
-  | "activate";
+export type OnboardingStep = "identity" | "connection" | "senses" | "activate";
 
 export const ONBOARDING_STEP_ORDER: OnboardingStep[] = [
   "identity",

@@ -13,8 +13,7 @@ const IDENTITY_PRESETS: Record<string, { name: string; avatarIndex: number }> =
 
 /** Identical clip-paths used by CharacterView roster cards. */
 const SLANT_CLIP = "polygon(32px 0, 100% 0, calc(100% - 32px) 100%, 0 100%)";
-const INSET_CLIP =
-  "polygon(0px 0, 100% 0, calc(100% - 4px) 100%, -8px 100%)";
+const INSET_CLIP = "polygon(0px 0, 100% 0, calc(100% - 4px) 100%, -8px 100%)";
 
 export function IdentityStep() {
   const {
@@ -108,9 +107,7 @@ export function IdentityStep() {
           <div className="onboarding-divider-diamond" />
         </div>
 
-        <p className="onboarding-desc mb-1">
-          {t("onboarding.importDesc")}
-        </p>
+        <p className="onboarding-desc mb-1">{t("onboarding.importDesc")}</p>
 
         <input
           type="file"

@@ -1,3 +1,4 @@
+import { createConnection } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
@@ -9,6 +10,58 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const packagesRoot = path.resolve(here, "..");
 const apiPort = Number(process.env.ELIZA_HOME_API_PORT) || 4001;
 const enableAppSourceMaps = process.env.ELIZA_HOME_APP_SOURCEMAP === "1";
+
+/**
+ * Dev-only middleware that gates /api requests on backend availability.
+ * When the backend isn't listening yet, returns 503 immediately so the
+ * request never reaches Vite's proxy (which would log noisy ECONNREFUSED
+ * errors).  Once the backend is reachable the gate opens and stays open.
+ */
+function apiGatePlugin(): Plugin {
+  let backendUp = false;
+
+  function probeBackend(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const sock = createConnection({ port: apiPort, host: "127.0.0.1" }, () => {
+        sock.destroy();
+        resolve(true);
+      });
+      sock.on("error", () => {
+        sock.destroy();
+        resolve(false);
+      });
+      // Don't let the probe hang; give it 200 ms.
+      sock.setTimeout(200, () => {
+        sock.destroy();
+        resolve(false);
+      });
+    });
+  }
+
+  return {
+    name: "api-gate",
+    configureServer(server) {
+      // Add middleware directly (not returned) so it runs BEFORE the proxy.
+      server.middlewares.use((req, res, next) => {
+        if (!req.url?.startsWith("/api") && !req.url?.startsWith("/ws")) {
+          return next();
+        }
+
+        // Fast path: once the backend is confirmed up, skip probing.
+        if (backendUp) return next();
+
+        probeBackend().then((up) => {
+          if (up) {
+            backendUp = true;
+            return next();
+          }
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "API server not ready" }));
+        });
+      });
+    },
+  };
+}
 
 /**
  * Dev-only middleware that handles CORS for Electron's custom-scheme origin
@@ -54,6 +107,7 @@ export default defineConfig({
     tailwindcss(),
     react(),
     electronCorsPlugin(),
+    apiGatePlugin(),
   ],
   resolve: {
     dedupe: ["react", "react-dom"],

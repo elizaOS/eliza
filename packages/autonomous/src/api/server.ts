@@ -35,8 +35,8 @@ import { getGlobalAwarenessRegistry } from "../awareness/registry";
 import { CharacterSchema } from "../config/character-schema";
 import {
   configFileExists,
-  loadElizaConfig,
   type ElizaConfig,
+  loadElizaConfig,
   saveElizaConfig,
 } from "../config/config";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths";
@@ -214,16 +214,16 @@ import { handleSandboxRoute } from "./sandbox-routes";
 import { applySignalQrOverride, handleSignalRoute } from "./signal-routes";
 import { resolveStreamingUpdate } from "./streaming-text";
 import {
-  type SubscriptionRouteContext,
   handleSubscriptionRoutes,
+  type SubscriptionRouteContext,
 } from "./subscription-routes";
 import { resolveTerminalRunLimits } from "./terminal-run-limits";
 import { handleTrainingRoutes } from "./training-routes";
 import type { TrainingServiceWithRuntime } from "./training-service-like";
 import { handleTrajectoryRoute } from "./trajectory-routes";
 import {
-  type TriggerRouteContext,
   handleTriggerRoutes,
+  type TriggerRouteContext,
 } from "./trigger-routes";
 import {
   generateVerificationMessage,
@@ -290,22 +290,24 @@ type ConnectorRouteHandler = (
   method: string,
 ) => Promise<boolean>;
 
-async function getAgentEventSvc(
+function getAgentEventSvc(
   runtime: AgentRuntime | null,
-): Promise<AgentEventServiceLike | null> {
+): AgentEventServiceLike | null {
   return getAgentEventService(runtime);
 }
 
-async function requirePluginManager(runtime: AgentRuntime | null): Promise<PluginManagerLike> {
-  const service = await runtime?.getService("plugin_manager");
+function requirePluginManager(runtime: AgentRuntime | null): PluginManagerLike {
+  const service = runtime?.getService("plugin_manager");
   if (!isPluginManagerLike(service)) {
     throw new Error("Plugin manager service not found");
   }
   return service;
 }
 
-async function requireCoreManager(runtime: AgentRuntime | null): Promise<CoreManagerLike> {
-  const service = await runtime?.getService("core_manager");
+async function requireCoreManager(
+  runtime: AgentRuntime | null,
+): Promise<CoreManagerLike> {
+  const service = runtime?.getService("core_manager");
   if (!isCoreManagerLike(service)) {
     throw new Error("Core manager service not found");
   }
@@ -806,7 +808,13 @@ function _extractResponseBlocks(
 // ---------------------------------------------------------------------------
 
 export function findOwnPackageRoot(startDir: string): string {
-  const KNOWN_NAMES = new Set(["eliza", "milady", "milaidy", "miladyai", "elizaos"]);
+  const KNOWN_NAMES = new Set([
+    "eliza",
+    "milady",
+    "milaidy",
+    "miladyai",
+    "elizaos",
+  ]);
   let dir = startDir;
   for (let i = 0; i < 10; i++) {
     const pkgPath = path.join(dir, "package.json");
@@ -2068,7 +2076,7 @@ async function loadScanReportFromDisk(
   // Also check the path reported by the AgentSkillsService (covers catalog-installed skills
   // whose managed dir might differ from the workspace dir)
   if (runtime) {
-    const svc = (await runtime.getService("AGENT_SKILLS_SERVICE")) as
+    const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
       | { getLoadedSkills?: () => Array<{ slug: string; path: string }> }
       | undefined;
     if (svc?.getLoadedSkills) {
@@ -2171,7 +2179,7 @@ async function discoverSkills(
   // ── Primary path: pull from AgentSkillsService (most accurate) ──────────
   if (runtime) {
     try {
-      const service = await runtime.getService("AGENT_SKILLS_SERVICE");
+      const service = runtime.getService("AGENT_SKILLS_SERVICE");
       const svc = service as {
         getLoadedSkills?: () => Array<{
           slug: string;
@@ -5144,9 +5152,7 @@ function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
     if (missingEvm) {
       envConfig.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
       process.env.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
-      logger.info(
-        `[eliza-api] Generated EVM wallet: ${walletKeys.evmAddress}`,
-      );
+      logger.info(`[eliza-api] Generated EVM wallet: ${walletKeys.evmAddress}`);
     }
 
     if (missingSolana) {
@@ -6569,7 +6575,7 @@ async function getCoordinatorFromRuntime(runtime: AgentRuntime): Promise<{
     }) => Promise<void>,
   ) => void;
 } | null> {
-  const coordinator = await runtime.getService("SWARM_COORDINATOR");
+  const coordinator = runtime.getService("SWARM_COORDINATOR");
   if (coordinator)
     return coordinator as Awaited<ReturnType<typeof getCoordinatorFromRuntime>>;
   return null;
@@ -6613,7 +6619,9 @@ async function wireCodingAgentWsBridge(st: ServerState): Promise<boolean> {
  * finish, we synthesize a summary via the agent's LLM and post it as a
  * persisted message in the conversation.
  */
-async function wireCodingAgentSwarmSynthesis(st: ServerState): Promise<boolean> {
+async function wireCodingAgentSwarmSynthesis(
+  st: ServerState,
+): Promise<boolean> {
   if (!st.runtime) return false;
   const coordinator = await getCoordinatorFromRuntime(st.runtime);
   if (!coordinator?.setSwarmCompleteCallback) return false;
@@ -6929,9 +6937,9 @@ async function handleCodingAgentsFallback(
     promoteScratch?: (sessionId: string, name?: string) => Promise<unknown>;
   };
 
-  const codeTaskService = (await runtime.getService(
+  const codeTaskService = runtime.getService(
     "CODE_TASK",
-  )) as CodeTaskService | null;
+  ) as CodeTaskService | null;
 
   const toNumber = (value: unknown, fallback = 0): number => {
     const parsed =
@@ -7113,7 +7121,7 @@ async function handleCodingAgentsFallback(
       error(res, "Invalid session ID", 400);
       return true;
     }
-    const ptyService = (await runtime.getService("PTY_SERVICE")) as PTYService | null;
+    const ptyService = runtime.getService("PTY_SERVICE") as PTYService | null;
 
     if (!ptyService?.stopSession) {
       error(res, "PTY Service not available", 503);
@@ -7251,7 +7259,7 @@ async function handleCodingAgentsFallback(
  */
 async function getPtyConsoleBridge(st: ServerState) {
   if (!st.runtime) return null;
-  const ptyService = (await st.runtime.getService("PTY_SERVICE")) as PTYService | null;
+  const ptyService = st.runtime.getService("PTY_SERVICE") as PTYService | null;
   return ptyService?.consoleBridge ?? null;
 }
 
@@ -7761,7 +7769,7 @@ async function handleRequest(
 
     let coordinatorStatus: "ok" | "not_wired" = "not_wired";
     try {
-      if (await runtime?.getService("SWARM_COORDINATOR")) {
+      if (runtime?.getService("SWARM_COORDINATOR")) {
         coordinatorStatus = "ok";
       }
     } catch {
@@ -8587,7 +8595,7 @@ async function handleRequest(
       url,
       json,
       error,
-      getPluginManager: () => requirePluginManager(state.runtime) as Promise<never>,
+      getPluginManager: () => requirePluginManager(state.runtime) as never,
       getLoadedPluginNames: () =>
         state.runtime?.plugins.map((plugin) => plugin.name) ?? [],
       getBundledPluginIds: () => getReleaseBundledPluginIds(),
@@ -9522,7 +9530,7 @@ async function handleRequest(
       const installedSlugs = new Set<string>();
       if (state.runtime) {
         try {
-          const svc = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
+          const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
             | {
                 getLoadedSkills?: () => Array<{ slug: string; source: string }>;
               }
@@ -9657,7 +9665,7 @@ async function handleRequest(
     }
 
     try {
-      const service = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
+      const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
             install?: (
               slug: string,
@@ -9739,7 +9747,7 @@ async function handleRequest(
     }
 
     try {
-      const service = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
+      const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
             uninstall?: (slug: string) => Promise<boolean>;
           }
@@ -10001,7 +10009,7 @@ async function handleRequest(
     // Try AgentSkillsService for bundled skills — copy to workspace for editing
     if (!skillPath && state.runtime) {
       try {
-        const svc = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
+        const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
               getLoadedSkills?: () => Array<{
                 slug: string;
@@ -10083,7 +10091,7 @@ async function handleRequest(
     // Try AgentSkillsService for bundled/plugin skills — copy to workspace for editing
     if (!skillMdPath && state.runtime) {
       try {
-        const svc = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
+        const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
               getLoadedSkills?: () => Array<{
                 slug: string;
@@ -10178,7 +10186,7 @@ async function handleRequest(
     // Try AgentSkillsService for bundled/plugin skills — copy to workspace for editing
     if (!skillMdPath && state.runtime) {
       try {
-        const svc = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
+        const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
               getLoadedSkills?: () => Array<{
                 slug: string;
@@ -10275,7 +10283,7 @@ async function handleRequest(
       }
     } else if (state.runtime) {
       try {
-        const svc = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
+        const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | { uninstall?: (slug: string) => Promise<boolean> }
           | undefined;
         if (svc?.uninstall) {
@@ -10392,7 +10400,7 @@ async function handleRequest(
           return;
         }
 
-        const service = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
+        const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
               install?: (
                 skillSlug: string,
@@ -10618,8 +10626,7 @@ async function handleRequest(
       auditEventTypes: AUDIT_EVENT_TYPES,
       auditSeverities: AUDIT_SEVERITIES,
       getAuditFeedSize,
-      queryAuditFeed: (query) =>
-        queryAuditFeed(query as AuditFeedQuery),
+      queryAuditFeed: (query) => queryAuditFeed(query as AuditFeedQuery),
       subscribeAuditFeed,
     })
   ) {
@@ -14371,7 +14378,7 @@ async function handleRequest(
     });
 
     // Pause coordinator LLM decisions while processing user message
-    const streamCoordinator = (await state.runtime.getService("SWARM_COORDINATOR")) as
+    const streamCoordinator = state.runtime.getService("SWARM_COORDINATOR") as
       | { pause?: () => void; resume?: () => void; isPaused?: boolean }
       | undefined;
     const streamDidPause = streamCoordinator && !streamCoordinator.isPaused;
@@ -14485,7 +14492,7 @@ async function handleRequest(
     }
 
     // Pause coordinator LLM decisions while processing user message
-    const chatCoordinator = (await state.runtime.getService("SWARM_COORDINATOR")) as
+    const chatCoordinator = state.runtime.getService("SWARM_COORDINATOR") as
       | { pause?: () => void; resume?: () => void; isPaused?: boolean }
       | undefined;
     const chatDidPause = chatCoordinator && !chatCoordinator.isPaused;
@@ -14996,7 +15003,7 @@ async function handleRequest(
         const now = Date.now();
         const roomId =
           (
-            (await state.runtime.getService("AUTONOMY")) as {
+            state.runtime.getService("AUTONOMY") as {
               getAutonomousRoomId?: () => UUID;
             } | null
           )?.getAutonomousRoomId?.() ??
@@ -15081,12 +15088,15 @@ async function handleRequest(
     const todoData = await getTodoDataService(state.runtime);
     if (todoData) {
       try {
-        await todoData.updateTodo(decodedTodoId, {
+        const updated = await todoData.updateTodo(decodedTodoId, {
           isCompleted,
           completedAt: isCompleted ? new Date() : null,
         });
-        json(res, { ok: true });
-        return;
+        if (updated !== false) {
+          json(res, { ok: true });
+          return;
+        }
+        // updateTodo returned false — fall through to task-backed path
       } catch {
         // fallback to task-backed path
       }
@@ -15149,9 +15159,12 @@ async function handleRequest(
 
     if (method === "DELETE" && todoData) {
       try {
-        await todoData.deleteTodo(decodedTodoId);
-        json(res, { ok: true });
-        return;
+        const deleted = await todoData.deleteTodo(decodedTodoId);
+        if (deleted !== false) {
+          json(res, { ok: true });
+          return;
+        }
+        // deleteTodo returned false — fall through to task-backed path
       } catch {
         // fallback to task-backed path
       }
@@ -15572,7 +15585,7 @@ async function handleRequest(
     // If runtime has an MCP service, enumerate active servers
     if (state.runtime) {
       try {
-        const mcpService = (await state.runtime.getService("MCP")) as {
+        const mcpService = state.runtime.getService("MCP") as {
           getServers?: () => Array<{
             name: string;
             status: string;
@@ -16334,9 +16347,7 @@ export async function startApiServer(opts?: {
         : { phase: "idle", attempt: 0 };
   const agentName = hasRuntime
     ? (opts.runtime?.character.name ?? "Eliza")
-    : (config.agents?.list?.[0]?.name ??
-      config.ui?.assistant?.name ??
-      "Eliza");
+    : (config.agents?.list?.[0]?.name ?? config.ui?.assistant?.name ?? "Eliza");
 
   const deletedConversationIds = readDeletedConversationIdsFromState();
 
@@ -16645,7 +16656,7 @@ export async function startApiServer(opts?: {
       detachRuntimeStreams();
       detachRuntimeStreams = null;
     }
-    const svc = await getAgentEventSvc(runtime);
+    const svc = getAgentEventSvc(runtime);
     if (!svc) {
       if (runtime) {
         logger.warn(
