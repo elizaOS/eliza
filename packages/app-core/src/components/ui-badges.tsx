@@ -18,12 +18,12 @@ const STATUS_TONES: Record<StatusTone, StatusToneStyles> = {
     dot: "bg-[var(--ok,#16a34a)]",
   },
   warning: {
-    badge: "text-[#f59e0b] border border-[#f59e0b]/30 bg-[#f59e0b]/10",
-    dot: "bg-[#f59e0b]",
+    badge: "text-warn border border-warn/30 bg-warn/10",
+    dot: "bg-warn",
   },
   danger: {
-    badge: "text-[#e74c3c] border border-[#e74c3c]/30 bg-[#e74c3c]/10",
-    dot: "bg-[#e74c3c]",
+    badge: "text-danger border border-danger/30 bg-danger/10",
+    dot: "bg-danger",
   },
   muted: {
     badge: "text-[var(--muted)] border border-[var(--border)] bg-[var(--bg)]",

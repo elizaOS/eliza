@@ -2,13 +2,12 @@ import { Input } from "@elizaos/ui";
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
+import { useBranding } from "../config/branding";
 import { useBugReport, useTimeout } from "../hooks";
 import { useApp } from "../state";
 import { openExternalUrl } from "../utils";
 
 const ENV_OPTIONS = ["macOS", "Windows", "Linux", "Other"] as const;
-const GITHUB_NEW_ISSUE_URL =
-  "https://github.com/elizaos/eliza/issues/new?template=bug_report.yml";
 
 interface BugReportForm {
   description: string;
@@ -36,6 +35,7 @@ export function BugReportModal() {
   const { setTimeout } = useTimeout();
 
   const { copyToClipboard, t } = useApp();
+  const branding = useBranding();
   const { isOpen, close } = useBugReport();
   const [form, setForm] = useState<BugReportForm>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -163,7 +163,7 @@ export function BugReportModal() {
       ok = false;
     }
     setCopied(ok);
-    await openExternalUrl(GITHUB_NEW_ISSUE_URL);
+    await openExternalUrl(branding.bugReportUrl);
   }, [copyToClipboard, formatMarkdown]);
 
   // Close on Escape

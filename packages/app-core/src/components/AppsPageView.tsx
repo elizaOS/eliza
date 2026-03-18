@@ -30,7 +30,7 @@ export function AppsPageView({ inModal }: { inModal?: boolean } = {}) {
         className="settings-content-area"
         style={
           {
-            "--accent": "#10b981",
+            "--accent": "var(--section-accent-apps, #10b981)",
             "--surface": "rgba(255, 255, 255, 0.06)",
             "--s-accent": "#10b981",
             "--s-text-txt": "#10b981",

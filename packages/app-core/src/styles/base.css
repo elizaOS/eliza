@@ -98,6 +98,10 @@
   --plugin-input-height: 2.25rem;
   --plugin-max-field-width: 32rem;
 
+  /* Section accents */
+  --section-accent-advanced: #7b8fb5;
+  --section-accent-apps: #10b981;
+
   color-scheme: light;
 }
 
@@ -191,6 +195,10 @@
   --plugin-focus-ring: var(--accent);
   --plugin-input-height: 2.25rem;
   --plugin-max-field-width: 32rem;
+
+  /* Section accents */
+  --section-accent-advanced: #7b8fb5;
+  --section-accent-apps: #10b981;
 
   color-scheme: dark;
 }

@@ -13,6 +13,11 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  type BrandingConfig,
+  BrandingContext,
+  DEFAULT_BRANDING,
+} from "../config/branding";
 import { prepareDraftForSave } from "../actions/character";
 import {
   type AgentStartupDiagnostics,
@@ -405,7 +410,20 @@ function isRemoteApiBase(baseUrl: string): boolean {
 
 // ── Provider ───────────────────────────────────────────────────────────
 
-export function AppProvider({ children }: { children: ReactNode }) {
+export function AppProvider({
+  children,
+  branding: brandingOverrides,
+}: {
+  children: ReactNode;
+  branding?: Partial<BrandingConfig>;
+}) {
+  const branding = useMemo(
+    () =>
+      brandingOverrides
+        ? { ...DEFAULT_BRANDING, ...brandingOverrides }
+        : DEFAULT_BRANDING,
+    [brandingOverrides],
+  );
   const [lastNativeTab, setLastNativeTabState] =
     useState<Tab>(loadLastNativeTab);
   // --- Core state ---
@@ -789,7 +807,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [onboardingOptions, setOnboardingOptions] =
     useState<OnboardingOptions | null>(null);
-  const [onboardingName, setOnboardingName] = useState("Eliza");
+  const [onboardingName, setOnboardingName] = useState(branding.appName);
   const [onboardingOwnerName, setOnboardingOwnerName] = useState("anon");
 
   const [onboardingStyle, setOnboardingStyle] = useState("");
@@ -2029,7 +2047,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setAgentStatus({
         ...(agentStatus ?? {
-          agentName: "Eliza",
+          agentName: branding.appName,
           model: undefined,
           uptime: undefined,
           startedAt: undefined,
@@ -5860,10 +5878,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AppContext.Provider value={value}>
-      {children}
-      <ConfirmModal {...modalProps} />
-      <PromptModal {...promptModalProps} />
-    </AppContext.Provider>
+    <BrandingContext.Provider value={branding}>
+      <AppContext.Provider value={value}>
+        {children}
+        <ConfirmModal {...modalProps} />
+        <PromptModal {...promptModalProps} />
+      </AppContext.Provider>
+    </BrandingContext.Provider>
   );
 }

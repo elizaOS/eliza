@@ -1,5 +1,6 @@
 import type { StartupErrorState } from "../state";
 import { useApp } from "../state";
+import { useBranding } from "../config/branding";
 
 const REASON_LABELS: Record<StartupErrorState["reason"], string> = {
   "backend-timeout": "Backend Timeout",
@@ -8,8 +9,6 @@ const REASON_LABELS: Record<StartupErrorState["reason"], string> = {
   "agent-error": "Agent Error",
   "asset-missing": "Asset Missing",
 };
-
-const APP_ORIGIN_URL = "https://app.elizaos.ai";
 
 interface StartupFailureViewProps {
   error: StartupErrorState;
@@ -21,6 +20,7 @@ export function StartupFailureView({
   onRetry,
 }: StartupFailureViewProps) {
   const { t } = useApp();
+  const branding = useBranding();
   const isBackendUnreachable = error.reason === "backend-unreachable";
 
   return (
@@ -49,7 +49,7 @@ export function StartupFailureView({
         </button>
         {isBackendUnreachable && (
           <a
-            href={APP_ORIGIN_URL}
+            href={branding.appUrl}
             target="_blank"
             rel="noreferrer"
             className="px-4 py-2 border border-border bg-card text-txt text-sm hover:border-accent hover:text-txt"

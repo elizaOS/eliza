@@ -339,7 +339,7 @@ export function AdvancedPageView({ inModal }: { inModal?: boolean } = {}) {
         style={
           inModal
             ? ({
-                "--accent": "#7b8fb5",
+                "--accent": "var(--section-accent-advanced, #7b8fb5)",
                 "--surface": "rgba(255, 255, 255, 0.06)",
                 "--s-accent": "#7b8fb5",
                 "--s-text-txt": "#7b8fb5",
