@@ -89,7 +89,8 @@ class MetricsCalculator:
         relevance_accuracy = self._calculate_accuracy(valid_results, "relevance_correct")
 
         # Calculate weighted overall score (AST accuracy weighted by category per BFCL spec)
-        # Note: overall_score uses AST accuracy only; baseline comparisons should use the same metric
+        # Note: overall_score is AST-accuracy-weighted only per official BFCL methodology.
+        # Baseline comparisons via compare_to_baselines() assume baseline.overall uses the same metric.
         overall_score = self._calculate_weighted_score(category_metrics)
 
         # Calculate latency statistics (use all results - we ran them all)
