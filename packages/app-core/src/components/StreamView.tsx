@@ -13,6 +13,7 @@
 
 import { client, isApiError } from "@elizaos/app-core/api";
 import { isElectrobunRuntime } from "@elizaos/app-core/bridge";
+import { useBranding } from "@elizaos/app-core/config/branding";
 import { useApp } from "@elizaos/app-core/state";
 import {
   type CSSProperties,
@@ -58,7 +59,8 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
     t,
   } = useApp();
 
-  const agentName = agentStatus?.agentName ?? "Eliza";
+  const branding = useBranding();
+  const agentName = agentStatus?.agentName ?? branding.appName;
   const isElectrobun = isElectrobunRuntime();
 
   // ── Stream status polling ─────────────────────────────────────────────

@@ -2,10 +2,8 @@
  * Pairing view component — simple pairing screen for authentication.
  */
 
+import { useBranding } from "../config/branding";
 import { useApp } from "../state";
-
-const PAIRING_DOCS_URL =
-  "https://github.com/elizaos/eliza/blob/develop/docs/api-reference.mdx#authenticate-via-pairing-code";
 
 export function PairingView() {
   const {
@@ -18,6 +16,7 @@ export function PairingView() {
     setState,
     t,
   } = useApp();
+  const branding = useBranding();
 
   const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setState("pairingCodeInput", e.target.value);
@@ -96,7 +95,7 @@ export function PairingView() {
             <li>{t("pairingview.EnablePairingOnTh")}</li>
           </ol>
           <a
-            href={PAIRING_DOCS_URL}
+            href={`https://github.com/${branding.orgName}/${branding.repoName}/blob/develop/docs/api-reference.mdx`}
             target="_blank"
             rel="noreferrer"
             className="inline-flex px-3 py-2 border border-border rounded text-txt hover:border-accent hover:text-txt"

@@ -1,4 +1,5 @@
 import { Button } from "@elizaos/ui";
+import { useBranding } from "../config/branding";
 import { useApp } from "../state";
 
 export type CloudSourceMode = "cloud" | "own-key";
@@ -6,7 +7,7 @@ export type CloudSourceMode = "cloud" | "own-key";
 export function CloudSourceModeToggle({
   mode,
   onChange,
-  cloudLabel = "Eliza Cloud",
+  cloudLabel,
   ownKeyLabel = "Own API Key",
 }: {
   mode: CloudSourceMode;
@@ -14,6 +15,8 @@ export function CloudSourceModeToggle({
   cloudLabel?: string;
   ownKeyLabel?: string;
 }) {
+  const branding = useBranding();
+  const resolvedCloudLabel = cloudLabel ?? branding.cloudName;
   return (
     <div className="inline-flex overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-sm">
       <Button
@@ -27,7 +30,7 @@ export function CloudSourceModeToggle({
         }`}
         onClick={() => onChange("cloud")}
       >
-        {cloudLabel}
+        {resolvedCloudLabel}
       </Button>
       <Button
         type="button"
@@ -48,7 +51,7 @@ export function CloudSourceModeToggle({
 
 export function CloudConnectionStatus({
   connected,
-  connectedText = "Connected to Eliza Cloud",
+  connectedText,
   disconnectedText,
 }: {
   connected: boolean;
@@ -56,11 +59,13 @@ export function CloudConnectionStatus({
   disconnectedText: string;
 }) {
   const { t } = useApp();
+  const branding = useBranding();
+  const resolvedConnectedText = connectedText ?? `Connected to ${branding.cloudName}`;
   return (
     <div className="flex items-center justify-between py-2.5 px-3 border border-[var(--border)] bg-[var(--bg-muted)]">
       {connected ? (
         <>
-          <span className="text-xs text-[var(--text)]">{connectedText}</span>
+          <span className="text-xs text-[var(--text)]">{resolvedConnectedText}</span>
           <span className="rounded-full border border-green-600 bg-green-600/10 px-1.5 py-0.5 text-[10px] text-[var(--text)]">
             {t("appsview.Active")}
           </span>

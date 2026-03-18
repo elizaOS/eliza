@@ -2,6 +2,7 @@
  * Navigation — tabs + onboarding.
  */
 
+import { DEFAULT_BRANDING } from "../config/branding";
 import type { LucideIcon } from "lucide-react";
 import {
   Brain,
@@ -277,6 +278,6 @@ export function titleForTab(tab: Tab): string {
     case "security":
       return "Security";
     default:
-      return "Eliza";
+      return DEFAULT_BRANDING.appName;
   }
 }

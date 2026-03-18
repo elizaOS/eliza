@@ -17,6 +17,7 @@ import {
   defaultRegistry,
   type JsonSchemaObject,
 } from "../config";
+import { DEFAULT_BRANDING, useBranding } from "../config/branding";
 import { useApp } from "../state";
 import type { ConfigUiHint } from "../types";
 import {
@@ -63,12 +64,13 @@ function CloudRpcStatus({
   onLogin,
 }: CloudRpcStatusProps) {
   const { t, setState, setTab } = useApp();
+  const branding = useBranding();
   if (connected) {
     return (
       <div className="flex items-center gap-2 text-xs">
         <span className="inline-block w-2 h-2 rounded-full bg-[var(--ok,#16a34a)]" />
         <span className="font-semibold">
-          {t("configpageview.ConnectedToElizaC")}
+          {`Connected to ${branding.cloudName}`}
         </span>
         {credits !== null && (
           <span className="text-[var(--muted)] ml-auto">
@@ -105,7 +107,7 @@ function CloudRpcStatus({
       <div className="flex items-center gap-2 text-xs">
         <span className="inline-block w-2 h-2 rounded-full bg-[var(--muted)]" />
         <span className="text-[var(--muted)]">
-          {t("configpageview.RequiresElizaCloud")}
+          {`Requires ${branding.cloudName}`}
         </span>
       </div>
       <button
@@ -195,6 +197,7 @@ function RpcConfigSection<T extends string>({
   cloud,
   containerClassName,
 }: RpcSectionProps<T>) {
+  const branding = useBranding();
   const rpcConfig = buildRpcRendererConfig(
     selectedProvider,
     providerConfigs,
@@ -213,7 +216,7 @@ function RpcConfigSection<T extends string>({
         containerClassName,
         (key: string) => {
           // hack to get t function without breaking hook rules
-          return key === "elizaclouddashboard.ElizaCloud" ? "Eliza Cloud" : key;
+          return key === "elizaclouddashboard.ElizaCloud" ? branding.cloudName : key;
         },
       )}
 
@@ -267,7 +270,7 @@ function renderRpcProviderButtons<T extends string>(
           >
             <div className="leading-tight">
               {provider.id === "eliza-cloud" && tFallback
-                ? "Eliza Cloud"
+                ? tFallback("elizaclouddashboard.ElizaCloud")
                 : provider.label}
             </div>
           </button>
@@ -290,27 +293,27 @@ const CLOUD_SERVICE_DEFS: {
     key: "inference",
     label: "Model Inference",
     description:
-      "Use Eliza Cloud for LLM calls. Turn off to use your own API keys (Anthropic, OpenAI, etc.)",
+      `Use ${DEFAULT_BRANDING.cloudName} for LLM calls. Turn off to use your own API keys (Anthropic, OpenAI, etc.)`,
   },
   {
     key: "rpc",
     label: "Blockchain RPC",
-    description: "Use Eliza Cloud RPC endpoints for EVM, BSC, and Solana",
+    description: `Use ${DEFAULT_BRANDING.cloudName} RPC endpoints for EVM, BSC, and Solana`,
   },
   {
     key: "media",
     label: "Media Generation",
-    description: "Use Eliza Cloud for image, video, audio, and vision",
+    description: `Use ${DEFAULT_BRANDING.cloudName} for image, video, audio, and vision`,
   },
   {
     key: "tts",
     label: "Text-to-Speech",
-    description: "Use Eliza Cloud for TTS voice synthesis",
+    description: `Use ${DEFAULT_BRANDING.cloudName} for TTS voice synthesis`,
   },
   {
     key: "embeddings",
     label: "Embeddings",
-    description: "Use Eliza Cloud for text embedding generation",
+    description: `Use ${DEFAULT_BRANDING.cloudName} for text embedding generation`,
   },
 ];
 

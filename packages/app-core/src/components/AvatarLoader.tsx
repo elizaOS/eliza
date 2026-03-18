@@ -20,7 +20,7 @@ export function AvatarLoader({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: fullScreen ? "#0c0e14" : "transparent",
+        background: fullScreen ? "var(--bg)" : "transparent",
         zIndex: 10,
         opacity: fadingOut ? 0 : 1,
         transition: "opacity 0.8s ease-out",
@@ -44,7 +44,7 @@ export function AvatarLoader({
             fontWeight: 400,
             letterSpacing: "0.35em",
             textTransform: "uppercase",
-            color: "rgba(255, 255, 255, 0.7)",
+            color: "var(--text)",
             userSelect: "none",
           }}
         >
@@ -57,7 +57,7 @@ export function AvatarLoader({
           style={{
             width: "100%",
             height: 3,
-            background: "rgba(255, 255, 255, 0.1)",
+            background: "var(--bg-accent)",
             overflow: "hidden",
           }}
         >
@@ -65,7 +65,7 @@ export function AvatarLoader({
             style={{
               width: "60%",
               height: "100%",
-              background: "rgba(255, 255, 255, 0.85)",
+              background: "var(--text-strong)",
               boxShadow: "0 0 8px rgba(255, 255, 255, 0.3)",
               animation: "avatar-loader-progress 2s ease-in-out infinite",
             }}
@@ -80,7 +80,7 @@ export function AvatarLoader({
             fontWeight: 400,
             letterSpacing: "0.12em",
             textTransform: "uppercase",
-            color: "rgba(255, 255, 255, 0.3)",
+            color: "var(--muted)",
             userSelect: "none",
           }}
         >

@@ -4,6 +4,7 @@ import type {
   ProviderOption,
 } from "@elizaos/app-core/api";
 import { client } from "@elizaos/app-core/api";
+import { useBranding } from "../../config/branding";
 import { isNative } from "@elizaos/app-core/platform";
 import { getProviderLogo } from "@elizaos/app-core/providers";
 import { useApp } from "@elizaos/app-core/state";
@@ -18,6 +19,7 @@ function formatRequestError(err: unknown): string {
 }
 
 export function ConnectionStep() {
+  const branding = useBranding();
   const {
     onboardingOptions,
     onboardingRunMode,
@@ -167,7 +169,7 @@ export function ConnectionStep() {
     string,
     { name: string; description?: string }
   > = {
-    elizacloud: { name: "Eliza Cloud", description: "Managed hosting" },
+    elizacloud: { name: branding.cloudName, description: "Managed hosting" },
     "anthropic-subscription": {
       name: "Claude Sub",
       description: "Pro/Max subscription",

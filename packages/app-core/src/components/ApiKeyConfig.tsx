@@ -160,11 +160,11 @@ export function ApiKeyConfig({
             className="text-[11px] px-2 py-[3px] border"
             style={{
               borderColor: selectedProvider.configured
-                ? "#2d8a4e"
-                : "var(--warning,#f39c12)",
+                ? "var(--ok)"
+                : "var(--warn)",
               color: selectedProvider.configured
-                ? "#2d8a4e"
-                : "var(--warning,#f39c12)",
+                ? "var(--ok)"
+                : "var(--warn)",
             }}
           >
             {selectedProvider.configured
@@ -200,7 +200,7 @@ export function ApiKeyConfig({
           </button>
           {modelsFetchResult && (
             <span
-              className={`text-[11px] ${modelsFetchResult.tone === "error" ? "text-[var(--danger,#e74c3c)]" : "text-[var(--ok,#16a34a)]"}`}
+              className={`text-[11px] ${modelsFetchResult.tone === "error" ? "text-[var(--danger)]" : "text-[var(--ok)]"}`}
             >
               {modelsFetchResult.message}
             </span>
@@ -208,7 +208,7 @@ export function ApiKeyConfig({
         </div>
         <button
           type="button"
-          className={`btn text-xs py-[5px] px-4 !mt-0 ${saveSuccess ? "!bg-[var(--ok,#16a34a)] !border-[var(--ok,#16a34a)]" : ""}`}
+          className={`btn text-xs py-[5px] px-4 !mt-0 ${saveSuccess ? "!bg-[var(--ok)] !border-[var(--ok)]" : ""}`}
           onClick={() => handlePluginSave(selectedProvider.id)}
           disabled={isSaving}
         >

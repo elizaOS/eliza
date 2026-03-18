@@ -1,6 +1,8 @@
+import { useBranding } from "../../config/branding";
 import { useApp } from "@elizaos/app-core/state";
 
 export function ActivateStep() {
+  const branding = useBranding();
   const { onboardingName, handleOnboardingNext, t } = useApp();
 
   return (
@@ -12,7 +14,7 @@ export function ActivateStep() {
         <div className="onboarding-divider-diamond" />
       </div>
       <div className="onboarding-question">
-        {t("onboarding.companionReady", { name: onboardingName || "Eliza" })}
+        {t("onboarding.companionReady", { name: onboardingName || branding.appName })}
       </div>
       <p className="onboarding-desc">{t("onboarding.allConfigured")}</p>
       <div className="onboarding-panel-footer">

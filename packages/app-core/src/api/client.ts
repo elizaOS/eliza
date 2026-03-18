@@ -5,6 +5,7 @@
  * Replaces the gateway WebSocket protocol entirely.
  */
 
+import { DEFAULT_BRANDING } from "../config/branding";
 import type {
   AudioGenConfig,
   AudioGenProvider,
@@ -4301,7 +4302,7 @@ export class ElizaClient {
     const resolvedText = this.normalizeAssistantText(doneText ?? fullText);
     return {
       text: resolvedText,
-      agentName: doneAgentName ?? "Eliza",
+      agentName: doneAgentName ?? DEFAULT_BRANDING.appName,
       completed: receivedDone,
       ...(doneUsage ? { usage: doneUsage } : {}),
     };

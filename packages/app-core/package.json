@@ -38,6 +38,7 @@
     "./bridge/electrobun-rpc": "./src/bridge/electrobun-rpc.ts",
     "./bridge/electrobun-runtime": "./src/bridge/electrobun-runtime.ts",
     "./state": "./src/state/index.ts",
+    "./companion": "./src/components/companion/index.ts",
     "./components": "./src/components/index.ts",
     "./components/*": "./src/components/*",
     "./components/ChatAvatar": "./src/components/ChatAvatar.tsx",
