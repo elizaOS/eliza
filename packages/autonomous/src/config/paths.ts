@@ -1,12 +1,19 @@
 import os from "node:os";
 import path from "node:path";
 
-const STATE_DIRNAME = ".eliza";
-const CONFIG_FILENAME = "eliza.json";
-
-function stateDir(homedir: () => string = os.homedir): string {
-  return path.join(homedir(), STATE_DIRNAME);
+export function getElizaNamespace(env: NodeJS.ProcessEnv = process.env): string {
+  const override = env.ELIZA_NAMESPACE?.trim();
+  return override && override.length > 0 ? override : "eliza";
 }
+
+function stateDir(
+  homedir: () => string = os.homedir,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const namespace = getElizaNamespace(env);
+  return path.join(homedir(), `.${namespace}`);
+}
+
 
 export function resolveUserPath(input: string): string {
   const trimmed = input.trim();
@@ -28,7 +35,7 @@ export function resolveStateDir(
   if (override) {
     return resolveUserPath(override);
   }
-  return stateDir(homedir);
+  return stateDir(homedir, env);
 }
 
 export function resolveConfigPath(
@@ -39,7 +46,8 @@ export function resolveConfigPath(
   if (override) {
     return resolveUserPath(override);
   }
-  return path.join(stateDirPath, CONFIG_FILENAME);
+  const namespace = getElizaNamespace(env);
+  return path.join(stateDirPath, `${namespace}.json`);
 }
 
 export function resolveDefaultConfigCandidates(
@@ -51,13 +59,15 @@ export function resolveDefaultConfigCandidates(
     return [resolveUserPath(explicit)];
   }
 
+  const namespace = getElizaNamespace(env);
+
   const elizaStateDir = env.ELIZA_STATE_DIR?.trim();
   if (elizaStateDir) {
     const resolved = resolveUserPath(elizaStateDir);
-    return [path.join(resolved, CONFIG_FILENAME)];
+    return [path.join(resolved, `${namespace}.json`)];
   }
 
-  return [path.join(stateDir(homedir), CONFIG_FILENAME)];
+  return [path.join(stateDir(homedir, env), `${namespace}.json`)];
 }
 
 const OAUTH_FILENAME = "oauth.json";

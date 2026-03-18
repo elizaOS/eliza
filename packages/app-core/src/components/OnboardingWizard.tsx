@@ -8,7 +8,7 @@ import {
   useApp,
 } from "@elizaos/app-core/state";
 import { resolveAppAssetUrl } from "@elizaos/app-core/utils";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { VrmStage } from "./companion/VrmStage";
 import { ActivateStep } from "./onboarding/ActivateStep";
 import { ConnectionStep } from "./onboarding/ConnectionStep";
@@ -23,6 +23,8 @@ const DISABLE_ONBOARDING_VRM =
   String(import.meta.env.VITE_E2E_DISABLE_VRM ?? "") === "1";
 
 export function OnboardingWizard() {
+  const [revealStarted, setRevealStarted] = useState(DISABLE_ONBOARDING_VRM);
+
   const {
     onboardingStep,
     selectedVrmIndex,
@@ -98,12 +100,23 @@ export function OnboardingWizard() {
           fallbackPreviewUrl={fallbackPreview}
           cameraProfile="companion_close"
           initialCompanionZoomNormalized={1}
+          onRevealStart={() => setRevealStarted(true)}
           t={t}
         />
       )}
 
-      {/* Corner decorations */}
-      <svg
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: revealStarted ? "auto" : "none",
+          opacity: revealStarted ? 1 : 0,
+          transition: "opacity 1.2s ease-in-out",
+          zIndex: 40,
+        }}
+      >
+        {/* Corner decorations */}
+        <svg
         className="onboarding-corner onboarding-corner--tl"
         viewBox="0 0 36 36"
         fill="none"
@@ -216,6 +229,7 @@ export function OnboardingWizard() {
           </OnboardingPanel>
         </div>
       )}
+      </div>
     </div>
   );
 }

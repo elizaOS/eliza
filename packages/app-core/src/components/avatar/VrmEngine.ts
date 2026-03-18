@@ -53,6 +53,7 @@ export type VrmEngineState = {
   idleTime: number;
   idleTracks: number;
   revealStarted: boolean;
+  loadingProgress?: number;
 };
 
 type DebugVector3 = {
@@ -455,15 +456,50 @@ async function decompressGzipBuffer(buffer: ArrayBuffer): Promise<ArrayBuffer> {
 async function loadGltfAsset(
   loader: GLTFLoader,
   url: string,
+  onProgress?: (progress: number) => void,
 ): Promise<Awaited<ReturnType<GLTFLoader["loadAsync"]>>> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch VRM asset: ${response.status}`);
   }
-  let buffer = await response.arrayBuffer();
-  if (!isGzipBuffer(buffer)) {
-    return await loader.loadAsync(url);
+
+  const contentLength = Number(response.headers.get("content-length") || 0);
+
+  let buffer: ArrayBuffer;
+  if (!contentLength || !response.body || !onProgress) {
+    buffer = await response.arrayBuffer();
+    onProgress?.(1);
+  } else {
+    const reader = response.body.getReader();
+    let received = 0;
+    const chunks: Uint8Array[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        received += value.length;
+        onProgress(Math.min(received / contentLength, 1));
+      }
+    }
+    const combined = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+    buffer = combined.buffer;
   }
+
+  if (!isGzipBuffer(buffer)) {
+    const objectUrl = URL.createObjectURL(new Blob([buffer], { type: "model/gltf-binary" }));
+    try {
+      return await loader.loadAsync(objectUrl);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+
   buffer = await decompressGzipBuffer(buffer);
   const objectUrl = URL.createObjectURL(
     new Blob([buffer], { type: "model/gltf-binary" }),
@@ -543,6 +579,7 @@ export class VrmEngine {
   private vrmReady = false;
   private lastLoadError: string | null = null;
   private teleportProgress = 1.0;
+  private loadingProgress = 0;
   private teleportProgressUniform: { value: number } | null = null;
   private teleportDissolvedMaterials: THREE.Material[] = [];
   private teleportFallbackShaders: TeleportFallbackShader[] = [];
@@ -1813,6 +1850,7 @@ export class VrmEngine {
       idleTime: this.idleAction?.time ?? 0,
       idleTracks: this.idleAction?.getClip()?.tracks.length ?? 0,
       revealStarted: this.revealStarted,
+      loadingProgress: this.loadingProgress,
     };
   }
   setMouthOpen(value: number): void {
@@ -2050,6 +2088,8 @@ export class VrmEngine {
       this.emoteClipCache.clear();
     }
     this.lastLoadError = null;
+    this.loadingProgress = 0;
+    this.onUpdate?.();
     const loader = new GLTFLoader();
     configureVrmGltfLoader(loader);
     const webGpuNodes =
@@ -2067,7 +2107,12 @@ export class VrmEngine {
     });
     let gltf: Awaited<ReturnType<GLTFLoader["loadAsync"]>>;
     try {
-      gltf = await loadGltfAsset(loader, url);
+      gltf = await loadGltfAsset(loader, url, (progress) => {
+        if (this.vrmLoadRequestId === requestId && !this.loadingAborted) {
+          this.loadingProgress = progress;
+          this.onUpdate?.();
+        }
+      });
     } catch (error) {
       if (!this.loadingAborted && requestId === this.vrmLoadRequestId) {
         this.lastLoadError =

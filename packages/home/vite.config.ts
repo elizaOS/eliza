@@ -7,7 +7,7 @@ import { defineConfig } from "vite";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packagesRoot = path.resolve(here, "..");
-const apiPort = Number(process.env.ELIZA_HOME_API_PORT) || 31337;
+const apiPort = Number(process.env.ELIZA_HOME_API_PORT) || 2138;
 const enableAppSourceMaps = process.env.ELIZA_HOME_APP_SOURCEMAP === "1";
 
 /**
