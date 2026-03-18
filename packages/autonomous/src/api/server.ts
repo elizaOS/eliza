@@ -795,7 +795,7 @@ function _extractResponseBlocks(
 // ---------------------------------------------------------------------------
 
 export function findOwnPackageRoot(startDir: string): string {
-  const KNOWN_NAMES = new Set(["eliza", "milaidy", "elizaos"]);
+  const KNOWN_NAMES = new Set(["eliza", "milady", "milaidy", "miladyai", "elizaos"]);
   let dir = startDir;
   for (let i = 0; i < 10; i++) {
     const pkgPath = path.join(dir, "package.json");
