@@ -476,6 +476,24 @@ export interface MessageMetadata
 	untrustedContext?: string[];
 	/** Hook-injected messages */
 	hookMessages?: string[];
+
+	// =========================================================================
+	// Entity identity - flat fields commonly used by platform plugins
+	// =========================================================================
+
+	/** Display name of the message sender entity */
+	entityName?: string;
+	/** Username of the message sender entity */
+	entityUserName?: string;
+	/** Whether the sender is a bot */
+	fromBot?: boolean;
+	/** Platform-specific sender ID (e.g., Telegram chat.id) */
+	fromId?: string | number;
+	/** Source entity UUID */
+	sourceId?: string;
+
+	/** Allow platform-specific extensions */
+	[key: string]: unknown;
 }
 
 export interface DescriptionMetadata
