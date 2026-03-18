@@ -142,6 +142,7 @@ export const formContextProvider: Provider = {
         // WHY: Agent and user see resolved labels (e.g. "{{discoveryQuestion1Text}}" → actual question text)
         contextState = {
           ...contextState,
+          hasActiveForm: true,
           filledFields: contextState.filledFields.map((f) => ({
             ...f,
             label: resolve(f.label) ?? f.label,
