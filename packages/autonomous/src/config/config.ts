@@ -4,11 +4,11 @@ import JSON5 from "json5";
 import { collectConfigEnvVars } from "./env-vars";
 import { resolveConfigIncludes } from "./includes";
 import { resolveConfigPath, resolveUserPath } from "./paths";
-import type { MiladyConfig } from "./types";
+import type { ElizaConfig } from "./types";
 
 export * from "./types";
 
-export function loadMiladyConfig(): MiladyConfig {
+export function loadElizaConfig(): ElizaConfig {
   const configPath = resolveConfigPath();
 
   let raw: string;
@@ -16,13 +16,13 @@ export function loadMiladyConfig(): MiladyConfig {
     raw = fs.readFileSync(configPath, "utf-8");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return { logging: { level: "error" } } as MiladyConfig;
+      return { logging: { level: "error" } } as ElizaConfig;
     }
     throw err;
   }
 
   const parsed = JSON5.parse(raw) as Record<string, unknown>;
-  const resolved = resolveConfigIncludes(parsed, configPath) as MiladyConfig;
+  const resolved = resolveConfigIncludes(parsed, configPath) as ElizaConfig;
 
   const skillsJsonPath = resolveUserPath("~/.eliza/skills.json");
 
@@ -39,7 +39,7 @@ export function loadMiladyConfig(): MiladyConfig {
       );
     } catch (err) {
       console.warn(
-        `[milady] Failed to auto-create ~/.eliza/skills.json: ${
+        `[eliza] Failed to auto-create ~/.eliza/skills.json: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -73,7 +73,7 @@ export function loadMiladyConfig(): MiladyConfig {
       }
     } catch (err) {
       console.warn(
-        `[milady] Failed to load ~/.eliza/skills.json: ${
+        `[eliza] Failed to load ~/.eliza/skills.json: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -109,7 +109,7 @@ function stripIncludeDirectives(value: unknown): unknown {
   return result;
 }
 
-export function saveMiladyConfig(config: MiladyConfig): void {
+export function saveElizaConfig(config: ElizaConfig): void {
   const configPath = resolveConfigPath();
   const dir = path.dirname(configPath);
 
@@ -120,7 +120,7 @@ export function saveMiladyConfig(config: MiladyConfig): void {
   const sanitized = stripIncludeDirectives(config);
   if (!sanitized || typeof sanitized !== "object") {
     throw new Error(
-      `[milady-config] stripIncludeDirectives returned invalid result: ${typeof sanitized}`,
+      `[eliza-config] stripIncludeDirectives returned invalid result: ${typeof sanitized}`,
     );
   }
 
@@ -133,13 +133,13 @@ export function saveMiladyConfig(config: MiladyConfig): void {
 
   if (!fs.existsSync(configPath)) {
     throw new Error(
-      `[milady-config] Config file missing after write: ${configPath}`,
+      `[eliza-config] Config file missing after write: ${configPath}`,
     );
   }
   const stat = fs.statSync(configPath);
   if (stat.size === 0) {
     throw new Error(
-      `[milady-config] Config file is empty after write: ${configPath}`,
+      `[eliza-config] Config file is empty after write: ${configPath}`,
     );
   }
 }
@@ -147,3 +147,8 @@ export function saveMiladyConfig(config: MiladyConfig): void {
 export function configFileExists(): boolean {
   return fs.existsSync(resolveConfigPath());
 }
+
+// Milady-branded aliases for downstream fork compatibility
+export const loadMiladyConfig = loadElizaConfig;
+export const saveMiladyConfig = saveElizaConfig;
+export type { ElizaConfig as MiladyConfig };
