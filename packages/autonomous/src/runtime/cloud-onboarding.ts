@@ -339,7 +339,7 @@ async function finishProvisioning(
 
   if (!provisionResult) {
     clack.log.warn(
-      "Cloud provisioning did not complete. You can try `eliza cloud connect` later.",
+      "Cloud provisioning did not complete. You can try `milady cloud connect` later.",
     );
 
     const runLocal = await clack.confirm({

@@ -1,5 +1,5 @@
 /**
- * Skill Catalog Client for Eliza.
+ * Skill Catalog Client for Milady.
  *
  * Provides a cached skill catalog (memory -> file) sourced from the
  * local skills/.cache/catalog.json. Supports search and browse.
@@ -59,7 +59,7 @@ const MEMORY_TTL_MS = 600_000;
 function findCatalogPaths(): string[] {
   const paths: string[] = [];
 
-  const envPath = process.env.ELIZA_SKILLS_CATALOG?.trim();
+  const envPath = process.env.MILADY_SKILLS_CATALOG?.trim();
   if (envPath) return [envPath];
 
   let dir = import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
@@ -72,7 +72,7 @@ function findCatalogPaths(): string[] {
 
   const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
   if (home) {
-    paths.push(path.join(home, ".eliza", "skills", "catalog.json"));
+    paths.push(path.join(home, ".milady", "skills", "catalog.json"));
   }
 
   return paths;

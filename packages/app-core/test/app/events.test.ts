@@ -7,11 +7,11 @@ import {
   BRIDGE_READY_EVENT,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
-  dispatchElizaEvent,
+  dispatchMiladyEvent,
   dispatchWindowEvent,
   EMOTE_PICKER_EVENT,
-  type ElizaDocumentEventName,
-  type ElizaWindowEventName,
+  type MiladyDocumentEventName,
+  type MiladyWindowEventName,
   SELF_STATUS_SYNC_EVENT,
   SHARE_TARGET_EVENT,
   STOP_EMOTE_EVENT,
@@ -21,33 +21,33 @@ import {
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 describe("event constants", () => {
-  it("exports all expected eliza:* event names", () => {
-    expect(COMMAND_PALETTE_EVENT).toBe("eliza:command-palette");
-    expect(EMOTE_PICKER_EVENT).toBe("eliza:emote-picker");
-    expect(STOP_EMOTE_EVENT).toBe("eliza:stop-emote");
-    expect(AGENT_READY_EVENT).toBe("eliza:agent-ready");
-    expect(BRIDGE_READY_EVENT).toBe("eliza:bridge-ready");
-    expect(SHARE_TARGET_EVENT).toBe("eliza:share-target");
-    expect(TRAY_ACTION_EVENT).toBe("eliza:tray-action");
-    expect(APP_RESUME_EVENT).toBe("eliza:app-resume");
-    expect(APP_PAUSE_EVENT).toBe("eliza:app-pause");
-    expect(CONNECT_EVENT).toBe("eliza:connect");
-    expect(VOICE_CONFIG_UPDATED_EVENT).toBe("eliza:voice-config-updated");
-    expect(SELF_STATUS_SYNC_EVENT).toBe("eliza:self-status-refresh");
+  it("exports all expected milady:* event names", () => {
+    expect(COMMAND_PALETTE_EVENT).toBe("milady:command-palette");
+    expect(EMOTE_PICKER_EVENT).toBe("milady:emote-picker");
+    expect(STOP_EMOTE_EVENT).toBe("milady:stop-emote");
+    expect(AGENT_READY_EVENT).toBe("milady:agent-ready");
+    expect(BRIDGE_READY_EVENT).toBe("milady:bridge-ready");
+    expect(SHARE_TARGET_EVENT).toBe("milady:share-target");
+    expect(TRAY_ACTION_EVENT).toBe("milady:tray-action");
+    expect(APP_RESUME_EVENT).toBe("milady:app-resume");
+    expect(APP_PAUSE_EVENT).toBe("milady:app-pause");
+    expect(CONNECT_EVENT).toBe("milady:connect");
+    expect(VOICE_CONFIG_UPDATED_EVENT).toBe("milady:voice-config-updated");
+    expect(SELF_STATUS_SYNC_EVENT).toBe("milady:self-status-refresh");
   });
 });
 
-describe("dispatchElizaEvent", () => {
+describe("dispatchMiladyEvent", () => {
   it("accepts only known document event names", () => {
-    expectTypeOf(dispatchElizaEvent)
+    expectTypeOf(dispatchMiladyEvent)
       .parameter(0)
-      .toEqualTypeOf<ElizaDocumentEventName>();
+      .toEqualTypeOf<MiladyDocumentEventName>();
   });
 
   it("dispatches a CustomEvent on document", () => {
     const handler = vi.fn();
     document.addEventListener(COMMAND_PALETTE_EVENT, handler);
-    dispatchElizaEvent(COMMAND_PALETTE_EVENT);
+    dispatchMiladyEvent(COMMAND_PALETTE_EVENT);
     expect(handler).toHaveBeenCalledTimes(1);
     document.removeEventListener(COMMAND_PALETTE_EVENT, handler);
   });
@@ -55,7 +55,7 @@ describe("dispatchElizaEvent", () => {
   it("includes detail when provided", () => {
     const handler = vi.fn();
     document.addEventListener(AGENT_READY_EVENT, handler);
-    dispatchElizaEvent(AGENT_READY_EVENT, { state: "running" });
+    dispatchMiladyEvent(AGENT_READY_EVENT, { state: "running" });
     const event = handler.mock.calls[0][0] as CustomEvent;
     expect(event.detail).toEqual({ state: "running" });
     document.removeEventListener(AGENT_READY_EVENT, handler);
@@ -66,7 +66,7 @@ describe("dispatchWindowEvent", () => {
   it("accepts only known window event names", () => {
     expectTypeOf(dispatchWindowEvent)
       .parameter(0)
-      .toEqualTypeOf<ElizaWindowEventName>();
+      .toEqualTypeOf<MiladyWindowEventName>();
   });
 
   it("dispatches a CustomEvent on window", () => {

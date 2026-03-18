@@ -8,7 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type TestWindow = Window & {
-  __ELIZA_ELECTROBUN_RPC__?: {
+  __MILADY_ELECTROBUN_RPC__?: {
     request: Record<string, (params?: unknown) => Promise<unknown>>;
     onMessage: (
       messageName: string,
@@ -42,13 +42,13 @@ describe("desktop dialog and clipboard helpers", () => {
   });
 
   afterEach(() => {
-    delete (window as TestWindow).__ELIZA_ELECTROBUN_RPC__;
+    delete (window as TestWindow).__MILADY_ELECTROBUN_RPC__;
     vi.restoreAllMocks();
   });
 
   it("uses the Electrobun message-box RPC for confirm dialogs", async () => {
     const request = vi.fn().mockResolvedValue({ response: 0 });
-    (window as TestWindow).__ELIZA_ELECTROBUN_RPC__ = {
+    (window as TestWindow).__MILADY_ELECTROBUN_RPC__ = {
       request: { desktopShowMessageBox: request },
       onMessage: vi.fn(),
       offMessage: vi.fn(),
@@ -89,7 +89,7 @@ describe("desktop dialog and clipboard helpers", () => {
 
   it("uses the Electrobun message-box RPC for alerts", async () => {
     const request = vi.fn().mockResolvedValue({ response: 0 });
-    (window as TestWindow).__ELIZA_ELECTROBUN_RPC__ = {
+    (window as TestWindow).__MILADY_ELECTROBUN_RPC__ = {
       request: { desktopShowMessageBox: request },
       onMessage: vi.fn(),
       offMessage: vi.fn(),
@@ -118,17 +118,17 @@ describe("desktop dialog and clipboard helpers", () => {
 
   it("uses the Electrobun clipboard RPC when available", async () => {
     const request = vi.fn().mockResolvedValue(undefined);
-    (window as TestWindow).__ELIZA_ELECTROBUN_RPC__ = {
+    (window as TestWindow).__MILADY_ELECTROBUN_RPC__ = {
       request: { desktopWriteToClipboard: request },
       onMessage: vi.fn(),
       offMessage: vi.fn(),
     };
     const clipboardSpy = vi.spyOn(navigator.clipboard, "writeText");
 
-    await copyTextToClipboard("eliza");
+    await copyTextToClipboard("milady");
 
     expect(request).toHaveBeenCalledWith({
-      text: "eliza",
+      text: "milady",
     });
     expect(clipboardSpy).not.toHaveBeenCalled();
   });

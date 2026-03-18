@@ -17,7 +17,7 @@ const runs = [
     name: "unit",
     args: ["vitest", "run", "--config", "vitest.unit.config.ts"],
     vitest: true,
-    reportFile: path.join(os.tmpdir(), "eliza-vitest-unit-report.json"),
+    reportFile: path.join(os.tmpdir(), "milady-vitest-unit-report.json"),
   },
   {
     name: "e2e",
@@ -39,7 +39,7 @@ const isWindowsCi = isCI && isWindows;
 // teardown (known V8/jsdom interaction). Use dangerouslyIgnoreUnhandledErrors
 // to prevent spurious CI failures from these non-test-affecting worker exits.
 const needsDangerouslyIgnore = isWindowsCi || (isCI && isMacOS);
-const shardOverride = Number.parseInt(process.env.ELIZA_TEST_SHARDS ?? "", 10);
+const shardOverride = Number.parseInt(process.env.MILADY_TEST_SHARDS ?? "", 10);
 const shardCount = isWindowsCi
   ? Number.isFinite(shardOverride) && shardOverride > 1
     ? shardOverride
@@ -49,7 +49,7 @@ const ciWorkerArgs = needsDangerouslyIgnore
   ? ["--no-file-parallelism", "--dangerouslyIgnoreUnhandledErrors"]
   : [];
 const overrideWorkers = Number.parseInt(
-  process.env.ELIZA_TEST_WORKERS ?? "",
+  process.env.MILADY_TEST_WORKERS ?? "",
   10,
 );
 const resolvedOverride =

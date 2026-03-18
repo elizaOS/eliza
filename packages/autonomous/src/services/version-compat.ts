@@ -7,7 +7,7 @@
  * the installed core — causing silent import failures that take down every
  * model provider.
  *
- * @see https://github.com/elizaos/eliza/issues/10
+ * @see https://github.com/milady-ai/milady/issues/10
  */
 
 // ---------------------------------------------------------------------------
@@ -261,7 +261,7 @@ export function diagnoseNoAIProvider(
       `@elizaos/core. This usually means the plugin version is ahead of the ` +
       `installed core version. Pin the affected plugins to a version compatible ` +
       `with your installed @elizaos/core, or upgrade core. ` +
-      `See: https://github.com/elizaos/eliza/issues/10`
+      `See: https://github.com/milady-ai/milady/issues/10`
     );
   }
 

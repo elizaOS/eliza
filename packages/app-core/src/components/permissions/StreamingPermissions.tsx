@@ -56,7 +56,7 @@ function getCameraPermissionPlugin(): CameraPermissionPlugin | null {
     | undefined;
   if (!cap?.Plugins) return null;
   return (
-    (cap.Plugins.ElizaCamera as CameraPermissionPlugin | undefined) ?? null
+    (cap.Plugins.MiladyCamera as CameraPermissionPlugin | undefined) ?? null
   );
 }
 

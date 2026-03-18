@@ -90,7 +90,7 @@ export class WhatsAppPairingSession {
       auth: state,
       logger: baileysLogger,
       printQRInTerminal: false,
-      browser: ["Eliza AI", "Desktop", "1.0.0"],
+      browser: ["Milady AI", "Desktop", "1.0.0"],
     });
 
     this.socket.ev.on("creds.update", saveCreds);

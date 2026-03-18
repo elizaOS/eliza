@@ -8,18 +8,18 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 type TestWindow = Window & {
-  __ELIZA_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
+  __MILADY_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
 };
 
 describe("electrobun rpc bridge", () => {
   afterEach(() => {
-    delete (window as TestWindow).__ELIZA_ELECTROBUN_RPC__;
+    delete (window as TestWindow).__MILADY_ELECTROBUN_RPC__;
     vi.restoreAllMocks();
   });
 
   it("prefers direct Electrobun RPC requests over Electron IPC", async () => {
     const rpcRequest = vi.fn().mockResolvedValue({ ok: true });
-    (window as TestWindow).__ELIZA_ELECTROBUN_RPC__ = {
+    (window as TestWindow).__MILADY_ELECTROBUN_RPC__ = {
       request: { desktopOpenExternal: rpcRequest },
       onMessage: vi.fn(),
       offMessage: vi.fn(),
@@ -48,7 +48,7 @@ describe("electrobun rpc bridge", () => {
 
   it("subscribes to direct Electrobun RPC messages when available", () => {
     const listeners = new Map<string, Set<(payload: unknown) => void>>();
-    (window as TestWindow).__ELIZA_ELECTROBUN_RPC__ = {
+    (window as TestWindow).__MILADY_ELECTROBUN_RPC__ = {
       request: {},
       onMessage: vi.fn(
         (messageName: string, listener: (payload: unknown) => void) => {

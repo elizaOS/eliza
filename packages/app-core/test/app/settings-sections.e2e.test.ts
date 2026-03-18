@@ -23,7 +23,7 @@ const mockUseApp = vi.fn();
 vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
   THEMES: [
-    { id: "eliza", label: "Eliza" },
+    { id: "milady", label: "Milady" },
     { id: "dark", label: "Dark" },
     { id: "light", label: "Light" },
     { id: "solarized", label: "Solarized" },
@@ -140,7 +140,7 @@ function createSettingsState(): SettingsState {
     ],
     pluginSaving: false,
     pluginSaveSuccess: false,
-    currentTheme: "eliza",
+    currentTheme: "milady",
     uiLanguage: "en",
   };
 }

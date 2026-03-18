@@ -78,7 +78,7 @@ function createContext(
   overrides?: Partial<ChatViewContextStub>,
 ): ChatViewContextStub {
   return {
-    agentStatus: { agentName: "Eliza" },
+    agentStatus: { agentName: "Milady" },
     chatInput: "",
     chatSending: false,
     chatFirstTokenReceived: false,

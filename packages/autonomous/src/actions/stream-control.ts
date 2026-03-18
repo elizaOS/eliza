@@ -2,7 +2,7 @@
  * Stream control actions — agents can go live, go offline, switch
  * destinations, speak via TTS, and manage overlay widgets.
  *
- * All actions hit the local Eliza API (127.0.0.1:API_PORT).
+ * All actions hit the local Milady API (127.0.0.1:API_PORT).
  *
  * @module actions/stream-control
  */

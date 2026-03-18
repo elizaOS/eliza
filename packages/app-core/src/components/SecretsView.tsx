@@ -15,7 +15,7 @@ import { useApp } from "../state";
 
 /* ── Constants ──────────────────────────────────────────────────────── */
 
-const STORAGE_KEY = "eliza:secrets-vault-keys";
+const STORAGE_KEY = "milady:secrets-vault-keys";
 
 const CATEGORY_ORDER = [
   "ai-provider",

@@ -429,10 +429,10 @@ export async function handleCloudBillingRoute(
       const upstreamBody = JSON.stringify({
         credits: amountUsd,
         success_url: buildRedirectUrl(baseUrl, "/dashboard/billing/success", {
-          from: "eliza",
+          from: "milady",
         }),
         cancel_url: buildRedirectUrl(baseUrl, "/dashboard/settings", {
-          from: "eliza",
+          from: "milady",
           tab: "billing",
           canceled: "1",
         }),

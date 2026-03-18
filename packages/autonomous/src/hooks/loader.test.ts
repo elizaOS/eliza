@@ -4,7 +4,7 @@
  * Tests for:
  * - loadHooks orchestration (disabled, clears hooks, skips ineligible/disabled/no-events, registers)
  * - Path safety (legacy handlers under/outside allowed roots)
- * - Config extraDirs safety (must be under ~/.eliza/)
+ * - Config extraDirs safety (must be under ~/.milady/)
  */
 
 import { mkdir, rm, writeFile } from "node:fs/promises";
@@ -21,7 +21,7 @@ import {
   vi,
 } from "vitest";
 import type { InternalHooksConfig } from "../config/types.hooks";
-import type { HookEntry, ElizaHookMetadata } from "./types";
+import type { HookEntry, MiladyHookMetadata } from "./types";
 
 // ---------------------------------------------------------------------------
 // mocks
@@ -104,7 +104,7 @@ function makeEntry(
     source?: HookEntry["hook"]["source"];
   } = {},
 ): HookEntry {
-  const metadata: ElizaHookMetadata | undefined =
+  const metadata: MiladyHookMetadata | undefined =
     opts.events !== undefined
       ? {
           events: opts.events,
@@ -118,7 +118,7 @@ function makeEntry(
     hook: {
       name,
       description: `${name} description`,
-      source: opts.source ?? "eliza-bundled",
+      source: opts.source ?? "milady-bundled",
       filePath: `/fake/hooks/${name}/HOOK.md`,
       baseDir: `/fake/hooks/${name}`,
       handlerPath: opts.handlerPath ?? `/fake/hooks/${name}/handler.ts`,
@@ -324,10 +324,10 @@ describe("path safety — legacy handlers", () => {
     const loadHooks = await getLoadHooks();
     mockDiscoverHooks.mockResolvedValue([]);
 
-    // FAKE_HOME is the mocked homedir — managed hooks dir = FAKE_HOME/.eliza/hooks
+    // FAKE_HOME is the mocked homedir — managed hooks dir = FAKE_HOME/.milady/hooks
     const managedPath = resolve(
       FAKE_HOME,
-      ".eliza",
+      ".milady",
       "hooks",
       "my-hook",
       "handler.ts",
@@ -363,7 +363,7 @@ describe("path safety — legacy handlers", () => {
 // ============================================================================
 
 describe("config extraDirs safety", () => {
-  it("rejects config extraDirs outside ~/.eliza/", async () => {
+  it("rejects config extraDirs outside ~/.milady/", async () => {
     const { logger } = await import("@elizaos/core");
     const loadHooks = await getLoadHooks();
     mockDiscoverHooks.mockResolvedValue([]);
@@ -383,13 +383,13 @@ describe("config extraDirs safety", () => {
     );
   });
 
-  it("accepts config extraDirs under ~/.eliza/", async () => {
+  it("accepts config extraDirs under ~/.milady/", async () => {
     const { logger } = await import("@elizaos/core");
     const loadHooks = await getLoadHooks();
     mockDiscoverHooks.mockResolvedValue([]);
 
-    // Use absolute path under the mocked homedir's .eliza
-    const safePath = resolve(FAKE_HOME, ".eliza", "custom-hooks");
+    // Use absolute path under the mocked homedir's .milady
+    const safePath = resolve(FAKE_HOME, ".milady", "custom-hooks");
     const config: InternalHooksConfig = {
       load: {
         extraDirs: [safePath],

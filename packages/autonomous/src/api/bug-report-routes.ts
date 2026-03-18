@@ -1,7 +1,7 @@
 import os from "node:os";
 import type { RouteRequestContext } from "./route-helpers";
 
-export const BUG_REPORT_REPO = "elizaos/eliza";
+export const BUG_REPORT_REPO = "milady-ai/milady";
 const GITHUB_ISSUES_URL = `https://api.github.com/repos/${BUG_REPORT_REPO}/issues`;
 const GITHUB_NEW_ISSUE_URL = `https://github.com/${BUG_REPORT_REPO}/issues/new?template=bug_report.yml`;
 

@@ -47,7 +47,7 @@ describe("StartupFailureView", () => {
     expect(hint).toContain("This origin does not host the agent backend.");
     expect(heading).toContain("Backend Unreachable");
     const openAppLink = tree.root.findByType("a");
-    expect(openAppLink.props.href).toBe("https://app.elizaos.ai");
+    expect(openAppLink.props.href).toBe("https://app.milady.ai");
     expect(openAppLink.children.join("")).toContain("Open App");
 
     const retryButton = tree.root.findByType("button");
@@ -89,7 +89,7 @@ describe("StartupFailureView", () => {
             reason: "asset-missing",
             phase: "initializing-agent",
             message: "Required companion assets could not be loaded.",
-            detail: "Bundled avatar ELIZA-01 could not be loaded.",
+            detail: "Bundled avatar MILADY-01 could not be loaded.",
           },
           onRetry: vi.fn(),
         }),

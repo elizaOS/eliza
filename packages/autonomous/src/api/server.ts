@@ -1,5 +1,5 @@
 /**
- * REST API server for the Eliza Control UI.
+ * REST API server for the Milady Control UI.
  *
  * Exposes HTTP endpoints that the UI frontend expects, backed by the
  * elizaOS AgentRuntime. Default port: 2138. In dev mode, the Vite UI
@@ -35,16 +35,16 @@ import { getGlobalAwarenessRegistry } from "../awareness/registry";
 import { CharacterSchema } from "../config/character-schema";
 import {
   configFileExists,
-  loadElizaConfig,
-  type ElizaConfig,
-  saveElizaConfig,
+  loadMiladyConfig,
+  type MiladyConfig,
+  saveMiladyConfig,
 } from "../config/config";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths";
 import {
   isConnectorConfigured,
   isStreamingDestinationConfigured,
 } from "../config/plugin-auto-enable";
-import type { ConnectorConfig, CustomActionDef } from "../config/types.eliza";
+import type { ConnectorConfig, CustomActionDef } from "../config/types.milady";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability";
 import { EMOTE_BY_ID, EMOTE_CATALOG } from "../emotes/catalog";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace";
@@ -331,7 +331,7 @@ function readDeletedConversationIdsFromState(): Set<string> {
     );
   } catch (err) {
     logger.warn(
-      `[eliza-api] Failed to read deleted conversations state: ${err instanceof Error ? err.message : String(err)}`,
+      `[milady-api] Failed to read deleted conversations state: ${err instanceof Error ? err.message : String(err)}`,
     );
     return new Set();
   }
@@ -392,7 +392,7 @@ export interface ConversationMeta {
   updatedAt: string;
 }
 
-function hasPersistedOnboardingState(config: ElizaConfig): boolean {
+function hasPersistedOnboardingState(config: MiladyConfig): boolean {
   if (config.meta?.onboardingComplete === true) {
     return true;
   }
@@ -456,7 +456,7 @@ interface AgentStartupDiagnostics {
 
 interface ServerState {
   runtime: AgentRuntime | null;
-  config: ElizaConfig;
+  config: MiladyConfig;
   agentState:
     | "not_started"
     | "starting"
@@ -586,7 +586,7 @@ interface PluginEntry {
     | "database"
     | "app"
     | "feature";
-  /** Where the plugin comes from: "bundled" (ships with Eliza) or "store" (user-installed from registry). */
+  /** Where the plugin comes from: "bundled" (ships with Milady) or "store" (user-installed from registry). */
   source: "bundled" | "store";
   configKeys: string[];
   parameters: PluginParamDef[];
@@ -795,7 +795,7 @@ function _extractResponseBlocks(
 // ---------------------------------------------------------------------------
 
 export function findOwnPackageRoot(startDir: string): string {
-  const KNOWN_NAMES = new Set(["eliza", "milaidy", "elizaos"]);
+  const KNOWN_NAMES = new Set(["milady", "milaidy", "miladyai"]);
   let dir = startDir;
   for (let i = 0; i < 10; i++) {
     const pkgPath = path.join(dir, "package.json");
@@ -836,7 +836,7 @@ function getReleaseBundledPluginIds(): Set<string> {
     );
   } catch (err) {
     logger.warn(
-      `[eliza-api] Failed to resolve bundled release plugins from package.json: ${err instanceof Error ? err.message : err}`,
+      `[milady-api] Failed to resolve bundled release plugins from package.json: ${err instanceof Error ? err.message : err}`,
     );
     return new Set();
   }
@@ -1093,9 +1093,9 @@ const BLOCKED_ENV_KEYS = new Set([
   "HOME",
   "SHELL",
   // Auth / step-up tokens — writable via API would grant privilege escalation
-  "ELIZA_API_TOKEN",
-  "ELIZA_WALLET_EXPORT_TOKEN",
-  "ELIZA_TERMINAL_RUN_TOKEN",
+  "MILADY_API_TOKEN",
+  "MILADY_WALLET_EXPORT_TOKEN",
+  "MILADY_TERMINAL_RUN_TOKEN",
   "HYPERSCAPE_AUTH_TOKEN",
   // Wallet private keys — writable via API would enable key theft / replacement
   "EVM_PRIVATE_KEY",
@@ -1112,7 +1112,7 @@ const BLOCKED_ENV_KEYS = new Set([
 
 /**
  * Top-level config keys accepted by `PUT /api/config`.
- * Keep this in sync with ElizaConfig root fields and include both modern and
+ * Keep this in sync with MiladyConfig root fields and include both modern and
  * legacy aliases (e.g. `connectors` + `channels`).
  */
 export const CONFIG_WRITE_ALLOWED_TOP_KEYS = new Set([
@@ -1305,7 +1305,7 @@ function aggregateSecrets(plugins: PluginEntry[]): SecretEntry[] {
  * Reads from config.plugins.installs and tries to enrich with package.json metadata.
  */
 export function discoverInstalledPlugins(
-  config: ElizaConfig,
+  config: MiladyConfig,
   bundledIds: Set<string>,
 ): PluginEntry[] {
   const installs = config.plugins?.installs;
@@ -1402,7 +1402,7 @@ export function discoverInstalledPlugins(
               typeof pkg.homepage === "string" ? pkg.homepage : undefined;
             pluginRepository =
               normalizeRepositoryUrl(pkg.repository) ??
-              deriveElizaRepositoryUrl(packageName, `plugin-${id}`);
+              deriveMiladyRepositoryUrl(packageName, `plugin-${id}`);
             break;
           }
         } catch {
@@ -1547,7 +1547,7 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
             repository:
               p.repository ??
               bundledMeta.repository ??
-              deriveElizaRepositoryUrl(p.npmName, p.dirName),
+              deriveMiladyRepositoryUrl(p.npmName, p.dirName),
             setupGuideUrl: p.setupGuideUrl ?? resolvePluginSetupGuideUrl(p.id),
           };
         })
@@ -1563,14 +1563,14 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
       return entries;
     } catch (err) {
       logger.debug(
-        `[eliza-api] Failed to read plugins.json: ${err instanceof Error ? err.message : err}`,
+        `[milady-api] Failed to read plugins.json: ${err instanceof Error ? err.message : err}`,
       );
     }
   }
 
   // Fallback: no manifest found
   logger.debug(
-    "[eliza-api] plugins.json not found — run `npm run generate:plugins`",
+    "[milady-api] plugins.json not found — run `npm run generate:plugins`",
   );
   return [];
 }
@@ -1643,14 +1643,14 @@ function categorizePlugin(
   return "feature";
 }
 
-const PLUGIN_SETUP_GUIDE_ROOT = "https://docs.eliza.ai/plugin-setup-guide";
-const ELIZA_REPO_ROOT = "https://github.com/elizaos/eliza";
+const PLUGIN_SETUP_GUIDE_ROOT = "https://docs.milady.ai/plugin-setup-guide";
+const MILADY_REPO_ROOT = "https://github.com/milady-ai/milady";
 const PLUGIN_METADATA_TAG_STOPWORDS = new Set([
   "plugin",
   "plugins",
   "eliza",
   "elizaos",
-  "eliza",
+  "milady",
   "elizaos-plugin",
   "elizaos-plugins",
   "feature",
@@ -1781,13 +1781,13 @@ export function normalizeRepositoryUrl(
   return undefined;
 }
 
-function deriveElizaRepositoryUrl(
+function deriveMiladyRepositoryUrl(
   npmName: string | undefined,
   dirName: string | undefined,
 ): string | undefined {
   if (!npmName?.startsWith("@elizaos/")) return undefined;
   if (!dirName?.startsWith("plugin-")) return undefined;
-  return `${ELIZA_REPO_ROOT}/tree/main/packages/${dirName}`;
+  return `${MILADY_REPO_ROOT}/tree/main/packages/${dirName}`;
 }
 
 function normalizePluginMetadataTag(tag: string): string | null {
@@ -1855,7 +1855,7 @@ function resolvePluginDescription(
   if (trimmed) return trimmed;
   if (PLUGIN_DESCRIPTION_OVERRIDES[id]) return PLUGIN_DESCRIPTION_OVERRIDES[id];
   if (category === "ai-provider") {
-    return `${displayName} AI provider for Eliza agents`;
+    return `${displayName} AI provider for Milady agents`;
   }
   if (category === "connector") {
     if (SOCIAL_CHAT_CONNECTOR_IDS.has(id)) {
@@ -1864,18 +1864,18 @@ function resolvePluginDescription(
     if (SOCIAL_FEED_CONNECTOR_IDS.has(id)) {
       return `${displayName} social connector for connecting your agent to ${displayName}`;
     }
-    return `${displayName} connector plugin for Eliza agents`;
+    return `${displayName} connector plugin for Milady agents`;
   }
   if (category === "streaming") {
     return `${displayName} streaming destination for live agent broadcasts`;
   }
   if (category === "database") {
-    return `${displayName} storage plugin for Eliza agents`;
+    return `${displayName} storage plugin for Milady agents`;
   }
   if (category === "app") {
-    return `${displayName} interactive app for Eliza agents`;
+    return `${displayName} interactive app for Milady agents`;
   }
-  return `${displayName} plugin for Eliza agents`;
+  return `${displayName} plugin for Milady agents`;
 }
 
 function resolvePluginTags(
@@ -1912,7 +1912,7 @@ function readBundledPluginPackageMetadata(
   const pkgPath = path.join(packageRoot, "packages", dirName, "package.json");
   if (!fs.existsSync(pkgPath)) {
     return {
-      repository: deriveElizaRepositoryUrl(npmName, dirName),
+      repository: deriveMiladyRepositoryUrl(npmName, dirName),
       tags: [],
     };
   }
@@ -1931,13 +1931,13 @@ function readBundledPluginPackageMetadata(
       homepage: pkg.homepage ?? undefined,
       repository:
         normalizeRepositoryUrl(pkg.repository) ??
-        deriveElizaRepositoryUrl(npmName, dirName),
+        deriveMiladyRepositoryUrl(npmName, dirName),
       icon: pkg.logoUrl ?? pkg.elizaos?.logoUrl ?? pkg.icon ?? null,
       tags: normalizePluginMetadataTags(pkg.keywords),
     };
   } catch {
     return {
-      repository: deriveElizaRepositoryUrl(npmName, dirName),
+      repository: deriveMiladyRepositoryUrl(npmName, dirName),
       tags: [],
     };
   }
@@ -1948,7 +1948,7 @@ function readBundledPluginPackageMetadata(
 // ---------------------------------------------------------------------------
 
 /** Cache key for persisting skill enable/disable state in the agent database. */
-const SKILL_PREFS_CACHE_KEY = "eliza:skill-preferences";
+const SKILL_PREFS_CACHE_KEY = "milady:skill-preferences";
 
 /** Shape stored in the cache: maps skill ID → enabled flag. */
 type SkillPreferencesMap = Record<string, boolean>;
@@ -1982,7 +1982,7 @@ async function saveSkillPreferences(
     await runtime.setCache(SKILL_PREFS_CACHE_KEY, prefs);
   } catch (err) {
     logger.debug(
-      `[eliza-api] Failed to save skill preferences: ${err instanceof Error ? err.message : err}`,
+      `[milady-api] Failed to save skill preferences: ${err instanceof Error ? err.message : err}`,
     );
   }
 }
@@ -1991,7 +1991,7 @@ async function saveSkillPreferences(
 // Skill scan acknowledgments — tracks user review of security findings
 // ---------------------------------------------------------------------------
 
-const SKILL_ACK_CACHE_KEY = "eliza:skill-scan-acknowledgments";
+const SKILL_ACK_CACHE_KEY = "milady:skill-scan-acknowledgments";
 
 type SkillAcknowledgmentMap = Record<
   string,
@@ -2019,7 +2019,7 @@ async function saveSkillAcknowledgments(
     await runtime.setCache(SKILL_ACK_CACHE_KEY, acks);
   } catch (err) {
     logger.debug(
-      `[eliza-api] Failed to save skill acknowledgments: ${err instanceof Error ? err.message : err}`,
+      `[milady-api] Failed to save skill acknowledgments: ${err instanceof Error ? err.message : err}`,
     );
   }
 }
@@ -2108,7 +2108,7 @@ async function loadScanReportFromDisk(
  */
 function resolveSkillEnabled(
   id: string,
-  config: ElizaConfig,
+  config: MiladyConfig,
   dbPrefs: SkillPreferencesMap,
 ): boolean {
   // Database preference takes priority (explicit user action)
@@ -2151,7 +2151,7 @@ function parseSkillDirsSetting(raw: unknown): string[] {
  */
 async function discoverSkills(
   workspaceDir: string,
-  config: ElizaConfig,
+  config: MiladyConfig,
   runtime: AgentRuntime | null,
 ): Promise<SkillEntry[]> {
   // Load persisted preferences from the agent database
@@ -2217,7 +2217,7 @@ async function discoverSkills(
       }
     } catch {
       logger.debug(
-        "[eliza-api] AgentSkillsService not available, falling back to filesystem scan",
+        "[milady-api] AgentSkillsService not available, falling back to filesystem scan",
       );
     }
   }
@@ -2236,7 +2236,7 @@ async function discoverSkills(
     }
   } catch {
     logger.debug(
-      "[eliza-api] @elizaos/skills not available for skill discovery",
+      "[milady-api] @elizaos/skills not available for skill discovery",
     );
   }
 
@@ -2260,7 +2260,7 @@ async function discoverSkills(
     }
   }
 
-  // Managed skills in the state dir (~/.eliza/skills by default)
+  // Managed skills in the state dir (~/.milady/skills by default)
   const managedSkills = path.join(resolveStateDir(), "skills");
   if (fs.existsSync(managedSkills)) {
     skillsDirs.add(managedSkills);
@@ -2303,7 +2303,7 @@ function scanSkillsDir(
   dir: string,
   skills: SkillEntry[],
   seen: Set<string>,
-  config: ElizaConfig,
+  config: MiladyConfig,
   dbPrefs: SkillPreferencesMap,
 ): void {
   if (!fs.existsSync(dir)) return;
@@ -2679,7 +2679,7 @@ function resolveUiDir(): string | null {
       if (fs.statSync(indexPath).isFile()) {
         uiDir = candidate;
         uiIndexHtml = fs.readFileSync(indexPath);
-        logger.info(`[eliza-api] Serving dashboard UI from ${candidate}`);
+        logger.info(`[milady-api] Serving dashboard UI from ${candidate}`);
         return uiDir;
       }
     } catch {
@@ -2688,7 +2688,7 @@ function resolveUiDir(): string | null {
   }
 
   uiDir = null;
-  logger.info("[eliza-api] No built UI found — dashboard routes are disabled");
+  logger.info("[milady-api] No built UI found — dashboard routes are disabled");
   return null;
 }
 
@@ -2739,7 +2739,7 @@ export function injectApiBaseIntoHtml(
   if (headCloseIndex < 0) return html;
 
   const injection = Buffer.from(
-    `<script>window.__ELIZA_API_BASE__=${JSON.stringify(trimmedBase)};</script>`,
+    `<script>window.__MILADY_API_BASE__=${JSON.stringify(trimmedBase)};</script>`,
   );
 
   return Buffer.concat([
@@ -2818,7 +2818,7 @@ function serveStaticUi(
   // API base so the UI client sends requests to the correct path prefix.
   const html = injectApiBaseIntoHtml(
     uiIndexHtml,
-    process.env.ELIZA_EXTERNAL_BASE_URL,
+    process.env.MILADY_EXTERNAL_BASE_URL,
   );
 
   sendStaticResponse(
@@ -3206,7 +3206,7 @@ async function generateChatResponse(
     runtime.logger?.warn(
       {
         err,
-        src: "eliza-api",
+        src: "milady-api",
         messageId: message.id,
         roomId: message.roomId,
       },
@@ -3237,11 +3237,11 @@ async function generateChatResponse(
         if (actionTag) {
           runtime.logger?.info(
             {
-              src: "eliza-api",
+              src: "milady-api",
               action: actionTag,
               hasText: Boolean(extractCompatTextContent(content)),
             },
-            `[eliza-api] Action callback fired: ${actionTag}`,
+            `[milady-api] Action callback fired: ${actionTag}`,
           );
         }
 
@@ -3293,7 +3293,7 @@ async function generateChatResponse(
       runtime.logger?.warn(
         {
           err,
-          src: "eliza-api",
+          src: "milady-api",
           messageId: message.id,
           roomId: message.roomId,
         },
@@ -3310,13 +3310,13 @@ async function generateChatResponse(
     const rc = result.responseContent as Record<string, unknown> | null;
     runtime.logger?.info(
       {
-        src: "eliza-api",
+        src: "milady-api",
         mode: result.mode,
         actions: rc?.actions,
         simple: rc?.simple,
         hasText: Boolean(rc?.text),
       },
-      "[eliza-api] Chat response metadata",
+      "[milady-api] Chat response metadata",
     );
   }
 
@@ -3409,7 +3409,7 @@ Title:`;
     return cleanTitle;
   } catch (err) {
     logger.warn(
-      `[eliza] Failed to generate conversation title: ${err instanceof Error ? err.message : String(err)}`,
+      `[milady] Failed to generate conversation title: ${err instanceof Error ? err.message : String(err)}`,
     );
     return null;
   }
@@ -3818,7 +3818,7 @@ function isBlockedObjectKey(key: string): boolean {
     key === "constructor" ||
     key === "prototype" ||
     // Block config include directives — if an API caller embeds "$include"
-    // inside a config patch, the next loadElizaConfig() → resolveConfigIncludes
+    // inside a config patch, the next loadMiladyConfig() → resolveConfigIncludes
     // pass would read arbitrary local files and merge them into the config.
     key === "$include"
   );
@@ -4301,7 +4301,7 @@ function getProviderOptions(): Array<{
       pluginName: "@elizaos/plugin-elizacloud",
       keyPrefix: null,
       description:
-        "Managed hosting for Eliza agents and bundled infrastructure.",
+        "Managed hosting for Milady agents and bundled infrastructure.",
     },
     {
       id: "anthropic-subscription",
@@ -5107,7 +5107,7 @@ function getInventoryProviderOptions(): Array<{
   ];
 }
 
-function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
+function ensureWalletKeysInEnvAndConfig(config: MiladyConfig): boolean {
   const missingEvm =
     typeof process.env.EVM_PRIVATE_KEY !== "string" ||
     !process.env.EVM_PRIVATE_KEY.trim();
@@ -5134,7 +5134,7 @@ function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
       envConfig.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
       process.env.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
       logger.info(
-        `[eliza-api] Generated EVM wallet: ${walletKeys.evmAddress}`,
+        `[milady-api] Generated EVM wallet: ${walletKeys.evmAddress}`,
       );
     }
 
@@ -5142,14 +5142,14 @@ function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
       envConfig.SOLANA_PRIVATE_KEY = walletKeys.solanaPrivateKey;
       process.env.SOLANA_PRIVATE_KEY = walletKeys.solanaPrivateKey;
       logger.info(
-        `[eliza-api] Generated Solana wallet: ${walletKeys.solanaAddress}`,
+        `[milady-api] Generated Solana wallet: ${walletKeys.solanaAddress}`,
       );
     }
 
     return true;
   } catch (err) {
     logger.warn(
-      `[eliza-api] Failed to generate wallet keys: ${err instanceof Error ? err.message : String(err)}`,
+      `[milady-api] Failed to generate wallet keys: ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;
   }
@@ -5169,7 +5169,7 @@ export type TradePermissionMode =
  * Falls back to "user-sign-only" when not configured.
  */
 export function resolveTradePermissionMode(
-  config: ElizaConfig,
+  config: MiladyConfig,
 ): TradePermissionMode {
   const raw = (config.features as Record<string, unknown> | undefined)
     ?.tradePermissionMode;
@@ -5203,7 +5203,7 @@ export function canUseLocalTradeExecution(
 
 type AgentAutomationMode = "connectors-only" | "full";
 
-const AGENT_AUTOMATION_HEADER = "x-eliza-agent-action";
+const AGENT_AUTOMATION_HEADER = "x-milady-agent-action";
 const AGENT_AUTOMATION_MODES = new Set<AgentAutomationMode>([
   "connectors-only",
   "full",
@@ -5219,7 +5219,7 @@ function parseAgentAutomationMode(value: unknown): AgentAutomationMode | null {
 }
 
 function resolveAgentAutomationModeFromConfig(
-  config: ElizaConfig,
+  config: MiladyConfig,
 ): AgentAutomationMode {
   const features =
     config.features && typeof config.features === "object"
@@ -5279,8 +5279,8 @@ type TrainingServiceLike = TrainingServiceWithRuntime;
 
 type TrainingServiceCtor = new (options: {
   getRuntime: () => AgentRuntime | null;
-  getConfig: () => ElizaConfig;
-  setConfig: (nextConfig: ElizaConfig) => void;
+  getConfig: () => MiladyConfig;
+  setConfig: (nextConfig: MiladyConfig) => void;
 }) => TrainingServiceLike;
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
@@ -5375,7 +5375,7 @@ export function isAllowedHost(req: http.IncomingMessage): boolean {
 
   if (!hostname) return true;
 
-  const bindHost = (process.env.ELIZA_API_BIND ?? "").trim().toLowerCase();
+  const bindHost = (process.env.MILADY_API_BIND ?? "").trim().toLowerCase();
 
   // When binding on all interfaces (0.0.0.0 / ::), any Host is acceptable —
   // ensureApiTokenForBindHost already enforces a token for non-loopback binds.
@@ -5388,9 +5388,9 @@ export function isAllowedHost(req: http.IncomingMessage): boolean {
     return true;
   }
 
-  // Allow explicitly listed extra hostnames via ELIZA_ALLOWED_HOSTS
+  // Allow explicitly listed extra hostnames via MILADY_ALLOWED_HOSTS
   // (comma-separated, e.g. "myserver.local,192.168.1.10").
-  const extra = process.env.ELIZA_ALLOWED_HOSTS;
+  const extra = process.env.MILADY_ALLOWED_HOSTS;
   if (extra) {
     const allowed = extra
       .split(",")
@@ -5409,11 +5409,11 @@ export function resolveCorsOrigin(origin?: string): string | null {
 
   // When bound to a wildcard address, allow any origin. Non-loopback binds still
   // require an explicit token, so this only relaxes the browser origin check.
-  const bindHost = (process.env.ELIZA_API_BIND ?? "").trim().toLowerCase();
+  const bindHost = (process.env.MILADY_API_BIND ?? "").trim().toLowerCase();
   if (WILDCARD_BIND_RE.test(stripPort(bindHost))) return trimmed;
 
   // Explicit allowlist via env (comma-separated)
-  const extra = process.env.ELIZA_ALLOWED_ORIGINS;
+  const extra = process.env.MILADY_ALLOWED_ORIGINS;
   if (extra) {
     const allow = extra
       .split(",")
@@ -5425,7 +5425,7 @@ export function resolveCorsOrigin(origin?: string): string | null {
   if (LOCAL_ORIGIN_RE.test(trimmed)) return trimmed;
   if (APP_ORIGIN_RE.test(trimmed)) return trimmed;
   if (trimmed === "null" || trimmed === "file://") {
-    if (process.env.ELIZA_ALLOW_NULL_ORIGIN === "1") {
+    if (process.env.MILADY_ALLOW_NULL_ORIGIN === "1") {
       return "null";
     }
   }
@@ -5451,7 +5451,7 @@ function applyCors(
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language",
+      "Content-Type, Authorization, X-Milady-Token, X-Api-Key, X-Milady-Export-Token, X-Milady-Client-Id, X-Milady-Terminal-Token, X-Milady-UI-Language",
     );
   }
 
@@ -5477,8 +5477,8 @@ const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
 
 function pairingEnabled(): boolean {
   return (
-    Boolean(process.env.ELIZA_API_TOKEN?.trim()) &&
-    process.env.ELIZA_PAIRING_DISABLED !== "1"
+    Boolean(process.env.MILADY_API_TOKEN?.trim()) &&
+    process.env.MILADY_PAIRING_DISABLED !== "1"
   );
 }
 
@@ -5502,7 +5502,7 @@ function ensurePairingCode(): string | null {
     pairingCode = generatePairingCode();
     pairingExpiresAt = now + PAIRING_TTL_MS;
     logger.warn(
-      `[eliza-api] Pairing code: ${pairingCode} (valid for 10 minutes)`,
+      `[milady-api] Pairing code: ${pairingCode} (valid for 10 minutes)`,
     );
   }
   return pairingCode;
@@ -5536,8 +5536,8 @@ export function extractAuthToken(req: http.IncomingMessage): string | null {
   }
 
   const header =
-    (typeof req.headers["x-eliza-token"] === "string" &&
-      req.headers["x-eliza-token"]) ||
+    (typeof req.headers["x-milady-token"] === "string" &&
+      req.headers["x-milady-token"]) ||
     (typeof req.headers["x-api-key"] === "string" && req.headers["x-api-key"]);
   if (typeof header === "string" && header.trim()) return header.trim();
 
@@ -5565,7 +5565,7 @@ export function resolveTerminalRunClientId(
   body: { clientId?: unknown } | null | undefined,
 ): string | null {
   const headerClientId = normalizeWsClientId(
-    firstHeaderValue(req.headers["x-eliza-client-id"]),
+    firstHeaderValue(req.headers["x-milady-client-id"]),
   );
   if (headerClientId) return headerClientId;
   return normalizeWsClientId(body?.clientId);
@@ -5629,25 +5629,25 @@ function isLoopbackBindHost(host: string): boolean {
 }
 
 export function ensureApiTokenForBindHost(host: string): void {
-  const token = process.env.ELIZA_API_TOKEN?.trim();
+  const token = process.env.MILADY_API_TOKEN?.trim();
   if (token) return;
   if (isLoopbackBindHost(host)) return;
 
   const generated = crypto.randomBytes(32).toString("hex");
-  process.env.ELIZA_API_TOKEN = generated;
+  process.env.MILADY_API_TOKEN = generated;
 
   logger.warn(
-    `[eliza-api] ELIZA_API_BIND=${host} is non-loopback and ELIZA_API_TOKEN is unset.`,
+    `[milady-api] MILADY_API_BIND=${host} is non-loopback and MILADY_API_TOKEN is unset.`,
   );
   const tokenFingerprint = `${generated.slice(0, 4)}...${generated.slice(-4)}`;
   logger.warn(
-    `[eliza-api] Generated temporary ELIZA_API_TOKEN (${tokenFingerprint}) for this process. Set ELIZA_API_TOKEN explicitly to override.`,
+    `[milady-api] Generated temporary MILADY_API_TOKEN (${tokenFingerprint}) for this process. Set MILADY_API_TOKEN explicitly to override.`,
   );
 }
 
 export function isAuthorized(req: http.IncomingMessage): boolean {
-  const expected = process.env.ELIZA_API_TOKEN?.trim();
-  if (!expected) { console.log('[DEBUG-AUTH] ELIZA_API_TOKEN is empty/undefined, raw:', JSON.stringify(process.env.ELIZA_API_TOKEN)); return true; }
+  const expected = process.env.MILADY_API_TOKEN?.trim();
+  if (!expected) return true;
   const provided = extractAuthToken(req);
   if (!provided) return false;
   return tokenMatches(expected, provided);
@@ -5711,18 +5711,18 @@ export function resolveWalletExportRejection(
     };
   }
 
-  const expected = process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim();
+  const expected = process.env.MILADY_WALLET_EXPORT_TOKEN?.trim();
   if (!expected) {
     return {
       status: 403,
       reason:
-        "Wallet export is disabled. Set ELIZA_WALLET_EXPORT_TOKEN to enable secure exports.",
+        "Wallet export is disabled. Set MILADY_WALLET_EXPORT_TOKEN to enable secure exports.",
     };
   }
 
   const headerToken =
-    typeof req.headers["x-eliza-export-token"] === "string"
-      ? req.headers["x-eliza-export-token"].trim()
+    typeof req.headers["x-milady-export-token"] === "string"
+      ? req.headers["x-milady-export-token"].trim()
       : "";
   const bodyToken =
     typeof body.exportToken === "string" ? body.exportToken.trim() : "";
@@ -5732,7 +5732,7 @@ export function resolveWalletExportRejection(
     return {
       status: 401,
       reason:
-        "Missing export token. Provide X-Eliza-Export-Token header or exportToken in request body.",
+        "Missing export token. Provide X-Milady-Export-Token header or exportToken in request body.",
     };
   }
 
@@ -5756,8 +5756,8 @@ export function resolveTerminalRunRejection(
   req: http.IncomingMessage,
   body: TerminalRunRequestBody,
 ): TerminalRunRejection | null {
-  const expected = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
-  const apiTokenEnabled = Boolean(process.env.ELIZA_API_TOKEN?.trim());
+  const expected = process.env.MILADY_TERMINAL_RUN_TOKEN?.trim();
+  const apiTokenEnabled = Boolean(process.env.MILADY_API_TOKEN?.trim());
 
   // Compatibility mode: local loopback sessions without API token keep
   // existing behavior unless an explicit terminal token is configured.
@@ -5769,13 +5769,13 @@ export function resolveTerminalRunRejection(
     return {
       status: 403,
       reason:
-        "Terminal run is disabled for token-authenticated API sessions. Set ELIZA_TERMINAL_RUN_TOKEN to enable command execution.",
+        "Terminal run is disabled for token-authenticated API sessions. Set MILADY_TERMINAL_RUN_TOKEN to enable command execution.",
     };
   }
 
   const headerToken =
-    typeof req.headers["x-eliza-terminal-token"] === "string"
-      ? req.headers["x-eliza-terminal-token"].trim()
+    typeof req.headers["x-milady-terminal-token"] === "string"
+      ? req.headers["x-milady-terminal-token"].trim()
       : "";
   const bodyToken =
     typeof body.terminalToken === "string" ? body.terminalToken.trim() : "";
@@ -5785,7 +5785,7 @@ export function resolveTerminalRunRejection(
     return {
       status: 401,
       reason:
-        "Missing terminal token. Provide X-Eliza-Terminal-Token header or terminalToken in request body.",
+        "Missing terminal token. Provide X-Milady-Terminal-Token header or terminalToken in request body.",
     };
   }
 
@@ -5800,7 +5800,7 @@ export function resolveTerminalRunRejection(
 }
 
 function extractWsQueryToken(url: URL): string | null {
-  const allowQueryToken = process.env.ELIZA_ALLOW_WS_QUERY_TOKEN === "1";
+  const allowQueryToken = process.env.MILADY_ALLOW_WS_QUERY_TOKEN === "1";
   if (!allowQueryToken) return null;
 
   const token =
@@ -5814,7 +5814,7 @@ function isWebSocketAuthorized(
   request: http.IncomingMessage,
   url: URL,
 ): boolean {
-  const expected = process.env.ELIZA_API_TOKEN?.trim();
+  const expected = process.env.MILADY_API_TOKEN?.trim();
   if (!expected) return true;
 
   const headerToken = extractAuthToken(request);
@@ -5852,7 +5852,7 @@ export function resolveWebSocketUpgradeRejection(
   return null;
 }
 
-const RESET_STATE_ALLOWED_SEGMENTS = new Set([".eliza", "eliza"]);
+const RESET_STATE_ALLOWED_SEGMENTS = new Set([".milady", "milady"]);
 
 function hasAllowedResetSegment(resolvedState: string): boolean {
   return resolvedState
@@ -6695,7 +6695,7 @@ export async function handleSwarmSynthesis(
   }
 }
 
-// ── Parse Action Block from Eliza's Response ─────────────────────────
+// ── Parse Action Block from Milady's Response ─────────────────────────
 import {
   parseActionBlock,
   stripActionBlockFromDisplay,
@@ -6705,7 +6705,7 @@ import {
 
 /**
  * Wire the SwarmCoordinator's agentDecisionCallback so coordinator events
- * (blocked prompts, turn completions) route through Eliza's full
+ * (blocked prompts, turn completions) route through Milady's full
  * elizaOS pipeline (memory, personality, actions) so she has conversation
  * context to make informed decisions. The pipeline's model size is
  * The pipeline's model size is temporarily overridden to TEXT_SMALL
@@ -6714,10 +6714,10 @@ import {
  * stalling CLI agents waiting for input.
  *
  * Events are serialized (one at a time) to prevent context confusion.
- * Eliza's response appears in chat via WS broadcast, and the embedded
+ * Milady's response appears in chat via WS broadcast, and the embedded
  * JSON action block is parsed and returned to the coordinator for execution.
  *
- * If the callback fails or Eliza's response has no action block,
+ * If the callback fails or Milady's response has no action block,
  * returns null → coordinator falls back to the small LLM.
  */
 function wireCoordinatorEventRouting(st: ServerState): boolean {
@@ -6750,7 +6750,7 @@ function wireCoordinatorEventRouting(st: ServerState): boolean {
           // Ensure the legacy chat connection exists (creates room/world if needed).
           // We inline the setup here because ensureLegacyChatConnection is
           // closure-scoped in the route handler and not accessible at module level.
-          const agentName = runtime.character.name ?? "Eliza";
+          const agentName = runtime.character.name ?? "Milady";
           if (!st.chatUserId || !st.chatRoomId) {
             const adminId =
               st.adminEntityId ??
@@ -6781,7 +6781,7 @@ function wireCoordinatorEventRouting(st: ServerState): boolean {
             return;
           }
 
-          // Create a message memory so the event enters Eliza's conversation history.
+          // Create a message memory so the event enters Milady's conversation history.
           const message = createMessageMemory({
             id: crypto.randomUUID() as UUID,
             entityId: st.chatUserId,
@@ -7317,7 +7317,7 @@ async function handleRequest(
       state.pendingRestartReasons.push(reason);
     }
     logger.info(
-      `[eliza-api] Restart required: ${reason} (${state.pendingRestartReasons.length} pending)`,
+      `[milady-api] Restart required: ${reason} (${state.pendingRestartReasons.length} pending)`,
     );
     state.broadcastWs?.({
       type: "restart-required",
@@ -7336,8 +7336,8 @@ async function handleRequest(
       res,
       {
         error: "Forbidden — invalid Host header",
-        hint: `To allow this host, set ELIZA_ALLOWED_HOSTS=${incomingHost} in your environment, or access via http://localhost`,
-        docs: "https://docs.eliza.ai/configuration#allowed-hosts",
+        hint: `To allow this host, set MILADY_ALLOWED_HOSTS=${incomingHost} in your environment, or access via http://localhost`,
+        docs: "https://docs.milady.ai/configuration#allowed-hosts",
       },
       403,
     );
@@ -7445,13 +7445,13 @@ async function handleRequest(
 
     // Helper: clear pi-ai mode
     const clearPiAi = () => {
-      delete process.env.ELIZA_USE_PI_AI;
-      delete envCfg.ELIZA_USE_PI_AI;
+      delete process.env.MILADY_USE_PI_AI;
+      delete envCfg.MILADY_USE_PI_AI;
 
       const envRoot = config.env as Record<string, unknown>;
       const vars = envRoot.vars;
       if (vars && typeof vars === "object" && !Array.isArray(vars)) {
-        delete (vars as Record<string, unknown>).ELIZA_USE_PI_AI;
+        delete (vars as Record<string, unknown>).MILADY_USE_PI_AI;
       }
 
       if (state.runtime?.character?.secrets) {
@@ -7459,7 +7459,7 @@ async function handleRequest(
           string,
           unknown
         >;
-        delete secrets.ELIZA_USE_PI_AI;
+        delete secrets.MILADY_USE_PI_AI;
       }
     };
 
@@ -7558,8 +7558,8 @@ async function handleRequest(
         disableCloudInference();
         await clearSubscriptions();
         clearOtherApiKeys();
-        process.env.ELIZA_USE_PI_AI = "1";
-        envCfg.ELIZA_USE_PI_AI = "1";
+        process.env.MILADY_USE_PI_AI = "1";
+        envCfg.MILADY_USE_PI_AI = "1";
 
         const envRoot = config.env as Record<string, unknown>;
         const vars =
@@ -7568,7 +7568,7 @@ async function handleRequest(
           !Array.isArray(envRoot.vars)
             ? (envRoot.vars as Record<string, unknown>)
             : {};
-        vars.ELIZA_USE_PI_AI = "1";
+        vars.MILADY_USE_PI_AI = "1";
         envRoot.vars = vars;
       } else if (
         normalizedProvider === "openai-codex" ||
@@ -7643,7 +7643,7 @@ async function handleRequest(
         envCfg[envKey] = apiKey;
       }
 
-      saveElizaConfig(config);
+      saveMiladyConfig(config);
 
       // Schedule runtime restart so the new provider takes effect.
       scheduleRuntimeRestart(`provider switch to ${normalizedProvider}`);
@@ -7706,7 +7706,7 @@ async function handleRequest(
       readJsonBody,
       json,
       error,
-      saveConfig: saveElizaConfig,
+      saveConfig: saveMiladyConfig,
       loadSubscriptionAuth: async () =>
         (await import("../auth/index")) as never,
     } as never)
@@ -7937,14 +7937,14 @@ async function handleRequest(
     // before telling the client to fall back into onboarding.
     if (!complete && configFileExists()) {
       try {
-        config = loadElizaConfig();
+        config = loadMiladyConfig();
         complete = hasPersistedOnboardingState(config);
         if (complete) {
           state.config = config;
         }
       } catch (err) {
         logger.warn(
-          `[eliza-api] Failed to refresh config for onboarding status: ${err instanceof Error ? err.message : err}`,
+          `[milady-api] Failed to refresh config for onboarding status: ${err instanceof Error ? err.message : err}`,
         );
       }
     }
@@ -7997,7 +7997,7 @@ async function handleRequest(
       error(res, "Missing or invalid agent name", 400);
       return;
     }
-    // Theme is UI-only (eliza, haxor, qt314, etc.) — no server validation needed
+    // Theme is UI-only (milady, haxor, qt314, etc.) — no server validation needed
     if (body.runMode && body.runMode !== "local" && body.runMode !== "cloud") {
       error(res, "Invalid runMode: must be 'local' or 'cloud'", 400);
       return;
@@ -8072,7 +8072,7 @@ async function handleRequest(
     if (body.theme) {
       if (!config.ui) config.ui = {};
       config.ui.theme = body.theme as
-        | "eliza"
+        | "milady"
         | "qt314"
         | "web2000"
         | "programmer"
@@ -8099,7 +8099,7 @@ async function handleRequest(
           unknown
         >
       ).mode = sandboxMode;
-      logger.info(`[eliza-api] Sandbox mode set to: ${sandboxMode}`);
+      logger.info(`[milady-api] Sandbox mode set to: ${sandboxMode}`);
     }
 
     if (runMode === "cloud") {
@@ -8138,14 +8138,14 @@ async function handleRequest(
       (envCfg as Record<string, unknown>).vars = vars;
 
       const clearPiAiFlag = () => {
-        delete vars.ELIZA_USE_PI_AI;
-        delete (config.env as Record<string, string>).ELIZA_USE_PI_AI;
-        delete process.env.ELIZA_USE_PI_AI;
+        delete vars.MILADY_USE_PI_AI;
+        delete (config.env as Record<string, string>).MILADY_USE_PI_AI;
+        delete process.env.MILADY_USE_PI_AI;
       };
 
       if (runMode === "local" && providerId === "pi-ai") {
-        vars.ELIZA_USE_PI_AI = "1";
-        process.env.ELIZA_USE_PI_AI = "1";
+        vars.MILADY_USE_PI_AI = "1";
+        process.env.MILADY_USE_PI_AI = "1";
 
         // Optional primary model override (provider/model).
         if (!config.agents) config.agents = {};
@@ -8193,7 +8193,7 @@ async function handleRequest(
       (config.agents.defaults as Record<string, unknown>).subscriptionProvider =
         body.provider;
       logger.info(
-        `[eliza-api] Subscription provider selected: ${body.provider} — complete OAuth via /api/subscription/ endpoints`,
+        `[milady-api] Subscription provider selected: ${body.provider} — complete OAuth via /api/subscription/ endpoints`,
       );
 
       // Handle Anthropic setup token (sk-ant-oat01-...) provided during
@@ -8210,7 +8210,7 @@ async function handleRequest(
         (config.env as Record<string, string>).ANTHROPIC_API_KEY = token;
         process.env.ANTHROPIC_API_KEY = token;
         logger.info(
-          "[eliza-api] Anthropic setup token saved during onboarding",
+          "[milady-api] Anthropic setup token saved during onboarding",
         );
       }
     }
@@ -8341,10 +8341,10 @@ async function handleRequest(
     state.config = config;
     state.agentName = (body.name as string) ?? state.agentName;
     try {
-      saveElizaConfig(config);
+      saveMiladyConfig(config);
     } catch (err) {
       logger.error(
-        `[eliza-api] Failed to save config after onboarding: ${err}`,
+        `[milady-api] Failed to save config after onboarding: ${err}`,
       );
       error(res, "Failed to save configuration", 500);
       return;
@@ -8355,14 +8355,14 @@ async function handleRequest(
     // to repeat on every restart.
     if (!configFileExists()) {
       logger.error(
-        `[eliza-api] Config file does not exist after save — onboarding data will be lost on restart`,
+        `[milady-api] Config file does not exist after save — onboarding data will be lost on restart`,
       );
       error(res, "Configuration file was not persisted to disk", 500);
       return;
     }
 
     logger.info(
-      `[eliza-api] Onboarding complete for agent "${body.name}" (mode: ${(body.runMode as string) || "local"})`,
+      `[milady-api] Onboarding complete for agent "${body.name}" (mode: ${(body.runMode as string) || "local"})`,
     );
     json(res, { ok: true });
     return;
@@ -8518,7 +8518,7 @@ async function handleRequest(
       json,
       error,
       pickRandomNames,
-      saveConfig: saveElizaConfig as never,
+      saveConfig: saveMiladyConfig as never,
       validateCharacter: (body) => CharacterSchema.safeParse(body) as never,
     })
   ) {
@@ -8581,9 +8581,9 @@ async function handleRequest(
   // ── GET /api/plugins ────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/plugins") {
     // Re-read config from disk so we pick up plugins installed since server start.
-    let freshConfig: ElizaConfig;
+    let freshConfig: MiladyConfig;
     try {
-      freshConfig = loadElizaConfig();
+      freshConfig = loadMiladyConfig();
     } catch {
       freshConfig = state.config;
     }
@@ -8724,9 +8724,9 @@ async function handleRequest(
     let plugin = state.plugins.find((p) => p.id === pluginId);
     if (!plugin) {
       // Check store-installed plugins from config
-      let freshCfg: ElizaConfig;
+      let freshCfg: MiladyConfig;
       try {
-        freshCfg = loadElizaConfig();
+        freshCfg = loadMiladyConfig();
       } catch {
         freshCfg = state.config;
       }
@@ -8816,10 +8816,10 @@ async function handleRequest(
       // Save config even when only config values changed (no enable toggle)
       if (body.enabled === undefined) {
         try {
-          saveElizaConfig(state.config);
+          saveMiladyConfig(state.config);
         } catch (err) {
           logger.warn(
-            `[eliza-api] Failed to save config: ${err instanceof Error ? err.message : err}`,
+            `[milady-api] Failed to save config: ${err instanceof Error ? err.message : err}`,
           );
         }
       }
@@ -8860,7 +8860,7 @@ async function handleRequest(
         .entries as Record<string, Record<string, unknown>>;
       entries[pluginId] = { enabled: body.enabled };
       logger.info(
-        `[eliza-api] ${body.enabled ? "Enabled" : "Disabled"} plugin: ${packageName}`,
+        `[milady-api] ${body.enabled ? "Enabled" : "Disabled"} plugin: ${packageName}`,
       );
 
       // Persist capability toggle state in config.features so the runtime
@@ -8881,10 +8881,10 @@ async function handleRequest(
 
       // Save updated config
       try {
-        saveElizaConfig(state.config);
+        saveMiladyConfig(state.config);
       } catch (err) {
         logger.warn(
-          `[eliza-api] Failed to save config: ${err instanceof Error ? err.message : err}`,
+          `[milady-api] Failed to save config: ${err instanceof Error ? err.message : err}`,
         );
       }
 
@@ -9109,10 +9109,10 @@ async function handleRequest(
         .entries as Record<string, Record<string, unknown>>;
       pluginEntries[installedId] = { enabled: true };
       try {
-        saveElizaConfig(state.config);
+        saveMiladyConfig(state.config);
       } catch (err) {
         logger.warn(
-          `[eliza-api] Failed to save config after install: ${err instanceof Error ? err.message : err}`,
+          `[milady-api] Failed to save config after install: ${err instanceof Error ? err.message : err}`,
         );
       }
 
@@ -9448,7 +9448,7 @@ async function handleRequest(
     }
 
     try {
-      saveElizaConfig(state.config);
+      saveMiladyConfig(state.config);
     } catch (err) {
       logger.warn(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
@@ -10031,7 +10031,7 @@ async function handleRequest(
           : "xdg-open";
     execFile(opener, [skillPath], (err) => {
       if (err)
-        logger.warn(`[eliza-api] Failed to open skill folder: ${err.message}`);
+        logger.warn(`[milady-api] Failed to open skill folder: ${err.message}`);
     });
     json(res, { ok: true, path: skillPath });
     return;
@@ -10517,7 +10517,7 @@ async function handleRequest(
     process.env.SKILLSMP_API_KEY = apiKey;
     if (!state.config.env) state.config.env = {};
     (state.config.env as Record<string, string>).SKILLSMP_API_KEY = apiKey;
-    saveElizaConfig(state.config);
+    saveMiladyConfig(state.config);
     json(res, { ok: true, keySet: true });
     return;
   }
@@ -10633,7 +10633,7 @@ async function handleRequest(
       method,
       pathname,
       config: state.config,
-      saveConfig: saveElizaConfig,
+      saveConfig: saveMiladyConfig,
       ensureWalletKeysInEnvAndConfig,
       resolveWalletExportRejection,
       scheduleRuntimeRestart,
@@ -10686,7 +10686,7 @@ async function handleRequest(
     }>(req, res);
     if (!body) return;
 
-    const agentName = body.name || state.agentName || "Eliza Agent";
+    const agentName = body.name || state.agentName || "Milady Agent";
     const endpoint = body.endpoint || "";
     const tokenURI = body.tokenURI || "";
 
@@ -10727,7 +10727,7 @@ async function handleRequest(
     }>(req, res);
     if (!body) return;
 
-    const agentName = body.name || state.agentName || "Eliza Agent";
+    const agentName = body.name || state.agentName || "Milady Agent";
     const endpoint = body.endpoint || "";
     const tokenURI = body.tokenURI || "";
 
@@ -10806,7 +10806,7 @@ async function handleRequest(
     }>(req, res);
     if (!body) return;
 
-    const agentName = body.name || state.agentName || "Eliza Agent";
+    const agentName = body.name || state.agentName || "Milady Agent";
     const endpoint = body.endpoint || "";
 
     const result = body.shiny
@@ -10846,7 +10846,7 @@ async function handleRequest(
       proof = proofResult.proof;
     }
 
-    const agentName = body.name || state.agentName || "Eliza Agent";
+    const agentName = body.name || state.agentName || "Milady Agent";
     const endpoint = body.endpoint || "";
     const result = await dropService.mintWithWhitelist(
       agentName,
@@ -10897,7 +10897,7 @@ async function handleRequest(
       error(res, "EVM wallet not configured. Complete onboarding first.");
       return;
     }
-    const agentName = state.agentName || "Eliza Agent";
+    const agentName = state.agentName || "Milady Agent";
     const message = generateVerificationMessage(agentName, walletAddress);
     json(res, { message, walletAddress });
     return;
@@ -10926,7 +10926,7 @@ async function handleRequest(
   }
 
   // ── POST /api/whitelist/nft/verify ───────────────────────────────────────
-  // Verify Eliza NFT ownership for whitelist eligibility.
+  // Verify Milady NFT ownership for whitelist eligibility.
   // Security: only verifies the agent's own wallet — does not accept
   // arbitrary addresses to prevent whitelist injection from local processes.
   if (method === "POST" && pathname === "/api/whitelist/nft/verify") {
@@ -10964,7 +10964,7 @@ async function handleRequest(
       walletAddress,
       whitelisted,
       contractAddress:
-        process.env.ELIZA_NFT_CONTRACT?.trim() ||
+        process.env.MILADY_NFT_CONTRACT?.trim() ||
         "0x5Af0D9827E0c53E4799BB226655A1de152A425a5",
       message: whitelisted
         ? "Address is whitelisted for mint."
@@ -11047,7 +11047,7 @@ async function handleRequest(
       lastCheckAt: undefined,
       lastCheckVersion: undefined,
     };
-    saveElizaConfig(state.config);
+    saveMiladyConfig(state.config);
     json(res, { channel: ch });
     return;
   }
@@ -11090,7 +11090,7 @@ async function handleRequest(
       config,
     ) as ConnectorConfig;
     try {
-      saveElizaConfig(state.config);
+      saveMiladyConfig(state.config);
     } catch {
       /* test envs */
     }
@@ -11120,7 +11120,7 @@ async function handleRequest(
       delete state.config.channels[name];
     }
     try {
-      saveElizaConfig(state.config);
+      saveMiladyConfig(state.config);
     } catch {
       /* test envs */
     }
@@ -11160,7 +11160,7 @@ async function handleRequest(
         broadcastWs: state.broadcastWs ?? undefined,
         config: state.config,
         runtime: state.runtime ?? undefined,
-        saveConfig: () => saveElizaConfig(state.config),
+        saveConfig: () => saveMiladyConfig(state.config),
         workspaceDir: resolveDefaultAgentWorkspaceDir(),
       },
       {
@@ -11200,7 +11200,7 @@ async function handleRequest(
         broadcastWs: state.broadcastWs ?? undefined,
         config: state.config,
         runtime: state.runtime ?? undefined,
-        saveConfig: () => saveElizaConfig(state.config),
+        saveConfig: () => saveMiladyConfig(state.config),
         workspaceDir: resolveDefaultAgentWorkspaceDir(),
       },
       {
@@ -11418,7 +11418,7 @@ async function handleRequest(
   }
 
   // ── POST /api/avatar/vrm ─────────────────────────────────────────────────
-  // Upload a custom VRM avatar file. Saved to ~/.eliza/avatars/custom.vrm.
+  // Upload a custom VRM avatar file. Saved to ~/.milady/avatars/custom.vrm.
   if (method === "POST" && pathname === "/api/avatar/vrm") {
     const MAX_VRM_BYTES = 50 * 1024 * 1024; // 50 MB
     const rawBody = await readRequestBodyBuffer(req, {
@@ -11476,7 +11476,7 @@ async function handleRequest(
   }
 
   // ── POST /api/avatar/background ──────────────────────────────────────────
-  // Upload a custom background image. Saved to ~/.eliza/avatars/custom-background.<ext>.
+  // Upload a custom background image. Saved to ~/.milady/avatars/custom-background.<ext>.
   if (method === "POST" && pathname === "/api/avatar/background") {
     const MAX_BG_BYTES = 10 * 1024 * 1024; // 10 MB
     const rawBody = await readRequestBodyBuffer(req, {
@@ -11647,9 +11647,9 @@ async function handleRequest(
       // merge, even though BLOCKED_ENV_KEYS also blocks them during process.env
       // sync below. Keeping both guards prevents accidental persistence if one
       // path changes in future refactors.
-      delete envPatch.ELIZA_API_TOKEN;
-      delete envPatch.ELIZA_WALLET_EXPORT_TOKEN;
-      delete envPatch.ELIZA_TERMINAL_RUN_TOKEN;
+      delete envPatch.MILADY_API_TOKEN;
+      delete envPatch.MILADY_WALLET_EXPORT_TOKEN;
+      delete envPatch.MILADY_TERMINAL_RUN_TOKEN;
       delete envPatch.HYPERSCAPE_AUTH_TOKEN;
       delete envPatch.EVM_PRIVATE_KEY;
       delete envPatch.SOLANA_PRIVATE_KEY;
@@ -11660,9 +11660,9 @@ async function handleRequest(
         !Array.isArray(envPatch.vars)
       ) {
         const vars = envPatch.vars as Record<string, unknown>;
-        delete vars.ELIZA_API_TOKEN;
-        delete vars.ELIZA_WALLET_EXPORT_TOKEN;
-        delete vars.ELIZA_TERMINAL_RUN_TOKEN;
+        delete vars.MILADY_API_TOKEN;
+        delete vars.MILADY_WALLET_EXPORT_TOKEN;
+        delete vars.MILADY_TERMINAL_RUN_TOKEN;
         delete vars.HYPERSCAPE_AUTH_TOKEN;
         delete vars.EVM_PRIVATE_KEY;
         delete vars.SOLANA_PRIVATE_KEY;
@@ -11673,7 +11673,7 @@ async function handleRequest(
       // before safeMerge.  The explicit deletes above cover known step-up
       // secrets; this loop catches process-level injection keys
       // (NODE_OPTIONS, LD_PRELOAD, etc.) so they never reach
-      // saveElizaConfig() and the persistence→restart RCE chain is closed.
+      // saveMiladyConfig() and the persistence→restart RCE chain is closed.
       for (const key of Object.keys(envPatch)) {
         if (key === "vars" || key === "shellEnv") continue;
         if (BLOCKED_ENV_KEYS.has(key.toUpperCase())) {
@@ -11735,7 +11735,7 @@ async function handleRequest(
     safeMerge(state.config as Record<string, unknown>, filtered);
 
     // If the client updated env vars, synchronise them into process.env so
-    // subsequent hot-restarts see the latest values (loadElizaConfig()
+    // subsequent hot-restarts see the latest values (loadMiladyConfig()
     // only fills missing env vars and does not override existing ones).
     if (
       filtered.env &&
@@ -11785,7 +11785,7 @@ async function handleRequest(
     }
 
     try {
-      saveElizaConfig(state.config);
+      saveMiladyConfig(state.config);
     } catch (err) {
       logger.warn(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
@@ -11818,7 +11818,7 @@ async function handleRequest(
     }
 
     persistAgentAutomationMode(state, parsed);
-    saveElizaConfig(state.config);
+    saveMiladyConfig(state.config);
 
     json(res, {
       mode: parsed,
@@ -11866,7 +11866,7 @@ async function handleRequest(
       newMode;
 
     try {
-      saveElizaConfig(state.config);
+      saveMiladyConfig(state.config);
     } catch (err) {
       logger.warn(
         `[api] Trade-mode config save failed: ${err instanceof Error ? err.message : err}`,
@@ -11892,7 +11892,7 @@ async function handleRequest(
       readJsonBody,
       json,
       error,
-      saveConfig: saveElizaConfig,
+      saveConfig: saveMiladyConfig,
       scheduleRuntimeRestart,
     })
   ) {
@@ -12689,7 +12689,7 @@ async function handleRequest(
 
     if (changed.length > 0) {
       try {
-        saveElizaConfig(state.config);
+        saveMiladyConfig(state.config);
       } catch (err) {
         logger.warn(
           `[api] production-defaults config save failed: ${err instanceof Error ? err.message : err}`,
@@ -12730,7 +12730,7 @@ async function handleRequest(
       config: state.config,
       cloudManager: state.cloudManager,
       runtime: state.runtime,
-      saveConfig: saveElizaConfig,
+      saveConfig: saveMiladyConfig,
       createTelemetrySpan: createIntegrationTelemetrySpan,
     };
     const handled = await handleCloudRoute(
@@ -12766,7 +12766,7 @@ async function handleRequest(
         : (stringToUuid(`${state.agentName}-admin-entity`) as UUID);
     if (configured && !isUuidLike(configured)) {
       logger.warn(
-        `[eliza-api] Invalid agents.defaults.adminEntityId "${configured}", using deterministic fallback`,
+        `[milady-api] Invalid agents.defaults.adminEntityId "${configured}", using deterministic fallback`,
       );
     }
     state.adminEntityId = nextAdminEntityId;
@@ -12925,7 +12925,7 @@ async function handleRequest(
   ): Promise<void> => {
     if (!state.runtime) return;
     const runtime = state.runtime;
-    const agentName = runtime.character.name ?? "Eliza";
+    const agentName = runtime.character.name ?? "Milady";
     const userId = ensureAdminEntityId();
     const worldId = stringToUuid(`${agentName}-web-chat-world`);
     const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
@@ -12993,7 +12993,7 @@ async function handleRequest(
     persisted: boolean;
   }> => {
     const runtime = state.runtime;
-    const agentName = runtime?.character.name ?? state.agentName ?? "Eliza";
+    const agentName = runtime?.character.name ?? state.agentName ?? "Milady";
     if (!runtime) {
       return {
         text: "",
@@ -13215,7 +13215,7 @@ async function handleRequest(
   if (method === "GET" && pathname === "/v1/models") {
     const created = Math.floor(Date.now() / 1000);
     const ids = new Set<string>();
-    ids.add("eliza");
+    ids.add("milady");
     if (state.agentName?.trim()) ids.add(state.agentName.trim());
     if (state.runtime?.character.name?.trim())
       ids.add(state.runtime.character.name.trim());
@@ -13226,7 +13226,7 @@ async function handleRequest(
         id,
         object: "model",
         created,
-        owned_by: "eliza",
+        owned_by: "milady",
       })),
     });
     return;
@@ -13252,7 +13252,7 @@ async function handleRequest(
       );
       return;
     }
-    json(res, { id, object: "model", created, owned_by: "eliza" });
+    json(res, { id, object: "model", created, owned_by: "milady" });
     return;
   }
 
@@ -13306,7 +13306,7 @@ async function handleRequest(
 
     const created = Math.floor(Date.now() / 1000);
     const id = `chatcmpl-${crypto.randomUUID()}`;
-    const model = requestedModel ?? state.agentName ?? "eliza";
+    const model = requestedModel ?? state.agentName ?? "milady";
 
     if (wantsStream) {
       initSse(res);
@@ -13359,7 +13359,7 @@ async function handleRequest(
         {
           const runtime = state.runtime;
           if (!runtime) throw new Error("Agent is not running");
-          const agentName = runtime.character.name ?? "Eliza";
+          const agentName = runtime.character.name ?? "Milady";
           const { userId, roomId } = await ensureCompatChatConnection(
             runtime,
             agentName,
@@ -13443,7 +13443,7 @@ async function handleRequest(
           return;
         }
         const runtime = state.runtime;
-        const agentName = runtime.character.name ?? "Eliza";
+        const agentName = runtime.character.name ?? "Milady";
         const { userId, roomId } = await ensureCompatChatConnection(
           runtime,
           agentName,
@@ -13552,7 +13552,7 @@ async function handleRequest(
       : extracted.user;
 
     const id = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
-    const model = requestedModel ?? state.agentName ?? "eliza";
+    const model = requestedModel ?? state.agentName ?? "milady";
 
     if (wantsStream) {
       initSse(res);
@@ -13623,7 +13623,7 @@ async function handleRequest(
         {
           const runtime = state.runtime;
           if (!runtime) throw new Error("Agent is not running");
-          const agentName = runtime.character.name ?? "Eliza";
+          const agentName = runtime.character.name ?? "Milady";
           const { userId, roomId } = await ensureCompatChatConnection(
             runtime,
             agentName,
@@ -13713,7 +13713,7 @@ async function handleRequest(
           return;
         }
         const runtime = state.runtime;
-        const agentName = runtime.character.name ?? "Eliza";
+        const agentName = runtime.character.name ?? "Milady";
         const { userId, roomId } = await ensureCompatChatConnection(
           runtime,
           agentName,
@@ -14359,7 +14359,7 @@ async function handleRequest(
 
     try {
       const runtime = state.runtime;
-      const agentName = runtime.character.name ?? "Eliza";
+      const agentName = runtime.character.name ?? "Milady";
       await ensureLegacyChatConnection(runtime, agentName);
       const chatUserId = state.chatUserId;
       const chatRoomId = state.chatRoomId;
@@ -14471,7 +14471,7 @@ async function handleRequest(
 
     try {
       const runtime = state.runtime;
-      const agentName = runtime.character.name ?? "Eliza";
+      const agentName = runtime.character.name ?? "Milady";
       await ensureLegacyChatConnection(runtime, agentName);
       const chatUserId = state.chatUserId;
       const chatRoomId = state.chatRoomId;
@@ -15433,7 +15433,7 @@ async function handleRequest(
     >[string];
 
     try {
-      saveElizaConfig(state.config);
+      saveMiladyConfig(state.config);
     } catch (err) {
       logger.warn(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
@@ -15464,7 +15464,7 @@ async function handleRequest(
     if (state.config.mcp?.servers?.[serverName]) {
       delete state.config.mcp.servers[serverName];
       try {
-        saveElizaConfig(state.config);
+        saveMiladyConfig(state.config);
       } catch (err) {
         logger.warn(
           `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
@@ -15521,7 +15521,7 @@ async function handleRequest(
     }
 
     try {
-      saveElizaConfig(state.config);
+      saveMiladyConfig(state.config);
     } catch (err) {
       logger.warn(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
@@ -15703,7 +15703,7 @@ async function handleRequest(
     if (!targetClientId) {
       error(
         res,
-        "Missing client id. Provide X-Eliza-Client-Id header or clientId in the request body.",
+        "Missing client id. Provide X-Milady-Client-Id header or clientId in the request body.",
         400,
       );
       return;
@@ -15817,7 +15817,7 @@ async function handleRequest(
   // ── Custom Actions CRUD ──────────────────────────────────────────────
 
   if (method === "GET" && pathname === "/api/custom-actions") {
-    const config = loadElizaConfig();
+    const config = loadMiladyConfig();
     json(res, { actions: config.customActions ?? [] });
     return;
   }
@@ -15848,7 +15848,7 @@ async function handleRequest(
 
     // Security gate: shell and code handlers execute arbitrary commands or
     // code on the host machine, and the resulting action persists in config
-    // (survives restarts). Require the ELIZA_TERMINAL_RUN_TOKEN to prove
+    // (survives restarts). Require the MILADY_TERMINAL_RUN_TOKEN to prove
     // the caller has explicit operator authority for code execution.
     if (handler.type === "shell" || handler.type === "code") {
       const terminalRejection = resolveTerminalRunRejection(
@@ -15909,10 +15909,10 @@ async function handleRequest(
       updatedAt: now,
     };
 
-    const config = loadElizaConfig();
+    const config = loadMiladyConfig();
     if (!config.customActions) config.customActions = [];
     config.customActions.push(actionDef);
-    saveElizaConfig(config);
+    saveMiladyConfig(config);
 
     // Hot-register into the running agent so it's available immediately
     if (actionDef.enabled) {
@@ -15999,7 +15999,7 @@ async function handleRequest(
     );
     if (!body) return;
 
-    const config = loadElizaConfig();
+    const config = loadMiladyConfig();
     const def = (config.customActions ?? []).find((a) => a.id === actionId);
     if (!def) {
       error(res, "Action not found", 404);
@@ -16048,7 +16048,7 @@ async function handleRequest(
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return;
 
-    const config = loadElizaConfig();
+    const config = loadMiladyConfig();
     const actions = config.customActions ?? [];
     const idx = actions.findIndex((a) => a.id === actionId);
     if (idx === -1) {
@@ -16111,7 +16111,7 @@ async function handleRequest(
 
     actions[idx] = updated;
     config.customActions = actions;
-    saveElizaConfig(config);
+    saveMiladyConfig(config);
 
     json(res, { ok: true, action: updated });
     return;
@@ -16120,7 +16120,7 @@ async function handleRequest(
   if (method === "DELETE" && customActionMatch) {
     const actionId = decodeURIComponent(customActionMatch[1]);
 
-    const config = loadElizaConfig();
+    const config = loadMiladyConfig();
     const actions = config.customActions ?? [];
     const idx = actions.findIndex((a) => a.id === actionId);
     if (idx === -1) {
@@ -16130,7 +16130,7 @@ async function handleRequest(
 
     actions.splice(idx, 1);
     config.customActions = actions;
-    saveElizaConfig(config);
+    saveMiladyConfig(config);
 
     json(res, { ok: true });
     return;
@@ -16141,7 +16141,7 @@ async function handleRequest(
   // connectorRouteHandlers below). Endpoints: /api/stream/*
 
   // ── LTCG Autonomy routes ─────────────────────────────────────────────
-  // The LTCG plugin registers these as elizaOS plugin routes, but Eliza's
+  // The LTCG plugin registers these as elizaOS plugin routes, but Milady's
   // server doesn't dispatch plugin routes. Wire them up directly here.
   // if (pathname.startsWith("/api/ltcg/autonomy")) {
   //   try {
@@ -16240,24 +16240,24 @@ export async function startApiServer(opts?: {
   ) => void;
 }> {
   const apiStartTime = Date.now();
-  console.log(`[eliza-api] startApiServer called`);
+  console.log(`[milady-api] startApiServer called`);
 
   const port = opts?.port ?? 2138;
   const host =
-    (process.env.ELIZA_API_BIND ?? "127.0.0.1").trim() || "127.0.0.1";
+    (process.env.MILADY_API_BIND ?? "127.0.0.1").trim() || "127.0.0.1";
   ensureApiTokenForBindHost(host);
-  console.log(`[eliza-api] Token check done (${Date.now() - apiStartTime}ms)`);
+  console.log(`[milady-api] Token check done (${Date.now() - apiStartTime}ms)`);
 
-  let config: ElizaConfig;
+  let config: MiladyConfig;
   try {
-    config = loadElizaConfig();
+    config = loadMiladyConfig();
   } catch (err) {
     logger.warn(
-      `[eliza-api] Failed to load config, starting with defaults: ${err instanceof Error ? err.message : err}`,
+      `[milady-api] Failed to load config, starting with defaults: ${err instanceof Error ? err.message : err}`,
     );
-    config = {} as ElizaConfig;
+    config = {} as MiladyConfig;
   }
-  console.log(`[eliza-api] Config loaded (${Date.now() - apiStartTime}ms)`);
+  console.log(`[milady-api] Config loaded (${Date.now() - apiStartTime}ms)`);
 
   // Wallet/inventory routes read from process.env at request-time.
   // Hydrate persisted config.env values so addresses remain visible after restarts.
@@ -16283,17 +16283,17 @@ export async function startApiServer(opts?: {
   // (e.g. RPC/cloud configured outside onboarding).
   if (ensureWalletKeysInEnvAndConfig(config)) {
     try {
-      saveElizaConfig(config);
+      saveMiladyConfig(config);
     } catch (err) {
       logger.warn(
-        `[eliza-api] Failed to persist generated wallet keys: ${err instanceof Error ? err.message : err}`,
+        `[milady-api] Failed to persist generated wallet keys: ${err instanceof Error ? err.message : err}`,
       );
     }
   }
 
   const plugins = discoverPluginsFromManifest();
   console.log(
-    `[eliza-api] Plugins discovered (${Date.now() - apiStartTime}ms)`,
+    `[milady-api] Plugins discovered (${Date.now() - apiStartTime}ms)`,
   );
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
@@ -16309,10 +16309,10 @@ export async function startApiServer(opts?: {
         ? { phase: "starting", attempt: 0 }
         : { phase: "idle", attempt: 0 };
   const agentName = hasRuntime
-    ? (opts.runtime?.character.name ?? "Eliza")
+    ? (opts.runtime?.character.name ?? "Milady")
     : (config.agents?.list?.[0]?.name ??
       config.ui?.assistant?.name ??
-      "Eliza");
+      "Milady");
 
   const deletedConversationIds = readDeletedConversationIdsFromState();
 
@@ -16377,16 +16377,16 @@ export async function startApiServer(opts?: {
   const trainingServiceOptions = {
     getRuntime: () => state.runtime,
     getConfig: () => state.config,
-    setConfig: (nextConfig: ElizaConfig) => {
+    setConfig: (nextConfig: MiladyConfig) => {
       state.config = nextConfig;
-      saveElizaConfig(nextConfig);
+      saveMiladyConfig(nextConfig);
     },
   };
   if (trainingServiceCtor) {
     state.trainingService = new trainingServiceCtor(trainingServiceOptions);
   } else {
     logger.warn(
-      "[eliza-api] Training service package unavailable; using fallback in-memory implementation",
+      "[milady-api] Training service package unavailable; using fallback in-memory implementation",
     );
     state.trainingService = new FallbackTrainingService(trainingServiceOptions);
   }
@@ -16397,7 +16397,7 @@ export async function startApiServer(opts?: {
     state.chatUserId = state.adminEntityId;
   } else if (configuredAdminEntityId) {
     logger.warn(
-      `[eliza-api] Ignoring invalid agents.defaults.adminEntityId "${configuredAdminEntityId}"`,
+      `[milady-api] Ignoring invalid agents.defaults.adminEntityId "${configuredAdminEntityId}"`,
     );
   }
 
@@ -16474,7 +16474,7 @@ export async function startApiServer(opts?: {
   // eliza.ts, services, plugins, etc.) AND the runtime instance logger.
   // A marker prevents double-patching on hot-restart and avoids stacking
   // wrapper functions that would leak memory.
-  const PATCHED_MARKER = "__elizaLogPatched";
+  const PATCHED_MARKER = "__miladyLogPatched";
   const LEVELS = ["debug", "info", "warn", "error"] as const;
 
   /**
@@ -16510,7 +16510,7 @@ export async function startApiServer(opts?: {
           }
           msg = typeof args[1] === "string" ? args[1] : JSON.stringify(obj);
         }
-        // Auto-extract source from [bracket] prefixes (e.g. "[eliza] ...")
+        // Auto-extract source from [bracket] prefixes (e.g. "[milady] ...")
         const bracketMatch = /^\[([^\]]+)\]\s*/.exec(msg);
         if (bracketMatch && source === defaultSource) {
           source = bracketMatch[1];
@@ -16557,7 +16557,7 @@ export async function startApiServer(opts?: {
   const onRestart = opts?.onRestart ?? null;
 
   console.log(
-    `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
+    `[milady-api] Creating http server (${Date.now() - apiStartTime}ms)`,
   );
   const server = http.createServer(async (req, res) => {
     try {
@@ -16581,7 +16581,7 @@ export async function startApiServer(opts?: {
       error(res, msg, 500);
     }
   });
-  console.log(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
+  console.log(`[milady-api] Server created (${Date.now() - apiStartTime}ms)`);
 
   const broadcastWs = (payload: object): void => {
     const message = JSON.stringify(payload);
@@ -16591,7 +16591,7 @@ export async function startApiServer(opts?: {
           client.send(message);
         } catch (err) {
           logger.error(
-            `[eliza-api] WebSocket broadcast error: ${err instanceof Error ? err.message : err}`,
+            `[milady-api] WebSocket broadcast error: ${err instanceof Error ? err.message : err}`,
           );
         }
       }
@@ -16625,7 +16625,7 @@ export async function startApiServer(opts?: {
     if (!svc) {
       if (runtime) {
         logger.warn(
-          "[eliza-api] AGENT_EVENT service not found on runtime — event streaming will be unavailable",
+          "[milady-api] AGENT_EVENT service not found on runtime — event streaming will be unavailable",
         );
       }
       return;
@@ -16720,7 +16720,7 @@ export async function startApiServer(opts?: {
         );
       } catch (err) {
         logger.warn(
-          `[eliza-api] Skill discovery failed during startup: ${err instanceof Error ? err.message : String(err)}`,
+          `[milady-api] Skill discovery failed during startup: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     })();
@@ -16737,7 +16737,7 @@ export async function startApiServer(opts?: {
         ]);
       } catch (err) {
         logger.error(
-          `[eliza-api] Training service init failed: ${err instanceof Error ? err.message : String(err)}`,
+          `[milady-api] Training service init failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     })();
@@ -16812,7 +16812,7 @@ export async function startApiServer(opts?: {
         onAgentMessageFn = onAgentMessage;
         // Screen capture manager is injected by Electron host via globalThis
         const screenCapture = (globalThis as Record<string, unknown>)
-          .__elizaScreenCapture as
+          .__miladyScreenCapture as
           | {
               isFrameCaptureActive(): boolean;
               startFrameCapture(opts: {
@@ -16848,7 +16848,7 @@ export async function startApiServer(opts?: {
             );
           } catch (err) {
             logger.warn(
-              `[eliza-api] Failed to load retake destination: ${err instanceof Error ? err.message : String(err)}`,
+              `[milady-api] Failed to load retake destination: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
         }
@@ -16872,7 +16872,7 @@ export async function startApiServer(opts?: {
             );
           } catch (err) {
             logger.warn(
-              `[eliza-api] Failed to load custom-rtmp destination: ${err instanceof Error ? err.message : String(err)}`,
+              `[milady-api] Failed to load custom-rtmp destination: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
         }
@@ -16890,7 +16890,7 @@ export async function startApiServer(opts?: {
             );
           } catch (err) {
             logger.warn(
-              `[eliza-api] Failed to load twitch destination: ${err instanceof Error ? err.message : String(err)}`,
+              `[milady-api] Failed to load twitch destination: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
         }
@@ -16908,7 +16908,7 @@ export async function startApiServer(opts?: {
             );
           } catch (err) {
             logger.warn(
-              `[eliza-api] Failed to load youtube destination: ${err instanceof Error ? err.message : String(err)}`,
+              `[milady-api] Failed to load youtube destination: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
         }
@@ -16926,7 +16926,7 @@ export async function startApiServer(opts?: {
             );
           } catch (err) {
             logger.warn(
-              `[eliza-api] Failed to load pumpfun destination: ${err instanceof Error ? err.message : String(err)}`,
+              `[milady-api] Failed to load pumpfun destination: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
         }
@@ -16944,7 +16944,7 @@ export async function startApiServer(opts?: {
             );
           } catch (err) {
             logger.warn(
-              `[eliza-api] Failed to load x destination: ${err instanceof Error ? err.message : String(err)}`,
+              `[milady-api] Failed to load x destination: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
         }
@@ -16998,7 +16998,7 @@ export async function startApiServer(opts?: {
         ]);
       } catch (err) {
         logger.warn(
-          `[eliza-api] Failed to load stream routes: ${err instanceof Error ? err.message : String(err)}`,
+          `[milady-api] Failed to load stream routes: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     })();
@@ -17045,7 +17045,7 @@ export async function startApiServer(opts?: {
       });
     } catch (err) {
       logger.error(
-        `[eliza-api] WebSocket upgrade error: ${err instanceof Error ? err.message : err}`,
+        `[milady-api] WebSocket upgrade error: ${err instanceof Error ? err.message : err}`,
       );
       rejectWebSocketUpgrade(socket, 404, "Not found");
     }
@@ -17090,7 +17090,7 @@ export async function startApiServer(opts?: {
       }
     } catch (err) {
       logger.error(
-        `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
+        `[milady-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
       );
     }
 
@@ -17159,17 +17159,17 @@ export async function startApiServer(opts?: {
           const subs = wsClientPtySubscriptions.get(ws);
           if (!subs?.has(msg.sessionId)) {
             logger.warn(
-              `[eliza-api] pty-input rejected: client not subscribed to session ${msg.sessionId}`,
+              `[milady-api] pty-input rejected: client not subscribed to session ${msg.sessionId}`,
             );
           } else if (msg.data.length > 4096) {
             logger.warn(
-              `[eliza-api] pty-input rejected: payload too large (${msg.data.length} bytes) for session ${msg.sessionId}`,
+              `[milady-api] pty-input rejected: payload too large (${msg.data.length} bytes) for session ${msg.sessionId}`,
             );
           } else {
             const bridge = getPtyConsoleBridge(state);
             if (bridge) {
               logger.debug(
-                `[eliza-api] pty-input: session=${msg.sessionId} len=${msg.data.length}`,
+                `[milady-api] pty-input: session=${msg.sessionId} len=${msg.data.length}`,
               );
               bridge.writeRaw(msg.sessionId, msg.data);
             }
@@ -17182,7 +17182,7 @@ export async function startApiServer(opts?: {
           const subs = wsClientPtySubscriptions.get(ws);
           if (!subs?.has(msg.sessionId)) {
             logger.warn(
-              `[eliza-api] pty-resize rejected: client not subscribed to session ${msg.sessionId}`,
+              `[milady-api] pty-resize rejected: client not subscribed to session ${msg.sessionId}`,
             );
           } else {
             const bridge = getPtyConsoleBridge(state);
@@ -17202,14 +17202,14 @@ export async function startApiServer(opts?: {
               bridge.resize(msg.sessionId, msg.cols, msg.rows);
             } else {
               logger.warn(
-                `[eliza-api] pty-resize rejected: invalid dimensions cols=${msg.cols} rows=${msg.rows}`,
+                `[milady-api] pty-resize rejected: invalid dimensions cols=${msg.cols} rows=${msg.rows}`,
               );
             }
           }
         }
       } catch (err) {
         logger.error(
-          `[eliza-api] WebSocket message error: ${err instanceof Error ? err.message : err}`,
+          `[milady-api] WebSocket message error: ${err instanceof Error ? err.message : err}`,
         );
       }
     });
@@ -17230,7 +17230,7 @@ export async function startApiServer(opts?: {
 
     ws.on("error", (err) => {
       logger.error(
-        `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
+        `[milady-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
       );
       wsClients.delete(ws);
       // Clean up PTY subscriptions on error too
@@ -17268,7 +17268,7 @@ export async function startApiServer(opts?: {
           client.send(message);
         } catch (err) {
           logger.error(
-            `[eliza-api] WebSocket broadcast error: ${err instanceof Error ? err.message : err}`,
+            `[milady-api] WebSocket broadcast error: ${err instanceof Error ? err.message : err}`,
           );
         }
       }
@@ -17289,7 +17289,7 @@ export async function startApiServer(opts?: {
         delivered += 1;
       } catch (err) {
         logger.error(
-          `[eliza-api] WebSocket targeted send error: ${err instanceof Error ? err.message : err}`,
+          `[milady-api] WebSocket targeted send error: ${err instanceof Error ? err.message : err}`,
         );
       }
     }
@@ -17308,7 +17308,7 @@ export async function startApiServer(opts?: {
     rt: AgentRuntime,
   ): Promise<void> => {
     try {
-      const agentName = rt.character.name ?? "Eliza";
+      const agentName = rt.character.name ?? "Milady";
       const worldId = stringToUuid(`${agentName}-web-chat-world`);
       const rooms = await rt.getRoomsByWorld(worldId);
       if (!rooms?.length) return;
@@ -17357,7 +17357,7 @@ export async function startApiServer(opts?: {
       }
     } catch (err) {
       logger.warn(
-        `[eliza-api] Failed to restore conversations from DB: ${err instanceof Error ? err.message : err}`,
+        `[milady-api] Failed to restore conversations from DB: ${err instanceof Error ? err.message : err}`,
       );
     }
   };
@@ -17385,7 +17385,7 @@ export async function startApiServer(opts?: {
     bindRuntimeStreams(rt);
     // AppManager doesn't need a runtime reference
     state.agentState = "running";
-    state.agentName = rt.character.name ?? "Eliza";
+    state.agentName = rt.character.name ?? "Milady";
     state.model = detectRuntimeModel(rt, state.config);
     state.startedAt = Date.now();
     state.startup = {
@@ -17441,7 +17441,7 @@ export async function startApiServer(opts?: {
   };
 
   console.log(
-    `[eliza-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
+    `[milady-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
   );
   return new Promise((resolve, reject) => {
     let currentPort = port;
@@ -17449,17 +17449,17 @@ export async function startApiServer(opts?: {
     server.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {
         console.warn(
-          `[eliza-api] Port ${currentPort} is already in use. Checking fallback...`,
+          `[milady-api] Port ${currentPort} is already in use. Checking fallback...`,
         );
         if (currentPort !== 0) {
-          console.warn(`[eliza-api] Retrying with dynamic port (0)...`);
+          console.warn(`[milady-api] Retrying with dynamic port (0)...`);
           currentPort = 0;
           server.listen(0, host);
           return;
         }
       } else {
         console.error(
-          `[eliza-api] Server error: ${err.message} (code: ${err.code})`,
+          `[milady-api] Server error: ${err.message} (code: ${err.code})`,
         );
       }
       reject(err);
@@ -17467,7 +17467,7 @@ export async function startApiServer(opts?: {
 
     server.listen(port, host, () => {
       console.log(
-        `[eliza-api] server.listen callback fired (${Date.now() - apiStartTime}ms)`,
+        `[milady-api] server.listen callback fired (${Date.now() - apiStartTime}ms)`,
       );
       const addr = server.address();
       const actualPort =
@@ -17481,7 +17481,7 @@ export async function startApiServer(opts?: {
         ["server", "system"],
       );
       logger.info(
-        `[eliza-api] Listening on http://${displayHost}:${actualPort}`,
+        `[milady-api] Listening on http://${displayHost}:${actualPort}`,
       );
       startDeferredStartupWork();
       resolve({

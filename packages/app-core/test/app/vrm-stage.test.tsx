@@ -15,8 +15,8 @@ vi.mock("@elizaos/app-core/api", () => ({
 }));
 
 vi.mock("@elizaos/app-core/events", () => ({
-  APP_EMOTE_EVENT: "eliza:app-emote",
-  CHAT_AVATAR_VOICE_EVENT: "eliza:chat-avatar-voice",
+  APP_EMOTE_EVENT: "milady:app-emote",
+  CHAT_AVATAR_VOICE_EVENT: "milady:chat-avatar-voice",
   STOP_EMOTE_EVENT: "stop-emote",
 }));
 
@@ -53,9 +53,9 @@ describe("VrmStage", () => {
     await act(async () => {
       tree = TestRenderer.create(
         React.createElement(VrmStage, {
-          vrmPath: "/vrms/eliza-1.vrm.gz",
+          vrmPath: "/vrms/milady-1.vrm.gz",
           worldUrl: "/worlds/companion-day.spz",
-          fallbackPreviewUrl: "/vrms/previews/eliza-1.png",
+          fallbackPreviewUrl: "/vrms/previews/milady-1.png",
           t: (key: string) => key,
         }),
       );
@@ -76,8 +76,8 @@ describe("VrmStage", () => {
     await act(async () => {
       tree = TestRenderer.create(
         React.createElement(VrmStage, {
-          vrmPath: "/vrms/eliza-1.vrm.gz",
-          fallbackPreviewUrl: "/vrms/previews/eliza-1.png",
+          vrmPath: "/vrms/milady-1.vrm.gz",
+          fallbackPreviewUrl: "/vrms/previews/milady-1.png",
           t: (key: string) => key,
         }),
       );
@@ -85,7 +85,7 @@ describe("VrmStage", () => {
 
     await act(async () => {
       window.dispatchEvent(
-        new CustomEvent("eliza:chat-avatar-voice", {
+        new CustomEvent("milady:chat-avatar-voice", {
           detail: { mouthOpen: 0.42, isSpeaking: false },
         }),
       );
@@ -102,8 +102,8 @@ describe("VrmStage", () => {
     await act(async () => {
       TestRenderer.create(
         React.createElement(VrmStage, {
-          vrmPath: "/vrms/eliza-1.vrm.gz",
-          fallbackPreviewUrl: "/vrms/previews/eliza-1.png",
+          vrmPath: "/vrms/milady-1.vrm.gz",
+          fallbackPreviewUrl: "/vrms/previews/milady-1.png",
           t: (key: string) => key,
         }),
       );
@@ -111,7 +111,7 @@ describe("VrmStage", () => {
 
     await act(async () => {
       window.dispatchEvent(
-        new CustomEvent("eliza:chat-avatar-voice", {
+        new CustomEvent("milady:chat-avatar-voice", {
           detail: { mouthOpen: 0.4, isSpeaking: false },
         }),
       );
@@ -121,7 +121,7 @@ describe("VrmStage", () => {
 
     await act(async () => {
       window.dispatchEvent(
-        new CustomEvent("eliza:chat-avatar-voice", {
+        new CustomEvent("milady:chat-avatar-voice", {
           detail: { mouthOpen: 0.4, isSpeaking: false },
         }),
       );
@@ -144,8 +144,8 @@ describe("VrmStage", () => {
     await act(async () => {
       TestRenderer.create(
         React.createElement(VrmStage, {
-          vrmPath: "/vrms/eliza-1.vrm.gz",
-          fallbackPreviewUrl: "/vrms/previews/eliza-1.png",
+          vrmPath: "/vrms/milady-1.vrm.gz",
+          fallbackPreviewUrl: "/vrms/previews/milady-1.png",
           onEngineReady: handleEngineReady,
           t: (key: string) => key,
         }),
@@ -180,8 +180,8 @@ describe("VrmStage", () => {
     await act(async () => {
       TestRenderer.create(
         React.createElement(VrmStage, {
-          vrmPath: "/vrms/eliza-1.vrm.gz",
-          fallbackPreviewUrl: "/vrms/previews/eliza-1.png",
+          vrmPath: "/vrms/milady-1.vrm.gz",
+          fallbackPreviewUrl: "/vrms/previews/milady-1.png",
           t: (key: string) => key,
         }),
       );
@@ -200,7 +200,7 @@ describe("VrmStage", () => {
 
     await act(async () => {
       window.dispatchEvent(
-        new CustomEvent("eliza:app-emote", {
+        new CustomEvent("milady:app-emote", {
           detail: {
             emoteId: "wave",
             path: "/animations/emotes/waving-both-hands.glb",
@@ -234,8 +234,8 @@ describe("VrmStage", () => {
       await act(async () => {
         tree = TestRenderer.create(
           React.createElement(VrmStage, {
-            vrmPath: "/vrms/eliza-1.vrm.gz",
-            fallbackPreviewUrl: "/vrms/previews/eliza-1.png",
+            vrmPath: "/vrms/milady-1.vrm.gz",
+            fallbackPreviewUrl: "/vrms/previews/milady-1.png",
             playWaveOnAvatarChange: true,
             t: (key: string) => key,
           }),
@@ -291,8 +291,8 @@ describe("VrmStage", () => {
       await act(async () => {
         tree = TestRenderer.create(
           React.createElement(VrmStage, {
-            vrmPath: "/vrms/eliza-1.vrm.gz",
-            fallbackPreviewUrl: "/vrms/previews/eliza-1.png",
+            vrmPath: "/vrms/milady-1.vrm.gz",
+            fallbackPreviewUrl: "/vrms/previews/milady-1.png",
             playWaveOnAvatarChange: true,
             t: (key: string) => key,
           }),
@@ -309,8 +309,8 @@ describe("VrmStage", () => {
       await act(async () => {
         tree?.update(
           React.createElement(VrmStage, {
-            vrmPath: "/vrms/eliza-2.vrm.gz",
-            fallbackPreviewUrl: "/vrms/previews/eliza-2.png",
+            vrmPath: "/vrms/milady-2.vrm.gz",
+            fallbackPreviewUrl: "/vrms/previews/milady-2.png",
             playWaveOnAvatarChange: true,
             t: (key: string) => key,
           }),

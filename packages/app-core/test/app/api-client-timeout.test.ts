@@ -1,7 +1,7 @@
-import { ApiError, ElizaClient } from "@elizaos/app-core/api";
+import { ApiError, MiladyClient } from "@elizaos/app-core/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-describe("ElizaClient request timeout handling", () => {
+describe("MiladyClient request timeout handling", () => {
   const originalFetch = globalThis.fetch;
 
   afterEach(() => {
@@ -30,7 +30,7 @@ describe("ElizaClient request timeout handling", () => {
       configurable: true,
     });
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     const request = client.getStatus().catch((err: unknown) => err);
     await vi.advanceTimersByTimeAsync(10_001);
 
@@ -59,7 +59,7 @@ describe("ElizaClient request timeout handling", () => {
       configurable: true,
     });
 
-    const client = new ElizaClient("http://localhost:2138");
+    const client = new MiladyClient("http://localhost:2138");
     const request = client
       .exportTrajectories({ format: "json" })
       .catch((err: unknown) => err);

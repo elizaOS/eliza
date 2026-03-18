@@ -1,4 +1,4 @@
-const STEALTH_GUARD = Symbol.for("eliza.claudeCodeStealthInstalled");
+const STEALTH_GUARD = Symbol.for("milady.claudeCodeStealthInstalled");
 const CLAUDE_CODE_VERSION = "2.1.2";
 const CLAUDE_CODE_SYSTEM_PREFIX =
   "You are Claude Code, Anthropic's official CLI for Claude.";

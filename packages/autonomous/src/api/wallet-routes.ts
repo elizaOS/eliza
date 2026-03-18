@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config";
+import type { MiladyConfig } from "../config/config";
 import {
   normalizeWalletRpcSelections,
   type WalletConfigUpdateRequest,
@@ -131,9 +131,9 @@ export const DEFAULT_WALLET_ROUTE_DEPENDENCIES: WalletRouteDependencies = {
 export interface WalletRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "readJsonBody" | "json" | "error"> {
-  config: ElizaConfig;
-  saveConfig: (config: ElizaConfig) => void;
-  ensureWalletKeysInEnvAndConfig: (config: ElizaConfig) => boolean;
+  config: MiladyConfig;
+  saveConfig: (config: MiladyConfig) => void;
+  ensureWalletKeysInEnvAndConfig: (config: MiladyConfig) => boolean;
   resolveWalletExportRejection: (
     req: http.IncomingMessage,
     body: WalletExportRequestBody,
@@ -374,7 +374,7 @@ export async function handleWalletRoutes(
       (config.env as Record<string, string>).EVM_PRIVATE_KEY =
         result.privateKey;
       generated.push({ chain: "evm", address: result.address });
-      logger.info(`[eliza-api] Generated EVM wallet: ${result.address}`);
+      logger.info(`[milady-api] Generated EVM wallet: ${result.address}`);
     }
 
     if (targetChain === "both" || targetChain === "solana") {
@@ -383,7 +383,7 @@ export async function handleWalletRoutes(
       (config.env as Record<string, string>).SOLANA_PRIVATE_KEY =
         result.privateKey;
       generated.push({ chain: "solana", address: result.address });
-      logger.info(`[eliza-api] Generated Solana wallet: ${result.address}`);
+      logger.info(`[milady-api] Generated Solana wallet: ${result.address}`);
     }
 
     try {

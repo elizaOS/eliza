@@ -84,11 +84,11 @@ export function resolveDefaultAgentWorkspaceDir(
   env: NodeJS.ProcessEnv = process.env,
   homedir: () => string = os.homedir,
 ): string {
-  const profile = env.ELIZA_PROFILE?.trim();
+  const profile = env.MILADY_PROFILE?.trim();
   if (profile && profile.toLowerCase() !== "default") {
-    return path.join(homedir(), ".eliza", `workspace-${profile}`);
+    return path.join(homedir(), ".milady", `workspace-${profile}`);
   }
-  return path.join(homedir(), ".eliza", "workspace");
+  return path.join(homedir(), ".milady", "workspace");
 }
 
 export const DEFAULT_AGENT_WORKSPACE_DIR = resolveDefaultAgentWorkspaceDir();
@@ -185,8 +185,8 @@ directory:
 
 ## Configuration
 
-Agent configuration is managed through \`~/.eliza/eliza.json\`
-or the Eliza Control UI.
+Agent configuration is managed through \`~/.milady/milady.json\`
+or the Milady Control UI.
 `,
 };
 

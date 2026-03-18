@@ -57,7 +57,7 @@ export interface ShareTargetPayload {
 
 declare global {
   interface Window {
-    __ELIZA_SHARE_QUEUE__?: ShareTargetPayload[];
+    __MILADY_SHARE_QUEUE__?: ShareTargetPayload[];
   }
 }
 
@@ -66,10 +66,10 @@ export function dispatchShareTarget(
   dispatchEvent: (name: string, detail: unknown) => void,
   eventName: string,
 ): void {
-  if (!window.__ELIZA_SHARE_QUEUE__) {
-    window.__ELIZA_SHARE_QUEUE__ = [];
+  if (!window.__MILADY_SHARE_QUEUE__) {
+    window.__MILADY_SHARE_QUEUE__ = [];
   }
-  window.__ELIZA_SHARE_QUEUE__.push(payload);
+  window.__MILADY_SHARE_QUEUE__.push(payload);
   dispatchEvent(eventName, payload);
 }
 
@@ -221,13 +221,13 @@ export function injectPopoutApiBase(): void {
         parsed.protocol === "https:" ||
         (parsed.protocol === "http:" && allowPrivateHttp)
       ) {
-        window.__ELIZA_API_BASE__ = apiBase;
+        window.__MILADY_API_BASE__ = apiBase;
       } else {
         console.warn("[app-core] Rejected non-local apiBase:", host);
       }
     } catch {
       if (apiBase.startsWith("/") && !apiBase.startsWith("//")) {
-        window.__ELIZA_API_BASE__ = apiBase;
+        window.__MILADY_API_BASE__ = apiBase;
       } else {
         console.warn("[app-core] Rejected invalid relative apiBase:", apiBase);
       }

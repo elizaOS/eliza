@@ -34,7 +34,7 @@ export interface StreamVisualSettings {
 // ---------------------------------------------------------------------------
 
 const OVERLAY_DIR = path.join(
-  process.env.ELIZA_DATA_DIR || path.join(process.cwd(), "data"),
+  process.env.MILADY_DATA_DIR || path.join(process.cwd(), "data"),
   "stream",
 );
 

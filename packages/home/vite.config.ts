@@ -31,7 +31,7 @@ function electronCorsPlugin(): Plugin {
         );
         res.setHeader(
           "Access-Control-Allow-Headers",
-          "Content-Type, Authorization, X-Api-Key, X-Eliza-Token, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language",
+          "Content-Type, Authorization, X-Api-Key, X-Milady-Token, X-Milady-Export-Token, X-Milady-Client-Id, X-Milady-Terminal-Token, X-Milady-UI-Language",
         );
 
         if (req.method === "OPTIONS") {

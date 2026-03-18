@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => ({
-    agentStatus: { agentName: "Eliza" },
+    agentStatus: { agentName: "Milady" },
     setState: vi.fn(),
   }),
   getVrmPreviewUrl: () => null,

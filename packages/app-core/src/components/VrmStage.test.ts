@@ -96,45 +96,45 @@ describe("VrmStage", () => {
   it("preloads additional avatars without activating them", async () => {
     const preloadAvatars: readonly VrmStageAvatarEntry[] = [
       {
-        vrmPath: "/vrms/eliza-4.vrm.gz",
-        fallbackPreviewUrl: "/vrms/previews/eliza-4.png",
+        vrmPath: "/vrms/milady-4.vrm.gz",
+        fallbackPreviewUrl: "/vrms/previews/milady-4.png",
       },
       {
-        vrmPath: "/vrms/eliza-5.vrm.gz",
-        fallbackPreviewUrl: "/vrms/previews/eliza-5.png",
+        vrmPath: "/vrms/milady-5.vrm.gz",
+        fallbackPreviewUrl: "/vrms/previews/milady-5.png",
       },
     ];
 
     await act(async () => {
       renderer = TestRenderer.create(
         renderStage({
-          vrmPath: "/vrms/eliza-1.vrm.gz",
-          fallbackPreviewUrl: "/vrms/previews/eliza-1.png",
+          vrmPath: "/vrms/milady-1.vrm.gz",
+          fallbackPreviewUrl: "/vrms/previews/milady-1.png",
           preloadAvatars,
         }),
       );
     });
 
     expect(getActiveMap(renderer)).toEqual({
-      "/vrms/eliza-1.vrm.gz": "true",
-      "/vrms/eliza-4.vrm.gz": "false",
-      "/vrms/eliza-5.vrm.gz": "false",
+      "/vrms/milady-1.vrm.gz": "true",
+      "/vrms/milady-4.vrm.gz": "false",
+      "/vrms/milady-5.vrm.gz": "false",
     });
   });
 
   it("keeps the outgoing avatar alive until the synced swap finishes", async () => {
     const preloadAvatars: readonly VrmStageAvatarEntry[] = [
       {
-        vrmPath: "/vrms/eliza-4.vrm.gz",
-        fallbackPreviewUrl: "/vrms/previews/eliza-4.png",
+        vrmPath: "/vrms/milady-4.vrm.gz",
+        fallbackPreviewUrl: "/vrms/previews/milady-4.png",
       },
     ];
 
     await act(async () => {
       renderer = TestRenderer.create(
         renderStage({
-          vrmPath: "/vrms/eliza-1.vrm.gz",
-          fallbackPreviewUrl: "/vrms/previews/eliza-1.png",
+          vrmPath: "/vrms/milady-1.vrm.gz",
+          fallbackPreviewUrl: "/vrms/previews/milady-1.png",
           preloadAvatars,
         }),
       );
@@ -143,16 +143,16 @@ describe("VrmStage", () => {
     await act(async () => {
       renderer.update(
         renderStage({
-          vrmPath: "/vrms/eliza-4.vrm.gz",
-          fallbackPreviewUrl: "/vrms/previews/eliza-4.png",
+          vrmPath: "/vrms/milady-4.vrm.gz",
+          fallbackPreviewUrl: "/vrms/previews/milady-4.png",
           preloadAvatars,
         }),
       );
     });
 
     expect(getActiveMap(renderer)).toEqual({
-      "/vrms/eliza-1.vrm.gz": "true",
-      "/vrms/eliza-4.vrm.gz": "true",
+      "/vrms/milady-1.vrm.gz": "true",
+      "/vrms/milady-4.vrm.gz": "true",
     });
 
     await act(async () => {
@@ -160,7 +160,7 @@ describe("VrmStage", () => {
     });
 
     expect(getActiveMap(renderer)).toEqual({
-      "/vrms/eliza-4.vrm.gz": "true",
+      "/vrms/milady-4.vrm.gz": "true",
     });
   });
 
@@ -168,8 +168,8 @@ describe("VrmStage", () => {
     await act(async () => {
       renderer = TestRenderer.create(
         renderStage({
-          vrmPath: "/vrms/eliza-1.vrm.gz",
-          fallbackPreviewUrl: "/vrms/previews/eliza-1.png",
+          vrmPath: "/vrms/milady-1.vrm.gz",
+          fallbackPreviewUrl: "/vrms/previews/milady-1.png",
           preloadAvatars: [],
         }),
       );
@@ -191,8 +191,8 @@ describe("VrmStage", () => {
   });
 
   it("shows the static preview only after a real avatar load error", async () => {
-    const vrmPath = "/vrms/eliza-1.vrm.gz";
-    const fallbackPreviewUrl = "/vrms/previews/eliza-1.png";
+    const vrmPath = "/vrms/milady-1.vrm.gz";
+    const fallbackPreviewUrl = "/vrms/previews/milady-1.png";
 
     await act(async () => {
       renderer = TestRenderer.create(

@@ -6,7 +6,7 @@
  * called from any provider implementation.
  */
 
-import type { ElizaClient } from "../api/client";
+import type { MiladyClient } from "../api/client";
 
 export type LifecycleAction = "start" | "stop" | "restart" | "reset";
 
@@ -46,7 +46,7 @@ export const LIFECYCLE_MESSAGES: Record<LifecycleAction, LifecycleMessages> = {
 };
 
 export interface LifecycleActionContext {
-  client: ElizaClient;
+  client: MiladyClient;
   isBusy: () => boolean;
   setBusy: (busy: boolean) => void;
   setNotice: (message: string, type: string, duration?: number) => void;
@@ -55,7 +55,7 @@ export interface LifecycleActionContext {
 export async function executeLifecycleAction(
   action: LifecycleAction,
   ctx: LifecycleActionContext,
-): Promise<ReturnType<ElizaClient["getStatus"]> | null> {
+): Promise<ReturnType<MiladyClient["getStatus"]> | null> {
   if (ctx.isBusy()) {
     ctx.setNotice(
       `Agent action already in progress. Please wait.`,
@@ -68,7 +68,7 @@ export async function executeLifecycleAction(
   ctx.setNotice(LIFECYCLE_MESSAGES[action].progress, "info", 3000);
 
   try {
-    let result: Awaited<ReturnType<ElizaClient["getStatus"]>>;
+    let result: Awaited<ReturnType<MiladyClient["getStatus"]>>;
     switch (action) {
       case "start":
         result = await ctx.client.startAgent();
@@ -107,7 +107,7 @@ const DEFAULT_BACKEND_STARTUP_TIMEOUT_MS = 60_000;
 export function getBackendStartupTimeoutMs(): number {
   try {
     const envVal = (globalThis as Record<string, unknown>)
-      .ELIZA_STARTUP_TIMEOUT;
+      .MILADY_STARTUP_TIMEOUT;
     if (typeof envVal === "number" && envVal > 0) return envVal;
   } catch {
     /* ignore */

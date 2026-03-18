@@ -2,11 +2,11 @@ import process from "node:process";
 import { bootElizaRuntime, startEliza } from "../runtime";
 
 function printHelp(): void {
-  console.log(`eliza-autonomous
+  console.log(`milady-autonomous
 
 Usage:
-  eliza-autonomous serve
-  eliza-autonomous runtime
+  milady-autonomous serve
+  milady-autonomous runtime
 
 Commands:
   serve    Start the autonomous backend in server-only mode

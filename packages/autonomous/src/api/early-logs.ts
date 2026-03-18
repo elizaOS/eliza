@@ -40,10 +40,10 @@ export function captureEarlyLogs(): void {
   if (earlyLogBuffer) return; // already capturing
   // If the global logger is already fully patched (e.g. dev-server started
   // the API server before calling startEliza), skip early capture entirely.
-  if ((logger as typeof logger & Record<string, unknown>).__elizaLogPatched)
+  if ((logger as typeof logger & Record<string, unknown>).__miladyLogPatched)
     return;
   earlyLogBuffer = [];
-  const EARLY_PATCHED = "__elizaEarlyPatched";
+  const EARLY_PATCHED = "__miladyEarlyPatched";
   if ((logger as typeof logger & Record<string, unknown>)[EARLY_PATCHED])
     return;
 
@@ -92,7 +92,7 @@ export function captureEarlyLogs(): void {
     delete (logger as typeof logger & Record<string, unknown>)[EARLY_PATCHED];
     // Don't set the main PATCHED_MARKER — `patchLogger` will do that
     delete (logger as typeof logger & Record<string, unknown>)
-      .__elizaLogPatched;
+      .__miladyLogPatched;
   };
 }
 

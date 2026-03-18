@@ -619,7 +619,7 @@ async function fetchUrlContent(
   const response = await fetchWithSafety(url, {
     redirect: "manual",
     headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; Eliza/1.0; +https://eliza.ai)",
+      "User-Agent": "Mozilla/5.0 (compatible; Milady/1.0; +https://milady.ai)",
     },
   });
 

@@ -56,7 +56,7 @@ describe("applyLaunchConnectionFromUrl", () => {
     await expect(applyLaunchConnectionFromUrl()).resolves.toBe(true);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://elizacloud.ai/api/v1/eliza/launch-sessions/session-123",
+      "https://elizacloud.ai/api/v1/milady/launch-sessions/session-123",
       expect.objectContaining({
         method: "GET",
         redirect: "manual",

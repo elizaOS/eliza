@@ -10,7 +10,7 @@ export function resolveTerminalRunLimits(): {
   maxDurationMs: number;
 } {
   const maxConcurrentRaw =
-    process.env.ELIZA_TERMINAL_MAX_CONCURRENT ??
+    process.env.MILADY_TERMINAL_MAX_CONCURRENT ??
     process.env.MILAIDY_TERMINAL_MAX_CONCURRENT;
   const maxConcurrent = parseClampedInteger(maxConcurrentRaw, {
     fallback: TERMINAL_RUN_MAX_CONCURRENT_DEFAULT,
@@ -19,7 +19,7 @@ export function resolveTerminalRunLimits(): {
   });
 
   const maxDurationMsRaw =
-    process.env.ELIZA_TERMINAL_MAX_DURATION_MS ??
+    process.env.MILADY_TERMINAL_MAX_DURATION_MS ??
     process.env.MILAIDY_TERMINAL_MAX_DURATION_MS;
   const maxDurationMs = parseClampedInteger(maxDurationMsRaw, {
     fallback: TERMINAL_RUN_MAX_DURATION_MS_DEFAULT,

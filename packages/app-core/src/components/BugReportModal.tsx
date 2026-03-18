@@ -8,7 +8,7 @@ import { openExternalUrl } from "../utils";
 
 const ENV_OPTIONS = ["macOS", "Windows", "Linux", "Other"] as const;
 const GITHUB_NEW_ISSUE_URL =
-  "https://github.com/elizaos/eliza/issues/new?template=bug_report.yml";
+  "https://github.com/milady-ai/milady/issues/new?template=bug_report.yml";
 
 interface BugReportForm {
   description: string;

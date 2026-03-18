@@ -28,7 +28,7 @@ export function mapWalletTradeError(
 export const BSC_GAS_READY_THRESHOLD = 0.005;
 export const BSC_SWAP_GAS_RESERVE = 0.002;
 export const HEX_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
-export const ELIZA_BSC_TOKEN_ADDRESS =
+export const MILADY_BSC_TOKEN_ADDRESS =
   "0xc20e45e49e0e79f0fc81e71f05fd2772d6587777";
 export const BSC_USDT_TOKEN_ADDRESS =
   "0x55d398326f99059fF775485246999027B3197955";

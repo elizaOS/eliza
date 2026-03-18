@@ -157,7 +157,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       const res = await client.getSubscriptionStatus();
       setSubscriptionStatus(res.providers ?? []);
     } catch (err) {
-      console.warn("[eliza] Failed to load subscription status", err);
+      console.warn("[milady] Failed to load subscription status", err);
     }
   }, []);
 
@@ -174,7 +174,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             : "",
         );
       } catch (err) {
-        console.warn("[eliza] Failed to load onboarding options", err);
+        console.warn("[milady] Failed to load onboarding options", err);
       }
       try {
         const cfg = await client.getConfig();
@@ -206,11 +206,11 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             (elizaCloudEnabledCfg ? defaultLarge : ""),
         );
         const rawPiAi =
-          (typeof vars.ELIZA_USE_PI_AI === "string"
-            ? vars.ELIZA_USE_PI_AI
+          (typeof vars.MILADY_USE_PI_AI === "string"
+            ? vars.MILADY_USE_PI_AI
             : undefined) ||
-          (typeof env?.ELIZA_USE_PI_AI === "string"
-            ? env.ELIZA_USE_PI_AI
+          (typeof env?.MILADY_USE_PI_AI === "string"
+            ? env.MILADY_USE_PI_AI
             : "");
         const piAiOn = ["1", "true", "yes"].includes(
           rawPiAi.trim().toLowerCase(),
@@ -251,7 +251,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           setSelectedProviderId(savedSubscriptionProvider);
         }
       } catch (err) {
-        console.warn("[eliza] Failed to load config", err);
+        console.warn("[milady] Failed to load config", err);
       }
     })();
   }, [loadSubscriptionStatus]);
@@ -355,7 +355,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               services: { inference: false },
               inferenceMode: "byok",
             },
-            env: { vars: { ELIZA_USE_PI_AI: "" } },
+            env: { vars: { MILADY_USE_PI_AI: "" } },
           });
           setPiAiEnabled(false);
           setCloudHandlesInference(false);
@@ -364,7 +364,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           }
         } catch (err) {
           console.warn(
-            "[eliza] Failed to update cloud inference config during provider switch",
+            "[milady] Failed to update cloud inference config during provider switch",
             err,
           );
         }
@@ -410,13 +410,13 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             services: { inference: false },
             inferenceMode: "byok",
           },
-          env: { vars: { ELIZA_USE_PI_AI: "" } },
+          env: { vars: { MILADY_USE_PI_AI: "" } },
         });
         await client.switchProvider(getStoredSubscriptionProvider(providerId));
         setCloudHandlesInference(false);
         setPiAiEnabled(false);
       } catch (err) {
-        console.warn("[eliza] Provider switch failed", err);
+        console.warn("[milady] Provider switch failed", err);
       }
       if (target && !target.enabled) {
         await handlePluginToggle(target.id, true);
@@ -440,7 +440,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           services: { inference: true },
           inferenceMode: "cloud",
         },
-        env: { vars: { ELIZA_USE_PI_AI: "" } },
+        env: { vars: { MILADY_USE_PI_AI: "" } },
         agents: { defaults: { model: { primary: null } } },
         models: {
           small: currentSmallModel || "moonshotai/kimi-k2-turbo",
@@ -452,7 +452,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       setPiAiEnabled(false);
       await client.restartAgent();
     } catch (err) {
-      console.warn("[eliza] Failed to select cloud provider", err);
+      console.warn("[milady] Failed to select cloud provider", err);
     }
   }, [currentSmallModel, currentLargeModel, setState]);
 
@@ -466,7 +466,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           services: { inference: false },
           inferenceMode: "byok",
         },
-        env: { vars: { ELIZA_USE_PI_AI: "1" } },
+        env: { vars: { MILADY_USE_PI_AI: "1" } },
         agents: {
           defaults: {
             model: {
@@ -480,7 +480,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       setTimeout(() => setPiAiSaveSuccess(false), 2000);
       await client.restartAgent();
     } catch (err) {
-      console.warn("[eliza] Failed to enable pi-ai", err);
+      console.warn("[milady] Failed to enable pi-ai", err);
     } finally {
       setPiAiSaving(false);
     }
@@ -728,7 +728,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                             await client.restartAgent();
                           } catch (err) {
                             console.warn(
-                              "[eliza] Failed to save cloud model config",
+                              "[milady] Failed to save cloud model config",
                               err,
                             );
                           }

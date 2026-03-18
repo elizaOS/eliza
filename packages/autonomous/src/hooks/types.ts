@@ -1,7 +1,7 @@
 /**
  * Hooks Type Definitions
  *
- * Core types for Eliza's event-driven hooks system.
+ * Core types for Milady's event-driven hooks system.
  *
  * @module hooks/types
  */
@@ -32,8 +32,8 @@ export type HookHandler = (event: HookEvent) => Promise<void> | void;
 
 // ---------- Hook Metadata ----------
 
-/** Eliza-specific hook metadata from HOOK.md frontmatter. */
-export interface ElizaHookMetadata {
+/** Milady-specific hook metadata from HOOK.md frontmatter. */
+export interface MiladyHookMetadata {
   /** Bypass eligibility checks. */
   always?: boolean;
   /** Config key override (defaults to hook name). */
@@ -79,16 +79,16 @@ export interface ParsedHookFrontmatter {
   description: string;
   homepage?: string;
   metadata?: {
-    eliza?: ElizaHookMetadata;
+    milady?: MiladyHookMetadata;
   };
 }
 
 /** Hook source type. */
 export type HookSource =
-  | "eliza-bundled"
-  | "eliza-managed"
-  | "eliza-workspace"
-  | "eliza-plugin";
+  | "milady-bundled"
+  | "milady-managed"
+  | "milady-workspace"
+  | "milady-plugin";
 
 /** A discovered hook. */
 export interface Hook {
@@ -105,7 +105,7 @@ export interface Hook {
 export interface HookEntry {
   hook: Hook;
   frontmatter: ParsedHookFrontmatter;
-  metadata?: ElizaHookMetadata;
+  metadata?: MiladyHookMetadata;
 }
 
 /** Hook status for listing/display. */

@@ -44,7 +44,7 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const hasDiscordToken = Boolean(process.env.DISCORD_BOT_TOKEN);
-const liveTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
+const liveTestsEnabled = process.env.MILADY_LIVE_TEST === "1";
 const runLiveTests = hasDiscordToken && liveTestsEnabled;
 const DISCORD_PLUGIN_IMPORT = resolveDiscordPluginImportSpecifier();
 const hasDiscordPlugin = DISCORD_PLUGIN_IMPORT !== null;
@@ -55,7 +55,7 @@ const describeIfLive =
 const describeIfPluginAvailable = hasDiscordPlugin ? describe : describe.skip;
 
 logger.info(
-  `[discord-connector] Live tests ${runLiveTests ? "ENABLED" : "DISABLED"} (DISCORD_BOT_TOKEN=${hasDiscordToken}, ELIZA_LIVE_TEST=${liveTestsEnabled})`,
+  `[discord-connector] Live tests ${runLiveTests ? "ENABLED" : "DISABLED"} (DISCORD_BOT_TOKEN=${hasDiscordToken}, MILADY_LIVE_TEST=${liveTestsEnabled})`,
 );
 logger.info(
   `[discord-connector] Plugin import ${DISCORD_PLUGIN_IMPORT ?? "UNAVAILABLE"}`,

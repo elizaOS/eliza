@@ -59,7 +59,7 @@ describe("Header", () => {
     // Mock the useApp hook return value
     const mockUseApp = {
       t: (k: string) => k,
-      agentStatus: { state: "running", agentName: "Eliza" },
+      agentStatus: { state: "running", agentName: "Milady" },
       elizaCloudEnabled: false,
       elizaCloudConnected: false,
       elizaCloudCredits: null,
@@ -128,7 +128,7 @@ describe("Header", () => {
   it("uses minimal chrome for the character view and hides cloud pricing", async () => {
     const mockUseApp = {
       t: (k: string) => k,
-      agentStatus: { state: "running", agentName: "Eliza" },
+      agentStatus: { state: "running", agentName: "Milady" },
       elizaCloudEnabled: true,
       elizaCloudConnected: true,
       elizaCloudCredits: 12.34,
@@ -188,7 +188,7 @@ describe("Header", () => {
   it("uses minimal chrome in companion mode", async () => {
     const mockUseApp = {
       t: (k: string) => k,
-      agentStatus: { state: "running", agentName: "Eliza" },
+      agentStatus: { state: "running", agentName: "Milady" },
       elizaCloudEnabled: false,
       elizaCloudConnected: false,
       elizaCloudCredits: null,
@@ -245,7 +245,7 @@ describe("Header", () => {
     const setState = vi.fn();
     const mockUseApp = {
       t: (k: string) => k,
-      agentStatus: { state: "running", agentName: "Eliza" },
+      agentStatus: { state: "running", agentName: "Milady" },
       elizaCloudEnabled: true,
       elizaCloudConnected: true,
       elizaCloudCredits: 12.34,
@@ -299,7 +299,7 @@ describe("Header", () => {
     const setState = vi.fn();
     const mockUseApp = {
       t: (k: string) => k,
-      agentStatus: { state: "running", agentName: "Eliza" },
+      agentStatus: { state: "running", agentName: "Milady" },
       elizaCloudEnabled: true,
       elizaCloudConnected: true,
       elizaCloudCredits: 12.34,

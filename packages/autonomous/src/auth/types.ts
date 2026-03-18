@@ -1,5 +1,5 @@
 /**
- * Subscription auth types for eliza.
+ * Subscription auth types for milady.
  */
 
 export interface OAuthCredentials {

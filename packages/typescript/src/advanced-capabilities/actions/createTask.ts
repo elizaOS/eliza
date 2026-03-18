@@ -94,7 +94,7 @@ function triggersDisabled(runtime: IAgentRuntime): boolean {
 	if (setting === false || setting === "false" || setting === "0") return true;
 	const env =
 		typeof process !== "undefined"
-			? process.env.ELIZA_TRIGGERS_ENABLED
+			? process.env.MILADY_TRIGGERS_ENABLED
 			: undefined;
 	return env === "0" || env === "false";
 }

@@ -1,5 +1,5 @@
 /**
- * HTTP client for the Eliza Cloud Eliza Sandbox API.
+ * HTTP client for the Eliza Cloud Milady Sandbox API.
  */
 
 export interface CloudAgent {
@@ -66,7 +66,7 @@ export class ElizaCloudClient {
   async listAgents(): Promise<CloudAgent[]> {
     const res = await this.request<CloudAgent[]>(
       "GET",
-      "/api/v1/eliza/agents",
+      "/api/v1/milady/agents",
     );
     return res.data ?? [];
   }
@@ -74,7 +74,7 @@ export class ElizaCloudClient {
   async createAgent(params: CloudAgentCreateParams): Promise<CloudAgent> {
     const res = await this.request<CloudAgent>(
       "POST",
-      "/api/v1/eliza/agents",
+      "/api/v1/milady/agents",
       params,
     );
     if (!res.success || !res.data)
@@ -85,7 +85,7 @@ export class ElizaCloudClient {
   async getAgent(agentId: string): Promise<CloudAgent> {
     const res = await this.request<CloudAgent>(
       "GET",
-      `/api/v1/eliza/agents/${agentId}`,
+      `/api/v1/milady/agents/${agentId}`,
     );
     if (!res.success || !res.data)
       throw new Error(res.error ?? "Agent not found");
@@ -95,7 +95,7 @@ export class ElizaCloudClient {
   async deleteAgent(agentId: string): Promise<void> {
     const res = await this.request<void>(
       "DELETE",
-      `/api/v1/eliza/agents/${agentId}`,
+      `/api/v1/milady/agents/${agentId}`,
     );
     if (!res.success) throw new Error(res.error ?? "Failed to delete agent");
   }
@@ -103,7 +103,7 @@ export class ElizaCloudClient {
   async provision(agentId: string): Promise<ProvisionInfo> {
     const res = await this.request<ProvisionInfo>(
       "POST",
-      `/api/v1/eliza/agents/${agentId}/provision`,
+      `/api/v1/milady/agents/${agentId}/provision`,
     );
     if (!res.success || !res.data)
       throw new Error(res.error ?? "Failed to provision sandbox");
@@ -116,7 +116,7 @@ export class ElizaCloudClient {
     roomId = "web-chat",
     channelType: ChatChannelType = "DM",
   ): Promise<string> {
-    const url = `${this.baseUrl}/api/v1/eliza/agents/${agentId}/bridge`;
+    const url = `${this.baseUrl}/api/v1/milady/agents/${agentId}/bridge`;
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Api-Key": this.apiKey },
@@ -158,7 +158,7 @@ export class ElizaCloudClient {
     roomId = "web-chat",
     channelType: ChatChannelType = "DM",
   ): AsyncGenerator<{ type: string; data: Record<string, unknown> }> {
-    const url = `${this.baseUrl}/api/v1/eliza/agents/${agentId}/stream`;
+    const url = `${this.baseUrl}/api/v1/milady/agents/${agentId}/stream`;
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Api-Key": this.apiKey },
@@ -219,7 +219,7 @@ export class ElizaCloudClient {
   async snapshot(agentId: string): Promise<BackupInfo> {
     const res = await this.request<BackupInfo>(
       "POST",
-      `/api/v1/eliza/agents/${agentId}/snapshot`,
+      `/api/v1/milady/agents/${agentId}/snapshot`,
     );
     if (!res.success || !res.data)
       throw new Error(res.error ?? "Snapshot failed");
@@ -229,7 +229,7 @@ export class ElizaCloudClient {
   async listBackups(agentId: string): Promise<BackupInfo[]> {
     const res = await this.request<BackupInfo[]>(
       "GET",
-      `/api/v1/eliza/agents/${agentId}/backups`,
+      `/api/v1/milady/agents/${agentId}/backups`,
     );
     return res.data ?? [];
   }
@@ -237,14 +237,14 @@ export class ElizaCloudClient {
   async restore(agentId: string, backupId?: string): Promise<void> {
     const res = await this.request<void>(
       "POST",
-      `/api/v1/eliza/agents/${agentId}/restore`,
+      `/api/v1/milady/agents/${agentId}/restore`,
       backupId ? { backupId } : {},
     );
     if (!res.success) throw new Error(res.error ?? "Restore failed");
   }
 
   async heartbeat(agentId: string): Promise<boolean> {
-    const url = `${this.baseUrl}/api/v1/eliza/agents/${agentId}/bridge`;
+    const url = `${this.baseUrl}/api/v1/milady/agents/${agentId}/bridge`;
     try {
       const response = await fetch(url, {
         method: "POST",

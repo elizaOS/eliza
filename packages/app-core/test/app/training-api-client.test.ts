@@ -1,7 +1,7 @@
-import { ElizaClient } from "@elizaos/app-core/api";
+import { MiladyClient } from "@elizaos/app-core/api";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-describe("ElizaClient training endpoints", () => {
+describe("MiladyClient training endpoints", () => {
   const originalFetch = globalThis.fetch;
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -31,7 +31,7 @@ describe("ElizaClient training endpoints", () => {
   });
 
   test("calls training status and list endpoints", async () => {
-    const client = new ElizaClient("http://localhost:2138", "token");
+    const client = new MiladyClient("http://localhost:2138", "token");
 
     await client.getTrainingStatus();
     await client.listTrainingTrajectories({ limit: 25, offset: 10 });
@@ -50,7 +50,7 @@ describe("ElizaClient training endpoints", () => {
   });
 
   test("calls training mutation endpoints with expected methods and paths", async () => {
-    const client = new ElizaClient("http://localhost:2138", "token");
+    const client = new MiladyClient("http://localhost:2138", "token");
 
     await client.buildTrainingDataset({
       limit: 120,
@@ -66,11 +66,11 @@ describe("ElizaClient training endpoints", () => {
     await client.getTrainingJob("job-1");
     await client.cancelTrainingJob("job-1");
     await client.importTrainingModelToOllama("model-1", {
-      modelName: "eliza-ft-model",
+      modelName: "milady-ft-model",
       baseModel: "qwen2.5:7b-instruct",
       ollamaUrl: "http://localhost:11434",
     });
-    await client.activateTrainingModel("model-1", "ollama/eliza-ft-model");
+    await client.activateTrainingModel("model-1", "ollama/milady-ft-model");
     await client.benchmarkTrainingModel("model-1");
 
     const calls = fetchMock.mock.calls.map((call) => ({
@@ -109,7 +109,7 @@ describe("ElizaClient training endpoints", () => {
       url: "http://localhost:2138/api/training/models/model-1/import-ollama",
       method: "POST",
       body: JSON.stringify({
-        modelName: "eliza-ft-model",
+        modelName: "milady-ft-model",
         baseModel: "qwen2.5:7b-instruct",
         ollamaUrl: "http://localhost:11434",
       }),
@@ -117,7 +117,7 @@ describe("ElizaClient training endpoints", () => {
     expect(calls).toContainEqual({
       url: "http://localhost:2138/api/training/models/model-1/activate",
       method: "POST",
-      body: JSON.stringify({ providerModel: "ollama/eliza-ft-model" }),
+      body: JSON.stringify({ providerModel: "ollama/milady-ft-model" }),
     });
     expect(calls).toContainEqual({
       url: "http://localhost:2138/api/training/models/model-1/benchmark",

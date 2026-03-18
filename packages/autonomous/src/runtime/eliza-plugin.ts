@@ -176,3 +176,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
   };
 }
 
+// Milady-branded aliases for downstream fork compatibility
+export const createMiladyPlugin = createElizaPlugin;
+export type { ElizaPluginConfig as MiladyPluginConfig };

@@ -315,41 +315,41 @@ export function debugLogResolvedContext(
   context: Record<string, unknown>,
   log: (msg: string) => void = console.debug,
 ): void {
-  log("[eliza:debug] ══════ Resolved Plugin/Provider Context ══════");
-  log(`[eliza:debug] Plugins loaded (${plugins.length}):`);
+  log("[milady:debug] ══════ Resolved Plugin/Provider Context ══════");
+  log(`[milady:debug] Plugins loaded (${plugins.length}):`);
   for (const name of plugins) {
-    log(`[eliza:debug]   • ${name}`);
+    log(`[milady:debug]   • ${name}`);
   }
-  log(`[eliza:debug] Providers loaded (${providers.length}):`);
+  log(`[milady:debug] Providers loaded (${providers.length}):`);
   for (const name of providers) {
-    log(`[eliza:debug]   • ${name}`);
+    log(`[milady:debug]   • ${name}`);
   }
 
   const validation = validateRuntimeContext(context);
   if (validation.valid && validation.serializable) {
     log(
-      "[eliza:debug] Context validation: ✓ PASS (all fields valid, serializable)",
+      "[milady:debug] Context validation: ✓ PASS (all fields valid, serializable)",
     );
   } else {
-    log("[eliza:debug] Context validation: ✗ ISSUES DETECTED");
+    log("[milady:debug] Context validation: ✗ ISSUES DETECTED");
     if (validation.nullFields.length > 0) {
-      log(`[eliza:debug]   null fields: ${validation.nullFields.join(", ")}`);
+      log(`[milady:debug]   null fields: ${validation.nullFields.join(", ")}`);
     }
     if (validation.undefinedFields.length > 0) {
       log(
-        `[eliza:debug]   undefined fields: ${validation.undefinedFields.join(", ")}`,
+        `[milady:debug]   undefined fields: ${validation.undefinedFields.join(", ")}`,
       );
     }
     if (validation.emptyFields.length > 0) {
       log(
-        `[eliza:debug]   empty fields: ${validation.emptyFields.join(", ")}`,
+        `[milady:debug]   empty fields: ${validation.emptyFields.join(", ")}`,
       );
     }
     if (validation.nonSerializableFields.length > 0) {
       log(
-        `[eliza:debug]   non-serializable fields: ${validation.nonSerializableFields.join(", ")}`,
+        `[milady:debug]   non-serializable fields: ${validation.nonSerializableFields.join(", ")}`,
       );
     }
   }
-  log("[eliza:debug] ══════════════════════════════════════════════");
+  log("[milady:debug] ══════════════════════════════════════════════");
 }

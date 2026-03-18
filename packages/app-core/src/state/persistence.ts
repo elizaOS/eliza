@@ -13,7 +13,7 @@ import { normalizeAvatarIndex } from "./vrm";
 
 export type { UiTheme } from "./ui-preferences";
 
-const UI_THEME_STORAGE_KEY = "eliza:ui-theme";
+const UI_THEME_STORAGE_KEY = "milady:ui-theme";
 
 function normalizeUiTheme(value: unknown): UiTheme {
   return value === "light" ? "light" : "dark";
@@ -61,10 +61,10 @@ export function applyUiTheme(theme: UiTheme): void {
   }
 }
 
-const UI_LANGUAGE_STORAGE_KEY = "eliza:ui-language";
-const UI_SHELL_MODE_STORAGE_KEY = "eliza:ui-shell-mode";
-const LAST_NATIVE_TAB_STORAGE_KEY = "eliza:last-native-tab";
-const ONBOARDING_STEP_STORAGE_KEY = "eliza:onboarding:step";
+const UI_LANGUAGE_STORAGE_KEY = "milady:ui-language";
+const UI_SHELL_MODE_STORAGE_KEY = "milady:ui-shell-mode";
+const LAST_NATIVE_TAB_STORAGE_KEY = "milady:last-native-tab";
+const ONBOARDING_STEP_STORAGE_KEY = "milady:onboarding:step";
 
 function normalizeOnboardingStep(value: unknown): OnboardingStep | null {
   switch (value) {
@@ -194,7 +194,7 @@ export function saveLastNativeTab(tab: Tab): void {
 }
 
 /* ── Avatar persistence ───────────────────────────────────────────────── */
-const AVATAR_INDEX_KEY = "eliza_avatar_index";
+const AVATAR_INDEX_KEY = "milady_avatar_index";
 
 export function loadAvatarIndex(): number {
   try {
@@ -218,8 +218,8 @@ export function saveAvatarIndex(index: number): void {
 }
 
 /* ── Chat UI persistence ──────────────────────────────────────────────── */
-const CHAT_AVATAR_VISIBLE_KEY = "eliza:chat:avatarVisible";
-const CHAT_VOICE_MUTED_KEY = "eliza:chat:voiceMuted";
+const CHAT_AVATAR_VISIBLE_KEY = "milady:chat:avatarVisible";
+const CHAT_VOICE_MUTED_KEY = "milady:chat:voiceMuted";
 
 export function loadChatAvatarVisible(): boolean {
   try {
@@ -256,9 +256,9 @@ export function saveChatVoiceMuted(value: boolean): void {
 }
 
 /* ── Chat mode persistence ─────────────────────────────────────────────── */
-const CHAT_MODE_KEY = "eliza:chat:mode";
-const ACTIVE_CONVERSATION_ID_KEY = "eliza:chat:activeConversationId";
-const COMPANION_MESSAGE_CUTOFF_TS_KEY = "eliza:chat:companionMessageCutoffTs";
+const CHAT_MODE_KEY = "milady:chat:mode";
+const ACTIVE_CONVERSATION_ID_KEY = "milady:chat:activeConversationId";
+const COMPANION_MESSAGE_CUTOFF_TS_KEY = "milady:chat:companionMessageCutoffTs";
 
 export function loadChatMode(): ConversationMode {
   try {
