@@ -3,16 +3,8 @@ import { NgrokService } from "../services/ngrok-service";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import type ngrok from "ngrok";
 
-/**
- * Interface for the ngrok module's class constructors.
- * Used to properly type the mock ngrok object.
- */
-interface NgrokClientConstructor {
-  new (): object;
-}
-
-// Create a mock ngrok object with properly typed class mocks
-const mockNgrok: typeof ngrok = {
+// Hoist mock ngrok so vi.mock can reference it (real ngrok binary is never loaded)
+const mockNgrok = vi.hoisted(() => ({
   connect: vi.fn(),
   disconnect: vi.fn(),
   kill: vi.fn(),
@@ -23,10 +15,11 @@ const mockNgrok: typeof ngrok = {
   defaultConfigPath: vi.fn(),
   oldDefaultConfigPath: vi.fn(),
   upgradeConfig: vi.fn(),
-  // Mock classes - cast through unknown to satisfy the type
-  NgrokClient: vi.fn() as unknown as typeof ngrok.NgrokClient,
-  NgrokClientError: vi.fn() as unknown as typeof ngrok.NgrokClientError,
-};
+  NgrokClient: vi.fn(),
+  NgrokClientError: vi.fn(),
+}));
+
+vi.mock("ngrok", () => ({ default: mockNgrok }));
 
 // Mock logger
 vi.mock("@elizaos/core", async () => {
@@ -60,8 +53,7 @@ describe("NgrokService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     testRuntime = createTestRuntime();
-    // Inject the mock ngrok object
-    service = new NgrokService(testRuntime, mockNgrok);
+    service = new NgrokService(testRuntime);
   });
 
   afterEach(() => {

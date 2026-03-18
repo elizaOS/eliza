@@ -535,13 +535,13 @@ export abstract class BaseDrizzleAdapter
     );
   }
 
-  async getMemoriesByWorldId(params: {
-    worldId: UUID;
-    count?: number;
+  async getMemoriesByWorldIds(params: {
+    worldIds: UUID[];
     tableName?: string;
+    limit?: number;
   }): Promise<Memory[]> {
     return this.withDatabase(() =>
-      stores.getMemoriesByWorldId(this.db, this.agentId, params)
+      stores.getMemoriesByWorldIds(this.db, this.agentId, params)
     );
   }
 

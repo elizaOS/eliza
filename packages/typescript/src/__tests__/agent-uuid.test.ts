@@ -187,7 +187,7 @@ describe("Agent UUID Identification", () => {
       getAgentRunSummaries: vi.fn().mockResolvedValue({ runs: [], totalCount: 0 }),
       deleteWorlds: vi.fn().mockResolvedValue(undefined),
       deleteRoomsByWorldId: vi.fn().mockResolvedValue(undefined),
-      getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
+      getMemoriesByWorldIds: vi.fn().mockResolvedValue([]),
     } as IDatabaseAdapter;
   });
 

@@ -3,6 +3,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
+  type UUID,
   logger,
   parseKeyValueXml,
   composePromptFromState,
@@ -11,7 +12,7 @@ import {
   type HandlerCallback,
   ModelType,
   findEntityByName,
-  ActionResult,
+  type ActionResult,
 } from '@elizaos/core';
 import { RolodexService } from '../services/RolodexService';
 
@@ -107,7 +108,8 @@ export const addContactAction: Action = {
     message: Memory,
     state?: State,
     _options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
+    _responses?: Memory[],
   ): Promise<ActionResult> => {
     const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
 
@@ -144,24 +146,25 @@ export const addContactAction: Action = {
         prompt,
       });
 
-      const parsedResponse = parseKeyValueXml(response);
-      if (!parsedResponse || !parsedResponse.contactName) {
+      const parsedResponse = parseKeyValueXml(response) as Record<string, unknown> | null;
+      const contactName = parsedResponse?.contactName != null ? String(parsedResponse.contactName) : '';
+      if (!parsedResponse || !contactName) {
         logger.warn('[AddContact] Failed to parse contact information from response');
         throw new Error('Could not extract contact information');
       }
 
       // Determine entity ID
-      let entityId = parsedResponse.entityId ? asUUID(parsedResponse.entityId) : null;
+      let entityId = parsedResponse.entityId ? asUUID(String(parsedResponse.entityId)) : null;
 
       // If no entity ID provided, try to find by name
-      if (!entityId && parsedResponse.contactName) {
+      if (!entityId && contactName) {
         const entity = await findEntityByName(runtime, message, state);
 
         if (entity) {
-          entityId = entity.id as any;
+          entityId = entity.id as UUID;
         } else {
           // Create a new entity ID based on the name
-          entityId = stringToUuid(`contact-${parsedResponse.contactName}-${runtime.agentId}`);
+          entityId = stringToUuid(`contact-${contactName}-${runtime.agentId}`);
         }
       }
 
@@ -170,9 +173,8 @@ export const addContactAction: Action = {
       }
 
       // Parse categories
-      const categories = parsedResponse.categories
-        ? parsedResponse.categories.split(',').map((c: string) => c.trim())
-        : ['acquaintance'];
+      const categoriesStr = parsedResponse.categories != null ? String(parsedResponse.categories) : '';
+      const categories = categoriesStr ? categoriesStr.split(',').map((c: string) => c.trim()) : ['acquaintance'];
 
       // Build preferences
       const preferences: any = {};
@@ -191,30 +193,21 @@ export const addContactAction: Action = {
       }`;
 
       if (callback) {
-        await callback({
-          text: responseText,
-          action: 'ADD_CONTACT',
-          metadata: {
-            contactId: entityId,
-            contactName: parsedResponse.contactName,
-            categories,
-            success: true,
-          },
-        });
+        await callback({ text: responseText });
       }
 
       return {
         success: true,
         values: {
           contactId: entityId,
-          contactName: parsedResponse.contactName,
+          contactName,
           categories,
           preferences,
         },
         data: {
-          contact: contact,
+          contact,
           contactId: entityId,
-          contactName: parsedResponse.contactName,
+          contactName,
           categories,
           preferences,
         },
@@ -228,11 +221,7 @@ export const addContactAction: Action = {
       }`;
 
       if (callback) {
-        await callback({
-          text: errorText,
-          action: 'ADD_CONTACT',
-          metadata: { error: true },
-        });
+        await callback({ text: errorText });
       }
 
       return {

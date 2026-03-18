@@ -5264,12 +5264,12 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     }
     await handler(this, target, content);
   }
-  async getMemoriesByWorldId(params: {
-    worldId: UUID;
-    count?: number;
+  async getMemoriesByWorldIds(params: {
+    worldIds: UUID[];
     tableName?: string;
+    limit?: number;
   }): Promise<Memory[]> {
-    return await this.adapter.getMemoriesByWorldId(params);
+    return await this.adapter.getMemoriesByWorldIds(params);
   }
   async runMigrations(migrationsPaths?: string[]): Promise<void> {
     if (this.adapter?.runMigrations) {

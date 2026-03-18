@@ -52,7 +52,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun run test:typescript",
-    "test:typescript": "vitest run src/__tests__/",
+    "test:typescript": "vitest run --passWithNoTests src/__tests__/",
     "test:watch": "vitest",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

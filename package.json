@@ -10,6 +10,8 @@
     "fix-deps": "bun scripts/fix-workspace-deps.mjs",
     "fix-deps:check": "bun scripts/fix-workspace-deps.mjs --check",
     "fix-deps:restore": "bun scripts/fix-workspace-deps.mjs --restore",
+    "ensure-plugin-test-conventions": "bun scripts/ensure-plugin-test-conventions.mjs",
+    "ensure-plugin-test-conventions:check": "bun scripts/ensure-plugin-test-conventions.mjs --check",
     "generate:types": "cd packages/@schemas && bunx buf lint && bunx buf generate",
     "start": "echo 'CLI package not found. Please use elizaos start from a project directory.'",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",

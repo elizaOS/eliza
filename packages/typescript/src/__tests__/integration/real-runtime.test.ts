@@ -102,7 +102,7 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
     }),
     deleteAllMemories: vi.fn().mockResolvedValue(undefined),
     countMemories: vi.fn().mockResolvedValue(0),
-    getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
+    getMemoriesByWorldIds: vi.fn().mockResolvedValue([]),
 
     // Entity methods
     getEntitiesByIds: vi.fn(

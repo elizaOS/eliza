@@ -5,6 +5,7 @@ module.exports = {
   testMatch: ['**/__tests__/**/*.test.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^@elizaos/computeruse$': '<rootDir>/src/__mocks__/computeruse.ts',
   },
   transform: {
     '^.+\\.ts$': ['ts-jest', {

@@ -112,7 +112,8 @@ export const searchContactsAction: Action = {
     message: Memory,
     state?: State,
     _options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
+    _responses?: Memory[],
   ): Promise<ActionResult | void> => {
     const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
 
@@ -149,24 +150,29 @@ export const searchContactsAction: Action = {
         prompt,
       });
 
-      const parsedResponse = parseKeyValueXml(response);
+      const parsedResponse = parseKeyValueXml(response) as Record<string, unknown> | null;
 
       // Build search criteria
-      const criteria: any = {};
+      const criteria: {
+        categories?: string[];
+        tags?: string[];
+        searchTerm?: string;
+        privacyLevel?: string;
+      } = {};
 
-      if (parsedResponse?.categories) {
-        criteria.categories = parsedResponse.categories
+      if (parsedResponse?.categories != null) {
+        criteria.categories = String(parsedResponse.categories)
           .split(',')
           .map((c: string) => c.trim())
           .filter(Boolean);
       }
 
-      if (parsedResponse?.searchTerm) {
-        criteria.searchTerm = parsedResponse.searchTerm;
+      if (parsedResponse?.searchTerm != null) {
+        criteria.searchTerm = String(parsedResponse.searchTerm);
       }
 
-      if (parsedResponse?.tags) {
-        criteria.tags = parsedResponse.tags
+      if (parsedResponse?.tags != null) {
+        criteria.tags = String(parsedResponse.tags)
           .split(',')
           .map((t: string) => t.trim())
           .filter(Boolean);
@@ -192,7 +198,7 @@ export const searchContactsAction: Action = {
 
       if (contactDetails.length === 0) {
         responseText = 'No contacts found matching your criteria.';
-      } else if (parsedResponse?.intent === 'count') {
+      } else if (parsedResponse?.intent != null && String(parsedResponse.intent) === 'count') {
         responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? 's' : ''} matching your criteria.`;
       } else {
         // Group by category if searching all
@@ -236,15 +242,7 @@ export const searchContactsAction: Action = {
       }
 
       if (callback) {
-        await callback({
-          text: responseText,
-          action: 'SEARCH_CONTACTS',
-          metadata: {
-            count: contactDetails.length,
-            criteria,
-            success: true,
-          },
-        });
+        await callback({ text: responseText });
       }
 
       return {
@@ -273,11 +271,7 @@ export const searchContactsAction: Action = {
       }`;
 
       if (callback) {
-        await callback({
-          text: errorText,
-          action: 'SEARCH_CONTACTS',
-          metadata: { error: true },
-        });
+        await callback({ text: errorText });
       }
 
       return {

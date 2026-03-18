@@ -51,7 +51,7 @@
     "format:check": "prettier --check ./src",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --passWithNoTests --coverage"
   },
   "peerDependencies": {
     "whatwg-url": "7.1.0"

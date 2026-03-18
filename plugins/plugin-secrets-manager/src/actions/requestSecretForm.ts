@@ -73,10 +73,11 @@ export const requestSecretFormAction: Action = {
 
     try {
       // Parse parameters from message or state
+      const parsed = parseJSONObjectFromText(
+        message.content.text,
+      ) as RequestSecretFormParams | null | undefined;
       const params =
-        (parseJSONObjectFromText(
-          message.content.text,
-        ) as RequestSecretFormParams) ||
+        (parsed && Array.isArray(parsed.secrets) ? parsed : null) ||
         extractRequestParams(message.content.text);
 
       if (!params.secrets || params.secrets.length === 0) {
@@ -228,19 +229,19 @@ function extractRequestParams(text: string): RequestSecretFormParams {
   // Extract common secret types - MOST SPECIFIC FIRST
   const secretPatterns = [
     {
-      pattern: /openai\s*(?:api\s*)?key/gi,
+      pattern: /openai\s*(?:api\s*)?keys?/gi,
       key: "OPENAI_API_KEY",
       type: "api_key",
       description: "OpenAI API Key",
     },
     {
-      pattern: /anthropic\s*(?:api\s*)?key/gi,
+      pattern: /anthropic\s*(?:api\s*)?keys?/gi,
       key: "ANTHROPIC_API_KEY",
       type: "api_key",
       description: "Anthropic API Key",
     },
     {
-      pattern: /groq\s*(?:api\s*)?key/gi,
+      pattern: /groq\s*(?:api\s*)?keys?/gi,
       key: "GROQ_API_KEY",
       type: "api_key",
       description: "Groq API Key",
@@ -264,7 +265,7 @@ function extractRequestParams(text: string): RequestSecretFormParams {
       description: "Private Key",
     },
     {
-      pattern: /api\s*key/gi,
+      pattern: /api\s*keys?/gi,
       key: "API_KEY",
       type: "api_key",
       description: "API Key",
@@ -307,7 +308,7 @@ function extractRequestParams(text: string): RequestSecretFormParams {
   // If no specific secrets found after checking all patterns, add a generic one
   if (
     params.secrets.length === 0 &&
-    text.match(/secret|key|token|password|credential/i)
+    text.match(/secret|key|token|password|credential|information/i)
   ) {
     params.secrets.push({
       key: "SECRET_VALUE",
@@ -327,7 +328,7 @@ function extractRequestParams(text: string): RequestSecretFormParams {
   }
 
   // Extract expiration time if mentioned
-  const timeMatch = text.match(/(\d+)\s*(minute|hour)/i);
+  const timeMatch = text.match(/(\d+)\s*(minute|minutes|hour|hours)/i);
   if (timeMatch) {
     const amount = parseInt(timeMatch[1]);
     const unit = timeMatch[2].toLowerCase();

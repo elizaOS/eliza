@@ -117,7 +117,8 @@ export const scheduleFollowUpAction: Action = {
     message: Memory,
     state?: State,
     _options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
+    _responses?: Memory[],
   ): Promise<ActionResult | void> => {
     const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
     const followUpService = (await runtime.getService('follow_up')) as FollowUpService;
@@ -156,23 +157,25 @@ export const scheduleFollowUpAction: Action = {
         prompt,
       });
 
-      const parsedResponse = parseKeyValueXml(response);
-      if (!parsedResponse || (!parsedResponse.contactName && !parsedResponse.entityId)) {
+      const parsedResponse = parseKeyValueXml(response) as Record<string, unknown> | null;
+      const contactName = parsedResponse?.contactName != null ? String(parsedResponse.contactName) : '';
+      const entityIdStr = parsedResponse?.entityId != null ? String(parsedResponse.entityId) : '';
+      if (!parsedResponse || (!contactName && !entityIdStr)) {
         logger.warn('[ScheduleFollowUp] Failed to parse follow-up information from response');
         throw new Error('Could not extract follow-up information');
       }
 
       // Determine entity ID
-      let entityId = parsedResponse.entityId ? asUUID(parsedResponse.entityId) : null;
+      let entityId = entityIdStr ? asUUID(entityIdStr) : null;
 
       // If no entity ID provided, try to find by name
-      if (!entityId && parsedResponse.contactName) {
+      if (!entityId && contactName) {
         const entity = await findEntityByName(runtime, message, state);
 
         if (entity) {
-          entityId = entity.id as any;
+          entityId = entity.id as import('@elizaos/core').UUID;
         } else {
-          throw new Error(`Contact "${parsedResponse.contactName}" not found in rolodex`);
+          throw new Error(`Contact "${contactName}" not found in rolodex`);
         }
       }
 
@@ -187,7 +190,8 @@ export const scheduleFollowUpAction: Action = {
       }
 
       // Parse scheduled time
-      const scheduledAt = new Date(parsedResponse.scheduledAt);
+      const scheduledAtVal = parsedResponse.scheduledAt != null ? String(parsedResponse.scheduledAt) : '';
+      const scheduledAt = new Date(scheduledAtVal);
       if (isNaN(scheduledAt.getTime())) {
         throw new Error('Invalid follow-up date/time');
       }
@@ -196,32 +200,22 @@ export const scheduleFollowUpAction: Action = {
       const task = await followUpService.scheduleFollowUp(
         entityId,
         scheduledAt,
-        parsedResponse.reason || 'Follow-up',
-        parsedResponse.priority || 'medium',
-        parsedResponse.message
+        parsedResponse.reason != null ? String(parsedResponse.reason) : 'Follow-up',
+        parsedResponse.priority != null ? String(parsedResponse.priority) : 'medium',
+        parsedResponse.message != null ? String(parsedResponse.message) : undefined,
       );
 
       logger.info(
-        `[ScheduleFollowUp] Scheduled follow-up for ${parsedResponse.contactName} at ${scheduledAt.toISOString()}`
+        `[ScheduleFollowUp] Scheduled follow-up for ${contactName} at ${scheduledAt.toISOString()}`,
       );
 
       // Prepare response
-      const responseText = `I've scheduled a follow-up with ${parsedResponse.contactName} for ${scheduledAt.toLocaleString()}. ${
-        parsedResponse.reason ? `Reason: ${parsedResponse.reason}` : ''
+      const responseText = `I've scheduled a follow-up with ${contactName} for ${scheduledAt.toLocaleString()}. ${
+        parsedResponse.reason ? `Reason: ${String(parsedResponse.reason)}` : ''
       }`;
 
       if (callback) {
-        await callback({
-          text: responseText,
-          action: 'SCHEDULE_FOLLOW_UP',
-          metadata: {
-            contactId: entityId,
-            contactName: parsedResponse.contactName,
-            scheduledAt: scheduledAt.toISOString(),
-            taskId: task.id,
-            success: true,
-          },
-        });
+        await callback({ text: responseText });
       }
 
       return {
@@ -232,11 +226,11 @@ export const scheduleFollowUpAction: Action = {
         },
         data: {
           contactId: entityId,
-          contactName: parsedResponse.contactName,
+          contactName,
           scheduledAt: scheduledAt.toISOString(),
           taskId: task.id,
-          reason: parsedResponse.reason,
-          priority: parsedResponse.priority,
+          reason: parsedResponse.reason != null ? String(parsedResponse.reason) : undefined,
+          priority: parsedResponse.priority != null ? String(parsedResponse.priority) : undefined,
         },
         text: responseText,
       };
@@ -248,11 +242,7 @@ export const scheduleFollowUpAction: Action = {
       }`;
 
       if (callback) {
-        await callback({
-          text: errorText,
-          action: 'SCHEDULE_FOLLOW_UP',
-          metadata: { error: true },
-        });
+        await callback({ text: errorText });
       }
 
       return {

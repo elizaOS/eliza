@@ -135,7 +135,6 @@ const createMockRuntime = (): IAgentRuntime => {
     getMemoryById: vi.fn(),
     getMemoriesByIds: vi.fn(),
     getMemoriesByRoomIds: vi.fn(),
-    getMemoriesByServerId: vi.fn(),
     getCachedEmbeddings: vi.fn(),
     log: vi.fn(),
     getLogs: vi.fn(),
@@ -178,7 +177,7 @@ const createMockRuntime = (): IAgentRuntime => {
     getTasksByName: vi.fn(),
     updateTask: vi.fn(),
     deleteTask: vi.fn(),
-    getMemoriesByWorldId: vi.fn(),
+    getMemoriesByWorldIds: vi.fn(),
   } as unknown as IAgentRuntime;
 
   return mockRuntime;

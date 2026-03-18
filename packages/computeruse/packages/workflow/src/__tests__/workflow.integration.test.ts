@@ -3,9 +3,9 @@
  * Tests error handling, onError callback, and real Calculator automation
  */
 
-import { Desktop } from "@elizaos/computeruse";
+import { Desktop as DesktopClass } from "@elizaos/computeruse";
 import { createWorkflow, createStep, z } from "../index";
-import type { StepResult, WorkflowErrorContext } from "../types";
+import type { Desktop, StepResult, WorkflowErrorContext } from "../types";
 
 type EmptyWorkflowErrorContext = WorkflowErrorContext<Record<string, never>>;
 
@@ -18,14 +18,14 @@ describe("Workflow Integration Tests - Calculator", () => {
     let desktop: Desktop;
 
     beforeEach(async () => {
-        desktop = new Desktop();
+        desktop = new DesktopClass();
     });
 
     afterEach(async () => {
         // Clean up - close Calculator if it's open
         try {
             const calc = await desktop.locator("name:Calculator").first(2000);
-            await calc.close();
+            await (calc as any)?.close?.();
         } catch {
             // Calculator wasn't open, that's fine
         }
@@ -139,7 +139,7 @@ describe("Workflow Integration Tests - Calculator", () => {
                 name: "Open Calculator",
                 execute: async ({ desktop }) => {
                     await desktop.openApplication("calc");
-                    await desktop.delay(2000);
+                    await desktop.delay?.(2000);
 
                     const calc = await desktop
                         .locator("name:Calculator")
@@ -169,7 +169,7 @@ describe("Workflow Integration Tests - Calculator", () => {
                 name: "Open Calculator",
                 execute: async ({ desktop }) => {
                     await desktop.openApplication("calc");
-                    await desktop.delay(2000);
+                    await desktop.delay?.(2000);
                     return { state: { opened: true } };
                 },
             });
@@ -181,7 +181,7 @@ describe("Workflow Integration Tests - Calculator", () => {
                     const one = await desktop
                         .locator("name:Calculator >> name:One")
                         .first(3000);
-                    await one.click();
+                    await one?.click();
                     return { state: { clicked_one: true } };
                 },
             });
@@ -193,7 +193,7 @@ describe("Workflow Integration Tests - Calculator", () => {
                     const plus = await desktop
                         .locator("name:Calculator >> name:Plus")
                         .first(3000);
-                    await plus.click();
+                    await plus?.click();
                     return { state: { clicked_plus: true } };
                 },
             });
@@ -205,7 +205,7 @@ describe("Workflow Integration Tests - Calculator", () => {
                     const two = await desktop
                         .locator("name:Calculator >> name:Two")
                         .first(3000);
-                    await two.click();
+                    await two?.click();
                     return { state: { clicked_two: true } };
                 },
             });
@@ -217,8 +217,8 @@ describe("Workflow Integration Tests - Calculator", () => {
                     const equals = await desktop
                         .locator("name:Calculator >> name:Equals")
                         .first(3000);
-                    await equals.click();
-                    await desktop.delay(500);
+                    await equals?.click();
+                    await desktop.delay?.(500);
                     return { state: { clicked_equals: true } };
                 },
             });
@@ -242,7 +242,7 @@ describe("Workflow Integration Tests - Calculator", () => {
                 name: "Open Calculator",
                 execute: async ({ desktop }) => {
                     await desktop.openApplication("calc");
-                    await desktop.delay(2000);
+                    await desktop.delay?.(2000);
                     return { state: { opened: true } };
                 },
             });
@@ -255,7 +255,7 @@ describe("Workflow Integration Tests - Calculator", () => {
                     const btn = await desktop
                         .locator("name:Calculator >> name:NonExistentButton")
                         .first(1000);
-                    await btn.click();
+                    await btn?.click();
                     return { state: { clicked: true } };
                 },
             });

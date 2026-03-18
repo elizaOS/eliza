@@ -15,7 +15,6 @@ import {
   type Content,
   createCharacter,
   createMessageMemory,
-  InMemoryDatabaseAdapter,
   type Memory,
   stringToUuid,
   type UUID,

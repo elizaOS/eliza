@@ -11,6 +11,7 @@ export * from "./actions";
 export * from "./character";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
+export * from "./database/inMemoryPluginStore";
 export * from "./entities";
 export * from "./logger";
 export * from "./memory";

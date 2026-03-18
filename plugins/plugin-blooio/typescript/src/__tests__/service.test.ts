@@ -6,6 +6,7 @@ import { BlooioError } from "../types";
 vi.mock("express", () => ({
   default: vi.fn(() => ({
     use: vi.fn(),
+    get: vi.fn(),
     post: vi.fn(),
     listen: vi.fn((_port, cb) => {
       cb();

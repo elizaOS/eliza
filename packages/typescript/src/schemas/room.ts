@@ -64,7 +64,7 @@ export const roomSchema: SchemaTable = {
       isUnique: false,
     },
     // WHY: World-scoped room lookups (getRoomsByWorld, deleteRoomsByWorldId,
-    // getMemoriesByWorldId via JOIN).
+    // getMemoriesByWorldIds via JOIN).
     idx_rooms_world: {
       name: "idx_rooms_world",
       columns: [{ expression: "world_id", isExpression: false }],
