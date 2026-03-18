@@ -73,7 +73,7 @@ describe('formContextProvider', () => {
   test('returns context with active session data', async () => {
     const mockSession = {
       formId: 'test-form',
-      values: { name: 'John' },
+      fields: { name: 'John' },
     }
     const mockContextState = {
       hasActiveForm: true,
@@ -102,7 +102,7 @@ describe('formContextProvider', () => {
   test('includes stashed forms in context', async () => {
     const mockStashedSession = {
       formId: 'stashed-form',
-      values: {},
+      fields: {},
     }
     const mockContextState = {
       hasActiveForm: false,
