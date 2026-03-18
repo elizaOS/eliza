@@ -1,3 +1,4 @@
+import '@ensdomains/ethers-patch-v6';
 import { afterAll, afterEach, vi } from "vitest";
 
 // Ensure Vitest environment is properly set

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '@ensdomains/ethers-patch-v6';
 import { runAutonomousCli } from "./cli";
 
 runAutonomousCli().catch((error) => {

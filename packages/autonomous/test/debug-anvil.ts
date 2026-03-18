@@ -2,6 +2,7 @@
  * Debug script to test Anvil and contract deployment directly
  */
 
+import '@ensdomains/ethers-patch-v6';
 import { ethers } from "ethers";
 import { startAnvil } from "./anvil-helper";
 import { deployContracts } from "./contract-deployer";

@@ -1,3 +1,5 @@
+import '@ensdomains/ethers-patch-v6';
+
 /**
  * ElizaOS Training Package
  *

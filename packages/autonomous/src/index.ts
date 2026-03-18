@@ -1,3 +1,5 @@
+import '@ensdomains/ethers-patch-v6';
+
 export * from "./api";
 export * from "./auth/index";
 export * from "./config";
