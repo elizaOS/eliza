@@ -1822,8 +1822,8 @@ export interface VerificationMessageResponse {
 
 declare global {
   interface Window {
-    __MILADY_API_BASE__?: string;
-    __MILADY_API_TOKEN__?: string;
+    __ELIZA_API_BASE__?: string;
+    __ELIZA_API_TOKEN__?: string;
   }
 }
 

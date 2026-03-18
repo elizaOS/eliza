@@ -25,6 +25,7 @@
     "clean": "rm -rf dist",
     "build": "bun run build:dist",
     "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/autonomous --compiled-prefix=packages/autonomous/src",
+    "benchmark:server": "node --import tsx src/benchmark-server.ts",
     "typecheck": "test -f ../prompts/dist/typescript/index.ts || (cd ../prompts && bun run build:typescript) && tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check ./src/actions ./src/api ./src/auth ./src/awareness ./src/bin.ts ./src/cli ./src/cloud ./src/config ./src/contracts ./src/diagnostics ./src/emotes ./src/hooks ./src/index.ts ./src/onboarding-presets.ts ./src/plugins ./src/providers ./src/runtime ./src/security ./src/server ./src/services ./src/shared ./src/testing ./src/triggers ./src/utils ./src/version-resolver.ts",
     "pack:dry-run": "cd dist && npm pack --dry-run",

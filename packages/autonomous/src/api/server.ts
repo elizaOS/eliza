@@ -5646,7 +5646,7 @@ export function ensureApiTokenForBindHost(host: string): void {
 }
 
 export function isAuthorized(req: http.IncomingMessage): boolean {
-  const expected = (process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN)?.trim();
+  const expected = process.env.ELIZA_API_TOKEN?.trim();
   if (!expected) return true;
   const provided = extractAuthToken(req);
   if (!provided) return false;
