@@ -1,4 +1,3 @@
-import { requireProviderSpec } from "../../generated/spec-helpers.ts";
 import type {
   ActionResult,
   IAgentRuntime,
@@ -9,25 +8,18 @@ import type {
 import { addHeader } from "../../utils.ts";
 import { sliceToFitBudget } from "../../utils/slice-to-fit-budget.js";
 
-// Get text content from centralized specs
-const spec = requireProviderSpec("ACTION_STATE");
 const ACTION_RESULTS_TARGET_CHARS = 2600;
 const ACTION_HISTORY_TARGET_CHARS = 2400;
-
-type WorkingMemoryEntry = {
-  actionName: string;
-  result: ActionResult;
-  timestamp: number;
-};
 
 /**
  * Provider for sharing action execution state and plan between actions
  * Makes previous action results and execution plan available to subsequent actions
  */
 export const actionStateProvider: Provider = {
-  name: spec.name,
-  description: spec.description,
-  position: spec.position ?? 150,
+  name: "ACTION_STATE",
+  description:
+    "Previous action results, working memory, and action plan from the current execution run",
+  position: 150,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     const actionResults = state.data.actionResults ?? [];
     const actionPlan = state.data.actionPlan;
@@ -96,8 +88,7 @@ export const actionStateProvider: Provider = {
             } catch {
               return 0;
             }
-          })() +
-          80,
+          })() + 80, // Add formatting overhead consistent with basic-capabilities
         ACTION_RESULTS_TARGET_CHARS,
       );
 
@@ -144,22 +135,9 @@ export const actionStateProvider: Provider = {
     // Format working memory
     let memoryText = "";
     if (workingMemory && Object.keys(workingMemory).length > 0) {
-      const entries = Object.entries(workingMemory) as Array<
-        [string, WorkingMemoryEntry]
-      >;
-      const topEntries: Array<[string, WorkingMemoryEntry]> = [];
-      for (const entry of entries) {
-        if (topEntries.length < 10) {
-          topEntries.push(entry);
-          topEntries.sort((a, b) => b[1].timestamp - a[1].timestamp);
-          continue;
-        }
-        if (entry[1].timestamp > topEntries[9][1].timestamp) {
-          topEntries[9] = entry;
-          topEntries.sort((a, b) => b[1].timestamp - a[1].timestamp);
-        }
-      }
-      const memoryEntries = topEntries
+      const memoryEntries = Object.entries(workingMemory)
+        .sort((a, b) => b[1].timestamp - a[1].timestamp)
+        .slice(0, 10) // Show last 10 entries
         .map(([key, entry]) => {
           const result: ActionResult = entry.result;
           const resultText =
@@ -205,6 +183,7 @@ export const actionStateProvider: Provider = {
         }
       }
 
+      // Note: recentMessages returns newest-first, so use fromEnd:false to keep newest runs
       const selectedRuns = sliceToFitBudget(
           Array.from(groupedByRun.entries()),
           ([runId, memories]) => {
@@ -215,13 +194,13 @@ export const actionStateProvider: Provider = {
                 String(content?.actionName || "").length +
                 String(content?.actionStatus || "").length +
                 String(content?.planStep || "").length +
-                String(content?.text || "").length
+                String(content?.text || "").length + 80 // Add per-entry formatting overhead
               );
             }, 0);
-            return textChars + runId.length + 80;
+            return textChars + runId.length;
           },
           ACTION_HISTORY_TARGET_CHARS,
-          { fromEnd: true } // Select newest entries since groupedByRun is chronological
+          { fromEnd: false },
         );
 
       const formattedMemories = selectedRuns
