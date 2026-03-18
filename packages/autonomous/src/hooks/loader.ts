@@ -23,7 +23,7 @@ function getSafeHookRoots(
   workspacePath?: string,
   bundledDir?: string,
 ): string[] {
-  const roots: string[] = [resolve(homedir(), ".milady", "hooks")];
+  const roots: string[] = [resolve(homedir(), ".eliza", "hooks")];
   if (bundledDir) roots.push(resolve(bundledDir));
   if (workspacePath) {
     roots.push(resolve(workspacePath.replace(/^~/, homedir()), "hooks"));
@@ -80,8 +80,8 @@ async function loadHandlerModule(
 export interface LoadHooksOptions extends DiscoveryOptions {
   /** Internal hooks configuration. */
   internalConfig?: InternalHooksConfig;
-  /** Full Milady config for eligibility checks. */
-  miladyConfig?: Record<string, unknown>;
+  /** Full Eliza config for eligibility checks. */
+  elizaConfig?: Record<string, unknown>;
 }
 
 export interface LoadHooksResult {
@@ -105,7 +105,7 @@ export interface LoadHooksResult {
 export async function loadHooks(
   options: LoadHooksOptions = {},
 ): Promise<LoadHooksResult> {
-  const { internalConfig, miladyConfig = {} } = options;
+  const { internalConfig, elizaConfig = {} } = options;
 
   // Check if hooks are enabled
   if (internalConfig?.enabled === false) {
@@ -122,17 +122,17 @@ export async function loadHooks(
   // Clear existing hooks (for reload)
   clearHooks();
 
-  // Validate config-supplied extraDirs: only allow paths under ~/.milady/
+  // Validate config-supplied extraDirs: only allow paths under ~/.eliza/
   // to prevent config injection from scanning attacker-controlled directories.
   const safeExtraDirs = [...(options.extraDirs ?? [])];
-  const miladyHome = resolve(homedir(), ".milady");
+  const elizaHome = resolve(homedir(), ".eliza");
   for (const dir of internalConfig?.load?.extraDirs ?? []) {
     const resolved = resolve(dir.replace(/^~/, homedir()));
-    if (resolved.startsWith(miladyHome + sep) || resolved === miladyHome) {
+    if (resolved.startsWith(elizaHome + sep) || resolved === elizaHome) {
       safeExtraDirs.push(dir);
     } else {
       logger.warn(
-        `[hooks] Rejected config extraDir "${dir}": must be under ~/.milady/`,
+        `[hooks] Rejected config extraDir "${dir}": must be under ~/.eliza/`,
       );
     }
   }
@@ -161,7 +161,7 @@ export async function loadHooks(
     const eligibility = checkEligibility(
       entry.metadata,
       hookConfig,
-      miladyConfig,
+      elizaConfig,
     );
 
     if (!eligibility.eligible) {

@@ -89,8 +89,8 @@ export {
 // ── Constants ─────────────────────────────────────────────────────────
 
 const FETCH_TIMEOUT_MS = 15_000;
-export const MANAGED_EVM_ADDRESS_ENV_KEY = "MILADY_MANAGED_EVM_ADDRESS";
-export const MANAGED_SOLANA_ADDRESS_ENV_KEY = "MILADY_MANAGED_SOLANA_ADDRESS";
+export const MANAGED_EVM_ADDRESS_ENV_KEY = "ELIZA_MANAGED_EVM_ADDRESS";
+export const MANAGED_SOLANA_ADDRESS_ENV_KEY = "ELIZA_MANAGED_SOLANA_ADDRESS";
 
 // ── EVM key derivation (secp256k1 via @noble/curves + keccak-256) ─────
 

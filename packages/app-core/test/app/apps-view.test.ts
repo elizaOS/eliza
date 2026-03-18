@@ -422,7 +422,7 @@ describe("AppsView", () => {
         viewer: null,
       }),
     );
-    Object.defineProperty(window, "__MILADY_ELECTROBUN_RPC__", {
+    Object.defineProperty(window, "__ELIZA_ELECTROBUN_RPC__", {
       configurable: true,
       writable: true,
       value: {

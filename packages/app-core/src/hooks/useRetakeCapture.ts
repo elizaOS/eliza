@@ -31,7 +31,7 @@ export function useRetakeCapture(
         params: {
           fps,
           quality: JPEG_QUALITY,
-          apiBase: window.__MILADY_API_BASE__ ?? "http://localhost:2138",
+          apiBase: window.__ELIZA_API_BASE__ ?? "http://localhost:2138",
           endpoint: "/api/stream/frame",
         },
       })

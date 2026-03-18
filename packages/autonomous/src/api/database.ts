@@ -1,5 +1,5 @@
 /**
- * Database management API handlers for the Milady Control UI.
+ * Database management API handlers for the Eliza Control UI.
  *
  * Provides endpoints for:
  * - Database provider configuration (PGLite vs Postgres)
@@ -18,12 +18,12 @@ import type http from "node:http";
 import net from "node:net";
 import { promisify } from "node:util";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { loadMiladyConfig, saveMiladyConfig } from "../config/config";
+import { loadElizaConfig, saveElizaConfig } from "../config/config";
 import type {
   DatabaseConfig,
   DatabaseProviderType,
   PostgresCredentials,
-} from "../config/types.milady";
+} from "../config/types.eliza";
 import {
   isLoopbackHost,
   normalizeHostLike,
@@ -179,7 +179,7 @@ const PRIVATE_IP_PATTERNS: RegExp[] = [
  * since only local processes can reach the API.
  */
 function isApiLoopbackOnly(): boolean {
-  let bind = (process.env.MILADY_API_BIND ?? "127.0.0.1").trim().toLowerCase();
+  let bind = (process.env.ELIZA_API_BIND ?? "127.0.0.1").trim().toLowerCase();
   if (!bind) bind = "127.0.0.1";
 
   // Accept accidental URL-shaped bind values.
@@ -514,13 +514,13 @@ async function handleGetStatus(
 
 /**
  * GET /api/database/config
- * Returns the persisted database configuration from milady.json.
+ * Returns the persisted database configuration from eliza.json.
  */
 function handleGetConfig(
   _req: http.IncomingMessage,
   res: http.ServerResponse,
 ): void {
-  const config = loadMiladyConfig();
+  const config = loadElizaConfig();
   const dbConfig: DatabaseConfig = config.database ?? { provider: "pglite" };
   // Mask the password in the response
   const sanitized = { ...dbConfig };
@@ -573,7 +573,7 @@ async function handlePutConfig(
   }
 
   // Load current config so validation can account for unchanged provider.
-  const config = loadMiladyConfig();
+  const config = loadElizaConfig();
   const existingDb = config.database ?? {};
   const effectiveProvider =
     body.provider ?? existingDb.provider ?? ("pglite" as DatabaseProviderType);
@@ -620,7 +620,7 @@ async function handlePutConfig(
   }
 
   config.database = merged;
-  saveMiladyConfig(config);
+  saveElizaConfig(config);
 
   logger.info(
     { src: "database-api", provider: merged.provider },

@@ -1,0 +1,96 @@
+{
+  "name": "@elizaos-plugins/plugin-google-chat",
+  "version": "2.0.0-alpha.1",
+  "description": "Google Chat integration plugin for elizaOS agents",
+  "type": "module",
+  "main": "./dist/typescript/src/index.js",
+  "types": "./dist/typescript/src/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/typescript/src/index.js",
+      "types": "./dist/typescript/src/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "npm run build:typescript && npm run build:python && npm run build:rust",
+    "build:typescript": "cd typescript && bun run build",
+    "build:python": "test -n \"$SKIP_PYTHON_BUILD\" && echo 'Python build skipped (SKIP_PYTHON_BUILD set)' || (test -d python && cd python && timeout 120 pip install -e . 2>/dev/null || echo 'Python build skipped or timed out')",
+    "build:rust": "cd rust && cargo build --release",
+    "test": "npm run test:typescript && npm run test:python && npm run test:rust",
+    "test:typescript": "cd typescript && bun test",
+    "test:python": "test -d python && (command -v pytest >/dev/null 2>&1 && cd python && pytest || echo 'Python tests skipped (pytest not found)') || echo 'Python tests skipped'",
+    "test:rust": "test -d rust && (cd rust && cargo test || echo 'Rust tests skipped') || echo 'Rust tests skipped'",
+    "lint": "npm run lint:typescript && npm run lint:python && npm run lint:rust",
+    "lint:typescript": "cd typescript && bunx biome check --write --unsafe .",
+    "lint:python": "cd python && ruff check --fix --unsafe-fixes .",
+    "lint:rust": "cd rust && cargo clippy"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "google-chat",
+    "workspace",
+    "chat"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "homepage": "https://elizaos.com/plugins/google-chat",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-google-chat"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "google-auth-library": "^9.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:google-chat:1.0.0",
+    "pluginParameters": {
+      "GOOGLE_CHAT_SERVICE_ACCOUNT": {
+        "type": "string",
+        "description": "Service account JSON string for Google Chat authentication",
+        "required": false
+      },
+      "GOOGLE_CHAT_SERVICE_ACCOUNT_FILE": {
+        "type": "string",
+        "description": "Path to service account JSON file",
+        "required": false
+      },
+      "GOOGLE_CHAT_AUDIENCE_TYPE": {
+        "type": "string",
+        "description": "Type of audience verification (app-url or project-number)",
+        "required": true
+      },
+      "GOOGLE_CHAT_AUDIENCE": {
+        "type": "string",
+        "description": "Audience value for token verification",
+        "required": true
+      },
+      "GOOGLE_CHAT_WEBHOOK_PATH": {
+        "type": "string",
+        "description": "Webhook path for receiving messages (default: /googlechat)",
+        "required": false
+      },
+      "GOOGLE_CHAT_SPACES": {
+        "type": "string",
+        "description": "Comma-separated list of spaces to auto-join",
+        "required": false
+      },
+      "GOOGLE_CHAT_REQUIRE_MENTION": {
+        "type": "boolean",
+        "description": "Whether to require @mention in group spaces",
+        "required": false
+      },
+      "GOOGLE_CHAT_ENABLED": {
+        "type": "boolean",
+        "description": "Enable or disable the Google Chat plugin",
+        "required": false
+      }
+    }
+  }
+}

@@ -1,10 +1,10 @@
 /**
  * End-to-End Validation Tests — GitHub Issue #6
  *
- * Comprehensive E2E tests covering the full Milady validation matrix:
+ * Comprehensive E2E tests covering the full Eliza validation matrix:
  *
  *   1. Fresh install simulation (build → CLI boot → onboarding → agent running)
- *   2. CLI entry point test (npx miladyai equivalent)
+ *   2. CLI entry point test (npx elizaos equivalent)
  *   3. Plugin stress test (all plugins loaded simultaneously)
  *   4. Long-running session test (simulated via timeout-based operations)
  *   5. Context integrity test (no corruption after multiple operations)
@@ -64,7 +64,7 @@ const packageManifest = JSON.parse(
   fs.readFileSync(path.join(packageRoot, "package.json"), "utf-8"),
 ) as RootPackageManifest;
 const cliEntryRelativePath =
-  packageManifest.bin?.["eliza-autonomous"] ?? packageManifest.bin?.miladyai ?? packageManifest.bin?.milady ?? "src/bin.ts";
+  packageManifest.bin?.["eliza-autonomous"] ?? packageManifest.bin?.elizaos ?? packageManifest.bin?.eliza ?? "src/bin.ts";
 const cliEntryPath = path.join(packageRoot, cliEntryRelativePath);
 
 function fileExistsAny(candidates: string[]): boolean {
@@ -77,7 +77,7 @@ dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
 const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
 const hasGroq = Boolean(process.env.GROQ_API_KEY);
-const liveModelTestsEnabled = process.env.MILADY_LIVE_TEST === "1";
+const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
 const hasModelProvider =
   liveModelTestsEnabled && (hasOpenAI || hasAnthropic || hasGroq);
 
@@ -400,10 +400,10 @@ describe("Fresh Install Simulation", () => {
 });
 
 // ===================================================================
-//  2. CLI ENTRY POINT TEST (npx miladyai equivalent)
+//  2. CLI ENTRY POINT TEST (npx elizaos equivalent)
 // ===================================================================
 
-describe("CLI Entry Point (npx miladyai equivalent)", () => {
+describe("CLI Entry Point (npx elizaos equivalent)", () => {
   it("source entry artifact exists", () => {
     expect(
       fileExistsAny([
@@ -444,7 +444,7 @@ describe("CLI Entry Point (npx miladyai equivalent)", () => {
 // ===================================================================
 
 describe("Plugin Stress Test", () => {
-  // All known plugin packages from the Milady ecosystem
+  // All known plugin packages from the Eliza ecosystem
   const ALL_CORE_PLUGINS: readonly string[] = [
     "@elizaos/plugin-sql",
     "@elizaos/plugin-local-embedding",
@@ -490,7 +490,7 @@ describe("Plugin Stress Test", () => {
     "@elizaos/plugin-discord",
     "@elizaos/plugin-telegram",
     "@elizaos/plugin-slack",
-    "@miladyai/plugin-whatsapp",
+    "@elizaos/plugin-whatsapp",
     "@elizaos/plugin-signal",
     "@elizaos/plugin-imessage",
     "@elizaos/plugin-bluebubbles",
@@ -1124,7 +1124,7 @@ describe("Rapid Sequential Operations", () => {
 
 describe("Workspace Integrity", () => {
   it("ensureAgentWorkspace creates directory and is idempotent", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-e2e-ws-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-e2e-ws-"));
     const wsDir = path.join(dir, "workspace");
 
     expect(fs.existsSync(wsDir)).toBe(false);
@@ -1145,7 +1145,7 @@ describe("Workspace Integrity", () => {
 
   it("workspace creation handles concurrent calls", async () => {
     const dir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "milady-e2e-ws-concurrent-"),
+      path.join(os.tmpdir(), "eliza-e2e-ws-concurrent-"),
     );
     const wsDir = path.join(dir, "concurrent-workspace");
 
@@ -1179,7 +1179,7 @@ describe("Runtime Integration (with model provider)", () => {
   let initialized = false;
 
   const pgliteDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "milady-e2e-validation-pglite-"),
+    path.join(os.tmpdir(), "eliza-e2e-validation-pglite-"),
   );
   const roomId = stringToUuid("e2e-validation-room");
   const userId = crypto.randomUUID() as UUID;
@@ -1187,7 +1187,7 @@ describe("Runtime Integration (with model provider)", () => {
 
   beforeAll(async () => {
     if (!hasModelProvider) return;
-    process.env.LOG_LEVEL = process.env.MILADY_E2E_LOG_LEVEL ?? "error";
+    process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
     process.env.PGLITE_DATA_DIR = pgliteDir;
 
     const secrets: Record<string, string> = {};

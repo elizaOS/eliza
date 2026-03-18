@@ -7,7 +7,7 @@
 
 import type {
   CreateTriggerRequest,
-  MiladyClient,
+  ElizaClient,
   TriggerRunRecord,
   TriggerSummary,
   UpdateTriggerRequest,
@@ -25,7 +25,7 @@ export function sortTriggersByNextRun(
 }
 
 export interface TriggerActionContext {
-  client: MiladyClient;
+  client: ElizaClient;
   setTriggers: (fn: (prev: TriggerSummary[]) => TriggerSummary[]) => void;
   setTriggerRunsById: (
     fn: (

@@ -32,7 +32,7 @@ let activeBrowser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
 let stopSignal = false;
 
 /** Path to the temp frame file that FFmpeg reads */
-export const FRAME_FILE = join(tmpdir(), "milady-stream-frame.jpg");
+export const FRAME_FILE = join(tmpdir(), "eliza-stream-frame.jpg");
 
 export interface BrowserCaptureConfig {
   url: string;
@@ -42,7 +42,7 @@ export interface BrowserCaptureConfig {
   quality?: number;
   /** Optional overlay layout JSON to seed into localStorage before page load. */
   overlayLayout?: string;
-  /** Theme name to apply (e.g. "milady", "haxor", "psycho"). */
+  /** Theme name to apply (e.g. "eliza", "haxor", "psycho"). */
   theme?: string;
   /** Avatar VRM index (1–8). */
   avatarIndex?: number;
@@ -115,9 +115,9 @@ export async function startBrowserCapture(config: BrowserCaptureConfig) {
 
   // Seed localStorage before navigation so the first render matches Electron.
   // Keys must match exactly what the React app reads:
-  //   - "milady:theme"                        → ThemeName
-  //   - "milady_avatar_index"                 → VRM index (1–8)
-  //   - "milady.stream.overlay-layout.v1[.destId]" → OverlayLayout JSON
+  //   - "eliza:theme"                        → ThemeName
+  //   - "eliza_avatar_index"                 → VRM index (1–8)
+  //   - "eliza.stream.overlay-layout.v1[.destId]" → OverlayLayout JSON
   await page.evaluateOnNewDocument(
     (
       overlayLayout: string | undefined,
@@ -128,19 +128,19 @@ export async function startBrowserCapture(config: BrowserCaptureConfig) {
       if (overlayLayout) {
         // Seed both global and destination-specific keys so the hook
         // resolves correctly regardless of when activeDestination loads.
-        localStorage.setItem("milady.stream.overlay-layout.v1", overlayLayout);
+        localStorage.setItem("eliza.stream.overlay-layout.v1", overlayLayout);
         if (destinationId) {
           localStorage.setItem(
-            `milady.stream.overlay-layout.v1.${destinationId}`,
+            `eliza.stream.overlay-layout.v1.${destinationId}`,
             overlayLayout,
           );
         }
       }
       if (theme) {
-        localStorage.setItem("milady:theme", theme);
+        localStorage.setItem("eliza:theme", theme);
       }
       if (avatarIndex != null) {
-        localStorage.setItem("milady_avatar_index", String(avatarIndex));
+        localStorage.setItem("eliza_avatar_index", String(avatarIndex));
       }
     },
     config.overlayLayout,

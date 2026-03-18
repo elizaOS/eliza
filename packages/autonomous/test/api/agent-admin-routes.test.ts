@@ -44,7 +44,7 @@ function buildCtx(
     },
     onRestart: undefined,
     onRuntimeSwapped: undefined,
-    resolveStateDir: () => "/tmp/milady-state",
+    resolveStateDir: () => "/tmp/eliza-state",
     resolvePath: (value: string) => value,
     getHomeDir: () => "/home/test",
     isSafeResetStateDir: () => true,

@@ -198,7 +198,7 @@ describe("PluginsView game modal", () => {
         };
       }),
     });
-    Object.defineProperty(window, "__MILADY_ELECTROBUN_RPC__", {
+    Object.defineProperty(window, "__ELIZA_ELECTROBUN_RPC__", {
       configurable: true,
       writable: true,
       value: undefined,
@@ -601,7 +601,7 @@ describe("PluginsView game modal", () => {
     const openSpy = vi
       .spyOn(window, "open")
       .mockImplementation(() => null as unknown as Window);
-    Object.defineProperty(window, "__MILADY_ELECTROBUN_RPC__", {
+    Object.defineProperty(window, "__ELIZA_ELECTROBUN_RPC__", {
       configurable: true,
       writable: true,
       value: {
@@ -616,9 +616,9 @@ describe("PluginsView game modal", () => {
     mockUseApp.mockReturnValue(
       baseContext([
         createPlugin("retake", "Retake.tv", "streaming", {
-          setupGuideUrl: "https://docs.milady.ai/plugin-setup-guide#retaketv",
+          setupGuideUrl: "https://docs.elizaos.ai/plugin-setup-guide#retaketv",
           repository:
-            "https://github.com/milady-ai/milady/tree/main/packages/plugin-retake",
+            "https://github.com/elizaos/eliza/tree/main/packages/plugin-retake",
         }),
       ]),
     );
@@ -659,10 +659,10 @@ describe("PluginsView game modal", () => {
       await Promise.resolve();
     });
     expect(mockOpenExternalInvoke).toHaveBeenCalledWith({
-      url: "https://docs.milady.ai/plugin-setup-guide#retaketv",
+      url: "https://docs.elizaos.ai/plugin-setup-guide#retaketv",
     });
 
-    Object.defineProperty(window, "__MILADY_ELECTROBUN_RPC__", {
+    Object.defineProperty(window, "__ELIZA_ELECTROBUN_RPC__", {
       configurable: true,
       writable: true,
       value: undefined,
@@ -677,7 +677,7 @@ describe("PluginsView game modal", () => {
       await Promise.resolve();
     });
     expect(openSpy).toHaveBeenCalledWith(
-      "https://github.com/milady-ai/milady/tree/main/packages/plugin-retake",
+      "https://github.com/elizaos/eliza/tree/main/packages/plugin-retake",
       "_blank",
       "noopener,noreferrer",
     );

@@ -385,13 +385,13 @@ function getObservationBuffer(runtime: IAgentRuntime): BufferedExchange[] {
 }
 
 function resolvePreferredTrajectoryArchiveRoot(): string {
-  const explicitWorkspace = process.env.MILADY_WORKSPACE_DIR?.trim();
+  const explicitWorkspace = process.env.ELIZA_WORKSPACE_DIR?.trim();
   if (explicitWorkspace) return explicitWorkspace;
 
-  const workspaceRoot = process.env.MILADY_WORKSPACE_ROOT?.trim();
+  const workspaceRoot = process.env.ELIZA_WORKSPACE_ROOT?.trim();
   if (workspaceRoot) return workspaceRoot;
 
-  return path.join(os.homedir(), ".milady", "workspace");
+  return path.join(os.homedir(), ".eliza", "workspace");
 }
 
 async function ensureArchiveDirectory(dir: string): Promise<void> {
@@ -409,7 +409,7 @@ async function resolveTrajectoryArchiveDirectory(): Promise<string> {
   } catch {
     const fallback = path.join(
       process.env.TMPDIR || os.tmpdir(),
-      "milady",
+      "eliza",
       TRAJECTORY_ARCHIVE_DIRNAME,
     );
     await ensureArchiveDirectory(fallback);
@@ -655,7 +655,7 @@ function warnRuntime(
   };
   if (runtimeLike.logger?.warn) {
     runtimeLike.logger.warn(
-      { err, src: "milady", subsystem: "trajectory-db" },
+      { err, src: "eliza", subsystem: "trajectory-db" },
       message,
     );
   }

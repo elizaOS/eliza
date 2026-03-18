@@ -41,7 +41,7 @@ const { mockClient } = vi.hoisted(() => ({
     getAgentEvents: vi.fn(async () => ({ events: [], latestEventId: null })),
     getStatus: vi.fn(async () => ({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -57,7 +57,7 @@ const { mockClient } = vi.hoisted(() => ({
     })),
     startAgent: vi.fn(async () => ({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -145,7 +145,7 @@ describe("lifecycle action locking", () => {
     });
     mockClient.getStatus.mockResolvedValue({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -164,7 +164,7 @@ describe("lifecycle action locking", () => {
     });
     mockClient.startAgent.mockResolvedValue({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -209,7 +209,7 @@ describe("lifecycle action locking", () => {
     await act(async () => {
       deferred.resolve({
         state: "running",
-        agentName: "Milady",
+        agentName: "Eliza",
         model: undefined,
         startedAt: undefined,
         uptime: undefined,
@@ -227,7 +227,7 @@ describe("lifecycle action locking", () => {
       .mockRejectedValueOnce(new Error("boom"))
       .mockResolvedValueOnce({
         state: "running",
-        agentName: "Milady",
+        agentName: "Eliza",
         model: undefined,
         startedAt: undefined,
         uptime: undefined,

@@ -1,16 +1,16 @@
 /**
- * Queries the npm registry for new miladyai versions on the user's
+ * Queries the npm registry for new elizaos versions on the user's
  * configured release channel (stable/beta/nightly).
  */
 
-import { loadMiladyConfig, saveMiladyConfig } from "../config/config";
-import type { ReleaseChannel, UpdateConfig } from "../config/types.milady";
+import { loadElizaConfig, saveElizaConfig } from "../config/config";
+import type { ReleaseChannel, UpdateConfig } from "../config/types.eliza";
 import { VERSION } from "../runtime/version";
 import { compareSemver } from "./version-compat";
 
 const CHECK_INTERVAL_SECONDS = 14_400; // 4 hours
 const REGISTRY_TIMEOUT_MS = 8_000;
-const NPM_REGISTRY_PACKUMENT_URL = "https://registry.npmjs.org/miladyai";
+const NPM_REGISTRY_PACKUMENT_URL = "https://registry.npmjs.org/elizaos";
 
 /** npm dist-tag corresponding to each release channel. */
 export const CHANNEL_DIST_TAGS: Readonly<Record<ReleaseChannel, string>> = {
@@ -59,7 +59,7 @@ function shouldSkipCheck(cfg: UpdateConfig | undefined): boolean {
 
 /** Resolve the effective release channel from config, env, or default. */
 export function resolveChannel(cfg: UpdateConfig | undefined): ReleaseChannel {
-  const env = process.env.MILADY_UPDATE_CHANNEL?.trim().toLowerCase();
+  const env = process.env.ELIZA_UPDATE_CHANNEL?.trim().toLowerCase();
   if (env === "stable" || env === "beta" || env === "nightly") return env;
   return cfg?.channel ?? "stable";
 }
@@ -71,7 +71,7 @@ export function resolveChannel(cfg: UpdateConfig | undefined): ReleaseChannel {
 export async function checkForUpdate(options?: {
   force?: boolean;
 }): Promise<UpdateCheckResult> {
-  const config = loadMiladyConfig();
+  const config = loadElizaConfig();
   const updateCfg = config.update;
   const channel = resolveChannel(updateCfg);
   const distTag = CHANNEL_DIST_TAGS[channel];
@@ -122,7 +122,7 @@ export async function checkForUpdate(options?: {
   const updateAvailable = cmp !== null && cmp < 0;
 
   try {
-    saveMiladyConfig({
+    saveElizaConfig({
       ...config,
       update: {
         ...config.update,
@@ -135,7 +135,7 @@ export async function checkForUpdate(options?: {
     // registry gets queried on every startup — worth surfacing.
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(
-      `[milady] Warning: could not save update-check metadata: ${msg}\n`,
+      `[eliza] Warning: could not save update-check metadata: ${msg}\n`,
     );
   }
 

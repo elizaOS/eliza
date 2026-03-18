@@ -41,7 +41,7 @@ async function loadStripeFactory(): Promise<StripeFactory> {
 
   stripeLoader = new Promise<StripeFactory>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>(
-      'script[data-milady-stripe-loader="true"]',
+      'script[data-eliza-stripe-loader="true"]',
     );
     if (existing) {
       existing.addEventListener("load", () => {
@@ -60,7 +60,7 @@ async function loadStripeFactory(): Promise<StripeFactory> {
     const script = document.createElement("script");
     script.src = "https://js.stripe.com/v3/";
     script.async = true;
-    script.dataset.miladyStripeLoader = "true";
+    script.dataset.elizaStripeLoader = "true";
     script.onload = () => {
       if (typeof window.Stripe === "function") {
         resolve(window.Stripe);

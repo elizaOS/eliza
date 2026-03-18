@@ -421,7 +421,7 @@ export function StatusBar({
             title={t("statusbar.PopOutStreamView")}
             onClick={() => {
               const apiBase = (window as unknown as Record<string, unknown>)
-                .__MILADY_API_BASE__ as string | undefined;
+                .__ELIZA_API_BASE__ as string | undefined;
               const base = window.location.origin || "";
               const sep =
                 window.location.protocol === "file:" ||
@@ -433,7 +433,7 @@ export function StatusBar({
                 : "popout";
               const popoutWin = window.open(
                 `${base}${sep}/?${qs}`,
-                "milady-stream",
+                "eliza-stream",
                 "width=1280,height=720,menubar=no,toolbar=no,location=no,status=no",
               );
               // Notify the main window to navigate away from stream tab

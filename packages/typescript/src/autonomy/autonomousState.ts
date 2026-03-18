@@ -141,7 +141,7 @@ function renderHeartbeatLine(heartbeat: HeartbeatEventPayloadLike): string {
 
 export function createAutonomousStateProvider(): Provider {
 	return {
-		name: "miladyAutonomousState",
+		name: "elizaAutonomousState",
 		description:
 			"Recent autonomous loop activity (thoughts/actions/heartbeat) for context bridging.",
 		get: async (

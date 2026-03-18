@@ -126,18 +126,18 @@ describe("subscription auth routes (e2e contract)", () => {
 
   beforeAll(async () => {
     envBackup = saveEnv(
-      "MILADY_STATE_DIR",
-      "MILADY_CONFIG_PATH",
-      "MILADY_API_TOKEN",
-      "MILADY_PAIRING_DISABLED",
+      "ELIZA_STATE_DIR",
+      "ELIZA_CONFIG_PATH",
+      "ELIZA_API_TOKEN",
+      "ELIZA_PAIRING_DISABLED",
       "ANTHROPIC_API_KEY",
     );
 
-    stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "milady-subscription-"));
-    process.env.MILADY_STATE_DIR = stateDir;
-    delete process.env.MILADY_CONFIG_PATH;
-    delete process.env.MILADY_API_TOKEN;
-    delete process.env.MILADY_PAIRING_DISABLED;
+    stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-subscription-"));
+    process.env.ELIZA_STATE_DIR = stateDir;
+    delete process.env.ELIZA_CONFIG_PATH;
+    delete process.env.ELIZA_API_TOKEN;
+    delete process.env.ELIZA_PAIRING_DISABLED;
     delete process.env.ANTHROPIC_API_KEY;
 
     const server = await startApiServer({ port: 0 });
@@ -237,7 +237,7 @@ describe("subscription auth routes (e2e contract)", () => {
       expect(setupRes.data.success).toBe(true);
       expect(process.env.ANTHROPIC_API_KEY).toBe(token);
 
-      const configPath = path.join(stateDir, "milady.json");
+      const configPath = path.join(stateDir, "eliza.json");
       const rawConfig = await fs.readFile(configPath, "utf-8");
       const parsed = JSON.parse(rawConfig) as { env?: Record<string, string> };
       expect(parsed.env?.ANTHROPIC_API_KEY).toBe(token);

@@ -148,7 +148,3 @@ export function configFileExists(): boolean {
   return fs.existsSync(resolveConfigPath());
 }
 
-// Milady-branded aliases for downstream fork compatibility
-export const loadMiladyConfig = loadElizaConfig;
-export const saveMiladyConfig = saveElizaConfig;
-export type { ElizaConfig as MiladyConfig };

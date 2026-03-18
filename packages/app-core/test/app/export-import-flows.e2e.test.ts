@@ -92,7 +92,7 @@ function createExportImportTestServer(): Promise<{
       system: "System prompt",
     },
     settings: {
-      theme: "milady",
+      theme: "eliza",
       provider: "openai",
     },
     memories: [
@@ -369,7 +369,7 @@ vi.mock("@elizaos/app-core/state", async () => {
   return {
     ...actual,
     useApp: () => mockUseApp(),
-    THEMES: [{ id: "milady", label: "Milady" }],
+    THEMES: [{ id: "eliza", label: "Eliza" }],
   };
 });
 
@@ -434,7 +434,7 @@ type ExportImportState = {
 
 function createExportImportUIState(): ExportImportState {
   return {
-    currentTheme: "milady",
+    currentTheme: "eliza",
     plugins: [],
     pluginSaving: false,
     pluginSaveSuccess: false,
@@ -562,7 +562,7 @@ describe("Export Integration", () => {
       handleExport: async () => {
         exportedData = {
           character: { name: "TestAgent" },
-          settings: { theme: "milady" },
+          settings: { theme: "eliza" },
           memories: [],
           conversations: [],
           exportedAt: new Date().toISOString(),
@@ -662,7 +662,7 @@ describe("Export File Format", () => {
   it("export data is valid JSON", () => {
     const exportData = {
       character: { name: "TestAgent" },
-      settings: { theme: "milady" },
+      settings: { theme: "eliza" },
       memories: [],
       conversations: [],
       exportedAt: new Date().toISOString(),

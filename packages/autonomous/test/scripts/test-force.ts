@@ -104,13 +104,13 @@ function killGatewayListeners(port: number): PortProcess[] {
 
 function runTests() {
   const isolatedLock =
-    process.env.MILADY_GATEWAY_LOCK ??
-    path.join(os.tmpdir(), `milady-gateway.lock.test.${Date.now()}`);
+    process.env.ELIZA_GATEWAY_LOCK ??
+    path.join(os.tmpdir(), `eliza-gateway.lock.test.${Date.now()}`);
   const result = spawnSync("bun", ["run", "vitest", "run"], {
     stdio: "inherit",
     env: {
       ...process.env,
-      MILADY_GATEWAY_LOCK: isolatedLock,
+      ELIZA_GATEWAY_LOCK: isolatedLock,
     },
   });
   if (result.error) {
@@ -122,7 +122,7 @@ function runTests() {
 
 function main() {
   const port = Number.parseInt(
-    process.env.MILADY_GATEWAY_PORT ?? `${DEFAULT_PORT}`,
+    process.env.ELIZA_GATEWAY_PORT ?? `${DEFAULT_PORT}`,
     10,
   );
 

@@ -277,6 +277,6 @@ export function titleForTab(tab: Tab): string {
     case "security":
       return "Security";
     default:
-      return "Milady";
+      return "Eliza";
   }
 }

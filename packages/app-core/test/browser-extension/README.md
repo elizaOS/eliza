@@ -33,7 +33,7 @@ that the extension correctly:
 ### Basic Test Run
 
 ```bash
-# From milady root
+# From eliza root
 npx tsx test/browser-extension/test-harness.ts
 ```
 

@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 describe("resolveAppAssetUrl", () => {
   it("returns root-relative path when runtime URL context is unavailable", () => {
     expect(resolveAppAssetUrl("vrms/1.vrm")).toBe("/vrms/1.vrm");
-    expect(resolveAppAssetUrl("/vrms/previews/milady-1.png")).toBe(
-      "/vrms/previews/milady-1.png",
+    expect(resolveAppAssetUrl("/vrms/previews/eliza-1.png")).toBe(
+      "/vrms/previews/eliza-1.png",
     );
   });
 
@@ -22,11 +22,11 @@ describe("resolveAppAssetUrl", () => {
   it("resolves file:// assets relative to index directory", () => {
     const url = resolveAppAssetUrl("/vrms/1.vrm", {
       currentUrl:
-        "file:///Users/tester/Milady.app/Contents/Resources/app/dist/index.html",
+        "file:///Users/tester/Eliza.app/Contents/Resources/app/dist/index.html",
       baseUrl: "./",
     });
     expect(url).toBe(
-      "file:///Users/tester/Milady.app/Contents/Resources/app/dist/vrms/1.vrm",
+      "file:///Users/tester/Eliza.app/Contents/Resources/app/dist/vrms/1.vrm",
     );
   });
 
@@ -63,7 +63,7 @@ describe("resolveApiUrl", () => {
     }
   }
 
-  it("returns the path unchanged when window exists but __MILADY_API_BASE__ is not set", () => {
+  it("returns the path unchanged when window exists but __ELIZA_API_BASE__ is not set", () => {
     withWindow({}, () => {
       expect(resolveApiUrl("/api/avatar/vrm")).toBe("/api/avatar/vrm");
     });
@@ -74,8 +74,8 @@ describe("resolveApiUrl", () => {
     expect(resolveApiUrl("/api/avatar/vrm")).toBe("/api/avatar/vrm");
   });
 
-  it("prefixes with __MILADY_API_BASE__ when set", () => {
-    withWindow({ __MILADY_API_BASE__: "http://localhost:2138" }, () => {
+  it("prefixes with __ELIZA_API_BASE__ when set", () => {
+    withWindow({ __ELIZA_API_BASE__: "http://localhost:2138" }, () => {
       expect(resolveApiUrl("/api/avatar/vrm")).toBe(
         "http://localhost:2138/api/avatar/vrm",
       );
@@ -83,7 +83,7 @@ describe("resolveApiUrl", () => {
   });
 
   it("handles empty string base gracefully (falsy → passthrough)", () => {
-    withWindow({ __MILADY_API_BASE__: "" }, () => {
+    withWindow({ __ELIZA_API_BASE__: "" }, () => {
       expect(resolveApiUrl("/api/tts/elevenlabs")).toBe("/api/tts/elevenlabs");
     });
   });

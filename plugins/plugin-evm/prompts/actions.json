@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "actions": [
+    {
+      "name": "assistant",
+      "description": "",
+      "parameters": []
+    },
+    {
+      "name": "TRANSFER",
+      "description": "Transfer tokens or native asset to an address",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "SWAP_TOKENS",
+      "description": "Swap tokens via DEX or aggregator",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "BRIDGE",
+      "description": "Bridge assets across chains",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "VOTE_PROPOSAL",
+      "description": "Vote on a governance proposal",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "QUEUE_PROPOSAL",
+      "description": "Queue a governance proposal",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "GOV_PROPOSE",
+      "description": "Create a governance proposal",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "GOV_EXECUTE",
+      "description": "Execute a passed governance proposal",
+      "parameters": [],
+      "similes": []
+    }
+  ]
+}

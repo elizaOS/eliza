@@ -357,7 +357,7 @@ function isRedactedSecret(val: string): boolean {
 }
 
 /**
- * Resolve TTS configuration from milady config, finding the best available
+ * Resolve TTS configuration from eliza config, finding the best available
  * provider with valid API keys.
  */
 export function resolveTtsConfig(
@@ -434,7 +434,7 @@ function resolveKey(
 
   if (
     process.env.ELIZAOS_CLOUD_ENABLED === "true" &&
-    process.env.MILADY_CLOUD_TTS_DISABLED !== "true"
+    process.env.ELIZA_CLOUD_TTS_DISABLED !== "true"
   ) {
     const cloudKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
     if (cloudKey && !isRedactedSecret(cloudKey)) {

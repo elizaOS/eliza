@@ -13,7 +13,7 @@ type Story = StoryObj<typeof ChatEmptyState>;
 export const Default: Story = {
   render: () => (
     <div style={{ maxWidth: 500, minHeight: 400, display: "flex" }}>
-      <ChatEmptyState agentName="Milady" />
+      <ChatEmptyState agentName="Eliza" />
     </div>
   ),
 };

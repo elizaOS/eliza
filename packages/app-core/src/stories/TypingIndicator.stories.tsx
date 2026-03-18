@@ -11,7 +11,7 @@ type Story = StoryObj<typeof TypingIndicator>;
 export const Default: Story = {
   render: () => (
     <div style={{ maxWidth: 600 }}>
-      <TypingIndicator agentName="Milady" />
+      <TypingIndicator agentName="Eliza" />
     </div>
   ),
 };
@@ -20,7 +20,7 @@ export const WithAvatar: Story = {
   render: () => (
     <div style={{ maxWidth: 600 }}>
       <TypingIndicator
-        agentName="Milady"
+        agentName="Eliza"
         agentAvatarSrc="https://ui-avatars.com/api/?name=M&background=7c3aed&color=fff&size=64"
       />
     </div>

@@ -1,4 +1,4 @@
-import { MiladyClient } from "@elizaos/app-core/api";
+import { ElizaClient } from "@elizaos/app-core/api";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 function buildSseResponse(chunks: string[]): Response {
@@ -41,12 +41,12 @@ function buildErroringSseResponse(chunks: string[]): Response {
 describe("SSE stream interruption detection", () => {
   const originalFetch = globalThis.fetch;
   let fetchMock: ReturnType<typeof vi.fn>;
-  let client: MiladyClient;
+  let client: ElizaClient;
 
   beforeEach(() => {
     fetchMock = vi.fn();
     globalThis.fetch = fetchMock as typeof globalThis.fetch;
-    client = new MiladyClient("http://localhost:2138", "token");
+    client = new ElizaClient("http://localhost:2138", "token");
   });
 
   afterEach(() => {
@@ -58,7 +58,7 @@ describe("SSE stream interruption detection", () => {
       buildSseResponse([
         'data: {"type":"token","text":"Hello "}\n\n',
         'data: {"type":"token","text":"world"}\n\n',
-        'data: {"type":"done","fullText":"Hello world","agentName":"Milady"}\n\n',
+        'data: {"type":"done","fullText":"Hello world","agentName":"Eliza"}\n\n',
       ]),
     );
 
@@ -67,7 +67,7 @@ describe("SSE stream interruption detection", () => {
 
     expect(result.completed).toBe(true);
     expect(result.text).toBe("Hello world");
-    expect(result.agentName).toBe("Milady");
+    expect(result.agentName).toBe("Eliza");
     expect(tokens).toEqual(["Hello ", "world"]);
   });
 

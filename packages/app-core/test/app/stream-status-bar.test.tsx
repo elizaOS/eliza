@@ -23,7 +23,7 @@ function renderStatusBar() {
   act(() => {
     tree = TestRenderer.create(
       React.createElement(StatusBar, {
-        agentName: "Milady",
+        agentName: "Eliza",
         mode: "idle",
         viewerCount: null,
         isPip: false,
