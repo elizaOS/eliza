@@ -7,7 +7,7 @@ import { defineConfig } from "vite";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packagesRoot = path.resolve(here, "..");
-const apiPort = Number(process.env.ELIZA_HOME_API_PORT) || 2138;
+const apiPort = Number(process.env.ELIZA_HOME_API_PORT) || 4001;
 const enableAppSourceMaps = process.env.ELIZA_HOME_APP_SOURCEMAP === "1";
 
 /**
@@ -109,7 +109,7 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: 2140,
+    port: 4000,
     strictPort: true,
     cors: {
       origin: true,

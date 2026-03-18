@@ -214,7 +214,6 @@ import { handleSandboxRoute } from "./sandbox-routes";
 import { applySignalQrOverride, handleSignalRoute } from "./signal-routes";
 import { resolveStreamingUpdate } from "./streaming-text";
 import {
-  type SubscriptionAuthApi,
   type SubscriptionRouteContext,
   handleSubscriptionRoutes,
 } from "./subscription-routes";
@@ -7719,8 +7718,7 @@ async function handleRequest(
       json,
       error,
       saveConfig: saveElizaConfig,
-      loadSubscriptionAuth: async () =>
-        (await import("../auth/index")) as unknown as SubscriptionAuthApi,
+      loadSubscriptionAuth: async () => await import("../auth/index"),
     } as SubscriptionRouteContext)
   ) {
     return;
