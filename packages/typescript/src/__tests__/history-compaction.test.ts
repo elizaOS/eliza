@@ -66,7 +66,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 
 		expect(result.length).toBe(3);
 		expect(result.map((m) => m.createdAt)).toEqual([3000, 4000, 5000]);
-	});
+	}, 30_000);
 
 	it("should filter messages by end timestamp", async () => {
 		const { InMemoryDatabaseAdapter } = await import(

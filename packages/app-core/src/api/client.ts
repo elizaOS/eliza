@@ -4752,6 +4752,23 @@ export class ElizaClient {
   }
 
   /**
+   * Sync permission states configured externally (e.g., from Electron bridge) 
+   * to the backend so capabilities can evaluate successfully.
+   */
+  async updatePermissionsState(
+    permissions: AllPermissionsState | Record<string, PermissionState>,
+    startup?: boolean,
+  ): Promise<{
+    updated: boolean;
+    permissions: AllPermissionsState | Record<string, PermissionState>;
+  }> {
+    return this.fetch("/api/permissions/state", {
+      method: "PUT",
+      body: JSON.stringify({ permissions, startup }),
+    });
+  }
+
+  /**
    * Enable or disable shell access.
    */
   async setShellEnabled(enabled: boolean): Promise<PermissionState> {

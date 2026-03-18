@@ -21,6 +21,7 @@ import {
 import { prepareDraftForSave } from "../actions/character";
 import {
   type AgentStartupDiagnostics,
+  type AllPermissionsState,
   type AgentStatus,
   type BscTradeExecuteRequest,
   type BscTradeExecuteResponse,
@@ -4105,13 +4106,25 @@ export function AppProvider({
       }
 
       // At senses step, check permissions unless bypass
-      if (onboardingStep === "senses") {
-        if (options?.allowPermissionBypass) {
-          await handleOnboardingFinish();
-          return;
-        }
+      if (onboardingStep === "senses" && !options?.allowPermissionBypass) {
         try {
-          const permissions = await client.getPermissions();
+          let permissions = await invokeDesktopBridgeRequest<AllPermissionsState>({
+            rpcMethod: "permissionsGetAll",
+            ipcChannel: "permissions:getAll",
+            params: { forceRefresh: true },
+          });
+
+          if (!permissions) {
+            permissions = await client.getPermissions();
+          } else {
+            try {
+              // Ensure backend knows about desktop permissions so capability validation passes
+              await client.updatePermissionsState(permissions);
+            } catch (err) {
+              console.warn("Could not sync permissions to backend during check", err);
+            }
+          }
+
           const missingPermissions =
             getMissingOnboardingPermissions(permissions);
           if (missingPermissions.length > 0) {

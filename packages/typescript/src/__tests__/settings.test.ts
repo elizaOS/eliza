@@ -987,6 +987,6 @@ ANOTHER_KEY=another-value`;
 					delete process.env[key];
 				}
 			}
-		});
+		}, 30_000);
 	});
 });

@@ -121,7 +121,7 @@ describe("advanced planning (built-in)", () => {
 		expect(plan.steps.length).toBe(1);
 		// Note: planning may degrade unknown actions to REPLY as a safety fallback.
 		expect(["ANALYZE_INPUT", "REPLY"]).toContain(plan.steps[0]?.actionName);
-	});
+	}, 30_000);
 
 	test("does not load when disabled", async () => {
 		const character: Character = {

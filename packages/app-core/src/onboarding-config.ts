@@ -59,6 +59,14 @@ export function buildOnboardingConnectionConfig(
     };
   }
 
+  if (args.onboardingProvider === "elizacloud") {
+    return {
+      kind: "cloud-managed",
+      cloudProvider: "elizacloud",
+      apiKey: trimToUndefined(args.onboardingApiKey),
+    };
+  }
+
   const providerId = resolveLocalProviderId(args.onboardingProvider);
   if (!providerId) {
     if (args.onboardingCloudProvider === "remote") {
