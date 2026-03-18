@@ -1,10 +1,10 @@
 {
   "name": "@elizaos/home",
-  "version": "2.0.0-alpha.63",
+  "version": "2.0.0-alpha.64",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --port 2140",
+    "dev": "node scripts/dev.mjs",
     "preview": "vite preview",
     "build": "vite build",
     "build:ios": "vite build && capacitor sync ios",

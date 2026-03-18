@@ -1,52 +1,32 @@
 import { logger } from "@elizaos/core";
 import type { RouteRequestContext } from "./route-helpers";
+import type { AnthropicFlow } from "../auth/anthropic";
+import type { CodexFlow } from "../auth/openai-codex";
+import type { OAuthCredentials } from "../auth/types";
+import type { ElizaConfig } from "../config/types.eliza";
 
-interface AutonomousConfigLike {
-  env?: Record<string, string>;
-}
+type AuthModule = typeof import("../auth/index");
 
-interface OAuthCredentialsLike {
-  expires: number | null;
-}
-
-interface AnthropicFlowLike {
-  authUrl: string;
-  submitCode: (code: string) => void;
-  credentials: Promise<OAuthCredentialsLike>;
-}
-
-interface CodexFlowLike {
-  authUrl: string;
-  state: string;
-  submitCode: (code: string) => void;
-  close: () => void;
-  credentials: Promise<OAuthCredentialsLike>;
-}
-
-export interface SubscriptionAuthApi {
-  getSubscriptionStatus: () => unknown;
-  startAnthropicLogin: () => Promise<AnthropicFlowLike>;
-  startCodexLogin: () => Promise<CodexFlowLike>;
-  saveCredentials: (
-    provider: "anthropic-subscription" | "openai-codex",
-    credentials: OAuthCredentialsLike,
-  ) => void;
-  applySubscriptionCredentials: (config: AutonomousConfigLike) => Promise<void>;
-  deleteCredentials: (
-    provider: "anthropic-subscription" | "openai-codex",
-  ) => void;
-}
+export type SubscriptionAuthApi = Pick<
+  AuthModule,
+  | "getSubscriptionStatus"
+  | "startAnthropicLogin"
+  | "startCodexLogin"
+  | "saveCredentials"
+  | "applySubscriptionCredentials"
+  | "deleteCredentials"
+>;
 
 export interface SubscriptionRouteState {
-  config: AutonomousConfigLike;
-  _anthropicFlow?: AnthropicFlowLike;
-  _codexFlow?: CodexFlowLike;
+  config: ElizaConfig;
+  _anthropicFlow?: AnthropicFlow;
+  _codexFlow?: CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
 }
 
 export interface SubscriptionRouteContext extends RouteRequestContext {
   state: SubscriptionRouteState;
-  saveConfig: (config: AutonomousConfigLike) => void;
+  saveConfig: (config: ElizaConfig) => void;
   loadSubscriptionAuth: () => Promise<SubscriptionAuthApi>;
 }
 
@@ -221,7 +201,7 @@ export async function handleSubscriptionRoutes(
         return true;
       }
 
-      let credentials: OAuthCredentialsLike;
+      let credentials: OAuthCredentials;
       try {
         credentials = await flow.credentials;
       } catch (err) {

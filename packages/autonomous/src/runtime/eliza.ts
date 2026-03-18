@@ -3714,11 +3714,11 @@ export async function startEliza(
 
   // 1c. Apply logging level from config to process.env so the global
   //     @elizaos/core logger (used by plugins) respects it.
-  //     config.logging.level is guaranteed to be set (defaults to "error").
+  //     config.logging.level is guaranteed to be set (defaults to "info").
   //     Users can still opt into noisy logs via config.logging.level or
   //     an explicit LOG_LEVEL environment variable.
   if (!process.env.LOG_LEVEL) {
-    process.env.LOG_LEVEL = config.logging?.level ?? "error";
+    process.env.LOG_LEVEL = config.logging?.level ?? "info";
   }
 
   // 2. Push channel secrets into process.env for plugin discovery
@@ -3947,7 +3947,7 @@ export async function startEliza(
     // process.env.LOG_LEVEL is already resolved (set explicitly or from
     // config.logging.level above), so prefer it to honour the dev-mode
     // LOG_LEVEL=error override set by scripts/dev-ui.mjs.
-    const lvl = process.env.LOG_LEVEL ?? config.logging?.level ?? "error";
+    const lvl = process.env.LOG_LEVEL ?? config.logging?.level ?? "info";
     if (lvl === "silent") return "fatal" as const;
     return lvl as "trace" | "debug" | "info" | "warn" | "error" | "fatal";
   })();
