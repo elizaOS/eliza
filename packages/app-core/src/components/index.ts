@@ -71,6 +71,7 @@ export * from "./RestartBanner";
 export * from "./RuntimeView";
 export * from "./SaveCommandModal";
 export * from "./SecretsView";
+export * from "./SecurityPageView";
 export * from "./SettingsView";
 export * from "./ShellOverlays";
 export * from "./ShortcutsOverlay";

@@ -38,7 +38,7 @@ function resolveDueTime(task: Task): number | null {
  * @static
  * @method start - Static method to start the TaskService
  * @method createTestTasks - Method to create test tasks
- * @method startTimer - Private method to start the timer for checking tasks
+ * @method startTimer - Public method to start the timer for checking tasks
  * @method validateTasks - Private method to validate tasks
  * @method checkTasks - Private method to check tasks and execute them
  * @method executeTask - Private method to execute a task
@@ -167,11 +167,14 @@ export class TaskService extends Service {
 	}
 
 	/**
-	 * Starts a timer that runs a function to check tasks at a specified interval.
+	 * Start the task poll timer. Call explicitly in daemon mode; not started automatically.
+	 * WHY public: initialize() does not start the task service or timer. Daemon entry points
+	 * that need scheduled tasks call getService("task") then startTimer(). Edge/ephemeral
+	 * runtimes typically do not call this.
 	 * Priority: (1) serverless -> no timer, host calls runDueTasks(); (2) daemon present -> register, no local timer; (3) else local setInterval.
 	 * WHY serverless first: no long-lived process; WHY daemon second: one shared getTasks(agentIds) per tick for all agents.
 	 */
-	private startTimer() {
+	startTimer() {
 		if (this.runtime.serverless === true) {
 			return;
 		}
@@ -610,7 +613,7 @@ export class TaskService extends Service {
 	 * @returns {Promise<void>} - A promise that resolves once the service has been stopped.
 	 */
 	static async stop(runtime: IAgentRuntime) {
-		const service = runtime.getService(ServiceType.TASK);
+		const service = await runtime.getService(ServiceType.TASK);
 		if (service) {
 			await service.stop();
 		}

@@ -31,7 +31,7 @@ export const adminChatProvider: Provider = {
 		_state?: State,
 	): Promise<ProviderResult> => {
 		// Only provide admin chat context in autonomous room
-		const autonomyService = runtime.getService<AutonomyService>(
+		const autonomyService = await runtime.getService<AutonomyService>(
 			AUTONOMY_SERVICE_TYPE,
 		);
 		if (!autonomyService) {
@@ -143,7 +143,7 @@ export const autonomyStatusProvider: Provider = {
 		_state?: State,
 	): Promise<ProviderResult> => {
 		// Get autonomy service
-		const autonomyService = runtime.getService<AutonomyService>(
+		const autonomyService = await runtime.getService<AutonomyService>(
 			AUTONOMY_SERVICE_TYPE,
 		);
 		if (!autonomyService) {

@@ -81,7 +81,7 @@ export const sendToAdminAction: Action = {
 		message: Memory,
 	): Promise<boolean> => {
 		// Only allow this action in autonomous context
-		const autonomyService = runtime.getService<AutonomyService>(
+		const autonomyService = await runtime.getService<AutonomyService>(
 			AUTONOMY_SERVICE_TYPE,
 		);
 		if (!autonomyService) {
@@ -115,7 +115,7 @@ export const sendToAdminAction: Action = {
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
 		// Double-check we're in autonomous context
-		const autonomyService = runtime.getService<AutonomyService>(
+		const autonomyService = await runtime.getService<AutonomyService>(
 			AUTONOMY_SERVICE_TYPE,
 		);
 		if (!autonomyService) {

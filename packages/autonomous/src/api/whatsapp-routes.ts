@@ -154,7 +154,7 @@ export async function handleWhatsAppRoute(
     let servicePhone: string | null = null;
     if (state.runtime) {
       try {
-        const waService = state.runtime.getService("whatsapp") as Record<
+        const waService = (await state.runtime.getService("whatsapp")) as Record<
           string,
           unknown
         > | null;

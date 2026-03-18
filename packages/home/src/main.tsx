@@ -53,6 +53,10 @@ function isWebPlatform(): boolean {
   return platform === "web" && !isElectrobunRuntime();
 }
 
+const isVitest = Boolean(
+  (import.meta as ImportMeta & { vitest?: unknown }).vitest,
+);
+
 interface ShareTargetFile {
   name: string;
   path?: string;
@@ -427,17 +431,24 @@ async function main(): Promise<void> {
   await initializePlatform();
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", main);
-} else {
-  main();
+if (!isVitest) {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", main);
+  } else {
+    void main();
+  }
 }
 
 export {
+  dispatchShareTarget,
+  handleDeepLink,
+  injectPopoutApiBase,
   isAndroid,
   isElectronPlatform as isElectron,
   isIOS,
   isNative,
+  isPopoutWindow,
   isWebPlatform as isWeb,
   platform,
+  setupPlatformStyles,
 };

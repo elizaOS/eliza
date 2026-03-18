@@ -413,9 +413,9 @@ export const sendMessageAction: Action = {
 			interface ServiceWithSendDirectMessage {
 				sendDirectMessage?: (target: string, content: Content) => Promise<void>;
 			}
-			const service = runtime.getService(
+			const service = (await runtime.getService(
 				source,
-			) as ServiceWithSendDirectMessage | null;
+			)) as ServiceWithSendDirectMessage | null;
 			const sendDirectMessage = service?.sendDirectMessage;
 
 			if (!sendDirectMessage) {
@@ -522,9 +522,9 @@ export const sendMessageAction: Action = {
 			interface ServiceWithSendRoomMessage {
 				sendRoomMessage?: (target: string, content: Content) => Promise<void>;
 			}
-			const service = runtime.getService(
+			const service = (await runtime.getService(
 				source,
-			) as ServiceWithSendRoomMessage | null;
+			)) as ServiceWithSendRoomMessage | null;
 			const sendRoomMessage = service?.sendRoomMessage;
 
 			if (!sendRoomMessage) {

@@ -18,7 +18,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { useApp } from "../state";
+import { useApp } from "../state/useApp";
 import type { ConfigUiHint, PluginUiTheme } from "../types";
 import type {
   FieldRegistry,

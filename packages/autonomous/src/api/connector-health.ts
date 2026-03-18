@@ -88,12 +88,12 @@ export class ConnectorHealthMonitor {
     return result;
   }
 
-  private probeConnector(name: string): ConnectorStatus {
+  private async probeConnector(name: string): Promise<ConnectorStatus> {
     const pluginName = CONNECTOR_PLUGIN_MAP[name.toLowerCase()];
     if (!pluginName) return "unknown";
 
     try {
-      const service = this.runtime.getService(pluginName);
+      const service = await this.runtime.getService(pluginName);
       if (service) return "ok";
     } catch {
       // getService may throw if runtime is shutting down
@@ -110,11 +110,11 @@ export class ConnectorHealthMonitor {
     return "missing";
   }
 
-  check(): void {
+  async check(): Promise<void> {
     const configured = this.getConfiguredConnectors();
 
     for (const name of configured) {
-      const newStatus = this.probeConnector(name);
+      const newStatus = await this.probeConnector(name);
       const prevStatus = this.statuses.get(name);
 
       if (newStatus === "missing" && prevStatus !== "missing") {

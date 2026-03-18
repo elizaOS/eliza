@@ -2,6 +2,7 @@ import type { Character } from "./agent";
 import type { Action, Evaluator, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
+import type { UUID } from "./primitives";
 import type { ModelParamsMap, PluginModelResult } from "./model";
 import type {
 	JsonValue,
@@ -120,6 +121,16 @@ export type RuntimeEventStorage = PluginEvents & {
 		| undefined;
 };
 
+/**
+ * Database adapter factory. When set on a plugin, this plugin provides the
+ * database adapter. Called before runtime construction with agentId and bootstrap
+ * settings (character + env, not DB). Only one plugin per character should set this.
+ */
+export type AdapterFactory = (
+	agentId: UUID,
+	settings: Record<string, string>,
+) => IDatabaseAdapter | Promise<IDatabaseAdapter>;
+
 export interface Plugin {
 	name: string;
 	description: string;
@@ -147,7 +158,14 @@ export interface Plugin {
 	actions?: Action[];
 	providers?: Provider[];
 	evaluators?: Evaluator[];
-	adapter?: IDatabaseAdapter;
+
+	/**
+	 * Database adapter factory. When set, this plugin provides the database
+	 * adapter. Called before runtime construction with agentId and bootstrap
+	 * settings (character + env, not DB). Only one plugin per character should
+	 * set this.
+	 */
+	adapter?: AdapterFactory;
 	models?: {
 		[K in keyof ModelParamsMap]?: (
 			runtime: IAgentRuntime,

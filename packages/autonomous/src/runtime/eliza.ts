@@ -426,9 +426,9 @@ type TrajectoryLoggerRuntimeLike = {
   ) => TrajectoryLoggerRegistrationStatus;
 };
 
-function collectTrajectoryLoggerCandidates(
+async function collectTrajectoryLoggerCandidates(
   runtimeLike: TrajectoryLoggerRuntimeLike,
-): TrajectoryLoggerControl[] {
+): Promise<TrajectoryLoggerControl[]> {
   const candidates: TrajectoryLoggerControl[] = [];
   if (typeof runtimeLike.getServicesByType === "function") {
     const byType = runtimeLike.getServicesByType("trajectory_logger");
@@ -441,7 +441,7 @@ function collectTrajectoryLoggerCandidates(
     }
   }
   if (typeof runtimeLike.getService === "function") {
-    const single = runtimeLike.getService("trajectory_logger");
+    const single = await runtimeLike.getService("trajectory_logger");
     if (single) candidates.push(single as TrajectoryLoggerControl);
   }
   return candidates;
@@ -453,7 +453,7 @@ async function waitForTrajectoryLoggerService(
   timeoutMs = 3000,
 ): Promise<void> {
   const runtimeLike = runtime as AgentRuntime & TrajectoryLoggerRuntimeLike;
-  if (collectTrajectoryLoggerCandidates(runtimeLike).length > 0) return;
+  if ((await collectTrajectoryLoggerCandidates(runtimeLike)).length > 0) return;
 
   const registrationStatus =
     typeof runtimeLike.getServiceRegistrationStatus === "function"
@@ -497,12 +497,12 @@ async function waitForTrajectoryLoggerService(
   }
 }
 
-function ensureTrajectoryLoggerEnabled(
+async function ensureTrajectoryLoggerEnabled(
   runtime: AgentRuntime,
   context: string,
-): void {
+): Promise<void> {
   const runtimeLike = runtime as AgentRuntime & TrajectoryLoggerRuntimeLike;
-  const candidates = collectTrajectoryLoggerCandidates(runtimeLike);
+  const candidates = await collectTrajectoryLoggerCandidates(runtimeLike);
 
   let trajectoryLogger: TrajectoryLoggerControl | null = null;
   let bestScore = -1;
@@ -548,17 +548,17 @@ function ensureTrajectoryLoggerEnabled(
   }
 }
 
-function patchTrajectoryLoggerAliasCompatibility(runtime: AgentRuntime): void {
+async function patchTrajectoryLoggerAliasCompatibility(runtime: AgentRuntime): Promise<void> {
   const runtimeLike = runtime as AgentRuntime & TrajectoryLoggerRuntimeLike;
-  const primary = collectTrajectoryLoggerCandidates(runtimeLike)[0] as
+  const primary = (await collectTrajectoryLoggerCandidates(runtimeLike))[0] as
     | (TrajectoryLoggerControl & TrajectoryLoggerOps)
     | undefined;
   if (!primary) return;
 
   if (typeof runtimeLike.getService !== "function") return;
   const aliases: unknown[] = [
-    runtimeLike.getService("logger5"),
-    runtimeLike.getService("logger"),
+    await runtimeLike.getService("logger5"),
+    await runtimeLike.getService("logger"),
   ];
 
   for (const alias of aliases) {
@@ -4223,7 +4223,7 @@ export async function startEliza(
       });
       await Promise.race([skillServicePromise, timeout]);
 
-      const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
+      const svc = (await runtime.getService("AGENT_SKILLS_SERVICE")) as
         | {
             getCatalogStats?: () => {
               loaded: number;
@@ -4279,14 +4279,14 @@ export async function startEliza(
     // 8. Initialize the runtime (registers remaining plugins, starts services)
     await runtime.initialize();
     await waitForTrajectoryLoggerService(runtime, "runtime.initialize()");
-    ensureTrajectoryLoggerEnabled(runtime, "runtime.initialize()");
-    installDatabaseTrajectoryLogger(runtime);
-    patchTrajectoryLoggerAliasCompatibility(runtime);
+    await ensureTrajectoryLoggerEnabled(runtime, "runtime.initialize()");
+    await installDatabaseTrajectoryLogger(runtime);
+    await patchTrajectoryLoggerAliasCompatibility(runtime);
 
     // 8b. Ensure AutonomyService is available for trigger dispatch.
     // IGNORE_BOOTSTRAP=true prevents the bootstrap plugin (which normally
     // registers this service) from loading, so we start it explicitly.
-    if (!runtime.getService("AUTONOMY")) {
+    if (!(await runtime.getService("AUTONOMY"))) {
       try {
         await AutonomyService.start(runtime);
         logger.info("[eliza] AutonomyService started for trigger dispatch");
@@ -4571,13 +4571,13 @@ export async function startEliza(
             newRuntime,
             "hot-reload runtime.initialize()",
           );
-          ensureTrajectoryLoggerEnabled(
+          await ensureTrajectoryLoggerEnabled(
             newRuntime,
             "hot-reload runtime.initialize()",
           );
 
           // Ensure AutonomyService survives hot-reload
-          if (!newRuntime.getService("AUTONOMY")) {
+          if (!(await newRuntime.getService("AUTONOMY"))) {
             try {
               await AutonomyService.start(newRuntime);
             } catch (err) {

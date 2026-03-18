@@ -877,15 +877,17 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
 
 	// Add hostname (for JSON format or when explicitly needed)
 	if (raw && !metaBase.hostname) {
-		// Get hostname in a way that works in both Node and browser
 		let hostname = "unknown";
-		if (typeof process !== "undefined" && process.platform) {
-			// Node.js environment
-			const os = require("node:os");
-			hostname = os.hostname();
-		} else if (typeof window !== "undefined" && window.location) {
-			// Browser environment
-			hostname = window.location.hostname || "browser";
+		try {
+			if (typeof process !== "undefined" && process.platform) {
+				const os = require("node:os") as { hostname: () => string };
+				hostname = os.hostname();
+			} else if (typeof window !== "undefined" && window.location) {
+				// Browser environment
+				hostname = window.location.hostname || "browser";
+			}
+		} catch {
+			hostname = "unknown";
 		}
 		metaBase.hostname = hostname;
 	}

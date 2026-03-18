@@ -861,7 +861,7 @@ const controlMessageHandler = async ({
 	);
 
 	if (websocketServiceName) {
-		const websocketService = runtime.getService(websocketServiceName);
+		const websocketService = await runtime.getService(websocketServiceName);
 		interface WebSocketServiceWithSendMessage {
 			sendMessage: (message: {
 				type: string;
@@ -1028,7 +1028,7 @@ const events: PluginEvents = {
 			const payloadContent = payload.content;
 			if (payloadContent && payloadContent.source === "client_chat") {
 				const messageBusService =
-					payload.runtime.getService<IMessageBusService>("message-bus-service");
+					await payload.runtime.getService<IMessageBusService>("message-bus-service");
 				if (messageBusService?.notifyActionStart) {
 					await messageBusService.notifyActionStart(
 						payload.roomId,
@@ -1078,7 +1078,7 @@ const events: PluginEvents = {
 			const payloadContent = payload.content;
 			if (payloadContent && payloadContent.source === "client_chat") {
 				const messageBusService =
-					payload.runtime.getService<IMessageBusService>("message-bus-service");
+					await payload.runtime.getService<IMessageBusService>("message-bus-service");
 				if (messageBusService?.notifyActionUpdate) {
 					await messageBusService.notifyActionUpdate(
 						payload.roomId,

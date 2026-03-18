@@ -11,7 +11,7 @@
 
 import { ChevronDown, X } from "lucide-react";
 import React, { useCallback, useRef, useState } from "react";
-import { useApp } from "../state";
+import { useApp } from "../state/useApp";
 import type { DynamicValue } from "../types";
 import type { FieldRenderer, FieldRenderProps } from "./config-catalog";
 import { resolveDynamic } from "./config-catalog";

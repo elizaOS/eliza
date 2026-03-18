@@ -279,22 +279,22 @@ type ConnectorRouteHandler = (
   method: string,
 ) => Promise<boolean>;
 
-function getAgentEventSvc(
+async function getAgentEventSvc(
   runtime: AgentRuntime | null,
-): AgentEventServiceLike | null {
+): Promise<AgentEventServiceLike | null> {
   return getAgentEventService(runtime);
 }
 
-function requirePluginManager(runtime: AgentRuntime | null): PluginManagerLike {
-  const service = runtime?.getService("plugin_manager");
+async function requirePluginManager(runtime: AgentRuntime | null): Promise<PluginManagerLike> {
+  const service = await runtime?.getService("plugin_manager");
   if (!isPluginManagerLike(service)) {
     throw new Error("Plugin manager service not found");
   }
   return service;
 }
 
-function requireCoreManager(runtime: AgentRuntime | null): CoreManagerLike {
-  const service = runtime?.getService("core_manager");
+async function requireCoreManager(runtime: AgentRuntime | null): Promise<CoreManagerLike> {
+  const service = await runtime?.getService("core_manager");
   if (!isCoreManagerLike(service)) {
     throw new Error("Core manager service not found");
   }
@@ -2057,7 +2057,7 @@ async function loadScanReportFromDisk(
   // Also check the path reported by the AgentSkillsService (covers catalog-installed skills
   // whose managed dir might differ from the workspace dir)
   if (runtime) {
-    const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
+    const svc = (await runtime.getService("AGENT_SKILLS_SERVICE")) as
       | { getLoadedSkills?: () => Array<{ slug: string; path: string }> }
       | undefined;
     if (svc?.getLoadedSkills) {
@@ -2160,7 +2160,7 @@ async function discoverSkills(
   // ── Primary path: pull from AgentSkillsService (most accurate) ──────────
   if (runtime) {
     try {
-      const service = runtime.getService("AGENT_SKILLS_SERVICE");
+      const service = await runtime.getService("AGENT_SKILLS_SERVICE");
       const svc = service as {
         getLoadedSkills?: () => Array<{
           slug: string;
@@ -6536,7 +6536,7 @@ export async function routeAutonomyTextToUser(
  * Discovers via runtime.getService("SWARM_COORDINATOR") — the coordinator
  * registers itself during PTYService.start().
  */
-function getCoordinatorFromRuntime(runtime: AgentRuntime): {
+async function getCoordinatorFromRuntime(runtime: AgentRuntime): Promise<{
   setChatCallback?: (
     cb: (text: string, source?: string) => Promise<void>,
   ) => void;
@@ -6557,10 +6557,10 @@ function getCoordinatorFromRuntime(runtime: AgentRuntime): {
       errored: number;
     }) => Promise<void>,
   ) => void;
-} | null {
-  const coordinator = runtime.getService("SWARM_COORDINATOR");
+} | null> {
+  const coordinator = await runtime.getService("SWARM_COORDINATOR");
   if (coordinator)
-    return coordinator as ReturnType<typeof getCoordinatorFromRuntime>;
+    return coordinator as Awaited<ReturnType<typeof getCoordinatorFromRuntime>>;
   return null;
 }
 
@@ -6569,9 +6569,9 @@ function getCoordinatorFromRuntime(runtime: AgentRuntime): {
  * appear in the user's chat UI via the existing proactive-message flow.
  * Returns true if successfully wired.
  */
-function wireCodingAgentChatBridge(st: ServerState): boolean {
+async function wireCodingAgentChatBridge(st: ServerState): Promise<boolean> {
   if (!st.runtime) return false;
-  const coordinator = getCoordinatorFromRuntime(st.runtime);
+  const coordinator = await getCoordinatorFromRuntime(st.runtime);
   if (!coordinator?.setChatCallback) return false;
   coordinator.setChatCallback(async (text: string, source?: string) => {
     await routeAutonomyTextToUser(st, text, source ?? "coding-agent");
@@ -6584,9 +6584,9 @@ function wireCodingAgentChatBridge(st: ServerState): boolean {
  * are relayed to all WebSocket clients as "pty-session-event" messages.
  * Returns true if successfully wired.
  */
-function wireCodingAgentWsBridge(st: ServerState): boolean {
+async function wireCodingAgentWsBridge(st: ServerState): Promise<boolean> {
   if (!st.runtime) return false;
-  const coordinator = getCoordinatorFromRuntime(st.runtime);
+  const coordinator = await getCoordinatorFromRuntime(st.runtime);
   if (!coordinator?.setWsBroadcast) return false;
   coordinator.setWsBroadcast((event: SwarmEvent) => {
     // Preserve the coordinator's event type (task_registered, task_complete, etc.)
@@ -6602,9 +6602,9 @@ function wireCodingAgentWsBridge(st: ServerState): boolean {
  * finish, we synthesize a summary via the agent's LLM and post it as a
  * persisted message in the conversation.
  */
-function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
+async function wireCodingAgentSwarmSynthesis(st: ServerState): Promise<boolean> {
   if (!st.runtime) return false;
-  const coordinator = getCoordinatorFromRuntime(st.runtime);
+  const coordinator = await getCoordinatorFromRuntime(st.runtime);
   if (!coordinator?.setSwarmCompleteCallback) return false;
 
   coordinator.setSwarmCompleteCallback((payload) =>
@@ -6720,9 +6720,9 @@ import {
  * If the callback fails or Eliza's response has no action block,
  * returns null → coordinator falls back to the small LLM.
  */
-function wireCoordinatorEventRouting(st: ServerState): boolean {
+async function wireCoordinatorEventRouting(st: ServerState): Promise<boolean> {
   if (!st.runtime) return false;
-  const coordinator = getCoordinatorFromRuntime(st.runtime);
+  const coordinator = await getCoordinatorFromRuntime(st.runtime);
   if (!coordinator?.setAgentDecisionCallback) return false;
 
   // Serialization queue — one coordinator event at a time
@@ -6918,9 +6918,9 @@ async function handleCodingAgentsFallback(
     promoteScratch?: (sessionId: string, name?: string) => Promise<unknown>;
   };
 
-  const codeTaskService = runtime.getService(
+  const codeTaskService = (await runtime.getService(
     "CODE_TASK",
-  ) as CodeTaskService | null;
+  )) as CodeTaskService | null;
 
   const toNumber = (value: unknown, fallback = 0): number => {
     const parsed =
@@ -7102,7 +7102,7 @@ async function handleCodingAgentsFallback(
       error(res, "Invalid session ID", 400);
       return true;
     }
-    const ptyService = runtime.getService("PTY_SERVICE") as PTYService | null;
+    const ptyService = (await runtime.getService("PTY_SERVICE")) as PTYService | null;
 
     if (!ptyService?.stopSession) {
       error(res, "PTY Service not available", 503);
@@ -7238,9 +7238,9 @@ async function handleCodingAgentsFallback(
  * Get the PTYConsoleBridge from the PTYService (if available).
  * Used by the WS PTY handlers to subscribe to output and forward input.
  */
-function getPtyConsoleBridge(st: ServerState) {
+async function getPtyConsoleBridge(st: ServerState) {
   if (!st.runtime) return null;
-  const ptyService = st.runtime.getService("PTY_SERVICE") as PTYService | null;
+  const ptyService = (await st.runtime.getService("PTY_SERVICE")) as PTYService | null;
   return ptyService?.consoleBridge ?? null;
 }
 
@@ -7751,7 +7751,7 @@ async function handleRequest(
 
     let coordinatorStatus: "ok" | "not_wired" = "not_wired";
     try {
-      if (runtime?.getService("SWARM_COORDINATOR")) {
+      if (await runtime?.getService("SWARM_COORDINATOR")) {
         coordinatorStatus = "ok";
       }
     } catch {
@@ -8568,7 +8568,7 @@ async function handleRequest(
       url,
       json,
       error,
-      getPluginManager: () => requirePluginManager(state.runtime) as never,
+      getPluginManager: async () => (await requirePluginManager(state.runtime)) as never,
       getLoadedPluginNames: () =>
         state.runtime?.plugins.map((plugin) => plugin.name) ?? [],
       getBundledPluginIds: () => getReleaseBundledPluginIds(),
@@ -9075,7 +9075,7 @@ async function handleRequest(
     }
 
     try {
-      const pluginManager = requirePluginManager(state.runtime);
+      const pluginManager = await requirePluginManager(state.runtime);
       const result = await pluginManager.installPlugin(
         pluginName,
         (progress: InstallProgressLike) => {
@@ -9158,7 +9158,7 @@ async function handleRequest(
     }
 
     try {
-      const pluginManager = requirePluginManager(state.runtime);
+      const pluginManager = await requirePluginManager(state.runtime);
       const result = await pluginManager.uninstallPlugin(pluginName);
 
       if (!result.success) {
@@ -9194,7 +9194,7 @@ async function handleRequest(
       pathname.slice("/api/plugins/".length, pathname.length - "/eject".length),
     );
     try {
-      const pluginManager = requirePluginManager(state.runtime);
+      const pluginManager = await requirePluginManager(state.runtime);
       // Ensure the method exists on the service (it should)
       if (typeof pluginManager.ejectPlugin !== "function") {
         throw new Error("Plugin manager does not support ejecting plugins");
@@ -9229,7 +9229,7 @@ async function handleRequest(
       pathname.slice("/api/plugins/".length, pathname.length - "/sync".length),
     );
     try {
-      const pluginManager = requirePluginManager(state.runtime);
+      const pluginManager = await requirePluginManager(state.runtime);
       if (typeof pluginManager.syncPlugin !== "function") {
         throw new Error("Plugin manager does not support syncing plugins");
       }
@@ -9269,7 +9269,7 @@ async function handleRequest(
       ),
     );
     try {
-      const pluginManager = requirePluginManager(state.runtime);
+      const pluginManager = await requirePluginManager(state.runtime);
       if (typeof pluginManager.reinjectPlugin !== "function") {
         throw new Error("Plugin manager does not support reinjecting plugins");
       }
@@ -9301,7 +9301,7 @@ async function handleRequest(
   // List plugins that were installed from the registry at runtime.
   if (method === "GET" && pathname === "/api/plugins/installed") {
     try {
-      const pluginManager = requirePluginManager(state.runtime);
+      const pluginManager = await requirePluginManager(state.runtime);
       const installed = await pluginManager.listInstalledPlugins();
       json(res, { count: installed.length, plugins: installed });
     } catch (err) {
@@ -9318,7 +9318,7 @@ async function handleRequest(
   // List plugins ejected to local source checkouts with upstream metadata.
   if (method === "GET" && pathname === "/api/plugins/ejected") {
     try {
-      const pluginManager = requirePluginManager(state.runtime);
+      const pluginManager = await requirePluginManager(state.runtime);
       if (typeof pluginManager.listEjectedPlugins !== "function") {
         throw new Error(
           "Plugin manager does not support listing ejected plugins",
@@ -9340,7 +9340,7 @@ async function handleRequest(
   // Returns whether @elizaos/core is ejected or resolved from npm.
   if (method === "GET" && pathname === "/api/core/status") {
     try {
-      const coreManager = requireCoreManager(state.runtime);
+      const coreManager = await requireCoreManager(state.runtime);
       const status = await coreManager.getCoreStatus();
       json(res, status);
     } catch (err) {
@@ -9503,7 +9503,7 @@ async function handleRequest(
       const installedSlugs = new Set<string>();
       if (state.runtime) {
         try {
-          const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
+          const svc = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
             | {
                 getLoadedSkills?: () => Array<{ slug: string; source: string }>;
               }
@@ -9638,7 +9638,7 @@ async function handleRequest(
     }
 
     try {
-      const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
+      const service = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
         | {
             install?: (
               slug: string,
@@ -9720,7 +9720,7 @@ async function handleRequest(
     }
 
     try {
-      const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
+      const service = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
         | {
             uninstall?: (slug: string) => Promise<boolean>;
           }
@@ -9982,7 +9982,7 @@ async function handleRequest(
     // Try AgentSkillsService for bundled skills — copy to workspace for editing
     if (!skillPath && state.runtime) {
       try {
-        const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
+        const svc = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
           | {
               getLoadedSkills?: () => Array<{
                 slug: string;
@@ -10064,7 +10064,7 @@ async function handleRequest(
     // Try AgentSkillsService for bundled/plugin skills — copy to workspace for editing
     if (!skillMdPath && state.runtime) {
       try {
-        const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
+        const svc = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
           | {
               getLoadedSkills?: () => Array<{
                 slug: string;
@@ -10159,7 +10159,7 @@ async function handleRequest(
     // Try AgentSkillsService for bundled/plugin skills — copy to workspace for editing
     if (!skillMdPath && state.runtime) {
       try {
-        const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
+        const svc = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
           | {
               getLoadedSkills?: () => Array<{
                 slug: string;
@@ -10256,7 +10256,7 @@ async function handleRequest(
       }
     } else if (state.runtime) {
       try {
-        const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
+        const svc = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
           | { uninstall?: (slug: string) => Promise<boolean> }
           | undefined;
         if (svc?.uninstall) {
@@ -10373,7 +10373,7 @@ async function handleRequest(
           return;
         }
 
-        const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
+        const service = (await state.runtime.getService("AGENT_SKILLS_SERVICE")) as
           | {
               install?: (
                 skillSlug: string,
@@ -14347,7 +14347,7 @@ async function handleRequest(
     });
 
     // Pause coordinator LLM decisions while processing user message
-    const streamCoordinator = state.runtime.getService("SWARM_COORDINATOR") as
+    const streamCoordinator = (await state.runtime.getService("SWARM_COORDINATOR")) as
       | { pause?: () => void; resume?: () => void; isPaused?: boolean }
       | undefined;
     const streamDidPause = streamCoordinator && !streamCoordinator.isPaused;
@@ -14461,7 +14461,7 @@ async function handleRequest(
     }
 
     // Pause coordinator LLM decisions while processing user message
-    const chatCoordinator = state.runtime.getService("SWARM_COORDINATOR") as
+    const chatCoordinator = (await state.runtime.getService("SWARM_COORDINATOR")) as
       | { pause?: () => void; resume?: () => void; isPaused?: boolean }
       | undefined;
     const chatDidPause = chatCoordinator && !chatCoordinator.isPaused;
@@ -14642,7 +14642,7 @@ async function handleRequest(
       pathname,
       url,
       appManager: state.appManager as never,
-      getPluginManager: () => requirePluginManager(state.runtime) as never,
+      getPluginManager: async () => (await requirePluginManager(state.runtime)) as never,
       parseBoundedLimit,
       readJsonBody,
       json,
@@ -14972,7 +14972,7 @@ async function handleRequest(
         const now = Date.now();
         const roomId =
           (
-            state.runtime.getService("AUTONOMY") as {
+            (await state.runtime.getService("AUTONOMY")) as {
               getAutonomousRoomId?: () => UUID;
             } | null
           )?.getAutonomousRoomId?.() ??
@@ -15548,7 +15548,7 @@ async function handleRequest(
     // If runtime has an MCP service, enumerate active servers
     if (state.runtime) {
       try {
-        const mcpService = state.runtime.getService("MCP") as {
+        const mcpService = (await state.runtime.getService("MCP")) as {
           getServers?: () => Array<{
             name: string;
             status: string;
@@ -16621,7 +16621,7 @@ export async function startApiServer(opts?: {
       detachRuntimeStreams();
       detachRuntimeStreams = null;
     }
-    const svc = getAgentEventSvc(runtime);
+    const svc = await getAgentEventSvc(runtime);
     if (!svc) {
       if (runtime) {
         logger.warn(
@@ -17106,7 +17106,7 @@ export async function startApiServer(opts?: {
           msg.type === "pty-subscribe" &&
           typeof msg.sessionId === "string"
         ) {
-          const bridge = getPtyConsoleBridge(state);
+          const bridge = await getPtyConsoleBridge(state);
           if (bridge) {
             let subs = wsClientPtySubscriptions.get(ws);
             if (!subs) {
@@ -17166,7 +17166,7 @@ export async function startApiServer(opts?: {
               `[eliza-api] pty-input rejected: payload too large (${msg.data.length} bytes) for session ${msg.sessionId}`,
             );
           } else {
-            const bridge = getPtyConsoleBridge(state);
+            const bridge = await getPtyConsoleBridge(state);
             if (bridge) {
               logger.debug(
                 `[eliza-api] pty-input: session=${msg.sessionId} len=${msg.data.length}`,
@@ -17185,7 +17185,7 @@ export async function startApiServer(opts?: {
               `[eliza-api] pty-resize rejected: client not subscribed to session ${msg.sessionId}`,
             );
           } else {
-            const bridge = getPtyConsoleBridge(state);
+            const bridge = await getPtyConsoleBridge(state);
             if (
               bridge &&
               typeof msg.cols === "number" &&
