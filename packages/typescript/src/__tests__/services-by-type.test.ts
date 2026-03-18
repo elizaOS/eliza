@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { beforeEach, describe, expect, it } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import { ServiceType, type UUID } from "../types";
 import type { IAgentRuntime } from "../types/runtime";
@@ -49,6 +50,7 @@ describe("Service Type System", () => {
   let runtime: AgentRuntime;
 
   beforeEach(async () => {
+    const adapter = new InMemoryDatabaseAdapter();
     runtime = new AgentRuntime({
       agentId: uuidv4() as UUID,
       character: {
@@ -56,6 +58,7 @@ describe("Service Type System", () => {
         username: "test",
         clients: [],
       },
+      adapter,
     });
     // Resolve initPromise directly since these tests don't require DB setup
     // Access private resolver for test purposes
@@ -75,7 +78,7 @@ describe("Service Type System", () => {
       expect(runtime.hasService(ServiceType.WALLET)).toBe(true);
 
       // Get all wallet services
-      const walletServices = runtime.getServicesByType(ServiceType.WALLET);
+      const walletServices = await runtime.getServicesByType(ServiceType.WALLET);
       expect(walletServices).toHaveLength(2);
 
       // Check that both service instances are different
@@ -89,17 +92,17 @@ describe("Service Type System", () => {
       await runtime.registerService(MockWalletService2);
 
       // getService should return the first registered service
-      const firstService = runtime.getService(ServiceType.WALLET);
+      const firstService = await runtime.getService(ServiceType.WALLET);
       expect(firstService).toBeInstanceOf(MockWalletService1);
     });
 
-    it("should return empty array for non-existent service type", () => {
-      const services = runtime.getServicesByType("non-existent-type");
+    it("should return empty array for non-existent service type", async () => {
+      const services = await runtime.getServicesByType("non-existent-type");
       expect(services).toHaveLength(0);
     });
 
-    it("should return null for non-existent service type with getService", () => {
-      const service = runtime.getService("non-existent-type");
+    it("should return null for non-existent service type with getService", async () => {
+      const service = await runtime.getService("non-existent-type");
       expect(service).toBe(null);
     });
   });
@@ -112,16 +115,16 @@ describe("Service Type System", () => {
       await runtime.registerService(MockPdfService);
 
       // Check wallet services
-      const walletServices = runtime.getServicesByType(ServiceType.WALLET);
+      const walletServices = await runtime.getServicesByType(ServiceType.WALLET);
       expect(walletServices).toHaveLength(2);
 
       // Check PDF services
-      const pdfServices = runtime.getServicesByType(ServiceType.PDF);
+      const pdfServices = await runtime.getServicesByType(ServiceType.PDF);
       expect(pdfServices).toHaveLength(1);
       expect(pdfServices[0]).toBeInstanceOf(MockPdfService);
 
       // Check non-existent service type
-      const videoServices = runtime.getServicesByType(ServiceType.VIDEO);
+      const videoServices = await runtime.getServicesByType(ServiceType.VIDEO);
       expect(videoServices).toHaveLength(0);
     });
 
@@ -129,6 +132,10 @@ describe("Service Type System", () => {
       await runtime.registerService(MockWalletService1);
       await runtime.registerService(MockWalletService2);
       await runtime.registerService(MockPdfService);
+
+      // Start services (getAllServices returns only started instances)
+      await runtime.getServicesByType(ServiceType.WALLET);
+      await runtime.getServicesByType(ServiceType.PDF);
 
       const allServices = runtime.getAllServices();
 
@@ -174,8 +181,8 @@ describe("Service Type System", () => {
       // Mock the stop methods to track calls
       const stopCalls: string[] = [];
 
-      const walletServices = runtime.getServicesByType(ServiceType.WALLET);
-      const pdfServices = runtime.getServicesByType(ServiceType.PDF);
+      const walletServices = await runtime.getServicesByType(ServiceType.WALLET);
+      const pdfServices = await runtime.getServicesByType(ServiceType.PDF);
 
       walletServices[0].stop = async () => {
         stopCalls.push("wallet1");

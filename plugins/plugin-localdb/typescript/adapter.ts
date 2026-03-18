@@ -15,7 +15,7 @@
  * TRADE-OFFS:
  * - Single-threaded writes (no concurrent access safety)
  * - Linear scan for queries (no indexes)
- * - No plugin schema support (registerPluginSchema/getPluginStore not implemented)
+ * - Plugin store is persisted via IStorage (registerPluginSchema/getPluginStore supported)
  * - No messaging adapter support (IMessagingAdapter not implemented)
  */
 import {
@@ -25,6 +25,7 @@ import {
   DatabaseAdapter,
   type Entity,
   type IDatabaseAdapter,
+  InMemoryPluginStore,
   type Log,
   type LogBody,
   logger,
@@ -34,6 +35,7 @@ import {
   type Metadata,
   type PairingAllowlistEntry,
   type PairingChannel,
+  type PluginSchema,
   type PairingRequest,
   type Participant,
   type PatchOp,
@@ -43,6 +45,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import type { IPluginStoreBackend } from "@elizaos/core";
 import { SimpleHNSW } from "./hnsw";
 import { COLLECTIONS, type IStorage } from "./types";
 
@@ -105,17 +108,66 @@ function toMemories(stored: StoredMemory[]): Memory[] {
   return stored.map(toMemory);
 }
 
+const PLUGIN_STORE_COLLECTION_PREFIX = "plugin_store_";
+
+function createStorageBackend(storage: IStorage): IPluginStoreBackend {
+  return {
+    async getAll(tableKey: string) {
+      return storage.getAll<Record<string, unknown>>(
+        PLUGIN_STORE_COLLECTION_PREFIX + tableKey,
+      );
+    },
+    async get(tableKey: string, id: string) {
+      return storage.get<Record<string, unknown>>(
+        PLUGIN_STORE_COLLECTION_PREFIX + tableKey,
+        id,
+      );
+    },
+    async set(tableKey: string, id: string, row: Record<string, unknown>) {
+      await storage.set(
+        PLUGIN_STORE_COLLECTION_PREFIX + tableKey,
+        id,
+        row,
+      );
+    },
+    async delete(tableKey: string, id: string) {
+      await storage.delete(PLUGIN_STORE_COLLECTION_PREFIX + tableKey, id);
+    },
+    async deleteWhere(
+      tableKey: string,
+      predicate: (row: Record<string, unknown>) => boolean,
+    ) {
+      await storage.deleteWhere(
+        PLUGIN_STORE_COLLECTION_PREFIX + tableKey,
+        predicate,
+      );
+    },
+    async count(
+      tableKey: string,
+      predicate?: (row: Record<string, unknown>) => boolean,
+    ) {
+      return storage.count(
+        PLUGIN_STORE_COLLECTION_PREFIX + tableKey,
+        predicate,
+      );
+    },
+  };
+}
+
 export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private storage: IStorage;
   private vectorIndex: SimpleHNSW;
   private embeddingDimension = 384;
   private ready = false;
   private agentId: UUID;
+  private pluginSchemas = new Map<string, PluginSchema>();
+  private pluginStoreBackend: IPluginStoreBackend;
 
   constructor(storage: IStorage, agentId: UUID) {
     super();
     this.storage = storage;
     this.agentId = agentId;
+    this.pluginStoreBackend = createStorageBackend(storage);
     this.vectorIndex = new SimpleHNSW(
       async () => {
         const index = this.vectorIndex.getIndex();
@@ -151,6 +203,14 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     _options?: { verbose?: boolean; force?: boolean; dryRun?: boolean }
   ): Promise<void> {
     logger.debug({ src: "plugin:localdb" }, "Plugin migrations not needed for JSON storage");
+  }
+
+  async registerPluginSchema(schema: PluginSchema): Promise<void> {
+    this.pluginSchemas.set(schema.pluginName, schema);
+  }
+
+  getPluginStore(pluginName: string): import("@elizaos/core").IPluginStore | null {
+    return new InMemoryPluginStore(pluginName, this.pluginStoreBackend);
   }
 
   async isReady(): Promise<boolean> {
@@ -212,11 +272,117 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async patchComponent(
-    _componentId: UUID,
-    _ops: PatchOp[],
+    componentId: UUID,
+    ops: PatchOp[],
     _options?: { entityContext?: UUID },
   ): Promise<void> {
-    // LocalDB has no JSONB patch support; no-op for compatibility.
+    if (ops.length === 0) return;
+
+    const component = await this.storage.get<Component>(COLLECTIONS.COMPONENTS, componentId);
+    if (!component) {
+      throw new Error(`Component not found: ${componentId}`);
+    }
+
+    const data = JSON.parse(JSON.stringify(component.data ?? {})) as Record<string, unknown>;
+
+    for (const op of ops) {
+      const segments = this.validatePatchPath(op.path);
+
+      switch (op.op) {
+        case "set": {
+          if (op.value === undefined) {
+            throw new Error("'set' operation requires a value");
+          }
+          this.setNestedValue(data, segments, op.value);
+          break;
+        }
+        case "push": {
+          if (op.value === undefined) {
+            throw new Error("'push' operation requires a value");
+          }
+          const arr = this.getNestedValue(data, segments);
+          if (!Array.isArray(arr)) {
+            throw new Error(`Cannot push to non-array at path "${op.path}"`);
+          }
+          arr.push(op.value);
+          break;
+        }
+        case "remove":
+          this.removeNestedValue(data, segments);
+          break;
+        case "increment": {
+          if (op.value === undefined) {
+            throw new Error("'increment' operation requires a value");
+          }
+          const current = this.getNestedValue(data, segments);
+          if (typeof current !== "number") {
+            throw new Error(`Cannot increment non-numeric value at path "${op.path}"`);
+          }
+          this.setNestedValue(data, segments, current + Number(op.value));
+          break;
+        }
+        default:
+          throw new Error(`Unknown patch operation: ${(op as PatchOp).op}`);
+      }
+    }
+
+    await this.storage.set(COLLECTIONS.COMPONENTS, componentId, {
+      ...component,
+      data,
+    });
+  }
+
+  private static readonly PATH_SEGMENT_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+  private validatePatchPath(path: string): string[] {
+    const segments = path.split(".");
+    for (const seg of segments) {
+      if (!LocalDatabaseAdapter.PATH_SEGMENT_RE.test(seg) && !/^\d+$/.test(seg)) {
+        throw new Error(
+          `Invalid patch path segment: "${seg}". Only alphanumeric, underscore, and numeric indices allowed.`
+        );
+      }
+    }
+    return segments;
+  }
+
+  private getNestedValue(obj: Record<string, unknown>, segments: string[]): unknown {
+    let current: unknown = obj;
+    for (const seg of segments) {
+      if (current == null) return undefined;
+      current = (current as Record<string, unknown>)[seg];
+    }
+    return current;
+  }
+
+  private setNestedValue(
+    obj: Record<string, unknown>,
+    segments: string[],
+    value: unknown
+  ): void {
+    if (segments.length === 0) return;
+    let current = obj;
+    for (let i = 0; i < segments.length - 1; i++) {
+      const seg = segments[i];
+      const nextSeg = segments[i + 1];
+      if (current[seg] == null) {
+        (current as Record<string, unknown>)[seg] = /^\d+$/.test(nextSeg) ? [] : {};
+      }
+      current = (current[seg] as Record<string, unknown>) ?? {};
+    }
+    (current as Record<string, unknown>)[segments[segments.length - 1]] = value;
+  }
+
+  private removeNestedValue(obj: Record<string, unknown>, segments: string[]): void {
+    if (segments.length === 0) return;
+    let current: unknown = obj;
+    for (let i = 0; i < segments.length - 1; i++) {
+      if (current == null) return;
+      current = (current as Record<string, unknown>)[segments[i]];
+    }
+    if (current != null && typeof current === "object") {
+      delete (current as Record<string, unknown>)[segments[segments.length - 1]];
+    }
   }
 
   async upsertMemories(
@@ -698,24 +864,22 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     });
   }
 
-  async getMemoriesByWorldId(params: {
-    worldId: UUID;
-    count?: number;
+  async getMemoriesByWorldIds(params: {
+    worldIds: UUID[];
     tableName?: string;
+    limit?: number;
   }): Promise<Memory[]> {
+    if (params.worldIds.length === 0) return [];
+    const worldIdSet = new Set(params.worldIds);
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (m) =>
-        m.worldId === params.worldId &&
+        worldIdSet.has(m.worldId as UUID) &&
         (params.tableName ? m.metadata?.type === params.tableName : true)
     );
-
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-
-    if (params.count) {
-      return toMemories(memories.slice(0, params.count));
-    }
-    return toMemories(memories);
+    const effectiveLimit = params.limit ?? 50;
+    return toMemories(memories.slice(0, effectiveLimit));
   }
 
   async createWorld(world: World): Promise<UUID> {

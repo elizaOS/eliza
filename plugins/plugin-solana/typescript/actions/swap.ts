@@ -124,7 +124,7 @@ async function getTokenFromWallet(
   tokenSymbol: string
 ): Promise<string | null> {
   try {
-    const solanaService = runtime.getService(SOLANA_SERVICE_NAME) as SolanaService;
+    const solanaService = (await runtime.getService(SOLANA_SERVICE_NAME)) as SolanaService;
     if (!solanaService) {
       throw new Error("SolanaService not initialized");
     }
@@ -153,7 +153,7 @@ export const executeSwap: Action = {
   name: spec.name,
   similes: spec.similes ? [...spec.similes] : [],
   validate: async (runtime: IAgentRuntime, _message: Memory) => {
-    const solanaService = runtime.getService(SOLANA_SERVICE_NAME);
+    const solanaService = await runtime.getService(SOLANA_SERVICE_NAME);
     return !!solanaService;
   },
   description: spec.description,
@@ -167,7 +167,7 @@ export const executeSwap: Action = {
     state = await runtime.composeState(message, ["RECENT_MESSAGES"]);
 
     try {
-      const solanaService = runtime.getService(SOLANA_SERVICE_NAME) as SolanaService;
+      const solanaService = (await runtime.getService(SOLANA_SERVICE_NAME)) as SolanaService;
       if (!solanaService) {
         throw new Error("SolanaService not initialized");
       }

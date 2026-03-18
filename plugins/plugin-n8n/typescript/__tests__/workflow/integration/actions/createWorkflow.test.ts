@@ -1,7 +1,7 @@
-import { describe, expect, mock, test } from "bun:test";
-import { createWorkflowAction } from "../../../workflow/actions/createWorkflow";
-import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../workflow/services/n8n-workflow-service";
-import type { WorkflowDraft } from "../../../workflow/types/index";
+import { describe, expect, test, vi } from "vitest";
+import { createWorkflowAction } from "../../../../workflow/actions/createWorkflow";
+import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../../workflow/services/n8n-workflow-service";
+import type { WorkflowDraft } from "../../../../workflow/types/index";
 import {
   createMockCallback,
   createMockMessage,
@@ -71,7 +71,7 @@ describe("CREATE_N8N_WORKFLOW action", () => {
 
     test("shows clarification when LLM flags requiresClarification", async () => {
       const mockService = createMockService({
-        generateWorkflowDraft: mock(() =>
+        generateWorkflowDraft: vi.fn(() =>
           Promise.resolve({
             name: "Vague Workflow",
             nodes: [
@@ -117,7 +117,7 @@ describe("CREATE_N8N_WORKFLOW action", () => {
       const lastResult = getLastCallbackResult(callback);
       // Clarification questions should be in the data passed to the LLM
       expect(lastResult?.text).toContain("What specific task");
-      expect(lastText).toContain("Which services");
+      expect(lastResult?.text).toContain("Which services");
     });
 
     test("fails when prompt is empty", async () => {
@@ -160,7 +160,7 @@ describe("CREATE_N8N_WORKFLOW action", () => {
 
     test("handles service error gracefully", async () => {
       const mockService = createMockService({
-        generateWorkflowDraft: mock(() => Promise.reject(new Error("LLM generation failed"))),
+        generateWorkflowDraft: vi.fn(() => Promise.reject(new Error("LLM generation failed"))),
       });
       const runtime = createMockRuntime({
         services: { [N8N_WORKFLOW_SERVICE_TYPE]: mockService },
@@ -359,7 +359,7 @@ describe("CREATE_N8N_WORKFLOW action", () => {
     test("new intent with vague message restores draft on generation failure", async () => {
       const draft = createDraftInCache();
       const mockService = createMockService({
-        generateWorkflowDraft: mock(() => Promise.reject(new Error("No relevant n8n nodes found"))),
+        generateWorkflowDraft: vi.fn(() => Promise.reject(new Error("No relevant n8n nodes found"))),
       });
 
       const runtime = createMockRuntime({
@@ -430,7 +430,7 @@ describe("CREATE_N8N_WORKFLOW action", () => {
     test("blocks deploy when credentials are missing (no auth URL)", async () => {
       const draft = createDraftInCache();
       const mockService = createMockService({
-        deployWorkflow: mock(() =>
+        deployWorkflow: vi.fn(() =>
           Promise.resolve({
             id: "wf-001",
             name: "Test",
@@ -462,7 +462,7 @@ describe("CREATE_N8N_WORKFLOW action", () => {
     test("blocks deploy and shows auth links when credentials need authentication", async () => {
       const draft = createDraftInCache();
       const mockService = createMockService({
-        deployWorkflow: mock(() =>
+        deployWorkflow: vi.fn(() =>
           Promise.resolve({
             id: "",
             name: "Stripe Gmail Summary",
@@ -550,7 +550,7 @@ describe("CREATE_N8N_WORKFLOW action", () => {
 
     test("generation error returns success: false in callback", async () => {
       const mockService = createMockService({
-        generateWorkflowDraft: mock(() => Promise.reject(new Error("LLM failed"))),
+        generateWorkflowDraft: vi.fn(() => Promise.reject(new Error("LLM failed"))),
       });
       const runtime = createMockRuntime({
         services: { [N8N_WORKFLOW_SERVICE_TYPE]: mockService },

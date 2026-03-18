@@ -7,6 +7,15 @@
     "chrome",
     "safari"
   ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-eliza-classic": "workspace:*",
+    "@elizaos/plugin-google-genai": "workspace:*",
+    "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-inmemorydb": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*"
+  },
   "scripts": {
     "build": "npm run build:chrome",
     "build:chrome": "cd chrome && npm run build",

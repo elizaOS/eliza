@@ -43,6 +43,7 @@ async function build(): Promise<void> {
     format: "esm",
     sourcemap: "external",
     minify: false,
+    splitting: false,
     external: [...externalDeps],
   });
   if (!browserResult.success) {

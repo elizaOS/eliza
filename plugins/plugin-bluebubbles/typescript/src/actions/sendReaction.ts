@@ -60,7 +60,7 @@ export const sendReactionAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const bbService = runtime.getService<BlueBubblesService>(BLUEBUBBLES_SERVICE_NAME);
+    const bbService = await runtime.getService<BlueBubblesService>(BLUEBUBBLES_SERVICE_NAME);
     const currentState = state ?? (await runtime.composeState(message));
 
     if (!bbService || !bbService.isConnected()) {

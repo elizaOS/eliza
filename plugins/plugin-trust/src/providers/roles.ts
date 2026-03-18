@@ -104,15 +104,17 @@ export const roleProvider: Provider = {
 
       // Extract name and username from metadata (check multiple sources)
       const metadata = user?.metadata as Record<string, any> | undefined;
-      const name = 
+      const name =
         (metadata?.default?.name as string) ||
         (metadata?.discord?.name as string) ||
+        (metadata?.name as string) ||
         user?.names?.[0];
-      
-      const username = 
+
+      const username =
         (metadata?.default?.username as string) ||
         (metadata?.discord?.username as string) ||
         (metadata?.discord?.userName as string) || // ensureConnection uses userName (camelCase)
+        (metadata?.username as string) ||
         user?.names?.[0];
       
       const names = user?.names as string[];

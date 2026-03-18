@@ -10,7 +10,7 @@
  * - Uses OpenAI for language understanding
  */
 
-import { AgentRuntime } from "@elizaos/core";
+import { AgentRuntime, InMemoryDatabaseAdapter } from "@elizaos/core";
 import discordPlugin from "@elizaos/plugin-discord";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
@@ -63,9 +63,13 @@ async function main(): Promise<void> {
 
   validateEnvironment();
 
+  const adapter = new InMemoryDatabaseAdapter();
+  await adapter.initialize();
+
   // Create the runtime with all required plugins
   const runtime = new AgentRuntime({
     character,
+    adapter,
     plugins: [
       sqlPlugin, // Database persistence
       openaiPlugin, // LLM provider

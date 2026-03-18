@@ -2,10 +2,10 @@
  * Comprehensive test suite for plugin-form modules.
  *
  * Covers: validation, intent, ttl, defaults, builder, template, builtins.
- * Runner: bun test (Jest-compatible API via bun:test)
+ * Runner: vitest
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { UUID } from "@elizaos/core";
 
 // ── Source module imports ────────────────────────────────────────────────────

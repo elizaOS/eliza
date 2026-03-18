@@ -60,7 +60,7 @@ export class MemoryService extends Service {
 
     // Discover the storage provider registered by a database plugin.
     // If none exists, storage-backed features are disabled.
-    const provider = runtime.getService("memoryStorage") as MemoryStorageProvider | null;
+    const provider = (await runtime.getService("memoryStorage")) as unknown as MemoryStorageProvider | null;
     if (!provider) {
       logger.warn(
         { src: "service:memory", agentId: runtime.agentId },

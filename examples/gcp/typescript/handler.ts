@@ -16,6 +16,7 @@ import {
   type Character,
   createCharacter,
   createMessageMemory,
+  InMemoryDatabaseAdapter,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -85,8 +86,11 @@ async function initializeRuntime(): Promise<AgentRuntime> {
     console.log("Initializing elizaOS runtime...");
 
     const character = getCharacter();
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
     runtime = new AgentRuntime({
       character,
+      adapter,
       plugins: [sqlPlugin, openaiPlugin],
     });
 

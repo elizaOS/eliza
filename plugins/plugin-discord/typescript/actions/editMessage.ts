@@ -63,7 +63,7 @@ const editMessage: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
-    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
+    const discordService = (await runtime.getService(DISCORD_SERVICE_NAME)) as DiscordService;
 
     if (!discordService || !discordService.client) {
       await callback?.({
@@ -89,7 +89,7 @@ const editMessage: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response) as EditMessageParams | null;
+      const parsedResponse = parseJSONObjectFromText(response) as unknown as EditMessageParams | null;
       if (parsedResponse?.messageId && parsedResponse?.newText) {
         editParams = parsedResponse;
         break;

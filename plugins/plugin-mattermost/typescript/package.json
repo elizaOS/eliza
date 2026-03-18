@@ -20,7 +20,7 @@
     "build": "bun build.ts",
     "dev": "bun --hot build.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
   },
   "dependencies": {

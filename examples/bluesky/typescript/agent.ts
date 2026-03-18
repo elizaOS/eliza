@@ -14,7 +14,7 @@
  * NO shortcuts, NO bypassing the pipeline - this is canonical elizaOS.
  */
 
-import { AgentRuntime, stringToUuid, type Plugin } from "@elizaos/core";
+import { AgentRuntime, InMemoryDatabaseAdapter, stringToUuid, type Plugin } from "@elizaos/core";
 import { config } from "dotenv";
 
 import { character } from "./character";
@@ -73,10 +73,14 @@ async function main(): Promise<void> {
     blueSkyPlugin: Plugin;
   };
 
+  const adapter = new InMemoryDatabaseAdapter();
+  await adapter.initialize();
+
   // Create the runtime with all required plugins
   // Note: basicCapabilities is true by default (provides REPLY, IGNORE, NONE actions)
   const runtime = new AgentRuntime({
     character,
+    adapter,
     plugins: [
       sqlPlugin, // Database persistence (PGLite by default, or Postgres)
       openaiPlugin, // LLM provider (registers TEXT_SMALL, TEXT_LARGE models)

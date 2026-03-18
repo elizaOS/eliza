@@ -763,10 +763,10 @@ export class SandboxService extends Service {
     const result = await this.executeDockerCommand(browserArgs);
 
     if (!result.success) {
-      this.runtime.logger.error("Failed to start browser container", {
-        sessionKey,
-        error: result.stderr,
-      });
+      this.runtime.logger.error(
+        "Failed to start browser container",
+        String(result.stderr ?? "unknown")
+      );
       return null;
     }
 
@@ -840,10 +840,10 @@ export class SandboxService extends Service {
 
       if (idle || tooOld) {
         this.destroySandbox(sessionKey).catch((err) => {
-          this.runtime.logger.error("Failed to destroy idle sandbox", {
-            sessionKey,
-            error: err,
-          });
+          this.runtime.logger.error(
+            "Failed to destroy idle sandbox",
+            err instanceof Error ? err.message : String(err)
+          );
         });
       }
     }

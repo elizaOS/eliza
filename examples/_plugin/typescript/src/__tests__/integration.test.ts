@@ -101,7 +101,7 @@ describe("Integration: HelloWorld Action with StarterService", () => {
     }
 
     // Get the service to ensure integration
-    const service = runtime.getService("starter");
+    const service = await runtime.getService("starter");
     expect(service).toBeDefined();
     expect(service?.capabilityDescription).toContain("starter service");
   });

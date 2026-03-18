@@ -75,7 +75,7 @@ export const downloadMedia: Action = {
       downloadVideo: (videoInfo: { title: string; description: string }) => Promise<string>;
     }
 
-    const videoService = runtime.getService<VideoServiceInterface>(ServiceType.VIDEO);
+    const videoService = await runtime.getService<VideoServiceInterface>(ServiceType.VIDEO);
 
     if (!videoService) {
       runtime.logger.error(

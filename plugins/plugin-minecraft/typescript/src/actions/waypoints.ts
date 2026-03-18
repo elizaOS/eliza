@@ -32,7 +32,7 @@ export const minecraftWaypointSetAction: Action = {
     message: Memory,
   ): Promise<boolean> => {
     return (
-      Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
+      Boolean(await runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
       Boolean(parseName(message.content.text ?? ""))
     );
   },
@@ -43,10 +43,10 @@ export const minecraftWaypointSetAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const waypoints = runtime.getService<WaypointsService>(
+    const waypoints = await runtime.getService<WaypointsService>(
       WAYPOINTS_SERVICE_TYPE,
     );
-    const mc = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+    const mc = await runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
     const name = parseName(message.content.text ?? "");
     if (!waypoints || !mc)
       return {
@@ -93,7 +93,7 @@ export const minecraftWaypointDeleteAction: Action = {
     message: Memory,
   ): Promise<boolean> => {
     return (
-      Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
+      Boolean(await runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
       Boolean(parseName(message.content.text ?? ""))
     );
   },
@@ -104,7 +104,7 @@ export const minecraftWaypointDeleteAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const waypoints = runtime.getService<WaypointsService>(
+    const waypoints = await runtime.getService<WaypointsService>(
       WAYPOINTS_SERVICE_TYPE,
     );
     const name = parseName(message.content.text ?? "");
@@ -130,7 +130,7 @@ export const minecraftWaypointListAction: Action = {
   similes: ["MINECRAFT_WAYPOINT_LIST", "LIST_WAYPOINTS", "SHOW_WAYPOINTS"],
   description: "List saved waypoints.",
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    return Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE));
+    return Boolean(await runtime.getService(WAYPOINTS_SERVICE_TYPE));
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -139,14 +139,14 @@ export const minecraftWaypointListAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const waypoints = runtime.getService<WaypointsService>(
+    const waypoints = await runtime.getService<WaypointsService>(
       WAYPOINTS_SERVICE_TYPE,
     );
     if (!waypoints)
       return { text: "Waypoints service not available", success: false };
     const list = waypoints.listWaypoints();
     const lines = list.map(
-      (w) =>
+      (w: { name: string; x: number; y: number; z: number }) =>
         `- ${w.name}: (${w.x.toFixed(1)}, ${w.y.toFixed(1)}, ${w.z.toFixed(1)})`,
     );
     const content: Content = {
@@ -161,7 +161,7 @@ export const minecraftWaypointListAction: Action = {
       text: content.text ?? "",
       success: true,
       data: {
-        waypoints: list.map((w) => ({
+        waypoints: list.map((w: { name: string; x: number; y: number; z: number; createdAt: Date }) => ({
           name: w.name,
           x: w.x,
           y: w.y,
@@ -182,8 +182,8 @@ export const minecraftWaypointGotoAction: Action = {
     message: Memory,
   ): Promise<boolean> => {
     return (
-      Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
-      Boolean(runtime.getService(MINECRAFT_SERVICE_TYPE)) &&
+      Boolean(await runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
+      Boolean(await runtime.getService(MINECRAFT_SERVICE_TYPE)) &&
       Boolean(parseName(message.content.text ?? ""))
     );
   },
@@ -194,10 +194,10 @@ export const minecraftWaypointGotoAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const waypoints = runtime.getService<WaypointsService>(
+    const waypoints = await runtime.getService<WaypointsService>(
       WAYPOINTS_SERVICE_TYPE,
     );
-    const mc = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+    const mc = await runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
     const name = parseName(message.content.text ?? "");
     if (!waypoints || !mc)
       return {

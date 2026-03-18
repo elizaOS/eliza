@@ -36,8 +36,8 @@ export const installPluginFromRegistryAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<void> {
-    const pluginManagerService = runtime.getService('plugin_manager') as PluginManagerService;
+  ): Promise<import('@elizaos/core').ActionResult> {
+    const pluginManagerService = (await runtime.getService('plugin_manager')) as PluginManagerService;
 
     if (!pluginManagerService) {
       if (callback) {
@@ -45,7 +45,7 @@ export const installPluginFromRegistryAction: Action = {
           text: 'Plugin manager service not available',
         });
       }
-      return;
+      return { success: false, error: 'Plugin manager service not available' };
     }
 
     // Extract plugin name from message content
@@ -82,7 +82,7 @@ export const installPluginFromRegistryAction: Action = {
           text: 'Please specify a plugin name to install. Example: "install plugin @elizaos/plugin-example"',
         });
       }
-      return;
+      return { success: false, error: 'Plugin name not specified' };
     }
 
     try {
@@ -99,7 +99,7 @@ export const installPluginFromRegistryAction: Action = {
               '\n\nUse "configure plugin" to set up the required environment variables.',
           });
         }
-        return;
+        return { success: true, text: `Plugin ${pluginInfo.name} installed; needs configuration.` };
       }
 
       if (callback) {
@@ -109,18 +109,26 @@ export const installPluginFromRegistryAction: Action = {
             `Use "load plugin ${pluginInfo.name}" to activate it.`,
         });
       }
+      return {
+        success: true,
+        text: `Successfully installed plugin ${pluginInfo.name} v${pluginInfo.version}.`,
+      };
     } catch (error) {
       if (callback) {
         await callback({
           text: `Failed to install plugin ${pluginName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         });
       }
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   },
 
   async validate(runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> {
     // Precondition: plugin manager service must be available
-    const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
+    const pluginManager = await runtime.getService('plugin_manager') as PluginManagerService;
     return pluginManager !== null;
   },
 };

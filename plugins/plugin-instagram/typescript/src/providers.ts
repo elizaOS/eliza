@@ -20,7 +20,7 @@ export const userStateProvider: Provider = {
     _message: Memory,
     state: State,
   ): Promise<ProviderResult> => {
-    const service = runtime.getService<InstagramService>(
+    const service = await runtime.getService<InstagramService>(
       INSTAGRAM_SERVICE_NAME,
     );
 

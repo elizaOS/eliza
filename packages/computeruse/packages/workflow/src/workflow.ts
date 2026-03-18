@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { Desktop } from "@elizaos/computeruse";
+import type { Desktop } from "./types";
+import { Desktop as DesktopClass } from "@elizaos/computeruse";
 import * as fs from "fs";
 import * as path from "path";
 import type {
@@ -196,7 +197,7 @@ function createWorkflowInstance<TInput = any>(
             const validatedInput = validationResult.data;
 
             // Get desktop instance (either passed or create new one)
-            const desktopInstance = desktop || new Desktop();
+            const desktopInstance = desktop || new DesktopClass();
 
             // Debug logging to see what options are passed
             log.info(

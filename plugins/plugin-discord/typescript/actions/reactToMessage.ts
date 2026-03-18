@@ -136,7 +136,7 @@ export const reactToMessage: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
-    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
+    const discordService = (await runtime.getService(DISCORD_SERVICE_NAME)) as DiscordService;
 
     if (!discordService || !discordService.client) {
       await callback?.({

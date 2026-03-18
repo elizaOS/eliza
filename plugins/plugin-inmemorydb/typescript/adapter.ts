@@ -12,15 +12,17 @@
  * TRADE-OFFS:
  * - No persistence (data lost on restart)
  * - No vector search optimization (brute-force similarity scan)
- * - No plugin schema support (registerPluginSchema/getPluginStore not implemented)
+ * - Plugin store is in-memory only (registerPluginSchema/getPluginStore supported)
  * - No messaging adapter support (IMessagingAdapter not implemented)
  */
 import {
   type Agent,
   type Component,
   type Content,
+  createMapBackend,
   DatabaseAdapter,
   type Entity,
+  InMemoryPluginStore,
   type Log,
   type LogBody,
   logger,
@@ -30,6 +32,7 @@ import {
   type Metadata,
   type PairingAllowlistEntry,
   type PairingChannel,
+  type PluginSchema,
   type PairingRequest,
   type Participant,
   type Relationship,
@@ -98,6 +101,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private embeddingDimension = 384;
   private ready = false;
   private agentId: UUID;
+  private pluginSchemas = new Map<string, PluginSchema>();
+  private pluginStoreBackend = createMapBackend();
 
   constructor(storage: IStorage, agentId: UUID) {
     super();
@@ -125,6 +130,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       { src: "plugin:inmemorydb" },
       "Plugin migrations not needed for in-memory storage"
     );
+  }
+
+  async registerPluginSchema(schema: PluginSchema): Promise<void> {
+    this.pluginSchemas.set(schema.pluginName, schema);
+  }
+
+  getPluginStore(pluginName: string): import("@elizaos/core").IPluginStore | null {
+    return new InMemoryPluginStore(pluginName, this.pluginStoreBackend.backend);
   }
 
   async isReady(): Promise<boolean> {
@@ -1068,24 +1081,22 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     });
   }
 
-  async getMemoriesByWorldId(params: {
-    worldId: UUID;
-    count?: number;
+  async getMemoriesByWorldIds(params: {
+    worldIds: UUID[];
     tableName?: string;
+    limit?: number;
   }): Promise<Memory[]> {
+    if (params.worldIds.length === 0) return [];
+    const worldIdSet = new Set(params.worldIds);
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (m) =>
-        m.worldId === params.worldId &&
+        worldIdSet.has(m.worldId as UUID) &&
         (params.tableName ? m.metadata?.type === params.tableName : true)
     );
-
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-
-    if (params.count) {
-      return toMemories(memories.slice(0, params.count));
-    }
-    return toMemories(memories);
+    const effectiveLimit = params.limit ?? 50;
+    return toMemories(memories.slice(0, effectiveLimit));
   }
 
   // ===============================

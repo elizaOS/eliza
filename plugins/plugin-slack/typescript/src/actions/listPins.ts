@@ -55,7 +55,7 @@ export const listPins: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const slackService = runtime.getService(SLACK_SERVICE_NAME) as SlackService;
+    const slackService = await runtime.getService(SLACK_SERVICE_NAME) as SlackService;
 
     if (!slackService || !slackService.client) {
       await callback?.({

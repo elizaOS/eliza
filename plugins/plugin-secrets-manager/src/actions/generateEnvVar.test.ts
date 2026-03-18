@@ -72,7 +72,7 @@ describe("generateEnvVarAction", () => {
 
     mockRuntime = {
       getService: vi.fn((name: string) => {
-        if (name === "SHELL") return mockShellService;
+        if (name === "shell" || name === "SHELL") return mockShellService;
         if (name === "ENV_MANAGER") return mockEnvService;
         return null;
       }),
@@ -671,10 +671,10 @@ describe("generateEnvVarAction", () => {
         },
       });
 
-      // Mock getService to return null for SHELL
+      // Mock getService to return null for shell (action requests "shell")
       vi.mocked(mockRuntime.getService).mockImplementation((name: string) => {
         if (name === "ENV_MANAGER") return mockEnvService;
-        if (name === "SHELL") return null; // No shell service
+        if (name === "shell" || name === "SHELL") return null; // No shell service
         return null;
       });
 

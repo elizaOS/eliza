@@ -41,6 +41,8 @@ describe("blooioPlugin", () => {
     let mockRuntime: IAgentRuntime;
 
     beforeEach(() => {
+      vi.spyOn(logger, "info");
+      vi.spyOn(logger, "warn");
       mockRuntime = {
         getSetting: vi.fn(),
       } as IAgentRuntime;

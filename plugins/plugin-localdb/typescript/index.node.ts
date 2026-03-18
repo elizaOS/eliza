@@ -39,6 +39,12 @@ export const plugin: Plugin = {
   name: "@elizaos/plugin-localdb",
   description: "Simple JSON-based local database storage for elizaOS",
 
+  /** Adapter factory for runtime composition. Uses LOCALDB_DATA_DIR from bootstrap settings if set. */
+  adapter(agentId, settings) {
+    const dataDir = settings.LOCALDB_DATA_DIR;
+    return createDatabaseAdapter(dataDir ? { dataDir } : {}, agentId);
+  },
+
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     logger.info({ src: "plugin:localdb" }, "Initializing local database plugin");
 
@@ -63,16 +69,10 @@ export const plugin: Plugin = {
       return;
     }
 
-    const dataDir = runtime.getSetting("LOCALDB_DATA_DIR") as string | undefined;
-    const adapter = createDatabaseAdapter({ dataDir }, runtime.agentId);
-
-    // Initialize the adapter (implementation-specific method)
-    if ('init' in adapter && typeof adapter.init === 'function') {
-      await adapter.init();
-    }
-    runtime.registerDatabaseAdapter(adapter);
-
-    logger.success({ src: "plugin:localdb" }, "Local database adapter registered successfully");
+    logger.warn(
+      { src: "plugin:localdb" },
+      "No database adapter on runtime. Pass adapter in AgentRuntime constructor or use createRuntimes with this plugin's adapter factory."
+    );
   },
 };
 

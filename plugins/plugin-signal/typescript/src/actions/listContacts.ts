@@ -35,7 +35,7 @@ export const listContacts: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const signalService = runtime.getService(
+    const signalService = await runtime.getService(
       SIGNAL_SERVICE_NAME,
     ) as SignalService;
 

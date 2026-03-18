@@ -27,20 +27,25 @@ export const recordTrustInteractionAction: Action = {
 
     // Parse the interaction details from the message
     const text = message.content.text || '';
-    const parsed = parseJSONObjectFromText(text);
-    const parsedContent = parsed as {
+    let parsedContent: {
       type?: string;
       targetEntityId?: string;
       impact?: number;
       description?: string;
       verified?: boolean;
-    } | null;
+    } | null = null;
+    try {
+      const parsed = parseJSONObjectFromText(text);
+      parsedContent = parsed as typeof parsedContent;
+    } catch {
+      // Invalid JSON
+    }
 
     if (!parsedContent || !parsedContent.type) {
       return {
         success: false,
         text: 'Could not parse trust interaction details. Please provide type and optionally: targetEntityId, impact, description',
-        error: 'Invalid or missing interaction type',
+        error: true,
       };
     }
 
@@ -59,7 +64,7 @@ export const recordTrustInteractionAction: Action = {
       return {
         success: false,
         text: `Invalid interaction type. Valid types are: ${validTypes.join(', ')}`,
-        error: 'Invalid evidence type provided',
+        error: true,
       };
     }
 

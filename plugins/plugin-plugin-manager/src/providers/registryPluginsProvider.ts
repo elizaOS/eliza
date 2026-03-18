@@ -9,7 +9,7 @@ export const registryPluginsProvider: Provider = {
     'Provides available plugins from the elizaOS registry, installed plugin status, and searchable plugin knowledge',
 
   async get(runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> {
-    const pluginManagerService = runtime.getService('plugin_manager') as PluginManagerService;
+    const pluginManagerService = (await runtime.getService('plugin_manager')) as PluginManagerService | null;
 
     if (!pluginManagerService) {
       return {

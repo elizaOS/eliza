@@ -3,6 +3,7 @@
  * Converted from Python tests
  */
 
+import { describe, expect, it } from "vitest";
 import {
   type AgentInfo,
   type HistoryItem,

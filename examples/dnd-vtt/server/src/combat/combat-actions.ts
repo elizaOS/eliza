@@ -713,8 +713,8 @@ export function executeDeathSave(combatant: Combatant): ActionResult {
   let description = '';
   
   if (roll === 20) {
-    // Natural 20: regain 1 HP
-    updatedCombatant.hp.current = 1;
+    // Natural 20: regain 1 HP (assign new hp so input is not mutated)
+    updatedCombatant.hp = { ...updatedCombatant.hp, current: 1 };
     updatedCombatant.deathSaves = { successes: 0, failures: 0 };
     updatedCombatant.conditions = updatedCombatant.conditions.filter(c => c.condition?.toLowerCase() !== 'unconscious');
     outcome = 'Natural 20! Regains consciousness!';

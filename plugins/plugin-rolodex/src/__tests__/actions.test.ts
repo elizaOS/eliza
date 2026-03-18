@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { stringToUuid } from '@elizaos/core';
 import {
   createMockRuntime,
@@ -7,16 +7,14 @@ import {
   createMockEntity,
 } from './test-utils';
 
-// Mock the findEntityByName function before imports to avoid hoisting issues
-mock.module('@elizaos/core', () => {
-  const actual = require('@elizaos/core');
+vi.mock('@elizaos/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@elizaos/core')>();
   return {
     ...actual,
-    findEntityByName: mock(() => null),
+    findEntityByName: vi.fn(),
   };
 });
 
-// Import actions after mocking
 import {
   addContactAction,
   updateContactAction,
@@ -48,7 +46,7 @@ describe('Rolodex Actions', () => {
     );
 
     mockRolodexService = {
-      addContact: mock(() => Promise.resolve({
+      addContact: vi.fn(() => Promise.resolve({
         entityId: stringToUuid('test-entity'),
         categories: ['friend'],
         tags: [],
@@ -57,7 +55,7 @@ describe('Rolodex Actions', () => {
         privacyLevel: 'private',
         lastModified: new Date().toISOString(),
       })),
-      updateContact: mock(() => Promise.resolve({
+      updateContact: vi.fn(() => Promise.resolve({
         entityId: stringToUuid('test-entity'),
         categories: ['friend', 'vip'],
         tags: ['important'],
@@ -66,13 +64,13 @@ describe('Rolodex Actions', () => {
         privacyLevel: 'private',
         lastModified: new Date().toISOString(),
       })),
-      removeContact: mock(() => Promise.resolve(true)),
-      searchContacts: mock(() => Promise.resolve([])),
-      getContact: mock(() => Promise.resolve(null)),
+      removeContact: vi.fn(() => Promise.resolve(true)),
+      searchContacts: vi.fn(() => Promise.resolve([])),
+      getContact: vi.fn(() => Promise.resolve(null)),
     };
 
     mockFollowUpService = {
-      scheduleFollowUp: mock(() => Promise.resolve({
+      scheduleFollowUp: vi.fn(() => Promise.resolve({
         id: stringToUuid('task-1'),
         name: 'follow_up',
         metadata: {
@@ -85,15 +83,15 @@ describe('Rolodex Actions', () => {
     };
 
     mockRuntime = createMockRuntime({
-      getService: mock((name: string) => {
+      getService: vi.fn((name: string) => {
         if (name === 'rolodex') return mockRolodexService;
         if (name === 'follow_up') return mockFollowUpService;
         return null;
       }),
-      useModel: mock(() => Promise.resolve('<response><contactName>John Doe</contactName></response>')) as any,
+      useModel: vi.fn(() => Promise.resolve('<response><contactName>John Doe</contactName></response>')) as any,
     });
 
-    mockCallback = mock(() => { });
+    mockCallback = vi.fn(() => { });
   });
 
   describe('addContactAction', () => {
@@ -174,7 +172,7 @@ describe('Rolodex Actions', () => {
 
       // Set up the mock runtime to simulate the Rolodex service being unavailable.
       const runtimeWithoutRolodex = createMockRuntime({
-        getService: mock((name: string) => {
+        getService: vi.fn((name: string) => {
           if (name === 'rolodex') {
             return null; // Simulate service not found
           }
@@ -263,7 +261,7 @@ describe('Rolodex Actions', () => {
       expect(mockCallback).toHaveBeenCalledWith(
         expect.objectContaining({
           text: expect.stringContaining("updated Sarah's contact information"),
-          action: 'UPDATE_CONTACT',
+          actions: expect.arrayContaining(['UPDATE_CONTACT']),
         })
       );
     });
@@ -372,7 +370,7 @@ describe('Rolodex Actions', () => {
       expect(mockCallback).toHaveBeenCalledWith(
         expect.objectContaining({
           text: expect.stringContaining('removed John Doe'),
-          action: 'REMOVE_CONTACT',
+          actions: expect.arrayContaining(['REMOVE_CONTACT']),
         })
       );
     });
@@ -506,7 +504,7 @@ describe('Rolodex Actions', () => {
       ]);
 
       let callCount = 0;
-      mockRuntime.getEntityById = mock(() => {
+      mockRuntime.getEntityById = vi.fn(() => {
         callCount++;
         if (callCount === 1) {
           return Promise.resolve({ id: stringToUuid('john'), names: ['John Doe'], metadata: {} });

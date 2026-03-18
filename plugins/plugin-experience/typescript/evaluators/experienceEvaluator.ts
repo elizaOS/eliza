@@ -107,7 +107,7 @@ export const experienceEvaluator: Evaluator = {
     void _responses;
     void state;
 
-    const experienceService = runtime.getService("EXPERIENCE") as ExperienceService | null;
+    const experienceService = (await runtime.getService("EXPERIENCE")) as ExperienceService | null;
 
     if (!experienceService) {
       logger.warn("[experienceEvaluator] Experience service not available");

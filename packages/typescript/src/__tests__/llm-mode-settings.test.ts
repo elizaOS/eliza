@@ -35,6 +35,7 @@ describe("LLMMode Settings", () => {
     it("should return DEFAULT by default", () => {
       const runtime = new AgentRuntime({
         character: createTestCharacter(),
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.getLLMMode()).toBe("DEFAULT");
     });
@@ -43,6 +44,7 @@ describe("LLMMode Settings", () => {
       const runtime = new AgentRuntime({
         character: createTestCharacter(),
         llmMode: LLMMode.SMALL,
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.getLLMMode()).toBe("SMALL");
     });
@@ -51,6 +53,7 @@ describe("LLMMode Settings", () => {
       const runtime = new AgentRuntime({
         character: createTestCharacter(),
         llmMode: LLMMode.LARGE,
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.getLLMMode()).toBe("LARGE");
     });
@@ -60,6 +63,7 @@ describe("LLMMode Settings", () => {
         character: createTestCharacter({
           settings: { LLM_MODE: "SMALL" },
         }),
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.getLLMMode()).toBe("SMALL");
     });
@@ -70,6 +74,7 @@ describe("LLMMode Settings", () => {
           settings: { LLM_MODE: "SMALL" },
         }),
         llmMode: LLMMode.LARGE,
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.getLLMMode()).toBe("LARGE");
     });
@@ -79,6 +84,7 @@ describe("LLMMode Settings", () => {
         character: createTestCharacter({
           settings: { LLM_MODE: "small" },
         }),
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.getLLMMode()).toBe("SMALL");
     });
@@ -88,6 +94,7 @@ describe("LLMMode Settings", () => {
         character: createTestCharacter({
           settings: { LLM_MODE: "invalid" },
         }),
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.getLLMMode()).toBe("DEFAULT");
     });
@@ -195,6 +202,7 @@ describe("checkShouldRespond Settings", () => {
     it("should return true by default", () => {
       const runtime = new AgentRuntime({
         character: createTestCharacter(),
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.isCheckShouldRespondEnabled()).toBe(true);
     });
@@ -203,6 +211,7 @@ describe("checkShouldRespond Settings", () => {
       const runtime = new AgentRuntime({
         character: createTestCharacter(),
         checkShouldRespond: false,
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.isCheckShouldRespondEnabled()).toBe(false);
     });
@@ -211,6 +220,7 @@ describe("checkShouldRespond Settings", () => {
       const runtime = new AgentRuntime({
         character: createTestCharacter(),
         checkShouldRespond: true,
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.isCheckShouldRespondEnabled()).toBe(true);
     });
@@ -220,6 +230,7 @@ describe("checkShouldRespond Settings", () => {
         character: createTestCharacter({
           settings: { CHECK_SHOULD_RESPOND: "false" },
         }),
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.isCheckShouldRespondEnabled()).toBe(false);
     });
@@ -230,16 +241,17 @@ describe("checkShouldRespond Settings", () => {
           settings: { CHECK_SHOULD_RESPOND: "false" },
         }),
         checkShouldRespond: true,
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.isCheckShouldRespondEnabled()).toBe(true);
     });
 
     it("should handle string 'false' character settings", () => {
-      // getSetting uses || chains so boolean false would be skipped - use string "false"
       const runtime = new AgentRuntime({
         character: createTestCharacter({
           settings: { CHECK_SHOULD_RESPOND: "false" },
         }),
+        adapter: createMinimalMockAdapter(),
       });
       expect(runtime.isCheckShouldRespondEnabled()).toBe(false);
     });
@@ -249,8 +261,8 @@ describe("checkShouldRespond Settings", () => {
         character: createTestCharacter({
           settings: { CHECK_SHOULD_RESPOND: "yes" },
         }),
+        adapter: createMinimalMockAdapter(),
       });
-      // Only "false" should disable it
       expect(runtime.isCheckShouldRespondEnabled()).toBe(true);
     });
   });

@@ -88,61 +88,8 @@ def format_proposed_slots(slots: list[ProposedSlot]) -> str:
 
 
 # ============================================================================
-# ACTION DEFINITION
+# VALIDATE / HANDLER (defined before action dict so they can be referenced)
 # ============================================================================
-
-
-schedule_meeting_action: dict[str, Any] = {
-    "name": "SCHEDULE_MEETING",
-    "similes": [
-        "BOOK_MEETING",
-        "ARRANGE_MEETING",
-        "SET_UP_MEETING",
-        "PLAN_MEETING",
-        "CREATE_MEETING",
-    ],
-    "description": "Schedule a meeting between multiple participants by finding a suitable time slot",
-    "validate": _validate_schedule_meeting,
-    "handler": _handle_schedule_meeting,
-    "examples": [
-        [
-            {
-                "name": "{{user1}}",
-                "content": {"text": "Can you schedule a meeting for me?"},
-            },
-            {
-                "name": "{{agentName}}",
-                "content": {
-                    "text": (
-                        "Here are some times that work:\n\n"
-                        "1. Mon, Jan 20 at 10:00am - 10:30am (Standard business hours)\n"
-                        "2. Mon, Jan 20 at 2:00pm - 2:30pm (Standard business hours)\n"
-                        "3. Tue, Jan 21 at 9:00am - 9:30am (Preferred time)\n\n"
-                        "Which option works best for you? Just say the number."
-                    ),
-                },
-            },
-        ],
-        [
-            {
-                "name": "{{user1}}",
-                "content": {"text": "I'd like to set up a call for next week"},
-            },
-            {
-                "name": "{{agentName}}",
-                "content": {
-                    "text": (
-                        "Here are some times that work:\n\n"
-                        "1. Mon, Jan 20 at 10:00am - 10:30am (Standard business hours)\n"
-                        "2. Tue, Jan 21 at 2:00pm - 2:30pm (Preferred day)\n"
-                        "3. Wed, Jan 22 at 11:00am - 11:30am (Standard business hours)\n\n"
-                        "Which option works best for you? Just say the number."
-                    ),
-                },
-            },
-        ],
-    ],
-}
 
 
 def _validate_schedule_meeting(runtime: Any, message: Any) -> bool:
@@ -229,6 +176,59 @@ async def _handle_schedule_meeting(
     }
 
 
-# Patch the dict with actual function references
-schedule_meeting_action["validate"] = _validate_schedule_meeting
-schedule_meeting_action["handler"] = _handle_schedule_meeting
+# ============================================================================
+# ACTION DEFINITION
+# ============================================================================
+
+
+schedule_meeting_action: dict[str, Any] = {
+    "name": "SCHEDULE_MEETING",
+    "similes": [
+        "BOOK_MEETING",
+        "ARRANGE_MEETING",
+        "SET_UP_MEETING",
+        "PLAN_MEETING",
+        "CREATE_MEETING",
+    ],
+    "description": "Schedule a meeting between multiple participants by finding a suitable time slot",
+    "validate": _validate_schedule_meeting,
+    "handler": _handle_schedule_meeting,
+    "examples": [
+        [
+            {
+                "name": "{{user1}}",
+                "content": {"text": "Can you schedule a meeting for me?"},
+            },
+            {
+                "name": "{{agentName}}",
+                "content": {
+                    "text": (
+                        "Here are some times that work:\n\n"
+                        "1. Mon, Jan 20 at 10:00am - 10:30am (Standard business hours)\n"
+                        "2. Mon, Jan 20 at 2:00pm - 2:30pm (Standard business hours)\n"
+                        "3. Tue, Jan 21 at 9:00am - 9:30am (Preferred time)\n\n"
+                        "Which option works best for you? Just say the number."
+                    ),
+                },
+            },
+        ],
+        [
+            {
+                "name": "{{user1}}",
+                "content": {"text": "I'd like to set up a call for next week"},
+            },
+            {
+                "name": "{{agentName}}",
+                "content": {
+                    "text": (
+                        "Here are some times that work:\n\n"
+                        "1. Mon, Jan 20 at 10:00am - 10:30am (Standard business hours)\n"
+                        "2. Tue, Jan 21 at 2:00pm - 2:30pm (Preferred day)\n"
+                        "3. Wed, Jan 22 at 11:00am - 11:30am (Standard business hours)\n\n"
+                        "Which option works best for you? Just say the number."
+                    ),
+                },
+            },
+        ],
+    ],
+}

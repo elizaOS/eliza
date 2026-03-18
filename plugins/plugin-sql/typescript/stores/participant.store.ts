@@ -237,8 +237,8 @@ export async function deleteParticipants(
   db: DrizzleDatabase,
   agentId: UUID,
   participants: Array<{ entityId: UUID; roomId: UUID }>
-): Promise<boolean> {
-  if (participants.length === 0) return true;
+): Promise<void> {
+  if (participants.length === 0) return;
 
   try {
     // Build compound OR conditions for all (entityId, roomId) pairs
@@ -257,8 +257,6 @@ export async function deleteParticipants(
           or(...pairConditions)
         )
       );
-
-    return true;
   } catch (error) {
     logger.error(
       {
@@ -269,7 +267,7 @@ export async function deleteParticipants(
       },
       "Failed to delete participants"
     );
-    return false;
+    throw error;
   }
 }
 
@@ -308,7 +306,7 @@ export async function updateParticipants(
   
   if (hasRoomStateUpdates) {
     const roomStateCases = participants
-      .filter(p => 'roomState' in p.updates)
+      .filter((p): p is typeof p & { updates: Partial<Participant> & { roomState: string } } => 'roomState' in p.updates)
       .map(p => sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${p.updates.roomState}`);
     
     if (roomStateCases.length > 0) {
@@ -318,7 +316,7 @@ export async function updateParticipants(
   
   if (hasMetadataUpdates) {
     const metadataCases = participants
-      .filter(p => 'metadata' in p.updates)
+      .filter((p): p is typeof p & { updates: Partial<Participant> & { metadata: unknown } } => 'metadata' in p.updates)
       .map(p => {
         const jsonString = JSON.stringify(p.updates.metadata);
         return sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${jsonString}::jsonb`;

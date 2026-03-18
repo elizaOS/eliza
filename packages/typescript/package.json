@@ -26,6 +26,16 @@
         "types": "./dist/node/index.d.ts",
         "default": "./dist/node/index.node.js"
       },
+      "edge-light": {
+        "types": "./dist/edge/index.d.ts",
+        "import": "./dist/edge/index.edge.js",
+        "default": "./dist/edge/index.edge.js"
+      },
+      "workerd": {
+        "types": "./dist/edge/index.d.ts",
+        "import": "./dist/edge/index.edge.js",
+        "default": "./dist/edge/index.edge.js"
+      },
       "default": "./dist/node/index.node.js"
     },
     "./node": {
@@ -82,7 +92,7 @@
       "@anthropic-ai/sdk": "^0.32.1",
     "@langchain/core": "^1.1.12",
     "@langchain/textsplitters": "^1.0.1",
-    "@bufbuild/protobuf": "^1.10.0",
+    "@bufbuild/protobuf": "^2.11.0",
     "adze": "^2.2.5",
     "crypto-browserify": "^3.12.0",
     "dedent": "^1.7.1",

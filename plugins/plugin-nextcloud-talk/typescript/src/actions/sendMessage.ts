@@ -36,7 +36,7 @@ export const sendMessageAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const service = runtime.getService(NEXTCLOUD_TALK_SERVICE_NAME) as
+    const service = (await runtime.getService(NEXTCLOUD_TALK_SERVICE_NAME)) as
       | NextcloudTalkService
       | undefined;
 

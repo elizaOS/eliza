@@ -7,7 +7,6 @@ import {
   type ProviderResult,
   ServiceType,
   type State,
-  TEEMode,
 } from "@elizaos/core";
 import type {
   Account,
@@ -155,7 +154,8 @@ export class WalletProvider {
       });
       return formatUnits(balance, 18);
     } catch (error) {
-      logger.error(`Error getting wallet balance for ${chainName}:`, error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error getting wallet balance for ${chainName}: ${errMsg}`);
       return null;
     }
   }
@@ -235,7 +235,8 @@ function genChainsFromRuntime(runtime: IAgentRuntime): Record<string, Chain> {
     "evm" in settings.chains &&
     Array.isArray(settings.chains.evm)
   ) {
-    configuredChains = settings.chains.evm;
+    const evm = settings.chains.evm as unknown[];
+    configuredChains = evm.filter((c): c is string => typeof c === "string");
   }
 
   const chainsToUse = configuredChains.length > 0 ? configuredChains : [...DEFAULT_CHAINS];
@@ -263,7 +264,8 @@ function genChainsFromRuntime(runtime: IAgentRuntime): Record<string, Chain> {
       chains[chainName] = chain;
       logger.log(`Configured chain: ${chainName}`);
     } catch (error) {
-      logger.error(`Error configuring chain ${chainName}:`, error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error configuring chain ${chainName}: ${errMsg}`);
     }
   }
 
@@ -295,7 +297,8 @@ async function generateAndStorePrivateKey(runtime: IAgentRuntime): Promise<`0x${
     });
     logger.log("EVM private key persisted to agent settings");
   } catch (error) {
-    logger.warn("Could not persist EVM private key to database - key is only in memory", error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.warn(`Could not persist EVM private key to database - key is only in memory: ${errMsg}`);
   }
 
   return newPrivateKey;
@@ -303,10 +306,10 @@ async function generateAndStorePrivateKey(runtime: IAgentRuntime): Promise<`0x${
 
 export async function initWalletProvider(runtime: IAgentRuntime): Promise<WalletProvider> {
   const teeModeRaw = runtime.getSetting("TEE_MODE");
-  const teeMode = typeof teeModeRaw === "string" ? teeModeRaw : TEEMode.OFF;
+  const teeMode = typeof teeModeRaw === "string" ? teeModeRaw : "off";
   const chains = genChainsFromRuntime(runtime);
 
-  if (teeMode !== TEEMode.OFF) {
+  if (teeMode !== "off") {
     const walletSecretSaltRaw = runtime.getSetting("WALLET_SECRET_SALT");
     if (!walletSecretSaltRaw || typeof walletSecretSaltRaw !== "string") {
       throw new EVMError(
@@ -356,7 +359,7 @@ class LazyTeeWalletProvider extends WalletProvider {
   }
 
   private async initializeTeeWallet(): Promise<void> {
-    const teeService = this.teeRuntime.getService(ServiceType.TEE);
+    const teeService = await this.teeRuntime.getService(ServiceType.TEE);
 
     if (!teeService) {
       throw new EVMError(
@@ -431,13 +434,13 @@ class LazyTeeWalletProvider extends WalletProvider {
   }
 }
 
-const spec = requireProviderSpec("wallet");
+const spec = requireProviderSpec("EVMWalletProvider");
 
 export const evmWalletProvider: Provider = {
   name: spec.name,
   async get(runtime: IAgentRuntime, _message: Memory, state?: State): Promise<ProviderResult> {
     try {
-      const evmService = runtime.getService(EVM_SERVICE_NAME);
+      const evmService = await runtime.getService(EVM_SERVICE_NAME);
 
       if (!evmService) {
         logger.warn("EVM service not found, falling back to direct fetching");
@@ -486,7 +489,8 @@ export const evmWalletProvider: Provider = {
         },
       };
     } catch (error) {
-      logger.error("Error in EVM wallet provider:", error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error in EVM wallet provider: ${errMsg}`);
       throw error;
     }
   },

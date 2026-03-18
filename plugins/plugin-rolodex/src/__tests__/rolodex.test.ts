@@ -1,47 +1,50 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { RolodexService } from '../services/RolodexService';
 import { FollowUpService } from '../services/FollowUpService';
 import { calculateRelationshipStrength } from '../utils/relationshipStrength';
 import { stringToUuid } from '@elizaos/core';
 
+let rolodexService: RolodexService;
+
 // Mock the runtime
 const mockRuntime = {
   agentId: stringToUuid('test-agent'),
-  getEntity: mock(() => Promise.resolve({})),
-  getEntityById: mock(() => Promise.resolve({})),
-  updateEntity: mock(() => Promise.resolve({})),
-  getRelationships: mock(() => Promise.resolve([])),
-  getRelationshipsByEntityIds: mock(() => Promise.resolve([])),
-  saveRelationships: mock(() => Promise.resolve({})),
-  getTasks: mock(() => Promise.resolve([])),
-  getTask: mock(() => Promise.resolve(null)),
-  createTask: mock((task) => Promise.resolve({
-    ...task,
+  getEntity: vi.fn(() => Promise.resolve({})),
+  getEntityById: vi.fn(() => Promise.resolve({})),
+  updateEntity: vi.fn(() => Promise.resolve({})),
+  getRelationships: vi.fn(() => Promise.resolve([])),
+  getRelationshipsByEntityIds: vi.fn(() => Promise.resolve([])),
+  saveRelationships: vi.fn(() => Promise.resolve({})),
+  getTasks: vi.fn(() => Promise.resolve([])),
+  getTask: vi.fn(() => Promise.resolve(null)),
+  createTask: vi.fn((task: unknown) => Promise.resolve({
+    ...(task as object),
     id: stringToUuid(`task-${Date.now()}`),
     createdAt: Date.now(),
   })),
-  updateTask: mock(() => Promise.resolve({})),
-  getMemoriesByRoomIds: mock(() => Promise.resolve([])),
-  getMemories: mock(() => Promise.resolve([])),
-  createMemory: mock(() => Promise.resolve({})),
-  updateRelationship: mock(() => Promise.resolve({})),
-  messageHistory: [],
-  getService: mock((name) => {
+  updateTask: vi.fn(() => Promise.resolve({})),
+  getMemoriesByRoomIds: vi.fn(() => Promise.resolve([])),
+  getMemories: vi.fn(() => Promise.resolve([])),
+  createMemory: vi.fn(() => Promise.resolve({})),
+  updateRelationship: vi.fn(() => Promise.resolve({})),
+  messageHistory: [] as unknown[],
+  getService: vi.fn((name: string) => {
     if (name === 'rolodex') return rolodexService;
     return null;
   }),
-  // Add missing methods
-  getRooms: mock(() => Promise.resolve([])),
-  getEntitiesForRoom: mock(() => Promise.resolve([])),
-  getComponents: mock(() => Promise.resolve([])),
-  createComponent: mock(() => Promise.resolve({})),
-  updateComponent: mock(() => Promise.resolve({})),
-  emitEvent: mock(() => Promise.resolve({})),
-  registerTaskWorker: mock(() => { }),
-  getTaskWorker: mock(() => null),
+  getRooms: vi.fn(() => Promise.resolve([])),
+  getEntitiesForRoom: vi.fn(() => Promise.resolve([])),
+  getComponents: vi.fn(() => Promise.resolve([])),
+  createComponent: vi.fn(() => Promise.resolve({})),
+  updateComponent: vi.fn(() => Promise.resolve({})),
+  emitEvent: vi.fn(() => Promise.resolve({})),
+  registerTaskWorker: vi.fn(() => {}),
+  getTaskWorker: vi.fn(() => null),
+  getServiceLoadPromise: vi.fn((name: string) => {
+    if (name === 'rolodex') return Promise.resolve(rolodexService);
+    return Promise.resolve(null);
+  }),
 };
-
-let rolodexService: RolodexService; // Declare at module level
 
 describe('RolodexService', () => {
   beforeEach(() => {
@@ -270,7 +273,7 @@ describe('FollowUpService', () => {
 
     // Mock the RolodexService for FollowUpService
     mockRolodexService = {
-      getContact: mock(() => Promise.resolve({
+      getContact: vi.fn(() => Promise.resolve({
         entityId: stringToUuid('test-entity'),
         categories: ['friend'],
         tags: [],
@@ -279,12 +282,12 @@ describe('FollowUpService', () => {
         privacyLevel: 'private',
         lastModified: new Date().toISOString(),
       })),
-      searchContacts: mock(() => Promise.resolve([])),
-      updateContact: mock(() => Promise.resolve({})),
+      searchContacts: vi.fn(() => Promise.resolve([])),
+      updateContact: vi.fn(() => Promise.resolve({})),
     };
 
     // Mock the runtime to return the RolodexService
-    mockRuntime.getService = mock((name: string) => {
+    mockRuntime.getService = vi.fn((name: string) => {
       if (name === 'rolodex') return mockRolodexService as any;
       return null;
     });
@@ -413,7 +416,7 @@ describe('FollowUpService', () => {
       expect(contact).toBeDefined();
 
       // Mock searchContacts to return the contact for getFollowUpSuggestions
-      mockRolodexService.searchContacts = mock(() => Promise.resolve([
+      mockRolodexService.searchContacts = vi.fn(() => Promise.resolve([
         {
           entityId,
           categories: ['friend'],
@@ -433,7 +436,7 @@ describe('FollowUpService', () => {
       });
 
       // Mock getRelationshipInsights to return needs attention
-      mockRolodexService.getRelationshipInsights = mock(() => Promise.resolve({
+      mockRolodexService.getRelationshipInsights = vi.fn(() => Promise.resolve({
         strongestRelationships: [],
         needsAttention: [
           {
@@ -449,7 +452,7 @@ describe('FollowUpService', () => {
       }));
 
       // Mock analyzeRelationship
-      mockRolodexService.analyzeRelationship = mock(() => Promise.resolve({
+      mockRolodexService.analyzeRelationship = vi.fn(() => Promise.resolve({
         strength: 60,
         interactionCount: 5,
         lastInteractionAt: new Date(Date.now() - 35 * 86400000).toISOString(),

@@ -11,10 +11,6 @@ import {
 } from "@elizaos/core";
 import type { AutonomyService } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import anthropicPlugin from "@elizaos/plugin-anthropic";
-import googleGenAIPlugin from "@elizaos/plugin-google-genai";
-import groqPlugin from "@elizaos/plugin-groq";
-import XAIPlugin from "@elizaos/plugin-xai";
 import sqlPlugin from "@elizaos/plugin-sql";
 import polymarketPlugin from "@elizaos/plugin-polymarket";
 import { Wallet } from "@ethersproject/wallet";
@@ -493,18 +489,48 @@ function resolveRuntimeModel(provider: LlmProvider | null): string | null {
   });
 }
 
-function buildLlmPlugins(provider: LlmProvider | null): Array<typeof openaiPlugin> {
-  if (!provider) return [openaiPlugin];
+async function buildLlmPlugins(
+  provider: LlmProvider | null
+): Promise<Array<typeof openaiPlugin>> {
+  if (!provider || provider === "openai") return [openaiPlugin];
+  // Note: dynamic imports allow for optional plugins, preventing failures if not installed
   switch (provider) {
-    case "anthropic":
-      return [anthropicPlugin];
-    case "gemini":
-      return [googleGenAIPlugin];
-    case "groq":
-      return [groqPlugin];
-    case "grok":
-      return [XAIPlugin];
-    case "openai":
+    case "anthropic": {
+      try {
+        const { default: anthropicPlugin } = await import("@elizaos/plugin-anthropic");
+        return [anthropicPlugin];
+      } catch {
+        console.warn("@elizaos/plugin-anthropic not installed, falling back to openai");
+        return [openaiPlugin];
+      }
+    }
+    case "gemini": {
+      try {
+        const { default: googleGenAIPlugin } = await import("@elizaos/plugin-google-genai");
+        return [googleGenAIPlugin];
+      } catch {
+        console.warn("@elizaos/plugin-google-genai not installed, falling back to openai");
+        return [openaiPlugin];
+      }
+    }
+    case "groq": {
+      try {
+        const { default: groqPlugin } = await import("@elizaos/plugin-groq");
+        return [groqPlugin];
+      } catch {
+        console.warn("@elizaos/plugin-groq not installed, falling back to openai");
+        return [openaiPlugin];
+      }
+    }
+    case "grok": {
+      try {
+        const { default: XAIPlugin } = await import("@elizaos/plugin-xai");
+        return [XAIPlugin];
+      } catch {
+        console.warn("@elizaos/plugin-xai not installed, falling back to openai");
+        return [openaiPlugin];
+      }
+    }
     default:
       return [openaiPlugin];
   }
@@ -555,7 +581,7 @@ async function createRuntimeSession(
   const character = buildCharacter(configBundle);
   const agentId = stringToUuid(character.name ?? "eliza");
   const llmProvider = resolveRuntimeProvider();
-  const llmPlugins = buildLlmPlugins(llmProvider);
+  const llmPlugins = await buildLlmPlugins(llmProvider);
 
   const runtime = new AgentRuntime({
     character,

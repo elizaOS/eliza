@@ -100,7 +100,7 @@ export const rssPlugin: Plugin = {
         {
           name: "rss_test_service_exists",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
-            const service = runtime.getService("RSS");
+            const service = await runtime.getService("RSS");
 
             if (!service) {
               throw new Error("RSS service not found");

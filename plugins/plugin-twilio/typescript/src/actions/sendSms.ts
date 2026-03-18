@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -16,7 +17,7 @@ const sendSmsAction: Action = {
   description: "Send an SMS message to a phone number via Twilio",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     // Check if Twilio service is available
-    const twilioService = runtime.getService(TWILIO_SERVICE_NAME);
+    const twilioService = await runtime.getService(TWILIO_SERVICE_NAME);
     if (!twilioService) {
       logger.error("Twilio service not found");
       return false;
@@ -38,9 +39,9 @@ const sendSmsAction: Action = {
     state?: State,
     options?: any,
     callback?: HandlerCallback
-  ) => {
+  ): Promise<ActionResult> => {
     try {
-      const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+      const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
       if (!twilioService) {
         throw new Error("Twilio service not available");
       }
@@ -89,6 +90,7 @@ const sendSmsAction: Action = {
           success: true,
         });
       }
+      return { success: true };
     } catch (error) {
       logger.error({ error: String(error) }, "Error sending SMS");
       if (callback) {
@@ -97,6 +99,10 @@ const sendSmsAction: Action = {
           success: false,
         });
       }
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
   examples: [

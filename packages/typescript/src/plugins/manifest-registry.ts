@@ -373,7 +373,7 @@ export function loadPluginManifestRegistry(params: {
   for (const candidate of candidates) {
     const manifestRes = loadPluginManifest(candidate.rootDir);
 
-    if (!manifestRes.ok) {
+    if (manifestRes.ok === false) {
       diagnostics.push({
         level: "error",
         message: manifestRes.error,

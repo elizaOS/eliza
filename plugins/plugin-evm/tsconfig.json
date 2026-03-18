@@ -1,0 +1,14 @@
+{
+  "extends": "./typescript/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["typescript/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "typescript/node_modules",
+    "typescript/dist",
+    "typescript/__tests__",
+    "typescript/**/*.test.ts"
+  ]
+}

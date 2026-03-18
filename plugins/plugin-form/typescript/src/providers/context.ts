@@ -94,7 +94,7 @@ export const formContextProvider: Provider = {
     try {
       // Get form service
       // WHY type cast: Runtime returns unknown, we know it's FormService
-      const formService = runtime.getService("FORM") as FormService;
+      const formService = (await runtime.getService("FORM")) as FormService;
       if (!formService) {
         // WHY early return: No form plugin registered or FORM service not available
         return { data: { hasActiveForm: false }, values: { formContext: "" }, text: "" };

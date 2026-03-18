@@ -49,7 +49,7 @@ export const deleteMessageAction: Action = {
     if (source !== "telegram") return false;
     
     // Check if telegram service is available and initialized
-    const telegramService = runtime.getService(TELEGRAM_SERVICE_NAME) as TelegramService | undefined;
+    const telegramService = await runtime.getService(TELEGRAM_SERVICE_NAME) as TelegramService | undefined;
     return telegramService?.isInitialized() ?? false;
   },
 
@@ -60,7 +60,7 @@ export const deleteMessageAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const telegramService = runtime.getService(TELEGRAM_SERVICE_NAME) as
+    const telegramService = await runtime.getService(TELEGRAM_SERVICE_NAME) as
       | TelegramService
       | undefined;
     if (!telegramService) {

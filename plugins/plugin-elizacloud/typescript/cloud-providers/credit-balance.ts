@@ -17,7 +17,7 @@ export const creditBalanceProvider: Provider = {
   position: 91,
 
   async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
-    const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
+    const auth = await runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
     if (!auth?.isAuthenticated()) return { text: "" };
 
     if (cache && Date.now() - cache.at < TTL) return format(cache.value);

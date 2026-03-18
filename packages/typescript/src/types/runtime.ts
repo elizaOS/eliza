@@ -44,6 +44,8 @@ import type { ToolPolicyConfig, ToolProfileId } from "./tools";
 
 export interface IAgentRuntime extends IDatabaseAdapter<object> {
   // Properties
+  /** Database adapter. Set in constructor; required. */
+  adapter: IDatabaseAdapter;
   agentId: UUID;
   character: Character;
   enableAutonomy: boolean;
@@ -59,18 +61,20 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   routes: Route[];
   logger: Logger;
   stateCache: Map<string, State>;
+  /** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. */
+  companionUrl?: string;
 
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;
 
-  initialize(options?: { skipMigrations?: boolean }): Promise<void>;
+  initialize(): Promise<void>;
 
   /** Get the underlying database connection. Type depends on the adapter implementation. */
   getConnection(): Promise<object>;
 
-  getService<T extends Service>(service: ServiceTypeName | string): T | null;
+  getService<T extends Service>(service: ServiceTypeName | string): Promise<T | null>;
 
-  getServicesByType<T extends Service>(service: ServiceTypeName | string): T[];
+  getServicesByType<T extends Service>(service: ServiceTypeName | string): Promise<T[]>;
 
   getAllServices(): Map<ServiceTypeName, Service[]>;
 
@@ -82,8 +86,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
   hasService(serviceType: ServiceTypeName | string): boolean;
 
-  registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
-  
   /**
    * Get the messaging adapter if the current database adapter supports it
    * 
@@ -181,7 +183,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
     providerPolicy?: ToolPolicyConfig;
     worldPolicy?: ToolPolicyConfig;
     roomPolicy?: ToolPolicyConfig;
-  }): Action[];
+  }): Promise<Action[]>;
 
   /**
    * Check if a specific action is allowed by tool policy.
@@ -200,7 +202,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
       worldPolicy?: ToolPolicyConfig;
       roomPolicy?: ToolPolicyConfig;
     },
-  ): { allowed: boolean; reason: string };
+  ): Promise<{ allowed: boolean; reason: string }>;
 
   registerEvaluator(evaluator: Evaluator): void;
 
@@ -210,33 +212,23 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
     source: string,
     world: World,
   ): Promise<void>;
-  ensureConnection({
-    entityId,
-    roomId,
-    metadata,
-    userName,
-    worldName,
-    name,
-    source,
-    channelId,
-    messageServerId,
-    type,
-    worldId,
-    userId,
-  }: {
+  /** Thin wrapper around the standalone ensureConnection(adapter, params). Use the standalone from @elizaos/core for direct adapter access. */
+  ensureConnection(params: {
     entityId: UUID;
     roomId: UUID;
+    worldId?: UUID;
+    worldName?: string;
     userName?: string;
     name?: string;
-    worldName?: string;
     source?: string;
+    type?: ChannelType | string;
     channelId?: string;
     messageServerId?: UUID;
-    type?: ChannelType | string;
-    worldId: UUID;
     userId?: UUID;
     metadata?: Record<string, JsonValue>;
   }): Promise<void>;
+
+  ensureAgentExists(agent: Partial<Agent>): Promise<Agent>;
 
   ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;
 

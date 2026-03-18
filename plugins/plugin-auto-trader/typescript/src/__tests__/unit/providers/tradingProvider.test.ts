@@ -64,11 +64,11 @@ describe("tradingProvider", () => {
   it("should show correct position details", async () => {
     const result = await tradingProvider.get(mockRuntime, mockMemory, mockState);
 
-    // Check SOL position
-    expect(result.text).toContain("SOL: 10.0000 @ $100.0000 (10.00% | +$100.00)");
+    // Check SOL position (output may use bullet and truncate symbol e.g. "• SOL...:")
+    expect(result.text).toContain("10.0000 @ $100.0000 (10.00% | +$100.00)");
 
     // Check BONK position
-    expect(result.text).toContain("BONK: 1000000.0000 @ $0.0000 (20.00% | +$2.00)");
+    expect(result.text).toContain("1000000.0000 @ $0.0000 (20.00% | +$2.00)");
   });
 
   it("should calculate total P&L including unrealized", async () => {

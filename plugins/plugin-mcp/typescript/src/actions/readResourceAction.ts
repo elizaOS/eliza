@@ -75,7 +75,7 @@ export const readResourceAction: Action = {
   description: "Reads a resource from an MCP server",
 
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
-    const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
+    const mcpService = await runtime.getService<McpService>(MCP_SERVICE_NAME);
     if (!mcpService) return false;
 
     const servers = mcpService.getServers();
@@ -97,7 +97,7 @@ export const readResourceAction: Action = {
   ): Promise<ActionResult> => {
     const composedState = await runtime.composeState(message, ["RECENT_MESSAGES", "MCP"]);
 
-    const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
+    const mcpService = await runtime.getService<McpService>(MCP_SERVICE_NAME);
     if (!mcpService) {
       throw new Error("MCP service not available");
     }

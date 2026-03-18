@@ -1,4 +1,4 @@
-import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type { ActionResult, Handler, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { type Address, encodeFunctionData, type Hex, keccak256, stringToHex } from "viem";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
@@ -39,7 +39,7 @@ export class QueueAction {
         value: BigInt(0),
         data: txData as Hex,
         chain: chainConfig,
-      });
+      } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash,
@@ -64,7 +64,7 @@ export class QueueAction {
 export const queueAction = {
   name: spec.name,
   description: spec.description,
-  handler: async (
+  handler: (async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
@@ -116,7 +116,7 @@ export const queueAction = {
         text: `Error: ${errorMessage}`,
       };
     }
-  },
+  }) as Handler,
   template: queueProposalTemplate,
   validate: async (runtime: IAgentRuntime) => {
     const privateKey = runtime.getSetting("EVM_PRIVATE_KEY");

@@ -30,7 +30,7 @@ export const getFeedAction: Action = {
     callback?: HandlerCallback,
     _responses?: Memory[]
   ): Promise<ActionResult> => {
-    const service = runtime.getService("RSS") as RssService;
+    const service = (await runtime.getService("RSS")) as RssService;
     if (!service) {
       runtime.logger.error("RSS service not found");
       callback?.(createMessageReply(runtime, message, "RSS service is not available"));

@@ -1,7 +1,7 @@
-import { mock } from "bun:test";
+import { vi } from "vitest";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 
-type MockFn = ReturnType<typeof mock>;
+type MockFn = ReturnType<typeof vi.fn>;
 
 export interface MockRuntimeOptions {
   agentId?: string;
@@ -19,7 +19,7 @@ export interface MockRuntimeOptions {
  *   so tests can verify that the right data was passed to the LLM
  */
 export function createUseModelMock(schemaResult?: Record<string, unknown>) {
-  return mock((_type: string, opts: Record<string, unknown>) => {
+  return vi.fn((_type: string, opts: Record<string, unknown>) => {
     // Schema-based calls (intent classification, keyword extraction)
     if (opts?.schema) return Promise.resolve(schemaResult || {});
 
@@ -39,15 +39,15 @@ export function createMockRuntime(options: MockRuntimeOptions = {}): IAgentRunti
 
   return {
     agentId: options.agentId || "agent-001",
-    getService: mock((type: string) => services[type] || null),
-    getSetting: mock((key: string) => settings[key] ?? null),
+    getService: vi.fn((type: string) => services[type] || null),
+    getSetting: vi.fn((key: string) => settings[key] ?? null),
     useModel: options.useModel || createUseModelMock(),
-    getCache: mock((key: string) => Promise.resolve(cache[key])),
-    setCache: mock((key: string, value: unknown) => {
+    getCache: vi.fn((key: string) => Promise.resolve(cache[key])),
+    setCache: vi.fn((key: string, value: unknown) => {
       cache[key] = value;
       return Promise.resolve(true);
     }),
-    deleteCache: mock((key: string) => {
+    deleteCache: vi.fn((key: string) => {
       delete cache[key];
       return Promise.resolve(true);
     }),
@@ -76,7 +76,7 @@ export function createMockState(overrides?: Partial<State>): State {
 }
 
 export function createMockCallback() {
-  return mock((_response: { text: string; success?: boolean }) => Promise.resolve([]));
+  return vi.fn((_response: { text: string; success?: boolean }) => Promise.resolve([]));
 }
 
 /**

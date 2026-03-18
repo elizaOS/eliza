@@ -3,7 +3,7 @@
  * Converted from tests/tools/test_split_string.py
  */
 
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it } from "vitest";
 import {
   Flake8ErrorClass,
   formatFlake8Output,

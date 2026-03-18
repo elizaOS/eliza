@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -16,7 +17,7 @@ const sendMmsAction: Action = {
   description: "Send an MMS (multimedia message) with images, audio, or video via Twilio",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     // Check if Twilio service is available
-    const twilioService = runtime.getService(TWILIO_SERVICE_NAME);
+    const twilioService = await runtime.getService(TWILIO_SERVICE_NAME);
     if (!twilioService) {
       logger.error("Twilio service not found");
       return false;
@@ -45,9 +46,9 @@ const sendMmsAction: Action = {
     state?: State,
     options?: any,
     callback?: HandlerCallback
-  ) => {
+  ): Promise<ActionResult> => {
     try {
-      const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+      const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
       if (!twilioService) {
         throw new Error("Twilio service not available");
       }
@@ -102,6 +103,7 @@ const sendMmsAction: Action = {
           success: true,
         });
       }
+      return { success: true };
     } catch (error) {
       logger.error({ error: String(error) }, "Error sending MMS");
       if (callback) {
@@ -110,6 +112,10 @@ const sendMmsAction: Action = {
           success: false,
         });
       }
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
   examples: [

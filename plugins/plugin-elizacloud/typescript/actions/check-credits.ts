@@ -26,7 +26,7 @@ export const checkCloudCreditsAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime): Promise<boolean> {
-    return !!(runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined)?.isAuthenticated();
+    return !!(await runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined)?.isAuthenticated();
   },
 
   async handler(
@@ -36,8 +36,8 @@ export const checkCloudCreditsAction: Action = {
     options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> {
-    const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService;
-    const containerSvc = runtime.getService("CLOUD_CONTAINER") as CloudContainerService | undefined;
+    const auth = await runtime.getService("CLOUD_AUTH") as CloudAuthService;
+    const containerSvc = await runtime.getService("CLOUD_CONTAINER") as CloudContainerService | undefined;
     const client = auth.getClient();
 
     const detailed = options?.detailed === true ||

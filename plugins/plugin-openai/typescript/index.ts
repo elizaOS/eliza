@@ -372,4 +372,4 @@ export const openaiPlugin: Plugin = {
   ],
 };
 
-export default openaiPlugin;
+export { openaiPlugin as default };

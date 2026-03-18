@@ -63,7 +63,7 @@ export const postCommentAction: Action = {
     }
 
     // Check if Instagram service is available
-    const service = runtime.getService(INSTAGRAM_SERVICE_NAME);
+    const service = await runtime.getService(INSTAGRAM_SERVICE_NAME);
     if (!service) {
       return false;
     }
@@ -78,7 +78,7 @@ export const postCommentAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ) {
-    const service = runtime.getService(
+    const service = await runtime.getService(
       INSTAGRAM_SERVICE_NAME,
     ) as InstagramService;
     if (!service || !service.getIsRunning()) {

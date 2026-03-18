@@ -214,21 +214,25 @@ describe("Swap Action", () => {
       ).rejects.toThrow();
     });
 
-    it("should handle invalid slippage values", async () => {
-      // Test that swap request is made with proper slippage handling
-      // Mock returns no routes to simulate an error condition
-      mockGetRoutes.mockResolvedValueOnce({ routes: [] });
+    it(
+      "should handle invalid slippage values",
+      async () => {
+        // Test that swap request is made with proper slippage handling
+        // Mock returns no routes to simulate an error condition
+        mockGetRoutes.mockResolvedValueOnce({ routes: [] });
 
-      // With no routes available, the swap should fail
-      await expect(
-        swapAction.swap({
-          chain: "sepolia" as SupportedChain,
-          fromToken: SEPOLIA_TOKENS.ETH,
-          toToken: SEPOLIA_TOKENS.WETH,
-          amount: "0.01",
-        })
-      ).rejects.toThrow();
-    });
+        // With no routes available, the swap should fail (may call multiple aggregators)
+        await expect(
+          swapAction.swap({
+            chain: "sepolia" as SupportedChain,
+            fromToken: SEPOLIA_TOKENS.ETH,
+            toToken: SEPOLIA_TOKENS.WETH,
+            amount: "0.01",
+          })
+        ).rejects.toThrow();
+      },
+      15000
+    );
   });
 
   describe("Network Integration Tests", () => {

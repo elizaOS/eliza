@@ -13,6 +13,8 @@ import {
   type Character,
   createCharacter,
   createMessageMemory,
+  type IDatabaseAdapter,
+  InMemoryDatabaseAdapter,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -84,9 +86,24 @@ async function initializeRuntime(): Promise<AgentRuntime> {
     console.log("Initializing elizaOS runtime...");
 
     const character = getCharacter();
+    const agentId = stringToUuid(character.name ?? "Eliza");
+    let adapter: IDatabaseAdapter;
+    if (process.env.POSTGRES_URL) {
+      if (!sqlPlugin.adapter) throw new Error("plugin-sql adapter factory required");
+      const out = sqlPlugin.adapter(agentId, {
+        POSTGRES_URL: process.env.POSTGRES_URL,
+        DATABASE_URL: process.env.POSTGRES_URL,
+      });
+      adapter = out instanceof Promise ? await out : (out as IDatabaseAdapter);
+    } else {
+      adapter = new InMemoryDatabaseAdapter();
+    }
+    await adapter.initialize();
+
     runtime = new AgentRuntime({
       character,
       plugins: [sqlPlugin, openaiPlugin],
+      adapter,
     });
 
     await runtime.initialize();

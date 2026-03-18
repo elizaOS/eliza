@@ -1,10 +1,4 @@
-import {
-  type IAgentRuntime,
-  type IDatabaseAdapter,
-  logger,
-  type Plugin,
-  type UUID,
-} from "@elizaos/core";
+import { type IDatabaseAdapter, type Plugin, type UUID } from "@elizaos/core";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
 import { PGliteClientManager } from "./pglite/manager";
 import * as schema from './tables';
@@ -31,28 +25,17 @@ export function createDatabaseAdapter(
   return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
 }
 
+/** Schema-only plugin: contributes migration schemas. Adapter must be created via createDatabaseAdapter() and passed to AgentRuntime constructor. */
 export const plugin: Plugin = {
   name: "@elizaos/plugin-sql",
   description: "A plugin for SQL database access (PGlite WASM in browser).",
   priority: 0,
   schema: schema,
-  init: async (_config, runtime: IAgentRuntime) => {
-    logger.info({ src: "plugin:sql" }, "plugin-sql (browser) init starting");
-
-    try {
-      const isReady = await runtime.isReady();
-      if (isReady) {
-        logger.info(
-          { src: "plugin:sql" },
-          "Database adapter already registered, skipping creation"
-        );
-        return;
-      }
-    } catch (_error) {}
-
-    const dbAdapter = createDatabaseAdapter({}, runtime.agentId);
-    runtime.registerDatabaseAdapter(dbAdapter);
-    logger.info({ src: "plugin:sql" }, "Browser database adapter (PGlite) created and registered");
+  adapter(agentId, settings) {
+    return createDatabaseAdapter(
+      { dataDir: settings.PGLITE_DATA_DIR },
+      agentId,
+    );
   },
 };
 

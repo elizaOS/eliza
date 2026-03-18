@@ -270,7 +270,7 @@ export class RssService extends Service {
       execute: async (runtime) => {
         try {
           logger.debug("Executing RSS feed check task");
-          const rssService = runtime.getService("RSS") as RssService;
+          const rssService = await runtime.getService("RSS") as RssService;
           if (rssService) {
             await rssService.checkAllFeeds();
           }
@@ -345,7 +345,7 @@ export class RssService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(RssService.serviceType);
+    const service = await runtime.getService(RssService.serviceType);
     if (!service) {
       throw new Error(`${RssService.serviceType} service not found`);
     }

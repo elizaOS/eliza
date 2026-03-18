@@ -946,48 +946,57 @@ impl DatabaseAdapter for PostgresAdapter {
         Ok(())
     }
 
-    async fn get_memories_by_world_id(
+    async fn get_memories_by_world_ids(
         &self,
-        world_id: &UUID,
-        count: Option<i32>,
+        world_ids: &[UUID],
+        limit: Option<i32>,
         table_name: Option<&str>,
     ) -> Result<Vec<Memory>> {
-        let uuid = uuid::Uuid::parse_str(world_id.as_str())?;
-        let limit = count.map(|c| format!(" LIMIT {}", c)).unwrap_or_default();
+        if world_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let uuids: Vec<uuid::Uuid> = world_ids
+            .iter()
+            .filter_map(|id| uuid::Uuid::parse_str(id.as_str()).ok())
+            .collect();
+        if uuids.is_empty() {
+            return Ok(vec![]);
+        }
+        let limit_clause = limit.map(|c| format!(" LIMIT {}", c)).unwrap_or_default();
 
         let query = if let Some(table) = table_name {
             format!(
                 r#"
                 SELECT id, type, created_at, content, entity_id, agent_id,
                        room_id, world_id, "unique", metadata
-                FROM memories WHERE world_id = $1 AND type = $2
+                FROM memories WHERE world_id = ANY($1) AND type = $2
                 ORDER BY created_at DESC
                 {}
                 "#,
-                limit
+                limit_clause
             )
         } else {
             format!(
                 r#"
                 SELECT id, type, created_at, content, entity_id, agent_id,
                        room_id, world_id, "unique", metadata
-                FROM memories WHERE world_id = $1
+                FROM memories WHERE world_id = ANY($1)
                 ORDER BY created_at DESC
                 {}
                 "#,
-                limit
+                limit_clause
             )
         };
 
         let rows = if table_name.is_some() {
             sqlx::query(&query)
-                .bind(uuid)
+                .bind(&uuids)
                 .bind(table_name.unwrap())
                 .fetch_all(self.manager.get_pool())
                 .await?
         } else {
             sqlx::query(&query)
-                .bind(uuid)
+                .bind(&uuids)
                 .fetch_all(self.manager.get_pool())
                 .await?
         };

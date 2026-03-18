@@ -14,10 +14,10 @@ export const containerHealthProvider: Provider = {
   private: true,
 
   async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
-    const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
+    const auth = await runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
     if (!auth?.isAuthenticated()) return { text: "" };
 
-    const svc = runtime.getService("CLOUD_CONTAINER") as CloudContainerService | undefined;
+    const svc = await runtime.getService("CLOUD_CONTAINER") as CloudContainerService | undefined;
     const running = svc?.getTrackedContainers().filter((c) => c.status === "running") ?? [];
     if (running.length === 0) return { text: "No running containers.", values: { healthyContainers: 0 } };
 

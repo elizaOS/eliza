@@ -163,8 +163,8 @@ export interface MessagingAdapter {
   /** Channel this adapter handles */
   channel: MessagingChannel;
 
-  /** Whether the adapter is currently available */
-  isAvailable(): boolean;
+  /** Whether the adapter is currently available (may be async when checking runtime services) */
+  isAvailable(): boolean | Promise<boolean>;
 
   /** Send a message */
   send(params: SendMessageParams): Promise<SendMessageResult>;

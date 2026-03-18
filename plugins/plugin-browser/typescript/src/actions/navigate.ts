@@ -34,7 +34,7 @@ export const browserNavigateAction: Action = {
       return false;
     }
 
-    const service = runtime.getService<BrowserService>(ServiceType.BROWSER);
+    const service = await runtime.getService<BrowserService>(ServiceType.BROWSER);
     if (!service) {
       return false;
     }
@@ -51,7 +51,7 @@ export const browserNavigateAction: Action = {
     callback?: HandlerCallback,
     _responses?: Memory[]
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<BrowserService>(ServiceType.BROWSER);
+    const service = await runtime.getService<BrowserService>(ServiceType.BROWSER);
     if (!service) {
       const error = new ServiceNotAvailableError();
       handleBrowserError(

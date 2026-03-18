@@ -39,7 +39,7 @@ export const userContextProvider: Provider = {
     }
 
     const twitchService =
-      runtime.getService<TwitchService>(TWITCH_SERVICE_NAME);
+      await runtime.getService<TwitchService>(TWITCH_SERVICE_NAME);
 
     if (!twitchService || !twitchService.isConnected()) {
       return {

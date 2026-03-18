@@ -1,6 +1,6 @@
-import { describe, expect, mock, test } from "bun:test";
-import { getExecutionsAction } from "../../../workflow/actions/getExecutions";
-import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../workflow/services/n8n-workflow-service";
+import { describe, expect, test, vi } from "vitest";
+import { getExecutionsAction } from "../../../../workflow/actions/getExecutions";
+import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../../workflow/services/n8n-workflow-service";
 import { createExecution, createMatchResult, createNoMatchResult } from "../../fixtures/workflows";
 import {
   createMockCallback,
@@ -20,7 +20,7 @@ function createRuntimeWithMatchingWorkflow(
   serviceOverrides?: Record<string, unknown>
 ) {
   const mockService = createMockService(serviceOverrides);
-  const useModel = mock(() => Promise.resolve(matchResult));
+  const useModel = vi.fn(() => Promise.resolve(matchResult));
   return {
     runtime: createMockRuntime({
       services: { [N8N_WORKFLOW_SERVICE_TYPE]: mockService },
@@ -49,7 +49,7 @@ describe("GET_N8N_EXECUTIONS action", () => {
 
   test("fails when no workflows exist", async () => {
     const mockService = createMockService({
-      listWorkflows: mock(() => Promise.resolve([])),
+      listWorkflows: vi.fn(() => Promise.resolve([])),
     });
     const runtime = createMockRuntime({
       services: { [N8N_WORKFLOW_SERVICE_TYPE]: mockService },
@@ -88,7 +88,7 @@ describe("GET_N8N_EXECUTIONS action", () => {
 
   test("handles empty execution list", async () => {
     const { runtime } = createRuntimeWithMatchingWorkflow(createMatchResult(), {
-      getWorkflowExecutions: mock(() => Promise.resolve([])),
+      getWorkflowExecutions: vi.fn(() => Promise.resolve([])),
     });
     const callback = createMockCallback();
 
@@ -106,7 +106,7 @@ describe("GET_N8N_EXECUTIONS action", () => {
 
   test("formats execution status correctly", async () => {
     const { runtime } = createRuntimeWithMatchingWorkflow(createMatchResult(), {
-      getWorkflowExecutions: mock(() =>
+      getWorkflowExecutions: vi.fn(() =>
         Promise.resolve([
           createExecution({ status: "success" }),
           createExecution({
