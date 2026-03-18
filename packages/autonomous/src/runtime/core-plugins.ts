@@ -19,7 +19,6 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-shell", // shell command execution
   "@elizaos/plugin-plugin-manager", // dynamic plugin management
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
-  "@elizaos/plugin-pdf", // PDF processing
   "@elizaos/plugin-trust", // trust scoring and policy signals
   "@elizaos/plugin-todo", // todo/task management
   "@elizaos/plugin-personality", // personality coherence
@@ -31,6 +30,7 @@ export const CORE_PLUGINS: readonly string[] = [
  * Not loaded by default — require explicit configuration or have platform dependencies.
  */
 export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
   "@elizaos/plugin-code", // code writing and file operations
