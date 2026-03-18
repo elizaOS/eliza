@@ -86,6 +86,7 @@ describe("Transfer Action", () => {
       expect(parseFloat(transferParams.amount)).toBeGreaterThan(0);
     });
 
+    // Note: this test ensures proper error handling for insufficient balance cases
     it(
       "should handle insufficient funds gracefully",
       async () => {
