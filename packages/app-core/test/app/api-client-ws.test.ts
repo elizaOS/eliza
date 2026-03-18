@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { MiladyClient } from "@elizaos/app-core/api";
+import { ElizaClient } from "@elizaos/app-core/api";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 class ControlledWebSocket {
@@ -42,7 +42,7 @@ class ControlledWebSocket {
   }
 }
 
-describe("MiladyClient websocket queue", () => {
+describe("ElizaClient websocket queue", () => {
   const originalWebSocket = globalThis.WebSocket;
 
   beforeEach(() => {
@@ -64,7 +64,7 @@ describe("MiladyClient websocket queue", () => {
   });
 
   it("queues outbound messages until websocket is open", () => {
-    const client = new MiladyClient("http://localhost:3137");
+    const client = new ElizaClient("http://localhost:3137");
     client.sendWsMessage({ type: "ping" });
 
     expect(ControlledWebSocket.instances).toHaveLength(1);
@@ -77,7 +77,7 @@ describe("MiladyClient websocket queue", () => {
   });
 
   it("keeps only the newest queued active-conversation update", () => {
-    const client = new MiladyClient("http://localhost:3137");
+    const client = new ElizaClient("http://localhost:3137");
     client.sendWsMessage({
       type: "active-conversation",
       conversationId: "conv-1",

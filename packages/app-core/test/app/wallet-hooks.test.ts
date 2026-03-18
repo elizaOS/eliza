@@ -43,7 +43,7 @@ function makeTrade(
     tokenAddress: VALID_TOKEN,
     amount: "0.01",
     inputSymbol: "BNB",
-    outputSymbol: "MILADY",
+    outputSymbol: "ELIZA",
     createdAt: Date.now(),
     status: "pending",
     confirmations: 0,

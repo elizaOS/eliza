@@ -88,7 +88,7 @@ describe("Agent CRUD", () => {
 
     // Verify correct URL and auth header
     const [url, opts] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("https://test.elizacloud.ai/api/v1/milady/agents");
+    expect(String(url)).toBe("https://test.elizacloud.ai/api/v1/eliza/agents");
     expect((opts?.headers as Record<string, string>)["X-Api-Key"]).toBe(
       "eliza_testkey",
     );

@@ -23,7 +23,7 @@ export const CONNECTOR_IDS = [
   "twitch",
 ] as const;
 
-import { MiladySchema } from "./zod-schema";
+import { ElizaSchema } from "./zod-schema";
 
 export type ShowIfCondition = {
   field: string;
@@ -84,7 +84,7 @@ export type ConfigUiHint = {
 
 export type ConfigUiHints = Record<string, ConfigUiHint>;
 
-export type ConfigSchema = ReturnType<typeof MiladySchema.toJSONSchema>;
+export type ConfigSchema = ReturnType<typeof ElizaSchema.toJSONSchema>;
 
 type JsonSchemaNode = Record<string, unknown>;
 
@@ -514,7 +514,7 @@ const FIELD_LABELS: Record<string, string> = {
 const FIELD_HELP: Record<string, string> = {
   "meta.onboardingComplete":
     "Explicit onboarding completion marker used to keep the app out of onboarding until reset.",
-  "meta.lastTouchedVersion": "Auto-set when Milady writes the config.",
+  "meta.lastTouchedVersion": "Auto-set when Eliza writes the config.",
   "meta.lastTouchedAt": "ISO timestamp of the last config write (auto-set).",
   "update.channel":
     'Update channel for git + npm installs ("stable", "beta", or "dev").',
@@ -539,7 +539,7 @@ const FIELD_HELP: Record<string, string> = {
     "Required by default for gateway access (unless using Tailscale Serve identity); required for non-loopback binds.",
   "gateway.auth.password": "Required for Tailscale funnel.",
   "gateway.controlUi.basePath":
-    "Optional URL prefix where the Control UI is served (e.g. /milady).",
+    "Optional URL prefix where the Control UI is served (e.g. /eliza).",
   "gateway.controlUi.root":
     "Optional filesystem root for Control UI assets (defaults to dist/control-ui).",
   "gateway.controlUi.allowedOrigins":
@@ -746,7 +746,7 @@ const FIELD_HELP: Record<string, string> = {
     "Minutes of inactivity before unloading the embedding model from memory (default: 30, 0 = never unload).",
   memory: "Memory backend configuration (global).",
   "memory.backend":
-    'Memory backend ("builtin" for Milady embeddings, "qmd" for QMD sidecar).',
+    'Memory backend ("builtin" for Eliza embeddings, "qmd" for QMD sidecar).',
   "memory.citations": 'Default citation behavior ("auto", "on", or "off").',
   "memory.qmd.command": "Path to the qmd binary (default: resolves from PATH).",
   "memory.qmd.includeDefaultMemory":
@@ -807,7 +807,7 @@ const FIELD_HELP: Record<string, string> = {
   "plugins.entries.*.config":
     "Plugin-defined config payload (schema is provided by the plugin).",
   "plugins.installs":
-    "CLI-managed install metadata (used by `milady plugins update` to locate install sources).",
+    "CLI-managed install metadata (used by `eliza plugins update` to locate install sources).",
   "plugins.installs.*.source": 'Install source ("npm", "archive", or "path").',
   "plugins.installs.*.spec":
     "Original npm spec used for install (if source is npm).",
@@ -962,13 +962,13 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
   "gateway.remote.url": "ws://host:18789",
   "gateway.remote.tlsFingerprint": "sha256:ab12cd34…",
   "gateway.remote.sshTarget": "user@host",
-  "gateway.controlUi.basePath": "/milady",
+  "gateway.controlUi.basePath": "/eliza",
   "gateway.controlUi.root": "dist/control-ui",
   "gateway.controlUi.allowedOrigins": "https://control.example.com",
   "connectors.mattermost.baseUrl": "https://chat.example.com",
   "connectors.retake.apiUrl": "https://retake.tv/api/v1",
   "connectors.retake.captureUrl": "http://127.0.0.1:2138",
-  "agents.list[].identity.avatar": "avatars/milady.png",
+  "agents.list[].identity.avatar": "avatars/eliza.png",
 };
 
 const SENSITIVE_PATTERNS = [/token/i, /password/i, /secret/i, /api.?key/i];
@@ -1298,11 +1298,11 @@ function buildBaseConfigSchema(): ConfigSchemaResponse {
   if (cachedBase) {
     return cachedBase;
   }
-  const schema = MiladySchema.toJSONSchema({
+  const schema = ElizaSchema.toJSONSchema({
     target: "draft-07",
     unrepresentable: "any",
   });
-  schema.title = "MiladyConfig";
+  schema.title = "ElizaConfig";
   const hints = applySensitiveHints(buildBaseHints());
   const next = {
     schema: stripConnectorSchema(schema),

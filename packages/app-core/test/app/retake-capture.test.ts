@@ -23,7 +23,7 @@ describe("useRetakeCapture", () => {
   const mockStop = vi.fn().mockResolvedValue(undefined);
 
   beforeEach(() => {
-    Object.defineProperty(window, "__MILADY_ELECTROBUN_RPC__", {
+    Object.defineProperty(window, "__ELIZA_ELECTROBUN_RPC__", {
       value: {
         request: {
           screencaptureStartFrameCapture: mockStart,
@@ -42,7 +42,7 @@ describe("useRetakeCapture", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     // @ts-expect-error cleanup rpc stub
-    delete window.__MILADY_ELECTROBUN_RPC__;
+    delete window.__ELIZA_ELECTROBUN_RPC__;
   });
 
   it("does not start capture when active is false", () => {

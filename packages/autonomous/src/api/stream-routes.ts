@@ -57,7 +57,7 @@ export type { StreamRouteState } from "./stream-route-state";
  *  - Electron screencapture module (capturePage → JPEG)
  *  - Any client POSTing raw JPEG bytes
  */
-const MJPEG_BOUNDARY = "miladyframe";
+const MJPEG_BOUNDARY = "elizaframe";
 
 const mjpegSubscribers = new Set<ServerResponse>();
 let latestFrame: Buffer | null = null;

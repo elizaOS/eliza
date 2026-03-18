@@ -4,7 +4,7 @@
  * Tests for:
  * - loadHooks orchestration (disabled, clears hooks, skips ineligible/disabled/no-events, registers)
  * - Path safety (legacy handlers under/outside allowed roots)
- * - Config extraDirs safety (must be under ~/.milady/)
+ * - Config extraDirs safety (must be under ~/.eliza/)
  */
 
 import { mkdir, rm, writeFile } from "node:fs/promises";
@@ -21,7 +21,7 @@ import {
   vi,
 } from "vitest";
 import type { InternalHooksConfig } from "../config/types.hooks";
-import type { HookEntry, MiladyHookMetadata } from "./types";
+import type { HookEntry, ElizaHookMetadata } from "./types";
 
 // ---------------------------------------------------------------------------
 // mocks
@@ -104,7 +104,7 @@ function makeEntry(
     source?: HookEntry["hook"]["source"];
   } = {},
 ): HookEntry {
-  const metadata: MiladyHookMetadata | undefined =
+  const metadata: ElizaHookMetadata | undefined =
     opts.events !== undefined
       ? {
           events: opts.events,
@@ -118,7 +118,7 @@ function makeEntry(
     hook: {
       name,
       description: `${name} description`,
-      source: opts.source ?? "milady-bundled",
+      source: opts.source ?? "eliza-bundled",
       filePath: `/fake/hooks/${name}/HOOK.md`,
       baseDir: `/fake/hooks/${name}`,
       handlerPath: opts.handlerPath ?? `/fake/hooks/${name}/handler.ts`,

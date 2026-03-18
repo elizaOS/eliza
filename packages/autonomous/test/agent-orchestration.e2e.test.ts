@@ -48,7 +48,7 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
 const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
 const hasGroq = Boolean(process.env.GROQ_API_KEY);
-const liveModelTestsEnabled = process.env.MILADY_LIVE_TEST === "1";
+const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
 const hasModelProvider =
   liveModelTestsEnabled && (hasOpenAI || hasAnthropic || hasGroq);
 
@@ -1396,11 +1396,11 @@ describe.skipIf(!hasModelProvider)(
     let server: { port: number; close: () => Promise<void> } | null = null;
 
     const pgliteDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "milady-e2e-orchestrator-pglite-"),
+      path.join(os.tmpdir(), "eliza-e2e-orchestrator-pglite-"),
     );
 
     beforeAll(async () => {
-      process.env.LOG_LEVEL = process.env.MILADY_E2E_LOG_LEVEL ?? "error";
+      process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
       process.env.PGLITE_DATA_DIR = pgliteDir;
 
       const secrets: Record<string, string> = {};

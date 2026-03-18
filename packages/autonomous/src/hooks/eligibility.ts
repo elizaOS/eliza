@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { platform } from "node:os";
 import { delimiter, extname, isAbsolute, join } from "node:path";
 import type { HookConfig, InternalHooksConfig } from "../config/types.hooks";
-import type { MiladyHookMetadata } from "./types";
+import type { ElizaHookMetadata } from "./types";
 
 function binaryExists(name: string): boolean {
   const pathExts =
@@ -76,9 +76,9 @@ export interface EligibilityResult {
 }
 
 export function checkEligibility(
-  metadata: MiladyHookMetadata | undefined,
+  metadata: ElizaHookMetadata | undefined,
   hookConfig: HookConfig | undefined,
-  miladyConfig: Record<string, unknown> = {},
+  elizaConfig: Record<string, unknown> = {},
 ): EligibilityResult {
   const missing: string[] = [];
 
@@ -129,7 +129,7 @@ export function checkEligibility(
 
   if (metadata.requires?.config) {
     for (const configPath of metadata.requires.config) {
-      if (!isConfigPathTruthy(miladyConfig, configPath)) {
+      if (!isConfigPathTruthy(elizaConfig, configPath)) {
         missing.push(`Config missing: ${configPath}`);
       }
     }

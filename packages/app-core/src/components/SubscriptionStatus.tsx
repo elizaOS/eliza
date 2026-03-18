@@ -314,7 +314,7 @@ export function SubscriptionStatus({
           : msg,
       );
     } catch (err) {
-      console.warn("[milady] OpenAI exchange failed", err);
+      console.warn("[eliza] OpenAI exchange failed", err);
       setOpenaiError(t("onboarding.networkError"));
     } finally {
       openaiExchangeBusyRef.current = false;

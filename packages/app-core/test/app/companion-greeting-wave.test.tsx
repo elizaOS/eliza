@@ -39,7 +39,7 @@ const { mockClient } = vi.hoisted(() => ({
       },
       greeting: {
         text: "hello there",
-        agentName: "Milady",
+        agentName: "Eliza",
         generated: true,
         persisted: true,
       },
@@ -56,7 +56,7 @@ const { mockClient } = vi.hoisted(() => ({
     })),
     requestGreeting: vi.fn(async () => ({
       text: "hello there",
-      agentName: "Milady",
+      agentName: "Eliza",
       generated: true,
       persisted: true,
     })),
@@ -103,7 +103,7 @@ const { mockClient } = vi.hoisted(() => ({
     })),
     getStatus: vi.fn(async () => ({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -226,7 +226,7 @@ describe("companion greeting wave", () => {
       },
       greeting: {
         text: "hello there",
-        agentName: "Milady",
+        agentName: "Eliza",
         generated: true,
         persisted: true,
       },
@@ -243,7 +243,7 @@ describe("companion greeting wave", () => {
     });
     mockClient.requestGreeting.mockResolvedValue({
       text: "hello there",
-      agentName: "Milady",
+      agentName: "Eliza",
       generated: true,
       persisted: true,
     });
@@ -290,7 +290,7 @@ describe("companion greeting wave", () => {
     });
     mockClient.getStatus.mockResolvedValue({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,

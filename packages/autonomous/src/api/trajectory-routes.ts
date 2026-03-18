@@ -1,5 +1,5 @@
 /**
- * Trajectory API routes for the Milady Control UI.
+ * Trajectory API routes for the Eliza Control UI.
  *
  * Provides endpoints for:
  * - Listing and searching trajectories

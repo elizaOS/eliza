@@ -20,7 +20,7 @@ const { mockClient } = vi.hoisted(() => ({
       startup: {
         phase: "initializing-agent",
         attempt: 1,
-        lastError: "Bundled avatar MILADY-01 could not be loaded.",
+        lastError: "Bundled avatar ELIZA-01 could not be loaded.",
       },
       pendingRestart: false,
       pendingRestartReasons: [],
@@ -76,7 +76,7 @@ describe("startup failure: bundled assets missing", () => {
       startup: {
         phase: "initializing-agent",
         attempt: 1,
-        lastError: "Bundled avatar MILADY-01 could not be loaded.",
+        lastError: "Bundled avatar ELIZA-01 could not be loaded.",
       },
       pendingRestart: false,
       pendingRestartReasons: [],
@@ -116,7 +116,7 @@ describe("startup failure: bundled assets missing", () => {
       "Required companion assets could not be loaded",
     );
     expect(latest?.startupError?.detail).toContain(
-      "Bundled avatar MILADY-01 could not be loaded",
+      "Bundled avatar ELIZA-01 could not be loaded",
     );
 
     await act(async () => {

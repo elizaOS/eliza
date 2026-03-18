@@ -186,7 +186,7 @@ directory:
 ## Configuration
 
 Agent configuration is managed through \`~/.eliza/eliza.json\`
-or the Milady Control UI.
+or the Eliza Control UI.
 `,
 };
 

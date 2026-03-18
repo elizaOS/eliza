@@ -63,7 +63,7 @@ vi.mock("./validate-url", () => {
   };
 });
 
-import type { CloudConfig } from "../config/types.milady";
+import type { CloudConfig } from "../config/types.eliza";
 import { CloudManager } from "./cloud-manager";
 
 afterEach(() => {

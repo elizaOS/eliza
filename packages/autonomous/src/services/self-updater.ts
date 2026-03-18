@@ -7,10 +7,10 @@ import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ReleaseChannel } from "../config/types.milady";
+import type { ReleaseChannel } from "../config/types.eliza";
 import { CHANNEL_DIST_TAGS } from "./update-checker";
 
-const NPM_PACKAGE_NAME = "miladyai";
+const NPM_PACKAGE_NAME = "elizaos";
 
 export type InstallMethod =
   | "npm-global"
@@ -60,23 +60,23 @@ function isLocalDev(): boolean {
 }
 
 export function detectInstallMethod(): InstallMethod {
-  const miladyBin = whichSync("milady");
+  const elizaBin = whichSync("eliza");
 
-  if (!miladyBin) {
+  if (!elizaBin) {
     return isLocalDev() ? "local-dev" : "unknown";
   }
 
   let resolved: string;
   try {
-    resolved = fs.realpathSync(miladyBin);
+    resolved = fs.realpathSync(elizaBin);
   } catch {
-    resolved = miladyBin;
+    resolved = elizaBin;
   }
 
   if (resolved.includes("/Cellar/") || resolved.includes("/homebrew/"))
     return "homebrew";
   if (resolved.includes("/snap/")) return "snap";
-  if (resolved.includes("/flatpak/") || resolved.includes("ai.milady.Milady"))
+  if (resolved.includes("/flatpak/") || resolved.includes("ai.eliza.Eliza"))
     return "flatpak";
   if (resolved.startsWith("/usr/") && !resolved.includes("node_modules"))
     return "apt";
@@ -98,14 +98,14 @@ export function buildUpdateCommand(
     case "bun-global":
       return { command: "bun", args: ["install", "-g", spec] };
     case "homebrew":
-      return { command: "brew", args: ["upgrade", "milady"] };
+      return { command: "brew", args: ["upgrade", "eliza"] };
     case "snap": {
       // nightly → edge (snap doesn't have a "nightly" channel)
       const snapCh =
         channel === "nightly" ? "edge" : channel === "beta" ? "beta" : "stable";
       return {
         command: "sudo",
-        args: ["snap", "refresh", "milady", `--channel=${snapCh}`],
+        args: ["snap", "refresh", "eliza", `--channel=${snapCh}`],
       };
     }
     case "apt":
@@ -113,11 +113,11 @@ export function buildUpdateCommand(
         command: "sh",
         args: [
           "-c",
-          "sudo apt-get update && sudo apt-get install --only-upgrade -y milady",
+          "sudo apt-get update && sudo apt-get install --only-upgrade -y eliza",
         ],
       };
     case "flatpak":
-      return { command: "flatpak", args: ["update", "ai.milady.Milady"] };
+      return { command: "flatpak", args: ["update", "ai.eliza.Eliza"] };
     case "local-dev":
       return null;
     case "unknown":
@@ -154,13 +154,13 @@ function runCommand(
 
 function readPostUpdateVersion(): string | null {
   try {
-    const output = execSync("milady --version", {
+    const output = execSync("eliza --version", {
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 10_000,
     })
       .toString()
       .trim();
-    // Version output may include a prefix like "milady/2.0.0"
+    // Version output may include a prefix like "eliza/2.0.0"
     const match = output.match(/(\d+\.\d+\.\d+(?:-[\w.]+)?)/);
     return match?.[1] ?? null;
   } catch {

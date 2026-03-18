@@ -77,7 +77,7 @@ export function CommandPalette() {
     return allCommands.filter((cmd) => cmd.label.toLowerCase().includes(query));
   }, [allCommands, commandQuery]);
 
-  // Listen for milady:command-palette from main.tsx (electron shortcut Cmd/Ctrl+K)
+  // Listen for eliza:command-palette from main.tsx (electron shortcut Cmd/Ctrl+K)
   useEffect(() => {
     const toggle = () => {
       setState("commandPaletteOpen", !commandPaletteOpen);

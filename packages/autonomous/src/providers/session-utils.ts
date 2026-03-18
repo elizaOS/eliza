@@ -1,5 +1,5 @@
 /**
- * Session utility functions for milady plugin.
+ * Session utility functions for eliza plugin.
  *
  * These are simplified versions for use until @elizaos/core exports them.
  */

@@ -9,7 +9,7 @@ const REASON_LABELS: Record<StartupErrorState["reason"], string> = {
   "asset-missing": "Asset Missing",
 };
 
-const APP_ORIGIN_URL = "https://app.milady.ai";
+const APP_ORIGIN_URL = "https://app.elizaos.ai";
 
 interface StartupFailureViewProps {
   error: StartupErrorState;

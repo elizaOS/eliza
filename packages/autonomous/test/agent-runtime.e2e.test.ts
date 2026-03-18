@@ -1,5 +1,5 @@
 /**
- * Comprehensive E2E tests for the Milady agent runtime.
+ * Comprehensive E2E tests for the Eliza agent runtime.
  *
  * NO MOCKS. Single test file (PGlite constraint). All suites share one
  * fully-initialized runtime with PRODUCTION defaults:
@@ -49,11 +49,11 @@ dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
 const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
 const hasGroq = Boolean(process.env.GROQ_API_KEY);
-const liveModelTestsEnabled = process.env.MILADY_LIVE_TEST === "1";
+const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
 // This suite exercises the heaviest live-runtime bootstrap path and relies on
 // real provider availability. Keep it opt-in so default repo-wide E2E runs
 // remain deterministic; runtime integration coverage still exists elsewhere.
-const runAgentRuntimeE2E = process.env.MILADY_RUN_AGENT_RUNTIME_E2E === "1";
+const runAgentRuntimeE2E = process.env.ELIZA_RUN_AGENT_RUNTIME_E2E === "1";
 const hasModelProvider =
   liveModelTestsEnabled &&
   runAgentRuntimeE2E &&
@@ -379,10 +379,10 @@ describe("Agent Runtime E2E", () => {
   const worldId = stringToUuid("test-e2e-world");
 
   const pgliteDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "milady-e2e-pglite-"),
+    path.join(os.tmpdir(), "eliza-e2e-pglite-"),
   );
   const workspaceDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "milady-e2e-workspace-"),
+    path.join(os.tmpdir(), "eliza-e2e-workspace-"),
   );
 
   const corePluginNames = [
@@ -400,7 +400,7 @@ describe("Agent Runtime E2E", () => {
 
   beforeAll(async () => {
     if (!hasModelProvider) return;
-    process.env.LOG_LEVEL = process.env.MILADY_E2E_LOG_LEVEL ?? "error";
+    process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
 
     const secrets: Record<string, string> = {};
     if (hasOpenAI)
@@ -1235,7 +1235,7 @@ describe("Agent Runtime E2E", () => {
     it.skipIf(!hasModelProvider)(
       "creates trigger, executes it, LLM processes instruction, run history records success",
       async () => {
-        // Register the trigger worker on the real runtime (same as milady-plugin.ts does).
+        // Register the trigger worker on the real runtime (same as eliza-plugin.ts does).
         const { registerTriggerTaskWorker } = await import(
           "../src/triggers/runtime"
         );

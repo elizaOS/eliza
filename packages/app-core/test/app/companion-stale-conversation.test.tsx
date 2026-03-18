@@ -8,7 +8,7 @@ import React, { useEffect } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const UI_SHELL_MODE_STORAGE_KEY = "milady:ui-shell-mode";
+const UI_SHELL_MODE_STORAGE_KEY = "eliza:ui-shell-mode";
 const THIRTY_ONE_MINUTES_MS = 31 * 60 * 1000;
 
 const { mockClient } = vi.hoisted(() => ({
@@ -41,7 +41,7 @@ const { mockClient } = vi.hoisted(() => ({
       },
       greeting: {
         text: "fresh tagline",
-        agentName: "Milady",
+        agentName: "Eliza",
         generated: true,
         persisted: true,
       },
@@ -51,7 +51,7 @@ const { mockClient } = vi.hoisted(() => ({
     })),
     requestGreeting: vi.fn(async () => ({
       text: "fresh tagline",
-      agentName: "Milady",
+      agentName: "Eliza",
       generated: true,
       persisted: true,
     })),
@@ -98,7 +98,7 @@ const { mockClient } = vi.hoisted(() => ({
     })),
     getStatus: vi.fn(async () => ({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -231,14 +231,14 @@ describe("companion stale conversation rollover", () => {
       },
       greeting: {
         text: "fresh tagline",
-        agentName: "Milady",
+        agentName: "Eliza",
         generated: true,
         persisted: true,
       },
     });
     mockClient.requestGreeting.mockResolvedValue({
       text: "fresh tagline",
-      agentName: "Milady",
+      agentName: "Eliza",
       generated: true,
       persisted: true,
     });
@@ -285,7 +285,7 @@ describe("companion stale conversation rollover", () => {
     });
     mockClient.getStatus.mockResolvedValue({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,

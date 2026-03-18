@@ -3,7 +3,7 @@ import {
   handleWalletRoutes,
   type WalletRouteDependencies,
 } from "../../src/api/wallet-routes";
-import type { MiladyConfig } from "../../src/config/config";
+import type { ElizaConfig } from "../../src/config/config";
 
 const { createSpanMock, spanSuccessMock, spanFailureMock } = vi.hoisted(() => ({
   createSpanMock: vi.fn(),
@@ -73,7 +73,7 @@ function walletRouteCtx(
     res: {} as never,
     method: "GET",
     pathname,
-    config: { env: {} } as MiladyConfig,
+    config: { env: {} } as ElizaConfig,
     saveConfig: vi.fn(),
     ensureWalletKeysInEnvAndConfig: vi.fn(),
     resolveWalletExportRejection: () => null,
