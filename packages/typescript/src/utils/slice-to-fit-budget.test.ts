@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { sliceToFitBudget } from "./slice-to-fit-budget";
 
 describe("sliceToFitBudget", () => {
@@ -20,7 +21,7 @@ describe("sliceToFitBudget", () => {
 
 	it("slices from end when fromEnd option is true", () => {
 		const result = sliceToFitBudget(items, estimateChars, 8, { fromEnd: true });
-		expect(result).toEqual(["three", "four"]); // 'three' (5) + 'four' (4) = 9 chars would exceed
+		expect(result).toEqual(["four"]);
 	});
 
 	it("returns at least one item if any single item fits", () => {

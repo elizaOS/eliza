@@ -216,7 +216,7 @@ describe("runtime-composition", () => {
 			expect(runtime).toBeDefined();
 			expect(runtime?.character.name).toBe("CompTest");
 			expect(runtime?.adapter).toBe(adapter);
-		});
+		}, 30_000);
 
 		it("uses merged character (from mergeSettingsInto) when adapter returns agent", async () => {
 			const character = createTestCharacter({

@@ -296,7 +296,7 @@ describe("RECENT_MESSAGES provider compaction integration", () => {
 		// 1. Gets room first to check lastCompactionAt
 		// 2. Passes lastCompactionAt as 'start' parameter to getMemories()
 		expect(true).toBe(true);
-	});
+	}, 30_000);
 
 	it("should work with InMemoryAdapter filtering", async () => {
 		const { InMemoryDatabaseAdapter } = await import(

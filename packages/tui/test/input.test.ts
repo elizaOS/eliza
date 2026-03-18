@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { Input } from "../src/components/input.js";
 
 describe("Input component", () => {

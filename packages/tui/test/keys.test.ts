@@ -3,7 +3,7 @@
  */
 
 import assert from "node:assert";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { matchesKey, parseKey, setKittyProtocolActive } from "../src/keys.js";
 
 describe("matchesKey", () => {

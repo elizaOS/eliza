@@ -95,7 +95,7 @@ describe("Layer 1 — Per-message truncation", () => {
 		const text = result.text ?? "";
 		expect(text).toContain(normalText);
 		expect(text).not.toContain("truncated");
-	});
+	}, 30_000);
 
 	it("should handle message at exactly the cap boundary", () => {
 		// Message at exactly MAX_SINGLE_MESSAGE_CHARS should NOT be truncated

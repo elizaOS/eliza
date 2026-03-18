@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import type { Component } from "../src/tui.js";
 import { TUI } from "../src/tui.js";
 import { VirtualTerminal } from "./virtual-terminal.js";
