@@ -18,7 +18,7 @@
 		"build": "tsc -p tsconfig.build.json",
 		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
 		"test": "node --test --import tsx test/*.test.ts",
-		"prepublishOnly": "npm run clean && npm run build",
+		"prepublishOnly": "bun run clean && bun run build",
 		"lint": "bunx @biomejs/biome check --write ./src",
 		"lint:check": "bunx @biomejs/biome check ./src"
 	},
@@ -51,5 +51,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
+	"gitHead": "86dadd9916e7db917e2ba0aa84fdecdbdf2d7598"
 }
