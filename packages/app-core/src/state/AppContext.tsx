@@ -804,7 +804,7 @@ export function AppProvider({
 
   // --- Onboarding ---
   const [onboardingStep, setOnboardingStepRaw] = useState<OnboardingStep>(
-    () => loadPersistedOnboardingStep() ?? "identity",
+    () => loadPersistedOnboardingStep() ?? (branding.appName === "Eliza" ? "connection" : "identity"),
   );
   const [onboardingOptions, setOnboardingOptions] =
     useState<OnboardingOptions | null>(null);
@@ -4090,13 +4090,15 @@ export function AppProvider({
   // biome-ignore lint/correctness/useExhaustiveDependencies: t is stable but defined later
   const handleOnboardingNext = useCallback(
     async (options?: OnboardingNextOptions) => {
-      const STEP_ORDER: OnboardingStep[] = [
-        "identity",
-        "connection",
-        "rpc",
-        "senses",
-        "activate",
-      ];
+      const STEP_ORDER: OnboardingStep[] = branding.appName === "Eliza"
+        ? ["connection", "activate"]
+        : [
+            "identity",
+            "connection",
+            "rpc",
+            "senses",
+            "activate",
+          ];
 
       // Default agent name to Rin if none set after identity step
       if (onboardingStep === "identity" && !onboardingName) {
@@ -4168,13 +4170,15 @@ export function AppProvider({
   );
 
   const handleOnboardingBack = useCallback(() => {
-    const STEP_ORDER: OnboardingStep[] = [
-      "identity",
-      "connection",
-      "rpc",
-      "senses",
-      "activate",
-    ];
+    const STEP_ORDER: OnboardingStep[] = branding.appName === "Eliza"
+      ? ["connection", "activate"]
+      : [
+          "identity",
+          "connection",
+          "rpc",
+          "senses",
+          "activate",
+        ];
 
     const currentIndex = STEP_ORDER.indexOf(onboardingStep);
     if (currentIndex > 0) {

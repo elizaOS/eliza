@@ -1,16 +1,23 @@
 import { ONBOARDING_STEPS, useApp } from "@elizaos/app-core/state";
+import { useBranding } from "../../config/branding";
 
 export function OnboardingStepNav() {
   const { onboardingStep, t } = useApp();
+  const branding = useBranding();
 
-  const currentIndex = ONBOARDING_STEPS.findIndex(
+  const isEliza = branding.appName === "Eliza";
+  const activeSteps = isEliza
+    ? ONBOARDING_STEPS.filter((s) => s.id === "connection" || s.id === "activate")
+    : ONBOARDING_STEPS;
+
+  const currentIndex = activeSteps.findIndex(
     (s) => s.id === onboardingStep,
   );
 
   return (
     <div className="onboarding-left">
       <div className={`onboarding-step-list step-${currentIndex}`}>
-        {ONBOARDING_STEPS.map((step, i) => {
+        {activeSteps.map((step, i) => {
           let state = "";
           if (i < currentIndex) state = "onboarding-step-item--done";
           else if (i === currentIndex) state = "onboarding-step-item--active";
