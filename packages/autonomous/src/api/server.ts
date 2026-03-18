@@ -8568,7 +8568,7 @@ async function handleRequest(
       url,
       json,
       error,
-      getPluginManager: async () => (await requirePluginManager(state.runtime)) as never,
+      getPluginManager: () => requirePluginManager(state.runtime) as Promise<never>,
       getLoadedPluginNames: () =>
         state.runtime?.plugins.map((plugin) => plugin.name) ?? [],
       getBundledPluginIds: () => getReleaseBundledPluginIds(),
@@ -14642,7 +14642,7 @@ async function handleRequest(
       pathname,
       url,
       appManager: state.appManager as never,
-      getPluginManager: async () => (await requirePluginManager(state.runtime)) as never,
+      getPluginManager: () => requirePluginManager(state.runtime),
       parseBoundedLimit,
       readJsonBody,
       json,
@@ -14681,7 +14681,7 @@ async function handleRequest(
 
     if (state.runtime) {
       try {
-        runtimeTasks = await state.runtime.getTasks({ agentIds: [] });
+        runtimeTasks = await state.runtime.getTasks({});
         tasksAvailable = true;
         todosAvailable = true;
 
@@ -14780,7 +14780,7 @@ async function handleRequest(
       error(res, "Agent runtime is not available", 503);
       return;
     }
-    const runtimeTasks = await state.runtime.getTasks({ agentIds: [] });
+    const runtimeTasks = await state.runtime.getTasks({});
     const tasks = runtimeTasks
       .map((task) => toWorkbenchTask(task))
       .filter((task): task is WorkbenchTaskView => task !== null)
@@ -14902,7 +14902,7 @@ async function handleRequest(
       error(res, "Agent runtime is not available", 503);
       return;
     }
-    const runtimeTasks = await state.runtime.getTasks({ agentIds: [] });
+    const runtimeTasks = await state.runtime.getTasks({});
     const todos = runtimeTasks
       .map((task) => toWorkbenchTodo(task))
       .filter((todo): todo is WorkbenchTodoView => todo !== null)
@@ -16564,7 +16564,7 @@ export async function startApiServer(opts?: {
       await handleRequest(req, res, state, {
         onRestart,
         onRuntimeSwapped: () => {
-          bindRuntimeStreams(state.runtime);
+          void bindRuntimeStreams(state.runtime);
           void wireCoordinatorBridgesWhenReady(state, {
             wireChatBridge: wireCodingAgentChatBridge,
             wireWsBridge: wireCodingAgentWsBridge,
@@ -16616,7 +16616,7 @@ export async function startApiServer(opts?: {
 
   let detachRuntimeStreams: (() => void) | null = null;
   let detachTrainingStream: (() => void) | null = null;
-  const bindRuntimeStreams = (runtime: AgentRuntime | null) => {
+  const bindRuntimeStreams = async (runtime: AgentRuntime | null) => {
     if (detachRuntimeStreams) {
       detachRuntimeStreams();
       detachRuntimeStreams = null;
@@ -17013,7 +17013,7 @@ export async function startApiServer(opts?: {
     WebSocket,
     Map<string, () => void>
   >();
-  bindRuntimeStreams(opts?.runtime ?? null);
+  void bindRuntimeStreams(opts?.runtime ?? null);
   bindTrainingStream();
 
   // Wire coding-agent bridges at initial boot (event-driven via getServiceLoadPromise)
@@ -17094,7 +17094,7 @@ export async function startApiServer(opts?: {
       );
     }
 
-    ws.on("message", (data) => {
+    ws.on("message", async (data) => {
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === "ping") {
@@ -17382,7 +17382,7 @@ export async function startApiServer(opts?: {
     state.runtime = rt;
     state.chatConnectionReady = null;
     state.chatConnectionPromise = null;
-    bindRuntimeStreams(rt);
+    void bindRuntimeStreams(rt);
     // AppManager doesn't need a runtime reference
     state.agentState = "running";
     state.agentName = rt.character.name ?? "Eliza";
