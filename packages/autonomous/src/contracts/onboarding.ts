@@ -183,7 +183,7 @@ export const ONBOARDING_PROVIDER_CATALOG = [
     pluginName: "@elizaos/plugin-elizacloud",
     keyPrefix: null,
     description:
-      "Managed hosting for Milady agents and bundled infrastructure.",
+      "Managed hosting for Eliza agents and bundled infrastructure.",
     family: "elizacloud",
     authMode: "cloud",
     group: "cloud",

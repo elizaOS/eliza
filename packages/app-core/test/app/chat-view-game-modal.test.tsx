@@ -80,7 +80,7 @@ function createContext(
   overrides?: Partial<ChatViewContextStub>,
 ): ChatViewContextStub {
   return {
-    agentStatus: { agentName: "Milady", state: "running" },
+    agentStatus: { agentName: "Eliza", state: "running" },
     activeConversationId: "conv-1",
     chatInput: "Hello",
     chatSending: false,
@@ -171,7 +171,7 @@ describe("ChatView game-modal variant", () => {
     const text = textOf(tree?.root).toLowerCase();
     expect(text).toContain("acknowledged");
     expect(text).not.toContain("via discord");
-    expect(text).not.toContain("milady");
+    expect(text).not.toContain("eliza");
   });
 
   it("shows only the last two companion messages", async () => {
@@ -217,7 +217,7 @@ describe("ChatView game-modal variant", () => {
     });
 
     const text = textOf(tree?.root).toLowerCase();
-    expect(text).not.toContain("milady");
+    expect(text).not.toContain("eliza");
     expect(text).not.toContain("startaconversation");
     expect(text).not.toContain("tell me a joke");
   });
@@ -401,7 +401,7 @@ describe("ChatView game-modal variant", () => {
   it("disables composer controls while agent is starting", async () => {
     mockUseApp.mockReturnValue(
       createContext({
-        agentStatus: { agentName: "Milady", state: "starting" },
+        agentStatus: { agentName: "Eliza", state: "starting" },
       }),
     );
 

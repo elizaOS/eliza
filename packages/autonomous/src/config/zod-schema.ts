@@ -295,7 +295,7 @@ export const CharacterSchema = z
 
 // --- Main config schema ---
 
-export const MiladySchema = z
+export const ElizaSchema = z
   .object({
     meta: z
       .object({

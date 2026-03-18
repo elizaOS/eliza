@@ -17,11 +17,11 @@ import { request as requestHttps } from "node:https";
 import net from "node:net";
 import { Readable } from "node:stream";
 import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
-import { loadMiladyConfig } from "../config/config";
+import { loadElizaConfig } from "../config/config";
 import type {
   CustomActionDef,
   CustomActionHandler,
-} from "../config/types.milady";
+} from "../config/types.eliza";
 import {
   isBlockedPrivateOrLinkLocalIp,
   normalizeHostLike,
@@ -149,14 +149,14 @@ async function runCodeHandler(
     wrapperScript,
     Object.create(null),
     {
-      filename: "milady-fetch-wrapper",
+      filename: "eliza-fetch-wrapper",
       timeout: 1_000,
     },
   ) as (fn: typeof safeCodeFetch) => typeof safeCodeFetch;
   context.fetch = wrapFetch(safeCodeFetch);
 
   return await vmRunner.runInNewContext(`"use strict"; ${script}`, context, {
-    filename: "milady-custom-action",
+    filename: "eliza-custom-action",
     timeout: 30_000,
   });
 }
@@ -501,7 +501,7 @@ function buildHandler(
               const headers: Record<string, string> = {
                 "Content-Type": "application/json",
               };
-              const token = process.env.MILADY_API_TOKEN?.trim();
+              const token = process.env.ELIZA_API_TOKEN?.trim();
               if (token) {
                 headers.Authorization = /^Bearer\s+/i.test(token)
                   ? token
@@ -588,7 +588,7 @@ function defToAction(def: CustomActionDef): Action {
 
 export function loadCustomActions(): Action[] {
   try {
-    const config = loadMiladyConfig();
+    const config = loadElizaConfig();
     const defs = config.customActions ?? [];
     return defs.filter((d) => d.enabled).map(defToAction);
   } catch {

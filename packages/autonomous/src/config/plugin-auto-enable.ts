@@ -1,13 +1,13 @@
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types";
-import type { MiladyConfig } from "./types";
+import type { ElizaConfig } from "./types";
 
 export interface ApplyPluginAutoEnableResult {
-  config: MiladyConfig;
+  config: ElizaConfig;
   changes: string[];
 }
 
 export interface ApplyPluginAutoEnableParams {
-  config: Partial<MiladyConfig>;
+  config: Partial<ElizaConfig>;
   env: NodeJS.ProcessEnv;
 }
 
@@ -87,7 +87,7 @@ export const AUTH_PROVIDER_PLUGINS: Record<string, string> = {
   PERPLEXITY_API_KEY: "@elizaos/plugin-perplexity",
   ELIZAOS_CLOUD_API_KEY: "@elizaos/plugin-elizacloud",
   ELIZAOS_CLOUD_ENABLED: "@elizaos/plugin-elizacloud",
-  MILADY_USE_PI_AI: "@elizaos/plugin-pi-ai",
+  ELIZA_USE_PI_AI: "@elizaos/plugin-pi-ai",
   CUA_API_KEY: "@elizaos/plugin-cua",
   CUA_HOST: "@elizaos/plugin-cua",
   OBSIDIAN_VAULT_PATH: "@elizaos/plugin-obsidian",
@@ -262,7 +262,7 @@ export function applyPluginAutoEnable(
 ): ApplyPluginAutoEnableResult {
   const { config, env } = params;
   const changes: string[] = [];
-  const updatedConfig = structuredClone(config) as MiladyConfig;
+  const updatedConfig = structuredClone(config) as ElizaConfig;
 
   if (updatedConfig.plugins?.enabled === false) {
     return { config: updatedConfig, changes };

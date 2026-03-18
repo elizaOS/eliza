@@ -69,7 +69,7 @@ export default defineConfig({
       "dist/**",
       "**/node_modules/**",
       "test/capacitor-plugins.e2e.test.ts",
-      // plugin-installer.ts source doesn't exist in autonomous (milady-specific)
+      // plugin-installer.ts source doesn't exist in autonomous (eliza-specific)
       "test/plugin-install.e2e.test.ts",
       // native module deps (tensorflow, sharp, canvas) not installed in autonomous
       "test/native-modules.e2e.test.ts",

@@ -94,7 +94,7 @@ export function classifyRegistryPluginRelease(params: {
 
   let note: string | undefined;
   if (bundled) {
-    note = "Included in the baseline Milady runtime bundle.";
+    note = "Included in the baseline Eliza runtime bundle.";
   } else if (requiresDesktopRuntime && requiresLocalRuntime) {
     note =
       "Excluded from the baseline release. Install on a local desktop runtime after release.";

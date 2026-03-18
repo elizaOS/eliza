@@ -143,7 +143,7 @@ function createResetTestServer(): Promise<{
     },
     "GET /api/onboarding/options": (_r, res) =>
       json(res, {
-        names: ["Milady"],
+        names: ["Eliza"],
         styles: [{ catchphrase: "uwu~", hint: "chaotic good" }],
         providers: [{ id: "ollama", name: "Ollama" }],
         cloudProviders: [],
@@ -302,7 +302,7 @@ vi.mock("@elizaos/app-core/state", async () => {
     ...actual,
     useApp: () => mockUseApp(),
     THEMES: [
-      { id: "milady", label: "Milady" },
+      { id: "eliza", label: "Eliza" },
       { id: "dark", label: "Dark" },
     ],
   };
@@ -359,7 +359,7 @@ function createUIHarnessState(): AppHarnessState {
     actionNotice: null,
     onboardingStep: "welcome",
     onboardingOptions: {
-      names: ["Milady"],
+      names: ["Eliza"],
       styles: [{ catchphrase: "uwu~" }],
       providers: [],
       cloudProviders: [],
@@ -372,7 +372,7 @@ function createUIHarnessState(): AppHarnessState {
     plugins: [{ name: "plugin-1" }],
     skills: [],
     logs: [],
-    currentTheme: "milady",
+    currentTheme: "eliza",
     elizaCloudEnabled: false,
     elizaCloudConnected: false,
     elizaCloudCredits: 0,

@@ -1,7 +1,7 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import net from "node:net";
 import { logger } from "@elizaos/core";
-import type { RegistryEndpoint } from "../config/types.milady.js";
+import type { RegistryEndpoint } from "../config/types.eliza.js";
 import {
   isBlockedPrivateOrLinkLocalIp,
   normalizeHostLike,

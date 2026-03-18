@@ -75,10 +75,10 @@ export async function handleNfaRoutes(ctx: NfaRouteContext): Promise<boolean> {
   const { res, method, pathname, json } = ctx;
 
   if (method === "GET" && pathname === "/api/nfa/status") {
-    const miladyDir = join(homedir(), ".milady");
+    const elizaDir = join(homedir(), ".eliza");
     const [nfaRecord, identityRecord] = await Promise.all([
-      readJsonFile<NfaRecord>(join(miladyDir, "bap578-nfa.json")),
-      readJsonFile<IdentityRecord>(join(miladyDir, "bnb-identity.json")),
+      readJsonFile<NfaRecord>(join(elizaDir, "bap578-nfa.json")),
+      readJsonFile<IdentityRecord>(join(elizaDir, "bnb-identity.json")),
     ]);
 
     const bscscanBase =
@@ -117,7 +117,7 @@ export async function handleNfaRoutes(ctx: NfaRouteContext): Promise<boolean> {
 
   if (method === "GET" && pathname === "/api/nfa/learnings") {
     const learningsPaths = [
-      join(homedir(), ".milady", "LEARNINGS.md"),
+      join(homedir(), ".eliza", "LEARNINGS.md"),
       join(process.cwd(), "LEARNINGS.md"),
     ];
 

@@ -1,15 +1,15 @@
 /**
  * Unit tests for custom avatar (VRM) and custom background API client methods.
  *
- * Creates a MiladyClient with an explicit base URL and mocks globalThis.fetch
+ * Creates a ElizaClient with an explicit base URL and mocks globalThis.fetch
  * to verify HTTP calls without a real server.
  */
 
-import { MiladyClient } from "@elizaos/app-core/api";
+import { ElizaClient } from "@elizaos/app-core/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let fetchMock: ReturnType<typeof vi.fn>;
-let client: MiladyClient;
+let client: ElizaClient;
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
@@ -19,7 +19,7 @@ beforeEach(() => {
     writable: true,
     configurable: true,
   });
-  client = new MiladyClient("http://localhost:9999");
+  client = new ElizaClient("http://localhost:9999");
 });
 
 afterEach(() => {

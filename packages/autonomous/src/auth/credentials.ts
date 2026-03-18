@@ -1,7 +1,7 @@
 /**
  * Credential storage and token refresh for subscription providers.
  *
- * Stores OAuth credentials in ~/.milady/auth/ as JSON files.
+ * Stores OAuth credentials in ~/.eliza/auth/ as JSON files.
  */
 
 import fs from "node:fs";
@@ -18,7 +18,7 @@ import {
 } from "./types";
 
 const AUTH_DIR = path.join(
-  process.env.MILADY_HOME || path.join(os.homedir(), ".milady"),
+  process.env.ELIZA_HOME || path.join(os.homedir(), ".eliza"),
   "auth",
 );
 

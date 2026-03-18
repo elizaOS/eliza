@@ -364,7 +364,7 @@ import { App } from "../../src/App";
 
 function onboardingOptions() {
   return {
-    names: ["Milady"],
+    names: ["Eliza"],
     styles: [
       {
         catchphrase: "chaotic",
@@ -437,9 +437,9 @@ function createHarnessState(): AppHarnessState {
     actionNotice: null,
     onboardingStep: "identity",
     onboardingOptions: onboardingOptions(),
-    onboardingName: "Milady",
+    onboardingName: "Eliza",
     onboardingStyle: "",
-    onboardingTheme: "milady",
+    onboardingTheme: "eliza",
     onboardingRunMode: "",
     onboardingCloudProvider: "",
     onboardingSmallModel: "small-model",

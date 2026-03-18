@@ -81,10 +81,10 @@ describe("Database API E2E (no runtime)", () => {
 
   beforeAll(async () => {
     // Isolate config writes to a temp directory so tests never clobber
-    // the real ~/.milady/milady.json (which would destroy user data).
-    tmpConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-db-e2e-"));
-    savedConfigPath = process.env.MILADY_CONFIG_PATH;
-    process.env.MILADY_CONFIG_PATH = path.join(tmpConfigDir, "milady.json");
+    // the real ~/.eliza/eliza.json (which would destroy user data).
+    tmpConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-db-e2e-"));
+    savedConfigPath = process.env.ELIZA_CONFIG_PATH;
+    process.env.ELIZA_CONFIG_PATH = path.join(tmpConfigDir, "eliza.json");
 
     const server = await startApiServer({ port: 0 });
     port = server.port;
@@ -93,8 +93,8 @@ describe("Database API E2E (no runtime)", () => {
 
   afterAll(async () => {
     await close();
-    if (savedConfigPath === undefined) delete process.env.MILADY_CONFIG_PATH;
-    else process.env.MILADY_CONFIG_PATH = savedConfigPath;
+    if (savedConfigPath === undefined) delete process.env.ELIZA_CONFIG_PATH;
+    else process.env.ELIZA_CONFIG_PATH = savedConfigPath;
     fs.rmSync(tmpConfigDir, { recursive: true, force: true });
   });
 
@@ -267,8 +267,8 @@ describe("Database API E2E (no runtime)", () => {
     });
 
     it("rejects unsafe postgres host even when provider is pglite", async () => {
-      const previousBind = process.env.MILADY_API_BIND;
-      process.env.MILADY_API_BIND = "0.0.0.0";
+      const previousBind = process.env.ELIZA_API_BIND;
+      process.env.ELIZA_API_BIND = "0.0.0.0";
       try {
         const { status, data } = await req(
           port,
@@ -287,14 +287,14 @@ describe("Database API E2E (no runtime)", () => {
         expect(status).toBe(400);
         expect(String(data.error ?? "")).toContain("blocked");
       } finally {
-        if (previousBind === undefined) delete process.env.MILADY_API_BIND;
-        else process.env.MILADY_API_BIND = previousBind;
+        if (previousBind === undefined) delete process.env.ELIZA_API_BIND;
+        else process.env.ELIZA_API_BIND = previousBind;
       }
     });
 
     it("rejects connectionString host override to blocked targets", async () => {
-      const previousBind = process.env.MILADY_API_BIND;
-      process.env.MILADY_API_BIND = "0.0.0.0";
+      const previousBind = process.env.ELIZA_API_BIND;
+      process.env.ELIZA_API_BIND = "0.0.0.0";
       try {
         const { status, data } = await req(
           port,
@@ -311,8 +311,8 @@ describe("Database API E2E (no runtime)", () => {
         expect(status).toBe(400);
         expect(String(data.error ?? "")).toContain("blocked");
       } finally {
-        if (previousBind === undefined) delete process.env.MILADY_API_BIND;
-        else process.env.MILADY_API_BIND = previousBind;
+        if (previousBind === undefined) delete process.env.ELIZA_API_BIND;
+        else process.env.ELIZA_API_BIND = previousBind;
       }
     });
 
@@ -384,8 +384,8 @@ describe("Database API E2E (no runtime)", () => {
     });
 
     it("rejects connectionString host override to blocked targets", async () => {
-      const previousBind = process.env.MILADY_API_BIND;
-      process.env.MILADY_API_BIND = "0.0.0.0";
+      const previousBind = process.env.ELIZA_API_BIND;
+      process.env.ELIZA_API_BIND = "0.0.0.0";
       try {
         // Use localhost as the URI hostname but override with blocked IP in query param
         const { status, data } = await req(port, "POST", "/api/database/test", {
@@ -395,14 +395,14 @@ describe("Database API E2E (no runtime)", () => {
         expect(status).toBe(400);
         expect(String(data.error ?? "")).toContain("blocked");
       } finally {
-        if (previousBind === undefined) delete process.env.MILADY_API_BIND;
-        else process.env.MILADY_API_BIND = previousBind;
+        if (previousBind === undefined) delete process.env.ELIZA_API_BIND;
+        else process.env.ELIZA_API_BIND = previousBind;
       }
     });
 
     it("blocks private IPv6 targets for remote API binds", async () => {
-      const previousBind = process.env.MILADY_API_BIND;
-      process.env.MILADY_API_BIND = "0.0.0.0";
+      const previousBind = process.env.ELIZA_API_BIND;
+      process.env.ELIZA_API_BIND = "0.0.0.0";
       try {
         const blockedBodies: Array<Record<string, unknown>> = [
           {
@@ -443,8 +443,8 @@ describe("Database API E2E (no runtime)", () => {
           expect(String(data.error ?? "")).toContain("blocked");
         }
       } finally {
-        if (previousBind === undefined) delete process.env.MILADY_API_BIND;
-        else process.env.MILADY_API_BIND = previousBind;
+        if (previousBind === undefined) delete process.env.ELIZA_API_BIND;
+        else process.env.ELIZA_API_BIND = previousBind;
       }
     });
   });

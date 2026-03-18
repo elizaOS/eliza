@@ -1,5 +1,5 @@
 /**
- * API client for the Milady backend.
+ * API client for the Eliza backend.
  *
  * Thin fetch wrapper + WebSocket for real-time chat/events.
  * Replaces the gateway WebSocket protocol entirely.
@@ -1822,8 +1822,8 @@ export interface VerificationMessageResponse {
 
 declare global {
   interface Window {
-    __MILADY_API_BASE__?: string;
-    __MILADY_API_TOKEN__?: string;
+    __ELIZA_API_BASE__?: string;
+    __ELIZA_API_TOKEN__?: string;
   }
 }
 
@@ -1835,10 +1835,10 @@ const GENERIC_NO_RESPONSE_TEXT =
   "Sorry, I couldn't generate a response right now. Please try again.";
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
-const SESSION_STORAGE_API_BASE_KEY = "milady_api_base";
-const SESSION_STORAGE_API_TOKEN_KEY = "milady_api_token";
+const SESSION_STORAGE_API_BASE_KEY = "eliza_api_base";
+const SESSION_STORAGE_API_TOKEN_KEY = "eliza_api_token";
 
-export class MiladyClient {
+export class ElizaClient {
   private _baseUrl: string;
   private _explicitBase: boolean;
   private _token: string | null;
@@ -1892,7 +1892,7 @@ export class MiladyClient {
   }
 
   constructor(baseUrl?: string, token?: string) {
-    this.clientId = MiladyClient.generateClientId();
+    this.clientId = ElizaClient.generateClientId();
     const stored =
       typeof window !== "undefined"
         ? window.sessionStorage.getItem(SESSION_STORAGE_API_TOKEN_KEY)
@@ -1905,23 +1905,23 @@ export class MiladyClient {
     this._token = token?.trim() || stored || null;
     // Priority: explicit arg > Capacitor/Electron injected global > same origin (Vite proxy)
     const injectedBase =
-      typeof window !== "undefined" ? window.__MILADY_API_BASE__ : undefined;
+      typeof window !== "undefined" ? window.__ELIZA_API_BASE__ : undefined;
     this._baseUrl =
       baseUrl ??
       storedBase ??
       injectedBase ??
-      MiladyClient.resolveElectronLocalFallbackBase();
+      ElizaClient.resolveElectronLocalFallbackBase();
   }
 
   /**
    * Resolve the API base URL lazily.
-   * In Electron the main process injects window.__MILADY_API_BASE__ after the
+   * In Electron the main process injects window.__ELIZA_API_BASE__ after the
    * page loads (once the agent runtime starts). Re-checking on every call
    * ensures we pick up the injected value even if it wasn't set at construction.
    */
   private get baseUrl(): string {
     if (!this._explicitBase && typeof window !== "undefined") {
-      const injected = window.__MILADY_API_BASE__;
+      const injected = window.__ELIZA_API_BASE__;
       // In Electron the API base can be injected after initial render. Always
       // prefer the injected value when present so the client can switch away
       // from the localhost fallback once the main process publishes the real
@@ -1929,7 +1929,7 @@ export class MiladyClient {
       if (injected && injected !== this._baseUrl) {
         this._baseUrl = injected;
       } else if (!this._baseUrl) {
-        this._baseUrl = MiladyClient.resolveElectronLocalFallbackBase();
+        this._baseUrl = ElizaClient.resolveElectronLocalFallbackBase();
       }
     }
     return this._baseUrl;
@@ -1938,7 +1938,7 @@ export class MiladyClient {
   private get apiToken(): string | null {
     if (this._token) return this._token;
     if (typeof window === "undefined") return null;
-    const injected = window.__MILADY_API_TOKEN__;
+    const injected = window.__ELIZA_API_TOKEN__;
     if (typeof injected === "string" && injected.trim()) return injected.trim();
     return null;
   }
@@ -1951,13 +1951,13 @@ export class MiladyClient {
     this._token = token?.trim() || null;
     if (typeof window !== "undefined") {
       if (this._token) {
-        window.__MILADY_API_TOKEN__ = this._token;
+        window.__ELIZA_API_TOKEN__ = this._token;
         window.sessionStorage.setItem(
           SESSION_STORAGE_API_TOKEN_KEY,
           this._token,
         );
       } else {
-        delete window.__MILADY_API_TOKEN__;
+        delete window.__ELIZA_API_TOKEN__;
         window.sessionStorage.removeItem(SESSION_STORAGE_API_TOKEN_KEY);
       }
     }
@@ -1970,10 +1970,10 @@ export class MiladyClient {
     this.disconnectWs();
     if (typeof window !== "undefined") {
       if (normalized) {
-        window.__MILADY_API_BASE__ = normalized;
+        window.__ELIZA_API_BASE__ = normalized;
         window.sessionStorage.setItem(SESSION_STORAGE_API_BASE_KEY, normalized);
       } else {
-        delete window.__MILADY_API_BASE__;
+        delete window.__ELIZA_API_BASE__;
         window.sessionStorage.removeItem(SESSION_STORAGE_API_BASE_KEY);
       }
     }
@@ -2009,10 +2009,10 @@ export class MiladyClient {
       const requestInit: RequestInit = {
         ...init,
         headers: {
-          "X-Milady-Client-Id": this.clientId,
+          "X-Eliza-Client-Id": this.clientId,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(this._uiLanguage
-            ? { "X-Milady-UI-Language": this._uiLanguage }
+            ? { "X-Eliza-UI-Language": this._uiLanguage }
             : {}),
           ...init?.headers,
         },
@@ -3413,7 +3413,7 @@ export class MiladyClient {
     );
   }
 
-  /** Launch a managed cloud agent into the Milady app. */
+  /** Launch a managed cloud agent into the Eliza app. */
   async launchCloudCompatAgent(agentId: string): Promise<{
     success: boolean;
     data: CloudCompatLaunchResult;
@@ -4301,7 +4301,7 @@ export class MiladyClient {
     const resolvedText = this.normalizeAssistantText(doneText ?? fullText);
     return {
       text: resolvedText,
-      agentName: doneAgentName ?? "Milady",
+      agentName: doneAgentName ?? "Eliza",
       completed: receivedDone,
       ...(doneUsage ? { usage: doneUsage } : {}),
     };
@@ -5336,4 +5336,4 @@ export class MiladyClient {
 }
 
 // Singleton
-export const client = new MiladyClient();
+export const client = new ElizaClient();

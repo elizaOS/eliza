@@ -35,7 +35,7 @@ const { mockClient } = vi.hoisted(() => ({
     })),
     requestGreeting: vi.fn(async () => ({
       text: "hi",
-      agentName: "Milady",
+      agentName: "Eliza",
       generated: true,
     })),
     listCustomActions: vi.fn(async () => []),
@@ -81,7 +81,7 @@ const { mockClient } = vi.hoisted(() => ({
     })),
     getStatus: vi.fn(async () => ({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -207,7 +207,7 @@ describe("startup conversation restore", () => {
     });
     mockClient.requestGreeting.mockResolvedValue({
       text: "hi",
-      agentName: "Milady",
+      agentName: "Eliza",
       generated: true,
     });
     mockClient.listCustomActions.mockResolvedValue([]);
@@ -253,7 +253,7 @@ describe("startup conversation restore", () => {
     });
     mockClient.getStatus.mockResolvedValue({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,

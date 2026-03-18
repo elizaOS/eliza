@@ -13,10 +13,10 @@ vi.mock("@elizaos/app-core/state", async () => {
   return {
     ...actual,
     useApp: () => mockUseApp(),
-    THEMES: [{ id: "milady", label: "Milady", hint: "default" }],
-    getVrmPreviewUrl: () => "/vrms/previews/milady-1.png",
-    getVrmUrl: () => "/vrms/milady-1.vrm.gz",
-    getVrmBackgroundUrl: () => "/vrms/backgrounds/milady-1.png",
+    THEMES: [{ id: "eliza", label: "Eliza", hint: "default" }],
+    getVrmPreviewUrl: () => "/vrms/previews/eliza-1.png",
+    getVrmUrl: () => "/vrms/eliza-1.vrm.gz",
+    getVrmBackgroundUrl: () => "/vrms/backgrounds/eliza-1.png",
   };
 });
 
@@ -58,7 +58,7 @@ function createOnboardingContext(
     selectedVrmIndex: 1,
     customBackgroundUrl: "",
     onboardingOptions: {
-      names: ["Milady"],
+      names: ["Eliza"],
       styles: [],
       cloudProviders: [],
       providers: [],
@@ -67,10 +67,10 @@ function createOnboardingContext(
       piModels: [],
       piDefaultModel: "",
     },
-    onboardingName: "Milady",
+    onboardingName: "Eliza",
     onboardingOwnerName: "anon",
     onboardingStyle: "default",
-    onboardingTheme: "milady",
+    onboardingTheme: "eliza",
     onboardingRunMode: "",
     onboardingCloudProvider: "",
     onboardingSmallModel: "",

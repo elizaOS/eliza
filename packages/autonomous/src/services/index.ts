@@ -15,3 +15,4 @@ export * from "./stream-manager";
 export * from "./tts-stream-bridge";
 export * from "./update-checker";
 export * from "./version-compat";
+export * from "./plugin-installer";

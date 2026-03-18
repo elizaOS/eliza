@@ -10,11 +10,11 @@ const viewerPropsRef: { current: null | Record<string, unknown> } = {
 
 vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
-  getVrmPreviewUrl: () => "/vrms/previews/milady-1.png",
-  getVrmUrl: () => "/vrms/milady-1.vrm.gz",
+  getVrmPreviewUrl: () => "/vrms/previews/eliza-1.png",
+  getVrmUrl: () => "/vrms/eliza-1.vrm.gz",
   getVrmBackgroundUrl: (index: number) =>
-    `/vrms/backgrounds/milady-${index}.png`,
-  getVrmTitle: (index: number) => `MILADY-${index}`,
+    `/vrms/backgrounds/eliza-${index}.png`,
+  getVrmTitle: (index: number) => `ELIZA-${index}`,
   VRM_COUNT: 24,
 }));
 
@@ -54,7 +54,7 @@ vi.mock("@elizaos/app-core/utils", () => ({
 import { CompanionSceneHost } from "@elizaos/app-core/components/CompanionSceneHost";
 import { CompanionView } from "../../src/components/CompanionView";
 
-const COMPANION_ZOOM_STORAGE_KEY = "milady.companion.zoom.v1";
+const COMPANION_ZOOM_STORAGE_KEY = "eliza.companion.zoom.v1";
 
 function createContext(overrides: Record<string, unknown> = {}) {
   return {
@@ -133,7 +133,7 @@ function createContext(overrides: Record<string, unknown> = {}) {
     setActionNotice: vi.fn(),
     agentStatus: {
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       platform: "test",
       pid: null,
     },

@@ -254,11 +254,11 @@ describe("FineTuningView", () => {
     mockClientFns.startTrainingJob.mockResolvedValue({ job: baseJob() });
     mockClientFns.cancelTrainingJob.mockResolvedValue({ job: baseJob() });
     mockClientFns.importTrainingModelToOllama.mockResolvedValue({
-      model: { ...baseModel(), ollamaModel: "milady-ft-model" },
+      model: { ...baseModel(), ollamaModel: "eliza-ft-model" },
     });
     mockClientFns.activateTrainingModel.mockResolvedValue({
       modelId: "model-1",
-      providerModel: "ollama/milady-ft-model",
+      providerModel: "ollama/eliza-ft-model",
       needsRestart: false,
     });
     mockClientFns.benchmarkTrainingModel.mockResolvedValue({
@@ -267,7 +267,7 @@ describe("FineTuningView", () => {
     });
     mockClientFns.sendChatRest.mockResolvedValue({
       text: "MODEL_OK",
-      agentName: "Milady",
+      agentName: "Eliza",
     });
     mockClientFns.onWsEvent.mockImplementation(
       (_type: string, handler: (data: WsPayload) => void) => {
@@ -425,12 +425,12 @@ describe("FineTuningView", () => {
     const providerModelInput = findInputByPlaceholder(root, "Provider model");
 
     await act(async () => {
-      ollamaNameInput.props.onChange({ target: { value: "milady-ft-model" } });
+      ollamaNameInput.props.onChange({ target: { value: "eliza-ft-model" } });
       baseModelInput.props.onChange({
         target: { value: "qwen2.5:7b-instruct" },
       });
       providerModelInput.props.onChange({
-        target: { value: "ollama/milady-ft-model" },
+        target: { value: "ollama/eliza-ft-model" },
       });
     });
 
@@ -440,7 +440,7 @@ describe("FineTuningView", () => {
     expect(mockClientFns.importTrainingModelToOllama).toHaveBeenCalledWith(
       "model-1",
       {
-        modelName: "milady-ft-model",
+        modelName: "eliza-ft-model",
         baseModel: "qwen2.5:7b-instruct",
         ollamaUrl: "http://localhost:11434",
       },
@@ -451,7 +451,7 @@ describe("FineTuningView", () => {
     });
     expect(mockClientFns.activateTrainingModel).toHaveBeenCalledWith(
       "model-1",
-      "ollama/milady-ft-model",
+      "ollama/eliza-ft-model",
     );
 
     await act(async () => {

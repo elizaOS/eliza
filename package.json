@@ -59,7 +59,8 @@
   "workspaces": [
     "packages/*",
     "packages/computeruse/packages/*",
-    "apps/*"
+    "apps/*",
+    "plugins/*"
   ],
   "devDependencies": {
     "@bufbuild/buf": "^1.47.2",

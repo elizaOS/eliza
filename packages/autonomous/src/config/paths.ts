@@ -1,8 +1,8 @@
 import os from "node:os";
 import path from "node:path";
 
-const STATE_DIRNAME = ".milady";
-const CONFIG_FILENAME = "milady.json";
+const STATE_DIRNAME = ".eliza";
+const CONFIG_FILENAME = "eliza.json";
 
 function stateDir(homedir: () => string = os.homedir): string {
   return path.join(homedir(), STATE_DIRNAME);
@@ -24,7 +24,7 @@ export function resolveStateDir(
   env: NodeJS.ProcessEnv = process.env,
   homedir: () => string = os.homedir,
 ): string {
-  const override = env.MILADY_STATE_DIR?.trim();
+  const override = env.ELIZA_STATE_DIR?.trim();
   if (override) {
     return resolveUserPath(override);
   }
@@ -35,7 +35,7 @@ export function resolveConfigPath(
   env: NodeJS.ProcessEnv = process.env,
   stateDirPath: string = resolveStateDir(env, os.homedir),
 ): string {
-  const override = env.MILADY_CONFIG_PATH?.trim();
+  const override = env.ELIZA_CONFIG_PATH?.trim();
   if (override) {
     return resolveUserPath(override);
   }
@@ -46,14 +46,14 @@ export function resolveDefaultConfigCandidates(
   env: NodeJS.ProcessEnv = process.env,
   homedir: () => string = os.homedir,
 ): string[] {
-  const explicit = env.MILADY_CONFIG_PATH?.trim();
+  const explicit = env.ELIZA_CONFIG_PATH?.trim();
   if (explicit) {
     return [resolveUserPath(explicit)];
   }
 
-  const miladyStateDir = env.MILADY_STATE_DIR?.trim();
-  if (miladyStateDir) {
-    const resolved = resolveUserPath(miladyStateDir);
+  const elizaStateDir = env.ELIZA_STATE_DIR?.trim();
+  if (elizaStateDir) {
+    const resolved = resolveUserPath(elizaStateDir);
     return [path.join(resolved, CONFIG_FILENAME)];
   }
 
@@ -64,7 +64,7 @@ const OAUTH_FILENAME = "oauth.json";
 
 /**
  * Directory for per-provider model cache files.
- * Each provider gets its own file: `~/.milady/models/<providerId>.json`
+ * Each provider gets its own file: `~/.eliza/models/<providerId>.json`
  */
 export function resolveModelsCacheDir(
   env: NodeJS.ProcessEnv = process.env,
@@ -77,7 +77,7 @@ export function resolveOAuthDir(
   env: NodeJS.ProcessEnv = process.env,
   stateDirPath: string = resolveStateDir(env, os.homedir),
 ): string {
-  const override = env.MILADY_OAUTH_DIR?.trim();
+  const override = env.ELIZA_OAUTH_DIR?.trim();
   if (override) {
     return resolveUserPath(override);
   }

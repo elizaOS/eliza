@@ -43,7 +43,7 @@ type KnowledgeSearchHit = {
 };
 
 function resolveAgentName(runtime: AgentRuntime, fallbackName: string): string {
-  return runtime.character.name?.trim() || fallbackName || "Milady";
+  return runtime.character.name?.trim() || fallbackName || "Eliza";
 }
 
 async function ensureMemoryConnection(

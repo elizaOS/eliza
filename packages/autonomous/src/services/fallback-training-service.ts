@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { AgentRuntime } from "@elizaos/core";
 import type { TrainingServiceWithRuntime } from "../api/training-service-like";
-import type { MiladyConfig } from "../config/config";
+import type { ElizaConfig } from "../config/config";
 
 type DatasetRecord = {
   id: string;
@@ -31,8 +31,8 @@ export class FallbackTrainingService implements TrainingServiceWithRuntime {
   constructor(
     private readonly options: {
       getRuntime: () => AgentRuntime | null;
-      getConfig: () => MiladyConfig;
-      setConfig: (nextConfig: MiladyConfig) => void;
+      getConfig: () => ElizaConfig;
+      setConfig: (nextConfig: ElizaConfig) => void;
     },
   ) {}
 

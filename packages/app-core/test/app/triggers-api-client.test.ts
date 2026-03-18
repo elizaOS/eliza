@@ -1,7 +1,7 @@
-import { MiladyClient } from "@elizaos/app-core/api";
+import { ElizaClient } from "@elizaos/app-core/api";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-describe("MiladyClient trigger endpoints", () => {
+describe("ElizaClient trigger endpoints", () => {
   const originalFetch = globalThis.fetch;
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -21,7 +21,7 @@ describe("MiladyClient trigger endpoints", () => {
   });
 
   test("calls trigger list endpoint", async () => {
-    const client = new MiladyClient("http://localhost:2138", "token");
+    const client = new ElizaClient("http://localhost:2138", "token");
     await client.getTriggers();
 
     const firstCall = fetchMock.mock.calls[0];
@@ -30,7 +30,7 @@ describe("MiladyClient trigger endpoints", () => {
   });
 
   test("calls trigger mutation endpoints with expected methods", async () => {
-    const client = new MiladyClient("http://localhost:2138", "token");
+    const client = new ElizaClient("http://localhost:2138", "token");
 
     await client.createTrigger({
       displayName: "Heartbeat",

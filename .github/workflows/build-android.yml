@@ -123,7 +123,7 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > /tmp/keystore.jks
 
           UNSIGNED_APK="${{ env.APP_DIR }}/android/app/build/outputs/apk/release/app-release-unsigned.apk"
-          SIGNED_APK="${{ env.APP_DIR }}/android/app/build/outputs/apk/release/milady-${{ steps.version.outputs.version }}.apk"
+          SIGNED_APK="${{ env.APP_DIR }}/android/app/build/outputs/apk/release/eliza-${{ steps.version.outputs.version }}.apk"
 
           ${ANDROID_HOME}/build-tools/35.0.0/apksigner sign \
             --ks /tmp/keystore.jks \
@@ -139,14 +139,14 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: milady-android-debug
+          name: eliza-android-debug
           path: ${{ env.APP_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload release artifacts
         if: github.event_name == 'release'
         uses: actions/upload-artifact@v4
         with:
-          name: milady-android-release
+          name: eliza-android-release
           path: |
             ${{ env.APP_DIR }}/android/app/build/outputs/apk/release/*.apk
             ${{ env.APP_DIR }}/android/app/build/outputs/bundle/release/*.aab

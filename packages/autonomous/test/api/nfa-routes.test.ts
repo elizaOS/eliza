@@ -38,7 +38,7 @@ function buildCtx(
 
 describe("nfa-routes", () => {
   describe("GET /api/nfa/status", () => {
-    test("handles missing milady dir gracefully and returns null records", async () => {
+    test("handles missing eliza dir gracefully and returns null records", async () => {
       const ctx = buildCtx("GET", "/api/nfa/status");
       const handled = await handleNfaRoutes(ctx);
       expect(handled).toBe(true);

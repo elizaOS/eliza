@@ -1,5 +1,5 @@
 /**
- * Discover hooks from workspace, managed (~/.milady/hooks/), and bundled dirs.
+ * Discover hooks from workspace, managed (~/.eliza/hooks/), and bundled dirs.
  * Later sources win on name conflicts.
  */
 
@@ -11,7 +11,7 @@ import type {
   Hook,
   HookEntry,
   HookSource,
-  MiladyHookMetadata,
+  ElizaHookMetadata,
   ParsedHookFrontmatter,
 } from "./types";
 
@@ -69,20 +69,20 @@ function parseFrontmatter(content: string): ParsedHookFrontmatter | null {
 
 function extractMetadata(
   frontmatter: ParsedHookFrontmatter,
-): MiladyHookMetadata | undefined {
-  const milady = frontmatter.metadata?.milady;
-  if (!milady) return undefined;
+): ElizaHookMetadata | undefined {
+  const meta = frontmatter.metadata?.eliza;
+  if (!meta) return undefined;
 
   return {
-    always: milady.always,
-    hookKey: milady.hookKey,
-    emoji: milady.emoji,
-    homepage: milady.homepage ?? frontmatter.homepage,
-    events: Array.isArray(milady.events) ? milady.events : [],
-    export: milady.export,
-    os: milady.os,
-    requires: milady.requires,
-    install: milady.install,
+    always: meta.always,
+    hookKey: meta.hookKey,
+    emoji: meta.emoji,
+    homepage: meta.homepage ?? frontmatter.homepage,
+    events: Array.isArray(meta.events) ? meta.events : [],
+    export: meta.export,
+    os: meta.os,
+    requires: meta.requires,
+    install: meta.install,
   };
 }
 
@@ -195,7 +195,7 @@ export async function discoverHooks(
   if (options.extraDirs) {
     for (const dir of options.extraDirs) {
       const resolved = resolve(dir.replace(/^~/, homedir()));
-      for (const entry of await scanHooksDir(resolved, "milady-managed")) {
+      for (const entry of await scanHooksDir(resolved, "eliza-managed")) {
         seen.set(entry.hook.name, entry);
       }
     }
@@ -204,14 +204,14 @@ export async function discoverHooks(
   if (options.bundledDir) {
     for (const entry of await scanHooksDir(
       options.bundledDir,
-      "milady-bundled",
+      "eliza-bundled",
     )) {
       seen.set(entry.hook.name, entry);
     }
   }
 
-  const managedDir = join(homedir(), ".milady", "hooks");
-  for (const entry of await scanHooksDir(managedDir, "milady-managed")) {
+  const managedDir = join(homedir(), ".eliza", "hooks");
+  for (const entry of await scanHooksDir(managedDir, "eliza-managed")) {
     seen.set(entry.hook.name, entry);
   }
 
@@ -220,7 +220,7 @@ export async function discoverHooks(
       options.workspacePath.replace(/^~/, homedir()),
       "hooks",
     );
-    for (const entry of await scanHooksDir(wsHooksDir, "milady-workspace")) {
+    for (const entry of await scanHooksDir(wsHooksDir, "eliza-workspace")) {
       seen.set(entry.hook.name, entry);
     }
   }

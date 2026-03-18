@@ -1,5 +1,5 @@
 /**
- * MiladyMaker drop/mint service.
+ * ElizaMaker drop/mint service.
  *
  * Handles the ERC-8041 fixed-supply collection minting:
  * - Public free mint (user pays gas)
@@ -36,7 +36,7 @@ const COLLECTION_ABI = [
   "event CollectionUpdated(uint256 maxSupply, uint256 currentSupply, bool publicOpen, bool whitelistOpen)",
 ] as const;
 
-const DEFAULT_CAP_HASH = ethers.id("milady-agent");
+const DEFAULT_CAP_HASH = ethers.id("eliza-agent");
 
 // ── Service ──────────────────────────────────────────────────────────────
 

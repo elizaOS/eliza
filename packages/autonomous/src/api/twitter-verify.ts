@@ -37,7 +37,7 @@ export function generateVerificationMessage(
   walletAddress: string,
 ): string {
   const shortAddr = `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
-  return `Verifying my Milady agent "${agentName}" | ${shortAddr} #MiladyAgent`;
+  return `Verifying my Eliza agent "${agentName}" | ${shortAddr} #ElizaAgent`;
 }
 
 // ── Tweet Verification ───────────────────────────────────────────────────
@@ -74,7 +74,7 @@ export async function verifyTweet(
   let response: Response;
   try {
     response = await fetch(apiUrl, {
-      headers: { "User-Agent": "MiladyVerifier/1.0" },
+      headers: { "User-Agent": "ElizaVerifier/1.0" },
       signal: AbortSignal.timeout(15_000),
     });
   } catch (err) {
@@ -146,7 +146,7 @@ export async function verifyTweet(
   const hasAddress =
     tweetText.includes(shortAddr) ||
     tweetText.toLowerCase().includes(walletAddress.toLowerCase().slice(0, 10));
-  const hasHashtag = tweetText.includes("#MiladyAgent");
+  const hasHashtag = tweetText.includes("#ElizaAgent");
 
   if (!hasAddress) {
     return {
@@ -159,7 +159,7 @@ export async function verifyTweet(
   if (!hasHashtag) {
     return {
       verified: false,
-      error: "Tweet is missing #MiladyAgent hashtag.",
+      error: "Tweet is missing #ElizaAgent hashtag.",
       handle,
     };
   }

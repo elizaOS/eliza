@@ -1,0 +1,82 @@
+{
+  "name": "@elizaos-plugins/plugin-nostr",
+  "version": "2.0.0-alpha.1",
+  "description": "Nostr decentralized messaging plugin for elizaOS agents",
+  "type": "module",
+  "main": "./dist/typescript/src/index.js",
+  "types": "./dist/typescript/src/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/typescript/src/index.js",
+      "types": "./dist/typescript/src/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "npm run build:typescript && npm run build:python",
+    "build:typescript": "cd typescript && bun run build",
+    "build:python": "test -n \"$SKIP_PYTHON_BUILD\" && echo 'Python build skipped (SKIP_PYTHON_BUILD set)' || (test -d python && cd python && timeout 120 pip install -e . 2>/dev/null || echo 'Python build skipped or timed out')",
+    "build:rust": "cd rust && cargo build --release",
+    "test": "npm run test:typescript && npm run test:python && npm run test:rust",
+    "test:typescript": "cd typescript && bun test || echo 'TypeScript tests skipped - no tests found'",
+    "test:python": "test -d python && command -v pytest >/dev/null 2>&1 && (cd python && pytest) || echo 'Python tests skipped'",
+    "test:rust": "cd rust && cargo test",
+    "lint": "npm run lint:typescript && npm run lint:python",
+    "lint:typescript": "cd typescript && bunx biome check --write --unsafe .",
+    "lint:python": "cd python && ruff check --fix --unsafe-fixes .",
+    "lint:rust": "cd rust && cargo clippy"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "nostr",
+    "decentralized",
+    "nip-04",
+    "messaging"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "homepage": "https://elizaos.com/plugins/nostr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-nostr"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "nostr-tools": "^2.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:nostr:1.0.0",
+    "pluginParameters": {
+      "NOSTR_PRIVATE_KEY": {
+        "type": "string",
+        "description": "Private key in hex or nsec format for signing events",
+        "required": true
+      },
+      "NOSTR_RELAYS": {
+        "type": "string",
+        "description": "Comma-separated list of relay WebSocket URLs",
+        "required": false
+      },
+      "NOSTR_DM_POLICY": {
+        "type": "string",
+        "description": "DM policy: open, pairing, allowlist, or disabled",
+        "required": false
+      },
+      "NOSTR_ALLOW_FROM": {
+        "type": "string",
+        "description": "Comma-separated list of allowed pubkeys (npub or hex)",
+        "required": false
+      },
+      "NOSTR_ENABLED": {
+        "type": "boolean",
+        "description": "Enable or disable the Nostr plugin",
+        "required": false
+      }
+    }
+  }
+}

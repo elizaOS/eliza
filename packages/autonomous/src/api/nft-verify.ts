@@ -1,12 +1,12 @@
 /**
  * NFT holder verification for whitelist eligibility.
  *
- * Checks on-chain Milady NFT ownership (ERC-721 balanceOf) to determine
+ * Checks on-chain Eliza NFT ownership (ERC-721 balanceOf) to determine
  * whitelist eligibility. Verified addresses are stored in the same
  * whitelist.json used by twitter-verify.ts, so both paths feed the
  * same Merkle tree for on-chain whitelist proofs.
  *
- * OG Milady Maker: 0x5Af0D9827E0c53E4799BB226655A1de152A425a5 (Ethereum mainnet)
+ * OG Eliza Maker: 0x5Af0D9827E0c53E4799BB226655A1de152A425a5 (Ethereum mainnet)
  *
  * @see twitter-verify.ts — parallel verificatio path via Twitter
  * @see drop-service.ts  — mintWithWhitelist() consumer
@@ -18,8 +18,8 @@ import { isAddressWhitelisted, markAddressVerified } from "./twitter-verify";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
-/** OG Milady Maker contract on Ethereum mainnet. */
-const MILADY_CONTRACT = "0x5Af0D9827E0c53E4799BB226655A1de152A425a5";
+/** OG Eliza Maker contract on Ethereum mainnet. */
+const ELIZA_CONTRACT = "0x5Af0D9827E0c53E4799BB226655A1de152A425a5";
 
 /** Minimal ERC-721 ABI — only what we need. */
 const ERC721_BALANCE_ABI = [
@@ -63,16 +63,16 @@ function getProvider(): ethers.JsonRpcProvider {
 // ── Core Verification ────────────────────────────────────────────────────
 
 /**
- * Check if a wallet address holds at least one Milady NFT.
+ * Check if a wallet address holds at least one Eliza NFT.
  *
- * Makes a single `balanceOf()` call to the Milady contract on Ethereum
+ * Makes a single `balanceOf()` call to the Eliza contract on Ethereum
  * mainnet. This is a read-only view call — no gas, no signing required.
  */
-export async function verifyMiladyHolder(
+export async function verifyElizaHolder(
   walletAddress: string,
 ): Promise<NftVerificationResult> {
   const contractAddress =
-    process.env.MILADY_NFT_CONTRACT?.trim() || MILADY_CONTRACT;
+    process.env.ELIZA_NFT_CONTRACT?.trim() || ELIZA_CONTRACT;
 
   // ── Input validation ───────────────────────────────────────────────
   if (!walletAddress || typeof walletAddress !== "string") {
@@ -117,19 +117,19 @@ export async function verifyMiladyHolder(
 
     if (balance > 0) {
       logger.info(
-        `[nft-verify] Address ${walletAddress} holds ${balance} Milady NFT(s) — verified ✓`,
+        `[nft-verify] Address ${walletAddress} holds ${balance} Eliza NFT(s) — verified ✓`,
       );
       return { verified: true, balance, contractAddress, error: null };
     }
 
     logger.info(
-      `[nft-verify] Address ${walletAddress} holds 0 Milady NFTs — not eligible`,
+      `[nft-verify] Address ${walletAddress} holds 0 Eliza NFTs — not eligible`,
     );
     return {
       verified: false,
       balance: 0,
       contractAddress,
-      error: "Wallet does not hold any Milady NFTs.",
+      error: "Wallet does not hold any Eliza NFTs.",
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown RPC error";
@@ -166,18 +166,18 @@ export async function verifyAndWhitelistHolder(
       verified: true,
       balance: -1, // -1 indicates "already verified, balance not re-checked"
       contractAddress:
-        process.env.MILADY_NFT_CONTRACT?.trim() || MILADY_CONTRACT,
+        process.env.ELIZA_NFT_CONTRACT?.trim() || ELIZA_CONTRACT,
       error: null,
     };
   }
 
-  const result = await verifyMiladyHolder(walletAddress);
+  const result = await verifyElizaHolder(walletAddress);
 
   if (result.verified) {
     markAddressVerified(
       walletAddress,
-      `nft:milady:${result.contractAddress}`,
-      `milady-holder:${result.balance}`,
+      `nft:eliza:${result.contractAddress}`,
+      `eliza-holder:${result.balance}`,
     );
     logger.info(
       `[nft-verify] Address ${walletAddress} added to whitelist via NFT verification`,
