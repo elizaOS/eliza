@@ -191,8 +191,12 @@ describe("Service Type System", () => {
 
 			await runtime.registerPlugin(plugin);
 
-			// Service should be available via sync getService immediately
-			// after registerPlugin resolves — no getServiceLoadPromise needed
+			// Service start is fire-and-forget (awaits initPromise internally),
+			// so wait for it to complete after init resolves.
+			await runtime.getServiceLoadPromise(ServiceType.WALLET);
+
+			// Service should be available via sync getService —
+			// no manual lazy-start trigger needed beyond the eager kick.
 			const service = runtime.getService(ServiceType.WALLET);
 			expect(service).toBeInstanceOf(MockWalletService1);
 		});
@@ -205,6 +209,11 @@ describe("Service Type System", () => {
 			};
 
 			await runtime.registerPlugin(plugin);
+
+			await Promise.all([
+				runtime.getServiceLoadPromise(ServiceType.WALLET),
+				runtime.getServiceLoadPromise(ServiceType.PDF),
+			]);
 
 			const walletService = runtime.getService(ServiceType.WALLET);
 			const pdfService = runtime.getService(ServiceType.PDF);
@@ -235,6 +244,9 @@ describe("Service Type System", () => {
 
 			// Should not throw despite FailingService
 			await runtime.registerPlugin(plugin);
+
+			// Wait for the working service to finish starting
+			await runtime.getServiceLoadPromise(ServiceType.WALLET);
 
 			// The working service should still be available
 			const walletService = runtime.getService(ServiceType.WALLET);
