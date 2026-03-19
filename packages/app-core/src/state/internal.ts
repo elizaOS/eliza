@@ -23,6 +23,7 @@ export {
 } from "./parsers";
 export {
   applyUiTheme,
+  clearPersistedConnectionMode,
   clearPersistedOnboardingStep,
   loadActiveConversationId,
   loadAvatarIndex,
@@ -31,7 +32,9 @@ export {
   loadChatVoiceMuted,
   loadCompanionMessageCutoffTs,
   loadLastNativeTab,
+  loadPersistedConnectionMode,
   loadPersistedOnboardingStep,
+  type PersistedConnectionMode,
   loadUiLanguage,
   loadUiShellMode,
   loadUiTheme,
@@ -45,6 +48,7 @@ export {
   saveCompanionMessageCutoffTs,
   saveLastNativeTab,
   saveOnboardingStep,
+  savePersistedConnectionMode,
   saveUiLanguage,
   saveUiShellMode,
   saveUiTheme,

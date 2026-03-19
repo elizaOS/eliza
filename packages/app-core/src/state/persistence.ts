@@ -318,3 +318,62 @@ export function saveCompanionMessageCutoffTs(value: number): void {
     /* ignore */
   }
 }
+
+/* ── Connection mode persistence ──────────────────────────────────────── */
+
+/**
+ * Persisted connection state so the app knows how to connect on restart
+ * without waiting for a backend that may not exist yet.
+ */
+export interface PersistedConnectionMode {
+  /** "local" = embedded agent, "cloud" = eliza cloud sandbox, "remote" = custom URL */
+  runMode: "local" | "cloud" | "remote";
+  /** For cloud: the eliza cloud API base URL */
+  cloudApiBase?: string;
+  /** For cloud: the auth token */
+  cloudAuthToken?: string;
+  /** For remote: the remote API base URL */
+  remoteApiBase?: string;
+  /** For remote: the access token/connection key */
+  remoteAccessToken?: string;
+}
+
+const CONNECTION_MODE_STORAGE_KEY = "eliza:connection-mode";
+
+export function loadPersistedConnectionMode(): PersistedConnectionMode | null {
+  try {
+    const stored = localStorage.getItem(CONNECTION_MODE_STORAGE_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      (parsed.runMode === "local" ||
+        parsed.runMode === "cloud" ||
+        parsed.runMode === "remote")
+    ) {
+      return parsed as PersistedConnectionMode;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function savePersistedConnectionMode(
+  mode: PersistedConnectionMode,
+): void {
+  try {
+    localStorage.setItem(CONNECTION_MODE_STORAGE_KEY, JSON.stringify(mode));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearPersistedConnectionMode(): void {
+  try {
+    localStorage.removeItem(CONNECTION_MODE_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
