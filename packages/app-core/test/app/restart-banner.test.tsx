@@ -8,7 +8,9 @@ interface RestartBannerContextStub {
   pendingRestartReasons: string[];
   restartBannerDismissed: boolean;
   dismissRestartBanner: () => void;
+  showRestartBanner: () => void;
   triggerRestart: () => Promise<void>;
+  relaunchDesktop: () => Promise<void>;
 }
 
 const mockUseApp = vi.fn<() => RestartBannerContextStub>();
@@ -34,7 +36,9 @@ function makeContext(
     pendingRestartReasons: [],
     restartBannerDismissed: false,
     dismissRestartBanner: vi.fn(),
+    showRestartBanner: vi.fn(),
     triggerRestart: vi.fn(async () => undefined),
+    relaunchDesktop: vi.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -59,7 +63,7 @@ describe("RestartBanner", () => {
     expect(markup).toBe("");
   });
 
-  it("renders nothing when banner is dismissed", () => {
+  it("renders compact reminder when banner is dismissed", () => {
     mockUseApp.mockReturnValue(
       makeContext({
         pendingRestart: true,
@@ -69,7 +73,10 @@ describe("RestartBanner", () => {
     );
 
     const markup = renderToStaticMarkup(React.createElement(RestartBanner));
-    expect(markup).toBe("");
+    const text = readAllText(markup);
+    expect(text).toContain("Configuration updated");
+    expect(text).toContain("Electrobun still has restart-required changes queued");
+    expect(markup).toContain("Review");
   });
 
   it("renders banner with single reason text", () => {
@@ -160,8 +167,8 @@ describe("RestartBanner", () => {
     expect(text).toContain("Restart required to apply changes");
   });
 
-  it("dismiss-then-re-show: hidden when dismissed, re-appears with new reasons", () => {
-    // Step 1: Banner is dismissed after user clicks "Later"
+  it("dismiss-then-re-show: compact when dismissed, expands with new reasons", () => {
+    // Step 1: Banner is compact after user clicks "Later"
     mockUseApp.mockReturnValue(
       makeContext({
         pendingRestart: true,
@@ -173,7 +180,8 @@ describe("RestartBanner", () => {
     const dismissedMarkup = renderToStaticMarkup(
       React.createElement(RestartBanner),
     );
-    expect(dismissedMarkup).toBe("");
+    expect(dismissedMarkup).not.toBe("");
+    expect(readAllText(dismissedMarkup)).toContain("Review");
 
     // Step 2: A new config change arrives — restartBannerDismissed is reset
     // to false by the WS handler (simulating AppContext behavior)

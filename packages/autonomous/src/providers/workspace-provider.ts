@@ -20,6 +20,7 @@ import type { CodingAgentContext } from "../services/coding-agent-context";
 import {
   DEFAULT_AGENT_WORKSPACE_DIR,
   filterInitFilesForSession,
+  isDefaultBoilerplate,
   loadWorkspaceInitFiles,
   type WorkspaceInitFile,
 } from "./workspace";
@@ -72,6 +73,9 @@ export function buildContext(
   let totalChars = 0;
   for (const f of files) {
     if (f.missing || !f.content?.trim()) continue;
+    // Skip files that are still the default boilerplate — they add ~3k of
+    // generic placeholder text with zero useful context for the model.
+    if (isDefaultBoilerplate(f.name, f.content)) continue;
     const trimmed = f.content.trim();
     // Per-file truncation
     const text = truncate(trimmed, maxChars);

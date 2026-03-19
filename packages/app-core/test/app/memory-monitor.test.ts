@@ -78,9 +78,8 @@ describe("startMemoryLeakDetector", () => {
 
     // Simulate rapid memory growth
     for (let i = 0; i < 10; i++) {
-      currentHeap += 100 * 1024 * 1024; // 100 MB per second = massive leak
+      currentHeap += 5 * 1024 * 1024; // 100 MB per second = massive leak
       perfToken.usedJSHeapSize = currentHeap;
-      console.log(`t: ${mockDateNow}, heap: ${currentHeap}`);
       mockDateNow += 1000;
       intervalCallbacks.forEach((cb) => {
         cb();
@@ -106,7 +105,7 @@ describe("startMemoryLeakDetector", () => {
 
     // Simulate rapid memory growth after stop
     for (let i = 0; i < 10; i++) {
-      currentHeap += 100 * 1024 * 1024;
+      currentHeap += 5 * 1024 * 1024;
       perfToken.usedJSHeapSize = currentHeap;
       mockDateNow += 1000;
       intervalCallbacks.forEach((cb) => {
@@ -131,7 +130,7 @@ describe("startMemoryLeakDetector", () => {
 
     // Simulate rapid memory growth
     for (let i = 0; i < 10; i++) {
-      currentHeap += 100 * 1024 * 1024;
+      currentHeap += 5 * 1024 * 1024;
       perfToken.usedJSHeapSize = currentHeap;
       mockDateNow += 1000;
       intervalCallbacks.forEach((cb) => {
@@ -181,7 +180,7 @@ describe("startMemoryLeakDetector", () => {
 
     // Simulate rapid memory growth
     for (let i = 0; i < 10; i++) {
-      currentHeap += 100 * 1024 * 1024;
+      currentHeap += 5 * 1024 * 1024;
       perfToken.usedJSHeapSize = currentHeap;
       mockDateNow += 1000;
       intervalCallbacks.forEach((cb) => {
@@ -207,7 +206,7 @@ describe("startMemoryLeakDetector", () => {
 
     // Only advance 3 times (less than the minimum 6 samples needed)
     for (let i = 0; i < 3; i++) {
-      currentHeap += 100 * 1024 * 1024;
+      currentHeap += 5 * 1024 * 1024;
       perfToken.usedJSHeapSize = currentHeap;
       mockDateNow += 1000;
       intervalCallbacks.forEach((cb) => {
@@ -220,7 +219,7 @@ describe("startMemoryLeakDetector", () => {
 
     // Continue to get enough samples
     for (let i = 0; i < 5; i++) {
-      currentHeap += 100 * 1024 * 1024;
+      currentHeap += 5 * 1024 * 1024;
       perfToken.usedJSHeapSize = currentHeap;
       mockDateNow += 1000;
       intervalCallbacks.forEach((cb) => {
@@ -314,7 +313,7 @@ describe("memory leak detection edge cases", () => {
 
     // Simulate memory growth
     for (let i = 0; i < 10; i++) {
-      currentHeap += 100 * 1024 * 1024;
+      currentHeap += 5 * 1024 * 1024;
       perfToken.usedJSHeapSize = currentHeap;
       mockDateNow += 1000;
       intervalCallbacks.forEach((cb) => {

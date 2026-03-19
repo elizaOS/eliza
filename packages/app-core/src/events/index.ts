@@ -86,3 +86,11 @@ export function dispatchWindowEvent(
 export function dispatchAppEmoteEvent(detail: AppEmoteEventDetail): void {
   dispatchWindowEvent(APP_EMOTE_EVENT, detail);
 }
+
+// ── Milady compatibility aliases ─────────────────────────────────────────
+export type MiladyDocumentEventName = ElizaDocumentEventName;
+export type MiladyWindowEventName = ElizaWindowEventName;
+export type MiladyEventName = ElizaEventName;
+
+/** Dispatch a typed custom event on `document` (milady compat alias). */
+export const dispatchMiladyEvent = dispatchElizaEvent;

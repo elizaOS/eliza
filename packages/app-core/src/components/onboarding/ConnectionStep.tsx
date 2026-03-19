@@ -148,9 +148,7 @@ export function ConnectionStep() {
     setState("onboardingOpenRouterModel", modelId);
   };
 
-  const providers = (onboardingOptions?.providers ?? []).filter(
-    (provider: ProviderOption) => provider.id !== "elizacloud",
-  );
+  const providers = onboardingOptions?.providers ?? [];
   const elizaCloudReady =
     elizaCloudConnected ||
     (onboardingRunMode === "cloud" &&
@@ -160,6 +158,7 @@ export function ConnectionStep() {
     onboardingRemoteConnected || onboardingRunMode === "local";
 
   const recommendedIds = new Set([
+    "elizacloud",
     "anthropic-subscription",
     "openai-subscription",
   ]);
@@ -168,7 +167,7 @@ export function ConnectionStep() {
     string,
     { name: string; description?: string }
   > = {
-    elizacloud: { name: "Eliza Cloud", description: "Managed hosting" },
+    elizacloud: { name: "Eliza Cloud", description: "LLMs, RPCs & more included" },
     "anthropic-subscription": {
       name: "Claude Sub",
       description: "Pro/Max subscription",

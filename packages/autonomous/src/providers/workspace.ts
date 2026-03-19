@@ -105,7 +105,7 @@ const DEFAULT_MEMORY_ALT_FILENAME = "memory.md";
 const WORKSPACE_TEMPLATES: Record<string, string> = {
   [DEFAULT_AGENTS_FILENAME]: `# Agents
 
-You are an autonomous AI agent powered by elizaOS.
+You are an autonomous AI agent powered by ElizaOS.
 
 ## Capabilities
 
@@ -206,6 +206,19 @@ export type WorkspaceInitFile = {
   content?: string;
   missing: boolean;
 };
+
+/**
+ * Returns true if the file content matches the built-in boilerplate template.
+ * Used to skip injecting generic placeholder docs into the prompt.
+ */
+export function isDefaultBoilerplate(
+  name: WorkspaceBootstrapFileName,
+  content: string,
+): boolean {
+  const template = WORKSPACE_TEMPLATES[name];
+  if (!template) return false;
+  return content.trim() === template.trim();
+}
 
 type ElizaCoreWorkspaceHelpers = {
   isSubagentSessionKey?: (key: string) => boolean;

@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 /**
- * Tests for MiladyBar — provider toolbar with cloud credits and wallet summary.
+ * Tests for useMiladyBar — macOS menu bar tray integration hook.
+ *
+ * Verifies the hook builds correct tray menu structures from app state
+ * and dispatches them to the Electrobun RPC bridge.
  */
-import React from "react";
+import React, { type ReactNode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,48 +15,32 @@ const { mockUseApp } = vi.hoisted(() => ({
   mockUseApp: vi.fn(),
 }));
 
-const { mockClient } = vi.hoisted(() => ({
-  mockClient: {
-    switchProvider: vi.fn().mockResolvedValue({ success: true, provider: "openai", restarting: true }),
-    fetchModels: vi.fn().mockResolvedValue({ provider: "openai", models: [{ id: "gpt-4" }] }),
-  },
+const { mockInvoke, mockIsDesktop, mockScanProviderCredentials, mockScanAndValidateProviderCredentials, mockSubscribe } = vi.hoisted(() => ({
+  mockInvoke: vi.fn().mockResolvedValue(null),
+  mockIsDesktop: vi.fn(() => true),
+  mockScanProviderCredentials: vi.fn().mockResolvedValue([]),
+  mockScanAndValidateProviderCredentials: vi.fn().mockResolvedValue([]),
+  mockSubscribe: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
 }));
 
-vi.mock("@elizaos/app-core/api", () => ({
-  client: mockClient,
+vi.mock("@elizaos/app-core/bridge/electrobun-rpc", () => ({
+  invokeDesktopBridgeRequest: mockInvoke,
+  scanProviderCredentials: mockScanProviderCredentials,
+  scanAndValidateProviderCredentials: mockScanAndValidateProviderCredentials,
+  subscribeDesktopBridgeEvent: mockSubscribe,
 }));
 
-vi.mock("@elizaos/app-core/providers", () => ({
-  getProviderLogo: (id: string, _isDark: boolean) =>
-    `data:image/svg+xml,${id}`,
-  getOnboardingProviderOption: (id: string) => {
-    const order: Record<string, number> = { openai: 1, anthropic: 2, groq: 3 };
-    return order[id] ? { order: order[id], name: id } : null;
-  },
+vi.mock("@elizaos/app-core/platform", () => ({
+  isDesktopPlatform: () => mockIsDesktop(),
 }));
 
-vi.mock("@elizaos/ui", () => ({
-  Button: ({ children, onClick, disabled, ...rest }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) =>
-    React.createElement("button", { type: "button", onClick, disabled, ...rest }, children),
-  Input: ({ ...props }: Record<string, unknown>) =>
-    React.createElement("input", props),
-}));
+// ── Imports ────────────────────────────────────────────────────────────
 
-vi.mock("lucide-react", () => ({
-  AlertTriangle: () => React.createElement("span", null, "⚠"),
-  CircleDollarSign: () => React.createElement("span", null, "💲"),
-  Wallet: () => React.createElement("span", null, "👛"),
-}));
-
-// ── Imports (after mocks) ──────────────────────────────────────────────
-
-import { MiladyBar } from "@elizaos/app-core/components/MiladyBar";
-import { CloudCreditsChip } from "../../src/components/milady-bar/CloudCreditsChip";
-import { WalletSummary } from "../../src/components/milady-bar/WalletSummary";
+import { useMiladyBar } from "../../src/hooks/useMiladyBar";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -61,18 +48,18 @@ function defaultAppState(overrides: Record<string, unknown> = {}) {
   return {
     plugins: [
       { id: "openai", name: "OpenAI", category: "ai-provider", enabled: true, configured: true, parameters: [] },
-      { id: "anthropic", name: "Anthropic", category: "ai-provider", enabled: true, configured: true, parameters: [] },
+      { id: "anthropic", name: "Anthropic", category: "ai-provider", enabled: true, configured: false, parameters: [] },
       { id: "streaming-base", name: "Streaming", category: "streaming", enabled: true, configured: true, parameters: [] },
     ],
     uiTheme: "dark",
-    uiShellMode: "native",
-    onboardingDetectedProviders: [],
+    agentStatus: { state: "running", agentName: "Milady", startedAt: Date.now() - 3600000 },
     elizaCloudEnabled: false,
     elizaCloudConnected: false,
     elizaCloudCredits: null,
     elizaCloudCreditsCritical: false,
     elizaCloudCreditsLow: false,
     walletBalances: null,
+    onboardingDetectedProviders: [],
     setTab: vi.fn(),
     setState: vi.fn(),
     t: (key: string) => key,
@@ -80,176 +67,78 @@ function defaultAppState(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** Recursively search JSON tree for a node with matching data-testid. */
-function findJsonByTestId(json: unknown, testId: string): unknown | null {
-  if (!json || typeof json !== "object") return null;
-  if (Array.isArray(json)) {
-    for (const item of json) {
-      const found = findJsonByTestId(item, testId);
-      if (found) return found;
-    }
-    return null;
-  }
-  const obj = json as Record<string, unknown>;
-  const props = obj.props as Record<string, unknown> | undefined;
-  if (props?.["data-testid"] === testId) return obj;
-  if (obj.children && Array.isArray(obj.children)) {
-    for (const child of obj.children) {
-      const found = findJsonByTestId(child, testId);
-      if (found) return found;
-    }
-  }
-  return null;
+function TestHarness() {
+  useMiladyBar();
+  return React.createElement("div", null, "harness");
 }
 
-function jsonContains(json: unknown, text: string): boolean {
-  return JSON.stringify(json).includes(text);
+function getLastMenuCall(): Array<{ id: string; label?: string; type?: string; enabled?: boolean; submenu?: Array<{ id: string; label?: string; type?: string; enabled?: boolean; checked?: boolean }> }> | null {
+  const calls = mockInvoke.mock.calls.filter(
+    (c: unknown[]) => (c[0] as { rpcMethod: string }).rpcMethod === "desktopSetTrayMenu",
+  );
+  if (calls.length === 0) return null;
+  const lastCall = calls[calls.length - 1][0] as { params: { menu: unknown } };
+  return lastCall.params.menu as Array<{ id: string; label?: string; type?: string; enabled?: boolean }>;
+}
+
+function getMenuItemById(menu: Array<{ id: string; label?: string }>, id: string) {
+  return menu.find((item) => item.id === id) ?? null;
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-describe("MiladyBar", () => {
+describe("useMiladyBar", () => {
   beforeEach(() => {
     mockUseApp.mockReturnValue(defaultAppState());
+    mockIsDesktop.mockReturnValue(true);
+    mockInvoke.mockClear();
+    mockSubscribe.mockClear();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it("renders provider icons for enabled AI providers", () => {
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<MiladyBar />);
-    });
-    const json = tree!.toJSON();
-    expect(findJsonByTestId(json, "milady-bar-provider-openai")).not.toBeNull();
-    expect(findJsonByTestId(json, "milady-bar-provider-anthropic")).not.toBeNull();
+  it("sends tray menu update via desktopSetTrayMenu RPC", () => {
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    expect(mockInvoke).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rpcMethod: "desktopSetTrayMenu",
+        ipcChannel: "desktop:setTrayMenu",
+      }),
+    );
   });
 
-  it("does not render non-ai-provider plugins as icons", () => {
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<MiladyBar />);
-    });
-    const json = tree!.toJSON();
-    expect(findJsonByTestId(json, "milady-bar-provider-streaming-base")).toBeNull();
+  it("does not call RPC when not on desktop platform", () => {
+    mockIsDesktop.mockReturnValue(false);
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    expect(mockInvoke).not.toHaveBeenCalled();
   });
 
-  it("opens dropdown on provider click and shows API key input", () => {
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<MiladyBar />);
-    });
-    // Click the openai provider button
-    const openaiBtn = tree!.root.findAll(
-      (n) => n.props?.["data-testid"] === "milady-bar-provider-openai",
-    )[0];
-    expect(openaiBtn).toBeTruthy();
+  it("includes enabled AI providers in menu with status labels", () => {
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    expect(menu).not.toBeNull();
 
-    act(() => {
-      openaiBtn.props.onClick();
-    });
+    const header = getMenuItemById(menu, "providers-header");
+    expect(header).not.toBeNull();
+    expect(header!.label).toBe("AI Providers");
 
-    const json = tree!.toJSON();
-    expect(findJsonByTestId(json, "provider-dropdown")).not.toBeNull();
-    expect(findJsonByTestId(json, "provider-api-key-input")).not.toBeNull();
+    const openai = getMenuItemById(menu, "provider-openai");
+    expect(openai).not.toBeNull();
+    expect(openai!.label).toContain("OpenAI");
+    expect(openai!.label).toContain("Active");
+
+    const anthropic = getMenuItemById(menu, "provider-anthropic");
+    expect(anthropic).not.toBeNull();
+    expect(anthropic!.label).toContain("Anthropic");
   });
 
-  it("closes dropdown on Escape key", () => {
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<MiladyBar />);
-    });
-
-    const openaiBtn = tree!.root.findAll(
-      (n) => n.props?.["data-testid"] === "milady-bar-provider-openai",
-    )[0];
-    act(() => {
-      openaiBtn.props.onClick();
-    });
-    expect(findJsonByTestId(tree!.toJSON(), "provider-dropdown")).not.toBeNull();
-
-    act(() => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    });
-    expect(findJsonByTestId(tree!.toJSON(), "provider-dropdown")).toBeNull();
-  });
-
-  it("closes dropdown when clicking a different provider (simulates outside click)", () => {
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<MiladyBar />);
-    });
-
-    // Open openai dropdown
-    const openaiBtn = tree!.root.findAll(
-      (n) => n.props?.["data-testid"] === "milady-bar-provider-openai",
-    )[0];
-    act(() => {
-      openaiBtn.props.onClick();
-    });
-    expect(findJsonByTestId(tree!.toJSON(), "provider-dropdown")).not.toBeNull();
-
-    // Click the same button again to toggle closed
-    act(() => {
-      tree!.root.findAll(
-        (n) => n.props?.["data-testid"] === "milady-bar-provider-openai",
-      )[0].props.onClick();
-    });
-    expect(findJsonByTestId(tree!.toJSON(), "provider-dropdown")).toBeNull();
-  });
-
-  it("only one dropdown open at a time", () => {
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<MiladyBar />);
-    });
-
-    const openaiBtn = tree!.root.findAll(
-      (n) => n.props?.["data-testid"] === "milady-bar-provider-openai",
-    )[0];
-    act(() => {
-      openaiBtn.props.onClick();
-    });
-
-    // Now click anthropic — should close openai and open anthropic
-    const anthropicBtn = tree!.root.findAll(
-      (n) => n.props?.["data-testid"] === "milady-bar-provider-anthropic",
-    )[0];
-    act(() => {
-      anthropicBtn.props.onClick();
-    });
-
-    // Count dropdowns in JSON
-    const jsonStr = JSON.stringify(tree!.toJSON());
-    const matches = jsonStr.match(/"data-testid":"provider-dropdown"/g);
-    expect(matches?.length ?? 0).toBe(1);
-  });
-
-  it("highlights active provider with ring styling", () => {
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<MiladyBar />);
-    });
-
-    const openaiBtn = tree!.root.findAll(
-      (n) => n.props?.["data-testid"] === "milady-bar-provider-openai",
-    )[0];
-    act(() => {
-      openaiBtn.props.onClick();
-    });
-
-    const updatedBtn = tree!.root.findAll(
-      (n) => n.props?.["data-testid"] === "milady-bar-provider-openai",
-    )[0];
-    expect(updatedBtn.props.className).toContain("ring-2");
-  });
-});
-
-describe("CloudCreditsChip", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
+  it("excludes non-ai-provider plugins from menu", () => {
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const streaming = getMenuItemById(menu, "provider-streaming-base");
+    expect(streaming).toBeNull();
   });
 
   it("shows cloud credits when connected", () => {
@@ -260,46 +149,35 @@ describe("CloudCreditsChip", () => {
         elizaCloudCredits: 2.4,
       }),
     );
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<CloudCreditsChip />);
-    });
-    const json = tree!.toJSON();
-    expect(findJsonByTestId(json, "milady-bar-cloud-credits")).not.toBeNull();
-    expect(jsonContains(json, "$2.40")).toBe(true);
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const cloud = getMenuItemById(menu, "cloud-credits");
+    expect(cloud).not.toBeNull();
+    expect(cloud!.label).toContain("$2.40");
   });
 
-  it("shows warning when cloud disconnected", () => {
+  it("shows cloud disconnected when enabled but not connected", () => {
     mockUseApp.mockReturnValue(
       defaultAppState({
         elizaCloudEnabled: true,
         elizaCloudConnected: false,
       }),
     );
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<CloudCreditsChip />);
-    });
-    const json = tree!.toJSON();
-    expect(findJsonByTestId(json, "milady-bar-cloud-disconnected")).not.toBeNull();
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const cloud = getMenuItemById(menu, "cloud-credits");
+    expect(cloud).not.toBeNull();
+    expect(cloud!.label).toContain("Disconnected");
   });
 
-  it("renders nothing when cloud not enabled", () => {
-    mockUseApp.mockReturnValue(defaultAppState());
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<CloudCreditsChip />);
-    });
-    expect(tree!.toJSON()).toBeNull();
-  });
-});
-
-describe("WalletSummary", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
+  it("omits cloud section when cloud is not enabled or connected", () => {
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const cloud = getMenuItemById(menu, "cloud-credits");
+    expect(cloud).toBeNull();
   });
 
-  it("shows wallet balance total", () => {
+  it("shows wallet balance total in menu", () => {
     mockUseApp.mockReturnValue(
       defaultAppState({
         walletBalances: {
@@ -307,66 +185,399 @@ describe("WalletSummary", () => {
             address: "0x123",
             chains: [
               {
-                chain: "ethereum",
-                chainId: 1,
-                nativeBalance: "1.0",
-                nativeSymbol: "ETH",
-                nativeValueUsd: "100.00",
-                tokens: [{ symbol: "USDC", valueUsd: "50.00", name: "USDC", contractAddress: "0x", balance: "50", decimals: 6, logoUrl: "" }],
+                chain: "ethereum", chainId: 1,
+                nativeBalance: "1.0", nativeSymbol: "ETH", nativeValueUsd: "100.00",
+                tokens: [{ symbol: "USDC", valueUsd: "52.50", name: "USDC", contractAddress: "0x", balance: "52.5", decimals: 6, logoUrl: "" }],
                 error: null,
               },
             ],
           },
-          solana: {
-            address: "sol123",
-            solBalance: "1.0",
-            solValueUsd: "2.50",
-            tokens: [],
-          },
+          solana: null,
         },
       }),
     );
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<WalletSummary />);
-    });
-    const json = tree!.toJSON();
-    // Total: 100 + 50 + 2.50 = 152.50
-    expect(jsonContains(json, "152.50")).toBe(true);
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const wallet = getMenuItemById(menu, "wallet-balance");
+    expect(wallet).not.toBeNull();
+    expect(wallet!.label).toContain("$152.50");
   });
 
-  it("navigates to wallets tab on click", () => {
-    const setTab = vi.fn();
+  it("omits wallet section when no balances loaded", () => {
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const wallet = getMenuItemById(menu, "wallet-balance");
+    expect(wallet).toBeNull();
+  });
+
+  it("always includes standard actions (Show, Restart, Quit, Settings, Refresh)", () => {
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    expect(getMenuItemById(menu, "show")).not.toBeNull();
+    expect(getMenuItemById(menu, "restart-agent")).not.toBeNull();
+    expect(getMenuItemById(menu, "quit")).not.toBeNull();
+    expect(getMenuItemById(menu, "check-for-updates")).not.toBeNull();
+    expect(getMenuItemById(menu, "open-settings")).not.toBeNull();
+    expect(getMenuItemById(menu, "refresh-now")).not.toBeNull();
+  });
+
+  it("provider items have interactive submenus", () => {
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const openai = menu.find((i) => i.id === "provider-openai");
+    expect(openai).not.toBeNull();
+    expect(openai!.submenu).toBeDefined();
+    expect(openai!.submenu!.length).toBeGreaterThan(0);
+  });
+
+  it("standard actions are interactive (no enabled: false)", () => {
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const show = getMenuItemById(menu, "show") as Record<string, unknown>;
+    expect(show.enabled).toBeUndefined();
+  });
+
+  it("shows detected credentials in tray menu with source labels", async () => {
+    mockScanProviderCredentials.mockResolvedValue([
+      { id: "groq", source: "env", cliInstalled: false },
+      { id: "mistral", source: "codex-auth", cliInstalled: true },
+    ]);
+    await act(async () => {
+      TestRenderer.create(React.createElement(TestHarness));
+    });
+    const menu = getLastMenuCall()!;
+    const header = getMenuItemById(menu, "detected-header");
+    expect(header).not.toBeNull();
+    expect(header!.label).toBe("Detected Credentials");
+
+    const groq = getMenuItemById(menu, "detected-groq");
+    expect(groq).not.toBeNull();
+    expect(groq!.label).toContain("Groq");
+    expect(groq!.label).toContain("via Environment");
+
+    const mistral = getMenuItemById(menu, "detected-mistral");
+    expect(mistral).not.toBeNull();
+    expect(mistral!.label).toContain("Mistral");
+    expect(mistral!.label).toContain("via Codex CLI");
+  });
+
+  it("merges detected provider into enabled provider line (no duplicate)", async () => {
+    mockScanProviderCredentials.mockResolvedValue([
+      { id: "openai", source: "claude-credentials", cliInstalled: true },
+    ]);
+    await act(async () => {
+      TestRenderer.create(React.createElement(TestHarness));
+    });
+    const menu = getLastMenuCall()!;
+    const openai = getMenuItemById(menu, "provider-openai");
+    expect(openai).not.toBeNull();
+    expect(openai!.label).toContain("Active");
+    expect(openai!.label).toContain("via Claude Code");
+
+    const detectedOpenai = getMenuItemById(menu, "detected-openai");
+    expect(detectedOpenai).toBeNull();
+  });
+
+  it("maps all source labels correctly", async () => {
+    mockScanProviderCredentials.mockResolvedValue([
+      { id: "provider-a", source: "codex-auth", cliInstalled: false },
+      { id: "provider-b", source: "claude-credentials", cliInstalled: false },
+      { id: "provider-c", source: "keychain", cliInstalled: false },
+      { id: "provider-d", source: "env", cliInstalled: false },
+    ]);
+    await act(async () => {
+      TestRenderer.create(React.createElement(TestHarness));
+    });
+    const menu = getLastMenuCall()!;
+    expect(getMenuItemById(menu, "detected-provider-a")!.label).toContain("via Codex CLI");
+    expect(getMenuItemById(menu, "detected-provider-b")!.label).toContain("via Claude Code");
+    expect(getMenuItemById(menu, "detected-provider-c")!.label).toContain("via Keychain");
+    expect(getMenuItemById(menu, "detected-provider-d")!.label).toContain("via Environment");
+  });
+
+  it("updates tray when state changes", () => {
+    const state1 = defaultAppState();
+    mockUseApp.mockReturnValue(state1);
+
+    const tree = renderAct(() =>
+      TestRenderer.create(React.createElement(TestHarness)),
+    );
+    const callCount1 = mockInvoke.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { rpcMethod: string }).rpcMethod === "desktopSetTrayMenu",
+    ).length;
+
     mockUseApp.mockReturnValue(
       defaultAppState({
-        setTab,
-        walletBalances: {
-          evm: { address: "0x123", chains: [] },
-          solana: { address: "sol123", solBalance: "0", solValueUsd: "0", tokens: [] },
-        },
+        elizaCloudEnabled: true,
+        elizaCloudConnected: true,
+        elizaCloudCredits: 5.0,
       }),
     );
-    let tree: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<WalletSummary />);
-    });
-    const walletBtn = tree!.root.findAll(
-      (n) => n.props?.["data-testid"] === "milady-bar-wallet",
-    )[0];
-    act(() => {
-      walletBtn.props.onClick();
-    });
-    expect(setTab).toHaveBeenCalledWith("wallets");
-  });
 
-  it("shows muted text when no balances loaded", () => {
-    mockUseApp.mockReturnValue(defaultAppState());
-    let tree: TestRenderer.ReactTestRenderer;
     act(() => {
-      tree = TestRenderer.create(<WalletSummary />);
+      tree.update(React.createElement(TestHarness));
     });
-    const json = tree!.toJSON();
-    expect(jsonContains(json, "Wallet")).toBe(true);
-    expect(jsonContains(json, "text-muted")).toBe(true);
+
+    const menuCalls = mockInvoke.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { rpcMethod: string }).rpcMethod === "desktopSetTrayMenu",
+    );
+    expect(menuCalls.length).toBeGreaterThan(callCount1);
+    const lastCall = menuCalls[menuCalls.length - 1][0] as { params: { menu: unknown } };
+    const latestMenu = lastCall.params.menu as Array<{ id: string; label?: string }>;
+    expect(getMenuItemById(latestMenu, "cloud-credits")!.label).toContain("$5.00");
   });
 });
+
+describe("useMiladyBar — agent status", () => {
+  beforeEach(() => {
+    mockIsDesktop.mockReturnValue(true);
+    mockInvoke.mockClear();
+    mockSubscribe.mockClear();
+  });
+  afterEach(() => vi.clearAllMocks());
+
+  it("shows agent status with running state and green indicator", () => {
+    mockUseApp.mockReturnValue(defaultAppState({
+      agentStatus: { state: "running", agentName: "TestAgent", startedAt: Date.now() - 60000 },
+    }));
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const status = getMenuItemById(menu, "agent-status");
+    expect(status).not.toBeNull();
+    expect(status!.label).toContain("TestAgent");
+    expect(status!.label).toContain("Running");
+    expect(status!.enabled).toBe(false);
+  });
+
+  it("shows uptime when agent is running with startedAt", () => {
+    mockUseApp.mockReturnValue(defaultAppState({
+      agentStatus: { state: "running", agentName: "Milady", startedAt: Date.now() - 7200000 },
+    }));
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const uptime = getMenuItemById(menu, "agent-uptime");
+    expect(uptime).not.toBeNull();
+    expect(uptime!.label).toContain("Uptime:");
+    expect(uptime!.label).toContain("2h");
+  });
+
+  it("shows error state with hint", () => {
+    mockUseApp.mockReturnValue(defaultAppState({
+      agentStatus: { state: "error", agentName: "Milady" },
+    }));
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const status = getMenuItemById(menu, "agent-status");
+    expect(status!.label).toContain("Error");
+    const hint = getMenuItemById(menu, "agent-error-hint");
+    expect(hint).not.toBeNull();
+    expect(hint!.label).toContain("Check logs");
+  });
+
+  it("shows stopped state when agent is not running", () => {
+    mockUseApp.mockReturnValue(defaultAppState({
+      agentStatus: { state: "stopped", agentName: "Milady" },
+    }));
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const status = getMenuItemById(menu, "agent-status");
+    expect(status!.label).toContain("Stopped");
+  });
+
+  it("shows default state when agentStatus is null", () => {
+    mockUseApp.mockReturnValue(defaultAppState({ agentStatus: null }));
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const status = getMenuItemById(menu, "agent-status");
+    expect(status!.label).toContain("Milady");
+    expect(status!.label).toContain("Not Started");
+  });
+
+  it("updates tray tooltip with agent status", () => {
+    mockUseApp.mockReturnValue(defaultAppState({
+      agentStatus: { state: "running", agentName: "MyAgent" },
+    }));
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const tooltipCalls = mockInvoke.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { rpcMethod: string }).rpcMethod === "desktopUpdateTray",
+    );
+    expect(tooltipCalls.length).toBeGreaterThan(0);
+    const lastTooltip = tooltipCalls[tooltipCalls.length - 1][0] as { params: { tooltip: string } };
+    expect(lastTooltip.params.tooltip).toContain("MyAgent");
+    expect(lastTooltip.params.tooltip).toContain("Running");
+  });
+});
+
+describe("useMiladyBar — actions and refresh", () => {
+  beforeEach(() => {
+    mockIsDesktop.mockReturnValue(true);
+    mockInvoke.mockClear();
+    mockSubscribe.mockClear();
+  });
+  afterEach(() => vi.clearAllMocks());
+
+  it("Settings action item is present and clickable", () => {
+    mockUseApp.mockReturnValue(defaultAppState());
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const settings = getMenuItemById(menu, "open-settings") as Record<string, unknown>;
+    expect(settings).not.toBeNull();
+    expect(settings.label).toBe("Settings...");
+    expect(settings.enabled).toBeUndefined(); // interactive
+  });
+
+  it("Refresh Now action item is present and clickable", () => {
+    mockUseApp.mockReturnValue(defaultAppState());
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const refresh = getMenuItemById(menu, "refresh-now") as Record<string, unknown>;
+    expect(refresh).not.toBeNull();
+    expect(refresh.label).toBe("Refresh Now");
+    expect(refresh.enabled).toBeUndefined();
+  });
+
+  it("subscribes to tray menu click events", () => {
+    mockUseApp.mockReturnValue(defaultAppState());
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    expect(mockSubscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rpcMessage: "desktopTrayMenuClick",
+      }),
+    );
+  });
+
+  it("refresh-now click triggers validated credential re-scan", async () => {
+    let capturedListener: ((payload: unknown) => void) | null = null;
+    mockSubscribe.mockImplementation((opts: { listener: (payload: unknown) => void }) => {
+      capturedListener = opts.listener;
+      return vi.fn();
+    });
+    mockUseApp.mockReturnValue(defaultAppState());
+    await act(async () => {
+      TestRenderer.create(React.createElement(TestHarness));
+    });
+
+    mockScanAndValidateProviderCredentials.mockClear();
+    expect(capturedListener).not.toBeNull();
+
+    await act(async () => {
+      capturedListener!({ itemId: "refresh-now" });
+    });
+    expect(mockScanAndValidateProviderCredentials).toHaveBeenCalled();
+  });
+
+  it("open-settings click calls desktopOpenSettingsWindow RPC", async () => {
+    let capturedListener: ((payload: unknown) => void) | null = null;
+    mockSubscribe.mockImplementation((opts: { listener: (payload: unknown) => void }) => {
+      capturedListener = opts.listener;
+      return vi.fn();
+    });
+    mockUseApp.mockReturnValue(defaultAppState());
+    await act(async () => {
+      TestRenderer.create(React.createElement(TestHarness));
+    });
+    mockInvoke.mockClear();
+
+    await act(async () => {
+      capturedListener!({ itemId: "open-settings" });
+    });
+    expect(mockInvoke).toHaveBeenCalledWith(
+      expect.objectContaining({ rpcMethod: "desktopOpenSettingsWindow" }),
+    );
+  });
+
+  it("shows last updated timestamp after scan completes", async () => {
+    mockScanProviderCredentials.mockResolvedValue([]);
+    mockUseApp.mockReturnValue(defaultAppState());
+    await act(async () => {
+      TestRenderer.create(React.createElement(TestHarness));
+    });
+    const menu = getLastMenuCall()!;
+    const lastUpdated = getMenuItemById(menu, "last-updated");
+    expect(lastUpdated).not.toBeNull();
+    expect(lastUpdated!.label).toContain("Last updated:");
+    expect(lastUpdated!.label).toContain("just now");
+    expect(lastUpdated!.enabled).toBe(false);
+  });
+});
+
+describe("useMiladyBar — provider submenus", () => {
+  beforeEach(() => {
+    mockUseApp.mockReturnValue(defaultAppState());
+    mockIsDesktop.mockReturnValue(true);
+    mockInvoke.mockClear();
+    mockSubscribe.mockClear();
+    mockScanProviderCredentials.mockReset().mockResolvedValue([]);
+    mockScanAndValidateProviderCredentials.mockReset().mockResolvedValue([]);
+  });
+  afterEach(() => vi.clearAllMocks());
+
+  it("provider submenu includes Test Connection and Set as Active", () => {
+    renderAct(() => TestRenderer.create(React.createElement(TestHarness)));
+    const menu = getLastMenuCall()!;
+    const openai = menu.find((i) => i.id === "provider-openai");
+    expect(openai!.submenu).toBeDefined();
+    const ids = openai!.submenu!.map((s) => s.id);
+    expect(ids).toContain("provider-action:openai:set-active");
+    expect(ids).toContain("provider-action:openai:test");
+  });
+
+  it("detected provider submenu has Enable & Set Active", async () => {
+    mockScanProviderCredentials.mockResolvedValue([
+      { id: "groq", source: "env", cliInstalled: false, status: "unchecked" },
+    ]);
+    await act(async () => {
+      TestRenderer.create(React.createElement(TestHarness));
+    });
+    const menu = getLastMenuCall()!;
+    const groq = menu.find((i) => i.id === "detected-groq");
+    expect(groq).not.toBeNull();
+    expect(groq!.submenu).toBeDefined();
+    const ids = groq!.submenu!.map((s) => s.id);
+    expect(ids).toContain("provider-action:groq:enable");
+    expect(ids).toContain("provider-action:groq:test");
+  });
+
+  it("invalid credential shows Invalid badge in label", async () => {
+    mockScanProviderCredentials.mockResolvedValue([
+      { id: "groq", source: "env", cliInstalled: false, status: "invalid", statusDetail: "API key rejected" },
+    ]);
+    await act(async () => {
+      TestRenderer.create(React.createElement(TestHarness));
+    });
+    const menu = getLastMenuCall()!;
+    const groq = menu.find((i) => i.id === "detected-groq");
+    expect(groq!.label).toContain("Invalid");
+  });
+
+  it("provider-action:openai:test triggers model fetch", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", mockFetch);
+
+    let capturedListener: ((payload: unknown) => void) | null = null;
+    mockSubscribe.mockImplementation((opts: { listener: (payload: unknown) => void }) => {
+      capturedListener = opts.listener;
+      return vi.fn();
+    });
+    mockUseApp.mockReturnValue(defaultAppState());
+    await act(async () => {
+      TestRenderer.create(React.createElement(TestHarness));
+    });
+
+    await act(async () => {
+      capturedListener!({ itemId: "provider-action:openai:test" });
+    });
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/models?provider=openai"),
+    );
+    vi.unstubAllGlobals();
+  });
+});
+
+function renderAct<T>(fn: () => T): T {
+  let result: T;
+  act(() => {
+    result = fn();
+  });
+  return result!;
+}

@@ -7,11 +7,24 @@ type OnboardingStep = "identity" | "connection" | "rpc" | "senses" | "activate";
 
 type AppHarnessState = {
   onboardingLoading: boolean;
+  startupStatus:
+    | "loading"
+    | "onboarding"
+    | "ready"
+    | "auth-blocked"
+    | "recoverable-error";
+  startupError: null;
   authRequired: boolean;
   onboardingComplete: boolean;
   tab: string;
   actionNotice: null;
   onboardingStep: OnboardingStep;
+  onboardingMode: "basic" | "advanced";
+  onboardingActiveGuide: "provider" | "rpc" | "permissions" | "voice" | null;
+  onboardingDeferredTasks: Array<
+    "provider" | "rpc" | "permissions" | "voice"
+  >;
+  postOnboardingChecklistDismissed: boolean;
   onboardingOptions: {
     names: string[];
     styles: Array<{
@@ -178,14 +191,32 @@ vi.mock("@elizaos/app-core/components", async () => {
       if (state.onboardingStep === "connection") {
         if (!state.onboardingRunMode) {
           return React.createElement(
-            "button",
-            {
-              onClick: () => {
-                state.setState?.("onboardingRunMode", "local");
+            React.Fragment,
+            null,
+            React.createElement(
+              "button",
+              {
+                onClick: () => {
+                  state.setState?.("onboardingRunMode", "local");
+                },
+                type: "button",
               },
-              type: "button",
-            },
-            "onboarding.hostingLocal",
+              "onboarding.hostingLocal",
+            ),
+            React.createElement(
+              "button",
+              {
+                onClick: () => {
+                  state.setState?.("onboardingMode", "advanced");
+                  state.setState?.("onboardingActiveGuide", "provider");
+                },
+                type: "button",
+              },
+              "advanced-configuration",
+            ),
+            state.onboardingMode === "advanced"
+              ? React.createElement("div", null, "Flamina guidance")
+              : null,
           );
         }
         return React.createElement(
@@ -431,11 +462,17 @@ function onboardingOptions() {
 function createHarnessState(): AppHarnessState {
   return {
     onboardingLoading: false,
+    startupStatus: "onboarding",
+    startupError: null,
     authRequired: false,
     onboardingComplete: false,
     tab: "chat",
     actionNotice: null,
     onboardingStep: "identity",
+    onboardingMode: "basic",
+    onboardingActiveGuide: null,
+    onboardingDeferredTasks: [],
+    postOnboardingChecklistDismissed: false,
     onboardingOptions: onboardingOptions(),
     onboardingName: "Eliza",
     onboardingStyle: "",
@@ -528,7 +565,9 @@ describe("app startup onboarding flow (e2e)", () => {
     const handleOnboardingNext = async () => {
       if (state.onboardingStep === "activate") {
         state.onboardingComplete = true;
-        state.tab = "character-select";
+        state.startupStatus = "ready";
+        state.uiShellMode = "native";
+        state.tab = "chat";
         return;
       }
       const idx = STEP_ORDER.indexOf(state.onboardingStep);
@@ -612,7 +651,62 @@ describe("app startup onboarding flow (e2e)", () => {
 
     const renderedText = textOf(renderedTree.root);
 
-    expect(renderedText).toContain("CharacterView");
+    expect(renderedText).toContain("ChatView");
     expect(renderedText).not.toContain("OnboardingWizard");
+  });
+
+  it("renders character select when the tab is character-select even if companion mode lingers", async () => {
+    state.onboardingComplete = true;
+    state.startupStatus = "ready";
+    state.tab = "character-select";
+    state.uiShellMode = "companion";
+
+    let tree: TestRenderer.ReactTestRenderer | null = null;
+
+    await act(async () => {
+      tree = TestRenderer.create(React.createElement(App));
+    });
+    if (!tree) throw new Error("failed to render App");
+
+    const renderedText = textOf(tree.root);
+    expect(renderedText).toContain("CharacterView");
+    expect(renderedText).not.toContain("CompanionView");
+  });
+
+  it("opens Flamina guidance when advanced configuration is selected", async () => {
+    let tree: TestRenderer.ReactTestRenderer | null = null;
+
+    await act(async () => {
+      tree = TestRenderer.create(React.createElement(App));
+    });
+    if (!tree) throw new Error("failed to render App");
+
+    clickButton(tree, "onboarding.chooseAgent");
+    await rerender(tree);
+    clickButton(tree, "advanced-configuration");
+    await rerender(tree);
+
+    expect(textOf(tree.root)).toContain("Flamina guidance");
+  });
+
+  it("shows deferred setup checklist after onboarding when setup was skipped", async () => {
+    state.onboardingComplete = true;
+    state.startupStatus = "ready";
+    state.tab = "chat";
+    state.uiShellMode = "native";
+    state.onboardingDeferredTasks = ["rpc", "permissions"];
+
+    let tree: TestRenderer.ReactTestRenderer | null = null;
+
+    await act(async () => {
+      tree = TestRenderer.create(React.createElement(App));
+    });
+    if (!tree) throw new Error("failed to render App");
+
+    const renderedText = textOf(tree.root);
+
+    expect(renderedText).toContain("Finish setup later");
+    expect(renderedText).toContain("RPC setup");
+    expect(renderedText).toContain("Permissions");
   });
 });

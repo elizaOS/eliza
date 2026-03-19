@@ -6,6 +6,10 @@
 
 import type { CharacterData, ElizaClient } from "../api/client";
 
+type MessageExampleGroup = {
+  examples: Array<{ name: string; content: { text: string } }>;
+};
+
 export interface CharacterActionContext {
   client: ElizaClient;
   setCharacterData: (data: CharacterData | null) => void;
@@ -51,6 +55,165 @@ export async function loadCharacter(
   ctx.setCharacterLoading(false);
 }
 
+function extractLikelyJson(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return trimmed;
+
+  const withoutFences = trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  if (withoutFences.startsWith("{") || withoutFences.startsWith("[")) {
+    return withoutFences;
+  }
+
+  const firstBracket = withoutFences.indexOf("[");
+  const firstBrace = withoutFences.indexOf("{");
+  const starts = [firstBracket, firstBrace].filter((index) => index >= 0);
+  if (starts.length === 0) return withoutFences;
+
+  const start = Math.min(...starts);
+  const opener = withoutFences[start];
+  const closer = opener === "[" ? "]" : "}";
+  const end = withoutFences.lastIndexOf(closer);
+  if (end <= start) return withoutFences;
+
+  return withoutFences.slice(start, end + 1);
+}
+
+function normalizeSpeakerName(
+  rawName: unknown,
+  fallbackAgentName: string,
+  options: { fallbackMissingSpeaker?: boolean } = {},
+): string {
+  const fallbackMissingSpeaker = options.fallbackMissingSpeaker ?? true;
+  if (typeof rawName === "string" && rawName.trim()) {
+    const trimmed = rawName.trim();
+    const normalized = trimmed.toLowerCase();
+    if (
+      normalized === "assistant" ||
+      normalized === "agent" ||
+      normalized === "ai" ||
+      normalized === "model" ||
+      normalized === "{{agentname}}"
+    ) {
+      return fallbackAgentName;
+    }
+    if (
+      normalized === "user" ||
+      normalized === "human" ||
+      normalized === "{{user}}" ||
+      normalized === "customer"
+    ) {
+      return "{{user1}}";
+    }
+    return trimmed;
+  }
+  return fallbackMissingSpeaker ? fallbackAgentName : "";
+}
+
+function normalizeMessageText(raw: unknown): string {
+  if (typeof raw === "string") return raw.trim();
+  return "";
+}
+
+function normalizeConversation(
+  conversation: unknown,
+  fallbackAgentName: string,
+  options: { fallbackMissingSpeaker?: boolean } = {},
+): MessageExampleGroup | null {
+  const rawExamples = Array.isArray(conversation)
+    ? conversation
+    : conversation &&
+        typeof conversation === "object" &&
+        Array.isArray(
+          (conversation as { examples?: unknown[] }).examples,
+        )
+      ? (conversation as { examples: unknown[] }).examples
+      : null;
+
+  if (!rawExamples) return null;
+
+  const examples = rawExamples
+    .map((message) => {
+      const record =
+        message && typeof message === "object"
+          ? (message as Record<string, unknown>)
+          : null;
+      if (!record) return null;
+
+      const content =
+        record.content && typeof record.content === "object"
+          ? (record.content as Record<string, unknown>)
+          : null;
+      const text = normalizeMessageText(
+        content?.text ?? record.text ?? record.message ?? record.content,
+      );
+      if (!text) return null;
+
+      return {
+        name: normalizeSpeakerName(
+          record.name ?? record.user ?? record.speaker ?? record.role,
+          fallbackAgentName,
+          options,
+        ),
+        content: { text },
+      };
+    })
+    .filter(
+      (
+        message,
+      ): message is { name: string; content: { text: string } } =>
+        Boolean(message?.name && message.content.text),
+    );
+
+  if (examples.length === 0) return null;
+  return { examples };
+}
+
+export function normalizeGeneratedMessageExamples(
+  input: unknown,
+  fallbackAgentName = "Agent",
+  options: { fallbackMissingSpeaker?: boolean } = {},
+): MessageExampleGroup[] {
+  let parsed = input;
+
+  if (typeof input === "string") {
+    const candidate = extractLikelyJson(input);
+    try {
+      parsed = JSON.parse(candidate);
+    } catch {
+      return [];
+    }
+  }
+
+  const source =
+    parsed &&
+    typeof parsed === "object" &&
+    Array.isArray(
+      (parsed as { messageExamples?: unknown[] }).messageExamples,
+    )
+      ? (parsed as { messageExamples: unknown[] }).messageExamples
+      : parsed;
+
+  if (!Array.isArray(source)) return [];
+
+  const groups =
+    source.length > 0 &&
+    source.every(
+      (entry) =>
+        entry && typeof entry === "object" && Array.isArray((entry as { examples?: unknown[] }).examples),
+    )
+      ? source
+      : source.every((entry) => Array.isArray(entry))
+        ? source
+        : [source];
+
+  return groups
+    .map((group) => normalizeConversation(group, fallbackAgentName, options))
+    .filter((group): group is MessageExampleGroup => Boolean(group));
+}
+
 export function prepareDraftForSave(
   draft: CharacterData,
 ): Record<string, unknown> {
@@ -91,24 +254,43 @@ export function prepareDraftForSave(
   );
   if (postExamples.length > 0) result.postExamples = postExamples;
 
-  if (
-    Array.isArray(draft.messageExamples) &&
-    draft.messageExamples.length > 0
-  ) {
+  if (draft.messageExamples != null) {
     // Strip extra fields from content (schema is .strict() — only text + actions allowed)
-    const cleaned = draft.messageExamples
-      .map((group) => ({
-        examples: (group.examples ?? [])
-          .filter((msg) => msg.name?.trim() && msg.content?.text?.trim())
-          .map((msg) => ({
-            name: msg.name,
+    const cleaned = normalizeGeneratedMessageExamples(
+      draft.messageExamples,
+      draft.name?.trim() || "Agent",
+      { fallbackMissingSpeaker: false },
+    ).map((group, groupIndex) => ({
+      examples: group.examples
+        .map((msg) => {
+          const originalGroup =
+            Array.isArray(draft.messageExamples) &&
+            draft.messageExamples[groupIndex] &&
+            typeof draft.messageExamples[groupIndex] === "object"
+              ? (draft.messageExamples[groupIndex] as {
+                  examples?: Array<{
+                    name?: string;
+                    content?: { text?: string; actions?: string[] };
+                  }>;
+                })
+              : null;
+          const originalMessage = originalGroup?.examples?.find(
+            (candidate) =>
+              candidate?.name?.trim() === msg.name &&
+              candidate?.content?.text?.trim() === msg.content.text,
+          );
+          return {
+            name: msg.name.trim(),
             content: {
-              text: msg.content.text,
-              ...(msg.content.actions ? { actions: msg.content.actions } : {}),
+              text: msg.content.text.trim(),
+              ...(originalMessage?.content?.actions
+                ? { actions: originalMessage.content.actions }
+                : {}),
             },
-          })),
-      }))
-      .filter((group) => group.examples.length > 0);
+          };
+        })
+        .filter((msg) => msg.name && msg.content.text),
+    }));
     if (cleaned.length > 0) result.messageExamples = cleaned;
   }
 

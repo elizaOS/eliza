@@ -8,12 +8,10 @@
 
 import type {
   IAgentRuntime,
-  Memory,
   Plugin,
   Provider,
   ProviderResult,
   ServiceClass,
-  State,
 } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
 import { emoteAction } from "../actions/emote";
@@ -28,7 +26,6 @@ import {
 } from "../actions/stream-control";
 import { switchStreamSourceAction } from "../actions/switch-stream-source";
 import { terminalAction } from "../actions/terminal";
-import { AGENT_EMOTE_CATALOG } from "../emotes/catalog";
 import { adminTrustProvider } from "../providers/admin-trust";
 
 import { createSessionKeyProvider } from "../providers/session-bridge";
@@ -69,44 +66,13 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     ...getSessionProviders({ storePath: sessionStorePath }),
   ];
 
-  // Emote provider — injects available emotes into agent context so the LLM
-  // knows it can trigger animations via the PLAY_EMOTE action.
-  // Gated on character.settings — disable for agents without 3D avatars.
-  const emoteProvider: Provider = {
-    name: "emotes",
-    description: "Available avatar emote animations",
-
-    async get(
-      _runtime: IAgentRuntime,
-      _message: Memory,
-      _state: State,
-    ): Promise<ProviderResult> {
-      // Skip emote injection for agents without avatars.
-      // Set character.settings.DISABLE_EMOTES = true to save ~300 tokens.
-      const settings = _runtime.character?.settings;
-      if (settings?.DISABLE_EMOTES) {
-        return { text: "" };
-      }
-      const ids = AGENT_EMOTE_CATALOG.map((e) => e.id).join(", ");
-      return {
-        text: [
-          "## Available Emotes",
-          "",
-          "You have a 3D VRM avatar that can perform emote animations via the PLAY_EMOTE action.",
-          "Use PLAY_EMOTE whenever a visible gesture, reaction, or trick helps.",
-          "PLAY_EMOTE is a silent one-shot visual side action. It does not speak or post chat text by itself, and it returns to idle automatically.",
-          'If you also want text, chain PLAY_EMOTE with REPLY in the same turn — for example actions: ["PLAY_EMOTE", "REPLY"] or ["REPLY", "PLAY_EMOTE"].',
-          "Only call PLAY_EMOTE when you set the required emote parameter to a valid emote ID. If you cannot choose one, do not call it.",
-          "Set the emote parameter to the emote ID you want.",
-          "",
-          `Available emote IDs: ${ids}`,
-          "",
-          "Do not use idle, run, or walk with PLAY_EMOTE.",
-          "Common mappings: dance/vibe → dance-happy, wave/greet → wave, flip/backflip → flip, cry/sad → crying, fight/punch → punching, fish → fishing",
-        ].join("\n"),
-      };
-    },
-  };
+  // Emote IDs are now declared as an enum on the PLAY_EMOTE action parameter,
+  // so they appear in the `# Available Actions` section automatically via
+  // core's formatActions. No separate provider injection needed.
+  //
+  // Backwards-compat: character.settings.DISABLE_EMOTES still works — when set,
+  // the PLAY_EMOTE action is excluded at init time so it never appears in the
+  // prompt. Previously this was checked per-request in the emote provider.
 
   // Custom actions provider — tells the LLM about available custom actions.
   const customActionsProvider: Provider = {
@@ -139,22 +105,29 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     },
   };
 
-  return {
+  const plugin: Plugin = {
     name: "eliza",
     description: "Eliza workspace context, session keys, and lifecycle actions",
 
     services: [AgentEventService as ServiceClass],
 
-    init: async (_pluginConfig, runtime) => {
+    init: async (_pluginConfig, runtime: IAgentRuntime) => {
       registerTriggerTaskWorker(runtime);
       setCustomActionsRuntime(runtime);
+
+      // Honour DISABLE_EMOTES: remove PLAY_EMOTE so it never appears in prompts.
+      if (runtime.character?.settings?.DISABLE_EMOTES) {
+        const idx = plugin.actions?.findIndex((a) => a.name === "PLAY_EMOTE");
+        if (idx != null && idx >= 0) {
+          plugin.actions?.splice(idx, 1);
+        }
+      }
     },
 
     providers: [
       ...baseProviders,
 
       uiCatalogProvider,
-      emoteProvider,
       customActionsProvider,
     ],
 
@@ -173,4 +146,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...loadCustomActions(),
     ],
   };
+
+  return plugin;
 }

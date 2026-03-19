@@ -178,6 +178,7 @@ describe("app startup routing (e2e)", () => {
       activeGameViewerUrl: null,
       gameOverlayEnabled: false,
       startupPhase: "ready",
+      startupStatus: "ready",
       startupError: null,
       retryStartup: vi.fn(),
     });
@@ -239,6 +240,7 @@ describe("app startup routing (e2e)", () => {
       activeGameViewerUrl: null,
       gameOverlayEnabled: false,
       startupPhase: "ready",
+      startupStatus: "ready",
       startupError: null,
       retryStartup: vi.fn(),
     });
