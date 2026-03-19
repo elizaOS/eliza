@@ -9,6 +9,7 @@ import { isNative } from "@elizaos/app-core/platform";
 import { getProviderLogo } from "@elizaos/app-core/providers";
 import { useApp } from "@elizaos/app-core/state";
 import { openExternalUrl } from "@elizaos/app-core/utils";
+import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/autonomous/contracts/onboarding";
 import { useEffect, useState } from "react";
 
 function formatRequestError(err: unknown): string {
@@ -151,7 +152,13 @@ export function ConnectionStep() {
     setState("onboardingOpenRouterModel", modelId);
   };
 
-  const catalogProviders = onboardingOptions?.providers ?? [];
+  // Use the static provider catalog shipped in the frontend bundle — no API
+  // call needed. Runtime overrides from `onboardingOptions` (if available)
+  // take precedence so the server can still augment the list when present.
+  const catalogProviders: ProviderOption[] =
+    (onboardingOptions?.providers as ProviderOption[] | undefined)?.length
+      ? (onboardingOptions!.providers as ProviderOption[])
+      : ([...ONBOARDING_PROVIDER_CATALOG] as unknown as ProviderOption[]);
   // Merge custom providers from branding (app-injected) with the catalog.
   // Custom providers are appended; duplicates (by id) are skipped.
   const customProviders = branding.customProviders ?? [];

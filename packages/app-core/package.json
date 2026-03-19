@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.70",
+  "version": "2.0.0-alpha.72",
   "description": "Shared application core for Milady shells and white-label apps.",
   "type": "module",
   "license": "MIT",

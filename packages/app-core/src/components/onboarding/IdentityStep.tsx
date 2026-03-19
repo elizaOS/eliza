@@ -1,29 +1,36 @@
-import { client } from "@elizaos/app-core/api";
 import { useApp } from "@elizaos/app-core/state";
+import { getVrmPreviewUrl } from "@elizaos/app-core/state";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CharacterRoster,
   CHARACTER_PRESET_META,
-  resolveRosterEntries,
-  type CharacterRosterEntry,
+  SLANT_CLIP,
+  INSET_CLIP,
 } from "../CharacterRoster";
+
+/* ── Hardcoded frontend presets — no server needed ─────────────── */
+
+const FRONTEND_PRESETS = Object.entries(CHARACTER_PRESET_META).map(
+  ([catchphrase, meta]) => ({
+    id: catchphrase,
+    name: meta.name,
+    avatarIndex: meta.avatarIndex,
+    voicePresetId: meta.voicePresetId,
+    catchphrase,
+  }),
+);
+
+type PresetEntry = (typeof FRONTEND_PRESETS)[number];
 
 export function IdentityStep() {
   const {
-    onboardingOptions,
     onboardingStyle,
     handleOnboardingNext,
     setState,
     t,
   } = useApp();
 
-  const styles = onboardingOptions?.styles ?? [];
-  const selectedCatchphrase = onboardingStyle || styles[0]?.catchphrase || "";
-
-  const rosterEntries = useMemo(
-    () => resolveRosterEntries(styles).slice(0, 4),
-    [styles],
-  );
+  const entries = FRONTEND_PRESETS;
+  const selectedId = onboardingStyle || entries[0]?.catchphrase || "";
 
   /* ── Import / restore state ─────────────────────────────────────── */
   const [showImport, setShowImport] = useState(false);
@@ -33,6 +40,22 @@ export function IdentityStep() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const importBusyRef = useRef(false);
+
+  const handleSelect = useCallback(
+    (entry: PresetEntry) => {
+      setState("onboardingStyle", entry.catchphrase);
+      setState("onboardingName", entry.name);
+      setState("selectedVrmIndex", entry.avatarIndex);
+    },
+    [setState],
+  );
+
+  // Auto-select the first one if nothing is selected yet
+  useEffect(() => {
+    if (!onboardingStyle && entries.length > 0) {
+      handleSelect(entries[0]);
+    }
+  }, [onboardingStyle, entries, handleSelect]);
 
   const handleImportAgent = useCallback(async () => {
     if (importBusyRef.current || importBusy) return;
@@ -49,6 +72,8 @@ export function IdentityStep() {
       setImportBusy(true);
       setImportError(null);
       setImportSuccess(null);
+      // Dynamic import to avoid hard dependency on client when server is absent
+      const { client } = await import("@elizaos/app-core/api");
       const fileBuffer = await importFile.arrayBuffer();
       const result = await client.importAgent(importPassword, fileBuffer);
       const counts = result.counts;
@@ -74,25 +99,6 @@ export function IdentityStep() {
       setImportBusy(false);
     }
   }, [importBusy, importFile, importPassword, t]);
-
-  const handleSelect = useCallback(
-    (entry: CharacterRosterEntry) => {
-      setState("onboardingStyle", entry.id);
-      const meta = CHARACTER_PRESET_META[entry.id];
-      if (meta) {
-        setState("onboardingName", meta.name);
-        setState("selectedVrmIndex", meta.avatarIndex);
-      }
-    },
-    [setState],
-  );
-
-  // Auto-select the first one if nothing is selected yet
-  useEffect(() => {
-    if (!onboardingStyle && rosterEntries.length > 0) {
-      handleSelect(rosterEntries[0]);
-    }
-  }, [onboardingStyle, rosterEntries, handleSelect]);
 
   /* ── Import UI ──────────────────────────────────────────────────── */
   if (showImport) {
@@ -166,38 +172,80 @@ export function IdentityStep() {
     );
   }
 
-  /* ── Character roster ───────────────────────────────────────────── */
+  /* ── Overwatch-style character select — full-width bottom bar ──── */
+  const selected = entries.find((e) => e.catchphrase === selectedId);
+
   return (
-    <div className="flex flex-col items-center gap-4 w-full max-w-[640px]">
-      <CharacterRoster
-        entries={rosterEntries}
-        selectedId={selectedCatchphrase}
-        onSelect={handleSelect}
-        variant="onboarding"
-        testIdPrefix="onboarding"
-      />
+    <div className="ob-identity">
+      {/* Selected character info — floats above the roster */}
+      <div className="ob-identity-info">
+        <div className="ob-identity-name">{selected?.name ?? ""}</div>
+      </div>
 
-      <p className="onboarding-desc !mt-0 !mb-0">
-        You can customize your character later.
-      </p>
+      {/* ── Roster bar ── */}
+      <div className="ob-identity-roster">
+        {entries.map((entry) => {
+          const isSelected = selectedId === entry.catchphrase;
+          return (
+            <button
+              key={entry.catchphrase}
+              type="button"
+              className={`ob-identity-card ${isSelected ? "ob-identity-card--active" : ""}`}
+              onClick={() => handleSelect(entry)}
+              data-testid={`onboarding-preset-${entry.catchphrase}`}
+            >
+              <div
+                className={`ob-identity-card-frame ${isSelected ? "ob-identity-card-frame--active" : ""}`}
+                style={{ clipPath: SLANT_CLIP }}
+              >
+                <div
+                  className="ob-identity-card-inner"
+                  style={{ clipPath: SLANT_CLIP }}
+                >
+                  {isSelected && (
+                    <div
+                      className="pointer-events-none absolute -inset-3 bg-yellow-300/15 blur-xl"
+                      style={{ clipPath: SLANT_CLIP }}
+                    />
+                  )}
+                  <img
+                    src={getVrmPreviewUrl(entry.avatarIndex)}
+                    alt={entry.name}
+                    draggable={false}
+                    className={`ob-identity-card-img ${isSelected ? "ob-identity-card-img--active" : ""}`}
+                  />
+                  <div className="ob-identity-card-label">
+                    <div
+                      className={`ob-identity-card-name ${isSelected ? "ob-identity-card-name--active" : ""}`}
+                      style={{ clipPath: INSET_CLIP }}
+                    >
+                      {entry.name}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
 
-      {/* ── Next button ── */}
-      <button
-        className="onboarding-confirm-btn w-full max-w-[320px]"
-        onClick={() => handleOnboardingNext()}
-        type="button"
-      >
-        Next
-      </button>
-
-      {/* ── Restore from backup link ── */}
-      <button
-        type="button"
-        onClick={() => setShowImport(true)}
-        className="bg-transparent border-none text-white/40 text-xs cursor-pointer underline py-1"
-      >
-        {t("onboarding.restoreFromBackup")}
-      </button>
+      {/* ── Actions row ── */}
+      <div className="ob-identity-actions">
+        <button
+          className="onboarding-confirm-btn"
+          onClick={() => handleOnboardingNext()}
+          type="button"
+        >
+          Continue
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowImport(true)}
+          className="ob-identity-restore"
+        >
+          {t("onboarding.restoreFromBackup")}
+        </button>
+      </div>
     </div>
   );
 }

@@ -19,14 +19,19 @@ import { OnboardingStepNav } from "./onboarding/OnboardingStepNav";
 import { PermissionsStep } from "./onboarding/PermissionsStep";
 import { RpcStep } from "./onboarding/RpcStep";
 
+const FORCE_VRM =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("test_force_vrm") === "1";
+
 const DISABLE_ONBOARDING_VRM =
-  String(import.meta.env.VITE_E2E_DISABLE_VRM ?? "").toLowerCase() === "true" ||
-  String(import.meta.env.VITE_E2E_DISABLE_VRM ?? "") === "1";
+  !FORCE_VRM &&
+  (String(import.meta.env.VITE_E2E_DISABLE_VRM ?? "").toLowerCase() === "true" ||
+    String(import.meta.env.VITE_E2E_DISABLE_VRM ?? "") === "1");
 
 export function OnboardingWizard() {
   const branding = useBranding();
   const isEliza = branding.appName === "Eliza";
-  const disableVrm = DISABLE_ONBOARDING_VRM || isEliza;
+  const disableVrm = !FORCE_VRM && (DISABLE_ONBOARDING_VRM || isEliza);
   const [revealStarted, setRevealStarted] = useState(disableVrm);
 
   const {
@@ -36,6 +41,7 @@ export function OnboardingWizard() {
     uiLanguage,
     uiTheme,
     setState,
+    handleOnboardingNext,
     t,
   } = useApp();
 
@@ -62,10 +68,25 @@ export function OnboardingWizard() {
     };
   }, [uiTheme]);
 
+  // Auto-advance past the wakeUp splash once the VRM reveal animation starts,
+  // or after a 4-second timeout to prevent getting stuck when VRM fails to load.
+  useEffect(() => {
+    if (onboardingStep !== "wakeUp") return;
+    if (revealStarted) {
+      handleOnboardingNext();
+      return;
+    }
+    const timer = setTimeout(() => {
+      setRevealStarted(true);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [onboardingStep, revealStarted, handleOnboardingNext]);
+
   function renderStep() {
     switch (onboardingStep) {
       case "identity":
-        return <IdentityStep />;
+        // Rendered outside the panel in OnboardingWizard JSX
+        return null;
       case "connection":
         return <ConnectionStep />;
       case "rpc":
@@ -108,6 +129,7 @@ export function OnboardingWizard() {
       )}
 
       <div
+        data-testid="onboarding-ui-overlay"
         style={{
           position: "absolute",
           inset: 0,
@@ -210,9 +232,16 @@ export function OnboardingWizard() {
         {/* ── Standard overlaid UI — step nav + content panel ── */}
         <div className="onboarding-ui-overlay">
           <OnboardingStepNav />
-          <OnboardingPanel step={onboardingStep}>
-            {renderStep()}
-          </OnboardingPanel>
+          {onboardingStep === "identity" ? (
+            /* Identity step renders full-width at the bottom — no glass panel */
+            <div className="ob-identity-overlay">
+              <IdentityStep />
+            </div>
+          ) : (
+            <OnboardingPanel step={onboardingStep}>
+              {renderStep()}
+            </OnboardingPanel>
+          )}
         </div>
       </div>
     </div>
