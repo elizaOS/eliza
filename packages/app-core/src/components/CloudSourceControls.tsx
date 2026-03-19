@@ -1,5 +1,4 @@
 import { Button } from "@elizaos/ui";
-import { useBranding } from "../config/branding";
 import { useApp } from "../state";
 
 export type CloudSourceMode = "cloud" | "own-key";
@@ -7,7 +6,7 @@ export type CloudSourceMode = "cloud" | "own-key";
 export function CloudSourceModeToggle({
   mode,
   onChange,
-  cloudLabel,
+  cloudLabel = "Eliza Cloud",
   ownKeyLabel = "Own API Key",
 }: {
   mode: CloudSourceMode;
@@ -15,8 +14,7 @@ export function CloudSourceModeToggle({
   cloudLabel?: string;
   ownKeyLabel?: string;
 }) {
-  const branding = useBranding();
-  const resolvedCloudLabel = cloudLabel ?? branding.cloudName;
+  const resolvedCloudLabel = cloudLabel;
   return (
     <div className="inline-flex overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-sm">
       <Button
@@ -59,9 +57,8 @@ export function CloudConnectionStatus({
   disconnectedText: string;
 }) {
   const { t } = useApp();
-  const branding = useBranding();
   const resolvedConnectedText =
-    connectedText ?? `Connected to ${branding.cloudName}`;
+    connectedText ?? "Connected to Eliza Cloud";
   return (
     <div className="flex items-center justify-between py-2.5 px-3 border border-[var(--border)] bg-[var(--bg-muted)]">
       {connected ? (

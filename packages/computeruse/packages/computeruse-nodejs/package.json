@@ -33,7 +33,7 @@
   "name": "@elizaos/computeruse-nodejs",
   "napi": {
     "binaryName": "computeruse",
-    "targets": {
+    "triples": {
       "additional": [
         "aarch64-pc-windows-msvc",
         "aarch64-apple-darwin",

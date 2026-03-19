@@ -4,6 +4,7 @@ import type {
   ProviderOption,
 } from "@elizaos/app-core/api";
 import { client } from "@elizaos/app-core/api";
+import { useBranding } from "@elizaos/app-core/config";
 import { isNative } from "@elizaos/app-core/platform";
 import { getProviderLogo } from "@elizaos/app-core/providers";
 import { useApp } from "@elizaos/app-core/state";
@@ -45,6 +46,8 @@ export function ConnectionStep() {
     setState,
     t,
   } = useApp();
+
+  const branding = useBranding();
 
   const [openaiOAuthStarted, setOpenaiOAuthStarted] = useState(false);
   const [openaiCallbackUrl, setOpenaiCallbackUrl] = useState("");
@@ -148,7 +151,22 @@ export function ConnectionStep() {
     setState("onboardingOpenRouterModel", modelId);
   };
 
-  const providers = onboardingOptions?.providers ?? [];
+  const catalogProviders = onboardingOptions?.providers ?? [];
+  // Merge custom providers from branding (app-injected) with the catalog.
+  // Custom providers are appended; duplicates (by id) are skipped.
+  const customProviders = branding.customProviders ?? [];
+  const catalogIds = new Set(catalogProviders.map((p: ProviderOption) => p.id));
+  const providers = [
+    ...catalogProviders,
+    ...customProviders.filter((cp) => !catalogIds.has(cp.id as never)),
+  ] as ProviderOption[];
+  // Build a map of custom provider logos for getProviderLogo lookups.
+  const customLogoMap = new Map(
+    customProviders
+      .filter((cp) => cp.logoDark || cp.logoLight)
+      .map((cp) => [cp.id, { logoDark: cp.logoDark, logoLight: cp.logoLight }]),
+  );
+  const getCustomLogo = (id: string) => customLogoMap.get(id);
   const elizaCloudReady =
     elizaCloudConnected ||
     (onboardingRunMode === "cloud" &&
@@ -730,7 +748,7 @@ export function ConnectionStep() {
                 onClick={() => handleProviderSelect(p.id)}
               >
                 <img
-                  src={getProviderLogo(p.id, false)}
+                  src={getProviderLogo(p.id, false, getCustomLogo(p.id))}
                   alt={display.name}
                   className="onboarding-provider-icon"
                 />
@@ -795,7 +813,7 @@ export function ConnectionStep() {
         >
           {selectedProvider && (
             <img
-              src={getProviderLogo(selectedProvider.id, false)}
+              src={getProviderLogo(selectedProvider.id, false, getCustomLogo(selectedProvider.id))}
               alt={selectedDisplay.name}
               className="onboarding-provider-icon"
               style={{ width: "1.5rem", height: "1.5rem" }}

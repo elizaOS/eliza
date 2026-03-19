@@ -144,8 +144,8 @@ async function isAutonomyServiceAvailable(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
   const svc =
-    runtime.getService<Service & AutonomyServiceLike>("autonomy") ??
-    runtime.getService<Service & AutonomyServiceLike>("AUTONOMY");
+    (await runtime.getService<Service & AutonomyServiceLike>("autonomy")) ??
+    (await runtime.getService<Service & AutonomyServiceLike>("AUTONOMY"));
   return typeof svc?.injectAutonomousInstruction === "function";
 }
 

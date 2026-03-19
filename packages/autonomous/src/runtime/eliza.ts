@@ -80,9 +80,9 @@ import {
 } from "../api/plugin-validation";
 import {
   configFileExists,
-  loadMiladyConfig,
-  type MiladyConfig,
-  saveMiladyConfig,
+  loadElizaConfig,
+  type ElizaConfig,
+  saveElizaConfig,
 } from "../config/config";
 import { collectConfigEnvVars } from "../config/env-vars";
 import { resolveStateDir, resolveUserPath } from "../config/paths";
@@ -91,7 +91,7 @@ import {
   applyPluginAutoEnable,
 } from "../config/plugin-auto-enable";
 import type { AgentConfig } from "../config/types.agents";
-import type { PluginInstallRecord } from "../config/types.milady";
+import type { PluginInstallRecord } from "../config/types.eliza";
 import {
   createHookEvent,
   type LoadHooksOptions,
@@ -107,7 +107,7 @@ import { SandboxManager, type SandboxMode } from "../services/sandbox-manager";
 import { diagnoseNoAIProvider } from "../services/version-compat";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins";
 import { detectEmbeddingPreset } from "./embedding-presets";
-import { createMiladyPlugin } from "./milady-plugin";
+import { createElizaPlugin } from "./eliza-plugin";
 import {
   installDatabaseTrajectoryLogger,
   shouldEnableTrajectoryLoggingByDefault,
@@ -211,7 +211,7 @@ interface PluginModuleShape {
 
 export function configureLocalEmbeddingPlugin(
   _plugin: Plugin,
-  config?: MiladyConfig,
+  config?: ElizaConfig,
 ): void {
   const detectedPreset = detectEmbeddingPreset();
 
@@ -839,7 +839,7 @@ export function findRuntimePluginExport(mod: PluginModuleShape): Plugin | null {
  * based on config, environment variables, and feature flags.
  */
 /** @internal Exported for testing. */
-export function collectPluginNames(config: MiladyConfig): Set<string> {
+export function collectPluginNames(config: ElizaConfig): Set<string> {
   const shellPluginDisabled = config.features?.shellEnabled === false;
   const localEmbeddingsExplicitlyDisabled = (() => {
     const raw = process.env.MILADY_DISABLE_LOCAL_EMBEDDINGS;
@@ -1392,7 +1392,7 @@ function resolveStaticElizaPlugin(pluginName: string): unknown | null {
 }
 
 async function resolvePlugins(
-  config: MiladyConfig,
+  config: ElizaConfig,
   opts?: { quiet?: boolean },
 ): Promise<ResolvedPlugin[]> {
   const plugins: ResolvedPlugin[] = [];
@@ -1412,7 +1412,7 @@ async function resolvePlugins(
     ...(config.plugins?.installs ?? {}),
   };
 
-  const denyList = new Set(config.plugins?.deny ?? []);
+  const denyList = new Set<string>((config.plugins?.deny || []) as string[]);
 
   // ── Auto-discover ejected plugins ───────────────────────────────────────
   // Ejected plugins override npm/core versions, so they are tracked
@@ -1657,7 +1657,7 @@ async function resolvePlugins(
   // to import from stale install directories.
   if (repairedInstallRecords.size > 0) {
     try {
-      saveMiladyConfig(config);
+      saveElizaConfig(config);
       logger.info(
         `[milady] Repaired ${repairedInstallRecords.size} plugin install record(s): ${Array.from(repairedInstallRecords).join(", ")}`,
       );
@@ -1673,7 +1673,7 @@ async function resolvePlugins(
 
 /** @internal Exported for testing. */
 export function repairBrokenInstallRecord(
-  config: MiladyConfig,
+  config: ElizaConfig,
   pluginName: string,
 ): boolean {
   const record = config.plugins?.installs?.[pluginName];
@@ -1862,7 +1862,7 @@ export async function resolvePackageEntry(pkgRoot: string): Promise<string> {
  * that elizaOS plugins can find them.
  */
 /** @internal Exported for testing. */
-export function applyConnectorSecretsToEnv(config: MiladyConfig): void {
+export function applyConnectorSecretsToEnv(config: ElizaConfig): void {
   // Prefer config.connectors, fall back to config.channels for backward compatibility
   const connectors = config.connectors ?? config.channels ?? {};
 
@@ -1945,7 +1945,7 @@ export async function autoResolveDiscordAppId(): Promise<void> {
  * ElizaCloud plugin can discover settings at startup.
  */
 /** @internal Exported for testing. */
-export function applyCloudConfigToEnv(config: MiladyConfig): void {
+export function applyCloudConfigToEnv(config: ElizaConfig): void {
   const cloud = config.cloud;
   if (!cloud) return;
 
@@ -2005,7 +2005,7 @@ export function applyCloudConfigToEnv(config: MiladyConfig): void {
   }
 
   // Propagate per-service disable flags so downstream code can check them
-  // without needing direct access to the MiladyConfig object.
+  // without needing direct access to the ElizaConfig object.
   const services = cloud.services;
   if (services) {
     if (services.tts === false) {
@@ -2043,7 +2043,7 @@ export function applyCloudConfigToEnv(config: MiladyConfig): void {
  * `POSTGRES_URL`.
  */
 /** @internal Exported for testing. */
-export function applyX402ConfigToEnv(config: MiladyConfig): void {
+export function applyX402ConfigToEnv(config: ElizaConfig): void {
   const x402 = (config as Record<string, unknown>).x402 as
     | { enabled?: boolean; apiKey?: string; baseUrl?: string }
     | undefined;
@@ -2055,14 +2055,14 @@ export function applyX402ConfigToEnv(config: MiladyConfig): void {
     process.env.X402_BASE_URL = x402.baseUrl;
 }
 
-function resolveDefaultPgliteDataDir(config: MiladyConfig): string {
+function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
   return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
 }
 
 /** @internal Exported for testing. */
-export function applyDatabaseConfigToEnv(config: MiladyConfig): void {
+export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
   const db = config.database;
   const provider = db?.provider ?? "pglite";
 
@@ -2296,7 +2296,7 @@ function createActivePgliteLockError(dataDir: string, err: unknown): Error {
   );
 }
 
-function resolveActivePgliteDataDir(config: MiladyConfig): string | null {
+function resolveActivePgliteDataDir(config: ElizaConfig): string | null {
   const provider = config.database?.provider ?? "pglite";
   if (provider === "postgres") return null;
 
@@ -2338,7 +2338,7 @@ async function resetPgliteDataDir(dataDir: string): Promise<void> {
 
 async function initializeDatabaseAdapter(
   runtime: AgentRuntime,
-  config: MiladyConfig,
+  config: ElizaConfig,
 ): Promise<void> {
   if (!runtime.adapter || (await runtime.adapter.isReady())) return;
 
@@ -2392,7 +2392,7 @@ async function initializeDatabaseAdapter(
  * Verify PGlite data directory contains files after init.
  * Warns if the directory is empty (suggests ephemeral/in-memory fallback).
  */
-async function verifyPgliteDataDir(config: MiladyConfig): Promise<void> {
+async function verifyPgliteDataDir(config: ElizaConfig): Promise<void> {
   const pgliteDataDir = resolveActivePgliteDataDir(config);
   if (!pgliteDataDir || !existsSync(pgliteDataDir)) return;
 
@@ -2668,7 +2668,7 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
   // to create the same entity in rapid succession; plugin-sql's batch insert is
   // non-idempotent and can fail entire writes on duplicate/conflicting rows.
   if (!runtimeWithBindings.__miladyEntityWriteDiagnosticsInstalled) {
-    type CreateEntitiesFn = (entities: Entity[]) => Promise<boolean>;
+    type CreateEntitiesFn = (entities: Entity[]) => Promise<UUID[] | boolean>;
     type GetEntitiesByIdsFn = (entityIds: UUID[]) => Promise<Entity[]>;
     type EnsureEntityExistsFn = (entity: Entity) => Promise<boolean>;
     const runtimeWithEntityWrites = runtime as AgentRuntime & {
@@ -2796,7 +2796,7 @@ function installActionAliases(runtime: AgentRuntime): void {
 async function registerSqlPluginWithRecovery(
   runtime: AgentRuntime,
   sqlPlugin: ResolvedPlugin,
-  config: MiladyConfig,
+  config: ElizaConfig,
 ): Promise<void> {
   let registerError: unknown = null;
 
@@ -2857,7 +2857,7 @@ async function registerSqlPluginWithRecovery(
  * here for the initial bootstrap.
  */
 /** @internal Exported for testing. */
-export function buildCharacterFromConfig(config: MiladyConfig): Character {
+export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // Resolve name: agents list → ui assistant → "Milady"
   const agentEntry = config.agents?.list?.[0];
   const name = agentEntry?.name ?? config.ui?.assistant?.name ?? "Milady";
@@ -3014,7 +3014,7 @@ export function buildCharacterFromConfig(config: MiladyConfig): Character {
  * plugin is loaded).
  */
 /** @internal Exported for testing. */
-export function resolvePrimaryModel(config: MiladyConfig): string | undefined {
+export function resolvePrimaryModel(config: ElizaConfig): string | undefined {
   const modelConfig = config.agents?.defaults?.model;
   if (!modelConfig) return undefined;
 
@@ -3028,7 +3028,7 @@ export function resolvePrimaryModel(config: MiladyConfig): string | undefined {
  * This avoids background capture loops during normal app startup.
  */
 export function resolveVisionModeSetting(
-  config: MiladyConfig,
+  config: ElizaConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
   const explicitMode = env.VISION_MODE?.trim();
@@ -3065,7 +3065,7 @@ import { STYLE_PRESETS } from "../onboarding-presets";
  *
  * Subsequent runs skip this entirely.
  */
-async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
+async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
   const agentEntry = config.agents?.list?.[0];
   const hasName = Boolean(agentEntry?.name || config.ui?.assistant?.name);
   if (hasName) return config;
@@ -3507,7 +3507,7 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
     ...existingList.slice(1),
   ];
 
-  const updated: MiladyConfig = {
+  const updated: ElizaConfig = {
     ...config,
     agents: {
       ...config.agents,
@@ -3568,7 +3568,7 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
   }
 
   try {
-    saveMiladyConfig(updated);
+    saveElizaConfig(updated);
   } catch (err) {
     // Non-fatal: the agent can still start, but choices won't persist.
     clack.log.warn(`Could not save config: ${formatError(err)}`);
@@ -3700,15 +3700,15 @@ export async function startEliza(
   addLogListener(logToChatListener);
 
   // 1. Load Milady config from ~/.milady/milady.json
-  let config: MiladyConfig;
+  let config: ElizaConfig;
   try {
-    config = loadMiladyConfig();
+    config = loadElizaConfig();
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       logger.warn("[milady] No config found, using defaults");
-      // All MiladyConfig fields are optional, so an empty object is
+      // All ElizaConfig fields are optional, so an empty object is
       // structurally valid. The `as` cast is safe here.
-      config = {} as MiladyConfig;
+      config = {} as ElizaConfig;
     } else {
       throw err;
     }
@@ -3863,9 +3863,9 @@ export async function startEliza(
 
   // 5. Create the Milady bridge plugin (workspace context + session keys + compaction)
   const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
-  const miladyPlugin = createMiladyPlugin({
+  const miladyPlugin = createElizaPlugin({
     workspaceDir,
-    bootstrapMaxChars: config.agents?.defaults?.bootstrapMaxChars,
+
 
     agentId,
   });
@@ -4451,7 +4451,7 @@ export async function startEliza(
           }
 
           // Reload config from disk (updated by API)
-          const freshConfig = loadMiladyConfig();
+          const freshConfig = loadElizaConfig();
 
           // Propagate secrets & cloud config into process.env so plugins
           // (especially plugin-elizacloud) can discover them.  The initial
@@ -4485,10 +4485,10 @@ export async function startEliza(
           const freshCharacter = buildCharacterFromConfig(freshConfig);
 
           // Recreate Milady plugin with fresh workspace
-          const freshMiladyPlugin = createMiladyPlugin({
+          const freshMiladyPlugin = createElizaPlugin({
             workspaceDir:
               freshConfig.agents?.defaults?.workspace ?? workspaceDir,
-            bootstrapMaxChars: freshConfig.agents?.defaults?.bootstrapMaxChars,
+
 
             agentId:
               freshCharacter.name?.toLowerCase().replace(/\s+/g, "-") ?? "main",
@@ -4840,7 +4840,7 @@ export async function startEliza(
  * Skips all local runtime construction (plugins, database, etc.).
  */
 export async function startInCloudMode(
-  config: MiladyConfig,
+  config: ElizaConfig,
   agentId: string,
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {

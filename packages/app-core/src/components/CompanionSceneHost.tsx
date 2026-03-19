@@ -415,6 +415,19 @@ function CompanionSceneSurface({
     });
   }, [tab]);
 
+  /* ── Preload all VRM files into browser cache for instant character swaps ── */
+  const preloadedRef = useRef(false);
+  useEffect(() => {
+    if (preloadedRef.current || preloadAvatars.length === 0) return;
+    preloadedRef.current = true;
+    for (const entry of preloadAvatars) {
+      // Fire-and-forget fetch to warm browser cache; low priority.
+      void fetch(entry.vrmPath, { priority: "low" } as RequestInit).catch(
+        () => {},
+      );
+    }
+  }, [preloadAvatars]);
+
   return (
     <div
       ref={rootRef}
