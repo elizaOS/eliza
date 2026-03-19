@@ -114,6 +114,8 @@ function useChatVoiceController(options: {
   } | null>(null);
   const suppressedAssistantSpeechIdRef = useRef<string | null>(null);
   const voiceDraftBaseInputRef = useRef("");
+  const prevIsGameModalRef = useRef(isGameModal);
+  const gameModalJustActivatedRef = useRef(false);
 
   const loadVoiceConfig = useCallback(async () => {
     try {
@@ -271,8 +273,22 @@ function useChatVoiceController(options: {
     [handleChatEdit, stopSpeaking],
   );
 
+  // Track when isGameModal transitions from false→true so we can suppress
+  // the stale "latest assistant message" speech that would otherwise replay.
+  useEffect(() => {
+    if (isGameModal && !prevIsGameModalRef.current) {
+      gameModalJustActivatedRef.current = true;
+    }
+    prevIsGameModalRef.current = isGameModal;
+  }, [isGameModal]);
+
   useEffect(() => {
     if (!isGameModal || agentVoiceMuted || voice.isListening) return;
+    // Skip the stale replay when the view just became active (mode switch).
+    if (gameModalJustActivatedRef.current) {
+      gameModalJustActivatedRef.current = false;
+      return;
+    }
     const latestAssistant = findLatestAssistantMessage(conversationMessages);
     if (!latestAssistant) return;
     if (suppressedAssistantSpeechIdRef.current === latestAssistant.id) return;

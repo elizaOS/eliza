@@ -332,7 +332,7 @@ export class DefaultMessageService implements IMessageService {
 													const voiceId =
 														voiceSettings?.url ||
 														voiceSettings?.voiceId ||
-														"default";
+														"nova";
 
 													const key = voiceCache.generateKey(
 														first,
@@ -447,7 +447,7 @@ export class DefaultMessageService implements IMessageService {
 										| undefined;
 									const model = voiceSettings?.model || "en_US-male-medium";
 									const voiceId =
-										voiceSettings?.url || voiceSettings?.voiceId || "default";
+										voiceSettings?.url || voiceSettings?.voiceId || "nova";
 
 									const key = voiceCache.generateKey(rest, voiceId, model);
 									let audioBuffer = voiceCache.getCached(key);

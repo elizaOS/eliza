@@ -14661,19 +14661,37 @@ async function handleRequest(
 
   // ── Trajectory management API ──────────────────────────────────────────
   if (pathname.startsWith("/api/trajectories")) {
-    if (state.runtime) {
-      const handled = await handleTrajectoryRoute(
-        req,
-        res,
-        state.runtime,
-        pathname,
-        method,
-      );
-      if (handled) return;
+    if (!state.runtime) {
+      sendJsonError(res, "Agent runtime not started yet", 503);
+      return;
     }
+    const handled = await handleTrajectoryRoute(
+      req,
+      res,
+      state.runtime,
+      pathname,
+      method,
+    );
+    if (handled) return;
   }
 
   // ── Coding Agent API (/api/coding-agents/*, /api/workspace/*, /api/issues/*) ──
+  // Return graceful empty responses for read-only polling endpoints even
+  // before the runtime is available — the frontend polls these on startup
+  // and a 404/503 logs noisy console errors.
+  if (
+    !state.runtime &&
+    method === "GET" &&
+    pathname === "/api/coding-agents/coordinator/status"
+  ) {
+    json(res, {
+      supervisionLevel: "autonomous",
+      taskCount: 0,
+      tasks: [],
+      pendingConfirmations: 0,
+    });
+    return;
+  }
   if (
     state.runtime &&
     (pathname.startsWith("/api/coding-agents") ||
@@ -15193,12 +15211,15 @@ async function handleRequest(
     const todoData = await getTodoDataService(state.runtime);
     if (todoData) {
       try {
-        await todoData.updateTodo(decodedTodoId, {
+        const updated = await todoData.updateTodo(decodedTodoId, {
           isCompleted,
           completedAt: isCompleted ? new Date() : null,
         });
-        json(res, { ok: true });
-        return;
+        if (updated !== false) {
+          json(res, { ok: true });
+          return;
+        }
+        // updateTodo returned false — fall through to task-backed path
       } catch {
         // fallback to task-backed path
       }
@@ -15261,9 +15282,11 @@ async function handleRequest(
 
     if (method === "DELETE" && todoData) {
       try {
-        await todoData.deleteTodo(decodedTodoId);
-        json(res, { ok: true });
-        return;
+        const deleted = await todoData.deleteTodo(decodedTodoId);
+        if (deleted !== false) {
+          json(res, { ok: true });
+          return;
+        }
       } catch {
         // fallback to task-backed path
       }
@@ -15318,7 +15341,8 @@ async function handleRequest(
           updates.isCompleted = body.isCompleted;
           updates.completedAt = body.isCompleted ? new Date() : null;
         }
-        await todoData.updateTodo(decodedTodoId, updates);
+        const updated = await todoData.updateTodo(decodedTodoId, updates);
+        if (updated === false) throw new Error("updateTodo returned false");
         const refreshedDbTodo = await todoData.getTodo(decodedTodoId);
         const refreshedMapped = refreshedDbTodo
           ? toWorkbenchTodoFromRecord(refreshedDbTodo)

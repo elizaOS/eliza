@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useEffectEvent, useRef } from "react";
-import { getVrmUrl } from "../../state/vrm";
+import { getVrmCount, getVrmUrl } from "../../state/vrm";
 import {
   type CameraProfile,
   type InteractionMode,
@@ -52,7 +52,77 @@ type VrmEngineDebugRegistryEntry = {
 declare global {
   interface Window {
     __ELIZA_VRM_ENGINES__?: VrmEngineDebugRegistryEntry[];
+    __captureVrmPreviews__?: typeof captureVrmPreviews;
   }
+}
+
+/**
+ * Dev utility: capture preview PNGs for all bundled VRM avatars with spring bone
+ * physics disabled (hair/cloth in rest pose). Call from the browser console:
+ *
+ *   await window.__captureVrmPreviews__()
+ *
+ * Each VRM is loaded in sequence, a snapshot is taken with physics frozen, and
+ * the resulting PNG is downloaded. The existing world-stage engine is reused
+ * if available; otherwise a temporary offscreen engine is created.
+ */
+async function captureVrmPreviews(options?: {
+  width?: number;
+  height?: number;
+}): Promise<void> {
+  const width = options?.width ?? 512;
+  const height = options?.height ?? 768;
+
+  // Try to reuse the existing world-stage engine, fall back to any available engine
+  const registry = window.__ELIZA_VRM_ENGINES__ ?? [];
+  const registryEntry =
+    registry.find((e) => e.role === "world-stage") ?? registry[0] ?? null;
+  const engine = registryEntry?.engine ?? null;
+  if (!engine) {
+    console.error(
+      "[captureVrmPreviews] No active VRM engine found. Navigate to the character view first.",
+    );
+    return;
+  }
+
+  const count = getVrmCount();
+  console.log(`[captureVrmPreviews] Capturing ${count} VRM previews at ${width}×${height} with physics disabled...`);
+
+  for (let i = 1; i <= count; i++) {
+    const vrmUrl = getVrmUrl(i);
+    const slug = vrmUrl.split("/").pop()?.replace(/\.vrm(\.gz)?$/, "") ?? `vrm-${i}`;
+
+    console.log(`[captureVrmPreviews] Loading VRM ${i}/${count}: ${slug}...`);
+    try {
+      await engine.loadVrmFromUrl(vrmUrl, slug);
+      // Let the idle animation settle
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const blob = await engine.snapshot({ width, height, disablePhysics: true });
+      if (!blob) {
+        console.warn(`[captureVrmPreviews] Failed to capture ${slug}`);
+        continue;
+      }
+
+      // Download the PNG
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${slug}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+      console.log(`[captureVrmPreviews] Saved ${slug}.png`);
+    } catch (err) {
+      console.error(`[captureVrmPreviews] Error capturing ${slug}:`, err);
+    }
+  }
+
+  console.log("[captureVrmPreviews] Done!");
+}
+
+// Expose globally in dev mode
+if (typeof window !== "undefined") {
+  window.__captureVrmPreviews__ = captureVrmPreviews;
 }
 
 export function VrmViewer(props: VrmViewerProps) {

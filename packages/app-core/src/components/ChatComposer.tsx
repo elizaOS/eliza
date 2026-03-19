@@ -70,7 +70,7 @@ export function ChatComposer({
   const isGameModal = variant === "game-modal";
   const showVoiceButton = isGameModal || voice.supported;
   const defaultMicButtonClassName = voice.isListening
-    ? "bg-[#ff6b70] text-white shadow-sm hover:bg-[#ff6b70]/90 hover:text-white"
+    ? "text-white shadow-sm hover:text-white"
     : "text-muted hover:bg-black/5 hover:text-txt";
   const micIconClassName = isGameModal ? "w-5 h-5 text-[#fff1f2]" : "w-4 h-4";
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -172,11 +172,10 @@ export function ChatComposer({
         <Button
           variant={chatPendingImagesCount > 0 ? "secondary" : "ghost"}
           size="icon"
-          className={`${COMPOSER_ICON_BUTTON_CLASSNAME} ${
-            chatPendingImagesCount > 0
-              ? "bg-accent/10 sm:hover:bg-accent/20 border-accent/20 text-txt/80 hover:text-txt shadow-sm"
-              : "text-muted hover:bg-black/5 hover:text-txt"
-          }`}
+          className={`${COMPOSER_ICON_BUTTON_CLASSNAME} ${chatPendingImagesCount > 0
+            ? "bg-accent/10 sm:hover:bg-accent/20 border-accent/20 text-txt/80 hover:text-txt shadow-sm"
+            : "text-muted hover:bg-black/5 hover:text-txt"
+            }`}
           onClick={onAttachImage}
           aria-label="Attach image"
           title={t("chatview.AttachImage")}
@@ -192,11 +191,10 @@ export function ChatComposer({
           size="icon"
           className={
             isGameModal
-              ? `flex items-center justify-center rounded-full transition-all ${COMPOSER_ICON_BUTTON_CLASSNAME} ${
-                  voice.isListening
-                    ? "animate-pulse border border-[#ff6b70] bg-[#ff6b70] text-[#fff1f2] shadow-[0_0_30px_rgba(255,107,112,0.5)]"
-                    : "border border-[#ff6b70]/75 bg-transparent text-[#fff1f2] shadow-[0_0_14px_rgba(255,107,112,0.18)] hover:bg-[#ff6b70]/10"
-                } ${isComposerLocked ? "opacity-50" : ""}`
+              ? `mr-2 flex items-center justify-center rounded-full transition-all ${COMPOSER_ICON_BUTTON_CLASSNAME} ${voice.isListening
+                ? "animate-pulse border text-[#fff1f2] shadow-[0_0_30px_rgba(255,107,112,0.5)]"
+                : "bg-transparent text-[#fff1f2] shadow-[0_0_6px_rgba(255,107,112,0.25)] hover:bg-[#ff6b70]/10"
+              } ${isComposerLocked ? "opacity-50" : ""}`
               : `${COMPOSER_ICON_BUTTON_CLASSNAME} ${defaultMicButtonClassName}`
           }
           onClick={handleMicClick}

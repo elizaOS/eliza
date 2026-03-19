@@ -1789,35 +1789,176 @@ export async function installDatabaseTrajectoryLogger(
   };
 
   loggerAny.getStats = async (): Promise<unknown> => {
-    if (!hasRuntimeDb(runtime)) {
-      return { total: 0, byStatus: {}, bySource: {} };
-    }
+    const emptyStats = {
+      totalTrajectories: 0,
+      totalLlmCalls: 0,
+      totalProviderAccesses: 0,
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      averageDurationMs: 0,
+      bySource: {},
+      byModel: {},
+    };
+
+    if (!hasRuntimeDb(runtime)) return emptyStats;
 
     const tableReady = await ensureTrajectoriesTable(runtime);
-    if (!tableReady) {
-      return { total: 0, byStatus: {}, bySource: {} };
-    }
+    if (!tableReady) return emptyStats;
 
     try {
-      const countResult = await executeRawSql(
+      const aggResult = await executeRawSql(
         runtime,
-        "SELECT count(*) AS total FROM trajectories",
+        `SELECT
+          count(*) AS total,
+          COALESCE(sum(llm_call_count), 0) AS total_llm_calls,
+          COALESCE(sum(provider_access_count), 0) AS total_provider_accesses,
+          COALESCE(sum(total_prompt_tokens), 0) AS total_prompt_tokens,
+          COALESCE(sum(total_completion_tokens), 0) AS total_completion_tokens,
+          COALESCE(avg(duration_ms), 0) AS avg_duration_ms
+        FROM trajectories`,
       );
-      const countRow = asRecord(extractRows(countResult)[0]);
-      const total = toNumber(countRow?.total, 0);
+      const row = asRecord(extractRows(aggResult)[0]);
 
       const bySource = await computeBySource(runtime);
 
       return {
-        total,
-        enabled: true,
-        byStatus: {},
+        totalTrajectories: toNumber(row?.total, 0),
+        totalLlmCalls: toNumber(row?.total_llm_calls, 0),
+        totalProviderAccesses: toNumber(row?.total_provider_accesses, 0),
+        totalPromptTokens: toNumber(row?.total_prompt_tokens, 0),
+        totalCompletionTokens: toNumber(row?.total_completion_tokens, 0),
+        averageDurationMs: toNumber(row?.avg_duration_ms, 0),
         bySource,
+        byModel: {},
       };
     } catch {
-      return { total: 0, byStatus: {}, bySource: {} };
+      return emptyStats;
     }
   };
+
+  // Add methods required by the trajectory-routes duck-type check so the API
+  // endpoints can discover and use this patched logger.
+  const loggerForRoutes = logger as unknown as {
+    isEnabled?: () => boolean;
+    setEnabled?: (enabled: boolean) => void;
+    deleteTrajectories?: (trajectoryIds: string[]) => Promise<number>;
+    clearAllTrajectories?: () => Promise<number>;
+    exportTrajectories?: (options: {
+      format: string;
+      includePrompts?: boolean;
+      trajectoryIds?: string[];
+      startDate?: string;
+      endDate?: string;
+    }) => Promise<{ filename: string; data: string; mimeType: string }>;
+  };
+
+  let _enabled = shouldEnableByDefault;
+
+  if (typeof loggerForRoutes.isEnabled !== "function") {
+    loggerForRoutes.isEnabled = () => _enabled;
+  }
+  if (typeof loggerForRoutes.setEnabled !== "function") {
+    loggerForRoutes.setEnabled = (enabled: boolean) => {
+      _enabled = enabled;
+    };
+  }
+
+  if (typeof loggerForRoutes.deleteTrajectories !== "function") {
+    loggerForRoutes.deleteTrajectories = async (
+      trajectoryIds: string[],
+    ): Promise<number> => {
+      if (!hasRuntimeDb(runtime) || trajectoryIds.length === 0) return 0;
+      const tableReady = await ensureTrajectoriesTable(runtime);
+      if (!tableReady) return 0;
+
+      const ids = trajectoryIds.map((id) => sqlQuote(id)).join(", ");
+      try {
+        await executeRawSql(
+          runtime,
+          `DELETE FROM trajectories WHERE id IN (${ids})`,
+        );
+        return trajectoryIds.length;
+      } catch {
+        return 0;
+      }
+    };
+  }
+
+  if (typeof loggerForRoutes.clearAllTrajectories !== "function") {
+    loggerForRoutes.clearAllTrajectories = async (): Promise<number> => {
+      if (!hasRuntimeDb(runtime)) return 0;
+      const tableReady = await ensureTrajectoriesTable(runtime);
+      if (!tableReady) return 0;
+
+      try {
+        const countResult = await executeRawSql(
+          runtime,
+          "SELECT count(*) AS total FROM trajectories",
+        );
+        const countRow = asRecord(extractRows(countResult)[0]);
+        const total = toNumber(countRow?.total, 0);
+        await executeRawSql(runtime, "DELETE FROM trajectories");
+        return total;
+      } catch {
+        return 0;
+      }
+    };
+  }
+
+  if (typeof loggerForRoutes.exportTrajectories !== "function") {
+    loggerForRoutes.exportTrajectories = async (options: {
+      format: string;
+      includePrompts?: boolean;
+      trajectoryIds?: string[];
+    }): Promise<{ filename: string; data: string; mimeType: string }> => {
+      if (!hasRuntimeDb(runtime)) {
+        return {
+          filename: `trajectories.${options.format}`,
+          data: options.format === "json" ? "[]" : "",
+          mimeType:
+            options.format === "json" ? "application/json" : "text/plain",
+        };
+      }
+
+      const tableReady = await ensureTrajectoriesTable(runtime);
+      if (!tableReady) {
+        return {
+          filename: `trajectories.${options.format}`,
+          data: options.format === "json" ? "[]" : "",
+          mimeType:
+            options.format === "json" ? "application/json" : "text/plain",
+        };
+      }
+
+      const whereClauses: string[] = [];
+      if (options.trajectoryIds && options.trajectoryIds.length > 0) {
+        const ids = options.trajectoryIds.map((id) => sqlQuote(id)).join(", ");
+        whereClauses.push(`id IN (${ids})`);
+      }
+      const whereClause =
+        whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
+      try {
+        const result = await executeRawSql(
+          runtime,
+          `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC`,
+        );
+        const rows = extractRows(result);
+        const data = JSON.stringify(rows, null, 2);
+        return {
+          filename: "trajectories.json",
+          data,
+          mimeType: "application/json",
+        };
+      } catch {
+        return {
+          filename: "trajectories.json",
+          data: "[]",
+          mimeType: "application/json",
+        };
+      }
+    };
+  }
 
   patchedLoggers.add(loggerObject);
 

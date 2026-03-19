@@ -5,6 +5,7 @@
  */
 
 import type { OnboardingConnection } from "@elizaos/autonomous/contracts/onboarding";
+import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/autonomous/contracts/onboarding";
 import {
   type ReactNode,
   useCallback,
@@ -100,7 +101,7 @@ import {
   t as translateText,
   type UiLanguage,
 } from "../i18n";
-import { pathForTab, type Tab, tabFromPath } from "../navigation";
+import { COMPANION_ENABLED, pathForTab, type Tab, tabFromPath } from "../navigation";
 import { buildOnboardingConnectionConfig } from "../onboarding-config";
 import { getMissingOnboardingPermissions } from "../platform";
 import {
@@ -4226,7 +4227,7 @@ export function AppProvider({
         // Provision a sandbox agent on Eliza Cloud
         const cloudApiBase = (
           (window as unknown as Record<string, unknown>).__ELIZA_CLOUD_API_BASE__ ??
-          "https://api.eliza.ai"
+          "https://www.elizacloud.ai"
         ) as string;
 
         // Get the auth token from the cloud login state
@@ -4503,7 +4504,10 @@ export function AppProvider({
         if (options?.skipTask) {
           addDeferredOnboardingTask(options.skipTask);
         }
-        const nextStep = STEP_ORDER[currentIndex + 1];
+        let nextStep = STEP_ORDER[currentIndex + 1];
+        if (nextStep === "identity" && !COMPANION_ENABLED) {
+          nextStep = STEP_ORDER[currentIndex + 2];
+        }
         setOnboardingStep(nextStep);
         setOnboardingActiveGuide(
           onboardingMode === "advanced"
@@ -4541,7 +4545,10 @@ export function AppProvider({
 
     const currentIndex = STEP_ORDER.indexOf(onboardingStep);
     if (currentIndex > 0) {
-      const previousStep = STEP_ORDER[currentIndex - 1];
+      let previousStep = STEP_ORDER[currentIndex - 1];
+      if (previousStep === "identity" && !COMPANION_ENABLED) {
+        previousStep = STEP_ORDER[currentIndex - 2];
+      }
       setOnboardingStep(previousStep);
       setOnboardingActiveGuide(
         onboardingMode === "advanced"
@@ -4629,7 +4636,7 @@ export function AppProvider({
     const cloudApiBase =
       ((typeof window !== "undefined" &&
         (window as unknown as Record<string, unknown>).__ELIZA_CLOUD_API_BASE__) as string) ||
-      "https://api.eliza.ai";
+      "https://www.elizacloud.ai";
     const useDirectAuth = !hasBackend;
 
     try {
@@ -5195,20 +5202,32 @@ export function AppProvider({
       setAuthRequired(false);
       setConnected(false);
 
-      // On fresh installs where no backend is available yet, skip backend
-      // polling and go straight to onboarding. The agent will be started
-      // (local mode) or provisioned (sandbox mode) after onboarding completes.
+      // If onboarding hasn't been completed yet (no persisted connection),
+      // skip all backend polling and go straight to onboarding with static
+      // data. The agent will be started (local mode) or provisioned (sandbox
+      // mode) only after onboarding completes. This ensures the entire
+      // onboarding flow — character selection, editing, provider config —
+      // works with zero server calls.
       const persistedConnection = loadPersistedConnectionMode();
-      const hasApiBase = Boolean(
-        (typeof window !== "undefined" &&
-          (window as unknown as Record<string, unknown>).__MILADY_API_BASE__) ||
-          (typeof window !== "undefined" &&
-            (window as unknown as Record<string, unknown>).__ELIZA_API_BASE__),
-      );
 
-      if (!persistedConnection && !hasApiBase) {
-        // No connection mode persisted and no API base available — fresh install.
-        // Show onboarding immediately without waiting for a backend.
+      if (!persistedConnection) {
+        // Onboarding not completed — show it immediately without waiting
+        // for a backend. Populate onboardingOptions with static frontend
+        // data so handleOnboardingFinish doesn't early-return on null options.
+        const injectedStyles =
+          (typeof window !== "undefined" &&
+            (window as unknown as Record<string, unknown>)
+              .__APP_ONBOARDING_STYLES__) ||
+          [];
+        setOnboardingOptions({
+          names: [],
+          styles: injectedStyles as StylePreset[],
+          providers: [...ONBOARDING_PROVIDER_CATALOG] as OnboardingOptions["providers"],
+          cloudProviders: [],
+          models: { small: [], large: [] },
+          inventoryProviders: [],
+          sharedStyleRules: "",
+        });
         setStartupPhase("ready");
         setOnboardingComplete(false);
         setOnboardingLoading(false);
@@ -5233,7 +5252,11 @@ export function AppProvider({
           if (persistedConnection.remoteAccessToken) {
             client.setToken(persistedConnection.remoteAccessToken);
           }
-        } else if (persistedConnection.runMode === "local" && !hasApiBase) {
+        } else if (
+          persistedConnection.runMode === "local" &&
+          !((typeof window !== "undefined" && (window as unknown as Record<string, unknown>).__MILADY_API_BASE__) ||
+            (typeof window !== "undefined" && (window as unknown as Record<string, unknown>).__ELIZA_API_BASE__))
+        ) {
           // Local mode but no API base — need to start the agent first.
           // Trigger agent start via RPC and then continue polling.
           try {

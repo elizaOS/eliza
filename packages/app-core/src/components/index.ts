@@ -55,7 +55,6 @@ export * from "./LogsPageView";
 export * from "./LogsView";
 export * from "./labels";
 export * from "./MediaGalleryView";
-export * from "./MiladyBar";
 export * from "./MediaSettingsSection";
 export * from "./MessageContent";
 export * from "./ElizaCloudDashboard";

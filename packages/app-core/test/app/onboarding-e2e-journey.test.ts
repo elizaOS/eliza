@@ -23,11 +23,11 @@ type FlaminaGuideTopic = "provider" | "rpc" | "permissions" | "voice";
 type AppHarnessState = {
   onboardingLoading: boolean;
   startupStatus:
-    | "loading"
-    | "onboarding"
-    | "ready"
-    | "auth-blocked"
-    | "recoverable-error";
+  | "loading"
+  | "onboarding"
+  | "ready"
+  | "auth-blocked"
+  | "recoverable-error";
   startupError: null;
   authRequired: boolean;
   onboardingComplete: boolean;
@@ -273,38 +273,6 @@ vi.mock("@elizaos/app-core/components", async () => {
       React.createElement("div", null, "CustomActionsPanel"),
     EmotePicker: () => React.createElement("div", null, "EmotePicker"),
     Header: () => React.createElement("div", null, "Header"),
-    MiladyBar: () => {
-      const state = mockUseApp();
-      const tasks: string[] = Array.isArray(state.onboardingDeferredTasks)
-        ? state.onboardingDeferredTasks
-        : [];
-      const dismissed = state.postOnboardingChecklistDismissed;
-      if (dismissed || tasks.length === 0) {
-        return React.createElement("div", null, "MiladyBar");
-      }
-      return React.createElement(
-        "div",
-        null,
-        "MiladyBar",
-        React.createElement(
-          "div",
-          null,
-          "Finish setup later",
-          ...tasks.map((t: string) =>
-            React.createElement("div", { key: t }, TASK_LABELS[t] ?? t),
-          ),
-          React.createElement(
-            "button",
-            {
-              type: "button",
-              onClick: () =>
-                state.setState("postOnboardingChecklistDismissed", true),
-            },
-            "Dismiss",
-          ),
-        ),
-      );
-    },
     InventoryView: () => React.createElement("div", null, "InventoryView"),
     KnowledgeView: () => React.createElement("div", null, "KnowledgeView"),
     LifoSandboxView: () =>
@@ -757,7 +725,7 @@ function setupMockUseApp(state: AppHarnessState) {
       state.elizaCloudConnected = true;
       state.elizaCloudUserId = "test-user";
     }),
-    handleOnboardingRemoteConnect: vi.fn(async () => {}),
+    handleOnboardingRemoteConnect: vi.fn(async () => { }),
     handleOnboardingUseLocalBackend: vi.fn(),
   }));
 
