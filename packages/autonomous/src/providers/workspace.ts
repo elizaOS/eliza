@@ -212,7 +212,7 @@ export type WorkspaceInitFile = {
  * Used to skip injecting generic placeholder docs into the prompt.
  */
 export function isDefaultBoilerplate(
-  name: WorkspaceBootstrapFileName,
+  name: string,
   content: string,
 ): boolean {
   const template = WORKSPACE_TEMPLATES[name];
