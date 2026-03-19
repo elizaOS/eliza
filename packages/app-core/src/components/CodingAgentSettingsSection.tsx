@@ -83,7 +83,7 @@ const AGENT_LABELS: Record<AgentTab, string> = {
 };
 
 /** Map full adapter names from the preflight API to short tab keys. */
-const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
+export const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
   "claude code": "claude",
   "google gemini": "gemini",
   "openai codex": "codex",
