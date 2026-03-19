@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/autonomous",
-  "version": "2.0.0-alpha.72",
+  "version": "2.0.0-alpha.74",
   "description": "Standalone Milady agent runtime and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -218,7 +218,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
-    "@elizaos/core": "2.0.0-alpha.72",
+    "@elizaos/core": "2.0.0-alpha.74",
     "@elizaos/plugin-agent-orchestrator": "0.3.15",
     "@elizaos/plugin-agent-skills": "alpha",
     "@elizaos/plugin-anthropic": "alpha",
@@ -242,7 +242,7 @@
     "@elizaos/plugin-todo": "alpha",
     "@elizaos/plugin-trajectory-logger": "alpha",
     "@elizaos/plugin-trust": "alpha",
-    "@elizaos/skills": "2.0.0-alpha.72",
+    "@elizaos/skills": "2.0.0-alpha.74",
     "@hapi/boom": "^10.0.1",
     "@lunchtable/plugin-ltcg": "^0.1.0",
     "@mariozechner/pi-ai": "0.52.12",

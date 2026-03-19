@@ -43,14 +43,14 @@
     },
     "packages/app-core": {
       "name": "@elizaos/app-core",
-      "version": "2.0.0-alpha.72",
+      "version": "2.0.0-alpha.74",
       "dependencies": {
         "@capacitor/core": "8.0.2",
         "@capacitor/haptics": "8.0.0",
         "@capacitor/keyboard": "8.0.0",
         "@capacitor/preferences": "^8.0.1",
-        "@elizaos/autonomous": "workspace:*",
-        "@elizaos/ui": "workspace:*",
+        "@elizaos/autonomous": "2.0.0-alpha.74",
+        "@elizaos/ui": "2.0.0-alpha.74",
         "@sparkjsdev/spark": "^0.1.10",
         "lucide-react": "^0.575.0",
         "three": "^0.182.0",
@@ -80,7 +80,7 @@
       },
       "dependencies": {
         "@clack/prompts": "^1.0.0",
-        "@elizaos/core": "workspace:*",
+        "@elizaos/core": "2.0.0-alpha.74",
         "@elizaos/plugin-agent-orchestrator": "0.3.15",
         "@elizaos/plugin-agent-skills": "alpha",
         "@elizaos/plugin-anthropic": "alpha",
@@ -104,7 +104,7 @@
         "@elizaos/plugin-todo": "alpha",
         "@elizaos/plugin-trajectory-logger": "alpha",
         "@elizaos/plugin-trust": "alpha",
-        "@elizaos/skills": "workspace:*",
+        "@elizaos/skills": "2.0.0-alpha.74",
         "@hapi/boom": "^10.0.1",
         "@lunchtable/plugin-ltcg": "^0.1.0",
         "@mariozechner/pi-ai": "0.52.12",
@@ -139,7 +139,7 @@
     },
     "packages/computeruse": {
       "name": "@elizaos/computeruse-root",
-      "version": "2.0.0-alpha.70",
+      "version": "2.0.0-alpha.72",
     },
     "packages/computeruse/packages/computeruse-nodejs": {
       "name": "@elizaos/computeruse-nodejs",
@@ -214,7 +214,7 @@
     },
     "packages/daemon": {
       "name": "@elizaos/daemon",
-      "version": "2.0.0-alpha.71",
+      "version": "2.0.0-alpha.74",
       "devDependencies": {
         "@biomejs/biome": "^1.9.4",
         "@types/node": "^22.10.2",
@@ -224,11 +224,11 @@
     },
     "packages/docs": {
       "name": "@elizaos/docs",
-      "version": "2.0.0-alpha.70",
+      "version": "2.0.0-alpha.72",
     },
     "packages/elizaos": {
       "name": "elizaos",
-      "version": "2.0.0-alpha.71",
+      "version": "2.0.0-alpha.74",
       "bin": {
         "elizaos": "./dist/cli.js",
       },
@@ -245,15 +245,15 @@
     },
     "packages/home": {
       "name": "@elizaos/home",
-      "version": "2.0.0-alpha.73",
+      "version": "2.0.0-alpha.72",
       "dependencies": {
         "@capacitor/app": "^8.0.1",
         "@capacitor/core": "8.0.2",
         "@capacitor/keyboard": "8.0.0",
         "@capacitor/preferences": "^8.0.1",
         "@capacitor/status-bar": "^8.0.1",
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/ui": "workspace:*",
+        "@elizaos/app-core": "2.0.0-alpha.72",
+        "@elizaos/ui": "2.0.0-alpha.72",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "zod": "^4.3.6",
@@ -273,9 +273,9 @@
     },
     "packages/interop": {
       "name": "@elizaos/interop",
-      "version": "2.0.0-alpha.71",
+      "version": "2.0.0-alpha.74",
       "dependencies": {
-        "@elizaos/core": "workspace:*",
+        "@elizaos/core": "2.0.0-alpha.74",
       },
       "devDependencies": {
         "@types/node": "^25.0.3",
@@ -284,37 +284,37 @@
     },
     "packages/prompts": {
       "name": "@elizaos/prompts",
-      "version": "2.0.0-alpha.71",
+      "version": "2.0.0-alpha.74",
     },
     "packages/python": {
       "name": "@elizaos/python",
-      "version": "2.0.0-alpha.70",
+      "version": "2.0.0-alpha.72",
     },
     "packages/rust": {
       "name": "@elizaos/rust",
-      "version": "2.0.0-alpha.71",
+      "version": "2.0.0-alpha.74",
     },
     "packages/schemas": {
       "name": "@elizaos/schemas",
-      "version": "2.0.0-alpha.71",
+      "version": "2.0.0-alpha.74",
       "devDependencies": {
         "@bufbuild/buf": "^1.47.2",
       },
     },
     "packages/skills": {
       "name": "@elizaos/skills",
-      "version": "2.0.0-alpha.71",
+      "version": "2.0.0-alpha.74",
       "dependencies": {
         "yaml": "^2.8.2",
       },
     },
     "packages/sweagent": {
       "name": "@elizaos/sweagent-root",
-      "version": "2.0.0-alpha.70",
+      "version": "2.0.0-alpha.72",
     },
     "packages/training": {
       "name": "@elizaos/training",
-      "version": "2.0.0-alpha.71",
+      "version": "2.0.0-alpha.74",
       "dependencies": {
         "@huggingface/hub": "^2.6.12",
         "@vercel/blob": "^0.27.1",
@@ -330,7 +330,7 @@
     },
     "packages/tui": {
       "name": "@elizaos/tui",
-      "version": "2.0.0-alpha.71",
+      "version": "2.0.0-alpha.74",
       "dependencies": {
         "@types/mime-types": "^2.1.4",
         "chalk": "^5.5.0",
@@ -346,7 +346,7 @@
     },
     "packages/typescript": {
       "name": "@elizaos/core",
-      "version": "2.0.0-alpha.71",
+      "version": "2.0.0-alpha.74",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.32.1",
         "@bufbuild/protobuf": "^2.11.0",
@@ -386,7 +386,7 @@
     },
     "packages/ui": {
       "name": "@elizaos/ui",
-      "version": "2.0.0-alpha.71",
+      "version": "2.0.0-alpha.74",
       "dependencies": {
         "@radix-ui/react-checkbox": "^1.3.3",
         "@radix-ui/react-dialog": "^1.1.15",
@@ -2812,7 +2812,7 @@
 
     "libnpmpublish": ["libnpmpublish@11.1.2", "", { "dependencies": { "@npmcli/package-json": "^7.0.0", "ci-info": "^4.0.0", "npm-package-arg": "^13.0.0", "npm-registry-fetch": "^19.0.0", "proc-log": "^5.0.0", "semver": "^7.3.7", "sigstore": "^4.0.0", "ssri": "^12.0.0" } }, "sha512-tNcU3cLH7toloAzhOOrBDhjzgbxpyuYvkf+BPPnnJCdc5EIcdJ8JcT+SglvCQKKyZ6m9dVXtCVlJcA6csxKdEA=="],
 
-    "libsignal": ["@whiskeysockets/libsignal-node@github:whiskeysockets/libsignal-node#1c30d7d", { "dependencies": { "curve25519-js": "^0.0.4", "protobufjs": "6.8.8" } }, "WhiskeySockets-libsignal-node-1c30d7d", "sha512-5q4/OuDQaMYx3RpDqMqS3WYyqjrsSMpU8ipQZtpYnm5l6DwNoLV9oIYMDK0NILKW+tyk3tVCIA11BMYQ+A1+GA=="],
+    "libsignal": ["@whiskeysockets/libsignal-node@github:whiskeysockets/libsignal-node#1c30d7d", { "dependencies": { "curve25519-js": "^0.0.4", "protobufjs": "6.8.8" } }, "WhiskeySockets-libsignal-node-1c30d7d"],
 
     "lie": ["lie@3.3.0", "", { "dependencies": { "immediate": "~3.0.5" } }, "sha512-UaiMJzeWRlEujzAuw5LokY1L5ecNQYZKfmyZ9L7wDHb/p5etKaxXhohBcrw0EYby+G/NA52vRSN4N39dxHAIwQ=="],
 
@@ -3820,6 +3820,10 @@
 
     "@elizaos/daemon/vitest": ["vitest@2.1.9", "", { "dependencies": { "@vitest/expect": "2.1.9", "@vitest/mocker": "2.1.9", "@vitest/pretty-format": "^2.1.9", "@vitest/runner": "2.1.9", "@vitest/snapshot": "2.1.9", "@vitest/spy": "2.1.9", "@vitest/utils": "2.1.9", "chai": "^5.1.2", "debug": "^4.3.7", "expect-type": "^1.1.0", "magic-string": "^0.30.12", "pathe": "^1.1.2", "std-env": "^3.8.0", "tinybench": "^2.9.0", "tinyexec": "^0.3.1", "tinypool": "^1.0.1", "tinyrainbow": "^1.2.0", "vite": "^5.0.0", "vite-node": "2.1.9", "why-is-node-running": "^2.3.0" }, "peerDependencies": { "@edge-runtime/vm": "*", "@types/node": "^18.0.0 || >=20.0.0", "@vitest/browser": "2.1.9", "@vitest/ui": "2.1.9", "happy-dom": "*", "jsdom": "*" }, "optionalPeers": ["@edge-runtime/vm", "@types/node", "@vitest/browser", "@vitest/ui", "happy-dom", "jsdom"], "bin": { "vitest": "vitest.mjs" } }, "sha512-MSmPM9REYqDGBI8439mA4mWhV5sKmDlBKWIYbA3lRb2PTHACE0mgKwA8yQ2xq9vxDTuk4iPrECBAEW2aoFXY0Q=="],
 
+    "@elizaos/home/@elizaos/app-core": ["@elizaos/app-core@2.0.0-alpha.72", "", { "dependencies": { "@capacitor/core": "8.0.2", "@capacitor/haptics": "8.0.0", "@capacitor/keyboard": "8.0.0", "@capacitor/preferences": "^8.0.1", "@elizaos/autonomous": "workspace:*", "@elizaos/ui": "workspace:*", "@sparkjsdev/spark": "^0.1.10", "lucide-react": "^0.575.0", "three": "^0.182.0", "zod": "^4.3.6" }, "peerDependencies": { "@pixiv/three-vrm": "^3.4.5", "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-zruQBRxrjEAc7A67Pxp6Nk9aVMqUEQn0izoLTElOULZszju4rAgAYl2WNRzT6MkpFOjbP3oFLTf3ynMGUUWjzA=="],
+
+    "@elizaos/home/@elizaos/ui": ["@elizaos/ui@2.0.0-alpha.72", "", { "dependencies": { "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "lucide-react": "^0.575.0", "next-themes": "^0.4.6", "sonner": "^2.0.7", "tailwind-merge": "^2.6.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-oIN8MdXnq706wZ6cFrE8MQ0IPE4E3zat1LUVc3YWy+V/5Sh4nbY1j6vyLAJ4/cIRXhToX4xw6w9f07eCqPtkEg=="],
+
     "@elizaos/home/vitest": ["vitest@2.1.9", "", { "dependencies": { "@vitest/expect": "2.1.9", "@vitest/mocker": "2.1.9", "@vitest/pretty-format": "^2.1.9", "@vitest/runner": "2.1.9", "@vitest/snapshot": "2.1.9", "@vitest/spy": "2.1.9", "@vitest/utils": "2.1.9", "chai": "^5.1.2", "debug": "^4.3.7", "expect-type": "^1.1.0", "magic-string": "^0.30.12", "pathe": "^1.1.2", "std-env": "^3.8.0", "tinybench": "^2.9.0", "tinyexec": "^0.3.1", "tinypool": "^1.0.1", "tinyrainbow": "^1.2.0", "vite": "^5.0.0", "vite-node": "2.1.9", "why-is-node-running": "^2.3.0" }, "peerDependencies": { "@edge-runtime/vm": "*", "@types/node": "^18.0.0 || >=20.0.0", "@vitest/browser": "2.1.9", "@vitest/ui": "2.1.9", "happy-dom": "*", "jsdom": "*" }, "optionalPeers": ["@edge-runtime/vm", "@types/node", "@vitest/browser", "@vitest/ui", "happy-dom", "jsdom"], "bin": { "vitest": "vitest.mjs" } }, "sha512-MSmPM9REYqDGBI8439mA4mWhV5sKmDlBKWIYbA3lRb2PTHACE0mgKwA8yQ2xq9vxDTuk4iPrECBAEW2aoFXY0Q=="],
 
     "@elizaos/plugin-coding-agent/coding-agent-adapters": ["coding-agent-adapters@0.8.0", "", { "peerDependencies": { "agent-adapter-monitor": "^0.3.0", "pty-manager": "^1.9.0" }, "optionalPeers": ["agent-adapter-monitor"] }, "sha512-u55gCgTzRCsfYAzI2XobqrQtIIgLDJJUT6ffABwlv48Ta/oBE5lZA2xAbTUMCEB4p7zy/vYBYkLpRSwSLbcx2w=="],
@@ -4457,6 +4461,8 @@
     "@elizaos/daemon/vitest/tinyexec": ["tinyexec@0.3.2", "", {}, "sha512-KQQR9yN7R5+OSwaK0XQoj22pwHoTlgYqmUscPYoknOoWCWfj/5/ABTMRi69FrKU5ffPVh5QcFikpWJI/P1ocHA=="],
 
     "@elizaos/daemon/vitest/tinyrainbow": ["tinyrainbow@1.2.0", "", {}, "sha512-weEDEq7Z5eTHPDh4xjX789+fHfF+P8boiFB+0vbWzpbnbsEr/GRaohi/uMKxg8RZMXnl1ItAi/IUHWMsjDV7kQ=="],
+
+    "@elizaos/home/@elizaos/app-core/@elizaos/ui": ["@elizaos/ui@workspace:packages/ui"],
 
     "@elizaos/home/vitest/@vitest/expect": ["@vitest/expect@2.1.9", "", { "dependencies": { "@vitest/spy": "2.1.9", "@vitest/utils": "2.1.9", "chai": "^5.1.2", "tinyrainbow": "^1.2.0" } }, "sha512-UJCIkTBenHeKT1TTlKMJWy1laZewsRIzYighyYiJKZreqtdxSos/S1t+ktRMQWu2CKqaarrkeszJx1cgC5tGZw=="],
 
