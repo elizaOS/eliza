@@ -1,4 +1,4 @@
-import type { MiladyConfig } from "./types";
+import type { ElizaConfig } from "./types";
 
 /**
  * Environment variable keys that must NEVER be synced from config → process.env.
@@ -47,7 +47,7 @@ const BLOCKED_STARTUP_ENV_KEYS = new Set([
 ]);
 
 export function collectConfigEnvVars(
-  cfg?: MiladyConfig,
+  cfg?: ElizaConfig,
 ): Record<string, string> {
   const envConfig = cfg?.env;
   if (!envConfig) {
@@ -64,7 +64,7 @@ export function collectConfigEnvVars(
       if (BLOCKED_STARTUP_ENV_KEYS.has(key.toUpperCase())) {
         continue;
       }
-      entries[key] = value;
+      entries[key] = value as string;
     }
   }
 

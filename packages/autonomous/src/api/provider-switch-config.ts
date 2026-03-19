@@ -13,11 +13,11 @@ import {
   type OnboardingConnection,
   type OnboardingLocalProviderId,
 } from "../contracts/onboarding";
-import type { MiladyConfig } from "../config/types.milady";
+import type { ElizaConfig } from "../config/types.eliza";
 
 const REDACTED_SECRET = "[REDACTED]";
 
-type MutableMiladyConfig = Partial<MiladyConfig> & {
+type MutableElizaConfig = Partial<ElizaConfig> & {
   cloud?: Record<string, unknown>;
   models?: Record<string, unknown>;
   wallet?: { rpcProviders?: Record<string, string> };
@@ -48,21 +48,21 @@ function normalizeSecret(
   return trimmed;
 }
 
-function ensureEnv(config: MutableMiladyConfig): Record<string, string> {
+function ensureEnv(config: MutableElizaConfig): Record<string, string> {
   config.env ??= {};
   return config.env as Record<string, string>;
 }
 
 function ensureDefaults(
-  config: MutableMiladyConfig,
-): NonNullable<NonNullable<MiladyConfig["agents"]>["defaults"]> {
+  config: MutableElizaConfig,
+): NonNullable<NonNullable<ElizaConfig["agents"]>["defaults"]> {
   config.agents ??= {};
   config.agents.defaults ??= {};
   return config.agents.defaults;
 }
 
 function setEnvValue(
-  config: MutableMiladyConfig,
+  config: MutableElizaConfig,
   key: string,
   value: string | undefined,
 ): void {
@@ -77,7 +77,7 @@ function setEnvValue(
 }
 
 function setPrimaryModel(
-  config: MutableMiladyConfig,
+  config: MutableElizaConfig,
   primaryModel: string | undefined,
 ): void {
   const defaults = ensureDefaults(config);
@@ -90,7 +90,7 @@ function setPrimaryModel(
   defaults.model = { ...defaults.model, primary: primaryModel };
 }
 
-function clearPiAiFlag(config: MutableMiladyConfig): void {
+function clearPiAiFlag(config: MutableElizaConfig): void {
   const env = ensureEnv(config);
   delete env.MILADY_USE_PI_AI;
   delete process.env.MILADY_USE_PI_AI;
@@ -168,7 +168,7 @@ function resolveConfiguredLocalProvider(
  * Mutates `config` in place.
  */
 export function applySubscriptionProviderConfig(
-  config: Partial<MiladyConfig>,
+  config: Partial<ElizaConfig>,
   provider: string,
 ): void {
   config.agents ??= {};
@@ -197,7 +197,7 @@ export function applySubscriptionProviderConfig(
  * Mutates `config` in place.
  */
 export function clearSubscriptionProviderConfig(
-  config: Partial<MiladyConfig>,
+  config: Partial<ElizaConfig>,
 ): void {
   config.agents ??= {};
   config.agents.defaults ??= {};
@@ -346,7 +346,7 @@ export function mergeOnboardingConnectionWithExisting(
 }
 
 export async function applyOnboardingConnectionConfig(
-  config: MutableMiladyConfig,
+  config: MutableElizaConfig,
   connection: OnboardingConnection,
 ): Promise<void> {
   if (connection.kind === "cloud-managed") {

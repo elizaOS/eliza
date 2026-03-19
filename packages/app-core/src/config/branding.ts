@@ -1,10 +1,30 @@
 import { createContext, useContext } from "react";
 
+/**
+ * Custom provider that apps can inject into the onboarding flow.
+ * Uses `string` for id/family so apps aren't restricted to the built-in union.
+ */
+export interface CustomProviderOption {
+  id: string;
+  name: string;
+  envKey: string | null;
+  pluginName: string;
+  keyPrefix: string | null;
+  description: string;
+  family: string;
+  authMode: "api-key" | "cloud" | "credentials" | "local" | "subscription";
+  group: "cloud" | "local" | "subscription";
+  order: number;
+  recommended?: boolean;
+  /** Dark-mode logo path (e.g. "/logos/my-provider.png") */
+  logoDark?: string;
+  /** Light-mode logo path */
+  logoLight?: string;
+}
+
 export interface BrandingConfig {
   /** Product name shown in UI ("Eliza" | "Milady") */
   appName: string;
-  /** Cloud service name ("Eliza Cloud" | "Milady Cloud") */
-  cloudName: string;
   /** GitHub org ("elizaos" | "milady-ai") */
   orgName: string;
   /** GitHub repo name ("eliza" | "milady") */
@@ -21,11 +41,12 @@ export interface BrandingConfig {
   fileExtension: string;
   /** npm package scope ("elizaos" | "miladyai") */
   packageScope: string;
+  /** Custom providers injected by the app into the onboarding flow */
+  customProviders?: CustomProviderOption[];
 }
 
 export const DEFAULT_BRANDING: BrandingConfig = {
   appName: "Eliza",
-  cloudName: "Eliza Cloud",
   orgName: "elizaos",
   repoName: "eliza",
   docsUrl: "https://docs.elizaos.ai",

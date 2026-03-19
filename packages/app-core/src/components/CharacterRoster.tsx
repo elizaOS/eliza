@@ -90,7 +90,7 @@ export function CharacterRoster({
 
   return (
     <div
-      className="flex flex-wrap items-start justify-center gap-y-1"
+      className="ce-roster"
       data-testid={`${testIdPrefix}-roster-grid`}
     >
       {entries.map((entry) => {
@@ -100,26 +100,16 @@ export function CharacterRoster({
           <button
             key={entry.id}
             type="button"
-            className={`group relative -mx-3 min-w-0 w-[9.75rem] text-center transition-all duration-300 ease-out ${
-              isSelected
-                ? "z-100 scale-[1.00] opacity-100"
-                : "scale-[1.00] opacity-70 hover:scale-[1.00] hover:opacity-100"
-            }`}
+            className={`ce-roster-card ${isSelected ? "ce-roster-card--active" : ""}`}
             onClick={() => onSelect(entry)}
             data-testid={`${testIdPrefix}-preset-${entry.id}`}
           >
             <div
-              className={`relative h-[10rem] w-full p-[2px] transition-all duration-300 ${
-                isSelected
-                  ? "bg-yellow-400 shadow-[0_0_28px_rgba(250,204,21,0.32)]"
-                  : useWhiteBorders
-                    ? "bg-white/10 hover:bg-white/35"
-                    : "bg-border/20 hover:bg-border/60"
-              }`}
+              className={`ce-roster-card-frame ${isSelected ? "ce-roster-card-frame--active" : ""}`}
               style={{ clipPath: SLANT_CLIP }}
             >
               <div
-                className="relative h-full w-full overflow-hidden"
+                className="ce-roster-card-inner"
                 style={{ clipPath: SLANT_CLIP }}
               >
                 {isSelected && (
@@ -132,19 +122,11 @@ export function CharacterRoster({
                   src={getVrmPreviewUrl(entry.avatarIndex)}
                   alt={entry.name}
                   draggable={false}
-                  className={`h-full w-full object-cover transition-transform duration-300 ease-out ${
-                    isSelected
-                      ? "scale-[1.04]"
-                      : "scale-100 group-hover:scale-[1.02]"
-                  }`}
+                  className={`ce-roster-card-img ${isSelected ? "ce-roster-card-img--active" : ""}`}
                 />
-                <div className="absolute inset-x-0 bottom-0">
+                <div className="ce-roster-card-label">
                   <div
-                    className={`px-2 py-1 text-sm font-semibold text-white transition-all ${
-                      isSelected
-                        ? "bg-black/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-                        : "bg-black/62"
-                    }`}
+                    className={`ce-roster-card-name ${isSelected ? "ce-roster-card-name--active" : ""}`}
                     style={{ clipPath: INSET_CLIP }}
                   >
                     {entry.name}

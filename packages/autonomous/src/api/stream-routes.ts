@@ -116,7 +116,7 @@ function error(res: ServerResponse, message: string, status: number): void {
 function resolveRouteTtsConfig(
   config: unknown,
 ): Record<string, unknown> | null {
-  return resolveTtsConfig(config as never) as Record<string, unknown> | null;
+  return resolveTtsConfig(config as never) as unknown as Record<string, unknown> | null;
 }
 
 function getRouteTtsProviderStatus(config: unknown): {

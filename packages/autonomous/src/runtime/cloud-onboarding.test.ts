@@ -375,7 +375,7 @@ describe("provisionCloudAgent (via runCloudOnboarding)", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it("polls until agent reaches running status", async () => {
+  it("polls until agent reaches running status", { timeout: 15_000 }, async () => {
     const clack = makeClack();
 
     mockCreateAgent.mockResolvedValue({

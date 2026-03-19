@@ -33,16 +33,16 @@ import { getGlobalAwarenessRegistry } from "../awareness/registry";
 import { CharacterSchema } from "../config/character-schema";
 import {
   configFileExists,
-  loadMiladyConfig,
-  type MiladyConfig,
-  saveMiladyConfig,
+  loadElizaConfig,
+  type ElizaConfig,
+  saveElizaConfig,
 } from "../config/config";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths";
 import {
   isConnectorConfigured,
   isStreamingDestinationConfigured,
 } from "../config/plugin-auto-enable";
-import type { ConnectorConfig, CustomActionDef } from "../config/types.milady";
+import type { ConnectorConfig, CustomActionDef } from "../config/types.eliza";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability";
 import { EMOTE_BY_ID, EMOTE_CATALOG } from "../emotes/catalog";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace";
@@ -392,7 +392,7 @@ export interface ConversationMeta {
   updatedAt: string;
 }
 
-function hasPersistedOnboardingState(config: MiladyConfig): boolean {
+function hasPersistedOnboardingState(config: ElizaConfig): boolean {
   if (config.meta?.onboardingComplete === true) {
     return true;
   }
@@ -456,7 +456,7 @@ interface AgentStartupDiagnostics {
 
 interface ServerState {
   runtime: AgentRuntime | null;
-  config: MiladyConfig;
+  config: ElizaConfig;
   agentState:
     | "not_started"
     | "starting"
@@ -1111,7 +1111,7 @@ const BLOCKED_ENV_KEYS = new Set([
 
 /**
  * Top-level config keys accepted by `PUT /api/config`.
- * Keep this in sync with MiladyConfig root fields and include both modern and
+ * Keep this in sync with ElizaConfig root fields and include both modern and
  * legacy aliases (e.g. `connectors` + `channels`).
  */
 export const CONFIG_WRITE_ALLOWED_TOP_KEYS = new Set([
@@ -1304,7 +1304,7 @@ function aggregateSecrets(plugins: PluginEntry[]): SecretEntry[] {
  * Reads from config.plugins.installs and tries to enrich with package.json metadata.
  */
 export function discoverInstalledPlugins(
-  config: MiladyConfig,
+  config: ElizaConfig,
   bundledIds: Set<string>,
 ): PluginEntry[] {
   const installs = config.plugins?.installs;
@@ -2107,7 +2107,7 @@ async function loadScanReportFromDisk(
  */
 function resolveSkillEnabled(
   id: string,
-  config: MiladyConfig,
+  config: ElizaConfig,
   dbPrefs: SkillPreferencesMap,
 ): boolean {
   // Database preference takes priority (explicit user action)
@@ -2150,7 +2150,7 @@ function parseSkillDirsSetting(raw: unknown): string[] {
  */
 async function discoverSkills(
   workspaceDir: string,
-  config: MiladyConfig,
+  config: ElizaConfig,
   runtime: AgentRuntime | null,
 ): Promise<SkillEntry[]> {
   // Load persisted preferences from the agent database
@@ -2305,7 +2305,7 @@ function scanSkillsDir(
   dir: string,
   skills: SkillEntry[],
   seen: Set<string>,
-  config: MiladyConfig,
+  config: ElizaConfig,
   dbPrefs: SkillPreferencesMap,
 ): void {
   if (!fs.existsSync(dir)) return;
@@ -3821,7 +3821,7 @@ function isBlockedObjectKey(key: string): boolean {
     key === "constructor" ||
     key === "prototype" ||
     // Block config include directives — if an API caller embeds "$include"
-    // inside a config patch, the next loadMiladyConfig() → resolveConfigIncludes
+    // inside a config patch, the next loadElizaConfig() → resolveConfigIncludes
     // pass would read arbitrary local files and merge them into the config.
     key === "$include"
   );
@@ -4303,7 +4303,7 @@ function getProviderOptions(): Array<{
       pluginName: "@elizaos/plugin-elizacloud",
       keyPrefix: null,
       description:
-        "Managed hosting for Milady agents and bundled infrastructure.",
+        "Managed hosting for Eliza agents and bundled infrastructure.",
     },
     {
       id: "anthropic-subscription",
@@ -5109,7 +5109,7 @@ function getInventoryProviderOptions(): Array<{
   ];
 }
 
-function ensureWalletKeysInEnvAndConfig(config: MiladyConfig): boolean {
+function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
   const missingEvm =
     typeof process.env.EVM_PRIVATE_KEY !== "string" ||
     !process.env.EVM_PRIVATE_KEY.trim();
@@ -5171,7 +5171,7 @@ export type TradePermissionMode =
  * Falls back to "user-sign-only" when not configured.
  */
 export function resolveTradePermissionMode(
-  config: MiladyConfig,
+  config: ElizaConfig,
 ): TradePermissionMode {
   const raw = (config.features as Record<string, unknown> | undefined)
     ?.tradePermissionMode;
@@ -5221,7 +5221,7 @@ function parseAgentAutomationMode(value: unknown): AgentAutomationMode | null {
 }
 
 function resolveAgentAutomationModeFromConfig(
-  config: MiladyConfig,
+  config: ElizaConfig,
 ): AgentAutomationMode {
   const features =
     config.features && typeof config.features === "object"
@@ -5281,8 +5281,8 @@ type TrainingServiceLike = TrainingServiceWithRuntime;
 
 type TrainingServiceCtor = new (options: {
   getRuntime: () => AgentRuntime | null;
-  getConfig: () => MiladyConfig;
-  setConfig: (nextConfig: MiladyConfig) => void;
+  getConfig: () => ElizaConfig;
+  setConfig: (nextConfig: ElizaConfig) => void;
 }) => TrainingServiceLike;
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
@@ -7751,7 +7751,7 @@ async function handleRequest(
         envCfg[envKey] = apiKey;
       }
 
-      saveMiladyConfig(config);
+      saveElizaConfig(config);
 
       // Schedule runtime restart so the new provider takes effect.
       scheduleRuntimeRestart(`provider switch to ${normalizedProvider}`);
@@ -7814,7 +7814,7 @@ async function handleRequest(
       readJsonBody,
       json,
       error,
-      saveConfig: saveMiladyConfig,
+      saveConfig: saveElizaConfig,
       loadSubscriptionAuth: async () =>
         (await import("../auth/index")) as never,
     } as never)
@@ -8050,7 +8050,7 @@ async function handleRequest(
     // before telling the client to fall back into onboarding.
     if (!complete && configFileExists()) {
       try {
-        config = loadMiladyConfig();
+        config = loadElizaConfig();
         complete = hasPersistedOnboardingState(config);
         if (complete) {
           state.config = config;
@@ -8183,7 +8183,7 @@ async function handleRequest(
     if (body.theme) {
       if (!config.ui) config.ui = {};
       config.ui.theme = body.theme as
-        | "milady"
+        | "eliza"
         | "qt314"
         | "web2000"
         | "programmer"
@@ -8452,7 +8452,7 @@ async function handleRequest(
     state.config = config;
     state.agentName = (body.name as string) ?? state.agentName;
     try {
-      saveMiladyConfig(config);
+      saveElizaConfig(config);
     } catch (err) {
       logger.error(
         `[milady-api] Failed to save config after onboarding: ${err}`,
@@ -8629,7 +8629,7 @@ async function handleRequest(
       json,
       error,
       pickRandomNames,
-      saveConfig: saveMiladyConfig as never,
+      saveConfig: saveElizaConfig as never,
       validateCharacter: (body) => CharacterSchema.safeParse(body) as never,
     })
   ) {
@@ -8692,9 +8692,9 @@ async function handleRequest(
   // ── GET /api/plugins ────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/plugins") {
     // Re-read config from disk so we pick up plugins installed since server start.
-    let freshConfig: MiladyConfig;
+    let freshConfig: ElizaConfig;
     try {
-      freshConfig = loadMiladyConfig();
+      freshConfig = loadElizaConfig();
     } catch {
       freshConfig = state.config;
     }
@@ -8835,9 +8835,9 @@ async function handleRequest(
     let plugin = state.plugins.find((p) => p.id === pluginId);
     if (!plugin) {
       // Check store-installed plugins from config
-      let freshCfg: MiladyConfig;
+      let freshCfg: ElizaConfig;
       try {
-        freshCfg = loadMiladyConfig();
+        freshCfg = loadElizaConfig();
       } catch {
         freshCfg = state.config;
       }
@@ -8927,7 +8927,7 @@ async function handleRequest(
       // Save config even when only config values changed (no enable toggle)
       if (body.enabled === undefined) {
         try {
-          saveMiladyConfig(state.config);
+          saveElizaConfig(state.config);
         } catch (err) {
           logger.warn(
             `[milady-api] Failed to save config: ${err instanceof Error ? err.message : err}`,
@@ -8992,7 +8992,7 @@ async function handleRequest(
 
       // Save updated config
       try {
-        saveMiladyConfig(state.config);
+        saveElizaConfig(state.config);
       } catch (err) {
         logger.warn(
           `[milady-api] Failed to save config: ${err instanceof Error ? err.message : err}`,
@@ -9220,7 +9220,7 @@ async function handleRequest(
         .entries as Record<string, Record<string, unknown>>;
       pluginEntries[installedId] = { enabled: true };
       try {
-        saveMiladyConfig(state.config);
+        saveElizaConfig(state.config);
       } catch (err) {
         logger.warn(
           `[milady-api] Failed to save config after install: ${err instanceof Error ? err.message : err}`,
@@ -9559,7 +9559,7 @@ async function handleRequest(
     }
 
     try {
-      saveMiladyConfig(state.config);
+      saveElizaConfig(state.config);
     } catch (err) {
       logger.warn(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
@@ -10628,7 +10628,7 @@ async function handleRequest(
     process.env.SKILLSMP_API_KEY = apiKey;
     if (!state.config.env) state.config.env = {};
     (state.config.env as Record<string, string>).SKILLSMP_API_KEY = apiKey;
-    saveMiladyConfig(state.config);
+    saveElizaConfig(state.config);
     json(res, { ok: true, keySet: true });
     return;
   }
@@ -10744,7 +10744,7 @@ async function handleRequest(
       method,
       pathname,
       config: state.config,
-      saveConfig: saveMiladyConfig,
+      saveConfig: saveElizaConfig,
       ensureWalletKeysInEnvAndConfig,
       resolveWalletExportRejection,
       scheduleRuntimeRestart,
@@ -11158,7 +11158,7 @@ async function handleRequest(
       lastCheckAt: undefined,
       lastCheckVersion: undefined,
     };
-    saveMiladyConfig(state.config);
+    saveElizaConfig(state.config);
     json(res, { channel: ch });
     return;
   }
@@ -11201,7 +11201,7 @@ async function handleRequest(
       config,
     ) as ConnectorConfig;
     try {
-      saveMiladyConfig(state.config);
+      saveElizaConfig(state.config);
     } catch {
       /* test envs */
     }
@@ -11231,7 +11231,7 @@ async function handleRequest(
       delete state.config.channels[name];
     }
     try {
-      saveMiladyConfig(state.config);
+      saveElizaConfig(state.config);
     } catch {
       /* test envs */
     }
@@ -11271,7 +11271,7 @@ async function handleRequest(
         broadcastWs: state.broadcastWs ?? undefined,
         config: state.config,
         runtime: state.runtime ?? undefined,
-        saveConfig: () => saveMiladyConfig(state.config),
+        saveConfig: () => saveElizaConfig(state.config),
         workspaceDir: resolveDefaultAgentWorkspaceDir(),
       },
       {
@@ -11311,7 +11311,7 @@ async function handleRequest(
         broadcastWs: state.broadcastWs ?? undefined,
         config: state.config,
         runtime: state.runtime ?? undefined,
-        saveConfig: () => saveMiladyConfig(state.config),
+        saveConfig: () => saveElizaConfig(state.config),
         workspaceDir: resolveDefaultAgentWorkspaceDir(),
       },
       {
@@ -11790,7 +11790,7 @@ async function handleRequest(
       // before safeMerge.  The explicit deletes above cover known step-up
       // secrets; this loop catches process-level injection keys
       // (NODE_OPTIONS, LD_PRELOAD, etc.) so they never reach
-      // saveMiladyConfig() and the persistence→restart RCE chain is closed.
+      // saveElizaConfig() and the persistence→restart RCE chain is closed.
       for (const key of Object.keys(envPatch)) {
         if (key === "vars" || key === "shellEnv") continue;
         if (BLOCKED_ENV_KEYS.has(key.toUpperCase())) {
@@ -11852,7 +11852,7 @@ async function handleRequest(
     safeMerge(state.config as Record<string, unknown>, filtered);
 
     // If the client updated env vars, synchronise them into process.env so
-    // subsequent hot-restarts see the latest values (loadMiladyConfig()
+    // subsequent hot-restarts see the latest values (loadElizaConfig()
     // only fills missing env vars and does not override existing ones).
     if (
       filtered.env &&
@@ -11902,7 +11902,7 @@ async function handleRequest(
     }
 
     try {
-      saveMiladyConfig(state.config);
+      saveElizaConfig(state.config);
     } catch (err) {
       logger.warn(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
@@ -11935,7 +11935,7 @@ async function handleRequest(
     }
 
     persistAgentAutomationMode(state, parsed);
-    saveMiladyConfig(state.config);
+    saveElizaConfig(state.config);
 
     json(res, {
       mode: parsed,
@@ -11983,7 +11983,7 @@ async function handleRequest(
       newMode;
 
     try {
-      saveMiladyConfig(state.config);
+      saveElizaConfig(state.config);
     } catch (err) {
       logger.warn(
         `[api] Trade-mode config save failed: ${err instanceof Error ? err.message : err}`,
@@ -12009,7 +12009,7 @@ async function handleRequest(
       readJsonBody,
       json,
       error,
-      saveConfig: saveMiladyConfig,
+      saveConfig: saveElizaConfig,
       scheduleRuntimeRestart,
     })
   ) {
@@ -12806,7 +12806,7 @@ async function handleRequest(
 
     if (changed.length > 0) {
       try {
-        saveMiladyConfig(state.config);
+        saveElizaConfig(state.config);
       } catch (err) {
         logger.warn(
           `[api] production-defaults config save failed: ${err instanceof Error ? err.message : err}`,
@@ -12847,7 +12847,7 @@ async function handleRequest(
       config: state.config,
       cloudManager: state.cloudManager,
       runtime: state.runtime,
-      saveConfig: saveMiladyConfig,
+      saveConfig: saveElizaConfig,
       createTelemetrySpan: createIntegrationTelemetrySpan,
     };
     const handled = await handleCloudRoute(
@@ -14764,9 +14764,8 @@ async function handleRequest(
 
   // ── Hyperscape control proxy routes (optional — package may not be installed) ──
   try {
-    const { handleAppsHyperscapeRoutes } = await import(
-      "@elizaos/app-hyperscape/routes"
-    );
+    // @ts-ignore: Optional package may not be installed
+    const { handleAppsHyperscapeRoutes } = await import("@elizaos/app-hyperscape/routes");
     if (
       await handleAppsHyperscapeRoutes({
         req,
@@ -15564,7 +15563,7 @@ async function handleRequest(
     >[string];
 
     try {
-      saveMiladyConfig(state.config);
+      saveElizaConfig(state.config);
     } catch (err) {
       logger.warn(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
@@ -15595,7 +15594,7 @@ async function handleRequest(
     if (state.config.mcp?.servers?.[serverName]) {
       delete state.config.mcp.servers[serverName];
       try {
-        saveMiladyConfig(state.config);
+        saveElizaConfig(state.config);
       } catch (err) {
         logger.warn(
           `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
@@ -15652,7 +15651,7 @@ async function handleRequest(
     }
 
     try {
-      saveMiladyConfig(state.config);
+      saveElizaConfig(state.config);
     } catch (err) {
       logger.warn(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
@@ -15948,7 +15947,7 @@ async function handleRequest(
   // ── Custom Actions CRUD ──────────────────────────────────────────────
 
   if (method === "GET" && pathname === "/api/custom-actions") {
-    const config = loadMiladyConfig();
+    const config = loadElizaConfig();
     json(res, { actions: config.customActions ?? [] });
     return;
   }
@@ -16040,10 +16039,10 @@ async function handleRequest(
       updatedAt: now,
     };
 
-    const config = loadMiladyConfig();
+    const config = loadElizaConfig();
     if (!config.customActions) config.customActions = [];
     config.customActions.push(actionDef);
-    saveMiladyConfig(config);
+    saveElizaConfig(config);
 
     // Hot-register into the running agent so it's available immediately
     if (actionDef.enabled) {
@@ -16130,7 +16129,7 @@ async function handleRequest(
     );
     if (!body) return;
 
-    const config = loadMiladyConfig();
+    const config = loadElizaConfig();
     const def = (config.customActions ?? []).find((a) => a.id === actionId);
     if (!def) {
       error(res, "Action not found", 404);
@@ -16179,7 +16178,7 @@ async function handleRequest(
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return;
 
-    const config = loadMiladyConfig();
+    const config = loadElizaConfig();
     const actions = config.customActions ?? [];
     const idx = actions.findIndex((a) => a.id === actionId);
     if (idx === -1) {
@@ -16242,7 +16241,7 @@ async function handleRequest(
 
     actions[idx] = updated;
     config.customActions = actions;
-    saveMiladyConfig(config);
+    saveElizaConfig(config);
 
     json(res, { ok: true, action: updated });
     return;
@@ -16251,7 +16250,7 @@ async function handleRequest(
   if (method === "DELETE" && customActionMatch) {
     const actionId = decodeURIComponent(customActionMatch[1]);
 
-    const config = loadMiladyConfig();
+    const config = loadElizaConfig();
     const actions = config.customActions ?? [];
     const idx = actions.findIndex((a) => a.id === actionId);
     if (idx === -1) {
@@ -16261,7 +16260,7 @@ async function handleRequest(
 
     actions.splice(idx, 1);
     config.customActions = actions;
-    saveMiladyConfig(config);
+    saveElizaConfig(config);
 
     json(res, { ok: true });
     return;
@@ -16379,14 +16378,14 @@ export async function startApiServer(opts?: {
   ensureApiTokenForBindHost(host);
   console.log(`[milady-api] Token check done (${Date.now() - apiStartTime}ms)`);
 
-  let config: MiladyConfig;
+  let config: ElizaConfig;
   try {
-    config = loadMiladyConfig();
+    config = loadElizaConfig();
   } catch (err) {
     logger.warn(
       `[milady-api] Failed to load config, starting with defaults: ${err instanceof Error ? err.message : err}`,
     );
-    config = {} as MiladyConfig;
+    config = {} as ElizaConfig;
   }
   console.log(`[milady-api] Config loaded (${Date.now() - apiStartTime}ms)`);
 
@@ -16414,7 +16413,7 @@ export async function startApiServer(opts?: {
   // (e.g. RPC/cloud configured outside onboarding).
   if (ensureWalletKeysInEnvAndConfig(config)) {
     try {
-      saveMiladyConfig(config);
+      saveElizaConfig(config);
     } catch (err) {
       logger.warn(
         `[milady-api] Failed to persist generated wallet keys: ${err instanceof Error ? err.message : err}`,
@@ -16508,9 +16507,9 @@ export async function startApiServer(opts?: {
   const trainingServiceOptions = {
     getRuntime: () => state.runtime,
     getConfig: () => state.config,
-    setConfig: (nextConfig: MiladyConfig) => {
+    setConfig: (nextConfig: ElizaConfig) => {
       state.config = nextConfig;
-      saveMiladyConfig(nextConfig);
+      saveElizaConfig(nextConfig);
     },
   };
   if (trainingServiceCtor) {

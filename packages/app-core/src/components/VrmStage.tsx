@@ -83,6 +83,8 @@ export const VrmStage = memo(function VrmStage({
   const [loaderFading, setLoaderFading] = useState(false);
   const [loaderHidden, setLoaderHidden] = useState(false);
   const loaderFadingStartedRef = useRef(false);
+  /** After the first successful VRM load, suppress the loader on subsequent swaps. */
+  const hasLoadedFirstVrmRef = useRef(false);
 
   const chatAvatarVoice = useChatAvatarVoiceState();
 
@@ -142,6 +144,7 @@ export const VrmStage = memo(function VrmStage({
       if (state.vrmLoaded) {
         setVrmLoaded(true);
         setShowVrmFallback(false);
+        hasLoadedFirstVrmRef.current = true;
         if (!loaderFadingStartedRef.current) {
           loaderFadingStartedRef.current = true;
           setLoaderFading(true);
@@ -173,13 +176,17 @@ export const VrmStage = memo(function VrmStage({
     if (vrmPath === prevVrmPathRef.current && hasMountedRef.current) return;
     prevVrmPathRef.current = vrmPath;
     if (hasMountedRef.current) {
-      // Avatar changed — reset loading state but NOT the world
-      setVrmLoaded(false);
-      setShowVrmFallback(false);
-      setLoadingProgress(undefined);
-      setLoaderFading(false);
-      setLoaderHidden(false);
-      loaderFadingStartedRef.current = false;
+      // Avatar changed — reset loading state but NOT the world.
+      // After the first successful VRM load, keep the loader hidden so
+      // subsequent character swaps feel instant (no flash of loading bar).
+      if (!hasLoadedFirstVrmRef.current) {
+        setVrmLoaded(false);
+        setShowVrmFallback(false);
+        setLoadingProgress(undefined);
+        setLoaderFading(false);
+        setLoaderHidden(false);
+        loaderFadingStartedRef.current = false;
+      }
     }
     hasMountedRef.current = true;
   }, [vrmPath]);
