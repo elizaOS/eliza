@@ -16,12 +16,12 @@ type SwitchProps = Omit<
 };
 
 const SIZE_CLASS: Record<SwitchSize, string> = {
-  default: "w-10 h-5",
-  compact: "w-9 h-5 border-2 border-transparent",
+  default: "w-10 h-6",
+  compact: "w-10 h-6",
 };
 
 const KNOB_TRAVEL_CLASS: Record<SwitchSize, string> = {
-  default: "translate-x-5",
+  default: "translate-x-4",
   compact: "translate-x-4",
 };
 
@@ -50,7 +50,7 @@ export function Switch({
       }}
     >
       <span
-        className={`pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-transform duration-200 ${knobClass} ${checked ? KNOB_TRAVEL_CLASS[size] : ""}`}
+        className={`pointer-events-none absolute top-1 left-1 h-4 w-4 rounded-full shadow-sm transition-transform duration-200 ${knobClass} ${checked ? KNOB_TRAVEL_CLASS[size] : ""}`}
       />
     </button>
   );

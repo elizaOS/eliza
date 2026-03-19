@@ -324,7 +324,7 @@
   "configpageview.ChooseWhichElizaCl": "Choose which Eliza Cloud services to use. Disable inference to use your\n        own AI provider keys instead.",
   "configpageview.Config": "Config",
   "configpageview.WalletProvidersAnd": "Wallet providers and secrets.",
-  "configpageview.WalletAmpRPC": "Wallet &amp; RPC",
+  "configpageview.WalletAmpRPC": "Wallet & RPC",
   "configpageview.SecretsVault": "Secrets vault",
   "configpageview.Secrets": "Secrets",
   "configpageview.SecretsVault1": "Secrets Vault",

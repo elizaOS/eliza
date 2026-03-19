@@ -76,7 +76,8 @@
     "zod": "^4.3.6"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "directory": "dist"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

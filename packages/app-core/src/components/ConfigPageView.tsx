@@ -651,7 +651,7 @@ export function ConfigPageView({ embedded = false }: { embedded?: boolean }) {
             rpcFieldValues={rpcFieldValues}
             onRpcFieldChange={handleRpcFieldChange}
             cloud={cloudStatusProps}
-            containerClassName="grid grid-cols-2 md:grid-cols-5 gap-1.5"
+            containerClassName="flex flex-wrap gap-1.5"
           />
 
           {/* EVM */}
@@ -665,7 +665,7 @@ export function ConfigPageView({ embedded = false }: { embedded?: boolean }) {
             rpcFieldValues={rpcFieldValues}
             onRpcFieldChange={handleRpcFieldChange}
             cloud={cloudStatusProps}
-            containerClassName="grid grid-cols-4 gap-1.5"
+            containerClassName="flex flex-wrap gap-1.5"
           />
 
           {/* Solana */}
@@ -679,7 +679,7 @@ export function ConfigPageView({ embedded = false }: { embedded?: boolean }) {
             rpcFieldValues={rpcFieldValues}
             onRpcFieldChange={handleRpcFieldChange}
             cloud={cloudStatusProps}
-            containerClassName="grid grid-cols-2 gap-1.5"
+            containerClassName="flex flex-wrap gap-1.5"
           />
         </div>
 

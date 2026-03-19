@@ -393,20 +393,18 @@ export function StreamingPermissionsOnboardingView({
             "Skip for Now",
           )}
         </Button>
-        {allGranted ? (
-          <Button
-            variant="default"
-            size="sm"
-            className="h-auto min-w-[8.5rem] bg-accent border-accent px-4 py-2 text-[11px] leading-tight text-accent-foreground"
-            onClick={() => onContinue()}
-          >
-            {translateWithFallback(
-              t,
-              "permissionssection.Continue",
-              "Continue",
-            )}
-          </Button>
-        ) : null}
+        <Button
+          variant="default"
+          size="sm"
+          className="h-auto min-w-[8.5rem] bg-accent border-accent px-4 py-2 text-[11px] leading-tight text-accent-foreground"
+          onClick={() => onContinue()}
+        >
+          {translateWithFallback(
+            t,
+            "permissionssection.Continue",
+            "Continue",
+          )}
+        </Button>
       </div>
     </div>
   );

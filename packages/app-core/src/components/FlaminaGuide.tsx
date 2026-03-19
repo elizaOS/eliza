@@ -114,7 +114,7 @@ export function FlaminaGuideCard({
           </span>{" "}
           {guide.characterImpact}
         </p>
-        <p className="rounded-xl border border-border/60 bg-bg/60 px-3 py-2 text-[11px] text-muted">
+        <p className="rounded-xl border border-accent/20 bg-accent/5 px-3 py-2 text-[11px] text-txt">
           {guide.recommended}
         </p>
       </div>

@@ -471,8 +471,8 @@
 
 /* Provider cards (connection step) */
 .onboarding-provider-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   margin-bottom: 16px;
 }
@@ -522,7 +522,6 @@
   text-shadow: 0 1px 8px rgba(3, 5, 10, 0.5);
 }
 .onboarding-provider-card--recommended {
-  grid-column: 1 / -1;
   border-color: rgba(240, 185, 11, 0.24);
   background: rgba(240, 185, 11, 0.1);
 }
@@ -563,6 +562,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 24px;
   margin-top: 18px;
   padding-top: 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
