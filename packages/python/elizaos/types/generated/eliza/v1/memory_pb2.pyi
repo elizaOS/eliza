@@ -3,8 +3,7 @@ from google.protobuf import struct_pb2 as _struct_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -102,7 +101,7 @@ class Memory(_message.Message):
     unique: bool
     similarity: float
     metadata: MemoryMetadata
-    def __init__(self, id: _Optional[str] = ..., entity_id: _Optional[str] = ..., agent_id: _Optional[str] = ..., created_at: _Optional[int] = ..., content: _Optional[_Union[_primitives_pb2.Content, _Mapping]] = ..., embedding: _Optional[_Iterable[float]] = ..., room_id: _Optional[str] = ..., world_id: _Optional[str] = ..., unique: _Optional[bool] = ..., similarity: _Optional[float] = ..., metadata: _Optional[_Union[MemoryMetadata, _Mapping]] = ...) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., entity_id: _Optional[str] = ..., agent_id: _Optional[str] = ..., created_at: _Optional[int] = ..., content: _Optional[_Union[_primitives_pb2.Content, _Mapping]] = ..., embedding: _Optional[_Iterable[float]] = ..., room_id: _Optional[str] = ..., world_id: _Optional[str] = ..., unique: bool = ..., similarity: _Optional[float] = ..., metadata: _Optional[_Union[MemoryMetadata, _Mapping]] = ...) -> None: ...
 
 class MessageMemory(_message.Message):
     __slots__ = ("memory",)

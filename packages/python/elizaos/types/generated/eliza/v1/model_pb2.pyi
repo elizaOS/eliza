@@ -3,8 +3,7 @@ from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -94,7 +93,7 @@ class GenerateTextParams(_message.Message):
     user: str
     response_format: ResponseFormat
     stream: bool
-    def __init__(self, prompt: _Optional[str] = ..., max_tokens: _Optional[int] = ..., min_tokens: _Optional[int] = ..., temperature: _Optional[float] = ..., top_p: _Optional[float] = ..., top_k: _Optional[int] = ..., min_p: _Optional[float] = ..., seed: _Optional[int] = ..., repetition_penalty: _Optional[float] = ..., frequency_penalty: _Optional[float] = ..., presence_penalty: _Optional[float] = ..., stop_sequences: _Optional[_Iterable[str]] = ..., user: _Optional[str] = ..., response_format: _Optional[_Union[ResponseFormat, _Mapping]] = ..., stream: _Optional[bool] = ...) -> None: ...
+    def __init__(self, prompt: _Optional[str] = ..., max_tokens: _Optional[int] = ..., min_tokens: _Optional[int] = ..., temperature: _Optional[float] = ..., top_p: _Optional[float] = ..., top_k: _Optional[int] = ..., min_p: _Optional[float] = ..., seed: _Optional[int] = ..., repetition_penalty: _Optional[float] = ..., frequency_penalty: _Optional[float] = ..., presence_penalty: _Optional[float] = ..., stop_sequences: _Optional[_Iterable[str]] = ..., user: _Optional[str] = ..., response_format: _Optional[_Union[ResponseFormat, _Mapping]] = ..., stream: bool = ...) -> None: ...
 
 class TokenUsage(_message.Message):
     __slots__ = ("prompt_tokens", "completion_tokens", "total_tokens")
@@ -112,7 +111,7 @@ class TextStreamChunk(_message.Message):
     DONE_FIELD_NUMBER: _ClassVar[int]
     text: str
     done: bool
-    def __init__(self, text: _Optional[str] = ..., done: _Optional[bool] = ...) -> None: ...
+    def __init__(self, text: _Optional[str] = ..., done: bool = ...) -> None: ...
 
 class GenerateTextOptions(_message.Message):
     __slots__ = ("include_character", "model_type", "max_tokens", "temperature", "frequency_penalty", "presence_penalty", "stop_sequences")
@@ -130,7 +129,7 @@ class GenerateTextOptions(_message.Message):
     frequency_penalty: float
     presence_penalty: float
     stop_sequences: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, include_character: _Optional[bool] = ..., model_type: _Optional[_Union[ModelType, str]] = ..., max_tokens: _Optional[int] = ..., temperature: _Optional[float] = ..., frequency_penalty: _Optional[float] = ..., presence_penalty: _Optional[float] = ..., stop_sequences: _Optional[_Iterable[str]] = ...) -> None: ...
+    def __init__(self, include_character: bool = ..., model_type: _Optional[_Union[ModelType, str]] = ..., max_tokens: _Optional[int] = ..., temperature: _Optional[float] = ..., frequency_penalty: _Optional[float] = ..., presence_penalty: _Optional[float] = ..., stop_sequences: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class GenerateTextResult(_message.Message):
     __slots__ = ("text", "usage")

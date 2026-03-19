@@ -5,8 +5,7 @@ from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -42,7 +41,7 @@ class MessageProcessingOptions(_message.Message):
     use_multi_step: bool
     max_multi_step_iterations: int
     should_respond_model: ShouldRespondModelType
-    def __init__(self, max_retries: _Optional[int] = ..., timeout_duration: _Optional[int] = ..., use_multi_step: _Optional[bool] = ..., max_multi_step_iterations: _Optional[int] = ..., should_respond_model: _Optional[_Union[ShouldRespondModelType, str]] = ...) -> None: ...
+    def __init__(self, max_retries: _Optional[int] = ..., timeout_duration: _Optional[int] = ..., use_multi_step: bool = ..., max_multi_step_iterations: _Optional[int] = ..., should_respond_model: _Optional[_Union[ShouldRespondModelType, str]] = ...) -> None: ...
 
 class MessageProcessingResult(_message.Message):
     __slots__ = ("did_respond", "response_content", "response_messages", "state", "mode")
@@ -56,7 +55,7 @@ class MessageProcessingResult(_message.Message):
     response_messages: _containers.RepeatedCompositeFieldContainer[_memory_pb2.Memory]
     state: _state_pb2.State
     mode: MessageProcessingMode
-    def __init__(self, did_respond: _Optional[bool] = ..., response_content: _Optional[_Union[_primitives_pb2.Content, _Mapping]] = ..., response_messages: _Optional[_Iterable[_Union[_memory_pb2.Memory, _Mapping]]] = ..., state: _Optional[_Union[_state_pb2.State, _Mapping]] = ..., mode: _Optional[_Union[MessageProcessingMode, str]] = ...) -> None: ...
+    def __init__(self, did_respond: bool = ..., response_content: _Optional[_Union[_primitives_pb2.Content, _Mapping]] = ..., response_messages: _Optional[_Iterable[_Union[_memory_pb2.Memory, _Mapping]]] = ..., state: _Optional[_Union[_state_pb2.State, _Mapping]] = ..., mode: _Optional[_Union[MessageProcessingMode, str]] = ...) -> None: ...
 
 class ResponseDecision(_message.Message):
     __slots__ = ("should_respond", "skip_evaluation", "reason")
@@ -66,4 +65,4 @@ class ResponseDecision(_message.Message):
     should_respond: bool
     skip_evaluation: bool
     reason: str
-    def __init__(self, should_respond: _Optional[bool] = ..., skip_evaluation: _Optional[bool] = ..., reason: _Optional[str] = ...) -> None: ...
+    def __init__(self, should_respond: bool = ..., skip_evaluation: bool = ..., reason: _Optional[str] = ...) -> None: ...

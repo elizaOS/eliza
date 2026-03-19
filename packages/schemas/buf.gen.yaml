@@ -16,11 +16,11 @@ plugins:
       - import_extension=.js
 
   # Python generation using standard protobuf
-  - remote: buf.build/protocolbuffers/python
+  - remote: buf.build/protocolbuffers/python:v29.3
     out: ../python/elizaos/types/generated
 
   # Python type stubs
-  - remote: buf.build/protocolbuffers/pyi
+  - remote: buf.build/protocolbuffers/pyi:v29.3
     out: ../python/elizaos/types/generated
 
   # Rust generation using prost (WASM-compatible)

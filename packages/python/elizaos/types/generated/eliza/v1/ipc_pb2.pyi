@@ -8,8 +8,7 @@ from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -153,7 +152,7 @@ class ValidationResponse(_message.Message):
     type: str
     id: str
     valid: bool
-    def __init__(self, type: _Optional[str] = ..., id: _Optional[str] = ..., valid: _Optional[bool] = ...) -> None: ...
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[str] = ..., valid: bool = ...) -> None: ...
 
 class ProviderGetRequest(_message.Message):
     __slots__ = ("type", "id", "provider", "memory", "state")
@@ -223,7 +222,7 @@ class ServiceResponse(_message.Message):
     id: str
     success: bool
     error: str
-    def __init__(self, type: _Optional[str] = ..., id: _Optional[str] = ..., success: _Optional[bool] = ..., error: _Optional[str] = ...) -> None: ...
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[str] = ..., success: bool = ..., error: _Optional[str] = ...) -> None: ...
 
 class RouteHandlerRequest(_message.Message):
     __slots__ = ("type", "id", "path", "method", "body", "params", "query", "headers")
@@ -314,7 +313,7 @@ class PluginInitResponse(_message.Message):
     id: str
     success: bool
     error: str
-    def __init__(self, type: _Optional[str] = ..., id: _Optional[str] = ..., success: _Optional[bool] = ..., error: _Optional[str] = ...) -> None: ...
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[str] = ..., success: bool = ..., error: _Optional[str] = ...) -> None: ...
 
 class ErrorResponse(_message.Message):
     __slots__ = ("type", "id", "error", "details")

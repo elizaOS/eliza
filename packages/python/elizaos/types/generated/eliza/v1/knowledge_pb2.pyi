@@ -2,8 +2,7 @@ from eliza.v1 import memory_pb2 as _memory_pb2
 from eliza.v1 import primitives_pb2 as _primitives_pb2
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -23,4 +22,4 @@ class DirectoryItem(_message.Message):
     SHARED_FIELD_NUMBER: _ClassVar[int]
     directory: str
     shared: bool
-    def __init__(self, directory: _Optional[str] = ..., shared: _Optional[bool] = ...) -> None: ...
+    def __init__(self, directory: _Optional[str] = ..., shared: bool = ...) -> None: ...

@@ -7,8 +7,7 @@ from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -245,7 +244,7 @@ class EvaluatorEventPayload(_message.Message):
     start_time: int
     completed: bool
     error: str
-    def __init__(self, source: _Optional[str] = ..., evaluator_id: _Optional[str] = ..., evaluator_name: _Optional[str] = ..., start_time: _Optional[int] = ..., completed: _Optional[bool] = ..., error: _Optional[str] = ...) -> None: ...
+    def __init__(self, source: _Optional[str] = ..., evaluator_id: _Optional[str] = ..., evaluator_name: _Optional[str] = ..., start_time: _Optional[int] = ..., completed: bool = ..., error: _Optional[str] = ...) -> None: ...
 
 class ModelTokenUsage(_message.Message):
     __slots__ = ("prompt", "completion", "total")

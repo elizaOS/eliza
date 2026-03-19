@@ -3,8 +3,7 @@ from google.protobuf import struct_pb2 as _struct_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -47,7 +46,7 @@ class ActionParameter(_message.Message):
     description: str
     required: bool
     schema: ActionParameterSchema
-    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., required: _Optional[bool] = ..., schema: _Optional[_Union[ActionParameterSchema, _Mapping]] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., required: bool = ..., schema: _Optional[_Union[ActionParameterSchema, _Mapping]] = ...) -> None: ...
 
 class ActionExample(_message.Message):
     __slots__ = ("name", "content")
@@ -75,7 +74,7 @@ class ActionResult(_message.Message):
     values: _struct_pb2.Struct
     data: _struct_pb2.Struct
     error: str
-    def __init__(self, success: _Optional[bool] = ..., text: _Optional[str] = ..., values: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., data: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., error: _Optional[str] = ...) -> None: ...
+    def __init__(self, success: bool = ..., text: _Optional[str] = ..., values: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., data: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., error: _Optional[str] = ...) -> None: ...
 
 class ActionContext(_message.Message):
     __slots__ = ("previous_results",)
@@ -133,7 +132,7 @@ class ProviderManifest(_message.Message):
     dynamic: bool
     position: int
     private: bool
-    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., dynamic: _Optional[bool] = ..., position: _Optional[int] = ..., private: _Optional[bool] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., dynamic: bool = ..., position: _Optional[int] = ..., private: bool = ...) -> None: ...
 
 class EvaluationExample(_message.Message):
     __slots__ = ("prompt", "messages", "outcome")
@@ -157,4 +156,4 @@ class EvaluatorManifest(_message.Message):
     always_run: bool
     similes: _containers.RepeatedScalarFieldContainer[str]
     examples: _containers.RepeatedCompositeFieldContainer[EvaluationExample]
-    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., always_run: _Optional[bool] = ..., similes: _Optional[_Iterable[str]] = ..., examples: _Optional[_Iterable[_Union[EvaluationExample, _Mapping]]] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., always_run: bool = ..., similes: _Optional[_Iterable[str]] = ..., examples: _Optional[_Iterable[_Union[EvaluationExample, _Mapping]]] = ...) -> None: ...
