@@ -573,7 +573,6 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		if (pluginToRegister.services) {
-			const serviceStartPromises: Promise<void>[] = [];
 			for (const service of pluginToRegister.services) {
 				const serviceType = service.serviceType as ServiceTypeName;
 
@@ -599,30 +598,25 @@ export class AgentRuntime implements IAgentRuntime {
 					services.push(service);
 				}
 
-				// Eagerly start the service so it is available via the sync
-				// getService() call when registerPlugin() resolves.
-				serviceStartPromises.push(
-					this._ensureServiceStarted(serviceType).catch((err) => {
-						this.logger.error(
-							{
-								src: "agent",
-								agentId: this.agentId,
-								plugin: pluginToRegister.name,
-								serviceType,
-								error:
-									err instanceof Error
-										? err.message
-										: String(err),
-							},
-							"Service start failed",
-						);
-					}) as Promise<void>,
-				);
+				// Eagerly kick off service start so it is available via the
+				// sync getService() by the time actions/routes need it.
+				// Fire-and-forget: cannot await here because _runServiceStart
+				// awaits initPromise which resolves after initialize() completes
+				// (after all registerPlugin calls finish). Awaiting would deadlock.
+				this._ensureServiceStarted(serviceType).catch((err) => {
+					this.logger.error(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							plugin: pluginToRegister.name,
+							serviceType,
+							error:
+								err instanceof Error ? err.message : String(err),
+						},
+						"Service start failed",
+					);
+				});
 			}
-			// Wait for all services to start (or fail) so getService() works
-			// immediately after registerPlugin() resolves. Individual failures
-			// are already caught above and do not reject here.
-			await Promise.allSettled(serviceStartPromises);
 		}
 		if (pluginToRegister.adapter) {
 			this.logger.debug(
@@ -720,6 +714,23 @@ export class AgentRuntime implements IAgentRuntime {
 	async initialize(options?: {
 		skipMigrations?: boolean;
 		/** Allow running without a persistent database adapter (benchmarks/tests). */
+		allowNoDatabase?: boolean;
+	}): Promise<void> {
+		try {
+			await this._initializeCore(options);
+		} catch (err) {
+			// Always resolve initPromise so eager service starts and stop()
+			// do not hang waiting on a promise that never settles.
+			if (this.initResolver) {
+				this.initResolver();
+				this.initResolver = undefined;
+			}
+			throw err;
+		}
+	}
+
+	private async _initializeCore(options?: {
+		skipMigrations?: boolean;
 		allowNoDatabase?: boolean;
 	}): Promise<void> {
 		const pluginRegistrationPromises: Promise<void>[] = [];
