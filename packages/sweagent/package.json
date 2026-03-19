@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/sweagent-root",
-  "version": "2.0.0-alpha.70",
+  "version": "2.0.0-alpha.72",
   "private": true,
   "scripts": {
     "build": "echo 'sweagent build skipped'",

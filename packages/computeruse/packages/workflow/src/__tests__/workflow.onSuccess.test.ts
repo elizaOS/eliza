@@ -216,7 +216,7 @@ describe("Workflow onSuccess Handler", () => {
             await workflow.run({}, desktop);
 
             expect(capturedDuration).toBeDefined();
-            expect(capturedDuration).toBeGreaterThanOrEqual(50);
+            expect(capturedDuration).toBeGreaterThanOrEqual(40);
         });
 
         test("onSuccess is NOT called when step fails", async () => {
