@@ -984,10 +984,8 @@ export class AgentRuntime implements IAgentRuntime {
 		} else {
 			// Polyfill batch agent methods for adapters that only implement
 			// the older singular API (e.g. published plugin-sql <= alpha.12).
-			const legacy = adapter as unknown as Record<
-				string,
-				(...args: unknown[]) => unknown
-			>;
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const legacy: any = adapter;
 			if (
 				typeof legacy.getAgentsByIds !== "function" &&
 				typeof legacy.getAgent === "function"
