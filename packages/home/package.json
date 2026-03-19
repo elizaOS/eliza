@@ -22,8 +22,8 @@
     "@capacitor/keyboard": "8.0.0",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/status-bar": "^8.0.1",
-    "@elizaos/app-core": "2.0.0-alpha.73",
-    "@elizaos/ui": "2.0.0-alpha.73",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^4.3.6"
