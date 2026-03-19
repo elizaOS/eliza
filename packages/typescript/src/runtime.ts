@@ -573,6 +573,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		if (pluginToRegister.services) {
+			const serviceStartPromises: Promise<void>[] = [];
 			for (const service of pluginToRegister.services) {
 				const serviceType = service.serviceType as ServiceTypeName;
 
@@ -599,22 +600,29 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 
 				// Eagerly start the service so it is available via the sync
-				// getService() call by the time actions/routes need it.
-				// Errors are logged but do not block plugin registration.
-				this._ensureServiceStarted(serviceType).catch((err) => {
-					this.logger.error(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							plugin: pluginToRegister.name,
-							serviceType,
-							error:
-								err instanceof Error ? err.message : String(err),
-						},
-						"Eager service start failed",
-					);
-				});
+				// getService() call when registerPlugin() resolves.
+				serviceStartPromises.push(
+					this._ensureServiceStarted(serviceType).catch((err) => {
+						this.logger.error(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								plugin: pluginToRegister.name,
+								serviceType,
+								error:
+									err instanceof Error
+										? err.message
+										: String(err),
+							},
+							"Service start failed",
+						);
+					}) as Promise<void>,
+				);
 			}
+			// Wait for all services to start (or fail) so getService() works
+			// immediately after registerPlugin() resolves. Individual failures
+			// are already caught above and do not reject here.
+			await Promise.allSettled(serviceStartPromises);
 		}
 		if (pluginToRegister.adapter) {
 			this.logger.debug(
