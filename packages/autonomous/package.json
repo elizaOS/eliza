@@ -214,7 +214,8 @@
     "./version-resolver": "./src/version-resolver.ts"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "directory": "dist"
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",

@@ -117,30 +117,30 @@ export default defineConfig({
         find: /^@elizaos\/capacitor-(.*)/,
         replacement: path.resolve(here, "plugins/$1/src/index.ts"),
       },
-      // @elizaos/* → sibling packages in the monorepo
+      // @elizaos/* → sibling packages in the monorepo (built dist)
       {
         find: /^@elizaos\/autonomous$/,
-        replacement: path.resolve(packagesRoot, "autonomous/src/index.ts"),
+        replacement: path.resolve(packagesRoot, "autonomous/dist/packages/autonomous/src/index.js"),
       },
       {
         find: /^@elizaos\/autonomous\/(.*)$/,
-        replacement: path.resolve(packagesRoot, "autonomous/src/$1"),
+        replacement: path.resolve(packagesRoot, "autonomous/dist/packages/autonomous/src/$1"),
       },
       {
         find: /^@elizaos\/app-core$/,
-        replacement: path.resolve(packagesRoot, "app-core/src/index.ts"),
+        replacement: path.resolve(packagesRoot, "app-core/dist/index.js"),
       },
       {
         find: /^@elizaos\/app-core\/(.*)$/,
-        replacement: path.resolve(packagesRoot, "app-core/src/$1"),
+        replacement: path.resolve(packagesRoot, "app-core/dist/$1"),
       },
       {
         find: /^@elizaos\/ui$/,
-        replacement: path.resolve(packagesRoot, "ui/src/index.ts"),
+        replacement: path.resolve(packagesRoot, "ui/dist/index.js"),
       },
       {
         find: /^@elizaos\/ui\/(.*)$/,
-        replacement: path.resolve(packagesRoot, "ui/src/$1"),
+        replacement: path.resolve(packagesRoot, "ui/dist/$1"),
       },
     ],
   },
