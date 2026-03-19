@@ -22,10 +22,10 @@
     "milady-autonomous": "./src/bin.ts"
   },
   "scripts": {
-    "clean": "rimraf dist",
+    "clean": "rm -rf dist",
     "build": "bun run build:dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build:dist": "rimraf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/autonomous --compiled-prefix=packages/autonomous/src",
+    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/autonomous --compiled-prefix=packages/autonomous/src",
     "lint:check": "bunx @biomejs/biome check ./src/actions ./src/api ./src/auth ./src/awareness ./src/bin.ts ./src/cli ./src/cloud ./src/config ./src/contracts ./src/diagnostics ./src/emotes ./src/hooks ./src/index.ts ./src/onboarding-presets.ts ./src/plugins ./src/providers ./src/runtime ./src/security ./src/server ./src/services ./src/shared ./src/testing ./src/triggers ./src/utils ./src/version-resolver.ts",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "test": "cd ../.. && vitest run packages/autonomous/src/hooks/discovery.test.ts packages/autonomous/src/hooks/hooks.test.ts packages/autonomous/src/hooks/loader.test.ts packages/autonomous/src/hooks/registry.test.ts packages/autonomous/src/cloud/*.test.ts packages/autonomous/src/runtime/cloud-onboarding.test.ts packages/autonomous/test/api/wallet-routes.test.ts packages/autonomous/test/api/wallet-routes.observability.test.ts"
