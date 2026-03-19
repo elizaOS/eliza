@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "1.0.0",
+  "version": "2.0.0-alpha.67",
   "description": "Shared application core for Milady shells and white-label apps.",
   "type": "module",
   "license": "MIT",
@@ -64,15 +64,15 @@
     "three": "^0.182.0"
   },
   "dependencies": {
-    "@elizaos/autonomous": "workspace:*",
     "@capacitor/core": "8.0.2",
     "@capacitor/haptics": "8.0.0",
     "@capacitor/keyboard": "8.0.0",
     "@capacitor/preferences": "^8.0.1",
-    "@sparkjsdev/spark": "^0.1.10",
+    "@elizaos/autonomous": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "three": "^0.182.0",
+    "@sparkjsdev/spark": "^0.1.10",
     "lucide-react": "^0.575.0",
+    "three": "^0.182.0",
     "zod": "^4.3.6"
   },
   "publishConfig": {
@@ -82,8 +82,8 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.182.0",
-    "tailwindcss": "^4.1.18",
     "react-test-renderer": "^19.2.4",
+    "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }
