@@ -838,6 +838,9 @@ export class VrmEngine {
     if (!this.scene || !this.renderer) return;
 
     const { SparkRenderer } = await this.loadSparkModule();
+    // Re-check after async import — the engine may have been disposed during
+    // the await (e.g. React StrictMode double-mount).
+    if (!this.scene || !this.renderer) return;
     const sparkRenderer = new SparkRenderer({
       renderer: this.renderer as THREE.WebGLRenderer,
       apertureAngle: 0.0,
@@ -1911,7 +1914,11 @@ export class VrmEngine {
     }
 
     await this.ensureSparkRenderer();
+    // Re-check after async — the engine may have been disposed during the
+    // await (e.g. React StrictMode double-mount or rapid navigation).
+    if (!this.scene || this.loadingAborted || requestId !== this.worldLoadRequestId) return;
     const spark = await this.loadSparkModule();
+    if (!this.scene || this.loadingAborted || requestId !== this.worldLoadRequestId) return;
     const { SplatMesh } = spark;
     let worldAnchor = new THREE.Vector3(0, 0, 0);
     let worldRevealRadius = 1;

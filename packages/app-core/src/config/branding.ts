@@ -43,6 +43,8 @@ export interface BrandingConfig {
   packageScope: string;
   /** Custom providers injected by the app into the onboarding flow */
   customProviders?: CustomProviderOption[];
+  /** When true, the app requires Eliza Cloud — local backend mode is disabled. */
+  cloudOnly?: boolean;
 }
 
 export const DEFAULT_BRANDING: BrandingConfig = {

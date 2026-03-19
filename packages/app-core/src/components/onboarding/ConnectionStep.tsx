@@ -293,17 +293,19 @@ export function ConnectionStep() {
     }
   };
 
-  // On native (mobile), force sandbox mode — skip straight to Eliza Cloud login.
-  // Mobile cannot run a local backend, so cloud is the only option.
+  // On native (mobile) or when branding requires cloud-only, force sandbox mode
+  // — skip straight to Eliza Cloud login. These platforms cannot run a local
+  // backend, so cloud is the only option.
+  const forceCloud = isNative || branding.cloudOnly;
   useEffect(() => {
-    if (isNative && !onboardingRunMode) {
+    if (forceCloud && !onboardingRunMode) {
       setState("onboardingRunMode", "cloud");
       setState("onboardingCloudProvider", "elizacloud");
       setState("onboardingProvider", "");
       setState("onboardingApiKey", "");
       setState("onboardingPrimaryModel", "");
     }
-  }, [isNative, onboardingRunMode, setState]);
+  }, [forceCloud, onboardingRunMode, setState]);
 
   if (!showProviderSelection) {
     if (!onboardingRunMode) {
@@ -319,7 +321,7 @@ export function ConnectionStep() {
             {t("onboarding.hostingQuestion")}
           </div>
           <div className="onboarding-provider-grid">
-            {!isNative && (
+            {!isNative && !branding.cloudOnly && (
               <button
                 type="button"
                 className="onboarding-provider-card onboarding-provider-card--recommended"
