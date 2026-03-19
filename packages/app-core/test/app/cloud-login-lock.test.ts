@@ -54,6 +54,7 @@ const { mockClient } = vi.hoisted(() => ({
       triggers: [],
       todos: [],
     })),
+    getBaseUrl: vi.fn(() => "http://localhost:2138"),
     cloudLogin: vi.fn(async () => ({
       ok: false,
       browserUrl: "",
@@ -126,6 +127,9 @@ describe("cloud login locking", () => {
       setInterval: globalThis.setInterval,
       clearInterval: globalThis.clearInterval,
       open: vi.fn(() => null),
+      // Simulate an available backend so the startup flow doesn't skip to
+      // fresh-install onboarding immediately.
+      __MILADY_API_BASE__: "http://localhost:2138",
     });
     Object.assign(document.documentElement, { setAttribute: vi.fn() });
 

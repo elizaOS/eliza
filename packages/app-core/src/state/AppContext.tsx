@@ -4229,7 +4229,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           );
         }
 
-        const { bridgeUrl } = await client.provisionCloudSandbox({
+        await client.provisionCloudSandbox({
           cloudApiBase,
           authToken,
           name: onboardingName,
@@ -4257,9 +4257,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ipcChannel: "agent:start",
           });
         } catch {
-          // May not be on desktop — try the Capacitor agent plugin fallback
+          // May not be on desktop — try the Capacitor agent plugin fallback.
+          // Use a variable to prevent Vite static analysis from failing on
+          // this optional peer dependency (only available in milady app builds).
           try {
-            const { Agent } = await import("@miladyai/capacitor-agent");
+            const agentPluginId = "@miladyai/capacitor-agent";
+            const { Agent } = await import(/* @vite-ignore */ agentPluginId);
             await Agent.start();
           } catch {
             // Not on desktop or native — dev mode where agent is already running
