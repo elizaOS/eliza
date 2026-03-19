@@ -241,6 +241,13 @@ vi.mock("@elizaos/app-core/platform", () => ({
   hasRequiredOnboardingPermissions: () => true,
 }));
 
+const TASK_LABELS: Record<string, string> = {
+  provider: "Provider setup",
+  rpc: "RPC setup",
+  permissions: "Permissions",
+  voice: "Voice setup",
+};
+
 vi.mock("@elizaos/app-core/components", async () => {
   const actual = await vi.importActual<
     typeof import("@elizaos/app-core/components")
@@ -266,6 +273,38 @@ vi.mock("@elizaos/app-core/components", async () => {
       React.createElement("div", null, "CustomActionsPanel"),
     EmotePicker: () => React.createElement("div", null, "EmotePicker"),
     Header: () => React.createElement("div", null, "Header"),
+    MiladyBar: () => {
+      const state = mockUseApp();
+      const tasks: string[] = Array.isArray(state.onboardingDeferredTasks)
+        ? state.onboardingDeferredTasks
+        : [];
+      const dismissed = state.postOnboardingChecklistDismissed;
+      if (dismissed || tasks.length === 0) {
+        return React.createElement("div", null, "MiladyBar");
+      }
+      return React.createElement(
+        "div",
+        null,
+        "MiladyBar",
+        React.createElement(
+          "div",
+          null,
+          "Finish setup later",
+          ...tasks.map((t: string) =>
+            React.createElement("div", { key: t }, TASK_LABELS[t] ?? t),
+          ),
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              onClick: () =>
+                state.setState("postOnboardingChecklistDismissed", true),
+            },
+            "Dismiss",
+          ),
+        ),
+      );
+    },
     InventoryView: () => React.createElement("div", null, "InventoryView"),
     KnowledgeView: () => React.createElement("div", null, "KnowledgeView"),
     LifoSandboxView: () =>
