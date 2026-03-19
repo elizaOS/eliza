@@ -191,19 +191,26 @@ jobs:
               HIGHEST_VERSION=${HIGHEST_TAG#v}
               echo "Highest existing alpha tag: ${HIGHEST_VERSION}"
 
-              # If lerna.json is behind the tags, sync it first
-              if [[ "$CURRENT_VERSION" != "$HIGHEST_VERSION" ]]; then
-                echo "Syncing lerna.json from ${CURRENT_VERSION} to ${HIGHEST_VERSION}..."
+              # Only sync if lerna.json is BEHIND the tags (not ahead).
+              # If lerna.json is ahead, a previous run already bumped it
+              # but failed to create the tag — just increment from current.
+              HIGHEST_NUM=$(echo "$HIGHEST_VERSION" | grep -o '[0-9]*$')
+              CURRENT_NUM=$(echo "$CURRENT_VERSION" | grep -o '[0-9]*$')
+
+              if [[ "$CURRENT_NUM" -lt "$HIGHEST_NUM" ]]; then
+                echo "Syncing lerna.json from ${CURRENT_VERSION} to ${HIGHEST_VERSION} (behind tags)..."
                 bunx lerna version ${HIGHEST_VERSION} \
                   --force-publish \
                   --yes \
                   --no-private \
                   --no-git-tag-version \
                   --no-push
+              elif [[ "$CURRENT_NUM" -gt "$HIGHEST_NUM" ]]; then
+                echo "lerna.json (${CURRENT_VERSION}) is ahead of highest tag (${HIGHEST_VERSION}) — skipping sync"
               fi
 
               # Now increment to the next alpha
-              echo "Incrementing from ${HIGHEST_VERSION}..."
+              echo "Incrementing from $(node -p "require('./lerna.json').version")..."
               bunx lerna version prerelease \
                 --preid alpha \
                 --force-publish \
@@ -236,19 +243,24 @@ jobs:
               HIGHEST_VERSION=${HIGHEST_TAG#v}
               echo "Highest existing beta tag: ${HIGHEST_VERSION}"
 
-              # If lerna.json is behind the tags, sync it first
-              if [[ "$CURRENT_VERSION" != "$HIGHEST_VERSION" ]]; then
-                echo "Syncing lerna.json from ${CURRENT_VERSION} to ${HIGHEST_VERSION}..."
+              # Only sync if lerna.json is BEHIND the tags (not ahead).
+              HIGHEST_NUM=$(echo "$HIGHEST_VERSION" | grep -o '[0-9]*$')
+              CURRENT_NUM=$(echo "$CURRENT_VERSION" | grep -o '[0-9]*$')
+
+              if [[ "$CURRENT_NUM" -lt "$HIGHEST_NUM" ]]; then
+                echo "Syncing lerna.json from ${CURRENT_VERSION} to ${HIGHEST_VERSION} (behind tags)..."
                 bunx lerna version ${HIGHEST_VERSION} \
                   --force-publish \
                   --yes \
                   --no-private \
                   --no-git-tag-version \
                   --no-push
+              elif [[ "$CURRENT_NUM" -gt "$HIGHEST_NUM" ]]; then
+                echo "lerna.json (${CURRENT_VERSION}) is ahead of highest tag (${HIGHEST_VERSION}) — skipping sync"
               fi
 
               # Now increment to the next beta
-              echo "Incrementing from ${HIGHEST_VERSION}..."
+              echo "Incrementing from $(node -p "require('./lerna.json').version")..."
               bunx lerna version prerelease \
                 --preid beta \
                 --force-publish \
