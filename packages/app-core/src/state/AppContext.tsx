@@ -119,6 +119,7 @@ import {
   applyUiTheme,
   asApiLikeError,
   type ChatTurnUsage,
+  clearPersistedConnectionMode,
   clearPersistedOnboardingStep,
   deriveOnboardingResumeConnection,
   deriveOnboardingResumeFields,
@@ -136,6 +137,7 @@ import {
   loadChatVoiceMuted,
   loadCompanionMessageCutoffTs,
   loadLastNativeTab,
+  loadPersistedConnectionMode,
   loadPersistedOnboardingStep,
   loadUiLanguage,
   loadUiTheme,
@@ -163,6 +165,7 @@ import {
   saveCompanionMessageCutoffTs,
   saveLastNativeTab,
   saveOnboardingStep,
+  savePersistedConnectionMode,
   saveUiLanguage,
   saveUiShellMode,
   saveUiTheme,
@@ -4200,9 +4203,98 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
       });
 
+      // For local mode: start the embedded agent first, then submit onboarding.
+      // For cloud/remote modes: the backend is already available via the cloud
+      // or remote connection.
+      const isSandboxMode =
+        onboardingRunMode === "cloud" &&
+        onboardingCloudProvider === "elizacloud";
+      const isLocalMode = onboardingRunMode === "local" || !onboardingRunMode;
+
+      if (isSandboxMode) {
+        // Provision a sandbox agent on Eliza Cloud
+        const cloudApiBase = (
+          (window as Record<string, unknown>).__ELIZA_CLOUD_API_BASE__ ??
+          "https://api.eliza.ai"
+        ) as string;
+
+        // Get the auth token from the cloud login state
+        const authToken = (
+          (window as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ ?? ""
+        ) as string;
+
+        if (!authToken) {
+          throw new Error(
+            "Eliza Cloud authentication required. Please log in first.",
+          );
+        }
+
+        const { bridgeUrl } = await client.provisionCloudSandbox({
+          cloudApiBase,
+          authToken,
+          name: onboardingName,
+          bio: style?.bio ?? ["An autonomous AI agent."],
+          onProgress: (status, detail) => {
+            console.log(`[Sandbox] ${status}: ${detail ?? ""}`);
+          },
+        });
+
+        // Point the client at the cloud API (which proxies to the bridge)
+        client.setBaseUrl(cloudApiBase);
+        client.setToken(authToken);
+
+        // Persist connection for future restarts
+        savePersistedConnectionMode({
+          runMode: "cloud",
+          cloudApiBase,
+          cloudAuthToken: authToken,
+        });
+      } else if (isLocalMode) {
+        // Start the embedded agent via desktop RPC (Electrobun) or native plugin
+        try {
+          await invokeDesktopBridgeRequest({
+            rpcMethod: "agentStart",
+            ipcChannel: "agent:start",
+          });
+        } catch {
+          // May not be on desktop — try the Capacitor agent plugin fallback
+          try {
+            const { Agent } = await import("@miladyai/capacitor-agent");
+            await Agent.start();
+          } catch {
+            // Not on desktop or native — dev mode where agent is already running
+          }
+        }
+
+        // Wait for the local backend to become reachable
+        const localDeadline = Date.now() + 120_000;
+        while (Date.now() < localDeadline) {
+          try {
+            await client.getAuthStatus();
+            break;
+          } catch {
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        }
+
+        savePersistedConnectionMode({ runMode: "local" });
+      } else if (
+        onboardingRunMode === "cloud" &&
+        onboardingCloudProvider === "remote"
+      ) {
+        // Remote mode — user provided a custom backend URL
+        savePersistedConnectionMode({
+          runMode: "remote",
+          remoteApiBase: onboardingRemoteApiBase,
+          remoteAccessToken: onboardingRemoteToken || undefined,
+        });
+      }
+
+      const sandboxMode = isSandboxMode ? "standard" : "off";
+
       await client.submitOnboarding({
         name: onboardingName,
-        sandboxMode: "off" as const,
+        sandboxMode: sandboxMode as "off",
         bio: style?.bio ?? ["An autonomous AI agent."],
         systemPrompt,
         style: style?.style,
@@ -4515,8 +4607,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     elizaCloudLoginBusyRef.current = true;
     setElizaCloudLoginBusy(true);
     setElizaCloudLoginError(null);
+
+    // Determine if we should use direct cloud auth (no local backend) or
+    // go through the local agent's proxy. During sandbox onboarding there is
+    // no local backend, so we talk to Eliza Cloud directly.
+    const hasBackend = Boolean(client.getBaseUrl());
+    const cloudApiBase =
+      ((typeof window !== "undefined" &&
+        (window as Record<string, unknown>).__ELIZA_CLOUD_API_BASE__) as string) ||
+      "https://api.eliza.ai";
+    const useDirectAuth = !hasBackend;
+
     try {
-      const resp = await client.cloudLogin();
+      let resp: { ok: boolean; browserUrl?: string; sessionId?: string; error?: string };
+      if (useDirectAuth) {
+        resp = await client.cloudLoginDirect(cloudApiBase);
+      } else {
+        resp = await client.cloudLogin();
+      }
       if (!resp.ok) {
         setElizaCloudLoginError(
           resp.error || "Failed to start Eliza Cloud login",
@@ -4540,6 +4648,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           );
         }
       }
+
+      const sessionId = resp.sessionId ?? "";
 
       let pollInFlight = false;
       let consecutivePollErrors = 0;
@@ -4569,7 +4679,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pollInFlight = true;
         try {
           if (!elizaCloudLoginPollTimer.current) return;
-          const poll = await client.cloudLoginPoll(resp.sessionId);
+          let poll: {
+            status: string;
+            token?: string;
+            userId?: string;
+            error?: string;
+          };
+          if (useDirectAuth) {
+            poll = await client.cloudLoginPollDirect(cloudApiBase, sessionId);
+          } else {
+            poll = await client.cloudLoginPoll(sessionId);
+          }
           if (!elizaCloudLoginPollTimer.current) return;
 
           consecutivePollErrors = 0;
@@ -4578,15 +4698,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setElizaCloudConnected(true);
             setElizaCloudEnabled(true);
             setElizaCloudLoginError(null);
+
+            // Store the cloud auth token for provisioning
+            if (poll.token && typeof window !== "undefined") {
+              (window as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+                poll.token;
+              (window as Record<string, unknown>).__ELIZA_CLOUD_API_BASE__ =
+                cloudApiBase;
+            }
+
             setActionNotice(
               "Logged in to Eliza Cloud successfully.",
               "success",
               6000,
             );
-            void loadWalletConfig();
-            // Delay the credit fetch slightly so the backend has time to
-            // persist the API key before we query cloud status / credits.
-            setTimeout(() => void pollCloudCredits(), 2000);
+            if (!useDirectAuth) {
+              void loadWalletConfig();
+              // Delay the credit fetch slightly so the backend has time to
+              // persist the API key before we query cloud status / credits.
+              setTimeout(() => void pollCloudCredits(), 2000);
+            }
           } else if (poll.status === "expired" || poll.status === "error") {
             stopCloudLoginPolling(
               poll.error ?? "Login session expired. Please try again.",
@@ -5044,6 +5175,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStartupPhase("starting-backend");
       setAuthRequired(false);
       setConnected(false);
+
+      // On fresh installs where no backend is available yet, skip backend
+      // polling and go straight to onboarding. The agent will be started
+      // (local mode) or provisioned (sandbox mode) after onboarding completes.
+      const persistedConnection = loadPersistedConnectionMode();
+      const hasApiBase = Boolean(
+        (typeof window !== "undefined" &&
+          (window as Record<string, unknown>).__MILADY_API_BASE__) ||
+          (typeof window !== "undefined" &&
+            (window as Record<string, unknown>).__ELIZA_API_BASE__),
+      );
+
+      if (!persistedConnection && !hasApiBase) {
+        // No connection mode persisted and no API base available — fresh install.
+        // Show onboarding immediately without waiting for a backend.
+        setStartupPhase("ready");
+        setOnboardingComplete(false);
+        setOnboardingLoading(false);
+        return;
+      }
+
+      // Restore connection from persisted state for returning users
+      if (persistedConnection) {
+        if (
+          persistedConnection.runMode === "cloud" &&
+          persistedConnection.cloudApiBase
+        ) {
+          client.setBaseUrl(persistedConnection.cloudApiBase);
+          if (persistedConnection.cloudAuthToken) {
+            client.setToken(persistedConnection.cloudAuthToken);
+          }
+        } else if (
+          persistedConnection.runMode === "remote" &&
+          persistedConnection.remoteApiBase
+        ) {
+          client.setBaseUrl(persistedConnection.remoteApiBase);
+          if (persistedConnection.remoteAccessToken) {
+            client.setToken(persistedConnection.remoteAccessToken);
+          }
+        } else if (persistedConnection.runMode === "local" && !hasApiBase) {
+          // Local mode but no API base — need to start the agent first.
+          // Trigger agent start via RPC and then continue polling.
+          try {
+            await invokeDesktopBridgeRequest({
+              rpcMethod: "agentStart",
+              ipcChannel: "agent:start",
+            });
+          } catch {
+            // Not on desktop or agent already running
+          }
+        }
+      }
+
       const backendStartedAt = Date.now();
       let lastBackendError: unknown = null;
 

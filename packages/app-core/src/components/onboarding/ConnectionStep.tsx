@@ -9,7 +9,7 @@ import { isNative } from "@elizaos/app-core/platform";
 import { getProviderLogo } from "@elizaos/app-core/providers";
 import { useApp } from "@elizaos/app-core/state";
 import { openExternalUrl } from "@elizaos/app-core/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function formatRequestError(err: unknown): string {
   if (err instanceof Error) {
@@ -292,6 +292,18 @@ export function ConnectionStep() {
       setState("onboardingSubscriptionTab", "token");
     }
   };
+
+  // On native (mobile), force sandbox mode — skip straight to Eliza Cloud login.
+  // Mobile cannot run a local backend, so cloud is the only option.
+  useEffect(() => {
+    if (isNative && !onboardingRunMode) {
+      setState("onboardingRunMode", "cloud");
+      setState("onboardingCloudProvider", "elizacloud");
+      setState("onboardingProvider", "");
+      setState("onboardingApiKey", "");
+      setState("onboardingPrimaryModel", "");
+    }
+  }, [isNative, onboardingRunMode, setState]);
 
   if (!showProviderSelection) {
     if (!onboardingRunMode) {

@@ -2087,6 +2087,10 @@ export class MiladyClient {
     }
   }
 
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   setBaseUrl(baseUrl: string | null): void {
     const normalized = baseUrl?.trim().replace(/\/+$/, "") || "";
     this._explicitBase = normalized.length > 0;
@@ -5518,6 +5522,133 @@ export class MiladyClient {
       method: "POST",
       body: JSON.stringify({ settings }),
     });
+  }
+
+  // ── Direct Eliza Cloud Auth (no local backend required) ─────────────
+
+  /**
+   * Initiate a direct login to Eliza Cloud without going through a local agent.
+   * Used in sandbox mode when no local backend exists yet.
+   */
+  async cloudLoginDirect(
+    cloudApiBase: string,
+  ): Promise<{ ok: boolean; browserUrl?: string; sessionId?: string; error?: string }> {
+    const res = await fetch(`${cloudApiBase}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) {
+      return { ok: false, error: `Login failed (${res.status})` };
+    }
+    return res.json();
+  }
+
+  /**
+   * Poll a direct Eliza Cloud login session for authentication status.
+   */
+  async cloudLoginPollDirect(
+    cloudApiBase: string,
+    sessionId: string,
+  ): Promise<{
+    status: "pending" | "authenticated" | "expired" | "error";
+    token?: string;
+    userId?: string;
+    error?: string;
+  }> {
+    const res = await fetch(
+      `${cloudApiBase}/api/v1/auth/login/status?sessionId=${encodeURIComponent(sessionId)}`,
+    );
+    if (!res.ok) {
+      return { status: "error", error: `Poll failed (${res.status})` };
+    }
+    return res.json();
+  }
+
+  // ── Eliza Cloud Sandbox Provisioning ───────────────────────────────
+
+  /**
+   * Create a sandbox agent on Eliza Cloud and provision it.
+   * Returns the bridge URL when provisioning completes.
+   *
+   * Flow:
+   *   1. POST /api/v1/milady/agents — create agent record
+   *   2. POST /api/v1/milady/agents/{id}/provision — start async provisioning
+   *   3. Poll GET /api/v1/jobs/{jobId} until completed
+   *   4. Return bridgeUrl from job result
+   */
+  async provisionCloudSandbox(options: {
+    cloudApiBase: string;
+    authToken: string;
+    name: string;
+    bio?: string[];
+    onProgress?: (status: string, detail?: string) => void;
+  }): Promise<{ bridgeUrl: string; agentId: string }> {
+    const { cloudApiBase, authToken, name, bio, onProgress } = options;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    };
+
+    onProgress?.("creating", "Creating agent...");
+
+    // Step 1: Create agent
+    const createRes = await fetch(`${cloudApiBase}/api/v1/milady/agents`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name, bio }),
+    });
+    if (!createRes.ok) {
+      const err = await createRes.text().catch(() => "Unknown error");
+      throw new Error(`Failed to create cloud agent: ${err}`);
+    }
+    const createData = (await createRes.json()) as { id: string };
+    const agentId = createData.id;
+
+    onProgress?.("provisioning", "Provisioning sandbox environment...");
+
+    // Step 2: Start provisioning
+    const provisionRes = await fetch(
+      `${cloudApiBase}/api/v1/milady/agents/${agentId}/provision`,
+      { method: "POST", headers },
+    );
+    if (!provisionRes.ok) {
+      const err = await provisionRes.text().catch(() => "Unknown error");
+      throw new Error(`Failed to start provisioning: ${err}`);
+    }
+    const provisionData = (await provisionRes.json()) as { jobId: string };
+    const jobId = provisionData.jobId;
+
+    // Step 3: Poll job status
+    const deadline = Date.now() + 120_000; // 2 minute timeout
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000));
+
+      const jobRes = await fetch(`${cloudApiBase}/api/v1/jobs/${jobId}`, {
+        headers,
+      });
+      if (!jobRes.ok) continue;
+
+      const jobData = (await jobRes.json()) as {
+        status: string;
+        result?: { bridgeUrl?: string };
+        error?: string;
+      };
+
+      if (jobData.status === "completed" && jobData.result?.bridgeUrl) {
+        onProgress?.("ready", "Sandbox ready!");
+        return { bridgeUrl: jobData.result.bridgeUrl, agentId };
+      }
+
+      if (jobData.status === "failed") {
+        throw new Error(
+          `Provisioning failed: ${jobData.error ?? "Unknown error"}`,
+        );
+      }
+
+      onProgress?.("provisioning", `Status: ${jobData.status}...`);
+    }
+
+    throw new Error("Provisioning timed out after 2 minutes");
   }
 }
 

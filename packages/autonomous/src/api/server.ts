@@ -1092,6 +1092,7 @@ const BLOCKED_ENV_KEYS = new Set([
   "HOME",
   "SHELL",
   // Auth / step-up tokens — writable via API would grant privilege escalation
+  "ELIZA_API_TOKEN",
   "MILADY_API_TOKEN",
   "MILADY_WALLET_EXPORT_TOKEN",
   "MILADY_TERMINAL_RUN_TOKEN",
@@ -5376,7 +5377,7 @@ export function isAllowedHost(req: http.IncomingMessage): boolean {
 
   if (!hostname) return true;
 
-  const bindHost = (process.env.MILADY_API_BIND ?? "").trim().toLowerCase();
+  const bindHost = (process.env.ELIZA_API_BIND ?? process.env.MILADY_API_BIND ?? "").trim().toLowerCase();
 
   // When binding on all interfaces (0.0.0.0 / ::), any Host is acceptable —
   // ensureApiTokenForBindHost already enforces a token for non-loopback binds.
@@ -5389,9 +5390,9 @@ export function isAllowedHost(req: http.IncomingMessage): boolean {
     return true;
   }
 
-  // Allow explicitly listed extra hostnames via MILADY_ALLOWED_HOSTS
+  // Allow explicitly listed extra hostnames via ELIZA_ALLOWED_HOSTS / MILADY_ALLOWED_HOSTS
   // (comma-separated, e.g. "myserver.local,192.168.1.10").
-  const extra = process.env.MILADY_ALLOWED_HOSTS;
+  const extra = process.env.ELIZA_ALLOWED_HOSTS ?? process.env.MILADY_ALLOWED_HOSTS;
   if (extra) {
     const allowed = extra
       .split(",")
@@ -5410,7 +5411,7 @@ export function resolveCorsOrigin(origin?: string): string | null {
 
   // When bound to a wildcard address, allow any origin. Non-loopback binds still
   // require an explicit token, so this only relaxes the browser origin check.
-  const bindHost = (process.env.MILADY_API_BIND ?? "").trim().toLowerCase();
+  const bindHost = (process.env.ELIZA_API_BIND ?? process.env.MILADY_API_BIND ?? "").trim().toLowerCase();
   if (WILDCARD_BIND_RE.test(stripPort(bindHost))) return trimmed;
 
   // Explicit allowlist via env (comma-separated)
@@ -5478,7 +5479,7 @@ const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
 
 function pairingEnabled(): boolean {
   return (
-    Boolean(process.env.MILADY_API_TOKEN?.trim()) &&
+    Boolean((process.env.ELIZA_API_TOKEN ?? process.env.MILADY_API_TOKEN)?.trim()) &&
     process.env.MILADY_PAIRING_DISABLED !== "1"
   );
 }
@@ -5537,6 +5538,8 @@ export function extractAuthToken(req: http.IncomingMessage): string | null {
   }
 
   const header =
+    (typeof req.headers["x-eliza-token"] === "string" &&
+      req.headers["x-eliza-token"]) ||
     (typeof req.headers["x-milady-token"] === "string" &&
       req.headers["x-milady-token"]) ||
     (typeof req.headers["x-api-key"] === "string" && req.headers["x-api-key"]);
@@ -5646,24 +5649,25 @@ function isLoopbackBindHost(host: string): boolean {
 }
 
 export function ensureApiTokenForBindHost(host: string): void {
-  const token = process.env.MILADY_API_TOKEN?.trim();
+  const token = (process.env.ELIZA_API_TOKEN ?? process.env.MILADY_API_TOKEN)?.trim();
   if (token) return;
   if (isLoopbackBindHost(host)) return;
 
   const generated = crypto.randomBytes(32).toString("hex");
+  process.env.ELIZA_API_TOKEN = generated;
   process.env.MILADY_API_TOKEN = generated;
 
   logger.warn(
-    `[milady-api] MILADY_API_BIND=${host} is non-loopback and MILADY_API_TOKEN is unset.`,
+    `[milady-api] ELIZA_API_BIND/MILADY_API_BIND=${host} is non-loopback and ELIZA_API_TOKEN/MILADY_API_TOKEN is unset.`,
   );
   const tokenFingerprint = `${generated.slice(0, 4)}...${generated.slice(-4)}`;
   logger.warn(
-    `[milady-api] Generated temporary MILADY_API_TOKEN (${tokenFingerprint}) for this process. Set MILADY_API_TOKEN explicitly to override.`,
+    `[milady-api] Generated temporary API token (${tokenFingerprint}) for this process. Set ELIZA_API_TOKEN explicitly to override.`,
   );
 }
 
 export function isAuthorized(req: http.IncomingMessage): boolean {
-  const expected = process.env.MILADY_API_TOKEN?.trim();
+  const expected = (process.env.ELIZA_API_TOKEN ?? process.env.MILADY_API_TOKEN)?.trim();
   if (!expected) return true;
   const provided = extractAuthToken(req);
   if (!provided) return false;
@@ -5774,7 +5778,7 @@ export function resolveTerminalRunRejection(
   body: TerminalRunRequestBody,
 ): TerminalRunRejection | null {
   const expected = process.env.MILADY_TERMINAL_RUN_TOKEN?.trim();
-  const apiTokenEnabled = Boolean(process.env.MILADY_API_TOKEN?.trim());
+  const apiTokenEnabled = Boolean((process.env.ELIZA_API_TOKEN ?? process.env.MILADY_API_TOKEN)?.trim());
 
   // Compatibility mode: local loopback sessions without API token keep
   // existing behavior unless an explicit terminal token is configured.
@@ -5831,7 +5835,7 @@ function isWebSocketAuthorized(
   request: http.IncomingMessage,
   url: URL,
 ): boolean {
-  const expected = process.env.MILADY_API_TOKEN?.trim();
+  const expected = (process.env.ELIZA_API_TOKEN ?? process.env.MILADY_API_TOKEN)?.trim();
   if (!expected) return true;
 
   const headerToken = extractAuthToken(request);
@@ -7444,7 +7448,7 @@ async function handleRequest(
       res,
       {
         error: "Forbidden — invalid Host header",
-        hint: `To allow this host, set MILADY_ALLOWED_HOSTS=${incomingHost} in your environment, or access via http://localhost`,
+        hint: `To allow this host, set ELIZA_ALLOWED_HOSTS=${incomingHost} (or MILADY_ALLOWED_HOSTS) in your environment, or access via http://localhost`,
         docs: "https://docs.milady.ai/configuration#allowed-hosts",
       },
       403,
@@ -11764,6 +11768,7 @@ async function handleRequest(
       // merge, even though BLOCKED_ENV_KEYS also blocks them during process.env
       // sync below. Keeping both guards prevents accidental persistence if one
       // path changes in future refactors.
+      delete envPatch.ELIZA_API_TOKEN;
       delete envPatch.MILADY_API_TOKEN;
       delete envPatch.MILADY_WALLET_EXPORT_TOKEN;
       delete envPatch.MILADY_TERMINAL_RUN_TOKEN;
@@ -11777,6 +11782,7 @@ async function handleRequest(
         !Array.isArray(envPatch.vars)
       ) {
         const vars = envPatch.vars as Record<string, unknown>;
+        delete vars.ELIZA_API_TOKEN;
         delete vars.MILADY_API_TOKEN;
         delete vars.MILADY_WALLET_EXPORT_TOKEN;
         delete vars.MILADY_TERMINAL_RUN_TOKEN;
@@ -16374,7 +16380,7 @@ export async function startApiServer(opts?: {
 
   const port = opts?.port ?? 2138;
   const host =
-    (process.env.MILADY_API_BIND ?? "127.0.0.1").trim() || "127.0.0.1";
+    (process.env.ELIZA_API_BIND ?? process.env.MILADY_API_BIND ?? "127.0.0.1").trim() || "127.0.0.1";
   ensureApiTokenForBindHost(host);
   console.log(`[milady-api] Token check done (${Date.now() - apiStartTime}ms)`);
 

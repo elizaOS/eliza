@@ -2010,23 +2010,31 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   if (services) {
     if (services.tts === false) {
       process.env.MILADY_CLOUD_TTS_DISABLED = "true";
+      process.env.ELIZA_CLOUD_TTS_DISABLED = "true";
     } else {
       delete process.env.MILADY_CLOUD_TTS_DISABLED;
+      delete process.env.ELIZA_CLOUD_TTS_DISABLED;
     }
     if (services.media === false) {
       process.env.MILADY_CLOUD_MEDIA_DISABLED = "true";
+      process.env.ELIZA_CLOUD_MEDIA_DISABLED = "true";
     } else {
       delete process.env.MILADY_CLOUD_MEDIA_DISABLED;
+      delete process.env.ELIZA_CLOUD_MEDIA_DISABLED;
     }
     if (services.embeddings === false) {
       process.env.MILADY_CLOUD_EMBEDDINGS_DISABLED = "true";
+      process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED = "true";
     } else {
       delete process.env.MILADY_CLOUD_EMBEDDINGS_DISABLED;
+      delete process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED;
     }
     if (services.rpc === false) {
       process.env.MILADY_CLOUD_RPC_DISABLED = "true";
+      process.env.ELIZA_CLOUD_RPC_DISABLED = "true";
     } else {
       delete process.env.MILADY_CLOUD_RPC_DISABLED;
+      delete process.env.ELIZA_CLOUD_RPC_DISABLED;
     }
   }
 }
