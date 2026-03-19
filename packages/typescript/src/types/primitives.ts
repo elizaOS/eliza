@@ -167,7 +167,7 @@ export interface Content
 /**
  * Platform-provided metadata about mentions.
  * Contains ONLY technical facts from the platform API.
- * This allows bootstrap to make intelligent decisions about responding
+ * This allows basic-capabilities to make intelligent decisions about responding
  * while keeping platform-specific logic isolated.
  */
 export interface MentionContext

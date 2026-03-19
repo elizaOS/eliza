@@ -1,6 +1,6 @@
 """Basic Actions - Core response actions.
 
-Fundamental actions included by default in the bootstrap plugin.
+Fundamental actions included by default in the basic_capabilities plugin.
 """
 
 from .choice import choose_option_action as choice_action

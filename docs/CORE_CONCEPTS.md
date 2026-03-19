@@ -13,7 +13,7 @@ The TypeScript runtime is `AgentRuntime` (`packages/typescript/src/runtime.ts`).
 
 `await runtime.initialize({ skipMigrations?: boolean })` will:
 
-- Auto-include `bootstrapPlugin` if not already present
+- Auto-include `basic-capabilitiesPlugin` if not already present
 - Register plugins via `registerPlugin(plugin)`
 - Require a database adapter (typically from `@elizaos/plugin-sql`)
 - Initialize the adapter (`adapter.init()`) if not ready

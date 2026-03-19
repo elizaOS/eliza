@@ -37,7 +37,7 @@ export class EmbeddingGenerationService extends Service {
 
 	static async start(runtime: IAgentRuntime): Promise<Service> {
 		runtime.logger.info(
-			{ src: "plugin:bootstrap:service:embedding", agentId: runtime.agentId },
+			{ src: "plugin:basic-capabilities:service:embedding", agentId: runtime.agentId },
 			"Starting embedding generation service",
 		);
 
@@ -45,7 +45,7 @@ export class EmbeddingGenerationService extends Service {
 		const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
 		if (!embeddingModel) {
 			runtime.logger.warn(
-				{ src: "plugin:bootstrap:service:embedding", agentId: runtime.agentId },
+				{ src: "plugin:basic-capabilities:service:embedding", agentId: runtime.agentId },
 				"No TEXT_EMBEDDING model registered - service will not be initialized",
 			);
 			// Return a no-op service that does nothing
@@ -63,7 +63,7 @@ export class EmbeddingGenerationService extends Service {
 		if (this.isDisabled) {
 			this.runtime.logger.debug(
 				{
-					src: "plugin:bootstrap:service:embedding",
+					src: "plugin:basic-capabilities:service:embedding",
 					agentId: this.runtime.agentId,
 				},
 				"Service is disabled, skipping initialization",
@@ -73,7 +73,7 @@ export class EmbeddingGenerationService extends Service {
 
 		this.runtime.logger.info(
 			{
-				src: "plugin:bootstrap:service:embedding",
+				src: "plugin:basic-capabilities:service:embedding",
 				agentId: this.runtime.agentId,
 			},
 			"Initializing embedding generation service",
@@ -132,7 +132,7 @@ export class EmbeddingGenerationService extends Service {
 		});
 		this.runtime.logger.info(
 			{
-				src: "plugin:bootstrap:service:embedding",
+				src: "plugin:basic-capabilities:service:embedding",
 				agentId: this.runtime.agentId,
 			},
 			"Started embedding drain task",
@@ -146,7 +146,7 @@ export class EmbeddingGenerationService extends Service {
 		if (this.isDisabled) {
 			this.runtime.logger.debug(
 				{
-					src: "plugin:bootstrap:service:embedding",
+					src: "plugin:basic-capabilities:service:embedding",
 					agentId: this.runtime.agentId,
 				},
 				"Service is disabled, skipping embedding request",
@@ -166,7 +166,7 @@ export class EmbeddingGenerationService extends Service {
 		if (memory.embedding) {
 			this.runtime.logger.debug(
 				{
-					src: "plugin:bootstrap:service:embedding",
+					src: "plugin:basic-capabilities:service:embedding",
 					agentId: this.runtime.agentId,
 					memoryId: memory.id,
 				},
@@ -179,7 +179,7 @@ export class EmbeddingGenerationService extends Service {
 		if (this.queue.length >= this.maxQueueSize) {
 			this.runtime.logger.warn(
 				{
-					src: "plugin:bootstrap:service:embedding",
+					src: "plugin:basic-capabilities:service:embedding",
 					agentId: this.runtime.agentId,
 					queueSize: this.queue.length,
 					maxSize: this.maxQueueSize,
@@ -204,7 +204,7 @@ export class EmbeddingGenerationService extends Service {
 
 		this.runtime.logger.debug(
 			{
-				src: "plugin:bootstrap:service:embedding",
+				src: "plugin:basic-capabilities:service:embedding",
 				agentId: this.runtime.agentId,
 				queueSize: this.queue.length,
 			},
@@ -259,7 +259,7 @@ export class EmbeddingGenerationService extends Service {
 
 		this.runtime.logger.info(
 			{
-				src: "plugin:bootstrap:service:embedding",
+				src: "plugin:basic-capabilities:service:embedding",
 				agentId: this.runtime.agentId,
 				removedCount,
 				newSize: this.queue.length,
@@ -313,7 +313,7 @@ export class EmbeddingGenerationService extends Service {
 
 			this.runtime.logger.debug(
 				{
-					src: "plugin:bootstrap:service:embedding",
+					src: "plugin:basic-capabilities:service:embedding",
 					agentId: this.runtime.agentId,
 					batchSize: batch.length,
 					remaining: this.queue.length,
@@ -328,7 +328,7 @@ export class EmbeddingGenerationService extends Service {
 				} catch (error) {
 					this.runtime.logger.error(
 						{
-							src: "plugin:bootstrap:service:embedding",
+							src: "plugin:basic-capabilities:service:embedding",
 							agentId: this.runtime.agentId,
 							memoryId: item.memory.id,
 							error: error instanceof Error ? error.message : String(error),
@@ -343,7 +343,7 @@ export class EmbeddingGenerationService extends Service {
 						this.insertItemByPriority(item);
 						this.runtime.logger.debug(
 							{
-								src: "plugin:bootstrap:service:embedding",
+								src: "plugin:basic-capabilities:service:embedding",
 								agentId: this.runtime.agentId,
 								retryCount: item.retryCount,
 								maxRetries: item.maxRetries,
@@ -392,7 +392,7 @@ export class EmbeddingGenerationService extends Service {
 		if (!memoryContent || !memoryContent.text) {
 			this.runtime.logger.warn(
 				{
-					src: "plugin:bootstrap:service:embedding",
+					src: "plugin:basic-capabilities:service:embedding",
 					agentId: this.runtime.agentId,
 					memoryId: memory.id,
 				},
@@ -412,7 +412,7 @@ export class EmbeddingGenerationService extends Service {
 			const duration = Date.now() - startTime;
 			this.runtime.logger.debug(
 				{
-					src: "plugin:bootstrap:service:embedding",
+					src: "plugin:basic-capabilities:service:embedding",
 					agentId: this.runtime.agentId,
 					memoryId: memory.id,
 					durationMs: duration,
@@ -451,7 +451,7 @@ export class EmbeddingGenerationService extends Service {
 		} catch (error) {
 			this.runtime.logger.error(
 				{
-					src: "plugin:bootstrap:service:embedding",
+					src: "plugin:basic-capabilities:service:embedding",
 					agentId: this.runtime.agentId,
 					memoryId: memory.id,
 					error: error instanceof Error ? error.message : String(error),
@@ -465,7 +465,7 @@ export class EmbeddingGenerationService extends Service {
 	async stop(): Promise<void> {
 		this.runtime.logger.info(
 			{
-				src: "plugin:bootstrap:service:embedding",
+				src: "plugin:basic-capabilities:service:embedding",
 				agentId: this.runtime.agentId,
 			},
 			"Stopping embedding generation service",
@@ -474,7 +474,7 @@ export class EmbeddingGenerationService extends Service {
 		if (this.isDisabled) {
 			this.runtime.logger.debug(
 				{
-					src: "plugin:bootstrap:service:embedding",
+					src: "plugin:basic-capabilities:service:embedding",
 					agentId: this.runtime.agentId,
 				},
 				"Service is disabled, nothing to stop",
@@ -494,7 +494,7 @@ export class EmbeddingGenerationService extends Service {
 		if (highPriorityItems.length > 0) {
 			this.runtime.logger.info(
 				{
-					src: "plugin:bootstrap:service:embedding",
+					src: "plugin:basic-capabilities:service:embedding",
 					agentId: this.runtime.agentId,
 					count: highPriorityItems.length,
 				},
@@ -506,7 +506,7 @@ export class EmbeddingGenerationService extends Service {
 				} catch (error) {
 					this.runtime.logger.error(
 						{
-							src: "plugin:bootstrap:service:embedding",
+							src: "plugin:basic-capabilities:service:embedding",
 							agentId: this.runtime.agentId,
 							error: error instanceof Error ? error.message : String(error),
 						},
@@ -518,7 +518,7 @@ export class EmbeddingGenerationService extends Service {
 
 		this.runtime.logger.info(
 			{
-				src: "plugin:bootstrap:service:embedding",
+				src: "plugin:basic-capabilities:service:embedding",
 				agentId: this.runtime.agentId,
 				remainingItems: this.queue.length,
 			},
@@ -556,7 +556,7 @@ export class EmbeddingGenerationService extends Service {
 		this.queue = [];
 		this.runtime.logger.info(
 			{
-				src: "plugin:bootstrap:service:embedding",
+				src: "plugin:basic-capabilities:service:embedding",
 				agentId: this.runtime.agentId,
 				clearedCount: size,
 			},

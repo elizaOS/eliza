@@ -9,7 +9,7 @@ from elizaos.advanced_capabilities.actions.send_message import (
     send_message_action as advanced_send_message_action,
 )
 from elizaos.advanced_capabilities.actions.send_message import (
-    send_message_action as bootstrap_send_message_action,
+    send_message_action as basic_capabilities_send_message_action,
 )
 from elizaos.types.memory import Memory
 from elizaos.types.primitives import Content, as_uuid
@@ -39,7 +39,7 @@ def _make_message() -> Memory:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "action_under_test",
-    [bootstrap_send_message_action, advanced_send_message_action],
+    [basic_capabilities_send_message_action, advanced_send_message_action],
 )
 async def test_send_message_uses_room_target_parameters(action_under_test: object) -> None:
     runtime = _make_runtime()
@@ -78,7 +78,7 @@ async def test_send_message_uses_room_target_parameters(action_under_test: objec
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "action_under_test",
-    [bootstrap_send_message_action, advanced_send_message_action],
+    [basic_capabilities_send_message_action, advanced_send_message_action],
 )
 async def test_send_message_resolves_user_target_from_room_entities(
     action_under_test: object,

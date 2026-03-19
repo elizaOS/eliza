@@ -56,7 +56,7 @@ export * from "./providers/skill-eligibility";
 export * from "./provisioning";
 export * from "./roles";
 export * from "./runtime";
-// Runtime composition (loadCharacters, createRuntimes, getBootstrapSettings, mergeSettingsInto) - node only
+// Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
 // Export character schemas
 export * from "./schemas/character";

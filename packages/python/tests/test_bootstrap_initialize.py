@@ -6,23 +6,23 @@ from elizaos.types.service import ServiceType
 
 
 @pytest.mark.asyncio
-async def test_runtime_initialize_registers_bootstrap_services() -> None:
+async def test_runtime_initialize_registers_basic_capabilities_services() -> None:
     """
-    Ensure AgentRuntime.initialize() loads the bootstrap plugin and registers services.
+    Ensure AgentRuntime.initialize() loads the basic_capabilities plugin and registers services.
 
-    This guards against regressions where bootstrap service registration silently
+    This guards against regressions where basic_capabilities service registration silently
     stores None or fails to start services properly.
     """
     runtime = AgentRuntime(
-        character=Character(name="BootstrapTest", bio="bootstrap init test"),
+        character=Character(name="BasicCapabilitiesTest", bio="basic_capabilities init test"),
         log_level="ERROR",
     )
 
     await runtime.initialize()
 
-    assert any(p.name == "bootstrap" for p in runtime.plugins)
+    assert any(p.name == "basic_capabilities" for p in runtime.plugins)
 
-    # Bootstrap should register at least one service of type TASK.
+    # BasicCapabilities should register at least one service of type TASK.
     assert runtime.has_service(ServiceType.TASK)
 
     task_service = runtime.get_service(ServiceType.TASK)
@@ -32,6 +32,6 @@ async def test_runtime_initialize_registers_bootstrap_services() -> None:
     assert task_services
     assert all(s is not None for s in task_services)
 
-    # Bootstrap should also register some core actions/providers/evaluators.
+    # BasicCapabilities should also register some core actions/providers/evaluators.
     assert runtime.actions
     assert runtime.providers

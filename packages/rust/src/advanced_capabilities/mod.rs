@@ -7,30 +7,30 @@
 //! - Evaluators (reflection, relationship extraction)
 //! - Extended services (rolodex, follow-up scheduling)
 //!
-//! These capabilities are re-exported from the bootstrap module for organizational clarity.
+//! These capabilities are re-exported from the basic_capabilities module for organizational clarity.
 
-// Re-export advanced capabilities from bootstrap
-pub use crate::bootstrap::actions::{
+// Re-export advanced capabilities from basic_capabilities
+pub use crate::basic_capabilities::actions::{
     extended_actions as advanced_actions, AddContactAction, FollowRoomAction, GenerateImageAction,
     MuteRoomAction, RemoveContactAction, ScheduleFollowUpAction, SearchContactsAction,
     SendMessageAction, UnfollowRoomAction, UnmuteRoomAction, UpdateContactAction,
     UpdateEntityAction, UpdateRoleAction, UpdateSettingsAction,
 };
-pub use crate::bootstrap::evaluators::{
+pub use crate::basic_capabilities::evaluators::{
     extended_evaluators as advanced_evaluators, Evaluator, ReflectionEvaluator,
     RelationshipExtractionEvaluator,
 };
-pub use crate::bootstrap::providers::{
+pub use crate::basic_capabilities::providers::{
     extended_providers as advanced_providers, AgentSettingsProvider, ContactsProvider,
     FactsProvider, FollowUpsProvider, KnowledgeProvider, RelationshipsProvider, RolesProvider,
     SettingsProvider,
 };
-pub use crate::bootstrap::services::{FollowUpService, RolodexService};
+pub use crate::basic_capabilities::services::{FollowUpService, RolodexService};
 
 /// Get all advanced capabilities as vectors.
 pub fn get_advanced_capabilities() -> (
-    Vec<Box<dyn crate::bootstrap::actions::Action>>,
-    Vec<Box<dyn crate::bootstrap::providers::Provider>>,
+    Vec<Box<dyn crate::basic_capabilities::actions::Action>>,
+    Vec<Box<dyn crate::basic_capabilities::providers::Provider>>,
     Vec<Box<dyn Evaluator>>,
 ) {
     (

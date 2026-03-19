@@ -283,7 +283,7 @@ export interface HookCommandPayload extends HookEventPayload {
 }
 
 /**
- * Bootstrap file definition for agent bootstrap hooks
+ * Bootstrap file definition for agent basic-capabilities hooks
  */
 export interface BootstrapFile {
 	/** File path relative to workspace */
@@ -297,13 +297,13 @@ export interface BootstrapFile {
 }
 
 /**
- * Payload for agent bootstrap hook event (HOOK_AGENT_BOOTSTRAP)
+ * Payload for agent basic-capabilities hook event (HOOK_AGENT_BOOTSTRAP)
  */
 export interface HookAgentBootstrapPayload extends HookEventPayload {
 	/** Workspace directory path */
 	workspaceDir: string;
 	/** Bootstrap files that will be injected. Hooks can modify this array. */
-	bootstrapFiles: BootstrapFile[];
+	basic-capabilitiesFiles: BootstrapFile[];
 	/** Agent ID */
 	agentId?: string;
 	/** Session ID */

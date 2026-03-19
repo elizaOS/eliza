@@ -130,7 +130,7 @@ export const relationshipExtractionEvaluator: Evaluator = {
 
 		logger.info(
 			{
-				src: "plugin:bootstrap:evaluator:relationship_extraction",
+				src: "plugin:advanced-capabilities:evaluator:relationship_extraction",
 				agentId: runtime.agentId,
 				messageId: message.id,
 				identitiesFound: identities.length,
@@ -314,7 +314,7 @@ async function handleDispute(
 
 	logger.info(
 		{
-			src: "plugin:bootstrap:evaluator:relationship_extraction",
+			src: "plugin:advanced-capabilities:evaluator:relationship_extraction",
 			agentId: runtime.agentId,
 			dispute,
 		},
@@ -795,7 +795,7 @@ async function handlePrivacyBoundary(
 
 	logger.info(
 		{
-			src: "plugin:bootstrap:evaluator:relationship_extraction",
+			src: "plugin:advanced-capabilities:evaluator:relationship_extraction",
 			agentId: runtime.agentId,
 			privacyInfo,
 		},
@@ -837,7 +837,7 @@ async function handleAdminUpdates(
 
 			logger.info(
 				{
-					src: "plugin:bootstrap:evaluator:relationship_extraction",
+					src: "plugin:advanced-capabilities:evaluator:relationship_extraction",
 					agentId: runtime.agentId,
 					admin: message.entityId,
 					target: targetEntity.id,

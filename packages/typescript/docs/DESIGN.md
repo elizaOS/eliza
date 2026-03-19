@@ -25,7 +25,7 @@ Useful for: chat-first agents, support bots, and any flow where “answer every 
 
 ### Why pass `keepExistingResponses` into the message handler (options)?
 
-`handleMessage(runtime, message, callback, options)` is called by **different callers**: Telegram plugin, Discord plugin, bootstrap event handler, API, tests, etc. Each call can have different needs:
+`handleMessage(runtime, message, callback, options)` is called by **different callers**: Telegram plugin, Discord plugin, basic-capabilities event handler, API, tests, etc. Each call can have different needs:
 
 - **Per-call override:** One integration (e.g. Telegram) might want to keep all responses for that channel; another (e.g. a strict API) might want to discard when a newer request arrives. If the flag lived only on the runtime or in env, you’d have to change global state for one code path. Passing it in **options** lets the **caller** decide for that specific `handleMessage` call. The same runtime can therefore serve both “keep” and “discard” behavior depending on who calls it.
 - **No global state:** Tests or one-off scripts can pass `keepExistingResponses: true` or `false` without touching `BOOTSTRAP_KEEP_RESP` or character settings.

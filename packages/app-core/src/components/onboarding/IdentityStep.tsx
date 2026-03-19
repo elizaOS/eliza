@@ -253,7 +253,7 @@ export function IdentityStep() {
         onClick={() => handleOnboardingNext()}
         type="button"
       >
-        Continue
+        Next
       </button>
 
       {/* ── Restore from backup link ── */}

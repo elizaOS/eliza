@@ -98,8 +98,8 @@ impl Provider for EvaluatorsProvider {
         _message: &Memory,
         _state: Option<&State>,
     ) -> PluginResult<ProviderResult> {
-        // Get evaluators from the bootstrap plugin itself
-        let evaluators = crate::bootstrap::evaluators::all_evaluators();
+        // Get evaluators from the basic_capabilities plugin itself
+        let evaluators = crate::basic_capabilities::evaluators::all_evaluators();
         let docs_by_name = evaluator_docs_by_name();
 
         if evaluators.is_empty() {

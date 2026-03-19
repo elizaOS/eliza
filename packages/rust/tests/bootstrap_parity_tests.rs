@@ -14,7 +14,7 @@ fn basic_character() -> Character {
 }
 
 #[tokio::test]
-async fn bootstrap_registers_basic_actions_and_providers_by_default() -> Result<()> {
+async fn basic_capabilities_registers_basic_actions_and_providers_by_default() -> Result<()> {
     let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         character: Some(basic_character()),
         ..Default::default()
@@ -48,7 +48,7 @@ async fn bootstrap_registers_basic_actions_and_providers_by_default() -> Result<
 }
 
 #[tokio::test]
-async fn bootstrap_can_disable_basic_capabilities_via_constructor_flag() -> Result<()> {
+async fn basic_capabilities_can_disable_basic_capabilities_via_constructor_flag() -> Result<()> {
     let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         character: Some(basic_character()),
         disable_basic_capabilities: Some(true),
@@ -67,7 +67,7 @@ async fn bootstrap_can_disable_basic_capabilities_via_constructor_flag() -> Resu
 }
 
 #[tokio::test]
-async fn bootstrap_skips_character_provider_for_anonymous_runtime() -> Result<()> {
+async fn basic_capabilities_skips_character_provider_for_anonymous_runtime() -> Result<()> {
     let runtime: Arc<AgentRuntime> = AgentRuntime::new(RuntimeOptions {
         character: None,
         ..Default::default()

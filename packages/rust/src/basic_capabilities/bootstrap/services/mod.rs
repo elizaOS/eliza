@@ -1,4 +1,4 @@
-//! Services module for the elizaOS Bootstrap Plugin.
+//! Services module for the elizaOS BasicCapabilities Plugin.
 //!
 //! This module contains all service implementations.
 

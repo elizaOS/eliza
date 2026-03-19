@@ -963,7 +963,7 @@ describe("chat send locking", () => {
       }),
     );
     expect(mockClient.createConversation).toHaveBeenCalledWith(undefined, {
-      bootstrapGreeting: true,
+      basic-capabilitiesGreeting: true,
       lang: "en",
     });
 
@@ -1373,7 +1373,7 @@ describe("chat send locking", () => {
     });
   });
 
-  it("does not mark a fallback greeting bootstrap as an active chat send", async () => {
+  it("does not mark a fallback greeting basic-capabilities as an active chat send", async () => {
     const deferred = createDeferred<{
       text: string;
       agentName: string;

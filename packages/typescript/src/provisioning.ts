@@ -24,7 +24,7 @@ export interface ProvisionAgentOptions {
 
 /**
  * Run plugin migrations (DDL) using the runtime's adapter and registered plugins.
- * WHY standalone: Migrations are a one-time bootstrap step; not part of initialize()
+ * WHY standalone: Migrations are a one-time basic-capabilities step; not part of initialize()
  * so ephemeral/edge runtimes never run them. process.env guards allow safe use in Node only.
  */
 export async function runPluginMigrations(

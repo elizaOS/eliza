@@ -11,7 +11,7 @@ from elizaos.basic_capabilities.services.embedding import (
     EmbeddingService as BasicEmbeddingService,
 )
 from elizaos.basic_capabilities.services.embedding import (
-    EmbeddingService as BootstrapEmbeddingService,
+    EmbeddingService as BasicCapabilitiesEmbeddingService,
 )
 from elizaos.types import ModelType
 
@@ -32,7 +32,7 @@ def _mock_runtime() -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_embedding_services_use_lru_eviction() -> None:
-    for service_cls in (BasicEmbeddingService, BootstrapEmbeddingService):
+    for service_cls in (BasicEmbeddingService, BasicCapabilitiesEmbeddingService):
         runtime = _mock_runtime()
         service = service_cls()
         service._runtime = runtime
@@ -47,8 +47,8 @@ async def test_embedding_services_use_lru_eviction() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bootstrap_embedding_cache_clears_on_stop() -> None:
-    service = BootstrapEmbeddingService()
+async def test_basic_capabilities_embedding_cache_clears_on_stop() -> None:
+    service = BasicCapabilitiesEmbeddingService()
     service._runtime = _mock_runtime()
 
     await service.embed("hello")

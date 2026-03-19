@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/autonomous",
-  "version": "2.0.0-alpha.65",
+  "version": "2.0.0-alpha.67",
   "description": "Standalone autonomous agent runtime and backend server package for elizaOS.",
   "type": "module",
   "license": "MIT",
@@ -240,7 +240,7 @@
     "@clack/prompts": "^1.0.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "0.3.15",
-    "@elizaos/plugin-agent-skills": "2.0.0-alpha.11",
+    "@elizaos/plugin-agent-skills": "2.0.0-alpha.12",
     "@elizaos/plugin-anthropic": "2.0.0-alpha.6",
     "@elizaos/plugin-bnb-identity": "2.0.0-alpha.1",
     "@elizaos/plugin-browser": "2.0.0-alpha.9",

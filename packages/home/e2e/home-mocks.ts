@@ -1186,8 +1186,8 @@ export async function installHomeMocks(
       state.conversations = [conversation, ...state.conversations];
       ensureConversationMessages(state, conversationId);
 
-      const bootstrapGreeting = body.bootstrapGreeting === true;
-      if (bootstrapGreeting) {
+      const basic-capabilitiesGreeting = body.basic-capabilitiesGreeting === true;
+      if (basic-capabilitiesGreeting) {
         const greetingText = buildGreetingText(state);
         state.messagesByConversation[conversationId].push({
           id: `greeting-${conversationId}`,

@@ -14,7 +14,7 @@ import {
 import { parseActionParams, validateActionParams } from "./actions";
 import {
 	type CapabilityConfig,
-	createBootstrapPlugin,
+	createBasicCapabilitiesPlugin,
 } from "./basic-capabilities/index";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
@@ -185,7 +185,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private allAvailablePlugins = new Map<string, Plugin>();
 	// The initial list of plugins specified by the character configuration.
 	private characterPlugins: Plugin[] = [];
-	// Capability options for bootstrap plugin configuration
+	// Capability options for basic capabilities configuration
 	private capabilityOptions: CapabilityConfig = {};
 	// Action planning option (undefined means use settings, true/false is explicit)
 	private actionPlanningOption?: boolean;
@@ -245,11 +245,11 @@ export class AgentRuntime implements IAgentRuntime {
 		 * Valid levels: "trace", "debug", "info", "warn", "error", "fatal"
 		 */
 		logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
-		/** Disable basic bootstrap capabilities (reply, ignore, none, core providers) */
+		/** Disable basic basic-capabilities capabilities (reply, ignore, none, core providers) */
 		disableBasicCapabilities?: boolean;
-		/** Enable extended/advanced bootstrap capabilities (facts, roles, settings, room actions, etc.) */
+		/** Enable extended/advanced basic-capabilities capabilities (facts, roles, settings, room actions, etc.) */
 		enableExtendedCapabilities?: boolean;
-		/** Alias for enableExtendedCapabilities - Enable advanced bootstrap capabilities */
+		/** Alias for enableExtendedCapabilities - Enable advanced basic-capabilities capabilities */
 		advancedCapabilities?: boolean;
 		/**
 		 * Enable action planning mode for multi-action execution.
@@ -447,9 +447,9 @@ export class AgentRuntime implements IAgentRuntime {
 			return;
 		}
 
-		// Handle capability-aware registration for bootstrap plugin
+		// Handle capability-aware registration for basic-capabilities plugin
 		let pluginToRegister = plugin;
-		if (plugin.name === "bootstrap") {
+		if (plugin.name === "basic-capabilities") {
 			const settings = this.character.settings;
 			// Constructor options take precedence over character settings
 			const disableBasic =
@@ -483,7 +483,7 @@ export class AgentRuntime implements IAgentRuntime {
 					skipCharacterProvider,
 					enableAutonomy,
 				};
-				const configuredPlugin = createBootstrapPlugin(config);
+				const configuredPlugin = createBasicCapabilitiesPlugin(config);
 				pluginToRegister = {
 					...configuredPlugin,
 					events: plugin.events ?? configuredPlugin.events,
@@ -609,9 +609,9 @@ export class AgentRuntime implements IAgentRuntime {
 				},
 				"Registering database adapter",
 			);
-			const bootstrapSettings = this.getBootstrapSettings();
+			const basic-capabilitiesSettings = this.getBasicCapabilitiesSettings();
 			const adapter = await Promise.resolve(
-				pluginToRegister.adapter(this.agentId, bootstrapSettings),
+				pluginToRegister.adapter(this.agentId, basic-capabilitiesSettings),
 			);
 			this.registerDatabaseAdapter(adapter);
 		}
@@ -700,9 +700,9 @@ export class AgentRuntime implements IAgentRuntime {
 	}): Promise<void> {
 		const pluginRegistrationPromises: Promise<void>[] = [];
 
-		// Bootstrap plugin is now built into core - auto-register it first
-		const bootstrapPlugin = createBootstrapPlugin(this.capabilityOptions);
-		pluginRegistrationPromises.push(this.registerPlugin(bootstrapPlugin));
+		// Basic capabilities are now built into core - auto-register it first
+		const basicCapabilitiesPlugin = createBasicCapabilitiesPlugin(this.capabilityOptions);
+		pluginRegistrationPromises.push(this.registerPlugin(basicCapabilitiesPlugin));
 
 		if (this.character.advancedPlanning === true) {
 			const { createAdvancedPlanningPlugin } = await import(
@@ -924,7 +924,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
-	private getBootstrapSettings(): Record<string, string> {
+	private getBasicCapabilitiesSettings(): Record<string, string> {
 		const out: Record<string, string> = {};
 
 		for (const [key, value] of Object.entries(process.env)) {
@@ -2400,7 +2400,7 @@ export class AgentRuntime implements IAgentRuntime {
 	/**
 	 * Ensure the existence of a world.
 	 *
-	 * WHY upsert: Eliminates race condition where concurrent agent bootstraps
+	 * WHY upsert: Eliminates race condition where concurrent agent basic-capabilitiess
 	 * could both try to create the same world. Upsert is atomic.
 	 */
 	async ensureWorldExists({ id, name, messageServerId, metadata }: World) {

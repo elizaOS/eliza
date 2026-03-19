@@ -1,4 +1,4 @@
-//! Core types for the elizaOS Bootstrap Plugin.
+//! Core types for the elizaOS BasicCapabilities Plugin.
 //!
 //! This module defines the fundamental types used throughout the plugin,
 //! including content, memory, actions, providers, and evaluators.
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-/// Configuration for bootstrap capabilities.
+/// Configuration for basic_capabilities capabilities.
 ///
 /// - Basic: Core functionality (reply, ignore, none, choice actions; core providers; task/embedding services)
 /// - Extended/Advanced: Additional features (contacts, room management, roles, settings, image generation)

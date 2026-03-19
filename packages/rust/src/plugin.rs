@@ -293,7 +293,7 @@ mod tests {
     fn test_normalize_plugin_name() {
         assert_eq!(normalize_plugin_name("@elizaos/plugin-discord"), "discord");
         assert_eq!(normalize_plugin_name("@elizaos/plugin-sql"), "sql");
-        assert_eq!(normalize_plugin_name("bootstrap"), "bootstrap");
+        assert_eq!(normalize_plugin_name("basic_capabilities"), "basic_capabilities");
     }
 
     #[test]

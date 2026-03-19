@@ -14,7 +14,7 @@ async def test_actions_provider_includes_actions_and_parameter_examples() -> Non
     )
     await runtime.initialize()
 
-    # Bootstrap initializes with basic actions only; register an extended action to
+    # BasicCapabilities initializes with basic actions only; register an extended action to
     # verify parameter example formatting end-to-end.
     runtime.register_action(with_canonical_action_docs(send_message_action))
 

@@ -1,7 +1,7 @@
 /**
  * Basic Capabilities
  *
- * Core functionality included by default in the bootstrap plugin.
+ * Core functionality included by default as basic capabilities.
  * These provide essential agent behavior:
  * - Core providers (actions, character, entities, messages, etc.)
  * - Basic actions (reply, ignore, none)
@@ -1301,7 +1301,7 @@ export const basicCapabilities = {
 // ============================================================================
 
 /**
- * Configuration for bootstrap capabilities.
+ * Configuration for basic capabilities.
  * - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
  * - Advanced/Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
  * - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
@@ -1336,10 +1336,10 @@ const autonomyCapabilities = {
 export { advancedCapabilities as extendedCapabilities, autonomyCapabilities };
 
 /**
- * Creates the bootstrap plugin with the specified capability configuration.
+ * Creates the basic-capabilities plugin with the specified capability configuration.
  * This is the main entry point for plugin creation.
  */
-export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
+export function createBasicCapabilitiesPlugin(config: CapabilityConfig = {}): Plugin {
 	// Support both enableExtended and advancedCapabilities as aliases
 	const useAdvanced = config.enableExtended || config.advancedCapabilities;
 
@@ -1348,8 +1348,8 @@ export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
 		: basicProviders;
 
 	return {
-		name: "bootstrap",
-		description: "Agent bootstrap with basic actions and evaluators",
+		name: "basic-capabilities",
+		description: "Agent basic capabilities with core actions and evaluators",
 		actions: [
 			...(config.disableBasic ? [] : basicActions),
 			...(useAdvanced ? advancedActions : []),

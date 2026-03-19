@@ -171,7 +171,7 @@ export const updateEntityAction: Action = {
 		if (!state) {
 			logger.error(
 				{
-					src: "plugin:bootstrap:action:update_entity",
+					src: "plugin:advanced-capabilities:action:update_entity",
 					agentId: runtime.agentId,
 				},
 				"State is required for the updateEntity action",
@@ -194,7 +194,7 @@ export const updateEntityAction: Action = {
 		if (!callback) {
 			logger.error(
 				{
-					src: "plugin:bootstrap:action:update_entity",
+					src: "plugin:advanced-capabilities:action:update_entity",
 					agentId: runtime.agentId,
 				},
 				"Callback is required for the updateEntity action",
@@ -217,7 +217,7 @@ export const updateEntityAction: Action = {
 		if (!responses) {
 			logger.error(
 				{
-					src: "plugin:bootstrap:action:update_entity",
+					src: "plugin:advanced-capabilities:action:update_entity",
 					agentId: runtime.agentId,
 				},
 				"Responses are required for the updateEntity action",
@@ -240,7 +240,7 @@ export const updateEntityAction: Action = {
 		if (!message) {
 			logger.error(
 				{
-					src: "plugin:bootstrap:action:update_entity",
+					src: "plugin:advanced-capabilities:action:update_entity",
 					agentId: runtime.agentId,
 				},
 				"Message is required for the updateEntity action",
@@ -326,7 +326,7 @@ export const updateEntityAction: Action = {
 		if (!parsedResult || !parsedResult.source || !parsedResult.data) {
 			logger.error(
 				{
-					src: "plugin:bootstrap:action:update_entity",
+					src: "plugin:advanced-capabilities:action:update_entity",
 					agentId: runtime.agentId,
 				},
 				"Failed to parse component data - missing source or data",

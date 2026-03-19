@@ -1,6 +1,6 @@
-//! Core bootstrap capabilities (TypeScript parity).
+//! Core basic_capabilities capabilities (TypeScript parity).
 //!
-//! TypeScript always registers a built-in "bootstrap" plugin during runtime initialization.
+//! TypeScript always registers a built-in "basic_capabilities" plugin during runtime initialization.
 //! This module provides a minimal Rust equivalent for the core runtime plugin system
 //! (`Plugin` + `ActionHandler` + `ProviderHandler`), with capability gating:
 //! - basic: REPLY/IGNORE/NONE + common context providers
@@ -22,7 +22,7 @@ use crate::types::memory::Memory;
 use crate::types::plugin::Plugin;
 use crate::types::state::State;
 
-/// Bootstrap capability configuration (mirrors TS `CapabilityConfig`).
+/// BasicCapabilities capability configuration (mirrors TS `CapabilityConfig`).
 #[derive(Clone, Debug, Default)]
 pub struct CapabilityConfig {
     /// Disable basic capabilities (reply/ignore/none + core providers).
@@ -35,9 +35,9 @@ pub struct CapabilityConfig {
     pub enable_autonomy: bool,
 }
 
-/// Create the built-in bootstrap plugin for the core runtime.
-pub fn create_bootstrap_plugin(runtime: Weak<AgentRuntime>, config: CapabilityConfig) -> Plugin {
-    let mut plugin = Plugin::new("bootstrap", "Core bootstrap capabilities");
+/// Create the built-in basic_capabilities plugin for the core runtime.
+pub fn create_basic_capabilities_plugin(runtime: Weak<AgentRuntime>, config: CapabilityConfig) -> Plugin {
+    let mut plugin = Plugin::new("basic_capabilities", "Core basic_capabilities capabilities");
 
     if !config.disable_basic {
         // Core actions (minimal parity)
@@ -66,7 +66,7 @@ pub fn create_bootstrap_plugin(runtime: Weak<AgentRuntime>, config: CapabilityCo
     }
 
     // NOTE: enable_extended / enable_autonomy are wired but not yet expanded to full TS parity.
-    // This pass focuses on closing the biggest missing behavior: bootstrap auto-registration
+    // This pass focuses on closing the biggest missing behavior: basic_capabilities auto-registration
     // with flag precedence + minimum viable actions/providers.
     let _ = (config.enable_extended, config.enable_autonomy);
 

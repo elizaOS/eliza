@@ -10,13 +10,13 @@ from elizaos.advanced_memory.actions.reset_session import (
     reset_session_action as advanced_reset_session_action,
 )
 from elizaos.advanced_memory.actions.reset_session import (
-    reset_session_action as bootstrap_reset_session_action,
+    reset_session_action as basic_capabilities_reset_session_action,
 )
 from elizaos.basic_capabilities.providers.recent_messages import (
     recent_messages_provider as basic_recent_messages_provider,
 )
 from elizaos.basic_capabilities.providers.recent_messages import (
-    recent_messages_provider as bootstrap_recent_messages_provider,
+    recent_messages_provider as basic_capabilities_recent_messages_provider,
 )
 from elizaos.types import Content, Memory, as_uuid
 
@@ -61,7 +61,7 @@ def _message() -> Memory:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "action_under_test",
-    [bootstrap_reset_session_action, advanced_reset_session_action],
+    [basic_capabilities_reset_session_action, advanced_reset_session_action],
 )
 async def test_reset_session_action_updates_room_metadata(action_under_test: object) -> None:
     room = FakeRoom(
@@ -86,7 +86,7 @@ async def test_reset_session_action_updates_room_metadata(action_under_test: obj
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "provider_under_test",
-    [bootstrap_recent_messages_provider, basic_recent_messages_provider],
+    [basic_capabilities_recent_messages_provider, basic_recent_messages_provider],
 )
 async def test_recent_messages_provider_uses_last_compaction_boundary(
     provider_under_test: object,

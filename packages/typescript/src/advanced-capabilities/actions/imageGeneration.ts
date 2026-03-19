@@ -90,7 +90,7 @@ export const generateImageAction = {
 		) {
 			logger.error(
 				{
-					src: "plugin:bootstrap:action:image_generation",
+					src: "plugin:advanced-capabilities:action:image_generation",
 					agentId: runtime.agentId,
 					imagePrompt,
 				},
@@ -116,7 +116,7 @@ export const generateImageAction = {
 
 		logger.info(
 			{
-				src: "plugin:bootstrap:action:image_generation",
+				src: "plugin:advanced-capabilities:action:image_generation",
 				agentId: runtime.agentId,
 				imageUrl,
 			},

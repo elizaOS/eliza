@@ -36,10 +36,10 @@ use tokio::sync::RwLock;
 #[cfg(not(feature = "native"))]
 use std::sync::RwLock;
 
-// Bootstrap uses an agent-runtime interface trait that is historically imported
-// via `crate::runtime::IAgentRuntime`. Re-export it when the bootstrap module is present.
-#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
-pub use crate::bootstrap::runtime::{IAgentRuntime, ModelOutput, ModelParams};
+// BasicCapabilities uses an agent-runtime interface trait that is historically imported
+// via `crate::runtime::IAgentRuntime`. Re-export it when the basic_capabilities module is present.
+#[cfg(all(feature = "basic_capabilities-internal", not(feature = "wasm")))]
+pub use crate::basic_capabilities::runtime::{IAgentRuntime, ModelOutput, ModelParams};
 
 /// Database adapter trait for runtime storage operations
 #[async_trait::async_trait]
@@ -220,13 +220,13 @@ pub struct RuntimeOptions {
     pub settings: Option<RuntimeSettings>,
     /// Log level for the runtime. Defaults to Error.
     pub log_level: LogLevel,
-    /// Disable basic bootstrap capabilities (reply, ignore, none).
+    /// Disable basic basic_capabilities capabilities (reply, ignore, none).
     ///
     /// - `Some(true)`: disable basic capabilities regardless of character settings
     /// - `Some(false)`: enable basic capabilities regardless of character settings
     /// - `None` (default): defer to `DISABLE_BASIC_CAPABILITIES` character setting
     pub disable_basic_capabilities: Option<bool>,
-    /// Enable extended bootstrap capabilities (facts, roles, settings, etc.).
+    /// Enable extended basic_capabilities capabilities (facts, roles, settings, etc.).
     ///
     /// - `Some(true)`: enable extended capabilities regardless of character settings
     /// - `Some(false)`: disable extended capabilities regardless of character settings
@@ -459,7 +459,7 @@ pub struct AgentRuntime {
     tasks: RwLock<HashMap<String, crate::types::task::Task>>,
 }
 
-/// Tri-state capability options (mirrors TypeScript bootstrap capability config behavior).
+/// Tri-state capability options (mirrors TypeScript basic_capabilities capability config behavior).
 #[derive(Clone, Debug, Default)]
 struct CapabilityOptions {
     disable_basic: Option<bool>,
@@ -648,18 +648,18 @@ impl AgentRuntime {
                 ));
         self.set_enable_autonomy(enable_autonomy);
 
-        // Bootstrap plugin parity: always register built-in bootstrap capabilities first.
+        // BasicCapabilities plugin parity: always register built-in basic_capabilities capabilities first.
         // Capability config precedence matches TS: constructor options > character settings > defaults.
-        let bootstrap_plugin = crate::bootstrap_core::create_bootstrap_plugin(
+        let basic_capabilities_plugin = crate::basic_capabilities_core::create_basic_capabilities_plugin(
             Arc::downgrade(self),
-            crate::bootstrap_core::CapabilityConfig {
+            crate::basic_capabilities_core::CapabilityConfig {
                 disable_basic,
                 enable_extended,
                 enable_autonomy,
                 skip_character_provider: self.capability_options.skip_character_provider,
             },
         );
-        self.register_plugin(bootstrap_plugin).await?;
+        self.register_plugin(basic_capabilities_plugin).await?;
 
         // Advanced planning is built into core, but only loaded when enabled on the character.
         let advanced_planning_enabled = {
@@ -2685,9 +2685,9 @@ mod tests {
 // IAgentRuntime Implementation for AgentRuntime
 // ============================================================================
 
-#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
+#[cfg(all(feature = "basic_capabilities-internal", not(feature = "wasm")))]
 #[async_trait::async_trait]
-impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
+impl crate::basic_capabilities::runtime::IAgentRuntime for AgentRuntime {
     fn agent_id(&self) -> uuid::Uuid {
         uuid::Uuid::parse_str(self.agent_id.as_str()).unwrap_or_default()
     }
@@ -2929,8 +2929,8 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
     async fn use_model(
         &self,
         model_type: crate::types::ModelType,
-        params: crate::bootstrap::runtime::ModelParams,
-    ) -> crate::error::PluginResult<crate::bootstrap::runtime::ModelOutput> {
+        params: crate::basic_capabilities::runtime::ModelParams,
+    ) -> crate::error::PluginResult<crate::basic_capabilities::runtime::ModelOutput> {
         let model_key = match model_type {
             crate::types::ModelType::TextLarge => "TEXT_LARGE",
             crate::types::ModelType::TextSmall => "TEXT_SMALL",
@@ -2950,12 +2950,12 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
         match model_type {
             crate::types::ModelType::TextEmbedding => {
                 let val: Vec<f32> = serde_json::from_str(&output_str).unwrap_or_default();
-                Ok(crate::bootstrap::runtime::ModelOutput::Embedding(val))
+                Ok(crate::basic_capabilities::runtime::ModelOutput::Embedding(val))
             }
             crate::types::ModelType::TextSmall | crate::types::ModelType::TextLarge => {
-                Ok(crate::bootstrap::runtime::ModelOutput::Text(output_str))
+                Ok(crate::basic_capabilities::runtime::ModelOutput::Text(output_str))
             }
-            _ => Ok(crate::bootstrap::runtime::ModelOutput::Structured(
+            _ => Ok(crate::basic_capabilities::runtime::ModelOutput::Structured(
                 serde_json::Value::String(output_str),
             )),
         }
@@ -2977,14 +2977,14 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
             .unwrap_or(false)
     }
 
-    fn get_available_actions(&self) -> Vec<crate::bootstrap::runtime::ActionInfo> {
+    fn get_available_actions(&self) -> Vec<crate::basic_capabilities::runtime::ActionInfo> {
         let actions = self.actions.try_read().ok();
         match actions {
             Some(guard) => guard
                 .iter()
                 .map(|a| {
                     let def = a.definition();
-                    crate::bootstrap::runtime::ActionInfo {
+                    crate::basic_capabilities::runtime::ActionInfo {
                         name: def.name,
                         description: def.description,
                     }
@@ -3014,7 +3014,7 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
         tracing::error!(source = source, "{}", message);
     }
 
-    fn register_task_worker(&self, worker: Box<dyn crate::bootstrap::runtime::TaskWorker>) {
+    fn register_task_worker(&self, worker: Box<dyn crate::basic_capabilities::runtime::TaskWorker>) {
         let name = worker.name().to_string();
         if let Ok(mut workers) = self.task_workers.try_write() {
             workers.insert(name.clone(), std::sync::Arc::from(worker));
@@ -3027,7 +3027,7 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
     fn get_task_worker(
         &self,
         name: &str,
-    ) -> Option<std::sync::Arc<dyn crate::bootstrap::runtime::TaskWorker>> {
+    ) -> Option<std::sync::Arc<dyn crate::basic_capabilities::runtime::TaskWorker>> {
         self.task_workers
             .try_read()
             .ok()

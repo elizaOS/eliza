@@ -103,7 +103,7 @@ export const unmuteRoomAction: Action = {
 			// Default to false if response is unclear
 			logger.warn(
 				{
-					src: "plugin:bootstrap:action:unmute_room",
+					src: "plugin:advanced-capabilities:action:unmute_room",
 					agentId: runtime.agentId,
 					response,
 				},
@@ -143,7 +143,7 @@ export const unmuteRoomAction: Action = {
 				if (!room) {
 					logger.warn(
 						{
-							src: "plugin:bootstrap:action:unmute_room",
+							src: "plugin:advanced-capabilities:action:unmute_room",
 							agentId: runtime.agentId,
 							roomId: message.roomId,
 						},
@@ -201,7 +201,7 @@ export const unmuteRoomAction: Action = {
 			} catch (error) {
 				logger.error(
 					{
-						src: "plugin:bootstrap:action:unmute_room",
+						src: "plugin:advanced-capabilities:action:unmute_room",
 						agentId: runtime.agentId,
 						error: error instanceof Error ? error.message : String(error),
 					},

@@ -1,6 +1,6 @@
 """Basic Services - Essential services for agent operation.
 
-Core services included by default in the bootstrap plugin.
+Core services included by default in the basic_capabilities plugin.
 """
 
 from .embedding import EmbeddingService

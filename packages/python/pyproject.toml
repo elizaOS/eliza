@@ -96,8 +96,8 @@ module = "pytest"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "elizaos.bootstrap.*"
-# Bootstrap module has many structural mismatches that need refactoring
+module = "elizaos.basic_capabilities.*"
+# BasicCapabilities module has many structural mismatches that need refactoring
 ignore_errors = true
 
 [[tool.mypy.overrides]]

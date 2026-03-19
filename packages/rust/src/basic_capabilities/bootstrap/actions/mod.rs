@@ -1,4 +1,4 @@
-//! Actions module for the elizaOS Bootstrap Plugin.
+//! Actions module for the elizaOS BasicCapabilities Plugin.
 //!
 //! This module contains all action implementations.
 

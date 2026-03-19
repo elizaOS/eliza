@@ -50,7 +50,7 @@ const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
 const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
 const hasGroq = Boolean(process.env.GROQ_API_KEY);
 const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
-// This suite exercises the heaviest live-runtime bootstrap path and relies on
+// This suite exercises the heaviest live-runtime init path and relies on
 // real provider availability. Keep it opt-in so default repo-wide E2E runs
 // remain deterministic; runtime integration coverage still exists elsewhere.
 const runAgentRuntimeE2E = process.env.ELIZA_RUN_AGENT_RUNTIME_E2E === "1";
@@ -606,7 +606,7 @@ describe("Agent Runtime E2E", () => {
     });
 
     it.skipIf(!hasModelProvider)(
-      "loaded at least 8 plugins (6 core + bootstrap + 1 provider)",
+      "loaded at least 8 plugins (6 core + init + 1 provider)",
       () => {
         expect(runtime.plugins.length).toBeGreaterThanOrEqual(8);
       },

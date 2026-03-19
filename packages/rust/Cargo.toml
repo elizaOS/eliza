@@ -18,8 +18,8 @@ crate-type = ["cdylib", "rlib"]
 default = ["native"]
 native = ["tokio/full", "sqlx", "which"]
 wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/js"]
-bootstrap = ["native", "dep:chrono", "dep:quick-xml"]
-bootstrap-internal = ["bootstrap"]
+basic_capabilities = ["native", "dep:chrono", "dep:quick-xml"]
+basic_capabilities-internal = ["basic_capabilities"]
 
 # Sync runtime for environments without async (ICP, embedded, WASI)
 # Enables maybe-async's is_sync feature for synchronous compilation
@@ -29,10 +29,10 @@ sync = ["maybe-async/is_sync"]
 icp = ["sync"]
 
 [dependencies]
-# Date/time utilities (used by bootstrap plugin)
+# Date/time utilities (used by basic_capabilities plugin)
 chrono = { version = "0.4", features = ["serde"], optional = true }
 
-# XML parsing for bootstrap plugin error conversions
+# XML parsing for basic_capabilities plugin error conversions
 quick-xml = { version = "0.39", features = ["serialize"], optional = true }
 
 # Serialization

@@ -128,28 +128,6 @@ OPENAI_API_KEY=your-api-key-here
 
 ---
 
-## Architecture Overview
-
-All examples follow the same architectural pattern:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Example Application                          │
-│  (chat.ts, server.py, main.rs)                                  │
-├─────────────────────────────────────────────────────────────────┤
-│                     elizaOS Core Runtime                         │
-│  AgentRuntime, MessageService, Model Handlers                    │
-├─────────────────────────────────────────────────────────────────┤
-│                        Plugins                                   │
-│  plugin-openai, plugin-sql, plugin-bootstrap                     │
-├─────────────────────────────────────────────────────────────────┤
-│                    Language Bindings                             │
-│  TypeScript (native), Python (elizaos), Rust (elizaos crate)    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
 ## API Consistency
 
 All examples use identical APIs across languages:

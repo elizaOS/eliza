@@ -933,7 +933,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * Upsert worlds (insert or update by ID)
 	 *
 	 * WHY: Atomic insert-or-update for world initialization. Worlds are created
-	 * during agent bootstrap or plugin initialization. Concurrent initialization
+	 * during agent basic-capabilities or plugin initialization. Concurrent initialization
 	 * attempts should be idempotent, not fail with "already exists" errors.
 	 *
 	 * WHY on adapter interface: SQL dialects support atomic upserts for worlds.

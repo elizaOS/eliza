@@ -13815,7 +13815,7 @@ async function handleRequest(
   if (method === "POST" && pathname === "/api/conversations") {
     const body = await readJsonBody<{
       title?: string;
-      bootstrapGreeting?: boolean;
+      initGreeting?: boolean;
       lang?: string;
     }>(req, res);
     if (!body) return;
@@ -13847,7 +13847,7 @@ async function handleRequest(
       try {
         await ensureConversationRoom(conv);
         await syncConversationRoomTitle(conv);
-        if (body.bootstrapGreeting === true) {
+        if (body.initGreeting === true) {
           const storedGreeting = await ensureConversationGreetingStored(
             conv,
             typeof body.lang === "string" ? body.lang : "en",
@@ -16256,7 +16256,7 @@ export type { captureEarlyLogs };
 export async function startApiServer(opts?: {
   port?: number;
   runtime?: AgentRuntime;
-  /** Initial state when starting without a runtime (e.g. embedded bootstrapping). */
+  /** Initial state when starting without a runtime (e.g. embedded initping). */
   initialAgentState?: "not_started" | "starting" | "stopped" | "error";
   /**
    * Called when the UI requests a restart via `POST /api/agent/restart`.

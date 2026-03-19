@@ -70,7 +70,7 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BOOTSTRAP_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
 - `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`). Defaults from runtime settings if not set in options.
-- `DISABLE_MEMORY_CREATION` / `ALLOW_MEMORY_SOURCE_IDS`: Bootstrap-related; see plugin docs. Shown in the bootstrap banner when set.
+- `DISABLE_MEMORY_CREATION` / `ALLOW_MEMORY_SOURCE_IDS`: Bootstrap-related; see plugin docs. Shown in the basic-capabilities banner when set.
 
 **Example `.env`:**
 

@@ -227,11 +227,11 @@ class AgentRuntime(IAgentRuntime):
             await self._adapter.initialize()
             self.logger.debug("Database adapter initialized")
 
-        has_bootstrap = any(p.name == "bootstrap" for p in self._initial_plugins)
-        if not has_bootstrap:
-            from elizaos.bootstrap import bootstrap_plugin
+        has_basic_capabilities = any(p.name == "basic_capabilities" for p in self._initial_plugins)
+        if not has_basic_capabilities:
+            from elizaos.basic_capabilities import basic_capabilities_plugin
 
-            self._initial_plugins.insert(0, bootstrap_plugin)
+            self._initial_plugins.insert(0, basic_capabilities_plugin)
 
         # Advanced planning is built into core, but only loaded when enabled on the character.
         if getattr(self._character, "advanced_planning", None) is True:
@@ -239,10 +239,10 @@ class AgentRuntime(IAgentRuntime):
             if not has_adv:
                 from elizaos.advanced_planning import advanced_planning_plugin
 
-                # Register after bootstrap so core providers/actions are available.
+                # Register after basic_capabilities so core providers/actions are available.
                 insert_at = (
                     1
-                    if self._initial_plugins and self._initial_plugins[0].name == "bootstrap"
+                    if self._initial_plugins and self._initial_plugins[0].name == "basic_capabilities"
                     else 0
                 )
                 self._initial_plugins.insert(insert_at, advanced_planning_plugin)
@@ -255,7 +255,7 @@ class AgentRuntime(IAgentRuntime):
 
                 insert_at = (
                     1
-                    if self._initial_plugins and self._initial_plugins[0].name == "bootstrap"
+                    if self._initial_plugins and self._initial_plugins[0].name == "basic_capabilities"
                     else 0
                 )
                 self._initial_plugins.insert(insert_at, advanced_memory_plugin)
@@ -272,7 +272,7 @@ class AgentRuntime(IAgentRuntime):
 
         plugin_to_register = plugin
 
-        if plugin.name == "bootstrap":
+        if plugin.name == "basic_capabilities":
             char_settings_obj = self._character.settings
             char_settings: dict[str, object] = {}
             if hasattr(char_settings_obj, "DESCRIPTOR"):
@@ -295,7 +295,7 @@ class AgentRuntime(IAgentRuntime):
             )
 
             if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
-                from elizaos.bootstrap import CapabilityConfig, create_bootstrap_plugin
+                from elizaos.basic_capabilities import CapabilityConfig, create_basic_capabilities_plugin
 
                 config = CapabilityConfig(
                     disable_basic=disable_basic,
@@ -303,7 +303,7 @@ class AgentRuntime(IAgentRuntime):
                     skip_character_provider=skip_character_provider,
                     enable_autonomy=enable_autonomy,
                 )
-                plugin_to_register = create_bootstrap_plugin(config)
+                plugin_to_register = create_basic_capabilities_plugin(config)
 
         await register_plugin(self, plugin_to_register)
         self._plugins.append(plugin_to_register)

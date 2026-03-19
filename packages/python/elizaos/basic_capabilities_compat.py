@@ -1,8 +1,8 @@
-"""elizaOS Bootstrap Plugin - Compatibility shim.
+"""elizaOS BasicCapabilities Plugin - Compatibility shim.
 
-The bootstrap module was refactored into elizaos.basic_capabilities and
+The basic_capabilities module was refactored into elizaos.basic_capabilities and
 elizaos.advanced_capabilities.  This shim re-exports the public API so that
-existing code that imports from ``elizaos.bootstrap`` continues to work.
+existing code that imports from ``elizaos.basic_capabilities`` continues to work.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class CapabilityConfig:
-    """Configuration for bootstrap capabilities."""
+    """Configuration for basic_capabilities capabilities."""
 
     disable_basic: bool = False
     enable_extended: bool = False
@@ -100,8 +100,8 @@ def _get_services(config: CapabilityConfig) -> list[type]:
     return result
 
 
-def create_bootstrap_plugin(config: CapabilityConfig | None = None) -> Plugin:
-    """Create a bootstrap plugin with the specified capability configuration."""
+def create_basic_capabilities_plugin(config: CapabilityConfig | None = None) -> Plugin:
+    """Create a basic_capabilities plugin with the specified capability configuration."""
     if config is None:
         config = CapabilityConfig()
 
@@ -116,14 +116,14 @@ def create_bootstrap_plugin(config: CapabilityConfig | None = None) -> Plugin:
     ) -> None:
         _ = plugin_config
         runtime.logger.info(
-            "Initializing Bootstrap plugin",
-            src="plugin:bootstrap",
+            "Initializing BasicCapabilities plugin",
+            src="plugin:basic_capabilities",
             agentId=str(runtime.agent_id),
         )
 
     return Plugin(
-        name="bootstrap",
-        description="elizaOS Bootstrap Plugin - core agent actions, providers, evaluators, and services",
+        name="basic_capabilities",
+        description="elizaOS BasicCapabilities Plugin - core agent actions, providers, evaluators, and services",
         init=init_plugin,
         config={},
         services=services,
@@ -133,11 +133,11 @@ def create_bootstrap_plugin(config: CapabilityConfig | None = None) -> Plugin:
     )
 
 
-bootstrap_plugin = create_bootstrap_plugin()
+basic_capabilities_plugin = create_basic_capabilities_plugin()
 
 __all__ = [
-    "bootstrap_plugin",
-    "create_bootstrap_plugin",
+    "basic_capabilities_plugin",
+    "create_basic_capabilities_plugin",
     "CapabilityConfig",
     "EvaluatorResult",
 ]

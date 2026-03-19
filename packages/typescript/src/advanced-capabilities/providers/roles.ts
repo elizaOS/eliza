@@ -62,7 +62,7 @@ export const roleProvider: Provider = {
 
 		logger.info(
 			{
-				src: "plugin:bootstrap:provider:roles",
+				src: "plugin:advanced-capabilities:provider:roles",
 				agentId: runtime.agentId,
 				worldId,
 			},
@@ -75,7 +75,7 @@ export const roleProvider: Provider = {
 		if (!world || !world.metadata?.ownership?.ownerId) {
 			logger.info(
 				{
-					src: "plugin:bootstrap:provider:roles",
+					src: "plugin:advanced-capabilities:provider:roles",
 					agentId: runtime.agentId,
 					worldId,
 				},
@@ -97,7 +97,7 @@ export const roleProvider: Provider = {
 		if (Object.keys(roles).length === 0) {
 			logger.info(
 				{
-					src: "plugin:bootstrap:provider:roles",
+					src: "plugin:advanced-capabilities:provider:roles",
 					agentId: runtime.agentId,
 					worldId,
 				},
@@ -116,7 +116,7 @@ export const roleProvider: Provider = {
 
 		logger.info(
 			{
-				src: "plugin:bootstrap:provider:roles",
+				src: "plugin:advanced-capabilities:provider:roles",
 				agentId: runtime.agentId,
 				roleCount: Object.keys(roles).length,
 			},
@@ -154,7 +154,7 @@ export const roleProvider: Provider = {
 			if (!name || !username || !names) {
 				logger.warn(
 					{
-						src: "plugin:bootstrap:provider:roles",
+						src: "plugin:advanced-capabilities:provider:roles",
 						agentId: runtime.agentId,
 						entityId,
 					},

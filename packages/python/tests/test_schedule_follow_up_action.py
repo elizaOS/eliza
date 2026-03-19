@@ -10,7 +10,7 @@ from elizaos.advanced_capabilities.actions.schedule_follow_up import (
     schedule_follow_up_action as advanced_schedule_follow_up_action,
 )
 from elizaos.advanced_capabilities.actions.schedule_follow_up import (
-    schedule_follow_up_action as bootstrap_schedule_follow_up_action,
+    schedule_follow_up_action as basic_capabilities_schedule_follow_up_action,
 )
 from elizaos.advanced_capabilities.services.follow_up import FollowUpService
 from elizaos.advanced_capabilities.services.rolodex import RolodexService
@@ -124,7 +124,7 @@ class FakeRuntime:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "action_under_test",
-    [bootstrap_schedule_follow_up_action, advanced_schedule_follow_up_action],
+    [basic_capabilities_schedule_follow_up_action, advanced_schedule_follow_up_action],
 )
 async def test_schedule_follow_up_fails_when_contact_unresolved(
     action_under_test: ActionLike,
@@ -168,7 +168,7 @@ async def test_schedule_follow_up_fails_when_contact_unresolved(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "action_under_test",
-    [bootstrap_schedule_follow_up_action, advanced_schedule_follow_up_action],
+    [basic_capabilities_schedule_follow_up_action, advanced_schedule_follow_up_action],
 )
 async def test_schedule_follow_up_normalizes_priority_and_schedules(
     action_under_test: ActionLike,
@@ -216,7 +216,7 @@ async def test_schedule_follow_up_normalizes_priority_and_schedules(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "action_under_test",
-    [bootstrap_schedule_follow_up_action, advanced_schedule_follow_up_action],
+    [basic_capabilities_schedule_follow_up_action, advanced_schedule_follow_up_action],
 )
 async def test_schedule_follow_up_rejects_invalid_scheduled_at(
     action_under_test: ActionLike,

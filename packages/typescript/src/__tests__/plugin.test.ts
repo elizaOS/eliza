@@ -344,7 +344,7 @@ describe("Plugin Functions", () => {
 
 		test("should return original name for non-scoped packages", () => {
 			expect(normalizePluginName("discord")).toBe("discord");
-			expect(normalizePluginName("bootstrap")).toBe("bootstrap");
+			expect(normalizePluginName("basic-capabilities")).toBe("basic-capabilities");
 			expect(normalizePluginName("my-custom-plugin")).toBe("my-custom-plugin");
 		});
 

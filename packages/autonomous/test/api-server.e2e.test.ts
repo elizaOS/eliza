@@ -855,7 +855,7 @@ describe("API Server E2E (no runtime)", () => {
       updateStartup({
         phase: "runtime-retry",
         attempt: 2,
-        lastError: "bootstrap failed",
+        lastError: "init failed",
         lastErrorAt: now,
         nextRetryAt: now + 1_000,
         state: "starting",
@@ -871,7 +871,7 @@ describe("API Server E2E (no runtime)", () => {
       expect(data.startup).toBeDefined();
       expect(startup?.phase).toBe("runtime-retry");
       expect(startup?.attempt).toBe(2);
-      expect(startup?.lastError).toContain("bootstrap failed");
+      expect(startup?.lastError).toContain("init failed");
       expect(data.state).toBe("starting");
 
       updateStartup({
@@ -1838,7 +1838,7 @@ describe("API Server E2E (no runtime)", () => {
       }
     });
 
-    it("POST /api/conversations can bootstrap the intro greeting atomically", async () => {
+    it("POST /api/conversations can init the intro greeting atomically", async () => {
       const runtime = createRuntimeForChatSseTests();
       const streamServer = await startApiServer({ port: 0, runtime });
       try {
@@ -1847,8 +1847,8 @@ describe("API Server E2E (no runtime)", () => {
           "POST",
           "/api/conversations",
           {
-            title: "Bootstrap greeting test",
-            bootstrapGreeting: true,
+            title: "Init greeting test",
+            initGreeting: true,
             lang: "en",
           },
         );
@@ -1893,7 +1893,7 @@ describe("API Server E2E (no runtime)", () => {
           "/api/conversations",
           {
             title: "Idempotent greeting test",
-            bootstrapGreeting: true,
+            initGreeting: true,
             lang: "en",
           },
         );
