@@ -19,15 +19,15 @@ const { mockClient } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: mockClient,
 }));
 
-vi.mock("@miladyai/app-core/providers", () => ({
+vi.mock("@elizaos/app-core/providers", () => ({
   getProviderLogo: (id: string, _isDark: boolean) =>
     `data:image/svg+xml,${id}`,
   getOnboardingProviderOption: (id: string) => {
@@ -36,7 +36,7 @@ vi.mock("@miladyai/app-core/providers", () => ({
   },
 }));
 
-vi.mock("@miladyai/ui", () => ({
+vi.mock("@elizaos/ui", () => ({
   Button: ({ children, onClick, disabled, ...rest }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) =>
     React.createElement("button", { type: "button", onClick, disabled, ...rest }, children),
   Input: ({ ...props }: Record<string, unknown>) =>
@@ -51,7 +51,7 @@ vi.mock("lucide-react", () => ({
 
 // ── Imports (after mocks) ──────────────────────────────────────────────
 
-import { MiladyBar } from "@miladyai/app-core/components/MiladyBar";
+import { MiladyBar } from "@elizaos/app-core/components/MiladyBar";
 import { CloudCreditsChip } from "../../src/components/milady-bar/CloudCreditsChip";
 import { WalletSummary } from "../../src/components/milady-bar/WalletSummary";
 

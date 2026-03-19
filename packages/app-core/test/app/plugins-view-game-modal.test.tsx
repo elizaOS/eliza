@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 
-import type { PluginInfo } from "@miladyai/app-core/api";
+import type { PluginInfo } from "@elizaos/app-core/api";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockUseApp = vi.fn();
-const mockOnWsEvent = vi.fn(() => () => {});
+const mockOnWsEvent = vi.fn(() => () => { });
 const mockHandlePluginToggle = vi.fn();
-const mockLoadPlugins = vi.fn(async () => {});
-const mockHandlePluginConfigSave = vi.fn(async () => {});
+const mockLoadPlugins = vi.fn(async () => { });
+const mockHandlePluginConfigSave = vi.fn(async () => { });
 const mockSetActionNotice = vi.fn();
 const mockSetState = vi.fn();
 const mockTestPluginConnection = vi.fn(async () => ({
@@ -63,11 +63,11 @@ function ensureWindowGlobals() {
   }
 }
 
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: {
     onWsEvent: (...args: unknown[]) => mockOnWsEvent(...args),
     installRegistryPlugin: vi.fn(),
@@ -77,7 +77,7 @@ vi.mock("@miladyai/app-core/api", () => ({
   },
 }));
 
-import { PluginsView } from "@miladyai/app-core/components/PluginsView";
+import { PluginsView } from "@elizaos/app-core/components/PluginsView";
 
 function hasClass(
   node: TestRenderer.ReactTestInstance,
@@ -165,7 +165,7 @@ describe("PluginsView game modal", () => {
     mockSetState.mockReset();
     mockTestPluginConnection.mockReset();
 
-    mockOnWsEvent.mockReturnValue(() => {});
+    mockOnWsEvent.mockReturnValue(() => { });
     mockLoadPlugins.mockResolvedValue(undefined);
     mockHandlePluginToggle.mockResolvedValue(undefined);
     mockHandlePluginConfigSave.mockResolvedValue(undefined);

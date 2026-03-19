@@ -11,9 +11,9 @@
  * Activity feed runs along the right sidebar. Chat ticker at the bottom.
  */
 
-import { client, isApiError } from "@miladyai/app-core/api";
-import { isElectrobunRuntime } from "@miladyai/app-core/bridge";
-import { useApp } from "@miladyai/app-core/state";
+import { client, isApiError } from "@elizaos/app-core/api";
+import { isElectrobunRuntime } from "@elizaos/app-core/bridge";
+import { useApp } from "@elizaos/app-core/state";
 import {
   type CSSProperties,
   useCallback,
@@ -137,7 +137,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
             setStreamSource({ type: "game", url: activeGameViewerUrl });
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     } else if (!activeGameViewerUrl.trim() && streamSource.type === "game") {
       client
         .setStreamSource("stream-tab")
@@ -146,7 +146,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
             setStreamSource({ type: "stream-tab" });
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
     return () => {
       cancelled = true;
@@ -174,7 +174,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
           const base = window.location.origin || "";
           const sep =
             window.location.protocol === "file:" ||
-            window.location.protocol === "electrobun:"
+              window.location.protocol === "electrobun:"
               ? "#"
               : "";
           const qs = apiBase
@@ -208,19 +208,19 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
       .then((res) => {
         if (res.ok) setDestinations(res.destinations);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [streamAvailable]);
 
   // ── Volume / mute / destination handlers ────────────────────────────
   const handleVolumeChange = useCallback((vol: number) => {
     setVolume(vol);
-    client.setStreamVolume(vol).catch(() => {});
+    client.setStreamVolume(vol).catch(() => { });
   }, []);
 
   const handleToggleMute = useCallback(() => {
     const next = !muted;
     setMuted(next);
-    (next ? client.muteStream() : client.unmuteStream()).catch(() => {});
+    (next ? client.muteStream() : client.unmuteStream()).catch(() => { });
   }, [muted]);
 
   const handleDestinationChange = useCallback((id: string) => {
@@ -229,7 +229,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
       .then((res) => {
         if (res.ok && res.destination) setActiveDestination(res.destination);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleSourceChange = useCallback(
@@ -347,19 +347,18 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
   const pipScale = isPip ? PIP_SIZE.width / FULL_SIZE.width : 1;
   const pipStyle: CSSProperties | undefined = isPip
     ? {
-        width: FULL_SIZE.width,
-        height: FULL_SIZE.height,
-        transform: `scale(${pipScale})`,
-        transformOrigin: "top left",
-      }
+      width: FULL_SIZE.width,
+      height: FULL_SIZE.height,
+      transform: `scale(${pipScale})`,
+      transformOrigin: "top left",
+    }
     : undefined;
 
   return (
     <div
       data-stream-view
-      className={`flex flex-col text-txt font-body ${
-        inModal ? "bg-transparent" : "bg-bg"
-      } ${isPip ? "" : "h-full w-full"}`}
+      className={`flex flex-col text-txt font-body ${inModal ? "bg-transparent" : "bg-bg"
+        } ${isPip ? "" : "h-full w-full"}`}
       style={pipStyle}
     >
       <StatusBar
@@ -391,11 +390,10 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
       {/* Stream voice config — TTS toggle and status */}
       {!isPip && streamAvailable && (
         <div
-          className={`flex items-center px-4 py-1 border-b ${
-            inModal
+          className={`flex items-center px-4 py-1 border-b ${inModal
               ? "border-[var(--border)] bg-[rgba(255,255,255,0.03)]"
               : "border-border bg-bg"
-          }`}
+            }`}
         >
           <StreamVoiceConfig streamLive={streamLive} />
         </div>

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { CustomActionDef } from "@miladyai/app-core/api";
+import type { CustomActionDef } from "@elizaos/app-core/api";
 import React, { useEffect, useState } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,18 +19,18 @@ const { mockClient, mockUseApp, mockUseVoiceChat } = vi.hoisted(() => ({
   mockUseVoiceChat: vi.fn(),
 }));
 
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
   getVrmPreviewUrl: () => null,
 }));
 
-vi.mock("@miladyai/app-core/platform", () => ({
+vi.mock("@elizaos/app-core/platform", () => ({
   isDesktopPlatform: () => false,
 }));
 
-vi.mock("@miladyai/app-core/hooks", async () => {
-  const actual = await vi.importActual<typeof import("@miladyai/app-core/hooks")>(
-    "@miladyai/app-core/hooks",
+vi.mock("@elizaos/app-core/hooks", async () => {
+  const actual = await vi.importActual<typeof import("@elizaos/app-core/hooks")>(
+    "@elizaos/app-core/hooks",
   );
   return {
     ...actual,
@@ -47,7 +47,7 @@ vi.mock("../../src/components/MessageContent", () => ({
     React.createElement("span", null, message.text),
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: mockClient,
 }));
 
@@ -83,7 +83,7 @@ function createContext(
     chatSending: false,
     chatFirstTokenReceived: false,
     conversationMessages: [],
-    handleChatSend: vi.fn(async () => {}),
+    handleChatSend: vi.fn(async () => { }),
     handleChatStop: vi.fn(),
     handleChatRetry: vi.fn(),
     handleChatEdit: vi.fn(async () => true),

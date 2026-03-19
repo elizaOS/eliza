@@ -12,7 +12,7 @@
  *   - Web: Informational message only (no OS-level access)
  */
 
-import { Button } from "@miladyai/ui";
+import { Button } from "@elizaos/ui";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -170,10 +170,10 @@ function getPermissionAction(
     const label =
       id === "camera"
         ? translateWithFallback(
-            t,
-            "permissionssection.CheckAccess",
-            "Check Access",
-          )
+          t,
+          "permissionssection.CheckAccess",
+          "Check Access",
+        )
         : translateWithFallback(t, "permissionssection.Grant", "Grant");
     return {
       ariaLabelPrefix: label,
@@ -349,9 +349,9 @@ async function reconcileRendererMediaPermissions(
 
   return changed
     ? {
-        ...snapshot,
-        permissions: nextPermissions,
-      }
+      ...snapshot,
+      permissions: nextPermissions,
+    }
     : snapshot;
 }
 
@@ -442,9 +442,8 @@ function CapabilityToggle({
 
   return (
     <div
-      className={`flex items-center gap-3 p-3 border border-[var(--border)] ${
-        enabled ? "bg-[var(--accent)]/10" : "bg-[var(--card)]"
-      }`}
+      className={`flex items-center gap-3 p-3 border border-[var(--border)] ${enabled ? "bg-[var(--accent)]/10" : "bg-[var(--card)]"
+        }`}
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
@@ -1091,11 +1090,10 @@ function DesktopOnboardingPermissions({
             <div
               key={def.id}
               data-permission-id={def.id}
-              className={`flex items-center gap-4 p-4 border ${
-                isGranted
+              className={`flex items-center gap-4 p-4 border ${isGranted
                   ? "border-[var(--ok)] bg-[var(--ok)]/10"
                   : "border-[var(--border)] bg-[var(--card)]"
-              }`}
+                }`}
             >
               <PermissionIcon icon={def.icon} />
               <div className="flex-1">

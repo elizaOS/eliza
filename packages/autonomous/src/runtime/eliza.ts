@@ -2343,7 +2343,8 @@ async function initializeDatabaseAdapter(
   if (!runtime.adapter || (await runtime.adapter.isReady())) return;
 
   try {
-    await runtime.adapter.init();
+    const adapterInit = (runtime.adapter as unknown as Record<string, unknown>).init ?? runtime.adapter.initialize;
+    if (typeof adapterInit === "function") await adapterInit.call(runtime.adapter);
     logger.info(
       "[milady] Database adapter initialized early (before plugin inits)",
     );
@@ -2373,7 +2374,8 @@ async function initializeDatabaseAdapter(
       process.env.PGLITE_DATA_DIR = pgliteDataDir;
     }
 
-    await runtime.adapter.init();
+    const adapterInit2 = (runtime.adapter as unknown as Record<string, unknown>).init ?? runtime.adapter.initialize;
+    if (typeof adapterInit2 === "function") await adapterInit2.call(runtime.adapter);
     logger.info(
       recoveryAction === "retry-without-reset"
         ? "[milady] Database adapter recovered after clearing a stale PGLite lock"
@@ -2680,14 +2682,14 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
         runtimeWithEntityWrites.createEntities.bind(runtime);
       runtimeWithEntityWrites.createEntities = async (
         entities: Entity[],
-      ): Promise<boolean> => {
+      ) => {
         return withEntityCreateMutex(runtimeWithBindings, async () => {
           const uniqueById = new Map<UUID, Entity>();
           for (const entity of entities) {
             if (entity?.id) uniqueById.set(entity.id as UUID, entity);
           }
           const deduped = Array.from(uniqueById.values());
-          if (deduped.length === 0) return true;
+          if (deduped.length === 0) return deduped.map((e) => e.id as UUID);
 
           let missing = deduped;
           if (typeof runtimeWithEntityWrites.getEntitiesByIds === "function") {
@@ -2709,10 +2711,10 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
               );
             }
           }
-          if (missing.length === 0) return true;
+          if (missing.length === 0) return deduped.map((e) => e.id as UUID);
 
-          const ok = await originalCreateEntities(missing);
-          if (ok) return true;
+          const result = await originalCreateEntities(missing);
+          if (Array.isArray(result) ? result.length > 0 : result) return deduped.map((e) => e.id as UUID);
 
           if (
             typeof runtimeWithEntityWrites.ensureEntityExists === "function"
@@ -2730,13 +2732,13 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
                 );
               }
             }
-            if (allRecovered) return true;
+            if (allRecovered) return deduped.map((e) => e.id as UUID);
           }
 
           logger.warn(
             `[milady] createEntities unresolved after guarded retries (requested=${entities.length}, deduped=${deduped.length}, missing=${missing.length})`,
           );
-          return false;
+          return [];
         });
       };
     }
@@ -3852,7 +3854,7 @@ export async function startEliza(
   // 4. Ensure workspace exists with bootstrap files
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  await ensureAgentWorkspace({ dir: workspaceDir, ensureBootstrapFiles: true });
+  await ensureAgentWorkspace({ dir: workspaceDir, ensureInitFiles: true });
 
   // 4b. Ensure custom plugins directory exists for drop-in plugins
   await fs.mkdir(path.join(resolveStateDir(), CUSTOM_PLUGINS_DIRNAME), {
@@ -4399,7 +4401,7 @@ export async function startEliza(
       await loadHooks({
         workspacePath: workspaceDir,
         internalConfig: internalHooksConfig,
-        miladyConfig: config as Record<string, unknown>,
+        elizaConfig: config as Record<string, unknown>,
       });
 
       const startupEvent = createHookEvent("gateway", "startup", "system", {

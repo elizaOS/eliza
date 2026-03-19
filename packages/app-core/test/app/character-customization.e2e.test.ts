@@ -260,15 +260,15 @@ const { mockUseApp } = vi.hoisted(() => ({
   mockUseApp: vi.fn(),
 }));
 
-vi.mock("@miladyai/app-core/state", async () => {
-  const actual = await vi.importActual("@miladyai/app-core/state");
+vi.mock("@elizaos/app-core/state", async () => {
+  const actual = await vi.importActual("@elizaos/app-core/state");
   return {
     ...actual,
     useApp: () => mockUseApp(),
   };
 });
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: {
     getCharacter: vi.fn().mockResolvedValue({
       name: "TestAgent",
@@ -316,12 +316,12 @@ vi.mock("../../src/components/AvatarSelector", () => ({
     ),
 }));
 
-vi.mock("@miladyai/app-core/config", () => ({
+vi.mock("@elizaos/app-core/config", () => ({
   ConfigRenderer: () => React.createElement("div", null, "ConfigRenderer"),
   defaultRegistry: {},
 }));
 
-import { client } from "@miladyai/app-core/api";
+import { client } from "@elizaos/app-core/api";
 import { CharacterView } from "../../src/components/CharacterView";
 
 type CharacterData = {
@@ -582,15 +582,15 @@ describe("CharacterView UI", () => {
     expect(json).not.toBeNull();
     expect(
       json &&
-        !Array.isArray(json) &&
-        typeof json.props.className === "string" &&
-        json.props.className.includes("min-h-full"),
+      !Array.isArray(json) &&
+      typeof json.props.className === "string" &&
+      json.props.className.includes("min-h-full"),
     ).toBe(true);
     expect(
       json &&
-        !Array.isArray(json) &&
-        typeof json.props.className === "string" &&
-        json.props.className.includes("justify-end"),
+      !Array.isArray(json) &&
+      typeof json.props.className === "string" &&
+      json.props.className.includes("justify-end"),
     ).toBe(true);
   });
 

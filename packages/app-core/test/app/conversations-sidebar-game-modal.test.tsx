@@ -28,16 +28,16 @@ const { mockUseApp } = vi.hoisted(() => ({
   mockUseApp: vi.fn(),
 }));
 
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
   getVrmPreviewUrl: (index: number) => `mock-vrm-${index}.png`,
   VRM_COUNT: 8,
 }));
 
-vi.mock("@miladyai/ui", async () => {
+vi.mock("@elizaos/ui", async () => {
   const React = await import("react");
   const actual =
-    await vi.importActual<typeof import("@miladyai/ui")>("@miladyai/ui");
+    await vi.importActual<typeof import("@elizaos/ui")>("@elizaos/ui");
 
   return {
     ...actual,
@@ -59,10 +59,10 @@ vi.mock("@miladyai/ui", async () => {
   };
 });
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: {
     getAgentSelfStatus: vi.fn(async () => null),
-    onWsEvent: vi.fn(() => () => {}),
+    onWsEvent: vi.fn(() => () => { }),
   },
 }));
 
@@ -92,11 +92,11 @@ function createContext(
     ],
     activeConversationId: "conv-2",
     unreadConversations: new Set(["conv-1"]),
-    handleStartDraftConversation: vi.fn(async () => {}),
-    handleNewConversation: vi.fn(async () => {}),
-    handleSelectConversation: vi.fn(async () => {}),
-    handleDeleteConversation: vi.fn(async () => {}),
-    handleRenameConversation: vi.fn(async () => {}),
+    handleStartDraftConversation: vi.fn(async () => { }),
+    handleNewConversation: vi.fn(async () => { }),
+    handleSelectConversation: vi.fn(async () => { }),
+    handleDeleteConversation: vi.fn(async () => { }),
+    handleRenameConversation: vi.fn(async () => { }),
     uiLanguage: "en",
     ...overrides,
   };
@@ -115,10 +115,10 @@ describe("ConversationsSidebar game-modal variant", () => {
   });
 
   it("renders game-modal list and keeps new/select/delete actions working", async () => {
-    const handleStartDraftConversation = vi.fn(async () => {});
-    const handleNewConversation = vi.fn(async () => {});
-    const handleSelectConversation = vi.fn(async () => {});
-    const handleDeleteConversation = vi.fn(async () => {});
+    const handleStartDraftConversation = vi.fn(async () => { });
+    const handleNewConversation = vi.fn(async () => { });
+    const handleSelectConversation = vi.fn(async () => { });
+    const handleDeleteConversation = vi.fn(async () => { });
 
     mockUseApp.mockReturnValue(
       createContext({
@@ -184,8 +184,8 @@ describe("ConversationsSidebar game-modal variant", () => {
     })[0];
     await act(async () => {
       rowTrigger.props.onContextMenu({
-        preventDefault: () => {},
-        stopPropagation: () => {},
+        preventDefault: () => { },
+        stopPropagation: () => { },
         clientX: 32,
         clientY: 48,
       });
@@ -211,7 +211,7 @@ describe("ConversationsSidebar game-modal variant", () => {
   });
 
   it("supports inline rename in game-modal variant", async () => {
-    const handleRenameConversation = vi.fn(async () => {});
+    const handleRenameConversation = vi.fn(async () => { });
     mockUseApp.mockReturnValue(
       createContext({
         handleRenameConversation,
@@ -230,8 +230,8 @@ describe("ConversationsSidebar game-modal variant", () => {
     })[0];
     await act(async () => {
       rowTrigger.props.onContextMenu({
-        preventDefault: () => {},
-        stopPropagation: () => {},
+        preventDefault: () => { },
+        stopPropagation: () => { },
         clientX: 24,
         clientY: 40,
       });
@@ -253,7 +253,7 @@ describe("ConversationsSidebar game-modal variant", () => {
     await act(async () => {
       input?.props.onKeyDown({
         key: "Enter",
-        preventDefault: () => {},
+        preventDefault: () => { },
       });
     });
 

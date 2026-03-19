@@ -14,7 +14,7 @@
  * storage (both localStorage and server). Falls back to the global default.
  */
 
-import { client } from "@miladyai/app-core/api";
+import { client } from "@elizaos/app-core/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAllWidgets } from "./registry";
 import type { OverlayLayout, WidgetInstance, WidgetPosition } from "./types";

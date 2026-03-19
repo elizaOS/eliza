@@ -7,7 +7,7 @@ import {
   isIOS,
   isLifoPopoutValue,
   isNative,
-} from "@miladyai/app-core/platform";
+} from "@elizaos/app-core/platform";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   AdvancedPageView,
@@ -243,11 +243,10 @@ export function App() {
     <div className="flex items-center gap-2 w-max">
       <button
         type="button"
-        className={`inline-flex items-center gap-2 px-3 py-2 border rounded-md text-[12px] font-semibold transition-all cursor-pointer ${
-          mobileConversationsOpen
+        className={`inline-flex items-center gap-2 px-3 py-2 border rounded-md text-[12px] font-semibold transition-all cursor-pointer ${mobileConversationsOpen
             ? "border-accent bg-accent-subtle text-txt"
             : "border-border bg-card text-txt hover:border-accent hover:text-txt"
-        }`}
+          }`}
         onClick={() => {
           setMobileConversationsOpen(true);
         }}
@@ -437,16 +436,14 @@ export function App() {
     </div>
   ) : (
     <div
-      className={`flex flex-col flex-1 min-h-0 w-full font-body text-txt ${
-        characterSceneVisible ? "bg-transparent" : "bg-bg"
-      }`}
+      className={`flex flex-col flex-1 min-h-0 w-full font-body text-txt ${characterSceneVisible ? "bg-transparent" : "bg-bg"
+        }`}
     >
       <Header transparent={characterSceneVisible} hideCloudCredits={!characterSceneVisible} />
       {!characterSceneVisible && <MiladyBar />}
       <main
-        className={`flex flex-1 min-h-0 min-w-0 overflow-hidden px-3 xl:px-5 ${
-          characterSceneVisible ? "pb-4 pt-2 xl:pb-6" : "py-4 xl:py-6"
-        }`}
+        className={`flex flex-1 min-h-0 min-w-0 overflow-hidden px-3 xl:px-5 ${characterSceneVisible ? "pb-4 pt-2 xl:pb-6" : "py-4 xl:py-6"
+          }`}
       >
         <ViewRouter characterSceneVisible={characterSceneVisible} />
       </main>

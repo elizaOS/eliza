@@ -72,7 +72,7 @@ const { mockClient } = vi.hoisted(() => ({
     connectWs: vi.fn(),
     disconnectWs: vi.fn(),
     saveStreamSettings: vi.fn(async () => undefined),
-    onWsEvent: vi.fn(() => () => {}),
+    onWsEvent: vi.fn(() => () => { }),
     getAgentEvents: vi.fn(async () => ({
       events: [],
       latestEventId: null,
@@ -100,12 +100,12 @@ const { mockClient } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: mockClient,
   SkillScanReportSummary: {},
 }));
 
-import { AppProvider, useApp } from "@miladyai/app-core/state";
+import { AppProvider, useApp } from "@elizaos/app-core/state";
 
 type StartupSnapshot = {
   onboardingLoading: boolean;
@@ -240,11 +240,11 @@ describe("startup conversation restore", () => {
       memories: [],
       knowledge: [],
     });
-    mockClient.sendWsMessage.mockImplementation(() => {});
-    mockClient.connectWs.mockImplementation(() => {});
-    mockClient.disconnectWs.mockImplementation(() => {});
+    mockClient.sendWsMessage.mockImplementation(() => { });
+    mockClient.connectWs.mockImplementation(() => { });
+    mockClient.disconnectWs.mockImplementation(() => { });
     mockClient.saveStreamSettings.mockResolvedValue(undefined);
-    mockClient.onWsEvent.mockReturnValue(() => {});
+    mockClient.onWsEvent.mockReturnValue(() => { });
     mockClient.getAgentEvents.mockResolvedValue({
       events: [],
       latestEventId: null,

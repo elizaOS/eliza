@@ -1,5 +1,5 @@
 {
-  "name": "@miladyai/autonomous",
+  "name": "@elizaos/autonomous",
   "version": "1.0.0",
   "description": "Standalone Milady agent runtime and backend server package.",
   "type": "module",

@@ -3,7 +3,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@miladyai/ui";
+} from "@elizaos/ui";
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../state";
 import { ConversationListItem } from "./conversations/ConversationListItem";

@@ -9,6 +9,7 @@ export * from "./avatar/VrmEngine";
 export * from "./avatar/VrmViewer";
 export * from "./BscTradePanel";
 export * from "./BugReportModal";
+export * from "./CharacterRoster";
 export * from "./CharacterView";
 export * from "./ChatAvatar";
 export * from "./ChatComposer";

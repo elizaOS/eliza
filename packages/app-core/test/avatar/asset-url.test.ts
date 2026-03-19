@@ -1,4 +1,4 @@
-import { resolveApiUrl, resolveAppAssetUrl } from "@miladyai/app-core/utils";
+import { resolveApiUrl, resolveAppAssetUrl } from "@elizaos/app-core/utils";
 import { describe, expect, it } from "vitest";
 
 describe("resolveAppAssetUrl", () => {
