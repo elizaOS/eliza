@@ -109,8 +109,13 @@ export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
   },
 ];
 
+export type OnboardingMode = "basic" | "advanced" | "elizacloudonly";
+
+export type FlaminaGuideTopic = "provider" | "rpc" | "permissions" | "voice";
+
 export interface OnboardingNextOptions {
   allowPermissionBypass?: boolean;
+  skipTask?: string;
 }
 
 export const ONBOARDING_PERMISSION_LABELS: Record<SystemPermissionId, string> =
@@ -431,8 +436,15 @@ export interface AppState {
   importError: string | null;
   importSuccess: string | null;
 
+  // Startup
+  startupStatus: string | null;
+
   // Onboarding
   onboardingStep: OnboardingStep;
+  onboardingMode: OnboardingMode;
+  onboardingActiveGuide: string | null;
+  onboardingDeferredTasks: string[];
+  postOnboardingChecklistDismissed: boolean;
   onboardingOptions: OnboardingOptions | null;
   onboardingName: string;
   onboardingOwnerName: string;
@@ -548,6 +560,8 @@ export interface AppActions {
   handleReset: () => Promise<void>;
   retryStartup: () => void;
   dismissRestartBanner: () => void;
+  showRestartBanner: () => void;
+  relaunchDesktop: () => Promise<void>;
   triggerRestart: () => Promise<void>;
   dismissBackendDisconnectedBanner: () => void;
   retryBackendConnection: () => void;
@@ -669,6 +683,7 @@ export interface AppActions {
   // Cloud
   handleCloudLogin: () => Promise<void>;
   handleCloudDisconnect: () => Promise<void>;
+  handleCloudOnboardingFinish: () => void;
 
   // Updates
   loadUpdateStatus: (force?: boolean) => Promise<void>;

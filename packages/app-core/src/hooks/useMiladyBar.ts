@@ -18,10 +18,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type DetectedProvider,
   invokeDesktopBridgeRequest,
-  scanAndValidateProviderCredentials,
   scanProviderCredentials,
   subscribeDesktopBridgeEvent,
 } from "../bridge/electrobun-rpc";
+import type { Tab } from "../navigation";
 import { isDesktopPlatform } from "../platform";
 import { useApp } from "../state";
 
@@ -423,8 +423,8 @@ export function useMiladyBar() {
   // Validated scan — for background refresh and manual refresh
   const runValidatedScan = useCallback(() => {
     if (!isDesktopPlatform()) return;
-    scanAndValidateProviderCredentials()
-      .then((results) => {
+    scanProviderCredentials()
+      .then((results: DetectedProvider[]) => {
         setScannedProviders(results);
         setLastRefreshAt(Date.now());
         setNow(Date.now());
@@ -514,7 +514,7 @@ export function useMiladyBar() {
         }
         if (itemId.startsWith("navigate-")) {
           const target = itemId.replace("navigate-", "");
-          setTab?.(target);
+          setTab?.(target as Tab);
           void invokeDesktopBridgeRequest({
             rpcMethod: "desktopShowWindow",
             ipcChannel: "desktop:showWindow",

@@ -177,7 +177,7 @@ export function DeferredSetupChecklist({
       </div>
 
       <div className="space-y-2">
-        {onboardingDeferredTasks.map((task) => (
+        {(onboardingDeferredTasks as FlaminaGuideTopic[]).map((task) => (
           <div
             key={task}
             className="flex flex-col gap-2 rounded-xl border border-border/50 bg-bg/50 px-3 py-3 md:flex-row md:items-center md:justify-between"
@@ -199,7 +199,7 @@ export function DeferredSetupChecklist({
               <button
                 type="button"
                 className="rounded-full border border-border/60 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted transition-colors hover:text-txt"
-                onClick={() => markDone(task)}
+                onClick={() => markDone(task as FlaminaGuideTopic)}
               >
                 Done
               </button>

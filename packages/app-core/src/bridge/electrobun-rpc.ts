@@ -47,6 +47,7 @@ export interface DetectedProvider {
   apiKey?: string;
   authMode?: string;
   cliInstalled: boolean;
+  status?: string;
 }
 
 export async function scanProviderCredentials(): Promise<DetectedProvider[]> {

@@ -2201,7 +2201,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const notifyHeartbeatEvent = useCallback(
     (event: StreamEventEnvelope) => {
-      const payload = event.payload;
+      // biome-ignore lint/suspicious/noExplicitAny: heartbeat payloads are loosely typed
+      const payload = event.payload as any;
       const status =
         typeof payload.status === "string"
           ? payload.status.trim().toLowerCase()
@@ -4020,7 +4021,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCharacterSaveSuccess(null);
     try {
       const draft = prepareDraftForSave(characterDraft);
-      if (!draft.name?.trim()) {
+      if (!(draft.name as string | undefined)?.trim()) {
         throw new Error("Character name is required before saving.");
       }
       const { agentName } = await client.updateCharacter(draft);
@@ -4214,13 +4215,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (isSandboxMode) {
         // Provision a sandbox agent on Eliza Cloud
         const cloudApiBase = (
-          (window as Record<string, unknown>).__ELIZA_CLOUD_API_BASE__ ??
+          (window as unknown as Record<string, unknown>).__ELIZA_CLOUD_API_BASE__ ??
           "https://api.eliza.ai"
         ) as string;
 
         // Get the auth token from the cloud login state
         const authToken = (
-          (window as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ ?? ""
+          (window as unknown as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ ?? ""
         ) as string;
 
         if (!authToken) {
@@ -4617,7 +4618,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const hasBackend = Boolean(client.getBaseUrl());
     const cloudApiBase =
       ((typeof window !== "undefined" &&
-        (window as Record<string, unknown>).__ELIZA_CLOUD_API_BASE__) as string) ||
+        (window as unknown as Record<string, unknown>).__ELIZA_CLOUD_API_BASE__) as string) ||
       "https://api.eliza.ai";
     const useDirectAuth = !hasBackend;
 
@@ -4704,9 +4705,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
             // Store the cloud auth token for provisioning
             if (poll.token && typeof window !== "undefined") {
-              (window as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+              (window as unknown as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
                 poll.token;
-              (window as Record<string, unknown>).__ELIZA_CLOUD_API_BASE__ =
+              (window as unknown as Record<string, unknown>).__ELIZA_CLOUD_API_BASE__ =
                 cloudApiBase;
             }
 
@@ -4788,6 +4789,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setElizaCloudDisconnecting(false);
     }
   }, [setActionNotice]);
+
+  const handleCloudOnboardingFinish = useCallback(() => {
+    setOnboardingComplete(true);
+    setTab("chat");
+  }, []);
 
   // ── Updates ────────────────────────────────────────────────────────
 
@@ -5185,9 +5191,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const persistedConnection = loadPersistedConnectionMode();
       const hasApiBase = Boolean(
         (typeof window !== "undefined" &&
-          (window as Record<string, unknown>).__MILADY_API_BASE__) ||
+          (window as unknown as Record<string, unknown>).__MILADY_API_BASE__) ||
           (typeof window !== "undefined" &&
-            (window as Record<string, unknown>).__ELIZA_API_BASE__),
+            (window as unknown as Record<string, unknown>).__ELIZA_API_BASE__),
       );
 
       if (!persistedConnection && !hasApiBase) {
@@ -5915,6 +5921,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const shouldStartAtCharacterSelect = shouldStartAtCharacterSelectOnLaunch(
         {
           onboardingNeedsOptions,
+          onboardingMode,
           navPath,
           urlTab,
         },
@@ -6366,6 +6373,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     handleOnboardingUseLocalBackend,
     handleCloudLogin,
     handleCloudDisconnect,
+    handleCloudOnboardingFinish,
     loadUpdateStatus,
     handleChannelChange,
     checkExtensionStatus,
