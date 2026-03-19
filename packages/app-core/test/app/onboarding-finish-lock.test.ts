@@ -510,7 +510,7 @@ describe("onboarding finish locking", () => {
 
     const snapshot = requireApi().snapshot();
     expect(snapshot.onboardingComplete).toBe(true);
-    expect(snapshot.tab).toBe("character-select");
+    expect(snapshot.tab).toBe("chat");
     expect(snapshot.uiShellMode).toBe("native");
     expect(snapshot.activeConversationId).toBeNull();
     expect(snapshot.conversationMessages).toEqual([]);
@@ -605,7 +605,7 @@ describe("onboarding finish locking", () => {
 
     const snapshot = requireApi().snapshot();
     expect(snapshot.onboardingComplete).toBe(true);
-    expect(snapshot.tab).toBe("character-select");
+    expect(snapshot.tab).toBe("chat");
     expect(snapshot.uiShellMode).toBe("native");
     expect(snapshot.activeConversationId).toBe("conv-restored");
     expect(snapshot.conversationMessages).toEqual([

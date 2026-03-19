@@ -390,6 +390,7 @@ function makeState(overrides?: Partial<HarnessState>): HarnessState {
     activeGameViewerUrl: null,
     gameOverlayEnabled: false,
     startupPhase: "ready",
+    startupStatus: "ready",
     startupError: null,
     retryStartup: vi.fn(),
     setActionNotice: vi.fn(),

@@ -5,12 +5,14 @@ import React, { useEffect } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { fetchMock, mockClient, wsHandlers } = vi.hoisted(() => {
+const { fetchMock, mockClient, wsHandlers, invokeDesktopBridgeRequestMock } =
+  vi.hoisted(() => {
   const handlers = new Map<string, (data: Record<string, unknown>) => void>();
 
   return {
     fetchMock: vi.fn(),
     wsHandlers: handlers,
+    invokeDesktopBridgeRequestMock: vi.fn(async () => ({ id: "notif-1" })),
     mockClient: {
       hasToken: vi.fn(() => false),
       getAuthStatus: vi.fn(async () => ({
@@ -128,6 +130,16 @@ vi.mock("@elizaos/app-core/api", () => ({
   SkillScanReportSummary: {},
 }));
 
+vi.mock("../../src/bridge", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/bridge")>();
+  return {
+    ...actual,
+    getBackendStartupTimeoutMs: () => 1000,
+    invokeDesktopBridgeRequest: invokeDesktopBridgeRequestMock,
+    scanProviderCredentials: vi.fn(async () => []),
+  };
+});
+
 import { AppProvider, useApp } from "@elizaos/app-core/state";
 
 type ProbeApi = {
@@ -229,6 +241,8 @@ describe("AppContext autonomy replay", () => {
       status: 200,
       statusText: "OK",
     });
+    invokeDesktopBridgeRequestMock.mockReset();
+    invokeDesktopBridgeRequestMock.mockResolvedValue({ id: "notif-1" });
 
     wsHandlers.clear();
 
@@ -469,6 +483,73 @@ describe("AppContext autonomy replay", () => {
       expect(
         snapshot?.autonomousRunHealthByRunId["run-2"]?.missingSeqs,
       ).toEqual([2]);
+    });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it("pushes native notifications for heartbeat failures and restart-required events", async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        React.createElement(
+          AppProvider,
+          null,
+          React.createElement(Probe, {
+            onReady: () => undefined,
+          }),
+        ),
+      );
+    });
+
+    await flush();
+    await flush();
+    await waitFor(() => {
+      expect(wsHandlers.has("heartbeat_event")).toBe(true);
+      expect(wsHandlers.has("restart-required")).toBe(true);
+    });
+
+    await act(async () => {
+      emitWs("heartbeat_event", {
+        type: "heartbeat_event",
+        eventId: "hb-1",
+        ts: Date.now(),
+        runId: "run-hb",
+        seq: 1,
+        stream: "action",
+        payload: {
+          status: "failed",
+          channel: "discord",
+          preview: "connector down",
+          durationMs: 12,
+        },
+      });
+      emitWs("restart-required", {
+        reasons: ["Plugin toggled"],
+      });
+    });
+
+    await waitFor(() => {
+      expect(invokeDesktopBridgeRequestMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rpcMethod: "desktopShowNotification",
+          ipcChannel: "desktop:showNotification",
+          params: expect.objectContaining({
+            title: "Heartbeat failed",
+          }),
+        }),
+      );
+      expect(invokeDesktopBridgeRequestMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rpcMethod: "desktopShowNotification",
+          ipcChannel: "desktop:showNotification",
+          params: expect.objectContaining({
+            title: "Restart required",
+          }),
+        }),
+      );
     });
 
     await act(async () => {

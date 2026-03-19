@@ -11,7 +11,7 @@
  */
 
 import type { Action, HandlerOptions } from "@elizaos/core";
-import { AGENT_EMOTE_BY_ID } from "../emotes/catalog";
+import { AGENT_EMOTE_BY_ID, AGENT_EMOTE_CATALOG } from "../emotes/catalog";
 
 /** API port for posting emote requests. */
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
@@ -31,7 +31,8 @@ export const emoteAction: Action = {
   ],
 
   description:
-    "Play a one-shot emote animation on the avatar, then return to idle. " +
+    "Play a one-shot emote animation on your 3D VRM avatar, then return to idle. " +
+    "Use whenever a visible gesture, reaction, or trick helps convey emotion. " +
     "This is a silent non-blocking visual side action that does not create " +
     "chat text on its own. Only call it when you set the required emote " +
     "parameter to a valid emote ID. If you also want speech, chain it " +
@@ -96,9 +97,14 @@ export const emoteAction: Action = {
     {
       name: "emote",
       description:
-        "Required emote ID to play once silently before returning to idle",
+        "Required emote ID to play once silently before returning to idle. " +
+        "Common mappings: dance/vibe → dance-happy, wave/greet → wave, " +
+        "flip/backflip → flip, cry/sad → crying, fight/punch → punching, fish → fishing",
       required: true,
-      schema: { type: "string" as const },
+      schema: {
+        type: "string" as const,
+        enum: AGENT_EMOTE_CATALOG.map((e) => e.id),
+      },
     },
   ],
 };
