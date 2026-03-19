@@ -1,4 +1,4 @@
-//! Error types for the elizaOS Bootstrap Plugin.
+//! Error types for the elizaOS BasicCapabilities Plugin.
 
 use thiserror::Error;
 

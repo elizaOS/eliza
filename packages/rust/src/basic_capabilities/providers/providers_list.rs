@@ -36,7 +36,7 @@ impl Provider for ProvidersListProvider {
         _message: &Memory,
         _state: Option<&State>,
     ) -> PluginResult<ProviderResult> {
-        // Get providers from the bootstrap plugin itself
+        // Get providers from the basic_capabilities plugin itself
         let providers = super::all_providers();
 
         if providers.is_empty() {

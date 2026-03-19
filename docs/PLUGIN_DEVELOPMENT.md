@@ -162,9 +162,9 @@ Plugins can declare:
 
 The dependency resolver and Node/Bun auto-install logic live in `packages/typescript/src/plugin.ts`.
 
-## Bootstrap plugin configuration (capabilities)
+## BasicCapabilities plugin configuration (capabilities)
 
-The built-in `bootstrap` plugin is auto-included by `AgentRuntime.initialize()` unless already provided. When registering it, `AgentRuntime.registerPlugin()` can replace it with a configured bootstrap plugin based on:
+The built-in `basic-capabilities` plugin is auto-included by `AgentRuntime.initialize()` unless already provided. When registering it, `AgentRuntime.registerPlugin()` can replace it with a configured basic-capabilities plugin based on:
 
 - Constructor flags like `disableBasicCapabilities`, `enableExtendedCapabilities`, `enableAutonomy`
 - Character settings such as `DISABLE_BASIC_CAPABILITIES`, `ENABLE_EXTENDED_CAPABILITIES`, `ENABLE_AUTONOMY`

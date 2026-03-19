@@ -123,7 +123,7 @@ export type RuntimeEventStorage = PluginEvents & {
 
 /**
  * Database adapter factory. When set on a plugin, this plugin provides the
- * database adapter. Called before runtime construction with agentId and bootstrap
+ * database adapter. Called before runtime construction with agentId and basic-capabilities
  * settings (character + env, not DB). Only one plugin per character should set this.
  */
 export type AdapterFactory = (
@@ -161,7 +161,7 @@ export interface Plugin {
 
 	/**
 	 * Database adapter factory. When set, this plugin provides the database
-	 * adapter. Called before runtime construction with agentId and bootstrap
+	 * adapter. Called before runtime construction with agentId and basic-capabilities
 	 * settings (character + env, not DB). Only one plugin per character should
 	 * set this.
 	 */

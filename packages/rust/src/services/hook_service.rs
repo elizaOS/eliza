@@ -51,8 +51,8 @@ pub enum HookEventType {
     HookSessionStart,
     /// Triggered when a session ends
     HookSessionEnd,
-    /// Triggered during agent bootstrap
-    HookAgentBootstrap,
+    /// Triggered during agent basic_capabilities
+    HookAgentBasicCapabilities,
     /// Triggered when an agent starts
     HookAgentStart,
     /// Triggered when an agent ends
@@ -84,7 +84,7 @@ impl HookEventType {
             HookEventType::HookCommandStop => "HOOK_COMMAND_STOP",
             HookEventType::HookSessionStart => "HOOK_SESSION_START",
             HookEventType::HookSessionEnd => "HOOK_SESSION_END",
-            HookEventType::HookAgentBootstrap => "HOOK_AGENT_BOOTSTRAP",
+            HookEventType::HookAgentBasicCapabilities => "HOOK_AGENT_BASIC_CAPABILITIES",
             HookEventType::HookAgentStart => "HOOK_AGENT_START",
             HookEventType::HookAgentEnd => "HOOK_AGENT_END",
             HookEventType::HookGatewayStart => "HOOK_GATEWAY_START",
@@ -106,7 +106,7 @@ impl HookEventType {
             HookEventType::HookCommandStop,
             HookEventType::HookSessionStart,
             HookEventType::HookSessionEnd,
-            HookEventType::HookAgentBootstrap,
+            HookEventType::HookAgentBasicCapabilities,
             HookEventType::HookAgentStart,
             HookEventType::HookAgentEnd,
             HookEventType::HookGatewayStart,
@@ -291,7 +291,7 @@ pub fn map_legacy_event(legacy: &str) -> Option<HookEventType> {
         "command:stop" => Some(HookEventType::HookCommandStop),
         "session:start" => Some(HookEventType::HookSessionStart),
         "session:end" => Some(HookEventType::HookSessionEnd),
-        "agent:bootstrap" => Some(HookEventType::HookAgentBootstrap),
+        "agent:basic_capabilities" => Some(HookEventType::HookAgentBasicCapabilities),
         "agent:start" => Some(HookEventType::HookAgentStart),
         "agent:end" => Some(HookEventType::HookAgentEnd),
         "gateway:start" => Some(HookEventType::HookGatewayStart),
@@ -694,8 +694,8 @@ mod tests {
     fn test_hook_event_type_as_str() {
         assert_eq!(HookEventType::HookCommandNew.as_str(), "HOOK_COMMAND_NEW");
         assert_eq!(
-            HookEventType::HookAgentBootstrap.as_str(),
-            "HOOK_AGENT_BOOTSTRAP"
+            HookEventType::HookAgentBasicCapabilities.as_str(),
+            "HOOK_AGENT_BASIC_CAPABILITIES"
         );
     }
 
@@ -706,8 +706,8 @@ mod tests {
             Some(HookEventType::HookCommandNew)
         );
         assert_eq!(
-            map_legacy_event("agent:bootstrap"),
-            Some(HookEventType::HookAgentBootstrap)
+            map_legacy_event("agent:basic_capabilities"),
+            Some(HookEventType::HookAgentBasicCapabilities)
         );
         assert_eq!(map_legacy_event("unknown:event"), None);
     }

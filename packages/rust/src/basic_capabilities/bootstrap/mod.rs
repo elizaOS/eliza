@@ -1,6 +1,6 @@
-//! elizaOS Bootstrap Plugin - Rust implementation.
+//! elizaOS BasicCapabilities Plugin - Rust implementation.
 //!
-//! This crate provides the core bootstrap functionality for elizaOS agents,
+//! This crate provides the core basic_capabilities functionality for elizaOS agents,
 //! including actions, providers, evaluators, and services.
 //!
 //! # Features
@@ -13,19 +13,18 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use elizaos_plugin_bootstrap::{BootstrapPlugin, CapabilityConfig};
+//! use elizaos_plugin_basic_capabilities::{BasicCapabilitiesPlugin, CapabilityConfig};
 //!
 //! // Default (basic capabilities only)
-//! let plugin = BootstrapPlugin::new();
+//! let plugin = BasicCapabilitiesPlugin::new();
 //!
 //! // With extended capabilities
-//! let plugin = BootstrapPlugin::with_config(CapabilityConfig::with_extended());
+//! let plugin = BasicCapabilitiesPlugin::with_config(CapabilityConfig::with_extended());
 //!
 //! runtime.register_plugin(plugin).await?;
 //! ```
 
 pub mod actions;
-pub mod autonomy;
 pub mod error;
 pub mod evaluators;
 pub mod providers;
@@ -43,11 +42,11 @@ use services::Service;
 use std::sync::Arc;
 pub use types::CapabilityConfig;
 
-/// The Bootstrap Plugin.
+/// The BasicCapabilities Plugin.
 ///
 /// Provides core agent capabilities including actions, providers,
 /// evaluators, and services.
-pub struct BootstrapPlugin {
+pub struct BasicCapabilitiesPlugin {
     /// Plugin name
     pub name: &'static str,
     /// Plugin description
@@ -62,21 +61,21 @@ pub struct BootstrapPlugin {
     config: CapabilityConfig,
 }
 
-impl BootstrapPlugin {
-    /// Create a new Bootstrap Plugin instance with default configuration (basic capabilities only).
+impl BasicCapabilitiesPlugin {
+    /// Create a new BasicCapabilities Plugin instance with default configuration (basic capabilities only).
     pub fn new() -> Self {
         Self::with_config(CapabilityConfig::default())
     }
 
-    /// Create a Bootstrap Plugin with the specified capability configuration.
+    /// Create a BasicCapabilities Plugin with the specified capability configuration.
     pub fn with_config(config: CapabilityConfig) -> Self {
         let actions = get_actions(&config);
         let providers = get_providers(&config);
         let evaluators = get_evaluators(&config);
 
         Self {
-            name: "bootstrap",
-            description: "elizaOS Bootstrap Plugin - Rust implementation of core agent actions, providers, evaluators, and services",
+            name: "basic_capabilities",
+            description: "elizaOS BasicCapabilities Plugin - Rust implementation of core agent actions, providers, evaluators, and services",
             actions,
             providers,
             evaluators,
@@ -86,10 +85,7 @@ impl BootstrapPlugin {
 
     /// Initialize the plugin with a runtime.
     pub async fn init(&self, runtime: Arc<dyn IAgentRuntime>) -> PluginResult<()> {
-        runtime.log_info(
-            "plugin:bootstrap",
-            "Initializing Bootstrap plugin",
-        );
+        runtime.log_info("plugin:basic_capabilities", "Initializing BasicCapabilities plugin");
 
         // Initialize services only if basic capabilities are enabled
         if !self.config.disable_basic {
@@ -101,9 +97,9 @@ impl BootstrapPlugin {
         }
 
         runtime.log_info(
-            "plugin:bootstrap",
+            "plugin:basic_capabilities",
             &format!(
-                "Bootstrap plugin initialized: {} actions, {} providers, {} evaluators",
+                "BasicCapabilities plugin initialized: {} actions, {} providers, {} evaluators",
                 self.actions.len(),
                 self.providers.len(),
                 self.evaluators.len()
@@ -163,7 +159,7 @@ impl BootstrapPlugin {
     }
 }
 
-impl Default for BootstrapPlugin {
+impl Default for BasicCapabilitiesPlugin {
     fn default() -> Self {
         Self::new()
     }
@@ -180,11 +176,14 @@ fn get_actions(config: &CapabilityConfig) -> Vec<Box<dyn Action>> {
     if !config.disable_basic {
         result.extend(basic_actions());
     }
-    if config.has_advanced() {
+    if config.enable_extended {
         result.extend(extended_actions());
     }
     if config.enable_autonomy {
-        result.extend(autonomy_actions());
+        #[cfg(feature = "autonomy")]
+        {
+            result.extend(autonomy_actions());
+        }
     }
 
     result
@@ -202,11 +201,14 @@ fn get_providers(config: &CapabilityConfig) -> Vec<Box<dyn Provider>> {
         }
         result.extend(basic);
     }
-    if config.has_advanced() {
+    if config.enable_extended {
         result.extend(extended_providers());
     }
     if config.enable_autonomy {
-        result.extend(autonomy_providers());
+        #[cfg(feature = "autonomy")]
+        {
+            result.extend(autonomy_providers());
+        }
     }
 
     result
@@ -219,7 +221,7 @@ fn get_evaluators(config: &CapabilityConfig) -> Vec<Box<dyn Evaluator>> {
     if !config.disable_basic {
         result.extend(basic_evaluators());
     }
-    if config.has_advanced() {
+    if config.enable_extended {
         result.extend(extended_evaluators());
     }
     // Autonomy has no evaluators currently
@@ -231,10 +233,9 @@ fn get_evaluators(config: &CapabilityConfig) -> Vec<Box<dyn Evaluator>> {
 // Basic capabilities - included by default
 // ============================================================================
 
-/// Basic actions: CHOICE, REPLY, IGNORE, NONE
+/// Basic actions: REPLY, IGNORE, NONE
 fn basic_actions() -> Vec<Box<dyn Action>> {
     vec![
-        Box::new(actions::ChooseOptionAction),
         Box::new(actions::ReplyAction),
         Box::new(actions::IgnoreAction),
         Box::new(actions::NoneAction),
@@ -249,7 +250,6 @@ fn basic_providers() -> Vec<Box<dyn Provider>> {
         Box::new(providers::AttachmentsProvider),
         Box::new(providers::CapabilitiesProvider),
         Box::new(providers::CharacterProvider),
-        Box::new(providers::ChoiceProvider),
         Box::new(providers::EntitiesProvider),
         Box::new(providers::EvaluatorsProvider),
         Box::new(providers::ProvidersListProvider),
@@ -268,63 +268,65 @@ fn basic_evaluators() -> Vec<Box<dyn Evaluator>> {
 // Extended capabilities - opt-in
 // ============================================================================
 
-/// Extended actions: FOLLOW/UNFOLLOW, MUTE/UNMUTE, contacts, etc.
+/// Extended actions: CHOICE, FOLLOW/UNFOLLOW, MUTE/UNMUTE, contacts, etc.
 fn extended_actions() -> Vec<Box<dyn Action>> {
     vec![
         Box::new(actions::AddContactAction),
+        Box::new(actions::ChooseOptionAction),
         Box::new(actions::FollowRoomAction),
-        Box::new(actions::UnfollowRoomAction),
+        Box::new(actions::GenerateImageAction),
         Box::new(actions::MuteRoomAction),
-        Box::new(actions::UnmuteRoomAction),
         Box::new(actions::RemoveContactAction),
         Box::new(actions::ScheduleFollowUpAction),
         Box::new(actions::SearchContactsAction),
         Box::new(actions::SendMessageAction),
+        Box::new(actions::UnfollowRoomAction),
+        Box::new(actions::UnmuteRoomAction),
         Box::new(actions::UpdateContactAction),
         Box::new(actions::UpdateEntityAction),
         Box::new(actions::UpdateRoleAction),
         Box::new(actions::UpdateSettingsAction),
-        Box::new(actions::GenerateImageAction),
     ]
 }
 
 /// Extended providers: FACTS, ROLES, RELATIONSHIPS, CONTACTS, etc.
 fn extended_providers() -> Vec<Box<dyn Provider>> {
     vec![
+        Box::new(providers::AgentSettingsProvider),
+        Box::new(providers::ChoiceProvider),
         Box::new(providers::ContactsProvider),
         Box::new(providers::FactsProvider),
         Box::new(providers::FollowUpsProvider),
         Box::new(providers::KnowledgeProvider),
         Box::new(providers::RelationshipsProvider),
         Box::new(providers::RolesProvider),
-        Box::new(providers::AgentSettingsProvider),
-        Box::new(providers::SettingsProvider),
     ]
 }
 
-/// Extended evaluators: REFLECTION
+/// Extended evaluators: REFLECTION, RELATIONSHIP_EXTRACTION
 fn extended_evaluators() -> Vec<Box<dyn Evaluator>> {
     vec![
         Box::new(evaluators::ReflectionEvaluator),
+        Box::new(evaluators::RelationshipExtractionEvaluator),
     ]
 }
 
 // ============================================================================
-// Autonomy capabilities - opt-in
+// Autonomy capabilities - opt-in (uses crate-level autonomy module)
 // ============================================================================
 
 /// Autonomy actions: SEND_TO_ADMIN
+#[cfg(feature = "autonomy")]
 fn autonomy_actions() -> Vec<Box<dyn Action>> {
-    vec![
-        Box::new(autonomy::SendToAdminAction),
-    ]
+    vec![Box::new(crate::autonomy::SendToAdminAction)]
 }
 
 /// Autonomy providers: ADMIN_CHAT_HISTORY, AUTONOMY_STATUS
+#[cfg(feature = "autonomy")]
 fn autonomy_providers() -> Vec<Box<dyn Provider>> {
     vec![
-        Box::new(autonomy::AdminChatProvider),
-        Box::new(autonomy::AutonomyStatusProvider),
+        Box::new(crate::autonomy::AdminChatProvider),
+        Box::new(crate::autonomy::AutonomyStatusProvider),
     ]
 }
 
@@ -344,8 +346,8 @@ mod tests {
 
     #[test]
     fn test_plugin_creation_default() {
-        let plugin = BootstrapPlugin::new();
-        assert_eq!(plugin.name(), "bootstrap");
+        let plugin = BasicCapabilitiesPlugin::new();
+        assert_eq!(plugin.name(), "basic_capabilities");
         // Default has basic capabilities only
         assert_eq!(plugin.actions().len(), 3); // REPLY, IGNORE, NONE
         assert!(!plugin.providers().is_empty());
@@ -353,7 +355,7 @@ mod tests {
 
     #[test]
     fn test_plugin_with_extended() {
-        let plugin = BootstrapPlugin::with_config(CapabilityConfig::with_extended());
+        let plugin = BasicCapabilitiesPlugin::with_config(CapabilityConfig::with_extended());
         // Extended has both basic and extended
         assert!(plugin.actions().len() > 3);
         assert!(plugin.providers().len() > 11);
@@ -361,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_plugin_extended_only() {
-        let plugin = BootstrapPlugin::with_config(CapabilityConfig::extended_only());
+        let plugin = BasicCapabilitiesPlugin::with_config(CapabilityConfig::extended_only());
         // Only extended (no basic actions like REPLY)
         assert!(!plugin.actions().iter().any(|a| a.name() == "REPLY"));
         assert!(plugin.actions().iter().any(|a| a.name() == "CHOOSE_OPTION"));
@@ -369,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_plugin_disable_basic() {
-        let plugin = BootstrapPlugin::with_config(CapabilityConfig {
+        let plugin = BasicCapabilitiesPlugin::with_config(CapabilityConfig {
             disable_basic: true,
             enable_extended: false,
             skip_character_provider: false,
@@ -381,7 +383,7 @@ mod tests {
 
     #[test]
     fn test_plugin_skip_character_provider() {
-        let plugin = BootstrapPlugin::with_config(CapabilityConfig::anonymous());
+        let plugin = BasicCapabilitiesPlugin::with_config(CapabilityConfig::anonymous());
         // Should have providers but no CHARACTER provider
         assert!(!plugin.providers().is_empty());
         assert!(!plugin.providers().iter().any(|p| p.name() == "CHARACTER"));
@@ -389,8 +391,8 @@ mod tests {
 
     #[test]
     fn test_get_action_by_name() {
-        let plugin = BootstrapPlugin::new();
-        
+        let plugin = BasicCapabilitiesPlugin::new();
+
         let reply = plugin.get_action("REPLY");
         assert!(reply.is_some());
         assert_eq!(reply.unwrap().name(), "REPLY");
@@ -401,8 +403,8 @@ mod tests {
 
     #[test]
     fn test_get_action_by_simile() {
-        let plugin = BootstrapPlugin::new();
-        
+        let plugin = BasicCapabilitiesPlugin::new();
+
         // RESPOND is a simile for REPLY
         let reply = plugin.get_action("RESPOND");
         assert!(reply.is_some());
@@ -411,8 +413,8 @@ mod tests {
 
     #[test]
     fn test_get_provider() {
-        let plugin = BootstrapPlugin::new();
-        
+        let plugin = BasicCapabilitiesPlugin::new();
+
         let character = plugin.get_provider("CHARACTER");
         assert!(character.is_some());
         assert_eq!(character.unwrap().name(), "CHARACTER");
@@ -420,8 +422,8 @@ mod tests {
 
     #[test]
     fn test_all_actions_have_descriptions() {
-        let plugin = BootstrapPlugin::with_config(CapabilityConfig::with_extended());
-        
+        let plugin = BasicCapabilitiesPlugin::with_config(CapabilityConfig::with_extended());
+
         for action in plugin.actions() {
             assert!(!action.name().is_empty());
             assert!(!action.description().is_empty());
@@ -430,8 +432,8 @@ mod tests {
 
     #[test]
     fn test_all_providers_have_descriptions() {
-        let plugin = BootstrapPlugin::with_config(CapabilityConfig::with_extended());
-        
+        let plugin = BasicCapabilitiesPlugin::with_config(CapabilityConfig::with_extended());
+
         for provider in plugin.providers() {
             assert!(!provider.name().is_empty());
             assert!(!provider.description().is_empty());
@@ -453,4 +455,3 @@ mod tests {
         assert!(extended_only.enable_extended);
     }
 }
-

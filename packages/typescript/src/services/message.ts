@@ -605,7 +605,7 @@ export class DefaultMessageService implements IMessageService {
 			runtime.agentId,
 		);
 		const defLllmOff = parseBooleanFromText(
-			String(runtime.getSetting("BOOTSTRAP_DEFLLMOFF") || ""),
+			String(runtime.getSetting("BASIC_CAPABILITIES_DEFLLMOFF") || ""),
 		);
 
 		if (defLllmOff && agentUserState === null) {
@@ -933,7 +933,7 @@ export class DefaultMessageService implements IMessageService {
 			// Check if we still have the latest response ID
 			const currentResponseId = agentResponses.get(message.roomId);
 			const keepResp = parseBooleanFromText(
-				String(runtime.getSetting("BOOTSTRAP_KEEP_RESP") || ""),
+				String(runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") || ""),
 			);
 
 			if (currentResponseId !== responseId && !keepResp) {

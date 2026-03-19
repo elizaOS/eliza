@@ -482,13 +482,13 @@
             "group": "Core Plugins",
             "pages": [
               {
-                "group": "Bootstrap",
+                "group": "BasicCapabilities",
                 "pages": [
-                  "plugin-registry/bootstrap",
-                  "plugin-registry/bootstrap/complete-documentation",
-                  "plugin-registry/bootstrap/message-flow",
-                  "plugin-registry/bootstrap/examples",
-                  "plugin-registry/bootstrap/testing-guide"
+                  "plugin-registry/basic-capabilities",
+                  "plugin-registry/basic-capabilities/complete-documentation",
+                  "plugin-registry/basic-capabilities/message-flow",
+                  "plugin-registry/basic-capabilities/examples",
+                  "plugin-registry/basic-capabilities/testing-guide"
                 ]
               },
               {

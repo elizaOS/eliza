@@ -31,8 +31,8 @@ async fn test_trajectory_parity_logging() -> Result<()> {
     // Verify provider logs
     // Should have logs from default providers (e.g. system prompt provider if any, or just empty if no providers)
     // Actually, default runtime might not have providers unless we reg them.
-    // The newly created runtime has empty providers list by default unless bootstrap runs?
-    // Bootstrap runs in initialize(). We didn't call initialize().
+    // The newly created runtime has empty providers list by default unless basic_capabilities runs?
+    // BasicCapabilities runs in initialize(). We didn't call initialize().
     // So there might be NO providers.
 
     // We should verify purpose field if any provider ran.

@@ -13,14 +13,14 @@
  *
  * **Exports:**
  * - loadCharacters(sources) – load from file paths or inline objects; returns Character[].
- * - getBootstrapSettings(character) – flatten character + env for adapter factories (bootstrap only).
+ * - getBasic CapabilitiesSettings(character) – flatten character + env for adapter factories (basic-capabilities only).
  * - mergeSettingsInto(character, agentRecord) – pure merge of DB agent into character (for custom pipelines).
  * - createRuntimes(characters, options?) – full pipeline: resolve plugins → adapters → merge DB settings → create/init runtimes; optional provision.
  *
- * **Settings divide:** Adapter factories receive only *bootstrap* settings (character + env).
+ * **Settings divide:** Adapter factories receive only *basic-capabilities* settings (character + env).
  * Runtime settings from the DB are merged *after* the adapter is created and used when
  * constructing the runtime. WHY: You cannot load settings from the DB until the adapter
- * is connected; bootstrap settings (e.g. POSTGRES_URL, PGLITE_DATA_DIR) are what you
+ * is connected; basic-capabilities settings (e.g. POSTGRES_URL, PGLITE_DATA_DIR) are what you
  * need to create the adapter in the first place.
  */
 
@@ -48,7 +48,7 @@ type PluginWithAdapter = Plugin & {
  * Flatten character.settings, character.secrets, and env into a single Record<string, string>.
  * Used when calling adapter factories (Plugin.adapter(agentId, settings)).
  *
- * **WHY bootstrap-only:** Adapter factories run *before* the database is connected. They
+ * **WHY basic-capabilities-only:** Adapter factories run *before* the database is connected. They
  * cannot read runtime settings from the DB. Only settings available from character config
  * and process.env (e.g. POSTGRES_URL, PGLITE_DATA_DIR, MONGODB_URI) are valid here. Runtime
  * settings (API keys, model prefs, etc.) are merged later from the DB via mergeSettingsInto.
@@ -61,7 +61,7 @@ type PluginWithAdapter = Plugin & {
  * @param env - Environment record (defaults to process.env)
  * @returns String-only record suitable for adapter factories
  */
-export function getBootstrapSettings(
+export function getBasic CapabilitiesSettings(
 	character: Character,
 	env: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
@@ -196,8 +196,8 @@ export function mergeSettingsInto(
  * Load one character from a file path. Reuses importSecretsFromEnv and ensureEncryptionSalt.
  * We do NOT call syncCharacterSecretsToEnv here. WHY: When loading multiple characters,
  * syncing each character's secrets into process.env would overwrite env; later characters
- * would pollute getBootstrapSettings for earlier ones. Secrets stay on the character
- * object and are used by getBootstrapSettings(character) without going through process.env.
+ * would pollute getBasic CapabilitiesSettings for earlier ones. Secrets stay on the character
+ * object and are used by getBasic CapabilitiesSettings(character) without going through process.env.
  */
 async function loadOneCharacterFromFile(filePath: string): Promise<Character> {
 	const loaded = await loadCharacterFile(filePath);
@@ -340,7 +340,7 @@ export async function createRuntimes(
 		adapters = await Promise.all(
 			characters.map((c) => {
 				const agentId = (c.id ?? stringToUuid(c.name ?? "eliza")) as UUID;
-				const settings = getBootstrapSettings(c);
+				const settings = getBasic CapabilitiesSettings(c);
 				return Promise.resolve(adapterPlugin.adapter(agentId, settings));
 			}),
 		);

@@ -33,8 +33,8 @@ export interface MessageProcessingOptions
 	/** Signal to abort message processing */
 	abortSignal?: AbortSignal;
 	/**
-	 * When true, do not discard responses when a newer message is being processed (same as BOOTSTRAP_KEEP_RESP).
-	 * @default resolved from runtime.getSetting("BOOTSTRAP_KEEP_RESP") if not set
+	 * When true, do not discard responses when a newer message is being processed (same as BASIC_CAPABILITIES_KEEP_RESP).
+	 * @default resolved from runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") if not set
 	 */
 	keepExistingResponses?: boolean;
 }

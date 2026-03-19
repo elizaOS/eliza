@@ -54,8 +54,6 @@ export function OnboardingWizard() {
       : getVrmPreviewUrl(1);
   const worldUrl = resolveAppAssetUrl("worlds/companion-day.spz");
 
-  const isCharacterSelect = onboardingStep === "identity";
-
   useEffect(() => {
     // Onboarding keeps a fixed "light" chrome; companion mode owns day/night scenes.
     applyUiTheme("light");
@@ -85,7 +83,7 @@ export function OnboardingWizard() {
     <div className="onboarding-screen">
       {/* Full-screen VRM background — same as CompanionView */}
       <div className="onboarding-bg" />
-      {!isCharacterSelect && <div className="onboarding-bg-overlay" />}
+      <div className="onboarding-bg-overlay" />
 
       {/* Keep browser E2E runs lightweight and deterministic by skipping VRM boot. */}
       {disableVrm ? (
@@ -209,30 +207,13 @@ export function OnboardingWizard() {
           />
         </div>
 
-        {isCharacterSelect ? (
-          /* ── Full-screen character select — anchored to bottom ── */
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 40,
-              display: "flex",
-              alignItems: "flex-end",
-              justifyContent: "center",
-              paddingBottom: "3rem",
-            }}
-          >
-            <IdentityStep />
-          </div>
-        ) : (
-          /* ── Standard overlaid UI — step nav + content panel ── */
-          <div className="onboarding-ui-overlay">
-            <OnboardingStepNav />
-            <OnboardingPanel step={onboardingStep}>
-              {renderStep()}
-            </OnboardingPanel>
-          </div>
-        )}
+        {/* ── Standard overlaid UI — step nav + content panel ── */}
+        <div className="onboarding-ui-overlay">
+          <OnboardingStepNav />
+          <OnboardingPanel step={onboardingStep}>
+            {renderStep()}
+          </OnboardingPanel>
+        </div>
       </div>
     </div>
   );

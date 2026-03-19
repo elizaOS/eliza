@@ -1600,7 +1600,7 @@ mod end_to_end_tests {
             .await
             .unwrap();
 
-        // Should include both RESPOND and SEARCH results (bootstrap adds additional actions).
+        // Should include both RESPOND and SEARCH results (basic_capabilities adds additional actions).
         let mut has_respond = false;
         let mut has_search = false;
         for r in &results_2 {
@@ -1675,7 +1675,7 @@ mod end_to_end_tests {
             .await
             .unwrap();
 
-        // Verify both actions executed (bootstrap adds additional actions).
+        // Verify both actions executed (basic_capabilities adds additional actions).
         let mut has_respond = false;
         let mut has_search = false;
         for r in &results {

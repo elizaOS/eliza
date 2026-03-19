@@ -642,7 +642,7 @@ export interface ConversationGreeting {
 }
 
 export interface CreateConversationOptions {
-  bootstrapGreeting?: boolean;
+  basic-capabilitiesGreeting?: boolean;
   lang?: string;
 }
 
@@ -4375,8 +4375,8 @@ export class ElizaClient {
       method: "POST",
       body: JSON.stringify({
         title,
-        ...(options?.bootstrapGreeting === true
-          ? { bootstrapGreeting: true }
+        ...(options?.basic-capabilitiesGreeting === true
+          ? { basic-capabilitiesGreeting: true }
           : {}),
         ...(typeof options?.lang === "string" && options.lang.trim()
           ? { lang: options.lang.trim() }

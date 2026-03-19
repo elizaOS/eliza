@@ -1,6 +1,6 @@
 /**
  * Early log capture — split out from server.ts to avoid pulling in the entire
- * API server dependency graph when only the log-buffer bootstrap is needed
+ * API server dependency graph when only the log-buffer init is needed
  * (e.g. during headless `startEliza()`).
  *
  * @module api/early-logs

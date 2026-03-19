@@ -1,5 +1,5 @@
 /**
- * Reads workspace bootstrap files and injects them into agent context.
+ * Reads workspace init files and injects them into agent context.
  *
  * Also provides coding agent context enrichment: when coding-agent metadata
  * is present on the inbound message, the provider appends a summary of the
@@ -19,9 +19,9 @@ import {
 import type { CodingAgentContext } from "../services/coding-agent-context";
 import {
   DEFAULT_AGENT_WORKSPACE_DIR,
-  filterBootstrapFilesForSession,
-  loadWorkspaceBootstrapFiles,
-  type WorkspaceBootstrapFile,
+  filterInitFilesForSession,
+  loadWorkspaceInitFiles,
+  type WorkspaceInitFile,
 } from "./workspace";
 
 const DEFAULT_MAX_CHARS = 20_000;
@@ -32,12 +32,12 @@ const CACHE_TTL_MS = 60_000;
 // Per-workspace cache so multi-agent doesn't thrash.
 const cache = new Map<
   string,
-  { files: WorkspaceBootstrapFile[]; at: number }
+  { files: WorkspaceInitFile[]; at: number }
 >();
 /** Maximum number of workspace directories to cache simultaneously. */
 const MAX_CACHE_ENTRIES = 20;
 
-async function getFiles(dir: string): Promise<WorkspaceBootstrapFile[]> {
+async function getFiles(dir: string): Promise<WorkspaceInitFile[]> {
   const now = Date.now();
   const entry = cache.get(dir);
   if (entry && now - entry.at < CACHE_TTL_MS) return entry.files;
@@ -52,7 +52,7 @@ async function getFiles(dir: string): Promise<WorkspaceBootstrapFile[]> {
     if (oldest) cache.delete(oldest);
   }
 
-  const files = await loadWorkspaceBootstrapFiles(dir);
+  const files = await loadWorkspaceInitFiles(dir);
   cache.set(dir, { files, at: now });
   return files;
 }
@@ -65,7 +65,7 @@ export function truncate(content: string, max: number): string {
 
 /** @internal Exported for testing. */
 export function buildContext(
-  files: WorkspaceBootstrapFile[],
+  files: WorkspaceInitFile[],
   maxChars: number,
 ): string {
   const sections: string[] = [];
@@ -163,7 +163,7 @@ export function createWorkspaceProvider(options?: {
   return {
     name: "workspaceContext",
     description:
-      "Workspace bootstrap files (AGENTS.md, TOOLS.md, IDENTITY.md, etc.) and coding agent context",
+      "Workspace init files (AGENTS.md, TOOLS.md, IDENTITY.md, etc.) and coding agent context",
     position: 10,
 
     async get(
@@ -190,7 +190,7 @@ export function createWorkspaceProvider(options?: {
         const meta = message.metadata as Record<string, unknown> | undefined;
         const sessionKey =
           typeof meta?.sessionKey === "string" ? meta.sessionKey : undefined;
-        const files = filterBootstrapFilesForSession(allFiles, sessionKey);
+        const files = filterInitFilesForSession(allFiles, sessionKey);
         const text = buildContext(files, maxChars);
 
         return {

@@ -4,7 +4,7 @@ The character provider builds a structured text context from the character's
 bio, adjectives, lore, topics, and style fields.
 
 Note: We import the provider module carefully to avoid the circular import
-between ``elizaos.basic_capabilities`` and ``elizaos.bootstrap``.
+between ``elizaos.basic_capabilities`` and ``elizaos.basic_capabilities``.
 """
 
 from __future__ import annotations

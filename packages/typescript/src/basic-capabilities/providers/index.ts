@@ -1,7 +1,7 @@
 /**
  * Basic Providers
  *
- * Core providers included by default in the bootstrap plugin.
+ * Core providers included by default in the basic-capabilities plugin.
  */
 
 export { actionStateProvider } from "./actionState.ts";

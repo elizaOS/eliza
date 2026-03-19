@@ -107,7 +107,7 @@ pub fn build_character_plugins(env: &HashMap<String, String>) -> Vec<String> {
         plugins.push("@elizaos/plugin-telegram".to_string());
     }
 
-    // Bootstrap plugin is now part of @elizaos/core and loaded automatically
+    // BasicCapabilities plugin is now part of @elizaos/core and loaded automatically
     // No need to explicitly add it to the plugins list
 
     // Ollama fallback (only if no other LLM providers configured)
@@ -224,7 +224,7 @@ mod tests {
         let env = HashMap::new();
         let plugins = build_character_plugins(&env);
 
-        // Should include sql and ollama fallback; bootstrap is now part of core
+        // Should include sql and ollama fallback; basic_capabilities is now part of core
         assert!(plugins.contains(&"@elizaos/plugin-sql".to_string()));
         assert!(plugins.contains(&"@elizaos/plugin-ollama".to_string()));
     }

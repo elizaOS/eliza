@@ -40,7 +40,7 @@ export const muteRoomAction: Action = {
 	): Promise<ActionResult> => {
 		if (!state) {
 			logger.error(
-				{ src: "plugin:bootstrap:action:mute_room", agentId: runtime.agentId },
+				{ src: "plugin:advanced-capabilities:action:mute_room", agentId: runtime.agentId },
 				"State is required for muting a room",
 			);
 			return {
@@ -118,7 +118,7 @@ export const muteRoomAction: Action = {
 
 			logger.warn(
 				{
-					src: "plugin:bootstrap:action:mute_room",
+					src: "plugin:advanced-capabilities:action:mute_room",
 					agentId: runtime.agentId,
 					response,
 				},
@@ -182,7 +182,7 @@ export const muteRoomAction: Action = {
 			} catch (error) {
 				logger.error(
 					{
-						src: "plugin:bootstrap:action:mute_room",
+						src: "plugin:advanced-capabilities:action:mute_room",
 						agentId: runtime.agentId,
 						error: error instanceof Error ? error.message : String(error),
 					},

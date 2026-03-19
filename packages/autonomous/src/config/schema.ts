@@ -314,8 +314,8 @@ const FIELD_LABELS: Record<string, string> = {
   "skills.load.watchDebounceMs": "Skills Watch Debounce (ms)",
   "agents.defaults.workspace": "Workspace",
   "agents.defaults.repoRoot": "Repo Root",
-  "agents.defaults.bootstrapMaxChars": "Bootstrap Max Chars",
-  "agents.defaults.enableBootstrapProviders": "Enable Bootstrap Providers",
+  "agents.defaults.initMaxChars": "Init Max Chars",
+  "agents.defaults.enableInitProviders": "Enable Init Providers",
   "agents.defaults.envelopeTimezone": "Envelope Timezone",
   "agents.defaults.envelopeTimestamp": "Envelope Timestamp",
   "agents.defaults.envelopeElapsed": "Envelope Elapsed",
@@ -672,10 +672,10 @@ const FIELD_HELP: Record<string, string> = {
     "Cap (hours) for billing backoff (default: 24).",
   "auth.cooldowns.failureWindowHours":
     "Failure window (hours) for backoff counters (default: 24).",
-  "agents.defaults.bootstrapMaxChars":
-    "Max characters of each workspace bootstrap file injected into the system prompt before truncation (default: 20000).",
-  "agents.defaults.enableBootstrapProviders":
-    "Enable bootstrap providers (attachments, entities, facts) that add context but consume tokens. Useful to disable for small context windows (default: true).",
+  "agents.defaults.initMaxChars":
+    "Max characters of each workspace init file injected into the system prompt before truncation (default: 20000).",
+  "agents.defaults.enableInitProviders":
+    "Enable init providers (attachments, entities, facts) that add context but consume tokens. Useful to disable for small context windows (default: true).",
   "agents.defaults.repoRoot":
     "Optional repository root shown in the system prompt runtime line (overrides auto-detect).",
   "agents.defaults.envelopeTimezone":

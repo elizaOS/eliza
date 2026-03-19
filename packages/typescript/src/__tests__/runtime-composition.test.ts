@@ -1,5 +1,5 @@
 /**
- * Tests for runtime composition: getBootstrapSettings, mergeSettingsInto,
+ * Tests for runtime composition: getBasicCapabilitiesSettings, mergeSettingsInto,
  * loadCharacters (object source, file path via mock, empty), createRuntimes with adapter override.
  */
 
@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type AgentRecordForMerge,
 	createRuntimes,
-	getBootstrapSettings,
+	getBasicCapabilitiesSettings,
 	loadCharacters,
 	mergeSettingsInto,
 } from "../runtime-composition";
@@ -24,14 +24,14 @@ vi.mock("../character-loader", async (importOriginal) => {
 });
 
 describe("runtime-composition", () => {
-	describe("getBootstrapSettings", () => {
+	describe("getBasicCapabilitiesSettings", () => {
 		it("returns a Record with string values only", () => {
 			const character = createTestCharacter({
 				settings: { FOO: "bar", NUM: 42 as unknown as string },
 				secrets: { SECRET_KEY: "x" },
 			});
 			const env: NodeJS.ProcessEnv = { ENV_VAR: "envVal" };
-			const out = getBootstrapSettings(character, env);
+			const out = getBasicCapabilitiesSettings(character, env);
 			expect(out.FOO).toBe("bar");
 			expect(out.NUM).toBe("42");
 			expect(out.SECRET_KEY).toBe("x");
@@ -46,7 +46,7 @@ describe("runtime-composition", () => {
 				settings: { POSTGRES_URL: "from-character" },
 			});
 			const env: NodeJS.ProcessEnv = { POSTGRES_URL: "from-env" };
-			const out = getBootstrapSettings(character, env);
+			const out = getBasicCapabilitiesSettings(character, env);
 			expect(out.POSTGRES_URL).toBe("from-character");
 		});
 
@@ -55,7 +55,7 @@ describe("runtime-composition", () => {
 				settings: { secrets: { A: "from-settings-secrets" } },
 				secrets: { B: "from-top-secrets" },
 			});
-			const out = getBootstrapSettings(character, {});
+			const out = getBasicCapabilitiesSettings(character, {});
 			expect(out.A).toBe("from-settings-secrets");
 			expect(out.B).toBe("from-top-secrets");
 		});
@@ -67,7 +67,7 @@ describe("runtime-composition", () => {
 					OTHER: "ok",
 				} as Character["settings"],
 			});
-			const out = getBootstrapSettings(character, {});
+			const out = getBasicCapabilitiesSettings(character, {});
 			expect(out.OTHER).toBe("ok");
 			expect(out.K).toBe("v");
 		});

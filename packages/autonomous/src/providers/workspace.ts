@@ -97,11 +97,11 @@ const DEFAULT_TOOLS_FILENAME = "TOOLS.md";
 const DEFAULT_IDENTITY_FILENAME = "IDENTITY.md";
 const DEFAULT_USER_FILENAME = "USER.md";
 const DEFAULT_HEARTBEAT_FILENAME = "HEARTBEAT.md";
-const DEFAULT_BOOTSTRAP_FILENAME = "BOOTSTRAP.md";
+const DEFAULT_INIT_FILENAME = "INIT.md";
 const DEFAULT_MEMORY_FILENAME = "MEMORY.md";
 const DEFAULT_MEMORY_ALT_FILENAME = "memory.md";
 
-/** Inline workspace bootstrap templates — no external files needed. */
+/** Inline workspace init templates — no external files needed. */
 const WORKSPACE_TEMPLATES: Record<string, string> = {
   [DEFAULT_AGENTS_FILENAME]: `# Agents
 
@@ -167,7 +167,7 @@ pending tasks, and environmental changes.
 - External events from connected channels
 - System notifications and alerts
 `,
-  [DEFAULT_BOOTSTRAP_FILENAME]: `# Bootstrap
+  [DEFAULT_INIT_FILENAME]: `# Init
 
 Initial workspace setup for a new agent.
 
@@ -190,18 +190,18 @@ or the Eliza Control UI.
 `,
 };
 
-export type WorkspaceBootstrapFileName =
+export type WorkspaceInitFileName =
   | typeof DEFAULT_AGENTS_FILENAME
   | typeof DEFAULT_TOOLS_FILENAME
   | typeof DEFAULT_IDENTITY_FILENAME
   | typeof DEFAULT_USER_FILENAME
   | typeof DEFAULT_HEARTBEAT_FILENAME
-  | typeof DEFAULT_BOOTSTRAP_FILENAME
+  | typeof DEFAULT_INIT_FILENAME
   | typeof DEFAULT_MEMORY_FILENAME
   | typeof DEFAULT_MEMORY_ALT_FILENAME;
 
-export type WorkspaceBootstrapFile = {
-  name: WorkspaceBootstrapFileName;
+export type WorkspaceInitFile = {
+  name: WorkspaceInitFileName;
   path: string;
   content?: string;
   missing: boolean;
@@ -296,7 +296,7 @@ async function ensureGitRepo(dir: string, isBrandNewWorkspace: boolean) {
 
 export async function ensureAgentWorkspace(params?: {
   dir?: string;
-  ensureBootstrapFiles?: boolean;
+  ensureInitFiles?: boolean;
 }): Promise<{
   dir: string;
   agentsPath?: string;
@@ -304,7 +304,7 @@ export async function ensureAgentWorkspace(params?: {
   identityPath?: string;
   userPath?: string;
   heartbeatPath?: string;
-  bootstrapPath?: string;
+  initPath?: string;
 }> {
   const rawDir = params?.dir?.trim()
     ? params.dir.trim()
@@ -312,7 +312,7 @@ export async function ensureAgentWorkspace(params?: {
   const dir = resolveUserPath(rawDir);
   await fs.mkdir(dir, { recursive: true });
 
-  if (!params?.ensureBootstrapFiles) {
+  if (!params?.ensureInitFiles) {
     return { dir };
   }
 
@@ -321,7 +321,7 @@ export async function ensureAgentWorkspace(params?: {
   const identityPath = path.join(dir, DEFAULT_IDENTITY_FILENAME);
   const userPath = path.join(dir, DEFAULT_USER_FILENAME);
   const heartbeatPath = path.join(dir, DEFAULT_HEARTBEAT_FILENAME);
-  const bootstrapPath = path.join(dir, DEFAULT_BOOTSTRAP_FILENAME);
+  const initPath = path.join(dir, DEFAULT_INIT_FILENAME);
 
   const isBrandNewWorkspace = await (async () => {
     const paths = [
@@ -352,7 +352,7 @@ export async function ensureAgentWorkspace(params?: {
   const identityTemplate = WORKSPACE_TEMPLATES[DEFAULT_IDENTITY_FILENAME];
   const userTemplate = WORKSPACE_TEMPLATES[DEFAULT_USER_FILENAME];
   const heartbeatTemplate = WORKSPACE_TEMPLATES[DEFAULT_HEARTBEAT_FILENAME];
-  const bootstrapTemplate = WORKSPACE_TEMPLATES[DEFAULT_BOOTSTRAP_FILENAME];
+  const initTemplate = WORKSPACE_TEMPLATES[DEFAULT_INIT_FILENAME];
 
   const writeOps = [
     writeFileIfMissing(agentsPath, agentsTemplate),
@@ -362,7 +362,7 @@ export async function ensureAgentWorkspace(params?: {
     writeFileIfMissing(heartbeatPath, heartbeatTemplate),
   ];
   if (isBrandNewWorkspace) {
-    writeOps.push(writeFileIfMissing(bootstrapPath, bootstrapTemplate));
+    writeOps.push(writeFileIfMissing(initPath, initTemplate));
   }
   await Promise.all(writeOps);
   await ensureGitRepo(dir, isBrandNewWorkspace);
@@ -374,18 +374,18 @@ export async function ensureAgentWorkspace(params?: {
     identityPath,
     userPath,
     heartbeatPath,
-    bootstrapPath,
+    initPath,
   };
 }
 
-async function resolveMemoryBootstrapEntries(
+async function resolveMemoryInitEntries(
   resolvedDir: string,
-): Promise<Array<{ name: WorkspaceBootstrapFileName; filePath: string }>> {
-  const candidates: WorkspaceBootstrapFileName[] = [
+): Promise<Array<{ name: WorkspaceInitFileName; filePath: string }>> {
+  const candidates: WorkspaceInitFileName[] = [
     DEFAULT_MEMORY_FILENAME,
     DEFAULT_MEMORY_ALT_FILENAME,
   ];
-  const entries: Array<{ name: WorkspaceBootstrapFileName; filePath: string }> =
+  const entries: Array<{ name: WorkspaceInitFileName; filePath: string }> =
     [];
   for (const name of candidates) {
     const filePath = path.join(resolvedDir, name);
@@ -403,7 +403,7 @@ async function resolveMemoryBootstrapEntries(
   }
 
   const seen = new Set<string>();
-  const deduped: Array<{ name: WorkspaceBootstrapFileName; filePath: string }> =
+  const deduped: Array<{ name: WorkspaceInitFileName; filePath: string }> =
     [];
   for (const entry of entries) {
     let key = entry.filePath;
@@ -423,13 +423,13 @@ async function resolveMemoryBootstrapEntries(
   return deduped;
 }
 
-export async function loadWorkspaceBootstrapFiles(
+export async function loadWorkspaceInitFiles(
   dir: string,
-): Promise<WorkspaceBootstrapFile[]> {
+): Promise<WorkspaceInitFile[]> {
   const resolvedDir = resolveUserPath(dir);
 
   const entries: Array<{
-    name: WorkspaceBootstrapFileName;
+    name: WorkspaceInitFileName;
     filePath: string;
   }> = [
     {
@@ -453,15 +453,15 @@ export async function loadWorkspaceBootstrapFiles(
       filePath: path.join(resolvedDir, DEFAULT_HEARTBEAT_FILENAME),
     },
     {
-      name: DEFAULT_BOOTSTRAP_FILENAME,
-      filePath: path.join(resolvedDir, DEFAULT_BOOTSTRAP_FILENAME),
+      name: DEFAULT_INIT_FILENAME,
+      filePath: path.join(resolvedDir, DEFAULT_INIT_FILENAME),
     },
   ];
 
-  entries.push(...(await resolveMemoryBootstrapEntries(resolvedDir)));
+  entries.push(...(await resolveMemoryInitEntries(resolvedDir)));
 
   const result = await Promise.all(
-    entries.map(async (entry): Promise<WorkspaceBootstrapFile> => {
+    entries.map(async (entry): Promise<WorkspaceInitFile> => {
       try {
         const content = await fs.readFile(entry.filePath, "utf-8");
         return {
@@ -481,17 +481,17 @@ export async function loadWorkspaceBootstrapFiles(
   return result;
 }
 
-const SUBAGENT_BOOTSTRAP_ALLOWLIST = new Set([
+const SUBAGENT_INIT_ALLOWLIST = new Set([
   DEFAULT_AGENTS_FILENAME,
   DEFAULT_TOOLS_FILENAME,
 ]);
 
-export function filterBootstrapFilesForSession(
-  files: WorkspaceBootstrapFile[],
+export function filterInitFilesForSession(
+  files: WorkspaceInitFile[],
   sessionKey?: string,
-): WorkspaceBootstrapFile[] {
+): WorkspaceInitFile[] {
   if (!sessionKey || !isSubagentSessionKey(sessionKey)) {
     return files;
   }
-  return files.filter((file) => SUBAGENT_BOOTSTRAP_ALLOWLIST.has(file.name));
+  return files.filter((file) => SUBAGENT_INIT_ALLOWLIST.has(file.name));
 }

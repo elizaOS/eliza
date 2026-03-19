@@ -1,4 +1,4 @@
-//! Providers module for the elizaOS Bootstrap Plugin.
+//! Providers module for the elizaOS BasicCapabilities Plugin.
 //!
 //! This module contains all provider implementations.
 

@@ -405,7 +405,7 @@ export const LEGACY_EVENT_MAP: Record<string, EventType> = {
 	"command:stop": EventType.HOOK_COMMAND_STOP,
 	"session:start": EventType.HOOK_SESSION_START,
 	"session:end": EventType.HOOK_SESSION_END,
-	"agent:bootstrap": EventType.HOOK_AGENT_BOOTSTRAP,
+	"agent:basic-capabilities": EventType.HOOK_AGENT_BOOTSTRAP,
 	"gateway:startup": EventType.HOOK_GATEWAY_START,
 	"gateway:stop": EventType.HOOK_GATEWAY_STOP,
 	// Plugin lifecycle hooks

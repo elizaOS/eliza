@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Preview the bootstrap banner with ANSI colors.
+ * Preview the basic-capabilities banner with ANSI colors.
  * Run from repo root: node packages/typescript/scripts/preview-banner.mjs
  */
 const c = {

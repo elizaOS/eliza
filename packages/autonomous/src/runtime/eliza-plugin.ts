@@ -46,7 +46,7 @@ import { loadCustomActions, setCustomActionsRuntime } from "./custom-actions";
 
 export type ElizaPluginConfig = {
   workspaceDir?: string;
-  bootstrapMaxChars?: number;
+  initMaxChars?: number;
   sessionStorePath?: string;
   agentId?: string;
 };
@@ -61,7 +61,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     createChannelProfileProvider(),
     createWorkspaceProvider({
       workspaceDir,
-      maxCharsPerFile: config?.bootstrapMaxChars,
+      maxCharsPerFile: config?.initMaxChars,
     }),
     adminTrustProvider,
 

@@ -52,7 +52,7 @@ def _load_dotenv(repo_root: Path) -> None:
         os.environ[k] = v
 
 
-def _bootstrap_sys_path(repo_root: Path) -> None:
+def _basic-capabilities_sys_path(repo_root: Path) -> None:
     """
     Make example packages importable without installing them.
     """
@@ -112,11 +112,11 @@ class BenchRunConfig:
 
 
 async def _make_runtime(*, character, plugins):
-    from elizaos.bootstrap import bootstrap_plugin
+    from elizaos.basic-capabilities import basic-capabilities_plugin
     from elizaos.runtime import AgentRuntime
 
-    # Ensure bootstrap is always present.
-    full_plugins = [bootstrap_plugin, *plugins]
+    # Ensure basic-capabilities is always present.
+    full_plugins = [basic-capabilities_plugin, *plugins]
     runtime = AgentRuntime(character=character, plugins=full_plugins)
     await runtime.initialize()
     return runtime
@@ -411,7 +411,7 @@ def _git_head(repo_root: Path) -> str | None:
 
 async def main_async(args: argparse.Namespace) -> int:
     repo_root = _repo_root()
-    _bootstrap_sys_path(repo_root)
+    _basic-capabilities_sys_path(repo_root)
     _load_dotenv(repo_root)
 
     if not os.environ.get("OPENAI_API_KEY"):

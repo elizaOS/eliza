@@ -1,6 +1,6 @@
 """Basic Providers - Core providers for agent operation.
 
-Fundamental providers included by default in the bootstrap plugin.
+Fundamental providers included by default in the basic_capabilities plugin.
 """
 
 from .action_state import action_state_provider

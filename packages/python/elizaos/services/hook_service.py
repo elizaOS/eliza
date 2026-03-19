@@ -48,7 +48,7 @@ class HookEventType(str, Enum):
     HOOK_COMMAND_STOP = "HOOK_COMMAND_STOP"
     HOOK_SESSION_START = "HOOK_SESSION_START"
     HOOK_SESSION_END = "HOOK_SESSION_END"
-    HOOK_AGENT_BOOTSTRAP = "HOOK_AGENT_BOOTSTRAP"
+    HOOK_AGENT_BASIC_CAPABILITIES = "HOOK_AGENT_BASIC_CAPABILITIES"
     HOOK_AGENT_START = "HOOK_AGENT_START"
     HOOK_AGENT_END = "HOOK_AGENT_END"
     HOOK_GATEWAY_START = "HOOK_GATEWAY_START"
@@ -147,7 +147,7 @@ LEGACY_EVENT_MAP: dict[str, str] = {
     "command:stop": HookEventType.HOOK_COMMAND_STOP.value,
     "session:start": HookEventType.HOOK_SESSION_START.value,
     "session:end": HookEventType.HOOK_SESSION_END.value,
-    "agent:bootstrap": HookEventType.HOOK_AGENT_BOOTSTRAP.value,
+    "agent:basic_capabilities": HookEventType.HOOK_AGENT_BASIC_CAPABILITIES.value,
     "agent:start": HookEventType.HOOK_AGENT_START.value,
     "agent:end": HookEventType.HOOK_AGENT_END.value,
     "gateway:start": HookEventType.HOOK_GATEWAY_START.value,

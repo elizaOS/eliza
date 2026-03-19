@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 
-use crate::bootstrap::runtime::{IAgentRuntime, ModelOutput, ModelParams};
+use crate::basic_capabilities::runtime::{IAgentRuntime, ModelOutput, ModelParams};
 use crate::error::{PluginError, PluginResult};
 use crate::generated::spec_helpers::require_action_spec;
 use crate::prompts::IMAGE_GENERATION_TEMPLATE;

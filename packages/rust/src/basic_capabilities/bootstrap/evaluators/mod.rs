@@ -1,4 +1,4 @@
-//! Evaluators module for the elizaOS Bootstrap Plugin.
+//! Evaluators module for the elizaOS BasicCapabilities Plugin.
 //!
 //! This module contains all evaluator implementations.
 

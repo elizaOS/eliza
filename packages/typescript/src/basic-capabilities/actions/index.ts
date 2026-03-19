@@ -1,7 +1,7 @@
 /**
  * Basic Actions
  *
- * Core response actions included by default in the bootstrap plugin.
+ * Core response actions included by default in the basic-capabilities plugin.
  */
 
 export { choiceAction } from "./choice.ts";

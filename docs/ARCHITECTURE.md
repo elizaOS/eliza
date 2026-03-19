@@ -17,7 +17,7 @@ elizaOS is a **plugin-based agent runtime** implemented primarily in TypeScript 
   - Runtime orchestrator: `packages/typescript/src/runtime.ts`
   - Default message pipeline: `packages/typescript/src/services/message.ts`
   - Plugin loading helpers: `packages/typescript/src/plugin.ts`
-  - Bootstrap capabilities: `packages/typescript/src/bootstrap/`
+  - BasicCapabilities capabilities: `packages/typescript/src/basic-capabilities/`
   - Types: `packages/typescript/src/types/`
   - Memory helpers: `packages/typescript/src/memory.ts`
   - Database adapter interface: `packages/typescript/src/database.ts`
@@ -94,7 +94,7 @@ Below is the default TypeScript pipeline as implemented by `DefaultMessageServic
 
 At runtime initialization (`AgentRuntime.initialize()` in `packages/typescript/src/runtime.ts`):
 
-- The runtime ensures `bootstrapPlugin` is present (auto-included unless already provided).
+- The runtime ensures `basic-capabilitiesPlugin` is present (auto-included unless already provided).
 - Each plugin is registered via `registerPlugin(plugin)`:
   - `plugin.init(config, runtime)` runs first
   - Components are registered (adapter, actions, evaluators, providers, models, routes, events, services)
