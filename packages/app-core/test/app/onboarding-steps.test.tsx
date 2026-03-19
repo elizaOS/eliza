@@ -1,6 +1,6 @@
 /**
- * Tests for the new 6-step linear onboarding step components:
- * WakeUpStep, IdentityStep, ConnectionStep, ActivateStep
+ * Tests for the onboarding step components:
+ * IdentityStep, ConnectionStep, ActivateStep
  *
  * Validates rendering, user interaction, and navigation callbacks.
  */
@@ -16,6 +16,7 @@ const { mockUseApp, mockIsNativeFn } = vi.hoisted(() => ({
 
 vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
+  getVrmPreviewUrl: (index: number) => `/vrms/preview-${index}.png`,
 }));
 
 vi.mock("@elizaos/app-core/api", () => ({
@@ -51,7 +52,7 @@ vi.mock("@elizaos/app-core/platform", () => ({
 
 import { ActivateStep } from "../../src/components/onboarding/ActivateStep";
 import { ConnectionStep } from "../../src/components/onboarding/ConnectionStep";
-import { WakeUpStep } from "../../src/components/onboarding/WakeUpStep";
+import { IdentityStep } from "../../src/components/onboarding/IdentityStep";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -123,49 +124,49 @@ function findButtons(
 }
 
 // ===================================================================
-//  WakeUpStep
+//  IdentityStep
 // ===================================================================
 
-describe("WakeUpStep", () => {
+describe("IdentityStep", () => {
   beforeEach(() => mockUseApp.mockReset());
 
-  it("renders initialization screen with Activate button", async () => {
-    mockUseApp.mockReturnValue(baseContext());
+  it("renders character select roster with preset characters", async () => {
+    mockUseApp.mockReturnValue(baseContext({ onboardingStep: "identity" }));
     let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
-      tree = TestRenderer.create(React.createElement(WakeUpStep));
+      tree = TestRenderer.create(React.createElement(IdentityStep));
     });
 
     const text = collectText(tree?.root as TestRenderer.ReactTestInstance);
-    expect(text).toContain("onboarding.welcomeTitle");
-    expect(text).toContain("onboarding.welcomeSubtitle");
-    expect(text).toContain("onboarding.createNewAgent");
+    // Should show character names from FRONTEND_PRESETS
+    expect(text).toContain("Chen");
+    expect(text).toContain("Continue");
   });
 
-  it("calls handleOnboardingNext when Activate is clicked", async () => {
+  it("calls handleOnboardingNext when Continue is clicked", async () => {
     const next = vi.fn(async () => { });
-    mockUseApp.mockReturnValue(baseContext({ handleOnboardingNext: next }));
+    mockUseApp.mockReturnValue(baseContext({ onboardingStep: "identity", handleOnboardingNext: next }));
     let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
-      tree = TestRenderer.create(React.createElement(WakeUpStep));
+      tree = TestRenderer.create(React.createElement(IdentityStep));
     });
 
     const buttons = findButtons(tree?.root as TestRenderer.ReactTestInstance);
-    const activateBtn = buttons.find(
-      (b) => collectText(b) === "onboarding.createNewAgent",
+    const continueBtn = buttons.find(
+      (b) => collectText(b) === "Continue",
     );
-    expect(activateBtn).toBeDefined();
+    expect(continueBtn).toBeDefined();
     await act(async () => {
-      activateBtn?.props.onClick();
+      continueBtn?.props.onClick();
     });
     expect(next).toHaveBeenCalled();
   });
 
   it("shows Restore from Backup option", async () => {
-    mockUseApp.mockReturnValue(baseContext());
+    mockUseApp.mockReturnValue(baseContext({ onboardingStep: "identity" }));
     let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
-      tree = TestRenderer.create(React.createElement(WakeUpStep));
+      tree = TestRenderer.create(React.createElement(IdentityStep));
     });
 
     const text = collectText(tree?.root as TestRenderer.ReactTestInstance);
@@ -173,10 +174,10 @@ describe("WakeUpStep", () => {
   });
 
   it("switches to import view when Restore from Backup is clicked", async () => {
-    mockUseApp.mockReturnValue(baseContext());
+    mockUseApp.mockReturnValue(baseContext({ onboardingStep: "identity" }));
     let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
-      tree = TestRenderer.create(React.createElement(WakeUpStep));
+      tree = TestRenderer.create(React.createElement(IdentityStep));
     });
 
     const buttons = findButtons(tree?.root as TestRenderer.ReactTestInstance);
