@@ -33,5 +33,7 @@ export function shouldStartAtCharacterSelectOnLaunch(params: {
     return false;
   }
 
-  return navPath === "/" || urlTab === "chat" || urlTab === "companion";
+  // Only redirect generic landing pages to character-select; an explicit
+  // /companion URL should stay on the companion view.
+  return navPath === "/" || urlTab === "chat";
 }
