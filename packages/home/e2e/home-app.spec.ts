@@ -233,8 +233,10 @@ test("opens the voice settings section", async ({ page }) => {
 
   await page.goto("/settings");
   await expect(page.getByPlaceholder("Search settings...")).toBeVisible();
+  // The xl: sidebar (complementary) is hidden in headless Chromium, so click
+  // the Voice section header button in the main content area instead.
   await page
-    .getByRole("complementary")
+    .getByRole("main")
     .getByRole("button", { name: /^Voice$/ })
     .click();
   await expect(page.getByText("Wake Word", { exact: true })).toBeVisible();

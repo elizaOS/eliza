@@ -966,7 +966,7 @@ export function CloudDashboard() {
       </div>
 
       {activeView === "billing" ? (
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.8fr)_minmax(320px,1fr)] gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-8">
           <div className="space-y-8">
             <SectionCard
               title={t("elizaclouddashboard.CloudBilling")}
@@ -979,7 +979,7 @@ export function CloudDashboard() {
                 </div>
               )}
 
-              <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <div className="rounded-[28px] border border-accent/20 bg-[linear-gradient(160deg,rgba(var(--accent),0.16),rgba(255,255,255,0.02))] p-5 sm:p-6">
                   <div className="flex items-start justify-between gap-4">
                     <div>

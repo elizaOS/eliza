@@ -51,7 +51,8 @@
     "tailwind-merge": "^2.6.0"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "directory": "dist"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.1",
