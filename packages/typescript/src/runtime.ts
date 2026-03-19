@@ -586,7 +586,6 @@ export class AgentRuntime implements IAgentRuntime {
 					"Registering service",
 				);
 
-				// Lazy: store the ServiceClass only; start() is deferred until getService() is called.
 				if (!this.servicePromises.has(serviceType)) {
 					this._createServiceResolver(serviceType);
 				}
@@ -598,6 +597,23 @@ export class AgentRuntime implements IAgentRuntime {
 				if (services) {
 					services.push(service);
 				}
+
+				// Eagerly start the service so it is available via the sync
+				// getService() call by the time actions/routes need it.
+				// Errors are logged but do not block plugin registration.
+				this._ensureServiceStarted(serviceType).catch((err) => {
+					this.logger.error(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							plugin: pluginToRegister.name,
+							serviceType,
+							error:
+								err instanceof Error ? err.message : String(err),
+						},
+						"Eager service start failed",
+					);
+				});
 			}
 		}
 		if (pluginToRegister.adapter) {
