@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/training",
-  "version": "2.0.0-alpha.77",
+  "version": "2.0.0-alpha.75",
   "description": "ElizaOS RL training pipeline with benchmarking and model publishing support",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
