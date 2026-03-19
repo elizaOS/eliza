@@ -82,13 +82,6 @@ const AGENT_LABELS: Record<AgentTab, string> = {
   aider: "Aider",
 };
 
-const KNOWN_AGENT_ADAPTERS = new Set<AgentTab>([
-  "claude",
-  "gemini",
-  "codex",
-  "aider",
-]);
-
 /** Map full adapter names from the preflight API to short tab keys. */
 const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
   "claude code": "claude",
