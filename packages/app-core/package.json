@@ -1,28 +1,27 @@
 {
-  "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.66",
-  "description": "Shared application core for elizaOS shells and white-label apps.",
+  "name": "@miladyai/app-core",
+  "version": "1.0.0",
+  "description": "Shared application core for Milady shells and white-label apps.",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://github.com/elizaOS/eliza",
+  "homepage": "https://github.com/milady-ai/milady",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elizaOS/eliza.git",
+    "url": "https://github.com/milady-ai/milady.git",
     "directory": "packages/app-core"
   },
   "keywords": [
-    "elizaos",
+    "milady",
     "app-core",
     "react",
-    "shell"
+    "elizaos"
   ],
   "main": "src/index.ts",
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "rimraf dist",
     "build": "bun run build:dist",
     "typecheck": "test -f ../ui/dist/index.d.ts || (cd ../ui && bun run build) && tsc --noEmit -p tsconfig.json",
-    "build:dist": "test -f ../ui/dist/index.d.ts || (cd ../ui && bun run build) && rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/i18n/locales && node ../../scripts/prepare-package-dist.mjs packages/app-core",
-    "lint:check": "bunx @biomejs/biome check ./src/App.tsx ./src/actions ./src/api ./src/autonomy ./src/bridge ./src/chat ./src/coding ./src/components ./src/config ./src/events ./src/hooks ./src/i18n ./src/index.ts ./src/navigation ./src/platform ./src/providers ./src/state ./src/types ./src/utils ./src/voice ./src/ambient.d.ts",
+    "build:dist": "test -f ../ui/dist/index.d.ts || (cd ../ui && bun run build) && rimraf dist && tsc -p tsconfig.build.json && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/i18n/locales && node ../../scripts/prepare-package-dist.mjs packages/app-core",
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },
   "exports": {
@@ -38,14 +37,12 @@
     "./bridge/electrobun-rpc": "./src/bridge/electrobun-rpc.ts",
     "./bridge/electrobun-runtime": "./src/bridge/electrobun-runtime.ts",
     "./state": "./src/state/index.ts",
-    "./companion": "./src/components/companion/index.ts",
     "./components": "./src/components/index.ts",
-    "./components/*": "./src/components/*",
     "./components/ChatAvatar": "./src/components/ChatAvatar.tsx",
     "./components/CompanionSceneHost": "./src/components/CompanionSceneHost.tsx",
     "./components/VrmStage": "./src/components/VrmStage.tsx",
+    "./components/*": "./src/components/*",
     "./utils": "./src/utils/index.ts",
-    "./utils/*": "./src/utils/*",
     "./voice": "./src/voice/index.ts",
     "./autonomy": "./src/autonomy/index.ts",
     "./chat": "./src/chat/index.ts",
@@ -61,34 +58,33 @@
     "./styles/styles.css": "./src/styles/styles.css"
   },
   "peerDependencies": {
+    "@pixiv/three-vrm": "^3.4.5",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "three": "^0.182.0"
   },
   "dependencies": {
+    "@miladyai/autonomous": "workspace:*",
     "@capacitor/core": "8.0.2",
     "@capacitor/haptics": "8.0.0",
     "@capacitor/keyboard": "8.0.0",
     "@capacitor/preferences": "^8.0.1",
-    "@elizaos/autonomous": "workspace:*",
-    "@elizaos/ui": "workspace:*",
-    "@lifo-sh/core": "0.4.4",
-    "@lifo-sh/ui": "0.4.2",
-    "@pixiv/three-vrm": "^3.4.5",
     "@sparkjsdev/spark": "^0.1.10",
-    "lucide-react": "^0.575.0",
+    "@miladyai/ui": "workspace:*",
     "three": "^0.182.0",
+    "lucide-react": "^0.575.0",
     "zod": "^4.3.6"
   },
   "publishConfig": {
     "access": "public"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.18",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.182.0",
     "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3"
-  },
-  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
+    "react-test-renderer": "^19.2.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
 }

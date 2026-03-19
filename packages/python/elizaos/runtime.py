@@ -242,7 +242,8 @@ class AgentRuntime(IAgentRuntime):
                 # Register after basic_capabilities so core providers/actions are available.
                 insert_at = (
                     1
-                    if self._initial_plugins and self._initial_plugins[0].name == "basic_capabilities"
+                    if self._initial_plugins
+                    and self._initial_plugins[0].name == "basic_capabilities"
                     else 0
                 )
                 self._initial_plugins.insert(insert_at, advanced_planning_plugin)
@@ -255,7 +256,8 @@ class AgentRuntime(IAgentRuntime):
 
                 insert_at = (
                     1
-                    if self._initial_plugins and self._initial_plugins[0].name == "basic_capabilities"
+                    if self._initial_plugins
+                    and self._initial_plugins[0].name == "basic_capabilities"
                     else 0
                 )
                 self._initial_plugins.insert(insert_at, advanced_memory_plugin)
@@ -295,7 +297,10 @@ class AgentRuntime(IAgentRuntime):
             )
 
             if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
-                from elizaos.basic_capabilities_compat import CapabilityConfig, create_basic_capabilities_plugin
+                from elizaos.basic_capabilities_compat import (
+                    CapabilityConfig,
+                    create_basic_capabilities_plugin,
+                )
 
                 config = CapabilityConfig(
                     disable_basic=disable_basic,

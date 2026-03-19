@@ -544,6 +544,19 @@
   text-shadow: 0 1px 6px rgba(3, 5, 10, 0.45);
 }
 
+.onboarding-provider-card--detected {
+  border-color: rgba(34, 197, 94, 0.24);
+  background: rgba(34, 197, 94, 0.08);
+}
+.onboarding-provider-card--detected:hover {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.12);
+}
+.onboarding-provider-badge--detected {
+  background: rgba(34, 197, 94, 0.2);
+  color: rgba(34, 197, 94, 0.94);
+}
+
 /* Panel footer */
 .onboarding-panel-footer {
   display: flex;

@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/ui";
+import { Button } from "@miladyai/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { AgentPreflightResult } from "../api";
 import { client } from "../api";

@@ -87,13 +87,9 @@ export interface IAgentRuntime extends IDatabaseAdapter<any> {
 	/** Get the underlying database connection. Type depends on the adapter implementation. */
 	getConnection(): Promise<object>;
 
-	getService<T extends Service>(
-		service: ServiceTypeName | string,
-	): T | null;
+	getService<T extends Service>(service: ServiceTypeName | string): T | null;
 
-	getServicesByType<T extends Service>(
-		service: ServiceTypeName | string,
-	): T[];
+	getServicesByType<T extends Service>(service: ServiceTypeName | string): T[];
 
 	getAllServices(): Map<ServiceTypeName, Service[]>;
 

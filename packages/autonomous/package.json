@@ -1,17 +1,17 @@
 {
-  "name": "@elizaos/autonomous",
-  "version": "2.0.0-alpha.66",
-  "description": "Standalone autonomous agent runtime and backend server package for elizaOS.",
+  "name": "@miladyai/autonomous",
+  "version": "1.0.0",
+  "description": "Standalone Milady agent runtime and backend server package.",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://github.com/elizaOS/eliza",
+  "homepage": "https://github.com/milady-ai/milady",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elizaOS/eliza.git",
+    "url": "https://github.com/milady-ai/milady.git",
     "directory": "packages/autonomous"
   },
   "keywords": [
-    "autonomous",
+    "milady",
     "agent",
     "backend",
     "runtime",
@@ -19,19 +19,16 @@
   ],
   "main": "src/index.ts",
   "bin": {
-    "eliza-autonomous": "./src/bin.ts"
+    "milady-autonomous": "./src/bin.ts"
   },
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "rimraf dist",
     "build": "bun run build:dist",
-    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/autonomous --compiled-prefix=packages/autonomous/src",
-    "benchmark:server": "node --import tsx src/benchmark-server.ts",
-    "typecheck": "test -f ../prompts/dist/typescript/index.ts || (cd ../prompts && bun run build:typescript) && tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:dist": "rimraf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/autonomous --compiled-prefix=packages/autonomous/src",
     "lint:check": "bunx @biomejs/biome check ./src/actions ./src/api ./src/auth ./src/awareness ./src/bin.ts ./src/cli ./src/cloud ./src/config ./src/contracts ./src/diagnostics ./src/emotes ./src/hooks ./src/index.ts ./src/onboarding-presets.ts ./src/plugins ./src/providers ./src/runtime ./src/security ./src/server ./src/services ./src/shared ./src/testing ./src/triggers ./src/utils ./src/version-resolver.ts",
     "pack:dry-run": "cd dist && npm pack --dry-run",
-    "test": "vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "test:unit": "vitest run --config vitest.config.ts"
+    "test": "cd ../.. && vitest run packages/autonomous/src/hooks/discovery.test.ts packages/autonomous/src/hooks/hooks.test.ts packages/autonomous/src/hooks/loader.test.ts packages/autonomous/src/hooks/registry.test.ts packages/autonomous/src/cloud/*.test.ts packages/autonomous/src/runtime/cloud-onboarding.test.ts packages/autonomous/test/api/wallet-routes.test.ts packages/autonomous/test/api/wallet-routes.observability.test.ts"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -137,8 +134,7 @@
     "./config/types.gateway": "./src/config/types.gateway.ts",
     "./config/types.hooks": "./src/config/types.hooks.ts",
     "./config/types.messages": "./src/config/types.messages.ts",
-    "./config/types.eliza": "./src/config/types.eliza.ts",
-    "./config/types.milady": "./src/config/types.eliza.ts",
+    "./config/types.milady": "./src/config/types.milady.ts",
     "./config/types.tools": "./src/config/types.tools.ts",
     "./config/zod-schema": "./src/config/zod-schema.ts",
     "./contracts": "./src/contracts/index.ts",
@@ -168,26 +164,19 @@
     "./providers/ui-catalog": "./src/providers/ui-catalog.ts",
     "./providers/workspace": "./src/providers/workspace.ts",
     "./providers/workspace-provider": "./src/providers/workspace-provider.ts",
-    "./providers/media-provider": "./src/providers/media-provider.ts",
-    "./providers/local-models": "./src/providers/local-models.ts",
     "./runtime": "./src/runtime/index.ts",
     "./runtime/core-plugins": "./src/runtime/core-plugins.ts",
     "./runtime/embedding-presets": "./src/runtime/embedding-presets.ts",
     "./runtime/agent-event-service": "./src/runtime/agent-event-service.ts",
     "./runtime/eliza": "./src/runtime/eliza.ts",
     "./runtime/custom-actions": "./src/runtime/custom-actions.ts",
-    "./runtime/eliza-plugin": "./src/runtime/eliza-plugin.ts",
-    "./runtime/milady-plugin": "./src/runtime/eliza-plugin.ts",
-    "./runtime/cloud-onboarding": "./src/runtime/cloud-onboarding.ts",
+    "./runtime/milady-plugin": "./src/runtime/milady-plugin.ts",
     "./runtime/onboarding-names": "./src/runtime/onboarding-names.ts",
+    "./runtime/cloud-onboarding": "./src/runtime/cloud-onboarding.ts",
     "./runtime/restart": "./src/runtime/restart.ts",
     "./runtime/release-plugin-policy": "./src/runtime/release-plugin-policy.ts",
     "./runtime/trajectory-persistence": "./src/runtime/trajectory-persistence.ts",
     "./runtime/version": "./src/runtime/version.ts",
-    "./runtime/embedding-manager": "./src/runtime/embedding-manager.ts",
-    "./runtime/embedding-manager-support": "./src/runtime/embedding-manager-support.ts",
-    "./runtime/boot-progress": "./src/runtime/boot-progress.ts",
-    "./runtime/dev-server": "./src/runtime/dev-server.ts",
     "./security/audit-log": "./src/security/audit-log.ts",
     "./security/network-policy": "./src/security/network-policy.ts",
     "./server": "./src/server/index.ts",
@@ -218,72 +207,44 @@
     "./services/tts-stream-bridge": "./src/services/tts-stream-bridge.ts",
     "./services/update-checker": "./src/services/update-checker.ts",
     "./services/version-compat": "./src/services/version-compat.ts",
-    "./services/plugin-installer": "./src/services/plugin-installer.ts",
     "./services/whatsapp-pairing": "./src/services/whatsapp-pairing.ts",
     "./testing": "./src/testing/index.ts",
     "./utils/number-parsing": "./src/utils/number-parsing.ts",
     "./utils/spoken-text": "./src/utils/spoken-text.ts",
     "./version-resolver": "./src/version-resolver.ts"
   },
-  "peerDependencies": {
-    "@elizaos/signal-native": "*"
-  },
-  "peerDependenciesMeta": {
-    "@elizaos/signal-native": {
-      "optional": true
-    }
-  },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-alpha.64",
     "@elizaos/plugin-agent-orchestrator": "0.3.15",
-    "@elizaos/plugin-agent-skills": "2.0.0-alpha.12",
+    "@elizaos/plugin-agent-skills": "2.0.0-alpha.11",
     "@elizaos/plugin-anthropic": "2.0.0-alpha.6",
-    "@elizaos/plugin-bnb-identity": "2.0.0-alpha.1",
-    "@elizaos/plugin-browser": "2.0.0-alpha.9",
-    "@elizaos/plugin-claude-code-workbench": "0.1.0",
-    "@elizaos/plugin-cli": "2.0.0-alpha.9",
-    "@elizaos/plugin-computeruse": "2.0.0-alpha.9",
+    "@elizaos/plugin-coding-agent": "0.1.0-next.1",
     "@elizaos/plugin-cron": "2.0.0-alpha.7",
-    "@elizaos/plugin-discord": "2.0.0-alpha.10",
-    "@elizaos/plugin-edge-tts": "2.0.0-alpha.8",
-    "@elizaos/plugin-elevenlabs": "2.0.0-alpha.9",
     "@elizaos/plugin-elizacloud": "2.0.0-alpha.7",
     "@elizaos/plugin-experience": "2.0.0-alpha.9",
     "@elizaos/plugin-form": "2.0.0-alpha.10",
-    "@elizaos/plugin-google-genai": "2.0.0-alpha.6",
-    "@elizaos/plugin-groq": "2.0.0-alpha.7",
     "@elizaos/plugin-knowledge": "2.0.0-alpha.6",
     "@elizaos/plugin-local-embedding": "2.0.0-alpha.11",
     "@elizaos/plugin-ollama": "2.0.0-alpha.6",
     "@elizaos/plugin-openai": "2.0.0-alpha.8",
-    "@elizaos/plugin-openrouter": "2.0.0-alpha.7",
     "@elizaos/plugin-pdf": "2.0.0-alpha.7",
     "@elizaos/plugin-personality": "2.0.0-alpha.7",
     "@elizaos/plugin-pi-ai": "1.7.3-alpha.3",
     "@elizaos/plugin-plugin-manager": "2.0.0-alpha.7",
-    "@elizaos/plugin-pumpfun-streaming": "2.0.0-alpha.1",
-    "@elizaos/plugin-retake": "2.0.0-alpha.1",
     "@elizaos/plugin-rolodex": "2.0.0-alpha.9",
     "@elizaos/plugin-secrets-manager": "2.0.0-alpha.9",
     "@elizaos/plugin-shell": "2.0.0-alpha.9",
-    "@elizaos/plugin-sql": "2.0.0-alpha.15",
-    "@elizaos/plugin-streaming-base": "2.0.0-alpha.1",
-    "@elizaos/plugin-telegram": "2.0.0-alpha.9",
+    "@elizaos/plugin-sql": "2.0.0-alpha.12",
     "@elizaos/plugin-todo": "2.0.0-alpha.7",
     "@elizaos/plugin-trajectory-logger": "2.0.0-alpha.11",
     "@elizaos/plugin-trust": "2.0.0-alpha.1",
-    "@elizaos/plugin-twitch": "2.0.0-alpha.8",
-    "@elizaos/plugin-twitch-streaming": "2.0.0-alpha.1",
-    "@elizaos/plugin-vision": "2.0.0-alpha.9",
-    "@elizaos/plugin-x-streaming": "2.0.0-alpha.1",
-    "@elizaos/plugin-youtube-streaming": "2.0.0-alpha.1",
-    "@elizaos/prompts": "workspace:*",
-    "@elizaos/skills": "workspace:*",
+    "@elizaos/skills": "2.0.0-alpha.15",
     "@hapi/boom": "^10.0.1",
+    "@lunchtable/plugin-ltcg": "^0.1.0",
     "@mariozechner/pi-ai": "0.52.12",
     "@noble/curves": "^2.0.1",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
@@ -297,15 +258,22 @@
     "pty-manager": "1.9.8",
     "puppeteer-core": "^24.37.5",
     "qrcode": "^1.5.4",
-    "unique-names-generator": "^4.7.1",
     "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
+  "peerDependencies": {
+    "@miladyai/signal-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "@miladyai/signal-native": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "@types/node": "^25.0.3",
+    "@types/node": "^25.2.0",
     "@types/pg": "^8.15.2",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.9.3"
-  },
-  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
 }

@@ -86,9 +86,12 @@ export function ThemeToggle({
   return (
     <button
       type="button"
+      aria-label="Toggle theme"
       onClick={handleToggle}
+      onPointerDown={(event) => event.stopPropagation()}
       className={`inline-flex items-center justify-center w-11 h-11 min-w-[44px] min-h-[44px] border border-border/50 bg-bg/50 backdrop-blur-md cursor-pointer text-sm leading-none hover:border-accent hover:text-txt font-medium hover:-translate-y-0.5 transition-all duration-300 hover:shadow-[0_0_15px_rgba(var(--accent),0.5)] active:scale-95 rounded-xl text-txt shadow-sm ${className ?? ""}`}
       data-testid="theme-toggle"
+      data-no-camera-drag="true"
     >
       {isDark ? (
         <SunIcon className="w-5 h-5" />

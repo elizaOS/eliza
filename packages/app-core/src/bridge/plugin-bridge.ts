@@ -1,7 +1,7 @@
 /**
  * Plugin Bridge
  *
- * This module provides a unified interface to all Eliza Capacitor plugins
+ * This module provides a unified interface to all Milady Capacitor plugins
  * with platform-specific fallbacks and capability detection.
  *
  * When a native plugin is unavailable, it provides graceful degradation
@@ -11,7 +11,6 @@
 import { Capacitor } from "@capacitor/core";
 import { isElectrobunRuntime } from "./electrobun-runtime";
 import {
-  type GenericNativePlugin,
   getCameraPlugin,
   getCanvasPlugin,
   getDesktopPlugin,
@@ -20,6 +19,7 @@ import {
   getScreenCapturePlugin,
   getSwabblePlugin,
   getTalkModePlugin,
+  type GenericNativePlugin,
   type SwabblePluginLike,
   type TalkModePluginLike,
 } from "./native-plugins";
@@ -30,8 +30,8 @@ const isNative = Capacitor.isNativePlatform();
 const isIOS = platform === "ios";
 const isAndroid = platform === "android";
 
-function isElectronPlatform(): boolean {
-  return platform === "electron" || isElectrobunRuntime();
+function isDesktopPlatform(): boolean {
+  return isElectrobunRuntime();
 }
 
 function isWebPlatform(): boolean {
@@ -39,7 +39,7 @@ function isWebPlatform(): boolean {
 }
 
 function isMacOSPlatform(): boolean {
-  return isElectronPlatform();
+  return isDesktopPlatform();
 }
 
 /**
@@ -85,7 +85,7 @@ export interface PluginCapabilities {
   canvas: {
     available: boolean;
   };
-  /** Desktop features (macOS/Electron) */
+  /** Desktop features (macOS/Electrobun) */
   desktop: {
     available: boolean;
     tray: boolean;
@@ -98,7 +98,7 @@ export interface PluginCapabilities {
  * Get plugin capabilities for the current platform
  */
 export function getPluginCapabilities(): PluginCapabilities {
-  const isElectron = isElectronPlatform();
+  const isDesktop = isDesktopPlatform();
   return {
     gateway: {
       available: true, // Web fallback available
@@ -122,7 +122,7 @@ export function getPluginCapabilities(): PluginCapabilities {
     location: {
       available: hasGeolocation(),
       gps: isNative,
-      background: isNative && !isElectron,
+      background: isNative && !isDesktop,
     },
     screenCapture: {
       available: isNative || hasDisplayMedia(),
@@ -133,10 +133,10 @@ export function getPluginCapabilities(): PluginCapabilities {
       available: true, // HTML Canvas available on all platforms
     },
     desktop: {
-      available: isElectron,
-      tray: isElectron,
-      shortcuts: isElectron,
-      menu: isElectron,
+      available: isDesktop,
+      tray: isDesktop,
+      shortcuts: isDesktop,
+      menu: isDesktop,
     },
   };
 }
@@ -213,9 +213,9 @@ function wrapPlugin<T extends Record<string, unknown>>(
 }
 
 /**
- * The plugin bridge providing access to all Eliza plugins
+ * The plugin bridge providing access to all Milady plugins
  */
-export interface ElizaPlugins {
+export interface MiladyPlugins {
   /** Gateway connection plugin */
   gateway: WrappedPlugin<GenericNativePlugin>;
   /** Voice wake word plugin */
@@ -230,27 +230,27 @@ export interface ElizaPlugins {
   screenCapture: WrappedPlugin<GenericNativePlugin>;
   /** Canvas plugin */
   canvas: WrappedPlugin<GenericNativePlugin>;
-  /** Desktop plugin (macOS/Electron) */
+  /** Desktop plugin (macOS/Electrobun) */
   desktop: WrappedPlugin<GenericNativePlugin>;
   /** Plugin capabilities */
   capabilities: PluginCapabilities;
 }
 
 // Singleton instance
-let pluginsInstance: ElizaPlugins | null = null;
+let pluginsInstance: MiladyPlugins | null = null;
 
 /**
  * Initialize and get the plugins interface
  */
-export function getPlugins(): ElizaPlugins {
+export function getPlugins(): MiladyPlugins {
   if (pluginsInstance) {
-    if (pluginsInstance.desktop.isNative === isElectronPlatform()) {
+    if (pluginsInstance.desktop.isNative === isDesktopPlatform()) {
       return pluginsInstance;
     }
   }
 
   const capabilities = getPluginCapabilities();
-  const isElectron = isElectronPlatform();
+  const isDesktop = isDesktopPlatform();
 
   pluginsInstance = {
     gateway: {
@@ -290,7 +290,7 @@ export function getPlugins(): ElizaPlugins {
     },
     desktop: {
       plugin: wrapPlugin(getDesktopPlugin(), "Desktop"),
-      isNative: isElectron,
+      isNative: isDesktop,
       hasFallback: false,
     },
     capabilities,
@@ -343,7 +343,7 @@ export function isFeatureAvailable(
 // Export platform info
 export {
   isAndroid,
-  isElectronPlatform as isElectron,
+  isDesktopPlatform as isDesktop,
   isIOS,
   isMacOSPlatform as isMacOS,
   isNative,

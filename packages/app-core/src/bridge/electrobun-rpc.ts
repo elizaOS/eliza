@@ -12,7 +12,7 @@ export interface ElectrobunRendererRpc {
 }
 
 interface DesktopBridgeWindow extends Window {
-  __ELIZA_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
+  __MILADY_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
 }
 
 function getDesktopBridgeWindow(): DesktopBridgeWindow | null {
@@ -24,7 +24,7 @@ function getDesktopBridgeWindow(): DesktopBridgeWindow | null {
 }
 
 export function getElectrobunRendererRpc(): ElectrobunRendererRpc | undefined {
-  return getDesktopBridgeWindow()?.__ELIZA_ELECTROBUN_RPC__;
+  return getDesktopBridgeWindow()?.__MILADY_ELECTROBUN_RPC__;
 }
 
 export async function invokeDesktopBridgeRequest<T>(options: {
@@ -39,6 +39,25 @@ export async function invokeDesktopBridgeRequest<T>(options: {
   }
 
   return null;
+}
+
+export interface DetectedProvider {
+  id: string;
+  source: string;
+  apiKey?: string;
+  authMode?: string;
+  cliInstalled: boolean;
+}
+
+export async function scanProviderCredentials(): Promise<DetectedProvider[]> {
+  const result = await invokeDesktopBridgeRequest<{
+    providers: DetectedProvider[];
+  }>({
+    rpcMethod: "credentialsScanProviders",
+    ipcChannel: "credentials:scanProviders",
+    params: { context: "onboarding" },
+  });
+  return result?.providers ?? [];
 }
 
 export function subscribeDesktopBridgeEvent(options: {

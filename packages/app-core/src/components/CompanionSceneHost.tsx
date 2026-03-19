@@ -1,11 +1,11 @@
-import { useRenderGuard } from "@elizaos/app-core/hooks";
+import { useRenderGuard } from "@miladyai/app-core/hooks";
 import {
   getVrmPreviewUrl,
   getVrmUrl,
   useApp,
   VRM_COUNT,
-} from "@elizaos/app-core/state";
-import { resolveAppAssetUrl } from "@elizaos/app-core/utils";
+} from "@miladyai/app-core/state";
+import { resolveAppAssetUrl } from "@miladyai/app-core/utils";
 import {
   memo,
   type ReactNode,
@@ -22,10 +22,10 @@ import { VrmStage } from "./VrmStage";
 
 const COMPANION_ZOOM_WHEEL_SENSITIVITY = 1 / 720;
 const COMPANION_ZOOM_PINCH_SENSITIVITY = 2.35;
-const COMPANION_ZOOM_STORAGE_KEY = "eliza.companion.zoom.v1";
+const COMPANION_ZOOM_STORAGE_KEY = "milady.companion.zoom.v1";
 const DEFAULT_COMPANION_ZOOM = 0.95;
 const CAMERA_DRAG_IGNORE_SELECTOR =
-  'button, input, textarea, select, option, [contenteditable="true"], [data-no-camera-drag="true"]';
+  'button, input, textarea, select, option, [role="button"], [role="listbox"], [aria-expanded], [aria-haspopup], [contenteditable="true"], [data-no-camera-drag="true"]';
 const NON_TEXT_INPUT_TYPES = new Set([
   "button",
   "checkbox",
@@ -420,12 +420,6 @@ function CompanionSceneSurface({
       ref={rootRef}
       data-testid="companion-root"
       className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden text-white font-display"
-      onWheelCapture={handleRootWheelCapture}
-      onPointerDownCapture={handlePointerDownCapture}
-      onPointerMoveCapture={handlePointerMoveCapture}
-      onPointerUpCapture={releaseCameraDrag}
-      onPointerCancelCapture={releaseCameraDrag}
-      onLostPointerCaptureCapture={releaseCameraDrag}
       style={{
         overscrollBehavior: "none",
       }}
@@ -460,6 +454,12 @@ function CompanionSceneSurface({
           className={`absolute inset-0 z-[1] select-none ${
             interactive ? "cursor-grab" : "pointer-events-none cursor-default"
           }`}
+          onWheelCapture={handleRootWheelCapture}
+          onPointerDownCapture={handlePointerDownCapture}
+          onPointerMoveCapture={handlePointerMoveCapture}
+          onPointerUpCapture={releaseCameraDrag}
+          onPointerCancelCapture={releaseCameraDrag}
+          onLostPointerCaptureCapture={releaseCameraDrag}
           style={{
             touchAction: "none",
             userSelect: "none",

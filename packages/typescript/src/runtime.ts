@@ -609,9 +609,9 @@ export class AgentRuntime implements IAgentRuntime {
 				},
 				"Registering database adapter",
 			);
-			const basic-capabilitiesSettings = this.getBasicCapabilitiesSettings();
+			const basicCapabilitiesSettings = this.getBasicCapabilitiesSettings();
 			const adapter = await Promise.resolve(
-				pluginToRegister.adapter(this.agentId, basic-capabilitiesSettings),
+				pluginToRegister.adapter(this.agentId, basicCapabilitiesSettings),
 			);
 			this.registerDatabaseAdapter(adapter);
 		}
@@ -701,8 +701,12 @@ export class AgentRuntime implements IAgentRuntime {
 		const pluginRegistrationPromises: Promise<void>[] = [];
 
 		// Basic capabilities are now built into core - auto-register it first
-		const basicCapabilitiesPlugin = createBasicCapabilitiesPlugin(this.capabilityOptions);
-		pluginRegistrationPromises.push(this.registerPlugin(basicCapabilitiesPlugin));
+		const basicCapabilitiesPlugin = createBasicCapabilitiesPlugin(
+			this.capabilityOptions,
+		);
+		pluginRegistrationPromises.push(
+			this.registerPlugin(basicCapabilitiesPlugin),
+		);
 
 		if (this.character.advancedPlanning === true) {
 			const { createAdvancedPlanningPlugin } = await import(
@@ -980,13 +984,21 @@ export class AgentRuntime implements IAgentRuntime {
 		} else {
 			// Polyfill batch agent methods for adapters that only implement
 			// the older singular API (e.g. published plugin-sql <= alpha.12).
-			if (typeof (adapter as any).getAgentsByIds !== "function" && typeof (adapter as any).getAgent === "function") {
+			if (
+				typeof (adapter as any).getAgentsByIds !== "function" &&
+				typeof (adapter as any).getAgent === "function"
+			) {
 				(adapter as any).getAgentsByIds = async (ids: UUID[]) => {
-					const results = await Promise.all(ids.map((id) => (adapter as any).getAgent(id)));
+					const results = await Promise.all(
+						ids.map((id) => (adapter as any).getAgent(id)),
+					);
 					return results.filter(Boolean);
 				};
 			}
-			if (typeof (adapter as any).createAgents !== "function" && typeof (adapter as any).createAgent === "function") {
+			if (
+				typeof (adapter as any).createAgents !== "function" &&
+				typeof (adapter as any).createAgent === "function"
+			) {
 				(adapter as any).createAgents = async (agents: Partial<Agent>[]) => {
 					const ids: UUID[] = [];
 					for (const agent of agents) {
@@ -996,15 +1008,23 @@ export class AgentRuntime implements IAgentRuntime {
 					return ids;
 				};
 			}
-			if (typeof (adapter as any).updateAgents !== "function" && typeof (adapter as any).updateAgent === "function") {
-				(adapter as any).updateAgents = async (updates: Array<{ agentId: UUID; agent: Partial<Agent> }>) => {
+			if (
+				typeof (adapter as any).updateAgents !== "function" &&
+				typeof (adapter as any).updateAgent === "function"
+			) {
+				(adapter as any).updateAgents = async (
+					updates: Array<{ agentId: UUID; agent: Partial<Agent> }>,
+				) => {
 					for (const { agentId, agent } of updates) {
 						await (adapter as any).updateAgent(agentId, agent);
 					}
 					return true;
 				};
 			}
-			if (typeof (adapter as any).deleteAgents !== "function" && typeof (adapter as any).deleteAgent === "function") {
+			if (
+				typeof (adapter as any).deleteAgents !== "function" &&
+				typeof (adapter as any).deleteAgent === "function"
+			) {
 				(adapter as any).deleteAgents = async (ids: UUID[]) => {
 					for (const id of ids) {
 						await (adapter as any).deleteAgent(id);
@@ -1016,9 +1036,10 @@ export class AgentRuntime implements IAgentRuntime {
 				(adapter as any).upsertAgents = async (agents: Partial<Agent>[]) => {
 					for (const agent of agents) {
 						if (!agent.id) continue;
-						const existing = typeof (adapter as any).getAgent === "function"
-							? await (adapter as any).getAgent(agent.id)
-							: null;
+						const existing =
+							typeof (adapter as any).getAgent === "function"
+								? await (adapter as any).getAgent(agent.id)
+								: null;
 						if (existing) {
 							if (typeof (adapter as any).updateAgent === "function") {
 								await (adapter as any).updateAgent(agent.id, agent);
@@ -1343,8 +1364,9 @@ export class AgentRuntime implements IAgentRuntime {
 		worldPolicy?: ToolPolicyConfig;
 		roomPolicy?: ToolPolicyConfig;
 	}): Promise<Action[]> {
-		const policyService =
-			(await this._ensureServiceStarted("tool_policy")) as ToolPolicyService | null;
+		const policyService = (await this._ensureServiceStarted(
+			"tool_policy",
+		)) as ToolPolicyService | null;
 
 		if (!policyService || !context) {
 			return [...this.actions];
@@ -1371,8 +1393,9 @@ export class AgentRuntime implements IAgentRuntime {
 			roomPolicy?: ToolPolicyConfig;
 		},
 	): Promise<{ allowed: boolean; reason: string }> {
-		const policyService =
-			(await this._ensureServiceStarted("tool_policy")) as ToolPolicyService | null;
+		const policyService = (await this._ensureServiceStarted(
+			"tool_policy",
+		)) as ToolPolicyService | null;
 
 		if (!policyService) {
 			return { allowed: true, reason: "No policy service available" };
@@ -2534,8 +2557,9 @@ export class AgentRuntime implements IAgentRuntime {
 				query?: Record<string, string | number | boolean | null>;
 			}) => void;
 		};
-		const trajLogger =
-			(await this._ensureServiceStarted("trajectory_logger")) as TrajectoryLogger | null;
+		const trajLogger = (await this._ensureServiceStarted(
+			"trajectory_logger",
+		)) as TrajectoryLogger | null;
 		const providerData = await Promise.all(
 			providersToGet.map(async (provider) => {
 				const start = Date.now();
@@ -3442,8 +3466,9 @@ export class AgentRuntime implements IAgentRuntime {
 						}) => void;
 					};
 					const stepId = getTrajectoryContext()?.trajectoryStepId;
-					const trajLogger =
-						(await this._ensureServiceStarted("trajectory_logger")) as TrajectoryLogger | null;
+					const trajLogger = (await this._ensureServiceStarted(
+						"trajectory_logger",
+					)) as TrajectoryLogger | null;
 					if (stepId && trajLogger) {
 						const tempRaw = isPlainObject(modelParams)
 							? (modelParams as { temperature?: number }).temperature
@@ -3521,8 +3546,9 @@ export class AgentRuntime implements IAgentRuntime {
 					}) => void;
 				};
 				const stepId = getTrajectoryContext()?.trajectoryStepId;
-				const trajLogger =
-					(await this._ensureServiceStarted("trajectory_logger")) as TrajectoryLogger | null;
+				const trajLogger = (await this._ensureServiceStarted(
+					"trajectory_logger",
+				)) as TrajectoryLogger | null;
 				if (stepId && trajLogger) {
 					const tempRaw = isPlainObject(modelParams)
 						? (modelParams as { temperature?: number }).temperature
@@ -3539,7 +3565,9 @@ export class AgentRuntime implements IAgentRuntime {
 								: "",
 						userPrompt: promptContent ?? "",
 						response:
-							typeof response === "string" ? response : JSON.stringify(response),
+							typeof response === "string"
+								? response
+								: JSON.stringify(response),
 						temperature: typeof tempRaw === "number" ? tempRaw : 0,
 						maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
 						purpose: "action",

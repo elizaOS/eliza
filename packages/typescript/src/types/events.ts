@@ -303,7 +303,7 @@ export interface HookAgentBootstrapPayload extends HookEventPayload {
 	/** Workspace directory path */
 	workspaceDir: string;
 	/** Bootstrap files that will be injected. Hooks can modify this array. */
-	basic-capabilitiesFiles: BootstrapFile[];
+	"basic-capabilitiesFiles": BootstrapFile[];
 	/** Agent ID */
 	agentId?: string;
 	/** Session ID */

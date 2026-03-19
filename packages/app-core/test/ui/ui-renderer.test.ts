@@ -1,4 +1,4 @@
-import { sanitizeLinkHref } from "@elizaos/app-core/config";
+import { sanitizeLinkHref } from "@miladyai/app-core/config";
 import { describe, expect, it } from "vitest";
 
 describe("sanitizeLinkHref", () => {
@@ -8,7 +8,7 @@ describe("sanitizeLinkHref", () => {
     expect(sanitizeLinkHref("VBSCRIPT:msgbox(1)")).toBe("#");
   });
 
-  it("blocks file: protocol (Electron filesystem exposure)", () => {
+  it("blocks file: protocol (desktop filesystem exposure)", () => {
     expect(sanitizeLinkHref("file:///etc/passwd")).toBe("#");
     expect(sanitizeLinkHref("FILE:///C:/Windows/System32")).toBe("#");
   });

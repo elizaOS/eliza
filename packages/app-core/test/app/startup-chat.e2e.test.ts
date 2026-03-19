@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { pathForTab, tabFromPath } from "@elizaos/app-core/navigation";
+import { pathForTab, tabFromPath } from "@miladyai/app-core/navigation";
 import React from "react";
 import type { ReactTestInstance } from "react-test-renderer";
 import TestRenderer, { act } from "react-test-renderer";
@@ -10,10 +10,10 @@ const { mockUseApp } = vi.hoisted(() => ({
   mockUseApp: vi.fn(),
 }));
 
-vi.mock("@elizaos/app-core/state", async () => {
-  const actual = await vi.importActual<
-    typeof import("@elizaos/app-core/state")
-  >("@elizaos/app-core/state");
+vi.mock("@miladyai/app-core/state", async () => {
+  const actual = await vi.importActual<typeof import("@miladyai/app-core/state")>(
+    "@miladyai/app-core/state",
+  );
   return {
     ...actual,
     useApp: () => mockUseApp(),
@@ -23,10 +23,10 @@ vi.mock("@elizaos/app-core/state", async () => {
   };
 });
 
-vi.mock("@elizaos/app-core/components", async () => {
+vi.mock("@miladyai/app-core/components", async () => {
   const actual = await vi.importActual<
-    typeof import("@elizaos/app-core/components")
-  >("@elizaos/app-core/components");
+    typeof import("@miladyai/app-core/components")
+  >("@miladyai/app-core/components");
   return {
     ...actual,
     AdvancedPageView: () =>
@@ -112,7 +112,7 @@ vi.mock("../../../packages/app-core/src/components/KnowledgeView", () => ({
 vi.mock("../../../packages/app-core/src/components/LifoSandboxView", () => ({
   LifoSandboxView: () => React.createElement("div", null, "LifoSandboxView"),
 }));
-vi.mock("@elizaos/app-core/components/AvatarLoader", () => ({
+vi.mock("@miladyai/app-core/components/AvatarLoader", () => ({
   AvatarLoader: () => React.createElement("div", null, "AvatarLoader"),
 }));
 vi.mock("../../../packages/app-core/src/components/StreamView", () => ({
@@ -173,7 +173,7 @@ describe("app startup routing (e2e)", () => {
       conversations: [],
       elizaCloudCredits: null,
       uiShellMode: "native",
-      agentStatus: { state: "running", agentName: "Eliza" },
+      agentStatus: { state: "running", agentName: "Milady" },
       unreadConversations: new Set(),
       activeGameViewerUrl: null,
       gameOverlayEnabled: false,
@@ -190,8 +190,7 @@ describe("app startup routing (e2e)", () => {
 
   it("renders chat screen when startup state is ready", async () => {
     vi.useFakeTimers();
-    let tree: TestRenderer.ReactTestRenderer | undefined;
-
+    let tree = undefined as unknown as TestRenderer.ReactTestRenderer;
     try {
       await act(async () => {
         tree = TestRenderer.create(React.createElement(App));
@@ -235,7 +234,7 @@ describe("app startup routing (e2e)", () => {
       conversations: [],
       elizaCloudCredits: null,
       uiShellMode: "native",
-      agentStatus: { state: "running", agentName: "Eliza" },
+      agentStatus: { state: "running", agentName: "Milady" },
       unreadConversations: new Set(),
       activeGameViewerUrl: null,
       gameOverlayEnabled: false,
@@ -244,7 +243,7 @@ describe("app startup routing (e2e)", () => {
       retryStartup: vi.fn(),
     });
 
-    let tree: TestRenderer.ReactTestRenderer | undefined;
+    let tree = undefined as unknown as TestRenderer.ReactTestRenderer;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(App));
     });
@@ -267,7 +266,7 @@ describe("app startup routing (e2e)", () => {
   it("uses mobile chat drawers on narrow viewports", async () => {
     setViewportWidth(390);
 
-    let tree: TestRenderer.ReactTestRenderer | undefined;
+    let tree = undefined as unknown as TestRenderer.ReactTestRenderer;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(App));
     });
@@ -297,12 +296,12 @@ describe("app startup routing (e2e)", () => {
   });
 
   it("keeps the desktop chat workspace height-bounded", async () => {
-    let tree: TestRenderer.ReactTestRenderer | undefined;
+    let tree = undefined as unknown as TestRenderer.ReactTestRenderer;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(App));
     });
-    expect(tree).toBeDefined();
-    const main = tree!.root.findByType("main");
+
+    const main = tree.root.findByType("main");
     expect(String(main.props.className)).toContain("min-h-0");
     expect(String(main.props.className)).toContain("overflow-hidden");
   });
@@ -310,12 +309,12 @@ describe("app startup routing (e2e)", () => {
   it("keeps the mobile chat workspace height-bounded", async () => {
     setViewportWidth(390);
 
-    let tree: TestRenderer.ReactTestRenderer | undefined;
+    let tree = undefined as unknown as TestRenderer.ReactTestRenderer;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(App));
     });
-    expect(tree).toBeDefined();
-    const main = tree!.root.findByType("main");
+
+    const main = tree.root.findByType("main");
     expect(String(main.props.className)).toContain("min-h-0");
     expect(String(main.props.className)).toContain("overflow-hidden");
   });

@@ -2,7 +2,7 @@
  * Tests for PermissionsSection — platform-aware rendering.
  *
  * Validates that the settings-page PermissionsSection renders the correct
- * view for each platform: Electron (desktop permissions), Web (info message),
+ * view for each platform: desktop app (desktop permissions), web (info message),
  * and Capacitor/mobile (streaming permissions).
  */
 // @vitest-environment jsdom
@@ -12,11 +12,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Hoisted mocks ─────────────────────────────────────────────────────
 
-const { mockUseApp, mockIsWeb, mockIsElectron, mockIsNative } = vi.hoisted(
+const { mockUseApp, mockIsWeb, mockIsDesktop, mockIsNative } = vi.hoisted(
   () => ({
     mockUseApp: vi.fn(),
     mockIsWeb: vi.fn(() => false),
-    mockIsElectron: vi.fn(() => true),
+    mockIsDesktop: vi.fn(() => true),
     mockIsNative: { value: false },
   }),
 );
@@ -44,14 +44,14 @@ const {
   },
 }));
 
-vi.mock("@elizaos/app-core/state", () => ({
+vi.mock("@miladyai/app-core/state", () => ({
   useApp: () => mockUseApp(),
 }));
 
-vi.mock("@elizaos/app-core/platform", () => ({
+vi.mock("@miladyai/app-core/platform", () => ({
   hasRequiredOnboardingPermissions: vi.fn(() => true),
   isWebPlatform: () => mockIsWeb(),
-  isElectronPlatform: () => mockIsElectron(),
+  isDesktopPlatform: () => mockIsDesktop(),
   get isNative() {
     return mockIsNative.value;
   },
@@ -60,7 +60,7 @@ vi.mock("@elizaos/app-core/platform", () => ({
   platform: "web",
 }));
 
-vi.mock("@elizaos/app-core/api", () => ({
+vi.mock("@miladyai/app-core/api", () => ({
   client: {
     getPermissions: mockGetPermissions,
     isShellEnabled: mockIsShellEnabled,
@@ -71,21 +71,21 @@ vi.mock("@elizaos/app-core/api", () => ({
   },
 }));
 
-vi.mock("@elizaos/app-core/bridge", () => ({
+vi.mock("@miladyai/app-core/bridge", () => ({
   invokeDesktopBridgeRequest: mockInvokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent: mockSubscribeDesktopBridgeEvent,
 }));
 
-vi.mock("@elizaos/app-core/components/ui-badges", () => ({
+vi.mock("@miladyai/app-core/components/ui-badges", () => ({
   StatusBadge: ({ label }: { label: string }) =>
     React.createElement("span", { "data-testid": "status-badge" }, label),
 }));
 
-vi.mock("@elizaos/app-core/components/ui-switch", () => ({
+vi.mock("@miladyai/app-core/components/ui-switch", () => ({
   Switch: () => React.createElement("span", null, "switch"),
 }));
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@miladyai/ui", () => ({
   Button: ({
     children,
     onClick,
@@ -114,7 +114,7 @@ vi.mock("lucide-react", () => ({
   Terminal: () => React.createElement("span", null, "💻"),
 }));
 
-import { PermissionsSection } from "@elizaos/app-core/components/PermissionsSection";
+import { PermissionsSection } from "@miladyai/app-core/components/PermissionsSection";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -206,7 +206,7 @@ describe("PermissionsSection", () => {
     ensureNavigatorPermissionMocks();
     mockUseApp.mockReset();
     mockIsWeb.mockReturnValue(false);
-    mockIsElectron.mockReturnValue(true);
+    mockIsDesktop.mockReturnValue(true);
     mockIsNative.value = false;
     mockGetPermissions.mockReset();
     mockIsShellEnabled.mockReset();
@@ -250,7 +250,7 @@ describe("PermissionsSection", () => {
 
   it("renders web informational message when isWebPlatform() is true", async () => {
     mockIsWeb.mockReturnValue(true);
-    mockIsElectron.mockReturnValue(false);
+    mockIsDesktop.mockReturnValue(false);
     mockUseApp.mockReturnValue(baseContext());
 
     let tree: TestRenderer.ReactTestRenderer | undefined;
@@ -267,9 +267,11 @@ describe("PermissionsSection", () => {
     expect(text).toContain("Microphone");
   });
 
-  it("renders mobile streaming permissions when isNative and not Electron", async () => {
+  it(
+    "renders mobile streaming permissions when isNative and not running in the desktop app",
+    async () => {
     mockIsWeb.mockReturnValue(false);
-    mockIsElectron.mockReturnValue(false);
+    mockIsDesktop.mockReturnValue(false);
     mockIsNative.value = true;
     mockUseApp.mockReturnValue(baseContext());
 
@@ -289,9 +291,9 @@ describe("PermissionsSection", () => {
     expect(text).toContain("Microphone");
   });
 
-  it("renders desktop permission rows on Electron", async () => {
+  it("renders desktop permission rows in the desktop app", async () => {
     mockIsWeb.mockReturnValue(false);
-    mockIsElectron.mockReturnValue(true);
+    mockIsDesktop.mockReturnValue(true);
     mockIsNative.value = false;
     mockUseApp.mockReturnValue(baseContext());
 
@@ -469,7 +471,7 @@ describe("PermissionsSection", () => {
     );
     vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue({
       getTracks: () => [{ stop: vi.fn() }],
-    } as MediaStream);
+    } as unknown as MediaStream);
     let enumerateDevicesCallCount = 0;
     vi.mocked(navigator.mediaDevices.enumerateDevices).mockImplementation(
       async () => {

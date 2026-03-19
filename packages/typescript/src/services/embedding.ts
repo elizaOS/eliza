@@ -37,7 +37,10 @@ export class EmbeddingGenerationService extends Service {
 
 	static async start(runtime: IAgentRuntime): Promise<Service> {
 		runtime.logger.info(
-			{ src: "plugin:basic-capabilities:service:embedding", agentId: runtime.agentId },
+			{
+				src: "plugin:basic-capabilities:service:embedding",
+				agentId: runtime.agentId,
+			},
 			"Starting embedding generation service",
 		);
 
@@ -45,7 +48,10 @@ export class EmbeddingGenerationService extends Service {
 		const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
 		if (!embeddingModel) {
 			runtime.logger.warn(
-				{ src: "plugin:basic-capabilities:service:embedding", agentId: runtime.agentId },
+				{
+					src: "plugin:basic-capabilities:service:embedding",
+					agentId: runtime.agentId,
+				},
 				"No TEXT_EMBEDDING model registered - service will not be initialized",
 			);
 			// Return a no-op service that does nothing

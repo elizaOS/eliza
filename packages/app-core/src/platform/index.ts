@@ -45,7 +45,7 @@ export {
   handleDeepLink,
   injectPopoutApiBase,
   isAndroid,
-  isElectronPlatform,
+  isDesktopPlatform,
   isIOS,
   isNative,
   isPopoutWindow,

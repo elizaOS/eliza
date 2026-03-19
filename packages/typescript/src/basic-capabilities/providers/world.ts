@@ -261,7 +261,10 @@ export const worldProvider: Provider = {
 		const formattedText = addHeader("# World Information", worldInfoText);
 
 		logger.debug(
-			{ src: "plugin:basic-capabilities:provider:world", agentId: runtime.agentId },
+			{
+				src: "plugin:basic-capabilities:provider:world",
+				agentId: runtime.agentId,
+			},
 			"World provider completed successfully",
 		);
 

@@ -9,7 +9,7 @@
  *      {@link RestartHandler}.
  *
  * In CLI mode the default handler exits with code 75 so the runner script
- * rebuilds and relaunches. In headless / Electron mode a custom handler
+ * rebuilds and relaunches. In headless / desktop mode a custom handler
  * performs an in-process restart (stop → re-init → hot-swap references).
  *
  * @module actions/restart
@@ -48,16 +48,13 @@ export const restartAction: Action = {
 
   handler: async (runtime, message, _state, options) => {
     // This action declares parameters, so the runtime provides HandlerOptions.
-    type RestartParams = { reason?: string };
-    const params = (options as HandlerOptions | undefined)?.parameters as
-      | RestartParams
-      | undefined;
+    const params = (options as HandlerOptions | undefined)?.parameters;
     const reason =
       typeof params?.reason === "string" ? params.reason : undefined;
 
     const restartText = reason ? `Restarting… (${reason})` : "Restarting…";
 
-    logger.info(`[eliza] ${restartText}`);
+    logger.info(`[milady] ${restartText}`);
 
     // Persist a "Restarting…" memory so it shows up in the message log.
     try {
@@ -68,7 +65,7 @@ export const restartAction: Action = {
         worldId: message.worldId,
         content: {
           text: restartText,
-          source: "eliza",
+          source: "milady",
           type: "system",
         },
       };
@@ -76,7 +73,7 @@ export const restartAction: Action = {
     } catch (err) {
       // Non-fatal — the restart still proceeds even if the memory write fails.
       const msg = err instanceof Error ? err.message : String(err);
-      logger.warn(`[eliza] Could not persist restart memory: ${msg}`);
+      logger.warn(`[milady] Could not persist restart memory: ${msg}`);
     }
 
     // Schedule the restart slightly after returning so the response can be

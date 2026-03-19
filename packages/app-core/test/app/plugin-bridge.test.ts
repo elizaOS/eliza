@@ -2,19 +2,19 @@
 /**
  * Tests for plugin-bridge — capabilities detection and feature flags on web platform.
  */
+import { describe, expect, it, vi } from "vitest";
 
 import {
   getPluginCapabilities,
   isAndroid,
-  isElectron,
+  isDesktop,
   isFeatureAvailable,
   isIOS,
   isMacOS,
   isNative,
   isWeb,
   platform,
-} from "@elizaos/app-core/bridge";
-import { describe, expect, it } from "vitest";
+} from "@miladyai/app-core/bridge";
 
 describe("plugin-bridge", () => {
   // -- Platform --
@@ -25,8 +25,8 @@ describe("plugin-bridge", () => {
     expect(isNative).toBe(false);
     expect(isIOS).toBe(false);
     expect(isAndroid).toBe(false);
-    expect(isElectron()).toBe(false);
-    expect(isMacOS()).toBe(isElectron());
+    expect(isDesktop()).toBe(false);
+    expect(isMacOS()).toBe(isDesktop());
   });
 
   // -- Capabilities --

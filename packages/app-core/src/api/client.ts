@@ -1,5 +1,5 @@
 /**
- * API client for the Eliza backend.
+ * API client for the Milady backend.
  *
  * Thin fetch wrapper + WebSocket for real-time chat/events.
  * Replaces the gateway WebSocket protocol entirely.
@@ -20,11 +20,9 @@ import type {
   VideoProvider,
   VisionConfig,
   VisionProvider,
-} from "@elizaos/autonomous/contracts/config";
-import type {
-  DropStatus,
-  MintResult,
-} from "@elizaos/autonomous/contracts/drop";
+} from "@miladyai/autonomous/contracts/config";
+import type { DropStatus, MintResult } from "@miladyai/autonomous/contracts/drop";
+import type { VerificationResult } from "@miladyai/autonomous/contracts/verification";
 import type {
   CloudProviderOption,
   ConnectorConfig,
@@ -42,15 +40,7 @@ import type {
   StylePreset,
   SubscriptionProviderStatus,
   SubscriptionStatusResponse,
-} from "@elizaos/autonomous/contracts/onboarding";
-import type {
-  AllPermissionsState,
-  PermissionState,
-  PermissionStatus,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-} from "@elizaos/autonomous/contracts/permissions";
-import type { VerificationResult } from "@elizaos/autonomous/contracts/verification";
+} from "@miladyai/autonomous/contracts/onboarding";
 import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
@@ -77,24 +67,22 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/autonomous/contracts/wallet";
+} from "@miladyai/autonomous/contracts/wallet";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcProviderId,
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
-} from "@elizaos/autonomous/contracts/wallet";
-import { DEFAULT_BRANDING } from "../config/branding";
+} from "@miladyai/autonomous/contracts/wallet";
+import type {
+  AllPermissionsState,
+  PermissionState,
+  PermissionStatus,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+} from "@miladyai/autonomous/contracts/permissions";
 import type { ConfigUiHint } from "../types";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
-import {
-  clearElizaApiBase,
-  clearElizaApiToken,
-  getElizaApiBase,
-  getElizaApiToken,
-  setElizaApiBase,
-  setElizaApiToken,
-} from "../utils/eliza-globals";
 import { mergeStreamingText } from "../utils/streaming-text";
 
 export type {
@@ -135,8 +123,8 @@ export type {
   PermissionStatus,
   PiAiModelOption,
   ProviderOption,
-  ReleaseChannel,
   RpcProviderOption,
+  ReleaseChannel,
   SolanaNft,
   SolanaTokenBalance,
   StylePreset,
@@ -642,7 +630,7 @@ export interface ConversationGreeting {
 }
 
 export interface CreateConversationOptions {
-  basic-capabilitiesGreeting?: boolean;
+  bootstrapGreeting?: boolean;
   lang?: string;
 }
 
@@ -1563,6 +1551,134 @@ export interface AppStopResult {
   message: string;
 }
 
+export type HyperscapeScriptedRole =
+  | "combat"
+  | "woodcutting"
+  | "fishing"
+  | "mining"
+  | "balanced";
+
+export type HyperscapeEmbeddedAgentControlAction =
+  | "start"
+  | "stop"
+  | "pause"
+  | "resume";
+
+export type HyperscapeJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | HyperscapeJsonValue[]
+  | { [key: string]: HyperscapeJsonValue };
+
+export type HyperscapePosition =
+  | [number, number, number]
+  | {
+      x: number;
+      y: number;
+      z: number;
+    };
+
+export interface HyperscapeEmbeddedAgent {
+  agentId: string;
+  characterId: string;
+  accountId: string;
+  name: string;
+  scriptedRole: HyperscapeScriptedRole | null;
+  state: string;
+  entityId: string | null;
+  position: HyperscapePosition | null;
+  health: number | null;
+  maxHealth: number | null;
+  startedAt: number | null;
+  lastActivity: number | null;
+  error: string | null;
+}
+
+export interface HyperscapeEmbeddedAgentsResponse {
+  success: boolean;
+  agents: HyperscapeEmbeddedAgent[];
+  count: number;
+  error?: string;
+}
+
+export interface HyperscapeActionResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+export interface HyperscapeEmbeddedAgentMutationResponse
+  extends HyperscapeActionResponse {
+  agent?: HyperscapeEmbeddedAgent | null;
+}
+
+export interface HyperscapeAvailableGoal {
+  id: string;
+  type: string;
+  description: string;
+  priority: number;
+}
+
+export interface HyperscapeGoalState {
+  type?: string;
+  description?: string;
+  progress?: number;
+  target?: number;
+  progressPercent?: number;
+  elapsedMs?: number;
+  startedAt?: number;
+  locked?: boolean;
+  lockedBy?: string;
+}
+
+export interface HyperscapeAgentGoalResponse {
+  success: boolean;
+  goal: HyperscapeGoalState | null;
+  availableGoals?: HyperscapeAvailableGoal[];
+  goalsPaused?: boolean;
+  message?: string;
+  error?: string;
+}
+
+export interface HyperscapeQuickCommand {
+  id: string;
+  label: string;
+  command: string;
+  icon: string;
+  available: boolean;
+  reason?: string;
+}
+
+export interface HyperscapeNearbyLocation {
+  id: string;
+  name: string;
+  type: string;
+  distance: number;
+}
+
+export interface HyperscapeInventoryItem {
+  id: string;
+  name: string;
+  slot: number;
+  quantity: number;
+  canEquip: boolean;
+  canUse: boolean;
+  canDrop: boolean;
+}
+
+export interface HyperscapeQuickActionsResponse {
+  success: boolean;
+  nearbyLocations: HyperscapeNearbyLocation[];
+  availableGoals: HyperscapeAvailableGoal[];
+  quickCommands: HyperscapeQuickCommand[];
+  inventory: HyperscapeInventoryItem[];
+  playerPosition: [number, number, number] | null;
+  message?: string;
+  error?: string;
+}
+
 // Trajectories
 export interface TrajectoryRecord {
   id: string;
@@ -1828,7 +1944,13 @@ export interface VerificationMessageResponse {
 // ---------------------------------------------------------------------------
 // System Permissions
 // ---------------------------------------------------------------------------
-// Window.__ELIZA_* augmentation lives in src/ambient.d.ts
+
+declare global {
+  interface Window {
+    __MILADY_API_BASE__?: string;
+    __MILADY_API_TOKEN__?: string;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Client
@@ -1838,10 +1960,10 @@ const GENERIC_NO_RESPONSE_TEXT =
   "Sorry, I couldn't generate a response right now. Please try again.";
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
-const SESSION_STORAGE_API_BASE_KEY = "eliza_api_base";
-const SESSION_STORAGE_API_TOKEN_KEY = "eliza_api_token";
+const SESSION_STORAGE_API_BASE_KEY = "milady_api_base";
+const SESSION_STORAGE_API_TOKEN_KEY = "milady_api_token";
 
-export class ElizaClient {
+export class MiladyClient {
   private _baseUrl: string;
   private _explicitBase: boolean;
   private _token: string | null;
@@ -1872,15 +1994,14 @@ export class ElizaClient {
     this._uiLanguage = lang || null;
   }
 
-  private static resolveElectronLocalFallbackBase(): string {
+  private static resolveDesktopLocalFallbackBase(): string {
     if (typeof window === "undefined") return "";
     const proto = window.location.protocol;
-    // In capacitor-electron mode the main process injects the live API base
+    // In the desktop shell the main process injects the live API base
     // once the embedded agent has bound a port. Avoid eager localhost probes
     // to prevent noisy ERR_CONNECTION_REFUSED logs during startup.
-    if (proto === "capacitor-electron:") return "";
-    // Legacy Electron file:// mode fallback.
-    if (proto === "file:" && /\bElectron\b/i.test(window.navigator.userAgent)) {
+    if (proto === "electrobun:") return "";
+    if (proto === "file:") {
       return "http://localhost:2138";
     }
     return "";
@@ -1895,7 +2016,7 @@ export class ElizaClient {
   }
 
   constructor(baseUrl?: string, token?: string) {
-    this.clientId = ElizaClient.generateClientId();
+    this.clientId = MiladyClient.generateClientId();
     const stored =
       typeof window !== "undefined"
         ? window.sessionStorage.getItem(SESSION_STORAGE_API_TOKEN_KEY)
@@ -1906,32 +2027,33 @@ export class ElizaClient {
         : null;
     this._explicitBase = baseUrl != null || Boolean(storedBase?.trim());
     this._token = token?.trim() || stored || null;
-    // Priority: explicit arg > Capacitor/Electron injected global > same origin (Vite proxy)
-    const injectedBase = getElizaApiBase();
+    // Priority: explicit arg > desktop-injected global > same origin (Vite proxy)
+    const injectedBase =
+      typeof window !== "undefined" ? window.__MILADY_API_BASE__ : undefined;
     this._baseUrl =
       baseUrl ??
       storedBase ??
       injectedBase ??
-      ElizaClient.resolveElectronLocalFallbackBase();
+      MiladyClient.resolveDesktopLocalFallbackBase();
   }
 
   /**
    * Resolve the API base URL lazily.
-   * In Electron the main process injects window.__ELIZA_API_BASE__ after the
+   * In the desktop shell the main process injects window.__MILADY_API_BASE__ after the
    * page loads (once the agent runtime starts). Re-checking on every call
    * ensures we pick up the injected value even if it wasn't set at construction.
    */
   private get baseUrl(): string {
     if (!this._explicitBase && typeof window !== "undefined") {
-      const injected = getElizaApiBase();
-      // In Electron the API base can be injected after initial render. Always
+      const injected = window.__MILADY_API_BASE__;
+      // In the desktop shell the API base can be injected after initial render. Always
       // prefer the injected value when present so the client can switch away
       // from the localhost fallback once the main process publishes the real
       // endpoint.
       if (injected && injected !== this._baseUrl) {
         this._baseUrl = injected;
       } else if (!this._baseUrl) {
-        this._baseUrl = ElizaClient.resolveElectronLocalFallbackBase();
+        this._baseUrl = MiladyClient.resolveDesktopLocalFallbackBase();
       }
     }
     return this._baseUrl;
@@ -1940,7 +2062,7 @@ export class ElizaClient {
   private get apiToken(): string | null {
     if (this._token) return this._token;
     if (typeof window === "undefined") return null;
-    const injected = getElizaApiToken();
+    const injected = window.__MILADY_API_TOKEN__;
     if (typeof injected === "string" && injected.trim()) return injected.trim();
     return null;
   }
@@ -1953,13 +2075,13 @@ export class ElizaClient {
     this._token = token?.trim() || null;
     if (typeof window !== "undefined") {
       if (this._token) {
-        setElizaApiToken(this._token);
+        window.__MILADY_API_TOKEN__ = this._token;
         window.sessionStorage.setItem(
           SESSION_STORAGE_API_TOKEN_KEY,
           this._token,
         );
       } else {
-        clearElizaApiToken();
+        delete window.__MILADY_API_TOKEN__;
         window.sessionStorage.removeItem(SESSION_STORAGE_API_TOKEN_KEY);
       }
     }
@@ -1972,10 +2094,10 @@ export class ElizaClient {
     this.disconnectWs();
     if (typeof window !== "undefined") {
       if (normalized) {
-        setElizaApiBase(normalized);
+        window.__MILADY_API_BASE__ = normalized;
         window.sessionStorage.setItem(SESSION_STORAGE_API_BASE_KEY, normalized);
       } else {
-        clearElizaApiBase();
+        delete window.__MILADY_API_BASE__;
         window.sessionStorage.removeItem(SESSION_STORAGE_API_BASE_KEY);
       }
     }
@@ -2011,10 +2133,10 @@ export class ElizaClient {
       const requestInit: RequestInit = {
         ...init,
         headers: {
-          "X-Eliza-Client-Id": this.clientId,
+          "X-Milady-Client-Id": this.clientId,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(this._uiLanguage
-            ? { "X-Eliza-UI-Language": this._uiLanguage }
+            ? { "X-Milady-UI-Language": this._uiLanguage }
             : {}),
           ...init?.headers,
         },
@@ -3415,7 +3537,7 @@ export class ElizaClient {
     );
   }
 
-  /** Launch a managed cloud agent into the Eliza app. */
+  /** Launch a managed cloud agent into the Milady app. */
   async launchCloudCompatAgent(agentId: string): Promise<{
     success: boolean;
     data: CloudCompatLaunchResult;
@@ -3481,6 +3603,68 @@ export class ElizaClient {
       `/api/apps/plugins/search?q=${encodeURIComponent(query)}`,
     );
   }
+  async listHyperscapeEmbeddedAgents(): Promise<HyperscapeEmbeddedAgentsResponse> {
+    return this.fetch("/api/apps/hyperscape/embedded-agents");
+  }
+  async createHyperscapeEmbeddedAgent(input: {
+    characterId: string;
+    autoStart?: boolean;
+    scriptedRole?: HyperscapeScriptedRole;
+  }): Promise<HyperscapeEmbeddedAgentMutationResponse> {
+    return this.fetch("/api/apps/hyperscape/embedded-agents", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
+  async controlHyperscapeEmbeddedAgent(
+    characterId: string,
+    action: HyperscapeEmbeddedAgentControlAction,
+  ): Promise<HyperscapeEmbeddedAgentMutationResponse> {
+    return this.fetch(
+      `/api/apps/hyperscape/embedded-agents/${encodeURIComponent(characterId)}/${action}`,
+      { method: "POST" },
+    );
+  }
+  async sendHyperscapeEmbeddedAgentCommand(
+    characterId: string,
+    command: string,
+    data?: { [key: string]: HyperscapeJsonValue },
+  ): Promise<HyperscapeActionResponse> {
+    return this.fetch(
+      `/api/apps/hyperscape/embedded-agents/${encodeURIComponent(characterId)}/command`,
+      {
+        method: "POST",
+        body: JSON.stringify({ command, data }),
+      },
+    );
+  }
+  async sendHyperscapeAgentMessage(
+    agentId: string,
+    content: string,
+  ): Promise<HyperscapeActionResponse> {
+    return this.fetch(
+      `/api/apps/hyperscape/agents/${encodeURIComponent(agentId)}/message`,
+      {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      },
+    );
+  }
+  async getHyperscapeAgentGoal(
+    agentId: string,
+  ): Promise<HyperscapeAgentGoalResponse> {
+    return this.fetch(
+      `/api/apps/hyperscape/agents/${encodeURIComponent(agentId)}/goal`,
+    );
+  }
+  async getHyperscapeAgentQuickActions(
+    agentId: string,
+  ): Promise<HyperscapeQuickActionsResponse> {
+    return this.fetch(
+      `/api/apps/hyperscape/agents/${encodeURIComponent(agentId)}/quick-actions`,
+    );
+  }
+
   // Skills Marketplace
 
   async searchSkillsMarketplace(
@@ -3911,7 +4095,7 @@ export class ElizaClient {
     if (this.baseUrl) {
       host = new URL(this.baseUrl).host;
     } else {
-      // In non-HTTP environments (Electron capacitor-electron://, file://, etc.)
+      // In non-HTTP environments (electrobun://, file://, etc.)
       // window.location.host may be empty or a non-routable placeholder like "-".
       const loc = window.location;
       if (loc.protocol !== "http:" && loc.protocol !== "https:") return;
@@ -4303,7 +4487,7 @@ export class ElizaClient {
     const resolvedText = this.normalizeAssistantText(doneText ?? fullText);
     return {
       text: resolvedText,
-      agentName: doneAgentName ?? DEFAULT_BRANDING.appName,
+      agentName: doneAgentName ?? "Milady",
       completed: receivedDone,
       ...(doneUsage ? { usage: doneUsage } : {}),
     };
@@ -4375,8 +4559,8 @@ export class ElizaClient {
       method: "POST",
       body: JSON.stringify({
         title,
-        ...(options?.basic-capabilitiesGreeting === true
-          ? { basic-capabilitiesGreeting: true }
+        ...(options?.bootstrapGreeting === true
+          ? { bootstrapGreeting: true }
           : {}),
         ...(typeof options?.lang === "string" && options.lang.trim()
           ? { lang: options.lang.trim() }
@@ -4749,23 +4933,6 @@ export class ElizaClient {
    */
   async refreshPermissions(): Promise<AllPermissionsState> {
     return this.fetch("/api/permissions/refresh", { method: "POST" });
-  }
-
-  /**
-   * Sync permission states configured externally (e.g., from Electron bridge)
-   * to the backend so capabilities can evaluate successfully.
-   */
-  async updatePermissionsState(
-    permissions: AllPermissionsState | Record<string, PermissionState>,
-    startup?: boolean,
-  ): Promise<{
-    updated: boolean;
-    permissions: AllPermissionsState | Record<string, PermissionState>;
-  }> {
-    return this.fetch("/api/permissions/state", {
-      method: "PUT",
-      body: JSON.stringify({ permissions, startup }),
-    });
   }
 
   /**
@@ -5355,4 +5522,4 @@ export class ElizaClient {
 }
 
 // Singleton
-export const client = new ElizaClient();
+export const client = new MiladyClient();

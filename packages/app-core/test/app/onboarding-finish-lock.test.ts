@@ -13,7 +13,7 @@ const { mockClient } = vi.hoisted(() => ({
     })),
     getOnboardingStatus: vi.fn(async () => ({ complete: false })),
     getOnboardingOptions: vi.fn(async () => ({
-      names: ["Eliza"],
+      names: ["Milady"],
       styles: [],
       providers: [],
       cloudProviders: [],
@@ -31,14 +31,14 @@ const { mockClient } = vi.hoisted(() => ({
       },
       greeting: {
         text: "Welcome to the conversation.",
-        agentName: "Eliza",
+        agentName: "Milady",
         generated: true,
       },
     })),
     getConversationMessages: vi.fn(async () => ({ messages: [] })),
     requestGreeting: vi.fn(async () => ({
       text: "Welcome to the conversation.",
-      agentName: "Eliza",
+      agentName: "Milady",
       generated: true,
     })),
     sendWsMessage: vi.fn(),
@@ -48,7 +48,7 @@ const { mockClient } = vi.hoisted(() => ({
     getAgentEvents: vi.fn(async () => ({ events: [], latestEventId: null })),
     getStatus: vi.fn(async () => ({
       state: "running",
-      agentName: "Eliza",
+      agentName: "Milady",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -97,7 +97,7 @@ const { mockClient } = vi.hoisted(() => ({
     submitOnboarding: vi.fn(async () => ({ ok: true })),
     restartAgent: vi.fn(async () => ({
       state: "running",
-      agentName: "Eliza",
+      agentName: "Milady",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -106,12 +106,12 @@ const { mockClient } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/app-core/api", () => ({
+vi.mock("@miladyai/app-core/api", () => ({
   client: mockClient,
   SkillScanReportSummary: {},
 }));
 
-import { AppProvider, useApp } from "@elizaos/app-core/state";
+import { AppProvider, useApp } from "@miladyai/app-core/state";
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -255,7 +255,7 @@ describe("onboarding finish locking", () => {
     });
     mockClient.getOnboardingStatus.mockResolvedValue({ complete: false });
     mockClient.getOnboardingOptions.mockResolvedValue({
-      names: ["Eliza"],
+      names: ["Milady"],
       styles: [],
       providers: [],
       cloudProviders: [],
@@ -273,14 +273,14 @@ describe("onboarding finish locking", () => {
       },
       greeting: {
         text: "Welcome to the conversation.",
-        agentName: "Eliza",
+        agentName: "Milady",
         generated: true,
       },
     });
     mockClient.getConversationMessages.mockResolvedValue({ messages: [] });
     mockClient.requestGreeting.mockResolvedValue({
       text: "Welcome to the conversation.",
-      agentName: "Eliza",
+      agentName: "Milady",
       generated: true,
     });
     mockClient.sendWsMessage.mockImplementation(() => {});
@@ -293,7 +293,7 @@ describe("onboarding finish locking", () => {
     });
     mockClient.getStatus.mockResolvedValue({
       state: "running",
-      agentName: "Eliza",
+      agentName: "Milady",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -323,7 +323,7 @@ describe("onboarding finish locking", () => {
     mockClient.submitOnboarding.mockResolvedValue({ ok: true });
     mockClient.restartAgent.mockResolvedValue({
       state: "running",
-      agentName: "Eliza",
+      agentName: "Milady",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -529,7 +529,7 @@ describe("onboarding finish locking", () => {
     let runtimeReady = false;
     mockClient.restartAgent.mockResolvedValue({
       state: "restarting",
-      agentName: "Eliza",
+      agentName: "Milady",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -538,7 +538,7 @@ describe("onboarding finish locking", () => {
       runtimeReady = true;
       return {
         state: "running",
-        agentName: "Eliza",
+        agentName: "Milady",
         model: undefined,
         startedAt: undefined,
         uptime: undefined,
@@ -558,7 +558,7 @@ describe("onboarding finish locking", () => {
     mockClient.getConversationMessages.mockResolvedValue({ messages: [] });
     mockClient.requestGreeting.mockImplementation(async () => ({
       text: runtimeReady ? "Welcome to the conversation." : "",
-      agentName: "Eliza",
+      agentName: "Milady",
       generated: true,
     }));
 

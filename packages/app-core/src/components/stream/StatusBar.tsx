@@ -1,6 +1,6 @@
-import { isElectrobunRuntime } from "@elizaos/app-core/bridge";
-import { useApp } from "@elizaos/app-core/state";
-import { Button, Input, Slider } from "@elizaos/ui";
+import { isElectrobunRuntime } from "@miladyai/app-core/bridge";
+import { useApp } from "@miladyai/app-core/state";
+import { Button, Input, Slider } from "@miladyai/ui";
 import {
   ChevronDown,
   ExternalLink,
@@ -11,7 +11,6 @@ import {
   VolumeX,
 } from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
-import { getElizaApiBase } from "../../utils/eliza-globals";
 import {
   type AgentMode,
   IS_POPOUT,
@@ -421,11 +420,12 @@ export function StatusBar({
             className="px-2 py-0.5 h-6 rounded bg-bg-muted hover:bg-accent/20 hover:text-txt transition-colors"
             title={t("statusbar.PopOutStreamView")}
             onClick={() => {
-              const apiBase = getElizaApiBase();
+              const apiBase = (window as unknown as Record<string, unknown>)
+                .__MILADY_API_BASE__ as string | undefined;
               const base = window.location.origin || "";
               const sep =
                 window.location.protocol === "file:" ||
-                window.location.protocol === "capacitor-electron:"
+                window.location.protocol === "electrobun:"
                   ? "#"
                   : "";
               const qs = apiBase
@@ -433,7 +433,7 @@ export function StatusBar({
                 : "popout";
               const popoutWin = window.open(
                 `${base}${sep}/?${qs}`,
-                "eliza-stream",
+                "milady-stream",
                 "width=1280,height=720,menubar=no,toolbar=no,location=no,status=no",
               );
               // Notify the main window to navigate away from stream tab

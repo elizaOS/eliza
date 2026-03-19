@@ -49,7 +49,7 @@ export async function handleSandboxRoute(
   }
 
   // ── POST /api/sandbox/docker/start ────────────────────────────────
-  // Attempt to start Docker Desktop (works on macOS/Windows Electron)
+  // Attempt to start Docker Desktop (works on macOS/Windows desktop builds)
   if (method === "POST" && pathname === "/api/sandbox/docker/start") {
     try {
       const result = attemptDockerStart();
@@ -560,8 +560,7 @@ function resolveSigningRequestPayload(
     };
   }
 
-  const gasLimit =
-    typeof rawGasLimit === "string" ? rawGasLimit.trim() : undefined;
+  const gasLimit = rawGasLimit?.trim();
   if (gasLimit === "") {
     return {
       error: "Signing payload 'gasLimit' cannot be empty when provided",

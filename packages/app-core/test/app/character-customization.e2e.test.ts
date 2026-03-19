@@ -260,15 +260,15 @@ const { mockUseApp } = vi.hoisted(() => ({
   mockUseApp: vi.fn(),
 }));
 
-vi.mock("@elizaos/app-core/state", async () => {
-  const actual = await vi.importActual("@elizaos/app-core/state");
+vi.mock("@miladyai/app-core/state", async () => {
+  const actual = await vi.importActual("@miladyai/app-core/state");
   return {
     ...actual,
     useApp: () => mockUseApp(),
   };
 });
 
-vi.mock("@elizaos/app-core/api", () => ({
+vi.mock("@miladyai/app-core/api", () => ({
   client: {
     getCharacter: vi.fn().mockResolvedValue({
       name: "TestAgent",
@@ -316,12 +316,12 @@ vi.mock("../../src/components/AvatarSelector", () => ({
     ),
 }));
 
-vi.mock("@elizaos/app-core/config", () => ({
+vi.mock("@miladyai/app-core/config", () => ({
   ConfigRenderer: () => React.createElement("div", null, "ConfigRenderer"),
   defaultRegistry: {},
 }));
 
-import { client } from "@elizaos/app-core/api";
+import { client } from "@miladyai/app-core/api";
 import { CharacterView } from "../../src/components/CharacterView";
 
 type CharacterData = {
@@ -373,17 +373,17 @@ type CharacterState = {
 
 function createCharacterUIState(): CharacterState {
   const charData: CharacterData = {
-    name: "Reimu",
-    username: "Reimu",
-    bio: ["Reimu is soft and friendly"],
-    system: "You are Reimu",
+    name: "Ai",
+    username: "Ai",
+    bio: ["Ai is soft and friendly"],
+    system: "You are Ai",
     adjectives: ["friendly", "helpful"],
     style: { all: ["Rule 1"], chat: ["Chat rule"], post: ["Post rule"] },
     messageExamples: [
       {
         examples: [
           { name: "{{user1}}", content: { text: "hi" } },
-          { name: "Reimu", content: { text: "hey" } },
+          { name: "Ai", content: { text: "hey" } },
         ],
       },
     ],
@@ -399,12 +399,12 @@ function createCharacterUIState(): CharacterState {
     characterDirty: false,
     characterSaveSuccess: null,
     characterSaveError: null,
-    selectedVrmIndex: 1,
+    selectedVrmIndex: 2,
     onboardingOptions: {
       styles: [
         {
           catchphrase: "uwu~",
-          hint: "soft & sweet",
+          hint: "warm & caring",
           bio: ["{{name}} is soft and friendly"],
           system: "You are {{name}}",
           adjectives: ["friendly", "helpful"],
@@ -419,7 +419,7 @@ function createCharacterUIState(): CharacterState {
         },
         {
           catchphrase: "Noted.",
-          hint: "composed & precise",
+          hint: "dignified & commanding",
           bio: ["{{name}} is precise"],
           system: "You are {{name}}, exact and calm.",
           adjectives: ["precise", "calm"],
@@ -610,19 +610,22 @@ describe("CharacterView UI", () => {
         (node) => node.props["data-testid"] === "character-notebook",
       ) ?? [],
     ).toHaveLength(0);
-    expect(state.characterDraft?.name).toBe("Reimu");
-    expect(state.characterDraft?.bio).toEqual(["Reimu is soft and friendly"]);
+    expect(state.characterDraft?.name).toBe("Ai");
+    expect(state.characterDraft?.bio).toEqual(["Ai is soft and friendly"]);
     expect(state.characterDraft?.system).toBe("Custom system override");
-    expect(state.selectedVrmIndex).toBe(1);
+    expect(state.selectedVrmIndex).toBe(2);
   });
 
-  it("opens the detailed editor when explicitly routed to the character tab", async () => {
+  it("keeps roster mode when routed to the character tab until custom mode is enabled", async () => {
     state.tab = "character";
 
     let tree: TestRenderer.ReactTestRenderer | null = null;
 
     await act(async () => {
       tree = TestRenderer.create(React.createElement(CharacterView));
+    });
+    await act(async () => {
+      tree?.update(React.createElement(CharacterView));
     });
 
     expect(
@@ -655,7 +658,7 @@ describe("CharacterView UI", () => {
     expect(adjectiveLabels).toHaveLength(0);
   });
 
-  it("keeps the voice picker in roster mode and hides it while customizing", async () => {
+  it("shows the voice picker in roster mode and keeps it visible while customizing", async () => {
     let tree: TestRenderer.ReactTestRenderer | null = null;
 
     await act(async () => {
@@ -674,6 +677,9 @@ describe("CharacterView UI", () => {
 
     await act(async () => {
       customizeButton?.props.onClick();
+    });
+    await act(async () => {
+      tree?.update(React.createElement(CharacterView));
     });
 
     expect(
@@ -701,10 +707,14 @@ describe("CharacterView UI", () => {
     await act(async () => {
       tree = TestRenderer.create(React.createElement(CharacterView));
     });
+    await act(async () => {
+      tree?.update(React.createElement(CharacterView));
+    });
 
-    // Click the Style Rules sidebar tab
     const styleTab = tree?.root.find(
-      (node) => node.props["data-testid"] === "notebook-tab-styleRules",
+      (node) =>
+        node.props["data-testid"] === "notebook-tab-styleRules" &&
+        typeof node.props.onClick === "function",
     );
 
     await act(async () => {
@@ -744,13 +754,13 @@ describe("CharacterView UI", () => {
       backButton?.props.onClick();
     });
 
-    expect(state.characterDraft?.name).toBe("Reimu");
-    expect(state.characterDraft?.bio).toBe("Reimu is soft and friendly");
-    expect(state.characterDraft?.system).toBe("You are Reimu");
-    expect(state.selectedVrmIndex).toBe(1);
+    expect(state.characterDraft?.name).toBe("Ai");
+    expect(state.characterDraft?.bio).toBe("Ai is soft and friendly");
+    expect(state.characterDraft?.system).toBe("You are Ai");
+    expect(state.selectedVrmIndex).toBe(2);
     expect(
       tree?.root.findAll(
-        (node) => node.props["data-testid"] === "character-notebook",
+        (node) => node.props["data-testid"] === "character-customize-grid",
       ) ?? [],
     ).toHaveLength(0);
     expect(
@@ -838,9 +848,9 @@ describe("CharacterView UI", () => {
       sakuyaCard?.props.onClick();
     });
 
-    expect(state.characterDraft?.name).toBe("Reimu");
+    expect(state.characterDraft?.name).toBe("Ai");
     expect(state.characterDraft?.system).toBe("Custom preserved system");
-    expect(state.selectedVrmIndex).toBe(4);
+    expect(state.selectedVrmIndex).toBe(1);
   });
 
   it("hides character select while customizing and restores it when going back", async () => {
@@ -898,12 +908,10 @@ describe("CharacterView UI", () => {
       sakuyaCard?.props.onClick();
     });
 
-    expect(state.characterDraft?.name).toBe("Sakuya");
-    expect(state.characterDraft?.bio).toBe("Sakuya is precise");
-    expect(state.characterDraft?.system).toBe(
-      "You are Sakuya, exact and calm.",
-    );
-    expect(state.selectedVrmIndex).toBe(4);
+    expect(state.characterDraft?.name).toBe("Rin");
+    expect(state.characterDraft?.bio).toBe("Rin is precise");
+    expect(state.characterDraft?.system).toBe("You are Rin, exact and calm.");
+    expect(state.selectedVrmIndex).toBe(1);
   });
 
   it("preserves deep custom character settings on load while staying in roster mode", async () => {
@@ -1104,6 +1112,129 @@ describe("CharacterView UI", () => {
     });
     expect(client.updateConfig).toHaveBeenNthCalledWith(2, {
       ui: { avatarIndex: 4 },
+    });
+  });
+
+  it("still saves the character when voice config persistence fails", async () => {
+    mockUseApp.mockReset();
+    mockUseApp.mockImplementation(() => ({
+      uiLanguage: "en",
+      t: (k: string) => k,
+      ...state,
+      setTab: vi.fn((tab: CharacterState["tab"]) => {
+        state.tab = tab;
+      }),
+      loadCharacter: vi.fn(),
+      loadRegistryStatus: vi.fn(),
+      loadDropStatus: vi.fn(),
+      handleSaveCharacter: async () => {
+        _saveCharacterCalled = true;
+        const characterDraft = state.characterDraft;
+        if (!characterDraft) {
+          throw new Error("Character draft is required before saving");
+        }
+        const prepared = prepareCharacterDraftForSave(characterDraft);
+        const { agentName } = await client.updateCharacter(
+          prepared as unknown as CharacterData,
+        );
+        await client.updateConfig({
+          ui: { avatarIndex: state.selectedVrmIndex },
+        });
+        state.characterSaving = false;
+        state.characterDirty = false;
+        state.characterSaveSuccess = "Character saved successfully.";
+        if (agentName) {
+          const fallbackCharacterData =
+            state.characterData ?? createCharacterUIState().characterData;
+          if (!fallbackCharacterData) {
+            throw new Error("Character data is required after saving");
+          }
+          state.characterData = {
+            ...fallbackCharacterData,
+            ...(prepared as CharacterData),
+            name: agentName,
+          };
+        }
+      },
+      handleCharacterFieldInput: (field: string, value: unknown) => {
+        if (state.characterDraft) {
+          (state.characterDraft as Record<string, unknown>)[field] = value;
+          state.characterDirty = true;
+        }
+      },
+      handleCharacterArrayInput: vi.fn(),
+      handleCharacterStyleInput: vi.fn(),
+      setState: vi.fn((key: string, value: unknown) => {
+        (state as Record<string, unknown>)[key] = value;
+      }),
+    }));
+
+    vi.mocked(client.updateCharacter).mockResolvedValue({
+      ok: true,
+      character: {} as CharacterData,
+      agentName: "Fallback Save",
+    });
+    vi.mocked(client.updateConfig)
+      .mockRejectedValueOnce(new Error("Voice config failed"))
+      .mockResolvedValue({ ok: true });
+
+    let tree: TestRenderer.ReactTestRenderer | null = null;
+
+    await act(async () => {
+      tree = TestRenderer.create(React.createElement(CharacterView));
+    });
+
+    state.characterDraft = {
+      name: "Fallback Save",
+      bio: "Voice save failed but character should persist",
+      system: "Stay resilient.",
+      adjectives: ["calm"],
+      style: {
+        all: ["Keep going"],
+        chat: [],
+        post: [],
+      },
+      messageExamples: [],
+      postExamples: [],
+    };
+    state.selectedVrmIndex = 2;
+
+    const saveButton = tree?.root.find(
+      (node) =>
+        node.type === "button" &&
+        node.children.some(
+          (child) => typeof child === "string" && child === "Save Character",
+        ),
+    );
+
+    await act(async () => {
+      saveButton?.props.onClick();
+    });
+
+    expect(_saveCharacterCalled).toBe(true);
+    expect(client.updateCharacter).toHaveBeenCalledWith({
+      name: "Fallback Save",
+      username: "Fallback Save",
+      bio: ["Voice save failed but character should persist"],
+      system: "Stay resilient.",
+      adjectives: ["calm"],
+      style: {
+        all: ["Keep going"],
+      },
+    });
+    expect(client.updateConfig).toHaveBeenNthCalledWith(1, {
+      messages: {
+        tts: {
+          provider: "elevenlabs",
+          elevenlabs: {
+            voiceId: "EXAVITQu4vr4xnSDxMaL",
+            modelId: "eleven_flash_v2_5",
+          },
+        },
+      },
+    });
+    expect(client.updateConfig).toHaveBeenNthCalledWith(2, {
+      ui: { avatarIndex: 2 },
     });
   });
 

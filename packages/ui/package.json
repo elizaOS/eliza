@@ -1,51 +1,31 @@
 {
-  "name": "@elizaos/ui",
-  "version": "2.0.0-alpha.66",
-  "description": "Reusable UI primitives and components for elizaOS applications.",
+  "name": "@miladyai/ui",
+  "version": "1.0.0",
+  "description": "Reusable UI primitives and components for Milady applications.",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.ts",
   "license": "MIT",
-  "homepage": "https://elizaos.ai",
+  "homepage": "https://github.com/milady-ai/milady",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elizaos/eliza.git",
+    "url": "https://github.com/milady-ai/milady.git",
     "directory": "packages/ui"
   },
   "keywords": [
-    "elizaos",
+    "milady",
     "ui",
     "react",
     "components"
   ],
   "scripts": {
-    "clean": "rm -rf dist && find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' -o -name '*.js.map' \\) -delete",
-    "build": "bun run build:dist",
-    "build:dist": "find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' -o -name '*.js.map' \\) -delete && rm -rf dist && tsc -p tsconfig.build.json && find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' -o -name '*.js.map' \\) -delete && node ../../scripts/copy-package-assets.mjs packages/ui src/styles && node ../../scripts/prepare-package-dist.mjs packages/ui",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "bunx @biomejs/biome check --write ./src/index.ts ./src/lib ./src/components ./src/stories",
-    "lint:check": "bunx @biomejs/biome check ./src/index.ts ./src/lib ./src/components ./src/stories",
-    "pack:dry-run": "cd dist && npm pack --dry-run",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "clean": "rimraf dist",
+    "build:dist": "rimraf dist && tsc -p tsconfig.build.json && node ../../scripts/copy-package-assets.mjs packages/ui src/styles && node ../../scripts/prepare-package-dist.mjs packages/ui",
+    "pack:dry-run": "cd dist && npm pack --dry-run"
   },
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./utils": {
-      "types": "./dist/lib/utils.d.ts",
-      "import": "./dist/lib/utils.js"
-    },
-    "./styles/theme.css": "./src/styles/theme.css",
-    "./package.json": "./package.json"
+    ".": "./src/index.ts",
+    "./utils": "./src/lib/utils.ts"
   },
-  "files": [
-    "dist",
-    "src/styles/theme.css",
-    "README.md"
-  ],
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
@@ -74,21 +54,10 @@
     "access": "public"
   },
   "devDependencies": {
-    "@storybook/addon-essentials": "8.6.14",
-    "@storybook/blocks": "8.6.14",
-    "@storybook/react": "8.6.14",
-    "@storybook/react-vite": "8.6.14",
-    "@storybook/test": "8.6.14",
     "@tailwindcss/vite": "^4.2.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "storybook": "8.6.17",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3"
-  },
-  "author": "elizaOS Team",
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
+  }
 }
