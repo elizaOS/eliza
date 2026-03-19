@@ -17,6 +17,10 @@
   right: 0;
   bottom: 0;
   overflow: hidden;
+  /* Prevent text selection while dragging the avatar */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
   background: radial-gradient(
     circle at 50% 120%,
     var(--ac-bg-light) 0%,
@@ -6318,4 +6322,23 @@
   justify-content: center;
   font-size: 28px;
   flex-shrink: 0;
+}
+
+/* ── Companion view: selection & focus suppression ─────────────────── */
+/* Allow text selection only in actual text inputs */
+.anime-comp-screen input,
+.anime-comp-screen textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Remove focus outlines on non-input elements (buttons, links, etc.) */
+.anime-comp-screen *:focus-visible:not(input):not(textarea) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.anime-comp-screen button:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
