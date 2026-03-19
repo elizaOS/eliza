@@ -586,7 +586,6 @@ export class AgentRuntime implements IAgentRuntime {
 					"Registering service",
 				);
 
-				// Lazy: store the ServiceClass only; start() is deferred until getService() is called.
 				if (!this.servicePromises.has(serviceType)) {
 					this._createServiceResolver(serviceType);
 				}
@@ -598,6 +597,25 @@ export class AgentRuntime implements IAgentRuntime {
 				if (services) {
 					services.push(service);
 				}
+
+				// Eagerly kick off service start so it is available via the
+				// sync getService() by the time actions/routes need it.
+				// Fire-and-forget: cannot await here because _runServiceStart
+				// awaits initPromise which resolves after initialize() completes
+				// (after all registerPlugin calls finish). Awaiting would deadlock.
+				this._ensureServiceStarted(serviceType).catch((err) => {
+					this.logger.error(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							plugin: pluginToRegister.name,
+							serviceType,
+							error:
+								err instanceof Error ? err.message : String(err),
+						},
+						"Service start failed",
+					);
+				});
 			}
 		}
 		if (pluginToRegister.adapter) {
@@ -696,6 +714,23 @@ export class AgentRuntime implements IAgentRuntime {
 	async initialize(options?: {
 		skipMigrations?: boolean;
 		/** Allow running without a persistent database adapter (benchmarks/tests). */
+		allowNoDatabase?: boolean;
+	}): Promise<void> {
+		try {
+			await this._initializeCore(options);
+		} catch (err) {
+			// Always resolve initPromise so eager service starts and stop()
+			// do not hang waiting on a promise that never settles.
+			if (this.initResolver) {
+				this.initResolver();
+				this.initResolver = undefined;
+			}
+			throw err;
+		}
+	}
+
+	private async _initializeCore(options?: {
+		skipMigrations?: boolean;
 		allowNoDatabase?: boolean;
 	}): Promise<void> {
 		const pluginRegistrationPromises: Promise<void>[] = [];
