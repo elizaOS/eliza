@@ -984,69 +984,73 @@ export class AgentRuntime implements IAgentRuntime {
 		} else {
 			// Polyfill batch agent methods for adapters that only implement
 			// the older singular API (e.g. published plugin-sql <= alpha.12).
+			const legacy = adapter as unknown as Record<
+				string,
+				(...args: unknown[]) => unknown
+			>;
 			if (
-				typeof (adapter as any).getAgentsByIds !== "function" &&
-				typeof (adapter as any).getAgent === "function"
+				typeof legacy.getAgentsByIds !== "function" &&
+				typeof legacy.getAgent === "function"
 			) {
-				(adapter as any).getAgentsByIds = async (ids: UUID[]) => {
+				legacy.getAgentsByIds = async (ids: UUID[]) => {
 					const results = await Promise.all(
-						ids.map((id) => (adapter as any).getAgent(id)),
+						ids.map((id) => legacy.getAgent(id)),
 					);
 					return results.filter(Boolean);
 				};
 			}
 			if (
-				typeof (adapter as any).createAgents !== "function" &&
-				typeof (adapter as any).createAgent === "function"
+				typeof legacy.createAgents !== "function" &&
+				typeof legacy.createAgent === "function"
 			) {
-				(adapter as any).createAgents = async (agents: Partial<Agent>[]) => {
+				legacy.createAgents = async (agents: Partial<Agent>[]) => {
 					const ids: UUID[] = [];
 					for (const agent of agents) {
-						const ok = await (adapter as any).createAgent(agent);
+						const ok = await legacy.createAgent(agent);
 						if (ok && agent.id) ids.push(agent.id);
 					}
 					return ids;
 				};
 			}
 			if (
-				typeof (adapter as any).updateAgents !== "function" &&
-				typeof (adapter as any).updateAgent === "function"
+				typeof legacy.updateAgents !== "function" &&
+				typeof legacy.updateAgent === "function"
 			) {
-				(adapter as any).updateAgents = async (
+				legacy.updateAgents = async (
 					updates: Array<{ agentId: UUID; agent: Partial<Agent> }>,
 				) => {
 					for (const { agentId, agent } of updates) {
-						await (adapter as any).updateAgent(agentId, agent);
+						await legacy.updateAgent(agentId, agent);
 					}
 					return true;
 				};
 			}
 			if (
-				typeof (adapter as any).deleteAgents !== "function" &&
-				typeof (adapter as any).deleteAgent === "function"
+				typeof legacy.deleteAgents !== "function" &&
+				typeof legacy.deleteAgent === "function"
 			) {
-				(adapter as any).deleteAgents = async (ids: UUID[]) => {
+				legacy.deleteAgents = async (ids: UUID[]) => {
 					for (const id of ids) {
-						await (adapter as any).deleteAgent(id);
+						await legacy.deleteAgent(id);
 					}
 					return true;
 				};
 			}
-			if (typeof (adapter as any).upsertAgents !== "function") {
-				(adapter as any).upsertAgents = async (agents: Partial<Agent>[]) => {
+			if (typeof legacy.upsertAgents !== "function") {
+				legacy.upsertAgents = async (agents: Partial<Agent>[]) => {
 					for (const agent of agents) {
 						if (!agent.id) continue;
 						const existing =
-							typeof (adapter as any).getAgent === "function"
-								? await (adapter as any).getAgent(agent.id)
+							typeof legacy.getAgent === "function"
+								? await legacy.getAgent(agent.id)
 								: null;
 						if (existing) {
-							if (typeof (adapter as any).updateAgent === "function") {
-								await (adapter as any).updateAgent(agent.id, agent);
+							if (typeof legacy.updateAgent === "function") {
+								await legacy.updateAgent(agent.id, agent);
 							}
 						} else {
-							if (typeof (adapter as any).createAgent === "function") {
-								await (adapter as any).createAgent(agent);
+							if (typeof legacy.createAgent === "function") {
+								await legacy.createAgent(agent);
 							}
 						}
 					}
@@ -5055,7 +5059,7 @@ ${section_end}`;
 		return this.taskWorkers.get(name);
 	}
 
-	get db(): any {
+	get db(): object {
 		return this.adapter.db;
 	}
 	async init(): Promise<void> {
