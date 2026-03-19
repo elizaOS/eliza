@@ -15,6 +15,19 @@ import type {
 import { ContentType, ModelType, type UUID } from "./types";
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 
+// Token / embedding budget constants
+export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
+/** Max tokens for embedding input text (default fallback) */
+export const DEFAULT_MAX_EMBEDDING_TOKENS = 8_000;
+/** Max character equivalent for embedding text (tokens * ~4 chars/token) */
+export const DEFAULT_MAX_EMBEDDING_CHARS = DEFAULT_MAX_EMBEDDING_TOKENS * 4;
+/** @deprecated Use DEFAULT_MAX_EMBEDDING_TOKENS instead */
+export const MAX_EMBEDDING_TOKENS = DEFAULT_MAX_EMBEDDING_TOKENS;
+/** @deprecated Use DEFAULT_MAX_EMBEDDING_CHARS instead */
+export const MAX_EMBEDDING_CHARS = DEFAULT_MAX_EMBEDDING_CHARS;
+/** Default max tokens for the assembled prompt sent to the model */
+export const DEFAULT_MAX_PROMPT_TOKENS = 128_000;
+
 // Text Utils
 
 /**
