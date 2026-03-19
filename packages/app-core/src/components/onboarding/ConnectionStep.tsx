@@ -300,14 +300,13 @@ export function ConnectionStep() {
     }
   };
 
-  // On native (mobile) or when branding requires cloud-only, force sandbox mode
-  // — skip straight to Eliza Cloud login. These platforms cannot run a local
-  // backend, so cloud is the only option.
+  // On native (mobile) or when branding requires cloud-only, skip the
+  // hosting choice screen and go straight to the provider selection grid.
+  // Eliza Cloud appears as the first recommended option alongside subscriptions.
   const forceCloud = isNative || branding.cloudOnly;
   useEffect(() => {
     if (forceCloud && !onboardingRunMode) {
-      setState("onboardingRunMode", "cloud");
-      setState("onboardingCloudProvider", "elizacloud");
+      setState("onboardingRunMode", "local");
       setState("onboardingProvider", "");
       setState("onboardingApiKey", "");
       setState("onboardingPrimaryModel", "");
