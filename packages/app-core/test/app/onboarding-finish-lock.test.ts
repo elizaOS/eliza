@@ -237,6 +237,9 @@ describe("onboarding finish locking", () => {
       setInterval: globalThis.setInterval,
       clearInterval: globalThis.clearInterval,
       alert: vi.fn(),
+      // Simulate an available backend so the startup flow doesn't skip to
+      // onboarding immediately (fresh install detection).
+      __MILADY_API_BASE__: "http://localhost:2138",
     });
     Object.assign(document.documentElement, { setAttribute: vi.fn() });
     localStorage.clear();
