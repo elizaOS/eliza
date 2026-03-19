@@ -2653,14 +2653,15 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
           ) {
             try {
               const room = await runtime.getRoom(input.roomId);
-              if (room?.worldId && room.worldId !== input.worldId) {
+              const fallbackWorldId = room?.worldId ?? null;
+              if (fallbackWorldId !== input.worldId) {
                 logger.warn(
-                  `[milady] createComponent retry with room worldId (${room.worldId}) after FK violation`,
+                  `[milady] createComponent retry with ${fallbackWorldId ? `room worldId (${fallbackWorldId})` : "null worldId"} after FK violation`,
                 );
                 const recovered: Component = {
                   ...input,
-                  worldId: room.worldId,
-                };
+                  worldId: fallbackWorldId,
+                } as Component;
                 return await originalCreate(recovered);
               }
             } catch (retryLookupError) {
@@ -2902,7 +2903,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   const agentEntry = config.agents?.list?.[0];
   const name = agentEntry?.name ?? config.ui?.assistant?.name ?? "Milady";
   const bundledPreset = (() => {
-    const presetByName: Record<string, string> = {
+    const defaultPresetByName: Record<string, string> = {
       Reimu: "uwu~",
       Marisa: "hell yeah",
       Yukari: "lol k",
@@ -2911,9 +2912,10 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
       Remilia: "...",
       Reisen: "locked in",
     };
+    const presetByName = getPresetByName() ?? defaultPresetByName;
     const presetCatchphrase = presetByName[name.trim()];
     if (!presetCatchphrase) return undefined;
-    return STYLE_PRESETS.find(
+    return getStylePresets().find(
       (preset) => preset.catchphrase === presetCatchphrase,
     );
   })();
@@ -3089,7 +3091,7 @@ import { pickRandomNames } from "./onboarding-names";
 // Style presets — shared between CLI and GUI onboarding
 // ---------------------------------------------------------------------------
 
-import { STYLE_PRESETS } from "../onboarding-presets";
+import { STYLE_PRESETS, getStylePresets, getPresetByName } from "../onboarding-presets";
 
 /**
  * Detect whether this is the first run (no agent name configured)
@@ -3152,7 +3154,7 @@ async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
   // ── Step 3: Catchphrase / writing style ────────────────────────────────
   const styleChoice = await clack.select({
     message: `${name}: Now... how do I like to talk again?`,
-    options: STYLE_PRESETS.map((preset) => ({
+    options: getStylePresets().map((preset) => ({
       value: preset.catchphrase,
       label: preset.catchphrase,
       hint: preset.hint,
@@ -3161,7 +3163,7 @@ async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
 
   if (clack.isCancel(styleChoice)) cancelOnboarding();
 
-  const chosenTemplate = STYLE_PRESETS.find(
+  const chosenTemplate = getStylePresets().find(
     (p) => p.catchphrase === styleChoice,
   );
 

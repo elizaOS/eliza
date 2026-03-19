@@ -193,6 +193,19 @@ export class RolodexService extends Service {
 	async initialize(runtime: IAgentRuntime): Promise<void> {
 		this.runtime = runtime;
 
+		// Ensure the synthetic rolodex world exists so component FK constraints pass
+		if (typeof this.runtime.ensureWorldExists === "function") {
+			try {
+				await this.runtime.ensureWorldExists({
+					id: stringToUuid(`rolodex-world-${this.runtime.agentId}`),
+					name: "Rolodex World",
+					agentId: this.runtime.agentId,
+				} as Parameters<typeof this.runtime.ensureWorldExists>[0]);
+			} catch (err) {
+				logger.warn(`[RolodexService] Failed to ensure rolodex world: ${err}`);
+			}
+		}
+
 		// Initialize default categories
 		this.categoriesCache = [
 			{ id: "friend", name: "Friend", color: "#4CAF50" },
