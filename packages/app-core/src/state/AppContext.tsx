@@ -14,6 +14,7 @@ import {
   useState,
 } from "react";
 import { prepareDraftForSave } from "../actions/character";
+import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import {
   type AgentStartupDiagnostics,
   type AgentStatus,
@@ -424,7 +425,13 @@ function getFlaminaTopicForOnboardingStep(
 
 // ── Provider ───────────────────────────────────────────────────────────
 
-export function AppProvider({ children }: { children: ReactNode }) {
+export function AppProvider({
+  children,
+  branding: brandingOverride,
+}: {
+  children: ReactNode;
+  branding?: Partial<import("../config/branding").BrandingConfig>;
+}) {
   const [lastNativeTab, setLastNativeTabState] =
     useState<Tab>(loadLastNativeTab);
   // --- Core state ---
@@ -804,7 +811,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // --- Onboarding ---
   const [onboardingStep, setOnboardingStepRaw] = useState<OnboardingStep>(
-    () => loadPersistedOnboardingStep() ?? "wakeUp",
+    () =>
+      loadPersistedOnboardingStep() ??
+      (brandingOverride?.cloudOnly ? "identity" : "wakeUp"),
   );
   const [onboardingMode, setOnboardingMode] =
     useState<AppState["onboardingMode"]>("basic");
@@ -826,8 +835,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [onboardingStyle, setOnboardingStyle] = useState("");
   const [onboardingRunMode, setOnboardingRunMode] = useState<
     "local" | "cloud" | ""
-  >("");
-  const [onboardingCloudProvider, setOnboardingCloudProvider] = useState("");
+  >(brandingOverride?.cloudOnly ? "cloud" : "");
+  const [onboardingCloudProvider, setOnboardingCloudProvider] = useState(
+    brandingOverride?.cloudOnly ? "elizacloud" : "",
+  );
   const [onboardingSmallModel, setOnboardingSmallModel] = useState(
     "moonshotai/kimi-k2-turbo",
   );
@@ -6387,11 +6398,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     copyToClipboard,
   };
 
+  const mergedBranding = useMemo(
+    () => ({ ...DEFAULT_BRANDING, ...brandingOverride }),
+    [brandingOverride],
+  );
+
   return (
-    <AppContext.Provider value={value}>
-      {children}
-      <ConfirmModal {...modalProps} />
-      <PromptModal {...promptModalProps} />
-    </AppContext.Provider>
+    <BrandingContext.Provider value={mergedBranding}>
+      <AppContext.Provider value={value}>
+        {children}
+        <ConfirmModal {...modalProps} />
+        <PromptModal {...promptModalProps} />
+      </AppContext.Provider>
+    </BrandingContext.Provider>
   );
 }

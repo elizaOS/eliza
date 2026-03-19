@@ -1,48 +1,82 @@
 import { resolveAppAssetUrl } from "../utils/asset-url";
 import type { UiTheme } from "./ui-preferences";
 
-/** Number of bundled VRM avatars shipped with the app. */
-const BASE_VRM_COUNT = 4;
+// ---------------------------------------------------------------------------
+// Bundled VRM asset roster
+// ---------------------------------------------------------------------------
 
-export const VRM_COUNT = BASE_VRM_COUNT;
-
-/**
- * Maps logical avatar indices (1-4) to the original source file numbers.
- * Index 1 → eliza-1, Index 2 → eliza-4, Index 3 → eliza-5, Index 4 → eliza-9.
- */
-const VRM_INDEX_MAP: readonly number[] = [1, 4, 5, 9];
-
-function resolveSourceIndex(logicalIndex: number): number {
-  const normalized = normalizeAvatarIndex(logicalIndex);
-  const safe = normalized > 0 ? normalized : 1;
-  return VRM_INDEX_MAP[safe - 1] ?? VRM_INDEX_MAP[0];
+interface BundledVrmAsset {
+  title: string;
+  slug: string;
 }
 
-function normalizeAvatarIndex(index: number): number {
+/**
+ * Default Eliza avatar roster (4 slots).
+ * Apps can override this at startup by setting window.__APP_VRM_ASSETS__
+ * before mounting the React tree.
+ */
+const DEFAULT_ASSETS: BundledVrmAsset[] = [
+  { title: "ELIZA-01", slug: "eliza-1" },
+  { title: "ELIZA-04", slug: "eliza-4" },
+  { title: "ELIZA-05", slug: "eliza-5" },
+  { title: "ELIZA-09", slug: "eliza-9" },
+];
+
+declare global {
+  interface Window {
+    __APP_VRM_ASSETS__?: BundledVrmAsset[];
+  }
+}
+
+function getAssets(): BundledVrmAsset[] {
+  if (typeof window !== "undefined" && Array.isArray(window.__APP_VRM_ASSETS__)) {
+    return window.__APP_VRM_ASSETS__;
+  }
+  return DEFAULT_ASSETS;
+}
+
+/** Number of bundled VRM avatars shipped with the app. */
+export function getVrmCount(): number {
+  return getAssets().length;
+}
+
+// Legacy constant — prefer getVrmCount() for dynamic rosters.
+export const VRM_COUNT = DEFAULT_ASSETS.length;
+
+export function normalizeAvatarIndex(index: number): number {
   if (!Number.isFinite(index)) return 1;
   const n = Math.trunc(index);
   if (n === 0) return 0;
-  if (n < 1 || n > VRM_COUNT) return 1;
+  const count = getAssets().length;
+  if (n < 1 || n > count) return 1;
   return n;
 }
 
 /** Resolve a bundled VRM index (1–N) to its public asset URL. */
 export function getVrmUrl(index: number): string {
-  const sourceIndex = resolveSourceIndex(index);
-  return resolveAppAssetUrl(`vrms/eliza-${sourceIndex}.vrm.gz`);
+  const assets = getAssets();
+  const n = normalizeAvatarIndex(index);
+  const safe = n > 0 ? n : 1;
+  const slug = assets[safe - 1]?.slug ?? assets[0].slug;
+  return resolveAppAssetUrl(`vrms/${slug}.vrm.gz`);
 }
 
 /** Resolve a bundled VRM index (1–N) to its preview thumbnail URL. */
 export function getVrmPreviewUrl(index: number): string {
-  const sourceIndex = resolveSourceIndex(index);
-  return resolveAppAssetUrl(`vrms/previews/eliza-${sourceIndex}.png`);
+  const assets = getAssets();
+  const n = normalizeAvatarIndex(index);
+  const safe = n > 0 ? n : 1;
+  const slug = assets[safe - 1]?.slug ?? assets[0].slug;
+  return resolveAppAssetUrl(`vrms/previews/${slug}.png`);
 }
 
 /** Resolve a bundled VRM index (1-N) to its custom background URL. */
 export function getVrmBackgroundUrl(index: number): string {
-  const sourceIndex = resolveSourceIndex(index);
-  const EXT = "png";
-  return resolveAppAssetUrl(`vrms/backgrounds/eliza-${sourceIndex}.${EXT}`);
+  const assets = getAssets();
+  const n = normalizeAvatarIndex(index);
+  const safe = n > 0 ? n : 1;
+  const slug = assets[safe - 1]?.slug ?? assets[0].slug;
+  return resolveAppAssetUrl(`vrms/backgrounds/${slug}.png`);
 }
 
 const COMPANION_THEME_BACKGROUND_INDEX: Record<UiTheme, number> = {
@@ -57,8 +91,10 @@ export function getCompanionBackgroundUrl(theme: UiTheme): string {
 
 /** Human-readable roster title for bundled avatars. */
 export function getVrmTitle(index: number): string {
-  const sourceIndex = resolveSourceIndex(index);
-  return `ELIZA-${String(sourceIndex).padStart(2, "0")}`;
+  const assets = getAssets();
+  const n = normalizeAvatarIndex(index);
+  const safe = n > 0 ? n : 1;
+  return assets[safe - 1]?.title ?? assets[0].title;
 }
 
 /** Whether a bundled index points to the official Eliza avatar set. */
@@ -67,10 +103,6 @@ export function isOfficialVrmIndex(_index: number): boolean {
 }
 
 /** Whether a VRM index requires an explicit 180° face-camera flip instead of auto-detection. */
-export function getVrmNeedsFlip(index: number): boolean {
-  const normalized = normalizeAvatarIndex(index);
-  if (normalized <= BASE_VRM_COUNT) return false;
+export function getVrmNeedsFlip(_index: number): boolean {
   return false;
 }
-
-export { normalizeAvatarIndex };

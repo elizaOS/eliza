@@ -6,11 +6,14 @@ export function OnboardingStepNav() {
   const branding = useBranding();
 
   const isEliza = branding.appName === "Eliza";
+  const isCloudOnly = !!branding.cloudOnly;
   const activeSteps = isEliza
     ? ONBOARDING_STEPS.filter(
         (s) => s.id === "connection" || s.id === "activate",
       )
-    : ONBOARDING_STEPS;
+    : isCloudOnly
+      ? ONBOARDING_STEPS.filter((s) => s.id !== "wakeUp")
+      : ONBOARDING_STEPS;
 
   const currentIndex = activeSteps.findIndex((s) => s.id === onboardingStep);
 

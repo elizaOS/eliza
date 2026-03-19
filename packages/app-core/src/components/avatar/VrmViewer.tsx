@@ -5,8 +5,8 @@
  * the `mouthOpen` prop. Sized to fill its parent container.
  */
 
-import { resolveAppAssetUrl } from "@elizaos/app-core/utils";
 import { useEffect, useEffectEvent, useRef } from "react";
+import { getVrmUrl } from "../../state/vrm";
 import {
   type CameraProfile,
   type InteractionMode,
@@ -15,7 +15,7 @@ import {
   type VrmEngineState,
 } from "./VrmEngine";
 
-const DEFAULT_VRM_PATH = resolveAppAssetUrl("vrms/eliza-1.vrm.gz");
+const DEFAULT_VRM_PATH = getVrmUrl(1);
 
 export type VrmViewerProps = {
   /** When false the loaded scene stays resident but the render loop is paused */
