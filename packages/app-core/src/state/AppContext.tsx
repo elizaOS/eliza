@@ -120,7 +120,6 @@ import {
   applyUiTheme,
   asApiLikeError,
   type ChatTurnUsage,
-  clearPersistedConnectionMode,
   clearPersistedOnboardingStep,
   deriveOnboardingResumeConnection,
   deriveOnboardingResumeFields,

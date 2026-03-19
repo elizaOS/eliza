@@ -1,6 +1,6 @@
 import { useApp } from "@elizaos/app-core/state";
 import { getVrmPreviewUrl } from "@elizaos/app-core/state";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CHARACTER_PRESET_META,
   SLANT_CLIP,
