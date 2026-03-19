@@ -36,7 +36,10 @@ pub struct CapabilityConfig {
 }
 
 /// Create the built-in basic_capabilities plugin for the core runtime.
-pub fn create_basic_capabilities_plugin(runtime: Weak<AgentRuntime>, config: CapabilityConfig) -> Plugin {
+pub fn create_basic_capabilities_plugin(
+    runtime: Weak<AgentRuntime>,
+    config: CapabilityConfig,
+) -> Plugin {
     let mut plugin = Plugin::new("basic_capabilities", "Core basic_capabilities capabilities");
 
     if !config.disable_basic {
