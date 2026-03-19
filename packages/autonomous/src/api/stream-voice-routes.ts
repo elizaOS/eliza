@@ -72,7 +72,7 @@ export async function handleStreamVoiceRoute(
       json(res, {
         ok: true,
         enabled: settings.voice?.enabled === true,
-        autoSpeak: settings.voice?.autoSpeak !== false,
+        autoSpeak: settings.voice?.autoSpeak === true,
         provider: providerStatus.resolvedProvider,
         configuredProvider: providerStatus.configuredProvider,
         hasApiKey: providerStatus.hasApiKey,
@@ -91,12 +91,19 @@ export async function handleStreamVoiceRoute(
 
   if (method === "POST" && pathname === "/api/stream/voice") {
     try {
-      const body = await readRequestBody(req);
+      const body = await readRequestBody(req, {
+        maxBytes: 2048,
+        returnNullOnTooLarge: true,
+      });
+      if (body === null) {
+        error(res, "Request body too large", 413);
+        return true;
+      }
       const parsed = typeof body === "string" ? JSON.parse(body) : body;
       const current = readStreamSettings();
       const voice: StreamVoiceSettings = {
         enabled: current.voice?.enabled ?? false,
-        autoSpeak: current.voice?.autoSpeak ?? true,
+        autoSpeak: current.voice?.autoSpeak ?? false,
       };
       if (typeof parsed?.enabled === "boolean") voice.enabled = parsed.enabled;
       if (typeof parsed?.autoSpeak === "boolean") {
@@ -120,7 +127,14 @@ export async function handleStreamVoiceRoute(
 
   if (method === "POST" && pathname === "/api/stream/voice/speak") {
     try {
-      const body = await readRequestBody(req);
+      const body = await readRequestBody(req, {
+        maxBytes: 8192,
+        returnNullOnTooLarge: true,
+      });
+      if (body === null) {
+        error(res, "Request body too large", 413);
+        return true;
+      }
       const parsed = typeof body === "string" ? JSON.parse(body) : body;
       const text =
         typeof parsed?.text === "string" ? sanitizeSpeechText(parsed.text) : "";

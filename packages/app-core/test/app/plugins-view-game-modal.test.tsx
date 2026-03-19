@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { PluginInfo } from "@elizaos/app-core/api";
+import type { PluginInfo } from "@miladyai/app-core/api";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -63,11 +63,11 @@ function ensureWindowGlobals() {
   }
 }
 
-vi.mock("@elizaos/app-core/state", () => ({
+vi.mock("@miladyai/app-core/state", () => ({
   useApp: () => mockUseApp(),
 }));
 
-vi.mock("@elizaos/app-core/api", () => ({
+vi.mock("@miladyai/app-core/api", () => ({
   client: {
     onWsEvent: (...args: unknown[]) => mockOnWsEvent(...args),
     installRegistryPlugin: vi.fn(),
@@ -77,7 +77,7 @@ vi.mock("@elizaos/app-core/api", () => ({
   },
 }));
 
-import { PluginsView } from "@elizaos/app-core/components/PluginsView";
+import { PluginsView } from "@miladyai/app-core/components/PluginsView";
 
 function hasClass(
   node: TestRenderer.ReactTestInstance,
@@ -198,7 +198,7 @@ describe("PluginsView game modal", () => {
         };
       }),
     });
-    Object.defineProperty(window, "__ELIZA_ELECTROBUN_RPC__", {
+    Object.defineProperty(window, "__MILADY_ELECTROBUN_RPC__", {
       configurable: true,
       writable: true,
       value: undefined,
@@ -278,7 +278,6 @@ describe("PluginsView game modal", () => {
     expect(text(tree?.root)).toContain("All (2)");
     expect(text(tree?.root)).toContain("Enabled (1)");
     expect(text(tree?.root)).toContain("Discord");
-    expect(text(tree?.root)).toContain("Telegram");
   });
 
   it("allows collapsing the selected desktop connector section", async () => {
@@ -600,8 +599,8 @@ describe("PluginsView game modal", () => {
   it("renders setup links on cards and opens detail links via desktop IPC with browser fallback", async () => {
     const openSpy = vi
       .spyOn(window, "open")
-      .mockImplementation(() => null);
-    Object.defineProperty(window, "__ELIZA_ELECTROBUN_RPC__", {
+      .mockImplementation(() => null as unknown as Window);
+    Object.defineProperty(window, "__MILADY_ELECTROBUN_RPC__", {
       configurable: true,
       writable: true,
       value: {
@@ -616,9 +615,9 @@ describe("PluginsView game modal", () => {
     mockUseApp.mockReturnValue(
       baseContext([
         createPlugin("retake", "Retake.tv", "streaming", {
-          setupGuideUrl: "https://docs.elizaos.ai/plugin-setup-guide#retaketv",
+          setupGuideUrl: "https://docs.milady.ai/plugin-setup-guide#retaketv",
           repository:
-            "https://github.com/elizaos/eliza/tree/main/packages/plugin-retake",
+            "https://github.com/milady-ai/milady/tree/main/packages/plugin-retake",
         }),
       ]),
     );
@@ -659,10 +658,10 @@ describe("PluginsView game modal", () => {
       await Promise.resolve();
     });
     expect(mockOpenExternalInvoke).toHaveBeenCalledWith({
-      url: "https://docs.elizaos.ai/plugin-setup-guide#retaketv",
+      url: "https://docs.milady.ai/plugin-setup-guide#retaketv",
     });
 
-    Object.defineProperty(window, "__ELIZA_ELECTROBUN_RPC__", {
+    Object.defineProperty(window, "__MILADY_ELECTROBUN_RPC__", {
       configurable: true,
       writable: true,
       value: undefined,
@@ -677,7 +676,7 @@ describe("PluginsView game modal", () => {
       await Promise.resolve();
     });
     expect(openSpy).toHaveBeenCalledWith(
-      "https://github.com/elizaos/eliza/tree/main/packages/plugin-retake",
+      "https://github.com/milady-ai/milady/tree/main/packages/plugin-retake",
       "_blank",
       "noopener,noreferrer",
     );

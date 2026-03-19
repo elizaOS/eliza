@@ -110,9 +110,7 @@ async function getPairingService(
 	runtime: IAgentRuntime,
 ): Promise<PairingService | null> {
 	try {
-		return runtime.getService(
-			ServiceType.PAIRING,
-		) as PairingService | null;
+		return runtime.getService(ServiceType.PAIRING) as PairingService | null;
 	} catch {
 		return null;
 	}

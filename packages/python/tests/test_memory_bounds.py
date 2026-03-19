@@ -8,10 +8,10 @@ import pytest
 from elizaos.advanced_memory.memory_service import MemoryService
 from elizaos.advanced_memory.types import LongTermMemoryCategory
 from elizaos.basic_capabilities.services.embedding import (
-    EmbeddingService as BasicEmbeddingService,
+    EmbeddingService as BasicCapabilitiesEmbeddingService,
 )
 from elizaos.basic_capabilities.services.embedding import (
-    EmbeddingService as BasicCapabilitiesEmbeddingService,
+    EmbeddingService as BasicEmbeddingService,
 )
 from elizaos.types import ModelType
 

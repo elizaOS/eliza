@@ -14,8 +14,7 @@ function getAutonomyService(runtime: {
 	getService: (name: string) => AutonomyService | null;
 }): AutonomyService | null {
 	return (
-		runtime.getService(AUTONOMY_SERVICE_TYPE) ||
-		runtime.getService("autonomy")
+		runtime.getService(AUTONOMY_SERVICE_TYPE) || runtime.getService("autonomy")
 	);
 }
 

@@ -1032,9 +1032,7 @@ const events: PluginEvents = {
 			const payloadContent = payload.content;
 			if (payloadContent && payloadContent.source === "client_chat") {
 				const messageBusService =
-					payload.runtime.getService<IMessageBusService>(
-						"message-bus-service",
-					);
+					payload.runtime.getService<IMessageBusService>("message-bus-service");
 				if (messageBusService?.notifyActionStart) {
 					await messageBusService.notifyActionStart(
 						payload.roomId,
@@ -1084,9 +1082,7 @@ const events: PluginEvents = {
 			const payloadContent = payload.content;
 			if (payloadContent && payloadContent.source === "client_chat") {
 				const messageBusService =
-					payload.runtime.getService<IMessageBusService>(
-						"message-bus-service",
-					);
+					payload.runtime.getService<IMessageBusService>("message-bus-service");
 				if (messageBusService?.notifyActionUpdate) {
 					await messageBusService.notifyActionUpdate(
 						payload.roomId,
@@ -1339,7 +1335,9 @@ export { advancedCapabilities as extendedCapabilities, autonomyCapabilities };
  * Creates the basic-capabilities plugin with the specified capability configuration.
  * This is the main entry point for plugin creation.
  */
-export function createBasicCapabilitiesPlugin(config: CapabilityConfig = {}): Plugin {
+export function createBasicCapabilitiesPlugin(
+	config: CapabilityConfig = {},
+): Plugin {
 	// Support both enableExtended and advancedCapabilities as aliases
 	const useAdvanced = config.enableExtended || config.advancedCapabilities;
 

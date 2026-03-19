@@ -4,7 +4,7 @@
  * Children access state and actions through the useApp() hook.
  */
 
-import type { OnboardingConnection } from "@elizaos/autonomous/contracts/onboarding";
+import type { OnboardingConnection } from "@miladyai/autonomous/contracts/onboarding";
 import {
   type ReactNode,
   useCallback,
@@ -17,7 +17,6 @@ import { prepareDraftForSave } from "../actions/character";
 import {
   type AgentStartupDiagnostics,
   type AgentStatus,
-  type AllPermissionsState,
   type BscTradeExecuteRequest,
   type BscTradeExecuteResponse,
   type BscTradePreflightResponse,
@@ -37,7 +36,6 @@ import {
   type CustomActionDef,
   client,
   type DropStatus,
-  ElizaClient,
   type ExtensionStatus,
   type ImageAttachment,
   type LogEntry,
@@ -45,6 +43,7 @@ import {
   type McpRegistryServerDetail,
   type McpServerConfig,
   type McpServerStatus,
+  MiladyClient,
   type MintResult,
   type OnboardingOptions,
   type PluginInfo,
@@ -84,6 +83,7 @@ import {
 import {
   getBackendStartupTimeoutMs,
   invokeDesktopBridgeRequest,
+  scanProviderCredentials,
 } from "../bridge";
 import {
   expandSavedCustomCommand,
@@ -92,11 +92,6 @@ import {
   normalizeSlashCommandName,
 } from "../chat";
 import { mapServerTasksToSessions } from "../coding";
-import {
-  type BrandingConfig,
-  BrandingContext,
-  DEFAULT_BRANDING,
-} from "../config/branding";
 import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
 import {
   createTranslator,
@@ -150,7 +145,6 @@ import {
   normalizeUiShellMode,
   normalizeUiTheme,
   ONBOARDING_PERMISSION_LABELS,
-  type OnboardingMode,
   type OnboardingNextOptions,
   type OnboardingStep,
   parseAgentStatusEvent,
@@ -392,7 +386,7 @@ function normalizeRemoteApiBaseInput(rawValue: string): string {
 
 function loadSessionApiBase(): string {
   if (typeof window === "undefined") return "";
-  return window.sessionStorage.getItem("eliza_api_base")?.trim() ?? "";
+  return window.sessionStorage.getItem("milady_api_base")?.trim() ?? "";
 }
 
 function isRemoteApiBase(baseUrl: string): boolean {
@@ -412,22 +406,7 @@ function isRemoteApiBase(baseUrl: string): boolean {
 
 // ── Provider ───────────────────────────────────────────────────────────
 
-export function AppProvider({
-  children,
-  branding: brandingOverrides,
-  onboardingMode: onboardingModeProp = "companion",
-}: {
-  children: ReactNode;
-  branding?: Partial<BrandingConfig>;
-  onboardingMode?: OnboardingMode;
-}) {
-  const branding = useMemo(
-    () =>
-      brandingOverrides
-        ? { ...DEFAULT_BRANDING, ...brandingOverrides }
-        : DEFAULT_BRANDING,
-    [brandingOverrides],
-  );
+export function AppProvider({ children }: { children: ReactNode }) {
   const [lastNativeTab, setLastNativeTabState] =
     useState<Tab>(loadLastNativeTab);
   // --- Core state ---
@@ -807,13 +786,11 @@ export function AppProvider({
 
   // --- Onboarding ---
   const [onboardingStep, setOnboardingStepRaw] = useState<OnboardingStep>(
-    () =>
-      loadPersistedOnboardingStep() ??
-      (branding.appName === "Eliza" ? "connection" : "identity"),
+    () => loadPersistedOnboardingStep() ?? "wakeUp",
   );
   const [onboardingOptions, setOnboardingOptions] =
     useState<OnboardingOptions | null>(null);
-  const [onboardingName, setOnboardingName] = useState(branding.appName);
+  const [onboardingName, setOnboardingName] = useState("Eliza");
   const [onboardingOwnerName, setOnboardingOwnerName] = useState("anon");
 
   const [onboardingStyle, setOnboardingStyle] = useState("");
@@ -829,6 +806,16 @@ export function AppProvider({
   );
   const [onboardingProvider, setOnboardingProvider] = useState("");
   const [onboardingApiKey, setOnboardingApiKey] = useState("");
+  const [onboardingDetectedProviders, setOnboardingDetectedProviders] =
+    useState<
+      Array<{
+        id: string;
+        source: string;
+        apiKey?: string;
+        authMode?: string;
+        cliInstalled: boolean;
+      }>
+    >([]);
   const [onboardingRemoteApiBase, setOnboardingRemoteApiBase] =
     useState(loadSessionApiBase);
   const [onboardingRemoteToken, setOnboardingRemoteToken] = useState("");
@@ -1134,7 +1121,7 @@ export function AppProvider({
       }
       const path = pathForTab(newTab);
       try {
-        // In Electron packaged builds (file:// URLs), use hash routing to avoid
+        // In packaged desktop builds (file:// URLs), use hash routing to avoid
         // "Not allowed to load local resource: file:///..." errors.
         if (window.location.protocol === "file:") {
           window.location.hash = path;
@@ -1142,7 +1129,7 @@ export function AppProvider({
           window.history.pushState(null, "", path);
         }
       } catch (err) {
-        console.warn("[eliza][nav] failed to update browser location", err);
+        console.warn("[milady][nav] failed to update browser location", err);
       }
     },
     [activeGameViewerUrl],
@@ -1490,7 +1477,7 @@ export function AppProvider({
         autonomousRunHealthByRunIdRef.current = partial;
         setAutonomousRunHealthByRunId(partial);
       }
-      console.warn("[eliza] Failed to fetch autonomous event replay", err);
+      console.warn("[milady] Failed to fetch autonomous event replay", err);
     } finally {
       autonomousReplayInFlightRef.current = false;
     }
@@ -1868,7 +1855,7 @@ export function AppProvider({
         }
       } catch (err) {
         console.warn(
-          "[eliza][chat:init] failed to confirm runtime state for greeting",
+          "[milady][chat:init] failed to confirm runtime state for greeting",
           err,
         );
       }
@@ -1947,7 +1934,7 @@ export function AppProvider({
             return null;
           }
           console.warn(
-            "[eliza][chat:init] failed to load restored conversation messages",
+            "[milady][chat:init] failed to load restored conversation messages",
             err,
           );
           greetingFiredRef.current = false;
@@ -1957,55 +1944,39 @@ export function AppProvider({
         }
       }
 
-      const { conversation, greeting } = await client.createConversation(
-        translateText(uiLanguage, "conversations.newChatTitle"),
-        {
-          bootstrapGreeting: true,
-          lang: uiLanguage,
-        },
-      );
       if (!isCurrentHydration()) {
         return null;
       }
-      const nextCutoffTs = Date.now();
-      setConversations([conversation]);
-      setActiveConversationId(conversation.id);
-      activeConversationIdRef.current = conversation.id;
-      setCompanionMessageCutoffTs(nextCutoffTs);
-      client.sendWsMessage({
-        type: "active-conversation",
-        conversationId: conversation.id,
-      });
-
-      const greetingText = greeting?.text?.trim() ?? "";
-      if (greetingText) {
-        greetingFiredRef.current = true;
-        if (greeting?.persisted === true) {
-          scheduleGreetingWaveForCompanion(true);
-        }
-        const nextMessages = [
-          {
-            id: `greeting-${Date.now()}`,
-            role: "assistant" as const,
-            text: greetingText,
-            timestamp: Date.now(),
-            source: "agent_greeting" as const,
-          },
-        ];
-        conversationMessagesRef.current = nextMessages;
-        setConversationMessages(nextMessages);
-        return null;
-      }
-
       greetingFiredRef.current = false;
       conversationMessagesRef.current = [];
       setConversationMessages([]);
-      return conversation.id;
+      setActiveConversationId(null);
+      activeConversationIdRef.current = null;
+      return null;
     } catch (err) {
-      console.warn("[eliza][chat:init] failed to hydrate conversations", err);
+      console.warn("[milady][chat:init] failed to hydrate conversations", err);
       return null;
     }
-  }, [scheduleGreetingWaveForCompanion, uiLanguage]);
+  }, []);
+
+  const resetConversationDraftState = useCallback(() => {
+    conversationHydrationEpochRef.current += 1;
+    greetingFiredRef.current = false;
+    greetingInFlightConversationRef.current = null;
+    setChatInput("");
+    setChatPendingImages([]);
+    setChatSending(false);
+    setChatFirstTokenReceived(false);
+    conversationMessagesRef.current = [];
+    setConversationMessages([]);
+    setActiveConversationId(null);
+    activeConversationIdRef.current = null;
+    setCompanionMessageCutoffTs(Date.now());
+  }, []);
+
+  const handleStartDraftConversation = useCallback(async () => {
+    resetConversationDraftState();
+  }, [resetConversationDraftState]);
 
   const handleStart = useCallback(async () => {
     if (!beginLifecycleAction("start")) return;
@@ -2053,7 +2024,7 @@ export function AppProvider({
     try {
       setAgentStatus({
         ...(agentStatus ?? {
-          agentName: branding.appName,
+          agentName: "Milady",
           model: undefined,
           uptime: undefined,
           startedAt: undefined,
@@ -2098,7 +2069,6 @@ export function AppProvider({
     hydrateInitialConversationState,
     loadPlugins,
     requestGreetingWhenRunning,
-    branding.appName,
   ]);
 
   const dismissRestartBanner = useCallback(() => {
@@ -2179,7 +2149,7 @@ export function AppProvider({
       onboardingCompletionCommittedRef.current = false;
       setOnboardingComplete(false);
       onboardingResumeConnectionRef.current = null;
-      setOnboardingStep("identity");
+      setOnboardingStep("wakeUp");
       setConversationMessages([]);
       setActiveConversationId(null);
       activeConversationIdRef.current = null;
@@ -2217,25 +2187,6 @@ export function AppProvider({
     setActionNotice,
     setOnboardingStep,
   ]);
-
-  const resetConversationDraftState = useCallback(() => {
-    conversationHydrationEpochRef.current += 1;
-    greetingFiredRef.current = false;
-    greetingInFlightConversationRef.current = null;
-    setChatInput("");
-    setChatPendingImages([]);
-    setChatSending(false);
-    setChatFirstTokenReceived(false);
-    conversationMessagesRef.current = [];
-    setConversationMessages([]);
-    setActiveConversationId(null);
-    activeConversationIdRef.current = null;
-    setCompanionMessageCutoffTs(Date.now());
-  }, []);
-
-  const handleStartDraftConversation = useCallback(async () => {
-    resetConversationDraftState();
-  }, [resetConversationDraftState]);
 
   const handleNewConversation = useCallback(
     async (title?: string) => {
@@ -2298,8 +2249,8 @@ export function AppProvider({
     },
     [
       companionMessageCutoffTs,
-      resetConversationDraftState,
       requestGreetingWhenRunning,
+      resetConversationDraftState,
       scheduleGreetingWaveForCompanion,
       uiLanguage,
     ],
@@ -3760,8 +3711,8 @@ export function AppProvider({
     if (!confirmed) return;
     const exportToken = await promptModal({
       title: "Wallet Export Token",
-      message: "Enter your wallet export token (ELIZA_WALLET_EXPORT_TOKEN):",
-      placeholder: "ELIZA_WALLET_EXPORT_TOKEN",
+      message: "Enter your wallet export token (MILADY_WALLET_EXPORT_TOKEN):",
+      placeholder: "MILADY_WALLET_EXPORT_TOKEN",
       confirmLabel: "Export",
       cancelLabel: "Cancel",
     });
@@ -3995,7 +3946,7 @@ export function AppProvider({
     onboardingFinishSavingRef.current = true;
 
     try {
-      const connection =
+      let connection =
         buildOnboardingConnectionConfig({
           onboardingRunMode,
           onboardingCloudProvider,
@@ -4008,16 +3959,51 @@ export function AppProvider({
           onboardingRemoteToken,
           onboardingSmallModel,
           onboardingLargeModel,
-        }) ??
-        (onboardingProvider === "elizacloud"
-          ? {
-              kind: "cloud-managed" as const,
-              cloudProvider: "elizacloud",
-              apiKey: onboardingApiKey.trim() || undefined,
-            }
-          : onboardingResumeConnectionRef.current);
+        }) ?? onboardingResumeConnectionRef.current;
+
+      // If connection is still null (e.g. after a permissions restart wiped
+      // form state), try one more time by re-deriving from the server config.
       if (!connection) {
-        throw new Error("Onboarding connection is incomplete");
+        try {
+          const freshConfig = await client.getConfig();
+          connection = deriveOnboardingResumeConnection(freshConfig);
+          if (connection) {
+            onboardingResumeConnectionRef.current = connection;
+          }
+        } catch {
+          /* config fetch failed — fall through to the error below */
+        }
+      }
+
+      if (!connection) {
+        const startOver = await confirmDesktopAction({
+          title: "Setup Incomplete",
+          message:
+            "Your connection settings could not be restored after restart.",
+          detail: 'Choose "Start Over" to begin setup again.',
+          type: "warning",
+          confirmLabel: "Start Over",
+          cancelLabel: "Cancel",
+        });
+        if (startOver) {
+          clearPersistedOnboardingStep();
+          onboardingResumeConnectionRef.current = null;
+          setOnboardingStep("wakeUp");
+          setOnboardingName("Eliza");
+          setOnboardingStyle("");
+          setOnboardingRunMode("cloud");
+          setOnboardingCloudProvider("");
+          setOnboardingProvider("");
+          setOnboardingApiKey("");
+          setOnboardingPrimaryModel("");
+          setOnboardingOpenRouterModel("");
+          setOnboardingRemoteConnected(false);
+          setOnboardingRemoteApiBase("");
+          setOnboardingRemoteToken("");
+          setOnboardingSmallModel("");
+          setOnboardingLargeModel("");
+        }
+        return;
       }
       const rpcSel = onboardingRpcSelections as Record<string, string>;
       const rpcK = onboardingRpcKeys as Record<string, string>;
@@ -4056,18 +4042,45 @@ export function AppProvider({
       clearPersistedOnboardingStep();
       onboardingResumeConnectionRef.current = null;
       onboardingCompletionCommittedRef.current = true;
-      setOnboardingComplete(true);
-      setTab(
-        onboardingModeProp === "elizacloudonly" ? "chat" : "character-select",
+      setOnboardingDetectedProviders((providers) =>
+        providers.map((provider) => {
+          const nextProvider = { ...provider };
+          delete nextProvider.apiKey;
+          return nextProvider;
+        }),
       );
+      setOnboardingComplete(true);
+      setTab("character-select");
     } catch (err) {
-      await alertDesktopMessage({
+      const startOver = await confirmDesktopAction({
         title: "Setup Failed",
         message: `${
           err instanceof Error ? err.message : "network error"
-        }. Please try again.`,
-        type: "error",
+        }`,
+        detail:
+          'You can retry, or choose "Start Over" to begin setup from scratch.',
+        type: "warning",
+        confirmLabel: "Start Over",
+        cancelLabel: "Retry",
       });
+      if (startOver) {
+        clearPersistedOnboardingStep();
+        onboardingResumeConnectionRef.current = null;
+        setOnboardingStep("wakeUp");
+        setOnboardingName("Eliza");
+        setOnboardingStyle("");
+        setOnboardingRunMode("cloud");
+        setOnboardingCloudProvider("");
+        setOnboardingProvider("");
+        setOnboardingApiKey("");
+        setOnboardingPrimaryModel("");
+        setOnboardingOpenRouterModel("");
+        setOnboardingRemoteConnected(false);
+        setOnboardingRemoteApiBase("");
+        setOnboardingRemoteToken("");
+        setOnboardingSmallModel("");
+        setOnboardingLargeModel("");
+      }
     } finally {
       onboardingFinishSavingRef.current = false;
       onboardingFinishBusyRef.current = false;
@@ -4084,6 +4097,7 @@ export function AppProvider({
     onboardingLargeModel,
     onboardingProvider,
     onboardingApiKey,
+    onboardingDetectedProviders,
     onboardingRemoteApiBase,
     onboardingRemoteConnected,
     onboardingRemoteToken,
@@ -4096,69 +4110,28 @@ export function AppProvider({
     setTab,
     requestGreetingWhenRunning,
     waitForOnboardingGreetingBootstrap,
-    onboardingModeProp,
-  ]);
-
-  /**
-   * Lightweight onboarding completion for cloud-only mode.
-   * Submits a minimal config (cloud-managed connection) and transitions to chat.
-   */
-  const handleCloudOnboardingFinish = useCallback(async () => {
-    if (onboardingFinishBusyRef.current) return;
-    onboardingFinishBusyRef.current = true;
-    setOnboardingRestarting(true);
-    try {
-      await client.submitOnboarding({
-        name: "Eliza",
-        sandboxMode: "off" as const,
-        bio: ["An autonomous AI agent."],
-        systemPrompt:
-          "You are Eliza, an autonomous AI agent powered by elizaOS.",
-        connection: {
-          kind: "cloud-managed" as const,
-          cloudProvider: "elizacloud",
-        },
-      });
-      try {
-        setAgentStatus(await client.restartAgent());
-      } catch {
-        /* ignore restart errors */
-      }
-      await waitForOnboardingGreetingBootstrap();
-      const greetConvId = await hydrateInitialConversationState();
-      if (greetConvId) {
-        void requestGreetingWhenRunning(greetConvId, { showOverlay: true });
-      }
-      clearPersistedOnboardingStep();
-      onboardingCompletionCommittedRef.current = true;
-      setOnboardingComplete(true);
-      setTab("chat");
-    } catch (err) {
-      await alertDesktopMessage({
-        title: "Setup Failed",
-        message: `${
-          err instanceof Error ? err.message : "network error"
-        }. Please try again.`,
-        type: "error",
-      });
-    } finally {
-      onboardingFinishBusyRef.current = false;
-      setOnboardingRestarting(false);
-    }
-  }, [
-    hydrateInitialConversationState,
-    setTab,
-    requestGreetingWhenRunning,
-    waitForOnboardingGreetingBootstrap,
   ]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: t is stable but defined later
   const handleOnboardingNext = useCallback(
     async (options?: OnboardingNextOptions) => {
-      const STEP_ORDER: OnboardingStep[] =
-        branding.appName === "Eliza"
-          ? ["connection", "activate"]
-          : ["identity", "connection", "rpc", "senses", "activate"];
+      const STEP_ORDER: OnboardingStep[] = [
+        "wakeUp",
+        "identity",
+        "connection",
+        "rpc",
+        "senses",
+        "activate",
+      ];
+
+      // Auto-select first style if none chosen (identity step will let user change)
+      if (
+        onboardingStep === "wakeUp" &&
+        !onboardingStyle &&
+        onboardingOptions?.styles?.length
+      ) {
+        setState("onboardingStyle", onboardingOptions.styles[0].catchphrase);
+      }
 
       // Default agent name to Rin if none set after identity step
       if (onboardingStep === "identity" && !onboardingName) {
@@ -4172,29 +4145,13 @@ export function AppProvider({
       }
 
       // At senses step, check permissions unless bypass
-      if (onboardingStep === "senses" && !options?.allowPermissionBypass) {
+      if (onboardingStep === "senses") {
+        if (options?.allowPermissionBypass) {
+          await handleOnboardingFinish();
+          return;
+        }
         try {
-          let permissions =
-            await invokeDesktopBridgeRequest<AllPermissionsState>({
-              rpcMethod: "permissionsGetAll",
-              ipcChannel: "permissions:getAll",
-              params: { forceRefresh: true },
-            });
-
-          if (!permissions) {
-            permissions = await client.getPermissions();
-          } else {
-            try {
-              // Ensure backend knows about desktop permissions so capability validation passes
-              await client.updatePermissionsState(permissions);
-            } catch (err) {
-              console.warn(
-                "Could not sync permissions to backend during check",
-                err,
-              );
-            }
-          }
-
+          const permissions = await client.getPermissions();
           const missingPermissions =
             getMissingOnboardingPermissions(permissions);
           if (missingPermissions.length > 0) {
@@ -4234,16 +4191,20 @@ export function AppProvider({
   );
 
   const handleOnboardingBack = useCallback(() => {
-    const STEP_ORDER: OnboardingStep[] =
-      branding.appName === "Eliza"
-        ? ["connection", "activate"]
-        : ["identity", "connection", "rpc", "senses", "activate"];
+    const STEP_ORDER: OnboardingStep[] = [
+      "wakeUp",
+      "identity",
+      "connection",
+      "rpc",
+      "senses",
+      "activate",
+    ];
 
     const currentIndex = STEP_ORDER.indexOf(onboardingStep);
     if (currentIndex > 0) {
       setOnboardingStep(STEP_ORDER[currentIndex - 1]);
     }
-  }, [onboardingStep, setOnboardingStep, branding.appName]);
+  }, [onboardingStep, setOnboardingStep]);
 
   const handleOnboardingUseLocalBackend = useCallback(() => {
     client.setBaseUrl(null);
@@ -4271,7 +4232,7 @@ export function AppProvider({
     }
 
     const accessKey = onboardingRemoteToken.trim();
-    const probe = new ElizaClient(normalizedBase, accessKey || undefined);
+    const probe = new MiladyClient(normalizedBase, accessKey || undefined);
     setOnboardingRemoteConnecting(true);
     setOnboardingRemoteError(null);
     try {
@@ -4287,7 +4248,7 @@ export function AppProvider({
       setOnboardingRemoteApiBase(normalizedBase);
       setOnboardingRemoteToken(accessKey);
       setOnboardingRemoteConnected(true);
-      setActionNotice("Connected to remote Eliza backend.", "success", 4200);
+      setActionNotice("Connected to remote Milady backend.", "success", 4200);
       retryStartup();
     } catch (err) {
       const message =
@@ -4640,6 +4601,7 @@ export function AppProvider({
         onboardingLargeModel: setOnboardingLargeModel,
         onboardingProvider: setOnboardingProvider,
         onboardingApiKey: setOnboardingApiKey,
+        onboardingDetectedProviders: setOnboardingDetectedProviders,
         onboardingRemoteApiBase: setOnboardingRemoteApiBase,
         onboardingRemoteToken: setOnboardingRemoteToken,
         onboardingRemoteConnecting: setOnboardingRemoteConnecting,
@@ -4815,14 +4777,14 @@ export function AppProvider({
         detail,
       };
     };
-    const STARTUP_WARN_PREFIX = "[eliza][startup:init]";
+    const STARTUP_WARN_PREFIX = "[milady][startup:init]";
     const logStartupWarning = (scope: string, err: unknown) => {
       console.warn(`${STARTUP_WARN_PREFIX} ${scope}`, err);
     };
 
     const initApp = async () => {
       if (import.meta.env.DEV && startupRunId > 0) {
-        console.debug(`[eliza] Retrying startup run #${startupRunId}`);
+        console.debug(`[milady] Retrying startup run #${startupRunId}`);
       }
       const BASE_DELAY_MS = 250;
       const MAX_DELAY_MS = 1000;
@@ -4930,6 +4892,27 @@ export function AppProvider({
             const resumeFields = deriveOnboardingResumeFields(resumeConnection);
             onboardingResumeConnectionRef.current = resumeConnection;
             setOnboardingOptions(options);
+
+            // Auto-detect AI provider credentials from local CLI installs.
+            // Only auto-fill if no existing connection config was found.
+            if (!resumeConnection) {
+              try {
+                const detected = await scanProviderCredentials();
+                if (detected.length > 0) {
+                  setOnboardingDetectedProviders(detected);
+                  // Auto-fill with the first detected provider
+                  const first = detected[0];
+                  if (first.apiKey) {
+                    setOnboardingRunMode("local");
+                    setOnboardingProvider(first.id);
+                    setOnboardingApiKey(first.apiKey);
+                  }
+                }
+              } catch {
+                // Non-fatal — credential scan is best-effort
+              }
+            }
+
             if (resumeFields.onboardingRunMode !== undefined) {
               setOnboardingRunMode(resumeFields.onboardingRunMode);
             }
@@ -5492,7 +5475,7 @@ export function AppProvider({
         }
       });
 
-      // Load tab from URL — use hash in file:// mode (Electron packaged builds)
+      // Load tab from URL — use hash in file:// mode (packaged desktop builds)
       const navPath =
         window.location.protocol === "file:"
           ? window.location.hash.replace(/^#/, "") || "/"
@@ -5501,7 +5484,6 @@ export function AppProvider({
       const shouldStartAtCharacterSelect = shouldStartAtCharacterSelectOnLaunch(
         {
           onboardingNeedsOptions,
-          onboardingMode: onboardingModeProp,
           navPath,
           urlTab,
         },
@@ -5535,7 +5517,7 @@ export function AppProvider({
 
     void initApp();
 
-    // Navigation listener — use hashchange in file:// mode (Electron packaged builds)
+    // Navigation listener — use hashchange in file:// mode (packaged desktop builds)
     const isFileProtocol = window.location.protocol === "file:";
     const handleNavChange = () => {
       const navPath = isFileProtocol
@@ -5635,7 +5617,6 @@ export function AppProvider({
     uiTheme,
     connected,
     agentStatus,
-    onboardingMode: onboardingModeProp,
     onboardingComplete,
     onboardingLoading,
     startupPhase,
@@ -5806,6 +5787,7 @@ export function AppProvider({
     onboardingLargeModel,
     onboardingProvider,
     onboardingApiKey,
+    onboardingDetectedProviders,
     onboardingRemoteApiBase,
     onboardingRemoteToken,
     onboardingRemoteConnecting,
@@ -5942,7 +5924,6 @@ export function AppProvider({
     handleCharacterMessageExamplesInput,
     handleOnboardingNext,
     handleOnboardingBack,
-    handleCloudOnboardingFinish,
     handleOnboardingRemoteConnect,
     handleOnboardingUseLocalBackend,
     handleCloudLogin,
@@ -5961,12 +5942,10 @@ export function AppProvider({
   };
 
   return (
-    <BrandingContext.Provider value={branding}>
-      <AppContext.Provider value={value}>
-        {children}
-        <ConfirmModal {...modalProps} />
-        <PromptModal {...promptModalProps} />
-      </AppContext.Provider>
-    </BrandingContext.Provider>
+    <AppContext.Provider value={value}>
+      {children}
+      <ConfirmModal {...modalProps} />
+      <PromptModal {...promptModalProps} />
+    </AppContext.Provider>
   );
 }

@@ -14,12 +14,11 @@ const { mockUseApp, mockIsNativeFn } = vi.hoisted(() => ({
   mockIsNativeFn: { value: false },
 }));
 
-vi.mock("@elizaos/app-core/state", () => ({
+vi.mock("@miladyai/app-core/state", () => ({
   useApp: () => mockUseApp(),
-  getVrmPreviewUrl: (index: number) => `/vrms/previews/eliza-${index}.png`,
 }));
 
-vi.mock("@elizaos/app-core/api", () => ({
+vi.mock("@miladyai/app-core/api", () => ({
   client: {
     importAgent: vi.fn(),
     startAnthropicLogin: vi.fn(),
@@ -29,22 +28,22 @@ vi.mock("@elizaos/app-core/api", () => ({
   },
 }));
 
-vi.mock("@elizaos/app-core/providers", async () => {
+vi.mock("@miladyai/app-core/providers", async () => {
   const actual = await vi.importActual<
-    typeof import("@elizaos/app-core/providers")
-  >("@elizaos/app-core/providers");
+    typeof import("@miladyai/app-core/providers")
+  >("@miladyai/app-core/providers");
   return {
     ...actual,
     getProviderLogo: () => "/logos/placeholder.png",
   };
 });
 
-vi.mock("@elizaos/app-core/platform", () => ({
+vi.mock("@miladyai/app-core/platform", () => ({
   get isNative() {
     return mockIsNativeFn.value;
   },
   isWebPlatform: () => false,
-  isElectronPlatform: () => true,
+  isDesktopPlatform: () => true,
   isIOS: false,
   isAndroid: false,
   platform: "web",
@@ -52,7 +51,7 @@ vi.mock("@elizaos/app-core/platform", () => ({
 
 import { ActivateStep } from "../../src/components/onboarding/ActivateStep";
 import { ConnectionStep } from "../../src/components/onboarding/ConnectionStep";
-import { IdentityStep } from "../../src/components/onboarding/IdentityStep";
+import { WakeUpStep } from "../../src/components/onboarding/WakeUpStep";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -124,48 +123,49 @@ function findButtons(
 }
 
 // ===================================================================
-//  IdentityStep (character select — replaces old WakeUpStep)
+//  WakeUpStep
 // ===================================================================
 
-describe("IdentityStep", () => {
+describe("WakeUpStep", () => {
   beforeEach(() => mockUseApp.mockReset());
 
-  it("renders character selection with Continue button", async () => {
-    mockUseApp.mockReturnValue(
-      baseContext({
-        onboardingStep: "identity",
-        onboardingOptions: {
-          ...baseContext().onboardingOptions,
-          styles: [
-            {
-              catchphrase: "Noted.",
-              hint: "calm & collected",
-              bio: ["bio"],
-              system: "You are {{name}}",
-              style: { all: [], chat: [], post: [] },
-              adjectives: [],
-              postExamples: [],
-              messageExamples: [],
-            },
-          ],
-        },
-      }),
-    );
+  it("renders initialization screen with Activate button", async () => {
+    mockUseApp.mockReturnValue(baseContext());
     let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
-      tree = TestRenderer.create(React.createElement(IdentityStep));
+      tree = TestRenderer.create(React.createElement(WakeUpStep));
     });
 
     const text = collectText(tree?.root as TestRenderer.ReactTestInstance);
-    expect(text).toContain("Continue");
-    expect(text).toContain("Rin");
+    expect(text).toContain("onboarding.welcomeTitle");
+    expect(text).toContain("onboarding.welcomeSubtitle");
+    expect(text).toContain("onboarding.createNewAgent");
+  });
+
+  it("calls handleOnboardingNext when Activate is clicked", async () => {
+    const next = vi.fn(async () => {});
+    mockUseApp.mockReturnValue(baseContext({ handleOnboardingNext: next }));
+    let tree: TestRenderer.ReactTestRenderer | undefined;
+    await act(async () => {
+      tree = TestRenderer.create(React.createElement(WakeUpStep));
+    });
+
+    const buttons = findButtons(tree?.root as TestRenderer.ReactTestInstance);
+    const activateBtn = buttons.find(
+      (b) => collectText(b) === "onboarding.createNewAgent",
+    );
+    expect(activateBtn).toBeDefined();
+    await act(async () => {
+      activateBtn?.props.onClick();
+    });
+    expect(next).toHaveBeenCalled();
   });
 
   it("shows Restore from Backup option", async () => {
-    mockUseApp.mockReturnValue(baseContext({ onboardingStep: "identity" }));
+    mockUseApp.mockReturnValue(baseContext());
     let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
-      tree = TestRenderer.create(React.createElement(IdentityStep));
+      tree = TestRenderer.create(React.createElement(WakeUpStep));
     });
 
     const text = collectText(tree?.root as TestRenderer.ReactTestInstance);
@@ -173,10 +173,10 @@ describe("IdentityStep", () => {
   });
 
   it("switches to import view when Restore from Backup is clicked", async () => {
-    mockUseApp.mockReturnValue(baseContext({ onboardingStep: "identity" }));
+    mockUseApp.mockReturnValue(baseContext());
     let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
-      tree = TestRenderer.create(React.createElement(IdentityStep));
+      tree = TestRenderer.create(React.createElement(WakeUpStep));
     });
 
     const buttons = findButtons(tree?.root as TestRenderer.ReactTestInstance);

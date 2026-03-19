@@ -1,13 +1,11 @@
 /**
  * Resolve app-shipped public assets (e.g. vrms/, animations/) to runtime-safe URLs.
  *
- * In packaged Electron, the renderer can run on file:// and later navigate to
+ * In packaged desktop builds, the renderer can run on file:// and later navigate to
  * absolute paths (e.g. /chat). Root-relative assets like /vrms/1.vrm then
  * resolve to file:///vrms/1.vrm and fail. We lock the asset base URL once from
  * initial startup and resolve assets against that stable base.
  */
-
-import { getElizaApiBase } from "./eliza-globals";
 
 type AssetUrlResolveOptions = {
   currentUrl?: string;
@@ -98,13 +96,14 @@ export function resolveAppAssetUrl(
 
 /**
  * Resolve an API path (e.g. "/api/avatar/vrm") to a full URL reachable from
- * the renderer.  In Electron the page origin is capacitor-electron:// or
+ * the renderer. In desktop shells the page origin is electrobun:// or
  * file://, so bare /api/... paths resolve to the SPA instead of the backend.
- * This helper prefixes with window.__ELIZA_API_BASE__ when available.
+ * This helper prefixes with window.__MILADY_API_BASE__ when available.
  */
 export function resolveApiUrl(apiPath: string): string {
   if (typeof window !== "undefined") {
-    const base = getElizaApiBase();
+    const base = (window as unknown as Record<string, unknown>)
+      .__MILADY_API_BASE__ as string | undefined;
     if (base) return `${base}${apiPath}`;
   }
   return apiPath;

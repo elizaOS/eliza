@@ -13,7 +13,7 @@
  *
  * **Exports:**
  * - loadCharacters(sources) – load from file paths or inline objects; returns Character[].
- * - getBasic CapabilitiesSettings(character) – flatten character + env for adapter factories (basic-capabilities only).
+ * - getBasicCapabilitiesSettings(character) – flatten character + env for adapter factories (basic-capabilities only).
  * - mergeSettingsInto(character, agentRecord) – pure merge of DB agent into character (for custom pipelines).
  * - createRuntimes(characters, options?) – full pipeline: resolve plugins → adapters → merge DB settings → create/init runtimes; optional provision.
  *
@@ -61,7 +61,7 @@ type PluginWithAdapter = Plugin & {
  * @param env - Environment record (defaults to process.env)
  * @returns String-only record suitable for adapter factories
  */
-export function getBasic CapabilitiesSettings(
+export function getBasicCapabilitiesSettings(
 	character: Character,
 	env: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
@@ -196,8 +196,8 @@ export function mergeSettingsInto(
  * Load one character from a file path. Reuses importSecretsFromEnv and ensureEncryptionSalt.
  * We do NOT call syncCharacterSecretsToEnv here. WHY: When loading multiple characters,
  * syncing each character's secrets into process.env would overwrite env; later characters
- * would pollute getBasic CapabilitiesSettings for earlier ones. Secrets stay on the character
- * object and are used by getBasic CapabilitiesSettings(character) without going through process.env.
+ * would pollute getBasicCapabilitiesSettings for earlier ones. Secrets stay on the character
+ * object and are used by getBasicCapabilitiesSettings(character) without going through process.env.
  */
 async function loadOneCharacterFromFile(filePath: string): Promise<Character> {
 	const loaded = await loadCharacterFile(filePath);
@@ -340,7 +340,7 @@ export async function createRuntimes(
 		adapters = await Promise.all(
 			characters.map((c) => {
 				const agentId = (c.id ?? stringToUuid(c.name ?? "eliza")) as UUID;
-				const settings = getBasic CapabilitiesSettings(c);
+				const settings = getBasicCapabilitiesSettings(c);
 				return Promise.resolve(adapterPlugin.adapter(agentId, settings));
 			}),
 		);

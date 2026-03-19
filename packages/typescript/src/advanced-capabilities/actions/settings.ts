@@ -803,7 +803,10 @@ export const updateSettingsAction: Action = {
 	): Promise<ActionResult> => {
 		if (!state) {
 			logger.error(
-				{ src: "plugin:advanced-capabilities:action:settings", agentId: runtime.agentId },
+				{
+					src: "plugin:advanced-capabilities:action:settings",
+					agentId: runtime.agentId,
+				},
 				"State is required for settings handler",
 			);
 			return {
@@ -823,7 +826,10 @@ export const updateSettingsAction: Action = {
 
 		if (!message) {
 			logger.error(
-				{ src: "plugin:advanced-capabilities:action:settings", agentId: runtime.agentId },
+				{
+					src: "plugin:advanced-capabilities:action:settings",
+					agentId: runtime.agentId,
+				},
 				"Message is required for settings handler",
 			);
 			if (callback) {
@@ -846,7 +852,10 @@ export const updateSettingsAction: Action = {
 
 		if (!callback) {
 			logger.error(
-				{ src: "plugin:advanced-capabilities:action:settings", agentId: runtime.agentId },
+				{
+					src: "plugin:advanced-capabilities:action:settings",
+					agentId: runtime.agentId,
+				},
 				"Callback is required for settings handler",
 			);
 			return {
@@ -1049,7 +1058,10 @@ export const updateSettingsAction: Action = {
 			};
 		} else {
 			logger.info(
-				{ src: "plugin:advanced-capabilities:action:settings", agentId: runtime.agentId },
+				{
+					src: "plugin:advanced-capabilities:action:settings",
+					agentId: runtime.agentId,
+				},
 				"No settings were updated",
 			);
 			await generateFailureResponse(runtime, worldSettings, state, callback);

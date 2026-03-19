@@ -8,17 +8,17 @@ const viewerPropsRef: { current: null | Record<string, unknown> } = {
   current: null,
 };
 
-vi.mock("@elizaos/app-core/state", () => ({
+vi.mock("@miladyai/app-core/state", () => ({
   useApp: () => mockUseApp(),
-  getVrmPreviewUrl: () => "/vrms/previews/eliza-1.png",
-  getVrmUrl: () => "/vrms/eliza-1.vrm.gz",
+  getVrmPreviewUrl: () => "/vrms/previews/milady-1.png",
+  getVrmUrl: () => "/vrms/milady-1.vrm.gz",
   getVrmBackgroundUrl: (index: number) =>
-    `/vrms/backgrounds/eliza-${index}.png`,
-  getVrmTitle: (index: number) => `ELIZA-${index}`,
+    `/vrms/backgrounds/milady-${index}.png`,
+  getVrmTitle: (index: number) => `MILADY-${index}`,
   VRM_COUNT: 24,
 }));
 
-vi.mock("@elizaos/app-core/components/avatar/VrmViewer", () => ({
+vi.mock("@miladyai/app-core/components/avatar/VrmViewer", () => ({
   VrmViewer: (props: Record<string, unknown>) => {
     viewerPropsRef.current = props;
     return React.createElement("div", null, "VrmViewer");
@@ -37,7 +37,7 @@ vi.mock("../../src/components/ChatModalView.js", () => ({
 const mockUploadCustomVrm = vi.fn(async () => {});
 const mockUploadCustomBackground = vi.fn(async () => {});
 
-vi.mock("@elizaos/app-core/api", () => ({
+vi.mock("@miladyai/app-core/api", () => ({
   client: {
     uploadCustomVrm: (...args: unknown[]) => mockUploadCustomVrm(...args),
     uploadCustomBackground: (...args: unknown[]) =>
@@ -46,15 +46,15 @@ vi.mock("@elizaos/app-core/api", () => ({
   },
 }));
 
-vi.mock("@elizaos/app-core/utils", () => ({
+vi.mock("@miladyai/app-core/utils", () => ({
   resolveApiUrl: (p: string) => p,
   resolveAppAssetUrl: (p: string) => p,
 }));
 
-import { CompanionSceneHost } from "@elizaos/app-core/components/CompanionSceneHost";
+import { CompanionSceneHost } from "@miladyai/app-core/components/CompanionSceneHost";
 import { CompanionView } from "../../src/components/CompanionView";
 
-const COMPANION_ZOOM_STORAGE_KEY = "eliza.companion.zoom.v1";
+const COMPANION_ZOOM_STORAGE_KEY = "milady.companion.zoom.v1";
 
 function createContext(overrides: Record<string, unknown> = {}) {
   return {
@@ -62,8 +62,8 @@ function createContext(overrides: Record<string, unknown> = {}) {
     chatMode: "simple",
     chatAgentVoiceMuted: false,
     setState: vi.fn(),
-    handleNewConversation: vi.fn(async () => {}),
     handleStartDraftConversation: vi.fn(async () => {}),
+    handleNewConversation: vi.fn(async () => {}),
     selectedVrmIndex: 1,
     customVrmUrl: "",
     customBackgroundUrl: "",
@@ -133,7 +133,7 @@ function createContext(overrides: Record<string, unknown> = {}) {
     setActionNotice: vi.fn(),
     agentStatus: {
       state: "running",
-      agentName: "Eliza",
+      agentName: "Milady",
       platform: "test",
       pid: null,
     },
@@ -257,13 +257,13 @@ describe("CompanionView", () => {
 
   it("renders centered companion header chat controls", async () => {
     const setState = vi.fn();
-    const handleNewConversation = vi.fn(async () => {});
     const handleStartDraftConversation = vi.fn(async () => {});
+    const handleNewConversation = vi.fn(async () => {});
     mockUseApp.mockReturnValue(
       createContext({
         setState,
-        handleNewConversation,
         handleStartDraftConversation,
+        handleNewConversation,
       }),
     );
 
@@ -372,7 +372,7 @@ describe("CompanionView", () => {
 
     expect(tree).not.toBeNull();
     const root = tree?.root.findByProps({
-      "data-testid": "companion-root",
+      "data-testid": "companion-camera-drag-surface",
     });
     const currentTarget = {
       setPointerCapture: vi.fn(),
@@ -441,7 +441,7 @@ describe("CompanionView", () => {
     setDragOrbitTarget.mockClear();
 
     const root = tree?.root.findByProps({
-      "data-testid": "companion-root",
+      "data-testid": "companion-camera-drag-surface",
     });
     const currentTarget = {
       setPointerCapture: vi.fn(),
@@ -501,7 +501,7 @@ describe("CompanionView", () => {
 
     expect(tree).not.toBeNull();
     const root = tree?.root.findByProps({
-      "data-testid": "companion-root",
+      "data-testid": "companion-camera-drag-surface",
     });
     const preventDefault = vi.fn();
 
@@ -548,7 +548,7 @@ describe("CompanionView", () => {
     setCompanionZoomNormalized.mockClear();
 
     const root = tree?.root.findByProps({
-      "data-testid": "companion-root",
+      "data-testid": "companion-camera-drag-surface",
     });
     const focusedTextEntry = document.createElement("textarea");
     Object.defineProperty(document, "activeElement", {
@@ -603,7 +603,7 @@ describe("CompanionView", () => {
     });
 
     const root = tree?.root.findByProps({
-      "data-testid": "companion-root",
+      "data-testid": "companion-camera-drag-surface",
     });
 
     await act(async () => {

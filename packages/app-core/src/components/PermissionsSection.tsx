@@ -7,12 +7,12 @@
  *   - Capability toggles (browser, computeruse, vision) that depend on permissions
  *
  * Works cross-platform with platform-specific permission requirements:
- *   - Electron (desktop): OS-level permission prompts and system settings links
+ *   - Electrobun desktop: OS-level permission prompts and system settings links
  *   - Capacitor (mobile): Camera/mic/screen streaming permissions via native plugins
  *   - Web: Informational message only (no OS-level access)
  */
 
-import { Button } from "@elizaos/ui";
+import { Button } from "@miladyai/ui";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -29,7 +29,7 @@ import {
 } from "../bridge";
 import {
   hasRequiredOnboardingPermissions,
-  isElectronPlatform,
+  isDesktopPlatform,
   isNative,
   isWebPlatform,
 } from "../platform";
@@ -535,17 +535,7 @@ function useDesktopPermissionsState() {
         platform: bridgedPlatform ?? "unknown",
         shellEnabled,
       };
-      const reconciled = await reconcileRendererMediaPermissions(snapshot);
-
-      // Sync bridged permissions to the backend so it knows what the UI knows.
-      if (bridgedPermissions !== null || forceRefresh) {
-        try {
-          await client.updatePermissionsState(reconciled.permissions);
-        } catch (err) {
-          console.error("Failed to sync bridged permissions to backend:", err);
-        }
-      }
-      return reconciled;
+      return reconcileRendererMediaPermissions(snapshot);
     },
     [],
   );
@@ -932,7 +922,7 @@ export function PermissionsSection() {
     return <WebPermissionsView />;
   }
 
-  if (isNative && !isElectronPlatform()) {
+  if (isNative && !isDesktopPlatform()) {
     return <MobilePermissionsView />;
   }
 
@@ -1007,11 +997,11 @@ export function PermissionsOnboardingSection({
   }
 
   // Mobile (Capacitor): streaming permissions
-  if (isNative && !isElectronPlatform()) {
+  if (isNative && !isDesktopPlatform()) {
     return <MobileOnboardingPermissions onContinue={onContinue} />;
   }
 
-  // Electron / desktop: existing permission flow
+  // Desktop shell: existing permission flow
   return <DesktopOnboardingPermissions onContinue={onContinue} />;
 }
 

@@ -2,8 +2,8 @@
  * Shared helpers, constants, and types for StreamView sub-components.
  */
 
-import type { StreamEventEnvelope } from "@elizaos/app-core/api";
-import { invokeDesktopBridgeRequest } from "@elizaos/app-core/bridge";
+import type { StreamEventEnvelope } from "@miladyai/app-core/api";
+import { invokeDesktopBridgeRequest } from "@miladyai/app-core/bridge";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -102,16 +102,11 @@ export const IS_POPOUT = (() => {
   return params.has("popout");
 })();
 
-/** Window may have Capacitor injected at runtime (Electron/native shells). */
-interface WindowWithCapacitor extends Window {
-  Capacitor?: { Plugins?: Record<string, unknown> };
-}
-
-/** Toggle always-on-top for the current window (Electron only). */
+/** Toggle always-on-top for the current desktop window. */
 export async function toggleAlwaysOnTop(pinned: boolean): Promise<boolean> {
   try {
     // Try Capacitor Desktop plugin
-    const cap = (window as WindowWithCapacitor).Capacitor as
+    const cap = (window as unknown as Record<string, unknown>).Capacitor as
       | Record<string, unknown>
       | undefined;
     if (cap?.Plugins) {
@@ -133,7 +128,7 @@ export async function toggleAlwaysOnTop(pinned: boolean): Promise<boolean> {
       return pinned;
     }
   } catch {
-    // Non-fatal — may not be in Electron
+    // Non-fatal — may not be running in the desktop shell
   }
   return false;
 }

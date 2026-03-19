@@ -6,7 +6,7 @@
  * APIs (getDatabaseTables, executeDatabaseQuery).
  */
 
-import { Button, Input } from "@elizaos/ui";
+import { Button, Input } from "@miladyai/ui";
 import { useCallback, useEffect, useState } from "react";
 import { client, type QueryResult } from "../api";
 import { useApp } from "../state";
@@ -29,7 +29,7 @@ const DATA_URI_IMG = /^data:image\//i;
 const DATA_URI_VID = /^data:video\//i;
 const DATA_URI_AUD = /^data:audio\//i;
 const MEDIA_URL_PREFIX =
-  /^(https?:|data:|blob:|file:|capacitor:|capacitor-electron:|app:|\/|\.\/|\.\.\/)/i;
+  /^(https?:|data:|blob:|file:|capacitor:|electrobun:|app:|\/|\.\/|\.\.\/)/i;
 
 function classifyUrl(url: string): "image" | "video" | "audio" | null {
   if (IMAGE_EXTS.test(url) || DATA_URI_IMG.test(url)) return "image";
@@ -122,7 +122,7 @@ function extractUrlsFromValue(val: string): string[] {
 
   // Absolute URL/scheme match
   const urlRegex =
-    /(?:https?:\/\/|file:\/\/|blob:|capacitor(?:-electron)?:\/\/|app:\/\/)[^\s"'<>]+/gi;
+    /(?:https?:\/\/|file:\/\/|blob:|capacitor:\/\/|electrobun:\/\/|app:\/\/)[^\s"'<>]+/gi;
   const matches = val.match(urlRegex);
   if (matches) {
     for (const match of matches) urls.add(match);

@@ -52,7 +52,7 @@ interface ChatViewContextStub {
   ptySessions: unknown[];
 }
 
-const { mockClient, mockUseApp, mockUseVoiceChat, mockIsElectronPlatform } =
+const { mockClient, mockUseApp, mockUseVoiceChat, mockIsDesktopPlatform } =
   vi.hoisted(() => ({
     mockClient: {
       getCodingAgentStatus: vi.fn(async () => null),
@@ -60,22 +60,22 @@ const { mockClient, mockUseApp, mockUseVoiceChat, mockIsElectronPlatform } =
     },
     mockUseApp: vi.fn(),
     mockUseVoiceChat: vi.fn(),
-    mockIsElectronPlatform: vi.fn(() => false),
+    mockIsDesktopPlatform: vi.fn(() => false),
   }));
 
-vi.mock("@elizaos/app-core/state", () => ({
+vi.mock("@miladyai/app-core/state", () => ({
   useApp: () => mockUseApp(),
   getVrmPreviewUrl: () => null,
 }));
 
-vi.mock("@elizaos/app-core/platform", () => ({
-  isElectronPlatform: () => mockIsElectronPlatform(),
+vi.mock("@miladyai/app-core/platform", () => ({
+  isDesktopPlatform: () => mockIsDesktopPlatform(),
 }));
 
-vi.mock("@elizaos/app-core/hooks", async () => {
-  const actual = await vi.importActual<
-    typeof import("@elizaos/app-core/hooks")
-  >("@elizaos/app-core/hooks");
+vi.mock("@miladyai/app-core/hooks", async () => {
+  const actual = await vi.importActual<typeof import("@miladyai/app-core/hooks")>(
+    "@miladyai/app-core/hooks",
+  );
   return {
     ...actual,
     useVoiceChat: (...args: unknown[]) => mockUseVoiceChat(...args),
@@ -91,7 +91,7 @@ vi.mock("../../src/components/MessageContent", () => ({
     React.createElement("span", null, message.text),
 }));
 
-vi.mock("@elizaos/app-core/api", () => ({
+vi.mock("@miladyai/app-core/api", () => ({
   client: mockClient,
 }));
 
@@ -101,7 +101,7 @@ function createContext(
   overrides?: Partial<ChatViewContextStub>,
 ): ChatViewContextStub {
   return {
-    agentStatus: { agentName: "Eliza", state: "running" },
+    agentStatus: { agentName: "Milady", state: "running" },
     activeConversationId: "conv-1",
     chatInput: "",
     chatSending: false,
@@ -153,7 +153,7 @@ describe("ChatView", () => {
   beforeEach(() => {
     mockUseApp.mockReset();
     mockUseVoiceChat.mockReset();
-    mockIsElectronPlatform.mockReset();
+    mockIsDesktopPlatform.mockReset();
     mockClient.getConfig.mockReset();
     Object.defineProperty(window, "dispatchEvent", {
       value: vi.fn(),
@@ -178,7 +178,7 @@ describe("ChatView", () => {
       stopSpeaking: vi.fn(),
     });
     mockClient.getConfig.mockResolvedValue({});
-    mockIsElectronPlatform.mockReturnValue(false);
+    mockIsDesktopPlatform.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -205,7 +205,7 @@ describe("ChatView", () => {
 
     const root = tree?.root;
     const headerCount = root.findAll(
-      (node) => node.type === "div" && text(node) === "Eliza",
+      (node) => node.type === "div" && text(node) === "Milady",
     ).length;
     expect(headerCount).toBe(1);
   });
@@ -307,7 +307,7 @@ describe("ChatView", () => {
 
   it("does not auto-play assistant speech in desktop chat view", async () => {
     const queueAssistantSpeech = vi.fn();
-    mockIsElectronPlatform.mockReturnValue(true);
+    mockIsDesktopPlatform.mockReturnValue(true);
     mockUseVoiceChat.mockReturnValue({
       supported: false,
       isListening: false,
@@ -342,7 +342,7 @@ describe("ChatView", () => {
   });
 
   it("does not render top-center voice or new chat controls in desktop chat view", async () => {
-    mockIsElectronPlatform.mockReturnValue(true);
+    mockIsDesktopPlatform.mockReturnValue(true);
     mockUseVoiceChat.mockReturnValue({
       supported: true,
       isListening: false,
@@ -382,7 +382,7 @@ describe("ChatView", () => {
   });
 
   it("does not render a global agent voice toggle in default chat", async () => {
-    mockIsElectronPlatform.mockReturnValue(false);
+    mockIsDesktopPlatform.mockReturnValue(false);
     mockUseVoiceChat.mockReturnValue({
       supported: true,
       isListening: false,
@@ -820,7 +820,7 @@ describe("addImageFiles functional updater", () => {
         this.onload?.();
       }
     }
-    vi.stubGlobal("FileReader", MockFileReader as typeof FileReader);
+    vi.stubGlobal("FileReader", MockFileReader as unknown as typeof FileReader);
 
     const setChatPendingImages = vi.fn();
     mockUseApp.mockReturnValue(
@@ -849,7 +849,7 @@ describe("addImageFiles functional updater", () => {
           return (target as Record<string | symbol, unknown>)[prop as string];
         },
       },
-    ) as File;
+    ) as unknown as File;
 
     await act(async () => {
       fileInput.props.onChange({

@@ -10,7 +10,7 @@
  * 4. No console errors or unexpected warnings are emitted during any transition.
  */
 
-import type { Tab } from "@elizaos/app-core/navigation";
+import type { Tab } from "@miladyai/app-core/navigation";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,10 +35,10 @@ vi.mock("@capacitor/keyboard", () => ({
   },
 }));
 
-vi.mock("@elizaos/app-core/platform", async () => {
+vi.mock("@miladyai/app-core/platform", async () => {
   const actual = await vi.importActual<
-    typeof import("@elizaos/app-core/platform")
-  >("@elizaos/app-core/platform");
+    typeof import("@miladyai/app-core/platform")
+  >("@miladyai/app-core/platform");
   return {
     ...actual,
     isIOS: true,
@@ -48,10 +48,10 @@ vi.mock("@elizaos/app-core/platform", async () => {
 
 /* ── Mock every leaf component ────────────────────────────────────── */
 
-vi.mock("@elizaos/app-core/state", async () => {
+vi.mock("@miladyai/app-core/state", async () => {
   const actual = await vi.importActual<
-    typeof import("@elizaos/app-core/state")
-  >("@elizaos/app-core/state");
+    typeof import("@miladyai/app-core/state")
+  >("@miladyai/app-core/state");
   return {
     ...actual,
     useApp: () => mockUseApp(),
@@ -61,10 +61,10 @@ vi.mock("@elizaos/app-core/state", async () => {
   };
 });
 
-vi.mock("@elizaos/app-core/components", async () => {
+vi.mock("@miladyai/app-core/components", async () => {
   const actual = await vi.importActual<
-    typeof import("@elizaos/app-core/components")
-  >("@elizaos/app-core/components");
+    typeof import("@miladyai/app-core/components")
+  >("@miladyai/app-core/components");
   return {
     ...actual,
     AdvancedPageView: () =>
@@ -262,7 +262,7 @@ vi.mock("../../../packages/app-core/src/components/KnowledgeView", () => ({
     React.createElement("section", null, "KnowledgeView Ready"),
 }));
 
-vi.mock("@elizaos/app-core/components/AvatarLoader", () => ({
+vi.mock("@miladyai/app-core/components/AvatarLoader", () => ({
   AvatarLoader: () => React.createElement("div", null, "AvatarLoader"),
 }));
 
@@ -307,10 +307,10 @@ vi.mock("../../../packages/app-core/src/components/LifoSandboxView", () => ({
     React.createElement("section", null, "LifoSandboxView Ready"),
 }));
 
-vi.mock("@elizaos/app-core/hooks", async () => {
+vi.mock("@miladyai/app-core/hooks", async () => {
   const actual = await vi.importActual<
-    typeof import("@elizaos/app-core/hooks")
-  >("@elizaos/app-core/hooks");
+    typeof import("@miladyai/app-core/hooks")
+  >("@miladyai/app-core/hooks");
   return {
     ...actual,
     useContextMenu: () => ({
@@ -338,6 +338,10 @@ type HarnessState = {
   [key: string]: unknown;
 };
 
+function shellModeForTab(tab: Tab): "native" | "companion" {
+  return tab === "companion" ? "companion" : "native";
+}
+
 function tFn(k: string): string {
   const labels: Record<string, string> = {
     "nav.chat": "Chat",
@@ -363,10 +367,6 @@ function tFn(k: string): string {
   return labels[k] ?? k;
 }
 
-function shellModeForTab(tab: Tab): "native" | "companion" {
-  return tab === "companion" ? "companion" : "native";
-}
-
 function makeState(overrides?: Partial<HarnessState>): HarnessState {
   const state: HarnessState = {
     t: tFn,
@@ -384,7 +384,7 @@ function makeState(overrides?: Partial<HarnessState>): HarnessState {
       state.tab = mode === "companion" ? "companion" : "chat";
     }),
     uiLanguage: "en",
-    agentStatus: { state: "running", agentName: "Eliza" },
+    agentStatus: { state: "running", agentName: "Milady" },
     loadDropStatus: vi.fn(),
     unreadConversations: new Set(),
     activeGameViewerUrl: null,

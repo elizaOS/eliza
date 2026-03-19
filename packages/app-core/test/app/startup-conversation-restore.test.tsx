@@ -35,7 +35,7 @@ const { mockClient } = vi.hoisted(() => ({
     })),
     requestGreeting: vi.fn(async () => ({
       text: "hi",
-      agentName: "Eliza",
+      agentName: "Milady",
       generated: true,
     })),
     listCustomActions: vi.fn(async () => []),
@@ -81,7 +81,7 @@ const { mockClient } = vi.hoisted(() => ({
     })),
     getStatus: vi.fn(async () => ({
       state: "running",
-      agentName: "Eliza",
+      agentName: "Milady",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,
@@ -100,12 +100,12 @@ const { mockClient } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/app-core/api", () => ({
+vi.mock("@miladyai/app-core/api", () => ({
   client: mockClient,
   SkillScanReportSummary: {},
 }));
 
-import { AppProvider, useApp } from "@elizaos/app-core/state";
+import { AppProvider, useApp } from "@miladyai/app-core/state";
 
 type StartupSnapshot = {
   onboardingLoading: boolean;
@@ -207,7 +207,7 @@ describe("startup conversation restore", () => {
     });
     mockClient.requestGreeting.mockResolvedValue({
       text: "hi",
-      agentName: "Eliza",
+      agentName: "Milady",
       generated: true,
     });
     mockClient.listCustomActions.mockResolvedValue([]);
@@ -253,7 +253,7 @@ describe("startup conversation restore", () => {
     });
     mockClient.getStatus.mockResolvedValue({
       state: "running",
-      agentName: "Eliza",
+      agentName: "Milady",
       model: undefined,
       startedAt: undefined,
       uptime: undefined,

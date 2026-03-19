@@ -5,7 +5,6 @@
  */
 
 import { isElectrobunRuntime } from "../bridge";
-import { setElizaApiBase } from "../utils/eliza-globals";
 
 // ── Platform detection ──────────────────────────────────────────────
 
@@ -28,13 +27,15 @@ function detectPlatform(): { platform: string; isNative: boolean } {
 
 const detected = detectPlatform();
 
-export const platform = detected.platform;
+export const platform = isElectrobunRuntime()
+  ? "electrobun"
+  : detected.platform;
 export const isNative = detected.isNative;
-export const isIOS = detected.platform === "ios";
-export const isAndroid = detected.platform === "android";
+export const isIOS = platform === "ios";
+export const isAndroid = platform === "android";
 
-export function isElectronPlatform(): boolean {
-  return detected.platform === "electron" || isElectrobunRuntime();
+export function isDesktopPlatform(): boolean {
+  return platform === "electrobun";
 }
 
 export function isWebPlatform(): boolean {
@@ -58,7 +59,7 @@ export interface ShareTargetPayload {
 
 declare global {
   interface Window {
-    __ELIZA_SHARE_QUEUE__?: ShareTargetPayload[];
+    __MILADY_SHARE_QUEUE__?: ShareTargetPayload[];
   }
 }
 
@@ -67,10 +68,10 @@ export function dispatchShareTarget(
   dispatchEvent: (name: string, detail: unknown) => void,
   eventName: string,
 ): void {
-  if (!window.__ELIZA_SHARE_QUEUE__) {
-    window.__ELIZA_SHARE_QUEUE__ = [];
+  if (!window.__MILADY_SHARE_QUEUE__) {
+    window.__MILADY_SHARE_QUEUE__ = [];
   }
-  window.__ELIZA_SHARE_QUEUE__.push(payload);
+  window.__MILADY_SHARE_QUEUE__.push(payload);
   dispatchEvent(eventName, payload);
 }
 
@@ -222,13 +223,13 @@ export function injectPopoutApiBase(): void {
         parsed.protocol === "https:" ||
         (parsed.protocol === "http:" && allowPrivateHttp)
       ) {
-        setElizaApiBase(apiBase);
+        window.__MILADY_API_BASE__ = apiBase;
       } else {
         console.warn("[app-core] Rejected non-local apiBase:", host);
       }
     } catch {
       if (apiBase.startsWith("/") && !apiBase.startsWith("//")) {
-        setElizaApiBase(apiBase);
+        window.__MILADY_API_BASE__ = apiBase;
       } else {
         console.warn("[app-core] Rejected invalid relative apiBase:", apiBase);
       }

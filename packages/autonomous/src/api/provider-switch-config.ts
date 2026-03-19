@@ -1,10 +1,9 @@
 import {
   applySubscriptionCredentials,
   deleteCredentials,
-} from "@elizaos/autonomous/auth";
+} from "@miladyai/autonomous/auth";
 import type { SubscriptionProvider } from "../auth/types";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types";
-import type { ElizaConfig } from "../config/types.eliza";
 import {
   getOnboardingProviderOption,
   isCloudManagedConnection,
@@ -14,10 +13,11 @@ import {
   type OnboardingConnection,
   type OnboardingLocalProviderId,
 } from "../contracts/onboarding";
+import type { MiladyConfig } from "../config/types.milady";
 
 const REDACTED_SECRET = "[REDACTED]";
 
-type MutableElizaConfig = Partial<ElizaConfig> & {
+type MutableMiladyConfig = Partial<MiladyConfig> & {
   cloud?: Record<string, unknown>;
   models?: Record<string, unknown>;
   wallet?: { rpcProviders?: Record<string, string> };
@@ -48,21 +48,21 @@ function normalizeSecret(
   return trimmed;
 }
 
-function ensureEnv(config: MutableElizaConfig): Record<string, string> {
+function ensureEnv(config: MutableMiladyConfig): Record<string, string> {
   config.env ??= {};
   return config.env as Record<string, string>;
 }
 
 function ensureDefaults(
-  config: MutableElizaConfig,
-): NonNullable<NonNullable<ElizaConfig["agents"]>["defaults"]> {
+  config: MutableMiladyConfig,
+): NonNullable<NonNullable<MiladyConfig["agents"]>["defaults"]> {
   config.agents ??= {};
   config.agents.defaults ??= {};
   return config.agents.defaults;
 }
 
 function setEnvValue(
-  config: MutableElizaConfig,
+  config: MutableMiladyConfig,
   key: string,
   value: string | undefined,
 ): void {
@@ -77,7 +77,7 @@ function setEnvValue(
 }
 
 function setPrimaryModel(
-  config: MutableElizaConfig,
+  config: MutableMiladyConfig,
   primaryModel: string | undefined,
 ): void {
   const defaults = ensureDefaults(config);
@@ -90,10 +90,10 @@ function setPrimaryModel(
   defaults.model = { ...defaults.model, primary: primaryModel };
 }
 
-function clearPiAiFlag(config: MutableElizaConfig): void {
+function clearPiAiFlag(config: MutableMiladyConfig): void {
   const env = ensureEnv(config);
-  delete env.ELIZA_USE_PI_AI;
-  delete process.env.ELIZA_USE_PI_AI;
+  delete env.MILADY_USE_PI_AI;
+  delete process.env.MILADY_USE_PI_AI;
 }
 
 function readString(
@@ -129,7 +129,7 @@ function resolveConfiguredLocalProvider(
     return storedSubscriptionProvider;
   }
 
-  const piAiEnabled = readEnvString(config, "ELIZA_USE_PI_AI");
+  const piAiEnabled = readEnvString(config, "MILADY_USE_PI_AI");
   if (piAiEnabled && piAiEnabled !== "0" && piAiEnabled !== "false") {
     return "pi-ai";
   }
@@ -168,7 +168,7 @@ function resolveConfiguredLocalProvider(
  * Mutates `config` in place.
  */
 export function applySubscriptionProviderConfig(
-  config: Partial<ElizaConfig>,
+  config: Partial<MiladyConfig>,
   provider: string,
 ): void {
   config.agents ??= {};
@@ -197,7 +197,7 @@ export function applySubscriptionProviderConfig(
  * Mutates `config` in place.
  */
 export function clearSubscriptionProviderConfig(
-  config: Partial<ElizaConfig>,
+  config: Partial<MiladyConfig>,
 ): void {
   config.agents ??= {};
   config.agents.defaults ??= {};
@@ -346,7 +346,7 @@ export function mergeOnboardingConnectionWithExisting(
 }
 
 export async function applyOnboardingConnectionConfig(
-  config: MutableElizaConfig,
+  config: MutableMiladyConfig,
   connection: OnboardingConnection,
 ): Promise<void> {
   if (connection.kind === "cloud-managed") {
@@ -414,15 +414,16 @@ export async function applyOnboardingConnectionConfig(
   ) {
     applySubscriptionProviderConfig(config, normalizedProvider);
 
-    if (
-      normalizedProvider === "anthropic-subscription" &&
-      trimToUndefined(connection.apiKey)?.startsWith("sk-ant-")
-    ) {
-      setEnvValue(
-        config,
-        "ANTHROPIC_API_KEY",
-        trimToUndefined(connection.apiKey),
-      );
+    const setupToken =
+      normalizedProvider === "anthropic-subscription"
+        ? trimToUndefined(connection.apiKey)
+        : undefined;
+
+    if (setupToken?.startsWith("sk-ant-")) {
+      setEnvValue(config, "ANTHROPIC_API_KEY", setupToken);
+      deleteCredentials("anthropic-subscription");
+      deleteCredentials("openai-codex");
+      return;
     }
 
     await applySubscriptionCredentials(config);
@@ -437,7 +438,7 @@ export async function applyOnboardingConnectionConfig(
   clearSubscriptionProviderConfig(config);
 
   if (normalizedProvider === "pi-ai") {
-    setEnvValue(config, "ELIZA_USE_PI_AI", "1");
+    setEnvValue(config, "MILADY_USE_PI_AI", "1");
   } else {
     clearPiAiFlag(config);
   }

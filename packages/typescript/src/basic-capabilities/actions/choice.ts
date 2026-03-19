@@ -29,7 +29,10 @@ export const choiceAction: Action = {
 	): Promise<boolean> => {
 		if (!state) {
 			logger.error(
-				{ src: "plugin:basic-capabilities:action:choice", agentId: runtime.agentId },
+				{
+					src: "plugin:basic-capabilities:action:choice",
+					agentId: runtime.agentId,
+				},
 				"State is required for validating the action",
 			);
 			throw new Error("State is required for validating the action");

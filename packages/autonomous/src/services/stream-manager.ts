@@ -3,9 +3,9 @@
  *
  * Supports multiple input modes:
  * - "pipe": Receives JPEG frames via writeFrame() → FFmpeg stdin (image2pipe).
- *   Used for streaming Electron window contents captured with capturePage().
+ *   Used for streaming desktop window contents captured by the host bridge.
  * - "avfoundation" / "screen": macOS native screen capture.
- * - "x11grab": Linux virtual display capture (Xvfb).
+ * - "x11grab": Linux virtual display capture (Xvfb). Like Hyperscape's approach.
  * - "file": Reads a continuously-updated JPEG file (browser-capture).
  * - "testsrc": Solid color test pattern (default fallback).
  *
@@ -567,7 +567,7 @@ class StreamManager {
         ];
       }
       case "x11grab": {
-        // Linux virtual display capture (Xvfb).
+        // Linux virtual display capture (Xvfb) — the Hyperscape approach.
         // Requires: Xvfb :99 -screen 0 1280x720x24 -ac &
         // Then run a browser/TUI on display :99.
         const display = config.display || ":99";
@@ -586,7 +586,7 @@ class StreamManager {
       }
       case "file": {
         // Read from a continuously-updated JPEG file (written by browser-capture).
-        const framePath = config.frameFile || "/tmp/eliza-stream-frame.jpg";
+        const framePath = config.frameFile || "/tmp/milady-stream-frame.jpg";
         return [
           "-probesize",
           "32",

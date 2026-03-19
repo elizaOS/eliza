@@ -98,11 +98,24 @@
   --plugin-input-height: 2.25rem;
   --plugin-max-field-width: 32rem;
 
-  /* Section accents */
-  --section-accent-advanced: #7b8fb5;
-  --section-accent-apps: #10b981;
-
   color-scheme: light;
+}
+
+/* Character view action bar — light/dark backdrop for save/customize buttons
+   in companion mode (sceneOverlay) so they're visible over the 3D scene. */
+.character-action-bar {
+  padding: 0.75rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+[data-theme="dark"] .character-action-bar,
+.dark .character-action-bar {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.4);
 }
 
 [data-theme="dark"],
@@ -195,10 +208,6 @@
   --plugin-focus-ring: var(--accent);
   --plugin-input-height: 2.25rem;
   --plugin-max-field-width: 32rem;
-
-  /* Section accents */
-  --section-accent-advanced: #7b8fb5;
-  --section-accent-apps: #10b981;
 
   color-scheme: dark;
 }

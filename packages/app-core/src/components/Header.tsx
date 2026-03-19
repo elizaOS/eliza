@@ -1,6 +1,6 @@
-import { LanguageDropdown, ThemeToggle } from "@elizaos/app-core/components";
-import { getTabGroups, type TabGroup } from "@elizaos/app-core/navigation";
-import { useApp } from "@elizaos/app-core/state";
+import { LanguageDropdown, ThemeToggle } from "@miladyai/app-core/components";
+import { getTabGroups, type TabGroup } from "@miladyai/app-core/navigation";
+import { useApp } from "@miladyai/app-core/state";
 import { AlertTriangle, CircleDollarSign, Menu } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -26,9 +26,10 @@ const NAV_LABEL_I18N_KEY: Record<string, string> = {
 interface HeaderProps {
   mobileLeft?: ReactNode;
   transparent?: boolean;
+  hideCloudCredits?: boolean;
 }
 
-export function Header({ mobileLeft, transparent = false }: HeaderProps) {
+export function Header({ mobileLeft, transparent = false, hideCloudCredits = false }: HeaderProps) {
   const {
     elizaCloudEnabled,
     elizaCloudConnected,
@@ -107,7 +108,7 @@ export function Header({ mobileLeft, transparent = false }: HeaderProps) {
         : "desktop";
   const useMinimalHeaderChrome = transparent || activeShellView !== "desktop";
   const showNavigationMenu = activeShellView === "desktop";
-  const showCloudCredits = activeShellView === "desktop";
+  const showCloudCredits = activeShellView === "desktop" && !hideCloudCredits;
   const showCloudCreditsStatus =
     showCloudCredits && (elizaCloudEnabled || elizaCloudConnected);
   const cloudCreditsDisplay =

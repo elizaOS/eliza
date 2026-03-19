@@ -4,7 +4,7 @@
  * Persistence strategy (dual-layer):
  *  1. **Server API** (`GET/POST /api/stream/overlay-layout`) — authoritative
  *     source that persists across headless browser restarts on a VPS.
- *  2. **localStorage** (`eliza.stream.overlay-layout.v1`) — fast local cache,
+ *  2. **localStorage** (`milady.stream.overlay-layout.v1`) — fast local cache,
  *     used as initial state and fallback when the server is unreachable.
  *
  * On mount the hook loads from localStorage (instant), then fetches from the
@@ -14,13 +14,13 @@
  * storage (both localStorage and server). Falls back to the global default.
  */
 
-import { client } from "@elizaos/app-core/api";
+import { client } from "@miladyai/app-core/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAllWidgets } from "./registry";
 import type { OverlayLayout, WidgetInstance, WidgetPosition } from "./types";
 
 function storageKey(destinationId?: string | null): string {
-  const base = "eliza.stream.overlay-layout.v1";
+  const base = "milady.stream.overlay-layout.v1";
   return destinationId ? `${base}.${destinationId}` : base;
 }
 
@@ -77,7 +77,7 @@ function saveLayoutServer(
   destinationId?: string | null,
 ): void {
   client.saveOverlayLayout(layout, destinationId).catch(() => {
-    // Server may be unavailable (e.g. Electron dev mode) — ignore
+    // Server may be unavailable (e.g. desktop dev mode) — ignore
   });
 }
 

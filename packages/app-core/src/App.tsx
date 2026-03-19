@@ -3,21 +3,18 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
-import { isIOS, isLifoPopoutValue, isNative } from "@elizaos/app-core/platform";
 import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+  isIOS,
+  isLifoPopoutValue,
+  isNative,
+} from "@miladyai/app-core/platform";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   AdvancedPageView,
   AppsPageView,
   AvatarLoader,
   CharacterView,
   ChatView,
-  CloudOnboarding,
   CompanionShell,
   CompanionView,
   ConnectionFailedBanner,
@@ -28,6 +25,7 @@ import {
   ErrorBoundary,
   GameViewOverlay,
   Header,
+  MiladyBar,
   HeartbeatsView,
   InventoryView,
   KnowledgeView,
@@ -121,9 +119,6 @@ function ViewRouter({
         );
       case "character":
       case "character-select":
-        // Character-select is a companion-only route; non-companion apps
-        // (e.g. Eliza Home) fall through to the default chat view.
-        if (!COMPANION_ENABLED) return <ChatView />;
         return (
           <TabScrollView>
             <CharacterView sceneOverlay={characterSceneVisible} />
@@ -194,7 +189,6 @@ function ViewRouter({
 export function App() {
   const {
     onboardingLoading,
-    onboardingMode,
     startupPhase,
     startupError,
     authRequired,
@@ -212,7 +206,7 @@ export function App() {
 
   const isPopout = useIsPopout();
   const shellMode =
-    COMPANION_ENABLED && (tab === "character" || tab === "character-select")
+    tab === "character" || tab === "character-select"
       ? "native"
       : (uiShellMode ?? "companion");
   const effectiveTab: Tab =
@@ -326,7 +320,7 @@ export function App() {
 
     // Disable the iOS WebView scroll only while the companion shell is active.
     void Keyboard.setScroll({ isDisabled: companionShellVisible }).catch(() => {
-      // Ignore bridge failures so web/electron shells keep working.
+      // Ignore bridge failures so web and desktop shells keep working.
     });
   }, [companionShellVisible]);
 
@@ -344,10 +338,6 @@ export function App() {
 
   const bugReport = useBugReportState();
   const agentStarting = agentStatus?.state === "starting";
-  const shouldLoad = onboardingLoading || agentStarting;
-  const [loaderFadingOut, setLoaderFadingOut] = useState(false);
-  const showLoaderRef = useRef(true);
-  const [showLoader, setShowLoader] = useState(true);
 
   useEffect(() => {
     const STARTUP_TIMEOUT_MS = 300_000;
@@ -358,6 +348,25 @@ export function App() {
       return () => clearTimeout(timer);
     }
   }, [startupPhase, startupError, retryStartup]);
+
+  // Pop-out mode — render only StreamView, skip startup gates.
+  // Platform init is skipped in main.tsx; AppProvider hydrates WS in background.
+  if (isPopout) {
+    return (
+      <div className="flex flex-col h-screen w-screen font-body text-txt bg-bg overflow-hidden">
+        <StreamView />
+      </div>
+    );
+  }
+
+  if (startupError) {
+    return <StartupFailureView error={startupError} onRetry={retryStartup} />;
+  }
+
+  const shouldLoad = onboardingLoading || agentStarting;
+  const [loaderFadingOut, setLoaderFadingOut] = useState(false);
+  const showLoaderRef = useRef(true);
+  const [showLoader, setShowLoader] = useState(true);
 
   useEffect(() => {
     if (shouldLoad) {
@@ -375,41 +384,23 @@ export function App() {
     }
   }, [shouldLoad]);
 
-  // Pop-out mode — render only StreamView, skip startup gates.
-  // Platform init is skipped in main.tsx; AppProvider hydrates WS in background.
-  if (isPopout) {
-    return (
-      <div className="flex flex-col h-screen w-screen font-body text-txt bg-bg overflow-hidden">
-        <StreamView />
-      </div>
-    );
-  }
-
-  if (startupError) {
-    return <StartupFailureView error={startupError} onRetry={retryStartup} />;
-  }
-
   if (authRequired && !shouldLoad) return <PairingView />;
-  if (!onboardingComplete && !shouldLoad) {
-    return onboardingMode === "elizacloudonly" ? (
-      <CloudOnboarding />
-    ) : (
-      <OnboardingWizard />
-    );
-  }
+  if (!onboardingComplete && !shouldLoad) return <OnboardingWizard />;
 
   const shellContent = companionShellVisible ? (
     <CompanionShell tab={effectiveTab} actionNotice={actionNotice} />
   ) : tab === "stream" ? (
     <div className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg">
-      <Header />
+      <Header hideCloudCredits />
+      <MiladyBar />
       <main className="flex-1 min-h-0 overflow-hidden">
         <StreamView />
       </main>
     </div>
   ) : isChat ? (
     <div className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg">
-      <Header mobileLeft={mobileChatControls} />
+      <Header mobileLeft={mobileChatControls} hideCloudCredits />
+      <MiladyBar />
       <div className="flex flex-1 min-h-0 relative">
         {isChatMobileLayout ? (
           <>
@@ -450,7 +441,8 @@ export function App() {
         characterSceneVisible ? "bg-transparent" : "bg-bg"
       }`}
     >
-      <Header transparent={characterSceneVisible} />
+      <Header transparent={characterSceneVisible} hideCloudCredits={!characterSceneVisible} />
+      {!characterSceneVisible && <MiladyBar />}
       <main
         className={`flex flex-1 min-h-0 min-w-0 overflow-hidden px-3 xl:px-5 ${
           characterSceneVisible ? "pb-4 pt-2 xl:pb-6" : "py-4 xl:py-6"

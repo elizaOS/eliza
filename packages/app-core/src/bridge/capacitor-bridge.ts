@@ -1,7 +1,7 @@
 /**
  * Capacitor Bridge
  *
- * This module provides a bridge between the Eliza web UI and native
+ * This module provides a bridge between the Milady web UI and native
  * Capacitor plugins. It exposes a global API that the UI can use to
  * access native capabilities like camera, microphone, file system, etc.
  *
@@ -11,15 +11,15 @@
 
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
-import { BRIDGE_READY_EVENT, dispatchElizaEvent } from "../events";
+import { BRIDGE_READY_EVENT, dispatchMiladyEvent } from "../events";
 import { isElectrobunRuntime } from "./electrobun-runtime";
 
 // Import the plugin bridge
 import {
-  type ElizaPlugins,
   getPluginCapabilities,
   getPlugins,
   isFeatureAvailable,
+  type MiladyPlugins,
   type PluginCapabilities,
 } from "./plugin-bridge";
 
@@ -29,8 +29,8 @@ const isNative = Capacitor.isNativePlatform();
 const isIOS = platform === "ios";
 const isAndroid = platform === "android";
 
-function isElectronPlatform(): boolean {
-  return platform === "electron" || isElectrobunRuntime();
+function isDesktopPlatform(): boolean {
+  return isElectrobunRuntime();
 }
 
 function isWebPlatform(): boolean {
@@ -44,7 +44,7 @@ export interface CapacitorCapabilities {
   /** Whether we're running in a native container */
   native: boolean;
   /** Platform identifier */
-  platform: "ios" | "android" | "electron" | "web";
+  platform: "ios" | "android" | "electrobun" | "web";
   /** Haptic feedback support */
   haptics: boolean;
   /** Camera capture support */
@@ -69,18 +69,18 @@ export interface CapacitorCapabilities {
  * Get the current platform capabilities
  */
 export function getCapabilities(): CapacitorCapabilities {
-  const isElectron = isElectronPlatform();
+  const isDesktop = isDesktopPlatform();
   return {
     native: isNative,
-    platform: platform as CapacitorCapabilities["platform"],
+    platform: (isDesktop ? "electrobun" : platform) as CapacitorCapabilities["platform"],
     haptics: isNative && (isIOS || isAndroid),
     camera: isNative,
     microphone: isNative,
-    screenCapture: isNative && !isElectron, // Electron needs different handling
+    screenCapture: isNative && !isDesktop, // Desktop uses a separate capture path
     fileSystem: isNative,
     notifications: isNative,
     geolocation: true, // Available on web too via browser API
-    background: isNative && !isElectron,
+    background: isNative && !isDesktop,
     voiceWake: isNative && (isIOS || isAndroid), // macOS via Swabble handled separately
   };
 }
@@ -163,7 +163,7 @@ export const haptics = {
 };
 
 /**
- * Plugin registry for custom Eliza plugins
+ * Plugin registry for custom Milady plugins
  *
  * Custom plugins (Gateway, Swabble, Canvas, etc.) will register themselves here
  * when they're loaded. This allows the UI to check for plugin availability
@@ -197,9 +197,9 @@ export function hasPlugin(name: string): boolean {
 }
 
 /**
- * The global Eliza bridge object exposed to the UI
+ * The global Milady bridge object exposed to the UI
  */
-export interface ElizaBridge {
+export interface MiladyBridge {
   /** Platform capabilities */
   capabilities: CapacitorCapabilities;
   /** Plugin-specific capabilities */
@@ -212,8 +212,8 @@ export interface ElizaBridge {
   hasPlugin: typeof hasPlugin;
   /** Register a new plugin */
   registerPlugin: typeof registerPlugin;
-  /** Get all Eliza plugins with fallback support */
-  plugins: ElizaPlugins;
+  /** Get all Milady plugins with fallback support */
+  plugins: MiladyPlugins;
   /** Check if a specific feature is available */
   isFeatureAvailable: typeof isFeatureAvailable;
   /** Platform info */
@@ -222,7 +222,7 @@ export interface ElizaBridge {
     isNative: boolean;
     isIOS: boolean;
     isAndroid: boolean;
-    isElectron: boolean;
+    isDesktop: boolean;
     isWeb: boolean;
     isMacOS: boolean;
   };
@@ -231,8 +231,8 @@ export interface ElizaBridge {
 /**
  * Create the global bridge object
  */
-function createBridge(): ElizaBridge {
-  const isElectron = isElectronPlatform();
+function createBridge(): MiladyBridge {
+  const isDesktop = isDesktopPlatform();
   return {
     capabilities: getCapabilities(),
     pluginCapabilities: getPluginCapabilities(),
@@ -247,9 +247,9 @@ function createBridge(): ElizaBridge {
       isNative,
       isIOS,
       isAndroid,
-      isElectron,
+      isDesktop,
       isWeb: isWebPlatform(),
-      isMacOS: isElectron, // Electron is used for macOS/desktop
+      isMacOS: isDesktop, // Electrobun is used for macOS/desktop
     },
   };
 }
@@ -257,20 +257,20 @@ function createBridge(): ElizaBridge {
 // Extend the Window interface to include our bridge
 declare global {
   interface Window {
-    Eliza: ElizaBridge;
+    Milady: MiladyBridge;
   }
 }
 
 /**
  * Initialize the Capacitor bridge
  *
- * This exposes the bridge object on window.Eliza for use by the UI.
+ * This exposes the bridge object on window.Milady for use by the UI.
  */
 export function initializeCapacitorBridge(): void {
-  window.Eliza = createBridge();
+  window.Milady = createBridge();
 
   // Dispatch an event to notify that the bridge is ready
-  dispatchElizaEvent(BRIDGE_READY_EVENT, window.Eliza);
+  dispatchMiladyEvent(BRIDGE_READY_EVENT, window.Milady);
 }
 
 /**
@@ -278,16 +278,16 @@ export function initializeCapacitorBridge(): void {
  *
  * Returns immediately if already initialized, otherwise waits for the event.
  */
-export function waitForBridge(): Promise<ElizaBridge> {
-  if (window.Eliza) {
-    return Promise.resolve(window.Eliza);
+export function waitForBridge(): Promise<MiladyBridge> {
+  if (window.Milady) {
+    return Promise.resolve(window.Milady);
   }
 
   return new Promise((resolve) => {
     document.addEventListener(
       BRIDGE_READY_EVENT,
       (event) => {
-        resolve((event as CustomEvent<ElizaBridge>).detail);
+        resolve((event as CustomEvent<MiladyBridge>).detail);
       },
       { once: true },
     );

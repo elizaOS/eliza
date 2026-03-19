@@ -63,6 +63,7 @@ export type { UiShellMode } from "./ui-preferences";
 export type ShellView = "companion" | "character" | "desktop";
 
 export type OnboardingStep =
+  | "wakeUp"
   | "identity"
   | "connection"
   | "rpc"
@@ -76,6 +77,11 @@ export interface OnboardingStepMeta {
 }
 
 export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
+  {
+    id: "wakeUp",
+    name: "onboarding.stepName.wakeUp",
+    subtitle: "onboarding.stepSub.wakeUp",
+  },
   {
     id: "identity",
     name: "onboarding.stepName.identity",
@@ -206,8 +212,6 @@ export interface ChatTurnUsage extends ChatTokenUsage {
 
 // ── Context value type ─────────────────────────────────────────────────
 
-export type OnboardingMode = "companion" | "elizacloudonly";
-
 export interface AppState {
   // Core
   tab: Tab;
@@ -216,7 +220,6 @@ export interface AppState {
   uiTheme: UiTheme;
   connected: boolean;
   agentStatus: AgentStatus | null;
-  onboardingMode: OnboardingMode;
   onboardingComplete: boolean;
   onboardingLoading: boolean;
   startupPhase: StartupPhase;
@@ -440,6 +443,13 @@ export interface AppState {
   onboardingLargeModel: string;
   onboardingProvider: string;
   onboardingApiKey: string;
+  onboardingDetectedProviders: Array<{
+    id: string;
+    source: string;
+    apiKey?: string;
+    authMode?: string;
+    cliInstalled: boolean;
+  }>;
   onboardingRemoteApiBase: string;
   onboardingRemoteToken: string;
   onboardingRemoteConnecting: boolean;
@@ -653,7 +663,6 @@ export interface AppActions {
   // Onboarding
   handleOnboardingNext: (options?: OnboardingNextOptions) => Promise<void>;
   handleOnboardingBack: () => void;
-  handleCloudOnboardingFinish: () => Promise<void>;
   handleOnboardingRemoteConnect: () => Promise<void>;
   handleOnboardingUseLocalBackend: () => void;
 

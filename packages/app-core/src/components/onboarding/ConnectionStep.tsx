@@ -2,14 +2,13 @@ import type {
   OpenRouterModelOption,
   PiAiModelOption,
   ProviderOption,
-} from "@elizaos/app-core/api";
-import { client } from "@elizaos/app-core/api";
-import { isNative } from "@elizaos/app-core/platform";
-import { getProviderLogo } from "@elizaos/app-core/providers";
-import { useApp } from "@elizaos/app-core/state";
-import { openExternalUrl } from "@elizaos/app-core/utils";
+} from "@miladyai/app-core/api";
+import { client } from "@miladyai/app-core/api";
+import { isNative } from "@miladyai/app-core/platform";
+import { getProviderLogo } from "@miladyai/app-core/providers";
+import { useApp } from "@miladyai/app-core/state";
+import { openExternalUrl } from "@miladyai/app-core/utils";
 import { useState } from "react";
-import { useBranding } from "../../config/branding";
 
 function formatRequestError(err: unknown): string {
   if (err instanceof Error) {
@@ -19,7 +18,6 @@ function formatRequestError(err: unknown): string {
 }
 
 export function ConnectionStep() {
-  const branding = useBranding();
   const {
     onboardingOptions,
     onboardingRunMode,
@@ -27,6 +25,7 @@ export function ConnectionStep() {
     onboardingProvider,
     onboardingSubscriptionTab,
     onboardingApiKey,
+    onboardingDetectedProviders,
     onboardingRemoteApiBase,
     onboardingRemoteToken,
     onboardingRemoteConnecting,
@@ -149,10 +148,14 @@ export function ConnectionStep() {
     setState("onboardingOpenRouterModel", modelId);
   };
 
-  const providers = onboardingOptions?.providers ?? [];
+  const providers = (onboardingOptions?.providers ?? []).filter(
+    (provider: ProviderOption) => provider.id !== "elizacloud",
+  );
   const elizaCloudReady =
     elizaCloudConnected ||
-    (onboardingProvider === "elizacloud" && onboardingApiKey.trim().length > 0);
+    (onboardingRunMode === "cloud" &&
+      onboardingCloudProvider === "elizacloud" &&
+      onboardingApiKey.trim().length > 0);
   const showProviderSelection =
     onboardingRemoteConnected || onboardingRunMode === "local";
 
@@ -165,7 +168,7 @@ export function ConnectionStep() {
     string,
     { name: string; description?: string }
   > = {
-    elizacloud: { name: branding.cloudName, description: "Managed hosting" },
+    elizacloud: { name: "Eliza Cloud", description: "Managed hosting" },
     "anthropic-subscription": {
       name: "Claude Sub",
       description: "Pro/Max subscription",
@@ -226,6 +229,20 @@ export function ConnectionStep() {
     resetCloudSelection();
   };
 
+  const detectedByProviderId = new Map(
+    (onboardingDetectedProviders ?? []).map((d) => [d.id, d]),
+  );
+
+  const getDetectedLabel = (providerId: string): string | null => {
+    const d = detectedByProviderId.get(providerId);
+    if (!d) return null;
+    if (d.source === "codex-auth") return "Detected from Codex";
+    if (d.source === "claude-credentials") return "Detected from Claude Code";
+    if (d.source === "keychain") return "Detected from Keychain";
+    if (d.source === "env") return "Detected from env";
+    return "Auto-detected";
+  };
+
   const availableProviders = providers;
   const recommendedProviders = availableProviders.filter((p: ProviderOption) =>
     recommendedIds.has(p.id),
@@ -250,131 +267,14 @@ export function ConnectionStep() {
 
   const handleProviderSelect = (providerId: string) => {
     setState("onboardingProvider", providerId);
-    setState("onboardingApiKey", "");
+    // Auto-fill API key from detected credentials if available
+    const detected = detectedByProviderId.get(providerId);
+    setState("onboardingApiKey", detected?.apiKey ?? "");
     setState("onboardingPrimaryModel", "");
     if (providerId === "anthropic-subscription") {
       setState("onboardingSubscriptionTab", "token");
     }
   };
-
-  if (branding.appName === "Eliza") {
-    return (
-      <>
-        <div className="onboarding-section-title">Eliza Cloud</div>
-        <div className="onboarding-divider">
-          <div className="onboarding-divider-diamond" />
-        </div>
-
-        <div style={{ width: "100%", textAlign: "center" }}>
-          {elizaCloudConnected ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                padding: "0.625rem 1rem",
-                border: "1px solid var(--ok-muted)",
-                background: "var(--ok-subtle)",
-                color: "var(--ok)",
-                fontSize: "0.875rem",
-                borderRadius: "0.5rem",
-                justifyContent: "center",
-                marginBottom: "1rem",
-              }}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <title>{t("onboarding.connected")}</title>
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              {t("onboarding.connected")}
-            </div>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="onboarding-confirm-btn"
-                onClick={handleCloudLogin}
-                disabled={elizaCloudLoginBusy}
-                style={{ marginBottom: "1rem" }}
-              >
-                {elizaCloudLoginBusy
-                  ? t("onboarding.connecting")
-                  : t("onboarding.connectAccount")}
-              </button>
-              {elizaCloudLoginError &&
-                (() => {
-                  const urlMatch = elizaCloudLoginError.match(
-                    /^Open this link to log in: (.+)$/,
-                  );
-                  if (urlMatch) {
-                    return (
-                      <p
-                        style={{
-                          fontSize: "0.8125rem",
-                          marginBottom: "1rem",
-                          color: "var(--text)",
-                        }}
-                      >
-                        Open this link to log in:{" "}
-                        <a
-                          href={urlMatch[1]}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            color: "var(--text)",
-                            textDecoration: "underline",
-                          }}
-                        >
-                          Click here
-                        </a>
-                      </p>
-                    );
-                  }
-                  return (
-                    <p
-                      style={{
-                        color: "var(--danger)",
-                        fontSize: "0.8125rem",
-                        marginBottom: "1rem",
-                      }}
-                    >
-                      {elizaCloudLoginError}
-                    </p>
-                  );
-                })()}
-            </>
-          )}
-          <p className="onboarding-desc">{t("onboarding.freeCredits")}</p>
-        </div>
-
-        <div className="onboarding-panel-footer">
-          <span />
-          <button
-            className="onboarding-confirm-btn"
-            onClick={() => {
-              setState("onboardingRunMode", "cloud");
-              setState("onboardingCloudProvider", "elizacloud");
-              setState("onboardingProvider", "elizacloud");
-              void handleOnboardingNext();
-            }}
-            disabled={!elizaCloudConnected}
-            type="button"
-          >
-            {t("onboarding.confirm")}
-          </button>
-        </div>
-      </>
-    );
-  }
 
   if (!showProviderSelection) {
     if (!onboardingRunMode) {
@@ -822,11 +722,12 @@ export function ConnectionStep() {
           {sortedProviders.map((p: ProviderOption) => {
             const display = getProviderDisplay(p);
             const isRecommended = recommendedIds.has(p.id);
+            const detectedLabel = getDetectedLabel(p.id);
             return (
               <button
                 type="button"
                 key={p.id}
-                className={`onboarding-provider-card${isRecommended ? " onboarding-provider-card--recommended" : ""}`}
+                className={`onboarding-provider-card${isRecommended ? " onboarding-provider-card--recommended" : ""}${detectedLabel ? " onboarding-provider-card--detected" : ""}`}
                 onClick={() => handleProviderSelect(p.id)}
               >
                 <img
@@ -842,7 +743,12 @@ export function ConnectionStep() {
                     </div>
                   )}
                 </div>
-                {isRecommended && (
+                {detectedLabel && (
+                  <span className="onboarding-provider-badge onboarding-provider-badge--detected">
+                    {detectedLabel}
+                  </span>
+                )}
+                {isRecommended && !detectedLabel && (
                   <span className="onboarding-provider-badge">
                     {t("onboarding.recommended") ?? "Recommended"}
                   </span>

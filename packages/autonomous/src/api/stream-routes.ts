@@ -12,21 +12,19 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { logger } from "@elizaos/core";
-import type { TtsConfig } from "../config/types.messages";
 import type { StreamConfig } from "../services/stream-manager";
 import {
   getTtsProviderStatus,
   resolveTtsConfig,
   ttsStreamBridge,
 } from "../services/tts-stream-bridge";
-import { sanitizeSpeechText } from "../utils/spoken-text";
 import {
   readRequestBody,
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
 } from "./http-helpers";
-import type { StreamVisualSettings } from "./stream-persistence";
+import { sanitizeSpeechText } from "../utils/spoken-text";
 import {
   getHeadlessCaptureConfig,
   parseDestinationQuery,
@@ -42,7 +40,7 @@ import {
   handleStreamVoiceRoute as handleAutonomousStreamVoiceRoute,
   onAgentMessage as onAutonomousAgentMessage,
 } from "./stream-voice-routes";
-import type { StreamingDestination } from "./streaming-types";
+import type { OverlayLayoutData, StreamingDestination } from "./streaming-types";
 
 export type { StreamRouteState } from "./stream-route-state";
 
@@ -56,10 +54,10 @@ export type { StreamRouteState } from "./stream-route-state";
  *
  * Frames arrive via POST /api/stream/frame from:
  *  - Electrobun screencapture module (JS canvas → JPEG)
- *  - Electron screencapture module (capturePage → JPEG)
+ *  - Legacy desktop screencapture bridges
  *  - Any client POSTing raw JPEG bytes
  */
-const MJPEG_BOUNDARY = "elizaframe";
+const MJPEG_BOUNDARY = "miladyframe";
 
 const mjpegSubscribers = new Set<ServerResponse>();
 let latestFrame: Buffer | null = null;
@@ -89,10 +87,7 @@ function pushFrameToSubscribers(frame: Buffer): void {
  * hooks. Canonical definition lives in plugin-streaming-base; re-exported here
  * so existing consumers keep working.
  */
-export type {
-  OverlayLayoutData,
-  StreamingDestination,
-} from "./streaming-types";
+export type { OverlayLayoutData, StreamingDestination } from "./streaming-types";
 
 /** Resolve the active streaming destination from the registry. */
 export function getActiveDestination(
@@ -121,8 +116,7 @@ function error(res: ServerResponse, message: string, status: number): void {
 function resolveRouteTtsConfig(
   config: unknown,
 ): Record<string, unknown> | null {
-  const resolved = resolveTtsConfig(config as TtsConfig | undefined);
-  return resolved ? { ...resolved } : null;
+  return resolveTtsConfig(config as never) as Record<string, unknown> | null;
 }
 
 function getRouteTtsProviderStatus(config: unknown): {
@@ -130,7 +124,7 @@ function getRouteTtsProviderStatus(config: unknown): {
   configuredProvider: string | null;
   hasApiKey: boolean;
 } {
-  return getTtsProviderStatus(config as TtsConfig | undefined);
+  return getTtsProviderStatus(config as never);
 }
 
 const ttsBridgeAdapter = {
@@ -141,10 +135,7 @@ const ttsBridgeAdapter = {
     return ttsStreamBridge.isAttached();
   },
   async speak(text: string, config: Record<string, unknown>): Promise<boolean> {
-    return ttsStreamBridge.speak(
-      text,
-      config as unknown as Parameters<typeof ttsStreamBridge.speak>[1],
-    );
+    return ttsStreamBridge.speak(text, config as never);
   },
 };
 
@@ -165,7 +156,7 @@ function writeRouteStreamSettings(settings: {
     provider?: string;
   };
 }): void {
-  writeStreamSettings(settings as StreamVisualSettings);
+  writeStreamSettings(settings as never);
 }
 
 // ---------------------------------------------------------------------------
@@ -177,8 +168,8 @@ function writeRouteStreamSettings(settings: {
  *
  * Priority:
  * 1. STREAM_MODE / RETAKE_STREAM_MODE env var (explicit override)
- * 2. Electron -> "pipe" (capturePage -> POST /api/stream/frame -> FFmpeg stdin)
- * 3. Linux with DISPLAY or Xvfb -> "x11grab"
+ * 2. Desktop screen capture bridge -> "pipe" (POST /api/stream/frame -> FFmpeg stdin)
+ * 3. Linux with DISPLAY or Xvfb -> "x11grab" (Hyperscape approach)
  * 4. macOS -> "avfoundation" (native screen capture)
  * 5. Fallback -> "file" (Puppeteer CDP -> temp JPEG -> FFmpeg)
  */
@@ -191,8 +182,10 @@ export function detectCaptureMode(): StreamConfig["inputMode"] {
     return "avfoundation";
   if (explicit === "file") return "file";
 
-  // Electron -> pipe mode
-  if (process.versions.electron) return "pipe";
+  // Desktop bridge -> pipe mode
+  if ("__miladyScreenCapture" in (globalThis as Record<string, unknown>)) {
+    return "pipe";
+  }
 
   // Linux with a display -> x11grab (Xvfb or native X11)
   if (process.platform === "linux" && process.env.DISPLAY) return "x11grab";
@@ -332,15 +325,15 @@ async function startStreamPipeline(
 
   switch (mode) {
     case "pipe": {
-      // Electron UI mode: FFmpeg reads frames from stdin via writeFrame().
-      logger.info("[stream] Capture mode: pipe (Electron UI)");
+      // Desktop UI mode: FFmpeg reads frames from stdin via writeFrame().
+      logger.info("[stream] Capture mode: pipe (desktop UI)");
       await state.streamManager.start({
         ...baseConfig,
         inputMode: "pipe",
         framerate: 15,
       });
 
-      // Auto-start Electron frame capture so the UI is streamed without
+      // Auto-start desktop frame capture so the UI is streamed without
       // requiring a manual button click in the renderer.
       if (state.screenCapture && !state.screenCapture.isFrameCaptureActive()) {
         try {
@@ -361,7 +354,7 @@ async function startStreamPipeline(
             captureOpts.gameUrl = state.activeStreamSource.url;
           }
           await state.screenCapture.startFrameCapture(captureOpts);
-          logger.info("[stream] Auto-started Electron frame capture");
+          logger.info("[stream] Auto-started desktop frame capture");
         } catch (err) {
           logger.warn(`[stream] Failed to auto-start frame capture: ${err}`);
         }
@@ -374,7 +367,7 @@ async function startStreamPipeline(
     }
 
     case "x11grab": {
-      // Linux Xvfb mode: capture virtual display.
+      // Linux Xvfb mode (Hyperscape approach): capture virtual display.
       const display =
         process.env.STREAM_DISPLAY ?? process.env.RETAKE_DISPLAY ?? ":99";
       logger.info(`[stream] Capture mode: x11grab (display ${display})`);
@@ -621,9 +614,9 @@ export async function handleStreamRoute(
     try {
       // Stop browser capture
       try {
-        const { stopBrowserCapture } = await import(
-          "../services/browser-capture"
-        );
+          const { stopBrowserCapture } = await import(
+            "../services/browser-capture"
+          );
         await stopBrowserCapture();
       } catch {
         // Browser capture may not have been started -- ignore

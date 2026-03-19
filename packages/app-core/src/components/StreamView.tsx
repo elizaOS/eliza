@@ -11,10 +11,9 @@
  * Activity feed runs along the right sidebar. Chat ticker at the bottom.
  */
 
-import { client, isApiError } from "@elizaos/app-core/api";
-import { isElectrobunRuntime } from "@elizaos/app-core/bridge";
-import { useBranding } from "@elizaos/app-core/config";
-import { useApp } from "@elizaos/app-core/state";
+import { client, isApiError } from "@miladyai/app-core/api";
+import { isElectrobunRuntime } from "@miladyai/app-core/bridge";
+import { useApp } from "@miladyai/app-core/state";
 import {
   type CSSProperties,
   useCallback,
@@ -23,7 +22,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { getElizaApiBase } from "../utils/eliza-globals";
 import { ActivityFeed } from "./stream/ActivityFeed";
 import { AvatarPip } from "./stream/AvatarPip";
 import { ChatContent } from "./stream/ChatContent";
@@ -60,8 +58,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
     t,
   } = useApp();
 
-  const branding = useBranding();
-  const agentName = agentStatus?.agentName ?? branding.appName;
+  const agentName = agentStatus?.agentName ?? "Milady";
   const isElectrobun = isElectrobunRuntime();
 
   // ── Stream status polling ─────────────────────────────────────────────
@@ -172,11 +169,12 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
         // the native app window directly, so a renderer popup no longer changes
         // the capture target and should not be opened on desktop.
         if (result.live && !IS_POPOUT && !isElectrobun) {
-          const apiBase = getElizaApiBase();
+          const apiBase = (window as unknown as Record<string, unknown>)
+            .__MILADY_API_BASE__ as string | undefined;
           const base = window.location.origin || "";
           const sep =
             window.location.protocol === "file:" ||
-            window.location.protocol === "capacitor-electron:"
+            window.location.protocol === "electrobun:"
               ? "#"
               : "";
           const qs = apiBase
@@ -184,7 +182,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
             : "popout";
           window.open(
             `${base}${sep}/?${qs}`,
-            "eliza-stream",
+            "milady-stream",
             "width=1280,height=720,menubar=no,toolbar=no,location=no,status=no",
           );
         }
@@ -416,7 +414,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
                   {t("streamview.EnableTheStreaming")}
                 </h2>
                 <p className="mt-3 text-sm leading-6 text-muted">
-                  {t("streamview.ElizaCouldNotRea")}{" "}
+                  {t("streamview.MiladyCouldNotRea")}{" "}
                   <code>{t("streamview.streamingBase")}</code>{" "}
                   {t("streamview.pluginThenReload")}
                 </p>

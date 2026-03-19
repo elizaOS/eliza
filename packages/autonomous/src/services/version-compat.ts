@@ -7,7 +7,7 @@
  * the installed core — causing silent import failures that take down every
  * model provider.
  *
- * @see https://github.com/elizaos/eliza/issues/10
+ * @see https://github.com/milady-ai/milady/issues/10
  */
 
 // ---------------------------------------------------------------------------
@@ -42,9 +42,7 @@ export interface VersionCompatReport {
   advisory: string;
 }
 
-// ---------------------------------------------------------------------------
-// Known critical exports per version
-// ---------------------------------------------------------------------------
+
 
 /**
  * Plugins that provide AI model capabilities. If ALL of these fail to load
@@ -192,7 +190,9 @@ export async function validatePluginCompat(
   pluginName: string,
   coreVersion: string,
 ): Promise<PluginCompatResult> {
+
   const missingExports: string[] = [];
+
   const pluginVersion = await getInstalledVersion(pluginName);
   const compatible = missingExports.length === 0;
 
@@ -214,6 +214,7 @@ export async function validatePluginCompat(
     message,
   };
 }
+
 /**
  * After plugin resolution, check whether at least one AI provider plugin
  * loaded successfully. If none loaded, return a diagnostic message explaining
@@ -261,7 +262,7 @@ export function diagnoseNoAIProvider(
       `@elizaos/core. This usually means the plugin version is ahead of the ` +
       `installed core version. Pin the affected plugins to a version compatible ` +
       `with your installed @elizaos/core, or upgrade core. ` +
-      `See: https://github.com/elizaos/eliza/issues/10`
+      `See: https://github.com/milady-ai/milady/issues/10`
     );
   }
 

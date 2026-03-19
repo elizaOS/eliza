@@ -80,9 +80,7 @@ describe("Service Type System", () => {
 			await runtime.getServiceLoadPromise(ServiceType.WALLET);
 
 			// Get all wallet services
-			const walletServices = runtime.getServicesByType(
-				ServiceType.WALLET,
-			);
+			const walletServices = runtime.getServicesByType(ServiceType.WALLET);
 			expect(walletServices).toHaveLength(2);
 
 			// Check that both service instances are different
@@ -126,9 +124,7 @@ describe("Service Type System", () => {
 			await runtime.getServiceLoadPromise(ServiceType.PDF);
 
 			// Check wallet services
-			const walletServices = runtime.getServicesByType(
-				ServiceType.WALLET,
-			);
+			const walletServices = runtime.getServicesByType(ServiceType.WALLET);
 			expect(walletServices).toHaveLength(2);
 
 			// Check PDF services
@@ -198,9 +194,7 @@ describe("Service Type System", () => {
 			await runtime.getServiceLoadPromise(ServiceType.WALLET);
 			await runtime.getServiceLoadPromise(ServiceType.PDF);
 
-			const walletServices = runtime.getServicesByType(
-				ServiceType.WALLET,
-			);
+			const walletServices = runtime.getServicesByType(ServiceType.WALLET);
 			const pdfServices = runtime.getServicesByType(ServiceType.PDF);
 
 			walletServices[0].stop = async () => {

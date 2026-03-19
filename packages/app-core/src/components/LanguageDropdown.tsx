@@ -102,7 +102,7 @@ export function LanguageDropdown({
   }, [open, updateMenuPos]);
 
   const current = LANGUAGES.find((l) => l.id === uiLanguage) ?? LANGUAGES[0];
-  const triggerClass = `inline-flex items-center gap-1.5 h-9 px-2 sm:px-3 border border-border/50 bg-bg/50 backdrop-blur-md text-[11px] sm:text-xs font-medium cursor-pointer transition-all duration-300 text-txt hover:border-accent hover:text-txt rounded-md shadow-sm ${open ? "border-accent text-txt bg-accent/5" : ""} ${triggerClassName ?? ""}`;
+  const triggerClass = `inline-flex min-h-[44px] min-w-[44px] items-center gap-1.5 h-11 px-3 border border-border/50 bg-bg/50 backdrop-blur-md text-xs font-medium cursor-pointer transition-all duration-300 text-txt hover:border-accent hover:text-txt rounded-md shadow-sm ${open ? "border-accent text-txt bg-accent/5" : ""} ${triggerClassName ?? ""}`;
   const optionClass = (selected: boolean) =>
     `w-full flex items-center justify-between px-3 py-2 text-sm transition-colors hover:bg-bg-hover cursor-pointer ${selected ? "text-txt bg-accent/5 font-medium" : "text-txt"}`;
   const inlineMenuPositionClass =
@@ -113,6 +113,7 @@ export function LanguageDropdown({
   const menuContent = open && (
     <ul
       id="lang-dropdown-portal"
+      data-no-camera-drag="true"
       className={`w-36 rounded-lg border border-border/50 bg-bg/50 shadow-xl overflow-hidden py-1 backdrop-blur-md ${variant === "companion" ? "fixed" : inlineMenuPositionClass}`}
       style={
         variant === "companion" && menuPos
@@ -138,6 +139,7 @@ export function LanguageDropdown({
             role="option"
             aria-selected={lang.id === uiLanguage}
             className={optionClass(lang.id === uiLanguage)}
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={() => {
               setUiLanguage(lang.id);
               setOpen(false);
@@ -160,11 +162,13 @@ export function LanguageDropdown({
       ref={rootRef}
       className={`relative inline-flex shrink-0 ${className ?? ""}`}
       data-testid="language-dropdown"
+      data-no-camera-drag="true"
     >
       <button
         ref={triggerRef}
         type="button"
         className={triggerClass}
+        onPointerDown={(event) => event.stopPropagation()}
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}

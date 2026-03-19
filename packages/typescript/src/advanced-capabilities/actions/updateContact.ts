@@ -68,9 +68,7 @@ export const updateContactAction: Action = {
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		try {
-			const rolodexService = runtime.getService(
-				"rolodex",
-			) as RolodexService;
+			const rolodexService = runtime.getService("rolodex") as RolodexService;
 			if (!rolodexService) {
 				throw new Error("RolodexService not available");
 			}

@@ -40,7 +40,10 @@ export const muteRoomAction: Action = {
 	): Promise<ActionResult> => {
 		if (!state) {
 			logger.error(
-				{ src: "plugin:advanced-capabilities:action:mute_room", agentId: runtime.agentId },
+				{
+					src: "plugin:advanced-capabilities:action:mute_room",
+					agentId: runtime.agentId,
+				},
 				"State is required for muting a room",
 			);
 			return {

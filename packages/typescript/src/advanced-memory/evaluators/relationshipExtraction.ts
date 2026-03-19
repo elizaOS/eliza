@@ -86,9 +86,7 @@ export const relationshipExtractionEvaluator: Evaluator = {
 		message: Memory,
 		_state?: State,
 	): Promise<ActionResult | undefined> => {
-		const rolodexService = runtime.getService(
-			"rolodex",
-		) as RolodexService;
+		const rolodexService = runtime.getService("rolodex") as RolodexService;
 		if (!rolodexService) {
 			logger.warn("[RelationshipExtraction] RolodexService not available");
 			return;
