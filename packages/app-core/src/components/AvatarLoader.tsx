@@ -57,6 +57,7 @@ export function AvatarLoader({
 
         {/* Progress bar */}
         <div
+          data-testid="avatar-loader-progress"
           style={{
             width: "100%",
             height: 3,

@@ -219,8 +219,14 @@ export function App() {
     shellMode === "native" &&
     (isCharacterTab(effectiveTab) || isCharacterTab(tab));
   const companionShellVisible = shellMode === "companion";
+  // Don't initialize the 3D scene while the system is still booting — this
+  // prevents VrmEngine's Three.js setup from blocking the JS thread and
+  // delaying WebSocket agent-status updates (which would freeze the loader).
   const companionSceneActive =
-    COMPANION_ENABLED && (companionShellVisible || characterSceneVisible);
+    COMPANION_ENABLED &&
+    !onboardingLoading &&
+    agentStatus?.state !== "starting" &&
+    (companionShellVisible || characterSceneVisible);
   const contextMenu = useContextMenu();
 
   useStreamPopoutNavigation(setTab);

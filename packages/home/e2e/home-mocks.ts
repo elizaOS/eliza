@@ -899,6 +899,13 @@ export async function installHomeMocks(
     sessionStorage.clear();
     localStorage.setItem("eliza:ui-language", "en");
     localStorage.setItem("eliza:ui-shell-mode", "native");
+    // Seed a persisted connection mode so the startup sequence reaches the
+    // backend API (which the Playwright route mocks intercept) instead of
+    // short-circuiting into the fresh-install onboarding path.
+    localStorage.setItem(
+      "eliza:connection-mode",
+      JSON.stringify({ runMode: "local" }),
+    );
 
     window.scrollTo = () => undefined;
     window.open = () => null;
@@ -1186,8 +1193,8 @@ export async function installHomeMocks(
       state.conversations = [conversation, ...state.conversations];
       ensureConversationMessages(state, conversationId);
 
-      const basic-capabilitiesGreeting = body.basic-capabilitiesGreeting === true;
-      if (basic-capabilitiesGreeting) {
+      const basicCapabilitiesGreeting = body["basic-capabilitiesGreeting"] === true;
+      if (basicCapabilitiesGreeting) {
         const greetingText = buildGreetingText(state);
         state.messagesByConversation[conversationId].push({
           id: `greeting-${conversationId}`,

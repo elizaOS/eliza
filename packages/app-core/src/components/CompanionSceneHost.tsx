@@ -156,6 +156,13 @@ function CompanionSceneSurface({
     companionZoomHydratedRef.current = true;
   }
 
+  // Lazy-mount VrmStage: only initialize the 3D engine once the scene is
+  // actually needed (first time active becomes true). This prevents the WebGL
+  // context and asset loads from firing in native/chat mode on startup.
+  const hasEverBeenActiveRef = useRef(active);
+  if (active) hasEverBeenActiveRef.current = true;
+  const shouldMountVrm = hasEverBeenActiveRef.current;
+
   const setCompanionZoom = useCallback((value: number) => {
     const nextZoom = clampCompanionZoom(value);
     companionZoomRef.current = nextZoom;
@@ -447,18 +454,20 @@ function CompanionSceneSurface({
       >
         <div className="absolute inset-0 z-0 bg-cover opacity-60 bg-[radial-gradient(circle_at_10%_20%,rgba(255,255,255,0.03)_0%,transparent_40%),radial-gradient(circle_at_80%_80%,rgba(0,225,255,0.05)_0%,transparent_40%)] pointer-events-none" />
 
-        <VrmStage
-          active={active}
-          vrmPath={vrmPath}
-          worldUrl={worldUrl}
-          fallbackPreviewUrl={fallbackPreviewUrl}
-          preloadAvatars={preloadAvatars}
-          cameraProfile="companion"
-          onEngineReady={handleStageEngineReady}
-          onLayerEngineReady={handleStageLayerEngineReady}
-          playWaveOnAvatarChange
-          t={t}
-        />
+        {shouldMountVrm && (
+          <VrmStage
+            active={active}
+            vrmPath={vrmPath}
+            worldUrl={worldUrl}
+            fallbackPreviewUrl={fallbackPreviewUrl}
+            preloadAvatars={preloadAvatars}
+            cameraProfile="companion"
+            onEngineReady={handleStageEngineReady}
+            onLayerEngineReady={handleStageLayerEngineReady}
+            playWaveOnAvatarChange
+            t={t}
+          />
+        )}
 
         <div
           aria-hidden="true"

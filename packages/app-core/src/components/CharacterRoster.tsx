@@ -24,6 +24,7 @@ export const CHARACTER_PRESET_META: Record<
   "hehe~": { name: "Rin", avatarIndex: 5, voicePresetId: "gigi" },
   "...": { name: "Ryu", avatarIndex: 6, voicePresetId: "daniel" },
   "lmao kms": { name: "Satoshi", avatarIndex: 7, voicePresetId: "callum" },
+  "bruh": { name: "Yuki", avatarIndex: 8, voicePresetId: "echo" },
 };
 
 /* ── Types ────────────────────────────────────────────────────────────── */

@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { WorkspaceBootstrapFile } from "./workspace";
+import type { WorkspaceInitFile } from "./workspace";
 import { buildContext } from "./workspace-provider";
 
 const DEFAULT_AGENTS_CONTENT = `# Agents
@@ -37,7 +37,7 @@ You are Mima, a cozy companion agent powered by ElizaOS.
 
 describe("buildContext", () => {
   it("skips default boilerplate files", () => {
-    const files: WorkspaceBootstrapFile[] = [
+    const files: WorkspaceInitFile[] = [
       {
         name: "AGENTS.md",
         path: "/workspace/AGENTS.md",
@@ -50,7 +50,7 @@ describe("buildContext", () => {
   });
 
   it("includes customized files", () => {
-    const files: WorkspaceBootstrapFile[] = [
+    const files: WorkspaceInitFile[] = [
       {
         name: "AGENTS.md",
         path: "/workspace/AGENTS.md",
@@ -64,7 +64,7 @@ describe("buildContext", () => {
   });
 
   it("skips missing files", () => {
-    const files: WorkspaceBootstrapFile[] = [
+    const files: WorkspaceInitFile[] = [
       {
         name: "AGENTS.md",
         path: "/workspace/AGENTS.md",
@@ -76,7 +76,7 @@ describe("buildContext", () => {
   });
 
   it("skips empty files", () => {
-    const files: WorkspaceBootstrapFile[] = [
+    const files: WorkspaceInitFile[] = [
       {
         name: "AGENTS.md",
         path: "/workspace/AGENTS.md",
@@ -89,7 +89,7 @@ describe("buildContext", () => {
   });
 
   it("includes mix of custom and default files, only custom appears", () => {
-    const files: WorkspaceBootstrapFile[] = [
+    const files: WorkspaceInitFile[] = [
       {
         name: "AGENTS.md",
         path: "/workspace/AGENTS.md",
