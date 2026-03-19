@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
-import { ServiceType, type UUID } from "../types";
+import { ServiceType, type ServiceTypeName, type UUID } from "../types";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 
@@ -178,6 +178,73 @@ describe("Service Type System", () => {
 			expect(serviceTypes).toContain(ServiceType.WALLET);
 			expect(serviceTypes).toContain(ServiceType.PDF);
 			expect(serviceTypes).toHaveLength(2);
+		});
+	});
+
+	describe("Eager service start via registerPlugin", () => {
+		it("should start services eagerly when registered via plugin", async () => {
+			const plugin = {
+				name: "test-eager-plugin",
+				description: "Test plugin for eager service start",
+				services: [MockWalletService1],
+			};
+
+			await runtime.registerPlugin(plugin);
+
+			// Service should be available via sync getService immediately
+			// after registerPlugin resolves — no getServiceLoadPromise needed
+			const service = runtime.getService(ServiceType.WALLET);
+			expect(service).toBeInstanceOf(MockWalletService1);
+		});
+
+		it("should start multiple services eagerly via plugin", async () => {
+			const plugin = {
+				name: "test-multi-service-plugin",
+				description: "Test plugin with multiple services",
+				services: [MockWalletService1, MockPdfService],
+			};
+
+			await runtime.registerPlugin(plugin);
+
+			const walletService = runtime.getService(ServiceType.WALLET);
+			const pdfService = runtime.getService(ServiceType.PDF);
+			expect(walletService).toBeInstanceOf(MockWalletService1);
+			expect(pdfService).toBeInstanceOf(MockPdfService);
+		});
+
+		it("should not block registration when a service fails to start", async () => {
+			class FailingService extends Service {
+				static override readonly serviceType =
+					"FAILING_SERVICE" as ServiceTypeName;
+				readonly capabilityDescription = "Service that fails to start";
+
+				static async start(
+					_runtime: IAgentRuntime,
+				): Promise<FailingService> {
+					throw new Error("Intentional start failure");
+				}
+
+				async stop(): Promise<void> {}
+			}
+
+			const plugin = {
+				name: "test-failing-plugin",
+				description: "Test plugin with a failing and a working service",
+				services: [FailingService, MockWalletService1],
+			};
+
+			// Should not throw despite FailingService
+			await runtime.registerPlugin(plugin);
+
+			// The working service should still be available
+			const walletService = runtime.getService(ServiceType.WALLET);
+			expect(walletService).toBeInstanceOf(MockWalletService1);
+
+			// The failing service should not be available
+			const failingService = runtime.getService(
+				"FAILING_SERVICE" as ServiceTypeName,
+			);
+			expect(failingService).toBeNull();
 		});
 	});
 
