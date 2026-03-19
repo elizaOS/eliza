@@ -1329,23 +1329,55 @@ export function ensureBrowserServerLink(): boolean {
     const pkgJsonPath = req.resolve("@elizaos/plugin-browser/package.json");
     const pluginRoot = path.dirname(pkgJsonPath);
     const serverDir = path.join(pluginRoot, "dist", "server");
-    const serverIndex = path.join(serverDir, "dist", "index");
+    const serverIndex = path.join(serverDir, "dist", "index.js");
 
     // Already linked / available — nothing to do.
     if (existsSync(serverIndex)) return true;
 
     // Walk upward from this file to find the eliza-workspace root.
-    // Layout: <workspace>/milady/src/runtime/eliza.ts
+    // Layout: <workspace>/eliza/packages/autonomous/src/runtime/eliza.ts
     const thisDir = path.dirname(fileURLToPath(import.meta.url));
-    const miladyRoot = path.resolve(thisDir, "..", "..");
-    const workspaceRoot = path.resolve(miladyRoot, "..");
+    const workspaceRoot = path.resolve(thisDir, "..", "..", "..", "..", "..");
     const stagehandDir = path.join(
       workspaceRoot,
       "plugins",
       "plugin-browser",
       "stagehand-server",
     );
-    const stagehandIndex = path.join(stagehandDir, "dist", "index");
+    const stagehandIndex = path.join(stagehandDir, "dist", "index.js");
+
+    // Auto-build if source exists but dist doesn't
+    if (
+      !existsSync(stagehandIndex) &&
+      existsSync(path.join(stagehandDir, "src", "index.ts"))
+    ) {
+      logger.info(
+        `[milady] Stagehand server not built — attempting auto-build...`,
+      );
+      try {
+        const cp = createRequire(import.meta.url)("node:child_process") as typeof import("node:child_process");
+        if (!existsSync(path.join(stagehandDir, "node_modules"))) {
+          cp.execSync("pnpm install --ignore-scripts", {
+            cwd: stagehandDir,
+            stdio: "ignore",
+            timeout: 60_000,
+          });
+        }
+        // Prefer local tsc binary, fall back to pnpm exec
+        const localTsc = path.join(stagehandDir, "node_modules", ".bin", "tsc");
+        const tscCmd = existsSync(localTsc) ? localTsc : "pnpm exec tsc";
+        cp.execSync(tscCmd, {
+          cwd: stagehandDir,
+          stdio: "ignore",
+          timeout: 60_000,
+        });
+        logger.info(`[milady] Stagehand server built successfully`);
+      } catch (buildErr) {
+        logger.debug(
+          `[milady] Auto-build failed: ${formatError(buildErr)}`,
+        );
+      }
+    }
 
     if (!existsSync(stagehandIndex)) {
       logger.info(
@@ -4215,7 +4247,19 @@ export async function startEliza(
         continue;
       }
       try {
-        await runtime.registerPlugin(resolved.plugin);
+        const regStart = Date.now();
+        logger.info(`[milady] Pre-registering core plugin: ${name}...`);
+        const PLUGIN_REG_TIMEOUT_MS = 30_000;
+        await Promise.race([
+          runtime.registerPlugin(resolved.plugin),
+          new Promise<never>((_resolve, reject) =>
+            setTimeout(
+              () => reject(new Error(`Timed out after ${PLUGIN_REG_TIMEOUT_MS / 1000}s`)),
+              PLUGIN_REG_TIMEOUT_MS,
+            ),
+          ),
+        ]);
+        logger.info(`[milady] ✓ ${name} pre-registered (${Date.now() - regStart}ms)`);
       } catch (err) {
         logger.warn(
           `[milady] Core plugin ${name} pre-registration failed: ${formatError(err)}`,
