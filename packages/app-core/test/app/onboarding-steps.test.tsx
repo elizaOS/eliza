@@ -14,11 +14,11 @@ const { mockUseApp, mockIsNativeFn } = vi.hoisted(() => ({
   mockIsNativeFn: { value: false },
 }));
 
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: {
     importAgent: vi.fn(),
     startAnthropicLogin: vi.fn(),
@@ -28,17 +28,17 @@ vi.mock("@miladyai/app-core/api", () => ({
   },
 }));
 
-vi.mock("@miladyai/app-core/providers", async () => {
+vi.mock("@elizaos/app-core/providers", async () => {
   const actual = await vi.importActual<
-    typeof import("@miladyai/app-core/providers")
-  >("@miladyai/app-core/providers");
+    typeof import("@elizaos/app-core/providers")
+  >("@elizaos/app-core/providers");
   return {
     ...actual,
     getProviderLogo: () => "/logos/placeholder.png",
   };
 });
 
-vi.mock("@miladyai/app-core/platform", () => ({
+vi.mock("@elizaos/app-core/platform", () => ({
   get isNative() {
     return mockIsNativeFn.value;
   },
@@ -100,11 +100,11 @@ function baseContext(overrides?: Record<string, unknown>) {
     elizaCloudConnected: false,
     elizaCloudLoginBusy: false,
     elizaCloudLoginError: "",
-    handleOnboardingNext: vi.fn(async () => {}),
+    handleOnboardingNext: vi.fn(async () => { }),
     handleOnboardingBack: vi.fn(),
-    handleOnboardingRemoteConnect: vi.fn(async () => {}),
+    handleOnboardingRemoteConnect: vi.fn(async () => { }),
     handleOnboardingUseLocalBackend: vi.fn(),
-    handleCloudLogin: vi.fn(async () => {}),
+    handleCloudLogin: vi.fn(async () => { }),
     setState: vi.fn(),
     ...overrides,
   };
@@ -143,7 +143,7 @@ describe("WakeUpStep", () => {
   });
 
   it("calls handleOnboardingNext when Activate is clicked", async () => {
-    const next = vi.fn(async () => {});
+    const next = vi.fn(async () => { });
     mockUseApp.mockReturnValue(baseContext({ handleOnboardingNext: next }));
     let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
@@ -343,7 +343,7 @@ describe("ActivateStep", () => {
   });
 
   it("calls handleOnboardingNext when Enter is clicked", async () => {
-    const next = vi.fn(async () => {});
+    const next = vi.fn(async () => { });
     mockUseApp.mockReturnValue(
       baseContext({ onboardingName: "Nova", handleOnboardingNext: next }),
     );

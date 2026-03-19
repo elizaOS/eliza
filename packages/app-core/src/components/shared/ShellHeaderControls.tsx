@@ -1,6 +1,6 @@
-import { LanguageDropdown, ThemeToggle } from "@miladyai/app-core/components";
-import type { UiLanguage } from "@miladyai/app-core/i18n";
-import type { ShellView, UiTheme } from "@miladyai/app-core/state";
+import { LanguageDropdown, ThemeToggle } from "@elizaos/app-core/components";
+import type { UiLanguage } from "@elizaos/app-core/i18n";
+import type { ShellView, UiTheme } from "@elizaos/app-core/state";
 import {
   type LucideIcon,
   Monitor,
@@ -97,22 +97,22 @@ export function ShellHeaderControls({
     label: string;
     Icon: LucideIcon;
   }> = [
-    {
-      view: "companion",
-      label: t("header.companionMode"),
-      Icon: UserRound,
-    },
-    {
-      view: "character",
-      label: t("nav.character"),
-      Icon: Users,
-    },
-    {
-      view: "desktop",
-      label: t("header.nativeMode"),
-      Icon: isMobileViewport ? Smartphone : Monitor,
-    },
-  ];
+      {
+        view: "companion",
+        label: t("header.companionMode"),
+        Icon: UserRound,
+      },
+      {
+        view: "character",
+        label: t("nav.character"),
+        Icon: Users,
+      },
+      {
+        view: "desktop",
+        label: t("header.nativeMode"),
+        Icon: isMobileViewport ? Smartphone : Monitor,
+      },
+    ];
 
   return (
     <div
@@ -141,11 +141,10 @@ export function ShellHeaderControls({
                 type="button"
                 onClick={() => onShellViewChange(view)}
                 onPointerDown={(event) => event.stopPropagation()}
-                className={`inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center px-3 transition-all duration-200 ${edgeClass} ${
-                  selected
+                className={`inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center px-3 transition-all duration-200 ${edgeClass} ${selected
                     ? "border border-[#d8a108]/30 bg-bg/55 text-[#8a6500] shadow-sm dark:border-accent/25 dark:bg-bg/85 dark:text-[#f0b232]"
                     : "border border-transparent bg-transparent text-muted-strong hover:border-border/70 hover:bg-bg/85 hover:text-txt dark:text-muted dark:hover:border-border/60 dark:hover:bg-bg-hover/80 dark:hover:text-txt"
-                }`}
+                  }`}
                 aria-label={label}
                 aria-pressed={selected}
                 title={label}

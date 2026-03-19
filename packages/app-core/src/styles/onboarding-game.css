@@ -592,7 +592,7 @@
   align-items: center;
   gap: 8px;
   padding: 12px 32px;
-  background: rgba(240, 185, 11, 0.08);
+  background: rgba(240, 185, 11, 0.18);
   border: 1px solid rgba(240, 185, 11, 0.35);
   border-radius: 6px;
   color: rgba(240, 238, 250, 0.94);
@@ -608,7 +608,7 @@
   overflow: hidden;
 }
 .onboarding-confirm-btn:hover {
-  background: rgba(240, 185, 11, 0.14);
+  background: rgba(240, 185, 11, 0.28);
   border-color: rgba(240, 185, 11, 0.6);
 }
 .onboarding-confirm-btn:disabled {

@@ -3,8 +3,8 @@
 import {
   APP_EMOTE_EVENT,
   type AppEmoteEventDetail,
-} from "@miladyai/app-core/events";
-import type { Tab } from "@miladyai/app-core/navigation";
+} from "@elizaos/app-core/events";
+import type { Tab } from "@elizaos/app-core/navigation";
 import React, { useEffect } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -94,7 +94,7 @@ const { mockClient } = vi.hoisted(() => ({
     connectWs: vi.fn(),
     disconnectWs: vi.fn(),
     saveStreamSettings: vi.fn(async () => undefined),
-    onWsEvent: vi.fn(() => () => {}),
+    onWsEvent: vi.fn(() => () => { }),
     getAgentEvents: vi.fn(async () => ({
       events: [],
       latestEventId: null,
@@ -122,12 +122,12 @@ const { mockClient } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: mockClient,
   SkillScanReportSummary: {},
 }));
 
-import { AppProvider, useApp } from "@miladyai/app-core/state";
+import { AppProvider, useApp } from "@elizaos/app-core/state";
 
 type ProbeApi = {
   handleNewConversation: () => Promise<void>;
@@ -277,11 +277,11 @@ describe("companion greeting wave", () => {
       memories: [],
       knowledge: [],
     });
-    mockClient.sendWsMessage.mockImplementation(() => {});
-    mockClient.connectWs.mockImplementation(() => {});
-    mockClient.disconnectWs.mockImplementation(() => {});
+    mockClient.sendWsMessage.mockImplementation(() => { });
+    mockClient.connectWs.mockImplementation(() => { });
+    mockClient.disconnectWs.mockImplementation(() => { });
     mockClient.saveStreamSettings.mockResolvedValue(undefined);
-    mockClient.onWsEvent.mockReturnValue(() => {});
+    mockClient.onWsEvent.mockReturnValue(() => { });
     mockClient.getAgentEvents.mockResolvedValue({
       events: [],
       latestEventId: null,

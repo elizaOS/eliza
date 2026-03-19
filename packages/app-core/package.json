@@ -1,5 +1,5 @@
 {
-  "name": "@miladyai/app-core",
+  "name": "@elizaos/app-core",
   "version": "1.0.0",
   "description": "Shared application core for Milady shells and white-label apps.",
   "type": "module",
@@ -64,13 +64,13 @@
     "three": "^0.182.0"
   },
   "dependencies": {
-    "@miladyai/autonomous": "workspace:*",
+    "@elizaos/autonomous": "workspace:*",
     "@capacitor/core": "8.0.2",
     "@capacitor/haptics": "8.0.0",
     "@capacitor/keyboard": "8.0.0",
     "@capacitor/preferences": "^8.0.1",
     "@sparkjsdev/spark": "^0.1.10",
-    "@miladyai/ui": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "three": "^0.182.0",
     "lucide-react": "^0.575.0",
     "zod": "^4.3.6"

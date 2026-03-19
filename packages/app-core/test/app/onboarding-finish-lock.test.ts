@@ -44,7 +44,7 @@ const { mockClient } = vi.hoisted(() => ({
     sendWsMessage: vi.fn(),
     connectWs: vi.fn(),
     disconnectWs: vi.fn(),
-    onWsEvent: vi.fn(() => () => {}),
+    onWsEvent: vi.fn(() => () => { }),
     getAgentEvents: vi.fn(async () => ({ events: [], latestEventId: null })),
     getStatus: vi.fn(async () => ({
       state: "running",
@@ -106,12 +106,12 @@ const { mockClient } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: mockClient,
   SkillScanReportSummary: {},
 }));
 
-import { AppProvider, useApp } from "@miladyai/app-core/state";
+import { AppProvider, useApp } from "@elizaos/app-core/state";
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -283,10 +283,10 @@ describe("onboarding finish locking", () => {
       agentName: "Milady",
       generated: true,
     });
-    mockClient.sendWsMessage.mockImplementation(() => {});
-    mockClient.connectWs.mockImplementation(() => {});
-    mockClient.disconnectWs.mockImplementation(() => {});
-    mockClient.onWsEvent.mockReturnValue(() => {});
+    mockClient.sendWsMessage.mockImplementation(() => { });
+    mockClient.connectWs.mockImplementation(() => { });
+    mockClient.disconnectWs.mockImplementation(() => { });
+    mockClient.onWsEvent.mockReturnValue(() => { });
     mockClient.getAgentEvents.mockResolvedValue({
       events: [],
       latestEventId: null,

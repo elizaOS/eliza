@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { ThemeToggle } from "@miladyai/app-core/components/ThemeToggle";
+import { ThemeToggle } from "@elizaos/app-core/components/ThemeToggle";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 

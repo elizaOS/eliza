@@ -4,7 +4,7 @@ import type {
   AppLaunchResult,
   AppViewerAuthMessage,
   RegistryAppInfo,
-} from "@miladyai/app-core/api";
+} from "@elizaos/app-core/api";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,17 +38,17 @@ const { mockClientFns, mockUseApp } = vi.hoisted(() => ({
   mockUseApp: vi.fn(),
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: mockClientFns,
 }));
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
 }));
 
 import {
   AppsView,
   shouldShowAppInAppsView,
-} from "@miladyai/app-core/components/AppsView";
+} from "@elizaos/app-core/components/AppsView";
 
 function createApp(
   name: string,

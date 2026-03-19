@@ -1,5 +1,5 @@
-import type { UiLanguage } from "@miladyai/app-core/i18n";
-import type { ShellView, UiTheme } from "@miladyai/app-core/state";
+import type { UiLanguage } from "@elizaos/app-core/i18n";
+import type { ShellView, UiTheme } from "@elizaos/app-core/state";
 import { memo, type ReactNode } from "react";
 import { ShellHeaderControls } from "../shared/ShellHeaderControls";
 

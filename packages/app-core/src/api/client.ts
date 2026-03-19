@@ -20,9 +20,9 @@ import type {
   VideoProvider,
   VisionConfig,
   VisionProvider,
-} from "@miladyai/autonomous/contracts/config";
-import type { DropStatus, MintResult } from "@miladyai/autonomous/contracts/drop";
-import type { VerificationResult } from "@miladyai/autonomous/contracts/verification";
+} from "@elizaos/autonomous/contracts/config";
+import type { DropStatus, MintResult } from "@elizaos/autonomous/contracts/drop";
+import type { VerificationResult } from "@elizaos/autonomous/contracts/verification";
 import type {
   CloudProviderOption,
   ConnectorConfig,
@@ -40,7 +40,7 @@ import type {
   StylePreset,
   SubscriptionProviderStatus,
   SubscriptionStatusResponse,
-} from "@miladyai/autonomous/contracts/onboarding";
+} from "@elizaos/autonomous/contracts/onboarding";
 import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
@@ -67,20 +67,20 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@miladyai/autonomous/contracts/wallet";
+} from "@elizaos/autonomous/contracts/wallet";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcProviderId,
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
-} from "@miladyai/autonomous/contracts/wallet";
+} from "@elizaos/autonomous/contracts/wallet";
 import type {
   AllPermissionsState,
   PermissionState,
   PermissionStatus,
   SystemPermissionDefinition,
   SystemPermissionId,
-} from "@miladyai/autonomous/contracts/permissions";
+} from "@elizaos/autonomous/contracts/permissions";
 import type { ConfigUiHint } from "../types";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
 import { mergeStreamingText } from "../utils/streaming-text";
@@ -567,12 +567,12 @@ export interface PluginInfo {
   configured: boolean;
   envKey: string | null;
   category:
-    | "ai-provider"
-    | "connector"
-    | "streaming"
-    | "database"
-    | "app"
-    | "feature";
+  | "ai-provider"
+  | "connector"
+  | "streaming"
+  | "database"
+  | "app"
+  | "feature";
   source: "bundled" | "store";
   parameters: PluginParamDef[];
   validationErrors: Array<{ field: string; message: string }>;
@@ -843,14 +843,14 @@ export interface SecurityAuditResponse {
 
 export type SecurityAuditStreamEvent =
   | {
-      type: "snapshot";
-      entries: SecurityAuditEntry[];
-      totalBuffered: number;
-    }
+    type: "snapshot";
+    entries: SecurityAuditEntry[];
+    totalBuffered: number;
+  }
   | {
-      type: "entry";
-      entry: SecurityAuditEntry;
-    };
+    type: "entry";
+    entry: SecurityAuditEntry;
+  };
 
 export type StreamEventType =
   | "agent_event"
@@ -1344,12 +1344,12 @@ export interface CodingAgentSession {
   originalTask: string;
   workdir: string;
   status:
-    | "active"
-    | "blocked"
-    | "completed"
-    | "stopped"
-    | "error"
-    | "tool_running";
+  | "active"
+  | "blocked"
+  | "completed"
+  | "stopped"
+  | "error"
+  | "tool_running";
   decisionCount: number;
   autoResolvedCount: number;
   /** Description of the active tool when status is "tool_running". */
@@ -1575,10 +1575,10 @@ export type HyperscapeJsonValue =
 export type HyperscapePosition =
   | [number, number, number]
   | {
-      x: number;
-      y: number;
-      z: number;
-    };
+    x: number;
+    y: number;
+    z: number;
+  };
 
 export interface HyperscapeEmbeddedAgent {
   agentId: string;

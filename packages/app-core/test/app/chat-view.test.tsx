@@ -31,8 +31,8 @@ interface ChatViewContextStub {
     updater:
       | Array<{ data: string; mimeType: string; name: string }>
       | ((
-          prev: Array<{ data: string; mimeType: string; name: string }>,
-        ) => Array<{ data: string; mimeType: string; name: string }>),
+        prev: Array<{ data: string; mimeType: string; name: string }>,
+      ) => Array<{ data: string; mimeType: string; name: string }>),
   ) => void;
   uiLanguage: "en" | "zh-CN";
   chatMode: "simple" | "power";
@@ -63,18 +63,18 @@ const { mockClient, mockUseApp, mockUseVoiceChat, mockIsDesktopPlatform } =
     mockIsDesktopPlatform: vi.fn(() => false),
   }));
 
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
   getVrmPreviewUrl: () => null,
 }));
 
-vi.mock("@miladyai/app-core/platform", () => ({
+vi.mock("@elizaos/app-core/platform", () => ({
   isDesktopPlatform: () => mockIsDesktopPlatform(),
 }));
 
-vi.mock("@miladyai/app-core/hooks", async () => {
-  const actual = await vi.importActual<typeof import("@miladyai/app-core/hooks")>(
-    "@miladyai/app-core/hooks",
+vi.mock("@elizaos/app-core/hooks", async () => {
+  const actual = await vi.importActual<typeof import("@elizaos/app-core/hooks")>(
+    "@elizaos/app-core/hooks",
   );
   return {
     ...actual,
@@ -91,7 +91,7 @@ vi.mock("../../src/components/MessageContent", () => ({
     React.createElement("span", null, message.text),
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: mockClient,
 }));
 
@@ -108,7 +108,7 @@ function createContext(
     chatFirstTokenReceived: false,
     companionMessageCutoffTs: 0,
     conversationMessages: [],
-    handleChatSend: vi.fn(async () => {}),
+    handleChatSend: vi.fn(async () => { }),
     handleChatStop: vi.fn(),
     setState: vi.fn(),
     droppedFiles: [],
@@ -119,9 +119,9 @@ function createContext(
     chatMode: "simple",
     chatAgentVoiceMuted: false,
     elizaCloudConnected: false,
-    handleStart: vi.fn(async () => {}),
+    handleStart: vi.fn(async () => { }),
 
-    handleRestart: vi.fn(async () => {}),
+    handleRestart: vi.fn(async () => { }),
     handleChatRetry: vi.fn(),
     handleChatEdit: vi.fn(async () => true),
     lifecycleBusy: false,

@@ -46,19 +46,19 @@ const { mockClient, mockUseApp, mockUseVoiceChat } = vi.hoisted(() => ({
   mockUseVoiceChat: vi.fn(),
 }));
 
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
   getVrmPreviewUrl: () => null,
 }));
 
-vi.mock("@miladyai/app-core/platform", () => ({
+vi.mock("@elizaos/app-core/platform", () => ({
   isDesktopPlatform: () => false,
 }));
 
-vi.mock("@miladyai/app-core/hooks", async () => {
+vi.mock("@elizaos/app-core/hooks", async () => {
   const actual = await vi.importActual<
-    typeof import("@miladyai/app-core/hooks")
-  >("@miladyai/app-core/hooks");
+    typeof import("@elizaos/app-core/hooks")
+  >("@elizaos/app-core/hooks");
   return {
     ...actual,
     useVoiceChat: (...args: unknown[]) => mockUseVoiceChat(...args),
@@ -70,7 +70,7 @@ vi.mock("../../src/components/MessageContent", () => ({
     React.createElement("span", null, message.text),
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: mockClient,
 }));
 
@@ -87,11 +87,11 @@ function createContext(
     chatFirstTokenReceived: false,
     companionMessageCutoffTs: 0,
     conversationMessages: [],
-    handleChatSend: vi.fn(async () => {}),
+    handleChatSend: vi.fn(async () => { }),
     handleChatStop: vi.fn(),
     handleChatRetry: vi.fn(),
     handleChatEdit: vi.fn(async () => true),
-    handleNewConversation: vi.fn(async () => {}),
+    handleNewConversation: vi.fn(async () => { }),
     setState: vi.fn(),
     droppedFiles: [],
     shareIngestNotice: "",
@@ -316,7 +316,7 @@ describe("ChatView game-modal variant", () => {
   });
 
   it("keeps mic and send controls usable in game-modal", async () => {
-    const handleChatSend = vi.fn(async () => {});
+    const handleChatSend = vi.fn(async () => { });
     mockUseApp.mockReturnValue(
       createContext({
         handleChatSend,

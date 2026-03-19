@@ -44,11 +44,11 @@ const {
   },
 }));
 
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
 }));
 
-vi.mock("@miladyai/app-core/platform", () => ({
+vi.mock("@elizaos/app-core/platform", () => ({
   hasRequiredOnboardingPermissions: vi.fn(() => true),
   isWebPlatform: () => mockIsWeb(),
   isDesktopPlatform: () => mockIsDesktop(),
@@ -60,7 +60,7 @@ vi.mock("@miladyai/app-core/platform", () => ({
   platform: "web",
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: {
     getPermissions: mockGetPermissions,
     isShellEnabled: mockIsShellEnabled,
@@ -71,21 +71,21 @@ vi.mock("@miladyai/app-core/api", () => ({
   },
 }));
 
-vi.mock("@miladyai/app-core/bridge", () => ({
+vi.mock("@elizaos/app-core/bridge", () => ({
   invokeDesktopBridgeRequest: mockInvokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent: mockSubscribeDesktopBridgeEvent,
 }));
 
-vi.mock("@miladyai/app-core/components/ui-badges", () => ({
+vi.mock("@elizaos/app-core/components/ui-badges", () => ({
   StatusBadge: ({ label }: { label: string }) =>
     React.createElement("span", { "data-testid": "status-badge" }, label),
 }));
 
-vi.mock("@miladyai/app-core/components/ui-switch", () => ({
+vi.mock("@elizaos/app-core/components/ui-switch", () => ({
   Switch: () => React.createElement("span", null, "switch"),
 }));
 
-vi.mock("@miladyai/ui", () => ({
+vi.mock("@elizaos/ui", () => ({
   Button: ({
     children,
     onClick,
@@ -114,7 +114,7 @@ vi.mock("lucide-react", () => ({
   Terminal: () => React.createElement("span", null, "💻"),
 }));
 
-import { PermissionsSection } from "@miladyai/app-core/components/PermissionsSection";
+import { PermissionsSection } from "@elizaos/app-core/components/PermissionsSection";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -270,26 +270,26 @@ describe("PermissionsSection", () => {
   it(
     "renders mobile streaming permissions when isNative and not running in the desktop app",
     async () => {
-    mockIsWeb.mockReturnValue(false);
-    mockIsDesktop.mockReturnValue(false);
-    mockIsNative.value = true;
-    mockUseApp.mockReturnValue(baseContext());
+      mockIsWeb.mockReturnValue(false);
+      mockIsDesktop.mockReturnValue(false);
+      mockIsNative.value = true;
+      mockUseApp.mockReturnValue(baseContext());
 
-    let tree: TestRenderer.ReactTestRenderer | undefined;
-    await act(async () => {
-      tree = TestRenderer.create(React.createElement(PermissionsSection));
-    });
+      let tree: TestRenderer.ReactTestRenderer | undefined;
+      await act(async () => {
+        tree = TestRenderer.create(React.createElement(PermissionsSection));
+      });
 
-    const root = tree?.root;
-    const mobileView = root.findByProps({
-      "data-testid": "mobile-permissions",
+      const root = tree?.root;
+      const mobileView = root.findByProps({
+        "data-testid": "mobile-permissions",
+      });
+      expect(mobileView).toBeDefined();
+      const text = collectText(root);
+      expect(text).toContain("Streaming Permissions");
+      expect(text).toContain("Camera");
+      expect(text).toContain("Microphone");
     });
-    expect(mobileView).toBeDefined();
-    const text = collectText(root);
-    expect(text).toContain("Streaming Permissions");
-    expect(text).toContain("Camera");
-    expect(text).toContain("Microphone");
-  });
 
   it("renders desktop permission rows in the desktop app", async () => {
     mockIsWeb.mockReturnValue(false);

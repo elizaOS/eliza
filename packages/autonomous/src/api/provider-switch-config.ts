@@ -1,7 +1,7 @@
 import {
   applySubscriptionCredentials,
   deleteCredentials,
-} from "@miladyai/autonomous/auth";
+} from "@elizaos/autonomous/auth";
 import type { SubscriptionProvider } from "../auth/types";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types";
 import {
@@ -179,7 +179,7 @@ export function applySubscriptionProviderConfig(
     provider === "openai-subscription" ? "openai-codex" : provider;
   const modelProvider =
     SUBSCRIPTION_PROVIDER_MAP[
-      subscriptionKey as keyof typeof SUBSCRIPTION_PROVIDER_MAP
+    subscriptionKey as keyof typeof SUBSCRIPTION_PROVIDER_MAP
     ];
 
   if (modelProvider) {

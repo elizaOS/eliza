@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { pathForTab, tabFromPath } from "@miladyai/app-core/navigation";
+import { pathForTab, tabFromPath } from "@elizaos/app-core/navigation";
 import React from "react";
 import type { ReactTestInstance } from "react-test-renderer";
 import TestRenderer, { act } from "react-test-renderer";
@@ -10,9 +10,9 @@ const { mockUseApp } = vi.hoisted(() => ({
   mockUseApp: vi.fn(),
 }));
 
-vi.mock("@miladyai/app-core/state", async () => {
-  const actual = await vi.importActual<typeof import("@miladyai/app-core/state")>(
-    "@miladyai/app-core/state",
+vi.mock("@elizaos/app-core/state", async () => {
+  const actual = await vi.importActual<typeof import("@elizaos/app-core/state")>(
+    "@elizaos/app-core/state",
   );
   return {
     ...actual,
@@ -23,10 +23,10 @@ vi.mock("@miladyai/app-core/state", async () => {
   };
 });
 
-vi.mock("@miladyai/app-core/components", async () => {
+vi.mock("@elizaos/app-core/components", async () => {
   const actual = await vi.importActual<
-    typeof import("@miladyai/app-core/components")
-  >("@miladyai/app-core/components");
+    typeof import("@elizaos/app-core/components")
+  >("@elizaos/app-core/components");
   return {
     ...actual,
     AdvancedPageView: () =>
@@ -112,7 +112,7 @@ vi.mock("../../../packages/app-core/src/components/KnowledgeView", () => ({
 vi.mock("../../../packages/app-core/src/components/LifoSandboxView", () => ({
   LifoSandboxView: () => React.createElement("div", null, "LifoSandboxView"),
 }));
-vi.mock("@miladyai/app-core/components/AvatarLoader", () => ({
+vi.mock("@elizaos/app-core/components/AvatarLoader", () => ({
   AvatarLoader: () => React.createElement("div", null, "AvatarLoader"),
 }));
 vi.mock("../../../packages/app-core/src/components/StreamView", () => ({

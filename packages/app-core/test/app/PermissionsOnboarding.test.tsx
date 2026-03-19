@@ -29,11 +29,11 @@ const {
   mockSubscribeDesktopBridgeEvent: vi.fn(),
 }));
 
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
 }));
 
-vi.mock("@miladyai/app-core/platform", () => ({
+vi.mock("@elizaos/app-core/platform", () => ({
   hasRequiredOnboardingPermissions: vi.fn(() => true),
   isWebPlatform: () => mockIsWeb(),
   isDesktopPlatform: () => mockIsDesktop(),
@@ -45,7 +45,7 @@ vi.mock("@miladyai/app-core/platform", () => ({
   platform: "web",
 }));
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: {
     getPermissions: mockGetPermissions,
     isShellEnabled: vi.fn().mockResolvedValue(true),
@@ -56,21 +56,21 @@ vi.mock("@miladyai/app-core/api", () => ({
   },
 }));
 
-vi.mock("@miladyai/app-core/bridge", () => ({
+vi.mock("@elizaos/app-core/bridge", () => ({
   invokeDesktopBridgeRequest: mockInvokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent: mockSubscribeDesktopBridgeEvent,
 }));
 
-vi.mock("@miladyai/app-core/components/ui-badges", () => ({
+vi.mock("@elizaos/app-core/components/ui-badges", () => ({
   StatusBadge: ({ label }: { label: string }) =>
     React.createElement("span", { "data-testid": "status-badge" }, label),
 }));
 
-vi.mock("@miladyai/app-core/components/ui-switch", () => ({
+vi.mock("@elizaos/app-core/components/ui-switch", () => ({
   Switch: () => React.createElement("span", null, "switch"),
 }));
 
-vi.mock("@miladyai/ui", () => ({
+vi.mock("@elizaos/ui", () => ({
   Button: ({
     children,
     onClick,
@@ -99,7 +99,7 @@ vi.mock("lucide-react", () => ({
   Terminal: () => React.createElement("span", null, "💻"),
 }));
 
-import { PermissionsOnboardingSection } from "@miladyai/app-core/components/PermissionsSection";
+import { PermissionsOnboardingSection } from "@elizaos/app-core/components/PermissionsSection";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -209,7 +209,7 @@ describe("PermissionsOnboardingSection", () => {
         return null;
       },
     );
-    mockSubscribeDesktopBridgeEvent.mockImplementation(() => () => {});
+    mockSubscribeDesktopBridgeEvent.mockImplementation(() => () => { });
     vi.mocked(navigator.permissions.query).mockReset();
     vi.mocked(navigator.mediaDevices.getUserMedia).mockReset();
     vi.mocked(navigator.mediaDevices.enumerateDevices).mockReset();
@@ -253,32 +253,32 @@ describe("PermissionsOnboardingSection", () => {
   it(
     "renders mobile streaming permissions when isNative and not running in the desktop app",
     async () => {
-    mockIsWeb.mockReturnValue(false);
-    mockIsDesktop.mockReturnValue(false);
-    mockIsNative.value = true;
-    const onContinue = vi.fn();
-    mockUseApp.mockReturnValue(baseContext());
+      mockIsWeb.mockReturnValue(false);
+      mockIsDesktop.mockReturnValue(false);
+      mockIsNative.value = true;
+      const onContinue = vi.fn();
+      mockUseApp.mockReturnValue(baseContext());
 
-    let tree: TestRenderer.ReactTestRenderer | undefined;
-    await act(async () => {
-      tree = TestRenderer.create(
-        React.createElement(PermissionsOnboardingSection, { onContinue }),
-      );
+      let tree: TestRenderer.ReactTestRenderer | undefined;
+      await act(async () => {
+        tree = TestRenderer.create(
+          React.createElement(PermissionsOnboardingSection, { onContinue }),
+        );
+      });
+
+      const root = tree?.root;
+      const mobileView = root.findByProps({
+        "data-testid": "mobile-onboarding-permissions",
+      });
+      expect(mobileView).toBeDefined();
+      const text = collectText(root);
+      expect(text).toContain("Streaming Permissions");
+      expect(text).toContain("Camera");
+      expect(text).toContain("Microphone");
+
+      // Should have a skip button
+      expect(text).toContain("Skip for Now");
     });
-
-    const root = tree?.root;
-    const mobileView = root.findByProps({
-      "data-testid": "mobile-onboarding-permissions",
-    });
-    expect(mobileView).toBeDefined();
-    const text = collectText(root);
-    expect(text).toContain("Streaming Permissions");
-    expect(text).toContain("Camera");
-    expect(text).toContain("Microphone");
-
-    // Should have a skip button
-    expect(text).toContain("Skip for Now");
-  });
 
   it("renders desktop permissions in the desktop app", async () => {
     mockIsWeb.mockReturnValue(false);

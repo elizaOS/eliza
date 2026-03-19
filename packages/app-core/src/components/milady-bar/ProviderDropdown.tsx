@@ -1,4 +1,4 @@
-import { Button, Input } from "@miladyai/ui";
+import { Button, Input } from "@elizaos/ui";
 import { useCallback, useRef, useState } from "react";
 import { client } from "../../api";
 import { useClickOutside } from "../../hooks/useClickOutside";

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { MiladyClient } from "@miladyai/app-core/api";
+import { MiladyClient } from "@elizaos/app-core/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("MiladyClient desktop API fallback", () => {

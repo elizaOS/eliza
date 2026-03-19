@@ -4,7 +4,7 @@
  * Children access state and actions through the useApp() hook.
  */
 
-import type { OnboardingConnection } from "@miladyai/autonomous/contracts/onboarding";
+import type { OnboardingConnection } from "@elizaos/autonomous/contracts/onboarding";
 import {
   type ReactNode,
   useCallback,
@@ -690,7 +690,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedVrmIndexRaw(normalized);
     saveAvatarIndex(normalized);
     // Sync to server so headless stream capture uses the same avatar
-    client.saveStreamSettings({ avatarIndex: normalized }).catch(() => {});
+    client.saveStreamSettings({ avatarIndex: normalized }).catch(() => { });
   }, []);
 
   // --- Eliza Cloud ---
@@ -1987,8 +1987,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActionNotice(LIFECYCLE_MESSAGES.start.success, "success", 2400);
     } catch (err) {
       setActionNotice(
-        `Failed to ${LIFECYCLE_MESSAGES.start.verb} agent: ${
-          err instanceof Error ? err.message : "unknown error"
+        `Failed to ${LIFECYCLE_MESSAGES.start.verb} agent: ${err instanceof Error ? err.message : "unknown error"
         }`,
         "error",
         4200,
@@ -2007,8 +2006,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActionNotice(LIFECYCLE_MESSAGES.stop.success, "success", 2400);
     } catch (err) {
       setActionNotice(
-        `Failed to ${LIFECYCLE_MESSAGES.stop.verb} agent: ${
-          err instanceof Error ? err.message : "unknown error"
+        `Failed to ${LIFECYCLE_MESSAGES.stop.verb} agent: ${err instanceof Error ? err.message : "unknown error"
         }`,
         "error",
         4200,
@@ -2045,8 +2043,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActionNotice(LIFECYCLE_MESSAGES.restart.success, "success", 2400);
     } catch (err) {
       setActionNotice(
-        `Failed to ${LIFECYCLE_MESSAGES.restart.verb} agent: ${
-          err instanceof Error ? err.message : "unknown error"
+        `Failed to ${LIFECYCLE_MESSAGES.restart.verb} agent: ${err instanceof Error ? err.message : "unknown error"
         }`,
         "error",
         4200,
@@ -2166,8 +2163,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActionNotice(LIFECYCLE_MESSAGES.reset.success, "success", 3200);
     } catch (err) {
       setActionNotice(
-        `Failed to ${LIFECYCLE_MESSAGES.reset.verb} agent: ${
-          err instanceof Error ? err.message : "unknown error"
+        `Failed to ${LIFECYCLE_MESSAGES.reset.verb} agent: ${err instanceof Error ? err.message : "unknown error"
         }`,
         "error",
         4200,
@@ -2385,8 +2381,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (!result.ok) {
             appendLocalCommandTurn(
               rawText,
-              `Custom action "${customAction.name}" failed: ${
-                result.error ?? "unknown error"
+              `Custom action "${customAction.name}" failed: ${result.error ?? "unknown error"
               }`,
             );
             return { handled: true };
@@ -2933,7 +2928,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Also stop any active PTY sessions — the user wants everything to halt
     for (const session of ptySessions) {
-      client.stopCodingAgent(session.sessionId).catch(() => {});
+      client.stopCodingAgent(session.sessionId).catch(() => { });
     }
   }, [ptySessions]);
 
@@ -3091,7 +3086,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const prevMessages = conversationMessagesRef.current;
         const hasUserMessage = prevMessages.some((m) => m.role === "user");
         if (!hasUserMessage && prevMessages.length <= 1) {
-          void client.deleteConversation(prevId).catch(() => {});
+          void client.deleteConversation(prevId).catch(() => { });
           setConversations((prev) => prev.filter((c) => c.id !== prevId));
           setUnreadConversations((prev) => {
             const next = new Set(prev);
@@ -3353,8 +3348,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           /* ignore */
         });
         setActionNotice(
-          `Failed to ${enabled ? "enable" : "disable"} ${pluginName}: ${
-            err instanceof Error ? err.message : "unknown error"
+          `Failed to ${enabled ? "enable" : "disable"} ${pluginName}: ${err instanceof Error ? err.message : "unknown error"
           }`,
           "error",
           4200,
@@ -4054,9 +4048,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       const startOver = await confirmDesktopAction({
         title: "Setup Failed",
-        message: `${
-          err instanceof Error ? err.message : "network error"
-        }`,
+        message: `${err instanceof Error ? err.message : "network error"
+          }`,
         detail:
           'You can retry, or choose "Start Over" to begin setup from scratch.',
         type: "warning",
@@ -5074,7 +5067,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               setPtySessions(mapServerTasksToSessions(status.tasks));
             }
           })
-          .catch(() => {}); // non-critical
+          .catch(() => { }); // non-critical
       };
       hydratePtySessions();
       let ptyHydratedViaWs = false;
@@ -5333,11 +5326,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
               return prev.map((s) =>
                 s.sessionId === sessionId
                   ? {
-                      ...s,
-                      status: "tool_running" as const,
-                      toolDescription: toolDesc,
-                      lastActivity: `Running ${toolDesc}`.slice(0, 60),
-                    }
+                    ...s,
+                    status: "tool_running" as const,
+                    toolDescription: toolDesc,
+                    lastActivity: `Running ${toolDesc}`.slice(0, 60),
+                  }
                   : s,
               );
             }
@@ -5351,11 +5344,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
               return prev.map((s) =>
                 s.sessionId === sessionId
                   ? {
-                      ...s,
-                      status: "active" as const,
-                      toolDescription: undefined,
-                      lastActivity: excerpt,
-                    }
+                    ...s,
+                    status: "active" as const,
+                    toolDescription: undefined,
+                    lastActivity: excerpt,
+                  }
                   : s,
               );
             }
@@ -5374,11 +5367,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
               return prev.map((s) =>
                 s.sessionId === sessionId
                   ? {
-                      ...s,
-                      status: "active" as const,
-                      toolDescription: undefined,
-                      lastActivity: excerpt,
-                    }
+                    ...s,
+                    status: "active" as const,
+                    toolDescription: undefined,
+                    lastActivity: excerpt,
+                  }
                   : s,
               );
             }
@@ -5386,11 +5379,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
               return prev.map((s) =>
                 s.sessionId === sessionId
                   ? {
-                      ...s,
-                      status: "active" as const,
-                      toolDescription: undefined,
-                      lastActivity: "Running",
-                    }
+                    ...s,
+                    status: "active" as const,
+                    toolDescription: undefined,
+                    lastActivity: "Running",
+                  }
                   : s,
               );
             }
@@ -5400,10 +5393,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
               return prev.map((s) =>
                 s.sessionId === sessionId
                   ? {
-                      ...s,
-                      status: "error" as const,
-                      lastActivity: `Error: ${errMsg}`.slice(0, 60),
-                    }
+                    ...s,
+                    status: "error" as const,
+                    lastActivity: `Error: ${errMsg}`.slice(0, 60),
+                  }
                   : s,
               );
             }

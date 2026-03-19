@@ -6,18 +6,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockUseApp = vi.fn();
 
-vi.mock("@miladyai/app-core/hooks", () => ({
+vi.mock("@elizaos/app-core/hooks", () => ({
   useRenderGuard: vi.fn(),
 }));
 
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
   getVrmPreviewUrl: () => "/vrms/previews/milady-1.png",
   getVrmUrl: () => "/vrms/milady-1.vrm.gz",
   VRM_COUNT: 24,
 }));
 
-vi.mock("@miladyai/app-core/utils", () => ({
+vi.mock("@elizaos/app-core/utils", () => ({
   resolveAppAssetUrl: (value: string) => value,
 }));
 
@@ -26,7 +26,7 @@ vi.mock("../../src/components/VrmStage.js", () => ({
     React.createElement("div", { "data-testid": "companion-vrm-stage" }),
 }));
 
-import { CompanionSceneHost } from "@miladyai/app-core/components/CompanionSceneHost";
+import { CompanionSceneHost } from "@elizaos/app-core/components/CompanionSceneHost";
 
 describe("CompanionSceneHost", () => {
   beforeEach(() => {

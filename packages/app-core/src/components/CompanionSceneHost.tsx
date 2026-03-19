@@ -1,11 +1,11 @@
-import { useRenderGuard } from "@miladyai/app-core/hooks";
+import { useRenderGuard } from "@elizaos/app-core/hooks";
 import {
   getVrmPreviewUrl,
   getVrmUrl,
   useApp,
   VRM_COUNT,
-} from "@miladyai/app-core/state";
-import { resolveAppAssetUrl } from "@miladyai/app-core/utils";
+} from "@elizaos/app-core/state";
+import { resolveAppAssetUrl } from "@elizaos/app-core/utils";
 import {
   memo,
   type ReactNode,
@@ -286,7 +286,7 @@ function CompanionSceneSurface({
       if (Math.abs(wheelPixels) < 0.01) return;
       setCompanionZoom(
         companionZoomRef.current -
-          wheelPixels * COMPANION_ZOOM_WHEEL_SENSITIVITY,
+        wheelPixels * COMPANION_ZOOM_WHEEL_SENSITIVITY,
       );
       event.preventDefault();
     },
@@ -426,9 +426,8 @@ function CompanionSceneSurface({
     >
       <div
         aria-hidden={!active}
-        className={`fixed inset-0 z-0 overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_50%_120%,#212942_0%,#12151e_80%)] transition-opacity duration-200 ${
-          active ? "opacity-100" : "pointer-events-none opacity-0"
-        }`}
+        className={`fixed inset-0 z-0 overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_50%_120%,#212942_0%,#12151e_80%)] transition-opacity duration-200 ${active ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
         style={{
           visibility: active ? "visible" : "hidden",
         }}
@@ -451,9 +450,8 @@ function CompanionSceneSurface({
         <div
           aria-hidden="true"
           data-testid="companion-camera-drag-surface"
-          className={`absolute inset-0 z-[1] select-none ${
-            interactive ? "cursor-grab" : "pointer-events-none cursor-default"
-          }`}
+          className={`absolute inset-0 z-[1] select-none ${interactive ? "cursor-grab" : "pointer-events-none cursor-default"
+            }`}
           onWheelCapture={handleRootWheelCapture}
           onPointerDownCapture={handlePointerDownCapture}
           onPointerMoveCapture={handlePointerMoveCapture}

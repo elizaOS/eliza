@@ -8,7 +8,7 @@ const viewerPropsRef: { current: null | Record<string, unknown> } = {
   current: null,
 };
 
-vi.mock("@miladyai/app-core/state", () => ({
+vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
   getVrmPreviewUrl: () => "/vrms/previews/milady-1.png",
   getVrmUrl: () => "/vrms/milady-1.vrm.gz",
@@ -18,7 +18,7 @@ vi.mock("@miladyai/app-core/state", () => ({
   VRM_COUNT: 24,
 }));
 
-vi.mock("@miladyai/app-core/components/avatar/VrmViewer", () => ({
+vi.mock("@elizaos/app-core/components/avatar/VrmViewer", () => ({
   VrmViewer: (props: Record<string, unknown>) => {
     viewerPropsRef.current = props;
     return React.createElement("div", null, "VrmViewer");
@@ -34,24 +34,24 @@ vi.mock("../../src/components/ChatModalView.js", () => ({
     ),
 }));
 
-const mockUploadCustomVrm = vi.fn(async () => {});
-const mockUploadCustomBackground = vi.fn(async () => {});
+const mockUploadCustomVrm = vi.fn(async () => { });
+const mockUploadCustomBackground = vi.fn(async () => { });
 
-vi.mock("@miladyai/app-core/api", () => ({
+vi.mock("@elizaos/app-core/api", () => ({
   client: {
     uploadCustomVrm: (...args: unknown[]) => mockUploadCustomVrm(...args),
     uploadCustomBackground: (...args: unknown[]) =>
       mockUploadCustomBackground(...args),
-    onWsEvent: vi.fn(() => () => {}),
+    onWsEvent: vi.fn(() => () => { }),
   },
 }));
 
-vi.mock("@miladyai/app-core/utils", () => ({
+vi.mock("@elizaos/app-core/utils", () => ({
   resolveApiUrl: (p: string) => p,
   resolveAppAssetUrl: (p: string) => p,
 }));
 
-import { CompanionSceneHost } from "@miladyai/app-core/components/CompanionSceneHost";
+import { CompanionSceneHost } from "@elizaos/app-core/components/CompanionSceneHost";
 import { CompanionView } from "../../src/components/CompanionView";
 
 const COMPANION_ZOOM_STORAGE_KEY = "milady.companion.zoom.v1";
@@ -62,8 +62,8 @@ function createContext(overrides: Record<string, unknown> = {}) {
     chatMode: "simple",
     chatAgentVoiceMuted: false,
     setState: vi.fn(),
-    handleStartDraftConversation: vi.fn(async () => {}),
-    handleNewConversation: vi.fn(async () => {}),
+    handleStartDraftConversation: vi.fn(async () => { }),
+    handleNewConversation: vi.fn(async () => { }),
     selectedVrmIndex: 1,
     customVrmUrl: "",
     customBackgroundUrl: "",
@@ -73,8 +73,8 @@ function createContext(overrides: Record<string, unknown> = {}) {
     walletLoading: false,
     walletNftsLoading: false,
     walletError: null,
-    loadBalances: vi.fn(async () => {}),
-    loadNfts: vi.fn(async () => {}),
+    loadBalances: vi.fn(async () => { }),
+    loadNfts: vi.fn(async () => { }),
     getBscTradePreflight: vi.fn(async () => ({
       ok: false,
       reasons: ["disabled"],
@@ -146,8 +146,8 @@ function createContext(overrides: Record<string, unknown> = {}) {
     lifecycleBusy: false,
     lifecycleAction: null,
 
-    handleRestart: vi.fn(async () => {}),
-    copyToClipboard: vi.fn(async () => {}),
+    handleRestart: vi.fn(async () => { }),
+    copyToClipboard: vi.fn(async () => { }),
     uiLanguage: "en",
     setUiLanguage: vi.fn(),
     uiTheme: "light",
@@ -257,8 +257,8 @@ describe("CompanionView", () => {
 
   it("renders centered companion header chat controls", async () => {
     const setState = vi.fn();
-    const handleStartDraftConversation = vi.fn(async () => {});
-    const handleNewConversation = vi.fn(async () => {});
+    const handleStartDraftConversation = vi.fn(async () => { });
+    const handleNewConversation = vi.fn(async () => { });
     mockUseApp.mockReturnValue(
       createContext({
         setState,
