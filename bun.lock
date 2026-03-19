@@ -139,7 +139,7 @@
     },
     "packages/computeruse": {
       "name": "@elizaos/computeruse-root",
-      "version": "2.0.0-alpha.74",
+      "version": "2.0.0-alpha.76",
     },
     "packages/computeruse/packages/computeruse-nodejs": {
       "name": "@elizaos/computeruse-nodejs",
@@ -224,7 +224,7 @@
     },
     "packages/docs": {
       "name": "@elizaos/docs",
-      "version": "2.0.0-alpha.74",
+      "version": "2.0.0-alpha.76",
     },
     "packages/elizaos": {
       "name": "elizaos",
@@ -245,7 +245,7 @@
     },
     "packages/home": {
       "name": "@elizaos/home",
-      "version": "2.0.0-alpha.74",
+      "version": "2.0.0-alpha.76",
       "dependencies": {
         "@capacitor/app": "^8.0.1",
         "@capacitor/core": "8.0.2",
@@ -288,7 +288,7 @@
     },
     "packages/python": {
       "name": "@elizaos/python",
-      "version": "2.0.0-alpha.74",
+      "version": "2.0.0-alpha.76",
     },
     "packages/rust": {
       "name": "@elizaos/rust",
@@ -310,7 +310,7 @@
     },
     "packages/sweagent": {
       "name": "@elizaos/sweagent-root",
-      "version": "2.0.0-alpha.74",
+      "version": "2.0.0-alpha.76",
     },
     "packages/training": {
       "name": "@elizaos/training",
