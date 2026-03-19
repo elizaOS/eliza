@@ -4485,7 +4485,7 @@ export async function startEliza(
   // surface.
   try {
     const { startApiServer } = await import("../api/server");
-    const apiPort = Number(process.env.MILADY_PORT) || 2138;
+    const apiPort = Number(process.env.ELIZA_PORT || process.env.MILADY_PORT) || 2138;
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
       runtime,

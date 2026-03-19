@@ -3,7 +3,7 @@
 .onboarding-screen {
   width: 100vw;
   height: 100vh;
-  background: #0c0e14;
+  background: transparent;
   --text: rgba(240, 238, 250, 0.94);
   --muted: rgba(240, 238, 250, 0.66);
   --border: rgba(255, 255, 255, 0.14);
@@ -479,8 +479,10 @@
 .onboarding-provider-card {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 10px;
+  min-height: 52px;
   background: rgba(10, 14, 20, 0.24);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -779,12 +781,13 @@
 /* ── Roster bar — horizontal row pinned to bottom ── */
 .ob-identity-roster {
   display: flex;
+  flex-wrap: nowrap;
   align-items: flex-end;
   justify-content: center;
   gap: 0;
   width: 100%;
   max-width: 900px;
-  padding: 0 2rem;
+  padding: 0 0.5rem;
   animation: ob-roster-slide-up 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.15s both;
 }
 
@@ -803,7 +806,6 @@
 .ob-identity-card {
   position: relative;
   flex: 1 1 0;
-  max-width: 110px;
   min-width: 0;
   text-align: center;
   transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -811,7 +813,7 @@
   border: none;
   background: none;
   padding: 0;
-  margin: 0 -4px;
+  margin: 0 -6px;
   opacity: 0.5;
   transform: translateY(12px);
   filter: brightness(0.7);
@@ -958,12 +960,12 @@
 
   /* Identity bottom bar responsive */
   .ob-identity-roster {
-    padding: 0 0.5rem;
+    padding: 0 0.25rem;
     max-width: 100%;
   }
 
   .ob-identity-card {
-    max-width: 80px;
+    margin: 0 -8px;
   }
 
   .ob-identity-name {
@@ -972,5 +974,119 @@
 
   .ob-identity-actions {
     padding-bottom: 16px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/* Character Editor roster (ce-roster) — used in CharacterView           */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+.ce-roster {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 0.5rem;
+}
+
+.ce-roster-card {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0 -6px;
+  opacity: 0.55;
+  filter: brightness(0.75);
+}
+
+.ce-roster-card:hover {
+  opacity: 0.9;
+  filter: brightness(0.95);
+  z-index: 5;
+}
+
+.ce-roster-card--active {
+  opacity: 1;
+  z-index: 10;
+  filter: brightness(1);
+}
+
+.ce-roster-card-frame {
+  position: relative;
+  aspect-ratio: 14 / 18;
+  width: 100%;
+  padding: 2px;
+  transition: all 0.25s;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ce-roster-card-frame--active {
+  background: linear-gradient(180deg, rgba(240, 185, 11, 0.9), rgba(240, 185, 11, 0.5));
+  box-shadow:
+    0 0 24px rgba(240, 185, 11, 0.35),
+    0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.ce-roster-card-inner {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: rgba(10, 14, 20, 0.5);
+}
+
+.ce-roster-card-img {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  object-position: center top;
+  transition: transform 0.25s ease-out;
+}
+
+.ce-roster-card-img--active {
+  transform: scale(1.06);
+}
+
+.ce-roster-card-label {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+}
+
+.ce-roster-card-name {
+  padding: 3px 6px;
+  font-size: clamp(8px, 1.2vw, 11px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+}
+
+.ce-roster-card-name--active {
+  background: rgba(0, 0, 0, 0.75);
+  color: rgba(240, 185, 11, 0.95);
+  box-shadow: inset 0 1px 0 rgba(240, 185, 11, 0.15);
+}
+
+@media (max-width: 768px) {
+  .ce-roster {
+    padding: 0 0.25rem;
+  }
+
+  .ce-roster-card {
+    margin: 0 -8px;
   }
 }

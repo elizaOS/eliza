@@ -2764,4 +2764,86 @@ if (teleportNoise < teleportRatio) discard;
     this.mouthSmoothed = this.mouthSmoothed * (1 - alpha) + next * alpha;
     manager.setValue("aa", this.mouthSmoothed);
   }
+
+  /**
+   * Capture a single-frame snapshot of the current VRM as a PNG Blob.
+   *
+   * When `disablePhysics` is true (the default), spring bone simulation is
+   * frozen for the capture frame so hair and cloth render in their rest pose,
+   * then restored afterwards. The render loop is paused during capture to
+   * prevent physics from re-running between reset and canvas capture.
+   */
+  async snapshot(options?: {
+    width?: number;
+    height?: number;
+    disablePhysics?: boolean;
+  }): Promise<Blob | null> {
+    const renderer = this.renderer;
+    const scene = this.scene;
+    const camera = this.camera;
+    if (!renderer || !scene || !camera) return null;
+
+    const canvas = renderer.domElement as HTMLCanvasElement;
+    if (!canvas) return null;
+
+    const disablePhysics = options?.disablePhysics ?? true;
+    const width = options?.width ?? canvas.width;
+    const height = options?.height ?? canvas.height;
+
+    // Pause the render loop so physics doesn't re-run between reset and capture
+    const wasPaused = this.paused;
+    this.setPaused(true);
+    // Cancel any pending animation frame to ensure the loop truly stops
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+
+    // Reset spring bones to rest pose (hair/cloth at initial position)
+    const springBoneManager = this.vrm?.springBoneManager ?? null;
+    if (disablePhysics && springBoneManager) {
+      springBoneManager.reset?.();
+    }
+
+    // Resize renderer for the capture resolution
+    const prevWidth = canvas.width;
+    const prevHeight = canvas.height;
+    renderer.setPixelRatio(1);
+    renderer.setSize(width, height);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+
+    // Update VRM transforms without physics
+    if (this.vrm) {
+      if (disablePhysics && springBoneManager) {
+        // Update only the humanoid/expression without spring bones
+        this.vrm.humanoid?.update?.();
+        this.vrm.expressionManager?.update?.();
+      } else {
+        this.vrm.update(0);
+      }
+    }
+
+    // Render the frame (synchronous — captures immediately to canvas)
+    renderer.render(scene, camera);
+
+    // Capture the canvas
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(
+        (b) => resolve(b),
+        "image/png",
+      );
+    });
+
+    // Restore previous renderer state
+    renderer.setPixelRatio(window.devicePixelRatio ?? 1);
+    renderer.setSize(prevWidth, prevHeight);
+    camera.aspect = prevWidth / prevHeight;
+    camera.updateProjectionMatrix();
+
+    // Restore paused state — resume the render loop
+    this.setPaused(wasPaused);
+
+    return blob;
+  }
 }

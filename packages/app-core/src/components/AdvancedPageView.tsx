@@ -25,7 +25,6 @@ import React, { type ReactNode, useState } from "react";
 import { CustomActionsView } from "./CustomActionsView";
 import { FineTuningView } from "./FineTuningView";
 import { LifoSandboxView } from "./LifoSandboxView";
-import { SecurityPageView } from "./SecurityPageView";
 import { TrajectoriesView } from "./TrajectoriesView";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
@@ -39,7 +38,6 @@ type SubTab =
   | "database"
   | "lifo"
   | "logs"
-  | "security";
 
 const SUB_TABS: Array<{ id: SubTab; label: string; description: string }> = [
   {
@@ -75,11 +73,6 @@ const SUB_TABS: Array<{ id: SubTab; label: string; description: string }> = [
   //   description: "Browser-native shell sandbox and file explorer",
   // },
   { id: "logs", label: "Logs", description: "Runtime and service logs" },
-  {
-    id: "security",
-    label: "Security",
-    description: "Audit trail for privileged runtime activity",
-  },
 ];
 
 const MODAL_SUB_TABS = SUB_TABS.filter(
@@ -248,8 +241,6 @@ function mapTabToSubTab(tab: Tab): SubTab {
       return "lifo";
     case "logs":
       return "logs";
-    case "security":
-      return "security";
     default:
       return "plugins";
   }
@@ -299,8 +290,6 @@ export function AdvancedPageView({ inModal }: { inModal?: boolean } = {}) {
         return <LifoSandboxView />;
       case "logs":
         return <LogsPageView />;
-      case "security":
-        return <SecurityPageView />;
       default:
         return <PluginsPageView />;
     }
@@ -336,11 +325,10 @@ export function AdvancedPageView({ inModal }: { inModal?: boolean } = {}) {
                 <button
                   type="button"
                   key={subTab.id}
-                  className={`advanced-subtab-btn px-4 py-2 text-xs font-medium border-b-2 -mb-px transition-colors ${
-                    isActive
-                      ? "border-accent text-txt"
-                      : "border-transparent text-muted hover:text-txt hover:border-border"
-                  }`}
+                  className={`advanced-subtab-btn px-4 py-2 text-xs font-medium border-b-2 -mb-px transition-colors ${isActive
+                    ? "border-accent text-txt"
+                    : "border-transparent text-muted hover:text-txt hover:border-border"
+                    }`}
                   onClick={() => handleSubTabChange(subTab.id)}
                   title={subTab.description}
                 >
@@ -359,15 +347,15 @@ export function AdvancedPageView({ inModal }: { inModal?: boolean } = {}) {
         style={
           inModal
             ? ({
-                "--accent": "var(--section-accent-advanced, #7b8fb5)",
-                "--surface": "rgba(255, 255, 255, 0.06)",
-                "--s-accent": "#7b8fb5",
-                "--s-text-txt": "#7b8fb5",
-                "--s-accent-glow": "rgba(123, 143, 181, 0.35)",
-                "--s-accent-subtle": "rgba(123, 143, 181, 0.12)",
-                "--s-grid-line": "rgba(123, 143, 181, 0.02)",
-                "--s-glow-edge": "rgba(123, 143, 181, 0.08)",
-              } as React.CSSProperties)
+              "--accent": "var(--section-accent-advanced, #7b8fb5)",
+              "--surface": "rgba(255, 255, 255, 0.06)",
+              "--s-accent": "#7b8fb5",
+              "--s-text-txt": "#7b8fb5",
+              "--s-accent-glow": "rgba(123, 143, 181, 0.35)",
+              "--s-accent-subtle": "rgba(123, 143, 181, 0.12)",
+              "--s-grid-line": "rgba(123, 143, 181, 0.02)",
+              "--s-glow-edge": "rgba(123, 143, 181, 0.08)",
+            } as React.CSSProperties)
             : undefined
         }
       >

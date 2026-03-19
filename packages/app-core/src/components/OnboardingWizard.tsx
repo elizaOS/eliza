@@ -10,6 +10,7 @@ import {
 import { resolveAppAssetUrl } from "@elizaos/app-core/utils";
 import { useEffect, useState } from "react";
 import { useBranding } from "../config/branding";
+import { COMPANION_ENABLED } from "../navigation";
 import { VrmStage } from "./companion/VrmStage";
 import { ActivateStep } from "./onboarding/ActivateStep";
 import { ConnectionStep } from "./onboarding/ConnectionStep";
@@ -31,7 +32,7 @@ const DISABLE_ONBOARDING_VRM =
 export function OnboardingWizard() {
   const branding = useBranding();
   const isEliza = branding.appName === "Eliza";
-  const disableVrm = !FORCE_VRM && (DISABLE_ONBOARDING_VRM || isEliza);
+  const disableVrm = !FORCE_VRM && (DISABLE_ONBOARDING_VRM || isEliza || !COMPANION_ENABLED);
   const [revealStarted, setRevealStarted] = useState(disableVrm);
 
   const {
@@ -102,9 +103,6 @@ export function OnboardingWizard() {
 
   return (
     <div className="onboarding-screen">
-      {/* Full-screen VRM background — same as CompanionView */}
-      <div className="onboarding-bg" />
-      <div className="onboarding-bg-overlay" />
 
       {/* Keep browser E2E runs lightweight and deterministic by skipping VRM boot. */}
       {disableVrm ? (

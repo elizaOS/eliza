@@ -25,7 +25,6 @@ import {
   ErrorBoundary,
   GameViewOverlay,
   Header,
-  MiladyBar,
   HeartbeatsView,
   InventoryView,
   KnowledgeView,
@@ -250,8 +249,8 @@ export function App() {
       <button
         type="button"
         className={`inline-flex items-center gap-2 px-3 py-2 border rounded-md text-[12px] font-semibold transition-all cursor-pointer ${mobileConversationsOpen
-            ? "border-accent bg-accent-subtle text-txt"
-            : "border-border bg-card text-txt hover:border-accent hover:text-txt"
+          ? "border-accent bg-accent-subtle text-txt"
+          : "border-border bg-card text-txt hover:border-accent hover:text-txt"
           }`}
         onClick={() => {
           setMobileConversationsOpen(true);
@@ -396,16 +395,14 @@ export function App() {
     <CompanionShell tab={effectiveTab} actionNotice={actionNotice} />
   ) : tab === "stream" ? (
     <div className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg">
-      <Header hideCloudCredits />
-      <MiladyBar />
+      <Header />
       <main className="flex-1 min-h-0 overflow-hidden">
         <StreamView />
       </main>
     </div>
   ) : isChat ? (
     <div className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg">
-      <Header mobileLeft={mobileChatControls} hideCloudCredits />
-      <MiladyBar />
+      <Header mobileLeft={mobileChatControls} />
       <div className="flex flex-1 min-h-0 relative">
         {isChatMobileLayout ? (
           <>
@@ -445,8 +442,7 @@ export function App() {
       className={`flex flex-col flex-1 min-h-0 w-full font-body text-txt ${characterSceneVisible ? "bg-transparent" : "bg-bg"
         }`}
     >
-      <Header transparent={characterSceneVisible} hideCloudCredits={!characterSceneVisible} />
-      {!characterSceneVisible && <MiladyBar />}
+      <Header transparent={characterSceneVisible} />
       <main
         className={`flex flex-1 min-h-0 min-w-0 overflow-hidden px-3 xl:px-5 ${characterSceneVisible ? "pb-4 pt-2 xl:pb-6" : "py-4 xl:py-6"
           }`}

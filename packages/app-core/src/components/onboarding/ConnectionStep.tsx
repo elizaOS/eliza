@@ -226,8 +226,17 @@ export function ConnectionStep() {
     setState("onboardingRemoteConnecting", false);
   };
 
-  const handleSelectCloudHosting = () => {
+  const handleSelectRemoteHosting = () => {
     setState("onboardingRunMode", "cloud");
+    setState("onboardingCloudProvider", "remote");
+    setState("onboardingProvider", "");
+    setState("onboardingApiKey", "");
+    setState("onboardingPrimaryModel", "");
+  };
+
+  const handleSelectElizaCloudHosting = () => {
+    setState("onboardingRunMode", "cloud");
+    setState("onboardingCloudProvider", "elizacloud");
     setState("onboardingProvider", "");
     setState("onboardingApiKey", "");
     setState("onboardingPrimaryModel", "");
@@ -250,7 +259,7 @@ export function ConnectionStep() {
       handleOnboardingUseLocalBackend();
       return;
     }
-    resetCloudSelection();
+    resetHostingSelection();
   };
 
   const detectedByProviderId = new Map(
@@ -333,7 +342,7 @@ export function ConnectionStep() {
                 className="onboarding-provider-card onboarding-provider-card--recommended"
                 onClick={handleSelectLocalHosting}
               >
-                <div>
+                <div style={{ flex: 1 }}>
                   <div className="onboarding-provider-name">
                     {t("onboarding.hostingLocal")}
                   </div>
@@ -349,14 +358,28 @@ export function ConnectionStep() {
             <button
               type="button"
               className="onboarding-provider-card"
-              onClick={handleSelectCloudHosting}
+              onClick={handleSelectRemoteHosting}
             >
-              <div>
+              <div style={{ flex: 1 }}>
+                <div className="onboarding-provider-name">
+                  {t("onboarding.hostingRemote")}
+                </div>
+                <div className="onboarding-provider-desc">
+                  {t("onboarding.hostingRemoteDesc")}
+                </div>
+              </div>
+            </button>
+            <button
+              type="button"
+              className="onboarding-provider-card"
+              onClick={handleSelectElizaCloudHosting}
+            >
+              <div style={{ flex: 1 }}>
                 <div className="onboarding-provider-name">
                   {t("onboarding.hostingCloud")}
                 </div>
                 <div className="onboarding-provider-desc">
-                  {t("onboarding.hostingCloudDesc")}
+                  {t("onboarding.hostingElizaCloudDesc")}
                 </div>
               </div>
             </button>
@@ -365,65 +388,6 @@ export function ConnectionStep() {
             <button
               className="onboarding-back-link"
               onClick={handleOnboardingBack}
-              type="button"
-            >
-              {t("onboarding.back")}
-            </button>
-            <span />
-          </div>
-        </>
-      );
-    }
-
-    if (!onboardingCloudProvider) {
-      return (
-        <>
-          <div className="onboarding-section-title">
-            {t("onboarding.hostingCloud")}
-          </div>
-          <div className="onboarding-divider">
-            <div className="onboarding-divider-diamond" />
-          </div>
-          <div className="onboarding-question">
-            {t("onboarding.cloudQuestion")}
-          </div>
-          <div className="onboarding-provider-grid">
-            <button
-              type="button"
-              className="onboarding-provider-card onboarding-provider-card--recommended"
-              onClick={() => setState("onboardingCloudProvider", "elizacloud")}
-            >
-              <div>
-                <div className="onboarding-provider-name">
-                  {t("onboarding.cloudManaged")}
-                </div>
-                <div className="onboarding-provider-desc">
-                  {t("onboarding.cloudManagedDesc")}
-                </div>
-              </div>
-              <span className="onboarding-provider-badge">
-                {t("onboarding.recommended") ?? "Recommended"}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="onboarding-provider-card"
-              onClick={() => setState("onboardingCloudProvider", "remote")}
-            >
-              <div>
-                <div className="onboarding-provider-name">
-                  {t("onboarding.cloudRemote")}
-                </div>
-                <div className="onboarding-provider-desc">
-                  {t("onboarding.cloudRemoteDesc")}
-                </div>
-              </div>
-            </button>
-          </div>
-          <div className="onboarding-panel-footer">
-            <button
-              className="onboarding-back-link"
-              onClick={resetHostingSelection}
               type="button"
             >
               {t("onboarding.back")}
@@ -720,7 +684,7 @@ export function ConnectionStep() {
         <div className="onboarding-panel-footer">
           <button
             className="onboarding-back-link"
-            onClick={resetCloudSelection}
+            onClick={resetHostingSelection}
             type="button"
           >
             {t("onboarding.back")}

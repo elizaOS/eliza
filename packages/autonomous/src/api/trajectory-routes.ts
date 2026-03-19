@@ -235,17 +235,19 @@ function isRouteCompatibleTrajectoryLogger(
   );
 }
 
-async function getTrajectoryLogger(
-  runtime: AgentRuntime,
-): Promise<TrajectoryLoggerApi | null> {
-  const runtimeLike = runtime as AgentRuntime & {
-    getServicesByType?: (serviceType: string) => unknown;
-    getService?: (serviceType: string) => unknown;
-  };
+type TrajectoryLoggerRuntimeLike = AgentRuntime & {
+  getServicesByType?: (serviceType: string) => unknown;
+  getService?: (serviceType: string) => unknown;
+  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+  getServiceRegistrationStatus?: (
+    serviceType: string,
+  ) => "pending" | "registering" | "registered" | "failed" | "unknown";
+};
 
+function collectCandidates(runtimeLike: TrajectoryLoggerRuntimeLike): unknown[] {
   const seen = new Set<unknown>();
   const candidates: unknown[] = [];
-  const addCandidate = (candidate: unknown): void => {
+  const add = (candidate: unknown): void => {
     if (!candidate || seen.has(candidate)) return;
     seen.add(candidate);
     candidates.push(candidate);
@@ -255,21 +257,59 @@ async function getTrajectoryLogger(
     const byType = runtimeLike.getServicesByType("trajectory_logger");
     if (Array.isArray(byType)) {
       for (const candidate of byType) {
-        addCandidate(candidate);
+        add(candidate);
       }
     } else {
-      addCandidate(byType);
+      add(byType);
     }
   }
 
   if (typeof runtimeLike.getService === "function") {
-    addCandidate(runtimeLike.getService("trajectory_logger"));
+    add(runtimeLike.getService("trajectory_logger"));
   }
 
+  return candidates;
+}
+
+function findCompatibleLogger(candidates: unknown[]): TrajectoryLoggerApi | null {
   for (const candidate of candidates) {
     if (isRouteCompatibleTrajectoryLogger(candidate)) {
       return candidate;
     }
+  }
+  return null;
+}
+
+async function getTrajectoryLogger(
+  runtime: AgentRuntime,
+): Promise<TrajectoryLoggerApi | null> {
+  const runtimeLike = runtime as TrajectoryLoggerRuntimeLike;
+
+  // Fast path: service already available.
+  const immediate = findCompatibleLogger(collectCandidates(runtimeLike));
+  if (immediate) return immediate;
+
+  // The service may still be starting — wait for it if the runtime supports it.
+  const status =
+    typeof runtimeLike.getServiceRegistrationStatus === "function"
+      ? runtimeLike.getServiceRegistrationStatus("trajectory_logger")
+      : "unknown";
+
+  if (
+    (status === "pending" || status === "registering") &&
+    typeof runtimeLike.getServiceLoadPromise === "function"
+  ) {
+    try {
+      await Promise.race([
+        runtimeLike.getServiceLoadPromise("trajectory_logger"),
+        new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+      ]);
+    } catch {
+      // Service failed to start — fall through to return null.
+    }
+
+    // Re-check after waiting.
+    return findCompatibleLogger(collectCandidates(runtimeLike));
   }
 
   return null;
