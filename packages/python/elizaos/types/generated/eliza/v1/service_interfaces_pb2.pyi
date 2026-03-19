@@ -1,12 +1,9 @@
-import datetime
-
 from google.protobuf import struct_pb2 as _struct_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -64,7 +61,7 @@ class TokenData(_message.Message):
     decimals: int
     last_updated_at: _timestamp_pb2.Timestamp
     raw: _struct_pb2.Struct
-    def __init__(self, id: _Optional[str] = ..., symbol: _Optional[str] = ..., name: _Optional[str] = ..., address: _Optional[str] = ..., chain: _Optional[str] = ..., source_provider: _Optional[str] = ..., price: _Optional[float] = ..., price_change_24h_percent: _Optional[float] = ..., price_change_24h_usd: _Optional[float] = ..., volume_24h_usd: _Optional[float] = ..., market_cap_usd: _Optional[float] = ..., liquidity: _Optional[float] = ..., holders: _Optional[float] = ..., logo_uri: _Optional[str] = ..., decimals: _Optional[int] = ..., last_updated_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., raw: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., symbol: _Optional[str] = ..., name: _Optional[str] = ..., address: _Optional[str] = ..., chain: _Optional[str] = ..., source_provider: _Optional[str] = ..., price: _Optional[float] = ..., price_change_24h_percent: _Optional[float] = ..., price_change_24h_usd: _Optional[float] = ..., volume_24h_usd: _Optional[float] = ..., market_cap_usd: _Optional[float] = ..., liquidity: _Optional[float] = ..., holders: _Optional[float] = ..., logo_uri: _Optional[str] = ..., decimals: _Optional[int] = ..., last_updated_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., raw: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
 
 class WalletAsset(_message.Message):
     __slots__ = ("address", "balance", "decimals", "ui_amount", "name", "symbol", "logo_uri", "price_usd", "value_usd")
@@ -164,7 +161,7 @@ class TransactionResult(_message.Message):
     transaction_id: str
     error: str
     data: _struct_pb2.Struct
-    def __init__(self, success: _Optional[bool] = ..., transaction_id: _Optional[str] = ..., error: _Optional[str] = ..., data: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
+    def __init__(self, success: bool = ..., transaction_id: _Optional[str] = ..., error: _Optional[str] = ..., data: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
 
 class TranscriptionOptions(_message.Message):
     __slots__ = ("language", "model", "temperature", "prompt", "response_format", "timestamp_granularities", "word_timestamps", "segment_timestamps")
@@ -184,7 +181,7 @@ class TranscriptionOptions(_message.Message):
     timestamp_granularities: _containers.RepeatedScalarFieldContainer[str]
     word_timestamps: bool
     segment_timestamps: bool
-    def __init__(self, language: _Optional[str] = ..., model: _Optional[str] = ..., temperature: _Optional[float] = ..., prompt: _Optional[str] = ..., response_format: _Optional[str] = ..., timestamp_granularities: _Optional[_Iterable[str]] = ..., word_timestamps: _Optional[bool] = ..., segment_timestamps: _Optional[bool] = ...) -> None: ...
+    def __init__(self, language: _Optional[str] = ..., model: _Optional[str] = ..., temperature: _Optional[float] = ..., prompt: _Optional[str] = ..., response_format: _Optional[str] = ..., timestamp_granularities: _Optional[_Iterable[str]] = ..., word_timestamps: bool = ..., segment_timestamps: bool = ...) -> None: ...
 
 class TranscriptionResult(_message.Message):
     __slots__ = ("text", "language", "duration", "segments", "words", "confidence")
@@ -250,7 +247,7 @@ class SpeechToTextOptions(_message.Message):
     continuous: bool
     interim_results: bool
     max_alternatives: int
-    def __init__(self, language: _Optional[str] = ..., model: _Optional[str] = ..., continuous: _Optional[bool] = ..., interim_results: _Optional[bool] = ..., max_alternatives: _Optional[int] = ...) -> None: ...
+    def __init__(self, language: _Optional[str] = ..., model: _Optional[str] = ..., continuous: bool = ..., interim_results: bool = ..., max_alternatives: _Optional[int] = ...) -> None: ...
 
 class TextToSpeechOptions(_message.Message):
     __slots__ = ("voice", "model", "speed", "format", "response_format")
@@ -286,7 +283,7 @@ class VideoInfo(_message.Message):
     view_count: float
     upload_date: _timestamp_pb2.Timestamp
     formats: _containers.RepeatedCompositeFieldContainer[VideoFormat]
-    def __init__(self, title: _Optional[str] = ..., duration: _Optional[float] = ..., url: _Optional[str] = ..., thumbnail: _Optional[str] = ..., description: _Optional[str] = ..., uploader: _Optional[str] = ..., view_count: _Optional[float] = ..., upload_date: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., formats: _Optional[_Iterable[_Union[VideoFormat, _Mapping]]] = ...) -> None: ...
+    def __init__(self, title: _Optional[str] = ..., duration: _Optional[float] = ..., url: _Optional[str] = ..., thumbnail: _Optional[str] = ..., description: _Optional[str] = ..., uploader: _Optional[str] = ..., view_count: _Optional[float] = ..., upload_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., formats: _Optional[_Iterable[_Union[VideoFormat, _Mapping]]] = ...) -> None: ...
 
 class VideoFormat(_message.Message):
     __slots__ = ("format_id", "url", "extension", "quality", "file_size", "video_codec", "audio_codec", "resolution", "fps", "bitrate")
@@ -330,7 +327,7 @@ class VideoDownloadOptions(_message.Message):
     subtitles: bool
     embed_subs: bool
     write_info_json: bool
-    def __init__(self, format: _Optional[str] = ..., quality: _Optional[str] = ..., output_path: _Optional[str] = ..., audio_only: _Optional[bool] = ..., video_only: _Optional[bool] = ..., subtitles: _Optional[bool] = ..., embed_subs: _Optional[bool] = ..., write_info_json: _Optional[bool] = ...) -> None: ...
+    def __init__(self, format: _Optional[str] = ..., quality: _Optional[str] = ..., output_path: _Optional[str] = ..., audio_only: bool = ..., video_only: bool = ..., subtitles: bool = ..., embed_subs: bool = ..., write_info_json: bool = ...) -> None: ...
 
 class VideoProcessingOptions(_message.Message):
     __slots__ = ("start_time", "end_time", "output_format", "resolution", "bitrate", "framerate", "audio_codec", "video_codec")
@@ -405,7 +402,7 @@ class ScreenshotOptions(_message.Message):
     format: str
     quality: int
     omit_background: bool
-    def __init__(self, full_page: _Optional[bool] = ..., clip: _Optional[_Union[ScreenshotClip, _Mapping]] = ..., format: _Optional[str] = ..., quality: _Optional[int] = ..., omit_background: _Optional[bool] = ...) -> None: ...
+    def __init__(self, full_page: bool = ..., clip: _Optional[_Union[ScreenshotClip, _Mapping]] = ..., format: _Optional[str] = ..., quality: _Optional[int] = ..., omit_background: bool = ...) -> None: ...
 
 class ElementSelector(_message.Message):
     __slots__ = ("selector", "text", "timeout")
@@ -464,7 +461,7 @@ class ClickOptions(_message.Message):
     timeout: int
     force: bool
     wait_for_navigation: bool
-    def __init__(self, timeout: _Optional[int] = ..., force: _Optional[bool] = ..., wait_for_navigation: _Optional[bool] = ...) -> None: ...
+    def __init__(self, timeout: _Optional[int] = ..., force: bool = ..., wait_for_navigation: bool = ...) -> None: ...
 
 class TypeOptions(_message.Message):
     __slots__ = ("delay", "timeout", "clear")
@@ -474,7 +471,7 @@ class TypeOptions(_message.Message):
     delay: int
     timeout: int
     clear: bool
-    def __init__(self, delay: _Optional[int] = ..., timeout: _Optional[int] = ..., clear: _Optional[bool] = ...) -> None: ...
+    def __init__(self, delay: _Optional[int] = ..., timeout: _Optional[int] = ..., clear: bool = ...) -> None: ...
 
 class PdfMetadata(_message.Message):
     __slots__ = ("title", "author", "created_at", "modified_at")
@@ -486,7 +483,7 @@ class PdfMetadata(_message.Message):
     author: str
     created_at: _timestamp_pb2.Timestamp
     modified_at: _timestamp_pb2.Timestamp
-    def __init__(self, title: _Optional[str] = ..., author: _Optional[str] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., modified_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    def __init__(self, title: _Optional[str] = ..., author: _Optional[str] = ..., created_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., modified_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class PdfExtractionResult(_message.Message):
     __slots__ = ("text", "page_count", "metadata")
@@ -532,7 +529,7 @@ class PdfConversionOptions(_message.Message):
     quality: str
     output_format: str
     compression: bool
-    def __init__(self, quality: _Optional[str] = ..., output_format: _Optional[str] = ..., compression: _Optional[bool] = ...) -> None: ...
+    def __init__(self, quality: _Optional[str] = ..., output_format: _Optional[str] = ..., compression: bool = ...) -> None: ...
 
 class DateRange(_message.Message):
     __slots__ = ("start", "end")
@@ -540,7 +537,7 @@ class DateRange(_message.Message):
     END_FIELD_NUMBER: _ClassVar[int]
     start: _timestamp_pb2.Timestamp
     end: _timestamp_pb2.Timestamp
-    def __init__(self, start: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., end: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    def __init__(self, start: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., end: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class SearchOptions(_message.Message):
     __slots__ = ("limit", "offset", "language", "region", "date_range", "file_type", "site", "sort_by", "safe_search")
@@ -584,7 +581,7 @@ class SearchResult(_message.Message):
     source: str
     relevance_score: float
     snippet: str
-    def __init__(self, title: _Optional[str] = ..., url: _Optional[str] = ..., description: _Optional[str] = ..., display_url: _Optional[str] = ..., thumbnail: _Optional[str] = ..., published_date: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., source: _Optional[str] = ..., relevance_score: _Optional[float] = ..., snippet: _Optional[str] = ...) -> None: ...
+    def __init__(self, title: _Optional[str] = ..., url: _Optional[str] = ..., description: _Optional[str] = ..., display_url: _Optional[str] = ..., thumbnail: _Optional[str] = ..., published_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., source: _Optional[str] = ..., relevance_score: _Optional[float] = ..., snippet: _Optional[str] = ...) -> None: ...
 
 class SearchResponse(_message.Message):
     __slots__ = ("query", "results", "total_results", "search_time", "suggestions", "next_page_token", "related_searches")
@@ -695,7 +692,7 @@ class EmailMessage(_message.Message):
     references: _containers.RepeatedScalarFieldContainer[str]
     in_reply_to: str
     priority: str
-    def __init__(self, to: _Optional[_Iterable[_Union[EmailAddress, _Mapping]]] = ..., cc: _Optional[_Iterable[_Union[EmailAddress, _Mapping]]] = ..., bcc: _Optional[_Iterable[_Union[EmailAddress, _Mapping]]] = ..., subject: _Optional[str] = ..., text: _Optional[str] = ..., html: _Optional[str] = ..., attachments: _Optional[_Iterable[_Union[EmailAttachment, _Mapping]]] = ..., reply_to: _Optional[_Union[EmailAddress, _Mapping]] = ..., date: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., message_id: _Optional[str] = ..., references: _Optional[_Iterable[str]] = ..., in_reply_to: _Optional[str] = ..., priority: _Optional[str] = ..., **kwargs) -> None: ...
+    def __init__(self, to: _Optional[_Iterable[_Union[EmailAddress, _Mapping]]] = ..., cc: _Optional[_Iterable[_Union[EmailAddress, _Mapping]]] = ..., bcc: _Optional[_Iterable[_Union[EmailAddress, _Mapping]]] = ..., subject: _Optional[str] = ..., text: _Optional[str] = ..., html: _Optional[str] = ..., attachments: _Optional[_Iterable[_Union[EmailAttachment, _Mapping]]] = ..., reply_to: _Optional[_Union[EmailAddress, _Mapping]] = ..., date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., message_id: _Optional[str] = ..., references: _Optional[_Iterable[str]] = ..., in_reply_to: _Optional[str] = ..., priority: _Optional[str] = ..., **kwargs) -> None: ...
 
 class EmailSendOptions(_message.Message):
     __slots__ = ("retry", "timeout", "track_opens", "track_clicks", "tags")
@@ -709,7 +706,7 @@ class EmailSendOptions(_message.Message):
     track_opens: bool
     track_clicks: bool
     tags: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, retry: _Optional[int] = ..., timeout: _Optional[int] = ..., track_opens: _Optional[bool] = ..., track_clicks: _Optional[bool] = ..., tags: _Optional[_Iterable[str]] = ...) -> None: ...
+    def __init__(self, retry: _Optional[int] = ..., timeout: _Optional[int] = ..., track_opens: bool = ..., track_clicks: bool = ..., tags: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class EmailSearchOptions(_message.Message):
     __slots__ = ("query", "to", "subject", "folder", "since", "before", "limit", "offset", "unread", "flagged", "has_attachments")
@@ -736,7 +733,7 @@ class EmailSearchOptions(_message.Message):
     unread: bool
     flagged: bool
     has_attachments: bool
-    def __init__(self, query: _Optional[str] = ..., to: _Optional[str] = ..., subject: _Optional[str] = ..., folder: _Optional[str] = ..., since: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., before: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., unread: _Optional[bool] = ..., flagged: _Optional[bool] = ..., has_attachments: _Optional[bool] = ..., **kwargs) -> None: ...
+    def __init__(self, query: _Optional[str] = ..., to: _Optional[str] = ..., subject: _Optional[str] = ..., folder: _Optional[str] = ..., since: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., before: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., unread: bool = ..., flagged: bool = ..., has_attachments: bool = ..., **kwargs) -> None: ...
 
 class EmailFolder(_message.Message):
     __slots__ = ("name", "path", "type", "message_count", "unread_count", "children")
@@ -816,7 +813,7 @@ class MessageReaction(_message.Message):
     count: int
     users: _containers.RepeatedScalarFieldContainer[str]
     has_reacted: bool
-    def __init__(self, emoji: _Optional[str] = ..., count: _Optional[int] = ..., users: _Optional[_Iterable[str]] = ..., has_reacted: _Optional[bool] = ...) -> None: ...
+    def __init__(self, emoji: _Optional[str] = ..., count: _Optional[int] = ..., users: _Optional[_Iterable[str]] = ..., has_reacted: bool = ...) -> None: ...
 
 class MessageReference(_message.Message):
     __slots__ = ("message_id", "channel_id", "type")
@@ -836,7 +833,7 @@ class EmbedField(_message.Message):
     name: str
     value: str
     inline: bool
-    def __init__(self, name: _Optional[str] = ..., value: _Optional[str] = ..., inline: _Optional[bool] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., value: _Optional[str] = ..., inline: bool = ...) -> None: ...
 
 class MessageEmbed(_message.Message):
     __slots__ = ("title", "description", "url", "image", "fields")
@@ -882,7 +879,7 @@ class MessageThreadInfo(_message.Message):
     message_count: int
     participants: _containers.RepeatedScalarFieldContainer[str]
     last_message_at: _timestamp_pb2.Timestamp
-    def __init__(self, id: _Optional[str] = ..., message_count: _Optional[int] = ..., participants: _Optional[_Iterable[str]] = ..., last_message_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., message_count: _Optional[int] = ..., participants: _Optional[_Iterable[str]] = ..., last_message_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class MessageInfo(_message.Message):
     __slots__ = ("id", "channel_id", "sender_id", "content", "timestamp", "edited", "deleted", "pinned", "thread")
@@ -904,7 +901,7 @@ class MessageInfo(_message.Message):
     deleted: _timestamp_pb2.Timestamp
     pinned: bool
     thread: MessageThreadInfo
-    def __init__(self, id: _Optional[str] = ..., channel_id: _Optional[str] = ..., sender_id: _Optional[str] = ..., content: _Optional[_Union[MessageContent, _Mapping]] = ..., timestamp: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., edited: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., deleted: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., pinned: _Optional[bool] = ..., thread: _Optional[_Union[MessageThreadInfo, _Mapping]] = ...) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., channel_id: _Optional[str] = ..., sender_id: _Optional[str] = ..., content: _Optional[_Union[MessageContent, _Mapping]] = ..., timestamp: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., edited: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., deleted: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., pinned: bool = ..., thread: _Optional[_Union[MessageThreadInfo, _Mapping]] = ...) -> None: ...
 
 class MessageSendOptions(_message.Message):
     __slots__ = ("reply_to", "ephemeral", "silent", "scheduled", "thread", "nonce")
@@ -920,7 +917,7 @@ class MessageSendOptions(_message.Message):
     scheduled: _timestamp_pb2.Timestamp
     thread: str
     nonce: str
-    def __init__(self, reply_to: _Optional[str] = ..., ephemeral: _Optional[bool] = ..., silent: _Optional[bool] = ..., scheduled: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., thread: _Optional[str] = ..., nonce: _Optional[str] = ...) -> None: ...
+    def __init__(self, reply_to: _Optional[str] = ..., ephemeral: bool = ..., silent: bool = ..., scheduled: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., thread: _Optional[str] = ..., nonce: _Optional[str] = ...) -> None: ...
 
 class MessageSearchOptions(_message.Message):
     __slots__ = ("query", "channel_id", "sender_id", "before", "after", "limit", "offset", "has_attachments", "pinned", "mentions")
@@ -944,7 +941,7 @@ class MessageSearchOptions(_message.Message):
     has_attachments: bool
     pinned: bool
     mentions: str
-    def __init__(self, query: _Optional[str] = ..., channel_id: _Optional[str] = ..., sender_id: _Optional[str] = ..., before: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., after: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., has_attachments: _Optional[bool] = ..., pinned: _Optional[bool] = ..., mentions: _Optional[str] = ...) -> None: ...
+    def __init__(self, query: _Optional[str] = ..., channel_id: _Optional[str] = ..., sender_id: _Optional[str] = ..., before: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., after: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., has_attachments: bool = ..., pinned: bool = ..., mentions: _Optional[str] = ...) -> None: ...
 
 class ChannelPermissions(_message.Message):
     __slots__ = ("can_send", "can_read", "can_delete", "can_pin", "can_manage")
@@ -958,7 +955,7 @@ class ChannelPermissions(_message.Message):
     can_delete: bool
     can_pin: bool
     can_manage: bool
-    def __init__(self, can_send: _Optional[bool] = ..., can_read: _Optional[bool] = ..., can_delete: _Optional[bool] = ..., can_pin: _Optional[bool] = ..., can_manage: _Optional[bool] = ...) -> None: ...
+    def __init__(self, can_send: bool = ..., can_read: bool = ..., can_delete: bool = ..., can_pin: bool = ..., can_manage: bool = ...) -> None: ...
 
 class MessageChannel(_message.Message):
     __slots__ = ("id", "name", "type", "description", "participants", "permissions", "last_message_at", "message_count", "unread_count")
@@ -980,7 +977,7 @@ class MessageChannel(_message.Message):
     last_message_at: _timestamp_pb2.Timestamp
     message_count: int
     unread_count: int
-    def __init__(self, id: _Optional[str] = ..., name: _Optional[str] = ..., type: _Optional[str] = ..., description: _Optional[str] = ..., participants: _Optional[_Iterable[_Union[MessageParticipant, _Mapping]]] = ..., permissions: _Optional[_Union[ChannelPermissions, _Mapping]] = ..., last_message_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., message_count: _Optional[int] = ..., unread_count: _Optional[int] = ...) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., name: _Optional[str] = ..., type: _Optional[str] = ..., description: _Optional[str] = ..., participants: _Optional[_Iterable[_Union[MessageParticipant, _Mapping]]] = ..., permissions: _Optional[_Union[ChannelPermissions, _Mapping]] = ..., last_message_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., message_count: _Optional[int] = ..., unread_count: _Optional[int] = ...) -> None: ...
 
 class PostMedia(_message.Message):
     __slots__ = ("id", "url", "type", "mime_type", "size", "width", "height", "duration", "thumbnail", "description", "alt_text")
@@ -1048,7 +1045,7 @@ class PostAuthor(_message.Message):
     following_count: int
     bio: str
     website: str
-    def __init__(self, id: _Optional[str] = ..., username: _Optional[str] = ..., display_name: _Optional[str] = ..., avatar: _Optional[str] = ..., verified: _Optional[bool] = ..., follower_count: _Optional[int] = ..., following_count: _Optional[int] = ..., bio: _Optional[str] = ..., website: _Optional[str] = ...) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., username: _Optional[str] = ..., display_name: _Optional[str] = ..., avatar: _Optional[str] = ..., verified: bool = ..., follower_count: _Optional[int] = ..., following_count: _Optional[int] = ..., bio: _Optional[str] = ..., website: _Optional[str] = ...) -> None: ...
 
 class PostEngagement(_message.Message):
     __slots__ = ("likes", "shares", "comments", "views", "has_liked", "has_shared", "has_commented", "has_saved")
@@ -1068,7 +1065,7 @@ class PostEngagement(_message.Message):
     has_shared: bool
     has_commented: bool
     has_saved: bool
-    def __init__(self, likes: _Optional[int] = ..., shares: _Optional[int] = ..., comments: _Optional[int] = ..., views: _Optional[int] = ..., has_liked: _Optional[bool] = ..., has_shared: _Optional[bool] = ..., has_commented: _Optional[bool] = ..., has_saved: _Optional[bool] = ...) -> None: ...
+    def __init__(self, likes: _Optional[int] = ..., shares: _Optional[int] = ..., comments: _Optional[int] = ..., views: _Optional[int] = ..., has_liked: bool = ..., has_shared: bool = ..., has_commented: bool = ..., has_saved: bool = ...) -> None: ...
 
 class PostLinkPreview(_message.Message):
     __slots__ = ("url", "title", "description", "image")
@@ -1100,7 +1097,7 @@ class PostPoll(_message.Message):
     options: _containers.RepeatedCompositeFieldContainer[PostPollOption]
     expires_at: _timestamp_pb2.Timestamp
     multiple_choice: bool
-    def __init__(self, question: _Optional[str] = ..., options: _Optional[_Iterable[_Union[PostPollOption, _Mapping]]] = ..., expires_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., multiple_choice: _Optional[bool] = ...) -> None: ...
+    def __init__(self, question: _Optional[str] = ..., options: _Optional[_Iterable[_Union[PostPollOption, _Mapping]]] = ..., expires_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., multiple_choice: bool = ...) -> None: ...
 
 class PostContent(_message.Message):
     __slots__ = ("text", "html", "media", "location", "tags", "mentions", "links", "poll")
@@ -1172,7 +1169,7 @@ class PostInfo(_message.Message):
     reply_to: str
     thread: PostThreadInfo
     cross_posted: _containers.RepeatedCompositeFieldContainer[CrossPostInfo]
-    def __init__(self, id: _Optional[str] = ..., author: _Optional[_Union[PostAuthor, _Mapping]] = ..., content: _Optional[_Union[PostContent, _Mapping]] = ..., platform: _Optional[str] = ..., platform_id: _Optional[str] = ..., url: _Optional[str] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., edited_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., scheduled_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., engagement: _Optional[_Union[PostEngagement, _Mapping]] = ..., visibility: _Optional[str] = ..., reply_to: _Optional[str] = ..., thread: _Optional[_Union[PostThreadInfo, _Mapping]] = ..., cross_posted: _Optional[_Iterable[_Union[CrossPostInfo, _Mapping]]] = ...) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., author: _Optional[_Union[PostAuthor, _Mapping]] = ..., content: _Optional[_Union[PostContent, _Mapping]] = ..., platform: _Optional[str] = ..., platform_id: _Optional[str] = ..., url: _Optional[str] = ..., created_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., edited_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., scheduled_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., engagement: _Optional[_Union[PostEngagement, _Mapping]] = ..., visibility: _Optional[str] = ..., reply_to: _Optional[str] = ..., thread: _Optional[_Union[PostThreadInfo, _Mapping]] = ..., cross_posted: _Optional[_Iterable[_Union[CrossPostInfo, _Mapping]]] = ...) -> None: ...
 
 class PostCreateOptions(_message.Message):
     __slots__ = ("platforms", "scheduled_at", "visibility", "reply_to", "thread", "location", "tags", "mentions", "enable_comments", "enable_sharing", "content_warning", "sensitive")
@@ -1200,7 +1197,7 @@ class PostCreateOptions(_message.Message):
     enable_sharing: bool
     content_warning: str
     sensitive: bool
-    def __init__(self, platforms: _Optional[_Iterable[str]] = ..., scheduled_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., visibility: _Optional[str] = ..., reply_to: _Optional[str] = ..., thread: _Optional[bool] = ..., location: _Optional[_Union[PostLocation, _Mapping]] = ..., tags: _Optional[_Iterable[str]] = ..., mentions: _Optional[_Iterable[str]] = ..., enable_comments: _Optional[bool] = ..., enable_sharing: _Optional[bool] = ..., content_warning: _Optional[str] = ..., sensitive: _Optional[bool] = ...) -> None: ...
+    def __init__(self, platforms: _Optional[_Iterable[str]] = ..., scheduled_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., visibility: _Optional[str] = ..., reply_to: _Optional[str] = ..., thread: bool = ..., location: _Optional[_Union[PostLocation, _Mapping]] = ..., tags: _Optional[_Iterable[str]] = ..., mentions: _Optional[_Iterable[str]] = ..., enable_comments: bool = ..., enable_sharing: bool = ..., content_warning: _Optional[str] = ..., sensitive: bool = ...) -> None: ...
 
 class PostSearchOptions(_message.Message):
     __slots__ = ("query", "author", "platform", "tags", "mentions", "since", "before", "limit", "offset", "has_media", "has_location", "visibility", "sort_by")
@@ -1230,7 +1227,7 @@ class PostSearchOptions(_message.Message):
     has_location: bool
     visibility: str
     sort_by: str
-    def __init__(self, query: _Optional[str] = ..., author: _Optional[str] = ..., platform: _Optional[str] = ..., tags: _Optional[_Iterable[str]] = ..., mentions: _Optional[_Iterable[str]] = ..., since: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., before: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., has_media: _Optional[bool] = ..., has_location: _Optional[bool] = ..., visibility: _Optional[str] = ..., sort_by: _Optional[str] = ...) -> None: ...
+    def __init__(self, query: _Optional[str] = ..., author: _Optional[str] = ..., platform: _Optional[str] = ..., tags: _Optional[_Iterable[str]] = ..., mentions: _Optional[_Iterable[str]] = ..., since: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., before: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., has_media: bool = ..., has_location: bool = ..., visibility: _Optional[str] = ..., sort_by: _Optional[str] = ...) -> None: ...
 
 class Demographics(_message.Message):
     __slots__ = ("age", "gender", "location")

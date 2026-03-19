@@ -2,8 +2,7 @@ from google.protobuf import struct_pb2 as _struct_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -47,7 +46,7 @@ class MentionContext(_message.Message):
     is_reply: bool
     is_thread: bool
     mention_type: str
-    def __init__(self, is_mention: _Optional[bool] = ..., is_reply: _Optional[bool] = ..., is_thread: _Optional[bool] = ..., mention_type: _Optional[str] = ...) -> None: ...
+    def __init__(self, is_mention: bool = ..., is_reply: bool = ..., is_thread: bool = ..., mention_type: _Optional[str] = ...) -> None: ...
 
 class Content(_message.Message):
     __slots__ = ("thought", "text", "actions", "providers", "source", "target", "url", "in_reply_to", "attachments", "channel_type", "mention_context", "response_message_id", "response_id", "simple", "type", "data")
@@ -83,7 +82,7 @@ class Content(_message.Message):
     simple: bool
     type: str
     data: _struct_pb2.Struct
-    def __init__(self, thought: _Optional[str] = ..., text: _Optional[str] = ..., actions: _Optional[_Iterable[str]] = ..., providers: _Optional[_Iterable[str]] = ..., source: _Optional[str] = ..., target: _Optional[str] = ..., url: _Optional[str] = ..., in_reply_to: _Optional[str] = ..., attachments: _Optional[_Iterable[_Union[Media, _Mapping]]] = ..., channel_type: _Optional[str] = ..., mention_context: _Optional[_Union[MentionContext, _Mapping]] = ..., response_message_id: _Optional[str] = ..., response_id: _Optional[str] = ..., simple: _Optional[bool] = ..., type: _Optional[str] = ..., data: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
+    def __init__(self, thought: _Optional[str] = ..., text: _Optional[str] = ..., actions: _Optional[_Iterable[str]] = ..., providers: _Optional[_Iterable[str]] = ..., source: _Optional[str] = ..., target: _Optional[str] = ..., url: _Optional[str] = ..., in_reply_to: _Optional[str] = ..., attachments: _Optional[_Iterable[_Union[Media, _Mapping]]] = ..., channel_type: _Optional[str] = ..., mention_context: _Optional[_Union[MentionContext, _Mapping]] = ..., response_message_id: _Optional[str] = ..., response_id: _Optional[str] = ..., simple: bool = ..., type: _Optional[str] = ..., data: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
 
 class Metadata(_message.Message):
     __slots__ = ("values",)

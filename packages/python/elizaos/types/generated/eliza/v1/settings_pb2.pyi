@@ -2,8 +2,7 @@ from google.protobuf import struct_pb2 as _struct_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -36,7 +35,7 @@ class SettingDefinition(_message.Message):
     public: bool
     secret: bool
     depends_on: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., usage_description: _Optional[str] = ..., required: _Optional[bool] = ..., public: _Optional[bool] = ..., secret: _Optional[bool] = ..., depends_on: _Optional[_Iterable[str]] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., usage_description: _Optional[str] = ..., required: bool = ..., public: bool = ..., secret: bool = ..., depends_on: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Setting(_message.Message):
     __slots__ = ("name", "description", "usage_description", "required", "public", "secret", "depends_on", "value")
@@ -56,7 +55,7 @@ class Setting(_message.Message):
     secret: bool
     depends_on: _containers.RepeatedScalarFieldContainer[str]
     value: _struct_pb2.Value
-    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., usage_description: _Optional[str] = ..., required: _Optional[bool] = ..., public: _Optional[bool] = ..., secret: _Optional[bool] = ..., depends_on: _Optional[_Iterable[str]] = ..., value: _Optional[_Union[_struct_pb2.Value, _Mapping]] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., usage_description: _Optional[str] = ..., required: bool = ..., public: bool = ..., secret: bool = ..., depends_on: _Optional[_Iterable[str]] = ..., value: _Optional[_Union[_struct_pb2.Value, _Mapping]] = ...) -> None: ...
 
 class WorldSettings(_message.Message):
     __slots__ = ("settings",)

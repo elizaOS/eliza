@@ -229,7 +229,7 @@ class AgentRuntime(IAgentRuntime):
 
         has_basic_capabilities = any(p.name == "basic_capabilities" for p in self._initial_plugins)
         if not has_basic_capabilities:
-            from elizaos.basic_capabilities import basic_capabilities_plugin
+            from elizaos.basic_capabilities_compat import basic_capabilities_plugin
 
             self._initial_plugins.insert(0, basic_capabilities_plugin)
 
@@ -295,7 +295,7 @@ class AgentRuntime(IAgentRuntime):
             )
 
             if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
-                from elizaos.basic_capabilities import CapabilityConfig, create_basic_capabilities_plugin
+                from elizaos.basic_capabilities_compat import CapabilityConfig, create_basic_capabilities_plugin
 
                 config = CapabilityConfig(
                     disable_basic=disable_basic,

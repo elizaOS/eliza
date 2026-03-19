@@ -1,5 +1,3 @@
-import datetime
-
 from eliza.v1 import memory_pb2 as _memory_pb2
 from google.protobuf import struct_pb2 as _struct_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
@@ -7,8 +5,7 @@ from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -80,7 +77,7 @@ class ActionLogResult(_message.Message):
     data: _struct_pb2.Struct
     text: str
     error: str
-    def __init__(self, success: _Optional[bool] = ..., data: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., text: _Optional[str] = ..., error: _Optional[str] = ...) -> None: ...
+    def __init__(self, success: bool = ..., data: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., text: _Optional[str] = ..., error: _Optional[str] = ...) -> None: ...
 
 class ActionLogPrompt(_message.Message):
     __slots__ = ("model_type", "prompt", "timestamp")
@@ -204,7 +201,7 @@ class Log(_message.Message):
     body: LogBody
     type: str
     created_at: _timestamp_pb2.Timestamp
-    def __init__(self, id: _Optional[str] = ..., entity_id: _Optional[str] = ..., room_id: _Optional[str] = ..., body: _Optional[_Union[LogBody, _Mapping]] = ..., type: _Optional[str] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., entity_id: _Optional[str] = ..., room_id: _Optional[str] = ..., body: _Optional[_Union[LogBody, _Mapping]] = ..., type: _Optional[str] = ..., created_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class AgentRunCounts(_message.Message):
     __slots__ = ("actions", "model_calls", "errors", "evaluators")
@@ -250,7 +247,7 @@ class AgentRunSummaryResult(_message.Message):
     runs: _containers.RepeatedCompositeFieldContainer[AgentRunSummary]
     total: int
     has_more: bool
-    def __init__(self, runs: _Optional[_Iterable[_Union[AgentRunSummary, _Mapping]]] = ..., total: _Optional[int] = ..., has_more: _Optional[bool] = ...) -> None: ...
+    def __init__(self, runs: _Optional[_Iterable[_Union[AgentRunSummary, _Mapping]]] = ..., total: _Optional[int] = ..., has_more: bool = ...) -> None: ...
 
 class EmbeddingSearchResult(_message.Message):
     __slots__ = ("embedding", "levenshtein_score")
@@ -274,7 +271,7 @@ class MemoryRetrievalOptions(_message.Message):
     start: int
     end: int
     agent_id: str
-    def __init__(self, room_id: _Optional[str] = ..., count: _Optional[int] = ..., unique: _Optional[bool] = ..., start: _Optional[int] = ..., end: _Optional[int] = ..., agent_id: _Optional[str] = ...) -> None: ...
+    def __init__(self, room_id: _Optional[str] = ..., count: _Optional[int] = ..., unique: bool = ..., start: _Optional[int] = ..., end: _Optional[int] = ..., agent_id: _Optional[str] = ...) -> None: ...
 
 class MemorySearchOptions(_message.Message):
     __slots__ = ("embedding", "match_threshold", "count", "room_id", "agent_id", "unique", "metadata")
@@ -292,7 +289,7 @@ class MemorySearchOptions(_message.Message):
     agent_id: str
     unique: bool
     metadata: _memory_pb2.MemoryMetadata
-    def __init__(self, embedding: _Optional[_Iterable[float]] = ..., match_threshold: _Optional[float] = ..., count: _Optional[int] = ..., room_id: _Optional[str] = ..., agent_id: _Optional[str] = ..., unique: _Optional[bool] = ..., metadata: _Optional[_Union[_memory_pb2.MemoryMetadata, _Mapping]] = ...) -> None: ...
+    def __init__(self, embedding: _Optional[_Iterable[float]] = ..., match_threshold: _Optional[float] = ..., count: _Optional[int] = ..., room_id: _Optional[str] = ..., agent_id: _Optional[str] = ..., unique: bool = ..., metadata: _Optional[_Union[_memory_pb2.MemoryMetadata, _Mapping]] = ...) -> None: ...
 
 class MultiRoomMemoryOptions(_message.Message):
     __slots__ = ("room_ids", "limit", "agent_id")
