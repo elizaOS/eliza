@@ -18,7 +18,9 @@ pub use crate::basic_capabilities::providers::{
     CurrentTimeProvider, EntitiesProvider, EvaluatorsProvider, Provider, ProvidersListProvider,
     RecentMessagesProvider, TimeProvider, WorldProvider,
 };
-pub use crate::basic_capabilities::services::{EmbeddingService, Service, ServiceType, TaskService};
+pub use crate::basic_capabilities::services::{
+    EmbeddingService, Service, ServiceType, TaskService,
+};
 
 /// Get all basic capabilities as vectors.
 pub fn get_basic_capabilities() -> (

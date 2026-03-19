@@ -650,15 +650,16 @@ impl AgentRuntime {
 
         // BasicCapabilities plugin parity: always register built-in basic_capabilities capabilities first.
         // Capability config precedence matches TS: constructor options > character settings > defaults.
-        let basic_capabilities_plugin = crate::basic_capabilities_core::create_basic_capabilities_plugin(
-            Arc::downgrade(self),
-            crate::basic_capabilities_core::CapabilityConfig {
-                disable_basic,
-                enable_extended,
-                enable_autonomy,
-                skip_character_provider: self.capability_options.skip_character_provider,
-            },
-        );
+        let basic_capabilities_plugin =
+            crate::basic_capabilities_core::create_basic_capabilities_plugin(
+                Arc::downgrade(self),
+                crate::basic_capabilities_core::CapabilityConfig {
+                    disable_basic,
+                    enable_extended,
+                    enable_autonomy,
+                    skip_character_provider: self.capability_options.skip_character_provider,
+                },
+            );
         self.register_plugin(basic_capabilities_plugin).await?;
 
         // Advanced planning is built into core, but only loaded when enabled on the character.
@@ -2950,11 +2951,13 @@ impl crate::basic_capabilities::runtime::IAgentRuntime for AgentRuntime {
         match model_type {
             crate::types::ModelType::TextEmbedding => {
                 let val: Vec<f32> = serde_json::from_str(&output_str).unwrap_or_default();
-                Ok(crate::basic_capabilities::runtime::ModelOutput::Embedding(val))
+                Ok(crate::basic_capabilities::runtime::ModelOutput::Embedding(
+                    val,
+                ))
             }
-            crate::types::ModelType::TextSmall | crate::types::ModelType::TextLarge => {
-                Ok(crate::basic_capabilities::runtime::ModelOutput::Text(output_str))
-            }
+            crate::types::ModelType::TextSmall | crate::types::ModelType::TextLarge => Ok(
+                crate::basic_capabilities::runtime::ModelOutput::Text(output_str),
+            ),
             _ => Ok(crate::basic_capabilities::runtime::ModelOutput::Structured(
                 serde_json::Value::String(output_str),
             )),
@@ -3014,7 +3017,10 @@ impl crate::basic_capabilities::runtime::IAgentRuntime for AgentRuntime {
         tracing::error!(source = source, "{}", message);
     }
 
-    fn register_task_worker(&self, worker: Box<dyn crate::basic_capabilities::runtime::TaskWorker>) {
+    fn register_task_worker(
+        &self,
+        worker: Box<dyn crate::basic_capabilities::runtime::TaskWorker>,
+    ) {
         let name = worker.name().to_string();
         if let Ok(mut workers) = self.task_workers.try_write() {
             workers.insert(name.clone(), std::sync::Arc::from(worker));
