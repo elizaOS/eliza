@@ -222,6 +222,7 @@
   "dependencies": {
     "@clack/prompts": "^1.0.0",
     "@elizaos/core": "workspace:*",
+    "dotenv": "^17.2.3",
     "@elizaos/plugin-agent-orchestrator": "0.3.15",
     "@elizaos/plugin-agent-skills": "alpha",
     "@elizaos/plugin-anthropic": "alpha",
