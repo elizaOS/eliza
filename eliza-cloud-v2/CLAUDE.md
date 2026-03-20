@@ -50,3 +50,20 @@ db/
 components/    # React components
 scripts/       # CLI utilities
 ```
+
+## Code Quality Guidelines
+
+### Security
+- No hardcoded API keys, secrets, or credentials - use environment variables
+- Sanitize user inputs to prevent SQL injection and XSS
+- Review dependencies for known vulnerabilities
+
+### TypeScript
+- Avoid using `any` type - use proper type definitions
+- Define interfaces for all data structures
+- Enable strict mode in tsconfig.json
+
+### Testing
+- Use Vitest for unit and integration tests
+- Write tests for new features and bug fixes
+- Run `bun test` before committing
