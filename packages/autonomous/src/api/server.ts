@@ -4284,7 +4284,7 @@ export async function resolveMcpServersRejection(
 // ---------------------------------------------------------------------------
 
 // Use shared presets for full parity between CLI and GUI onboarding.
-import { STYLE_PRESETS } from "../onboarding-presets";
+import { getStylePresets } from "../onboarding-presets";
 
 import { pickRandomNames } from "../runtime/onboarding-names";
 
@@ -5336,7 +5336,7 @@ export function resolveMcpTerminalAuthorizationRejection(
 
 const LOCAL_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
-const APP_ORIGIN_RE = /^(capacitor|app|tauri|file|electrobun):\/\/.*$/i;
+const APP_ORIGIN_RE = /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
 
 /**
  * Hostname allowlist for DNS rebinding protection.
@@ -8091,7 +8091,7 @@ async function handleRequest(
 
     json(res, {
       names: pickRandomNames(5),
-      styles: STYLE_PRESETS,
+      styles: getStylePresets(),
       providers: getProviderOptions(),
       cloudProviders: getCloudProviderOptions(),
       models: getModelOptions(),
@@ -11855,6 +11855,22 @@ async function handleRequest(
       }
     }
 
+    // Strip "[REDACTED]" placeholder values from secret fields before merge.
+    // The GET endpoint returns redacted secrets, and the UI may send them back
+    // via PUT — writing "[REDACTED]" as a literal value corrupts the config.
+    if (
+      filtered.cloud &&
+      typeof filtered.cloud === "object" &&
+      !Array.isArray(filtered.cloud)
+    ) {
+      const cloudPatch = filtered.cloud as Record<string, unknown>;
+      for (const key of Object.keys(cloudPatch)) {
+        if (isRedactedSecretValue(cloudPatch[key])) {
+          delete cloudPatch[key];
+        }
+      }
+    }
+
     safeMerge(state.config as Record<string, unknown>, filtered);
 
     // If the client updated env vars, synchronise them into process.env so
@@ -14693,6 +14709,14 @@ async function handleRequest(
     return;
   }
   if (
+    !state.runtime &&
+    method === "GET" &&
+    pathname === "/api/coding-agents/preflight"
+  ) {
+    json(res, []);
+    return;
+  }
+  if (
     state.runtime &&
     (pathname.startsWith("/api/coding-agents") ||
       pathname.startsWith("/api/workspace") ||
@@ -14700,6 +14724,22 @@ async function handleRequest(
   ) {
     // Try to dynamically load the route handler from the local plugin first
     let handled = false;
+
+    // Lazily start PTY_SERVICE if it was registered but not yet started.
+    // The core runtime only starts services on-demand via getServiceLoadPromise,
+    // but the orchestrator plugin's route handler checks getService() (which
+    // only returns already-started instances). Without this kick, the plugin
+    // sees null and returns 503 for every route.
+    if (
+      !state.runtime.getService("PTY_SERVICE") &&
+      state.runtime.hasService("PTY_SERVICE")
+    ) {
+      try {
+        await state.runtime.getServiceLoadPromise("PTY_SERVICE");
+      } catch {
+        // Service start failed — fall through to graceful fallback
+      }
+    }
 
     // Try @elizaos/plugin-coding-agent first (local workspace plugin)
     try {
@@ -17288,8 +17328,8 @@ export async function startApiServer(opts?: {
                   );
                 }
               };
-              bridge.on("session_output", listener);
-              subs.set(targetId, () => bridge.off("session_output", listener));
+              bridge.on("session_output", listener as (...args: unknown[]) => void);
+              subs.set(targetId, () => bridge.off("session_output", listener as (...args: unknown[]) => void));
             }
           }
         } else if (
