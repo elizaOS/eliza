@@ -13,12 +13,14 @@ import { useBranding } from "../config/branding";
 import { COMPANION_ENABLED } from "../navigation";
 import { VrmStage } from "./companion/VrmStage";
 import { ActivateStep } from "./onboarding/ActivateStep";
+import { CloudLoginStep } from "./onboarding/CloudLoginStep";
 import { ConnectionStep } from "./onboarding/ConnectionStep";
 import { IdentityStep } from "./onboarding/IdentityStep";
 import { OnboardingPanel } from "./onboarding/OnboardingPanel";
 import { OnboardingStepNav } from "./onboarding/OnboardingStepNav";
 import { PermissionsStep } from "./onboarding/PermissionsStep";
 import { RpcStep } from "./onboarding/RpcStep";
+import { WelcomeStep } from "./onboarding/WelcomeStep";
 
 const FORCE_VRM =
   typeof window !== "undefined" &&
@@ -42,7 +44,6 @@ export function OnboardingWizard() {
     uiLanguage,
     uiTheme,
     setState,
-    handleOnboardingNext,
     t,
   } = useApp();
 
@@ -69,25 +70,15 @@ export function OnboardingWizard() {
     };
   }, [uiTheme]);
 
-  // Auto-advance past the wakeUp splash once the VRM reveal animation starts,
-  // or after a 4-second timeout to prevent getting stuck when VRM fails to load.
-  useEffect(() => {
-    if (onboardingStep !== "wakeUp") return;
-    if (revealStarted) {
-      handleOnboardingNext();
-      return;
-    }
-    const timer = setTimeout(() => {
-      setRevealStarted(true);
-    }, 4000);
-    return () => clearTimeout(timer);
-  }, [onboardingStep, revealStarted, handleOnboardingNext]);
-
   function renderStep() {
     switch (onboardingStep) {
+      case "welcome":
+        return <WelcomeStep />;
+      case "cloudLogin":
+        return <CloudLoginStep />;
+      // Custom flow steps
       case "identity":
-        // Rendered outside the panel in OnboardingWizard JSX
-        return null;
+        return null; // Rendered separately in JSX (full-width overlay)
       case "connection":
         return <ConnectionStep />;
       case "rpc":
@@ -131,7 +122,7 @@ export function OnboardingWizard() {
         style={{
           position: "absolute",
           inset: 0,
-          pointerEvents: revealStarted ? "auto" : "none",
+          pointerEvents: "none",
           opacity: revealStarted ? 1 : 0,
           transition: "opacity 1.2s ease-in-out",
           zIndex: 40,
@@ -231,7 +222,6 @@ export function OnboardingWizard() {
         <div className="onboarding-ui-overlay">
           <OnboardingStepNav />
           {onboardingStep === "identity" ? (
-            /* Identity step renders full-width at the bottom — no glass panel */
             <div className="ob-identity-overlay">
               <IdentityStep />
             </div>

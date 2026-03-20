@@ -10,13 +10,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-[var(--primary-foreground,#1a1f26)] border border-transparent hover:border-[var(--accent-hover,#d8a108)] hover:shadow-[0_0_0_1px_var(--accent-hover,#d8a108)]",
+          "bg-accent/15 text-txt border border-accent/40 hover:bg-accent/25 hover:border-accent/60",
         destructive:
           "bg-destructive text-destructive-fg border border-transparent hover:border-destructive/70 hover:shadow-[0_0_0_1px_rgba(239,68,68,0.3)]",
         outline:
-          "border border-input bg-bg hover:border-[var(--accent,#f0b90b)] hover:shadow-[0_0_0_1px_var(--accent,#f0b90b)]",
-        secondary: "bg-secondary text-secondary-fg border border-transparent hover:border-secondary/70",
-        ghost: "hover:bg-bg-accent hover:text-accent-fg",
+          "border border-border bg-card hover:border-border-strong hover:bg-bg-hover",
+        secondary: "bg-bg-accent text-txt border border-border hover:border-border-strong hover:bg-bg-hover",
+        ghost: "hover:bg-bg-accent hover:text-txt",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
@@ -45,7 +45,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const isDefault = variant === "default" || variant === undefined;
     const resolvedStyle =
       isDefault && !style?.color
-        ? { ...style, color: "var(--primary-foreground, #1a1f26)" }
+        ? { ...style, color: "var(--primary-foreground)" }
         : style;
     return (
       <Comp

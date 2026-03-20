@@ -124,53 +124,82 @@ function SettingsSidebar({
   sections,
   activeSection,
   onSectionChange,
+  searchQuery,
+  onSearchChange,
+  onClose,
 }: {
   sections: SettingsSectionDef[];
   activeSection: string;
   onSectionChange: (id: string) => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  onClose: () => void;
 }) {
   const { t } = useApp();
 
   return (
-    <aside className="hidden w-80 shrink-0 self-start border-r border-border/50 bg-bg/35 backdrop-blur-xl xl:sticky xl:top-0 xl:flex">
-      <div className="flex flex-1 flex-col p-5">
-        <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted/80">
-          {t("settingsview.JumpToSection")}
+    <aside className="hidden w-52 shrink-0 self-stretch border-r border-border bg-bg-accent xl:sticky xl:top-0 xl:flex xl:h-screen">
+      <div className="flex flex-1 flex-col overflow-y-auto">
+        {/* Brand header */}
+        <div className="px-4 py-4 border-b border-border">
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-[10px] font-medium text-txt tracking-[0.12em]">
+              SETTINGS
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex size-6 items-center justify-center text-muted transition-colors hover:text-txt"
+              aria-label="Close settings"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
-        <nav className="flex flex-col gap-2 pr-1">
-          {sections.map((section) => {
-            const Icon = section.icon;
-            const isActive = activeSection === section.id;
-            return (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => onSectionChange(section.id)}
-                aria-current={isActive ? "page" : undefined}
-                className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all duration-200 ${
-                  isActive
-                    ? "border-accent/40 bg-accent/12 text-txt shadow-[0_10px_30px_rgba(var(--accent),0.08)]"
-                    : "border-transparent text-muted hover:border-border/60 hover:bg-card/55 hover:text-txt"
-                }`}
-              >
-                <span
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border p-2 ${
-                    isActive
-                      ? "border-accent/30 bg-accent/18 text-txt-strong"
-                      : "border-border/50 bg-bg-accent/80 text-muted"
-                  }`}
+        {/* Search */}
+        <div className="px-3 py-3 border-b border-border">
+          <div className="flex items-center gap-2 px-2.5 py-1.5 border border-border bg-bg">
+            <Search className="h-3 w-3 shrink-0 text-muted" aria-hidden />
+            <Input
+              type="text"
+              placeholder={t("settings.searchPlaceholder") || "Search..."}
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="h-6 min-w-0 flex-1 border-0 bg-transparent py-0 pr-0 pl-0 text-[11px] font-mono shadow-none placeholder:text-muted/60 focus-visible:ring-0 focus-visible:ring-offset-0"
+            />
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 py-3 px-2">
+          <div className="space-y-0.5">
+            {sections.map((section) => {
+              const Icon = section.icon;
+              const isActive = activeSection === section.id;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => onSectionChange(section.id)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`group w-full flex items-center gap-2.5 text-left px-3 py-2 relative
+                    font-mono text-[11px] tracking-wide transition-all duration-150
+                    ${
+                      isActive
+                        ? "text-txt bg-surface"
+                        : "text-muted hover:text-txt hover:bg-surface/50"
+                    }`}
                 >
-                  <Icon className="w-4 h-4 shrink-0" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold leading-snug text-current">
-                    {t(section.label)}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+                  {isActive && (
+                    <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-accent" />
+                  )}
+                  <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-accent" : ""}`} />
+                  <span className="truncate">{t(section.label)}</span>
+                </button>
+              );
+            })}
+          </div>
         </nav>
       </div>
     </aside>
@@ -785,37 +814,16 @@ export function SettingsView({
         sections={visibleSections}
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onClose={handleClose}
       />
 
       <div
-        className={`settings-page-content flex-1 min-w-0 scroll-smooth ${inModal ? "px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6" : "px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8"}`}
+        className={`settings-page-content flex-1 min-w-0 scroll-smooth ${inModal ? "px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6" : "px-5 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-10"}`}
       >
-        <div className="mx-auto max-w-5xl">
-          <div className="sticky top-0 z-20 mb-5 rounded-[1.35rem] border border-border/50 bg-bg/80 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl border border-border/60 bg-card/70 px-3 focus-within:ring-2 focus-within:ring-accent/40 focus-within:border-accent/50">
-                <Search className="h-4 w-4 shrink-0 text-muted" aria-hidden />
-                <Input
-                  type="text"
-                  placeholder={t("settings.searchPlaceholder")}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-9 min-w-0 flex-1 border-0 bg-transparent py-0 pr-0 pl-0 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                />
-              </div>
-              <button
-                type="button"
-                className="settings-icon-button inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted transition-all hover:border-accent hover:text-txt hover:shadow-sm"
-                onClick={handleClose}
-                aria-label="Close settings"
-                title={t("settingsview.CloseSettings")}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-6 pb-20 pt-1 sm:space-y-8 sm:pt-2">
+        <div className="mx-auto max-w-4xl">
+          <div className="space-y-6 pb-20 sm:space-y-8">
             {sectionsContent}
           </div>
         </div>

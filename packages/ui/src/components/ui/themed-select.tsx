@@ -101,7 +101,7 @@ export function ThemedSelect<T extends string>({
         >
           {groups.map((g) => (
             <div key={g.label}>
-              <div className="px-2.5 py-1 text-[10px] font-semibold text-muted bg-bg-muted sticky top-0">
+              <div className="px-2.5 py-1 text-[10px] font-semibold text-muted bg-bg-accent sticky top-0">
                 {g.label}
               </div>
               {g.items.map((item) => {
@@ -113,8 +113,8 @@ export function ThemedSelect<T extends string>({
                     size="sm"
                     className={`w-full justify-start text-left px-2.5 py-1.5 h-auto text-xs rounded-none ${
                       active
-                        ? "bg-accent text-accent-foreground"
-                        : "text-txt hover:bg-bg-muted"
+                        ? "bg-accent/20 text-accent"
+                        : "text-txt hover:bg-accent/10 hover:text-txt"
                     }`}
                     onClick={() => {
                       onChange(item.id);

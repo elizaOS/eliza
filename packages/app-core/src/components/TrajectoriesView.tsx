@@ -197,7 +197,7 @@ export function TrajectoriesView({
     <div className="flex flex-col h-full gap-3" data-testid="trajectories-view">
       {/* Stats summary */}
       {stats && (
-        <div className="flex flex-wrap gap-4 text-xs">
+        <div className="flex flex-wrap items-center gap-4 px-4 py-2.5 bg-card/60 backdrop-blur-xl border border-border/40 rounded-2xl text-xs">
           <div className="flex items-center gap-1.5">
             <span className="text-muted">{t("trajectoriesview.Total")}</span>
             <span className="font-semibold">
@@ -384,7 +384,7 @@ export function TrajectoriesView({
 
       {/* Error display */}
       {error && (
-        <div className="text-xs text-danger border border-danger/30 bg-danger/10 px-3 py-2">
+        <div className="text-xs text-danger border border-danger/30 bg-danger/10 px-3 py-2 rounded-xl">
           {error}
         </div>
       )}
@@ -392,14 +392,16 @@ export function TrajectoriesView({
       {/* Trajectories list */}
       <div className="flex-1 min-h-0 overflow-y-auto border border-border bg-card">
         {loading && trajectories.length === 0 ? (
-          <div className="text-center py-8 text-muted">
+          <div className="border border-border/30 bg-card/20 rounded-xl p-8 text-center text-muted text-xs m-4">
             {t("trajectoriesview.LoadingTrajectories")}
           </div>
         ) : trajectories.length === 0 ? (
-          <div className="text-center py-8 text-muted">
-            {hasActiveFilters
-              ? t("trajectoriesview.NoTrajectoriesMatchingFilters")
-              : t("trajectoriesview.NoTrajectoriesYet")}
+          <div className="border border-border/30 bg-card/20 rounded-xl p-8 text-center m-4">
+            <div className="text-muted text-xs">
+              {hasActiveFilters
+                ? t("trajectoriesview.NoTrajectoriesMatchingFilters")
+                : t("trajectoriesview.NoTrajectoriesYet")}
+            </div>
             {!config?.enabled && (
               <div className="mt-2 text-warn text-[11px]">
                 {t("trajectoriesview.LoggingHelp")}
