@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/autonomous",
-  "version": "2.0.0-alpha.79",
+  "version": "2.0.0-alpha.80",
   "description": "Standalone Milady agent runtime and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -222,7 +222,6 @@
   "dependencies": {
     "@clack/prompts": "^1.0.0",
     "@elizaos/core": "workspace:*",
-    "dotenv": "^17.2.3",
     "@elizaos/plugin-agent-orchestrator": "0.3.15",
     "@elizaos/plugin-agent-skills": "alpha",
     "@elizaos/plugin-anthropic": "alpha",
@@ -253,6 +252,7 @@
     "@noble/curves": "^2.0.1",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
     "coding-agent-adapters": "0.12.0",
+    "dotenv": "^17.2.3",
     "drizzle-orm": "0.45.1",
     "ethers": "^6.16.0",
     "git-workspace-service": "0.4.4",
