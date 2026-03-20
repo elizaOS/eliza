@@ -65,6 +65,6 @@ regex = "1.10"
 computeruse-mcp-agent = { path = "../computeruse-mcp-agent" }
 
 # Simple HTTP server for receiving telemetry
-bytes = "1.5"
+bytes = "1.11"
 
 # Protobuf support for parsing OTLP data
