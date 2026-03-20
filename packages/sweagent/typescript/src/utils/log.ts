@@ -72,6 +72,7 @@ class SweAgentLogger implements AgentLogger {
     args: unknown[]
   ): void {
     const msg = this.formatMessage(message);
+    // Note: conditionally handles the first arg as a merge-object for flexible logging formats
     if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0])) {
       method.call(this.logger, args[0], msg, ...args.slice(1));
     } else {
