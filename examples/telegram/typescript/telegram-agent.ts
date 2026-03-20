@@ -32,6 +32,7 @@ Keep responses short - suitable for mobile chat.`,
       OPENAI_LARGE_MODEL: "gpt-4o-mini",
     },
     secrets: {
+      // Note: stores sensitive information securely for API integration with external services
       TELEGRAM_BOT_TOKEN: telegramBotToken,
       OPENAI_API_KEY: openaiApiKey,
     },
