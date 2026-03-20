@@ -67,23 +67,48 @@ class SweAgentLogger implements AgentLogger {
   }
 
   debug(message: string, ...args: unknown[]): void {
-    this.logger.debug({}, this.formatMessage(message), ...(args as never[]));
+    const msg = this.formatMessage(message);
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+      this.logger.debug(args[0], msg, ...args.slice(1));
+    } else {
+      this.logger.debug(msg, ...args);
+    }
   }
 
   info(message: string, ...args: unknown[]): void {
-    this.logger.info({}, this.formatMessage(message), ...(args as never[]));
+    const msg = this.formatMessage(message);
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+      this.logger.info(args[0], msg, ...args.slice(1));
+    } else {
+      this.logger.info(msg, ...args);
+    }
   }
 
   warn(message: string, ...args: unknown[]): void {
-    this.logger.warn({}, this.formatMessage(message), ...(args as never[]));
+    const msg = this.formatMessage(message);
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+      this.logger.warn(args[0], msg, ...args.slice(1));
+    } else {
+      this.logger.warn(msg, ...args);
+    }
   }
 
   error(message: string, ...args: unknown[]): void {
-    this.logger.error({}, this.formatMessage(message), ...(args as never[]));
+    const msg = this.formatMessage(message);
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+      this.logger.error(args[0], msg, ...args.slice(1));
+    } else {
+      this.logger.error(msg, ...args);
+    }
   }
 
   critical(message: string, ...args: unknown[]): void {
-    this.logger.fatal({}, this.formatMessage(message), ...(args as never[]));
+    const msg = this.formatMessage(message);
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+      this.logger.fatal(args[0], msg, ...args.slice(1));
+    } else {
+      this.logger.fatal(msg, ...args);
+    }
   }
 
   warning(message: string, ...args: unknown[]): void {
