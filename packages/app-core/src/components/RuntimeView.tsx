@@ -133,16 +133,16 @@ function TreeNode(props: {
           <button
             type="button"
             onClick={() => onToggle(path)}
-            className="w-4 text-left text-[var(--muted)] hover:text-[var(--txt)]"
+            className="w-4 text-left text-muted hover:text-txt"
             title={open ? "Collapse" : "Expand"}
           >
             {open ? "▾" : "▸"}
           </button>
         ) : (
-          <span className="inline-block w-4 text-[var(--muted)]">·</span>
+          <span className="inline-block w-4 text-muted">·</span>
         )}
-        <span className="text-[var(--muted)]">{label}</span>
-        <span className="text-[var(--txt)]">{nodeSummary(value)}</span>
+        <span className="text-muted">{label}</span>
+        <span className="text-txt">{nodeSummary(value)}</span>
       </div>
 
       {canExpand && open && (
@@ -168,16 +168,16 @@ function OrderCard(props: { title: string; entries: RuntimeOrderItem[] }) {
   const { t } = useApp();
   const { title, entries } = props;
   return (
-    <div className="border border-[var(--border)] bg-[var(--card)] rounded-md p-3 min-h-[150px]">
+    <div className="border border-border bg-card rounded-2xl p-3 min-h-[150px]">
       <div className="text-xs font-semibold mb-2">
         {title} ({entries.length})
       </div>
       <div className="max-h-[180px] overflow-auto text-[11px] font-mono leading-5">
         {entries.length === 0 ? (
-          <div className="text-[var(--muted)]">{t("runtimeview.none")}</div>
+          <div className="text-muted">{t("runtimeview.none")}</div>
         ) : (
           entries.map((entry) => (
-            <div key={`${title}-${entry.index}`} className="text-[var(--txt)]">
+            <div key={`${title}-${entry.index}`} className="text-txt">
               {orderItemLabel(entry)}
             </div>
           ))
@@ -191,28 +191,28 @@ function ServicesOrderCard(props: { entries: RuntimeServiceOrderItem[] }) {
   const { t } = useApp();
   const { entries } = props;
   return (
-    <div className="border border-[var(--border)] bg-[var(--card)] rounded-md p-3 min-h-[150px]">
+    <div className="border border-border bg-card rounded-2xl p-3 min-h-[150px]">
       <div className="text-xs font-semibold mb-2">
         {t("runtimeview.Services")}
         {entries.length} {t("runtimeview.types")}
       </div>
       <div className="max-h-[180px] overflow-auto text-[11px] font-mono leading-5">
         {entries.length === 0 ? (
-          <div className="text-[var(--muted)]">{t("runtimeview.none")}</div>
+          <div className="text-muted">{t("runtimeview.none")}</div>
         ) : (
           entries.map((serviceGroup) => (
             <div
               key={`${serviceGroup.serviceType}-${serviceGroup.index}`}
               className="mb-2"
             >
-              <div className="text-[var(--txt)]">
+              <div className="text-txt">
                 [{serviceGroup.index}] {serviceGroup.serviceType} (
                 {serviceGroup.count})
               </div>
               {serviceGroup.instances.map((instance) => (
                 <div
                   key={`${serviceGroup.serviceType}-${instance.index}`}
-                  className="text-[var(--muted)] pl-4"
+                  className="text-muted pl-4"
                 >
                   {orderItemLabel(instance)}
                 </div>
@@ -279,8 +279,8 @@ export function RuntimeView() {
 
   return (
     <div data-testid="runtime-view" className="flex flex-col gap-4 h-full">
-      <div className="flex flex-wrap items-end gap-3 border border-[var(--border)] bg-[var(--card)] rounded-md p-3">
-        <label className="text-[11px] text-[var(--muted)] flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 bg-card/60 backdrop-blur-xl border border-border/40 rounded-2xl">
+        <label className="text-[11px] text-muted flex items-center gap-1">
           {t("runtimeview.depth")}
           <input
             type="number"
@@ -290,10 +290,10 @@ export function RuntimeView() {
             onChange={(e) =>
               setDepth(Math.max(1, Math.min(24, Number(e.target.value) || 1)))
             }
-            className="w-16 px-1.5 py-0.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--txt)] rounded-sm"
+            className="w-16 px-1.5 py-0.5 border border-border bg-bg text-txt rounded-lg"
           />
         </label>
-        <label className="text-[11px] text-[var(--muted)] flex items-center gap-1">
+        <label className="text-[11px] text-muted flex items-center gap-1">
           {t("runtimeview.arrayCap")}
           <input
             type="number"
@@ -305,10 +305,10 @@ export function RuntimeView() {
                 Math.max(1, Math.min(5000, Number(e.target.value) || 1)),
               )
             }
-            className="w-20 px-1.5 py-0.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--txt)] rounded-sm"
+            className="w-20 px-1.5 py-0.5 border border-border bg-bg text-txt rounded-lg"
           />
         </label>
-        <label className="text-[11px] text-[var(--muted)] flex items-center gap-1">
+        <label className="text-[11px] text-muted flex items-center gap-1">
           {t("runtimeview.objectCap")}
           <input
             type="number"
@@ -320,21 +320,21 @@ export function RuntimeView() {
                 Math.max(1, Math.min(5000, Number(e.target.value) || 1)),
               )
             }
-            className="w-20 px-1.5 py-0.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--txt)] rounded-sm"
+            className="w-20 px-1.5 py-0.5 border border-border bg-bg text-txt rounded-lg"
           />
         </label>
         <button
           type="button"
           onClick={() => void loadSnapshot()}
           disabled={loading}
-          className="px-3 py-1.5 text-xs rounded border border-[var(--border)] bg-[var(--bg)] hover:bg-[var(--bg-hover)] disabled:opacity-60"
+          className="px-3 py-1.5 text-xs rounded-lg border border-border bg-bg hover:bg-card disabled:opacity-60"
         >
           {loading ? "Refreshing..." : "Refresh"}
         </button>
         <button
           type="button"
           onClick={() => setExpandedPaths(new Set([rootPath]))}
-          className="px-3 py-1.5 text-xs rounded border border-[var(--border)] bg-[var(--bg)] hover:bg-[var(--bg-hover)]"
+          className="px-3 py-1.5 text-xs rounded-lg border border-border bg-bg hover:bg-card"
         >
           {t("runtimeview.Collapse")}
         </button>
@@ -343,11 +343,11 @@ export function RuntimeView() {
           onClick={() =>
             setExpandedPaths(buildInitialExpanded(rootPath, sectionData))
           }
-          className="px-3 py-1.5 text-xs rounded border border-[var(--border)] bg-[var(--bg)] hover:bg-[var(--bg-hover)]"
+          className="px-3 py-1.5 text-xs rounded-lg border border-border bg-bg hover:bg-card"
         >
           {t("runtimeview.ExpandTop")}
         </button>
-        <div className="text-[11px] text-[var(--muted)] ml-auto">
+        <div className="text-[11px] text-muted ml-auto">
           {snapshot
             ? `Last updated: ${formatDateTime(snapshot.generatedAt, { fallback: "n/a" })}`
             : "No snapshot loaded"}
@@ -373,7 +373,7 @@ export function RuntimeView() {
             entries={snapshot.order.evaluators}
           />
           <ServicesOrderCard entries={snapshot.order.services} />
-          <div className="border border-[var(--border)] bg-[var(--card)] rounded-md p-3">
+          <div className="border border-border bg-card rounded-2xl p-3">
             <div className="text-xs font-semibold mb-2">
               {t("runtimeview.Summary")}
             </div>
@@ -411,7 +411,7 @@ export function RuntimeView() {
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-[var(--border)]">
+      <div className="flex gap-1 border-b border-border">
         {SECTION_TABS.map((tab) => {
           const active = tab.key === activeSection;
           return (
@@ -431,17 +431,17 @@ export function RuntimeView() {
         })}
       </div>
 
-      <div className="flex-1 min-h-0 border border-[var(--border)] bg-[var(--card)] rounded-md overflow-auto p-2">
+      <div className="flex-1 min-h-0 border border-border bg-card rounded-2xl overflow-auto p-2">
         {error ? (
-          <div className="text-xs text-danger p-3">{error}</div>
+          <div className="border border-danger/30 bg-danger/10 rounded-xl p-3 text-xs text-danger m-2">{error}</div>
         ) : !snapshot ? (
-          <div className="text-xs text-[var(--muted)] p-3">
+          <div className="border border-border/30 bg-card/20 rounded-xl p-8 text-center text-xs text-muted m-2">
             {loading
               ? "Loading runtime snapshot..."
               : "No runtime snapshot available."}
           </div>
         ) : !snapshot.runtimeAvailable ? (
-          <div className="text-xs text-[var(--muted)] p-3">
+          <div className="border border-border/30 bg-card/20 rounded-xl p-8 text-center text-xs text-muted m-2">
             {t("runtimeview.AgentRuntimeIsNot")}
           </div>
         ) : (

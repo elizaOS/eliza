@@ -601,7 +601,8 @@ function VectorGraph3D({
 
       // Scene
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x111111);
+      const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#08080a';
+      scene.background = new THREE.Color(bgColor);
       sceneRef.current = scene;
 
       // Camera
@@ -756,7 +757,9 @@ function VectorGraph3D({
       spheresRef.current = spheres;
 
       // Add subtle grid helper
-      gridHelper = new THREE.GridHelper(6, 12, 0x333333, 0x222222);
+      const borderColor3d = getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#333333';
+      const borderColorHex = new THREE.Color(borderColor3d).getHex();
+      gridHelper = new THREE.GridHelper(6, 12, borderColorHex, Math.round(borderColorHex * 0.6));
       gridHelper.position.y = -2;
       scene.add(gridHelper);
 
@@ -971,7 +974,7 @@ function VectorGraph3D({
       {/* Tooltip */}
       {hoveredMem && tooltipPos && (
         <div
-          className="absolute pointer-events-none bg-black/90 text-white text-[11px] px-3 py-2 max-w-[300px] z-10"
+          className="absolute pointer-events-none bg-card/95 text-txt backdrop-blur-sm border border-border/30 rounded-lg text-[11px] px-3 py-2 max-w-[300px] z-10"
           style={{
             left: tooltipPos.x + 15,
             top: tooltipPos.y + 15,
@@ -1039,7 +1042,7 @@ function MemoryDetailModal({
       role="dialog"
       aria-modal="true"
     >
-      <div className="bg-[var(--card)] border border-[var(--border)] max-w-[700px] w-full max-h-[90vh] overflow-auto">
+      <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-2xl backdrop-blur-xl max-w-[700px] w-full max-h-[90vh] overflow-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b border-[var(--border)]">
           <div className="text-xs font-medium text-[var(--txt)]">
@@ -1060,7 +1063,7 @@ function MemoryDetailModal({
           <div className="text-[11px] text-[var(--muted)] mb-1 uppercase font-bold">
             {t("vectorbrowserview.Content")}
           </div>
-          <div className="text-xs text-[var(--txt)] whitespace-pre-wrap break-words mb-4 p-2 bg-[var(--bg)] border border-[var(--border)] max-h-[200px] overflow-auto">
+          <div className="text-xs text-[var(--txt)] whitespace-pre-wrap break-words mb-4 p-2 bg-[var(--bg)] border border-[var(--border)] rounded-lg max-h-[200px] overflow-auto">
             {memory.content || "(empty)"}
           </div>
 
@@ -1108,7 +1111,7 @@ function MemoryDetailModal({
                 {t("vectorbrowserview.Embedding")}
                 {memory.embedding.length} {t("vectorbrowserview.dimensions")}
               </div>
-              <div className="p-2 bg-[var(--bg)] border border-[var(--border)] text-[10px] font-mono text-[var(--muted)] max-h-[150px] overflow-auto break-all mb-4">
+              <div className="p-2 bg-[var(--bg)] border border-[var(--border)] rounded-lg text-[10px] font-mono text-[var(--muted)] max-h-[150px] overflow-auto break-all mb-4">
                 [{memory.embedding.map((v) => v.toFixed(6)).join(", ")}]
               </div>
             </>
@@ -1119,7 +1122,7 @@ function MemoryDetailModal({
             <summary className="text-[11px] text-[var(--muted)] cursor-pointer hover:text-[var(--txt)] uppercase font-bold mb-1">
               {t("vectorbrowserview.RawRecord")}
             </summary>
-            <div className="p-2 bg-[var(--bg)] border border-[var(--border)] text-[10px] font-mono text-[var(--muted)] max-h-[200px] overflow-auto break-all">
+            <div className="p-2 bg-[var(--bg)] border border-[var(--border)] rounded-lg text-[10px] font-mono text-[var(--muted)] max-h-[200px] overflow-auto break-all">
               {JSON.stringify(memory.raw, null, 2)}
             </div>
           </details>
@@ -1383,21 +1386,16 @@ export function VectorBrowserView() {
     <div>
       {/* Stats bar */}
       {stats && !isConnectionError && (
-        <div className="flex gap-4 mb-4 text-[11px] text-[var(--muted)]">
-          <span>
-            {Number(stats.total).toLocaleString()}{" "}
-            {t("vectorbrowserview.memories")}
-          </span>
+        <div className="flex items-center gap-4 mb-4 px-4 py-2.5 bg-card/60 backdrop-blur-xl border border-border/40 rounded-2xl">
+          <span className="w-2 h-2 rounded-full bg-ok" />
+          <span className="text-xs font-medium text-txt">{Number(stats.total).toLocaleString()} {t("vectorbrowserview.memories")}</span>
+          <span className="text-xs text-muted">•</span>
+          <span className="text-xs text-muted">{Number(stats.dimensions) > 0 ? `${stats.dimensions}D embeddings` : "loading..."}</span>
           {Number(stats.uniqueCount) > 0 && (
-            <span>
-              {Number(stats.uniqueCount).toLocaleString()}{" "}
-              {t("vectorbrowserview.unique")}
-            </span>
-          )}
-          {Number(stats.dimensions) > 0 && (
-            <span>
-              {stats.dimensions} {t("vectorbrowserview.dimensions1")}
-            </span>
+            <>
+              <span className="text-xs text-muted">•</span>
+              <span className="text-xs text-muted">{Number(stats.uniqueCount).toLocaleString()} {t("vectorbrowserview.unique")}</span>
+            </>
           )}
         </div>
       )}
@@ -1430,7 +1428,7 @@ export function VectorBrowserView() {
                 setSearch("");
                 setSearchInput("");
               }}
-              className="px-2 py-1.5 border border-[var(--border)] bg-[var(--card)] text-[var(--txt)] text-xs"
+              className="px-3 py-1.5 text-xs border border-border bg-card rounded-lg text-txt"
             >
               {tables.map((t) => (
                 <option key={t.name} value={t.name}>

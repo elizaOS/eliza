@@ -8069,6 +8069,37 @@ async function handleRequest(
     return;
   }
 
+  // ── GET /api/wallet/keys (onboarding only) ─────────────────────────────
+  if (method === "GET" && pathname === "/api/wallet/keys") {
+    // Only expose private keys before onboarding is complete
+    if (hasPersistedOnboardingState(state.config)) {
+      json(res, { error: "Wallet keys are only available during onboarding" }, 403);
+      return;
+    }
+
+    // Ensure keys exist (generates if missing)
+    ensureWalletKeysInEnvAndConfig(state.config);
+    try {
+      state.saveConfig(state.config);
+    } catch {
+      // Non-fatal — keys are in process.env regardless
+    }
+
+    const evmPrivateKey = process.env.EVM_PRIVATE_KEY ?? "";
+    const solanaPrivateKey = process.env.SOLANA_PRIVATE_KEY ?? "";
+
+    // Derive addresses from keys
+    const addresses = getWalletAddresses(state.config, state.runtime);
+
+    json(res, {
+      evmPrivateKey,
+      evmAddress: addresses.evmAddress ?? "",
+      solanaPrivateKey,
+      solanaAddress: addresses.solanaAddress ?? "",
+    });
+    return;
+  }
+
   // ── GET /api/onboarding/options ─────────────────────────────────────────
   if (method === "GET" && pathname === "/api/onboarding/options") {
     let piAiModels: Array<{

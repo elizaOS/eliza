@@ -855,29 +855,67 @@ export async function handleKnowledgeRoutes(
     fragmentCount: number;
     warnings?: string[];
   }> {
+    let content = document.content;
+    let contentType = document.contentType || "text/plain";
+    const warnings: string[] = [];
+
+    // Image files: the content is base64-encoded binary which can't be
+    // text-extracted. Convert to a text description for embedding.
+    if (contentType.startsWith("image/")) {
+      const includeDescriptions = (document.metadata as Record<string, unknown>)?.includeImageDescriptions === true;
+      if (includeDescriptions && runtime) {
+        // Try to describe the image via the runtime's vision model
+        try {
+          const { ModelType } = await import("@elizaos/core");
+          const dataUri = `data:${contentType};base64,${content}`;
+          const description = await runtime.useModel(ModelType.TEXT_SMALL, {
+            prompt: `Describe this image in detail for a knowledge base. Focus on text content, data, charts, and key visual elements. Image filename: ${document.filename}`,
+            images: [dataUri],
+            maxTokens: 1000,
+          });
+          content = `[Image: ${document.filename}]\n\n${typeof description === "string" ? description : (description as { text?: string }).text || "Image uploaded"}`;
+          contentType = "text/plain";
+        } catch (err) {
+          // Vision failed — store as a reference entry
+          content = `[Image: ${document.filename}] — Image uploaded. Vision description unavailable.`;
+          contentType = "text/plain";
+          warnings.push(`Vision description failed for ${document.filename}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } else {
+        // No vision requested — store as a reference entry
+        content = `[Image: ${document.filename}] — Image uploaded without text extraction.`;
+        contentType = "text/plain";
+      }
+    }
+
+    // MDX files: treat as markdown
+    if (document.filename?.endsWith(".mdx")) {
+      contentType = "text/markdown";
+    }
+
     const result = await service.addKnowledge({
       agentId,
       worldId: agentId,
       roomId: agentId,
       entityId: agentId,
       clientDocumentId: "" as UUID, // Will be generated
-      contentType: document.contentType || "text/plain",
+      contentType,
       originalFilename: document.filename,
-      content: document.content,
+      content,
       metadata: document.metadata,
     });
 
     const warningsValue = (result as { warnings?: unknown }).warnings;
-    const warnings = Array.isArray(warningsValue)
-      ? warningsValue.filter(
-          (warning): warning is string => typeof warning === "string",
-        )
-      : undefined;
+    if (Array.isArray(warningsValue)) {
+      for (const w of warningsValue) {
+        if (typeof w === "string") warnings.push(w);
+      }
+    }
 
     return {
       documentId: result.clientDocumentId,
       fragmentCount: result.fragmentCount,
-      warnings,
+      warnings: warnings.length > 0 ? warnings : undefined,
     };
   }
 

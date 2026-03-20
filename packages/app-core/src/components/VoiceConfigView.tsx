@@ -188,7 +188,7 @@ function WakeWordSection({
           aria-label={enabled ? "Disable wake word" : "Enable wake word"}
         >
           <span
-            className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+            className={`inline-block h-3.5 w-3.5 rounded-full bg-bg shadow transition-transform ${
               enabled ? "translate-x-4" : "translate-x-0.5"
             }`}
           />
@@ -300,7 +300,7 @@ function WakeWordSection({
         </span>
         <div className="h-1.5 w-full bg-[var(--border)] overflow-hidden">
           <div
-            className="h-full bg-green-500 transition-all duration-75"
+            className="h-full bg-[var(--ok)] transition-all duration-75"
             style={{ width: `${Math.min(audioLevel * 100, 100)}%` }}
           />
         </div>
@@ -516,7 +516,7 @@ export function VoiceConfigView() {
         <span
           className={`rounded-full border px-1.5 py-0.5 text-[10px] ${
             isConfigured
-              ? "border-green-600 bg-green-600/10 text-[var(--text)]"
+              ? "border-[var(--ok)] bg-[var(--ok)]/10 text-[var(--text)]"
               : "border-[var(--warn)] bg-[var(--warn-subtle)] text-[var(--text)]"
           }`}
         >
@@ -591,20 +591,23 @@ export function VoiceConfigView() {
               {PREMADE_VOICES.map((preset) => {
                 const active = selectedVoiceId === preset.voiceId;
                 return (
-                  <Button
+                  <button
                     key={preset.id}
-                    variant={active ? "default" : "outline"}
-                    size="sm"
-                    className="h-auto flex-col items-start py-1.5 px-2 text-left"
+                    type="button"
+                    className={`h-auto flex flex-col items-start py-2.5 px-3 text-left rounded-lg border transition-all cursor-pointer ${
+                      active
+                        ? "border-[var(--accent)] bg-[var(--accent)]/8 text-[var(--text)]"
+                        : "border-[var(--border)] bg-[var(--bg-accent)] text-[var(--text)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)]"
+                    }`}
                     onClick={() => handleVoiceSelect(preset.voiceId)}
                   >
-                    <div className="font-semibold truncate w-full">
+                    <div className="font-semibold text-xs truncate w-full">
                       {preset.name}
                     </div>
-                    <div className="text-[10px] opacity-70 truncate w-full">
+                    <div className="text-[10px] text-[var(--muted)] truncate w-full">
                       {preset.hint}
                     </div>
-                  </Button>
+                  </button>
                 );
               })}
             </div>

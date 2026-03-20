@@ -13,7 +13,7 @@ export function getTabForShellView(view: ShellView, lastNativeTab: Tab): Tab {
   }
 
   if (view === "character") {
-    return COMPANION_ENABLED ? "character-select" : lastNativeTab;
+    return "character";
   }
 
   return lastNativeTab;
@@ -33,7 +33,8 @@ export function shouldStartAtCharacterSelectOnLaunch(params: {
     return false;
   }
 
-  // Only redirect generic landing pages to character-select; an explicit
-  // /companion URL should stay on the companion view.
-  return navPath === "/" || urlTab === "chat";
+  // Don't auto-redirect to character-select — existing users should land
+  // on companion chat with their configured character. Character-select is
+  // only reached by explicit navigation (e.g. from the shell view toggle).
+  return false;
 }
