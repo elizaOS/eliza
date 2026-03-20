@@ -435,7 +435,11 @@ export function AppProvider({
   const [lastNativeTab, setLastNativeTabState] =
     useState<Tab>(loadLastNativeTab);
   // --- Core state ---
-  const [tab, setTabRaw] = useState<Tab>("chat");
+  const [tab, _setTabRawInner] = useState<Tab>("chat");
+  const initialTabSetRef = useRef(false);
+  const setTabRaw = useCallback((t: Tab) => {
+    _setTabRawInner(t);
+  }, []);
   const [uiLanguage, setUiLanguageState] = useState<UiLanguage>(loadUiLanguage);
   const [uiTheme, setUiThemeState] = useState<UiTheme>(loadUiTheme);
   const [connected, setConnected] = useState(false);
@@ -812,8 +816,7 @@ export function AppProvider({
   // --- Onboarding ---
   const [onboardingStep, setOnboardingStepRaw] = useState<OnboardingStep>(
     () =>
-      loadPersistedOnboardingStep() ??
-      (brandingOverride?.cloudOnly ? "identity" : "wakeUp"),
+      loadPersistedOnboardingStep() ?? "welcome",
   );
   const [onboardingMode, setOnboardingMode] =
     useState<AppState["onboardingMode"]>("basic");
@@ -1053,6 +1056,8 @@ export function AppProvider({
   const walletApiKeySavingRef = useRef(false);
   /** Synchronous lock for cloud login action to prevent duplicate clicks in the same tick. */
   const elizaCloudLoginBusyRef = useRef(false);
+  /** Forward ref so handleOnboardingNext (defined earlier) can call handleCloudLogin (defined later). */
+  const handleCloudLoginRef = useRef<() => Promise<void>>(async () => {});
   /** Synchronous lock for update channel changes to prevent duplicate submits. */
   const updateChannelSavingRef = useRef(false);
   /** Synchronous lock for onboarding completion submit to prevent duplicate clicks. */
@@ -1242,7 +1247,9 @@ export function AppProvider({
 
   const switchShellView = useCallback(
     (view: ShellView) => {
-      setTab(getTabForShellView(view, lastNativeTab));
+      const nextTab = getTabForShellView(view, lastNativeTab);
+      console.log(`[shell] switchShellView: ${view} → tab=${nextTab}, lastNativeTab=${lastNativeTab}`);
+      setTab(nextTab);
     },
     [lastNativeTab, setTab],
   );
@@ -2338,7 +2345,7 @@ export function AppProvider({
       onboardingCompletionCommittedRef.current = false;
       setOnboardingComplete(false);
       onboardingResumeConnectionRef.current = null;
-      setOnboardingStep("wakeUp");
+      setOnboardingStep("welcome");
       setConversationMessages([]);
       setActiveConversationId(null);
       activeConversationIdRef.current = null;
@@ -2771,15 +2778,19 @@ export function AppProvider({
 
         let convId: string =
           options?.conversationId ?? activeConversationId ?? "";
+        let isNewConv = false;
         if (!convId) {
           try {
-            const { conversation } = await client.createConversation();
+            // Use the first message as the conversation title
+            const convTitle = text.length > 50 ? `${text.slice(0, 47)}...` : text;
+            const { conversation } = await client.createConversation(convTitle || undefined);
             const nextCutoffTs = Date.now();
             setConversations((prev) => [conversation, ...prev]);
             setActiveConversationId(conversation.id);
             activeConversationIdRef.current = conversation.id;
             setCompanionMessageCutoffTs(nextCutoffTs);
             convId = conversation.id;
+            isNewConv = true;
           } catch {
             return;
           }
@@ -2789,6 +2800,8 @@ export function AppProvider({
           type: "active-conversation",
           conversationId: convId,
         });
+
+        // Title was set during createConversation above
 
         const now = Date.now();
         const userMsgId = `temp-${now}`;
@@ -2987,13 +3000,15 @@ export function AppProvider({
       const sendNonce = ++chatSendNonceRef.current;
       const conversationMode: ConversationMode = chatMode;
       let controller: AbortController | null = null;
+      let isNewConversation = false;
 
       try {
         let convId: string = activeConversationId ?? "";
         if (!convId) {
           try {
+            const actionTitle = trimmed.length > 50 ? `${trimmed.slice(0, 47)}...` : trimmed;
             const { conversation } = await client.createConversation(
-              t("conversations.newChatTitle"),
+              actionTitle || t("conversations.newChatTitle"),
             );
             const nextCutoffTs = Date.now();
             setConversations((prev) => [conversation, ...prev]);
@@ -3001,6 +3016,7 @@ export function AppProvider({
             activeConversationIdRef.current = conversation.id;
             setCompanionMessageCutoffTs(nextCutoffTs);
             convId = conversation.id;
+            isNewConversation = true;
           } catch {
             return;
           }
@@ -3010,6 +3026,8 @@ export function AppProvider({
           type: "active-conversation",
           conversationId: convId,
         });
+
+        // Title was set during createConversation above
 
         const now = Date.now();
         const userMsgId = `temp-action-${now}`;
@@ -4129,6 +4147,43 @@ export function AppProvider({
     if (onboardingFinishBusyRef.current || onboardingRestarting) return;
     if (!onboardingOptions) return;
     if (onboardingFinishSavingRef.current || onboardingRestarting) return;
+
+    // Cloud fast-track: if we got here from the 3-step onboarding,
+    // submit with cloud defaults directly.
+    if (elizaCloudConnected) {
+      const style = onboardingOptions?.styles?.[0];
+      const defaultName = style?.catchphrase ? "Chen" : "Eliza";
+
+      try {
+        await client.submitOnboarding({
+          name: onboardingName || defaultName,
+          bio: style?.bio ?? ["An autonomous AI agent."],
+          systemPrompt: style?.system?.replace(/\{\{name\}\}/g, onboardingName || defaultName) ?? `You are ${onboardingName || defaultName}, an autonomous AI agent powered by elizaOS.`,
+          style: style?.style,
+          adjectives: style?.adjectives,
+          // Cloud onboarding: the API key was already persisted server-side
+          // by handleCloudLogin → persistCloudLoginStatus. We just need to
+          // tell the backend to enable cloud mode with default models.
+          runMode: "cloud",
+          cloudProvider: "elizacloud",
+          smallModel: "moonshotai/kimi-k2-turbo",
+          largeModel: "moonshotai/kimi-k2-0905",
+        } as unknown as Parameters<typeof client.submitOnboarding>[0]);
+
+        try {
+          setAgentStatus(await client.restartAgent());
+        } catch { /* ignore */ }
+
+        clearPersistedOnboardingStep();
+        setOnboardingComplete(true);
+        setTab("companion");
+        return;
+      } catch (err) {
+        console.error("[onboarding] Cloud fast-track failed:", err);
+        // Fall through to existing logic as fallback
+      }
+    }
+
     const style = onboardingOptions.styles.find(
       (s: StylePreset) => s.catchphrase === onboardingStyle,
     );
@@ -4182,7 +4237,7 @@ export function AppProvider({
         if (startOver) {
           clearPersistedOnboardingStep();
           onboardingResumeConnectionRef.current = null;
-          setOnboardingStep("wakeUp");
+          setOnboardingStep("welcome");
           setOnboardingMode("basic");
           setOnboardingActiveGuide(null);
           setOnboardingDeferredTasks([]);
@@ -4358,7 +4413,7 @@ export function AppProvider({
       if (startOver) {
         clearPersistedOnboardingStep();
         onboardingResumeConnectionRef.current = null;
-        setOnboardingStep("wakeUp");
+        setOnboardingStep("welcome");
         setOnboardingMode("basic");
         setOnboardingActiveGuide(null);
         setOnboardingDeferredTasks([]);
@@ -4406,30 +4461,43 @@ export function AppProvider({
     setTab,
     requestGreetingWhenRunning,
     waitForOnboardingGreetingBootstrap,
+    elizaCloudConnected,
   ]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: t is stable but defined later
   const handleOnboardingNext = useCallback(
     async (options?: OnboardingNextOptions) => {
-      const STEP_ORDER: OnboardingStep[] = [
-        "wakeUp",
-        "identity",
-        "connection",
-        "rpc",
-        "senses",
-        "activate",
-      ];
+      const CLOUD_STEPS: OnboardingStep[] = ["welcome", "cloudLogin"];
+      const CUSTOM_STEPS: OnboardingStep[] = ["identity", "connection", "rpc", "senses", "activate"];
+      const isCustomFlow = CUSTOM_STEPS.includes(onboardingStep);
+      const STEP_ORDER = isCustomFlow ? CUSTOM_STEPS : CLOUD_STEPS;
 
-      // Auto-select first style if none chosen (identity step will let user change)
+      // ── Cloud flow ──────────────────────────────────────────────────
+      // "welcome" → trigger cloud login, advance to cloudLogin
+      if (onboardingStep === "welcome") {
+        try {
+          await handleCloudLoginRef.current();
+        } catch (err) {
+          console.error("[onboarding] Cloud login failed to start:", err);
+        }
+      }
+
+      // "cloudLogin" → cloud login succeeded, finish onboarding immediately
+      if (onboardingStep === "cloudLogin") {
+        await handleOnboardingFinish();
+        return;
+      }
+
+      // ── Custom flow ─────────────────────────────────────────────────
+      // Auto-select first style if none chosen
       if (
-        onboardingStep === "wakeUp" &&
+        onboardingStep === "identity" &&
         !onboardingStyle &&
         onboardingOptions?.styles?.length
       ) {
         setState("onboardingStyle", onboardingOptions.styles[0].catchphrase);
       }
 
-      // Default agent name to Rin if none set after identity step
       if (onboardingStep === "identity" && !onboardingName) {
         setState("onboardingName", "Rin");
       }
@@ -4446,54 +4514,23 @@ export function AppProvider({
             (provider) => provider.id !== "elizacloud",
           )?.id ??
           "";
-
         if (fallbackProvider) {
           setOnboardingProvider(fallbackProvider);
-          if (
-            detectedProvider?.id === fallbackProvider &&
-            detectedProvider.apiKey
-          ) {
+          if (detectedProvider?.id === fallbackProvider && detectedProvider.apiKey) {
             setOnboardingApiKey(detectedProvider.apiKey);
           }
         }
       }
 
-      // At activate step, finish onboarding
       if (onboardingStep === "activate") {
         await handleOnboardingFinish();
         return;
       }
 
-      // At senses step, check permissions unless bypass
       if (onboardingStep === "senses") {
         if (options?.allowPermissionBypass) {
-          if (options.skipTask) {
-            addDeferredOnboardingTask(options.skipTask);
-          }
+          if (options.skipTask) addDeferredOnboardingTask(options.skipTask);
           await handleOnboardingFinish();
-          return;
-        }
-        try {
-          const permissions = await client.getPermissions();
-          const missingPermissions =
-            getMissingOnboardingPermissions(permissions);
-          if (missingPermissions.length > 0) {
-            const missingLabels = missingPermissions
-              .map((id) => ONBOARDING_PERMISSION_LABELS[id] ?? id)
-              .join(", ");
-            setActionNotice(
-              `Missing required permissions: ${missingLabels}. Grant them or use "Skip for Now".`,
-              "error",
-              5200,
-            );
-            return;
-          }
-        } catch (err) {
-          setActionNotice(
-            `Could not verify permissions (${err instanceof Error ? err.message : "unknown error"}). Use "Skip for Now" to continue.`,
-            "error",
-            5200,
-          );
           return;
         }
       }
@@ -4501,9 +4538,6 @@ export function AppProvider({
       // Advance to next step
       const currentIndex = STEP_ORDER.indexOf(onboardingStep);
       if (currentIndex < STEP_ORDER.length - 1) {
-        if (options?.skipTask) {
-          addDeferredOnboardingTask(options.skipTask);
-        }
         let nextStep = STEP_ORDER[currentIndex + 1];
         if (nextStep === "identity" && !COMPANION_ENABLED) {
           nextStep = STEP_ORDER[currentIndex + 2];
@@ -4517,31 +4551,17 @@ export function AppProvider({
       }
     },
     [
-      addDeferredOnboardingTask,
-      onboardingDetectedProviders,
       onboardingMode,
-      onboardingName,
-      onboardingOptions,
-      onboardingProvider,
-      onboardingRunMode,
       onboardingStep,
-      onboardingStyle,
-      setOnboardingApiKey,
-      setOnboardingProvider,
-      setActionNotice,
       handleOnboardingFinish,
     ],
   );
 
   const handleOnboardingBack = useCallback(() => {
-    const STEP_ORDER: OnboardingStep[] = [
-      "wakeUp",
-      "identity",
-      "connection",
-      "rpc",
-      "senses",
-      "activate",
-    ];
+    const CLOUD_STEPS: OnboardingStep[] = ["welcome", "cloudLogin"];
+    const CUSTOM_STEPS: OnboardingStep[] = ["identity", "connection", "rpc", "senses", "activate"];
+    const isCustomFlow = CUSTOM_STEPS.includes(onboardingStep);
+    const STEP_ORDER = isCustomFlow ? CUSTOM_STEPS : CLOUD_STEPS;
 
     const currentIndex = STEP_ORDER.indexOf(onboardingStep);
     if (currentIndex > 0) {
@@ -4555,6 +4575,9 @@ export function AppProvider({
           ? getFlaminaTopicForOnboardingStep(previousStep)
           : null,
       );
+    } else if (isCustomFlow) {
+      // Going back from first custom step → back to welcome
+      setOnboardingStep("welcome");
     }
   }, [onboardingMode, onboardingStep, setOnboardingStep]);
 
@@ -4624,6 +4647,8 @@ export function AppProvider({
   // ── Cloud ──────────────────────────────────────────────────────────
 
   const handleCloudLogin = useCallback(async () => {
+    // Already connected (existing API key) — no need to re-authenticate.
+    if (elizaCloudConnected) return;
     if (elizaCloudLoginBusyRef.current || elizaCloudLoginBusy) return;
     elizaCloudLoginBusyRef.current = true;
     setElizaCloudLoginBusy(true);
@@ -4719,6 +4744,9 @@ export function AppProvider({
             setElizaCloudConnected(true);
             setElizaCloudEnabled(true);
             setElizaCloudLoginError(null);
+            if (poll.userId) {
+              setElizaCloudUserId(poll.userId);
+            }
 
             // Store the cloud auth token for provisioning
             if (poll.token && typeof window !== "undefined") {
@@ -4772,11 +4800,15 @@ export function AppProvider({
       setElizaCloudLoginBusy(false);
     }
   }, [
+    elizaCloudConnected,
     elizaCloudLoginBusy,
     setActionNotice,
     pollCloudCredits,
     loadWalletConfig,
   ]);
+
+  // Keep forward ref in sync so handleOnboardingNext can call it.
+  handleCloudLoginRef.current = handleCloudLogin;
 
   const handleCloudDisconnect = useCallback(async () => {
     if (
@@ -5959,10 +5991,18 @@ export function AppProvider({
           urlTab,
         },
       );
-      if (shouldStartAtCharacterSelect) {
-        setTab("character-select");
-        void loadCharacter();
-      } else if (urlTab) {
+      // Only set the initial tab ONCE ever — use a ref so async retries
+      // inside the same effect closure don't override the user's navigation.
+      if (!initialTabSetRef.current) {
+        initialTabSetRef.current = true;
+        if (shouldStartAtCharacterSelect) {
+          setTab("character-select");
+          void loadCharacter();
+        } else if (!onboardingNeedsOptions && (!urlTab || urlTab === "chat")) {
+          setTab("companion");
+        }
+      }
+      if (urlTab && urlTab !== "chat" && urlTab !== "companion") {
         setTabRaw(urlTab);
         if (urlTab === "plugins" || urlTab === "connectors") {
           void loadPlugins();

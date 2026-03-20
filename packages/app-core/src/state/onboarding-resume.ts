@@ -132,9 +132,7 @@ export function inferOnboardingResumeStep(args: {
     return args.persistedStep;
   }
 
-  return hasPartialOnboardingConnectionConfig(args.config)
-    ? "senses"
-    : "identity";
+  return "welcome";
 }
 
 export function deriveOnboardingResumeConnection(

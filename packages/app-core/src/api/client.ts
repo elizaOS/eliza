@@ -2314,6 +2314,15 @@ export class MiladyClient {
     return this.fetch("/api/onboarding/status");
   }
 
+  async getWalletKeys(): Promise<{
+    evmPrivateKey: string;
+    evmAddress: string;
+    solanaPrivateKey: string;
+    solanaAddress: string;
+  }> {
+    return this.fetch("/api/wallet/keys");
+  }
+
   async getAuthStatus(): Promise<{
     required: boolean;
     pairingEnabled: boolean;

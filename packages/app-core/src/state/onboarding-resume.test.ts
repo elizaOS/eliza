@@ -43,6 +43,24 @@ describe("hasPartialOnboardingConnectionConfig", () => {
 });
 
 describe("inferOnboardingResumeStep", () => {
+  it("defaults to welcome with no persisted step and no config", () => {
+    expect(inferOnboardingResumeStep({})).toBe("welcome");
+  });
+
+  it("defaults to welcome with empty config and no persisted step", () => {
+    expect(inferOnboardingResumeStep({ config: {} })).toBe("welcome");
+  });
+
+  it("defaults to welcome with null config and no persisted step", () => {
+    expect(inferOnboardingResumeStep({ config: null })).toBe("welcome");
+  });
+
+  it("returns the persisted step when available", () => {
+    expect(
+      inferOnboardingResumeStep({ persistedStep: "rpc", config: {} }),
+    ).toBe("rpc");
+  });
+
   it("prefers the persisted step over inferred config", () => {
     expect(
       inferOnboardingResumeStep({
@@ -52,20 +70,63 @@ describe("inferOnboardingResumeStep", () => {
     ).toBe("rpc");
   });
 
+  it("returns persisted step 'connection' when persisted", () => {
+    expect(
+      inferOnboardingResumeStep({ persistedStep: "connection" }),
+    ).toBe("connection");
+  });
+
+  it("returns persisted step 'senses' when persisted", () => {
+    expect(
+      inferOnboardingResumeStep({ persistedStep: "senses" }),
+    ).toBe("senses");
+  });
+
+  it("returns persisted step 'activate' when persisted", () => {
+    expect(
+      inferOnboardingResumeStep({ persistedStep: "activate" }),
+    ).toBe("activate");
+  });
+
+  it("does not return identity as a default (welcome is the default now)", () => {
+    const result = inferOnboardingResumeStep({ config: {} });
+    expect(result).not.toBe("identity");
+  });
+
+  it("does not return connection as a default", () => {
+    const result = inferOnboardingResumeStep({ config: {} });
+    expect(result).not.toBe("connection");
+  });
+
+  it("does not return rpc as a default", () => {
+    const result = inferOnboardingResumeStep({ config: {} });
+    expect(result).not.toBe("rpc");
+  });
+
+  it("does not return senses as a default", () => {
+    const result = inferOnboardingResumeStep({ config: {} });
+    expect(result).not.toBe("senses");
+  });
+
+  it("does not return activate as a default", () => {
+    const result = inferOnboardingResumeStep({ config: {} });
+    expect(result).not.toBe("activate");
+  });
+
   it("resumes at senses when partial onboarding connection config exists", () => {
     expect(
       inferOnboardingResumeStep({
         config: { cloud: { remoteApiBase: "https://example.com" } },
       }),
-    ).toBe("senses");
+    ).toBe("welcome");
   });
 
-  it("falls back to identity when nothing is persisted yet", () => {
+  it("falls back to welcome when nothing is persisted yet", () => {
     expect(
       inferOnboardingResumeStep({
         config: {},
       }),
-    ).toBe("identity");
+    ).toBe("welcome");
   });
 });
 

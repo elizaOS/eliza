@@ -970,7 +970,7 @@
 
 .anime-wallet-portfolio-tab.is-active {
   border-color: color-mix(in srgb, var(--ac-accent) 68%, white 32%);
-  color: #0f172a;
+  color: var(--accent-foreground, #0f172a);
   background: linear-gradient(
     106deg,
     color-mix(in srgb, var(--ac-accent) 84%, white 16%),
@@ -1486,7 +1486,7 @@
 
 .anime-wallet-popover-action.is-primary {
   border-color: color-mix(in srgb, var(--ac-accent) 62%, white 38%);
-  color: #0f172a;
+  color: var(--accent-foreground, #0f172a);
   background: linear-gradient(
     108deg,
     color-mix(in srgb, var(--ac-accent) 86%, white 14%),
@@ -1525,7 +1525,7 @@
 
 .anime-wallet-mode-btn.is-active {
   border-color: color-mix(in srgb, var(--ac-accent) 68%, white 32%);
-  color: #0f172a;
+  color: var(--accent-foreground, #0f172a);
   background: linear-gradient(
     106deg,
     color-mix(in srgb, var(--ac-accent) 84%, white 16%),
@@ -3650,26 +3650,20 @@
   background: #ffffff;
 }
 
-/* Buttons — chamfered clip-path, dark glass with accent border */
+/* Buttons — accent border, no clip-path for full click area */
 .settings-content-area .btn {
   background: var(--s-accent-subtle);
   border: 1px solid var(--s-accent);
+  border-radius: 6px;
   color: var(--s-text);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  padding: 7px 18px;
+  padding: 10px 20px;
+  min-height: 38px;
   transition: all 0.2s ease;
   position: relative;
-  clip-path: polygon(
-    6px 0,
-    100% 0,
-    100% calc(100% - 6px),
-    calc(100% - 6px) 100%,
-    0 100%,
-    0 6px
-  );
 }
 
 .settings-content-area .btn:hover {
@@ -4233,6 +4227,32 @@
 .settings-content-area .overflow-y-auto {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.06) transparent;
+}
+
+/* Force all buttons in settings to be fully clickable — no clip-path */
+.settings-content-area button,
+.settings-content-area .btn,
+.settings-content-area [role="button"],
+.settings-content-area a.btn {
+  clip-path: none !important;
+}
+
+/* Toggle, card, and button overrides moved to brand-gold.css */
+
+/* Ensure settings page content scrolls properly */
+.settings-page-content {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  max-height: 100vh;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+
+.settings-shell {
+  height: 100%;
+  max-height: 100vh;
+  overflow: hidden;
 }
 
 /* ══════════════════════════════════════════════════════════════════════

@@ -390,7 +390,7 @@ export function MediaSettingsSection() {
                 <span>{t(CATEGORY_LABELS[cat])}</span>
                 <span
                   className={`ml-1.5 inline-block w-1.5 h-1.5 rounded-full ${
-                    catConfigured ? "bg-green-500" : "bg-border-strong"
+                    catConfigured ? "bg-[var(--ok)]" : "bg-border-strong"
                   }`}
                 />
               </Button>
@@ -422,7 +422,7 @@ export function MediaSettingsSection() {
         <span
           className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] ${
             configured
-              ? "border-green-600 bg-green-600/10 text-[var(--text)]"
+              ? "border-[var(--ok)] bg-[var(--ok)]/10 text-[var(--text)]"
               : "border-[var(--warn)] bg-[var(--warn-subtle)] text-[var(--text)]"
           }`}
         >

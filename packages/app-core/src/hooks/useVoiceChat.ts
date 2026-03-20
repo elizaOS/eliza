@@ -523,9 +523,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     const canUseMicrophone =
       typeof navigator !== "undefined" &&
       typeof navigator.mediaDevices?.getUserMedia === "function";
+    // On Electrobun/native platforms, always show the mic button — the
+    // native TalkMode (Whisper) plugin handles STT even when the browser
+    // doesn't expose SpeechRecognition or getUserMedia.
     setSupported(
       shouldPreferNativeTalkMode()
-        ? canUseMicrophone || !!SpeechRecognitionAPI
+        ? true
         : !!SpeechRecognitionAPI,
     );
     synthRef.current = window.speechSynthesis ?? null;
