@@ -63,7 +63,9 @@ export type { UiShellMode } from "./ui-preferences";
 export type ShellView = "companion" | "character" | "desktop";
 
 export type OnboardingStep =
-  | "wakeUp"
+  | "welcome"
+  | "cloudLogin"
+  // Custom (local) flow steps
   | "identity"
   | "connection"
   | "rpc"
@@ -76,12 +78,22 @@ export interface OnboardingStepMeta {
   subtitle: string;
 }
 
-export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
+/** Steps shown for the default cloud fast-track. */
+export const CLOUD_ONBOARDING_STEPS: OnboardingStepMeta[] = [
   {
-    id: "wakeUp",
-    name: "onboarding.stepName.wakeUp",
-    subtitle: "onboarding.stepSub.wakeUp",
+    id: "welcome",
+    name: "onboarding.stepName.welcome",
+    subtitle: "onboarding.stepSub.welcome",
   },
+  {
+    id: "cloudLogin",
+    name: "onboarding.stepName.cloudLogin",
+    subtitle: "onboarding.stepSub.cloudLogin",
+  },
+];
+
+/** Steps shown for the custom/local setup flow. */
+export const CUSTOM_ONBOARDING_STEPS: OnboardingStepMeta[] = [
   {
     id: "identity",
     name: "onboarding.stepName.identity",
@@ -107,6 +119,12 @@ export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
     name: "onboarding.stepName.activate",
     subtitle: "onboarding.readyTitle",
   },
+];
+
+/** All steps — used by ONBOARDING_STEPS for backwards compat. */
+export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
+  ...CLOUD_ONBOARDING_STEPS,
+  ...CUSTOM_ONBOARDING_STEPS,
 ];
 
 export type OnboardingMode = "basic" | "advanced" | "elizacloudonly";

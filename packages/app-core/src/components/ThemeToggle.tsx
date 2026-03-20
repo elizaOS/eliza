@@ -94,9 +94,9 @@ export function ThemeToggle({
       data-no-camera-drag="true"
     >
       {isDark ? (
-        <SunIcon className="w-5 h-5" />
-      ) : (
         <MoonIcon className="w-5 h-5" />
+      ) : (
+        <SunIcon className="w-5 h-5" />
       )}
     </button>
   );

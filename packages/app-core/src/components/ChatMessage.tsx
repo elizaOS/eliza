@@ -4,7 +4,7 @@
 
 import type { ConversationMessage } from "@elizaos/app-core/api";
 import { useTimeout } from "@elizaos/app-core/hooks";
-import { useApp } from "@elizaos/app-core/state";
+import { getVrmPreviewUrl, useApp } from "@elizaos/app-core/state";
 import { Button } from "@elizaos/ui";
 import { Check, Copy, Pencil, Trash2, Volume2 } from "lucide-react";
 import {
@@ -399,49 +399,63 @@ export function TypingIndicator({
 /* ── Empty State ─────────────────────────────────────────────────────── */
 
 export function ChatEmptyState({ agentName }: { agentName: string }) {
-  const { t } = useApp();
+  const { t, handleChatSend, setState, selectedVrmIndex } = useApp();
+
+  // Agent-specific suggestions based on name
+  const suggestions = [
+    `Hey ${agentName}, what can you do?`,
+    `Tell me about yourself, ${agentName}`,
+    `What's happening in crypto today?`,
+    `Help me set up my wallet`,
+  ];
+
+  const handleSuggestion = (text: string) => {
+    setState("chatInput", text);
+    // Small delay to let state update, then send
+    setTimeout(() => void handleChatSend(), 50);
+  };
+
+  // Use agent avatar thumbnail
+  const avatarIndex = selectedVrmIndex > 0 ? selectedVrmIndex : 1;
+  const avatarUrl = getVrmPreviewUrl(avatarIndex);
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
-      <div className="w-16 h-16 rounded-2xl bg-accent-subtle flex items-center justify-center mb-4">
-        <svg
-          width="32"
-          height="32"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="text-txt"
-          aria-label="Chat icon"
-        >
-          <title>{t("nav.chat")}</title>
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
+      <div className="w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center mb-4 overflow-hidden">
+        <img
+          src={avatarUrl}
+          alt={agentName}
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            // Fallback to initial letter if image fails
+            const target = e.currentTarget;
+            target.style.display = "none";
+            target.parentElement!.innerHTML = `<span class="text-2xl font-bold text-accent">${agentName.charAt(0).toUpperCase()}</span>`;
+          }}
+        />
       </div>
       <h3 className="text-lg font-semibold text-txt-strong mb-2">
-        {t("chatmessage.StartAConversation")}
+        {t("chatmessage.StartAConversation") || "Start a conversation"}
       </h3>
       <p
         className="text-sm text-muted max-w-sm mb-6"
         style={{ fontFamily: "var(--font-chat)" }}
       >
-        {t("chatmessage.SendAMessageTo")} {agentName}{" "}
-        {t("chatmessage.toBeginChattingY")}
+        {t("chatmessage.SendAMessageTo") || "Send a message to"} {agentName}{" "}
+        {t("chatmessage.toBeginChattingY") || "to begin chatting."}
       </p>
       <div className="flex flex-wrap justify-center gap-2">
-        {["Hello!", "How are you?", "Tell me a joke", "Help me with..."].map(
-          (suggestion) => (
-            <Button
-              key={suggestion}
-              variant="outline"
-              size="sm"
-              className="px-3 py-1.5 h-7 text-xs rounded-full text-muted border-border bg-bg hover:border-accent hover:text-txt transition-colors"
-            >
-              {suggestion}
-            </Button>
-          ),
-        )}
+        {suggestions.map((suggestion) => (
+          <Button
+            key={suggestion}
+            variant="outline"
+            size="sm"
+            className="px-3 py-1.5 h-auto text-xs rounded-full text-muted border-border bg-card hover:border-accent hover:text-txt transition-colors cursor-pointer"
+            onClick={() => handleSuggestion(suggestion)}
+          >
+            {suggestion}
+          </Button>
+        ))}
       </div>
     </div>
   );

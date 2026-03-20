@@ -1235,5 +1235,34 @@
   "onboarding.rpcHeliusKey": "Helius API Key (Solana)",
   "onboarding.rpcBirdeyeKey": "Birdeye API Key (Solana)",
   "onboarding.rpcSkip": "Skip for now",
-  "onboarding.rpcConnectedCloud": "Connected via Eliza Cloud"
+  "onboarding.rpcConnectedCloud": "Connected via Eliza Cloud",
+
+  "onboarding.stepName.welcome": "Welcome",
+  "onboarding.stepSub.welcome": "Get started",
+  "onboarding.stepName.cloudLogin": "Connect",
+  "onboarding.stepSub.cloudLogin": "Eliza Cloud",
+  "onboarding.stepName.saveKeys": "Wallets",
+  "onboarding.stepSub.saveKeys": "Save your keys",
+
+  "onboarding.welcomeDesc": "Your AI companion is almost ready. Connect to Eliza Cloud to get started in seconds.",
+  "onboarding.getStarted": "Get Started",
+
+  "onboarding.cloudLoginTitle": "Connecting to Eliza Cloud",
+  "onboarding.cloudLoginDesc": "A browser window will open to log you in. Come back here when you're done.",
+  "onboarding.cloudLoginBusy": "Waiting for login in your browser...",
+  "onboarding.cloudLoginConnected": "✓ Connected to Eliza Cloud",
+  "onboarding.cloudLoginBtn": "Log in with Eliza Cloud",
+  "onboarding.cloudLoginRetry": "Retry Login",
+
+  "onboarding.saveKeysTitle": "Save Your Keys",
+  "onboarding.saveKeysDesc": "Your wallets have been created. Copy and save these private keys somewhere safe — you won't see them again.",
+  "onboarding.saveKeysWarning": "⚠ Anyone with these keys can access your wallets. Keep them private.",
+  "onboarding.saveKeysLoading": "Generating wallets...",
+  "onboarding.saveKeysConfirm": "I have saved my private keys",
+  "onboarding.savedMyKeys": "Continue",
+  "onboarding.evmAddress": "Ethereum Address",
+  "onboarding.evmPrivateKey": "Ethereum Private Key",
+  "onboarding.solanaAddress": "Solana Address",
+  "onboarding.solanaPrivateKey": "Solana Private Key",
+  "onboarding.customSetup": "custom"
 }

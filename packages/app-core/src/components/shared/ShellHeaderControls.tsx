@@ -103,11 +103,6 @@ export function ShellHeaderControls({
         Icon: UserRound,
       },
       {
-        view: "character",
-        label: t("nav.character"),
-        Icon: Users,
-      },
-      {
         view: "desktop",
         label: t("header.nativeMode"),
         Icon: isMobileViewport ? Smartphone : Monitor,
@@ -116,9 +111,13 @@ export function ShellHeaderControls({
 
   return (
     <div
-      className={`flex min-w-0 items-center gap-3 w-full ${className ?? ""}`}
+      className={`flex min-w-0 items-center w-full ${className ?? ""}`}
       data-no-camera-drag="true"
     >
+      {/* Left: children (e.g. navigation) */}
+      <div className="flex-1 min-w-0">{children}</div>
+
+      {/* Shell view toggle — sits in the right controls area */}
       <div className="flex shrink-0 items-center">
         <fieldset
           className="inline-flex items-center gap-0.5 rounded-xl border border-border/60 bg-transparent p-0.5 shadow-sm dark:border-border dark:bg-transparent"
@@ -157,8 +156,7 @@ export function ShellHeaderControls({
         </fieldset>
       </div>
 
-      <div className="min-w-0 flex-1">{children}</div>
-
+      {/* Right: controls */}
       <div
         className="flex shrink-0 items-center justify-end gap-2"
         data-testid="shell-header-right-controls"

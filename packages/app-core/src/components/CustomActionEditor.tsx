@@ -678,20 +678,38 @@ export function CustomActionEditor({
   };
 
   const handleTest = async () => {
-    if (!action?.id) {
-      setTestResult({ error: "Save the action first to test it." });
-      return;
-    }
-
     setTesting(true);
     setTestResult(null);
+
+    // Auto-save if the action hasn't been saved yet
+    let actionId = action?.id;
+    if (!actionId) {
+      try {
+        await handleSave();
+        // After save, the action should have an ID
+        actionId = action?.id;
+        if (!actionId) {
+          setTestResult({ error: "Failed to save action before testing. Please save manually first." });
+          setTesting(false);
+          return;
+        }
+      } catch (err) {
+        setTestResult({ error: `Save failed: ${err instanceof Error ? err.message : String(err)}` });
+        setTesting(false);
+        return;
+      }
+    }
+
     const startTime = Date.now();
 
     try {
-      const result = await client.testCustomAction(action.id, testParams);
+      const result = await client.testCustomAction(actionId, testParams);
       const duration = Date.now() - startTime;
       setTestResult({
-        output: JSON.stringify(result, null, 2),
+        output: result.error
+          ? undefined
+          : JSON.stringify(result, null, 2),
+        error: result.error || undefined,
         duration,
       });
     } catch (err: unknown) {
@@ -1104,7 +1122,7 @@ export function CustomActionEditor({
               variant="outline"
               size="sm"
               onClick={handleTest}
-              disabled={testing || !action?.id}
+              disabled={testing || saving}
             >
               {testing ? "Testing..." : "Test"}
             </Button>

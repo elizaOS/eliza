@@ -38,6 +38,7 @@ const LARGE_FILE_WARNING_BYTES = 8 * 1_048_576;
 const SUPPORTED_UPLOAD_EXTENSIONS = new Set([
   ".txt",
   ".md",
+  ".mdx",
   ".pdf",
   ".docx",
   ".json",
@@ -76,7 +77,9 @@ export function shouldReadKnowledgeFileAsText(
   ];
 
   return (
-    textTypes.some((t) => file.type.includes(t)) || file.name.endsWith(".md")
+    textTypes.some((t) => file.type.includes(t)) ||
+    file.name.endsWith(".md") ||
+    file.name.endsWith(".mdx")
   );
 }
 
@@ -162,7 +165,7 @@ function UploadZone({
         type="file"
         className="hidden"
         multiple
-        accept=".txt,.md,.pdf,.docx,.json,.csv,.xml,.html,.png,.jpg,.jpeg,.webp,.gif"
+        accept=".txt,.md,.mdx,.pdf,.docx,.json,.csv,.xml,.html,.png,.jpg,.jpeg,.webp,.gif"
         onChange={handleFileSelect}
       />
       <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
@@ -195,55 +198,59 @@ function UploadZone({
           {t("knowledgeview.IncludeAIImageDes")}
         </label>
       </div>
-      {(dragOver || uploading || showUrlInput) && (
-        <div
-          className={`mt-2 rounded-xl border px-3 py-2.5 transition-colors sm:min-w-[24rem] ${
-            dragOver
-              ? "border-border/50 bg-card/30"
-              : "border-border/30 bg-card/15"
-          } ${uploading ? "opacity-60" : ""}`}
-        >
-          {(dragOver || uploading) && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted/80">
-              <span className="font-medium text-txt/80">
-                {uploadStatus
-                  ? `Uploading ${uploadStatus.current}/${uploadStatus.total}${uploadStatus.filename ? `: ${uploadStatus.filename}` : ""}`
-                  : "Drop files or folders to upload"}
-              </span>
-            </div>
-          )}
+      <div
+        className={`mt-2 rounded-xl border px-3 py-2.5 transition-colors sm:min-w-[24rem] ${
+          dragOver
+            ? "border-accent/50 bg-accent/5"
+            : "border border-dashed border-border/30 bg-card/10"
+        } ${uploading ? "opacity-60" : ""}`}
+      >
+        {(dragOver || uploading) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted/80">
+            <span className="font-medium text-txt/80">
+              {uploadStatus
+                ? `Uploading ${uploadStatus.current}/${uploadStatus.total}${uploadStatus.filename ? `: ${uploadStatus.filename}` : ""}`
+                : "Drop files or folders to upload"}
+            </span>
+          </div>
+        )}
 
-          {showUrlInput && (
-            <div
-              className={`${dragOver || uploading ? "mt-2" : ""} animate-in fade-in slide-in-from-top-2 duration-300`}
-            >
-              <div className="mb-2 text-[11px] font-medium leading-relaxed text-muted">
-                {t("knowledgeview.PasteAURLToImpor")}
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  type="url"
-                  placeholder={t("knowledgeview.httpsExampleCom")}
-                  value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleUrlSubmit()}
-                  disabled={uploading}
-                  className="h-10 flex-1 bg-bg/60 border-border/50 text-xs shadow-none"
-                />
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="h-10 px-4 text-[11px] font-semibold"
-                  onClick={handleUrlSubmit}
-                  disabled={!urlInput.trim() || uploading}
-                >
-                  {t("knowledgeview.Import")}
-                </Button>
-              </div>
+        {!dragOver && !uploading && !showUrlInput && (
+          <div className="text-[11px] text-muted/60 text-center py-0.5">
+            Drop files here to upload
+          </div>
+        )}
+
+        {showUrlInput && (
+          <div
+            className={`${dragOver || uploading ? "mt-2" : ""} animate-in fade-in slide-in-from-top-2 duration-300`}
+          >
+            <div className="mb-2 text-[11px] font-medium leading-relaxed text-muted">
+              {t("knowledgeview.PasteAURLToImpor")}
             </div>
-          )}
-        </div>
-      )}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                type="url"
+                placeholder={t("knowledgeview.httpsExampleCom")}
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleUrlSubmit()}
+                disabled={uploading}
+                className="h-10 flex-1 bg-bg/60 border-border/50 text-xs shadow-none"
+              />
+              <Button
+                variant="default"
+                size="sm"
+                className="h-10 px-4 text-[11px] font-semibold"
+                onClick={handleUrlSubmit}
+                disabled={!urlInput.trim() || uploading}
+              >
+                {t("knowledgeview.Import")}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </fieldset>
   );
 }
@@ -263,7 +270,7 @@ function SearchResults({
       <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
         <h3 className="text-sm font-bold text-txt tracking-wide">
           {t("knowledgeview.SearchResults")}
-          <span className="ml-2 text-[11px] text-muted font-mono bg-black/10 px-2 py-0.5 rounded-full border border-white/5">
+          <span className="ml-2 text-[11px] text-muted font-mono bg-bg/20 px-2 py-0.5 rounded-full border border-border/20">
             {results.length}
           </span>
         </h3>
@@ -297,7 +304,7 @@ function SearchResults({
           </div>
         ))}
         {results.length === 0 && (
-          <div className="text-center py-10 text-muted bg-black/5 rounded-xl border border-white/5">
+          <div className="text-center py-10 text-muted bg-bg/10 rounded-xl border border-border/20">
             {t("knowledgeview.NoResultsFound")}
           </div>
         )}
@@ -337,12 +344,18 @@ function DocumentCard({
           </span>
           <span className="w-1 h-1 rounded-full bg-border/50" />
           <span>{formatByteSize(doc.fileSize)}</span>
+          {doc.fragmentCount != null && (
+            <>
+              <span className="w-1 h-1 rounded-full bg-border/50" />
+              <span className="text-xs text-muted">{doc.fragmentCount} fragments</span>
+            </>
+          )}
           <span className="w-1 h-1 rounded-full bg-border/50" />
           <span>{formatShortDate(doc.createdAt, { fallback: "—" })}</span>
           {doc.source === "youtube" && (
             <>
               <span className="w-1 h-1 rounded-full bg-border/50" />
-              <span className="px-2 py-0.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-md text-[10px] font-bold tracking-wider">
+              <span className="px-2 py-0.5 bg-danger/10 text-danger border border-danger/20 rounded-md text-[10px] font-bold tracking-wider">
                 {t("knowledgeview.YouTube")}
               </span>
             </>
@@ -423,7 +436,7 @@ function DocumentDetailModal({
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-6 animate-in fade-in duration-200">
       <div className="bg-card/90 border border-border/50 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden backdrop-blur-xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-border/30 bg-black/10">
+        <div className="flex items-center justify-between p-5 border-b border-border/30 bg-bg/20">
           <h2 className="text-lg font-bold text-txt tracking-wide">
             {loading ? "Loading..." : doc?.filename || "Document"}
           </h2>
@@ -455,13 +468,13 @@ function DocumentDetailModal({
           {!loading && !error && doc && (
             <>
               {/* Document info */}
-              <div className="mb-8 p-5 bg-black/20 border border-white/5 shadow-inner rounded-xl">
+              <div className="mb-8 p-5 bg-bg/30 border border-border/20 shadow-inner rounded-xl">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                   <div className="flex flex-col gap-1.5">
                     <span className="text-[10px] font-bold tracking-widest uppercase text-muted/70">
                       {t("knowledgeview.Type")}
                     </span>{" "}
-                    <span className="text-txt font-medium bg-black/20 px-2 py-1 rounded inline-block w-fit">
+                    <span className="text-txt font-medium bg-bg/30 px-2 py-1 rounded inline-block w-fit">
                       {doc.contentType}
                     </span>
                   </div>
@@ -469,7 +482,7 @@ function DocumentDetailModal({
                     <span className="text-[10px] font-bold tracking-widest uppercase text-muted/70">
                       {t("knowledgeview.Source")}
                     </span>{" "}
-                    <span className="text-txt font-medium bg-black/20 px-2 py-1 rounded inline-block w-fit">
+                    <span className="text-txt font-medium bg-bg/30 px-2 py-1 rounded inline-block w-fit">
                       {doc.source}
                     </span>
                   </div>
@@ -477,7 +490,7 @@ function DocumentDetailModal({
                     <span className="text-[10px] font-bold tracking-widest uppercase text-muted/70">
                       Size
                     </span>{" "}
-                    <span className="text-txt font-medium bg-black/20 px-2 py-1 rounded inline-block w-fit">
+                    <span className="text-txt font-medium bg-bg/30 px-2 py-1 rounded inline-block w-fit">
                       {formatByteSize(doc.fileSize)}
                     </span>
                   </div>
@@ -485,12 +498,12 @@ function DocumentDetailModal({
                     <span className="text-[10px] font-bold tracking-widest uppercase text-muted/70">
                       Uploaded
                     </span>{" "}
-                    <span className="text-txt font-medium bg-black/20 px-2 py-1 rounded inline-block w-fit">
+                    <span className="text-txt font-medium bg-bg/30 px-2 py-1 rounded inline-block w-fit">
                       {formatShortDate(doc.createdAt, { fallback: "—" })}
                     </span>
                   </div>
                   {doc.url && (
-                    <div className="col-span-full mt-2 pt-4 border-t border-white/5 flex flex-col gap-1.5">
+                    <div className="col-span-full mt-2 pt-4 border-t border-border/20 flex flex-col gap-1.5">
                       <span className="text-[10px] font-bold tracking-widest uppercase text-muted/70">
                         {t("appsview.URL")}
                       </span>{" "}
@@ -508,7 +521,7 @@ function DocumentDetailModal({
               </div>
 
               {/* Fragments */}
-              <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+              <div className="flex items-center justify-between mb-4 border-b border-border/30 pb-2">
                 <h3 className="text-sm font-bold tracking-wide text-txt">
                   {t("knowledgeview.Fragments1")}
                   <span className="ml-2 px-2 py-0.5 rounded-full bg-white/10 text-xs text-muted font-mono">
@@ -520,14 +533,14 @@ function DocumentDetailModal({
                 {fragments.map((fragment, index) => (
                   <div
                     key={fragment.id}
-                    className="p-4 bg-card/60 border border-white/5 shadow-sm rounded-xl hover:border-accent/30 transition-colors"
+                    className="p-4 bg-card/60 border border-border/20 shadow-sm rounded-xl hover:border-accent/30 transition-colors"
                   >
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-[11px] font-bold tracking-widest uppercase text-muted">
                         {t("knowledgeview.Fragment")} {index + 1}
                       </span>
                       {fragment.position !== undefined && (
-                        <span className="text-[10px] text-muted/80 font-mono bg-black/20 px-2 py-0.5 rounded-md border border-white/5">
+                        <span className="text-[10px] text-muted/80 font-mono bg-bg/30 px-2 py-0.5 rounded-md border border-border/20">
                           {t("knowledgeview.Position")} {fragment.position}
                         </span>
                       )}
@@ -538,7 +551,7 @@ function DocumentDetailModal({
                   </div>
                 ))}
                 {fragments.length === 0 && (
-                  <div className="text-center py-12 text-muted bg-black/10 rounded-xl border border-dashed border-white/10">
+                  <div className="text-center py-12 text-muted bg-bg/20 rounded-xl border border-dashed border-border/30">
                     {t("knowledgeview.NoFragmentsFound")}
                   </div>
                 )}
@@ -1024,6 +1037,13 @@ export function KnowledgeView({ inModal }: { inModal?: boolean } = {}) {
         </div>
       )}
 
+      <div className="flex items-center gap-4 mb-4 px-4 py-2.5 bg-card/60 backdrop-blur-xl border border-border/40 rounded-2xl">
+        <span className="w-2 h-2 rounded-full bg-ok" />
+        <span className="text-xs font-medium text-txt">{documents.length} documents</span>
+        <span className="text-xs text-muted">•</span>
+        <span className="text-xs text-muted">{documents.reduce((sum, d) => sum + (d.fragmentCount || 0), 0)} fragments</span>
+      </div>
+
       <div className="mb-6 flex flex-wrap items-start justify-between gap-2">
         <form
           className="w-full max-w-[500px] flex-[1_1_500px]"
@@ -1071,7 +1091,7 @@ export function KnowledgeView({ inModal }: { inModal?: boolean } = {}) {
         <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
           <h2 className="text-sm font-bold tracking-wide text-txt">
             {t("knowledgeview.Documents")}
-            <span className="ml-2 px-2 py-0.5 rounded-full bg-black/10 text-xs text-muted font-mono">
+            <span className="ml-2 px-2 py-0.5 rounded-full bg-bg/20 text-xs text-muted font-mono">
               {documents.length}
             </span>
           </h2>
