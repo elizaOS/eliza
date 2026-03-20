@@ -66,7 +66,7 @@ function CloudRpcStatus({
   if (connected) {
     return (
       <div className="flex items-center gap-2 text-xs">
-        <span className="inline-block w-2 h-2 rounded-full bg-[var(--ok,#16a34a)]" />
+        <span className="inline-block w-2 h-2 rounded-full bg-[var(--ok)]" />
         <span className="font-semibold">
           Connected to Eliza Cloud
         </span>
@@ -76,7 +76,7 @@ function CloudRpcStatus({
             <span
               className={
                 creditsCritical
-                  ? "text-[var(--danger,#e74c3c)] font-bold"
+                  ? "text-[var(--danger)] font-bold"
                   : creditsLow
                     ? "rounded-md bg-[var(--warn-subtle)] px-1.5 py-0.5 text-[var(--text)] font-bold"
                     : ""
@@ -315,6 +315,42 @@ const CLOUD_SERVICE_DEFS: {
   },
 ];
 
+function ToggleSwitch({
+  checked,
+  disabled,
+  onChange,
+  id,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: () => void;
+  id: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-labelledby={id}
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative shrink-0 cursor-pointer w-11 h-6 rounded-full border transition-all duration-200 p-0 ${
+        checked
+          ? "border-accent/50 bg-accent/20"
+          : "border-border bg-input"
+      }`}
+    >
+      <span
+        className={`block w-[18px] h-[18px] rounded-full transition-all duration-200 mt-px ${
+          checked
+            ? "bg-accent translate-x-[22px]"
+            : "bg-muted translate-x-[2px]"
+        }`}
+      />
+    </button>
+  );
+}
+
 function CloudServicesSection() {
   const { t } = useApp();
   const [services, setServices] = useState<Record<CloudServiceKey, boolean>>({
@@ -328,7 +364,6 @@ function CloudServicesSection() {
   const [loaded, setLoaded] = useState(false);
   const [needsRestart, setNeedsRestart] = useState(false);
 
-  // Load current config on mount
   useEffect(() => {
     let cancelled = false;
     client
@@ -362,17 +397,13 @@ function CloudServicesSection() {
       const updated = { ...services, [key]: newValue };
       setServices(updated);
       setSaving(true);
-
-      // Also set inferenceMode based on inference toggle
       const inferenceMode = updated.inference ? "cloud" : "byok";
-
       try {
         await client.updateConfig({
           cloud: { services: updated, inferenceMode },
         });
         setNeedsRestart(true);
       } catch (err) {
-        // Revert on error
         setServices(services);
         console.error("[config] Failed to save cloud services:", err);
       } finally {
@@ -385,54 +416,46 @@ function CloudServicesSection() {
   if (!loaded) return null;
 
   return (
-    <div className="p-4 border border-[var(--border)] bg-[var(--card)] mt-4">
+    <div className="mt-4 p-5 border border-border rounded-xl bg-card">
       <div className="flex items-center justify-between mb-3">
-        <div className="font-bold text-sm">
-          {t("configpageview.CloudServices")}
+        <div className="text-sm font-semibold">
+          {t("configpageview.CloudServices") || "Cloud Services"}
         </div>
         {needsRestart && (
-          <span className="rounded-full border border-[var(--warn)] bg-[var(--warn-subtle)] px-2 py-0.5 text-[11px] font-medium text-[var(--text)]">
-            {t("configpageview.RestartRequiredFor")}
+          <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full border border-accent/30 bg-accent/8 text-accent">
+            Restart required
           </span>
         )}
       </div>
-      <p className="text-[12px] text-[var(--muted)] mb-4">
-        {t("configpageview.ChooseWhichElizaCl")}
+      <p className="text-xs text-muted mb-4 leading-snug">
+        Choose which services to use from Eliza Cloud. Disable inference to use
+        your own API keys instead.
       </p>
-      <div className="space-y-2">
+      <div className="flex flex-col gap-2">
         {CLOUD_SERVICE_DEFS.map(({ key, label, description }) => (
           <div
             key={key}
-            className="flex items-center justify-between p-2.5 border border-[var(--border)] rounded cursor-pointer hover:border-[var(--accent)] transition-colors"
+            className={`flex items-center justify-between p-3 border border-border rounded-lg transition-colors ${
+              services[key] ? "bg-accent/5" : ""
+            }`}
           >
-            <div className="flex-1 min-w-0 mr-3">
+            <div className="flex-1 min-w-0 mr-4">
               <div
-                className="text-[13px] font-medium"
                 id={`cloud-service-${key}`}
+                className="text-[13px] font-medium text-txt"
               >
                 {label}
               </div>
-              <div className="text-[11px] text-[var(--muted)] mt-0.5">
+              <div className="text-[11px] text-muted mt-0.5">
                 {description}
               </div>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={services[key]}
-              aria-labelledby={`cloud-service-${key}`}
+            <ToggleSwitch
+              checked={services[key]}
               disabled={saving}
-              onClick={() => void handleToggle(key)}
-              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors cursor-pointer ${
-                services[key] ? "bg-[var(--accent)]" : "bg-[var(--border)]"
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
-                  services[key] ? "translate-x-4" : "translate-x-0"
-                }`}
-              />
-            </button>
+              onChange={() => void handleToggle(key)}
+              id={`cloud-service-${key}`}
+            />
           </div>
         ))}
       </div>
@@ -607,109 +630,119 @@ export function ConfigPageView({ embedded = false }: { embedded?: boolean }) {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════
-          1. WALLET & RPC
+          UNIFIED CLOUD & RPC CONFIGURATION
           ═══════════════════════════════════════════════════════════════ */}
-      <div className="p-4 border border-[var(--border)] bg-[var(--card)]">
-        <div className="flex items-center justify-between mb-4">
-          <div className="font-bold text-sm">
-            {t("configpageview.WalletAmpRPC")}
-          </div>
-          <button
-            type="button"
-            className="settings-button flex items-center gap-1.5 text-[12px] text-[var(--muted)] hover:text-[var(--txt)] bg-transparent border border-[var(--border)] rounded cursor-pointer transition-colors hover:border-[var(--accent)]"
-            onClick={() => setSecretsOpen(true)}
-            title={t("configpageview.SecretsVault1")}
-          >
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <title>{t("configpageview.SecretsVault")}</title>
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
 
-            {t("configpageview.Secrets")}
-          </button>
+      {/* Cloud status bar */}
+      {elizaCloudConnected && (
+        <div className="flex items-center gap-2.5 mb-4 p-3 rounded-lg bg-accent/5 border border-accent/15">
+          <span className="w-2 h-2 rounded-full bg-ok shrink-0" />
+          <span className="text-[13px] font-semibold text-txt">Eliza Cloud</span>
+          {elizaCloudCredits !== null && (
+            <span className="text-xs text-muted ml-auto flex items-center gap-1.5">
+              <span
+                className={
+                  elizaCloudCreditsCritical
+                    ? "text-danger font-bold"
+                    : elizaCloudCreditsLow
+                      ? "text-warn font-bold"
+                      : "text-txt font-semibold"
+                }
+              >
+                ${elizaCloudCredits.toFixed(2)}
+              </span>
+              {elizaCloudTopUpUrl && (
+                <a href={elizaCloudTopUpUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-accent underline underline-offset-2">Top up</a>
+              )}
+            </span>
+          )}
         </div>
+      )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* BSC */}
-          <RpcConfigSection
-            title={t("configpageview.BSC")}
-            description="BNB Smart Chain — trading and market feed"
-            options={BSC_RPC_OPTIONS}
-            selectedProvider={selectedBscRpc}
-            onSelect={setSelectedBscRpc}
-            providerConfigs={bscRpcConfigs}
-            rpcFieldValues={rpcFieldValues}
-            onRpcFieldChange={handleRpcFieldChange}
-            cloud={cloudStatusProps}
-            containerClassName="flex flex-wrap gap-1.5"
-          />
-
-          {/* EVM */}
-          <RpcConfigSection
-            title={t("configpageview.EVM")}
-            description="Ethereum, Base, Arbitrum, Optimism, Polygon"
-            options={EVM_RPC_OPTIONS}
-            selectedProvider={selectedEvmRpc}
-            onSelect={setSelectedEvmRpc}
-            providerConfigs={evmRpcConfigs}
-            rpcFieldValues={rpcFieldValues}
-            onRpcFieldChange={handleRpcFieldChange}
-            cloud={cloudStatusProps}
-            containerClassName="flex flex-wrap gap-1.5"
-          />
-
-          {/* Solana */}
-          <RpcConfigSection
-            title={t("configpageview.Solana")}
-            description="Solana mainnet tokens and NFTs"
-            options={SOLANA_RPC_OPTIONS}
-            selectedProvider={selectedSolanaRpc}
-            onSelect={setSelectedSolanaRpc}
-            providerConfigs={solanaRpcConfigs}
-            rpcFieldValues={rpcFieldValues}
-            onRpcFieldChange={handleRpcFieldChange}
-            cloud={cloudStatusProps}
-            containerClassName="flex flex-wrap gap-1.5"
-          />
-        </div>
-
-        {legacyRpcWarning && (
-          <div className="mt-4 rounded-lg border border-[var(--warn)] bg-[var(--warn-subtle)] px-3 py-2 text-[11px] text-[var(--text)]">
-            {legacyRpcWarning}
-          </div>
-        )}
-
-        <div className="flex justify-end mt-4">
-          <button
-            type="button"
-            className="btn text-[11px] py-1 px-3.5 !mt-0"
-            onClick={handleWalletSaveAll}
-            disabled={walletApiKeySaving}
-          >
-            {walletApiKeySaving ? "Saving..." : "Save"}
-          </button>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════
-          2. CLOUD SERVICES
-          ═══════════════════════════════════════════════════════════════ */}
+      {/* Cloud Services */}
       {elizaCloudConnected && <CloudServicesSection />}
+
+      {/* Custom RPC — only show when user wants BYOK */}
+      {!elizaCloudConnected && (
+        <div className="mt-4 p-5 border border-border rounded-xl bg-card">
+          <div className="flex items-center justify-between mb-4">
+            <div className="font-bold text-sm">Custom RPC Providers</div>
+            <button
+              type="button"
+              className="settings-button flex items-center gap-1.5 text-[12px] text-[var(--muted)] hover:text-[var(--txt)] bg-transparent border border-[var(--border)] rounded-lg cursor-pointer transition-colors hover:border-[var(--accent)]"
+              onClick={() => setSecretsOpen(true)}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <title>Secrets</title>
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              Secrets
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <RpcConfigSection
+              title={t("configpageview.BSC")}
+              description="BNB Smart Chain"
+              options={BSC_RPC_OPTIONS}
+              selectedProvider={selectedBscRpc}
+              onSelect={setSelectedBscRpc}
+              providerConfigs={bscRpcConfigs}
+              rpcFieldValues={rpcFieldValues}
+              onRpcFieldChange={handleRpcFieldChange}
+              cloud={cloudStatusProps}
+              containerClassName="flex flex-wrap gap-1.5"
+            />
+            <RpcConfigSection
+              title={t("configpageview.EVM")}
+              description="Ethereum, Base, Arbitrum"
+              options={EVM_RPC_OPTIONS}
+              selectedProvider={selectedEvmRpc}
+              onSelect={setSelectedEvmRpc}
+              providerConfigs={evmRpcConfigs}
+              rpcFieldValues={rpcFieldValues}
+              onRpcFieldChange={handleRpcFieldChange}
+              cloud={cloudStatusProps}
+              containerClassName="flex flex-wrap gap-1.5"
+            />
+            <RpcConfigSection
+              title={t("configpageview.Solana")}
+              description="Solana mainnet"
+              options={SOLANA_RPC_OPTIONS}
+              selectedProvider={selectedSolanaRpc}
+              onSelect={setSelectedSolanaRpc}
+              providerConfigs={solanaRpcConfigs}
+              rpcFieldValues={rpcFieldValues}
+              onRpcFieldChange={handleRpcFieldChange}
+              cloud={cloudStatusProps}
+              containerClassName="flex flex-wrap gap-1.5"
+            />
+          </div>
+
+          {legacyRpcWarning && (
+            <div className="mt-4 rounded-lg border border-[var(--warn)] bg-[var(--warn-subtle)] px-3 py-2 text-[11px] text-[var(--text)]">
+              {legacyRpcWarning}
+            </div>
+          )}
+
+          <div className="flex justify-end mt-4">
+            <button
+              type="button"
+              className="btn text-[11px] py-1 px-3.5 !mt-0"
+              onClick={handleWalletSaveAll}
+              disabled={walletApiKeySaving}
+            >
+              {walletApiKeySaving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Secrets modal ── */}
       {secretsOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80"
           onClick={(e) => {
             if (e.target === e.currentTarget) setSecretsOpen(false);
           }}

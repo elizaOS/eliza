@@ -1,19 +1,24 @@
-import { ONBOARDING_STEPS, useApp } from "@elizaos/app-core/state";
+import {
+  CLOUD_ONBOARDING_STEPS,
+  CUSTOM_ONBOARDING_STEPS,
+  useApp,
+} from "@elizaos/app-core/state";
 import { useBranding } from "../../config/branding";
+
+const CUSTOM_STEP_IDS = new Set(CUSTOM_ONBOARDING_STEPS.map((s) => s.id));
 
 export function OnboardingStepNav() {
   const { onboardingStep, t } = useApp();
   const branding = useBranding();
 
-  const isEliza = branding.appName === "Eliza";
   const isCloudOnly = !!branding.cloudOnly;
-  const activeSteps = isEliza
-    ? ONBOARDING_STEPS.filter(
-        (s) => s.id === "connection" || s.id === "activate",
-      )
+  const isCustomFlow = CUSTOM_STEP_IDS.has(onboardingStep);
+
+  const activeSteps = isCustomFlow
+    ? CUSTOM_ONBOARDING_STEPS
     : isCloudOnly
-      ? ONBOARDING_STEPS.filter((s) => s.id !== "wakeUp")
-      : ONBOARDING_STEPS;
+      ? CLOUD_ONBOARDING_STEPS.filter((s) => s.id !== "welcome")
+      : CLOUD_ONBOARDING_STEPS;
 
   const currentIndex = activeSteps.findIndex((s) => s.id === onboardingStep);
 

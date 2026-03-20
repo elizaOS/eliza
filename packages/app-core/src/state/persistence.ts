@@ -68,6 +68,8 @@ const ONBOARDING_STEP_STORAGE_KEY = "eliza:onboarding:step";
 
 function normalizeOnboardingStep(value: unknown): OnboardingStep | null {
   switch (value) {
+    case "welcome":
+    case "cloudLogin":
     case "identity":
     case "connection":
     case "rpc":

@@ -593,11 +593,14 @@
 .onboarding-confirm-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 12px 32px;
+  min-height: 44px;
   background: rgba(240, 185, 11, 0.18);
   border: 1px solid rgba(240, 185, 11, 0.35);
   border-radius: 6px;
+  clip-path: none;
   color: rgba(240, 238, 250, 0.94);
   text-shadow: 0 1px 6px rgba(3, 5, 10, 0.55);
   font-size: 11px;
