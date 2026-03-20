@@ -730,8 +730,10 @@ export function findRuntimePluginExport(mod: PluginModuleShape): Plugin | null {
 
   // 6. Legacy CJS compatibility for modules that export only { name, description }.
   if (looksLikePluginBasic(mod)) return mod as unknown as Plugin;
-  if (looksLikePluginBasic(mod.default)) return mod.default as Plugin;
-  if (looksLikePluginBasic(mod.plugin)) return mod.plugin as Plugin;
+  const modDefault = (mod as Record<string, unknown>).default;
+  const modPlugin = (mod as Record<string, unknown>).plugin;
+  if (looksLikePluginBasic(modDefault)) return modDefault as Plugin;
+  if (looksLikePluginBasic(modPlugin)) return modPlugin as Plugin;
 
   return null;
 }
@@ -2820,7 +2822,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
       Remilia: "...",
       Reisen: "locked in",
     };
-    const presetByName = getPresetByName() ?? defaultPresetByName;
+    const presetByName = getPresetNameMap() ?? defaultPresetByName;
     const presetCatchphrase = presetByName[name.trim()];
     if (!presetCatchphrase) return undefined;
     return getStylePresets().find(
@@ -2999,7 +3001,7 @@ import { pickRandomNames } from "./onboarding-names";
 // Style presets — shared between CLI and GUI onboarding
 // ---------------------------------------------------------------------------
 
-import { STYLE_PRESETS, getStylePresets, getPresetByName } from "../onboarding-presets";
+import { getStylePresets, getPresetNameMap } from "../onboarding-presets";
 
 /**
  * Detect whether this is the first run (no agent name configured)
