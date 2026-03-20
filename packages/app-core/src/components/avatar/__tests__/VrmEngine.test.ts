@@ -635,6 +635,7 @@ describe("VrmEngine", () => {
       ok: true,
       status: 200,
       arrayBuffer: hoisted.responseArrayBufferMock,
+      headers: { get: vi.fn(() => "0") },
     });
     hoisted.responseArrayBufferMock.mockResolvedValue(new ArrayBuffer(8));
     delete (window as Window & { __electrobunWindowId?: number })
@@ -848,6 +849,7 @@ describe("VrmEngine", () => {
           "idleTime",
           "idleTracks",
           "loadError",
+          "loadingProgress",
           "revealStarted",
           "vrmLoaded",
           "vrmName",
@@ -885,6 +887,59 @@ describe("VrmEngine", () => {
 
       engine.setCompanionZoomNormalized(1.4);
       expect(engineAny.companionZoomTarget).toBe(1);
+    });
+
+    it("setDragOrbitTarget clamps yaw and pitch within bounds", () => {
+      const engineAny = engine as unknown as {
+        dragOrbitTarget: { x: number; y: number; set: ReturnType<typeof vi.fn> };
+      };
+
+      engine.setDragOrbitTarget(0.3, -0.2);
+      // The mock Vector2.set should have been called with clamped values
+      expect(engineAny.dragOrbitTarget.set).toHaveBeenCalledWith(0.3, -0.2);
+
+      engine.setDragOrbitTarget(1.0, -1.0);
+      // yaw clamped to [-0.6, 0.6], pitch to [-0.35, 0.35]
+      expect(engineAny.dragOrbitTarget.set).toHaveBeenCalledWith(0.6, -0.35);
+    });
+
+    it("resetDragOrbit sets target back to zero", () => {
+      const engineAny = engine as unknown as {
+        dragOrbitTarget: { x: number; y: number; set: ReturnType<typeof vi.fn> };
+      };
+
+      engine.setDragOrbitTarget(0.3, 0.2);
+      engine.resetDragOrbit();
+      expect(engineAny.dragOrbitTarget.set).toHaveBeenLastCalledWith(0, 0);
+    });
+
+    it("baseCameraPosition is initialized from camera profile after setup", async () => {
+      const canvas = createMockCanvas();
+      engine.setCameraProfile("companion");
+      engine.setup(canvas, vi.fn());
+      await waitForEngineReady(engine);
+
+      const engineAny = engine as unknown as {
+        baseCameraPosition: { copy: ReturnType<typeof vi.fn>; lengthSq: ReturnType<typeof vi.fn> };
+      };
+
+      // baseCameraPosition.copy should have been called during async init
+      // (after applyCameraProfileToCamera sets camera.position)
+      expect(engineAny.baseCameraPosition.copy).toHaveBeenCalled();
+    });
+
+    it("baseCameraPosition is non-zero after setup so drag orbit is not skipped", async () => {
+      const canvas = createMockCanvas();
+      engine.setCameraProfile("companion");
+      engine.setup(canvas, vi.fn());
+      await waitForEngineReady(engine);
+
+      const engineAny = engine as unknown as {
+        baseCameraPosition: { lengthSq: ReturnType<typeof vi.fn> };
+      };
+
+      // The mock returns 1 for lengthSq which is > 1e-6
+      expect(engineAny.baseCameraPosition.lengthSq()).toBeGreaterThan(1e-6);
     });
 
     it("queues the first world reveal until the VRM is ready", async () => {

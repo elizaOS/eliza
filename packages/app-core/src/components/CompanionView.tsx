@@ -58,10 +58,10 @@ export const CompanionView = memo(function CompanionView() {
               variant="outline"
               size="sm"
               aria-label={
-                chatAgentVoiceMuted ? "Agent voice off" : "Agent voice on"
+                chatAgentVoiceMuted ? t("companion.agentVoiceOff") : t("companion.agentVoiceOn")
               }
               aria-pressed={!chatAgentVoiceMuted}
-              title={chatAgentVoiceMuted ? "Agent voice off" : "Agent voice on"}
+              title={chatAgentVoiceMuted ? t("companion.agentVoiceOff") : t("companion.agentVoiceOn")}
               className="inline-flex h-11 min-h-[44px] min-w-[44px] select-none items-center rounded-full border border-border/50 bg-bg/50 px-4 text-sm font-medium text-txt shadow-sm backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:border-accent hover:text-txt hover:shadow-[0_0_15px_rgba(var(--accent),0.5)] active:scale-95"
               onClick={() =>
                 setState("chatAgentVoiceMuted", !chatAgentVoiceMuted)
@@ -72,19 +72,19 @@ export const CompanionView = memo(function CompanionView() {
               ) : (
                 <Volume2 className="mr-1.5 h-3.5 w-3.5" />
               )}
-              Voice
+              {t("companion.voice")}
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              aria-label="New Chat"
-              title="New Chat"
+              aria-label={t("companion.newChat")}
+              title={t("companion.newChat")}
               className="hidden h-11 min-h-[44px] min-w-[44px] select-none items-center rounded-full border border-border/50 bg-bg/50 px-4 text-sm font-medium text-txt shadow-sm backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:border-accent hover:text-txt hover:shadow-[0_0_15px_rgba(var(--accent),0.5)] active:scale-95 sm:inline-flex"
               onClick={() => void handleStartDraftConversation()}
             >
               <MessageCircle className="mr-1 h-3.5 w-3.5" />
-              New Chat
+              {t("companion.newChat")}
             </Button>
           </div>
         </div>
