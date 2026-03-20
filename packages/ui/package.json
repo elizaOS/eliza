@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.0-alpha.77",
+  "version": "2.0.0-alpha.78",
   "description": "Reusable UI primitives and components for Milady applications.",
   "type": "module",
   "main": "src/index.ts",
