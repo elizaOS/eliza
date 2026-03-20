@@ -477,14 +477,14 @@ function CompanionSceneSurface({
         <div
           aria-hidden="true"
           data-testid="companion-camera-drag-surface"
-          className={`absolute inset-0 z-[1] select-none ${interactive ? "cursor-grab" : "pointer-events-none cursor-default"
+          className={`absolute inset-0 z-20 select-none ${interactive ? "cursor-grab" : "pointer-events-none cursor-default"
             }`}
-          onWheelCapture={handleRootWheelCapture}
-          onPointerDownCapture={handlePointerDownCapture}
-          onPointerMoveCapture={handlePointerMoveCapture}
-          onPointerUpCapture={releaseCameraDrag}
-          onPointerCancelCapture={releaseCameraDrag}
-          onLostPointerCaptureCapture={releaseCameraDrag}
+          onWheel={handleRootWheelCapture}
+          onPointerDown={handlePointerDownCapture}
+          onPointerMove={handlePointerMoveCapture}
+          onPointerUp={releaseCameraDrag}
+          onPointerCancel={releaseCameraDrag}
+          onLostPointerCapture={releaseCameraDrag}
           style={{
             touchAction: "none",
             userSelect: "none",
