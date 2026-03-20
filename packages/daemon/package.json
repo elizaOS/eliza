@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/daemon",
-  "version": "2.0.0-alpha.83",
+  "version": "2.0.0-alpha.84",
   "description": "Cross-platform daemon/service management for Eliza agents",
   "type": "module",
   "main": "dist/index.js",
