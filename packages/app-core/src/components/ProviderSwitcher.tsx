@@ -531,8 +531,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
   if (totalCols === 0) {
     return (
-      <div className="p-4 border border-[var(--warning,#f39c12)] bg-[var(--card)]">
-        <div className="text-xs text-[var(--warning,#f39c12)]">
+      <div className="p-4 border border-[var(--warning)] bg-[var(--card)]">
+        <div className="text-xs text-[var(--warning)]">
           {t("providerswitcher.noAiProvidersAvailable")}{" "}
           <Button
             variant="link"
@@ -603,7 +603,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             <div>
               <div className="flex justify-between items-center mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 rounded-full bg-[var(--ok,#16a34a)]" />
+                  <span className="inline-block w-2 h-2 rounded-full bg-[var(--ok)]" />
                   <span className="text-xs font-semibold">
                     {t("providerswitcher.loggedIntoElizaCloud")}
                   </span>
@@ -637,7 +637,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                     <span
                       className={
                         elizaCloudCreditsCritical
-                          ? "text-[var(--danger,#e74c3c)] font-bold"
+                          ? "text-[var(--danger)] font-bold"
                           : elizaCloudCreditsLow
                             ? "rounded-md bg-[var(--warn-subtle)] px-1.5 py-0.5 text-[var(--text)] font-bold"
                             : ""
@@ -744,7 +744,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                   </span>
                 )}
                 {modelSaveSuccess && (
-                  <span className="text-[11px] text-[var(--ok,#16a34a)]">
+                  <span className="text-[11px] text-[var(--ok)]">
                     {t("providerswitcher.savedRestartingAgent")}
                   </span>
                 )}
@@ -759,7 +759,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               ) : (
                 <>
                   {elizaCloudLoginError && (
-                    <div className="text-xs text-[var(--danger,#e74c3c)] mb-2">
+                    <div className="text-xs text-[var(--danger)] mb-2">
                       {elizaCloudLoginError}
                     </div>
                   )}
@@ -869,7 +869,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               </span>
             )}
             {piAiSaveSuccess && (
-              <span className="text-[11px] text-[var(--ok,#16a34a)]">
+              <span className="text-[11px] text-[var(--ok)]">
                 {t("providerswitcher.savedRestartingAgent")}
               </span>
             )}

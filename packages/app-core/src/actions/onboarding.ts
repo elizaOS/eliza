@@ -1,14 +1,14 @@
 /**
  * Onboarding step constants and helpers — extracted from AppContext.
+ * @deprecated Use types from state/types.ts instead.
  */
 
-export type OnboardingStep = "identity" | "connection" | "senses" | "activate";
+export type OnboardingStep = "welcome" | "cloudLogin" | "saveKeys";
 
 export const ONBOARDING_STEP_ORDER: OnboardingStep[] = [
-  "identity",
-  "connection",
-  "senses",
-  "activate",
+  "welcome",
+  "cloudLogin",
+  "saveKeys",
 ];
 
 export interface OnboardingNextOptions {

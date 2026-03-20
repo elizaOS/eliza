@@ -21,6 +21,10 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  --color-secondary: var(--bg-accent);
+  --color-secondary-fg: var(--text);
+  --color-muted-fg: var(--muted);
+
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-muted: var(--accent-muted);
