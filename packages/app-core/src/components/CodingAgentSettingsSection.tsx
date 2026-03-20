@@ -82,12 +82,16 @@ const AGENT_LABELS: Record<AgentTab, string> = {
   aider: "Aider",
 };
 
-const KNOWN_AGENT_ADAPTERS = new Set<AgentTab>([
-  "claude",
-  "gemini",
-  "codex",
-  "aider",
-]);
+/** Map full adapter names from the preflight API to short tab keys. */
+export const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
+  "claude code": "claude",
+  "google gemini": "gemini",
+  "openai codex": "codex",
+  aider: "aider",
+  claude: "claude",
+  gemini: "gemini",
+  codex: "codex",
+};
 
 const ENV_PREFIX: Record<AgentTab, string> = {
   claude: "PARALLAX_CLAUDE",
@@ -192,10 +196,7 @@ export function CodingAgentSettingsSection() {
           const mapped: Partial<Record<AgentTab, AgentPreflightResult>> = {};
           for (const item of preflightRes as AgentPreflightResult[]) {
             const raw = item.adapter?.toLowerCase();
-            const key =
-              raw && KNOWN_AGENT_ADAPTERS.has(raw as AgentTab)
-                ? (raw as AgentTab)
-                : undefined;
+            const key = raw ? ADAPTER_NAME_TO_TAB[raw] : undefined;
             if (key) {
               mapped[key] = item;
             }
