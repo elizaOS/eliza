@@ -66,49 +66,37 @@ class SweAgentLogger implements AgentLogger {
     return `${threadPrefix}(${this.name}): ${prefix}${message}`;
   }
 
-  debug(message: string, ...args: unknown[]): void {
+  private dispatchLog(
+    method: pino.LogFn,
+    message: string,
+    args: unknown[]
+  ): void {
     const msg = this.formatMessage(message);
-    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
-      this.logger.debug(args[0], msg, ...args.slice(1));
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0])) {
+      method.call(this.logger, args[0], msg, ...args.slice(1));
     } else {
-      this.logger.debug(msg, ...args);
+      method.call(this.logger, msg, ...args);
     }
+  }
+
+  debug(message: string, ...args: unknown[]): void {
+    this.dispatchLog(this.logger.debug, message, args);
   }
 
   info(message: string, ...args: unknown[]): void {
-    const msg = this.formatMessage(message);
-    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
-      this.logger.info(args[0], msg, ...args.slice(1));
-    } else {
-      this.logger.info(msg, ...args);
-    }
+    this.dispatchLog(this.logger.info, message, args);
   }
 
   warn(message: string, ...args: unknown[]): void {
-    const msg = this.formatMessage(message);
-    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
-      this.logger.warn(args[0], msg, ...args.slice(1));
-    } else {
-      this.logger.warn(msg, ...args);
-    }
+    this.dispatchLog(this.logger.warn, message, args);
   }
 
   error(message: string, ...args: unknown[]): void {
-    const msg = this.formatMessage(message);
-    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
-      this.logger.error(args[0], msg, ...args.slice(1));
-    } else {
-      this.logger.error(msg, ...args);
-    }
+    this.dispatchLog(this.logger.error, message, args);
   }
 
   critical(message: string, ...args: unknown[]): void {
-    const msg = this.formatMessage(message);
-    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
-      this.logger.fatal(args[0], msg, ...args.slice(1));
-    } else {
-      this.logger.fatal(msg, ...args);
-    }
+    this.dispatchLog(this.logger.fatal, message, args);
   }
 
   warning(message: string, ...args: unknown[]): void {
