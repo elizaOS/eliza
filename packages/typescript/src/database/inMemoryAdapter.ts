@@ -813,12 +813,14 @@ async countMemories(
     let agentId: UUID | undefined;
 
     if (typeof roomIdOrParams === "object" && roomIdOrParams !== null) {
-      roomId = (roomIdOrParams as any).roomId;
-      roomIds = (roomIdOrParams as any).roomIds;
-      u = (roomIdOrParams as any).unique;
-      tbl = (roomIdOrParams as any).tableName;
-      entityId = (roomIdOrParams as any).entityId;
-      agentId = (roomIdOrParams as any).agentId;
+      // Note: Using indexed access for backward compatibility with legacy API that accepts either UUID or params object
+      const params = roomIdOrParams as Record<string, unknown>;
+      roomId = params.roomId as UUID | undefined;
+      roomIds = params.roomIds as UUID[] | undefined;
+      u = params.unique as boolean | undefined;
+      tbl = params.tableName as string | undefined;
+      entityId = params.entityId as UUID | undefined;
+      agentId = params.agentId as UUID | undefined;
     } else {
       roomId = roomIdOrParams as UUID;
       u = unique;
