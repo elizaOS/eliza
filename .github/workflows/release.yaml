@@ -464,6 +464,7 @@ jobs:
           bunx turbo run build --continue || echo "Some packages had build errors — checking critical packages..."
 
           # Fail if critical packages didn't produce dist/
+          # packages/typescript is published as @elizaos/core
           for pkg in packages/typescript packages/autonomous packages/app-core; do
             if [ ! -d "${pkg}/dist" ]; then
               echo "❌ Critical package ${pkg} failed to build (no dist/ directory)"

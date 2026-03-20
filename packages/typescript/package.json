@@ -47,7 +47,7 @@
     "dist"
   ],
   "scripts": {
-    "prebuild": "cd ../schemas && bunx buf generate",
+    "prebuild": "[ -d src/types/generated ] || (cd ../schemas && bunx buf generate)",
     "build": "bun run build.ts",
     "build:watch": "bun run build.ts --watch",
     "dev": "bun run build:watch",
