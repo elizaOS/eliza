@@ -100,9 +100,6 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       id: resolvedAgentId,
       name: "TestAgent",
     }),
-    getAgentsByIds: vi.fn(async (agentIds: UUID[]) => {
-      return agentIds.map((id) => ({ id, name: "TestAgent" }));
-    }),
     getAgents: vi.fn().mockResolvedValue([]),
     getAgentsByIds: vi.fn(async (ids: UUID[]) =>
       ids
@@ -194,13 +191,14 @@ for (const entity of newEntities) {
       return ids;
     }),
     upsertEntities: vi.fn(async (newEntities: Entity[]) => {
+      const ids: UUID[] = [];
       for (const entity of newEntities) {
         if (entity.id) {
           entities.set(entity.id, entity);
           ids.push(entity.id);
         }
       }
-return ids;
+      return ids;
     }),
     updateEntity: vi.fn().mockResolvedValue(undefined),
 
