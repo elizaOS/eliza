@@ -1,5 +1,5 @@
 import { Button } from "@elizaos/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentPreflightResult } from "../api";
 import { client } from "../api";
 import { useTimeout } from "../hooks";
@@ -105,6 +105,7 @@ export function CodingAgentSettingsSection() {
   const { t } = useApp();
 
   const [activeTab, setActiveTab] = useState<AgentTab>("claude");
+  const hasLoadedOnce = useRef(false);
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -121,7 +122,9 @@ export function CodingAgentSettingsSection() {
 
   useEffect(() => {
     void (async () => {
-      setLoading(true);
+      if (!hasLoadedOnce.current) {
+        setLoading(true);
+      }
       try {
         const [cfg, anthropicRes, googleRes, openaiRes, preflightRes] =
           await Promise.all([
@@ -208,6 +211,7 @@ export function CodingAgentSettingsSection() {
         // Fall back to built-in defaults when config or model fetches fail.
       }
       setLoading(false);
+      hasLoadedOnce.current = true;
     })();
   }, []);
 
