@@ -38,6 +38,7 @@ const LARGE_FILE_WARNING_BYTES = 8 * 1_048_576;
 const SUPPORTED_UPLOAD_EXTENSIONS = new Set([
   ".txt",
   ".md",
+  ".mdx",
   ".pdf",
   ".docx",
   ".json",
@@ -76,7 +77,9 @@ export function shouldReadKnowledgeFileAsText(
   ];
 
   return (
-    textTypes.some((t) => file.type.includes(t)) || file.name.endsWith(".md")
+    textTypes.some((t) => file.type.includes(t)) ||
+    file.name.endsWith(".md") ||
+    file.name.endsWith(".mdx")
   );
 }
 
@@ -162,7 +165,7 @@ function UploadZone({
         type="file"
         className="hidden"
         multiple
-        accept=".txt,.md,.pdf,.docx,.json,.csv,.xml,.html,.png,.jpg,.jpeg,.webp,.gif"
+        accept=".txt,.md,.mdx,.pdf,.docx,.json,.csv,.xml,.html,.png,.jpg,.jpeg,.webp,.gif"
         onChange={handleFileSelect}
       />
       <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
