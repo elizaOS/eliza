@@ -1315,4 +1315,18 @@ export const CHARACTER_PRESET_META: Record<
   "Show me what we're building.": { name: "Satoshi", avatarIndex: 7, voicePresetId: "callum", catchphrase: "Show me what we're building." },
 };
 
+/** Return the full list of style presets. */
+export function getStylePresets() {
+  return STYLE_PRESETS;
+}
+
+/** Return a name → catchphrase mapping derived from CHARACTER_PRESET_META. */
+export function getPresetByName(): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const meta of Object.values(CHARACTER_PRESET_META)) {
+    result[meta.name] = meta.catchphrase;
+  }
+  return result;
+}
+
 //#endregion

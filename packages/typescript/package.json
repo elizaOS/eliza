@@ -47,6 +47,7 @@
     "dist"
   ],
   "scripts": {
+    "prebuild": "cd ../schemas && bunx buf generate",
     "build": "bun run build.ts",
     "build:watch": "bun run build.ts --watch",
     "dev": "bun run build:watch",
@@ -76,7 +77,8 @@
     "esbuild": "^0.25.0",
     "sharp": "^0.33.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "@elizaos/schemas": "workspace:*"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
