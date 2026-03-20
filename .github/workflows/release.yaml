@@ -459,9 +459,18 @@ jobs:
           SKIP_PYTHON_BUILD: "1"
         run: |
           echo "Building packages with version v${{ steps.version.outputs.version }}..."
-          # Use --continue so build failures in root packages (Rust/Python) don't block NPM release
-          # Some -root packages may fail due to platform-specific Rust builds - this is expected
-          bunx turbo run build --continue || echo "Some packages had build errors - continuing with publish for successfully built packages"
+          # Use --continue so platform-specific build failures (Rust/Python) don't block the release.
+          # But verify critical packages built successfully afterward.
+          bunx turbo run build --continue || echo "Some packages had build errors — checking critical packages..."
+
+          # Fail if critical packages didn't produce dist/
+          for pkg in packages/typescript packages/autonomous packages/app-core; do
+            if [ ! -d "${pkg}/dist" ]; then
+              echo "❌ Critical package ${pkg} failed to build (no dist/ directory)"
+              exit 1
+            fi
+          done
+          echo "✅ All critical packages built successfully"
 
       # Replace workspace:* references with actual versions before publishing
       # This is required because Bun workspaces use workspace:* protocol
