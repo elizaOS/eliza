@@ -6,9 +6,11 @@ import types
 if "eliza.v1" not in sys.modules:
     # Note: Only set eliza module alias if not already registered by another package
     if "eliza.v1" not in sys.modules:
-        if "eliza" not in sys.modules:
-            sys.modules["eliza"] = sys.modules[__name__]
-        sys.modules["eliza.v1"] = sys.modules[__name__]
+        if "eliza.v1" not in sys.modules:
+            # Only set eliza module if not already registered by another package
+            if "eliza" not in sys.modules:
+                sys.modules["eliza"] = sys.modules[__name__]
+            sys.modules["eliza.v1"] = sys.modules[__name__]
     _v1_path = os.path.join(os.path.dirname(__file__), "types", "generated", "eliza", "v1")
     _v1 = types.ModuleType("eliza.v1")
     _v1.__path__ = [_v1_path]
