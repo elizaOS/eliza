@@ -288,8 +288,38 @@ jobs:
             exit 1
           fi
 
-          # Get the new version
+          # Get the new version and verify it doesn't already exist on npm.
+          # lerna publish from-package silently skips already-published versions,
+          # so we must detect collisions here and bump again if needed.
           VERSION=$(node -p "require('./lerna.json').version")
+
+          if [[ "${RELEASE_TYPE}" == "alpha" || "${RELEASE_TYPE}" == "beta" ]]; then
+            MAX_RETRIES=3
+            for i in $(seq 1 $MAX_RETRIES); do
+              # Check if this version already exists on npm
+              if npm view "@elizaos/core@${VERSION}" version >/dev/null 2>&1; then
+                echo "⚠️ Version ${VERSION} already exists on npm — bumping again (attempt ${i}/${MAX_RETRIES})"
+                bunx lerna version prerelease \
+                  --preid "${RELEASE_TYPE}" \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push
+                VERSION=$(node -p "require('./lerna.json').version")
+              else
+                echo "✅ Version ${VERSION} is available on npm"
+                break
+              fi
+            done
+
+            # Final check — if still colliding after retries, fail loudly
+            if npm view "@elizaos/core@${VERSION}" version >/dev/null 2>&1; then
+              echo "❌ Version ${VERSION} still exists on npm after ${MAX_RETRIES} bumps — aborting"
+              exit 1
+            fi
+          fi
+
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       # Update lockfile after version changes
@@ -478,6 +508,57 @@ jobs:
           fi
 
           echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
+
+      # Verify the dist-tag actually points to the new version.
+      # lerna publish silently skips already-published versions, so the
+      # dist-tag may not have moved even though lerna reported success.
+      - name: Verify dist-tag
+        if: steps.publish.outcome == 'success'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
+
+          echo "Verifying dist-tag '${DIST_TAG}' points to ${VERSION}..."
+
+          # Check a representative package (@elizaos/core)
+          ACTUAL=$(npm view "@elizaos/core@${DIST_TAG}" version 2>/dev/null || echo "unknown")
+
+          if [[ "$ACTUAL" != "$VERSION" ]]; then
+            echo "⚠️ dist-tag '${DIST_TAG}' points to ${ACTUAL}, expected ${VERSION}"
+            echo "Forcing dist-tag update for all published packages..."
+
+            # Get list of public packages from lerna
+            PACKAGES=$(bunx lerna ls --json --no-private 2>/dev/null | node -e "
+              const pkgs = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+              pkgs.forEach(p => console.log(p.name));
+            ")
+
+            FIXED=0
+            FAILED=0
+            for PKG in $PACKAGES; do
+              if npm view "${PKG}@${VERSION}" version >/dev/null 2>&1; then
+                if npm dist-tag add "${PKG}@${VERSION}" "${DIST_TAG}" 2>/dev/null; then
+                  FIXED=$((FIXED + 1))
+                else
+                  echo "  ⚠️ Failed to update dist-tag for ${PKG}"
+                  FAILED=$((FAILED + 1))
+                fi
+              fi
+            done
+
+            echo "✅ Updated dist-tag for ${FIXED} packages (${FAILED} failures)"
+
+            # Re-verify
+            ACTUAL2=$(npm view "@elizaos/core@${DIST_TAG}" version 2>/dev/null || echo "unknown")
+            if [[ "$ACTUAL2" != "$VERSION" ]]; then
+              echo "❌ dist-tag still not pointing to ${VERSION} after fix attempt"
+              exit 1
+            fi
+          else
+            echo "✅ dist-tag '${DIST_TAG}' correctly points to ${VERSION}"
+          fi
 
       # Always restore workspace:* references after publish (success or failure)
       # This keeps the repository clean for development
