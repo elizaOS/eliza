@@ -40,12 +40,8 @@ export async function synthesizeSamWav(runtime: AgentRuntime, text: string, opti
   const audio = service.generateAudio(sanitized, options);
   const wav = service.createWAVBuffer(audio);
   // Ensure return is a plain ArrayBuffer (not SharedArrayBuffer)
-  const out = new Uint8Array(wav instanceof ArrayBuffer ? wav.byteLength : (wav as number[]).length);
-  if (wav instanceof ArrayBuffer) {
-    out.set(new Uint8Array(wav));
-  } else {
-    out.set(wav as ArrayLike<number>);
-  }
+  const out = new Uint8Array(wav.byteLength);
+  out.set(new Uint8Array(wav));
   return out.buffer as ArrayBuffer;
 }
 
