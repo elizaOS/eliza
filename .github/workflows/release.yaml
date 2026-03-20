@@ -307,6 +307,7 @@ jobs:
                   --no-git-tag-version \
                   --no-push
                 VERSION=$(node -p "require('./lerna.json').version")
+                sleep 1  # Brief delay for npm registry consistency
               else
                 echo "✅ Version ${VERSION} is available on npm"
                 break
@@ -540,6 +541,7 @@ jobs:
             for PKG in $PACKAGES; do
               if npm view "${PKG}@${VERSION}" version >/dev/null 2>&1; then
                 if npm dist-tag add "${PKG}@${VERSION}" "${DIST_TAG}" 2>/dev/null; then
+                  echo "  ✅ Updated dist-tag for ${PKG}"
                   FIXED=$((FIXED + 1))
                 else
                   echo "  ⚠️ Failed to update dist-tag for ${PKG}"
