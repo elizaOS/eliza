@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/autonomous",
-  "version": "2.0.0-alpha.83",
+  "version": "2.0.0-alpha.84",
   "description": "Standalone Milady agent runtime and backend server package.",
   "type": "module",
   "license": "MIT",
