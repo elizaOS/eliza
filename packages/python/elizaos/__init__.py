@@ -4,12 +4,14 @@ import sys
 import types
 
 if "eliza.v1" not in sys.modules:
-    _eliza = types.ModuleType("eliza")
+    # Reuse existing eliza module if present, otherwise create a new one
+    _eliza = sys.modules.get("eliza") or types.ModuleType("eliza")
     _v1_path = os.path.join(os.path.dirname(__file__), "types", "generated", "eliza", "v1")
     _v1 = types.ModuleType("eliza.v1")
     _v1.__path__ = [_v1_path]
     _v1.__package__ = "eliza.v1"
-    sys.modules["eliza"] = _eliza
+    if "eliza" not in sys.modules:
+        sys.modules["eliza"] = _eliza
     sys.modules["eliza.v1"] = _v1
     _eliza.v1 = _v1
 
