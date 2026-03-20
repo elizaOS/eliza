@@ -2822,7 +2822,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
       Remilia: "...",
       Reisen: "locked in",
     };
-    const presetByName = getPresetByName() ?? defaultPresetByName;
+    const presetByName = getPresetNameMap() ?? defaultPresetByName;
     const presetCatchphrase = presetByName[name.trim()];
     if (!presetCatchphrase) return undefined;
     return getStylePresets().find(
@@ -3001,7 +3001,7 @@ import { pickRandomNames } from "./onboarding-names";
 // Style presets — shared between CLI and GUI onboarding
 // ---------------------------------------------------------------------------
 
-import { getStylePresets, getPresetByName } from "../onboarding-presets";
+import { getStylePresets, getPresetNameMap } from "../onboarding-presets";
 
 /**
  * Detect whether this is the first run (no agent name configured)

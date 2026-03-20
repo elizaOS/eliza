@@ -1321,7 +1321,7 @@ export function getStylePresets(): typeof STYLE_PRESETS {
 }
 
 /** Return a name → catchphrase mapping derived from CHARACTER_PRESET_META. */
-export function getPresetByName(): Record<string, string> {
+export function getPresetNameMap(): Record<string, string> {
   const result: Record<string, string> = {};
   for (const entry of Object.values(CHARACTER_PRESET_META)) {
     result[entry.name] = entry.catchphrase;

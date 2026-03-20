@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CHARACTER_PRESET_META,
   STYLE_PRESETS,
-  getPresetByName,
+  getPresetNameMap,
   getStylePresets,
 } from "./onboarding-presets";
 
@@ -23,9 +23,9 @@ describe("getStylePresets", () => {
   });
 });
 
-describe("getPresetByName", () => {
+describe("getPresetNameMap", () => {
   it("returns a name → catchphrase mapping", () => {
-    const map = getPresetByName();
+    const map = getPresetNameMap();
     expect(typeof map).toBe("object");
     for (const [name, catchphrase] of Object.entries(map)) {
       expect(typeof name).toBe("string");
@@ -36,7 +36,7 @@ describe("getPresetByName", () => {
   });
 
   it("contains one entry per CHARACTER_PRESET_META value", () => {
-    const map = getPresetByName();
+    const map = getPresetNameMap();
     const metaValues = Object.values(CHARACTER_PRESET_META);
     expect(Object.keys(map).length).toBe(metaValues.length);
     for (const meta of metaValues) {
@@ -45,7 +45,7 @@ describe("getPresetByName", () => {
   });
 
   it("maps are consistent with STYLE_PRESETS catchphrases", () => {
-    const map = getPresetByName();
+    const map = getPresetNameMap();
     const validCatchphrases = new Set(
       getStylePresets().map((p) => p.catchphrase),
     );
