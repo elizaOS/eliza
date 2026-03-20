@@ -8,8 +8,7 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "resolveJsonModule": true,
-    "types": ["node"]
+    "resolveJsonModule": true
   },
   "include": ["test-client.ts"],
   "exclude": ["node_modules", "typescript", "python", "rust"]
