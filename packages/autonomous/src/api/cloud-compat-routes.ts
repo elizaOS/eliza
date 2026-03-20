@@ -97,7 +97,7 @@ export async function handleCloudCompatRoute(
   if (!pathname.startsWith("/api/cloud/compat/")) return false;
 
   const apiKey = state.config.cloud?.apiKey?.trim();
-  if (!apiKey) {
+  if (!apiKey || apiKey.toUpperCase() === "[REDACTED]") {
     sendJsonError(
       res,
       "Not connected to Eliza Cloud. Please log in first.",

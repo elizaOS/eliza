@@ -2319,6 +2319,7 @@ export class MiladyClient {
     pairingEnabled: boolean;
     expiresAt: number | null;
   }> {
+    console.log("🚨🚨🚨 REAL CLIENT GET_AUTH_STATUS CALLED! 🚨🚨🚨");
     // Retry with exponential backoff — the server may not be ready during boot.
     const maxRetries = 3;
     const baseBackoffMs = 1000;
@@ -5533,14 +5534,24 @@ export class MiladyClient {
   async cloudLoginDirect(
     cloudApiBase: string,
   ): Promise<{ ok: boolean; browserUrl?: string; sessionId?: string; error?: string }> {
-    const res = await fetch(`${cloudApiBase}/api/v1/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (!res.ok) {
-      return { ok: false, error: `Login failed (${res.status})` };
+    const sessionId = globalThis.crypto.randomUUID();
+    try {
+      const res = await fetch(`${cloudApiBase}/api/auth/cli-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (!res.ok) {
+        return { ok: false, error: `Login failed (${res.status})` };
+      }
+      return {
+        ok: true,
+        sessionId,
+        browserUrl: `${cloudApiBase}/auth/cli-login?session=${encodeURIComponent(sessionId)}`,
+      };
+    } catch (err) {
+      return { ok: false, error: `Failed to reach Eliza Cloud: ${err instanceof Error ? err.message : String(err)}` };
     }
-    return res.json();
   }
 
   /**
@@ -5555,13 +5566,25 @@ export class MiladyClient {
     userId?: string;
     error?: string;
   }> {
-    const res = await fetch(
-      `${cloudApiBase}/api/v1/auth/login/status?sessionId=${encodeURIComponent(sessionId)}`,
-    );
-    if (!res.ok) {
-      return { status: "error", error: `Poll failed (${res.status})` };
+    try {
+      const res = await fetch(
+        `${cloudApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+      );
+      if (!res.ok) {
+        if (res.status === 404) {
+          return { status: "expired", error: "Auth session expired or not found" };
+        }
+        return { status: "error", error: `Poll failed (${res.status})` };
+      }
+      const data = await res.json();
+      // Map cli-session response shape to expected poll shape
+      if (data.status === "authenticated" && data.apiKey) {
+        return { status: "authenticated", token: data.apiKey, userId: data.userId };
+      }
+      return { status: data.status ?? "pending" };
+    } catch {
+      return { status: "error", error: "Poll request failed" };
     }
-    return res.json();
   }
 
   // ── Eliza Cloud Sandbox Provisioning ───────────────────────────────
