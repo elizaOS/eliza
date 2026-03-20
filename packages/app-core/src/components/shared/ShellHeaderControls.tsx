@@ -6,7 +6,6 @@ import {
   Monitor,
   Smartphone,
   UserRound,
-  Users,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 

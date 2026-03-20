@@ -118,6 +118,48 @@
   background: rgba(0, 0, 0, 0.4);
 }
 
+/* ── Character editor save/select/customize buttons ────────────────── */
+.ce-save-btn {
+  --ce-gold: var(--classic-gold, #cfaf5a);
+  --ce-gold-highlight: var(--highlight-gold, #f2d27a);
+  --ce-gold-shadow: var(--burnished-gold, #7a5a1f);
+  --ce-gold-glow: var(--gold-glow, rgba(242, 210, 122, 0.25));
+  --ce-white-glow: var(--soft-white-glow, rgba(255, 255, 255, 0.08));
+  height: 2.25rem;
+  border-radius: 0.75rem;
+  padding: 0 1.5rem;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: linear-gradient(
+    135deg,
+    var(--ce-gold-shadow) 0%,
+    var(--ce-gold) 58%,
+    var(--ce-gold-highlight) 100%
+  );
+  color: #1a1a1a;
+  border-color: var(--ce-gold);
+  box-shadow:
+    0 0 18px var(--ce-gold-glow),
+    inset 0 1px 0 var(--ce-white-glow);
+  transition: all 0.2s;
+}
+
+.ce-save-btn:hover {
+  background: linear-gradient(
+    135deg,
+    var(--ce-gold) 0%,
+    var(--ce-gold-highlight) 100%
+  );
+  box-shadow:
+    0 0 22px var(--ce-gold-glow),
+    inset 0 1px 0 var(--ce-white-glow);
+}
+
+.ce-save-btn:disabled {
+  opacity: 0.5;
+}
+
 [data-theme="dark"],
 .dark {
   --bg: hsl(220 16% 12%);

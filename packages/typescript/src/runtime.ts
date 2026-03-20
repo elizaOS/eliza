@@ -610,8 +610,7 @@ export class AgentRuntime implements IAgentRuntime {
 							agentId: this.agentId,
 							plugin: pluginToRegister.name,
 							serviceType,
-							error:
-								err instanceof Error ? err.message : String(err),
+							error: err instanceof Error ? err.message : String(err),
 						},
 						"Service start failed",
 					);

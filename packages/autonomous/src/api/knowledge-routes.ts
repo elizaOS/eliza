@@ -868,12 +868,12 @@ export async function handleKnowledgeRoutes(
         try {
           const { ModelType } = await import("@elizaos/core");
           const dataUri = `data:${contentType};base64,${content}`;
-          const description = await runtime.useModel(ModelType.TEXT_SMALL, {
+          const description = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+            imageUrl: dataUri,
             prompt: `Describe this image in detail for a knowledge base. Focus on text content, data, charts, and key visual elements. Image filename: ${document.filename}`,
-            images: [dataUri],
-            maxTokens: 1000,
           });
-          content = `[Image: ${document.filename}]\n\n${typeof description === "string" ? description : (description as { text?: string }).text || "Image uploaded"}`;
+          const descText = typeof description === "string" ? description : (description as { description?: string }).description || "Image uploaded";
+          content = `[Image: ${document.filename}]\n\n${descText}`;
           contentType = "text/plain";
         } catch (err) {
           // Vision failed — store as a reference entry

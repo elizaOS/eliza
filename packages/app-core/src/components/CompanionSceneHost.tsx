@@ -173,7 +173,12 @@ function CompanionSceneSurface({
   }, []);
 
   const handleStageEngineReady = useCallback((engine: VrmEngine) => {
+    stageEnginesRef.current.add(engine);
     engine.setCompanionZoomNormalized(companionZoomRef.current);
+    engine.setDragOrbitTarget(
+      dragOrbitRef.current.yaw,
+      dragOrbitRef.current.pitch,
+    );
   }, []);
 
   const handleStageLayerEngineReady = useCallback(

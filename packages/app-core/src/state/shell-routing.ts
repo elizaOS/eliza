@@ -28,7 +28,7 @@ export function shouldStartAtCharacterSelectOnLaunch(params: {
   // Character-select is a companion-only feature.
   if (!COMPANION_ENABLED) return false;
 
-  const { onboardingNeedsOptions, onboardingMode, navPath, urlTab } = params;
+  const { onboardingNeedsOptions, onboardingMode } = params;
   if (onboardingNeedsOptions || onboardingMode === "elizacloudonly") {
     return false;
   }

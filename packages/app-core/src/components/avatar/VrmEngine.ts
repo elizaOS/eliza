@@ -2583,6 +2583,10 @@ if (teleportNoise < teleportRatio) discard;
         if (this.teleportProgress >= 1.0) {
           this.cleanupTeleportDissolve();
           this.cleanupTeleportSparkles();
+          // Notify the app that the teleport-in animation has finished
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("eliza:vrm-teleport-complete"));
+          }
         }
       }
       this.updateTeleportSparkles();
