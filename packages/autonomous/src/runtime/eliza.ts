@@ -108,10 +108,7 @@ import { diagnoseNoAIProvider } from "../services/version-compat";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins";
 import { detectEmbeddingPreset } from "./embedding-presets";
 import { createElizaPlugin } from "./eliza-plugin";
-import {
-  installDatabaseTrajectoryLogger,
-  shouldEnableTrajectoryLoggingByDefault,
-} from "./trajectory-persistence";
+import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence";
 
 /**
  * Map of baseline bundled @elizaos plugin names to their statically imported
@@ -404,24 +401,6 @@ interface TrajectoryLoggerControl {
   setEnabled?: (enabled: boolean) => void;
 }
 
-interface TrajectoryLoggerOps {
-  startTrajectory?: (
-    stepIdOrAgentId: string,
-    options?: {
-      agentId?: string;
-      roomId?: string;
-      entityId?: string;
-      source?: string;
-      metadata?: Record<string, unknown>;
-    },
-  ) => Promise<string>;
-  startStep?: (trajectoryId: string) => string;
-  endTrajectory?: (
-    stepIdOrTrajectoryId: string,
-    status?: string,
-  ) => Promise<void>;
-}
-
 type TrajectoryLoggerRegistrationStatus =
   | "pending"
   | "registering"
@@ -438,34 +417,18 @@ type TrajectoryLoggerRuntimeLike = {
   ) => TrajectoryLoggerRegistrationStatus;
 };
 
-function collectTrajectoryLoggerCandidates(
-  runtimeLike: TrajectoryLoggerRuntimeLike,
-): TrajectoryLoggerControl[] {
-  const candidates: TrajectoryLoggerControl[] = [];
-  if (typeof runtimeLike.getServicesByType === "function") {
-    const byType = runtimeLike.getServicesByType("trajectory_logger");
-    if (Array.isArray(byType) && byType.length > 0) {
-      for (const service of byType) {
-        if (service) candidates.push(service as TrajectoryLoggerControl);
-      }
-    } else if (byType && !Array.isArray(byType)) {
-      candidates.push(byType as TrajectoryLoggerControl);
-    }
-  }
-  if (typeof runtimeLike.getService === "function") {
-    const single = runtimeLike.getService("trajectory_logger");
-    if (single) candidates.push(single as TrajectoryLoggerControl);
-  }
-  return candidates;
-}
-
 async function waitForTrajectoryLoggerService(
   runtime: AgentRuntime,
   context: string,
   timeoutMs = 3000,
 ): Promise<void> {
   const runtimeLike = runtime as unknown as TrajectoryLoggerRuntimeLike;
-  if (collectTrajectoryLoggerCandidates(runtimeLike).length > 0) return;
+
+  // Check if already available
+  if (typeof runtimeLike.getService === "function") {
+    const existing = runtimeLike.getService("trajectory_logger");
+    if (existing) return;
+  }
 
   const registrationStatus =
     typeof runtimeLike.getServiceRegistrationStatus === "function"
@@ -513,30 +476,11 @@ function ensureTrajectoryLoggerEnabled(
   runtime: AgentRuntime,
   context: string,
 ): void {
-  const runtimeLike = runtime as unknown as TrajectoryLoggerRuntimeLike;
-  const candidates = collectTrajectoryLoggerCandidates(runtimeLike);
+  const trajectoryLogger = runtime.getService("trajectory_logger") as
+    | TrajectoryLoggerControl
+    | null
+    | undefined;
 
-  let trajectoryLogger: TrajectoryLoggerControl | null = null;
-  let bestScore = -1;
-  for (const candidate of candidates) {
-    const candidateWithRuntime = candidate as TrajectoryLoggerControl & {
-      runtime?: { adapter?: unknown };
-      initialized?: boolean;
-      setEnabled?: unknown;
-    };
-    let score = 0;
-    if (typeof candidate.isEnabled === "function") score += 2;
-    if (typeof candidateWithRuntime.setEnabled === "function") score += 2;
-    if (candidateWithRuntime.initialized === true) score += 3;
-    if (candidateWithRuntime.runtime?.adapter) score += 3;
-    const enabled =
-      typeof candidate.isEnabled === "function" ? candidate.isEnabled() : true;
-    if (enabled) score += 1;
-    if (score > bestScore) {
-      trajectoryLogger = candidate;
-      bestScore = score;
-    }
-  }
   if (!trajectoryLogger) {
     logger.warn(
       `[milady] trajectory_logger service unavailable (${context}); trajectory capture disabled`,
@@ -557,48 +501,6 @@ function ensureTrajectoryLoggerEnabled(
     logger.info(
       `[milady] trajectory_logger defaulted ${shouldEnable ? "on" : "off"} (${context})`,
     );
-  }
-}
-
-function patchTrajectoryLoggerAliasCompatibility(runtime: AgentRuntime): void {
-  const runtimeLike = runtime as unknown as TrajectoryLoggerRuntimeLike;
-  const primary = collectTrajectoryLoggerCandidates(runtimeLike)[0] as
-    | (TrajectoryLoggerControl & TrajectoryLoggerOps)
-    | undefined;
-  if (!primary) return;
-
-  if (typeof runtimeLike.getService !== "function") return;
-  const aliases: unknown[] = [
-    runtimeLike.getService("logger5"),
-    runtimeLike.getService("logger"),
-  ];
-
-  for (const alias of aliases) {
-    if (!alias || typeof alias !== "object" || alias === primary) continue;
-    const aliasOps = alias as TrajectoryLoggerOps;
-    if (typeof aliasOps.startTrajectory !== "function") {
-      aliasOps.startTrajectory = async (...args) => {
-        if (typeof primary.startTrajectory === "function") {
-          return primary.startTrajectory(...args);
-        }
-        return `step-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      };
-    }
-    if (typeof aliasOps.startStep !== "function") {
-      aliasOps.startStep = (trajectoryId: string) => {
-        if (typeof primary.startStep === "function") {
-          return primary.startStep(trajectoryId);
-        }
-        return `step-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      };
-    }
-    if (typeof aliasOps.endTrajectory !== "function") {
-      aliasOps.endTrajectory = async (...args) => {
-        if (typeof primary.endTrajectory === "function") {
-          await primary.endTrajectory(...args);
-        }
-      };
-    }
   }
 }
 
@@ -1996,7 +1898,13 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     delete process.env.ELIZAOS_CLOUD_SMALL_MODEL;
     delete process.env.ELIZAOS_CLOUD_LARGE_MODEL;
   }
-  if (cloud.apiKey) {
+  // Only propagate the API key when it is a real credential — never set
+  // the literal "[REDACTED]" placeholder (which can leak into the config via
+  // UI round-trips through the redacted GET → PUT cycle).
+  const isRealApiKey =
+    cloud.apiKey &&
+    cloud.apiKey.trim().toUpperCase() !== "[REDACTED]";
+  if (isRealApiKey) {
     process.env.ELIZAOS_CLOUD_API_KEY = cloud.apiKey;
   } else {
     delete process.env.ELIZAOS_CLOUD_API_KEY;
@@ -4345,8 +4253,6 @@ export async function startEliza(
     await runtime.initialize();
     await waitForTrajectoryLoggerService(runtime, "runtime.initialize()");
     ensureTrajectoryLoggerEnabled(runtime, "runtime.initialize()");
-    installDatabaseTrajectoryLogger(runtime);
-    patchTrajectoryLoggerAliasCompatibility(runtime);
 
     // 8b. Ensure AutonomyService is available for trigger dispatch.
     // IGNORE_BOOTSTRAP=true prevents the bootstrap plugin (which normally
