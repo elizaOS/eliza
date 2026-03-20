@@ -109,8 +109,7 @@ export function Header({ mobileLeft, transparent = false, hideCloudCredits = fal
   const useMinimalHeaderChrome = transparent || activeShellView !== "desktop";
   const showNavigationMenu = activeShellView === "desktop";
   const showCloudCredits = activeShellView === "desktop" && !hideCloudCredits;
-  const showCloudCreditsStatus =
-    showCloudCredits && (elizaCloudEnabled || elizaCloudConnected);
+  const showCloudCreditsStatus = showCloudCredits && elizaCloudConnected;
   const cloudCreditsDisplay =
     elizaCloudCredits === null
       ? t("header.elizaCloudConnected")

@@ -1674,6 +1674,17 @@ export class VrmEngine {
         controls.update();
         this.controls = controls;
         this.setInteractionEnabled(this.interactionEnabled);
+        // Apply deferred camera profile (setCameraProfile may have been called
+        // before the camera existed) and initialize baseCameraPosition so that
+        // drag-orbit and companion-zoom have a valid reference point from the
+        // very first frame.
+        this.cameraManager.applyCameraProfileToCamera(
+          camera,
+          controls,
+          this.cameraProfile,
+        );
+        this.baseCameraPosition.copy(camera.position);
+        this.lookAtTarget.copy(controls.target);
         const ambient = new THREE.AmbientLight(0xffffff, 0.8);
         scene.add(ambient);
         const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
