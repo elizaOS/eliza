@@ -28,8 +28,8 @@ Be friendly, concise, and genuinely helpful.
 Keep responses short - suitable for mobile chat.`,
     plugins: [adapterPlugin],
     settings: {
-      OPENAI_SMALL_MODEL: "gpt-5-mini",
-      OPENAI_LARGE_MODEL: "gpt-5-mini",
+      OPENAI_SMALL_MODEL: "gpt-4o-mini",
+      OPENAI_LARGE_MODEL: "gpt-4o-mini",
     },
     secrets: {
       TELEGRAM_BOT_TOKEN: telegramBotToken,
