@@ -1,5 +1,5 @@
 import { Button } from "@elizaos/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { AgentPreflightResult } from "../api";
 import { client } from "../api";
 import { useTimeout } from "../hooks";
@@ -100,29 +100,49 @@ const ENV_PREFIX: Record<AgentTab, string> = {
   aider: "PARALLAX_AIDER",
 };
 
+/** Module-level cache so re-mounts skip the loading skeleton. */
+interface SettingsCache {
+  prefs: Record<string, string>;
+  providerModels: Record<string, ModelOption[]>;
+  preflightByAgent: Partial<Record<AgentTab, AgentPreflightResult>>;
+  preflightLoaded: boolean;
+}
+
+let _settingsCache: SettingsCache | null = null;
+
+/** Visible for testing — clears the module-level settings cache. */
+export function _clearSettingsCache(): void {
+  _settingsCache = null;
+}
+
 export function CodingAgentSettingsSection() {
   const { setTimeout } = useTimeout();
   const { t } = useApp();
 
   const [activeTab, setActiveTab] = useState<AgentTab>("claude");
-  const hasLoadedOnce = useRef(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!_settingsCache);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [prefs, setPrefs] = useState<Record<string, string>>({});
+  const [prefs, setPrefs] = useState<Record<string, string>>(
+    _settingsCache?.prefs ?? {},
+  );
   const [providerModels, setProviderModels] = useState<
     Record<string, ModelOption[]>
-  >({});
-  const [preflightLoaded, setPreflightLoaded] = useState(false);
+  >(_settingsCache?.providerModels ?? {});
+  const [preflightLoaded, setPreflightLoaded] = useState(
+    _settingsCache?.preflightLoaded ?? false,
+  );
   const [preflightByAgent, setPreflightByAgent] = useState<
     Partial<Record<AgentTab, AgentPreflightResult>>
-  >({});
+  >(_settingsCache?.preflightByAgent ?? {});
 
   useEffect(() => {
     void (async () => {
-      if (!hasLoadedOnce.current) {
+      // Only show loading skeleton on very first fetch (no cache yet).
+      // When cache exists, we still fetch fresh data but don't block the UI.
+      if (!_settingsCache) {
         setLoading(true);
       }
       try {
@@ -195,6 +215,10 @@ export function CodingAgentSettingsSection() {
         }
         setProviderModels(models);
 
+        let newPreflightByAgent: Partial<
+          Record<AgentTab, AgentPreflightResult>
+        > = {};
+        let newPreflightLoaded = false;
         if (Array.isArray(preflightRes)) {
           const mapped: Partial<Record<AgentTab, AgentPreflightResult>> = {};
           for (const item of preflightRes as AgentPreflightResult[]) {
@@ -206,12 +230,21 @@ export function CodingAgentSettingsSection() {
           }
           setPreflightByAgent(mapped);
           setPreflightLoaded(true);
+          newPreflightByAgent = mapped;
+          newPreflightLoaded = true;
         }
+
+        // Persist to module-level cache so re-mounts are instant.
+        _settingsCache = {
+          prefs: loaded,
+          providerModels: models,
+          preflightByAgent: newPreflightByAgent,
+          preflightLoaded: newPreflightLoaded,
+        };
       } catch {
         // Fall back to built-in defaults when config or model fetches fail.
       }
       setLoading(false);
-      hasLoadedOnce.current = true;
     })();
   }, []);
 
