@@ -271,7 +271,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
     this.initializeRegistry();
 
     logger.info(
-      { pluginManagerConfig: this.pluginManagerConfig },
+{ pluginManagerConfig: this.pluginManagerConfig },
       '[PluginManagerService] Initialized with config',
     );
   }
@@ -570,14 +570,12 @@ export class PluginManagerService extends Service implements PluginRegistry {
         }
         for (const eventHandler of eventHandlers) {
           await this.runtime.registerEvent(
-            eventName as Parameters<typeof this.runtime.registerEvent>[0],
+eventName as Parameters<typeof this.runtime.registerEvent>[0],
             eventHandler as (params: import('@elizaos/core').WorldPayload) => Promise<void>,
           );
-          (
-            pluginState.components!.eventHandlers.get(eventName) as Set<
-              (params: Record<string, unknown>) => Promise<void>
-            >
-          )!.add(eventHandler as unknown as (params: Record<string, unknown>) => Promise<void>);
+          pluginState.components!.eventHandlers
+            .get(eventName)!
+            .add(eventHandler as unknown as (params: Record<string, unknown>) => Promise<void>);
           this.trackComponentRegistration(pluginState.id, 'eventHandler', eventName);
         }
       }
@@ -669,7 +667,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
       for (const ServiceClass of plugin.services) {
         const serviceType = ServiceClass.serviceType;
         if (!this.originalServices.has(serviceType)) {
-          const services = this.runtime.getServicesByType(serviceType as ServiceTypeName);
+          const services = await this.runtime.getServicesByType(serviceType as ServiceTypeName);
           if (services && services.length > 0) {
             for (const service of services) {
               await service.stop();

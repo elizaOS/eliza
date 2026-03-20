@@ -45,7 +45,7 @@ async function formatRelationships(runtime: IAgentRuntime, relationships: Relati
   });
 
   // Check for entity links
-  const resolutionService = runtime.getService('entity_resolution') as EntityResolutionService | null;
+  const resolutionService = await runtime.getService('entity_resolution') as EntityResolutionService | null;
 
   const formatted = [];
   for (const { rel, decayedStrength } of withDecay) {

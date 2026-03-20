@@ -47,7 +47,7 @@ export const provisionCloudAgentAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime): Promise<boolean> {
-    const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
+    const auth = await runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
     return !!auth?.isAuthenticated();
   },
 
@@ -58,10 +58,10 @@ export const provisionCloudAgentAction: Action = {
     options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> {
-    const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService;
-    const containers = runtime.getService("CLOUD_CONTAINER") as CloudContainerService;
-    const bridge = runtime.getService("CLOUD_BRIDGE") as CloudBridgeService | undefined;
-    const backup = runtime.getService("CLOUD_BACKUP") as CloudBackupService | undefined;
+    const auth = await runtime.getService("CLOUD_AUTH") as CloudAuthService;
+    const containers = await runtime.getService("CLOUD_CONTAINER") as CloudContainerService;
+    const bridge = await runtime.getService("CLOUD_BRIDGE") as CloudBridgeService | undefined;
+    const backup = await runtime.getService("CLOUD_BACKUP") as CloudBackupService | undefined;
 
     if (!auth?.isAuthenticated() || !containers) {
       return { success: false, error: "ElizaCloud not authenticated or container service unavailable" };

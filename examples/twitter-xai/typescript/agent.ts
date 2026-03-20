@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { AgentRuntime } from "@elizaos/core";
+import { AgentRuntime, InMemoryDatabaseAdapter } from "@elizaos/core";
 import { config as loadDotEnv } from "dotenv";
 
 import { character } from "./character";
@@ -53,8 +53,12 @@ async function main(): Promise<void> {
   const sqlPlugin = (await import("@elizaos/plugin-sql")).default;
   const { XAIPlugin } = await import("@elizaos/plugin-xai");
 
+  const adapter = new InMemoryDatabaseAdapter();
+  await adapter.initialize();
+
   const runtime = new AgentRuntime({
     character,
+    adapter,
     plugins: [sqlPlugin, XAIPlugin],
   });
 

@@ -33,6 +33,11 @@ export const plugin: Plugin = {
   name: "@elizaos/plugin-inmemorydb",
   description: "Pure in-memory, ephemeral database storage for elizaOS - no persistence",
 
+  /** Adapter factory for runtime composition (createRuntimes). No settings required. */
+  adapter(agentId) {
+    return createDatabaseAdapter(agentId);
+  },
+
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     logger.info({ src: "plugin:inmemorydb" }, "Initializing in-memory database plugin");
 
@@ -57,17 +62,9 @@ export const plugin: Plugin = {
       return;
     }
 
-    const adapter = createDatabaseAdapter(runtime.agentId);
-
-    // Initialize the adapter (implementation-specific method)
-    if ('init' in adapter && typeof adapter.init === 'function') {
-      await adapter.init();
-    }
-    runtime.registerDatabaseAdapter(adapter);
-
-    logger.success(
+    logger.warn(
       { src: "plugin:inmemorydb" },
-      "In-memory database adapter registered successfully"
+      "No database adapter on runtime. Pass adapter in AgentRuntime constructor or use createRuntimes with this plugin's adapter factory."
     );
   },
 };

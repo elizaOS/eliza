@@ -2,7 +2,7 @@
  * Tests for the SWE-agent rules module
  */
 
-import { describe, expect, test } from "./jest-globals";
+import { describe, expect, it } from "vitest";
 import {
   exportAllRulesToCursor,
   formatValidationResults,
@@ -21,7 +21,7 @@ describe("Rules Module", () => {
   describe("PythonValidator", () => {
     const validator = new PythonValidator();
 
-    test("should detect missing type annotations", () => {
+    it("should detect missing type annotations", () => {
       const code = `
 def process_data(data):
     return data * 2
@@ -33,7 +33,7 @@ def process_data(data):
       ).toBe(true);
     });
 
-    test("should detect os.path usage", () => {
+    it("should detect os.path usage", () => {
       const code = `
 import os.path
 
@@ -47,7 +47,7 @@ def get_file_path(filename: str) -> str:
       );
     });
 
-    test("should detect open() without pathlib", () => {
+    it("should detect open() without pathlib", () => {
       const code = `
 def read_file(filename: str) -> str:
     with open(filename, 'r') as f:
@@ -60,7 +60,7 @@ def read_file(filename: str) -> str:
       );
     });
 
-    test("should pass valid Python code", () => {
+    it("should pass valid Python code", () => {
       const code = `
 from pathlib import Path
 from typing import List
@@ -84,7 +84,7 @@ def read_files(filenames: List[str]) -> List[str]:
   describe("TypeScriptValidator", () => {
     const validator = new TypeScriptValidator();
 
-    test("should detect any type usage", () => {
+    it("should detect any type usage", () => {
       const code = `
 function processData(data: any): any {
     return data;
@@ -97,7 +97,7 @@ function processData(data: any): any {
       );
     });
 
-    test("should detect synchronous fs usage", () => {
+    it("should detect synchronous fs usage", () => {
       const code = `
 import * as fs from 'fs';
 
@@ -111,7 +111,7 @@ function readFile(path: string): string {
       );
     });
 
-    test("should pass valid TypeScript code", () => {
+    it("should pass valid TypeScript code", () => {
       const code = `
 import { promises as fs } from 'fs';
 
@@ -131,36 +131,36 @@ export async function readFile(path: string): Promise<string> {
   });
 
   describe("getValidator", () => {
-    test("should return PythonValidator for python", () => {
+    it("should return PythonValidator for python", () => {
       const validator = getValidator("python");
       expect(validator).toBeInstanceOf(PythonValidator);
     });
 
-    test("should return TypeScriptValidator for typescript", () => {
+    it("should return TypeScriptValidator for typescript", () => {
       const validator = getValidator("typescript");
       expect(validator).toBeInstanceOf(TypeScriptValidator);
     });
   });
 
   describe("getApplicableRules", () => {
-    test("should return Python rules for .py files", () => {
+    it("should return Python rules for .py files", () => {
       const rules = getApplicableRules("test.py");
       expect(rules).toEqual(PYTHON_CODING_RULES);
     });
 
-    test("should return TypeScript rules for .ts files", () => {
+    it("should return TypeScript rules for .ts files", () => {
       const rules = getApplicableRules("test.ts");
       expect(rules).toEqual(TYPESCRIPT_CODING_RULES);
     });
 
-    test("should use provided language parameter", () => {
+    it("should use provided language parameter", () => {
       const rules = getApplicableRules("test.txt", "python");
       expect(rules).toEqual(PYTHON_CODING_RULES);
     });
   });
 
   describe("Project Structure", () => {
-    test("should have correct main entry points", () => {
+    it("should have correct main entry points", () => {
       expect(PROJECT_STRUCTURE.mainEntryPoints).toHaveLength(2);
       expect(PROJECT_STRUCTURE.mainEntryPoints[0].path).toBe(
         "sweagent/run/run_single.py",
@@ -170,19 +170,19 @@ export async function readFile(path: string): Promise<string> {
       );
     });
 
-    test("should have correct main class", () => {
+    it("should have correct main class", () => {
       expect(PROJECT_STRUCTURE.mainClass.name).toBe("Agent");
       expect(PROJECT_STRUCTURE.mainClass.path).toBe("sweagent/agent/agents.py");
     });
 
-    test("should have correct execution environment", () => {
+    it("should have correct execution environment", () => {
       expect(PROJECT_STRUCTURE.executionEnvironment.type).toBe("docker");
       expect(PROJECT_STRUCTURE.executionEnvironment.interfaceProject).toBe(
         "SWE-ReX",
       );
     });
 
-    test("should have correct inspectors", () => {
+    it("should have correct inspectors", () => {
       expect(PROJECT_STRUCTURE.inspectors).toHaveLength(2);
       const cliInspector = PROJECT_STRUCTURE.inspectors.find(
         (i) => i.type === "cli",
@@ -196,38 +196,38 @@ export async function readFile(path: string): Promise<string> {
   });
 
   describe("getComponentByPath", () => {
-    test("should return correct component for main agent", () => {
+    it("should return correct component for main agent", () => {
       const component = getComponentByPath("sweagent/agent/agents.py");
       expect(component).not.toBeNull();
       expect(component?.component).toBe("main-agent");
     });
 
-    test("should return correct component for entry point", () => {
+    it("should return correct component for entry point", () => {
       const component = getComponentByPath("sweagent/run/run_single.py");
       expect(component).not.toBeNull();
       expect(component?.component).toBe("entry-point");
     });
 
-    test("should return correct component for tool", () => {
+    it("should return correct component for tool", () => {
       const component = getComponentByPath("tools/search/search_file");
       expect(component).not.toBeNull();
       expect(component?.component).toBe("tool");
     });
 
-    test("should return null for unknown path", () => {
+    it("should return null for unknown path", () => {
       const component = getComponentByPath("unknown/path.py");
       expect(component).toBeNull();
     });
   });
 
   describe("exportAllRulesToCursor", () => {
-    test("should export rules in Cursor format", () => {
+    it("should export rules in Cursor format", () => {
       const exported = exportAllRulesToCursor();
       expect(Object.keys(exported)).toContain("general.mdc");
       expect(Object.keys(exported)).toContain("project-overview.mdc");
     });
 
-    test("should include frontmatter in exported rules", () => {
+    it("should include frontmatter in exported rules", () => {
       const exported = exportAllRulesToCursor();
       const generalRule = exported["general.mdc"];
       expect(generalRule).toContain("---");
@@ -236,13 +236,13 @@ export async function readFile(path: string): Promise<string> {
   });
 
   describe("formatValidationResults", () => {
-    test("should format empty results correctly", () => {
+    it("should format empty results correctly", () => {
       const results: ValidationResult[] = [];
       const formatted = formatValidationResults(results);
       expect(formatted).toBe("All files passed validation!");
     });
 
-    test("should format violations correctly", () => {
+    it("should format violations correctly", () => {
       const results = [
         {
           valid: false,

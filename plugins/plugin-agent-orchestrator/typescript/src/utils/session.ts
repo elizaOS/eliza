@@ -137,8 +137,8 @@ export function parseSessionKey(sessionKey: string): ParsedSessionKey {
   if (trimmed.startsWith("agent:")) {
     const parts = trimmed.split(":");
     if (parts.length >= 4) {
-      const agentId = parts[1] ?? "unknown";
-      const keyTypeRaw = parts[2] ?? "unknown";
+      const agentId = parts[1]!;
+      const keyTypeRaw = parts[2]!;
       const identifier = parts.slice(3).join(":");
       const keyType = normalizeKeyType(keyTypeRaw);
 
@@ -151,7 +151,7 @@ export function parseSessionKey(sessionKey: string): ParsedSessionKey {
     // Malformed agent: key
     if (parts.length >= 2) {
       return {
-        agentId: parts[1] ?? "unknown",
+        agentId: parts[1]!,
         keyType: "unknown",
         identifier: parts.slice(2).join(":") ?? "",
       };

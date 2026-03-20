@@ -35,14 +35,15 @@ The `@elizaos/core` package provides a robust foundation for building AI agents 
     bun run build
     ```
 
-## Browser and Node.js Compatibility
+## Browser, Node.js, and Edge compatibility
 
-The `@elizaos/core` package features a dual build system that provides optimized builds for both Node.js and browser environments:
+The `@elizaos/core` package provides multiple builds:
 
-- **Node.js Build**: Full API surface with all features including server utilities
-- **Browser Build**: Optimized, minified build with browser-safe APIs and polyfills
+- **Node.js:** Full API including provisioning, connection helpers, and all services. Use for daemons and server-side apps.
+- **Browser:** Optimized build with browser-safe APIs and polyfills.
+- **Edge:** Dedicated entry for Vercel Edge, Cloudflare Workers, Deno Deploy. Excludes Node-only modules (e.g. provisioning) so edge runtimes don’t pull in incompatible code. **WHY:** Edge runtimes cannot load Node modules; a separate surface keeps bundles and startup predictable.
 
-The correct build is automatically selected based on your environment through package.json conditional exports. For browser usage, ensure you have the necessary polyfills installed:
+The correct build is selected via package.json conditional exports. For browser usage, ensure you have the necessary polyfills installed:
 
 ```bash
 npm install buffer crypto-browserify stream-browserify events
@@ -59,7 +60,7 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `LOG_JSON_FORMAT`: Output logs in JSON format (`true`/`false`).
 - `DEFAULT_LOG_LEVEL`: Default log level if not in debug mode.
 - `SECRET_SALT`: Secret salt for encryption purposes.
-- `ALLOW_NO_DATABASE`: Allow running without a persistent database adapter. When `true`, `AgentRuntime.initialize()` will fall back to an in-memory adapter (useful for benchmarks/tests).
+- **Database:** The runtime **requires** a database adapter at construction (e.g. `InMemoryDatabaseAdapter` for tests or in-memory use). There is no automatic fallback. **WHY:** Explicit adapter ownership avoids race conditions and makes deployment behavior clear. See [Runtime architecture](docs/RUNTIME_ARCHITECTURE.md).
 - `USE_MULTI_STEP`: Enable the iterative multi-step workflow (`true`/`false`). When enabled, the runtime may run multiple provider/action steps before producing a final response.
 - `MAX_MULTISTEP_ITERATIONS`: Maximum number of iterations for multi-step mode (default: `6`).
 - `SENTRY_DSN`: Sentry DSN for error reporting.
@@ -75,7 +76,6 @@ LOG_DIAGNOSTIC=true
 LOG_JSON_FORMAT=false
 DEFAULT_LOG_LEVEL=info
 SECRET_SALT=yourSecretSaltHere
-ALLOW_NO_DATABASE=true
 USE_MULTI_STEP=false
 MAX_MULTISTEP_ITERATIONS=6
 SENTRY_DSN=yourSentryDsnHere
@@ -233,27 +233,63 @@ Evaluators analyze conversation data and other inputs to extract meaningful info
 - Reflect on past interactions to improve future responses.
 - Update the agent's knowledge base.
 
+## Runtime initialization (adapter, provisioning, services)
+
+The runtime requires a **database adapter** at construction and no longer runs migrations or agent/entity/room setup inside `initialize()`. **WHY:** The runtime stays a lean request handler; one-time setup (provisioning) runs separately at deploy or daemon boot, and edge/ephemeral runtimes can skip it entirely.
+
+- **Adapter:** Always pass `adapter` to the constructor. Use `InMemoryDatabaseAdapter` for in-memory or tests; use a real adapter (e.g. from `@elizaos/plugin-sql`) for persistent storage.
+- **Provisioning (daemon only):** After `await runtime.initialize()`, call `await provisionAgent(runtime, { runMigrations: true })` to run plugin migrations and ensure agent/entity/room/embedding dimension. Do not call this on every request in serverless/ephemeral.
+- **Services:** `getService(name)` is **async** and starts the service on first use. Always use `await runtime.getService(...)`.
+- **Task timer (daemon only):** If you need scheduled tasks, after initialization run  
+  `(await runtime.getService("task"))?.startTimer?.()`  
+  **WHY:** The task poll timer is opt-in so edge and ephemeral runtimes don’t start background timers.
+
+For full deployment patterns (daemon, ephemeral, edge, tests) and WHYs, see [Runtime architecture](docs/RUNTIME_ARCHITECTURE.md). For a concise change list and migration guide, see [CHANGELOG.md](CHANGELOG.md).
+
+## Runtime composition (building blocks)
+
+The **runtime composition** API provides small, composable functions so hosts (daemon, cloud, serverless, milaidy) can set up runtimes without duplicating adapter creation, plugin resolution, or settings merge logic. **WHY:** Different hosts need different flows; composable building blocks let each use the pieces it needs (e.g. cloud may use only helpers with its own adapter pool).
+
+- **`loadCharacters(sources)`** – Load characters from file paths and/or inline objects. Returns validated `Character[]`.
+- **`getBootstrapSettings(character)`** – Flatten character + env into a string-only record for adapter factories. **Bootstrap** settings only (e.g. `POSTGRES_URL`, `PGLITE_DATA_DIR`); runtime settings from the DB are merged later. **WHY:** Adapters are created before the DB is connected, so they cannot read DB-backed settings.
+- **`mergeSettingsInto(character, agentRecord)`** – Pure merge of DB agent settings/secrets into a character (for custom pipelines that load agent records themselves).
+- **`createRuntimes(characters, options?)`** – Full pipeline: resolve plugins (batch), create adapters from plugin factory, init adapters, batch merge DB settings, create and initialize runtimes; optional `provision: true`. **WHY:** One call for the common daemon path; batching reduces plugin resolution and DB round-trips.
+
+**Example (daemon):**
+
+```typescript
+import { loadCharacters, createRuntimes } from "@elizaos/core";
+
+const characters = await loadCharacters(["./character.json"]);
+const runtimes = await createRuntimes(characters, { provision: true });
+```
+
+Composition APIs are **Node-only** (exported from the main entry point, not browser/edge). See [Runtime composition](docs/RUNTIME_COMPOSITION.md) for the settings divide (bootstrap vs runtime), full API, and examples (daemon, milaidy, cloud, serverless).
+
 ## Getting Started
 
 ### Initializing with `corePlugin`
 
-The `corePlugin` bundles essential actions, providers, and evaluators from `@elizaos/core`. To use it, add it to the `AgentRuntime` during initialization:
+The `corePlugin` bundles essential actions, providers, and evaluators from `@elizaos/core`. You must provide an adapter (e.g. `InMemoryDatabaseAdapter` for demos/tests). Example:
 
 ```typescript
-import { AgentRuntime, corePlugin } from "@elizaos/core";
+import { AgentRuntime, corePlugin, InMemoryDatabaseAdapter } from "@elizaos/core";
+
+const adapter = new InMemoryDatabaseAdapter();
+await adapter.initialize();
 
 const agentRuntime = new AgentRuntime({
-  plugins: [
-    corePlugin,
-    // You can add other custom or third-party plugins here
-  ],
-  // Other AgentRuntime configurations can be specified here
+  character: myCharacter,
+  adapter,
+  plugins: [corePlugin],
 });
 
-// After initialization, agentRuntime is ready to be used.
-// You should see console messages like "✓ Registering action: <plugin actions>"
-// indicating successful plugin registration.
+await agentRuntime.initialize();
+// For a long-lived daemon with DB: await provisionAgent(agentRuntime, { runMigrations: true });
+// For task polling: (await agentRuntime.getService("task"))?.startTimer?.();
 ```
+
+After initialization, the runtime is ready to use. You should see console messages like "✓ Registering action: ..." indicating successful plugin registration.
 
 ### Example: Defining a Custom Action (Conceptual)
 
@@ -303,6 +339,10 @@ The `@elizaos/core` package uses **vitest** for testing.
     npx vitest
     ```
     Test results will be displayed in the terminal.
+
+### Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned improvements and future work (runtime composition, plugins, testing).
 
 ### TODO Items
 

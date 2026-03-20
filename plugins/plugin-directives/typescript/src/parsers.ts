@@ -17,11 +17,13 @@ const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * Match a level-based directive (e.g., /think:high)
+ * Match a level-based directive (e.g., /think:high or /think high).
+ * When there is no ":", the next word is only treated as the level if normalize(word) is defined.
  */
-function matchLevelDirective(
+function matchLevelDirective<T>(
   body: string,
   names: string[],
+  normalize: (raw?: string) => T | undefined,
 ): { start: number; end: number; rawLevel?: string } | null {
   const namePattern = names.map(escapeRegExp).join("|");
   const match = body.match(
@@ -36,7 +38,8 @@ function matchLevelDirective(
   while (i < body.length && /\s/.test(body[i])) {
     i += 1;
   }
-  if (body[i] === ":") {
+  const hasColon = body[i] === ":";
+  if (hasColon) {
     i += 1;
     while (i < body.length && /\s/.test(body[i])) {
       i += 1;
@@ -46,8 +49,18 @@ function matchLevelDirective(
   while (i < body.length && /[A-Za-z0-9-]/.test(body[i])) {
     i += 1;
   }
-  const rawLevel = i > argStart ? body.slice(argStart, i) : undefined;
-  end = i;
+  const word = i > argStart ? body.slice(argStart, i) : undefined;
+  let rawLevel: string | undefined;
+  if (hasColon && word) {
+    rawLevel = word;
+    end = i;
+  } else if (word && normalize(word) !== undefined) {
+    rawLevel = word;
+    end = i;
+  } else {
+    rawLevel = undefined;
+    end = hasColon ? i : argStart;
+  }
   return { start, end, rawLevel };
 }
 
@@ -59,7 +72,7 @@ function extractLevelDirective<T>(
   names: string[],
   normalize: (raw?: string) => T | undefined,
 ): DirectiveExtractResult<T> {
-  const match = matchLevelDirective(body, names);
+  const match = matchLevelDirective(body, names, normalize);
   if (!match) {
     return { cleaned: body.trim(), hasDirective: false };
   }

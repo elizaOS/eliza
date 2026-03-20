@@ -11,7 +11,7 @@
     "noEmit": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "types": ["node", "bun-types"]
+    "types": ["node"]
   },
   "include": ["*.ts", "*.d.ts", "__tests__/**/*.ts"],
   "exclude": ["node_modules"]

@@ -279,8 +279,8 @@ export class TwilioService extends Service implements TwilioServiceInterface {
         this.voiceStreams.delete(callSid);
         // Emit event through runtime if available
         if (this.runtime) {
-          this.runtime.emitEvent(
-            TwilioEventType.VOICE_STREAM_ENDED as string,
+(this.runtime.emitEvent as (e: string, p: EventPayload) => Promise<void>)(
+            TwilioEventType.VOICE_STREAM_ENDED,
             { callSid } as unknown as EventPayload,
           );
         }
@@ -299,8 +299,8 @@ export class TwilioService extends Service implements TwilioServiceInterface {
 
     this.voiceStreams.set(callSid, stream);
     if (this.runtime) {
-      this.runtime.emitEvent(
-        TwilioEventType.VOICE_STREAM_STARTED as string,
+(this.runtime.emitEvent as (e: string, p: EventPayload) => Promise<void>)(
+        TwilioEventType.VOICE_STREAM_STARTED,
         { stream } as unknown as EventPayload,
       );
     }
@@ -315,7 +315,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
 
     // Emit audio data for processing by other services
     if (this.runtime) {
-      this.runtime.emitEvent(
+(this.runtime.emitEvent as (e: string, p: EventPayload) => Promise<void>)(
         "audio:received",
         {
           callSid,
@@ -329,8 +329,8 @@ export class TwilioService extends Service implements TwilioServiceInterface {
   private handleStreamStop(callSid: string): void {
     this.voiceStreams.delete(callSid);
     if (this.runtime) {
-      this.runtime.emitEvent(
-        TwilioEventType.VOICE_STREAM_ENDED as string,
+(this.runtime.emitEvent as (e: string, p: EventPayload) => Promise<void>)(
+        TwilioEventType.VOICE_STREAM_ENDED,
         { callSid } as unknown as EventPayload,
       );
     }
@@ -429,8 +429,8 @@ export class TwilioService extends Service implements TwilioServiceInterface {
       );
 
       if (this.runtime) {
-        this.runtime.emitEvent(
-          TwilioEventType.SMS_SENT as string,
+(this.runtime.emitEvent as (e: string, p: EventPayload) => Promise<void>)(
+          TwilioEventType.SMS_SENT,
           twilioMessage as unknown as EventPayload,
         );
       }
@@ -542,8 +542,8 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     );
 
     if (this.runtime) {
-      this.runtime.emitEvent(
-        TwilioEventType.SMS_RECEIVED as string,
+(this.runtime.emitEvent as (e: string, p: EventPayload) => Promise<void>)(
+        TwilioEventType.SMS_RECEIVED,
         message as unknown as EventPayload,
       );
     }
@@ -570,8 +570,8 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     );
 
     if (this.runtime) {
-      this.runtime.emitEvent(
-        TwilioEventType.CALL_RECEIVED as string,
+(this.runtime.emitEvent as (e: string, p: EventPayload) => Promise<void>)(
+        TwilioEventType.CALL_RECEIVED,
         call as unknown as EventPayload,
       );
     }

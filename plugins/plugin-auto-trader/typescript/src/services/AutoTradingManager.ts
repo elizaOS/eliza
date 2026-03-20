@@ -149,13 +149,13 @@ export class AutoTradingManager extends Service {
   }
 
   private async initialize(): Promise<void> {
-    this.swapService = this.runtime.getService("SwapService") as SwapService | null;
-    this.validationService = this.runtime.getService(
+    this.swapService = (await this.runtime.getService("SwapService")) as SwapService | null;
+    this.validationService = (await this.runtime.getService(
       "TokenValidationService",
-    ) as TokenValidationService | null;
-    this.trajectoryService = this.runtime.getService(
+    )) as TokenValidationService | null;
+    this.trajectoryService = (await this.runtime.getService(
       "TradingTrajectoryService",
-    ) as TradingTrajectoryService | null;
+    )) as TradingTrajectoryService | null;
 
     const liveReady = this.swapService?.isReady();
     const trajectoryEnabled = this.trajectoryService?.isEnabled();

@@ -150,13 +150,7 @@ export {
   resolveSlackBotToken,
   resolveSlackReplyToMode,
   resolveSlackUserToken,
-  type SlackAccountConfig,
-  type SlackActionConfig,
-  type SlackChannelConfig,
-  type SlackDmConfig,
   type SlackMultiAccountConfig,
-  type SlackReactionNotificationMode,
-  type SlackSlashCommandConfig,
   type SlackTokenSource,
 } from "./accounts";
 export { deleteMessage } from "./actions/deleteMessage";

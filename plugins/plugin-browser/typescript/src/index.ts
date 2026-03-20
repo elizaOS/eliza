@@ -47,7 +47,7 @@ const browserStateProvider: Provider = {
     _message: Memory,
     _state?: State
   ): Promise<ProviderResult> => {
-    const service = runtime.getService<BrowserService>(ServiceType.BROWSER);
+    const service = await runtime.getService<BrowserService>(ServiceType.BROWSER);
     const session = await service?.getCurrentSession();
 
     if (!session || !service) {

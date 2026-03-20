@@ -9,9 +9,8 @@ import {
   describe,
   expect,
   it,
-  jest,
-} from "./jest-globals";
-import { vi } from "vitest";
+  vi,
+} from "vitest";
 import { TextProblemStatement } from "../src/agent/problem-statement";
 // import { DockerDeploymentConfig } from '../src/environment/deployment';  // Not used
 import type { EnvironmentConfig } from "../src/environment/swe-env";
@@ -237,7 +236,7 @@ describe("SWE-bench Batch Instances", () => {
     const mockFilePath = "/tmp/test-instances.json";
 
     afterEach(() => {
-      jest.clearAllMocks();
+      vi.clearAllMocks();
     });
 
     it("should load instances from JSON file", () => {

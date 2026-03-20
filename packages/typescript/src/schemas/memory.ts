@@ -80,7 +80,7 @@ export const memorySchema: SchemaTable = {
       ],
       isUnique: false,
     },
-    // WHY: getMemoriesByWorldId JOINs memories→rooms and filters by entity_id.
+    // WHY: getMemoriesByWorldIds JOINs memories→rooms and filters by entity_id.
     idx_memories_entity: {
       name: "idx_memories_entity",
       columns: [{ expression: "entity_id", isExpression: false }],

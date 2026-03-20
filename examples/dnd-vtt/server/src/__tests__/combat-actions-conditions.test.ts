@@ -385,16 +385,31 @@ describe('Combat Actions - Condition Mechanics', () => {
     });
 
     test('works on combatant at 0 HP with death saves', () => {
-      const dying = createCombatant({
+      // Build dying combatant explicitly so deathSaves is always present
+      const base = createCombatant();
+      const dying: Combatant = {
+        ...base,
         hp: { current: 0, max: 30, temp: 0 },
         deathSaves: { successes: 0, failures: 0 },
-      });
+      };
+      expect(dying.hp.current).toBe(0);
+      expect(dying.deathSaves).toBeDefined();
+
       const result = executeDeathSave(dying);
+      expect(result.updatedCombatants).toHaveLength(1);
+
+      expect(result.logEntry.diceRolls).toBeDefined();
+      expect(result.logEntry.diceRolls!.length).toBe(1);
+      const rolls = result.logEntry.diceRolls[0].rolls;
+      expect(rolls.length).toBeGreaterThanOrEqual(1);
+      const roll = rolls[0];
+      expect(roll).toBeGreaterThanOrEqual(1);
+      expect(roll).toBeLessThanOrEqual(20);
+
       const updated = result.updatedCombatants[0];
-      // Either: death save counted (success or failure incremented), or natural 20 (regained consciousness, death saves reset)
       const totalSF = (updated.deathSaves?.successes ?? 0) + (updated.deathSaves?.failures ?? 0);
-      const stabilizedBy20 = updated.hp.current === 1 && totalSF === 0;
-      expect(totalSF > 0 || stabilizedBy20).toBe(true);
+      const regainedConsciousness = updated.hp?.current === 1 && dying.hp.current === 0;
+      expect(totalSF > 0 || regainedConsciousness).toBe(true);
     });
   });
 });

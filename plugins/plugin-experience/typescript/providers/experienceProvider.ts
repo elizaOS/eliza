@@ -20,7 +20,7 @@ export const experienceProvider: Provider = {
   description: "Provides relevant past experiences and learnings for the current context",
 
   async get(runtime: IAgentRuntime, message: Memory, _state?: State): Promise<ProviderResult> {
-    const experienceService = runtime.getService("EXPERIENCE") as ExperienceService | null;
+    const experienceService = (await runtime.getService("EXPERIENCE")) as ExperienceService | null;
 
     if (!experienceService) {
       return { text: "", data: {}, values: {} };

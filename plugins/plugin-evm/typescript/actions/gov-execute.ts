@@ -1,4 +1,4 @@
-import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type { ActionResult, Handler, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { type Address, encodeFunctionData, type Hex, keccak256, stringToHex } from "viem";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
@@ -31,15 +31,13 @@ export class ExecuteAction {
       const chainConfig = this.walletProvider.getChainConfigs(params.chain);
       const publicClient = this.walletProvider.getPublicClient(params.chain);
 
-      const hash = await walletClient.sendTransaction(
-        {
-          account,
-          to: params.governor,
-          value: BigInt(0),
-          data: txData as Hex,
-          chain: chainConfig,
-        } as unknown as Parameters<typeof walletClient.sendTransaction>[0]
-      );
+      const hash = await walletClient.sendTransaction({
+        account,
+        to: params.governor,
+        value: BigInt(0),
+        data: txData as Hex,
+        chain: chainConfig,
+      } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash,
@@ -66,7 +64,7 @@ const spec = requireActionSpec("GOV_EXECUTE");
 export const executeAction = {
   name: spec.name,
   description: spec.description,
-  handler: async (
+  handler: (async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
@@ -120,7 +118,7 @@ export const executeAction = {
         text: `Error: ${errorMessage}`,
       };
     }
-  },
+  }) as Handler,
   template: executeProposalTemplate,
   validate: async (runtime: IAgentRuntime) => {
     const privateKey = runtime.getSetting("EVM_PRIVATE_KEY");

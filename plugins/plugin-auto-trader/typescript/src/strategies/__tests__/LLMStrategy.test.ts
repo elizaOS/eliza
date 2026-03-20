@@ -3,10 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AgentState,
   type OHLCV,
-  OrderType,
   type PortfolioSnapshot,
   type StrategyContextMarketData,
-  TradeType,
 } from "../../types.ts";
 import { LLMStrategy, type LLMStrategyParams } from "../LLMStrategy.ts";
 
@@ -136,10 +134,11 @@ describe("LLMStrategy", () => {
   let portfolioSnapshot: PortfolioSnapshot;
   let mockRuntime: AgentRuntime;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     mockRuntime = createMockRuntime();
-    strategy = new LLMStrategy(mockRuntime);
+    strategy = new LLMStrategy();
+    await strategy.initialize(mockRuntime);
     const ohlcvData = getDefaultOHLCV();
     marketData = {
       currentPrice: 2000,
@@ -172,10 +171,29 @@ describe("LLMStrategy", () => {
     it("should have correct id, name, and description", () => {
       expect(strategy.id).toBe("llm");
       expect(strategy.name).toBe("LLM Trading Strategy");
+expect(strategy.description).toContain("AI-powered");
     });
   });
 
   describe("configure", () => {
+it("should update config with valid LLMStrategyConfig params", () => {
+      strategy.configure({
+        maxBuyAmountPercent: 10,
+        minOpportunityScore: 70,
+        maxRiskScore: 60,
+      });
+      expect(strategy).toBeDefined();
+    });
+
+    it("should accept config without throwing for valid params", () => {
+      expect(() =>
+        strategy.configure({
+          maxBuyAmountPercent: 5,
+          minLiquidity: 100000,
+        }),
+      ).not.toThrow();
+    });
+
     it("should accept config updates without throwing", () => {
       strategy.configure({
         maxBuyAmountPercent: 20,
@@ -187,10 +205,9 @@ describe("LLMStrategy", () => {
   });
 
   describe("decide", () => {
-    it("should return null if LLM service is not available", async () => {
-      const noServiceRuntime = createMockRuntime();
-      noServiceRuntime.getService = () => null;
-      const noServiceStrategy = new LLMStrategy(noServiceRuntime);
+    it("should return null when runtime is missing or Birdeye not configured", async () => {
+      const noServiceStrategy = new LLMStrategy();
+      await noServiceStrategy.initialize(undefined);
       const order = await noServiceStrategy.decide({
         marketData,
         agentState,
@@ -199,14 +216,18 @@ describe("LLMStrategy", () => {
       expect(order).toBeNull();
     });
 
-    it("should return null when no trending tokens (no Birdeye key)", async () => {
-      const order = await strategy.decide({
+it("should return null when no trending tokens (no Birdeye key)", async () => {
+      const noServiceRuntime = createMockRuntime();
+      noServiceRuntime.getService = () => null;
+      const noServiceStrategy = new LLMStrategy();
+      await noServiceStrategy.initialize(noServiceRuntime);
+      const order = await noServiceStrategy.decide({
         marketData,
         agentState,
         portfolioSnapshot,
       });
       expect(order).toBeNull();
-    });
+});
 
     it("should return null if LLM response is unparseable", async () => {
       mockBirdeyeFetch();

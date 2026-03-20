@@ -19,7 +19,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Service Initialization Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+        const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -39,7 +39,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Send SMS Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+        const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -58,7 +58,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Send MMS Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+        const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -81,7 +81,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Make Call Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+        const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -106,7 +106,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Webhook Server Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+        const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -121,7 +121,7 @@ export class TwilioTestSuite implements TestSuite {
 
         // Test webhook endpoints
         const webhookUrl = runtime.getSetting("TWILIO_WEBHOOK_URL");
-        if (webhookUrl && String(webhookUrl).includes("localhost")) {
+        if (webhookUrl != null && String(webhookUrl).includes("localhost")) {
           try {
             // Test SMS webhook endpoint
             const smsResponse = await axios.post(
@@ -171,7 +171,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Conversation History Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+        const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -199,7 +199,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Error Handling Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+        const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -229,7 +229,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Voice Call Service Initialization Test",
       fn: async (runtime: IAgentRuntime) => {
-        const voiceCallService = runtime.getService(
+        const voiceCallService = await runtime.getService(
           VOICE_CALL_SERVICE_NAME,
         ) as unknown as VoiceCallService;
 
@@ -262,7 +262,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Voice Call State Management Test",
       fn: async (runtime: IAgentRuntime) => {
-        const voiceCallService = runtime.getService(
+        const voiceCallService = await runtime.getService(
           VOICE_CALL_SERVICE_NAME,
         ) as unknown as VoiceCallService;
 
@@ -289,7 +289,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Interactive Test Mode",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+        const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -372,3 +372,4 @@ export class TwilioTestSuite implements TestSuite {
     },
   ];
 }
+

@@ -13,7 +13,9 @@ import {
   type Character,
   createCharacter,
   createMessageMemory,
+  InMemoryDatabaseAdapter,
   type IAgentRuntime,
+  mergeDbSettings,
   type Plugin,
   stringToUuid,
   type UUID,
@@ -23,12 +25,10 @@ import sqlPlugin from "@elizaos/plugin-sql";
 
 import { v4 as uuidv4 } from "uuid";
 
-// Type assertions needed due to optional/shim imports
-const typedSqlPlugin = sqlPlugin as Plugin;
-const typedOpenaiPlugin = openaiPlugin as Plugin;
+// Type assertion: plugin-sql's schema type can be inferred as {} which doesn't satisfy Plugin's Record<string, ...>
+const typedSqlPlugin = sqlPlugin as unknown as Plugin;
 
 // Character configuration
-// Pass environment variables via character.secrets so getSetting() can find them
 const character: Character = createCharacter({
   name: "Eliza",
   bio: "A helpful AI assistant powered by elizaOS.",
@@ -45,7 +45,6 @@ let runtime: IAgentRuntime | null = null;
 let initPromise: Promise<IAgentRuntime> | null = null;
 let initError: string | null = null;
 
-// Session info
 const roomId = stringToUuid("chat-room");
 const worldId = stringToUuid("chat-world");
 
@@ -58,9 +57,21 @@ async function getRuntime(): Promise<IAgentRuntime> {
     try {
       console.log("🚀 Initializing elizaOS runtime...");
 
+      const agentId = stringToUuid(character.name ?? "Eliza");
+      const adapter = process.env.POSTGRES_URL
+        ? (await import("@elizaos/plugin-sql")).createDatabaseAdapter(
+            { postgresUrl: process.env.POSTGRES_URL },
+            agentId,
+          )
+        : new InMemoryDatabaseAdapter();
+      await adapter.initialize();
+
+      const characterWithSettings = await mergeDbSettings(character, adapter, agentId);
+
       const newRuntime = new AgentRuntime({
-        character,
-        plugins: [typedSqlPlugin, typedOpenaiPlugin],
+        character: characterWithSettings,
+        adapter,
+        plugins: [typedSqlPlugin, openaiPlugin],
       });
 
       await newRuntime.initialize();
@@ -72,7 +83,6 @@ async function getRuntime(): Promise<IAgentRuntime> {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error("❌ Failed to initialize elizaOS runtime:", message);
 
-      // Check if it's the PGLite extension error
       if (
         message.includes("Extension bundle not found") ||
         message.includes("migrations")

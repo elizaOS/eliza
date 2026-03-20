@@ -2,8 +2,7 @@
  * Run hooks tests converted from test_run_hooks.py
  */
 
-import { beforeEach, describe, expect, it, jest } from "./jest-globals";
-import { vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock @octokit/rest before importing modules that use it
 vi.mock("@octokit/rest", () => ({
@@ -67,9 +66,9 @@ vi.mock("../src/utils/github", async () => {
 const mockedGithub = vi.mocked(github);
 
 class TestRuntime extends AbstractRuntime {
-  createSession = jest.fn(async (_request: CreateBashSessionRequest) => {});
+  createSession = vi.fn(async (_request: CreateBashSessionRequest) => {});
 
-  runInSession = jest.fn(
+  runInSession = vi.fn(
     async (
       action: BashAction | BashInterruptAction,
     ): Promise<BashActionResult> => {
@@ -80,7 +79,7 @@ class TestRuntime extends AbstractRuntime {
     },
   );
 
-  execute = jest.fn(
+  execute = vi.fn(
     async (_command: Command): Promise<CommandResult> => ({
       exitCode: 0,
       stdout: "",
@@ -88,20 +87,20 @@ class TestRuntime extends AbstractRuntime {
     }),
   );
 
-  readFile = jest.fn(
+  readFile = vi.fn(
     async (_request: ReadFileRequest): Promise<ReadFileResponse> => ({
       content: "",
     }),
   );
 
-  writeFile = jest.fn(async (_request: WriteFileRequest) => {});
-  upload = jest.fn(async (_request: UploadRequest) => {});
+  writeFile = vi.fn(async (_request: WriteFileRequest) => {});
+  upload = vi.fn(async (_request: UploadRequest) => {});
 }
 
 class TestDeployment extends AbstractDeployment {
   runtime: AbstractRuntime;
-  start = jest.fn(async () => {});
-  stop = jest.fn(async () => {});
+  start = vi.fn(async () => {});
+  stop = vi.fn(async () => {});
 
   constructor(runtime: AbstractRuntime) {
     super();
@@ -169,7 +168,7 @@ describe("Run Hooks", () => {
 
     beforeEach(() => {
       // Reset mocks
-      jest.clearAllMocks();
+      vi.clearAllMocks();
 
       // Set up environment variable
       process.env.GITHUB_TOKEN = "test-token";

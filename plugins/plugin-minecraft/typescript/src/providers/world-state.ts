@@ -20,7 +20,7 @@ export const minecraftWorldStateProvider: Provider = {
     _message: Memory,
     _state?: State,
   ): Promise<ProviderResult> => {
-    const service = runtime.getService<MinecraftService>(
+    const service = await runtime.getService<MinecraftService>(
       MINECRAFT_SERVICE_TYPE,
     );
     if (!service) {

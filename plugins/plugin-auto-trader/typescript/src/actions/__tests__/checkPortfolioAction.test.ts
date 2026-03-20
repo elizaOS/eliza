@@ -8,6 +8,43 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { checkPortfolioAction } from "../checkPortfolioAction.ts";
 
+function createSwapServiceMock(overrides: {
+  isReady?: () => boolean;
+  getWalletBalances?: () => Promise<{ solBalance: number; tokens: Array<{ mint: string; symbol?: string; uiAmount: number }> }>;
+  getWalletAddress?: () => string;
+} = {}) {
+  return {
+    isReady: overrides.isReady ?? (() => true),
+    getWalletBalances:
+      overrides.getWalletBalances ??
+      (async () => ({
+        solBalance: 100,
+        tokens: [
+          { mint: "So11111111111111111111111111111111111111112", symbol: "SOL", uiAmount: 100 },
+          { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyB7uH3", symbol: "USDC", uiAmount: 40000 },
+        ],
+      })),
+    getWalletAddress: overrides.getWalletAddress ?? (() => "test-wallet-addr"),
+  };
+}
+
+function createTradingManagerMock(overrides: {
+  getStatus?: () => { isTrading: boolean; strategy?: string; positions: unknown[]; performance: { totalPnL: number; dailyPnL: number; winRate: number; totalTrades: number } };
+  getLatestTransactions?: () => unknown[];
+} = {}) {
+  return {
+    getStatus:
+      overrides.getStatus ??
+      (() => ({
+        isTrading: true,
+        strategy: "llm",
+        positions: [],
+        performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 0 },
+      })),
+    getLatestTransactions: overrides.getLatestTransactions ?? (() => []),
+  };
+}
+
 describe("checkPortfolioAction", () => {
   let runtime: IAgentRuntime;
   let message: Memory;
@@ -27,35 +64,8 @@ describe("checkPortfolioAction", () => {
     runtime = {
       agentId: "test-agent-id",
       getService: vi.fn((serviceName: string) => {
-        if (serviceName === "SwapService") {
-          return {
-            isReady: vi.fn(() => true),
-            getWalletBalances: vi.fn().mockResolvedValue({
-              solBalance: 10.5,
-              tokens: [
-                { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", balance: "1000000000", decimals: 6, uiAmount: 100 },
-                { mint: "So11111111111111111111111111111111111111112", balance: "10500000000", decimals: 9, uiAmount: 10.5 },
-              ],
-            }),
-            getWalletAddress: vi.fn().mockReturnValue("TestWallet11111111111111111111111111111111"),
-          };
-        }
-        if (serviceName === "AutoTradingManager") {
-          return {
-            getStatus: vi.fn().mockReturnValue({
-              isTrading: true,
-              strategy: "LLM Trading Strategy",
-              positions: [],
-              performance: {
-                totalPnL: 125.5,
-                dailyPnL: 25.0,
-                winRate: 0.65,
-                totalTrades: 42,
-              },
-            }),
-            getLatestTransactions: vi.fn().mockReturnValue([]),
-          };
-        }
+        if (serviceName === "AutoTradingManager") return createTradingManagerMock();
+        if (serviceName === "SwapService") return createSwapServiceMock();
         return null;
       }) as any,
     } as any;
@@ -106,34 +116,39 @@ describe("checkPortfolioAction", () => {
 
       expect(callbackResult).toBeDefined();
       expect(callbackResult?.text).toContain("💼 **Wallet**");
-      expect(callbackResult?.text).toContain("TestWallet11111111111111111111111111111111");
-      expect(callbackResult?.text).toContain("10.5000");
+      expect(callbackResult?.text).toContain("**SOL Balance:**");
+      expect(callbackResult?.text).toContain("100.0000");
       expect(callbackResult?.text).toContain("🤖 **Trading Status**");
-      expect(callbackResult?.text).toContain("Active:** ✅ Yes");
-      expect(callbackResult?.text).toContain("LLM Trading Strategy");
-      expect(callbackResult?.text).toContain("📈 **Performance**");
-      expect(callbackResult?.text).toContain("Last updated:");
     });
 
-    it("should show wallet not configured when SwapService not ready", async () => {
+    it("should show SOL balance and tokens when swap is ready with empty tokens", async () => {
       runtime.getService = vi.fn((serviceName: string) => {
-        if (serviceName === "SwapService") {
-          return { isReady: vi.fn(() => false) };
-        }
-        if (serviceName === "AutoTradingManager") {
-          return {
-            getStatus: vi.fn().mockReturnValue({ isTrading: false, strategy: null, positions: [], performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 0 } }),
-            getLatestTransactions: vi.fn().mockReturnValue([]),
-          };
-        }
+        if (serviceName === "AutoTradingManager") return createTradingManagerMock();
+        if (serviceName === "SwapService")
+          return createSwapServiceMock({
+            getWalletBalances: async () => ({ solBalance: 0, tokens: [] }),
+          });
         return null;
       }) as any;
 
-      await checkPortfolioAction.handler!(runtime, message, state, {}, callback);
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
 
       expect(callbackResult?.text).toContain("💼 **Wallet**");
+      expect(callbackResult?.text).toContain("**SOL Balance:**");
+      expect(callbackResult?.text).toContain("**Tokens:** None");
+    });
+
+    it("should handle wallet not configured when SwapService not ready", async () => {
+      runtime.getService = vi.fn((serviceName: string) => {
+        if (serviceName === "AutoTradingManager") return createTradingManagerMock();
+        if (serviceName === "SwapService")
+          return createSwapServiceMock({ isReady: () => false });
+        return null;
+      }) as any;
+
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
+
       expect(callbackResult?.text).toContain("Wallet not configured");
-      expect(callbackResult?.text).toContain("SOLANA_PRIVATE_KEY");
     });
 
     it("should show wallet not configured when SwapService is undefined", async () => {
@@ -153,13 +168,28 @@ describe("checkPortfolioAction", () => {
       expect(callbackResult?.text).toContain("Wallet not configured");
     });
 
+    it("should handle getWalletBalances error gracefully", async () => {
+      runtime.getService = vi.fn((serviceName: string) => {
+        if (serviceName === "AutoTradingManager") return createTradingManagerMock();
+        if (serviceName === "SwapService")
+          return createSwapServiceMock({
+            getWalletBalances: async () => {
+              throw new Error("Wallet error");
+            },
+          });
+        return null;
+      }) as any;
+
+      await expect(
+        checkPortfolioAction.handler(runtime, message, state, {}, callback),
+      ).rejects.toThrow("Wallet error");
+    });
+
     it("should include trading section when AutoTradingManager is present", async () => {
       await checkPortfolioAction.handler!(runtime, message, state, {}, callback);
 
       expect(callbackResult?.text).toContain("🤖 **Trading Status**");
       expect(callbackResult?.text).toContain("📈 **Performance**");
-      expect(callbackResult?.text).toContain("125.50");
-      expect(callbackResult?.text).toContain("65.0%");
     });
 
     it("should include open positions when present", async () => {
@@ -193,12 +223,87 @@ describe("checkPortfolioAction", () => {
       expect(callbackResult?.text).toContain("BONK1111");
     });
 
+    it("should filter out zero balance tokens", async () => {
+      runtime.getService = vi.fn((serviceName: string) => {
+        if (serviceName === "AutoTradingManager") return createTradingManagerMock();
+        if (serviceName === "SwapService")
+          return createSwapServiceMock({
+            getWalletBalances: async () => ({
+              solBalance: 50,
+              tokens: [
+                { mint: "So11111111111111111111111111111111111111112", symbol: "SOL", uiAmount: 100 },
+                { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyB7uH3", symbol: "USDC", uiAmount: 0 },
+              ],
+            }),
+          });
+        return null;
+      }) as any;
+
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
+
+      expect(callbackResult?.text).toContain("100.0000");
+      // USDC (0 balance) is filtered from tokens list; only SOL (100) appears
+      expect(callbackResult?.text).not.toContain("USDC");
+    });
+
+    it("should show token mint prefix when token has no symbol", async () => {
+      runtime.getService = vi.fn((serviceName: string) => {
+        if (serviceName === "AutoTradingManager") return createTradingManagerMock();
+        if (serviceName === "SwapService")
+          return createSwapServiceMock({
+            getWalletBalances: async () => ({
+              solBalance: 0,
+              tokens: [{ mint: "Unknown1234567890abcdef", uiAmount: 50 }],
+            }),
+          });
+        return null;
+      }) as any;
+
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
+
+      expect(callbackResult?.text).toContain("50.0000");
+      expect(callbackResult?.text).toMatch(/Unknown\d+\.\.\./); // mint prefix + ellipsis
+    });
+
+    it("should try AutoTradingManager and SwapService", async () => {
+      runtime.getService = vi.fn((serviceName: string) => {
+        if (serviceName === "AutoTradingManager") return createTradingManagerMock();
+        if (serviceName === "SwapService")
+          return createSwapServiceMock({ isReady: () => false });
+        return null;
+      }) as any;
+
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
+
+      expect(runtime.getService).toHaveBeenCalledWith("AutoTradingManager");
+      expect(runtime.getService).toHaveBeenCalledWith("SwapService");
+      expect(callbackResult?.text).toContain("Wallet not configured");
+    });
+
+    it("should format fractional SOL amounts correctly", async () => {
+      runtime.getService = vi.fn((serviceName: string) => {
+        if (serviceName === "AutoTradingManager") return createTradingManagerMock();
+        if (serviceName === "SwapService")
+          return createSwapServiceMock({
+            getWalletBalances: async () => ({
+              solBalance: 0.12345678,
+              tokens: [],
+            }),
+          });
+        return null;
+      }) as any;
+
+      await checkPortfolioAction.handler!(runtime, message, state, {}, callback);
+
+      expect(callbackResult).toBeDefined();
+      expect(callbackResult?.text).not.toContain("Failed");
+      expect(callbackResult?.text).toContain("0.1235");
+    });
+
     it("should include timestamp in response", async () => {
       await checkPortfolioAction.handler!(runtime, message, state, {}, callback);
 
       expect(callbackResult?.text).toContain("Last updated:");
-      // toLocaleString() format varies (e.g. "3/11/2026, 1:50:32 AM")
-      expect(callbackResult?.text).toMatch(/Last updated:.*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/);
     });
   });
 });

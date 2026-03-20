@@ -11,9 +11,9 @@
  * - State restoration across retries
  */
 
-import { Desktop } from "@elizaos/computeruse";
+import { Desktop as DesktopClass } from "@elizaos/computeruse";
 import { createWorkflow, createStep, z, retry } from "../index";
-import type { WorkflowErrorContext } from "../types";
+import type { Desktop, WorkflowErrorContext } from "../types";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -37,14 +37,14 @@ describe("Workflow E2E Tests - MCP Client+Server Loop", () => {
     });
 
     beforeEach(async () => {
-        desktop = new Desktop();
+        desktop = new DesktopClass();
     });
 
     afterEach(async () => {
         // Clean up Calculator if open
         try {
             const calc = await desktop.locator("name:Calculator").first(1000);
-            await calc.close();
+            await (calc as any)?.close?.();
         } catch {
             // Not open
         }
@@ -342,7 +342,7 @@ describe("Workflow E2E Tests - MCP Client+Server Loop", () => {
                 execute: async ({ desktop }) => {
                     openAttempts++;
                     await desktop.openApplication("calc");
-                    await desktop.delay(2000);
+                    await desktop.delay?.(2000);
                     return {
                         state: {
                             calculator_opened: true,
@@ -369,7 +369,7 @@ describe("Workflow E2E Tests - MCP Client+Server Loop", () => {
                     const one = await desktop
                         .locator("name:Calculator >> name:One")
                         .first(3000);
-                    await one.click();
+                    await one?.click();
                     return {
                         state: {
                             number_clicked: true,
@@ -409,7 +409,7 @@ describe("Workflow E2E Tests - MCP Client+Server Loop", () => {
                 name: "Open Calculator",
                 execute: async ({ desktop }) => {
                     await desktop.openApplication("calc");
-                    await desktop.delay(2000);
+                    await desktop.delay?.(2000);
                     return { state: { opened: true } };
                 },
             });
@@ -422,7 +422,7 @@ describe("Workflow E2E Tests - MCP Client+Server Loop", () => {
                     const btn = await desktop
                         .locator("name:Calculator >> name:NonExistent")
                         .first(1000);
-                    await btn.click();
+                    await btn?.click();
                     return { state: { clicked: true } };
                 },
                 onError: async ({ logger, context }) => {

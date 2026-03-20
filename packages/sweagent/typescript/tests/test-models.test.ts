@@ -2,7 +2,7 @@
  * Model tests converted from test_models.py
  */
 
-import { describe, expect, it } from "./jest-globals";
+import { describe, expect, it } from "vitest";
 import type { ToolConfig } from "../src/agent/agents";
 import {
   type GenericAPIModelConfig,

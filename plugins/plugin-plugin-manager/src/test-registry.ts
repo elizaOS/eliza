@@ -14,7 +14,8 @@ async function testPluginManagerIntegration() {
   try {
     // Test 1: Search for plugins
     console.log('Test 1: Searching for plugins with "blockchain"...');
-    const searchResults = await searchPluginsByContent('blockchain');
+    const searchResult = await searchPluginsByContent('blockchain');
+    const searchResults = searchResult.data;
     console.log(`Found ${searchResults.length} plugins:`);
     searchResults.forEach((plugin, index) => {
       console.log(`${index + 1}. ${plugin.name} - ${plugin.description}`);
@@ -27,7 +28,8 @@ async function testPluginManagerIntegration() {
     if (searchResults.length > 0) {
       const pluginName = searchResults[0].name;
       console.log(`Test 2: Getting details for "${pluginName}"...`);
-      const details = await getPluginDetails(pluginName);
+      const detailsResult = await getPluginDetails(pluginName);
+      const details = detailsResult.data;
       if (details) {
         console.log(`Details for ${details.name}:`);
         console.log(`  Description: ${details.description}`);
@@ -41,7 +43,8 @@ async function testPluginManagerIntegration() {
 
     // Test 3: Get all plugins
     console.log('Test 3: Getting all plugins...');
-    const allPlugins = await getAllPlugins();
+    const allPluginsResult = await getAllPlugins();
+    const allPlugins = allPluginsResult.data;
     console.log(`Total plugins in registry: ${allPlugins.length}`);
     allPlugins.forEach((plugin, index) => {
       console.log(`${index + 1}. ${plugin.name} (${plugin.latestVersion})`);

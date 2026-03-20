@@ -39,7 +39,7 @@ export class AwsS3Service extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(ServiceType.REMOTE_FILES);
+    const service = await runtime.getService(ServiceType.REMOTE_FILES);
     if (service) {
       await service.stop();
     }

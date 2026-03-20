@@ -58,10 +58,10 @@ describe("ChatStateProvider", () => {
         mockMessage as never,
       );
       expect(result).not.toBeNull();
-      expect(result?.text).toBeDefined();
-      expect(result!.text).toContain("Feishu/Lark");
-      expect(result!.text).toContain("oc_test123");
-      expect(result!.text).toContain("msg_456");
+      expect(result.text).toContain("Feishu/Lark");
+      expect(result.text).toContain("oc_test123");
+      expect(result.text).toContain("msg_456");
     });
   });
 });
+

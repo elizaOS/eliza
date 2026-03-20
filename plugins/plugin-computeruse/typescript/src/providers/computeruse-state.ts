@@ -5,7 +5,7 @@ export const computeruseStateProvider: Provider = {
   name: "COMPUTERUSE_STATE",
   description: "Provides current ComputerUse backend/mode information",
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
-    const service = runtime.getService<ComputerUseService>("computeruse");
+    const service = await runtime.getService<ComputerUseService>("computeruse");
     if (!service || !service.isEnabled()) {
       return {
         text: "ComputerUse is disabled",

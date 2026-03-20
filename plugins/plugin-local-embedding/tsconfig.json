@@ -3,6 +3,7 @@
     "skipLibCheck": true,
     "outDir": "dist",
     "rootDir": "src",
+    "skipLibCheck": true,
     "baseUrl": "../..",
     "lib": ["ESNext", "DOM"],
     "target": "ESNext",

@@ -237,8 +237,8 @@ export async function deleteParticipants(
   db: DrizzleDatabase,
   agentId: UUID,
   participants: Array<{ entityId: UUID; roomId: UUID }>
-): Promise<boolean> {
-  if (participants.length === 0) return true;
+): Promise<void> {
+  if (participants.length === 0) return;
 
   try {
     // Build compound OR conditions for all (entityId, roomId) pairs
@@ -257,8 +257,6 @@ export async function deleteParticipants(
           or(...pairConditions)
         )
       );
-
-    return true;
   } catch (error) {
     logger.error(
       {
@@ -269,7 +267,7 @@ export async function deleteParticipants(
       },
       "Failed to delete participants"
     );
-    return false;
+    throw error;
   }
 }
 

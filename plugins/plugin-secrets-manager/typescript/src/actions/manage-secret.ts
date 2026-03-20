@@ -98,7 +98,7 @@ export const manageSecretAction: Action = {
     }
 
     const secretsService =
-      runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+      await runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
     return secretsService !== null;
   },
 
@@ -112,7 +112,7 @@ export const manageSecretAction: Action = {
     logger.info("[ManageSecret] Processing secret management request");
 
     const secretsService =
-      runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+      await runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
     if (!secretsService) {
       if (callback) {
         await callback({

@@ -36,7 +36,7 @@ export class ComputerUseService extends Service {
   private initialized = false;
 
   // Lazy-loaded to avoid importing native bindings unless actually used.
-  private localDesktop: unknown = null;
+  private localDesktop: InstanceType<typeof import("@elizaos/computeruse").Desktop> | null = null;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -153,7 +153,7 @@ export class ComputerUseService extends Service {
     // Services are registered during runtime initialization; depending on plugin order,
     // "mcp" may not be available during another service's start hook.
     for (let attempt = 0; attempt < 20; attempt++) {
-      const mcp = this.runtime.getService<McpServiceLike>("mcp");
+      const mcp = await this.runtime.getService<McpServiceLike>("mcp");
       if (mcp) return mcp;
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
     }
@@ -162,8 +162,8 @@ export class ComputerUseService extends Service {
     );
   }
 
-  private getMcp(): McpServiceLike {
-    const mcp = this.runtime.getService<McpServiceLike>("mcp");
+  private async getMcp(): Promise<McpServiceLike> {
+    const mcp = await this.runtime.getService<McpServiceLike>("mcp");
     if (!mcp) {
       throw new Error("MCP service not available");
     }
@@ -207,7 +207,7 @@ export class ComputerUseService extends Service {
     }
 
     if (this.backendName === "mcp") {
-      const mcp = this.getMcp();
+      const mcp = await this.getMcp();
       await mcp.callTool(this.computeruseConfig.COMPUTERUSE_MCP_SERVER, "open_application", {
         app_name: appName,
         verify_element_exists: "",
@@ -234,7 +234,7 @@ export class ComputerUseService extends Service {
     }
 
     if (this.backendName === "mcp") {
-      const mcp = this.getMcp();
+      const mcp = await this.getMcp();
       const parsed = this.parseProcessScopedSelector(selector, process);
       await mcp.callTool(this.computeruseConfig.COMPUTERUSE_MCP_SERVER, "click_element", {
         process: parsed.process,
@@ -271,7 +271,7 @@ export class ComputerUseService extends Service {
     }
 
     if (this.backendName === "mcp") {
-      const mcp = this.getMcp();
+      const mcp = await this.getMcp();
       const parsed = this.parseProcessScopedSelector(selector, process);
       await mcp.callTool(this.computeruseConfig.COMPUTERUSE_MCP_SERVER, "type_into_element", {
         process: parsed.process,
@@ -300,7 +300,7 @@ export class ComputerUseService extends Service {
     }
 
     if (this.backendName === "mcp") {
-      const mcp = this.getMcp();
+      const mcp = await this.getMcp();
       const toolArgs: JsonObject = {
         process,
         include_tree_after_action: true,
@@ -340,7 +340,7 @@ export class ComputerUseService extends Service {
     }
 
     if (this.backendName === "mcp") {
-      const mcp = this.getMcp();
+      const mcp = await this.getMcp();
       const res = await mcp.callTool(
         this.computeruseConfig.COMPUTERUSE_MCP_SERVER,
         "get_applications_and_windows_list",

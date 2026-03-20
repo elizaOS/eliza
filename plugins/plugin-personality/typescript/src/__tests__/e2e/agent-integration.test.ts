@@ -1,5 +1,6 @@
-import type { TestSuite, Character } from '@elizaos/core';
-import { asUUID } from '@elizaos/core';
+import { randomUUID } from "node:crypto";
+import type { TestSuite, Character } from "@elizaos/core";
+import { asUUID } from "@elizaos/core";
 
 /**
  * Integration test for self-modification plugin with packages/agent
@@ -52,12 +53,12 @@ export class AgentIntegrationTestSuite implements TestSuite {
         const originalTopicsLength = originalCharacter.topics?.length || 0;
 
         // Simulate evolution trigger conversation
-        const roomId = asUUID(crypto.randomUUID());
-        const userId = asUUID(crypto.randomUUID());
+const roomId = asUUID(randomUUID());
+        const userId = asUUID(randomUUID());
 
         const messages = [
           {
-            id: asUUID(crypto.randomUUID()),
+            id: asUUID(randomUUID()),
             entityId: userId,
             roomId,
             content: {
@@ -67,7 +68,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
             createdAt: Date.now(),
           },
           {
-            id: asUUID(crypto.randomUUID()),
+id: asUUID(randomUUID()),
             entityId: runtime.agentId,
             roomId,
             content: {
@@ -85,7 +86,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
 
         // Test direct modification request
         const modificationMessage = {
-          id: asUUID(crypto.randomUUID()),
+id: asUUID(randomUUID()),
           entityId: userId,
           roomId,
           content: {
@@ -162,10 +163,10 @@ export class AgentIntegrationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing evolution provider integration...');
 
-        const roomId = crypto.randomUUID();
+const roomId = randomUUID();
         const message = {
-          id: asUUID(crypto.randomUUID()),
-          entityId: crypto.randomUUID(),
+          id: asUUID(randomUUID()),
+          entityId: randomUUID(),
           roomId,
           content: {
             text: 'Tell me about your evolution capabilities',
@@ -214,7 +215,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing file manager integration...');
 
-        const fileManager = runtime.getService('character-file-manager');
+        const fileManager = await runtime.getService('character-file-manager');
         if (!fileManager) {
           throw new Error('Character file manager service not available');
         }
@@ -275,8 +276,8 @@ export class AgentIntegrationTestSuite implements TestSuite {
           return;
         }
 
-        const roomId = asUUID(crypto.randomUUID());
-        const userId = asUUID(crypto.randomUUID());
+const roomId = asUUID(randomUUID());
+        const userId = asUUID(randomUUID());
 
         // Create a pattern of interactions that should trigger evolution
         const interactionPattern = [
@@ -289,7 +290,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
         // Simulate conversation over time
         for (let i = 0; i < interactionPattern.length; i++) {
           const message = {
-            id: asUUID(crypto.randomUUID()),
+id: asUUID(randomUUID()),
             entityId: userId,
             roomId,
             content: {
@@ -303,7 +304,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
 
           // Simulate agent response
           const agentResponse = {
-            id: asUUID(crypto.randomUUID()),
+id: asUUID(randomUUID()),
             entityId: runtime.agentId,
             roomId,
             content: {
@@ -341,7 +342,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
         }
 
         const lastMessage = {
-          id: asUUID(crypto.randomUUID()),
+id: asUUID(randomUUID()),
           entityId: userId,
           roomId,
           content: {

@@ -418,9 +418,12 @@ export class DownloadManager {
 
         for (const attempt of attempts) {
           try {
-            logger.info(
-              `Attempting model download: ${JSON.stringify({ description: attempt.description, url: attempt.url, timestamp: new Date().toISOString() })}`,
-            );
+            logger.info({
+              msg: "Attempting model download",
+              description: attempt.description,
+              url: attempt.url,
+              timestamp: new Date().toISOString(),
+            });
 
             // The downloadFile method now handles the progress bar display
             await this.downloadFile(attempt.url, modelPath);
@@ -432,9 +435,12 @@ export class DownloadManager {
             break;
           } catch (error) {
             lastError = error;
-            logger.warn(
-              `Model download attempt failed: ${JSON.stringify({ description: attempt.description, error: error instanceof Error ? error.message : String(error), timestamp: new Date().toISOString() })}`,
-            );
+            logger.warn({
+              msg: "Model download attempt failed",
+              description: attempt.description,
+              error: error instanceof Error ? error.message : String(error),
+              timestamp: new Date().toISOString(),
+            });
           }
         }
 
@@ -447,13 +453,16 @@ export class DownloadManager {
       }
 
       // Model already exists
-      logger.info("Model already exists at:", modelPath);
+      logger.info({ msg: "Model already exists at", modelPath });
       // Return false to indicate the model already existed
       return false;
     } catch (error) {
-      logger.error(
-        `Model download failed: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error), modelPath, model: modelSpec.name })}`,
-      );
+      logger.error({
+        msg: "Model download failed",
+        error: error instanceof Error ? error.message : String(error),
+        modelPath: modelPath,
+        model: modelSpec.name,
+      });
       throw error;
     }
   }

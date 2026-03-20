@@ -959,43 +959,36 @@ export async function countMemories(
 }
 
 /**
- * Gets memories for all rooms belonging to a specific world.
- * @param {DrizzleDatabase} db - The database instance.
- * @param {UUID} agentId - The ID of the agent.
- * @param {Object} params - The parameters for retrieving memories.
- * @param {UUID} params.worldId - The world ID to retrieve memories for.
- * @param {number} [params.count] - The maximum number of memories to retrieve.
- * @param {string} [params.tableName] - The name of the table to retrieve memories from.
- * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
+ * Gets memories for all rooms belonging to any of the given worlds.
+ * Fetches room IDs for all worlds in one query, then getMemoriesByRoomIds. Limit applies to total.
+ * For a single world, pass worldIds: [worldId].
  */
-export async function getMemoriesByWorldId(
+export async function getMemoriesByWorldIds(
   db: DrizzleDatabase,
   agentId: UUID,
   params: {
-    worldId: UUID;
-    /** @deprecated use limit */
-    count?: number;
-    limit?: number;
+    worldIds: UUID[];
     tableName?: string;
+    limit?: number;
   }
 ): Promise<Memory[]> {
-  const effectiveLimit = params.limit ?? params.count;
+  if (params.worldIds.length === 0) return [];
 
   const rooms = await db
     .select({ id: roomTable.id })
     .from(roomTable)
-    .where(and(eq(roomTable.worldId, params.worldId), eq(roomTable.agentId, agentId)));
+    .where(
+      and(inArray(roomTable.worldId, params.worldIds), eq(roomTable.agentId, agentId))
+    );
 
-  if (rooms.length === 0) {
-    return [];
-  }
+  if (rooms.length === 0) return [];
 
   const roomIds = rooms.map((room) => room.id as UUID);
 
   return getMemoriesByRoomIds(db, agentId, {
     roomIds,
     tableName: params.tableName || "messages",
-    limit: effectiveLimit,
+    limit: params.limit,
   });
 }
 

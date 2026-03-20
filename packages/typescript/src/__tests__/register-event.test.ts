@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import type { Character, EventPayload } from "../types";
 import { stringToUuid } from "../utils";
@@ -26,8 +27,10 @@ describe("registerEvent", () => {
   };
 
   beforeEach(() => {
+    const adapter = new InMemoryDatabaseAdapter();
     runtime = new AgentRuntime({
       character: mockCharacter,
+      adapter,
     });
   });
 

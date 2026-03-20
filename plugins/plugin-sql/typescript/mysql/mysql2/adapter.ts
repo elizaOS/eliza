@@ -47,11 +47,6 @@ export class MySql2DatabaseAdapter extends BaseDrizzleAdapter {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
-    logger.warn({ src: "plugin:sql" }, "getMemoriesByServerId called but not implemented");
-    return [];
-  }
-
   /**
    * WHY: Race-safe agent creation using try/catch pattern. Under concurrent
    * startup, two instances may both see "no agent exists" and try to create.

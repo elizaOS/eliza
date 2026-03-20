@@ -2,6 +2,7 @@ import {
   type Action,
   type ActionResult,
   composePromptFromState,
+  type Handler,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -39,15 +40,13 @@ export class TransferAction {
     }
 
     const chainConfig = this.walletProvider.getChainConfigs(params.fromChain);
-    const hash = await walletClient.sendTransaction(
-      {
-        account,
-        to: params.toAddress,
-        value: parseEther(params.amount),
-        data,
-        chain: chainConfig,
-      } as unknown as Parameters<typeof walletClient.sendTransaction>[0]
-    );
+    const hash = await walletClient.sendTransaction({
+      account,
+      to: params.toAddress,
+      value: parseEther(params.amount),
+      data,
+      chain: chainConfig,
+    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
     return {
       hash,
@@ -121,7 +120,7 @@ export const transferAction: Action = {
   name: spec.name,
   description: spec.description,
 
-  handler: async (
+  handler: (async (
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
@@ -141,7 +140,7 @@ export const transferAction: Action = {
     const successText = `Successfully transferred ${paramOptions.amount} tokens to ${paramOptions.toAddress}\nTransaction Hash: ${transferResp.hash}`;
 
     if (callback) {
-      callback({
+      void callback({
         text: successText,
         content: {
           success: true,
@@ -167,7 +166,7 @@ export const transferAction: Action = {
         recipient: transferResp.to,
       },
     };
-  },
+  }) as Handler,
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const privateKey = runtime.getSetting("EVM_PRIVATE_KEY");

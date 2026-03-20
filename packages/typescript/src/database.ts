@@ -489,12 +489,13 @@ export abstract class DatabaseAdapter<DB extends object = object>
   abstract updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
   abstract deleteTasks(taskIds: UUID[]): Promise<void>;
 
-  abstract getMemoriesByWorldId(params: {
-    worldIds?: UUID[];
-    /** @deprecated use limit */
-    count?: number;
-    limit?: number;
+  /**
+   * Get memories for multiple worlds (e.g. multiple servers). Limit applies to total across all worlds. For one world, pass worldIds: [worldId].
+   */
+  abstract getMemoriesByWorldIds(params: {
+    worldIds: UUID[];
     tableName?: string;
+    limit?: number;
   }): Promise<Memory[]>;
 
   // ── Pairing CRUD (batch-only for mutations) ─────────────────────────

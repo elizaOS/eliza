@@ -31,7 +31,7 @@ export const spaceStateProvider: Provider = {
       };
     }
 
-    const gchatService = runtime.getService<GoogleChatService>(
+    const gchatService = await runtime.getService<GoogleChatService>(
       GOOGLE_CHAT_SERVICE_NAME,
     );
 

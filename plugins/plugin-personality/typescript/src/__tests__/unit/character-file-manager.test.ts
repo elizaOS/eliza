@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from "vitest";
 import { CharacterFileManager } from '../../services/character-file-manager';
 import type { IAgentRuntime } from '@elizaos/core';
 
@@ -99,3 +99,4 @@ describe('CharacterFileManager static methods', () => {
     expect(CharacterFileManager.serviceType).toBe('CHARACTER_MANAGEMENT');
   });
 });
+

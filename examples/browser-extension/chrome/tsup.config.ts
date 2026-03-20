@@ -67,7 +67,7 @@ export default defineConfig([
         "@elizaos/plugin-groq": resolvePackage("@elizaos/plugin-groq"),
         "@elizaos/plugin-google-genai": resolvePackage("@elizaos/plugin-google-genai"),
         "@elizaos/plugin-eliza-classic": resolvePackage("@elizaos/plugin-eliza-classic"),
-        "@elizaos/plugin-localdb": resolvePackage("@elizaos/plugin-localdb"),
+        "@elizaos/plugin-inmemorydb": resolvePackage("@elizaos/plugin-inmemorydb"),
       };
     },
   },
@@ -105,7 +105,7 @@ console.log("[elizaOS] Offscreen bundle starting...");`,
         "@elizaos/plugin-groq": resolvePackage("@elizaos/plugin-groq", "dist/browser/index.browser.js"),
         "@elizaos/plugin-google-genai": resolvePackage("@elizaos/plugin-google-genai", "dist/browser/index.browser.js"),
         "@elizaos/plugin-eliza-classic": resolvePackage("@elizaos/plugin-eliza-classic", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-localdb": resolvePackage("@elizaos/plugin-localdb", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-inmemorydb": resolvePackage("@elizaos/plugin-inmemorydb", "dist/browser/index.js"),
         "@vercel/oidc": path.join(__dirname, "src/stubs/empty.js"),
         dotenv: path.join(__dirname, "src/stubs/empty.js"),
         "fast-redact": path.join(__dirname, "src/stubs/fast-redact.js"),
@@ -152,7 +152,7 @@ console.log("[elizaOS] Bundle starting...");`,
         "process.env.NODE_DEBUG": '""',
         global: "globalThis",
       };
-      // Use browser builds of @elizaos packages
+      // Bundle from source to avoid broken default exports in pre-built plugin dists
       options.alias = {
         "@elizaos/core": resolvePackage("@elizaos/core", "dist/browser/index.browser.js"),
         "@elizaos/plugin-openai": resolvePackage("@elizaos/plugin-openai", "dist/browser/index.browser.js"),
@@ -160,7 +160,7 @@ console.log("[elizaOS] Bundle starting...");`,
         "@elizaos/plugin-groq": resolvePackage("@elizaos/plugin-groq", "dist/browser/index.browser.js"),
         "@elizaos/plugin-google-genai": resolvePackage("@elizaos/plugin-google-genai", "dist/browser/index.browser.js"),
         "@elizaos/plugin-eliza-classic": resolvePackage("@elizaos/plugin-eliza-classic", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-localdb": resolvePackage("@elizaos/plugin-localdb", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-inmemorydb": resolvePackage("@elizaos/plugin-inmemorydb", "dist/browser/index.js"),
         // Stub Node.js packages
         "@vercel/oidc": path.join(__dirname, "src/stubs/empty.js"),
         "dotenv": path.join(__dirname, "src/stubs/empty.js"),

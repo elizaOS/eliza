@@ -3,8 +3,7 @@
  */
 
 import * as child_process from "node:child_process";
-import { beforeEach, describe, expect, it, jest } from "./jest-globals";
-import { vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SWEBenchMultimodalProblemStatement } from "../src/agent/problem-statement";
 
 vi.mock("node:child_process", () => ({
@@ -19,7 +18,7 @@ describe("SWEBenchMultimodalProblemStatement", () => {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Candide1759.jpg/330px-Candide1759.jpg";
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe("Initialization", () => {

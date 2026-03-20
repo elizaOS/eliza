@@ -8,6 +8,7 @@ import {
   MemoryType,
   logger,
   EvaluationExample,
+  type ActionResult,
 } from '@elizaos/core';
 import { z } from 'zod';
 
@@ -72,7 +73,7 @@ export const characterEvolutionEvaluator: Evaluator = {
     }
 
     // Only evaluate if conversation has substantial content
-    const rawCount = state?.data?.messageCount;
+const rawCount = state?.data?.messageCount;
     const conversationLength = typeof rawCount === 'number' ? rawCount : Number(rawCount) || 0;
     if (conversationLength < 3) {
       return false;
@@ -129,18 +130,23 @@ Return JSON: {"hasEvolutionTrigger": boolean, "triggerType": string, "reasoning"
         maxTokens: 300,
       });
 
-      const triggerAnalysis = JSON.parse(triggerResponse as string);
+      const triggerAnalysis = JSON.parse(triggerResponse as string) as {
+        hasEvolutionTrigger?: boolean;
+        confidence?: number;
+        triggerType?: string;
+        reasoning?: string;
+      };
       hasEvolutionTriggers =
-        triggerAnalysis.hasEvolutionTrigger && triggerAnalysis.confidence > 0.6;
+        Boolean(triggerAnalysis.hasEvolutionTrigger) && Number(triggerAnalysis.confidence ?? 0) > 0.6;
 
       if (hasEvolutionTriggers) {
-        logger.info(
+logger.info(
           {
+            msg: 'Evolution trigger detected',
             type: triggerAnalysis.triggerType,
             reasoning: triggerAnalysis.reasoning,
             confidence: triggerAnalysis.confidence,
-          },
-          'Evolution trigger detected'
+          }
         );
       }
     } catch {
@@ -262,7 +268,7 @@ Return JSON analysis with specific, measurable reasoning for any suggested modif
         const parsed = JSON.parse(response as string);
         evolution = CharacterEvolutionSchema.parse(parsed);
       } catch (parseError) {
-        logger.warn({ err: parseError }, 'Failed to parse character evolution analysis');
+logger.warn({ msg: 'Failed to parse character evolution analysis', err: parseError });
         return undefined;
       }
 
@@ -294,23 +300,21 @@ Return JSON analysis with specific, measurable reasoning for any suggested modif
             evolutionData: {
               shouldModify: evolution.shouldModify,
               gradualChange: evolution.gradualChange,
-              modifications: evolution.modifications as Record<string, unknown>,
+modifications: evolution.modifications as Record<string, import('@elizaos/core').MetadataValue>,
             },
           } as Record<string, unknown>,
         },
         'character_evolution'
       );
 
-      logger.info(
-        {
-          shouldModify: evolution.shouldModify,
-          confidence: evolution.confidence,
-          reasoning: evolution.reasoning.slice(0, 100),
-        },
-        'Character evolution analysis completed'
-      );
+logger.info({
+        msg: 'Character evolution analysis completed',
+        shouldModify: evolution.shouldModify,
+        confidence: evolution.confidence,
+        reasoning: evolution.reasoning.slice(0, 100),
+      });
     } catch (error) {
-      logger.error({ err: error }, 'Error in character evolution evaluator');
+      logger.error({ msg: 'Error in character evolution evaluator', err: error });
     }
     return undefined;
   },

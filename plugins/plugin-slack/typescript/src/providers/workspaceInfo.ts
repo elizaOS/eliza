@@ -18,7 +18,7 @@ export const workspaceInfoProvider: Provider = {
       };
     }
 
-    const slackService = runtime.getService(ServiceType.SLACK) as SlackService;
+    const slackService = await runtime.getService(ServiceType.SLACK) as SlackService;
     if (!slackService || !slackService.client) {
       return {
         data: {},

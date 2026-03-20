@@ -73,7 +73,7 @@ export const callStateProvider: Provider = {
   description: "Provides real-time voice call state and transcript information",
 
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
-    const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
+    const service = await runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
 
     // Return minimal data if service not available
     if (!service) {

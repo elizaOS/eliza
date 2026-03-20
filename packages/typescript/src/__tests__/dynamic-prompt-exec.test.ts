@@ -93,7 +93,7 @@ const createMockDatabaseAdapter = (): IDatabaseAdapter => {
     getAgentRunSummaries: vi
       .fn()
       .mockResolvedValue({ runs: [], total: 0, hasMore: false }),
-    getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
+    getMemoriesByWorldIds: vi.fn().mockResolvedValue([]),
     getPairingRequests: vi.fn().mockResolvedValue([]),
     getPairingAllowlist: vi.fn().mockResolvedValue([]),
     createPairingRequests: vi.fn().mockResolvedValue([stringToUuid(uuidv4())]),

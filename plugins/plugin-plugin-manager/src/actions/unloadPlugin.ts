@@ -54,7 +54,7 @@ export const unloadPluginAction: Action = {
 
   async validate(runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> {
     // Precondition: plugin manager service must be available
-    const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
+    const pluginManager = await runtime.getService('plugin_manager') as PluginManagerService;
     if (!pluginManager) {
       return false;
     }
@@ -73,7 +73,7 @@ export const unloadPluginAction: Action = {
     options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> {
-    const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
+const pluginManager = (await runtime.getService('plugin_manager')) as PluginManagerService;
 
     if (!pluginManager) {
       if (callback) {
@@ -82,7 +82,7 @@ export const unloadPluginAction: Action = {
           actions: ['UNLOAD_PLUGIN'],
         });
       }
-      return { success: false };
+return { success: false, error: 'Plugin Manager service is not available.' };
     }
 
     // Extract plugin name from message
@@ -112,7 +112,7 @@ export const unloadPluginAction: Action = {
             actions: ['UNLOAD_PLUGIN'],
           });
         }
-        return { success: false };
+return { success: false, error: 'No unloadable plugins.' };
       }
 
       if (callback) {
@@ -121,7 +121,7 @@ export const unloadPluginAction: Action = {
           actions: ['UNLOAD_PLUGIN'],
         });
       }
-      return { success: false };
+return { success: false, error: 'Plugin name not specified.' };
     }
 
     // Check if plugin can be unloaded
@@ -133,7 +133,7 @@ export const unloadPluginAction: Action = {
           actions: ['UNLOAD_PLUGIN'],
         });
       }
-      return { success: false };
+return { success: false, error: reason };
     }
 
     logger.info(`[unloadPluginAction] Unloading plugin: ${pluginToUnload.name}`);
@@ -147,6 +147,7 @@ export const unloadPluginAction: Action = {
           actions: ['UNLOAD_PLUGIN'],
         });
       }
+      return { success: true, text: `Successfully unloaded plugin: ${pluginToUnload.name}` };
     } catch (error) {
       logger.error(`[unloadPluginAction] Failed to unload plugin:`, error);
       if (callback) {
@@ -155,7 +156,10 @@ export const unloadPluginAction: Action = {
           actions: ['UNLOAD_PLUGIN'],
         });
       }
-      return { success: false };
+return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
     return { success: true };
   },

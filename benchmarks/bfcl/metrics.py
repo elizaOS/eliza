@@ -56,6 +56,15 @@ class MetricsCalculator:
 
         Returns:
             Calculated metrics
+
+        Test scenarios:
+        - Empty results list yields _empty_metrics()
+        - Results with no_ground_truth=True filtered from accuracy calcs
+        - Valid results contribute to overall weighted scoring
+        - Overall score matches category_weights distribution
+        - All results used for latency stats (even no_ground_truth)
+        - Error analysis categorizes multiple failure modes
+        - Missing ground truth count tracked in error_counts
         """
         if not results:
             return self._empty_metrics()
@@ -79,7 +88,9 @@ class MetricsCalculator:
         exec_accuracy = self._calculate_accuracy(valid_results, "exec_success")
         relevance_accuracy = self._calculate_accuracy(valid_results, "relevance_correct")
 
-        # Calculate weighted overall score
+        # Calculate weighted overall score (AST accuracy weighted by category per BFCL spec)
+        # Note: overall_score is AST-accuracy-weighted only per official BFCL methodology.
+        # Baseline comparisons via compare_to_baselines() assume baseline.overall uses the same metric.
         overall_score = self._calculate_weighted_score(category_metrics)
 
         # Calculate latency statistics (use all results - we ran them all)
@@ -161,7 +172,16 @@ class MetricsCalculator:
         results: list[BFCLResult],
         field: str,
     ) -> float:
-        """Calculate accuracy for a specific field."""
+        """
+        Calculate accuracy for a specific field.
+        
+        Test scenarios:
+        - Empty results list should return 0.0
+        - Perfect accuracy: all results True for field
+        - Zero accuracy: all results False for field
+        - Mixed accuracy: combination of True/False results
+        - Invalid field should handle gracefully with getattr
+        """
         if not results:
             return 0.0
 
@@ -172,7 +192,16 @@ class MetricsCalculator:
         self,
         category_metrics: dict[BFCLCategory, CategoryMetrics],
     ) -> float:
-        """Calculate weighted overall score based on BFCL specification."""
+        """
+        Calculate weighted overall score based on BFCL specification.
+        
+        Test scenarios:
+        - Empty category_metrics should return 0.0
+        - Single category score calculation with defined weight
+        - Multiple categories with standard weights sum to 1.0
+        - Missing category weight defaults to 0.1
+        - Category weight distribution matches CATEGORY_WEIGHTS
+        """
         if not category_metrics:
             return 0.0
 
@@ -193,7 +222,17 @@ class MetricsCalculator:
         self,
         latencies: list[float],
     ) -> dict[str, float]:
-        """Calculate latency statistics."""
+        """
+        Calculate latency statistics.
+        
+        Test scenarios:
+        - Empty latency list returns zeroed stats
+        - Single latency value has same p50/p95/p99
+        - Multiple values with known percentiles
+        - Extreme values properly influence p95/p99
+        - Average calculation with positive latencies
+        - Large dataset performance (>=1000 values)
+        """
         if not latencies:
             return {"avg": 0.0, "p50": 0.0, "p95": 0.0, "p99": 0.0}
 
@@ -201,7 +240,16 @@ class MetricsCalculator:
         n = len(sorted_latencies)
 
         def percentile(p: float) -> float:
-            """Compute the p-th percentile using linear interpolation."""
+            """
+            Compute the p-th percentile using linear interpolation.
+            
+            Test scenarios:
+            - p=0.5 gives median for odd/even length lists
+            - p=0.95 handles lists shorter than 20 items
+            - p=0.99 interpolates between values for large lists
+            - Single value returns same value for any p
+            - Values weighted linearly between points
+            """
             if n == 1:
                 return sorted_latencies[0]
 
@@ -225,7 +273,19 @@ class MetricsCalculator:
         self,
         results: list[BFCLResult],
     ) -> dict[str, int]:
-        """Analyze and categorize errors."""
+        """
+        Analyze and categorize errors.
+        
+        Test scenarios:
+        - Empty results yield zero counts for all categories
+        - Relevance errors tracked independently of AST match
+        - Execution errors only counted for AST-matched cases
+        - Timeout detection in error messages
+        - Name/argument mismatch categorization
+        - Missing/extra call counting based on count_mismatch
+        - Type error detection in error messages
+        - Multiple error categories in same result
+        """
         error_counts: dict[str, int] = {
             "name_mismatch": 0,
             "argument_mismatch": 0,
@@ -239,6 +299,10 @@ class MetricsCalculator:
         }
 
         for result in results:
+            # Track relevance errors independently of AST match
+            if not result.relevance_correct:
+                error_counts["relevance_error"] += 1
+
             # Check execution error first (AST matched but exec failed)
             if result.ast_match:
                 if not result.exec_success:
@@ -280,9 +344,6 @@ class MetricsCalculator:
                             break
                 else:
                     error_counts["other"] += 1
-
-            if not result.relevance_correct:
-                error_counts["relevance_error"] += 1
 
         return error_counts
 

@@ -3,6 +3,7 @@ import {
   type IAgentRuntime,
   logger,
   type MessageExample,
+  type MessageExampleGroup,
   MemoryType,
 } from '@elizaos/core';
 import fs from 'fs-extra';
@@ -53,21 +54,23 @@ export class CharacterFileManager extends Service {
 
   capabilityDescription = 'Manages safe character file modifications with backup and validation';
 
-  protected runtime: IAgentRuntime;
   private characterFilePath: string | null = null;
   private backupDir: string;
   private maxBackups = 10;
   private validationRules: Map<string, (value: unknown) => boolean> = new Map();
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    this.runtime = runtime;
+    if (runtime) {
+      this.runtime = runtime;
+    }
     this.backupDir = path.join(process.cwd(), '.eliza', 'character-backups');
     this.setupValidationRules();
   }
 
   static async start(runtime: IAgentRuntime): Promise<CharacterFileManager> {
     const manager = new CharacterFileManager(runtime);
+    manager.runtime = runtime;
     await manager.initialize();
     return manager;
   }
@@ -79,10 +82,11 @@ export class CharacterFileManager extends Service {
     // Try to detect the character file path
     await this.detectCharacterFile();
 
-    logger.debug(
-      { characterFile: this.characterFilePath, backupDir: this.backupDir },
-      'CharacterFileManager initialized'
-    );
+logger.debug({
+      msg: 'CharacterFileManager initialized',
+      characterFile: this.characterFilePath,
+      backupDir: this.backupDir,
+    });
   }
 
   private async detectCharacterFile(): Promise<void> {
@@ -113,7 +117,7 @@ export class CharacterFileManager extends Service {
           const content = await fs.readJSON(filePath);
           if (content.name === character.name) {
             this.characterFilePath = filePath;
-            logger.debug({ path: filePath }, 'Character file detected');
+logger.debug({ msg: 'Character file detected', path: filePath });
             return;
           }
         } catch {
@@ -128,7 +132,8 @@ export class CharacterFileManager extends Service {
   private setupValidationRules(): void {
     // Name validation - ensure safe and reasonable names
     this.validationRules.set('name', (value: unknown) => {
-      if (typeof value !== 'string') {
+const name = value;
+      if (typeof name !== 'string') {
         return false;
       }
       const name = value;
@@ -146,7 +151,8 @@ export class CharacterFileManager extends Service {
 
     // System prompt validation - ensure safe and reasonable content
     this.validationRules.set('system', (value: unknown) => {
-      if (typeof value !== 'string') {
+const system = value;
+      if (typeof system !== 'string') {
         return false;
       }
       const system = value;
@@ -165,7 +171,8 @@ export class CharacterFileManager extends Service {
 
     // Bio validation - ensure reasonable length and content
     this.validationRules.set('bio', (value: unknown) => {
-      if (!Array.isArray(value)) {
+const bio = value;
+      if (!Array.isArray(bio)) {
         return false;
       }
       const bio = value as string[];
@@ -181,7 +188,8 @@ export class CharacterFileManager extends Service {
 
     // Topics validation
     this.validationRules.set('topics', (value: unknown) => {
-      if (!Array.isArray(value)) {
+const topics = value;
+      if (!Array.isArray(topics)) {
         return false;
       }
       const topics = value as string[];
@@ -197,7 +205,7 @@ export class CharacterFileManager extends Service {
 
   async createBackup(): Promise<string | null> {
     if (!this.characterFilePath) {
-      logger.warn('No character file path available for backup');
+      logger.warn({ msg: 'No character file path available for backup' });
       return null;
     }
 
@@ -211,10 +219,10 @@ export class CharacterFileManager extends Service {
       // Clean up old backups
       await this.cleanupOldBackups();
 
-      logger.info({ backupPath }, 'Character backup created');
+logger.info({ msg: 'Character backup created', backupPath });
       return backupPath;
     } catch (error) {
-      logger.error({ err: error }, 'Failed to create character backup');
+      logger.error({ msg: 'Failed to create character backup', err: error });
       return null;
     }
   }
@@ -241,7 +249,7 @@ export class CharacterFileManager extends Service {
         logger.info(`Cleaned up ${filesToDelete.length} old backups`);
       }
     } catch (error) {
-      logger.error({ err: error }, 'Error cleaning up old backups');
+logger.error({ msg: 'Error cleaning up old backups', err: error });
     }
   }
 
@@ -304,7 +312,11 @@ export class CharacterFileManager extends Service {
       if (modification.name) {
         const oldName = currentCharacter.name;
         currentCharacter.name = modification.name;
-        logger.info({ oldName, newName: modification.name }, 'Character name changed');
+logger.info({
+          msg: 'Character name changed',
+          oldName,
+          newName: modification.name,
+        });
       }
 
       // Handle system prompt modification - this is a direct replacement, not additive
@@ -312,10 +324,12 @@ export class CharacterFileManager extends Service {
         const oldSystem = currentCharacter.system || 'No system prompt';
         currentCharacter.system = modification.system;
 
-        logger.info(
-          { oldLength: oldSystem.length, newLength: modification.system.length, changed: oldSystem !== modification.system },
-          'System prompt modified'
-        );
+logger.info({
+          msg: 'System prompt modified',
+          oldLength: oldSystem.length,
+          newLength: modification.system.length,
+          changed: oldSystem !== modification.system,
+        });
       }
 
       if (modification.bio) {
@@ -325,16 +339,17 @@ export class CharacterFileManager extends Service {
         const currentBio = currentBioRaw.filter((x): x is string => typeof x === 'string');
 
         // Add new bio elements, avoiding duplicates
+        const currentBioStrings = currentBio.filter((x): x is string => typeof x === 'string');
         const newBioElements = modification.bio.filter(
           (newBio) =>
-            !currentBio.some(
+            !currentBioStrings.some(
               (existing) =>
                 existing.toLowerCase().includes(newBio.toLowerCase()) ||
                 newBio.toLowerCase().includes(existing.toLowerCase())
             )
         );
 
-        currentCharacter.bio = [...currentBio, ...newBioElements];
+        currentCharacter.bio = [...currentBioStrings, ...newBioElements];
       }
 
       if (modification.topics) {
@@ -345,25 +360,30 @@ export class CharacterFileManager extends Service {
 
       if (modification.messageExamples) {
         const currentExamples = currentCharacter.messageExamples || [];
+const newGroups = modification.messageExamples.map((examples) => ({
+          examples,
+        })) as MessageExampleGroup[];
         currentCharacter.messageExamples = [
           ...currentExamples,
-          ...modification.messageExamples,
+          ...newGroups,
         ] as typeof currentCharacter.messageExamples;
       }
 
       if (modification.style) {
+        const prev = currentCharacter.style;
         currentCharacter.style = {
-          ...currentCharacter.style,
-          ...modification.style,
+all: prev?.all ?? modification.style?.all ?? [],
+          chat: prev?.chat ?? modification.style?.chat ?? [],
+          post: prev?.post ?? modification.style?.post ?? [],
           $typeName: 'eliza.v1.StyleGuides' as const,
-        } as typeof currentCharacter.style;
+        };
       }
 
       if (modification.settings) {
         currentCharacter.settings = {
           ...currentCharacter.settings,
-          ...modification.settings,
-        } as typeof currentCharacter.settings;
+...(modification.settings as Record<string, import('@elizaos/core').JsonValue | undefined>),
+        };
       }
 
       // Update runtime character
@@ -399,7 +419,7 @@ export class CharacterFileManager extends Service {
 
       return { success: true };
     } catch (error) {
-      logger.error({ err: error }, 'Failed to apply character modification');
+logger.error({ msg: 'Failed to apply character modification', err: error });
       return {
         success: false,
         error: `Application failed: ${(error as Error).message}`,
@@ -418,7 +438,7 @@ export class CharacterFileManager extends Service {
 
     return memories.map((memory) => {
       const meta = memory.metadata as Record<string, unknown> | undefined;
-      const filePath = meta?.filePath;
+const filePath = meta?.filePath;
       return {
         timestamp: typeof meta?.timestamp === 'number' ? meta.timestamp : undefined,
         modification: meta?.modification,
@@ -516,14 +536,16 @@ export class CharacterFileManager extends Service {
         'character_modifications'
       );
 
-      logger.info(
-        { backupPath, characterName: backupContent.name, currentBackup: currentBackupPath },
-        'Character restored from backup'
-      );
+logger.info({
+        msg: 'Character restored from backup',
+        backupPath,
+        characterName: backupContent.name,
+        currentBackup: currentBackupPath,
+      });
 
       return { success: true };
     } catch (error) {
-      logger.error({ err: error }, 'Failed to restore from backup');
+      logger.error({ msg: 'Failed to restore from backup', err: error });
       return {
         success: false,
         error: `Restoration failed: ${(error as Error).message}`,
@@ -547,7 +569,7 @@ export class CharacterFileManager extends Service {
     const backups = await this.getAvailableBackups();
     const entryTs = entry.timestamp ?? 0;
     const backup = backups.find(
-      (b) => Math.abs(b.timestamp - entryTs) < 60000 // Within 1 minute
+(b) => Math.abs(b.timestamp - (entry.timestamp ?? 0)) < 60000 // Within 1 minute
     );
 
     if (!backup) {
@@ -558,6 +580,6 @@ export class CharacterFileManager extends Service {
   }
 
   async stop(): Promise<void> {
-    logger.info('CharacterFileManager stopped');
+    logger.info({ msg: 'CharacterFileManager stopped' });
   }
 }

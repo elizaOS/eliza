@@ -332,16 +332,25 @@ cd python && pip install -e ".[dev]"
 
 ### Testing
 
+From the plugin directory, use the package scripts (recommended in this repo):
+
 ```bash
-# TypeScript
-npx vitest
+# All: TypeScript + Rust + Python
+bun run test
+
+# TypeScript only (Vitest)
+bun run test:ts
 
 # Rust
-cd rust && cargo test
+bun run test:rust
 
-# Python
-cd python && pytest tests/ -v
+# Python (if pytest is installed)
+bun run test:python
 ```
+
+Or run Vitest directly: `npx vitest run typescript/` or `cd rust && cargo test`.
+
+**Note:** `elizaos test` uses the globally installed CLI and may load a different `@elizaos/core`. For consistent results in this monorepo, use `bun run test` or `bun run test:ts` above.
 
 ### Integration Tests
 

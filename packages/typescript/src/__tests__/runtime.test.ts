@@ -106,7 +106,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   deleteMemories: vi.fn().mockResolvedValue(undefined),
   deleteAllMemories: vi.fn().mockResolvedValue(undefined),
   countMemories: vi.fn().mockResolvedValue(0),
-  getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
+  getMemoriesByWorldIds: vi.fn().mockResolvedValue([]),
 
   // Component methods
   getComponent: vi.fn().mockResolvedValue(null),
@@ -181,6 +181,8 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   deletePairingRequests: vi.fn().mockResolvedValue(undefined),
   createPairingAllowlistEntries: vi.fn().mockResolvedValue([]),
   deletePairingAllowlistEntries: vi.fn().mockResolvedValue(undefined),
+
+  runPluginMigrations: vi.fn().mockResolvedValue(undefined),
 } as IDatabaseAdapter;
 
 // Mock action creator (matches your example)
@@ -546,34 +548,14 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       await runtime.initialize();
 
       expect(mockDatabaseAdapter.initialize).toHaveBeenCalledTimes(1);
-      expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-      // expect(mockDatabaseAdapter.getAgent).toHaveBeenCalledWith(agentId); // This is no longer called
-      expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([
-        agentId,
-      ]);
-      expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
-      expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
-      expect(mockDatabaseAdapter.createRoomParticipants).toHaveBeenCalledWith(
-        [agentId],
-        agentId,
-      );
+      // Slim init: only adapter readiness; no ensureAgentExists / entity/room setup in initialize()
     });
 
     it("should create a new agent if one does not exist", async () => {
-      // No need to override the spy, initialize should handle it.
       await runtime.initialize();
 
       expect(mockDatabaseAdapter.initialize).toHaveBeenCalledTimes(1);
-      expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-      expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([
-        agentId,
-      ]);
-      expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
-      expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
-      expect(mockDatabaseAdapter.createRoomParticipants).toHaveBeenCalledWith(
-        [agentId],
-        agentId,
-      );
+      // Slim init: only adapter readiness
     });
 
     it("should skip adapter.init when adapter is already ready (idempotent initialize)", async () => {
@@ -584,16 +566,6 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
       expect(mockDatabaseAdapter.isReady).toHaveBeenCalled();
       expect(mockDatabaseAdapter.initialize).not.toHaveBeenCalled();
-      expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-      expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([
-        agentId,
-      ]);
-      expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
-      expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
-      expect(mockDatabaseAdapter.createRoomParticipants).toHaveBeenCalledWith(
-        [agentId],
-        agentId,
-      );
     });
 
     it("should call adapter.init only once across multiple initialize calls", async () => {
@@ -607,13 +579,13 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
     });
 
     it("should throw if adapter is not available during initialize", async () => {
-      // Create runtime without passing adapter
+      // Adapter is required in the type; use assertion to test runtime behavior when adapter is missing
       const runtimeWithoutAdapter = new AgentRuntime({
         character: mockCharacter,
         agentId: agentId,
-      });
+        // @ts-expect-error - testing runtime behavior when adapter is omitted
+      } as { character: Character; agentId: UUID });
 
-      // Prevent unhandled rejection from internal initPromise used by services waiting on initialization
       runtimeWithoutAdapter.initPromise.catch(() => {});
 
       await expect(runtimeWithoutAdapter.initialize()).rejects.toThrow(
@@ -621,41 +593,17 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       );
     });
 
-    it("should skip plugin migrations when skipMigrations option is true", async () => {
+    it("initialize() does not run plugin migrations (provisioning is separate)", async () => {
       const runtimeWithMigrations = new AgentRuntime({
         character: mockCharacter,
         agentId: agentId,
         adapter: mockDatabaseAdapter,
       });
 
-      // Spy on runPluginMigrations
-      const runMigrationsSpy = vi.spyOn(
-        runtimeWithMigrations,
-        "runPluginMigrations",
-      );
-
-      // Initialize with skipMigrations = true
-      await runtimeWithMigrations.initialize({ skipMigrations: true });
-
-      // Verify migrations were not called
-      expect(runMigrationsSpy).not.toHaveBeenCalled();
-    });
-
-    it("should run plugin migrations by default when skipMigrations is not specified", async () => {
-      const runtimeDefault = new AgentRuntime({
-        character: mockCharacter,
-        agentId: agentId,
-        adapter: mockDatabaseAdapter,
-      });
-
-      // Spy on runPluginMigrations
-      const runMigrationsSpy = vi.spyOn(runtimeDefault, "runPluginMigrations");
-
-      // Initialize without skipMigrations option (default behavior)
-      await runtimeDefault.initialize();
-
-      // Verify migrations were called
-      expect(runMigrationsSpy).toHaveBeenCalled();
+      // initialize() no longer runs migrations; provisionAgent() does that
+      await runtimeWithMigrations.initialize();
+      // Adapter's runPluginMigrations is never called by initialize()
+      expect(mockDatabaseAdapter.runPluginMigrations).not.toHaveBeenCalled();
     });
 
     // Add more tests for initialize: existing entity, existing room, knowledge processing etc.

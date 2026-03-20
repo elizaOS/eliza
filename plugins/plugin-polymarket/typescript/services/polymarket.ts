@@ -520,7 +520,7 @@ export class PolymarketService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(POLYMARKET_SERVICE_NAME);
+    const service = await runtime.getService(POLYMARKET_SERVICE_NAME);
     if (!service) {
       return;
     }

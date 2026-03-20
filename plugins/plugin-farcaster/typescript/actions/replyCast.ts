@@ -51,7 +51,7 @@ export const replyCastAction: Action = {
       (message.content.metadata as Record<string, unknown>).parentCastHash
     );
 
-    const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
+    const service = await runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
     const isServiceAvailable = !!service?.getMessageService(runtime.agentId);
 
     return hasKeyword && (hasParentCast || isServiceAvailable);
@@ -59,7 +59,7 @@ export const replyCastAction: Action = {
 
   handler: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     try {
-      const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
+      const service = await runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
       const messageService = service?.getMessageService(runtime.agentId);
 
       if (!messageService) {

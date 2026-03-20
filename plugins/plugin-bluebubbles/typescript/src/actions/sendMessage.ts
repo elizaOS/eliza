@@ -74,7 +74,7 @@ export const sendMessageAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
   ): Promise<boolean> => {
-    const service = runtime.getService<BlueBubblesService>(
+    const service = await runtime.getService<BlueBubblesService>(
       BLUEBUBBLES_SERVICE_NAME,
     );
     return service?.getIsRunning() ?? false;
@@ -87,7 +87,7 @@ export const sendMessageAction: Action = {
     _options: Record<string, unknown> | undefined,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService<BlueBubblesService>(
+    const service = await runtime.getService<BlueBubblesService>(
       BLUEBUBBLES_SERVICE_NAME,
     );
     const currentState = state ?? (await runtime.composeState(message));

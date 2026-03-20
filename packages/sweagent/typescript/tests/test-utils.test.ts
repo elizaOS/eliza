@@ -3,7 +3,7 @@
  */
 
 import * as path from "node:path";
-import { describe, expect, it, jest } from "./jest-globals";
+import { describe, expect, it, vi } from "vitest";
 import {
   calculateHash,
   debounce,
@@ -243,7 +243,7 @@ agent:
 
     describe("debounce", () => {
       it("should debounce function calls", async () => {
-        jest.useFakeTimers();
+        vi.useFakeTimers();
 
         let callCount = 0;
         const fn = () => callCount++;
@@ -258,18 +258,18 @@ agent:
         expect(callCount).toBe(0);
 
         // Fast forward time
-        jest.advanceTimersByTime(100);
+        vi.advanceTimersByTime(100);
 
         // Should have been called once
         expect(callCount).toBe(1);
 
-        jest.useRealTimers();
+        vi.useRealTimers();
       });
     });
 
     describe("throttle", () => {
       it("should throttle function calls", () => {
-        jest.useFakeTimers();
+        vi.useFakeTimers();
 
         let callCount = 0;
         const fn = () => callCount++;
@@ -285,11 +285,11 @@ agent:
         expect(callCount).toBe(1);
 
         // After throttle period, next call goes through
-        jest.advanceTimersByTime(100);
+        vi.advanceTimersByTime(100);
         throttled();
         expect(callCount).toBe(2);
 
-        jest.useRealTimers();
+        vi.useRealTimers();
       });
     });
   });

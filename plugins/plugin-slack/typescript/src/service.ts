@@ -89,6 +89,7 @@ export class SlackService extends Service implements ISlackService {
   private appToken: string | null = null;
   private userToken: string | undefined = undefined;
   private signingSecret: string | null = null;
+  private userToken: string | undefined = undefined;
   private allowedChannelIds: Set<string> = new Set();
   private dynamicChannelIds: Set<string> = new Set();
   private userCache: Map<string, SlackUser> = new Map();
@@ -179,7 +180,7 @@ export class SlackService extends Service implements ISlackService {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(SLACK_SERVICE_NAME) as
+    const service = (await runtime.getService(SLACK_SERVICE_NAME)) as
       | SlackService
       | undefined;
     if (service) {
@@ -211,7 +212,7 @@ export class SlackService extends Service implements ISlackService {
       ...(this.signingSecret ? { signingSecret: this.signingSecret } : {}),
     });
 
-    this.client = this.app.client;
+    this.client = this.app.client as unknown as WebClient;
 
     // Get bot user info
     const authResult = await this.client.auth.test();
@@ -265,12 +266,12 @@ export class SlackService extends Service implements ISlackService {
 
     // Handle regular messages
     this.app.message(async ({ message, client }) => {
-      await this.handleMessage(message as SlackMessageEventType, client);
+      await this.handleMessage(message as SlackMessageEventType, client as unknown as WebClient);
     });
 
     // Handle app mentions
     this.app.event("app_mention", async ({ event, client }) => {
-      await this.handleAppMention(event as SlackAppMentionEventType, client);
+      await this.handleAppMention(event as SlackAppMentionEventType, client as unknown as WebClient);
     });
 
     // Handle reactions

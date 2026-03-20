@@ -3,12 +3,14 @@ import crypto from "node:crypto";
 import {
   type IAgentRuntime,
   type Memory,
+  type Metadata,
   type Room,
   type UUID,
   EventType,
   ChannelType,
   Service,
 } from "@elizaos/core";
+import type { JsonObject } from "@elizaos/core";
 import type {
   AgentToAgentPolicy,
   DeliveryContext,
@@ -232,7 +234,7 @@ export class SubagentService extends Service {
       agentId: this.runtime.agentId,
       worldId: this.runtime.agentId, // Use agent as world for simplicity
       source: "subagent",
-      metadata: roomMetadata as unknown as import("@elizaos/core").Metadata,
+metadata: roomMetadata as unknown as Metadata,
     };
 
     // Create the room
@@ -305,7 +307,7 @@ export class SubagentService extends Service {
       content: {
         text: params.task,
         type: "text",
-        metadata: taskMetadata as import("@elizaos/core").Content["metadata"],
+metadata: taskMetadata as JsonObject,
       },
     };
 
@@ -313,7 +315,7 @@ export class SubagentService extends Service {
     // We don't await here - the subagent runs in the background
     this.executeSubagentRun(runId, initialMessage, params.runTimeoutSeconds).catch(
       (error) => {
-        this.runtime.logger.error({ runId, error }, "Subagent execution error");
+this.runtime.logger.error({ runId, error }, "Subagent execution error");
         this.handleSubagentError(runId, error);
       },
     );
@@ -419,7 +421,7 @@ export class SubagentService extends Service {
 
     // Trigger announcement
     this.announceSubagentResult(runId).catch((err) => {
-      this.runtime.logger.error({ runId, error: err }, "Failed to announce timeout");
+this.runtime.logger.error({ runId, error: err }, "Failed to announce timeout");
     });
   }
 
@@ -450,7 +452,10 @@ export class SubagentService extends Service {
 
     // Trigger announcement
     this.announceSubagentResult(runId).catch((err) => {
-      this.runtime.logger.error({ runId, error: err }, "Failed to announce error");
+this.runtime.logger.error(
+        { runId, error: err },
+        "Failed to announce error"
+      );
     });
   }
 
@@ -597,7 +602,7 @@ export class SubagentService extends Service {
         content: {
           text: triggerMessage,
           type: "text",
-          metadata: metadata as import("@elizaos/core").Content["metadata"],
+metadata: metadata as JsonObject,
         },
       };
 
@@ -778,7 +783,7 @@ export class SubagentService extends Service {
       content: {
         text: params.message,
         type: "text",
-        metadata: a2aMetadata as import("@elizaos/core").Content["metadata"],
+metadata: a2aMetadata as JsonObject,
       },
     };
 
@@ -793,7 +798,7 @@ export class SubagentService extends Service {
           source: "a2a",
         })
         .catch((err) => {
-          this.runtime.logger.error({ runId, error: err }, "A2A send error");
+this.runtime.logger.error({ runId, error: err }, "A2A send error");
         });
 
       const asyncPayload: SubagentEventPayload = {

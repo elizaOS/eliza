@@ -24,7 +24,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync } from "node:fs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const DRY_RUN = process.argv.includes("--dry-run");

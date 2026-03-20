@@ -83,7 +83,9 @@ function getHipsHeightFromVrm(vrm: VRM): number {
  */
 export async function loadMixamoAnimation(url: string, vrm: VRM): Promise<THREE.AnimationClip> {
   const loader = new FBXLoader();
-  const asset = await loader.loadAsync(url);
+  const asset = (await loader.loadAsync(url)) as THREE.Group & {
+    animations: THREE.AnimationClip[];
+  };
   const sourceClip =
     THREE.AnimationClip.findByName(asset.animations, "mixamo.com") ?? asset.animations[0];
   if (!sourceClip) {

@@ -77,7 +77,7 @@ export const searchPluginAction: Action = {
           actions: ['SEARCH_PLUGINS'],
         });
       }
-      return { success: false };
+return { success: false, error: 'Search query not specified.' };
     }
 
     logger.info(`[searchPluginAction] Searching for: "${query}"`);
@@ -93,7 +93,7 @@ export const searchPluginAction: Action = {
             actions: ['SEARCH_PLUGINS'],
           });
         }
-        return { success: false };
+return { success: false, error: searchResult.error ?? 'Registry unreachable.' };
       }
 
       const results = searchResult.data;
@@ -105,7 +105,7 @@ export const searchPluginAction: Action = {
             actions: ['SEARCH_PLUGINS'],
           });
         }
-        return { success: false };
+return { success: true, text: 'No plugins found.' };
       }
 
       // Format results with rich information
@@ -148,6 +148,7 @@ export const searchPluginAction: Action = {
           actions: ['SEARCH_PLUGINS'],
         });
       }
+      return { success: true, text: responseText };
     } catch (error) {
       logger.error('[searchPluginAction] Search failed:', error);
       if (callback) {
@@ -156,7 +157,7 @@ export const searchPluginAction: Action = {
           actions: ['SEARCH_PLUGINS'],
         });
       }
-      return { success: false };
+return { success: false, error: error instanceof Error ? error.message : 'Search failed.' };
     }
 
     return { success: true };
@@ -266,7 +267,7 @@ export const getPluginDetailsAction: Action = {
           text: '🤔 Please specify which plugin you\'d like to know more about.\n\nExample: "Tell me more about @elizaos/plugin-solana"',
         });
       }
-      return { success: false };
+return { success: false, error: 'Plugin name not specified.' };
     }
 
     let pluginName = pluginMatch[1];
@@ -283,7 +284,7 @@ export const getPluginDetailsAction: Action = {
             text: `Could not reach the plugin registry: ${detailsResult.error}\n\nCheck that ELIZAOS_API_URL is configured correctly.`,
           });
         }
-        return { success: false };
+return { success: false, error: detailsResult.error ?? 'Registry unreachable.' };
       }
 
       const details = detailsResult.data;
@@ -294,7 +295,7 @@ export const getPluginDetailsAction: Action = {
             text: `Plugin "${pluginName}" not found in the registry.\n\nTry searching for plugins first: "search for [functionality]"`,
           });
         }
-        return { success: false };
+return { success: false, error: 'Plugin not found.' };
       }
 
       let responseText = `📋 **${details.name}** Details:\n\n`;
@@ -330,6 +331,7 @@ export const getPluginDetailsAction: Action = {
           text: responseText,
         });
       }
+      return { success: true, text: responseText };
     } catch (error) {
       logger.error('[getPluginDetailsAction] Failed to get plugin details:', error);
       if (callback) {
@@ -337,7 +339,7 @@ export const getPluginDetailsAction: Action = {
           text: '❌ Failed to get plugin details. Please try again later.',
         });
       }
-      return { success: false };
+return { success: false, error: error instanceof Error ? error.message : 'Get details failed.' };
     }
     return { success: true };
   },

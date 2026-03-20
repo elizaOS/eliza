@@ -49,7 +49,7 @@ export const clonePluginAction: Action = {
   ): Promise<ActionResult> => {
     logger.info('[clonePluginAction] Starting plugin clone');
 
-    const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
+    const pluginManager = await runtime.getService('plugin_manager') as PluginManagerService;
 
     if (!pluginManager) {
       if (callback) {
@@ -58,7 +58,7 @@ export const clonePluginAction: Action = {
           actions: ['CLONE_PLUGIN'],
         });
       }
-      return { success: false };
+      return { success: false, error: 'Required services are not available.' };
     }
 
     // Extract plugin name from message
@@ -72,7 +72,7 @@ export const clonePluginAction: Action = {
           actions: ['CLONE_PLUGIN'],
         });
       }
-      return { success: false };
+      return { success: false, error: 'Plugin name not specified.' };
     }
 
     if (callback) {
@@ -92,7 +92,7 @@ export const clonePluginAction: Action = {
           actions: ['CLONE_PLUGIN'],
         });
       }
-      return { success: false, error: result.error };
+      return { success: false, error: result.error ?? 'Clone failed.' };
     }
 
     // Prepare response with helpful information
@@ -110,7 +110,7 @@ export const clonePluginAction: Action = {
 
     if (result.dependencies && Object.keys(result.dependencies).length > 0) {
       responseText += '\n\n**Dependencies to install:**\n';
-      responseText += '```bash\ncd ' + result.localPath + '\nnpm install\n```';
+      responseText += '';
     }
 
     if (callback) {
@@ -120,53 +120,22 @@ export const clonePluginAction: Action = {
       });
     }
 
-    // Optionally register the cloned plugin for development
-    if (result.localPath) {
-      const absolutePath = path.resolve(result.localPath);
-      try {
-        const plugin = await import(absolutePath);
-        if (plugin.default) {
-          const pluginId = await pluginManager.registerPlugin(plugin.default);
-          logger.info(`[clonePluginAction] Registered cloned plugin with ID: ${pluginId}`);
-        }
-      } catch (error) {
-        logger.warn('[clonePluginAction] Could not register cloned plugin:', error);
-      }
-    }
-
-    return { success: true };
+    return { success: true, data: result };
   },
 };
 
 function extractPluginName(text: string): string | null {
-  // Look for explicit plugin names
-  const patterns = [/@elizaos\/plugin-[\w-]+/g, /plugin-[\w-]+/g];
+  // Try to extract @elizaos/plugin-name format
+  const scopedMatch = text.match(/@elizaos\/plugin-[\w-]+/);
+  if (scopedMatch) return scopedMatch[0];
 
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) {
-      return match[0];
-    }
-  }
+  // Try to extract plugin-name format
+  const pluginMatch = text.match(/plugin-([\w-]+)/);
+  if (pluginMatch) return `@elizaos/plugin-${pluginMatch[1]}`;
 
-  // Try to extract plugin name from natural language
-  const words = text.toLowerCase().split(/\s+/);
-  const cloneIndex = words.findIndex((w) => w === 'clone');
-
-  if (cloneIndex !== -1) {
-    // Look for plugin name after 'clone'
-    for (let i = cloneIndex + 1; i < words.length; i++) {
-      if (words[i] === 'plugin' && i + 1 < words.length) {
-        // Handle "clone the X plugin"
-        const pluginType = words[i - 1] === 'the' ? words[i + 1] : words[i - 1];
-        if (pluginType && pluginType !== 'the') {
-          return `@elizaos/plugin-${pluginType}`;
-        }
-      } else if (words[i].includes('plugin')) {
-        return words[i];
-      }
-    }
-  }
+  // Try to extract just the name (e.g., "weather plugin" -> "weather")
+  const nameMatch = text.match(/(?:clone|download|get|fetch)\s+(?:the\s+)?([\w-]+)\s+plugin/i);
+  if (nameMatch) return `@elizaos/plugin-${nameMatch[1]}`;
 
   return null;
 }

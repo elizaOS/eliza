@@ -44,6 +44,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: false,
+    splitting: false,
     // Bundle jsonrepair in the browser build
     external: externalDeps.filter((dep) => dep !== "jsonrepair"),
   });

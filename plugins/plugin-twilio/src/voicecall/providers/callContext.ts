@@ -21,7 +21,7 @@ export const callContextProvider: Provider = {
       };
     }
 
-    const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
+    const service = await runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
 
     if (!service || !service.isConnected()) {
       return {

@@ -5,6 +5,7 @@ import {
   type Character,
   type Content,
   createMessageMemory,
+  InMemoryDatabaseAdapter,
   LLMMode,
   type Plugin,
   stringToUuid,
@@ -186,8 +187,12 @@ export async function getOrCreateRuntime(config: DemoConfig): Promise<RuntimeBun
     const roomId = getOrCreateRoomId();
     const worldId = stringToUuid("eliza-vrm-demo-world");
 
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+
     const runtime = new AgentRuntime({
       character: DEMO_CHARACTER,
+      adapter,
       plugins: buildPlugins(effectiveMode) as Plugin[],
       actionPlanning: false,
       llmMode: LLMMode.SMALL,
@@ -219,7 +224,7 @@ export async function getOrCreateRuntime(config: DemoConfig): Promise<RuntimeBun
 }
 
 export function getGreetingText(effectiveMode: DemoMode): string {
-  return effectiveMode === "elizaClassic" ? getElizaGreeting() : "Hello. I’m ready. What would you like to talk about?";
+  return effectiveMode === "elizaClassic" ? getElizaGreeting() : "Hello. I'm ready. What would you like to talk about?";
 }
 
 export function getEffectiveMode(config: DemoConfig): DemoMode {

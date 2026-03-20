@@ -31,7 +31,10 @@ export async function runA2ATestClient(baseUrl: string): Promise<void> {
   const agentId = info.agentId;
   const capabilities = info.capabilities;
   assert(typeof name === "string", "GET /: name must be a string");
-  assert(typeof bio === "string" || bio === null, "GET /: bio must be string|null");
+  assert(
+    typeof bio === "string" || bio === null || bio === undefined,
+    "GET /: bio must be string|null|undefined",
+  );
   assert(typeof agentId === "string", "GET /: agentId must be a string");
   assert(Array.isArray(capabilities), "GET /: capabilities must be an array");
 

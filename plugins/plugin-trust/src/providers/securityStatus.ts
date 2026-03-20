@@ -27,6 +27,12 @@ export const securityStatusProvider: Provider = {
         entityId: message.entityId,
       });
 
+      // Support both object { confidence } and number (for mocks)
+      const confidence =
+        typeof threatAssessment === 'number'
+          ? threatAssessment
+          : (threatAssessment as { confidence?: number })?.confidence ?? 0;
+
       // Check if current message has security concerns
       const messageAnalysis = await securityModule.analyzeMessage(
         message.content.text || '',
@@ -41,11 +47,7 @@ export const securityStatusProvider: Provider = {
           : `${recentIncidents.length} security incident(s) detected in the last 24 hours`;
 
       const alertLevel =
-        threatAssessment.confidence > 0.7
-          ? 'HIGH ALERT'
-          : threatAssessment.confidence > 0.4
-            ? 'ELEVATED'
-            : 'NORMAL';
+        confidence > 0.7 ? 'HIGH ALERT' : confidence > 0.4 ? 'ELEVATED' : 'NORMAL';
 
       let statusText = `Security Status: ${alertLevel}. ${securityStatus}.`;
 
@@ -56,10 +58,10 @@ export const securityStatusProvider: Provider = {
       return {
         text: statusText,
         values: {
-          threatLevel: threatAssessment.confidence,
+          threatLevel: confidence,
           alertLevel,
           recentIncidentCount: recentIncidents.length,
-          hasActiveThreats: threatAssessment.confidence > 0.4,
+          hasActiveThreats: confidence > 0.4,
           currentMessageFlagged: messageAnalysis.detected,
           securityConcern: messageAnalysis.type || 'none',
         },
@@ -67,7 +69,7 @@ export const securityStatusProvider: Provider = {
           recentIncidents,
           messageAnalysis,
           threatAssessment,
-          recommendations: securityModule.getSecurityRecommendations(threatAssessment.confidence),
+          recommendations: securityModule.getSecurityRecommendations(confidence),
         },
       };
     } catch (error) {

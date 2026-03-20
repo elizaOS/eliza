@@ -29,13 +29,18 @@ vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
 }));
 
-// Mock LobsterService so validate() returns true when Lobster is "available" in tests
+// Mock LobsterService so validate() returns true when we need lobster "available"
+const mockIsAvailable = vi.fn().mockResolvedValue(true);
 vi.mock("../services/lobsterService", () => ({
   createLobsterService: vi.fn(() => ({
-    isAvailable: vi.fn().mockResolvedValue(true),
+    isAvailable: mockIsAvailable,
+    run: vi.fn(),
+    resume: vi.fn(),
   })),
   LobsterService: vi.fn().mockImplementation(function (this: any) {
-    this.isAvailable = vi.fn().mockResolvedValue(true);
+    this.isAvailable = mockIsAvailable;
+    this.run = vi.fn();
+    this.resume = vi.fn();
   }),
 }));
 
@@ -69,7 +74,7 @@ describe("plugin-lobster", () => {
     it("should have LOBSTER_RESUME spec", () => {
       expect(actionSpecs.LOBSTER_RESUME).toBeDefined();
       expect(actionSpecs.LOBSTER_RESUME.name).toBe("LOBSTER_RESUME");
-      expect(actionSpecs.LOBSTER_RESUME.description.toLowerCase()).toContain("resume");
+expect(actionSpecs.LOBSTER_RESUME.description).toMatch(/resume/i);
     });
 
     it("requireActionSpec should throw for unknown spec", () => {
@@ -113,10 +118,11 @@ describe("plugin-lobster", () => {
       });
 
       it("should return false for unrelated messages", async () => {
-        const { createLobsterService } = await import("../services/lobsterService");
+const { createLobsterService } = await import("../services/lobsterService");
         vi.mocked(createLobsterService).mockReturnValueOnce({
-          isAvailable: vi.fn().mockResolvedValue(false),
+          isAvailable: mockIsAvailable,
         } as any);
+        mockIsAvailable.mockResolvedValueOnce(false);
         const runtime = createMockRuntime();
         const message = createMockMessage("what is the weather today?");
         const result = await lobsterRunAction.validate(runtime, message);
@@ -134,11 +140,14 @@ describe("plugin-lobster", () => {
     describe("validate", () => {
       it("should return true for 'approve' messages with token in state", async () => {
         const runtime = createMockRuntime();
-        const message = {
-          ...createMockMessage("yes, approve it"),
-          content: { text: "yes, approve it", data: { resumeToken: "abc123" } },
-        } as Memory;
-        const result = await lobsterResumeAction.validate(runtime, message);
+const message = createMockMessage("yes, approve it") as Memory & {
+          content: { text?: string; data?: { resumeToken?: string } };
+        };
+        message.content.data = { resumeToken: "abc123" };
+        const state: State = {
+          pendingLobsterToken: "abc123",
+        } as State;
+        const result = await lobsterResumeAction.validate(runtime, message, state);
         expect(result).toBe(true);
       });
 
@@ -167,9 +176,10 @@ describe("plugin-lobster", () => {
       const runtime = createMockRuntime();
       const message = createMockMessage("what can lobster do?");
 
-      // Provider returns ProviderResult (object with text, data, values)
-      const context = await lobsterProvider.get(runtime, message);
+// Provider returns ProviderResult object with text
+      const context = await lobsterProvider.get(runtime, message, {} as State);
       expect(context).toBeDefined();
+      expect(context).toHaveProperty("text");
       expect(typeof (context as { text?: string }).text).toBe("string");
     });
   });

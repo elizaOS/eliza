@@ -8,6 +8,7 @@
 import {
   AgentRuntime,
   ChannelType,
+  type Agent,
   type Character,
   type Content,
   type Entity,
@@ -23,7 +24,6 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
-import { v4 as uuidv4 } from "uuid";
 import { vi } from "vitest";
 
 /**
@@ -37,7 +37,7 @@ export function stringToUuid(str: string): UUID {
  * Creates a UUID for testing
  */
 export function createUUID(): UUID {
-  return stringToUuid(uuidv4());
+  return stringToUuid(crypto.randomUUID());
 }
 
 /**
@@ -56,7 +56,7 @@ export const DEFAULT_TEST_CHARACTER: Character = {
   postExamples: [],
   topics: ["testing"],
   adjectives: ["helpful", "test"],
-  style: { all: [], chat: [], post: [] } as Character["style"],
+style: { all: [], chat: [], post: [], $typeName: 'eliza.v1.StyleGuides' as const } as Character["style"],
 };
 
 /**
@@ -76,6 +76,7 @@ export function createTestCharacter(overrides: Partial<Character> = {}): Charact
  */
 export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
   const resolvedAgentId = agentId || createUUID();
+  const agents = new Map<string, Partial<Agent>>();
 
   // In-memory storage
   const memories = new Map<UUID, Memory>();
@@ -87,7 +88,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
   const participants = new Map<UUID, Set<UUID>>();
   const participantStates = new Map<string, string | null>();
 
-  return {
+  return ({
     db: {},
     init: vi.fn().mockResolvedValue(undefined),
     initialize: vi.fn().mockResolvedValue(undefined),
@@ -103,13 +104,37 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       return agentIds.map((id) => ({ id, name: "TestAgent" }));
     }),
     getAgents: vi.fn().mockResolvedValue([]),
+    getAgentsByIds: vi.fn(async (ids: UUID[]) =>
+      ids
+        .map((id) => agents.get(String(id)))
+        .filter((a): a is Partial<Agent> => a != null && a.id != null) as Agent[],
+    ),
     createAgent: vi.fn().mockResolvedValue(true),
-    createAgents: vi.fn().mockResolvedValue([]),
-    upsertAgents: vi.fn().mockResolvedValue(undefined),
+createAgents: vi.fn(async (agentsToCreate: Partial<Agent>[]) => {
+      const ids: UUID[] = [];
+      for (const agent of agentsToCreate) {
+        if (agent.id) {
+          agents.set(String(agent.id), agent);
+          ids.push(agent.id);
+        }
+      }
+      return ids;
+    }),
+    upsertAgents: vi.fn(async (agentsToUpsert: Partial<Agent>[]) => {
+      for (const agent of agentsToUpsert) {
+        if (agent.id) {
+          agents.set(String(agent.id), {
+            ...agent,
+            createdAt: (agent as { createdAt?: number }).createdAt ?? Date.now(),
+            updatedAt: Date.now(),
+          } as Partial<Agent>);
+        }
+      }
+    }),
     updateAgent: vi.fn().mockResolvedValue(true),
-    updateAgents: vi.fn().mockResolvedValue(true),
+    updateAgents: vi.fn().mockResolvedValue(undefined),
     deleteAgent: vi.fn().mockResolvedValue(true),
-    deleteAgents: vi.fn().mockResolvedValue(true),
+    deleteAgents: vi.fn().mockResolvedValue(undefined),
     ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
 
     getMemories: vi.fn(async (params: { roomId?: UUID; count?: number }) => {
@@ -152,7 +177,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     }),
     deleteAllMemories: vi.fn().mockResolvedValue(undefined),
     countMemories: vi.fn().mockResolvedValue(0),
-    getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
+    getMemoriesByWorldIds: vi.fn().mockResolvedValue([]),
 
     getEntitiesByIds: vi.fn(
       async (ids: UUID[]) => ids.map((id) => entities.get(id)).filter(Boolean) as Entity[],
@@ -160,7 +185,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     getEntitiesForRoom: vi.fn().mockResolvedValue([]),
     createEntities: vi.fn(async (newEntities: Entity[]) => {
       const ids: UUID[] = [];
-      for (const entity of newEntities) {
+for (const entity of newEntities) {
         if (entity.id) {
           entities.set(entity.id, entity);
           ids.push(entity.id);
@@ -172,8 +197,10 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       for (const entity of newEntities) {
         if (entity.id) {
           entities.set(entity.id, entity);
+          ids.push(entity.id);
         }
       }
+return ids;
     }),
     updateEntity: vi.fn().mockResolvedValue(undefined),
 
@@ -274,6 +301,9 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       return id;
     }),
     getWorld: vi.fn(async (id: UUID) => worlds.get(id) || null),
+    getWorldsByIds: vi.fn(async (ids: UUID[]) =>
+      ids.map((id) => worlds.get(id)).filter((w): w is World => w != null),
+    ),
     removeWorld: vi.fn(async (id: UUID) => {
       worlds.delete(id);
     }),
@@ -281,6 +311,13 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     updateWorld: vi.fn(async (world: World) => {
       if (world.id) {
         worlds.set(world.id, world);
+      }
+    }),
+    updateWorlds: vi.fn(async (worldsToUpdate: World[]) => {
+      for (const world of worldsToUpdate) {
+        if (world.id) {
+          worlds.set(world.id, world);
+        }
       }
     }),
 
@@ -315,7 +352,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     log: vi.fn().mockResolvedValue(undefined),
     getLogs: vi.fn().mockResolvedValue([]),
     deleteLog: vi.fn().mockResolvedValue(undefined),
-  } as unknown as IDatabaseAdapter;
+}) as unknown as IDatabaseAdapter;
 }
 
 /**

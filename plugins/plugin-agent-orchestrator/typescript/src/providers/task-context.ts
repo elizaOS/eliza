@@ -1,8 +1,8 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import type { AgentOrchestratorService } from "../services/agent-orchestrator-service.js";
 
-function getService(runtime: IAgentRuntime): AgentOrchestratorService | null {
-  return runtime.getService("CODE_TASK") as AgentOrchestratorService | null;
+async function getService(runtime: IAgentRuntime): Promise<AgentOrchestratorService | null> {
+  return (await runtime.getService("CODE_TASK")) as AgentOrchestratorService | null;
 }
 
 function formatStatus(status: string): string {
@@ -33,7 +33,7 @@ export const taskContextProvider: Provider = {
     _message: Memory,
     _state?: State,
   ): Promise<ProviderResult> => {
-    const svc = getService(runtime);
+    const svc = await getService(runtime);
     if (!svc) {
       return { text: "Task service not available." };
     }

@@ -727,7 +727,7 @@ describe("Config – validateRobloxConfig & helpers", () => {
     expect(config.messagingTopic).toBe(ROBLOX_DEFAULTS.MESSAGING_TOPIC);
     expect(config.pollInterval).toBe(ROBLOX_DEFAULTS.POLL_INTERVAL);
     expect(config.dryRun).toBe(false);
-    expect(config.placeId == null).toBe(true);
+expect(config.placeId).toBeUndefined();
   });
 
   it("throws when API key is missing", async () => {

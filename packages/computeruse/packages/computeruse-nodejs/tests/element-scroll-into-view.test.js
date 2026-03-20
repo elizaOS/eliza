@@ -1,4 +1,4 @@
-const { Desktop } = require("../index.js");
+const { Desktop } = require("../wrapper.js");
 
 /**
  * Test for Element.scrollIntoView() method

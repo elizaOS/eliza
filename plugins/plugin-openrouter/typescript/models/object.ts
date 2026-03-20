@@ -29,7 +29,7 @@ async function generateObjectWithModel(
       ...(params.schema && {
         schema: jsonSchema(params.schema as JSONSchema7),
       }),
-      output: params.schema ? "object" : "no-schema",
+      output: (params.schema ? "object" : "no-schema") as "object" | "no-schema",
       messages: [{ role: "user" as const, content: params.prompt }],
       temperature: temperature,
     };
@@ -60,3 +60,4 @@ export async function handleObjectLarge(
 ): Promise<Record<string, JsonValue>> {
   return generateObjectWithModel(runtime, ModelType.OBJECT_LARGE, params);
 }
+

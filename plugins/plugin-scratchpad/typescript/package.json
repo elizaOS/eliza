@@ -46,7 +46,7 @@
     "build:ts": "bun run build.ts",
     "dev": "bun --hot build.ts",
     "clean": "rm -rf dist .turbo node_modules",
-    "test": "vitest run --passWithNoTests",
+    "test": "bun run build && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

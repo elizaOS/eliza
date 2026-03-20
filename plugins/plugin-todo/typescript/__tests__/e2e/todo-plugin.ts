@@ -10,21 +10,21 @@ export const TodoPluginE2ETestSuite: TestSuite = {
         logger.info("Testing service availability...");
 
         // Check reminder service
-        const reminderService = runtime.getService("TODO_REMINDER");
+        const reminderService = await runtime.getService("TODO_REMINDER");
         if (!reminderService) {
           throw new Error("TodoReminderService not found or not started");
         }
         logger.info("✓ TodoReminderService is available");
 
         // Check notification service
-        const notificationService = runtime.getService("NOTIFICATION");
+        const notificationService = await runtime.getService("NOTIFICATION");
         if (!notificationService) {
           throw new Error("NotificationService not found or not started");
         }
         logger.info("✓ NotificationService is available");
 
         // Check daily reset service
-        const dailyResetService = runtime.getService("DAILY_RESET");
+        const dailyResetService = await runtime.getService("DAILY_RESET");
         if (!dailyResetService) {
           throw new Error("DailyResetService not found or not started");
         }
@@ -198,8 +198,8 @@ export const TodoPluginE2ETestSuite: TestSuite = {
         logger.info("Testing rolodex integration for reminders...");
 
         // Check if rolodex services are available
-        const messageDeliveryService = runtime.getService("MESSAGE_DELIVERY" as ServiceType);
-        const entityService = runtime.getService("ENTITY_RELATIONSHIP" as ServiceType);
+        const messageDeliveryService = await runtime.getService("MESSAGE_DELIVERY" as ServiceType);
+        const entityService = await runtime.getService("ENTITY_RELATIONSHIP" as ServiceType);
 
         if (!messageDeliveryService || !entityService) {
           logger.warn("Rolodex services not available - skipping integration test");
@@ -239,7 +239,7 @@ export const TodoPluginE2ETestSuite: TestSuite = {
         logger.info("✓ Overdue task created for reminder test");
 
         // Get reminder service and trigger check
-        const reminderService = runtime.getService("TODO_REMINDER" as ServiceType);
+        const reminderService = await runtime.getService("TODO_REMINDER" as ServiceType);
         if (
           !reminderService ||
           typeof reminderService !== "object" ||
@@ -271,7 +271,7 @@ export const TodoPluginE2ETestSuite: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("Testing reminder failure handling...");
 
-        const reminderService = runtime.getService("TODO_REMINDER" as ServiceType);
+        const reminderService = await runtime.getService("TODO_REMINDER" as ServiceType);
         if (
           !reminderService ||
           typeof reminderService !== "object" ||
@@ -313,7 +313,7 @@ export const TodoPluginE2ETestSuite: TestSuite = {
         await new Promise((resolve) => setTimeout(resolve, 500));
 
         // Service should still be running
-        const serviceStillRunning = runtime.getService("TODO_REMINDER" as ServiceType);
+        const serviceStillRunning = await runtime.getService("TODO_REMINDER" as ServiceType);
         if (!serviceStillRunning) {
           throw new Error("Service crashed during failure handling");
         }
@@ -328,7 +328,7 @@ export const TodoPluginE2ETestSuite: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("Testing reminder interval management...");
 
-        const reminderService = runtime.getService("TODO_REMINDER" as ServiceType);
+        const reminderService = await runtime.getService("TODO_REMINDER" as ServiceType);
         if (
           !reminderService ||
           typeof reminderService !== "object" ||

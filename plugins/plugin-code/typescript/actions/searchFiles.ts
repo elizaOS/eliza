@@ -40,7 +40,7 @@ export const searchFiles: Action = {
   similes: spec.similes ? [...spec.similes] : [],
   description: spec.description,
   validate: async (runtime: IAgentRuntime): Promise<boolean> =>
-    runtime.getService<CoderService>("coder") !== null,
+    (await runtime.getService<CoderService>("coder")) !== null,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -48,7 +48,7 @@ export const searchFiles: Action = {
     options: HandlerOptions | undefined,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = runtime.getService<CoderService>("coder");
+    const svc = await runtime.getService<CoderService>("coder");
     if (!svc) {
       const msg = "Coder service is not available.";
       if (callback) await callback({ content: { text: msg } });

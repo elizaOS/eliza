@@ -209,6 +209,7 @@ def sample_meeting(sample_participant: Participant) -> Meeting:
             ),
         ],
         status=MeetingStatus.PROPOSED,
+        reschedule_count=0,
         created_at=1700000000000,
         updated_at=1700000000000,
     )

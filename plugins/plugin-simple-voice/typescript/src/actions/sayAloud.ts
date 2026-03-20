@@ -149,7 +149,7 @@ export const sayAloudAction: Action = {
   ): Promise<ActionResult> => {
     logger.info("[SAY_ALOUD] Processing speech request");
 
-    const samService = runtime.getService("SAM_TTS") as SamTTSService;
+    const samService = await runtime.getService("SAM_TTS") as SamTTSService;
 
     const textToSpeak = extractTextToSpeak(message.content.text);
     const voiceOptions = extractVoiceOptions(message.content.text);

@@ -1,5 +1,6 @@
-import type { IAgentRuntime, TestSuite } from '@elizaos/core';
-import { asUUID } from '@elizaos/core';
+import { randomUUID } from "node:crypto";
+import type { IAgentRuntime, TestSuite } from "@elizaos/core";
+import { asUUID } from "@elizaos/core";
 
 /**
  * E2E tests for the self-modification plugin
@@ -16,7 +17,7 @@ export class SelfModificationTestSuite implements TestSuite {
         console.log('Testing plugin initialization...');
 
         // Verify services are available
-        const fileManager = runtime.getService('character-file-manager');
+        const fileManager = await runtime.getService('character-file-manager');
         if (!fileManager) {
           throw new Error('CharacterFileManager service not available');
         }
@@ -52,13 +53,13 @@ export class SelfModificationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing character evolution evaluator...');
 
-        const roomId = asUUID(crypto.randomUUID());
-        const userId = asUUID(crypto.randomUUID());
+const roomId = asUUID(randomUUID());
+        const userId = asUUID(randomUUID());
 
         // Create messages that should trigger evolution analysis
         const messages = [
           {
-            id: asUUID(crypto.randomUUID()),
+id: asUUID(randomUUID()),
             entityId: userId,
             roomId,
             content: {
@@ -68,7 +69,7 @@ export class SelfModificationTestSuite implements TestSuite {
             createdAt: Date.now(),
           },
           {
-            id: asUUID(crypto.randomUUID()),
+id: asUUID(randomUUID()),
             entityId: runtime.agentId,
             roomId,
             content: {
@@ -78,7 +79,7 @@ export class SelfModificationTestSuite implements TestSuite {
             createdAt: Date.now() + 1000,
           },
           {
-            id: asUUID(crypto.randomUUID()),
+id: asUUID(randomUUID()),
             entityId: userId,
             roomId,
             content: {
@@ -118,12 +119,12 @@ export class SelfModificationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing MODIFY_CHARACTER action with user request...');
 
-        const roomId = asUUID(crypto.randomUUID());
-        const userId = asUUID(crypto.randomUUID());
+const roomId = asUUID(randomUUID());
+        const userId = asUUID(randomUUID());
 
         // Create user request for character modification
         const message = {
-          id: asUUID(crypto.randomUUID()),
+          id: asUUID(randomUUID()),
           entityId: userId,
           roomId,
           content: {
@@ -182,10 +183,10 @@ export class SelfModificationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing CHARACTER_EVOLUTION provider...');
 
-        const roomId = asUUID(crypto.randomUUID());
+const roomId = asUUID(randomUUID());
         const message = {
-          id: asUUID(crypto.randomUUID()),
-          entityId: asUUID(crypto.randomUUID()),
+          id: asUUID(randomUUID()),
+          entityId: asUUID(randomUUID()),
           roomId,
           content: {
             text: 'Tell me about your evolution capabilities',
@@ -225,7 +226,7 @@ export class SelfModificationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing character file manager validation...');
 
-        const fileManager = runtime.getService('character-file-manager');
+        const fileManager = await runtime.getService('character-file-manager');
 
         // Test valid modification
         const validModification = {
@@ -268,8 +269,8 @@ export class SelfModificationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing complete character evolution workflow...');
 
-        const roomId = asUUID(crypto.randomUUID());
-        const userId = asUUID(crypto.randomUUID());
+const roomId = asUUID(randomUUID());
+        const userId = asUUID(randomUUID());
 
         // Record baseline character state
         const baselineTopics = [...(runtime.character.topics || [])];
@@ -279,7 +280,7 @@ export class SelfModificationTestSuite implements TestSuite {
 
         // Step 1: User provides feedback that should trigger evolution
         const feedbackMessage = {
-          id: asUUID(crypto.randomUUID()),
+id: asUUID(randomUUID()),
           entityId: userId,
           roomId,
           content: {
@@ -293,7 +294,7 @@ export class SelfModificationTestSuite implements TestSuite {
 
         // Step 2: Agent responds
         const agentResponse = {
-          id: asUUID(crypto.randomUUID()),
+id: asUUID(randomUUID()),
           entityId: runtime.agentId,
           roomId,
           content: {
@@ -332,7 +333,7 @@ export class SelfModificationTestSuite implements TestSuite {
 
         // Step 5: Apply modification based on feedback
         const modificationMessage = {
-          id: asUUID(crypto.randomUUID()),
+id: asUUID(randomUUID()),
           entityId: userId,
           roomId,
           content: {

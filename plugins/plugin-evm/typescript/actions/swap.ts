@@ -269,10 +269,10 @@ export class SwapAction {
         address: params.fromToken as Address,
         abi: decimalsAbi,
         functionName: "decimals" as const,
-        authorizationList: [] as const,
+authorizationList: [] as const,
       };
       const decimals = await publicClient.readContract(
-        readDecimalsParams as Parameters<typeof publicClient.readContract>[0]
+        readDecimalsParams as unknown as Parameters<typeof publicClient.readContract>[0]
       );
       fromTokenDecimals = Number(decimals);
     }
@@ -324,7 +324,8 @@ export class SwapAction {
         swapData: routes.routes[0],
       };
     } catch (error) {
-      logger.error("Error in getLifiQuote:", error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error in getLifiQuote: ${errMsg}`);
       return undefined;
     }
   }
@@ -411,7 +412,8 @@ export class SwapAction {
         swapData: route,
       };
     } catch (error) {
-      logger.error("Error in getBebopQuote:", error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error in getBebopQuote: ${errMsg}`);
       return undefined;
     }
   }
@@ -477,7 +479,7 @@ export class SwapAction {
         gasPrice: txRequest.gasPrice
           ? BigInt(Math.floor(Number(txRequest.gasPrice) * GAS_PRICE_MULTIPLIER))
           : undefined,
-      })
+      }) as unknown as Parameters<typeof walletClient.sendTransaction>[0]
     );
 
     const receipt = await publicClient.waitForTransactionReceipt({
@@ -532,7 +534,7 @@ export class SwapAction {
         value: BigInt(bebopRoute.value),
         data: bebopRoute.data as Hex,
         chain: walletClient.chain,
-      })
+      }) as unknown as Parameters<typeof walletClient.sendTransaction>[0]
     );
 
     const receipt = await publicClient.waitForTransactionReceipt({
@@ -576,7 +578,7 @@ export class SwapAction {
       authorizationList: [] as const,
     };
     const allowance = (await publicClient.readContract(
-      readAllowanceParams as Parameters<typeof publicClient.readContract>[0]
+readAllowanceParams as unknown as Parameters<typeof publicClient.readContract>[0]
     )) as bigint;
 
     if (allowance >= requiredAmount) {
@@ -598,7 +600,7 @@ export class SwapAction {
         value: 0n,
         data: approvalData,
         chain: walletClient.chain,
-      })
+      }) as unknown as Parameters<typeof walletClient.sendTransaction>[0]
     );
 
     logger.info(`Waiting for approval confirmation...`);

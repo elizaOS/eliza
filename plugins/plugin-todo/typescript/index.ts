@@ -35,7 +35,7 @@ export const todoPlugin: Plugin = {
         logger.warn("No database instance available, operations will be limited");
       }
 
-      const messageDeliveryService = runtime.getService("MESSAGE_DELIVERY" as never);
+      const messageDeliveryService = await runtime.getService("MESSAGE_DELIVERY" as never);
       if (messageDeliveryService) {
         logger.info("Rolodex message delivery service available");
       } else {

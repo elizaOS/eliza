@@ -113,7 +113,9 @@ async function downloadSkill(
   const response = await fetch(url);
 
   if (!response.ok) {
-    if (response.status === 404 || response.status === 429) return null;
+// 404 = not found, 429 = rate limit, 5xx = server error - treat as download unavailable
+    if (response.status === 404 || response.status === 429 || response.status >= 500)
+      return null;
     throw new Error(`Download failed: ${response.status}`);
   }
 
@@ -276,7 +278,16 @@ describe("ClawHub Registry API", { timeout: 30000 }, () => {
   });
 
   it("should search for skills on ClawHub", async () => {
-    const results = await searchClawHub("git", 5);
+    let results: Awaited<ReturnType<typeof searchClawHub>>;
+    try {
+      results = await searchClawHub("git", 5);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("500")) {
+        console.log("Skipping: ClawHub search API returned 500");
+        return;
+      }
+      throw err;
+    }
 
     expect(results).toBeDefined();
     expect(Array.isArray(results)).toBe(true);
@@ -325,7 +336,16 @@ describe("Skill Installation from ClawHub", { timeout: 60000 }, () => {
 
   it("should attempt to download a skill from ClawHub (may fail - download API not available)", async () => {
     // Search for a skill to install
-    const results = await searchClawHub("git", 3);
+    let results: Awaited<ReturnType<typeof searchClawHub>>;
+    try {
+      results = await searchClawHub("git", 3);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("500")) {
+        console.log("Skipping: ClawHub search API returned 500");
+        return;
+      }
+      throw err;
+    }
     if (results.length === 0) {
       console.log("Skipping: No git-related skills found");
       return;

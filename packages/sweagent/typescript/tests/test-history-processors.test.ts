@@ -2,7 +2,7 @@
  * History processor tests converted from test_history_processors.py
  */
 
-import { beforeEach, describe, expect, it } from "./jest-globals";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   LastNObservations,
   TagToolCallObservations,

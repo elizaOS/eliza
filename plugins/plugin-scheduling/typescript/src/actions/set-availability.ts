@@ -223,7 +223,7 @@ export const setAvailabilityAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ) => {
-    const schedulingService = runtime.getService<SchedulingService>("SCHEDULING");
+    const schedulingService = await runtime.getService<SchedulingService>("SCHEDULING");
     if (!schedulingService) {
       await callback?.({
         text: "Scheduling service is not available. Please try again later.",

@@ -495,7 +495,7 @@ export function getPluginsByChannel(
  *
  * @param registry - The manifest registry
  * @param providerId - The provider ID
- * @returns Array of matching manifest records
+ * @returns Array of matching records
  */
 export function getPluginsByProvider(
   registry: PluginManifestRegistry,

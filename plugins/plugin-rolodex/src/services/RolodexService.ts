@@ -30,6 +30,8 @@ import type {
   ClaimDispute,
 } from '../types/index';
 
+export type { ContactInfo };
+
 import { DEFAULT_HALF_LIVES } from '../types/index';
 import { calculateRelationshipStrength } from '../utils/relationshipStrength';
 import { computeDecayedConfidence, boostConfidenceFromCorroboration } from '../utils/timeWeighting';

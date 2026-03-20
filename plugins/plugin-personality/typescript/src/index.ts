@@ -70,7 +70,7 @@ export const selfModificationPlugin: Plugin = {
         hasSystemPrompt: !!character.system,
       };
 
-      logger.debug(characterStats, 'Current character state');
+      logger.debug({ msg: 'Current character state', ...characterStats });
 
       // Plugin init() runs during runtime.initialize() BEFORE the agent
       // entity and room rows are created (those happen after all plugins
@@ -136,17 +136,15 @@ export const selfModificationPlugin: Plugin = {
         );
       }
 
-      logger.debug(
-        {
-          evolutionEnabled: config.ENABLE_AUTO_EVOLUTION !== 'false',
-          confidenceThreshold: config.MODIFICATION_CONFIDENCE_THRESHOLD || '0.7',
-          characterHasSystem: characterStats.hasSystemPrompt,
-          entityReady,
-        },
-        'Self-Modification Plugin initialized successfully'
-      );
+      logger.debug({
+        msg: 'Self-Modification Plugin initialized successfully',
+        evolutionEnabled: config.ENABLE_AUTO_EVOLUTION !== 'false',
+        confidenceThreshold: config.MODIFICATION_CONFIDENCE_THRESHOLD || '0.7',
+        characterHasSystem: characterStats.hasSystemPrompt,
+        entityReady,
+      });
     } catch (error) {
-      logger.error({ err: error }, 'Critical error during plugin initialization');
+      logger.error({ msg: 'Critical error during plugin initialization', err: error });
       throw error;
     }
   },

@@ -286,21 +286,25 @@ export abstract class BaseDrizzleAdapter
   }
 
   async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
-    return this.withDatabase(() => stores.updateAgents(this.db, updates));
+    await this.withDatabase(() => stores.updateAgents(this.db, updates));
+    return true;
   }
 
   /** Single-agent convenience; delegates to updateAgents for compatibility with tests and callers. */
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
-    return this.updateAgents([{ agentId, agent }]);
+    await this.updateAgents([{ agentId, agent }]);
+    return true;
   }
 
   async deleteAgents(agentIds: UUID[]): Promise<boolean> {
-    return this.withDatabase(() => stores.deleteAgents(this.db, agentIds));
+    await this.withDatabase(() => stores.deleteAgents(this.db, agentIds));
+    return true;
   }
 
   /** Single-agent convenience; delegates to deleteAgents for compatibility with tests and callers. */
   async deleteAgent(agentId: UUID): Promise<boolean> {
-    return this.deleteAgents([agentId]);
+    await this.deleteAgents([agentId]);
+    return true;
   }
 
   async countAgents(): Promise<number> {
@@ -724,27 +728,14 @@ export abstract class BaseDrizzleAdapter
     );
   }
 
-  async getMemoriesByWorldId(params: {
-    worldIds?: UUID[];
-    count?: number;
-    limit?: number;
+async getMemoriesByWorldIds(params: {
+    worldIds: UUID[];
     tableName?: string;
+    limit?: number;
   }): Promise<Memory[]> {
-    const worldIds = params.worldIds ?? [];
-    if (worldIds.length === 0) return [];
-    return this.withDatabase(async () => {
-    const all: Memory[] = [];
-    for (const worldId of worldIds) {
-      const mems = await stores.getMemoriesByWorldId(this.db, this.agentId, {
-        worldId,
-        count: params.count,
-        limit: params.limit,
-        tableName: params.tableName,
-      });
-      all.push(...mems);
-    }
-      return all;
-    });
+return this.withDatabase(() =>
+      stores.getMemoriesByWorldIds(this.db, this.agentId, params)
+    );
   }
 
   // ===============================
@@ -993,12 +984,14 @@ export abstract class BaseDrizzleAdapter
 
   // Batch participant methods
   async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
-    return this.withDatabase(() => stores.deleteParticipants(this.db, this.agentId, participants));
+    await this.withDatabase(() => stores.deleteParticipants(this.db, this.agentId, participants));
+    return true;
   }
 
   /** Single-participant convenience for tests and callers. */
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return this.deleteParticipants([{ entityId, roomId }]);
+    await this.deleteParticipants([{ entityId, roomId }]);
+    return true;
   }
 
   async updateParticipants(participants: Array<{

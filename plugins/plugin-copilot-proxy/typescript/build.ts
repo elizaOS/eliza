@@ -35,7 +35,7 @@ async function build(): Promise<void> {
   console.log("📝 Generating TypeScript declarations...");
 
   const { $ } = await import("bun");
-  await $`tsc --project tsconfig.build.json`.nothrow();
+  await $`tsc --project tsconfig.json`.nothrow();
 
   const totalTime = ((Date.now() - totalStart) / 1000).toFixed(2);
   console.log(`🎉 All builds finished in ${totalTime}s`);

@@ -1,2 +1,3 @@
+import plugin from "./index";
 export * from "./index";
-export { default } from "./index";
+export default plugin;

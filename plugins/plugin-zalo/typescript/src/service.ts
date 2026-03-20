@@ -178,7 +178,7 @@ export class ZaloService extends Service {
    * Stop the Zalo service
    */
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(ZALO_SERVICE_NAME) as
+    const service = (await runtime.getService(ZALO_SERVICE_NAME)) as
       | ZaloService
       | undefined;
     if (service) {

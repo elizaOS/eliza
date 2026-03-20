@@ -38,7 +38,7 @@ export const listChannels: Action = {
     callback?: (response: { text: string; source?: string }) => void,
   ): Promise<ActionResult> => {
     const twitchService =
-      runtime.getService<TwitchService>(TWITCH_SERVICE_NAME);
+      await runtime.getService<TwitchService>(TWITCH_SERVICE_NAME);
 
     if (!twitchService || !twitchService.isConnected()) {
       if (callback) {
@@ -54,7 +54,7 @@ export const listChannels: Action = {
     const primaryChannel = twitchService.getPrimaryChannel();
 
     // Format channel list
-    const channelList = joinedChannels.map((channel) => {
+    const channelList = joinedChannels.map((channel: string) => {
       const displayName = formatChannelForDisplay(channel);
       const isPrimary = channel === primaryChannel;
       return isPrimary ? `${displayName} (primary)` : displayName;
@@ -62,7 +62,7 @@ export const listChannels: Action = {
 
     const responseText =
       joinedChannels.length > 0
-        ? `Currently in ${joinedChannels.length} channel(s):\n${channelList.map((c) => `• ${c}`).join("\n")}`
+        ? `Currently in ${joinedChannels.length} channel(s):\n${channelList.map((c: string) => `• ${c}`).join("\n")}`
         : "Not currently in any channels.";
 
     if (callback) {

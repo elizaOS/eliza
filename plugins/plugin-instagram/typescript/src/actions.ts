@@ -48,7 +48,7 @@ export const sendDmAction: Action = {
     _state?: State,
   ): Promise<boolean> => {
     // Check if Instagram service is available
-    const service = runtime.getService<InstagramService>(
+    const service = await runtime.getService<InstagramService>(
       INSTAGRAM_SERVICE_NAME,
     );
     if (!service) {
@@ -72,7 +72,7 @@ export const sendDmAction: Action = {
     callback?: HandlerCallback,
     _responses?: Memory[],
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<InstagramService>(
+    const service = await runtime.getService<InstagramService>(
       INSTAGRAM_SERVICE_NAME,
     );
     if (!service) {
@@ -150,7 +150,7 @@ export const postCommentAction: Action = {
     _state?: State,
   ): Promise<boolean> => {
     // Check if Instagram service is available
-    const service = runtime.getService<InstagramService>(
+    const service = await runtime.getService<InstagramService>(
       INSTAGRAM_SERVICE_NAME,
     );
     if (!service) {
@@ -173,7 +173,7 @@ export const postCommentAction: Action = {
     callback?: HandlerCallback,
     _responses?: Memory[],
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<InstagramService>(
+    const service = await runtime.getService<InstagramService>(
       INSTAGRAM_SERVICE_NAME,
     );
     if (!service) {

@@ -37,7 +37,7 @@ export const farcasterThreadProvider: Provider = {
       };
     }
 
-    const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService | null;
+    const service = await runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService | null;
     const messageService = service?.getMessageService(runtime.agentId);
 
     if (!messageService) {

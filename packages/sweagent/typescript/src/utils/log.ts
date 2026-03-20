@@ -67,23 +67,23 @@ class SweAgentLogger implements AgentLogger {
   }
 
   debug(message: string, ...args: unknown[]): void {
-    (this.logger.debug as (msg: string, ...a: unknown[]) => void)(this.formatMessage(message), ...args);
+    this.logger.debug({}, this.formatMessage(message), ...(args as never[]));
   }
 
   info(message: string, ...args: unknown[]): void {
-    (this.logger.info as (msg: string, ...a: unknown[]) => void)(this.formatMessage(message), ...args);
+    this.logger.info({}, this.formatMessage(message), ...(args as never[]));
   }
 
   warn(message: string, ...args: unknown[]): void {
-    (this.logger.warn as (msg: string, ...a: unknown[]) => void)(this.formatMessage(message), ...args);
+    this.logger.warn({}, this.formatMessage(message), ...(args as never[]));
   }
 
   error(message: string, ...args: unknown[]): void {
-    (this.logger.error as (msg: string, ...a: unknown[]) => void)(this.formatMessage(message), ...args);
+    this.logger.error({}, this.formatMessage(message), ...(args as never[]));
   }
 
   critical(message: string, ...args: unknown[]): void {
-    (this.logger.fatal as (msg: string, ...a: unknown[]) => void)(this.formatMessage(message), ...args);
+    this.logger.fatal({}, this.formatMessage(message), ...(args as never[]));
   }
 
   warning(message: string, ...args: unknown[]): void {

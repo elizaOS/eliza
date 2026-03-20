@@ -6,7 +6,7 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "./jest-globals";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 describe("Tools Integration Tests", () => {
   let tmpDir: string;

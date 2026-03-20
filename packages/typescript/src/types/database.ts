@@ -1108,12 +1108,19 @@ export interface IDatabaseAdapter<DB extends object = object> {
   updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
   deleteTasks(taskIds: UUID[]): Promise<void>;
 
-  getMemoriesByWorldId(params: {
-    worldIds?: UUID[];
+/**
+   * Get memories for multiple worlds (e.g. multiple servers) in one call.
+   * Mirrors getMemoriesByRoomIds: limit applies to total results across all worlds.
+   * Use when querying by a list of server/world IDs (world = server in messaging plugins).
+   * For a single world, pass worldIds: [worldId].
+   */
+  getMemoriesByWorldIds(params: {
+    worldIds: UUID[];
     /** @deprecated use limit */
     count?: number;
     limit?: number;
     tableName?: string;
+    limit?: number;
   }): Promise<Memory[]>;
 
   // Pairing methods for secure DM access control
@@ -1166,22 +1173,35 @@ export interface IDatabaseAdapter<DB extends object = object> {
    * adapters, this uses ALTER TABLE. For in-memory, it's a no-op (just stores
    * the schema definition).
    * 
+   * ADAPTER SUPPORT: Implemented by SQL adapters (e.g. plugin-sql). Optional;
+   * in-memory and file-backed adapters (plugin-inmemorydb, plugin-localdb) do
+   * not implement it — runPluginMigrations will no-op and getPluginStore will
+   * be undefined. Callers must check before use.
+   * 
    * @param schema Complete schema definition for the plugin
    * @throws Error if schema is invalid or migration fails
    */
   registerPluginSchema?(schema: import("./plugin-store").PluginSchema): Promise<void>;
 
   /**
-   * Get a plugin store for CRUD operations on plugin tables
+   * Get a plugin store for CRUD operations on that plugin's custom tables
    * 
-   * WHY: Provides a generic interface for plugins to access their data without
-   * knowing whether they're running on SQL or in-memory adapters.
+   * WHY: Plugins that need custom tables (goals, todos, etc.) get a
+   * namespaced CRUD store instead of casting runtime.db to Drizzle. The store
+   * exposes query/insert/update/delete by table name; the adapter maps these
+   * to real tables (e.g. SQL) or in-memory structures.
    * 
-   * NAMESPACING: The store automatically prefixes table names with the plugin
-   * name to avoid conflicts (e.g., "goals_goals", "goals_goal_tags").
+   * NAMESPACING: The store prefixes table names with the plugin name to avoid
+   * conflicts (e.g., "goals_goals", "goals_goal_tags").
+   * 
+   * ADAPTER SUPPORT: Implemented by SQL adapters (e.g. plugin-sql). Optional;
+   * in-memory and file-backed adapters (plugin-inmemorydb, plugin-localdb) do
+   * not implement it and do not provide plugin tables. Callers must check for
+   * null before use.
    * 
    * @param pluginName Name of the plugin (must match registered schema)
-   * @returns Plugin store interface, or null if adapter doesn't support plugins
+   * @returns Plugin store interface, or null if this adapter does not support
+   *   plugin stores (e.g. in-memory / file-backed adapters)
    * 
    * @example
    * ```typescript

@@ -52,12 +52,17 @@ export class TokenizerManager {
   async loadTokenizer(modelConfig: ModelSpec): Promise<PreTrainedTokenizer> {
     try {
       const tokenizerKey = `${modelConfig.tokenizer.type}-${modelConfig.tokenizer.name}`;
-      logger.info(
-        `Loading tokenizer: ${JSON.stringify({ key: tokenizerKey, name: modelConfig.tokenizer.name, type: modelConfig.tokenizer.type, modelsDir: this.modelsDir, cacheDir: this.cacheDir })}`,
-      );
+logger.info({
+        msg: "Loading tokenizer",
+        key: tokenizerKey,
+        name: modelConfig.tokenizer.name,
+        type: modelConfig.tokenizer.type,
+        modelsDir: this.modelsDir,
+        cacheDir: this.cacheDir,
+      });
 
       if (this.tokenizers.has(tokenizerKey)) {
-        logger.info(`Using cached tokenizer: ${JSON.stringify({ key: tokenizerKey })}`);
+        logger.info({ msg: "Using cached tokenizer", key: tokenizerKey });
         const cachedTokenizer = this.tokenizers.get(tokenizerKey);
         if (!cachedTokenizer) {
           throw new Error(
@@ -70,17 +75,17 @@ export class TokenizerManager {
       // Check if models directory exists
       const fs = await import("node:fs");
       if (!fs.existsSync(this.modelsDir)) {
-        logger.warn(
-          "Models directory does not exist, creating it:",
-          this.modelsDir,
-        );
+        logger.warn({
+          msg: "Models directory does not exist, creating it",
+          modelsDir: this.modelsDir,
+        });
         fs.mkdirSync(this.modelsDir, { recursive: true });
       }
 
-      logger.info(
-        "Initializing new tokenizer from HuggingFace with models directory:",
-        this.modelsDir,
-      );
+      logger.info({
+        msg: "Initializing new tokenizer from HuggingFace with models directory",
+        modelsDir: this.modelsDir,
+      });
 
       try {
         const tokenizer = await AutoTokenizer.from_pretrained(
@@ -92,17 +97,20 @@ export class TokenizerManager {
         );
 
         this.tokenizers.set(tokenizerKey, tokenizer);
-        logger.success(`Tokenizer loaded successfully: ${JSON.stringify({ key: tokenizerKey })}`);
+logger.success({ msg: "Tokenizer loaded successfully", key: tokenizerKey });
         return tokenizer;
       } catch (tokenizeError) {
-        logger.error(
-          `Failed to load tokenizer from HuggingFace: ${JSON.stringify({
-            error: tokenizeError instanceof Error ? tokenizeError.message : String(tokenizeError),
-            stack: tokenizeError instanceof Error ? tokenizeError.stack : undefined,
-            tokenizer: modelConfig.tokenizer.name,
-            modelsDir: this.modelsDir,
-          })}`,
-        );
+        logger.error({
+          msg: "Failed to load tokenizer from HuggingFace",
+          error:
+            tokenizeError instanceof Error
+              ? tokenizeError.message
+              : String(tokenizeError),
+          stack:
+            tokenizeError instanceof Error ? tokenizeError.stack : undefined,
+          tokenizer: modelConfig.tokenizer.name,
+          modelsDir: this.modelsDir,
+        });
 
         // Try again with local_files_only set to false and a longer timeout
         logger.info("Retrying tokenizer loading...");
@@ -115,19 +123,21 @@ export class TokenizerManager {
         );
 
         this.tokenizers.set(tokenizerKey, tokenizer);
-        logger.success(`Tokenizer loaded successfully on retry: ${JSON.stringify({ key: tokenizerKey })}`);
+logger.success({
+          msg: "Tokenizer loaded successfully on retry",
+          key: tokenizerKey,
+        });
         return tokenizer;
       }
     } catch (error) {
-      logger.error(
-        `Failed to load tokenizer: ${JSON.stringify({
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-          model: modelConfig.name,
-          tokenizer: modelConfig.tokenizer.name,
-          modelsDir: this.modelsDir,
-        })}`,
-      );
+      logger.error({
+        msg: "Failed to load tokenizer",
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        model: modelConfig.name,
+        tokenizer: modelConfig.tokenizer.name,
+        modelsDir: this.modelsDir,
+      });
       throw error;
     }
   }
@@ -142,9 +152,11 @@ export class TokenizerManager {
    */
   async encode(text: string, modelConfig: ModelSpec): Promise<number[]> {
     try {
-      logger.info(
-        `Encoding text with tokenizer: ${JSON.stringify({ length: text.length, tokenizer: modelConfig.tokenizer.name })}`,
-      );
+logger.info({
+        msg: "Encoding text with tokenizer",
+        length: text.length,
+        tokenizer: modelConfig.tokenizer.name,
+      });
 
       const tokenizer = await this.loadTokenizer(modelConfig);
 
@@ -154,20 +166,21 @@ export class TokenizerManager {
         return_token_type_ids: false,
       });
 
-      logger.info(
-        `Text encoded successfully: ${JSON.stringify({ tokenCount: encoded.length, tokenizer: modelConfig.tokenizer.name })}`,
-      );
+logger.info({
+        msg: "Text encoded successfully",
+        tokenCount: encoded.length,
+        tokenizer: modelConfig.tokenizer.name,
+      });
       return encoded;
     } catch (error) {
-      logger.error(
-        `Text encoding failed: ${JSON.stringify({
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-          textLength: text.length,
-          tokenizer: modelConfig.tokenizer.name,
-          modelsDir: this.modelsDir,
-        })}`,
-      );
+      logger.error({
+        msg: "Text encoding failed",
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        textLength: text.length,
+        tokenizer: modelConfig.tokenizer.name,
+        modelsDir: this.modelsDir,
+      });
       throw error;
     }
   }
@@ -182,9 +195,11 @@ export class TokenizerManager {
    */
   async decode(tokens: number[], modelConfig: ModelSpec): Promise<string> {
     try {
-      logger.info(
-        `Decoding tokens with tokenizer: ${JSON.stringify({ count: tokens.length, tokenizer: modelConfig.tokenizer.name })}`,
-      );
+logger.info({
+        msg: "Decoding tokens with tokenizer",
+        count: tokens.length,
+        tokenizer: modelConfig.tokenizer.name,
+      });
 
       const tokenizer = await this.loadTokenizer(modelConfig);
 
@@ -194,20 +209,21 @@ export class TokenizerManager {
         clean_up_tokenization_spaces: true,
       });
 
-      logger.info(
-        `Tokens decoded successfully: ${JSON.stringify({ textLength: decoded.length, tokenizer: modelConfig.tokenizer.name })}`,
-      );
+logger.info({
+        msg: "Tokens decoded successfully",
+        textLength: decoded.length,
+        tokenizer: modelConfig.tokenizer.name,
+      });
       return decoded;
     } catch (error) {
-      logger.error(
-        `Token decoding failed: ${JSON.stringify({
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-          tokenCount: tokens.length,
-          tokenizer: modelConfig.tokenizer.name,
-          modelsDir: this.modelsDir,
-        })}`,
-      );
+      logger.error({
+        msg: "Token decoding failed",
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        tokenCount: tokens.length,
+        tokenizer: modelConfig.tokenizer.name,
+        modelsDir: this.modelsDir,
+      });
       throw error;
     }
   }

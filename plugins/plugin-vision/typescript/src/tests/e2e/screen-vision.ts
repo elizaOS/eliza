@@ -14,7 +14,7 @@ export class ScreenVisionE2ETestSuite {
       fn: async (runtime: IAgentRuntime) => {
         console.log("Testing screen vision initialization...");
 
-        const visionService = runtime.getService<VisionService>("VISION");
+        const visionService = await runtime.getService<VisionService>("VISION");
         if (!visionService) {
           throw new Error("Vision service not available");
         }
@@ -47,7 +47,7 @@ export class ScreenVisionE2ETestSuite {
       fn: async (runtime: IAgentRuntime) => {
         console.log("Testing screen capture and tiling...");
 
-        const visionService = runtime.getService<VisionService>("VISION");
+        const visionService = await runtime.getService<VisionService>("VISION");
         if (!visionService) {
           throw new Error("Vision service not available");
         }
@@ -93,7 +93,7 @@ export class ScreenVisionE2ETestSuite {
       fn: async (runtime: IAgentRuntime) => {
         console.log("Testing screen content analysis...");
 
-        const visionService = runtime.getService<VisionService>("VISION");
+        const visionService = await runtime.getService<VisionService>("VISION");
         if (!visionService) {
           throw new Error("Vision service not available");
         }
@@ -156,7 +156,7 @@ export class ScreenVisionE2ETestSuite {
       fn: async (runtime: IAgentRuntime) => {
         console.log("Testing vision mode switching...");
 
-        const visionService = runtime.getService<VisionService>("VISION");
+        const visionService = await runtime.getService<VisionService>("VISION");
         if (!visionService) {
           throw new Error("Vision service not available");
         }
@@ -222,7 +222,7 @@ export class ScreenVisionE2ETestSuite {
       fn: async (runtime: IAgentRuntime) => {
         console.log("Testing combined camera and screen vision...");
 
-        const visionService = runtime.getService<VisionService>("VISION");
+        const visionService = await runtime.getService<VisionService>("VISION");
         if (!visionService) {
           throw new Error("Vision service not available");
         }
@@ -280,15 +280,17 @@ export class ScreenVisionE2ETestSuite {
       fn: async (runtime: IAgentRuntime) => {
         console.log("Testing error handling...");
 
-        const visionService = runtime.getService<VisionService>("VISION");
+        const visionService = await runtime.getService<VisionService>("VISION");
         if (!visionService) {
           throw new Error("Vision service not available");
         }
 
         // Try to set invalid region (should handle gracefully)
-        // Access config for testing (cast via unknown to avoid private member conflict)
-        type TestableVisionService = { visionConfig: { screenRegion?: { x: number; y: number; width: number; height: number } } };
-        const testableService = visionService as unknown as TestableVisionService;
+        // Access config for testing (cast through unknown to avoid private member conflict)
+        interface TestVisionConfig {
+          visionConfig: { screenRegion?: { x: number; y: number; width: number; height: number } };
+        }
+        const testableService = visionService as unknown as TestVisionConfig;
         const originalConfig = testableService.visionConfig;
         testableService.visionConfig.screenRegion = {
           x: -100,

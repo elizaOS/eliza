@@ -2,7 +2,11 @@
  * Parsing tests converted from test_parsing.py
  */
 
-import { describe, expect, it } from "./jest-globals";
+/**
+ * Parsing tests converted from test_parsing.py
+ */
+
+import { describe, expect, it } from "vitest";
 import {
   ActionOnlyParser as ActionParser,
   EditFormatParser as EditFormat,

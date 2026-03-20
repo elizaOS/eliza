@@ -299,7 +299,7 @@ export class SignalService extends Service implements ISignalService {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(SIGNAL_SERVICE_NAME) as
+    const service = (await runtime.getService(SIGNAL_SERVICE_NAME)) as
       | SignalService
       | undefined;
     if (service) {

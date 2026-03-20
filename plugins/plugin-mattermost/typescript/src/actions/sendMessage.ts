@@ -37,7 +37,7 @@ export const sendMessageAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const mattermostService = runtime.getService(MATTERMOST_SERVICE_NAME) as
+    const mattermostService = await runtime.getService(MATTERMOST_SERVICE_NAME) as
       | MattermostService
       | undefined;
 

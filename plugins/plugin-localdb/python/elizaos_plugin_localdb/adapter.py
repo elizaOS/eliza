@@ -508,25 +508,28 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
             ),
         )
 
-    async def get_memories_by_world_id(
+    async def get_memories_by_world_ids(
         self, params: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        world_id = params.get("worldId")
+        world_ids = params.get("worldIds") or []
+        if not world_ids:
+            return []
+        world_id_set = set(world_ids)
         table_name = params.get("tableName")
-        count = params.get("count")
+        limit = params.get("limit")
 
         memories = await self._storage.get_where(
             COLLECTIONS["MEMORIES"],
             lambda m: (
-                m.get("metadata", {}).get("worldId") == world_id
+                m.get("metadata", {}).get("worldId") in world_id_set
                 and (not table_name or m.get("metadata", {}).get("type") == table_name)
             ),
         )
 
         memories.sort(key=lambda m: m.get("createdAt", 0), reverse=True)
 
-        if count:
-            memories = memories[:count]
+        if limit is not None:
+            memories = memories[:limit]
 
         return memories
 

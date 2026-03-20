@@ -1,8 +1,16 @@
 import { z } from "zod";
-import type { Desktop, Element, Locator } from "@elizaos/computeruse";
+import type {
+  Desktop as DesktopConstructor,
+  DesktopElement,
+  DesktopLocator,
+} from "@elizaos/computeruse";
 
-// Re-export types from computeruse.js
-export type { Desktop, Element, Locator };
+/** Instance type of the Desktop class from @elizaos/computeruse (may include delay in native binding). */
+export type Desktop = InstanceType<typeof DesktopConstructor> & {
+  delay?: (ms: number) => Promise<void>;
+};
+export type Element = DesktopElement;
+export type Locator = DesktopLocator;
 
 export interface Logger {
     info(message: string): void;
@@ -32,7 +40,7 @@ export class ConsoleLogger implements Logger {
 export interface DesktopLike {
     locator: Desktop["locator"];
     openApplication: Desktop["openApplication"];
-    delay: Desktop["delay"];
+    delay?: (ms: number) => Promise<void>;
 }
 
 /**

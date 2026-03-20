@@ -25,7 +25,7 @@ export const modifyCharacterAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     // Check if character file manager service is available
-    const fileManager = runtime.getService<CharacterFileManager>('character-file-manager');
+    const fileManager = await runtime.getService<CharacterFileManager>('character-file-manager');
     if (!fileManager) {
       return false;
     }
@@ -67,7 +67,7 @@ Return JSON: {"isModificationRequest": boolean, "requestType": "explicit"|"sugge
       logger.debug(`Intent analysis: modification=${String(isModificationRequest)}, type=${requestType}, confidence=${String(confidence)}`);
     } catch (error) {
       // Fallback to basic pattern matching if LLM analysis fails
-      logger.warn({ err: error }, 'Intent analysis failed, using fallback pattern matching');
+logger.warn({ msg: 'Intent analysis failed, using fallback pattern matching', err: error });
       const modificationPatterns = [
         'change your personality',
         'modify your behavior',
@@ -99,10 +99,19 @@ Return JSON: {"isModificationRequest": boolean, "requestType": "explicit"|"sugge
     // Handle explicit modification requests
     if (isModificationRequest && requestType === 'explicit') {
       const isAdmin = await checkAdminPermissions(runtime, message);
-      logger.info(
-        { hasAdminPermission: isAdmin, userId: message.entityId, messageText: messageText.substring(0, 100) },
-        'Explicit modification request detected'
-      );
+});
+      return isAdmin;
+    }
+
+    logger.info({
+      msg: 'Explicit modification request detected',
+      hasAdminPermission: isAdmin,
+      userId: message.entityId,
+      messageText: messageText.substring(0, 100),
+    });
+
+    // Handle evolution-based modifications
+    if (hasEvolutionSuggestion) {
       return isAdmin;
     }
 
@@ -115,20 +124,24 @@ Return JSON: {"isModificationRequest": boolean, "requestType": "explicit"|"sugge
       const maxAge = 30 * 60 * 1000; // 30 minutes
 
       const isRecent = suggestionAge < maxAge;
-      logger.info(
-        { hasEvolutionSuggestion, isRecent, suggestionAge, maxAge },
-        'Evolution-based modification check'
-      );
+logger.info({
+        msg: 'Evolution-based modification check',
+        hasEvolutionSuggestion,
+        isRecent,
+        suggestionAge,
+        maxAge,
+      });
 
       return isRecent;
     }
 
     // Handle suggestion-type requests with lower permission threshold
     if (isModificationRequest && requestType === 'suggestion') {
-      logger.info(
-        { userId: message.entityId, messageText: messageText.substring(0, 100) },
-        'Suggestion-type modification request detected'
-      );
+logger.info({
+        msg: 'Suggestion-type modification request detected',
+        userId: message.entityId,
+        messageText: messageText.substring(0, 100),
+      });
       return true; // Allow suggestions to be processed by safety evaluation
     }
 
@@ -143,7 +156,7 @@ Return JSON: {"isModificationRequest": boolean, "requestType": "explicit"|"sugge
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
-      const fileManager = runtime.getService<CharacterFileManager>('character-file-manager');
+      const fileManager = await runtime.getService<CharacterFileManager>('character-file-manager');
       if (!fileManager) {
         throw new Error('Character file manager service not available');
       }
@@ -159,14 +172,12 @@ Return JSON: {"isModificationRequest": boolean, "requestType": "explicit"|"sugge
         isUserRequested = true;
         modification = await parseUserModificationRequest(runtime, messageText);
 
-        logger.info(
-          {
-            requestType: modificationIntent.requestType,
-            confidence: modificationIntent.confidence,
-            messageText: messageText.substring(0, 100),
-          },
-          'User modification request detected'
-        );
+logger.info({
+          msg: 'User modification request detected',
+          requestType: modificationIntent.requestType,
+          confidence: modificationIntent.confidence,
+          messageText: messageText.substring(0, 100),
+        });
       } else {
         // Check for character evolution suggestions
         const evolutionSuggestions = await runtime.getMemories({
@@ -218,14 +229,12 @@ Return JSON: {"isModificationRequest": boolean, "requestType": "explicit"|"sugge
           responseText += ' However, I can work on the appropriate improvements you mentioned.';
           modification = safetyEvaluation.acceptableChanges;
 
-          logger.info(
-            {
-              originalModification: JSON.stringify(modification),
-              filteredModification: JSON.stringify(safetyEvaluation.acceptableChanges),
-              concerns: safetyEvaluation.concerns,
-            },
-            'Applying selective modifications after safety filtering'
-          );
+logger.info({
+            msg: 'Applying selective modifications after safety filtering',
+            originalModification: JSON.stringify(modification),
+            filteredModification: JSON.stringify(safetyEvaluation.acceptableChanges),
+            concerns: safetyEvaluation.concerns,
+          });
         } else {
           // No acceptable changes - reject completely
           await callback?.({
@@ -234,14 +243,12 @@ Return JSON: {"isModificationRequest": boolean, "requestType": "explicit"|"sugge
             actions: [], // Explicitly no actions to show rejection
           });
 
-          logger.warn(
-            {
-              messageText: messageText.substring(0, 100),
-              concerns: safetyEvaluation.concerns,
-              reasoning: safetyEvaluation.reasoning,
-            },
-            'Modification completely rejected by safety evaluation'
-          );
+logger.warn({
+            msg: 'Modification completely rejected by safety evaluation',
+            messageText: messageText.substring(0, 100),
+            concerns: safetyEvaluation.concerns,
+            reasoning: safetyEvaluation.reasoning,
+          });
 
           return {
             text: responseText,
@@ -260,10 +267,11 @@ Return JSON: {"isModificationRequest": boolean, "requestType": "explicit"|"sugge
           };
         }
       } else {
-        logger.info(
-          { messageText: messageText.substring(0, 100), reasoning: safetyEvaluation.reasoning },
-          'Modification passed safety evaluation'
-        );
+logger.info({
+          msg: 'Modification passed safety evaluation',
+          messageText: messageText.substring(0, 100),
+          reasoning: safetyEvaluation.reasoning,
+        });
       }
 
       // Validate the modification
@@ -364,7 +372,7 @@ Return JSON: {"isModificationRequest": boolean, "requestType": "explicit"|"sugge
         };
       }
     } catch (error) {
-      logger.error({ err: error }, 'Error in modify character action');
+logger.error({ msg: 'Error in modify character action', err: error });
 
       await callback?.({
         text: 'I encountered an error while trying to modify my character. Please try again.',
@@ -521,7 +529,7 @@ Return JSON: {"isModificationRequest": boolean, "requestType": string, "confiden
       confidence,
     };
   } catch (error) {
-    logger.warn({ err: error }, 'Intent detection failed, using fallback');
+logger.warn({ msg: 'Intent detection failed, using fallback', err: error });
     // Fallback to pattern matching
     const hasModificationPattern = [
       'change your',
@@ -581,7 +589,7 @@ Example format:
 
     return extractJsonFromResponse(typeof response === 'string' ? response : String(response ?? ''));
   } catch (error) {
-    logger.warn({ err: error }, 'Failed to parse user modification request');
+logger.warn({ msg: 'Failed to parse user modification request', err: error });
     return null;
   }
 }
@@ -673,7 +681,7 @@ Return JSON:
 
     return { isAppropriate, concerns, reasoning, acceptableChanges };
   } catch (error) {
-    logger.error({ err: error }, 'Failed to evaluate modification safety');
+logger.error({ msg: 'Failed to evaluate modification safety', err: error });
     // Default to safe behavior - reject the modification if we can't evaluate it
     return {
       isAppropriate: false,
@@ -688,24 +696,30 @@ Return JSON:
  */
 async function checkAdminPermissions(runtime: IAgentRuntime, message: Memory): Promise<boolean> {
   const userId = message.entityId;
-  const adminUsersSetting = runtime.getSetting('ADMIN_USERS');
-  const adminUsers = (typeof adminUsersSetting === 'string' ? adminUsersSetting.split(',') : []) || [];
-  const nodeEnvRaw = runtime.getSetting('NODE_ENV');
-  const nodeEnv = (typeof nodeEnvRaw === 'string' ? nodeEnvRaw : undefined) || process.env.NODE_ENV;
+const adminUsersRaw = runtime.getSetting('ADMIN_USERS');
+  const adminUsers = (typeof adminUsersRaw === 'string' ? adminUsersRaw : '').split(',').filter(Boolean);
+  const nodeEnv = runtime.getSetting('NODE_ENV') || process.env.NODE_ENV;
 
   // In development/test mode, be more permissive for testing
   if (nodeEnv === 'development' || nodeEnv === 'test') {
-    logger.debug({ userId, nodeEnv }, 'Development mode: allowing modification request');
+    logger.debug({
+      msg: 'Development mode: allowing modification request',
+      userId,
+      nodeEnv,
+    });
     return true;
   }
 
   // In production, check explicit admin list
   const isAdmin = adminUsers.includes(userId);
 
-  logger.info(
-    { userId, isAdmin, adminUsersConfigured: adminUsers.length > 0, nodeEnv },
-    'Admin permission check'
-  );
+logger.info({
+    msg: 'Admin permission check',
+    userId,
+    isAdmin,
+    adminUsersConfigured: adminUsers.length > 0,
+    nodeEnv,
+  });
 
   // If no admin users configured, reject for security
   if (adminUsers.length === 0) {

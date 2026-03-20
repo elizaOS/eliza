@@ -940,40 +940,55 @@ impl DatabaseAdapter for PgLiteAdapter {
         Ok(())
     }
 
-    async fn get_memories_by_world_id(
+    async fn get_memories_by_world_ids(
         &self,
-        world_id: &UUID,
-        count: Option<i32>,
+        world_ids: &[UUID],
+        limit: Option<i32>,
         table_name: Option<&str>,
     ) -> Result<Vec<Memory>> {
-        let limit = count.map(|c| format!(" LIMIT {}", c)).unwrap_or_default();
+        if world_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let limit_clause = limit.map(|c| format!(" LIMIT {}", c)).unwrap_or_default();
+
+        // Build parameterized placeholders for world_ids to prevent SQL injection
+        let placeholders: Vec<String> = (1..=world_ids.len())
+            .map(|i| format!("${}", i))
+            .collect();
+        let world_placeholder_list = placeholders.join(",");
+
+        let mut js_params: Vec<JsValue> = world_ids
+            .iter()
+            .map(|id| JsValue::from_str(id.as_str()))
+            .collect();
 
         let sql = if let Some(table) = table_name {
+            let table_param_idx = world_ids.len() + 1;
+            js_params.push(JsValue::from_str(table));
             format!(
                 r#"
                 SELECT id, type, created_at, content, entity_id, agent_id,
                        room_id, world_id, "unique", metadata
-                FROM memories WHERE world_id = $1 AND type = '{}'
+                FROM memories WHERE world_id IN ({}) AND type = ${}
                 ORDER BY created_at DESC
                 {}
                 "#,
-                table, limit
+                world_placeholder_list, table_param_idx, limit_clause
             )
         } else {
             format!(
                 r#"
                 SELECT id, type, created_at, content, entity_id, agent_id,
                        room_id, world_id, "unique", metadata
-                FROM memories WHERE world_id = $1
+                FROM memories WHERE world_id IN ({})
                 ORDER BY created_at DESC
                 {}
                 "#,
-                limit
+                world_placeholder_list, limit_clause
             )
         };
 
-        let params = vec![JsValue::from_str(world_id.as_str())];
-        let result = self.manager.query(&sql, &params).await?;
+        let result = self.manager.query(&sql, &js_params).await?;
         let rows = self.parse_rows(&result)?;
 
         Ok(rows

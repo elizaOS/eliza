@@ -48,7 +48,7 @@ export const minecraftConnectAction: Action = {
   similes: ["MINECRAFT_CONNECT", "JOIN_SERVER", "CONNECT_TO_MINECRAFT"],
   description: "Connect the Mineflayer bot to a Minecraft server",
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    const service = runtime.getService<MinecraftService>(
+    const service = await runtime.getService<MinecraftService>(
       MINECRAFT_SERVICE_TYPE,
     );
     return Boolean(service);
@@ -60,7 +60,7 @@ export const minecraftConnectAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<MinecraftService>(
+    const service = await runtime.getService<MinecraftService>(
       MINECRAFT_SERVICE_TYPE,
     );
     if (!service) {

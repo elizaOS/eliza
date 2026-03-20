@@ -13,7 +13,7 @@ import type { CommandHistoryEntry, FileOperation } from "../types";
 const MAX_OUTPUT_LENGTH = 8000;
 const TRUNCATE_SEGMENT_LENGTH = 4000;
 
-const spec = requireProviderSpec("coderStatusProvider");
+const spec = requireProviderSpec("CODER_STATUS");
 
 export const coderStatusProvider: Provider = {
   name: spec.name,
@@ -21,7 +21,7 @@ export const coderStatusProvider: Provider = {
     "Provides current working directory, allowed directory, and recent shell/file operations",
   position: 99,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    const svc = runtime.getService<CoderService>("coder");
+    const svc = await runtime.getService<CoderService>("coder");
 
     if (!svc) {
       logger.warn("[coderStatusProvider] Coder service not found");

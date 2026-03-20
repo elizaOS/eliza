@@ -14,6 +14,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   AgentRuntime,
+  type Agent,
   type IAgentRuntime,
   type Character,
   type UUID,
@@ -96,6 +97,311 @@ function createTestCharacter(overrides: Partial<Character> = {}): Character {
 }
 
 /**
+* Entity interface for testing.
+ */
+interface Entity {
+  id: UUID;
+  names?: string[];
+  agentId?: UUID;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Creates an in-memory database adapter for testing.
+ */
+function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
+  const resolvedAgentId = agentId || createUUID();
+  const agents = new Map<string, Partial<Agent>>();
+
+  const memories = new Map<UUID, Memory>();
+  const rooms = new Map<UUID, Room>();
+  const worlds = new Map<UUID, World>();
+  const entities = new Map<UUID, Entity>();
+  const components = new Map<string, unknown>();
+  const cache = new Map<string, unknown>();
+  const participants = new Map<UUID, Set<UUID>>();
+
+  return {
+    db: {},
+    init: vi.fn().mockResolvedValue(undefined),
+    initialize: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined),
+    getConnection: vi.fn().mockResolvedValue({}),
+    isReady: vi.fn().mockResolvedValue(true),
+
+    getAgent: vi
+      .fn()
+      .mockResolvedValue({ id: resolvedAgentId, name: "TestAgent" }),
+    getAgents: vi.fn().mockResolvedValue([]),
+    getAgentsByIds: vi.fn(async (ids: UUID[]) =>
+      ids
+        .map((id) => agents.get(String(id)))
+        .filter((a): a is Partial<Agent> => a != null && a.id != null) as Agent[],
+    ),
+    createAgent: vi.fn().mockResolvedValue(true),
+    createAgents: vi.fn(async (agentsToCreate: Partial<Agent>[]) => {
+      const ids: UUID[] = [];
+      for (const agent of agentsToCreate) {
+        if (agent.id) {
+          agents.set(String(agent.id), agent);
+          ids.push(agent.id);
+        }
+      }
+      return ids;
+    }),
+    upsertAgents: vi.fn(async (agentsToUpsert: Partial<Agent>[]) => {
+      for (const agent of agentsToUpsert) {
+        if (agent.id) {
+          agents.set(String(agent.id), {
+            ...agent,
+            createdAt: agent.createdAt ?? Date.now(),
+            updatedAt: Date.now(),
+          } as Partial<Agent>);
+        }
+      }
+    }),
+    updateAgent: vi.fn().mockResolvedValue(true),
+    updateAgents: vi.fn().mockResolvedValue(undefined),
+    deleteAgent: vi.fn().mockResolvedValue(true),
+    deleteAgents: vi.fn().mockResolvedValue(undefined),
+    ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
+
+    getMemories: vi.fn(async (params: { roomId?: UUID }) => {
+      const result: Memory[] = [];
+      for (const mem of memories.values()) {
+        if (!params.roomId || mem.roomId === params.roomId) {
+          result.push(mem);
+        }
+      }
+      return result;
+    }),
+    getMemoryById: vi.fn(async (id: UUID) => memories.get(id) || null),
+    getMemoriesByIds: vi.fn(
+      async (ids: UUID[]) =>
+        ids.map((id) => memories.get(id)).filter(Boolean) as Memory[],
+    ),
+    getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
+    getCachedEmbeddings: vi.fn().mockResolvedValue([]),
+    searchMemories: vi.fn().mockResolvedValue([]),
+    createMemory: vi.fn(async (memory: Memory) => {
+      const id = memory.id || createUUID();
+      memories.set(id, { ...memory, id });
+      return id;
+    }),
+    updateMemory: vi.fn().mockResolvedValue(true),
+    deleteMemory: vi.fn(async (id: UUID) => {
+      memories.delete(id);
+    }),
+    deleteManyMemories: vi.fn().mockResolvedValue(undefined),
+    deleteAllMemories: vi.fn().mockResolvedValue(undefined),
+    countMemories: vi.fn().mockResolvedValue(0),
+    getMemoriesByWorldIds: vi.fn().mockResolvedValue([]),
+
+    // Entity methods - key for runtime initialization
+    getEntitiesByIds: vi.fn(async (ids: UUID[]) => {
+      return ids.map((id) => entities.get(id)).filter(Boolean) as Entity[];
+    }),
+    getEntitiesForRoom: vi.fn().mockResolvedValue([]),
+    createEntities: vi.fn(async (newEntities: Entity[]) => {
+      const ids: UUID[] = [];
+      for (const entity of newEntities) {
+        if (entity.id) {
+          entities.set(entity.id, entity);
+          ids.push(entity.id);
+        }
+      }
+      return ids;
+    }),
+    updateEntity: vi.fn().mockResolvedValue(undefined),
+
+    getComponent: vi.fn(async (_entityId: UUID, type: string) => {
+      return components.get(type) || null;
+    }),
+    getComponents: vi.fn(async (entityId: UUID) => {
+      const result: unknown[] = [];
+      for (const [key, value] of components.entries()) {
+        if (key.startsWith(`${entityId}:`)) {
+          result.push(value);
+        }
+      }
+      return result;
+    }),
+    createComponent: vi.fn(
+      async (component: { entityId: UUID; type: string; data: unknown }) => {
+        components.set(`${component.entityId}:${component.type}`, component);
+        return true;
+      },
+    ),
+    updateComponent: vi.fn().mockResolvedValue(undefined),
+    deleteComponent: vi.fn().mockResolvedValue(undefined),
+
+    getRoomsByIds: vi.fn(
+      async (ids: UUID[]) =>
+        ids.map((id) => rooms.get(id)).filter(Boolean) as Room[],
+    ),
+    createRooms: vi.fn(async (newRooms: Room[]) => {
+      const ids: UUID[] = [];
+      for (const room of newRooms) {
+        const id = room.id || createUUID();
+        rooms.set(id, { ...room, id });
+        participants.set(id, new Set());
+        ids.push(id);
+      }
+      return ids;
+    }),
+    deleteRoom: vi.fn(async (id: UUID) => {
+      rooms.delete(id);
+      participants.delete(id);
+    }),
+    deleteRoomsByWorldId: vi.fn().mockResolvedValue(undefined),
+    updateRoom: vi.fn(async (room: Room) => {
+      if (room.id) rooms.set(room.id, room);
+    }),
+    getRoomsForParticipant: vi.fn().mockResolvedValue([]),
+    getRoomsForParticipants: vi.fn().mockResolvedValue([]),
+    getRoomsByWorld: vi.fn(async (worldId: UUID) => {
+      const result: Room[] = [];
+      for (const room of rooms.values()) {
+        if (room.worldId === worldId) {
+          result.push(room);
+        }
+      }
+      return result;
+    }),
+
+    addParticipantsRoom: vi.fn(async (entityIds: UUID[], roomId: UUID) => {
+      let roomParticipants = participants.get(roomId);
+      if (!roomParticipants) {
+        roomParticipants = new Set();
+        participants.set(roomId, roomParticipants);
+      }
+      for (const id of entityIds) {
+        roomParticipants.add(id);
+      }
+      return true;
+    }),
+    createRoomParticipants: vi.fn(async (entityIds: UUID[], roomId: UUID) => {
+      let roomParticipants = participants.get(roomId);
+      if (!roomParticipants) {
+        roomParticipants = new Set();
+        participants.set(roomId, roomParticipants);
+      }
+      for (const id of entityIds) {
+        roomParticipants.add(id);
+      }
+      return entityIds;
+    }),
+    removeParticipant: vi.fn().mockResolvedValue(true),
+    getParticipantsForEntity: vi.fn().mockResolvedValue([]),
+    getParticipantsForRoom: vi.fn(async (roomId: UUID) => {
+      const roomParticipants = participants.get(roomId);
+      return roomParticipants ? Array.from(roomParticipants) : [];
+    }),
+    isRoomParticipant: vi.fn().mockResolvedValue(false),
+    getParticipantUserState: vi.fn().mockResolvedValue(null),
+    setParticipantUserState: vi.fn().mockResolvedValue(undefined),
+
+    createWorld: vi.fn(async (world: World) => {
+      const id = world.id || createUUID();
+      worlds.set(id, { ...world, id });
+      return id;
+    }),
+    getWorld: vi.fn(async (id: UUID) => worlds.get(id) || null),
+    getWorldsByIds: vi.fn(async (ids: UUID[]) =>
+      ids.map((id) => worlds.get(id)).filter((w): w is World => w != null),
+    ),
+    removeWorld: vi.fn(async (id: UUID) => {
+      worlds.delete(id);
+    }),
+    getAllWorlds: vi.fn(async () => Array.from(worlds.values())),
+    updateWorld: vi.fn(async (world: World) => {
+      if (world.id) worlds.set(world.id, world);
+    }),
+    updateWorlds: vi.fn(async (worldsToUpdate: World[]) => {
+      for (const world of worldsToUpdate) {
+        if (world.id) worlds.set(world.id, world);
+      }
+    }),
+
+    createRelationship: vi.fn().mockResolvedValue(true),
+    updateRelationship: vi.fn().mockResolvedValue(undefined),
+    getRelationship: vi.fn().mockResolvedValue(null),
+    getRelationships: vi.fn().mockResolvedValue([]),
+
+    getCache: vi.fn(async <T>(key: string) => cache.get(key) as T | undefined),
+    setCache: vi.fn(async <T>(key: string, value: T) => {
+      cache.set(key, value);
+      return true;
+    }),
+    deleteCache: vi.fn(async (key: string) => {
+      cache.delete(key);
+      return true;
+    }),
+
+    createTask: vi.fn().mockResolvedValue(createUUID()),
+    getTasks: vi.fn().mockResolvedValue([]),
+    getTask: vi.fn().mockResolvedValue(null),
+    getTasksByName: vi.fn().mockResolvedValue([]),
+    updateTask: vi.fn().mockResolvedValue(undefined),
+    deleteTask: vi.fn().mockResolvedValue(undefined),
+
+    log: vi.fn().mockResolvedValue(undefined),
+    getLogs: vi.fn().mockResolvedValue([]),
+    deleteLog: vi.fn().mockResolvedValue(undefined),
+  } as IDatabaseAdapter;
+}
+
+/**
+ * Creates a test runtime with the secrets manager plugin.
+ */
+async function createTestRuntime(
+  options: {
+    character?: Partial<Character>;
+    plugins?: Plugin[];
+  } = {},
+): Promise<IAgentRuntime> {
+  const character = createTestCharacter(options.character);
+  const agentId = character.id || createUUID();
+  const adapter = createTestDatabaseAdapter(agentId);
+
+  // Include secrets manager plugin
+  const plugins = [secretsManagerPlugin, ...(options.plugins || [])];
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character,
+    adapter,
+    plugins,
+  });
+
+  await runtime.initialize();
+
+  // Wait for secrets service to be loaded
+  await runtime.getServiceLoadPromise(SECRETS_SERVICE_TYPE);
+  // Wait a short time for all services to be fully ready
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  return runtime;
+}
+
+async function cleanupTestRuntime(runtime: IAgentRuntime): Promise<void> {
+  await runtime.stop();
+}
+
+function createTestWorld(
+  runtime: IAgentRuntime,
+  overrides: Partial<World> = {},
+): World {
+  return {
+    id: createUUID(),
+    name: "Test World",
+    agentId: runtime.agentId,
+    messageServerId: "test-server-123",
+    metadata: {},
+    createdAt: Date.now(),
+    ...overrides,
+  };
+}
  * Creates a test runtime with the secrets manager plugin.
  */
 async function createTestRuntime(
@@ -202,7 +508,7 @@ describe("Secrets Manager Runtime Integration", () => {
     it("should register SecretsService with runtime", async () => {
       runtime = await createTestRuntime();
 
-      const secretsService = runtime.getService(SECRETS_SERVICE_TYPE);
+      const secretsService = await runtime.getService(SECRETS_SERVICE_TYPE);
       expect(secretsService).toBeDefined();
       expect(secretsService).toBeInstanceOf(SecretsService);
     });
@@ -210,7 +516,7 @@ describe("Secrets Manager Runtime Integration", () => {
     it("should register PluginActivatorService with runtime", async () => {
       runtime = await createTestRuntime();
 
-      const activatorService = runtime.getService(
+      const activatorService = await runtime.getService(
         PLUGIN_ACTIVATOR_SERVICE_TYPE,
       );
       expect(activatorService).toBeDefined();
@@ -220,7 +526,7 @@ describe("Secrets Manager Runtime Integration", () => {
     it("should register OnboardingService with runtime", async () => {
       runtime = await createTestRuntime();
 
-      const onboardingService = runtime.getService(ONBOARDING_SERVICE_TYPE);
+      const onboardingService = await runtime.getService(ONBOARDING_SERVICE_TYPE);
       expect(onboardingService).toBeDefined();
       expect(onboardingService).toBeInstanceOf(OnboardingService);
     });
@@ -230,7 +536,7 @@ describe("Secrets Manager Runtime Integration", () => {
     it("should start and stop cleanly", async () => {
       runtime = await createTestRuntime();
 
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       expect(secretsService).toBeDefined();
@@ -263,7 +569,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should set and get global secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -280,7 +586,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should set and get world secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -307,7 +613,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should isolate secrets by level", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -328,7 +634,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should isolate world secrets by world ID", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -364,7 +670,7 @@ describe("Secrets Manager Runtime Integration", () => {
 
     // Test that the storage types are correct
     it("should have correct storage backends configured", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       expect(secretsService).toBeDefined();
@@ -392,7 +698,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should encrypt and decrypt secrets correctly", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const secretValue = "super-secret-api-key-12345";
@@ -421,7 +727,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should handle unicode in secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const unicodeValue = "Japanese: 日本語, Emoji: 🔐🔑, Chinese: 中文";
@@ -432,7 +738,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should handle empty strings", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -442,7 +748,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should handle long secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const longValue = "x".repeat(10000);
@@ -453,7 +759,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should have a key manager initialized", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       expect(secretsService).toBeDefined();
@@ -475,7 +781,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should encrypt values correctly", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const keyManager = secretsService.getKeyManager();
@@ -503,7 +809,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should delete global secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -524,7 +830,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should return false when deleting non-existent secret", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -543,7 +849,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should list all secrets for a context", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -573,7 +879,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should check plugin requirements correctly", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -612,7 +918,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should report ready when all required secrets present", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -644,7 +950,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should report all secrets missing when none are set", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -679,7 +985,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should notify on secret change", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const callback = vi.fn();
@@ -696,7 +1002,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should notify global listeners on any change", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const callback = vi.fn();
@@ -709,7 +1015,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should unsubscribe correctly", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const callback = vi.fn();
@@ -730,7 +1036,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should log access attempts", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -742,7 +1048,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should filter access logs by key", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -756,7 +1062,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should clear access logs", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -774,7 +1080,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should activate plugin with no secret requirements", async () => {
-      const activatorService = runtime.getService(
+      const activatorService = await runtime.getService(
         PLUGIN_ACTIVATOR_SERVICE_TYPE,
       ) as PluginActivatorService;
 
@@ -794,7 +1100,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should keep plugin pending when secrets are missing", async () => {
-      const activatorService = runtime.getService(
+      const activatorService = await runtime.getService(
         PLUGIN_ACTIVATOR_SERVICE_TYPE,
       ) as PluginActivatorService;
 
@@ -819,7 +1125,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should track activated and pending plugins correctly", async () => {
-      const activatorService = runtime.getService(
+      const activatorService = await runtime.getService(
         PLUGIN_ACTIVATOR_SERVICE_TYPE,
       ) as PluginActivatorService;
 
@@ -900,7 +1206,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should initialize onboarding for a world", async () => {
-      const onboardingService = runtime.getService(
+      const onboardingService = await runtime.getService(
         ONBOARDING_SERVICE_TYPE,
       ) as OnboardingService;
       const world = createTestWorld(runtime);
@@ -924,7 +1230,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should validate and reject invalid secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const context: SecretContext = {
@@ -941,7 +1247,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should validate with proper OpenAI key format", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -962,7 +1268,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should return available validation strategies", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -980,7 +1286,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should work with explicit SecretContext", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -1004,7 +1310,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should return null for non-existent secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const context: SecretContext = {
@@ -1017,7 +1323,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should return false for exists check on non-existent secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const context: SecretContext = {

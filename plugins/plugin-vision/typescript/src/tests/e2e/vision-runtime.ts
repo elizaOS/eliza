@@ -13,7 +13,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing vision service initialization...");
 
-        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
+        const visionService = await runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found in runtime");
         }
@@ -40,7 +40,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing scene description...");
 
-        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
+        const visionService = await runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found");
         }
@@ -81,7 +81,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing vision mode switching...");
 
-        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
+        const visionService = await runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found");
         }
@@ -211,7 +211,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing Florence-2 model...");
 
-        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
+        const visionService = await runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found");
         }
@@ -247,7 +247,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing OCR service...");
 
-        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
+        const visionService = await runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found");
         }
@@ -284,7 +284,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing entity tracking...");
 
-        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
+        const visionService = await runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found");
         }
@@ -305,9 +305,9 @@ export class VisionRuntimeTestSuite {
             throw new Error("Entity missing required fields");
           }
 
-          const trackingDurationMs = entity.lastSeen - entity.firstSeen;
+          const durationMs = entity.lastSeen - entity.firstSeen;
           logger.info(
-            `[Test] Entity ${entity.id}: type=${entity.entityType}, tracked=${trackingDurationMs}ms`
+            `[Test] Entity ${entity.id}: type=${entity.entityType}, tracked=${durationMs}ms`
           );
         }
 

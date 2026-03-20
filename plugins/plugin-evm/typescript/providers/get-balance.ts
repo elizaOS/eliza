@@ -57,7 +57,7 @@ export const tokenBalanceProvider: Provider = {
       authorizationList: [] as const,
     };
     const balance = (await publicClient.readContract(
-      readBalanceParams as Parameters<typeof publicClient.readContract>[0]
+      readBalanceParams as unknown as Parameters<typeof publicClient.readContract>[0]
     )) as bigint;
 
     const formattedBalance = formatUnits(balance, tokenData.decimals);

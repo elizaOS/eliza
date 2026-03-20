@@ -15,7 +15,7 @@ export const chatStateProvider: Provider = {
     const senderId = message.content?.senderId as string | undefined;
     const roomId = message.roomId;
 
-    const service = runtime.getService(NEXTCLOUD_TALK_SERVICE_NAME) as
+    const service = (await runtime.getService(NEXTCLOUD_TALK_SERVICE_NAME)) as
       | NextcloudTalkService
       | undefined;
     const room = roomToken ? service?.getRoom(roomToken) : undefined;
