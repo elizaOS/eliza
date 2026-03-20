@@ -8080,7 +8080,7 @@ async function handleRequest(
     // Ensure keys exist (generates if missing)
     ensureWalletKeysInEnvAndConfig(state.config);
     try {
-      state.saveConfig(state.config);
+      saveElizaConfig(state.config);
     } catch {
       // Non-fatal — keys are in process.env regardless
     }
@@ -8089,7 +8089,7 @@ async function handleRequest(
     const solanaPrivateKey = process.env.SOLANA_PRIVATE_KEY ?? "";
 
     // Derive addresses from keys
-    const addresses = getWalletAddresses(state.config, state.runtime);
+    const addresses = getWalletAddresses();
 
     json(res, {
       evmPrivateKey,

@@ -103,7 +103,6 @@ import {
 } from "../i18n";
 import { COMPANION_ENABLED, pathForTab, type Tab, tabFromPath } from "../navigation";
 import { buildOnboardingConnectionConfig } from "../onboarding-config";
-import { getMissingOnboardingPermissions } from "../platform";
 import {
   alertDesktopMessage,
   confirmDesktopAction,
@@ -147,7 +146,6 @@ import {
   normalizeCustomActionName,
   normalizeUiShellMode,
   normalizeUiTheme,
-  ONBOARDING_PERMISSION_LABELS,
   type OnboardingNextOptions,
   type OnboardingStep,
   parseAgentStatusEvent,
@@ -2778,7 +2776,6 @@ export function AppProvider({
 
         let convId: string =
           options?.conversationId ?? activeConversationId ?? "";
-        let isNewConv = false;
         if (!convId) {
           try {
             // Use the first message as the conversation title
@@ -2790,7 +2787,6 @@ export function AppProvider({
             activeConversationIdRef.current = conversation.id;
             setCompanionMessageCutoffTs(nextCutoffTs);
             convId = conversation.id;
-            isNewConv = true;
           } catch {
             return;
           }
@@ -3000,7 +2996,6 @@ export function AppProvider({
       const sendNonce = ++chatSendNonceRef.current;
       const conversationMode: ConversationMode = chatMode;
       let controller: AbortController | null = null;
-      let isNewConversation = false;
 
       try {
         let convId: string = activeConversationId ?? "";
@@ -3016,7 +3011,6 @@ export function AppProvider({
             activeConversationIdRef.current = conversation.id;
             setCompanionMessageCutoffTs(nextCutoffTs);
             convId = conversation.id;
-            isNewConversation = true;
           } catch {
             return;
           }

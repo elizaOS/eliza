@@ -227,9 +227,7 @@ describe("Service Type System", () => {
 					"FAILING_SERVICE" as ServiceTypeName;
 				readonly capabilityDescription = "Service that fails to start";
 
-				static async start(
-					_runtime: IAgentRuntime,
-				): Promise<FailingService> {
+				static async start(_runtime: IAgentRuntime): Promise<FailingService> {
 					throw new Error("Intentional start failure");
 				}
 

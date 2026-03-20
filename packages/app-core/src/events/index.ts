@@ -27,6 +27,9 @@ export const VOICE_CONFIG_UPDATED_EVENT = "eliza:voice-config-updated" as const;
 export const CHAT_AVATAR_VOICE_EVENT = "eliza:chat-avatar-voice" as const;
 export const APP_EMOTE_EVENT = "eliza:app-emote" as const;
 
+// ── Avatar / VRM ─────────────────────────────────────────────────────────
+export const VRM_TELEPORT_COMPLETE_EVENT = "eliza:vrm-teleport-complete" as const;
+
 // ── Sidebar sync ─────────────────────────────────────────────────────────
 export const SELF_STATUS_SYNC_EVENT = "eliza:self-status-refresh" as const;
 
@@ -59,6 +62,7 @@ export type ElizaWindowEventName =
   | typeof VOICE_CONFIG_UPDATED_EVENT
   | typeof CHAT_AVATAR_VOICE_EVENT
   | typeof APP_EMOTE_EVENT
+  | typeof VRM_TELEPORT_COMPLETE_EVENT
   | typeof SELF_STATUS_SYNC_EVENT;
 
 export type ElizaEventName = ElizaDocumentEventName | ElizaWindowEventName;
