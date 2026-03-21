@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/computeruse-root",
   "private": true,
-  "version": "2.0.0-alpha.84",
+  "version": "2.0.0-alpha.85",
   "description": "ComputerUse - Desktop automation with AI",
   "scripts": {
     "test": "bun run test:bindings && bun run test:workflow",
