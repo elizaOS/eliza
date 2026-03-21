@@ -274,7 +274,7 @@ function buildViewerConfig(
  * Get wallet addresses from agent runtime settings (character secrets).
  * Falls back to process.env if runtime is not available.
  */
-function getWalletAddressesFromRuntime(
+function _getWalletAddressesFromRuntime(
   runtime: IAgentRuntime | null | undefined,
 ): { evmAddress: string | null; solanaAddress: string | null } {
   const PLACEHOLDER_RE =
@@ -390,7 +390,7 @@ export class AppManager {
     pluginManager: PluginManagerLike,
     name: string,
     onProgress?: (progress: InstallProgressLike) => void,
-    runtime?: IAgentRuntime | null,
+    _runtime?: IAgentRuntime | null,
   ): Promise<AppLaunchResult> {
     let appInfo = (await pluginManager.getRegistryPlugin(
       name,

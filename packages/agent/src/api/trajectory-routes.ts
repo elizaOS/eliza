@@ -244,7 +244,9 @@ type TrajectoryLoggerRuntimeLike = AgentRuntime & {
   ) => "pending" | "registering" | "registered" | "failed" | "unknown";
 };
 
-function collectCandidates(runtimeLike: TrajectoryLoggerRuntimeLike): unknown[] {
+function collectCandidates(
+  runtimeLike: TrajectoryLoggerRuntimeLike,
+): unknown[] {
   const seen = new Set<unknown>();
   const candidates: unknown[] = [];
   const add = (candidate: unknown): void => {
@@ -271,7 +273,9 @@ function collectCandidates(runtimeLike: TrajectoryLoggerRuntimeLike): unknown[] 
   return candidates;
 }
 
-function findCompatibleLogger(candidates: unknown[]): TrajectoryLoggerApi | null {
+function findCompatibleLogger(
+  candidates: unknown[],
+): TrajectoryLoggerApi | null {
   for (const candidate of candidates) {
     if (isRouteCompatibleTrajectoryLogger(candidate)) {
       return candidate;

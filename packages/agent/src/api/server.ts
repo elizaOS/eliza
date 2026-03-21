@@ -33,8 +33,8 @@ import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
 import { CharacterSchema } from "../config/character-schema.js";
 import {
   configFileExists,
-  loadElizaConfig,
   type ElizaConfig,
+  loadElizaConfig,
   saveElizaConfig,
 } from "../config/config.js";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
@@ -42,7 +42,10 @@ import {
   isConnectorConfigured,
   isStreamingDestinationConfigured,
 } from "../config/plugin-auto-enable.js";
-import type { ConnectorConfig, CustomActionDef } from "../config/types.eliza.js";
+import type {
+  ConnectorConfig,
+  CustomActionDef,
+} from "../config/types.eliza.js";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 import { EMOTE_BY_ID, EMOTE_CATALOG } from "../emotes/catalog.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
@@ -51,7 +54,10 @@ import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
-import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "../runtime/core-plugins.js";
+import {
+  CORE_PLUGINS,
+  OPTIONAL_CORE_PLUGINS,
+} from "../runtime/core-plugins.js";
 import {
   buildTestHandler,
   registerCustomActionLive,
@@ -409,8 +415,8 @@ function hasPersistedOnboardingState(config: ElizaConfig): boolean {
   if (existingConnection?.kind === "cloud-managed") {
     return Boolean(
       existingConnection.apiKey?.trim() &&
-      existingConnection.smallModel?.trim() &&
-      existingConnection.largeModel?.trim(),
+        existingConnection.smallModel?.trim() &&
+        existingConnection.largeModel?.trim(),
     );
   }
 
@@ -425,7 +431,7 @@ function hasPersistedOnboardingState(config: ElizaConfig): boolean {
 
   return Boolean(
     agents.defaults?.workspace?.trim() ||
-    agents.defaults?.adminEntityId?.trim(),
+      agents.defaults?.adminEntityId?.trim(),
   );
 }
 
@@ -436,8 +442,8 @@ function resolveConversationGreetingText(
   const localizedExamples =
     lang === "zh-CN"
       ? ((runtime.character as Record<string, unknown>).postExamples_zhCN as
-        | string[]
-        | undefined)
+          | string[]
+          | undefined)
       : undefined;
   const postExamples =
     localizedExamples && localizedExamples.length > 0
@@ -458,13 +464,13 @@ interface ServerState {
   runtime: AgentRuntime | null;
   config: ElizaConfig;
   agentState:
-  | "not_started"
-  | "starting"
-  | "running"
-  | "paused"
-  | "stopped"
-  | "restarting"
-  | "error";
+    | "not_started"
+    | "starting"
+    | "running"
+    | "paused"
+    | "stopped"
+    | "restarting"
+    | "error";
   agentName: string;
   model: string | undefined;
   startedAt: number | undefined;
@@ -504,8 +510,8 @@ interface ServerState {
   broadcastWs: ((data: Record<string, unknown>) => void) | null;
   /** Broadcast a JSON payload to WebSocket clients bound to a specific client id. */
   broadcastWsToClientId:
-  | ((clientId: string, data: Record<string, unknown>) => number)
-  | null;
+    | ((clientId: string, data: Record<string, unknown>) => number)
+    | null;
   /** Currently active conversation ID from the frontend (sent via WS). */
   activeConversationId: string | null;
   /** Transient OAuth flow state for subscription auth. */
@@ -580,12 +586,12 @@ interface PluginEntry {
   configured: boolean;
   envKey: string | null;
   category:
-  | "ai-provider"
-  | "connector"
-  | "streaming"
-  | "database"
-  | "app"
-  | "feature";
+    | "ai-provider"
+    | "connector"
+    | "streaming"
+    | "database"
+    | "app"
+    | "feature";
   /** Where the plugin comes from: "bundled" (ships with Eliza) or "store" (user-installed from registry). */
   source: "bundled" | "store";
   configKeys: string[];
@@ -650,13 +656,13 @@ type ResponseBlock =
   | { type: "text"; text: string }
   | { type: "ui-spec"; spec: Record<string, unknown>; raw: string }
   | {
-    type: "config-form";
-    pluginId: string;
-    pluginName?: string;
-    schema: Record<string, unknown>;
-    hints?: Record<string, unknown>;
-    values?: Record<string, unknown>;
-  };
+      type: "config-form";
+      pluginId: string;
+      pluginName?: string;
+      schema: Record<string, unknown>;
+      hints?: Record<string, unknown>;
+      values?: Record<string, unknown>;
+    };
 
 /** Regex matching fenced JSON code blocks: ```json ... ``` or ``` ... ``` */
 const FENCED_JSON_RE_SERVER = /```(?:json)?\s*\n([\s\S]*?)```/g;
@@ -854,12 +860,12 @@ interface PluginIndexEntry {
   description: string;
   tags?: string[];
   category:
-  | "ai-provider"
-  | "connector"
-  | "streaming"
-  | "database"
-  | "app"
-  | "feature";
+    | "ai-provider"
+    | "connector"
+    | "streaming"
+    | "database"
+    | "app"
+    | "feature";
   envKey: string | null;
   configKeys: string[];
   pluginParameters?: Record<string, Record<string, unknown>>;
@@ -1486,10 +1492,10 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
             : filteredConfigKeys.length === 0;
           const filteredParams = p.pluginParameters
             ? Object.fromEntries(
-              Object.entries(p.pluginParameters).filter(
-                ([k]) => !HIDDEN_KEYS.has(k),
-              ),
-            )
+                Object.entries(p.pluginParameters).filter(
+                  ([k]) => !HIDDEN_KEYS.has(k),
+                ),
+              )
             : undefined;
           const parameters = filteredParams
             ? buildParamDefs(filteredParams)
@@ -2164,17 +2170,17 @@ async function discoverSkills(
       // eslint-disable-next-line -- runtime service is loosely typed; cast via unknown
       const svc = service as unknown as
         | {
-          getLoadedSkills?: () => Array<{
-            slug: string;
-            name: string;
-            description: string;
-            source: string;
-            path: string;
-          }>;
-          getSkillScanStatus?: (
-            slug: string,
-          ) => "clean" | "warning" | "critical" | "blocked" | null;
-        }
+            getLoadedSkills?: () => Array<{
+              slug: string;
+              name: string;
+              description: string;
+              source: string;
+              path: string;
+            }>;
+            getSkillScanStatus?: (
+              slug: string,
+            ) => "clean" | "warning" | "critical" | "blocked" | null;
+          }
         | undefined;
       if (svc && typeof svc.getLoadedSkills === "function") {
         const loadedSkills = svc.getLoadedSkills();
@@ -2433,7 +2439,7 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException
     ? error.name === "AbortError" || error.name === "TimeoutError"
     : error instanceof Error &&
-    (error.name === "AbortError" || error.name === "TimeoutError");
+        (error.name === "AbortError" || error.name === "TimeoutError");
 }
 
 function createTimeoutError(message: string): Error {
@@ -2543,14 +2549,14 @@ export async function streamResponseBodyWithByteLimit(
   const streamTimeoutPromise =
     typeof timeoutMs === "number" && timeoutMs > 0
       ? new Promise<never>((_resolve, reject) => {
-        streamTimeoutHandle = setTimeout(() => {
-          reject(
-            createTimeoutError(
-              `Upstream response body timed out after ${timeoutMs}ms`,
-            ),
-          );
-        }, timeoutMs);
-      })
+          streamTimeoutHandle = setTimeout(() => {
+            reject(
+              createTimeoutError(
+                `Upstream response body timed out after ${timeoutMs}ms`,
+              ),
+            );
+          }, timeoutMs);
+        })
       : null;
 
   try {
@@ -3164,7 +3170,7 @@ async function generateChatResponse(
   let activeStreamSource: StreamSource = "unset";
   const messageSource =
     typeof message.content.source === "string" &&
-      message.content.source.trim().length > 0
+    message.content.source.trim().length > 0
       ? message.content.source
       : "api";
   const emitChunk = (chunk: string): void => {
@@ -3222,8 +3228,8 @@ async function generateChatResponse(
 
   let result:
     | Awaited<
-      ReturnType<NonNullable<AgentRuntime["messageService"]>["handleMessage"]>
-    >
+        ReturnType<NonNullable<AgentRuntime["messageService"]>["handleMessage"]>
+      >
     | undefined;
   let _handlerError: unknown = null;
   try {
@@ -3257,13 +3263,13 @@ async function generateChatResponse(
       {
         onStreamChunk: opts?.onChunk
           ? async (chunk: string) => {
-            if (opts?.isAborted?.()) {
-              throw new Error("client_disconnected");
+              if (opts?.isAborted?.()) {
+                throw new Error("client_disconnected");
+              }
+              if (!chunk) return;
+              if (!claimStreamSource("onStreamChunk")) return;
+              appendIncomingText(chunk);
             }
-            if (!chunk) return;
-            if (!claimStreamSource("onStreamChunk")) return;
-            appendIncomingText(chunk);
-          }
           : undefined,
       },
     );
@@ -3708,18 +3714,18 @@ export function buildUserMessages(params: {
   // Persisted message: compact placeholder URL, no raw bytes in DB.
   const messageToStore = compactAttachments?.length
     ? createMessageMemory({
-      id,
-      entityId: userId,
-      agentId,
-      roomId,
-      content: {
-        text: prompt,
-        source: "client_chat",
-        channelType,
-        ...(conversationMode ? { conversationMode } : {}),
-        attachments: compactAttachments,
-      },
-    })
+        id,
+        entityId: userId,
+        agentId,
+        roomId,
+        content: {
+          text: prompt,
+          source: "client_chat",
+          channelType,
+          ...(conversationMode ? { conversationMode } : {}),
+          attachments: compactAttachments,
+        },
+      })
     : userMessage;
   return { userMessage, messageToStore };
 }
@@ -3776,9 +3782,9 @@ async function readChatRequestPayload(
   // that slipped past the allowlist check.
   const images = Array.isArray(body.images)
     ? (body.images as ChatImageAttachment[]).map((img) => ({
-      ...img,
-      mimeType: img.mimeType.toLowerCase(),
-    }))
+        ...img,
+        mimeType: img.mimeType.toLowerCase(),
+      }))
     : undefined;
   return {
     prompt: normalizedPrompt,
@@ -5136,9 +5142,7 @@ function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
     if (missingEvm) {
       envConfig.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
       process.env.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
-      logger.info(
-        `[eliza-api] Generated EVM wallet: ${walletKeys.evmAddress}`,
-      );
+      logger.info(`[eliza-api] Generated EVM wallet: ${walletKeys.evmAddress}`);
     }
 
     if (missingSolana) {
@@ -5230,8 +5234,8 @@ function resolveAgentAutomationModeFromConfig(
       : null;
   const agentAutomation =
     features?.agentAutomation &&
-      typeof features.agentAutomation === "object" &&
-      !Array.isArray(features.agentAutomation)
+    typeof features.agentAutomation === "object" &&
+    !Array.isArray(features.agentAutomation)
       ? (features.agentAutomation as Record<string, unknown>)
       : null;
   return parseAgentAutomationMode(agentAutomation?.mode) ?? "full";
@@ -5254,7 +5258,7 @@ function persistAgentAutomationMode(
 
   const features = state.config.features as Record<
     string,
-    boolean | { enabled?: boolean;[k: string]: unknown }
+    boolean | { enabled?: boolean; [k: string]: unknown }
   >;
   const current = features.agentAutomation;
   const currentObject =
@@ -5336,7 +5340,8 @@ export function resolveMcpTerminalAuthorizationRejection(
 
 const LOCAL_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
-const APP_ORIGIN_RE = /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
+const APP_ORIGIN_RE =
+  /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
 
 /**
  * Hostname allowlist for DNS rebinding protection.
@@ -5377,7 +5382,13 @@ export function isAllowedHost(req: http.IncomingMessage): boolean {
 
   if (!hostname) return true;
 
-  const bindHost = (process.env.ELIZA_API_BIND ?? process.env.ELIZA_API_BIND ?? "").trim().toLowerCase();
+  const bindHost = (
+    process.env.ELIZA_API_BIND ??
+    process.env.ELIZA_API_BIND ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
 
   // When binding on all interfaces (0.0.0.0 / ::), any Host is acceptable —
   // ensureApiTokenForBindHost already enforces a token for non-loopback binds.
@@ -5392,7 +5403,8 @@ export function isAllowedHost(req: http.IncomingMessage): boolean {
 
   // Allow explicitly listed extra hostnames via ELIZA_ALLOWED_HOSTS / ELIZA_ALLOWED_HOSTS
   // (comma-separated, e.g. "myserver.local,192.168.1.10").
-  const extra = process.env.ELIZA_ALLOWED_HOSTS ?? process.env.ELIZA_ALLOWED_HOSTS;
+  const extra =
+    process.env.ELIZA_ALLOWED_HOSTS ?? process.env.ELIZA_ALLOWED_HOSTS;
   if (extra) {
     const allowed = extra
       .split(",")
@@ -5411,7 +5423,13 @@ export function resolveCorsOrigin(origin?: string): string | null {
 
   // When bound to a wildcard address, allow any origin. Non-loopback binds still
   // require an explicit token, so this only relaxes the browser origin check.
-  const bindHost = (process.env.ELIZA_API_BIND ?? process.env.ELIZA_API_BIND ?? "").trim().toLowerCase();
+  const bindHost = (
+    process.env.ELIZA_API_BIND ??
+    process.env.ELIZA_API_BIND ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
   if (WILDCARD_BIND_RE.test(stripPort(bindHost))) return trimmed;
 
   // Explicit allowlist via env (comma-separated)
@@ -5479,8 +5497,9 @@ const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
 
 function pairingEnabled(): boolean {
   return (
-    Boolean((process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN)?.trim()) &&
-    process.env.ELIZA_PAIRING_DISABLED !== "1"
+    Boolean(
+      (process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN)?.trim(),
+    ) && process.env.ELIZA_PAIRING_DISABLED !== "1"
   );
 }
 
@@ -5649,7 +5668,9 @@ function isLoopbackBindHost(host: string): boolean {
 }
 
 export function ensureApiTokenForBindHost(host: string): void {
-  const token = (process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN)?.trim();
+  const token = (
+    process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN
+  )?.trim();
   if (token) return;
   if (isLoopbackBindHost(host)) return;
 
@@ -5667,7 +5688,9 @@ export function ensureApiTokenForBindHost(host: string): void {
 }
 
 export function isAuthorized(req: http.IncomingMessage): boolean {
-  const expected = (process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN)?.trim();
+  const expected = (
+    process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN
+  )?.trim();
   if (!expected) return true;
   const provided = extractAuthToken(req);
   if (!provided) return false;
@@ -5778,7 +5801,9 @@ export function resolveTerminalRunRejection(
   body: TerminalRunRequestBody,
 ): TerminalRunRejection | null {
   const expected = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
-  const apiTokenEnabled = Boolean((process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN)?.trim());
+  const apiTokenEnabled = Boolean(
+    (process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN)?.trim(),
+  );
 
   // Compatibility mode: local loopback sessions without API token keep
   // existing behavior unless an explicit terminal token is configured.
@@ -5835,7 +5860,9 @@ function isWebSocketAuthorized(
   request: http.IncomingMessage,
   url: URL,
 ): boolean {
-  const expected = (process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN)?.trim();
+  const expected = (
+    process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN
+  )?.trim();
   if (!expected) return true;
 
   const headerToken = extractAuthToken(request);
@@ -5943,11 +5970,11 @@ function rejectWebSocketUpgrade(
   const body = `${message}\n`;
   socket.write(
     `HTTP/1.1 ${statusCode} ${statusText}\r\n` +
-    "Connection: close\r\n" +
-    "Content-Type: text/plain; charset=utf-8\r\n" +
-    `Content-Length: ${Buffer.byteLength(body)}\r\n` +
-    "\r\n" +
-    body,
+      "Connection: close\r\n" +
+      "Content-Type: text/plain; charset=utf-8\r\n" +
+      `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+      "\r\n" +
+      body,
     () => socket.end(),
   );
 }
@@ -6840,10 +6867,10 @@ function wireCoordinatorEventRouting(st: ServerState): boolean {
               const conv = st.activeConversationId
                 ? st.conversations.get(st.activeConversationId)
                 : Array.from(st.conversations.values()).sort(
-                  (a, b) =>
-                    new Date(b.updatedAt).getTime() -
-                    new Date(a.updatedAt).getTime(),
-                )[0];
+                    (a, b) =>
+                      new Date(b.updatedAt).getTime() -
+                      new Date(a.updatedAt).getTime(),
+                  )[0];
               if (conv) {
                 st.broadcastWs?.({
                   type: "proactive-message",
@@ -7676,8 +7703,8 @@ async function handleRequest(
         const envRoot = config.env as Record<string, unknown>;
         const vars =
           envRoot.vars &&
-            typeof envRoot.vars === "object" &&
-            !Array.isArray(envRoot.vars)
+          typeof envRoot.vars === "object" &&
+          !Array.isArray(envRoot.vars)
             ? (envRoot.vars as Record<string, unknown>)
             : {};
         vars.ELIZA_USE_PI_AI = "1";
@@ -8073,7 +8100,11 @@ async function handleRequest(
   if (method === "GET" && pathname === "/api/wallet/keys") {
     // Only expose private keys before onboarding is complete
     if (hasPersistedOnboardingState(state.config)) {
-      json(res, { error: "Wallet keys are only available during onboarding" }, 403);
+      json(
+        res,
+        { error: "Wallet keys are only available during onboarding" },
+        403,
+      );
       return;
     }
 
@@ -9651,8 +9682,8 @@ async function handleRequest(
         try {
           const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
             | {
-              getLoadedSkills?: () => Array<{ slug: string; source: string }>;
-            }
+                getLoadedSkills?: () => Array<{ slug: string; source: string }>;
+              }
             | undefined;
           if (svc && typeof svc.getLoadedSkills === "function") {
             for (const s of svc.getLoadedSkills()) {
@@ -9786,12 +9817,12 @@ async function handleRequest(
     try {
       const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
-          install?: (
-            slug: string,
-            opts?: { version?: string; force?: boolean },
-          ) => Promise<boolean>;
-          isInstalled?: (slug: string) => Promise<boolean>;
-        }
+            install?: (
+              slug: string,
+              opts?: { version?: string; force?: boolean },
+            ) => Promise<boolean>;
+            isInstalled?: (slug: string) => Promise<boolean>;
+          }
         | undefined;
 
       if (!service || typeof service.install !== "function") {
@@ -9868,8 +9899,8 @@ async function handleRequest(
     try {
       const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
-          uninstall?: (slug: string) => Promise<boolean>;
-        }
+            uninstall?: (slug: string) => Promise<boolean>;
+          }
         | undefined;
 
       if (!service || typeof service.uninstall !== "function") {
@@ -10130,12 +10161,12 @@ async function handleRequest(
       try {
         const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
-            getLoadedSkills?: () => Array<{
-              slug: string;
-              path: string;
-              source: string;
-            }>;
-          }
+              getLoadedSkills?: () => Array<{
+                slug: string;
+                path: string;
+                source: string;
+              }>;
+            }
           | undefined;
         if (svc?.getLoadedSkills) {
           const loaded = svc.getLoadedSkills().find((s) => s.slug === skillId);
@@ -10212,12 +10243,12 @@ async function handleRequest(
       try {
         const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
-            getLoadedSkills?: () => Array<{
-              slug: string;
-              path: string;
-              source: string;
-            }>;
-          }
+              getLoadedSkills?: () => Array<{
+                slug: string;
+                path: string;
+                source: string;
+              }>;
+            }
           | undefined;
         if (svc?.getLoadedSkills) {
           const loaded = svc.getLoadedSkills().find((s) => s.slug === skillId);
@@ -10307,12 +10338,12 @@ async function handleRequest(
       try {
         const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
-            getLoadedSkills?: () => Array<{
-              slug: string;
-              path: string;
-              source: string;
-            }>;
-          }
+              getLoadedSkills?: () => Array<{
+                slug: string;
+                path: string;
+                source: string;
+              }>;
+            }
           | undefined;
         if (svc?.getLoadedSkills) {
           const loaded = svc.getLoadedSkills().find((s) => s.slug === skillId);
@@ -10521,12 +10552,12 @@ async function handleRequest(
 
         const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
-            install?: (
-              skillSlug: string,
-              opts?: { version?: string; force?: boolean },
-            ) => Promise<boolean>;
-            isInstalled?: (skillSlug: string) => Promise<boolean>;
-          }
+              install?: (
+                skillSlug: string,
+                opts?: { version?: string; force?: boolean },
+              ) => Promise<boolean>;
+              isInstalled?: (skillSlug: string) => Promise<boolean>;
+            }
           | undefined;
 
         if (!service || typeof service.install !== "function") {
@@ -11071,7 +11102,6 @@ async function handleRequest(
     return;
   }
 
-
   // ── GET /api/whitelist/merkle/root — tree info and root hash
   if (method === "GET" && pathname === "/api/whitelist/merkle/root") {
     const { info } = buildWhitelistTree();
@@ -11353,8 +11383,8 @@ async function handleRequest(
     const messages =
       state.config && typeof state.config === "object"
         ? ((state.config as Record<string, unknown>).messages as
-          | Record<string, unknown>
-          | undefined)
+            | Record<string, unknown>
+            | undefined)
         : undefined;
     const tts =
       messages && typeof messages === "object"
@@ -11406,8 +11436,8 @@ async function handleRequest(
 
     const requestedVoiceSettings =
       body.voice_settings &&
-        typeof body.voice_settings === "object" &&
-        !Array.isArray(body.voice_settings)
+      typeof body.voice_settings === "object" &&
+      !Array.isArray(body.voice_settings)
         ? body.voice_settings
         : undefined;
 
@@ -11434,7 +11464,7 @@ async function handleRequest(
       model_id: modelId,
       apply_text_normalization:
         body.apply_text_normalization === "on" ||
-          body.apply_text_normalization === "off"
+        body.apply_text_normalization === "off"
           ? body.apply_text_normalization
           : "auto",
     };
@@ -11508,8 +11538,8 @@ async function handleRequest(
           err instanceof Error
             ? err
             : new Error(
-              `ElevenLabs proxy error: ${typeof err === "string" ? err : String(err)}`,
-            ),
+                `ElevenLabs proxy error: ${typeof err === "string" ? err : String(err)}`,
+              ),
         );
         return;
       }
@@ -11626,7 +11656,7 @@ async function handleRequest(
       const p = path.join(avatarDir, `custom-background.${old}`);
       try {
         fs.unlinkSync(p);
-      } catch { }
+      } catch {}
     }
     const bgPath = path.join(avatarDir, `custom-background.${ext}`);
     fs.writeFileSync(bgPath, rawBody);
@@ -11654,7 +11684,7 @@ async function handleRequest(
           found = p;
           break;
         }
-      } catch { }
+      } catch {}
     }
     if (!found) {
       error(res, "No custom background found", 404);
@@ -12608,8 +12638,8 @@ async function handleRequest(
         : "30d";
     const source =
       sourceParam === "agent" ||
-        sourceParam === "manual" ||
-        sourceParam === "all"
+      sourceParam === "manual" ||
+      sourceParam === "all"
         ? sourceParam
         : "all";
 
@@ -12698,14 +12728,14 @@ async function handleRequest(
       data: isBnb
         ? "0x"
         : (() => {
-          const iface = new ethers.Interface([
-            "function transfer(address to, uint256 amount) returns (bool)",
-          ]);
-          return iface.encodeFunctionData("transfer", [
-            toAddress,
-            ethers.parseUnits(body.amount?.trim(), decimals),
-          ]);
-        })(),
+            const iface = new ethers.Interface([
+              "function transfer(address to, uint256 amount) returns (bool)",
+            ]);
+            return iface.encodeFunctionData("transfer", [
+              toAddress,
+              ethers.parseUnits(body.amount?.trim(), decimals),
+            ]);
+          })(),
       valueWei: isBnb ? ethers.parseEther(body.amount.trim()).toString() : "0",
       explorerUrl: "https://bscscan.com",
       assetSymbol: body.assetSymbol,
@@ -13925,11 +13955,11 @@ async function handleRequest(
     state.conversations.set(id, conv);
     let greeting:
       | {
-        text: string;
-        agentName: string;
-        generated: boolean;
-        persisted: boolean;
-      }
+          text: string;
+          agentName: string;
+          generated: boolean;
+          persisted: boolean;
+        }
       | undefined;
 
     // Soft cap: evict the oldest conversation when the map exceeds 500
@@ -14812,8 +14842,10 @@ async function handleRequest(
 
   // ── Hyperscape control proxy routes (optional — package may not be installed) ──
   try {
-    // @ts-ignore: Optional package may not be installed
-    const { handleAppsHyperscapeRoutes } = await import("@elizaos/app-hyperscape/routes");
+    const hyperscapePkg = "@elizaos/app-hyperscape/routes";
+    const { handleAppsHyperscapeRoutes } = await import(
+      /* webpackIgnore: true */ hyperscapePkg
+    );
     if (
       await handleAppsHyperscapeRoutes({
         req,
@@ -16082,10 +16114,10 @@ async function handleRequest(
         : [],
       parameters: Array.isArray(body.parameters)
         ? (body.parameters as Array<{
-          name: string;
-          description: string;
-          required: boolean;
-        }>)
+            name: string;
+            description: string;
+            required: boolean;
+          }>)
         : [],
       handler,
       enabled: body.enabled !== false,
@@ -16428,7 +16460,11 @@ export async function startApiServer(opts?: {
 
   const port = opts?.port ?? 2138;
   const host =
-    (process.env.ELIZA_API_BIND ?? process.env.ELIZA_API_BIND ?? "127.0.0.1").trim() || "127.0.0.1";
+    (
+      process.env.ELIZA_API_BIND ??
+      process.env.ELIZA_API_BIND ??
+      "127.0.0.1"
+    ).trim() || "127.0.0.1";
   ensureApiTokenForBindHost(host);
   console.log(`[eliza-api] Token check done (${Date.now() - apiStartTime}ms)`);
 
@@ -16494,9 +16530,7 @@ export async function startApiServer(opts?: {
         : { phase: "idle", attempt: 0 };
   const agentName = hasRuntime
     ? (opts.runtime?.character.name ?? "Eliza")
-    : (config.agents?.list?.[0]?.name ??
-      config.ui?.assistant?.name ??
-      "Eliza");
+    : (config.agents?.list?.[0]?.name ?? config.ui?.assistant?.name ?? "Eliza");
 
   const deletedConversationIds = readDeletedConversationIdsFromState();
 
@@ -16552,9 +16586,9 @@ export async function startApiServer(opts?: {
     | null = null;
   let onAgentMessageFn:
     | ((
-      text: string,
-      state: import("./stream-routes.js").StreamRouteState,
-    ) => Promise<void>)
+        text: string,
+        state: import("./stream-routes.js").StreamRouteState,
+      ) => Promise<void>)
     | null = null;
 
   const trainingServiceCtor = await resolveTrainingServiceCtor();
@@ -16651,7 +16685,7 @@ export async function startApiServer(opts?: {
   );
 
   // Warm per-provider model caches in background (non-blocking)
-  void getOrFetchAllProviders().catch(() => { });
+  void getOrFetchAllProviders().catch(() => {});
 
   // ── Intercept loggers so ALL agent/plugin/service logs appear in the UI ──
   // We patch both the global `logger` singleton from @elizaos/core (used by
@@ -16998,13 +17032,13 @@ export async function startApiServer(opts?: {
         const screenCapture = (globalThis as Record<string, unknown>)
           .__elizaScreenCapture as
           | {
-            isFrameCaptureActive(): boolean;
-            startFrameCapture(opts: {
-              fps?: number;
-              quality?: number;
-              endpoint?: string;
-            }): Promise<void>;
-          }
+              isFrameCaptureActive(): boolean;
+              startFrameCapture(opts: {
+                fps?: number;
+                quality?: number;
+                endpoint?: string;
+              }): Promise<void>;
+            }
           | undefined;
 
         // Build destination registry — all configured destinations
@@ -17026,8 +17060,8 @@ export async function startApiServer(opts?: {
               "retake",
               createRetakeDestination(
                 connectors.retake as
-                | { accessToken?: string; apiUrl?: string }
-                | undefined,
+                  | { accessToken?: string; apiUrl?: string }
+                  | undefined,
               ),
             );
           } catch (err) {
@@ -17154,12 +17188,12 @@ export async function startApiServer(opts?: {
             const msgs = cfg?.messages as Record<string, unknown> | undefined;
             return msgs
               ? {
-                messages: {
-                  tts: msgs.tts as
-                    | import("../config/types.messages.js").TtsConfig
-                    | undefined,
-                },
-              }
+                  messages: {
+                    tts: msgs.tts as
+                      | import("../config/types.messages.js").TtsConfig
+                      | undefined,
+                  },
+                }
               : undefined;
           },
         };
@@ -17312,8 +17346,16 @@ export async function startApiServer(opts?: {
                   );
                 }
               };
-              bridge.on("session_output", listener as (...args: unknown[]) => void);
-              subs.set(targetId, () => bridge.off("session_output", listener as (...args: unknown[]) => void));
+              bridge.on(
+                "session_output",
+                listener as (...args: unknown[]) => void,
+              );
+              subs.set(targetId, () =>
+                bridge.off(
+                  "session_output",
+                  listener as (...args: unknown[]) => void,
+                ),
+              );
             }
           }
         } else if (

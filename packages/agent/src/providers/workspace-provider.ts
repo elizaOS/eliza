@@ -31,10 +31,7 @@ const MAX_TOTAL_WORKSPACE_CHARS = 100_000;
 const CACHE_TTL_MS = 60_000;
 
 // Per-workspace cache so multi-agent doesn't thrash.
-const cache = new Map<
-  string,
-  { files: WorkspaceInitFile[]; at: number }
->();
+const cache = new Map<string, { files: WorkspaceInitFile[]; at: number }>();
 /** Maximum number of workspace directories to cache simultaneously. */
 const MAX_CACHE_ENTRIES = 20;
 

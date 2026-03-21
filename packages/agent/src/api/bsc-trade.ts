@@ -16,7 +16,10 @@ import type {
   BscUnsignedApprovalTx,
   BscUnsignedTradeTx,
 } from "../contracts/wallet.js";
-import { buildCloudEvmRpcUrl, DEFAULT_PUBLIC_BSC_RPC_URLS } from "./wallet-rpc.js";
+import {
+  buildCloudEvmRpcUrl,
+  DEFAULT_PUBLIC_BSC_RPC_URLS,
+} from "./wallet-rpc.js";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const BSC_CHAIN_ID = 56;
@@ -278,7 +281,8 @@ async function readWrappedNativeAddress(rpcUrls: string[]): Promise<string> {
     return ethers.getAddress(wrappedNative);
   } catch (err) {
     logger.warn(
-      `[bsc-trade] failed to read router WETH(), falling back to WBNB constant: ${err instanceof Error ? err.message : String(err)
+      `[bsc-trade] failed to read router WETH(), falling back to WBNB constant: ${
+        err instanceof Error ? err.message : String(err)
       }`,
     );
     return BSC_WBNB_FALLBACK;
@@ -418,7 +422,8 @@ export async function buildBscTradePreflight(
       }
     } catch (err) {
       reasons.push(
-        `Failed to read wallet balance: ${err instanceof Error ? err.message : String(err)
+        `Failed to read wallet balance: ${
+          err instanceof Error ? err.message : String(err)
         }`,
       );
     }
@@ -443,7 +448,8 @@ export async function buildBscTradePreflight(
     } catch (err) {
       checks.tokenAddressValid = false;
       reasons.push(
-        `Token contract check failed: ${err instanceof Error ? err.message : String(err)
+        `Token contract check failed: ${
+          err instanceof Error ? err.message : String(err)
         }`,
       );
     }

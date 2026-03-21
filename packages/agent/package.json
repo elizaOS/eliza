@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-alpha.83",
+  "version": "2.0.0-alpha.84",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -61,7 +61,6 @@
     "./api/memory-routes": "./src/api/memory-routes.ts",
     "./api/merkle-tree": "./src/api/merkle-tree.ts",
     "./api/nfa-routes": "./src/api/nfa-routes.ts",
-
     "./api/og-tracker": "./src/api/og-tracker.ts",
     "./api/permissions-routes": "./src/api/permissions-routes.ts",
     "./api/registry-routes": "./src/api/registry-routes.ts",

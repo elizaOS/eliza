@@ -42,8 +42,6 @@ export interface VersionCompatReport {
   advisory: string;
 }
 
-
-
 /**
  * Plugins that provide AI model capabilities. If ALL of these fail to load
  * the agent is completely non-functional — no responses can be generated.
@@ -190,7 +188,6 @@ export async function validatePluginCompat(
   pluginName: string,
   coreVersion: string,
 ): Promise<PluginCompatResult> {
-
   const missingExports: string[] = [];
 
   const pluginVersion = await getInstalledVersion(pluginName);

@@ -687,4 +687,3 @@ export async function fetchSolanaNativeBalanceViaRpc(
 
   throw new Error(errors.join(" | ").slice(0, 400) || "Solana RPC unavailable");
 }
-

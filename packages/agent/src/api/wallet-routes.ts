@@ -222,7 +222,6 @@ export async function handleWalletRoutes(
     return true;
   }
 
-
   // POST /api/wallet/import
   if (method === "POST" && pathname === "/api/wallet/import") {
     const body = await readJsonBody<{ chain?: string; privateKey?: string }>(

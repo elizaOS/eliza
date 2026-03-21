@@ -862,24 +862,35 @@ export async function handleKnowledgeRoutes(
     // Image files: the content is base64-encoded binary which can't be
     // text-extracted. Convert to a text description for embedding.
     if (contentType.startsWith("image/")) {
-      const includeDescriptions = (document.metadata as Record<string, unknown>)?.includeImageDescriptions === true;
+      const includeDescriptions =
+        (document.metadata as Record<string, unknown>)
+          ?.includeImageDescriptions === true;
       if (includeDescriptions && runtime) {
         // Try to describe the image via the runtime's vision model
         try {
           const { ModelType } = await import("@elizaos/core");
           const dataUri = `data:${contentType};base64,${content}`;
-          const description = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-            imageUrl: dataUri,
-            prompt: `Describe this image in detail for a knowledge base. Focus on text content, data, charts, and key visual elements. Image filename: ${document.filename}`,
-          });
-          const descText = typeof description === "string" ? description : (description as { description?: string }).description || "Image uploaded";
+          const description = await runtime.useModel(
+            ModelType.IMAGE_DESCRIPTION,
+            {
+              imageUrl: dataUri,
+              prompt: `Describe this image in detail for a knowledge base. Focus on text content, data, charts, and key visual elements. Image filename: ${document.filename}`,
+            },
+          );
+          const descText =
+            typeof description === "string"
+              ? description
+              : (description as { description?: string }).description ||
+                "Image uploaded";
           content = `[Image: ${document.filename}]\n\n${descText}`;
           contentType = "text/plain";
         } catch (err) {
           // Vision failed — store as a reference entry
           content = `[Image: ${document.filename}] — Image uploaded. Vision description unavailable.`;
           contentType = "text/plain";
-          warnings.push(`Vision description failed for ${document.filename}: ${err instanceof Error ? err.message : String(err)}`);
+          warnings.push(
+            `Vision description failed for ${document.filename}: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
       } else {
         // No vision requested — store as a reference entry

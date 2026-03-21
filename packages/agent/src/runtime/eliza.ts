@@ -80,8 +80,8 @@ import {
 } from "../api/plugin-validation";
 import {
   configFileExists,
-  loadElizaConfig,
   type ElizaConfig,
+  loadElizaConfig,
   saveElizaConfig,
 } from "../config/config";
 import { collectConfigEnvVars } from "../config/env-vars";
@@ -106,8 +106,8 @@ import { SandboxAuditLog } from "../security/audit-log";
 import { SandboxManager, type SandboxMode } from "../services/sandbox-manager";
 import { diagnoseNoAIProvider } from "../services/version-compat";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins";
-import { detectEmbeddingPreset } from "./embedding-presets";
 import { createElizaPlugin } from "./eliza-plugin";
+import { detectEmbeddingPreset } from "./embedding-presets";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence";
 
 /**
@@ -217,14 +217,14 @@ export function configureLocalEmbeddingPlugin(
   const configuredRepo = embeddingConfig?.modelRepo?.trim();
   const configuredDimensions =
     typeof embeddingConfig?.dimensions === "number" &&
-      Number.isInteger(embeddingConfig.dimensions) &&
-      embeddingConfig.dimensions > 0
+    Number.isInteger(embeddingConfig.dimensions) &&
+    embeddingConfig.dimensions > 0
       ? String(embeddingConfig.dimensions)
       : undefined;
   const configuredContextSize =
     typeof embeddingConfig?.contextSize === "number" &&
-      Number.isInteger(embeddingConfig.contextSize) &&
-      embeddingConfig.contextSize > 0
+    Number.isInteger(embeddingConfig.contextSize) &&
+    embeddingConfig.contextSize > 0
       ? String(embeddingConfig.contextSize)
       : undefined;
 
@@ -348,9 +348,7 @@ export async function shutdownRuntime(
     await runtime.stop();
   } catch (err) {
     firstError = err;
-    logger.warn(
-      `[eliza] ${context}: runtime stop failed: ${formatError(err)}`,
-    );
+    logger.warn(`[eliza] ${context}: runtime stop failed: ${formatError(err)}`);
   }
 
   if (adapter && typeof adapter.close === "function") {
@@ -455,7 +453,7 @@ async function waitForTrajectoryLoggerService(
 
   try {
     await Promise.race([
-      runtimeLike.getServiceLoadPromise("trajectory_logger").then(() => { }),
+      runtimeLike.getServiceLoadPromise("trajectory_logger").then(() => {}),
       timeoutPromise,
     ]);
     if (timedOut) {
@@ -785,8 +783,8 @@ export function collectPluginNames(config: ElizaConfig): Set<string> {
     | undefined;
   const configPiAiFlag =
     (configEnv?.vars &&
-      typeof configEnv.vars === "object" &&
-      !Array.isArray(configEnv.vars)
+    typeof configEnv.vars === "object" &&
+    !Array.isArray(configEnv.vars)
       ? (configEnv.vars as Record<string, unknown>).ELIZA_USE_PI_AI
       : undefined) ?? configEnv?.ELIZA_USE_PI_AI;
   const piAiEnabled =
@@ -1259,7 +1257,9 @@ export function ensureBrowserServerLink(): boolean {
         `[eliza] Stagehand server not built — attempting auto-build...`,
       );
       try {
-        const cp = createRequire(import.meta.url)("node:child_process") as typeof import("node:child_process");
+        const cp = createRequire(import.meta.url)(
+          "node:child_process",
+        ) as typeof import("node:child_process");
         if (!existsSync(path.join(stagehandDir, "node_modules"))) {
           cp.execSync("pnpm install --ignore-scripts", {
             cwd: stagehandDir,
@@ -1277,16 +1277,14 @@ export function ensureBrowserServerLink(): boolean {
         });
         logger.info(`[eliza] Stagehand server built successfully`);
       } catch (buildErr) {
-        logger.debug(
-          `[eliza] Auto-build failed: ${formatError(buildErr)}`,
-        );
+        logger.debug(`[eliza] Auto-build failed: ${formatError(buildErr)}`);
       }
     }
 
     if (!existsSync(stagehandIndex)) {
       logger.info(
         `[eliza] Browser server not found at ${stagehandDir} — ` +
-        `@elizaos/plugin-browser will not be loaded`,
+          `@elizaos/plugin-browser will not be loaded`,
       );
       return false;
     }
@@ -1426,7 +1424,7 @@ async function resolvePlugins(
         });
         logger.warn(
           `[eliza] Skipping ${pluginName}: browser server not available. ` +
-          `Build the stagehand-server or remove the plugin from plugins.allow.`,
+            `Build the stagehand-server or remove the plugin from plugins.allow.`,
         );
         return null;
       }
@@ -1568,7 +1566,7 @@ async function resolvePlugins(
   // Summary logging
   logger.info(
     `[eliza] Plugin resolution complete: ${plugins.length}/${pluginsToLoad.size} loaded` +
-    (failedPlugins.length > 0 ? `, ${failedPlugins.length} failed` : ""),
+      (failedPlugins.length > 0 ? `, ${failedPlugins.length} failed` : ""),
   );
   if (failedPlugins.length > 0) {
     logger.info(
@@ -1904,8 +1902,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // the literal "[REDACTED]" placeholder (which can leak into the config via
   // UI round-trips through the redacted GET → PUT cycle).
   const isRealApiKey =
-    cloud.apiKey &&
-    cloud.apiKey.trim().toUpperCase() !== "[REDACTED]";
+    cloud.apiKey && cloud.apiKey.trim().toUpperCase() !== "[REDACTED]";
   if (isRealApiKey) {
     process.env.ELIZAOS_CLOUD_API_KEY = cloud.apiKey;
   } else {
@@ -2272,9 +2269,7 @@ async function resetPgliteDataDir(dataDir: string): Promise<void> {
   if (existsSync(normalized)) {
     try {
       await fs.rename(normalized, backupDir);
-      logger.warn(
-        `[eliza] Backed up existing PGLite data dir to ${backupDir}`,
-      );
+      logger.warn(`[eliza] Backed up existing PGLite data dir to ${backupDir}`);
     } catch (err) {
       logger.warn(
         `[eliza] Failed to back up PGLite data dir (${formatError(err)}); deleting ${normalized} instead`,
@@ -2293,8 +2288,11 @@ async function initializeDatabaseAdapter(
   if (!runtime.adapter || (await runtime.adapter.isReady())) return;
 
   try {
-    const adapterInit = (runtime.adapter as unknown as Record<string, unknown>).init ?? runtime.adapter.initialize;
-    if (typeof adapterInit === "function") await adapterInit.call(runtime.adapter);
+    const adapterInit =
+      (runtime.adapter as unknown as Record<string, unknown>).init ??
+      runtime.adapter.initialize;
+    if (typeof adapterInit === "function")
+      await adapterInit.call(runtime.adapter);
     logger.info(
       "[eliza] Database adapter initialized early (before plugin inits)",
     );
@@ -2324,8 +2322,11 @@ async function initializeDatabaseAdapter(
       process.env.PGLITE_DATA_DIR = pgliteDataDir;
     }
 
-    const adapterInit2 = (runtime.adapter as unknown as Record<string, unknown>).init ?? runtime.adapter.initialize;
-    if (typeof adapterInit2 === "function") await adapterInit2.call(runtime.adapter);
+    const adapterInit2 =
+      (runtime.adapter as unknown as Record<string, unknown>).init ??
+      runtime.adapter.initialize;
+    if (typeof adapterInit2 === "function")
+      await adapterInit2.call(runtime.adapter);
     logger.info(
       recoveryAction === "retry-without-reset"
         ? "[eliza] Database adapter recovered after clearing a stale PGLite lock"
@@ -2439,7 +2440,7 @@ async function withEntityCreateMutex<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const previous = runtimeWithBindings.__elizaEntityCreateMutex;
-  let release: () => void = () => { };
+  let release: () => void = () => {};
   runtimeWithBindings.__elizaEntityCreateMutex = new Promise<void>(
     (resolve) => {
       release = resolve;
@@ -2631,9 +2632,7 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     if (typeof runtimeWithEntityWrites.createEntities === "function") {
       const originalCreateEntities =
         runtimeWithEntityWrites.createEntities.bind(runtime);
-      runtimeWithEntityWrites.createEntities = async (
-        entities: Entity[],
-      ) => {
+      runtimeWithEntityWrites.createEntities = async (entities: Entity[]) => {
         return withEntityCreateMutex(runtimeWithBindings, async () => {
           const uniqueById = new Map<UUID, Entity>();
           for (const entity of entities) {
@@ -2665,7 +2664,8 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
           if (missing.length === 0) return deduped.map((e) => e.id as UUID);
 
           const result = await originalCreateEntities(missing);
-          if (Array.isArray(result) ? result.length > 0 : result) return deduped.map((e) => e.id as UUID);
+          if (Array.isArray(result) ? result.length > 0 : result)
+            return deduped.map((e) => e.id as UUID);
 
           if (
             typeof runtimeWithEntityWrites.ensureEntityExists === "function"
@@ -3001,7 +3001,7 @@ import { pickRandomNames } from "./onboarding-names";
 // Style presets — shared between CLI and GUI onboarding
 // ---------------------------------------------------------------------------
 
-import { getStylePresets, getPresetNameMap } from "../onboarding-presets";
+import { getPresetNameMap, getStylePresets } from "../onboarding-presets";
 
 /**
  * Detect whether this is the first run (no agent name configured)
@@ -3379,9 +3379,9 @@ async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfig> {
     // ── Step 6: Skills Registry (ClawHub default) ──────────────────────────
     const hasSkillsRegistry = Boolean(
       process.env.SKILLS_REGISTRY?.trim() ||
-      process.env.CLAWHUB_REGISTRY?.trim(),
+        process.env.CLAWHUB_REGISTRY?.trim(),
     );
-    const hasSkillsmpKey = Boolean(process.env.SKILLSMP_API_KEY?.trim());
+    const _hasSkillsmpKey = Boolean(process.env.SKILLSMP_API_KEY?.trim());
     if (!hasSkillsRegistry) {
       process.env.SKILLS_REGISTRY = "https://clawhub.ai";
     }
@@ -3630,7 +3630,7 @@ export const logToChatListener = (entry: LogEntry) => {
             isLog: "true",
           },
         )
-        .catch(() => { });
+        .catch(() => {});
     }
   }
 };
@@ -3718,12 +3718,12 @@ export async function startEliza(
     const postgresUrl = process.env.POSTGRES_URL;
     logger.info(
       `[eliza] Database provider: ${dbProvider}` +
-      (dbProvider === "pglite" && pgliteDir
-        ? ` | data dir: ${pgliteDir}`
-        : "") +
-      (dbProvider === "postgres" && postgresUrl
-        ? ` | connection: ${postgresUrl.replace(/:\/\/([^:]+):([^@]+)@/, "://$1:***@")}`
-        : ""),
+        (dbProvider === "pglite" && pgliteDir
+          ? ` | data dir: ${pgliteDir}`
+          : "") +
+        (dbProvider === "postgres" && postgresUrl
+          ? ` | connection: ${postgresUrl.replace(/:\/\/([^:]+):([^@]+)@/, "://$1:***@")}`
+          : ""),
     );
   }
 
@@ -3817,7 +3817,6 @@ export async function startEliza(
   const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
   const elizaPlugin = createElizaPlugin({
     workspaceDir,
-
 
     agentId,
   });
@@ -3939,8 +3938,8 @@ export async function startEliza(
     ?.mode as string | undefined;
   const sandboxMode: SandboxMode =
     sandboxModeStr === "light" ||
-      sandboxModeStr === "standard" ||
-      sandboxModeStr === "max"
+    sandboxModeStr === "standard" ||
+    sandboxModeStr === "max"
       ? sandboxModeStr
       : "off";
   const isSandboxActive = sandboxMode !== "off";
@@ -3972,18 +3971,18 @@ export async function startEliza(
         workspaceRoot: workspaceDir ?? undefined,
         browser: browserSettings
           ? {
-            enabled: (browserSettings.enabled as boolean) ?? false,
-            image: (browserSettings.image as string) ?? undefined,
-            cdpPort: (browserSettings.cdpPort as number) ?? undefined,
-            vncPort: (browserSettings.vncPort as number) ?? undefined,
-            noVncPort: (browserSettings.noVncPort as number) ?? undefined,
-            headless: (browserSettings.headless as boolean) ?? undefined,
-            enableNoVnc:
-              (browserSettings.enableNoVnc as boolean) ?? undefined,
-            autoStart: (browserSettings.autoStart as boolean) ?? true,
-            autoStartTimeoutMs:
-              (browserSettings.autoStartTimeoutMs as number) ?? undefined,
-          }
+              enabled: (browserSettings.enabled as boolean) ?? false,
+              image: (browserSettings.image as string) ?? undefined,
+              cdpPort: (browserSettings.cdpPort as number) ?? undefined,
+              vncPort: (browserSettings.vncPort as number) ?? undefined,
+              noVncPort: (browserSettings.noVncPort as number) ?? undefined,
+              headless: (browserSettings.headless as boolean) ?? undefined,
+              enableNoVnc:
+                (browserSettings.enableNoVnc as boolean) ?? undefined,
+              autoStart: (browserSettings.autoStart as boolean) ?? true,
+              autoStartTimeoutMs:
+                (browserSettings.autoStartTimeoutMs as number) ?? undefined,
+            }
           : undefined,
       });
 
@@ -4041,17 +4040,17 @@ export async function startEliza(
     // Sandbox options — only active when mode != "off"
     ...(isSandboxActive
       ? {
-        sandboxMode: true,
-        sandboxAuditHandler: sandboxAuditLog
-          ? (event: SandboxFetchAuditEvent) => {
-            sandboxAuditLog.recordTokenReplacement(
-              event.direction,
-              event.url,
-              event.tokenIds,
-            );
-          }
-          : undefined,
-      }
+          sandboxMode: true,
+          sandboxAuditHandler: sandboxAuditLog
+            ? (event: SandboxFetchAuditEvent) => {
+                sandboxAuditLog.recordTokenReplacement(
+                  event.direction,
+                  event.url,
+                  event.tokenIds,
+                );
+              }
+            : undefined,
+        }
       : {}),
     settings: {
       VALIDATION_LEVEL: "fast",
@@ -4113,11 +4112,11 @@ export async function startEliza(
     const loadedNames = resolvedPlugins.map((p) => p.name).join(", ");
     logger.error(
       `[eliza] @elizaos/plugin-sql was NOT found among resolved plugins. ` +
-      `Loaded: [${loadedNames}]`,
+        `Loaded: [${loadedNames}]`,
     );
     throw new Error(
       "@elizaos/plugin-sql is required but was not loaded. " +
-      "Ensure the package is installed and built (check for import errors above).",
+        "Ensure the package is installed and built (check for import errors above).",
     );
   }
 
@@ -4136,8 +4135,8 @@ export async function startEliza(
   } else {
     logger.warn(
       "[eliza] @elizaos/plugin-local-embedding not found — embeddings " +
-      "will fall back to whatever TEXT_EMBEDDING handler is registered by " +
-      "other plugins (may incur cloud API costs)",
+        "will fall back to whatever TEXT_EMBEDDING handler is registered by " +
+        "other plugins (may incur cloud API costs)",
     );
   }
 
@@ -4166,12 +4165,17 @@ export async function startEliza(
           runtime.registerPlugin(resolved.plugin),
           new Promise<never>((_resolve, reject) =>
             setTimeout(
-              () => reject(new Error(`Timed out after ${PLUGIN_REG_TIMEOUT_MS / 1000}s`)),
+              () =>
+                reject(
+                  new Error(`Timed out after ${PLUGIN_REG_TIMEOUT_MS / 1000}s`),
+                ),
               PLUGIN_REG_TIMEOUT_MS,
             ),
           ),
         ]);
-        logger.info(`[eliza] ✓ ${name} pre-registered (${Date.now() - regStart}ms)`);
+        logger.info(
+          `[eliza] ✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
+        );
       } catch (err) {
         logger.warn(
           `[eliza] Core plugin ${name} pre-registration failed: ${formatError(err)}`,
@@ -4200,19 +4204,19 @@ export async function startEliza(
 
       const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
-          getCatalogStats?: () => {
-            loaded: number;
-            total: number;
-            storageType: string;
-          };
-        }
+            getCatalogStats?: () => {
+              loaded: number;
+              total: number;
+              storageType: string;
+            };
+          }
         | null
         | undefined;
       if (svc?.getCatalogStats) {
         const stats = svc.getCatalogStats();
         logger.info(
           `[eliza] AgentSkills ready — ${stats.loaded} skills loaded, ` +
-          `${stats.total} in catalog (storage: ${stats.storageType})`,
+            `${stats.total} in catalog (storage: ${stats.storageType})`,
         );
       }
 
@@ -4395,7 +4399,8 @@ export async function startEliza(
   // surface.
   try {
     const { startApiServer } = await import("../api/server");
-    const apiPort = Number(process.env.ELIZA_PORT || process.env.ELIZA_PORT) || 2138;
+    const apiPort =
+      Number(process.env.ELIZA_PORT || process.env.ELIZA_PORT) || 2138;
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
       runtime,
@@ -4450,7 +4455,6 @@ export async function startEliza(
           const freshElizaPlugin = createElizaPlugin({
             workspaceDir:
               freshConfig.agents?.defaults?.workspace ?? workspaceDir,
-
 
             agentId:
               freshCharacter.name?.toLowerCase().replace(/\s+/g, "-") ?? "main",
@@ -4598,7 +4602,7 @@ export async function startEliza(
     console.log("[eliza] Server running. Press Ctrl+C to stop.");
 
     // Keep process alive — the API server handles all interaction
-    const keepAlive = setInterval(() => { }, 1 << 30); // ~12 days
+    const keepAlive = setInterval(() => {}, 1 << 30); // ~12 days
 
     // Cleanup on exit
     const cleanup = async () => {
@@ -4696,7 +4700,7 @@ export async function startEliza(
           !fallbackWorld.metadata.ownership ||
           typeof fallbackWorld.metadata.ownership !== "object" ||
           (fallbackWorld.metadata.ownership as { ownerId: string }).ownerId !==
-          userId
+            userId
         ) {
           fallbackWorld.metadata.ownership = { ownerId: userId };
           needsUpdate = true;
@@ -4892,7 +4896,7 @@ export async function startInCloudMode(
     logger.error(`[eliza] Failed to connect to cloud agent: ${msg}`);
     throw new Error(
       `Failed to connect to cloud agent: ${msg}\n` +
-      "You can retry with `eliza start`, or switch to local mode with `eliza config set cloud.runtime local`",
+        "You can retry with `eliza start`, or switch to local mode with `eliza config set cloud.runtime local`",
     );
   }
 }

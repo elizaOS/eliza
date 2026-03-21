@@ -1304,15 +1304,55 @@ export const CHARACTER_PRESETS = [
 
 export const CHARACTER_PRESET_META: Record<
   string,
-  { name: string; avatarIndex: number; voicePresetId?: string; catchphrase: string }
+  {
+    name: string;
+    avatarIndex: number;
+    voicePresetId?: string;
+    catchphrase: string;
+  }
 > = {
-  "I'm here to help you.": { name: "Chen", avatarIndex: 1, voicePresetId: "sarah", catchphrase: "I'm here to help you." },
-  "I'm here to get things done.": { name: "Jin", avatarIndex: 2, voicePresetId: "adam", catchphrase: "I'm here to get things done." },
-  "I'm online and ready.": { name: "Kei", avatarIndex: 3, voicePresetId: "lily", catchphrase: "I'm online and ready." },
-  "I'm ready to assist.": { name: "Momo", avatarIndex: 4, voicePresetId: "alice", catchphrase: "I'm ready to assist." },
-  "Let's build something fun.": { name: "Rin", avatarIndex: 5, voicePresetId: "gigi", catchphrase: "Let's build something fun." },
-  "I am ready when you are.": { name: "Ryu", avatarIndex: 6, voicePresetId: "daniel", catchphrase: "I am ready when you are." },
-  "Show me what we're building.": { name: "Satoshi", avatarIndex: 7, voicePresetId: "callum", catchphrase: "Show me what we're building." },
+  "I'm here to help you.": {
+    name: "Chen",
+    avatarIndex: 1,
+    voicePresetId: "sarah",
+    catchphrase: "I'm here to help you.",
+  },
+  "I'm here to get things done.": {
+    name: "Jin",
+    avatarIndex: 2,
+    voicePresetId: "adam",
+    catchphrase: "I'm here to get things done.",
+  },
+  "I'm online and ready.": {
+    name: "Kei",
+    avatarIndex: 3,
+    voicePresetId: "lily",
+    catchphrase: "I'm online and ready.",
+  },
+  "I'm ready to assist.": {
+    name: "Momo",
+    avatarIndex: 4,
+    voicePresetId: "alice",
+    catchphrase: "I'm ready to assist.",
+  },
+  "Let's build something fun.": {
+    name: "Rin",
+    avatarIndex: 5,
+    voicePresetId: "gigi",
+    catchphrase: "Let's build something fun.",
+  },
+  "I am ready when you are.": {
+    name: "Ryu",
+    avatarIndex: 6,
+    voicePresetId: "daniel",
+    catchphrase: "I am ready when you are.",
+  },
+  "Show me what we're building.": {
+    name: "Satoshi",
+    avatarIndex: 7,
+    voicePresetId: "callum",
+    catchphrase: "Show me what we're building.",
+  },
 };
 
 /** Return the full list of style presets. */

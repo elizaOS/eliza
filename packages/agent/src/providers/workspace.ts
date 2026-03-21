@@ -211,10 +211,7 @@ export type WorkspaceInitFile = {
  * Returns true if the file content matches the built-in boilerplate template.
  * Used to skip injecting generic placeholder docs into the prompt.
  */
-export function isDefaultBoilerplate(
-  name: string,
-  content: string,
-): boolean {
+export function isDefaultBoilerplate(name: string, content: string): boolean {
   const template = WORKSPACE_TEMPLATES[name];
   if (!template) return false;
   return content.trim() === template.trim();
@@ -398,8 +395,7 @@ async function resolveMemoryInitEntries(
     DEFAULT_MEMORY_FILENAME,
     DEFAULT_MEMORY_ALT_FILENAME,
   ];
-  const entries: Array<{ name: WorkspaceInitFileName; filePath: string }> =
-    [];
+  const entries: Array<{ name: WorkspaceInitFileName; filePath: string }> = [];
   for (const name of candidates) {
     const filePath = path.join(resolvedDir, name);
     try {
@@ -416,8 +412,7 @@ async function resolveMemoryInitEntries(
   }
 
   const seen = new Set<string>();
-  const deduped: Array<{ name: WorkspaceInitFileName; filePath: string }> =
-    [];
+  const deduped: Array<{ name: WorkspaceInitFileName; filePath: string }> = [];
   for (const entry of entries) {
     let key = entry.filePath;
     try {
