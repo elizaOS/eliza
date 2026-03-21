@@ -1,8 +1,8 @@
 from eliza.v1 import agent_pb2 as _agent_pb2
 from eliza.v1 import components_pb2 as _components_pb2
+from eliza.v1 import payment_pb2 as _payment_pb2
 from eliza.v1 import service_pb2 as _service_pb2
 from google.protobuf import struct_pb2 as _struct_pb2
-from eliza.v1 import payment_pb2 as _payment_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor

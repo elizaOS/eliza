@@ -47,10 +47,10 @@ function buildCtx(
     resolveStateDir: () => "/tmp/eliza-state",
     resolvePath: (value: string) => value,
     getHomeDir: () => "/home/test",
-    isSafeResetStateDir: () => true,
-    stateDirExists: () => false,
-    removeStateDir: vi.fn(),
-    logWarn: vi.fn(),
+    isSafeResetStateDir: (_resolvedState: string, _home: string) => true,
+    stateDirExists: (_resolvedState: string) => false,
+    removeStateDir: vi.fn<(_resolvedState: string) => void>(),
+    logWarn: vi.fn<(_message: string) => void>(),
     getStatus,
     getJson,
     ...overrides,
@@ -103,11 +103,14 @@ describe("agent-admin-routes", () => {
         import("@elizaos/core").AgentRuntime,
         "character" | "getSetting" | "modelProvider"
       > = {
-        character: { name: "NewAgent" },
+        character: { name: "NewAgent" } as import("@elizaos/core").Character,
         getSetting: () => undefined,
-        modelProvider: "openai",
+        modelProvider: "openai" as import("@elizaos/core").ModelProviderName,
       };
-      const onRestart = vi.fn(async () => mockRuntime);
+      const onRestart = vi.fn(
+        async () =>
+          mockRuntime as unknown as import("@elizaos/core").AgentRuntime,
+      );
       const onRuntimeSwapped = vi.fn();
       const ctx = buildCtx("POST", "/api/agent/restart", {
         onRestart,
