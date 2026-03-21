@@ -54,7 +54,7 @@ export const restartAction: Action = {
 
     const restartText = reason ? `Restarting… (${reason})` : "Restarting…";
 
-    logger.info(`[milady] ${restartText}`);
+    logger.info(`[eliza] ${restartText}`);
 
     // Persist a "Restarting…" memory so it shows up in the message log.
     try {
@@ -65,7 +65,7 @@ export const restartAction: Action = {
         worldId: message.worldId,
         content: {
           text: restartText,
-          source: "milady",
+          source: "eliza",
           type: "system",
         },
       };
@@ -73,7 +73,7 @@ export const restartAction: Action = {
     } catch (err) {
       // Non-fatal — the restart still proceeds even if the memory write fails.
       const msg = err instanceof Error ? err.message : String(err);
-      logger.warn(`[milady] Could not persist restart memory: ${msg}`);
+      logger.warn(`[eliza] Could not persist restart memory: ${msg}`);
     }
 
     // Schedule the restart slightly after returning so the response can be

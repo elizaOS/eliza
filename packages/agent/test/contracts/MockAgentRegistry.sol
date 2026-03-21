@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
- * @title MockMiladyAgentRegistry
+ * @title MockAgentRegistry
  * @dev Mock ERC-8004 Agent Identity Registry for testing.
  *
  * Implements the core interface expected by RegistryService:
@@ -14,7 +14,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  * - Token URI management
  * - Status queries
  */
-contract MockMiladyAgentRegistry is ERC721URIStorage, Ownable {
+contract MockAgentRegistry is ERC721URIStorage, Ownable {
     struct Agent {
         string name;
         string endpoint;
@@ -39,7 +39,7 @@ contract MockMiladyAgentRegistry is ERC721URIStorage, Ownable {
         bytes32 capabilitiesHash
     );
 
-    constructor() ERC721("Milady Agent Registry", "MILAIDY") {
+    constructor() ERC721("Agent Registry", "AGENT") {
         _tokenIdCounter = 1; // Start at 1, 0 means unregistered
     }
 
