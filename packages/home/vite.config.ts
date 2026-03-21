@@ -119,12 +119,12 @@ export default defineConfig({
       },
       // @elizaos/* → sibling packages in the monorepo (built dist)
       {
-        find: /^@elizaos\/autonomous$/,
-        replacement: path.resolve(packagesRoot, "autonomous/dist/packages/autonomous/src/index.js"),
+        find: /^@elizaos\/agent$/,
+        replacement: path.resolve(packagesRoot, "autonomous/dist/packages/agent/src/index.js"),
       },
       {
-        find: /^@elizaos\/autonomous\/(.*)$/,
-        replacement: path.resolve(packagesRoot, "autonomous/dist/packages/autonomous/src/$1"),
+        find: /^@elizaos\/agent\/(.*)$/,
+        replacement: path.resolve(packagesRoot, "autonomous/dist/packages/agent/src/$1"),
       },
       {
         find: /^@elizaos\/app-core$/,
