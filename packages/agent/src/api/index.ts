@@ -32,7 +32,6 @@ export * from "./memory-routes";
 export * from "./merkle-tree";
 export * from "./models-routes";
 export * from "./nfa-routes";
-export * from "./nft-verify";
 export * from "./og-tracker";
 export * from "./parse-action-block";
 export * from "./permissions-routes";

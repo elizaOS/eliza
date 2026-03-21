@@ -11,7 +11,7 @@
     "directory": "packages/agent"
   },
   "keywords": [
-    "milady",
+    "eliza",
     "agent",
     "backend",
     "runtime",
@@ -19,7 +19,7 @@
   ],
   "main": "src/index.ts",
   "bin": {
-    "milady-autonomous": "./src/bin.ts"
+    "eliza-autonomous": "./src/bin.ts"
   },
   "scripts": {
     "clean": "rm -rf dist",
@@ -61,7 +61,7 @@
     "./api/memory-routes": "./src/api/memory-routes.ts",
     "./api/merkle-tree": "./src/api/merkle-tree.ts",
     "./api/nfa-routes": "./src/api/nfa-routes.ts",
-    "./api/nft-verify": "./src/api/nft-verify.ts",
+
     "./api/og-tracker": "./src/api/og-tracker.ts",
     "./api/permissions-routes": "./src/api/permissions-routes.ts",
     "./api/registry-routes": "./src/api/registry-routes.ts",

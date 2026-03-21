@@ -23,13 +23,13 @@ jobs:
         include:
           - os: macos-15
             platform: mac
-            artifact_name: milady-electron-mac
+            artifact_name: eliza-electron-mac
           - os: ubuntu-latest
             platform: linux
-            artifact_name: milady-electron-linux
+            artifact_name: eliza-electron-linux
           - os: windows-latest
             platform: win
-            artifact_name: milady-electron-win
+            artifact_name: eliza-electron-win
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30

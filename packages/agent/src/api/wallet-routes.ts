@@ -10,10 +10,8 @@ import { createIntegrationTelemetrySpan } from "../diagnostics/integration-obser
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers";
 import {
   fetchEvmBalances,
-  fetchEvmNfts,
   fetchSolanaBalances,
   fetchSolanaNativeBalanceViaRpc,
-  fetchSolanaNfts,
   generateWalletForChain,
   getWalletAddresses,
   importWallet,
@@ -21,7 +19,6 @@ import {
   type WalletBalancesResponse,
   type WalletChain,
   type WalletConfigStatus,
-  type WalletNftsResponse,
 } from "./wallet";
 import {
   applyWalletRpcConfigUpdate,
@@ -109,8 +106,6 @@ export interface WalletRouteDependencies {
   fetchEvmBalances: typeof fetchEvmBalances;
   fetchSolanaBalances: typeof fetchSolanaBalances;
   fetchSolanaNativeBalanceViaRpc: typeof fetchSolanaNativeBalanceViaRpc;
-  fetchEvmNfts: typeof fetchEvmNfts;
-  fetchSolanaNfts: typeof fetchSolanaNfts;
   validatePrivateKey: typeof validatePrivateKey;
   importWallet: typeof importWallet;
   generateWalletForChain: typeof generateWalletForChain;
@@ -121,8 +116,6 @@ export const DEFAULT_WALLET_ROUTE_DEPENDENCIES: WalletRouteDependencies = {
   fetchEvmBalances,
   fetchSolanaBalances,
   fetchSolanaNativeBalanceViaRpc,
-  fetchEvmNfts,
-  fetchSolanaNfts,
   validatePrivateKey,
   importWallet,
   generateWalletForChain,
@@ -229,68 +222,6 @@ export async function handleWalletRoutes(
     return true;
   }
 
-  // GET /api/wallet/nfts
-  if (method === "GET" && pathname === "/api/wallet/nfts") {
-    const addresses = deps.getWalletAddresses();
-    const rpcReadiness = resolveWalletRpcReadiness(config);
-    const alchemyKey = process.env.ALCHEMY_API_KEY?.trim() || null;
-    const ankrKey = process.env.ANKR_API_KEY?.trim() || null;
-    const heliusKey = process.env.HELIUS_API_KEY?.trim() || null;
-
-    const result: WalletNftsResponse = { evm: [], solana: null };
-
-    if (
-      addresses.evmAddress &&
-      (Boolean(alchemyKey) || rpcReadiness.managedBscRpcReady)
-    ) {
-      const evmNftsSpan = createIntegrationTelemetrySpan({
-        boundary: "wallet",
-        operation: "fetch_evm_nfts",
-      });
-      try {
-        result.evm = await deps.fetchEvmNfts(addresses.evmAddress, {
-          alchemyKey,
-          ankrKey,
-          cloudManagedAccess: rpcReadiness.cloudManagedAccess,
-          bscRpcUrls: rpcReadiness.bscRpcUrls,
-          ethereumRpcUrls: rpcReadiness.ethereumRpcUrls,
-          baseRpcUrls: rpcReadiness.baseRpcUrls,
-          avaxRpcUrls: rpcReadiness.avalancheRpcUrls,
-          nodeRealBscRpcUrl: process.env.NODEREAL_BSC_RPC_URL,
-          quickNodeBscRpcUrl: process.env.QUICKNODE_BSC_RPC_URL,
-          bscRpcUrl: process.env.BSC_RPC_URL,
-          ethereumRpcUrl: process.env.ETHEREUM_RPC_URL,
-          baseRpcUrl: process.env.BASE_RPC_URL,
-          avaxRpcUrl: process.env.AVALANCHE_RPC_URL,
-        });
-        evmNftsSpan.success();
-      } catch (err) {
-        evmNftsSpan.failure({ error: err });
-        logger.warn(`[wallet] EVM NFT fetch failed: ${err}`);
-      }
-    }
-
-    if (addresses.solanaAddress && heliusKey) {
-      const solanaNftsSpan = createIntegrationTelemetrySpan({
-        boundary: "wallet",
-        operation: "fetch_solana_nfts",
-      });
-      try {
-        const nfts = await deps.fetchSolanaNfts(
-          addresses.solanaAddress,
-          heliusKey,
-        );
-        result.solana = { nfts };
-        solanaNftsSpan.success();
-      } catch (err) {
-        solanaNftsSpan.failure({ error: err });
-        logger.warn(`[wallet] Solana NFT fetch failed: ${err}`);
-      }
-    }
-
-    json(res, result);
-    return true;
-  }
 
   // POST /api/wallet/import
   if (method === "POST" && pathname === "/api/wallet/import") {

@@ -1,5 +1,5 @@
 /**
- * Restart infrastructure for Milady.
+ * Restart infrastructure for Eliza.
  *
  * Provides a pluggable restart handler so the restart action (and the
  * `/api/agent/restart` endpoint) work in every host environment:

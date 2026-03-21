@@ -17,7 +17,7 @@ export function findProjectRoot(startDir: string): string {
       if (
         typeof pkg.name === "string" &&
         (pkg.name.toLowerCase() === "elizaos" ||
-          pkg.name.toLowerCase() === "miladyai")
+          pkg.name.toLowerCase() === "elizaos")
       ) {
         return dir;
       }

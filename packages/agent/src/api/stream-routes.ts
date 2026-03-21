@@ -57,7 +57,7 @@ export type { StreamRouteState } from "./stream-route-state";
  *  - Legacy desktop screencapture bridges
  *  - Any client POSTing raw JPEG bytes
  */
-const MJPEG_BOUNDARY = "miladyframe";
+const MJPEG_BOUNDARY = "elizaframe";
 
 const mjpegSubscribers = new Set<ServerResponse>();
 let latestFrame: Buffer | null = null;
@@ -183,7 +183,7 @@ export function detectCaptureMode(): StreamConfig["inputMode"] {
   if (explicit === "file") return "file";
 
   // Desktop bridge -> pipe mode
-  if ("__miladyScreenCapture" in (globalThis as Record<string, unknown>)) {
+  if ("__elizaScreenCapture" in (globalThis as Record<string, unknown>)) {
     return "pipe";
   }
 

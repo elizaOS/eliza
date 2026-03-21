@@ -12,7 +12,6 @@ import { logger } from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import type {
   KeyValidationResult,
-  SolanaNft,
   SolanaTokenBalance,
   WalletAddresses,
   WalletChain,
@@ -41,10 +40,8 @@ export type {
   BscUnsignedTradeTx,
   BscUnsignedTransferTx,
   EvmChainBalance,
-  EvmNft,
   EvmTokenBalance,
   KeyValidationResult,
-  SolanaNft,
   SolanaTokenBalance,
   TradePermissionMode,
   WalletAddresses,
@@ -54,7 +51,6 @@ export type {
   WalletGenerateResult,
   WalletImportResult,
   WalletKeys,
-  WalletNftsResponse,
   WalletTradeLedgerEntry,
   WalletTradeSource,
   WalletTradingProfileResponse,
@@ -82,7 +78,6 @@ export {
   DEFAULT_EVM_CHAINS,
   type EvmProviderKeys,
   fetchEvmBalances,
-  fetchEvmNfts,
   resolveEvmProviderKeys,
 } from "./wallet-evm-balance";
 
@@ -693,53 +688,3 @@ export async function fetchSolanaNativeBalanceViaRpc(
   throw new Error(errors.join(" | ").slice(0, 400) || "Solana RPC unavailable");
 }
 
-export async function fetchSolanaNfts(
-  address: string,
-  heliusKey: string,
-): Promise<SolanaNft[]> {
-  const url = `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
-  try {
-    const data = await jsonOrThrow<{
-      result?: { items?: HeliusAsset[] };
-      error?: { message?: string };
-    }>(
-      await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "getAssetsByOwner",
-          params: {
-            ownerAddress: address,
-            displayOptions: { showFungible: false },
-            page: 1,
-            limit: 100,
-          },
-        }),
-      }),
-    );
-    if (data.error?.message) throw new Error(data.error.message);
-    const items = data.result?.items ?? [];
-    return items
-      .filter(
-        (i) =>
-          i.interface === "V1_NFT" ||
-          i.interface === "ProgrammableNFT" ||
-          i.interface === "V2_NFT",
-      )
-      .map((i) => ({
-        mint: i.id,
-        name: i.content?.metadata?.name ?? "Untitled",
-        description: (i.content?.metadata?.description ?? "").slice(0, 200),
-        imageUrl: i.content?.links?.image ?? "",
-        collectionName:
-          i.grouping?.find((g) => g.group_key === "collection")
-            ?.collection_metadata?.name ?? "",
-      }));
-  } catch (err) {
-    logger.warn(`Solana NFT fetch failed: ${err}`);
-    return [];
-  }
-}
