@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0-alpha.83",
+  "version": "2.0.0-alpha.84",
   "packages": [
     "packages/*"
   ],
@@ -13,7 +13,8 @@
         "develop",
         "alpha",
         "v2.0.0",
-        "release/*"
+        "release/*",
+        "new-beginnings"
       ],
       "ignoreChanges": [
         "**/*.md",
@@ -28,7 +29,8 @@
         "develop",
         "alpha",
         "v2.0.0",
-        "release/*"
+        "release/*",
+        "new-beginnings"
       ],
       "message": "chore(release): publish %s",
       "push": true,

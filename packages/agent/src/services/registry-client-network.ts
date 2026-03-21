@@ -113,9 +113,9 @@ export async function fetchFromNetwork(params: {
             uiExtension: e.app.uiExtension,
             viewer: e.app.viewer
               ? {
-                ...e.app.viewer,
-                sandbox: sanitizeSandbox(e.app.viewer.sandbox),
-              }
+                  ...e.app.viewer,
+                  sandbox: sanitizeSandbox(e.app.viewer.sandbox),
+                }
               : undefined,
           };
         }

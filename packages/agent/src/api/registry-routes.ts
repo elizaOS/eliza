@@ -1,5 +1,4 @@
 import type {
-  PluginManagerLike,
   RegistryPluginInfo,
   RegistrySearchResult,
 } from "../services/plugin-manager-types";

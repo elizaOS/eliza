@@ -18,13 +18,13 @@ import {
   resolveTtsConfig,
   ttsStreamBridge,
 } from "../services/tts-stream-bridge";
+import { sanitizeSpeechText } from "../utils/spoken-text";
 import {
   readRequestBody,
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
 } from "./http-helpers";
-import { sanitizeSpeechText } from "../utils/spoken-text";
 import {
   getHeadlessCaptureConfig,
   parseDestinationQuery,
@@ -40,7 +40,7 @@ import {
   handleStreamVoiceRoute as handleAutonomousStreamVoiceRoute,
   onAgentMessage as onAutonomousAgentMessage,
 } from "./stream-voice-routes";
-import type { OverlayLayoutData, StreamingDestination } from "./streaming-types";
+import type { StreamingDestination } from "./streaming-types";
 
 export type { StreamRouteState } from "./stream-route-state";
 
@@ -87,7 +87,10 @@ function pushFrameToSubscribers(frame: Buffer): void {
  * hooks. Canonical definition lives in plugin-streaming-base; re-exported here
  * so existing consumers keep working.
  */
-export type { OverlayLayoutData, StreamingDestination } from "./streaming-types";
+export type {
+  OverlayLayoutData,
+  StreamingDestination,
+} from "./streaming-types";
 
 /** Resolve the active streaming destination from the registry. */
 export function getActiveDestination(
@@ -116,7 +119,10 @@ function error(res: ServerResponse, message: string, status: number): void {
 function resolveRouteTtsConfig(
   config: unknown,
 ): Record<string, unknown> | null {
-  return resolveTtsConfig(config as never) as unknown as Record<string, unknown> | null;
+  return resolveTtsConfig(config as never) as unknown as Record<
+    string,
+    unknown
+  > | null;
 }
 
 function getRouteTtsProviderStatus(config: unknown): {
@@ -614,9 +620,9 @@ export async function handleStreamRoute(
     try {
       // Stop browser capture
       try {
-          const { stopBrowserCapture } = await import(
-            "../services/browser-capture"
-          );
+        const { stopBrowserCapture } = await import(
+          "../services/browser-capture"
+        );
         await stopBrowserCapture();
       } catch {
         // Browser capture may not have been started -- ignore

@@ -4,6 +4,7 @@ import {
 } from "@elizaos/agent/auth";
 import type { SubscriptionProvider } from "../auth/types";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types";
+import type { ElizaConfig } from "../config/types.eliza";
 import {
   getOnboardingProviderOption,
   isCloudManagedConnection,
@@ -13,7 +14,6 @@ import {
   type OnboardingConnection,
   type OnboardingLocalProviderId,
 } from "../contracts/onboarding";
-import type { ElizaConfig } from "../config/types.eliza";
 
 const REDACTED_SECRET = "[REDACTED]";
 
@@ -179,7 +179,7 @@ export function applySubscriptionProviderConfig(
     provider === "openai-subscription" ? "openai-codex" : provider;
   const modelProvider =
     SUBSCRIPTION_PROVIDER_MAP[
-    subscriptionKey as keyof typeof SUBSCRIPTION_PROVIDER_MAP
+      subscriptionKey as keyof typeof SUBSCRIPTION_PROVIDER_MAP
     ];
 
   if (modelProvider) {
