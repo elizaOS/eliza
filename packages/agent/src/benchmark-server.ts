@@ -13,7 +13,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { createElizaPlugin } from "./runtime/eliza-plugin.ts";
+import { createElizaPlugin } from "./runtime/eliza-plugin.js";
 
 // Load environment variables BEFORE anything else
 // This ensures API keys are available when plugins initialize

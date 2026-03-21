@@ -7,8 +7,6 @@
     "node": "23.3.0"
   },
   "scripts": {
-    "dev:home": "VITE_ENABLE_COMPANION_MODE=false bun run --cwd packages/home dev",
-    "dev:companion": "VITE_ENABLE_COMPANION_MODE=true bun run --cwd packages/home dev",
     "postinstall": "bun scripts/patch-nested-core-dist.mjs",
     "fix-deps": "bun scripts/fix-workspace-deps.mjs",
     "fix-deps:check": "bun scripts/fix-workspace-deps.mjs --check",
