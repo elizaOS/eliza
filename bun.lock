@@ -41,9 +41,46 @@
         "vitest": "^4.0.17",
       },
     },
+<<<<<<< HEAD
     "packages/agent": {
       "name": "@elizaos/agent",
       "version": "2.0.0-alpha.83",
+=======
+    "packages/app-core": {
+      "name": "@elizaos/app-core",
+      "version": "2.0.0-alpha.85",
+      "dependencies": {
+        "@capacitor/core": "8.0.2",
+        "@capacitor/haptics": "8.0.0",
+        "@capacitor/keyboard": "8.0.0",
+        "@capacitor/preferences": "^8.0.1",
+        "@elizaos/autonomous": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+        "@sparkjsdev/spark": "^0.1.10",
+        "lucide-react": "^0.575.0",
+        "three": "^0.182.0",
+        "zod": "^4.3.6",
+      },
+      "devDependencies": {
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+        "@types/three": "^0.182.0",
+        "react-test-renderer": "^19.2.4",
+        "tailwindcss": "^4.1.18",
+        "typescript": "^5.9.3",
+        "vitest": "^4.0.18",
+      },
+      "peerDependencies": {
+        "@pixiv/three-vrm": "^3.4.5",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "three": "^0.182.0",
+      },
+    },
+    "packages/autonomous": {
+      "name": "@elizaos/autonomous",
+      "version": "2.0.0-alpha.85",
+>>>>>>> 0f210826681b16df1bde9b33ed1fbef6c9b0da47
       "bin": {
         "eliza-autonomous": "./src/bin.ts",
       },
@@ -184,7 +221,7 @@
     },
     "packages/daemon": {
       "name": "@elizaos/daemon",
-      "version": "2.0.0-alpha.83",
+      "version": "2.0.0-alpha.85",
       "devDependencies": {
         "@biomejs/biome": "^1.9.4",
         "@types/node": "^22.10.2",
@@ -198,7 +235,7 @@
     },
     "packages/elizaos": {
       "name": "elizaos",
-      "version": "2.0.0-alpha.83",
+      "version": "2.0.0-alpha.85",
       "bin": {
         "elizaos": "./dist/cli.js",
       },
@@ -215,7 +252,7 @@
     },
     "packages/interop": {
       "name": "@elizaos/interop",
-      "version": "2.0.0-alpha.83",
+      "version": "2.0.0-alpha.85",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -226,7 +263,7 @@
     },
     "packages/prompts": {
       "name": "@elizaos/prompts",
-      "version": "2.0.0-alpha.83",
+      "version": "2.0.0-alpha.85",
     },
     "packages/python": {
       "name": "@elizaos/python",
@@ -234,18 +271,18 @@
     },
     "packages/rust": {
       "name": "@elizaos/rust",
-      "version": "2.0.0-alpha.83",
+      "version": "2.0.0-alpha.85",
     },
     "packages/schemas": {
       "name": "@elizaos/schemas",
-      "version": "2.0.0-alpha.83",
+      "version": "2.0.0-alpha.85",
       "devDependencies": {
         "@bufbuild/buf": "^1.47.2",
       },
     },
     "packages/skills": {
       "name": "@elizaos/skills",
-      "version": "2.0.0-alpha.83",
+      "version": "2.0.0-alpha.85",
       "dependencies": {
         "yaml": "^2.8.2",
       },
@@ -256,7 +293,7 @@
     },
     "packages/training": {
       "name": "@elizaos/training",
-      "version": "2.0.0-alpha.83",
+      "version": "2.0.0-alpha.85",
       "dependencies": {
         "@huggingface/hub": "^2.6.12",
         "@vercel/blob": "^0.27.1",
@@ -272,7 +309,7 @@
     },
     "packages/tui": {
       "name": "@elizaos/tui",
-      "version": "2.0.0-alpha.83",
+      "version": "2.0.0-alpha.85",
       "dependencies": {
         "@types/mime-types": "^2.1.4",
         "chalk": "^5.5.0",
@@ -288,7 +325,7 @@
     },
     "packages/typescript": {
       "name": "@elizaos/core",
-      "version": "2.0.0-alpha.83",
+      "version": "2.0.0-alpha.85",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.32.1",
         "@bufbuild/protobuf": "^2.11.0",
@@ -327,6 +364,44 @@
         "vitest": "^4.0.0",
       },
     },
+<<<<<<< HEAD
+=======
+    "packages/ui": {
+      "name": "@elizaos/ui",
+      "version": "2.0.0-alpha.85",
+      "dependencies": {
+        "@radix-ui/react-checkbox": "^1.3.3",
+        "@radix-ui/react-dialog": "^1.1.15",
+        "@radix-ui/react-dropdown-menu": "^2.1.16",
+        "@radix-ui/react-label": "^2.1.8",
+        "@radix-ui/react-popover": "^1.1.15",
+        "@radix-ui/react-select": "^2.2.6",
+        "@radix-ui/react-separator": "^1.1.8",
+        "@radix-ui/react-slider": "^1.3.6",
+        "@radix-ui/react-slot": "^1.2.4",
+        "@radix-ui/react-switch": "^1.2.6",
+        "@radix-ui/react-tabs": "^1.1.13",
+        "@radix-ui/react-tooltip": "^1.2.8",
+        "class-variance-authority": "^0.7.1",
+        "clsx": "^2.1.1",
+        "lucide-react": "^0.575.0",
+        "next-themes": "^0.4.6",
+        "sonner": "^2.0.7",
+        "tailwind-merge": "^2.6.0",
+      },
+      "devDependencies": {
+        "@tailwindcss/vite": "^4.2.1",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+        "tailwindcss": "^4.1.18",
+        "typescript": "^5.9.3",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+    },
+>>>>>>> 0f210826681b16df1bde9b33ed1fbef6c9b0da47
   },
   "trustedDependencies": [
     "sharp",
