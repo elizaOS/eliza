@@ -210,7 +210,6 @@ IMPORTANT ACTION ORDERING RULES:
 - If you use IGNORE, do not include any other actions. IGNORE should be used alone when you should not respond or take any actions.
 
 IMPORTANT ACTION PARAMETERS:
-- Some actions accept input parameters that you should extract from the conversation
 - When an action has parameters listed in its description, include a <params> block for that action
 - Extract parameter values from the user's message and conversation context
 - Required parameters MUST be provided; optional parameters can be omitted if not mentioned
