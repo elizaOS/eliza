@@ -87,8 +87,6 @@ IMPORTANT CODE BLOCK FORMATTING RULES:
 - ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
 - If including inline code (short single words or function names), use single backticks (\`) as appropriate.
 - This ensures the user sees clearly formatted and copyable code when relevant.
-
-First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
 </instructions>
 
 <keys>
@@ -100,8 +98,6 @@ First, think about what you want to do next and plan your actions. Then, write t
 </keys>
 
 <output>
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:
 <response>
@@ -167,8 +163,6 @@ The "post" field should be the post you want to send. Do not including any think
 The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
 The "thought" field should be a short description of what the agent is thinking about before responding, including a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
@@ -186,8 +180,6 @@ Be objective and descriptive. Focus on what you can actually see in the image ra
 </instructions>
 
 <output>
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:
 <response>
@@ -436,8 +428,6 @@ export const optionExtractionTemplate = `# Task: Extract selected task and optio
 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
 4. If no clear selection is made, return null for both fields
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Return in XML format:
 <response>
@@ -880,8 +870,6 @@ Message Sender: {{senderName}} (ID: {{senderId}})
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Generate a response in the following format:
 <response>
@@ -929,8 +917,6 @@ Agent: {{agentName}} (ID: {{agentId}})
 5. If multiple matches exist, use context to disambiguate
 6. Consider recent interactions and relationship strength when resolving ambiguity
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Return an XML response with:
 <response>
@@ -967,8 +953,6 @@ export const componentTemplate = `# Task: Extract Source and Update Component Da
    - Includes the new information from the conversation
    - Contains only valid data for this component type
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Return an XML response with the following structure:
 <response>
@@ -1131,8 +1115,8 @@ Continue the task. Decide the next step and take action now.`;
 
 // UPPERCASE aliases for autonomy templates
 export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE =
-	autonomyContinuousFirstTemplate;
+  autonomyContinuousFirstTemplate;
 export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE =
-	autonomyContinuousContinueTemplate;
+  autonomyContinuousContinueTemplate;
 export const AUTONOMY_TASK_FIRST_TEMPLATE = autonomyTaskFirstTemplate;
 export const AUTONOMY_TASK_CONTINUE_TEMPLATE = autonomyTaskContinueTemplate;

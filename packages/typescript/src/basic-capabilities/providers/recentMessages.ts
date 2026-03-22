@@ -97,11 +97,11 @@ export const recentMessagesProvider: Provider = {
 				}),
 				message.entityId !== runtime.agentId
 					? getRecentInteractions(
-							runtime,
-							message.entityId,
-							runtime.agentId,
-							roomId,
-						)
+						runtime,
+						message.entityId,
+						runtime.agentId,
+						roomId,
+					)
 					: Promise.resolve([]),
 			]);
 
@@ -277,16 +277,16 @@ export const recentMessagesProvider: Provider = {
 
 		const receivedMessageHeader = hasReceivedMessage
 			? addHeader(
-					"# Received Message",
-					`${senderName}: ${receivedMessageContent}`,
-				)
+				"# Received Message",
+				`${senderName}: ${receivedMessageContent}`,
+			)
 			: "";
 
 		const focusHeader = hasReceivedMessage
 			? addHeader(
-					"# Focus your response",
-					`You are replying to the above message from **${senderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`,
-				)
+				"# Focus your response",
+				`You are replying to the above message from **${senderName}**. Keep your answer relevant to that message, but include as context any previous messages in the thread from after your last reply.`,
+			)
 			: "";
 
 		// Preload all necessary entities for both types of interactions

@@ -222,8 +222,6 @@ The available role types are:
 # Current context:
 {{content}}
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Format your response as XML with multiple assignments:
 <response>

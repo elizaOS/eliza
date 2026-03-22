@@ -66,8 +66,6 @@ const componentTemplate = `# Task: Extract Source and Update Component Data
    - Includes the new information from the conversation
    - Contains only valid data for this component type
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Return an XML response with the following structure:
 <response>

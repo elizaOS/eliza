@@ -226,8 +226,6 @@ IMPORTANT CODE BLOCK FORMATTING RULES:
 - ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
 - If including inline code (short single words or function names), use single backticks (`) as appropriate.
 - This ensures the user sees clearly formatted and copyable code when relevant.
-
-First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
 </instructions>
 
 <keys>
