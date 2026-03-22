@@ -217,16 +217,20 @@ IMPORTANT ACTION PARAMETERS:
 
 EXAMPLE (action parameters):
 User message: "Send a message to @dev_guru on telegram saying Hello!"
-Actions: REPLY,SEND_MESSAGE
-Params:
-<params>
-    <SEND_MESSAGE>
-        <targetType>user</targetType>
-        <source>telegram</source>
-        <target>dev_guru</target>
-        <text>Hello!</text>
-    </SEND_MESSAGE>
-</params>
+<actions>
+  <action>
+    <name>REPLY</name>
+  </action>
+  <action>
+    <name>SEND_MESSAGE</name>
+    <params>
+      <targetType>user</targetType>
+      <source>telegram</source>
+      <target>dev_guru</target>
+      <text>Hello!</text>
+    </params>
+  </action>
+</actions>
 
 IMPORTANT PROVIDER SELECTION RULES:
 - Only include providers if they are needed to respond accurately.
@@ -246,10 +250,9 @@ IMPORTANT CODE BLOCK FORMATTING RULES:
 
 <keys>
 "thought" should be a short description of what the agent is thinking about and planning.
-"actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought, IN THE ORDER THEY SHOULD BE EXECUTED (if none, use IGNORE, if simply responding with text, use REPLY)
+"actions" should be a list of <action> elements IN THE ORDER THEY SHOULD BE EXECUTED (if none, use a single <action><name>IGNORE</name></action>, if simply responding with text, use <action><name>REPLY</name></action>). Each action that requires parameters should include a <params> child element.
 "providers" should be a comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting (NEVER use "IGNORE" as a provider - use specific provider names like ATTACHMENTS, ENTITIES, FACTS, KNOWLEDGE, etc.)
 "text" should be the text of the next message for {{agentName}} which they will send to the conversation.
-"params" (optional) should contain action parameters when actions require input. Format as nested XML with action name as wrapper.
 </keys>
 
 <output>
@@ -257,22 +260,27 @@ IMPORTANT CODE BLOCK FORMATTING RULES:
 Respond using XML format like this:
 <response>
     <thought>Your thought here</thought>
-    <actions>ACTION1,ACTION2</actions>
+    <actions>
+        <action>
+            <name>ACTION1</name>
+            <params>
+                <paramName1>value1</paramName1>
+                <paramName2>value2</paramName2>
+            </params>
+        </action>
+        <action>
+            <name>ACTION2</name>
+            <params>
+                <paramName1>value1</paramName1>
+            </params>
+        </action>
+    </actions>
     <providers>PROVIDER1,PROVIDER2</providers>
     <text>Your response text here</text>
-    <params>
-        <ACTION1>
-            <paramName1>value1</paramName1>
-            <paramName2>value2</paramName2>
-        </ACTION1>
-        <ACTION2>
-            <paramName1>value1</paramName1>
-        </ACTION2>
-    </params>
 </response>
 
-Note: The <params> block is optional and should only be included when actions require input parameters.
-If an action has no parameters or you're only using REPLY/IGNORE, omit the <params> block entirely.
+Note: The <params> block inside each <action> is optional and should only be included when that action requires input parameters.
+If an action has no parameters or you're only using REPLY/IGNORE, omit the <params> child entirely.
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
 </output>"#;

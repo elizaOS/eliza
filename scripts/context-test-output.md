@@ -136,9 +136,6 @@ Respond using XML format like this:
     </params>
 </response>
 
-The <params> block is optional - only include when actions require input parameters.
-If an action has no parameters or you're only using REPLY/IGNORE, omit <params> entirely.
-
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
 </output>middle code: 01525ecf-9c63-432e-8cee-ebe0a4c82b80
 <output>

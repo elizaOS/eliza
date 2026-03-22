@@ -101,11 +101,10 @@ describe("agent-admin-routes", () => {
     test("returns success when onRestart returns a new runtime", async () => {
       const mockRuntime: Pick<
         import("@elizaos/core").AgentRuntime,
-        "character" | "getSetting" | "modelProvider"
+        "character" | "getSetting"
       > = {
         character: { name: "NewAgent" } as import("@elizaos/core").Character,
-        getSetting: () => undefined,
-        modelProvider: "openai" as import("@elizaos/core").ModelProviderName,
+        getSetting: () => null,
       };
       const onRestart = vi.fn(
         async () =>
