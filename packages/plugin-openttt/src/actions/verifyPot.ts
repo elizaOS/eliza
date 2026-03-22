@@ -7,6 +7,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { createHash } from "node:crypto";
 import { PotSigner } from "openttt";
 import type { PoTToken } from "./generatePot.js";
 import { potCacheGet } from "./generatePot.js";
@@ -66,8 +67,8 @@ export const verifyPot: Action = {
         // Issue 1 fix: look up by potHash first, then fall back to last-generated pointer
         const potHashArg = options?.pot_hash as string | undefined;
         // Try to extract potHash from message text (e.g. "verify pot abc123")
-        const textMatch = (message.content?.text as string ?? "").match(/\b([0-9a-f]{32,})\b/i);
-        const potHashFromText = textMatch?.[1];
+        const textMatch = (message.content?.text as string ?? "").match(/\b([0-9a-f]{64})\b/i);
+        const potHashFromText = textMatch?.[1]?.toLowerCase();
 
         const resolvedHash = potHashArg ?? potHashFromText;
 
@@ -114,6 +115,20 @@ export const verifyPot: Action = {
         if (callback) await callback({ text: `Verification FAILED: ${result.reason}`, content: { result } });
         return { success: false, error: result.reason, data: { result } };
       }
+      // Recompute potHash from payload fields to detect field-level tampering.
+      // An attacker can keep a valid signature but mutate timestamp/sources/agent_id
+      // — recomputing catches that because potHash was derived from those fields.
+      const expectedRaw = `${pot.agent_id}:${pot.timestamp}:${pot.sources.join(",")}:${pot.nonce}`;
+      const expectedHash = createHash("sha256").update(expectedRaw).digest("hex");
+      if (expectedHash !== pot.potHash) {
+        const result: VerifyResult = {
+          valid: false,
+          reason: "PoT payload integrity check failed. Token fields have been tampered with.",
+        };
+        if (callback) await callback({ text: `Verification FAILED: ${result.reason}`, content: { result } });
+        return { success: false, error: result.reason, data: { result } };
+      }
+
       const sigValid = PotSigner.verifyPotSignature(pot.potHash, pot.signature);
       if (!sigValid) {
         const result: VerifyResult = {

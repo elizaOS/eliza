@@ -81,7 +81,7 @@ Consider calling GENERATE_POT before submitting trades.
 
 ```typescript
 import { openTTTPlugin } from "@elizaos/plugin-openttt";
-// openTTTPlugin.actions    → [generatePot, verifyPot]
+// openTTTPlugin.actions    → [generatePot, verifyPot, queryPot]
 // openTTTPlugin.providers  → [timeProvider]
 // openTTTPlugin.evaluators → [potEvaluator]
 ```
