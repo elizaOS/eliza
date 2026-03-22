@@ -194,10 +194,10 @@ export const actionStateProvider: Provider = {
                 String(content?.actionName || "").length +
                 String(content?.actionStatus || "").length +
                 String(content?.planStep || "").length +
-                String(content?.text || "").length + 80 // Add per-entry formatting overhead
+                String(content?.text || "").length
               );
             }, 0);
-            return textChars + runId.length;
+            return textChars + runId.length + 80; // Add formatting overhead consistent with basic-capabilities
           },
           ACTION_HISTORY_TARGET_CHARS,
           { fromEnd: false },
