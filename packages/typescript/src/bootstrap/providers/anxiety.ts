@@ -92,7 +92,11 @@ export const anxietyProvider: Provider = {
 
     return {
       data: { anxiety: randomAnxietyExamples },
-      values: { anxiety },
+      values: { 
+        anxiety,
+        hasAnxiety: true,
+        channel: channelType,
+      },
       text: anxiety,
     };
   },
