@@ -42,12 +42,12 @@ class KnowledgeDirectory(_message.Message):
     def __init__(self, path: _Optional[str] = ..., shared: bool = ...) -> None: ...
 
 class CharacterSettings(_message.Message):
-    __slots__ = ("should_respond_model", "use_multi_step", "max_multistep_iterations", "bootstrap_defllmoff", "bootstrap_keep_resp", "providers_total_timeout_ms", "max_working_memory_entries", "always_respond_channels", "always_respond_sources", "default_temperature", "default_max_tokens", "default_frequency_penalty", "default_presence_penalty", "disable_basic_capabilities", "extra")
+    __slots__ = ("should_respond_model", "use_multi_step", "max_multistep_iterations", "basic_capabilities_defllmoff", "basic_capabilities_keep_resp", "providers_total_timeout_ms", "max_working_memory_entries", "always_respond_channels", "always_respond_sources", "default_temperature", "default_max_tokens", "default_frequency_penalty", "default_presence_penalty", "disable_basic_capabilities", "extra")
     SHOULD_RESPOND_MODEL_FIELD_NUMBER: _ClassVar[int]
     USE_MULTI_STEP_FIELD_NUMBER: _ClassVar[int]
     MAX_MULTISTEP_ITERATIONS_FIELD_NUMBER: _ClassVar[int]
-    BOOTSTRAP_DEFLLMOFF_FIELD_NUMBER: _ClassVar[int]
-    BOOTSTRAP_KEEP_RESP_FIELD_NUMBER: _ClassVar[int]
+    BASIC_CAPABILITIES_DEFLLMOFF_FIELD_NUMBER: _ClassVar[int]
+    BASIC_CAPABILITIES_KEEP_RESP_FIELD_NUMBER: _ClassVar[int]
     PROVIDERS_TOTAL_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     MAX_WORKING_MEMORY_ENTRIES_FIELD_NUMBER: _ClassVar[int]
     ALWAYS_RESPOND_CHANNELS_FIELD_NUMBER: _ClassVar[int]
@@ -61,8 +61,8 @@ class CharacterSettings(_message.Message):
     should_respond_model: str
     use_multi_step: bool
     max_multistep_iterations: int
-    bootstrap_defllmoff: bool
-    bootstrap_keep_resp: bool
+    basic_capabilities_defllmoff: bool
+    basic_capabilities_keep_resp: bool
     providers_total_timeout_ms: int
     max_working_memory_entries: int
     always_respond_channels: str
@@ -73,7 +73,7 @@ class CharacterSettings(_message.Message):
     default_presence_penalty: float
     disable_basic_capabilities: bool
     extra: _struct_pb2.Struct
-    def __init__(self, should_respond_model: _Optional[str] = ..., use_multi_step: bool = ..., max_multistep_iterations: _Optional[int] = ..., bootstrap_defllmoff: bool = ..., bootstrap_keep_resp: bool = ..., providers_total_timeout_ms: _Optional[int] = ..., max_working_memory_entries: _Optional[int] = ..., always_respond_channels: _Optional[str] = ..., always_respond_sources: _Optional[str] = ..., default_temperature: _Optional[float] = ..., default_max_tokens: _Optional[int] = ..., default_frequency_penalty: _Optional[float] = ..., default_presence_penalty: _Optional[float] = ..., disable_basic_capabilities: bool = ..., extra: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
+    def __init__(self, should_respond_model: _Optional[str] = ..., use_multi_step: bool = ..., max_multistep_iterations: _Optional[int] = ..., basic_capabilities_defllmoff: bool = ..., basic_capabilities_keep_resp: bool = ..., providers_total_timeout_ms: _Optional[int] = ..., max_working_memory_entries: _Optional[int] = ..., always_respond_channels: _Optional[str] = ..., always_respond_sources: _Optional[str] = ..., default_temperature: _Optional[float] = ..., default_max_tokens: _Optional[int] = ..., default_frequency_penalty: _Optional[float] = ..., default_presence_penalty: _Optional[float] = ..., disable_basic_capabilities: bool = ..., extra: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
 
 class StyleGuides(_message.Message):
     __slots__ = ("all", "chat", "post")
