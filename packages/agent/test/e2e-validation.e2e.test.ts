@@ -358,6 +358,9 @@ describe("Fresh Install Simulation", () => {
           name: "FreshInstallAgent",
           bio: ["A freshly installed test agent"],
           systemPrompt: "You are a test agent for E2E validation.",
+          postExamples: [
+            "Hello! I am a freshly installed test agent and I am ready to help.",
+          ],
           connection: {
             kind: "local-provider",
             provider: "anthropic",

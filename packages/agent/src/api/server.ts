@@ -14220,23 +14220,8 @@ async function handleRequest(
           ...(result.usage ? { estimatedUsage: result.usage } : {}),
         });
 
-        // Background chat renaming
-        if (conv.title === "New Chat") {
-          // Fire and forget (don't await) to not block the response stream close
-          generateConversationTitle(runtime, prompt, state.agentName).then(
-            (newTitle) => {
-              if (newTitle && state.broadcastWs) {
-                conv.title = newTitle;
-                // Broadcast full conversations list update for simplicity
-                // (or ideally a specific event, but the frontend listens for reloads)
-                state.broadcastWs({
-                  type: "conversation-updated",
-                  conversation: conv,
-                });
-              }
-            },
-          );
-        }
+        // Fire-and-forget background title generation has been removed in favor
+        // of explicit frontend triggers via the PATCH endpoint with `generate: true`
       }
     } catch (err) {
       if (!aborted) {
@@ -14439,9 +14424,47 @@ async function handleRequest(
       error(res, "Conversation not found", 404);
       return;
     }
-    const body = await readJsonBody<{ title?: string }>(req, res);
+    const body = await readJsonBody<{
+      title?: string;
+      generate?: boolean;
+    }>(req, res);
     if (!body) return;
-    if (body.title?.trim()) {
+
+    if (body.generate) {
+      if (!state.runtime) {
+        error(res, "Agent is not running", 503);
+        return;
+      }
+      // Get the last user message to use as the prompt for generation
+      let prompt = "A generic conversation";
+      try {
+        const memoryManager = state.runtime.messageManager;
+        const memories = await memoryManager.getMemories({
+          roomId: conv.roomId,
+          count: 5,
+        });
+        const lastUserMemory = memories.find((m) => m.userId !== state.runtime?.agentId);
+        if (lastUserMemory?.content?.text) {
+          prompt = String(lastUserMemory.content.text);
+        }
+      } catch (err) {
+        logger.warn(
+          `[conversations] Failed to fetch context for title generation: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+
+      const newTitle = await generateConversationTitle(
+        state.runtime,
+        prompt,
+        state.agentName
+      );
+
+      if (newTitle) {
+        conv.title = newTitle;
+        conv.updatedAt = new Date().toISOString();
+        await syncConversationRoomTitle(conv);
+      }
+    } else if (body.title?.trim()) {
       conv.title = body.title.trim();
       conv.updatedAt = new Date().toISOString();
       await syncConversationRoomTitle(conv);
