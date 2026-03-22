@@ -177,11 +177,11 @@ interface StrategyResult {
  */
 /**
  * Tracks the latest response ID per agent+room to handle message superseding.
- * Keys are automatically pruned during processing to prevent memory leaks.
- * Note: Using WeakMap would break functionality since keys must be agent IDs (strings).
+ * Note: This map is pruned in handleMessage() when size exceeds 1000 entries,
+ * and individual agent entries are cleaned up when their agentResponses map empties.
+ * Using WeakMap would break functionality since keys must be agent IDs (strings).
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
-// Note: Pruning moved to handleMessage() to run during processing, not at module load
 
 /**
  * Default implementation of the MessageService interface.
@@ -944,14 +944,10 @@ export class DefaultMessageService implements IMessageService {
         await callback(ignoreContent, "IGNORE");
       }
 
-      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
+      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION).
+      // Note: Agent responses (including ignores) are always persisted when memory creation is enabled,
+      // regardless of ALLOW_MEMORY_SOURCE_IDS (which filters external message sources only).
       if (!disableMemoryCreation) {
-        const allowedSources = getAllowedMemorySources(runtime); 
-        const responseSourceId = "agent_response"; // Default source for agent-generated responses
-        // Only persist if source is allowed or it's an internal agent response
-        const canPersistIgnore = !allowedSources || allowedSources.includes(responseSourceId);
-        
-        if (canPersistIgnore) {
           const ignoreMemory: Memory = {
             id: asUUID(v4()),
             entityId: runtime.agentId,
@@ -965,12 +961,6 @@ export class DefaultMessageService implements IMessageService {
             { src: "service:message", memoryId: ignoreMemory.id },
             "Saved ignore response to memory",
           );
-        } else {
-          runtime.logger.debug(
-            { src: "service:message", allowedSources },
-            "Source not in ALLOW_MEMORY_SOURCE_IDS allowlist; skipping ignore response persistence",
-          );
-        }
       }
 
     // Clean up the response ID
