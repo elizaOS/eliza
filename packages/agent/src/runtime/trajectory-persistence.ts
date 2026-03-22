@@ -1481,9 +1481,7 @@ export async function installDatabaseTrajectoryLogger(
     );
     return;
   }
-  console.warn(
-    "[trajectory-persistence] installDatabaseTrajectoryLogger: patched logger!",
-  );
+
 
   const loggerObject = logger as unknown as object;
   if (patchedLoggers.has(loggerObject)) return;
