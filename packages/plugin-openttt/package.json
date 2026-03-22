@@ -1,0 +1,35 @@
+{
+  "name": "@elizaos/plugin-openttt",
+  "version": "0.1.0",
+  "description": "OpenTTT Proof-of-Time plugin for ElizaOS — temporal attestation for AI agent transactions",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "proof-of-time",
+    "temporal-attestation",
+    "openttt"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@elizaos/core": ">=0.1.0"
+  },
+  "dependencies": {
+    "openttt": "^0.2.6"
+  },
+  "devDependencies": {
+    "@elizaos/core": "^2.0.0-alpha.86",
+    "@types/jest": "^29.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.0.0"
+  },
+  "overrides": {
+    "@types/node": "^25.0.6"
+  }
+}
