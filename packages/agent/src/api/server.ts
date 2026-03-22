@@ -13937,7 +13937,7 @@ async function handleRequest(
   if (method === "POST" && pathname === "/api/conversations") {
     const body = await readJsonBody<{
       title?: string;
-      bootstrapGreeting?: boolean;
+      includeGreeting?: boolean;
       lang?: string;
     }>(req, res);
     if (!body) return;
@@ -13969,7 +13969,7 @@ async function handleRequest(
       try {
         await ensureConversationRoom(conv);
         await syncConversationRoomTitle(conv);
-        if (body.bootstrapGreeting === true) {
+        if (body.includeGreeting === true) {
           const storedGreeting = await ensureConversationGreetingStored(
             conv,
             typeof body.lang === "string" ? body.lang : "en",
@@ -14438,25 +14438,27 @@ async function handleRequest(
       // Get the last user message to use as the prompt for generation
       let prompt = "A generic conversation";
       try {
-        const memoryManager = state.runtime.messageManager;
-        const memories = await memoryManager.getMemories({
+        const memories = await state.runtime.getMemories({
           roomId: conv.roomId,
+          tableName: "messages",
           count: 5,
         });
-        const lastUserMemory = memories.find((m) => m.userId !== state.runtime?.agentId);
+        const lastUserMemory = memories.find(
+          (m) => m.entityId !== state.runtime?.agentId,
+        );
         if (lastUserMemory?.content?.text) {
           prompt = String(lastUserMemory.content.text);
         }
       } catch (err) {
         logger.warn(
-          `[conversations] Failed to fetch context for title generation: ${err instanceof Error ? err.message : String(err)}`
+          `[conversations] Failed to fetch context for title generation: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
 
       const newTitle = await generateConversationTitle(
         state.runtime,
         prompt,
-        state.agentName
+        state.agentName,
       );
 
       if (newTitle) {
@@ -16458,7 +16460,7 @@ export type { captureEarlyLogs };
 export async function startApiServer(opts?: {
   port?: number;
   runtime?: AgentRuntime;
-  /** Initial state when starting without a runtime (e.g. embedded bootstrapping). */
+  /** Initial state when starting without a runtime (e.g. embedded startup flow). */
   initialAgentState?: "not_started" | "starting" | "stopped" | "error";
   /**
    * Called when the UI requests a restart via `POST /api/agent/restart`.
@@ -17615,9 +17617,65 @@ export async function startApiServer(opts?: {
     return restorePromise;
   };
 
+  /**
+   * Load the agent's DB-persisted character data and overlay onto the
+   * in-memory runtime.character.  This ensures Character Editor edits
+   * survive server restarts without depending on eliza.json persistence.
+   */
+  const overlayDbCharacter = async (
+    rt: AgentRuntime,
+    st: typeof state,
+  ): Promise<void> => {
+    try {
+      const dbAgent = await rt.getAgent(rt.agentId);
+      const agentRecord = dbAgent as unknown as Record<string, unknown> | null;
+      const saved = agentRecord?.character as
+        | Record<string, unknown>
+        | undefined;
+      if (!saved || typeof saved !== "object") return;
+
+      const c = rt.character;
+      // Only overlay fields that were explicitly saved (non-empty)
+      if (typeof saved.name === "string" && saved.name) c.name = saved.name;
+      if (Array.isArray(saved.bio) && saved.bio.length > 0) {
+        c.bio = saved.bio as string[];
+      }
+      if (typeof saved.system === "string" && saved.system) {
+        c.system = saved.system;
+      }
+      if (Array.isArray(saved.adjectives)) {
+        c.adjectives = saved.adjectives as string[];
+      }
+      if (Array.isArray(saved.topics)) {
+        (c as { topics?: string[] }).topics = saved.topics as string[];
+      }
+      if (saved.style && typeof saved.style === "object") {
+        c.style = saved.style as NonNullable<typeof c.style>;
+      }
+      if (Array.isArray(saved.messageExamples)) {
+        c.messageExamples = saved.messageExamples as NonNullable<
+          typeof c.messageExamples
+        >;
+      }
+      if (Array.isArray(saved.postExamples) && saved.postExamples.length > 0) {
+        c.postExamples = saved.postExamples as string[];
+      }
+      // Update agent name on state
+      st.agentName = c.name ?? st.agentName;
+      logger.info(
+        `[character-db] Overlaid DB-persisted character "${c.name}" onto runtime`,
+      );
+    } catch (err) {
+      logger.warn(
+        `[character-db] Failed to load character from DB: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  };
+
   // Restore conversations from DB at initial boot (if runtime was passed in)
   if (opts?.runtime) {
     void beginConversationRestore(opts.runtime);
+    void overlayDbCharacter(opts.runtime, state);
   }
 
   /** Hot-swap the runtime reference (used after an in-process restart). */
@@ -17642,6 +17700,9 @@ export async function startApiServer(opts?: {
 
     // Restore conversations from DB so they survive restarts
     void beginConversationRestore(rt);
+
+    // Overlay DB-persisted character data (from Character Editor saves)
+    void overlayDbCharacter(rt, state);
 
     // Broadcast status update immediately after restart
     broadcastStatus();

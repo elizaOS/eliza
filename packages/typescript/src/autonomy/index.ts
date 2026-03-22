@@ -1,5 +1,5 @@
 /**
- * Autonomy Module for elizaOS Bootstrap
+ * Autonomy module for elizaOS
  *
  * Provides autonomous operation capabilities for agents.
  */
