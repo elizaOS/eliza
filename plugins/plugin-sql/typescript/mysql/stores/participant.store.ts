@@ -1,4 +1,4 @@
-import { type Entity, type Metadata, type Participant, type UUID, logger } from "@elizaos/core";
+import { type Entity, type Metadata, type Participant, type ParticipantUpdateFields, type UUID, logger } from "@elizaos/core";
 import { and, eq, or, sql, type SQL } from "drizzle-orm";
 import { v4 } from "uuid";
 import { entityTable, participantTable } from "../tables";
@@ -268,7 +268,7 @@ export async function deleteParticipants(
  * 
  * @param {DrizzleDatabase} db - The database instance
  * @param {UUID} agentId - The agent ID
- * @param {Array<{ entityId: UUID; roomId: UUID; updates: Partial<Participant> }>} participants - Updates
+ * @param {Array<{ entityId: UUID; roomId: UUID; updates: ParticipantUpdateFields }>} participants - Updates
  */
 export async function updateParticipants(
   db: DrizzleDatabase,
@@ -276,20 +276,20 @@ export async function updateParticipants(
   participants: Array<{
     entityId: UUID;
     roomId: UUID;
-    updates: Partial<Participant>;
+    updates: ParticipantUpdateFields;
   }>
 ): Promise<void> {
   if (participants.length === 0) return;
 
-  const hasRoomStateUpdates = participants.some(p => (p.updates as any).roomState !== undefined);
-  const hasMetadataUpdates = participants.some(p => (p.updates as any).metadata !== undefined);
+  const hasRoomStateUpdates = participants.some(p => 'roomState' in p.updates);
+  const hasMetadataUpdates = participants.some(p => 'metadata' in p.updates);
   
   const setClauses: SQL<unknown>[] = [];
   
   if (hasRoomStateUpdates) {
     const roomStateCases = participants
-      .filter(p => (p.updates as any).roomState !== undefined)
-      .map(p => sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${(p.updates as any).roomState}`);
+      .filter((p): p is typeof p & { updates: ParticipantUpdateFields & { roomState: NonNullable<ParticipantUpdateFields["roomState"]> } } => p.updates.roomState !== undefined)
+      .map(p => sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${p.updates.roomState}`);
     
     if (roomStateCases.length > 0) {
       setClauses.push(sql`${participantTable.roomState} = CASE ${sql.join(roomStateCases, sql` `)} ELSE ${participantTable.roomState} END`);
@@ -298,9 +298,9 @@ export async function updateParticipants(
   
   if (hasMetadataUpdates) {
     const metadataCases = participants
-      .filter(p => (p.updates as any).metadata !== undefined)
+      .filter((p): p is typeof p & { updates: ParticipantUpdateFields & { metadata: Record<string, unknown> } } => p.updates.metadata !== undefined)
       .map(p => {
-        const jsonString = JSON.stringify((p.updates as any).metadata);
+        const jsonString = JSON.stringify(p.updates.metadata);
         return sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN CAST(${jsonString} AS JSON)`;
       });
     

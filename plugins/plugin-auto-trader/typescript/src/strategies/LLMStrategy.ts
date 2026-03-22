@@ -426,18 +426,29 @@ export class LLMStrategy implements TradingStrategy {
       return null;
     }
 
-    const parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;
-    if (!parsed) {
+    let parsed: Record<string, unknown> | null = null;
+    try {
+      parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;
+    } catch {
       logger.warn(`[${this.name}] Failed to parse LLM response`);
       return null;
     }
+    if (!parsed) {
+      logger.warn(`[${this.name}] No JSON object in LLM response`);
+      return null;
+    }
 
-    // Validate and normalize the response
+    // Validate and normalize the response (parseJSONObjectFromText may stringify booleans)
+    const pickedNothing =
+      parsed.pickedNothing === true ||
+      String(parsed.pickedNothing).toLowerCase() === "true";
     const decision: LLMTradingDecision = {
       marketAssessment: String(parsed.marketAssessment || ""),
-      pickedNothing: Boolean(parsed.pickedNothing),
+      pickedNothing,
       recommendBuyIndex:
-        parsed.recommendBuyIndex !== null ? Number(parsed.recommendBuyIndex) : null,
+        parsed.recommendBuyIndex != null && parsed.recommendBuyIndex !== ""
+          ? Number(parsed.recommendBuyIndex)
+          : null,
       reason: String(parsed.reason || ""),
       opportunityScore: Number(parsed.opportunityScore || 0),
       riskScore: Number(parsed.riskScore || 100),

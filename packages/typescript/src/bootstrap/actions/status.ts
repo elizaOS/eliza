@@ -7,6 +7,7 @@
  */
 
 import { logger } from "../../logger.ts";
+import { TaskService } from "../../services/task.ts";
 import type {
   Action,
   ActionExample,
@@ -17,6 +18,7 @@ import type {
   Memory,
   State,
 } from "../../types/index.ts";
+import { ServiceType } from "../../types/service.ts";
 
 export const statusAction: Action = {
   name: "STATUS",
@@ -61,6 +63,7 @@ export const statusAction: Action = {
       // Get pending tasks for this room
       const pendingTasks = await runtime.getTasks({
         roomId: roomId,
+        agentIds: [runtime.agentId],
       });
 
       const awaitingChoice = pendingTasks.filter((t) =>
@@ -69,18 +72,42 @@ export const statusAction: Action = {
 
       const queuedTasks = pendingTasks.filter((t) => t.tags?.includes("queue"));
 
+      const taskService = runtime.getService(ServiceType.TASK) as TaskService | null;
+      const details = await Promise.all(
+        pendingTasks.slice(0, 5).map(async (t) => {
+          const base = {
+            id: t.id?.substring(0, 8),
+            name: t.name,
+            tags: t.tags,
+            options: t.metadata?.options
+              ? (t.metadata.options as { name: string }[]).map((o) => o.name)
+              : undefined,
+          };
+          if (t.id && t.tags?.includes("queue") && taskService?.getTaskStatus) {
+            try {
+              const status = await taskService.getTaskStatus(t.id);
+              return {
+                ...base,
+                nextRunAt:
+                  status.nextRunAt != null
+                    ? new Date(status.nextRunAt).toISOString()
+                    : undefined,
+                paused: status.paused,
+                lastError: status.lastError,
+              };
+            } catch {
+              return base;
+            }
+          }
+          return base;
+        }),
+      );
+
       statusInfo.tasks = {
         total: pendingTasks.length,
         awaitingChoice: awaitingChoice.length,
         queued: queuedTasks.length,
-        details: pendingTasks.slice(0, 5).map((t) => ({
-          id: t.id?.substring(0, 8),
-          name: t.name,
-          tags: t.tags,
-          options: t.metadata?.options
-            ? (t.metadata.options as { name: string }[]).map((o) => o.name)
-            : undefined,
-        })),
+        details,
       };
 
       // Format status message
@@ -121,6 +148,28 @@ export const statusAction: Action = {
 
         if (queuedTasks.length > 0) {
           lines.push(`- Queued: ${queuedTasks.length}`);
+          for (const d of details) {
+            const runStatus = "nextRunAt" in d ? d : undefined;
+            if (
+              d.tags?.includes("queue") &&
+              runStatus &&
+              (runStatus.nextRunAt != null ||
+                runStatus.paused === true ||
+                runStatus.lastError != null)
+            ) {
+              const parts: string[] = [];
+              if (runStatus.paused === true) parts.push("paused");
+              if (runStatus.nextRunAt != null)
+                parts.push(
+                  `next: ${new Date(runStatus.nextRunAt).toLocaleString()}`,
+                );
+              if (runStatus.lastError != null)
+                parts.push(`lastError: ${runStatus.lastError}`);
+              if (parts.length > 0) {
+                lines.push(`  - ${d.name} [${d.id}]: ${parts.join("; ")}`);
+              }
+            }
+          }
         }
       } else {
         lines.push("");

@@ -85,7 +85,7 @@ const sendSmsAction: Action = {
       }
 
       if (callback) {
-        callback({
+        await callback({
           text: `SMS message sent successfully to ${phoneNumber}`,
           success: true,
         });
@@ -94,7 +94,7 @@ const sendSmsAction: Action = {
     } catch (error) {
       logger.error({ error: String(error) }, "Error sending SMS");
       if (callback) {
-        callback({
+        await callback({
           text: `Failed to send SMS: ${error instanceof Error ? error.message : "Unknown error"}`,
           success: false,
         });

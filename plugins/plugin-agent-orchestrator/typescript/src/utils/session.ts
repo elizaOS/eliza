@@ -153,7 +153,7 @@ export function parseSessionKey(sessionKey: string): ParsedSessionKey {
       return {
         agentId: parts[1]!,
         keyType: "unknown",
-        identifier: parts.slice(2).join(":"),
+        identifier: parts.slice(2).join(":") ?? "",
       };
     }
   }
@@ -343,7 +343,7 @@ export function mergeDeliveryContext(
     groupId: primary.groupId || secondary.groupId,
     groupChannel: primary.groupChannel || secondary.groupChannel,
     groupSpace: primary.groupSpace || secondary.groupSpace,
-  });
+  } as import("../types/subagent.js").DeliveryContext);
 }
 
 /**

@@ -1,1 +1,18 @@
-{"plugin-computeruse":{"reason":"Node-only: interacts with local machine/MCP and uses process.env."},"plugin-ollama":{"reason":"Node-only: depends on server-side AI SDK utilities not browser-compatible."},"plugin-elizacloud":{"reason":"Browser bundle pulls in undici/Node APIs not resolvable in browser build."}}
+{
+  "plugin-computeruse": { "reason": "Node-only: interacts with local machine/MCP and uses process.env." },
+  "plugin-ollama": { "reason": "Node-only: depends on server-side AI SDK utilities not browser-compatible." },
+  "plugin-elizacloud": { "reason": "Browser bundle pulls in undici/Node APIs not resolvable in browser build." },
+  "plugin-telegram": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-tee": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-sql": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-solana": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-simple-voice": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-shell": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-rss": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-roblox": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-prose": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-polymarket": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-pdf": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-openrouter": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." },
+  "plugin-openai": { "reason": "esbuild in test cannot resolve workspace @elizaos/core when bundling from plugin path." }
+}

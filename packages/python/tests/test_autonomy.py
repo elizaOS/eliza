@@ -42,6 +42,11 @@ def test_runtime():
     runtime.set_setting = MagicMock()
     runtime.enable_autonomy = False
 
+    runtime.create_task = AsyncMock()
+    runtime.get_tasks = AsyncMock(return_value=[])
+    runtime.delete_task = AsyncMock()
+    runtime.register_task_worker = MagicMock()
+
     runtime.logger = MagicMock()
     runtime.logger.info = MagicMock()
     runtime.logger.debug = MagicMock()
@@ -86,7 +91,7 @@ class TestAutonomyService:
 
         assert service.is_loop_running() is True
 
-        await service.stop_loop()
+        await service.disable_autonomy()
 
     @pytest.mark.asyncio
     async def test_ensure_context_on_initialization(self, test_runtime):
@@ -109,11 +114,11 @@ class TestAutonomyService:
 
         assert service.is_loop_running() is False
 
-        await service.start_loop()
+        await service.enable_autonomy()
         assert service.is_loop_running() is True
         assert test_runtime.enable_autonomy is True
 
-        await service.stop_loop()
+        await service.disable_autonomy()
         assert service.is_loop_running() is False
         assert test_runtime.enable_autonomy is False
 
@@ -121,41 +126,44 @@ class TestAutonomyService:
     async def test_no_double_start(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
 
-        await service.start_loop()
-        call_count = test_runtime.set_setting.call_count
+        await service.enable_autonomy()
+        call_count = test_runtime.set_setting.call_count if hasattr(test_runtime.set_setting, 'call_count') else 0
 
-        await service.start_loop()
-        assert test_runtime.set_setting.call_count == call_count
+        await service.enable_autonomy()
+        # Second enable should not double-register
+        if hasattr(test_runtime.set_setting, 'call_count'):
+            assert test_runtime.set_setting.call_count == call_count
 
-        await service.stop_loop()
+        await service.disable_autonomy()
 
     @pytest.mark.asyncio
     async def test_no_double_stop(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
 
-        call_count = test_runtime.set_setting.call_count
-        await service.stop_loop()
-        assert test_runtime.set_setting.call_count == call_count
+        call_count = test_runtime.set_setting.call_count if hasattr(test_runtime.set_setting, 'call_count') else 0
+        await service.disable_autonomy()
+        if hasattr(test_runtime.set_setting, 'call_count'):
+            assert test_runtime.set_setting.call_count == call_count
 
     @pytest.mark.asyncio
     async def test_interval_configuration(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
 
-        service.set_loop_interval(60000)
+        await service.set_loop_interval(60000)
         assert service.get_loop_interval() == 60000
 
     @pytest.mark.asyncio
     async def test_interval_minimum_enforced(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
 
-        service.set_loop_interval(1000)
+        await service.set_loop_interval(1000)
         assert service.get_loop_interval() == 5000
 
     @pytest.mark.asyncio
     async def test_interval_maximum_enforced(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
 
-        service.set_loop_interval(1000000)
+        await service.set_loop_interval(1000000)
         assert service.get_loop_interval() == 600000
 
     @pytest.mark.asyncio
@@ -202,7 +210,7 @@ class TestAutonomyService:
         assert test_runtime.enable_autonomy is True
         assert service.is_loop_running() is True
 
-        await service.stop_loop()
+        await service.disable_autonomy()
 
     @pytest.mark.asyncio
     async def test_disable_autonomy(self, test_runtime):
@@ -253,7 +261,7 @@ class TestAutonomyService:
 
         test_runtime.get_memories = AsyncMock(return_value=[older, newer])
 
-        await service._perform_autonomous_think()
+        await service.perform_autonomous_think()
 
         assert test_runtime.emit_event.called is True
         payload = test_runtime.emit_event.call_args[0][1]
@@ -261,7 +269,7 @@ class TestAutonomyService:
         assert msg is not None
         assert "newer" in (msg.content.text or "")
 
-        await service.stop_loop()
+        await service.disable_autonomy()
 
     @pytest.mark.asyncio
     async def test_thinking_guard_initial_state(self, test_runtime):

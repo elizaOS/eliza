@@ -99,9 +99,105 @@ The canonical message loop expects model outputs in the `<response>...</response
 
 Some deterministic/offline backends may return **plain text** instead. In that case, the runtime will treat the raw output as a simple **`REPLY`** so the system remains usable even when strict XML formatting is unavailable.
 
+### Prompt cache hints
+
+The core can pass **prompt segments** to model providers so they can use prompt-caching APIs when supported. Each segment has `content` (string) and `stable` (boolean). **Stable** means the content is the same across calls for the same schema/character (e.g. instructions, format, examples); **unstable** means it changes every call (e.g. state, validation codes).
+
+**Why this exists:** Repeated calls (e.g. message handling, batched evaluators) often send the same instructions and format while only the context/state changes. Provider caching (Anthropic ephemeral cache, OpenAI/Gemini prefix cache) can reuse tokens for the stable prefix, reducing cost and latency. The core describes which parts are stable so providers can opt in without parsing the prompt.
+
+- **Invariant:** When `promptSegments` is set on generation params, `prompt` MUST equal `promptSegments.map(s => s.content).join("")`. **Why:** Providers that ignore segments still get correct behavior by using `prompt`; those that use segments must send the same total text so model behavior is unchanged.
+- **Providers:** Anthropic uses the Messages API with `cache_control: { type: "ephemeral" }` on stable blocks so the API can cache those blocks. OpenAI and Gemini use **prefix ordering**: when segments are present, the prompt sent to the API is built with stable segments first, then unstable. **Why:** OpenAI and Gemini cache by prefix (e.g. OpenAI ≥1024 tokens); putting stable content first maximizes cache hits.
+
+**Pitfalls for operators:**
+
+- OpenAI caching only applies when the prompt is ≥1024 tokens; very short prompts will not show cache savings.
+- Small or low-parameter models may not support or benefit from caching; behavior is unchanged.
+- Caching is a performance/cost optimization; correctness does not depend on it.
+
+**Pitfalls for implementers:**
+
+- Do not mutate segment objects; always create new `{ content, stable }` objects. **Why:** Params may be passed to multiple handlers or stored; mutation can cause cross-request bugs.
+- Segment order must match the order in which the prompt string is built; add an assertion that `prompt === promptSegments.map(s => s.content).join("")`. **Why:** Wrong order breaks the invariant and can send the wrong prompt to the model.
+- When using segments in the API (e.g. messages or reordered prompt), ensure the final text seen by the model equals the intended full prompt (e.g. `params.prompt` or the stable-first concatenation).
+- Only mark content as `stable: true` if it is identical across calls for the same schema/character. **Why:** Content that includes per-call UUIDs or changing state will never cache; mislabeling it as stable wastes cache capacity and can confuse operators.
+
+For more detail, implementer pitfalls, and rollback, see [docs/PROMPT_CACHE_HINTS.md](docs/PROMPT_CACHE_HINTS.md).
+
 ## Core Architecture
 
 `@elizaos/core` is built around a few key concepts that work together within the `AgentRuntime`.
+
+### Unified Prompt Batcher
+
+`@elizaos/core` now includes a unified prompt batching subsystem on `runtime.promptBatcher`.
+
+Why this exists:
+
+- Evaluators, startup warmups, and autonomous reasoning were all paying separate LLM round trips for structurally similar work.
+- Batching reduces cost, queue depth, and local GPU contention by turning many small prompt calls into fewer structured calls.
+- The dispatcher keeps deployment flexibility: local inference can pack aggressively while frontier APIs can trade some density for latency.
+
+What it does:
+
+- `askOnce()` batches startup questions into a single post-init drain when possible. Returns a promise of the extracted **fields** (unwrapped). **Why:** callers get a thenable so they can `await` or `.then()` without a callback.
+- `onDrain(id, opts)` registers a section that runs on the next drain for that affinity and returns a **promise that resolves with `{ fields, meta }`** (or `null` if the section ID was already registered). **Why:** evaluators can use linear `await` + `if (result) { ... }` instead of a large `onResult` callback; same batching benefits. You can still pass optional `onResult` for fire-and-forget or recurring use (e.g. logging).
+- `think()` is used by **autonomy**: when `enableAutonomy` is true, the autonomy service registers one recurring section; a BATCHER_DRAIN task in the task system drives when that affinity drains (task system owns WHEN, batcher owns HOW). **Why:** one register for "what to ask" and the same orchestration path as evaluators and startup, with the same cache and packing benefits. Autonomy keeps using `onResult` because it is fire-and-forget per drain.
+- `askNow()` supports blocking audits without creating a second subsystem. Returns a promise of the **fields** (unwrapped). **Why:** same thenable style as askOnce; fallback is required so the caller always gets an object.
+
+Result shape and errors:
+
+- Section promises (from `addSection` / `onDrain`) resolve with **`BatcherResult<T> | null`**: `{ fields: T, meta: DrainMeta }`. **Why:** callers get both the extracted data and drain metadata (e.g. `meta.fallbackUsed`, `meta.durationMs`) in one object; `null` means duplicate section ID so the caller can branch.
+- When **onResult** throws or the batcher is **disposed**, the section promise **rejects** instead of resolving. **Why:** callers can `.catch()` or try/catch for real failures; fallback-used still resolves (with `meta.fallbackUsed: true`) so "soft" failure is not an exception.
+- **Generic `onDrain<T>(...)`**: pass a type param so `result.fields` is typed (e.g. `onDrain<ReflectionFields>(...)`). **Why:** avoids casting at call sites; the runtime still returns `Record<string, unknown>` from the model—the generic is for developer convenience.
+
+Important behavior:
+
+- Sections are idempotent by ID, so developers can register them from handlers without tracking lifecycle manually.
+- The promise returned by `onDrain` (or `addSection`) **resolves once**—on the first delivery for that registration. **Why:** per-drain sections run on every drain, but the thenable is for "give me the result of this registration"; subsequent drains do not resolve the same promise again. For recurring delivery (e.g. every drain), use the optional `onResult` callback.
+- Context is declarative and composable: `providers`, `contextBuilder`, and `contextResolvers` can be mixed.
+- Dispatching is affinity-aware, so unrelated prompt sections are not merged into the same call just because they arrived at the same time.
+
+Relevant runtime knobs:
+
+- `PROMPT_BATCH_SIZE`
+- `PROMPT_MAX_DRAIN_INTERVAL_MS`
+- `PROMPT_MAX_SECTIONS_PER_CALL`
+- `PROMPT_PACKING_DENSITY`
+- `PROMPT_MAX_TOKENS_PER_CALL`
+- `PROMPT_MAX_PARALLEL_CALLS`
+- `PROMPT_MODEL_SEPARATION`
+
+For the deeper design rationale and rollout details, see `DESIGN.md`, `ROADMAP.md`, and `CHANGELOG.md` in this package.
+
+### Task system
+
+The **task system** is the single place for *when* scheduled work runs. Only tasks with tag `queue` are polled by the scheduler (TaskService); other tasks (e.g. approval, follow-up) are stored and executed only when explicitly triggered (e.g. choice action, or `executeTaskById`).
+
+**Why one scheduler:**
+
+- Recurring work (e.g. batcher drains, future cron-like use) uses the same DB, same pause/resume, same visibility (`getTaskStatus`, `nextRunAt`, `lastError`). Retry and backoff (exponential backoff, auto-pause after `maxFailures`) live in one place so we avoid infinite retry storms.
+
+**Why queue + repeat:**
+
+- Tasks with `tags: ["queue"]` are fetched every tick. Non-repeat tasks run when `now >= dueAt` (or `metadata.scheduledAt`) then are deleted; repeat tasks use `updateInterval`/`baseInterval` and `metadata.updatedAt` as last-run time. **Why:** One-shot "run at time X" (e.g. follow-up) uses `dueAt`; interval-based scheduling covers batcher drains and recurring use.
+
+**Cross-runtime scheduling (three modes):**
+
+1. **Local timer (default):** One `setInterval` per TaskService; each runtime fetches its own queue tasks every tick. **Why:** Zero config for single-process apps.
+2. **Per-daemon:** Host calls `startTaskScheduler(adapter)`; one shared timer runs, one batched `getTasks(agentIds)` per tick for all registered runtimes, then tasks are dispatched to each runtime’s `runTick(tasks)`. **Why:** Multi-agent daemons avoid N DB queries per second.
+3. **Serverless:** Construct runtime with `{ serverless: true }`; no timer. Host calls `taskService.runDueTasks()` from cron or on each request to run due queue tasks once. **Why:** No long-lived process; host controls when tasks run.
+
+**Public API (TaskService):** `executeTaskById`, `pauseTask`, `resumeTask`, `getTaskStatus`, `markDirty`, `runDueTasks()` (serverless). **Why:** Operators and UIs can run, pause, resume, and inspect tasks without touching the DB directly.
+
+See `docs/TASK_SCHEDULER.md` for full architecture, WHYs, and daemon/serverless usage. See `DESIGN.md` (§ Task system upgrades and batcher-on-tasks) for full rationale and consumer fit.
+
+### Autonomy
+
+The autonomy service lets the agent "think" and act on a schedule without user messages. It uses the **prompt batcher** with the **task system** for scheduling: when `enableAutonomy` is true, a recurring section is registered with `think("autonomy", ...)`. A BATCHER_DRAIN task for the autonomy affinity determines when the section drains; results are delivered to `onResult`, which runs the same post-LLM steps as the message pipeline (actions, memory, evaluators) via an execution facade.
+
+Why batcher-only:
+
+- The batcher owns "what to ask"; the task system owns "when" (per-affinity BATCHER_DRAIN tasks). One scheduling surface and one packing path. Evaluators used after autonomy runs are the same as for user messages; as more evaluators move to the batcher, autonomy benefits automatically.
 
 ### AgentRuntime
 

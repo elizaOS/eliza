@@ -13,7 +13,7 @@ import { IAgentRuntime, Service, type ServiceTypeName } from '@elizaos/core';
  * Cast via unknown when assigning from IAgentRuntime.
  * Note: events on the runtime may be RuntimeEventStorage; unregisterEvent uses internal storage.
  */
-export interface ExtendedRuntime extends IAgentRuntime {
+export interface ExtendedRuntime extends Omit<IAgentRuntime, 'events'> {
   unregisterEvent?: (event: string, handler: (params: Record<string, unknown>) => Promise<void>) => void;
   unregisterAction?: (actionName: string) => void;
   unregisterProvider?: (providerName: string) => void;

@@ -13,6 +13,6 @@
     "lib": ["ES2022", "DOM"],
     "types": ["node"]
   },
-  "include": ["*.ts", "typescript/**/*.ts", "api/**/*.ts"],
+  "include": ["*.ts", "*.d.ts", "typescript/**/*.ts", "api/**/*.ts"],
   "exclude": ["node_modules", "dist", "rust"]
 }

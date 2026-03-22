@@ -34,7 +34,9 @@ async function generateObjectWithModel(
       temperature: temperature,
     };
 
-    const { object, usage } = await generateObject(generateParams);
+    const { object, usage } = await generateObject(
+      generateParams as Parameters<typeof generateObject>[0],
+    );
 
     if (usage) {
       emitModelUsageEvent(runtime, modelType, params.prompt, usage);
@@ -58,3 +60,4 @@ export async function handleObjectLarge(
 ): Promise<Record<string, JsonValue>> {
   return generateObjectWithModel(runtime, ModelType.OBJECT_LARGE, params);
 }
+

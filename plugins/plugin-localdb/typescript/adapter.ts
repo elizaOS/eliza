@@ -271,9 +271,20 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async patchComponent(
+async patchComponent(
     componentId: UUID,
     ops: PatchOp[],
+  ): Promise<Component> {
+    const component = await this.getComponentById(componentId);
+    if (!component) {
+      throw new Error(`Component ${componentId} not found`);
+    }
+    const patched = applyPatch(component, ops);
+    return this.updateComponent(patched);
+  }
+
+  async patchComponents(
+    _updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
     _options?: { entityContext?: UUID },
   ): Promise<void> {
     if (ops.length === 0) return;
@@ -448,7 +459,19 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return entities;
   }
 
-  async getEntitiesForRoom(roomId: UUID, includeComponents = false): Promise<Entity[]> {
+  async getEntitiesForRooms(
+    roomIds: UUID[],
+    includeComponents = false,
+  ): Promise<Array<{ roomId: UUID; entities: Entity[] }>> {
+    const result: Array<{ roomId: UUID; entities: Entity[] }> = [];
+    for (const roomId of roomIds) {
+      const entities = await this.getEntitiesForRoomInternal(roomId, includeComponents);
+      result.push({ roomId, entities });
+    }
+    return result;
+  }
+
+  private async getEntitiesForRoomInternal(roomId: UUID, includeComponents: boolean): Promise<Entity[]> {
     const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId
@@ -461,7 +484,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const entity = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, entityId);
       if (entity) {
         if (includeComponents) {
-          const components = await this.getComponents(entityId as UUID);
+          const components = await this.getComponentsForEntities([entityId as UUID]);
           (entity as Entity & { components?: Component[] }).components = components;
         }
         entities.push(entity);
@@ -538,7 +561,40 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.set(COLLECTIONS.ENTITIES, entity.id, entity);
   }
 
-  async getComponent(
+  async getComponentsByNaturalKeys(keys: Array<{
+    entityId: UUID;
+    type: string;
+    worldId?: UUID;
+    sourceEntityId?: UUID;
+  }>): Promise<(Component | null)[]> {
+    const result: (Component | null)[] = [];
+    for (const k of keys) {
+      const c = await this.getComponentInternal(k.entityId, k.type, k.worldId, k.sourceEntityId);
+      result.push(c);
+    }
+    return result;
+  }
+
+  async getComponentsForEntities(
+    entityIds: UUID[],
+    worldId?: UUID,
+    sourceEntityId?: UUID,
+  ): Promise<Component[]> {
+    const out: Component[] = [];
+    for (const entityId of entityIds) {
+      const comps = await this.storage.getWhere<Component>(
+        COLLECTIONS.COMPONENTS,
+        (c) =>
+          c.entityId === entityId &&
+          (worldId === undefined || c.worldId === worldId) &&
+          (sourceEntityId === undefined || c.sourceEntityId === sourceEntityId)
+      );
+      out.push(...comps);
+    }
+    return out;
+  }
+
+  private async getComponentInternal(
     entityId: UUID,
     type: string,
     worldId?: UUID,
@@ -555,14 +611,17 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return components[0] ?? null;
   }
 
+  async getComponent(
+    entityId: UUID,
+    type: string,
+    worldId?: UUID,
+    sourceEntityId?: UUID
+  ): Promise<Component | null> {
+    return this.getComponentInternal(entityId, type, worldId, sourceEntityId);
+  }
+
   async getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]> {
-    return this.storage.getWhere<Component>(
-      COLLECTIONS.COMPONENTS,
-      (c) =>
-        c.entityId === entityId &&
-        (worldId === undefined || c.worldId === worldId) &&
-        (sourceEntityId === undefined || c.sourceEntityId === sourceEntityId)
-    );
+    return this.getComponentsForEntities([entityId], worldId, sourceEntityId);
   }
 
   async createComponent(component: Component): Promise<boolean> {
@@ -848,24 +907,63 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
-    const memories = await this.getMemories({ roomId, tableName });
-    await this.deleteManyMemories(
-      memories.map((m) => m.id).filter((id): id is UUID => id !== undefined)
-    );
+  async deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void> {
+    for (const roomId of roomIds) {
+      const memories = await this.getMemories({ roomId, tableName });
+      await this.deleteManyMemories(
+        memories.map((m) => m.id).filter((id): id is UUID => id !== undefined)
+      );
+    }
   }
 
-  async countMemories(roomId: UUID, unique = false, tableName?: string): Promise<number> {
-    return this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, (memory) => {
-      if (memory.roomId !== roomId) return false;
-      if (unique && !memory.unique) return false;
-      if (tableName && memory.metadata?.type !== tableName) return false;
-      return true;
-    });
+  async countMemories(params: {
+    roomIds?: UUID[];
+    unique?: boolean;
+    tableName?: string;
+    entityId?: UUID;
+    agentId?: UUID;
+    metadata?: Record<string, unknown>;
+  }): Promise<number> {
+    const roomIds = params.roomIds ?? [];
+    if (roomIds.length === 0) {
+      return this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, (memory) => {
+        if (params.tableName && memory.metadata?.type !== params.tableName) return false;
+        if (params.unique !== undefined && params.unique && !memory.unique) return false;
+        return true;
+      });
+    }
+    let total = 0;
+    for (const roomId of roomIds) {
+      total += await this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, (memory) => {
+        if (memory.roomId !== roomId) return false;
+        if (params.unique !== undefined && params.unique && !memory.unique) return false;
+        if (params.tableName && memory.metadata?.type !== params.tableName) return false;
+        return true;
+      });
+    }
+    return total;
   }
 
-  async getMemoriesByWorldIds(params: {
+async getMemoriesByWorldIds(params: {
     worldIds: UUID[];
+    count?: number;
+    limit?: number;
+    tableName?: string;
+  }): Promise<Memory[]> {
+    const worldIds = params.worldIds ?? [];
+    if (worldIds.length === 0) return [];
+    const all: Memory[] = [];
+    for (const worldId of worldIds) {
+      const mems = await this.getMemoriesByWorldIdSingle({ worldId, count: params.count, limit: params.limit, tableName: params.tableName });
+      all.push(...mems);
+    }
+    return all;
+  }
+
+  private async getMemoriesByWorldIdSingle(params: {
+    worldId: UUID;
+    count?: number;
+    limit?: number;
     tableName?: string;
     limit?: number;
   }): Promise<Memory[]> {
@@ -878,8 +976,11 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
         (params.tableName ? m.metadata?.type === params.tableName : true)
     );
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-    const effectiveLimit = params.limit ?? 50;
-    return toMemories(memories.slice(0, effectiveLimit));
+const effectiveLimit = params.limit ?? params.count ?? 50;
+    if (effectiveLimit > 0) {
+      return toMemories(memories.slice(0, effectiveLimit));
+    }
+    return toMemories(memories);
   }
 
   async createWorld(world: World): Promise<UUID> {
@@ -942,13 +1043,32 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.deleteWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => m.roomId === roomId);
   }
 
-  async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
-    const rooms = await this.getRoomsByWorld(worldId);
-    for (const room of rooms) {
-      if (room.id) {
-        await this.deleteRoom(room.id);
+  async deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void> {
+    for (const worldId of worldIds) {
+      const rooms = await this.getRoomsByWorld(worldId);
+      for (const room of rooms) {
+        if (room.id) await this.deleteRoom(room.id);
       }
     }
+  }
+
+  async getRoomsByWorlds(
+    worldIds: UUID[],
+    limit?: number,
+    offset?: number,
+  ): Promise<Room[]> {
+    let all: Room[] = [];
+    for (const worldId of worldIds) {
+      const rooms = await this.getRoomsByWorld(worldId);
+      all = all.concat(rooms);
+    }
+    if (offset != null) all = all.slice(offset);
+    if (limit != null) all = all.slice(0, limit);
+    return all;
+  }
+
+  async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
+    return this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) => r.worldId === worldId);
   }
 
   async updateRoom(room: Room): Promise<void> {
@@ -956,24 +1076,12 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.set(COLLECTIONS.ROOMS, room.id, room);
   }
 
-  async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
+  async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
     const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
-      (p) => p.entityId === entityId
-    );
-    return participants.map((p) => p.roomId as UUID);
-  }
-
-  async getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]> {
-    const participants = await this.storage.getWhere<StoredParticipant>(
-      COLLECTIONS.PARTICIPANTS,
-      (p) => userIds.includes(p.entityId as UUID)
+      (p) => entityIds.includes(p.entityId as UUID)
     );
     return [...new Set(participants.map((p) => p.roomId as UUID))];
-  }
-
-  async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
-    return this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) => r.worldId === worldId);
   }
 
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
@@ -992,31 +1100,87 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return true;
   }
 
-  async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
+  async getParticipantsForEntities(entityIds: UUID[]): Promise<Participant[]> {
+    const out: Participant[] = [];
+    for (const entityId of entityIds) {
+      const participants = await this.getParticipantsForEntityInternal(entityId);
+      out.push(...participants);
+    }
+    return out;
+  }
+
+  async getParticipantsForRooms(
+    roomIds: UUID[],
+  ): Promise<Array<{ roomId: UUID; entityIds: UUID[] }>> {
+    const result: Array<{ roomId: UUID; entityIds: UUID[] }> = [];
+    for (const roomId of roomIds) {
+      const entityIds = await this.getParticipantsForRoomInternal(roomId);
+      result.push({ roomId, entityIds });
+    }
+    return result;
+  }
+
+  async areRoomParticipants(
+    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+  ): Promise<boolean[]> {
+    const result: boolean[] = [];
+    for (const { roomId, entityId } of pairs) {
+      const ok = await this.isRoomParticipant(roomId, entityId);
+      result.push(ok);
+    }
+    return result;
+  }
+
+  async getParticipantUserStates(
+    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+  ): Promise<("FOLLOWED" | "MUTED" | null)[]> {
+    const result: ("FOLLOWED" | "MUTED" | null)[] = [];
+    for (const { roomId, entityId } of pairs) {
+      const state = await this.getParticipantUserStateInternal(roomId, entityId);
+      result.push(state);
+    }
+    return result;
+  }
+
+  async updateParticipantUserStates(updates: Array<{
+    roomId: UUID;
+    entityId: UUID;
+    state: "FOLLOWED" | "MUTED" | null;
+  }>): Promise<void> {
+    for (const u of updates) {
+      await this.updateParticipantUserStateInternal(u.roomId, u.entityId, u.state);
+    }
+  }
+
+  private async getParticipantsForEntityInternal(entityId: UUID): Promise<Participant[]> {
     const stored = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.entityId === entityId
     );
-
     const participants: Participant[] = [];
     for (const p of stored) {
       const entity = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, p.entityId);
       if (entity) {
-        participants.push({
-          id: p.id as UUID,
-          entity,
-        });
+        participants.push({ id: p.id as UUID, entity });
       }
     }
     return participants;
   }
 
-  async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
+  async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
+    return this.getParticipantsForEntityInternal(entityId);
+  }
+
+  private async getParticipantsForRoomInternal(roomId: UUID): Promise<UUID[]> {
     const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId
     );
     return participants.map((p) => p.entityId as UUID);
+  }
+
+  async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
+    return this.getParticipantsForRoomInternal(roomId);
   }
 
   async isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
@@ -1041,14 +1205,13 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
         await this.storage.set(COLLECTIONS.PARTICIPANTS, id, participant);
         ids.push(id as UUID);
       } else {
-        // Already exists - return the entityId as the participant ID
         ids.push(entityId);
       }
     }
     return ids;
   }
 
-  async getParticipantUserState(
+  private async getParticipantUserStateInternal(
     roomId: UUID,
     entityId: UUID
   ): Promise<"FOLLOWED" | "MUTED" | null> {
@@ -1056,14 +1219,20 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId && p.entityId === entityId
     );
-
     if (participants.length === 0) return null;
     const state = participants[0].userState;
     if (state === "FOLLOWED" || state === "MUTED") return state;
     return null;
   }
 
-  async updateParticipantUserState(
+  async getParticipantUserState(
+    roomId: UUID,
+    entityId: UUID
+  ): Promise<"FOLLOWED" | "MUTED" | null> {
+    return this.getParticipantUserStateInternal(roomId, entityId);
+  }
+
+  private async updateParticipantUserStateInternal(
     roomId: UUID,
     entityId: UUID,
     state: "FOLLOWED" | "MUTED" | null
@@ -1072,15 +1241,19 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId && p.entityId === entityId
     );
-
     for (const p of participants) {
       if (p.id) {
-        await this.storage.set(COLLECTIONS.PARTICIPANTS, p.id, {
-          ...p,
-          userState: state,
-        });
+        await this.storage.set(COLLECTIONS.PARTICIPANTS, p.id, { ...p, userState: state });
       }
     }
+  }
+
+  async updateParticipantUserState(
+    roomId: UUID,
+    entityId: UUID,
+    state: "FOLLOWED" | "MUTED" | null
+  ): Promise<void> {
+    await this.updateParticipantUserStateInternal(roomId, entityId, state);
   }
 
   async createRelationship(params: {
@@ -1101,6 +1274,17 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     };
     await this.storage.set(COLLECTIONS.RELATIONSHIPS, id, relationship);
     return true;
+  }
+
+  async getRelationshipsByPairs(
+    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
+  ): Promise<(Relationship | null)[]> {
+    const result: (Relationship | null)[] = [];
+    for (const params of pairs) {
+      const rel = await this.getRelationship(params);
+      result.push(rel);
+    }
+    return result;
   }
 
   async getRelationship(params: {
@@ -1127,20 +1311,36 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     };
   }
 
-  async getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]> {
+  async getRelationships(params: {
+    entityIds?: UUID[];
+    tags?: string[];
+    limit?: number;
+    offset?: number;
+  }): Promise<Relationship[]> {
+    const ids = params.entityIds ?? [];
+    if (ids.length === 0) return [];
+    const all: Relationship[] = [];
+    for (const entityId of ids) {
+      const rels = await this.getRelationshipsForEntity(entityId, params.tags);
+      all.push(...rels);
+    }
+    return all;
+  }
+
+  private async getRelationshipsForEntity(
+    entityId: UUID,
+    tags?: string[],
+  ): Promise<Relationship[]> {
     const stored = await this.storage.getWhere<StoredRelationship>(
       COLLECTIONS.RELATIONSHIPS,
       (r) => {
         const isInvolved =
-          r.sourceEntityId === params.entityId || r.targetEntityId === params.entityId;
+          r.sourceEntityId === entityId || r.targetEntityId === entityId;
         if (!isInvolved) return false;
-        if (params.tags && params.tags.length > 0) {
-          return params.tags.some((tag) => r.tags?.includes(tag));
-        }
+        if (tags && tags.length > 0) return tags.some((tag) => r.tags?.includes(tag));
         return true;
       }
     );
-
     return stored.map((r) => ({
       id: r.id as UUID,
       sourceEntityId: r.sourceEntityId as UUID,
@@ -1200,15 +1400,28 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return id;
   }
 
-  async getTasks(params: { roomId?: UUID; tags?: string[]; entityId?: UUID }): Promise<Task[]> {
-    return this.storage.getWhere<Task>(COLLECTIONS.TASKS, (t) => {
+  async getTasks(params: {
+    roomId?: UUID;
+    tags?: string[];
+    entityId?: UUID;
+    agentIds: UUID[];
+    limit?: number;
+    offset?: number;
+  }): Promise<Task[]> {
+    if (params.agentIds.length === 0) return [];
+    const tasks = await this.storage.getWhere<Task>(COLLECTIONS.TASKS, (t) => {
       if (params.roomId && t.roomId !== params.roomId) return false;
       if (params.entityId && t.entityId !== params.entityId) return false;
+      if (t.agentId != null && !params.agentIds.includes(t.agentId)) return false;
       if (params.tags && params.tags.length > 0) {
         if (!t.tags?.some((tag) => params.tags?.includes(tag))) return false;
       }
       return true;
     });
+    const offset = params.offset ?? 0;
+    const limit = params.limit;
+    const sliced = limit != null ? tasks.slice(offset, offset + limit) : tasks.slice(offset);
+    return sliced;
   }
 
   async getTask(id: UUID): Promise<Task | null> {
@@ -1233,11 +1446,18 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   // Pairing Methods
   // ===============================
 
-  async getPairingRequests(channel: PairingChannel, agentId: UUID): Promise<PairingRequest[]> {
-    return this.storage.getWhere<PairingRequest>(
-      COLLECTIONS.PAIRING_REQUESTS,
-      (r) => r.channel === channel && r.agentId === agentId
-    );
+  async getPairingRequests(
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+  ): Promise<Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }>> {
+    const result: Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }> = [];
+    for (const { channel, agentId } of queries) {
+      const requests = await this.storage.getWhere<PairingRequest>(
+        COLLECTIONS.PAIRING_REQUESTS,
+        (r) => r.channel === channel && r.agentId === agentId
+      );
+      result.push({ channel, agentId, requests });
+    }
+    return result;
   }
 
   async createPairingRequest(request: PairingRequest): Promise<UUID> {
@@ -1263,14 +1483,18 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.delete(COLLECTIONS.PAIRING_REQUESTS, id);
   }
 
-  async getPairingAllowlist(
-    channel: PairingChannel,
-    agentId: UUID
-  ): Promise<PairingAllowlistEntry[]> {
-    return this.storage.getWhere<PairingAllowlistEntry>(
-      COLLECTIONS.PAIRING_ALLOWLIST,
-      (e) => e.channel === channel && e.agentId === agentId
-    );
+  async getPairingAllowlists(
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+  ): Promise<Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }>> {
+    const result: Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }> = [];
+    for (const { channel, agentId } of queries) {
+      const entries = await this.storage.getWhere<PairingAllowlistEntry>(
+        COLLECTIONS.PAIRING_ALLOWLIST,
+        (e) => e.channel === channel && e.agentId === agentId
+      );
+      result.push({ channel, agentId, entries });
+    }
+    return result;
   }
 
   async createPairingAllowlistEntry(entry: PairingAllowlistEntry): Promise<UUID> {

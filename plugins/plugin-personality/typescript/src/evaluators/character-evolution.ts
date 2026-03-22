@@ -1,4 +1,5 @@
 import {
+  type ActionResult,
   type Evaluator,
   type IAgentRuntime,
   type Memory,
@@ -72,7 +73,8 @@ export const characterEvolutionEvaluator: Evaluator = {
     }
 
     // Only evaluate if conversation has substantial content
-    const conversationLength = Number(state?.data?.messageCount ?? 0);
+const rawCount = state?.data?.messageCount;
+    const conversationLength = typeof rawCount === 'number' ? rawCount : Number(rawCount) || 0;
     if (conversationLength < 3) {
       return false;
     }
@@ -138,12 +140,14 @@ Return JSON: {"hasEvolutionTrigger": boolean, "triggerType": string, "reasoning"
         Boolean(triggerAnalysis.hasEvolutionTrigger) && Number(triggerAnalysis.confidence ?? 0) > 0.6;
 
       if (hasEvolutionTriggers) {
-        logger.info({
-          msg: 'Evolution trigger detected',
-          type: triggerAnalysis.triggerType,
-          reasoning: triggerAnalysis.reasoning,
-          confidence: triggerAnalysis.confidence,
-        });
+logger.info(
+          {
+            msg: 'Evolution trigger detected',
+            type: triggerAnalysis.triggerType,
+            reasoning: triggerAnalysis.reasoning,
+            confidence: triggerAnalysis.confidence,
+          }
+        );
       }
     } catch {
       // Fallback to basic pattern matching if LLM analysis fails
@@ -264,7 +268,7 @@ Return JSON analysis with specific, measurable reasoning for any suggested modif
         const parsed = JSON.parse(response as string);
         evolution = CharacterEvolutionSchema.parse(parsed);
       } catch (parseError) {
-        logger.warn({ msg: 'Failed to parse character evolution analysis', err: parseError });
+logger.warn({ msg: 'Failed to parse character evolution analysis', err: parseError });
         return undefined;
       }
 
@@ -296,14 +300,14 @@ Return JSON analysis with specific, measurable reasoning for any suggested modif
             evolutionData: {
               shouldModify: evolution.shouldModify,
               gradualChange: evolution.gradualChange,
-              modifications: evolution.modifications as Record<string, import('@elizaos/core').MetadataValue>,
+modifications: evolution.modifications as Record<string, import('@elizaos/core').MetadataValue>,
             },
-          },
+          } as Record<string, unknown>,
         },
         'character_evolution'
       );
 
-      logger.info({
+logger.info({
         msg: 'Character evolution analysis completed',
         shouldModify: evolution.shouldModify,
         confidence: evolution.confidence,

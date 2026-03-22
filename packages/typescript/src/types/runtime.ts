@@ -1,4 +1,5 @@
 import type { Logger } from "../logger";
+import type { PromptBatcher } from "../utils/prompt-batcher";
 import type { Agent, Character } from "./agent";
 import type {
   Action,
@@ -49,6 +50,8 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   agentId: UUID;
   character: Character;
   enableAutonomy: boolean;
+  /** When true, TaskService does not start a timer; host drives via runDueTasks(). WHY: no long-lived process in serverless. */
+  serverless?: boolean;
   initPromise: Promise<void>;
   messageService: IMessageService | null;
   providers: Provider[];
@@ -61,6 +64,8 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   routes: Route[];
   logger: Logger;
   stateCache: Map<string, State>;
+promptBatcher: PromptBatcher;
+
   /** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. */
   companionUrl?: string;
 
@@ -453,6 +458,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   // ========================================================================
 
   getEntityById(entityId: UUID): Promise<Entity | null>;
+  getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<import("./environment").Entity[]>;
   getRoom(roomId: UUID): Promise<Room | null>;
   createEntity(entity: Entity): Promise<boolean>;
   createRoom({
@@ -465,6 +471,10 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
     worldId,
   }: Room): Promise<UUID>;
   addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+  getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
+  getParticipantUserState(roomId: UUID, entityId: UUID): Promise<"FOLLOWED" | "MUTED" | null>;
+  updateParticipantUserState(roomId: UUID, entityId: UUID, state: "FOLLOWED" | "MUTED" | null): Promise<void>;
+  getRoomsForParticipant(entityId: UUID): Promise<UUID[]>;
   getRooms(worldId: UUID): Promise<Room[]>;
   updateWorld(world: World): Promise<void>;
 
@@ -491,7 +501,10 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
   updateEntity(entity: Entity): Promise<void>;
 
+  getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]>;
+  getComponent(entityId: UUID, type: string, worldId?: UUID, sourceEntityId?: UUID): Promise<Component | null>;
   createComponent(component: Component): Promise<boolean>;
+  patchComponent(componentId: UUID, ops: import("./database").PatchOp[], options?: { entityContext?: UUID }): Promise<void>;
   updateComponent(component: Component): Promise<void>;
   deleteComponent(componentId: UUID): Promise<void>;
 

@@ -109,10 +109,13 @@ export class TokenResolverService extends Service {
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
-    // Pre-populate cache with well-known tokens
+    // Pre-populate cache with well-known tokens (never expire)
+    const permanentExpiry = Number.MAX_SAFE_INTEGER;
     for (const [symbol, info] of Object.entries(WELL_KNOWN_TOKENS)) {
       this.cache.set(symbol.toUpperCase(), info);
       this.cache.set(info.address, info);
+      this.cacheExpiry.set(symbol.toUpperCase(), permanentExpiry);
+      this.cacheExpiry.set(info.address, permanentExpiry);
     }
     // Pre-populate multi-chain registry
     for (const token of DEFAULT_REGISTRY) {

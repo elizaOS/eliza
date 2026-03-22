@@ -53,7 +53,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
         const originalTopicsLength = originalCharacter.topics?.length || 0;
 
         // Simulate evolution trigger conversation
-        const roomId = asUUID(randomUUID());
+const roomId = asUUID(randomUUID());
         const userId = asUUID(randomUUID());
 
         const messages = [
@@ -68,7 +68,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
             createdAt: Date.now(),
           },
           {
-            id: asUUID(randomUUID()),
+id: asUUID(randomUUID()),
             entityId: runtime.agentId,
             roomId,
             content: {
@@ -86,7 +86,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
 
         // Test direct modification request
         const modificationMessage = {
-          id: asUUID(randomUUID()),
+id: asUUID(randomUUID()),
           entityId: userId,
           roomId,
           content: {
@@ -163,7 +163,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing evolution provider integration...');
 
-        const roomId = randomUUID();
+const roomId = randomUUID();
         const message = {
           id: asUUID(randomUUID()),
           entityId: randomUUID(),
@@ -276,7 +276,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
           return;
         }
 
-        const roomId = asUUID(randomUUID());
+const roomId = asUUID(randomUUID());
         const userId = asUUID(randomUUID());
 
         // Create a pattern of interactions that should trigger evolution
@@ -290,7 +290,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
         // Simulate conversation over time
         for (let i = 0; i < interactionPattern.length; i++) {
           const message = {
-            id: asUUID(randomUUID()),
+id: asUUID(randomUUID()),
             entityId: userId,
             roomId,
             content: {
@@ -304,7 +304,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
 
           // Simulate agent response
           const agentResponse = {
-            id: asUUID(randomUUID()),
+id: asUUID(randomUUID()),
             entityId: runtime.agentId,
             roomId,
             content: {
@@ -342,7 +342,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
         }
 
         const lastMessage = {
-          id: asUUID(randomUUID()),
+id: asUUID(randomUUID()),
           entityId: userId,
           roomId,
           content: {
@@ -383,3 +383,10 @@ export class AgentIntegrationTestSuite implements TestSuite {
 
 // Export default instance for test runner
 export default new AgentIntegrationTestSuite();
+
+import { describe, it, expect } from 'vitest';
+describe('AgentIntegrationTestSuite export', () => {
+  it('exports suite for plugin runner', () => {
+    expect(AgentIntegrationTestSuite).toBeDefined();
+  });
+});

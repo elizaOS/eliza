@@ -336,6 +336,9 @@ export class AutoTradingManager extends Service {
       recentTrades: this.analytics.getMetrics().totalTrades,
     };
 
+    // Re-check after awaits; stop() may have cleared strategy
+    if (!this.activeStrategy || !this.isTrading) return;
+
     const decision = await this.activeStrategy.decide({
       marketData,
       agentState,

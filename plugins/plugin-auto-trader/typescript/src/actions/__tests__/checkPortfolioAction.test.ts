@@ -90,29 +90,29 @@ describe("checkPortfolioAction", () => {
 
   describe("validate", () => {
     it("should validate when message contains portfolio keywords", async () => {
-      const result = await checkPortfolioAction.validate(runtime, message);
+      const result = await checkPortfolioAction.validate!(runtime, message);
       expect(result).toBe(true);
     });
 
     it("should validate with different portfolio keywords", async () => {
-      const keywords = ["holdings", "positions", "balance", "wallet", "my"];
+      const keywords = ["holdings", "positions", "balance", "wallet", "check"];
       for (const keyword of keywords) {
-        message.content.text = `Show ${keyword}`;
-        const result = await checkPortfolioAction.validate(runtime, message);
+        message.content!.text = `Show ${keyword}`;
+        const result = await checkPortfolioAction.validate!(runtime, message);
         expect(result).toBe(true);
       }
     });
 
     it("should not validate when message lacks portfolio keywords", async () => {
-      message.content.text = "Hello, how are you?";
-      const result = await checkPortfolioAction.validate(runtime, message);
+      message.content!.text = "Hello, how are you?";
+      const result = await checkPortfolioAction.validate!(runtime, message);
       expect(result).toBe(false);
     });
   });
 
   describe("handler", () => {
-    it("should display portfolio with multiple positions", async () => {
-      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
+    it("should display portfolio with wallet and trading status when SwapService is ready", async () => {
+      await checkPortfolioAction.handler!(runtime, message, state, {}, callback);
 
       expect(callbackResult).toBeDefined();
       expect(callbackResult?.text).toContain("💼 **Wallet**");
@@ -151,6 +151,23 @@ describe("checkPortfolioAction", () => {
       expect(callbackResult?.text).toContain("Wallet not configured");
     });
 
+    it("should show wallet not configured when SwapService is undefined", async () => {
+      runtime.getService = vi.fn((serviceName: string) => {
+        if (serviceName === "SwapService") return null;
+        if (serviceName === "AutoTradingManager") {
+          return {
+            getStatus: vi.fn().mockReturnValue({ isTrading: false, strategy: null, positions: [], performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 0 } }),
+            getLatestTransactions: vi.fn().mockReturnValue([]),
+          };
+        }
+        return null;
+      }) as any;
+
+      await checkPortfolioAction.handler!(runtime, message, state, {}, callback);
+
+      expect(callbackResult?.text).toContain("Wallet not configured");
+    });
+
     it("should handle getWalletBalances error gracefully", async () => {
       runtime.getService = vi.fn((serviceName: string) => {
         if (serviceName === "AutoTradingManager") return createTradingManagerMock();
@@ -166,6 +183,44 @@ describe("checkPortfolioAction", () => {
       await expect(
         checkPortfolioAction.handler(runtime, message, state, {}, callback),
       ).rejects.toThrow("Wallet error");
+    });
+
+    it("should include trading section when AutoTradingManager is present", async () => {
+      await checkPortfolioAction.handler!(runtime, message, state, {}, callback);
+
+      expect(callbackResult?.text).toContain("🤖 **Trading Status**");
+      expect(callbackResult?.text).toContain("📈 **Performance**");
+    });
+
+    it("should include open positions when present", async () => {
+      runtime.getService = vi.fn((serviceName: string) => {
+        if (serviceName === "SwapService") {
+          return {
+            isReady: vi.fn(() => true),
+            getWalletBalances: vi.fn().mockResolvedValue({ solBalance: 5, tokens: [] }),
+            getWalletAddress: vi.fn().mockReturnValue("Addr111"),
+          };
+        }
+        if (serviceName === "AutoTradingManager") {
+          return {
+            getStatus: vi.fn().mockReturnValue({
+              isTrading: true,
+              strategy: "Momentum",
+              positions: [
+                { tokenAddress: "BONK111111111111111111111111111111111111111", entryPrice: 0.00002, currentPrice: 0.000023, amount: 1000 },
+              ],
+              performance: { totalPnL: 0, dailyPnL: 0, winRate: 0, totalTrades: 1 },
+            }),
+            getLatestTransactions: vi.fn().mockReturnValue([]),
+          };
+        }
+        return null;
+      }) as any;
+
+      await checkPortfolioAction.handler!(runtime, message, state, {}, callback);
+
+      expect(callbackResult?.text).toContain("📊 **Open Positions**");
+      expect(callbackResult?.text).toContain("BONK1111");
     });
 
     it("should filter out zero balance tokens", async () => {
@@ -238,7 +293,7 @@ describe("checkPortfolioAction", () => {
         return null;
       }) as any;
 
-      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
+      await checkPortfolioAction.handler!(runtime, message, state, {}, callback);
 
       expect(callbackResult).toBeDefined();
       expect(callbackResult?.text).not.toContain("Failed");
@@ -246,7 +301,7 @@ describe("checkPortfolioAction", () => {
     });
 
     it("should include timestamp in response", async () => {
-      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
+      await checkPortfolioAction.handler!(runtime, message, state, {}, callback);
 
       expect(callbackResult?.text).toContain("Last updated:");
     });

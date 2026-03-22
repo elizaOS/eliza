@@ -87,6 +87,7 @@ export class SlackService extends Service implements ISlackService {
   private settings: SlackSettings;
   private botToken: string | null = null;
   private appToken: string | null = null;
+  private userToken: string | undefined = undefined;
   private signingSecret: string | null = null;
   private userToken: string | undefined = undefined;
   private allowedChannelIds: Set<string> = new Set();

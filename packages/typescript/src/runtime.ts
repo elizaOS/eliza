@@ -22,6 +22,7 @@ import { createLogger } from "./logger";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
+import { TaskService } from "./services/task";
 import { decryptSecret, getSalt } from "./settings";
 import {
   getStreamingContext,
@@ -47,6 +48,7 @@ import {
   type GenerateTextOptions,
   type GenerateTextParams,
   type GenerateTextResult,
+  type PromptSegment,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -78,6 +80,7 @@ import {
   type SendHandlerFunction,
   type Service,
   type ServiceClass,
+  ServiceType,
   type ServiceTypeName,
   type State,
   type StateValue,
@@ -90,7 +93,12 @@ import {
   type World,
 } from "./types";
 import type { IMessageService } from "./types/message-service";
-import type { RetryBackoffConfig, SchemaRow, StreamEvent } from "./types/state";
+import type {
+  RetryBackoffConfig,
+  SchemaRow,
+  SchemaValueSpec,
+  StreamEvent,
+} from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import { ToolPolicyService } from "./services/tool-policy";
 import {
@@ -98,6 +106,11 @@ import {
   parseKeyValueXml,
   stringToUuid,
 } from "./utils";
+import {
+  pickFields,
+  PromptBatcher,
+  PromptDispatcher,
+} from "./utils/prompt-batcher";
 import { BufferUtils } from "./utils/buffer";
 import { getNumberEnv } from "./utils/environment";
 import {
@@ -153,6 +166,24 @@ function isTextStreamResult(
   );
 }
 
+function parseNumberSetting(
+  value: string | boolean | number | null,
+  fallback: number,
+): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+}
+
 export class AgentRuntime implements IAgentRuntime {
   #conversationLength = 100 as number;
   readonly agentId: UUID;
@@ -192,6 +223,8 @@ export class AgentRuntime implements IAgentRuntime {
 
   public logger;
   public enableAutonomy: boolean;
+  /** When true, TaskService does not start a timer; host drives via runDueTasks(). WHY: no long-lived process in serverless. */
+  public serverless: boolean;
   private settings: RuntimeSettings;
   private servicePromiseHandlers = new Map<string, ServicePromiseHandler>(); // Combined handlers for resolve/reject
   private servicePromises = new Map<string, Promise<Service>>(); // read
@@ -219,6 +252,7 @@ export class AgentRuntime implements IAgentRuntime {
   };
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
   public messageService: IMessageService | null = null; // Lazily initialized
+public promptBatcher: PromptBatcher;
   public companionUrl?: string;
   /** Set when stop() has been called; prevents new service starts and use-after-stop. */
   private stopped = false;
@@ -276,9 +310,15 @@ export class AgentRuntime implements IAgentRuntime {
        * Can be enabled at construction time or lazily via settings.
        */
       enableAutonomy?: boolean;
+/**
+       * Serverless mode: when true, TaskService does not start its own timer.
+       * Host must call taskService.runDueTasks() from cron or on each request.
+       * WHY: serverless runtimes have no long-lived process; setInterval would be useless or harmful.
+       */
+      serverless?: boolean;
       /** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. WHY: Thin runtimes (e.g. serverless) delegate embeddings and task-dirty notifications without blocking. */
       companionUrl?: string;
-    },
+    } = {},
   ) {
     // Create default anonymous character if none provided
     let character: Character;
@@ -344,10 +384,60 @@ export class AgentRuntime implements IAgentRuntime {
     this.companionUrl = opts.companionUrl;
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
     this.settings = opts.settings ?? environmentSettings;
+    this.promptBatcher = new PromptBatcher(
+      this,
+      new PromptDispatcher({
+        packingDensity: parseNumberSetting(this.getSetting("PROMPT_PACKING_DENSITY"), 0.5),
+        maxTokensPerCall: parseNumberSetting(
+          this.getSetting("PROMPT_MAX_TOKENS_PER_CALL"),
+          4096,
+        ),
+        maxParallelCalls: parseNumberSetting(
+          this.getSetting("PROMPT_MAX_PARALLEL_CALLS"),
+          3,
+        ),
+        modelSeparation: parseNumberSetting(
+          this.getSetting("PROMPT_MODEL_SEPARATION"),
+          0.7,
+        ),
+        maxSectionsPerCall: parseNumberSetting(
+          this.getSetting("PROMPT_MAX_SECTIONS_PER_CALL"),
+          30,
+        ),
+      }),
+      {
+        batchSize: parseNumberSetting(this.getSetting("PROMPT_BATCH_SIZE"), 10),
+        maxDrainIntervalMs: parseNumberSetting(
+          this.getSetting("PROMPT_MAX_DRAIN_INTERVAL_MS"),
+          300000,
+        ),
+        maxSectionsPerCall: parseNumberSetting(
+          this.getSetting("PROMPT_MAX_SECTIONS_PER_CALL"),
+          30,
+        ),
+        packingDensity: parseNumberSetting(
+          this.getSetting("PROMPT_PACKING_DENSITY"),
+          0.5,
+        ),
+        maxTokensPerCall: parseNumberSetting(
+          this.getSetting("PROMPT_MAX_TOKENS_PER_CALL"),
+          4096,
+        ),
+        maxParallelCalls: parseNumberSetting(
+          this.getSetting("PROMPT_MAX_PARALLEL_CALLS"),
+          3,
+        ),
+        modelSeparation: parseNumberSetting(
+          this.getSetting("PROMPT_MODEL_SEPARATION"),
+          0.7,
+        ),
+      },
+    );
     const enableAutonomyFromSettings =
       this.character.settings?.ENABLE_AUTONOMY === true ||
       this.character.settings?.ENABLE_AUTONOMY === "true";
     this.enableAutonomy = opts.enableAutonomy ?? enableAutonomyFromSettings;
+    this.serverless = opts.serverless ?? false;
 
     this.plugins = []; // Initialize plugins as an empty array
     this.characterPlugins = opts.plugins ?? []; // Store the original character plugins
@@ -614,6 +704,7 @@ export class AgentRuntime implements IAgentRuntime {
       { src: "agent", agentId: this.agentId },
       "Stopping runtime",
     );
+this.promptBatcher.dispose();
 
     // Wait for any in-flight service starts so we don't leave services running
     const inFlight = Array.from(this.startingServices.values());
@@ -624,7 +715,6 @@ export class AgentRuntime implements IAgentRuntime {
       );
       await Promise.all(inFlight);
     }
-
     for (const [serviceType, services] of this.services) {
       this.logger.debug(
         { src: "agent", agentId: this.agentId, serviceType },
@@ -708,6 +798,156 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.messageService = new DefaultMessageService();
 
+// Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
+    const skipMigrations = options?.skipMigrations ?? false;
+    if (skipMigrations) {
+      this.logger.debug(
+        { src: "agent", agentId: this.agentId },
+        "Skipping plugin migrations",
+      );
+    } else {
+      this.logger.debug(
+        { src: "agent", agentId: this.agentId },
+        "Running plugin migrations",
+      );
+      await this.runPluginMigrations();
+      this.logger.debug(
+        { src: "agent", agentId: this.agentId },
+        "Plugin migrations completed",
+      );
+    }
+
+    // Ensure character has the agent ID set before calling ensureAgentExists
+    // We create a new object with the ID to avoid mutating the original character
+    const existingAgent = await this.ensureAgentExists({
+      ...this.character,
+      id: this.agentId,
+    } as Partial<Agent>);
+    if (!existingAgent) {
+      const errorMsg = `Agent ${this.agentId} does not exist in database after ensureAgentExists call`;
+      throw new Error(errorMsg);
+    }
+
+    // Merge DB-persisted settings back into runtime character
+    // This ensures settings from previous runs are available
+    if (existingAgent.settings) {
+      this.character.settings = {
+        ...existingAgent.settings,
+        ...this.character.settings, // Character file overrides DB
+      };
+
+      // Merge secrets from both character.secrets and settings.secrets
+      // getSetting() checks character.secrets first, so we need to merge there too
+      const dbSecrets =
+        existingAgent.secrets && typeof existingAgent.secrets === "object"
+          ? existingAgent.secrets
+          : {};
+      const dbSettingsSecrets =
+        existingAgent.settings.secrets &&
+        typeof existingAgent.settings.secrets === "object"
+          ? existingAgent.settings.secrets
+          : {};
+      const settingsSecrets =
+        this.character.settings.secrets &&
+        typeof this.character.settings.secrets === "object"
+          ? this.character.settings.secrets
+          : {};
+      const characterSecrets =
+        this.character.secrets && typeof this.character.secrets === "object"
+          ? this.character.secrets
+          : {};
+
+      // Merge into both locations that getSetting() checks
+      const mergedSecrets = {
+        ...dbSecrets,
+        ...dbSettingsSecrets,
+        ...characterSecrets,
+        ...settingsSecrets, // settings.secrets has priority
+      };
+
+      if (Object.keys(mergedSecrets).length > 0) {
+        const filteredSecrets: Record<string, string> = {};
+        for (const [key, value] of Object.entries(mergedSecrets)) {
+          if (value !== null && value !== undefined) {
+            filteredSecrets[key] = String(value);
+          }
+        }
+        if (Object.keys(filteredSecrets).length > 0) {
+          this.character.secrets = filteredSecrets;
+          this.character.settings.secrets = filteredSecrets;
+        }
+      }
+    }
+
+    // No need to transform agent's own ID
+    let agentEntity = (await this.adapter.getEntitiesByIds([this.agentId]))[0] ?? null;
+
+    if (!agentEntity) {
+      if (!existingAgent.id) {
+        throw new Error(`Agent ${this.agentId} has no ID`);
+      }
+      const created = await this.createEntity({
+        id: this.agentId,
+        names: [this.character.name ?? "Agent"],
+        metadata: {},
+        agentId: existingAgent.id,
+      });
+      if (!created) {
+        const errorMsg = `Failed to create entity for agent ${this.agentId}`;
+        throw new Error(errorMsg);
+      }
+
+      agentEntity = (await this.adapter.getEntitiesByIds([this.agentId]))[0] ?? null;
+      if (!agentEntity)
+        throw new Error(`Agent entity not found for ${this.agentId}`);
+
+      this.logger.debug(
+        { src: "agent", agentId: this.agentId },
+        "Agent entity created",
+      );
+    }
+
+    // Room creation and participant setup
+    const room = await this.getRoom(this.agentId);
+    if (!room) {
+      await this.adapter.createRooms([{
+        id: this.agentId,
+        name: this.character.name,
+        source: "elizaos",
+        type: ChannelType.SELF,
+        channelId: this.agentId,
+        messageServerId: this.agentId,
+        worldId: this.agentId,
+      }]);
+    }
+    const [participantsResult] = await this.adapter.getParticipantsForRooms([
+      this.agentId,
+    ]);
+    const participantIds = participantsResult?.entityIds ?? [];
+    if (!participantIds.includes(this.agentId)) {
+      const added = await this.adapter.createRoomParticipants([this.agentId], this.agentId);
+      if (!added.length) {
+        throw new Error(
+          `Failed to add agent ${this.agentId} as participant to its own room`,
+        );
+      }
+      this.logger.debug(
+        { src: "agent", agentId: this.agentId },
+        "Agent linked to room",
+      );
+    }
+
+    const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
+    if (!embeddingModel) {
+      this.logger.warn(
+        { src: "agent", agentId: this.agentId },
+        "No TEXT_EMBEDDING model registered, skipping embedding setup",
+      );
+    } else {
+      await this.ensureEmbeddingDimension();
+    }
+
+    // Resolve init promise to allow services to start
     if (this.initResolver) {
       this.initResolver();
       this.initResolver = undefined;
@@ -1647,11 +1887,120 @@ export class AgentRuntime implements IAgentRuntime {
         });
 
         if (callback) {
-          for (const content of storedCallbackData) {
+          for (let content of storedCallbackData) {
             // Redact any secrets from callback content before sending
             if (content.text) {
               content.text = this.redactSecrets(content.text);
             }
+
+            const auditHandlers =
+              this.promptBatcher.getPreCallbackHandlers(action.name);
+            if (auditHandlers.length > 0) {
+              let auditedContent: Content | null = content;
+              const mergedSchema = auditHandlers.flatMap(
+                (handler) => handler.schema,
+              );
+              const mergedProviders = [
+                ...new Set(
+                  auditHandlers.flatMap((handler) => handler.providers ?? []),
+                ),
+              ];
+              const mergedPreamble = auditHandlers
+                .map(
+                  (handler) =>
+                    `${handler.preamble}\n\nOutput to audit:\n${content.text ?? ""}`,
+                )
+                .join("\n\n---\n\n");
+              const mergedStopSequences = new Set<string>();
+              const mergedMaxTokens: number[] = [];
+              const mergedTemperatures: number[] = [];
+              for (const handler of auditHandlers) {
+                if (typeof handler.execOptions?.maxTokens === "number") {
+                  mergedMaxTokens.push(handler.execOptions.maxTokens);
+                }
+                if (typeof handler.execOptions?.temperature === "number") {
+                  mergedTemperatures.push(handler.execOptions.temperature);
+                }
+                for (const stopSequence of handler.execOptions?.stopSequences ??
+                  []) {
+                  mergedStopSequences.add(stopSequence);
+                }
+              }
+
+              const addSectionResult = await this.promptBatcher.addSection({
+                id: `audit-${action.name}-${Date.now()}`,
+                frequency: "once",
+                priority: "immediate",
+                providers:
+                  mergedProviders.length > 0 ? mergedProviders : undefined,
+                preamble: mergedPreamble,
+                affinityKey: `audit:${message.roomId}`,
+                schema: mergedSchema,
+                model: auditHandlers.some(
+                  (handler) => handler.model === "large",
+                )
+                  ? "large"
+                  : "small",
+                execOptions: {
+                  temperature:
+                    mergedTemperatures.length > 0
+                      ? Math.min(...mergedTemperatures)
+                      : 0,
+                  maxTokens:
+                    mergedMaxTokens.length > 0
+                      ? Math.max(...mergedMaxTokens)
+                      : undefined,
+                  stopSequences:
+                    mergedStopSequences.size > 0
+                      ? Array.from(mergedStopSequences)
+                      : undefined,
+                },
+                fallback: () =>
+                  Object.assign(
+                    {},
+                    ...auditHandlers.map(
+                      (handler) => handler.fallback?.() ?? {},
+                    ),
+                  ),
+              });
+              const auditedFields = addSectionResult?.fields;
+
+              for (const handler of auditHandlers) {
+                const handlerFields = pickFields(auditedFields, handler.schema);
+                const validatedFields = handler.validate
+                  ? handler.validate(handlerFields) ??
+                    handler.fallback?.() ??
+                    handlerFields
+                  : handlerFields;
+                try {
+                  const nextContent: Content | null = auditedContent
+                    ? handler.apply(validatedFields, auditedContent)
+                    : null;
+                  if (!nextContent) {
+                    auditedContent = null;
+                    break;
+                  }
+                  auditedContent = nextContent;
+                } catch (error) {
+                  this.logger.warn(
+                    {
+                      src: "agent",
+                      agentId: this.agentId,
+                      actionName: action.name,
+                      handlerId: handler.id,
+                      error,
+                    },
+                    "Pre-callback audit apply failed; falling through to original content",
+                  );
+                }
+              }
+
+              if (!auditedContent) {
+                continue;
+              }
+              content = auditedContent;
+            }
+
             await callback(content);
           }
         }
@@ -1984,12 +2333,13 @@ export class AgentRuntime implements IAgentRuntime {
         `User entity ${entityId} not found, cannot add as participant.`,
       );
     }
-    const participants = await this.adapter.getParticipantsForRoom(roomId);
-    if (!participants.includes(entityId)) {
+    const [participantsResult] = await this.adapter.getParticipantsForRooms([roomId]);
+    const participantIds = participantsResult?.entityIds ?? [];
+    if (!participantIds.includes(entityId)) {
       // Add participant using the ID
       const added = await this.adapter.createRoomParticipants([entityId], roomId);
 
-      if (!added) {
+      if (!added.length) {
         throw new Error(
           `Failed to add participant ${entityId} to room ${roomId}`,
         );
@@ -2009,16 +2359,30 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
 
+  async getParticipantsForEntities(entityIds: UUID[]): Promise<Participant[]> {
+    return await this.adapter.getParticipantsForEntities(entityIds);
+  }
+
+  async getParticipantsForRooms(roomIds: UUID[]): Promise<Array<{ roomId: UUID; entityIds: UUID[] }>> {
+    return await this.adapter.getParticipantsForRooms(roomIds);
+  }
+
   async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
-    return await this.adapter.getParticipantsForEntity(entityId);
+    return await this.adapter.getParticipantsForEntities([entityId]);
   }
 
   async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
-    return await this.adapter.getParticipantsForRoom(roomId);
+    const result = await this.adapter.getParticipantsForRooms([roomId]);
+    return result[0]?.entityIds ?? [];
+  }
+
+  async areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]> {
+    return await this.adapter.areRoomParticipants(pairs);
   }
 
   async isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
-    return await this.adapter.isRoomParticipant(roomId, entityId);
+    const [ok] = await this.adapter.areRoomParticipants([{ roomId, entityId }]);
+    return ok ?? false;
   }
 
   async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
@@ -3380,8 +3744,14 @@ export class AgentRuntime implements IAgentRuntime {
       return null;
     }
 
+    const flattenedSchema = this.flattenSchemaRows(schema);
+    const schemaWarnings = this.collectSchemaDefinitionWarnings(schema);
+    for (const warning of schemaWarnings) {
+      this.logger.warn(`dynamicPromptExecFromState schema warning: ${warning}`);
+    }
+
     // Validate field names are valid identifiers
-    const invalidFields = schema.filter((row) => {
+    const invalidFields = flattenedSchema.filter((row) => {
       if (!row.field || typeof row.field !== "string") return true;
       // Field names should be valid identifiers: start with letter/underscore, contain only alphanumeric/underscore
       return !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(row.field);
@@ -3398,7 +3768,7 @@ export class AgentRuntime implements IAgentRuntime {
     const modelIdentifier =
       options.model ||
       (options.modelSize === "small" ? "TEXT_SMALL" : "TEXT_LARGE");
-    const schemaKey = schema.map((s) => s.field).join(",");
+    const schemaKey = this.buildSchemaMetricKey(schema);
     const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
 
     // Get validation level from settings or options
@@ -3466,10 +3836,18 @@ export class AgentRuntime implements IAgentRuntime {
       const output = templateFunction({ ...filteredState, ...state.values });
 
       // Process format options
-      let format = "XML";
+      const hasNestedSchema = this.schemaHasNestedStructure(schema);
+      let format: "XML" | "JSON" = "XML";
       if (options.forceFormat) {
-        format = options.forceFormat.toUpperCase();
-      } else if (options.preferredEncapsulation === "json") {
+        if (options.forceFormat === "xml" && hasNestedSchema) {
+          this.logger.warn(
+            "dynamicPromptExecFromState: nested schema requires JSON; overriding forced XML format",
+          );
+          format = "JSON";
+        } else {
+          format = options.forceFormat.toUpperCase() as "XML" | "JSON";
+        }
+      } else if (options.preferredEncapsulation === "json" || hasNestedSchema) {
         format = "JSON";
       }
 
@@ -3573,18 +3951,16 @@ export class AgentRuntime implements IAgentRuntime {
       const CONTAINER_START = isXML ? "<response>" : "{";
       const CONTAINER_END = isXML ? "</response>" : "}";
 
-      let EXAMPLE = `${CONTAINER_START}\n`;
-      for (let i = 0; i < extSchema.length; i++) {
-        const s = extSchema[i];
-        const isLast = i === extSchema.length - 1;
-        if (isXML) {
-          EXAMPLE += `  <${s.field}>${s.description}</${s.field}>\n`;
-        } else {
-          // No trailing comma on last field for valid JSON
-          EXAMPLE += `  "${s.field}": "${s.description}"${isLast ? "" : ","}\n`;
-        }
-      }
-      EXAMPLE += `${CONTAINER_END}\n`;
+      const EXAMPLE = isXML
+        ? this.renderXmlSchemaExample(schema)
+        : this.renderJsonSchemaExample(schema);
+      const VALIDATION_INSTRUCTIONS = this.buildValidationOutputInstructions({
+        format,
+        schema,
+        perFieldCodes,
+        includeFirstCheckpoint: first,
+        includeLastCheckpoint: last,
+      });
 
       const initCode = uuidv4();
       const midCode = uuidv4();
@@ -3597,7 +3973,7 @@ export class AgentRuntime implements IAgentRuntime {
       const section_start = isXML ? "<output>" : "# Strict Output instructions";
       const section_end = isXML ? "</output>" : "";
 
-      const prompt =
+      const variableBlock =
         "initial code: " +
         initCode +
         "\n" +
@@ -3605,21 +3981,40 @@ export class AgentRuntime implements IAgentRuntime {
         smartRetryContext +
         "middle code: " +
         midCode +
-        "\n" +
+        "\n";
+      // Prompt cache hints: build segments so providers can cache the stable prefix.
+      // WHY: We only mark content stable when it is identical across calls for the same
+      // schema/character. VALIDATION_INSTRUCTIONS contains per-call UUIDs (perFieldCodes,
+      // checkpoint codes), so it must be in an unstable segment; otherwise provider caches
+      // would never hit. Format instructions and example (same for same schema) are stable.
+      const formatStablePrefix =
         section_start +
         `
 Do NOT include any thinking, reasoning, or <think> sections in your response.
 Go directly to the ${format} response format without any preamble or explanation.
 
+`;
+      const formatStableSuffix =
+        `
 Respond using ${format} format like this:
 ${EXAMPLE}
 
 IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END} ${format} block above. Do not include any text, thinking, or reasoning before or after this ${format} block. Start your response immediately with ${CONTAINER_START} and end with ${CONTAINER_END}.
-` +
-        section_end +
-        "\nend code: " +
-        finalCode +
-        "\n";
+` + section_end;
+      const endBlock = "\nend code: " + finalCode + "\n";
+      // Middle block: validation text when present (unstable); else "\n\n" so prompt string is unchanged.
+      const formatMiddleBlock = VALIDATION_INSTRUCTIONS
+        ? VALIDATION_INSTRUCTIONS + "\n\n"
+        : "\n\n";
+
+      const segments: PromptSegment[] = [
+        { content: variableBlock, stable: false },
+        { content: formatStablePrefix, stable: true },
+        { content: formatMiddleBlock, stable: false },
+        { content: formatStableSuffix, stable: true },
+        { content: endBlock, stable: false },
+      ];
+      const prompt = segments.map((s) => s.content).join("");
 
       // Token estimate used for:
       // 1. Debug logging of prompt size
@@ -3679,9 +4074,11 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
           ? ModelType.TEXT_SMALL
           : ModelType.TEXT_LARGE;
 
+      // Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
       const modelParams = {
         ...params,
         prompt,
+        promptSegments: segments,
         providerOptions: {
           agentName: this.character.name,
         },
@@ -3836,6 +4233,27 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
             delete responseContent.two_middle_code;
             delete responseContent.two_end_code;
           }
+        }
+
+        const schemaValidation = this.validateResponseAgainstSchema(
+          responseContent,
+          schema,
+        );
+        if (
+          schemaValidation.missingPaths.length > 0 ||
+          schemaValidation.invalidPaths.length > 0
+        ) {
+          if (schemaValidation.missingPaths.length > 0) {
+            this.logger.warn(
+              `Missing required schema paths: ${schemaValidation.missingPaths.join(", ")}`,
+            );
+          }
+          if (schemaValidation.invalidPaths.length > 0) {
+            this.logger.warn(
+              `Invalid schema paths: ${schemaValidation.invalidPaths.join(", ")}`,
+            );
+          }
+          allGood = false;
         }
 
         // Validate required fields
@@ -4097,6 +4515,361 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       }
     }
     return responseContent;
+  }
+
+  private flattenSchemaRows(rows: SchemaRow[]): SchemaRow[] {
+    const flattened: SchemaRow[] = [];
+    for (const row of rows) {
+      flattened.push(row);
+      if (row.properties?.length) {
+        flattened.push(...this.flattenSchemaRows(row.properties));
+      }
+      if (row.items?.properties?.length) {
+        flattened.push(...this.flattenSchemaRows(row.items.properties));
+      }
+    }
+    return flattened;
+  }
+
+  private schemaHasNestedStructure(rows: SchemaRow[]): boolean {
+    return rows.some((row) => {
+      const effectiveType = this.getEffectiveSchemaValueType(row);
+      return (
+        effectiveType === "array" ||
+        effectiveType === "object" ||
+        (row.properties?.length ?? 0) > 0 ||
+        !!row.items
+      );
+    });
+  }
+
+  private renderXmlSchemaExample(rows: SchemaRow[]): string {
+    let example = "<response>\n";
+    for (const row of rows) {
+      example += `  <${row.field}>${row.description}</${row.field}>\n`;
+    }
+    example += "</response>\n";
+    return example;
+  }
+
+  private renderJsonSchemaExample(rows: SchemaRow[]): string {
+    const exampleObject = Object.fromEntries(
+      rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
+    );
+    return `${JSON.stringify(exampleObject, null, 2)}\n`;
+  }
+
+  private buildJsonExampleValue(spec: SchemaValueSpec): unknown {
+    return this.buildJsonExampleValueAtDepth(spec, 0);
+  }
+
+  private buildJsonExampleValueAtDepth(
+    spec: SchemaValueSpec,
+    depth: number,
+  ): unknown {
+    if (depth > 8) {
+      return "[max schema depth reached]";
+    }
+
+    switch (this.getEffectiveSchemaValueType(spec)) {
+      case "number":
+        return 123;
+      case "boolean":
+        return true;
+      case "object":
+        if (spec.properties?.length) {
+          return Object.fromEntries(
+            spec.properties.map((row) => [
+              row.field,
+              this.buildJsonExampleValueAtDepth(row, depth + 1),
+            ]),
+          );
+        }
+        return {};
+      case "array":
+        return [
+          this.buildJsonExampleValueAtDepth(
+            spec.items ?? { description: spec.description },
+            depth + 1,
+          ),
+        ];
+      case "string":
+      default:
+        return spec.description;
+    }
+  }
+
+  private validateResponseAgainstSchema(
+    responseContent: Record<string, unknown>,
+    schema: SchemaRow[],
+  ): { missingPaths: string[]; invalidPaths: string[] } {
+    const missingPaths: string[] = [];
+    const invalidPaths: string[] = [];
+    for (const row of schema) {
+      this.validateSchemaValue(
+        responseContent[row.field],
+        row,
+        row.field,
+        missingPaths,
+        invalidPaths,
+      );
+    }
+    return { missingPaths, invalidPaths };
+  }
+
+  private validateSchemaValue(
+    value: unknown,
+    spec: SchemaValueSpec,
+    path: string,
+    missingPaths: string[],
+    invalidPaths: string[],
+  ): void {
+    this.validateSchemaValueAtDepth(value, spec, path, missingPaths, invalidPaths, 0);
+  }
+
+  private validateSchemaValueAtDepth(
+    value: unknown,
+    spec: SchemaValueSpec,
+    path: string,
+    missingPaths: string[],
+    invalidPaths: string[],
+    depth: number,
+  ): void {
+    if (depth > 8) {
+      invalidPaths.push(path);
+      return;
+    }
+
+    const isMissingValue = (inner: unknown): boolean => {
+      if (inner === undefined || inner === null) return true;
+      if (typeof inner === "string") return inner.trim().length === 0;
+      if (Array.isArray(inner)) return inner.length === 0;
+      if (typeof inner === "object") return Object.keys(inner).length === 0;
+      return false;
+    };
+
+    if (isMissingValue(value)) {
+      if (spec.required) {
+        missingPaths.push(path);
+      }
+      return;
+    }
+
+    switch (this.getEffectiveSchemaValueType(spec)) {
+      case "number":
+        if (
+          typeof value !== "number" &&
+          !(typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value)))
+        ) {
+          invalidPaths.push(path);
+        }
+        return;
+      case "boolean":
+        if (
+          typeof value !== "boolean" &&
+          !(
+            typeof value === "string" &&
+            ["true", "false"].includes(value.trim().toLowerCase())
+          )
+        ) {
+          invalidPaths.push(path);
+        }
+        return;
+      case "object":
+        if (typeof value !== "object" || value === null || Array.isArray(value)) {
+          invalidPaths.push(path);
+          return;
+        }
+        for (const property of spec.properties ?? []) {
+          this.validateSchemaValueAtDepth(
+            (value as Record<string, unknown>)[property.field],
+            property,
+            `${path}.${property.field}`,
+            missingPaths,
+            invalidPaths,
+            depth + 1,
+          );
+        }
+        return;
+      case "array":
+        if (!Array.isArray(value)) {
+          invalidPaths.push(path);
+          return;
+        }
+        if (spec.items) {
+          value.forEach((item, index) => {
+            this.validateSchemaValueAtDepth(
+              item,
+              spec.items as SchemaValueSpec,
+              `${path}[${index}]`,
+              missingPaths,
+              invalidPaths,
+              depth + 1,
+            );
+          });
+        }
+        return;
+      case "string":
+      default:
+        return;
+    }
+  }
+
+  private buildValidationOutputInstructions({
+    format,
+    schema,
+    perFieldCodes,
+    includeFirstCheckpoint,
+    includeLastCheckpoint,
+  }: {
+    format: "XML" | "JSON";
+    schema: SchemaRow[];
+    perFieldCodes: Map<string, string>;
+    includeFirstCheckpoint: boolean;
+    includeLastCheckpoint: boolean;
+  }): string {
+    const isXML = format === "XML";
+    const lines: string[] = [];
+
+    if (includeFirstCheckpoint) {
+      lines.push(
+        isXML
+          ? "Also include <one_initial_code>, <one_middle_code>, and <one_end_code> tags that echo the matching prompt UUIDs."
+          : 'Also include "one_initial_code", "one_middle_code", and "one_end_code" fields that echo the matching prompt UUIDs.',
+      );
+    }
+
+    for (const row of schema) {
+      const fieldCode = perFieldCodes.get(row.field);
+      if (!fieldCode) {
+        continue;
+      }
+
+      lines.push(
+        isXML
+          ? `For <${row.field}>, also include <code_${row.field}_start>${fieldCode}</code_${row.field}_start> before it and <code_${row.field}_end>${fieldCode}</code_${row.field}_end> after it.`
+          : `For "${row.field}", also include sibling fields "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`,
+      );
+    }
+
+    if (includeLastCheckpoint) {
+      lines.push(
+        isXML
+          ? "Also include <two_initial_code>, <two_middle_code>, and <two_end_code> tags that echo the matching prompt UUIDs."
+          : 'Also include "two_initial_code", "two_middle_code", and "two_end_code" fields that echo the matching prompt UUIDs.',
+      );
+    }
+
+    return lines.length > 0 ? `${lines.join("\n")}\n` : "";
+  }
+
+  private getEffectiveSchemaValueType(
+    spec: SchemaValueSpec,
+  ): NonNullable<SchemaValueSpec["type"]> {
+    if (spec.type) {
+      return spec.type;
+    }
+    if (spec.items) {
+      return "array";
+    }
+    if ((spec.properties?.length ?? 0) > 0) {
+      return "object";
+    }
+    return "string";
+  }
+
+  private collectSchemaDefinitionWarnings(rows: SchemaRow[]): string[] {
+    const warnings: string[] = [];
+    for (const row of rows) {
+      this.collectSchemaSpecWarnings(row, row.field, warnings);
+    }
+    return warnings;
+  }
+
+  private collectSchemaSpecWarnings(
+    spec: SchemaValueSpec,
+    path: string,
+    warnings: string[],
+    depth = 0,
+  ): void {
+    if (depth > 8) {
+      warnings.push(`${path} exceeds max supported nesting depth`);
+      return;
+    }
+
+    const hasProperties = (spec.properties?.length ?? 0) > 0;
+    const hasItems = spec.items !== undefined;
+
+    if (hasProperties && hasItems) {
+      warnings.push(`${path} defines both properties and items; choose one shape`);
+    }
+
+    if (spec.type === "array" && hasProperties) {
+      warnings.push(`${path} is type "array" but also defines properties`);
+    }
+
+    if (spec.type === "object" && hasItems) {
+      warnings.push(`${path} is type "object" but also defines items`);
+    }
+
+    if (
+      (spec.type === "string" ||
+        spec.type === "number" ||
+        spec.type === "boolean") &&
+      (hasProperties || hasItems)
+    ) {
+      warnings.push(
+        `${path} is type "${spec.type}" but also defines nested structure`,
+      );
+    }
+
+    for (const property of spec.properties ?? []) {
+      this.collectSchemaSpecWarnings(
+        property,
+        `${path}.${property.field}`,
+        warnings,
+        depth + 1,
+      );
+    }
+
+    if (spec.items) {
+      this.collectSchemaSpecWarnings(spec.items, `${path}[]`, warnings, depth + 1);
+    }
+  }
+
+  private buildSchemaMetricKey(rows: SchemaRow[]): string {
+    return rows.map((row) => this.serializeSchemaMetricRow(row)).join("|");
+  }
+
+  private serializeSchemaMetricRow(row: SchemaRow): string {
+    return `${row.field}${row.required ? "!" : ""}:${this.serializeSchemaMetricSpec(row)}`;
+  }
+
+  private serializeSchemaMetricSpec(spec: SchemaValueSpec): string {
+    return this.serializeSchemaMetricSpecAtDepth(spec, 0);
+  }
+
+  private serializeSchemaMetricSpecAtDepth(
+    spec: SchemaValueSpec,
+    depth: number,
+  ): string {
+    if (depth > 8) {
+      return "max-depth";
+    }
+
+    const effectiveType = this.getEffectiveSchemaValueType(spec);
+    switch (effectiveType) {
+      case "object":
+        return `object{${(spec.properties ?? [])
+          .map((property) =>
+            `${property.field}${property.required ? "!" : ""}:${this.serializeSchemaMetricSpecAtDepth(property, depth + 1)}`,
+          )
+          .join(",")}}`;
+      case "array":
+        return `array[${spec.items ? this.serializeSchemaMetricSpecAtDepth(spec.items, depth + 1) : "unknown"}]`;
+      default:
+        return effectiveType;
+    }
   }
 
   registerEvent<T extends keyof EventPayloadMap>(
@@ -4378,11 +5151,19 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return entities[0];
   }
 
+  async getEntitiesForRooms(
+    roomIds: UUID[],
+    includeComponents?: boolean,
+  ): Promise<Array<{ roomId: UUID; entities: Entity[] }>> {
+    return await this.adapter.getEntitiesForRooms(roomIds, includeComponents);
+  }
+
   async getEntitiesForRoom(
     roomId: UUID,
     includeComponents?: boolean,
   ): Promise<Entity[]> {
-    return await this.adapter.getEntitiesForRoom(roomId, includeComponents);
+    const result = await this.adapter.getEntitiesForRooms([roomId], includeComponents);
+    return result[0]?.entities ?? [];
   }
   async createEntity(entity: Entity): Promise<boolean> {
     if (!entity.agentId) {
@@ -4405,12 +5186,20 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.upsertEntities(entities);
   }
 
+  async getComponentsForEntities(
+    entityIds: UUID[],
+    worldId?: UUID,
+    sourceEntityId?: UUID,
+  ): Promise<Component[]> {
+    return await this.adapter.getComponentsForEntities(entityIds, worldId, sourceEntityId);
+  }
+
   async getComponents(
     entityId: UUID,
     worldId?: UUID,
     sourceEntityId?: UUID,
   ): Promise<Component[]> {
-    return await this.adapter.getComponents(entityId, worldId, sourceEntityId);
+    return await this.adapter.getComponentsForEntities([entityId], worldId, sourceEntityId);
   }
   async addEmbeddingToMemory(memory: Memory): Promise<Memory> {
     if (memory.embedding) {
@@ -4601,24 +5390,18 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       "Memories cleared",
     );
   }
-  async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
-    await this.adapter.deleteAllMemories(roomId, tableName);
+  async deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void> {
+    await this.adapter.deleteAllMemories(roomIds, tableName);
   }
-  async countMemories(
-    roomIdOrParams:
-      | UUID
-      | {
-          roomId?: UUID;
-          unique?: boolean;
-          tableName?: string;
-          entityId?: UUID;
-          agentId?: UUID;
-          metadata?: Record<string, unknown>;
-        },
-    unique?: boolean,
-    tableName?: string,
-  ): Promise<number> {
-    return await this.adapter.countMemories(roomIdOrParams, unique, tableName);
+  async countMemories(params: {
+    roomIds?: UUID[];
+    unique?: boolean;
+    tableName?: string;
+    entityId?: UUID;
+    agentId?: UUID;
+    metadata?: Record<string, unknown>;
+  }): Promise<number> {
+    return await this.adapter.countMemories(params);
   }
   async getLogs(params: {
     entityId?: UUID;
@@ -4725,37 +5508,73 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.upsertRooms(rooms);
   }
 
-  async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
-    await this.adapter.deleteRoomsByWorldId(worldId);
+  async deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void> {
+    await this.adapter.deleteRoomsByWorldIds(worldIds);
   }
-  async getRoomsForParticipants(entityId: UUID): Promise<UUID[]> {
-    return await this.adapter.getRoomsForParticipants(entityId);
+
+  async getRoomsByWorlds(worldIds: UUID[], limit?: number, offset?: number): Promise<Room[]> {
+    return await this.adapter.getRoomsByWorlds(worldIds, limit, offset);
+  }
+
+  async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
+    return await this.adapter.getRoomsForParticipants(entityIds);
+  }
+
+  async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
+    await this.adapter.deleteRoomsByWorldIds([worldId]);
+  }
+
+  /** Single-id convenience: returns room IDs where this entity participates. */
+  async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
+    return await this.adapter.getRoomsForParticipants([entityId]);
   }
 
   // deprecate this one
   async getRooms(worldId: UUID): Promise<Room[]> {
-    return await this.adapter.getRoomsByWorld(worldId);
+    return await this.adapter.getRoomsByWorlds([worldId]);
   }
 
   async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
-    return await this.adapter.getRoomsByWorld(worldId);
+    return await this.adapter.getRoomsByWorlds([worldId]);
   }
+
+  async getParticipantUserStates(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<("FOLLOWED" | "MUTED" | null)[]> {
+    return await this.adapter.getParticipantUserStates(pairs);
+  }
+
   async getParticipantUserState(
     roomId: UUID,
     entityId: UUID,
   ): Promise<"FOLLOWED" | "MUTED" | null> {
-    return await this.adapter.getParticipantUserState(roomId, entityId);
+    const [state] = await this.adapter.getParticipantUserStates([{ roomId, entityId }]);
+    return state ?? null;
   }
+
+  async updateParticipantUserStates(updates: Array<{
+    roomId: UUID;
+    entityId: UUID;
+    state: "FOLLOWED" | "MUTED" | null;
+  }>): Promise<void> {
+    await this.adapter.updateParticipantUserStates(updates);
+  }
+
   async updateParticipantUserState(
     roomId: UUID,
     entityId: UUID,
     state: "FOLLOWED" | "MUTED" | null,
   ): Promise<void> {
-    await this.adapter.updateParticipantUserState(roomId, entityId, state);
+    await this.adapter.updateParticipantUserStates([{ roomId, entityId, state }]);
   }
+
+  async getRelationshipsByPairs(pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>): Promise<(Relationship | null)[]> {
+    return await this.adapter.getRelationshipsByPairs(pairs);
+  }
+
   async getRelationships(params: {
-    entityId: UUID;
+    entityIds?: UUID[];
     tags?: string[];
+    limit?: number;
+    offset?: number;
   }): Promise<Relationship[]> {
     return await this.adapter.getRelationships(params);
   }
@@ -4776,6 +5595,9 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     roomId?: UUID;
     tags?: string[];
     entityId?: UUID;
+    agentIds: UUID[];
+    limit?: number;
+    offset?: number;
   }): Promise<Task[]> {
     return await this.adapter.getTasks(params);
   }
@@ -4783,7 +5605,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.getTasksByName(name);
   }
 
-  /** WHY fire-and-forget: Notify companion that tasks changed so it can poll/process; no need to block. */
+/** WHY fire-and-forget: Notify companion that tasks changed so it can poll/process; no need to block. */
   private _notifyCompanionTasksDirty(): void {
     if (!this.companionUrl) return;
     const url = `${this.companionUrl.replace(/\/$/, "")}/task-dirty`;
@@ -4794,8 +5616,16 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     }).catch(() => {});
   }
 
+  // Single-item wrappers (deprecated - delegate to batch methods)
+  // WHY markDirty after task mutations: TaskService skips DB query when !tasksDirty; so new/updated/deleted tasks are picked up on next tick without service restart.
+  // WHY inject agentId: multi-tenant safety; getTasks can filter by agentId so each runtime only sees its tasks.
   async createTask(task: Task): Promise<UUID> {
-    const ids = await this.adapter.createTasks([task]);
+    const taskWithAgent = { ...task, agentId: task.agentId ?? this.agentId };
+    const ids = await this.adapter.createTasks([taskWithAgent]);
+    const taskService = this.getService<TaskService>(ServiceType.TASK);
+    if (taskService && "markDirty" in taskService) {
+      (taskService as TaskService).markDirty();
+    }
     this._notifyCompanionTasksDirty();
     return ids[0];
   }
@@ -4807,11 +5637,19 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
   async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
     await this.adapter.updateTasks([{ id, task }]);
+const taskService = this.getService<TaskService>(ServiceType.TASK);
+    if (taskService && "markDirty" in taskService) {
+      (taskService as TaskService).markDirty();
+    }
     this._notifyCompanionTasksDirty();
   }
 
   async deleteTask(id: UUID): Promise<void> {
-    return await this.adapter.deleteTasks([id]);
+    await this.adapter.deleteTasks([id]);
+    const taskService = this.getService<TaskService>(ServiceType.TASK);
+    if (taskService && "markDirty" in taskService) {
+      (taskService as TaskService).markDirty();
+    }
   }
 
   async log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string }): Promise<void> {
@@ -4835,9 +5673,14 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.deleteCaches([key]);
   }
 
-  // Batch task methods
+  // Batch task methods. WHY inject agentId: same as createTask, for multi-tenant getTasks filtering.
   async createTasks(tasks: Task[]): Promise<UUID[]> {
-    const ids = await this.adapter.createTasks(tasks);
+const tasksWithAgent = tasks.map((t) => ({ ...t, agentId: t.agentId ?? this.agentId }));
+    const ids = await this.adapter.createTasks(tasksWithAgent);
+    const taskService = this.getService<TaskService>(ServiceType.TASK);
+    if (taskService && "markDirty" in taskService) {
+      (taskService as TaskService).markDirty();
+    }
     this._notifyCompanionTasksDirty();
     return ids;
   }
@@ -4848,11 +5691,19 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
   async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {
     await this.adapter.updateTasks(updates);
+const taskService = this.getService<TaskService>(ServiceType.TASK);
+    if (taskService && "markDirty" in taskService) {
+      (taskService as TaskService).markDirty();
+    }
     this._notifyCompanionTasksDirty();
   }
 
   async deleteTasks(taskIds: UUID[]): Promise<void> {
-    return await this.adapter.deleteTasks(taskIds);
+    await this.adapter.deleteTasks(taskIds);
+    const taskService = this.getService<TaskService>(ServiceType.TASK);
+    if (taskService && "markDirty" in taskService) {
+      (taskService as TaskService).markDirty();
+    }
   }
 
   /**
@@ -4942,15 +5793,25 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return ids.length > 0;
   }
 
+  async getComponentsByNaturalKeys(keys: Array<{
+    entityId: UUID;
+    type: string;
+    worldId?: UUID;
+    sourceEntityId?: UUID;
+  }>): Promise<(Component | null)[]> {
+    return await this.adapter.getComponentsByNaturalKeys(keys);
+  }
+
   async getComponent(
     entityId: UUID,
     type: string,
     worldId?: UUID,
     sourceEntityId?: UUID,
   ): Promise<Component | null> {
-    // This one doesn't have a batch equivalent for the entity+type query
-    // It uses the getComponents query method
-    return await this.adapter.getComponent(entityId, type, worldId, sourceEntityId);
+    const [component] = await this.adapter.getComponentsByNaturalKeys([
+      { entityId, type, worldId, sourceEntityId },
+    ]);
+    return component ?? null;
   }
 
   async updateComponent(component: Component): Promise<void> {
@@ -4972,12 +5833,19 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.upsertComponents(components, options);
   }
 
+  async patchComponents(
+    updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return await this.adapter.patchComponents(updates, options);
+  }
+
   async patchComponent(
     componentId: UUID,
     ops: PatchOp[],
     options?: { entityContext?: UUID },
   ): Promise<void> {
-    return await this.adapter.patchComponent(componentId, ops, options);
+    await this.adapter.patchComponents([{ componentId, ops }], options);
   }
 
   async patchComponentField(
@@ -4985,7 +5853,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     op: PatchOp,
     options?: { entityContext?: UUID },
   ): Promise<void> {
-    return await this.adapter.patchComponent(componentId, [op], options);
+    await this.adapter.patchComponents([{ componentId, ops: [op] }], options);
   }
 
   async getComponentsByType(
@@ -5077,9 +5945,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     sourceEntityId: UUID;
     targetEntityId: UUID;
   }): Promise<Relationship | null> {
-    // This one doesn't have a batch equivalent for the source+target query
-    // It uses the getRelationship query method
-    return await this.adapter.getRelationship(params);
+    const [rel] = await this.adapter.getRelationshipsByPairs([params]);
+    return rel ?? null;
   }
 
   async updateRelationship(relationship: Relationship): Promise<void> {
@@ -5264,8 +6131,10 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     }
     await handler(this, target, content);
   }
-  async getMemoriesByWorldIds(params: {
+async getMemoriesByWorldIds(params: {
     worldIds: UUID[];
+    count?: number;
+    limit?: number;
     tableName?: string;
     limit?: number;
   }): Promise<Memory[]> {
@@ -5293,17 +6162,37 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   // ===============================
 
   async getPairingRequests(
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+  ): Promise<Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }>>;
+  async getPairingRequests(
     channel: PairingChannel,
     agentId: UUID,
-  ): Promise<PairingRequest[]> {
-    return await this.adapter.getPairingRequests(channel, agentId);
+  ): Promise<PairingRequest[]>;
+  async getPairingRequests(
+    queriesOrChannel: Array<{ channel: PairingChannel; agentId: UUID }> | PairingChannel,
+    agentId?: UUID,
+  ): Promise<PairingRequest[] | Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }>> {
+    if (Array.isArray(queriesOrChannel)) {
+      return await this.adapter.getPairingRequests(queriesOrChannel);
+    }
+    const result = await this.adapter.getPairingRequests([
+      { channel: queriesOrChannel, agentId: agentId! },
+    ]);
+    return result[0]?.requests ?? [];
+  }
+
+  async getPairingAllowlists(
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+  ): Promise<Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }>> {
+    return await this.adapter.getPairingAllowlists(queries);
   }
 
   async getPairingAllowlist(
     channel: PairingChannel,
     agentId: UUID,
   ): Promise<PairingAllowlistEntry[]> {
-    return await this.adapter.getPairingAllowlist(channel, agentId);
+    const result = await this.adapter.getPairingAllowlists([{ channel, agentId }]);
+    return result[0]?.entries ?? [];
   }
 
   // Batch pairing methods

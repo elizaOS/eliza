@@ -56,7 +56,7 @@ export const DEFAULT_TEST_CHARACTER: Character = {
   postExamples: [],
   topics: ["testing"],
   adjectives: ["helpful", "test"],
-  style: { all: [], chat: [], post: [], $typeName: 'eliza.v1.StyleGuides' as const },
+style: { all: [], chat: [], post: [], $typeName: 'eliza.v1.StyleGuides' as const } as Character["style"],
 };
 
 /**
@@ -107,7 +107,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
         .filter((a): a is Partial<Agent> => a != null && a.id != null) as Agent[],
     ),
     createAgent: vi.fn().mockResolvedValue(true),
-    createAgents: vi.fn(async (agentsToCreate: Partial<Agent>[]) => {
+createAgents: vi.fn(async (agentsToCreate: Partial<Agent>[]) => {
       const ids: UUID[] = [];
       for (const agent of agentsToCreate) {
         if (agent.id) {
@@ -181,6 +181,16 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     ),
     getEntitiesForRoom: vi.fn().mockResolvedValue([]),
     createEntities: vi.fn(async (newEntities: Entity[]) => {
+      const ids: UUID[] = [];
+for (const entity of newEntities) {
+        if (entity.id) {
+          entities.set(entity.id, entity);
+          ids.push(entity.id);
+        }
+      }
+      return ids;
+    }),
+    upsertEntities: vi.fn(async (newEntities: Entity[]) => {
       const ids: UUID[] = [];
       for (const entity of newEntities) {
         if (entity.id) {
@@ -261,10 +271,24 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       const roomParticipants = participants.get(roomId);
       return roomParticipants ? Array.from(roomParticipants) : [];
     }),
+    getParticipantsForRooms: vi.fn(async (roomIds: UUID[]) => {
+      return roomIds.map((roomId) => {
+        const roomParticipants = participants.get(roomId);
+        return {
+          roomId,
+          entityIds: roomParticipants ? Array.from(roomParticipants) : [],
+        };
+      });
+    }),
+    getEntitiesForRooms: vi.fn(async (_roomIds: UUID[]) => []),
     isRoomParticipant: vi.fn().mockResolvedValue(false),
     getParticipantUserState: vi.fn(async (roomId: UUID, entityId: UUID) => {
       return participantStates.get(`${roomId}-${entityId}`) || null;
     }),
+    getParticipantUserStates: vi.fn(
+      async (pairs: Array<{ roomId: UUID; entityId: UUID }>) =>
+        pairs.map(({ roomId, entityId }) => participantStates.get(`${roomId}-${entityId}`) ?? null),
+    ),
     setParticipantUserState: vi.fn(async (roomId: UUID, entityId: UUID, state: string | null) => {
       participantStates.set(`${roomId}-${entityId}`, state);
     }),
@@ -326,7 +350,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     log: vi.fn().mockResolvedValue(undefined),
     getLogs: vi.fn().mockResolvedValue([]),
     deleteLog: vi.fn().mockResolvedValue(undefined),
-  }) as unknown as IDatabaseAdapter;
+}) as unknown as IDatabaseAdapter;
 }
 
 /**

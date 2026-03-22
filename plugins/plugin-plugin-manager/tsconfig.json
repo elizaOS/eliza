@@ -22,5 +22,6 @@
     "baseUrl": ".",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "e2e/**/*.ts", "__tests__/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/__tests__/**", "src/**/*.test.ts", "src/**/*.e2e.ts", "e2e/**", "src/test-registry.ts"]
 }

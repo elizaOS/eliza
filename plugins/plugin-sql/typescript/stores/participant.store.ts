@@ -1,4 +1,4 @@
-import { type Entity, type Metadata, type Participant, type UUID, logger } from "@elizaos/core";
+import { type Entity, type Metadata, type Participant, type ParticipantUpdateFields, type ParticipantUserState, type UUID, logger } from "@elizaos/core";
 import { and, eq, or, sql, type SQL } from "drizzle-orm";
 import { entityTable, participantTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
@@ -285,7 +285,7 @@ export async function deleteParticipants(
  * 
  * @param {DrizzleDatabase} db - The database instance
  * @param {UUID} agentId - The agent ID
- * @param {Array<{ entityId: UUID; roomId: UUID; updates: Partial<Participant> }>} participants - Participant updates
+ * @param {Array<{ entityId: UUID; roomId: UUID; updates: ParticipantUpdateFields }>} participants - Participant updates
  */
 export async function updateParticipants(
   db: DrizzleDatabase,
@@ -293,7 +293,7 @@ export async function updateParticipants(
   participants: Array<{
     entityId: UUID;
     roomId: UUID;
-    updates: Partial<Participant>;
+    updates: ParticipantUpdateFields;
   }>
 ): Promise<void> {
   if (participants.length === 0) return;
@@ -306,7 +306,7 @@ export async function updateParticipants(
   
   if (hasRoomStateUpdates) {
     const roomStateCases = participants
-      .filter((p): p is typeof p & { updates: Partial<Participant> & { roomState: string } } => 'roomState' in p.updates)
+      .filter((p): p is typeof p & { updates: ParticipantUpdateFields & { roomState: ParticipantUserState } } => 'roomState' in p.updates)
       .map(p => sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${p.updates.roomState}`);
     
     if (roomStateCases.length > 0) {
@@ -316,7 +316,7 @@ export async function updateParticipants(
   
   if (hasMetadataUpdates) {
     const metadataCases = participants
-      .filter((p): p is typeof p & { updates: Partial<Participant> & { metadata: unknown } } => 'metadata' in p.updates)
+      .filter((p): p is typeof p & { updates: ParticipantUpdateFields & { metadata: Record<string, unknown> } } => 'metadata' in p.updates)
       .map(p => {
         const jsonString = JSON.stringify(p.updates.metadata);
         return sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${jsonString}::jsonb`;

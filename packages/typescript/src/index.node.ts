@@ -75,6 +75,14 @@ export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
 export * from "./services/tool-policy";
 export * from "./services/trajectoryLogger";
+export {
+  getTaskSchedulerAdapter,
+  markTaskSchedulerDirty,
+  registerTaskSchedulerRuntime,
+  startTaskScheduler,
+  stopTaskScheduler,
+  unregisterTaskSchedulerRuntime,
+} from "./services/task-scheduler";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";

@@ -188,7 +188,11 @@ export class MemoryService extends Service {
   }
 
   async shouldSummarize(roomId: UUID): Promise<boolean> {
-    const count = await this.runtime.countMemories(roomId, false, "messages");
+    const count = await this.runtime.countMemories({
+      roomIds: [roomId],
+      unique: false,
+      tableName: "messages",
+    });
     return count >= this.memoryConfig.shortTermSummarizationThreshold;
   }
 

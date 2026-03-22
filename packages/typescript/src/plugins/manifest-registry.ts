@@ -373,11 +373,12 @@ export function loadPluginManifestRegistry(params: {
   for (const candidate of candidates) {
     const manifestRes = loadPluginManifest(candidate.rootDir);
 
-    if (manifestRes.ok === false) {
+    if (!manifestRes.ok) {
+      const errRes = manifestRes as { ok: false; error: string; manifestPath: string };
       diagnostics.push({
         level: "error",
-        message: manifestRes.error,
-        source: manifestRes.manifestPath,
+        message: errRes.error,
+        source: errRes.manifestPath,
       });
       continue;
     }
@@ -494,7 +495,7 @@ export function getPluginsByChannel(
  *
  * @param registry - The manifest registry
  * @param providerId - The provider ID
- * @returns Array of matching manifest records
+ * @returns Array of matching records
  */
 export function getPluginsByProvider(
   registry: PluginManifestRegistry,

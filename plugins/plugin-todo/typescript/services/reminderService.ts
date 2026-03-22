@@ -26,6 +26,10 @@ interface ReminderMessage {
   };
 }
 
+const TODO_CHECK_REMINDERS = "TODO_CHECK_REMINDERS";
+const TODO_CACHE_CLEANUP = "TODO_CACHE_CLEANUP";
+const TODO_PROCESS_NOTIFICATION_QUEUE = "TODO_PROCESS_NOTIFICATION_QUEUE";
+
 export class TodoReminderService extends Service {
   static serviceType: ServiceTypeName = "TODO_REMINDER" as ServiceTypeName;
   serviceName = "TODO_REMINDER" as ServiceTypeName;
@@ -33,7 +37,9 @@ export class TodoReminderService extends Service {
 
   private notificationManager!: NotificationManager;
   private cacheManager!: CacheManager;
-  private reminderTimer: NodeJS.Timeout | null = null;
+  private reminderTaskId: UUID | null = null;
+  private cacheCleanupTaskId: UUID | null = null;
+  private notificationTaskId: UUID | null = null;
   private rolodexMessageService: MessageDeliveryService | null = null;
   private rolodexEntityService: EntityRelationshipService | null = null;
   private lastReminderCheck: Map<UUID, number> = new Map();
@@ -48,7 +54,9 @@ export class TodoReminderService extends Service {
   }
 
   private async initialize(): Promise<void> {
-    this.notificationManager = new NotificationManager(this.runtime);
+    this.notificationManager = new NotificationManager(this.runtime, {
+      useTaskScheduler: true,
+    });
     this.cacheManager = new CacheManager();
 
     this.rolodexMessageService = await this.runtime.getService("MESSAGE_DELIVERY" as ServiceTypeName);
@@ -60,31 +68,106 @@ export class TodoReminderService extends Service {
       logger.warn("Rolodex services not found - only in-app notifications will be sent");
     }
 
-    this.startReminderLoop();
-  }
-
-  private startReminderLoop(): void {
-    if (this.reminderTimer) {
-      clearInterval(this.reminderTimer);
-    }
-
-    this.reminderTimer = setInterval(() => {
-      this.checkTasksForReminders().catch((error) => {
-        logger.error(
-          "Error in reminder loop:",
-          error instanceof Error ? error.message : String(error)
-        );
-      });
-    }, 30 * 1000);
-
+    this.registerTaskWorkers();
+    await this.ensureRecurringTasks();
     this.checkTasksForReminders().catch((error) => {
       logger.error(
         "Error in initial reminder check:",
         error instanceof Error ? error.message : String(error)
       );
     });
+  }
 
-    logger.info("Reminder loop started - checking every 30 seconds");
+  private registerTaskWorkers(): void {
+    const rt = this.runtime;
+    rt.registerTaskWorker({
+      name: TODO_CHECK_REMINDERS,
+      execute: async () => {
+        await this.checkTasksForReminders();
+      },
+    });
+    rt.registerTaskWorker({
+      name: TODO_CACHE_CLEANUP,
+      execute: async () => {
+        this.cacheManager.cleanup();
+      },
+    });
+    rt.registerTaskWorker({
+      name: TODO_PROCESS_NOTIFICATION_QUEUE,
+      execute: async () => {
+        await this.notificationManager.processQueue();
+      },
+    });
+  }
+
+  /** Idempotent: getTasksByName + filter by agentId; create recurring task only if none exists. */
+  private async ensureRecurringTasks(): Promise<void> {
+    const rt = this.runtime;
+    const agentId = rt.agentId;
+    if (
+      typeof rt.getTasksByName !== "function" ||
+      typeof rt.createTask !== "function"
+    ) {
+      return;
+    }
+
+    const existingReminders = await rt.getTasksByName(TODO_CHECK_REMINDERS);
+    const myReminder = existingReminders.find(
+      (t) => t.agentId != null && String(t.agentId) === String(agentId)
+    );
+    if (!myReminder?.id) {
+      this.reminderTaskId = await rt.createTask({
+        name: TODO_CHECK_REMINDERS,
+        tags: ["queue", "repeat"],
+        metadata: {
+          updateInterval: 30_000,
+          baseInterval: 30_000,
+          updatedAt: Date.now(),
+        },
+      });
+    } else {
+      this.reminderTaskId = myReminder.id;
+    }
+
+    const existingCache = await rt.getTasksByName(TODO_CACHE_CLEANUP);
+    const myCache = existingCache.find(
+      (t) => t.agentId != null && String(t.agentId) === String(agentId)
+    );
+    if (!myCache?.id) {
+      this.cacheCleanupTaskId = await rt.createTask({
+        name: TODO_CACHE_CLEANUP,
+        tags: ["queue", "repeat"],
+        metadata: {
+          updateInterval: 60_000,
+          baseInterval: 60_000,
+          updatedAt: Date.now(),
+        },
+      });
+    } else {
+      this.cacheCleanupTaskId = myCache.id;
+    }
+
+    const existingNotif = await rt.getTasksByName(TODO_PROCESS_NOTIFICATION_QUEUE);
+    const myNotif = existingNotif.find(
+      (t) => t.agentId != null && String(t.agentId) === String(agentId)
+    );
+    if (!myNotif?.id) {
+      this.notificationTaskId = await rt.createTask({
+        name: TODO_PROCESS_NOTIFICATION_QUEUE,
+        tags: ["queue", "repeat"],
+        metadata: {
+          updateInterval: 1000,
+          baseInterval: 1000,
+          updatedAt: Date.now(),
+        },
+      });
+    } else {
+      this.notificationTaskId = myNotif.id;
+    }
+
+    logger.info(
+      "Todo recurring tasks ensured (reminders 30s, cache cleanup 60s, notification queue 1s)"
+    );
   }
 
   async checkTasksForReminders(): Promise<void> {
@@ -251,9 +334,20 @@ export class TodoReminderService extends Service {
   }
 
   async stop(): Promise<void> {
-    if (this.reminderTimer) {
-      clearInterval(this.reminderTimer);
-      this.reminderTimer = null;
+    const rt = this.runtime;
+    if (typeof rt.deleteTask === "function") {
+      if (this.reminderTaskId) {
+        await rt.deleteTask(this.reminderTaskId).catch(() => {});
+        this.reminderTaskId = null;
+      }
+      if (this.cacheCleanupTaskId) {
+        await rt.deleteTask(this.cacheCleanupTaskId).catch(() => {});
+        this.cacheCleanupTaskId = null;
+      }
+      if (this.notificationTaskId) {
+        await rt.deleteTask(this.notificationTaskId).catch(() => {});
+        this.notificationTaskId = null;
+      }
     }
 
     if (this.notificationManager) {

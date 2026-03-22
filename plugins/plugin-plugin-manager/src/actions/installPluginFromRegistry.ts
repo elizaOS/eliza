@@ -1,4 +1,4 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
+import type { Action, ActionResult, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
 import { PluginManagerService } from '../services/pluginManagerService';
 
 export const installPluginFromRegistryAction: Action = {
@@ -36,7 +36,7 @@ export const installPluginFromRegistryAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<import('@elizaos/core').ActionResult> {
+  ): Promise<ActionResult> {
     const pluginManagerService = (await runtime.getService('plugin_manager')) as PluginManagerService;
 
     if (!pluginManagerService) {

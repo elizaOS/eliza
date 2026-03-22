@@ -71,11 +71,11 @@ describe("userStateProvider", () => {
     });
 
     it("should handle missing context", async () => {
-      const mockRuntime = {} as IAgentRuntime;
+      const mockRuntime = {} as unknown as IAgentRuntime;
       const mockMessage = {
         roomId: "room-uuid-123",
         content: {},
-      } as Memory;
+      } as unknown as Memory;
       const mockState = {} as State;
 
       const result = await userStateProvider.get(

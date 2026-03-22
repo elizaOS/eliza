@@ -49,13 +49,15 @@ export const publishPluginAction: Action = {
 
     // Temporarily disabled while migrating to new registry system
     const text =
-      '⚠️ Plugin publishing is temporarily unavailable while we migrate to the new registry system.\n\nYou can still publish manually using:\n```bash\nnpm publish --access public\n```\n\nMake sure to:\n1. Run tests with `npm test`\n2. Build with `npm run build`\n3. Login to npm with `npm login`';
+      '⚠️ Plugin publishing is temporarily unavailable while we migrate to the new registry system.\n\nYou can still publish manually using:\n';
+
     if (callback) {
-      await callback({
-        text,
-        actions: ['PUBLISH_PLUGIN'],
-      });
+      callback({ text, content: { success: false, error: 'Feature temporarily disabled' } });
     }
-    return { success: true, text };
+
+    return {
+      success: false,
+      error: 'Feature temporarily disabled',
+    };
   },
 };

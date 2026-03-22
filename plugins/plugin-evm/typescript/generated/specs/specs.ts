@@ -35,8 +35,8 @@ export const coreActionsSpec = {
       "parameters": []
     },
     {
-      "name": "TRANSFER",
-      "description": "Transfer tokens or native asset to an address",
+      "name": "BRIDGE",
+      "description": "Bridge assets across chains",
       "parameters": [],
       "similes": []
     },
@@ -47,14 +47,8 @@ export const coreActionsSpec = {
       "similes": []
     },
     {
-      "name": "BRIDGE",
-      "description": "Bridge assets across chains",
-      "parameters": [],
-      "similes": []
-    },
-    {
-      "name": "VOTE_PROPOSAL",
-      "description": "Vote on a governance proposal",
+      "name": "TRANSFER",
+      "description": "Transfer tokens or native asset to an address",
       "parameters": [],
       "similes": []
     },
@@ -67,6 +61,12 @@ export const coreActionsSpec = {
     {
       "name": "GOV_PROPOSE",
       "description": "Create a governance proposal",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "VOTE_PROPOSAL",
+      "description": "Vote on a governance proposal",
       "parameters": [],
       "similes": []
     },
@@ -87,8 +87,8 @@ export const allActionsSpec = {
       "parameters": []
     },
     {
-      "name": "TRANSFER",
-      "description": "Transfer tokens or native asset to an address",
+      "name": "BRIDGE",
+      "description": "Bridge assets across chains",
       "parameters": [],
       "similes": []
     },
@@ -99,14 +99,8 @@ export const allActionsSpec = {
       "similes": []
     },
     {
-      "name": "BRIDGE",
-      "description": "Bridge assets across chains",
-      "parameters": [],
-      "similes": []
-    },
-    {
-      "name": "VOTE_PROPOSAL",
-      "description": "Vote on a governance proposal",
+      "name": "TRANSFER",
+      "description": "Transfer tokens or native asset to an address",
       "parameters": [],
       "similes": []
     },
@@ -119,6 +113,12 @@ export const allActionsSpec = {
     {
       "name": "GOV_PROPOSE",
       "description": "Create a governance proposal",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "VOTE_PROPOSAL",
+      "description": "Vote on a governance proposal",
       "parameters": [],
       "similes": []
     },
@@ -175,3 +175,4 @@ export const coreProviderDocs: readonly ProviderDoc[] = coreProvidersSpec.provid
 export const allProviderDocs: readonly ProviderDoc[] = allProvidersSpec.providers;
 export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.evaluators;
 export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;
+

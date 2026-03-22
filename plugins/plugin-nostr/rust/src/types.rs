@@ -1,6 +1,6 @@
 //! Type definitions for the Nostr plugin.
 
-use bech32::Bech32;
+use bech32::{Bech32, DecodeError, EncodeError, Hrp};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -246,13 +246,13 @@ pub fn normalize_pubkey(input: &str) -> Result<String, NostrPluginError> {
     // npub format - decode to hex
     if trimmed.starts_with("npub1") {
         let (hrp, data) = bech32::decode(trimmed)
-            .map_err(|e| NostrPluginError::crypto(format!("Invalid npub key: {}", e)))?;
+            .map_err(|e: DecodeError| NostrPluginError::crypto(format!("Invalid npub key: {}", e)))?;
 
         if hrp.as_str() != "npub" {
             return Err(NostrPluginError::crypto("Invalid npub key: wrong prefix"));
         }
 
-        return Ok(hex::encode(data));
+        return Ok(hex::encode(&data));
     }
 
     // Already hex - validate and return lowercase
@@ -271,10 +271,9 @@ pub fn pubkey_to_npub(hex_pubkey: &str) -> Result<String, NostrPluginError> {
     let data = hex::decode(&normalized)
         .map_err(|e| NostrPluginError::crypto(format!("Invalid hex pubkey: {}", e)))?;
 
-    let hrp = bech32::Hrp::parse("npub")
-        .map_err(|e| NostrPluginError::crypto(format!("Failed to encode npub: {}", e)))?;
+    let hrp = Hrp::parse("npub").map_err(|e| NostrPluginError::crypto(format!("Invalid hrp: {}", e)))?;
     let encoded = bech32::encode::<Bech32>(hrp, &data)
-        .map_err(|e| NostrPluginError::crypto(format!("Failed to encode npub: {}", e)))?;
+        .map_err(|e: EncodeError| NostrPluginError::crypto(format!("Failed to encode npub: {}", e)))?;
 
     Ok(encoded)
 }

@@ -99,3 +99,4 @@ describe('CharacterFileManager static methods', () => {
     expect(CharacterFileManager.serviceType).toBe('CHARACTER_MANAGEMENT');
   });
 });
+

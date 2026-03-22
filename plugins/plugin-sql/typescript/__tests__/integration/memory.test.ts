@@ -332,7 +332,7 @@ describe("Memory Integration Tests", () => {
     it("should count memories in a room", async () => {
       await adapter.createMemory(createTestMemory({ text: "mem1" }), "memories");
       await adapter.createMemory(createTestMemory({ text: "mem2" }), "memories");
-      const count = await adapter.countMemories(testRoomId, false, "memories");
+      const count = await adapter.countMemories({ roomIds: [testRoomId], unique: false, tableName: "memories" });
       expect(count).toBe(2);
     });
 
@@ -524,7 +524,7 @@ describe("Memory Integration Tests", () => {
       }
 
       // Get total count
-      const totalCount = await adapter.countMemories(testRoomId, false, "memories");
+      const totalCount = await adapter.countMemories({ roomIds: [testRoomId], unique: false, tableName: "memories" });
       expect(totalCount).toBe(totalMemories);
 
       // Paginate through all memories
@@ -747,14 +747,14 @@ describe("Memory Integration Tests", () => {
       }
 
       // Verify memories exist
-      const countBefore = await adapter.countMemories(testRoomId, true, "memories");
+      const countBefore = await adapter.countMemories({ roomIds: [testRoomId], unique: true, tableName: "memories" });
       expect(countBefore).toBeGreaterThan(0);
 
       // Delete all memories
-      await adapter.deleteAllMemories(testRoomId, "memories");
+      await adapter.deleteAllMemories([testRoomId], "memories");
 
       // Verify memories were deleted
-      const countAfter = await adapter.countMemories(testRoomId, true, "memories");
+      const countAfter = await adapter.countMemories({ roomIds: [testRoomId], unique: true, tableName: "memories" });
       expect(countAfter).toBe(0);
     });
 

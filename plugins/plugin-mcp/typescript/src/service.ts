@@ -1,4 +1,4 @@
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -45,8 +45,11 @@ export class McpService extends Service {
     text: "",
   };
   private pingConfig: PingConfig = DEFAULT_PING_CONFIG;
+  private pingTaskId: UUID | null = null;
   private toolCompatibility: McpToolCompatibility | null = null;
   private compatibilityInitialized = false;
+
+  private static readonly MCP_PING_TASK = "MCP_PING";
 
   private initializationPromise: Promise<void> | null = null;
 
@@ -60,6 +63,10 @@ export class McpService extends Service {
     if (service.initializationPromise) {
       await service.initializationPromise;
     }
+    if (service.pingConfig.enabled) {
+      service.registerPingWorker();
+      await service.ensurePingTask();
+    }
     return service;
   }
 
@@ -70,12 +77,15 @@ export class McpService extends Service {
   }
 
   async stop(): Promise<void> {
+    if (this.pingTaskId && typeof this.runtime.deleteTask === "function") {
+      await this.runtime.deleteTask(this.pingTaskId).catch(() => {});
+      this.pingTaskId = null;
+    }
     for (const [name] of this.connections) {
       await this.deleteConnection(name);
     }
     this.connections.clear();
     for (const state of this.connectionStates.values()) {
-      if (state.pingInterval) clearInterval(state.pingInterval);
       if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
     }
     this.connectionStates.clear();
@@ -242,26 +252,56 @@ export class McpService extends Service {
     };
   }
 
-  private startPingMonitoring(name: string): void {
-    const connection = this.connections.get(name);
-    if (!connection) return;
+  private startPingMonitoring(_name: string): void {
+    // Ping is driven by MCP_PING queue task (one task pings all stdio connections).
+  }
 
-    const config = JSON.parse(connection.server.config) as McpServerConfig;
-    const isHttpTransport = config.type !== "stdio";
+  private registerPingWorker(): void {
+    this.runtime.registerTaskWorker({
+      name: McpService.MCP_PING_TASK,
+      execute: async () => {
+        if (!this.pingConfig.enabled) return;
+        for (const [name, state] of this.connectionStates) {
+          if (state.status !== "connected") continue;
+          const connection = this.connections.get(name);
+          if (!connection) continue;
+          try {
+            const config = JSON.parse(connection.server.config) as McpServerConfig;
+            if (config.type !== "stdio") continue;
+          } catch {
+            continue;
+          }
+          this.sendPing(name).catch((err: Error) => {
+            logger.warn(
+              { error: err.message, serverName: name },
+              `Ping failed for ${name}`,
+            );
+            this.handlePingFailure(name, err);
+          });
+        }
+      },
+    });
+  }
 
-    if (isHttpTransport) {
+  private async ensurePingTask(): Promise<void> {
+    const rt = this.runtime;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(McpService.MCP_PING_TASK);
+    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    if (mine?.id) {
+      this.pingTaskId = mine.id;
       return;
     }
-
-    const state = this.connectionStates.get(name);
-    if (!state || !this.pingConfig.enabled) return;
-    if (state.pingInterval) clearInterval(state.pingInterval);
-    state.pingInterval = setInterval(() => {
-      this.sendPing(name).catch((err: Error) => {
-        logger.warn({ error: err.message, serverName: name }, `Ping failed for ${name}`);
-        this.handlePingFailure(name, err);
-      });
-    }, this.pingConfig.intervalMs);
+    this.pingTaskId = await rt.createTask({
+      name: McpService.MCP_PING_TASK,
+      tags: ["queue", "repeat"],
+      metadata: {
+        updateInterval: this.pingConfig.intervalMs,
+        baseInterval: this.pingConfig.intervalMs,
+        updatedAt: Date.now(),
+      },
+    });
   }
 
   private async sendPing(name: string): Promise<void> {
@@ -293,7 +333,6 @@ export class McpService extends Service {
     if (!state) return;
     state.status = "disconnected";
     state.lastError = error instanceof Error ? error : new Error(String(error));
-    if (state.pingInterval) clearInterval(state.pingInterval);
     if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
     if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       return;
@@ -322,7 +361,6 @@ export class McpService extends Service {
     }
     const state = this.connectionStates.get(name);
     if (state) {
-      if (state.pingInterval) clearInterval(state.pingInterval);
       if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
       this.connectionStates.delete(name);
     }

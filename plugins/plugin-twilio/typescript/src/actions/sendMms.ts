@@ -98,7 +98,7 @@ const sendMmsAction: Action = {
       logger.info(`MMS sent to ${phoneNumber} with ${mediaUrls.length} media attachment(s)`);
 
       if (callback) {
-        callback({
+        await callback({
           text: `MMS sent successfully to ${phoneNumber} with ${mediaUrls.length} media attachment(s)`,
           success: true,
         });
@@ -107,7 +107,7 @@ const sendMmsAction: Action = {
     } catch (error) {
       logger.error({ error: String(error) }, "Error sending MMS");
       if (callback) {
-        callback({
+        await callback({
           text: `Failed to send MMS: ${error instanceof Error ? error.message : "Unknown error"}`,
           success: false,
         });

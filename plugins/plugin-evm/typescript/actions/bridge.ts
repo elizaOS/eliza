@@ -171,6 +171,7 @@ export class BridgeAction {
       address: tokenAddress as Address,
       abi: decimalsAbi,
       functionName: "decimals" as const,
+authorizationList: [] as const,
     };
     const decimals = await publicClient.readContract(
       readDecimalsParams as unknown as Parameters<typeof publicClient.readContract>[0]

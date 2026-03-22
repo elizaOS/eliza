@@ -16,6 +16,6 @@
     "sourceMap": true,
     "noEmit": true
   },
-  "include": ["*.ts"],
+  "include": ["*.ts", "*.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

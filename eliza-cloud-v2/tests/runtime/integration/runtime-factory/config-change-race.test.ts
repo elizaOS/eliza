@@ -137,11 +137,11 @@ describe("Mode Switching During Operations", () => {
 
           // Simulate runtime.countMemories()
           await assistantRuntime
-            .countMemories(
-              "00000000-0000-0000-0000-000000000001" as any,
-              false,
-              "messages",
-            )
+            .countMemories({
+              roomIds: ["00000000-0000-0000-0000-000000000001" as any],
+              unique: false,
+              tableName: "messages",
+            })
             .catch(() => {}); // May fail if room doesn't exist, that's OK
 
           // Simulate runtime.getMemories()
@@ -381,11 +381,11 @@ describe("Service Access During Invalidation", () => {
 
             // Simulate memory operations
             await runtime
-              .countMemories(
-                "00000000-0000-0000-0000-000000000001" as any,
-                false,
-                "messages",
-              )
+              .countMemories({
+                roomIds: ["00000000-0000-0000-0000-000000000001" as any],
+                unique: false,
+                tableName: "messages",
+              })
               .catch(() => {}); // Room may not exist
 
             // Real DB query
@@ -626,7 +626,7 @@ describe("Long-Running Operation Simulation", () => {
           // Step 1: runtime.countMemories() - line 215 in evaluator
           console.log("  [Evaluator] Step 1: countMemories");
           await runtime
-            .countMemories(testUser.roomId, false, "messages")
+            .countMemories({ roomIds: [testUser.roomId], unique: false, tableName: "messages" })
             .catch(() => {});
           completedSteps.push("countMemories_1");
 
@@ -668,7 +668,7 @@ describe("Long-Running Operation Simulation", () => {
           // Step 7: runtime.countMemories() again - line 332
           console.log("  [Evaluator] Step 7: Final countMemories");
           await runtime
-            .countMemories(testUser.roomId, false, "messages")
+            .countMemories({ roomIds: [testUser.roomId], unique: false, tableName: "messages" })
             .catch(() => {});
           completedSteps.push("countMemories_2");
 

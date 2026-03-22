@@ -15,27 +15,25 @@ const { mockSend, mockDestroy } = vi.hoisted(() => ({
   mockDestroy: vi.fn(),
 }));
 
-vi.mock("@aws-sdk/client-s3", () => ({
-  S3Client: vi.fn(function (this: unknown) {
-    return {
-      send: mockSend,
-      destroy: mockDestroy,
-      config: {},
+vi.mock("@aws-sdk/client-s3", () => {
+  const makeCommand = (cmd: string) =>
+    class {
+      constructor(public input: Record<string, unknown>) {
+        (this as Record<string, unknown>)._cmd = cmd;
+      }
     };
-  }),
-  PutObjectCommand: vi.fn(function (this: unknown, input: Record<string, unknown>) {
-    return { ...input, _cmd: "PutObject" };
-  }),
-  GetObjectCommand: vi.fn(function (this: unknown, input: Record<string, unknown>) {
-    return { ...input, _cmd: "GetObject" };
-  }),
-  DeleteObjectCommand: vi.fn(function (this: unknown, input: Record<string, unknown>) {
-    return { ...input, _cmd: "DeleteObject" };
-  }),
-  HeadObjectCommand: vi.fn(function (this: unknown, input: Record<string, unknown>) {
-    return { ...input, _cmd: "HeadObject" };
-  }),
-}));
+  return {
+    S3Client: class MockS3Client {
+      send = mockSend;
+      destroy = mockDestroy;
+      config = {};
+    },
+    PutObjectCommand: makeCommand("PutObject"),
+    GetObjectCommand: makeCommand("GetObject"),
+    DeleteObjectCommand: makeCommand("DeleteObject"),
+    HeadObjectCommand: makeCommand("HeadObject"),
+  };
+});
 
 const { mockGetSignedUrl } = vi.hoisted(() => ({
   mockGetSignedUrl: vi.fn(),

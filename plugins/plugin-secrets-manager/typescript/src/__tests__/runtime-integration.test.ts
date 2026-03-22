@@ -23,9 +23,8 @@ import {
   type Room,
   type Plugin,
   ChannelType,
-  type IDatabaseAdapter,
+  InMemoryDatabaseAdapter,
 } from "@elizaos/core";
-import { v4 as uuidv4 } from "uuid";
 
 import { secretsManagerPlugin } from "../plugin";
 import { SecretsService, SECRETS_SERVICE_TYPE } from "../services/secrets";
@@ -54,7 +53,7 @@ function stringToUuid(str: string): UUID {
 }
 
 function createUUID(): UUID {
-  return stringToUuid(uuidv4());
+  return crypto.randomUUID() as UUID;
 }
 
 const DEFAULT_TEST_CHARACTER: Character = {
@@ -98,7 +97,7 @@ function createTestCharacter(overrides: Partial<Character> = {}): Character {
 }
 
 /**
- * Entity interface for testing.
+* Entity interface for testing.
  */
 interface Entity {
   id: UUID;
@@ -403,6 +402,57 @@ function createTestWorld(
     ...overrides,
   };
 }
+ * Creates a test runtime with the secrets manager plugin.
+ */
+async function createTestRuntime(
+  options: {
+    character?: Partial<Character>;
+    plugins?: Plugin[];
+  } = {},
+): Promise<IAgentRuntime> {
+  const character = createTestCharacter(options.character);
+  const agentId = character.id || createUUID();
+  const adapter = new InMemoryDatabaseAdapter();
+  await adapter.initialize();
+
+  // Include secrets manager plugin
+  const plugins = [secretsManagerPlugin, ...(options.plugins || [])];
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character,
+    adapter,
+    plugins,
+  });
+
+  await runtime.initialize();
+
+  // Wait for secrets service to be loaded
+  await runtime.getServiceLoadPromise(SECRETS_SERVICE_TYPE);
+  // Wait a short time for all services to be fully ready
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  return runtime;
+}
+
+async function cleanupTestRuntime(runtime: IAgentRuntime): Promise<void> {
+  await runtime.stop();
+}
+
+function createTestWorld(
+  runtime: IAgentRuntime,
+  overrides: Partial<World> = {},
+): World {
+  return {
+    id: createUUID(),
+    name: "Test World",
+    agentId: runtime.agentId,
+    messageServerId: "test-server-123",
+    metadata: {},
+    createdAt: Date.now(),
+    ...overrides,
+  };
+}
 
 function createTestRoom(worldId: UUID, overrides: Partial<Room> = {}): Room {
   return {
@@ -542,7 +592,7 @@ describe("Secrets Manager Runtime Integration", () => {
 
       // Create a world
       const world = createTestWorld(runtime);
-      await (runtime as AgentRuntime)["adapter"].createWorld(world);
+      await (runtime as AgentRuntime)["adapter"].createWorlds([world]);
 
       // Set a world secret - signature: setWorld(key, value, worldId)
       const setResult = await secretsService.setWorld(
@@ -569,7 +619,7 @@ describe("Secrets Manager Runtime Integration", () => {
 
       // Create a world
       const world = createTestWorld(runtime);
-      await (runtime as AgentRuntime)["adapter"].createWorld(world);
+      await (runtime as AgentRuntime)["adapter"].createWorlds([world]);
 
       // Set same key at different levels
       await secretsService.setGlobal("SHARED_KEY", "global-value");
@@ -591,8 +641,8 @@ describe("Secrets Manager Runtime Integration", () => {
       // Create two worlds
       const world1 = createTestWorld(runtime, { name: "World 1" });
       const world2 = createTestWorld(runtime, { name: "World 2" });
-      await (runtime as AgentRuntime)["adapter"].createWorld(world1);
-      await (runtime as AgentRuntime)["adapter"].createWorld(world2);
+      await (runtime as AgentRuntime)["adapter"].createWorlds([world1]);
+      await (runtime as AgentRuntime)["adapter"].createWorlds([world2]);
 
       // Set same key in both worlds - signature: setWorld(key, value, worldId)
       await secretsService.setWorld(
@@ -1162,7 +1212,7 @@ describe("Secrets Manager Runtime Integration", () => {
       const world = createTestWorld(runtime);
 
       // Create the world in the database first
-      await (runtime as AgentRuntime)["adapter"].createWorld(world);
+      await (runtime as AgentRuntime)["adapter"].createWorlds([world]);
 
       const config = createOnboardingConfig(["OPENAI_API_KEY"]);
       await onboardingService.initializeOnboarding(world, config);

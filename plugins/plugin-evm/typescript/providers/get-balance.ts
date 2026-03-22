@@ -54,6 +54,7 @@ export const tokenBalanceProvider: Provider = {
       abi: balanceAbi,
       functionName: "balanceOf" as const,
       args: [address],
+      authorizationList: [] as const,
     };
     const balance = (await publicClient.readContract(
       readBalanceParams as unknown as Parameters<typeof publicClient.readContract>[0]

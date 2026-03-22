@@ -37,7 +37,11 @@ vi.mock("../services/lobsterService", () => ({
     run: vi.fn(),
     resume: vi.fn(),
   })),
-  LobsterService: vi.fn(),
+  LobsterService: vi.fn().mockImplementation(function (this: any) {
+    this.isAvailable = mockIsAvailable;
+    this.run = vi.fn();
+    this.resume = vi.fn();
+  }),
 }));
 
 const createMockRuntime = (settings: Record<string, string> = {}): IAgentRuntime =>
@@ -70,7 +74,7 @@ describe("plugin-lobster", () => {
     it("should have LOBSTER_RESUME spec", () => {
       expect(actionSpecs.LOBSTER_RESUME).toBeDefined();
       expect(actionSpecs.LOBSTER_RESUME.name).toBe("LOBSTER_RESUME");
-      expect(actionSpecs.LOBSTER_RESUME.description).toMatch(/resume/i);
+expect(actionSpecs.LOBSTER_RESUME.description).toMatch(/resume/i);
     });
 
     it("requireActionSpec should throw for unknown spec", () => {
@@ -114,6 +118,10 @@ describe("plugin-lobster", () => {
       });
 
       it("should return false for unrelated messages", async () => {
+const { createLobsterService } = await import("../services/lobsterService");
+        vi.mocked(createLobsterService).mockReturnValueOnce({
+          isAvailable: mockIsAvailable,
+        } as any);
         mockIsAvailable.mockResolvedValueOnce(false);
         const runtime = createMockRuntime();
         const message = createMockMessage("what is the weather today?");
@@ -132,7 +140,7 @@ describe("plugin-lobster", () => {
     describe("validate", () => {
       it("should return true for 'approve' messages with token in state", async () => {
         const runtime = createMockRuntime();
-        const message = createMockMessage("yes, approve it") as Memory & {
+const message = createMockMessage("yes, approve it") as Memory & {
           content: { text?: string; data?: { resumeToken?: string } };
         };
         message.content.data = { resumeToken: "abc123" };
@@ -168,7 +176,7 @@ describe("plugin-lobster", () => {
       const runtime = createMockRuntime();
       const message = createMockMessage("what can lobster do?");
 
-      // Provider returns ProviderResult object with text
+// Provider returns ProviderResult object with text
       const context = await lobsterProvider.get(runtime, message, {} as State);
       expect(context).toBeDefined();
       expect(context).toHaveProperty("text");

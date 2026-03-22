@@ -12,6 +12,7 @@ import {
   type IAgentRuntime,
   type Plugin,
   type ServiceTypeName,
+  type UUID,
 } from "@elizaos/core";
 import type {
   PendingPluginActivation,
@@ -86,8 +87,10 @@ export class PluginActivatorService extends Service {
   private pendingPlugins: Map<string, PendingPluginActivation> = new Map();
   private activatedPlugins: Set<string> = new Set();
   private pluginSecretMapping: Map<string, Set<string>> = new Map();
-  private pollingInterval: ReturnType<typeof setInterval> | null = null;
+  private pollTaskId: UUID | null = null;
   private unsubscribeSecretChanges: (() => void) | null = null;
+
+  private static readonly PLUGIN_ACTIVATOR_CHECK_TASK = "PLUGIN_ACTIVATOR_CHECK";
 
   /** Registered plugins with their callbacks */
   private registeredPlugins: Map<string, RegisteredPlugin> = new Map();
@@ -144,15 +147,53 @@ export class PluginActivatorService extends Service {
       );
     }
 
-    // Start polling if auto-activation enabled
     if (
       this.activatorConfig.enableAutoActivation &&
       this.activatorConfig.pollingIntervalMs > 0
     ) {
-      this.startPolling();
+      this.registerPollWorker();
+      await this.ensurePollTask();
     }
 
     logger.info("[PluginActivator] Initialized");
+  }
+
+  private registerPollWorker(): void {
+    this.runtime.registerTaskWorker({
+      name: PluginActivatorService.PLUGIN_ACTIVATOR_CHECK_TASK,
+      execute: async () => {
+        await this.checkPendingPlugins();
+      },
+    });
+  }
+
+  private async ensurePollTask(): Promise<void> {
+    const rt = this.runtime;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(
+      PluginActivatorService.PLUGIN_ACTIVATOR_CHECK_TASK,
+    );
+    const mine = existing.find(
+      (t) => t.agentId != null && String(t.agentId) === String(agentId),
+    );
+    if (mine?.id) {
+      this.pollTaskId = mine.id;
+      return;
+    }
+    const intervalMs = this.activatorConfig.pollingIntervalMs;
+    this.pollTaskId = await rt.createTask({
+      name: PluginActivatorService.PLUGIN_ACTIVATOR_CHECK_TASK,
+      tags: ["queue", "repeat"],
+      metadata: {
+        updateInterval: intervalMs,
+        baseInterval: intervalMs,
+        updatedAt: Date.now(),
+      },
+    });
+    logger.debug(
+      `[PluginActivator] Started check task every ${intervalMs}ms`,
+    );
   }
 
   /**
@@ -161,9 +202,9 @@ export class PluginActivatorService extends Service {
   async stop(): Promise<void> {
     logger.info("[PluginActivator] Stopping");
 
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
+    if (this.pollTaskId && typeof this.runtime.deleteTask === "function") {
+      await this.runtime.deleteTask(this.pollTaskId).catch(() => {});
+      this.pollTaskId = null;
     }
 
     if (this.unsubscribeSecretChanges) {
@@ -550,34 +591,7 @@ export class PluginActivatorService extends Service {
   // ============================================================================
 
   /**
-   * Start polling for pending plugins
-   */
-  private startPolling(): void {
-    if (this.pollingInterval) {
-      return;
-    }
-
-    this.pollingInterval = setInterval(async () => {
-      await this.checkPendingPlugins();
-    }, this.activatorConfig.pollingIntervalMs);
-
-    logger.debug(
-      `[PluginActivator] Started polling every ${this.activatorConfig.pollingIntervalMs}ms`,
-    );
-  }
-
-  /**
-   * Stop polling
-   */
-  private stopPolling(): void {
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
-    }
-  }
-
-  /**
-   * Check all pending plugins
+   * Check all pending plugins (called by PLUGIN_ACTIVATOR_CHECK queue task)
    */
   private async checkPendingPlugins(): Promise<void> {
     if (this.pendingPlugins.size === 0) {

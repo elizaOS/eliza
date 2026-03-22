@@ -26,6 +26,14 @@ export type EvaluatorDoc = {
   examples?: readonly unknown[];
 };
 
+const pluginActionStubs: readonly ActionDoc[] = [
+  { name: "CANCEL_GOAL", description: "Cancel a goal.", parameters: [] },
+  { name: "CREATE_GOAL", description: "Create a new goal.", parameters: [] },
+  { name: "UPDATE_GOAL", description: "Update an existing goal.", parameters: [] },
+  { name: "CONFIRM_GOAL", description: "Confirm a goal.", parameters: [] },
+  { name: "COMPLETE_GOAL", description: "Mark a goal as complete.", parameters: [] },
+];
+
 export const coreActionsSpec = {
   "version": "1.0.0",
   "actions": [
