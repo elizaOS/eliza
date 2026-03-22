@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/python",
-  "version": "2.0.0-alpha.86",
+  "version": "2.0.0-alpha.93",
   "description": "elizaOS Core - Python runtime and types",
   "private": true,
   "scripts": {
