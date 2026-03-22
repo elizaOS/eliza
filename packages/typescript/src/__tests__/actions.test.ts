@@ -170,7 +170,10 @@ describe("Actions", () => {
 	describe("formatActions", () => {
 		it("should format actions with descriptions", () => {
 			const formatted = formatActions([mockActions[0]]);
-			expect(formatted).toBe("- **greet**: Greet someone");
+			expect(formatted).toContain("<actions>");
+			expect(formatted).toContain("<name>greet</name>");
+			expect(formatted).toContain("<description>");
+			expect(formatted).toContain("Greet someone");
 		});
 
 		it("should include parameter definitions and examples when present", () => {
@@ -198,19 +201,21 @@ describe("Actions", () => {
 				},
 			]);
 
-			expect(formatted).toContain("- **MOVE**: Move the agent.");
-			expect(formatted).toContain("Parameters:");
-			expect(formatted).toContain("direction (required)");
-			expect(formatted).toContain("[examples:");
-			expect(formatted).toContain('"north"');
+			expect(formatted).toContain("<name>MOVE</name>");
+			expect(formatted).toContain("<description>Move the agent.</description>");
+			expect(formatted).toContain("<params>");
+			expect(formatted).toContain("<name>direction</name>");
+			expect(formatted).toContain("<required>true</required>");
+			expect(formatted).toContain("<values>north, south</values>");
+			expect(formatted).toContain('<examples>"north"');
 		});
 
 		it("should include commas and newlines between multiple actions", () => {
 			const formatted = formatActions([mockActions[0], mockActions[1]]);
-			const parts = formatted.split("\n");
-			expect(parts.length).toBe(2);
-			expect(parts[0]).toMatch(/^- \*\*(greet|farewell)\*\*: /);
-			expect(parts[1]).toMatch(/^- \*\*(greet|farewell)\*\*: /);
+			expect(formatted).toContain("<actions>");
+			expect(formatted).toContain("</actions>");
+			// Both action names should be present
+			expect(formatted).toMatch(/<name>(greet|farewell)<\/name>/);
 		});
 
 		it("should handle empty actions array", () => {

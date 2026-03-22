@@ -1,8 +1,14 @@
 import { v4 as uuidv4 } from "uuid";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
-import type { Character, IDatabaseAdapter, Memory, UUID } from "../types";
-import { MemoryType } from "../types";
+import type {
+	ActionParameters,
+	Character,
+	HandlerOptions,
+	IDatabaseAdapter,
+	Memory,
+	UUID,
+} from "../types";
 
 const stringToUuid = (id: string): UUID => id as UUID;
 
@@ -113,7 +119,8 @@ const createMockDatabaseAdapter = (): IDatabaseAdapter =>
 		createPairingAllowlistEntries: vi.fn().mockResolvedValue([]),
 		deletePairingAllowlistEntries: vi.fn().mockResolvedValue(undefined),
 		deleteRelationships: vi.fn().mockResolvedValue(undefined),
-	}) as IDatabaseAdapter;
+		// Stub any additional methods added to IDatabaseAdapter after this test was written
+	}) as unknown as IDatabaseAdapter;
 
 const createTestCharacter = (): Character => ({
 	name: "TestAgent",
@@ -129,6 +136,18 @@ const createTestCharacter = (): Character => ({
 	secrets: {},
 	settings: {},
 });
+
+/** Build a minimal Memory without the deprecated `type` field. */
+function makeMemory(overrides: Partial<Memory> = {}): Memory {
+	return {
+		id: stringToUuid(uuidv4()),
+		entityId: stringToUuid(uuidv4()),
+		roomId: stringToUuid(uuidv4()),
+		content: { text: "" },
+		createdAt: Date.now(),
+		...overrides,
+	};
+}
 
 describe("Action parameters (optional)", () => {
 	let mockDatabaseAdapter: IDatabaseAdapter;
@@ -166,8 +185,15 @@ describe("Action parameters (optional)", () => {
 			],
 			validate: async () => true,
 			handler: async (_runtime, _message, _state, options) => {
-				const dirValue = options?.parameters?.direction;
-				receivedDirections.push(typeof dirValue === "string" ? dirValue : "");
+				const handlerOptions = options as HandlerOptions | undefined;
+				const params = handlerOptions?.parameters as
+					| ActionParameters
+					| undefined;
+				const dirValue =
+					params && typeof params["direction"] === "string"
+						? params["direction"]
+						: "";
+				receivedDirections.push(dirValue);
 				return {
 					success: true,
 					data: { actionName: "MOVE" },
@@ -175,19 +201,10 @@ describe("Action parameters (optional)", () => {
 			},
 		});
 
-		const message: Memory = {
-			id: stringToUuid(uuidv4()),
-			entityId: stringToUuid(uuidv4()),
-			roomId: stringToUuid(uuidv4()),
-			content: { text: "tick" },
-			type: MemoryType.MESSAGE,
-			createdAt: Date.now(),
-		};
+		const message = makeMemory({ content: { text: "tick" } });
 
 		const responses: Memory[] = [
-			{
-				id: stringToUuid(uuidv4()),
-				entityId: stringToUuid(uuidv4()),
+			makeMemory({
 				roomId: message.roomId,
 				content: {
 					text: "move",
@@ -197,9 +214,7 @@ describe("Action parameters (optional)", () => {
 					params:
 						"<action><name>MOVE</name><params><direction>south</direction></params></action>",
 				},
-				type: MemoryType.MESSAGE,
-				createdAt: Date.now(),
-			},
+			}),
 		];
 
 		await runtime.processActions(message, responses);
@@ -235,8 +250,15 @@ describe("Action parameters (optional)", () => {
 			],
 			validate: async () => true,
 			handler: async (_runtime, _message, _state, options) => {
-				const dirValue = options?.parameters?.direction;
-				receivedDirections.push(typeof dirValue === "string" ? dirValue : "");
+				const handlerOptions = options as HandlerOptions | undefined;
+				const params = handlerOptions?.parameters as
+					| ActionParameters
+					| undefined;
+				const dirValue =
+					params && typeof params["direction"] === "string"
+						? params["direction"]
+						: "";
+				receivedDirections.push(dirValue);
 				return {
 					success: true,
 					data: { actionName: "MOVE" },
@@ -244,28 +266,17 @@ describe("Action parameters (optional)", () => {
 			},
 		});
 
-		const message: Memory = {
-			id: stringToUuid(uuidv4()),
-			entityId: stringToUuid(uuidv4()),
-			roomId: stringToUuid(uuidv4()),
-			content: { text: "tick" },
-			type: MemoryType.MESSAGE,
-			createdAt: Date.now(),
-		};
+		const message = makeMemory({ content: { text: "tick" } });
 
 		const responses: Memory[] = [
-			{
-				id: stringToUuid(uuidv4()),
-				entityId: stringToUuid(uuidv4()),
+			makeMemory({
 				roomId: message.roomId,
 				content: {
 					text: "move",
 					actions: ["MOVE"],
 					// <params> omitted entirely
 				},
-				type: MemoryType.MESSAGE,
-				createdAt: Date.now(),
-			},
+			}),
 		];
 
 		await runtime.processActions(message, responses);
@@ -299,7 +310,8 @@ describe("Action parameters (optional)", () => {
 			validate: async () => true,
 			handler: async (_runtime, _message, _state, options) => {
 				executed = true;
-				receivedErrors = options?.parameterErrors ?? [];
+				const handlerOptions = options as HandlerOptions | undefined;
+				receivedErrors = handlerOptions?.parameterErrors ?? [];
 				return {
 					success: true,
 					data: { actionName: "MOVE" },
@@ -307,28 +319,17 @@ describe("Action parameters (optional)", () => {
 			},
 		});
 
-		const message: Memory = {
-			id: stringToUuid(uuidv4()),
-			entityId: stringToUuid(uuidv4()),
-			roomId: stringToUuid(uuidv4()),
-			content: { text: "tick" },
-			type: MemoryType.MESSAGE,
-			createdAt: Date.now(),
-		};
+		const message = makeMemory({ content: { text: "tick" } });
 
 		const responses: Memory[] = [
-			{
-				id: stringToUuid(uuidv4()),
-				entityId: stringToUuid(uuidv4()),
+			makeMemory({
 				roomId: message.roomId,
 				content: {
 					text: "move",
 					actions: ["MOVE"],
 					// Missing required direction
 				},
-				type: MemoryType.MESSAGE,
-				createdAt: Date.now(),
-			},
+			}),
 		];
 
 		await runtime.processActions(message, responses);

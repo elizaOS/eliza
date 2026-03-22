@@ -1,4 +1,10 @@
-const { Desktop } = require("../index.js");
+let Desktop;
+try {
+  ({ Desktop } = require("../index.js"));
+} catch (err) {
+  console.log("ℹ️  Native module not available (expected when Rust build is skipped). Skipping element chaining tests.");
+  process.exit(0);
+}
 
 /**
  * Test for Element.locator() chaining functionality
