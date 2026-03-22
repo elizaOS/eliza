@@ -1482,7 +1482,6 @@ export async function installDatabaseTrajectoryLogger(
     return;
   }
 
-
   const loggerObject = logger as unknown as object;
   if (patchedLoggers.has(loggerObject)) return;
 

@@ -5,6 +5,10 @@
 import type { WalletConfigUpdateRequest } from "./wallet";
 
 export interface StylePreset {
+  name: string;
+  avatarIndex: number;
+  voicePresetId: string;
+  greetingAnimation: string;
   catchphrase: string;
   hint: string;
   bio: string[];
@@ -15,6 +19,7 @@ export interface StylePreset {
     chat: string[];
     post: string[];
   };
+  topics: string[];
   postExamples: string[];
   postExamples_zhCN?: string[];
   messageExamples: Array<

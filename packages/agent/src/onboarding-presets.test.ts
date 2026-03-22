@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   CHARACTER_PRESET_META,
-  STYLE_PRESETS,
   getPresetNameMap,
   getStylePresets,
+  STYLE_PRESETS,
 } from "./onboarding-presets";
 
 describe("getStylePresets", () => {
