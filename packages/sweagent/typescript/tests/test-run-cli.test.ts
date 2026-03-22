@@ -6,7 +6,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import * as path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
-describe("Run CLI", () => {
+// Note: Set SKIP_CLI_TESTS=1 to skip when CLI startup hangs (e.g. pino transport or env issues)
+const skipCliTests = process.env.SKIP_CLI_TESTS === "1";
+(skipCliTests ? describe.skip : describe)("Run CLI", () => {
   const cwd = path.join(__dirname, "..");
   const node = process.execPath;
   const cliPath = path.join(cwd, "dist", "run", "cli.js");

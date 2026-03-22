@@ -52,7 +52,7 @@ export class TokenizerManager {
   async loadTokenizer(modelConfig: ModelSpec): Promise<PreTrainedTokenizer> {
     try {
       const tokenizerKey = `${modelConfig.tokenizer.type}-${modelConfig.tokenizer.name}`;
-      logger.info({
+logger.info({
         msg: "Loading tokenizer",
         key: tokenizerKey,
         name: modelConfig.tokenizer.name,
@@ -97,7 +97,7 @@ export class TokenizerManager {
         );
 
         this.tokenizers.set(tokenizerKey, tokenizer);
-        logger.success({ msg: "Tokenizer loaded successfully", key: tokenizerKey });
+logger.success({ msg: "Tokenizer loaded successfully", key: tokenizerKey });
         return tokenizer;
       } catch (tokenizeError) {
         logger.error({
@@ -123,7 +123,7 @@ export class TokenizerManager {
         );
 
         this.tokenizers.set(tokenizerKey, tokenizer);
-        logger.success({
+logger.success({
           msg: "Tokenizer loaded successfully on retry",
           key: tokenizerKey,
         });
@@ -152,7 +152,7 @@ export class TokenizerManager {
    */
   async encode(text: string, modelConfig: ModelSpec): Promise<number[]> {
     try {
-      logger.info({
+logger.info({
         msg: "Encoding text with tokenizer",
         length: text.length,
         tokenizer: modelConfig.tokenizer.name,
@@ -166,7 +166,7 @@ export class TokenizerManager {
         return_token_type_ids: false,
       });
 
-      logger.info({
+logger.info({
         msg: "Text encoded successfully",
         tokenCount: encoded.length,
         tokenizer: modelConfig.tokenizer.name,
@@ -195,7 +195,7 @@ export class TokenizerManager {
    */
   async decode(tokens: number[], modelConfig: ModelSpec): Promise<string> {
     try {
-      logger.info({
+logger.info({
         msg: "Decoding tokens with tokenizer",
         count: tokens.length,
         tokenizer: modelConfig.tokenizer.name,
@@ -209,7 +209,7 @@ export class TokenizerManager {
         clean_up_tokenization_spaces: true,
       });
 
-      logger.info({
+logger.info({
         msg: "Tokens decoded successfully",
         textLength: decoded.length,
         tokenizer: modelConfig.tokenizer.name,

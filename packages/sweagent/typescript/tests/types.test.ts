@@ -3,7 +3,7 @@
  * Converted from Python tests
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "./jest-globals";
 import {
   type AgentInfo,
   type HistoryItem,

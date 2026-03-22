@@ -33,6 +33,7 @@ describe("Reflection Evaluator", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     runtime = await createTestRuntime();
+    await (runtime as { initPromise: Promise<unknown> }).initPromise;
     const roomId = createUUID();
     const entityId = createUUID();
     message = createTestMemory({
@@ -51,33 +52,24 @@ describe("Reflection Evaluator", () => {
   it("should call the model with the correct prompt", async () => {
     const { reflectionEvaluator } = await import("../evaluators/reflection");
 
-    const mockXmlResponse = `<response>
-  <thought>I am doing well in this conversation.</thought>
-  <facts>
-    <fact>
-      <claim>User likes ice cream</claim>
-      <type>fact</type>
-      <in_bio>false</in_bio>
-      <already_known>false</already_known>
-    </fact>
-  </facts>
-  <relationships></relationships>
-</response>`;
-
+    const onDrainMock = vi.spyOn(runtime.promptBatcher, "onDrain").mockResolvedValue({
+      fields: { facts: [], relationships: [] },
+      meta: { messages: [{ id: message.id }] },
+    });
     vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
     vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
-    vi.spyOn(runtime, "useModel").mockResolvedValue(mockXmlResponse);
-    vi.spyOn(runtime, "setCache").mockResolvedValue(true);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(message.id);
     vi.spyOn(runtime, "queueEmbeddingGeneration").mockResolvedValue(undefined);
 
     await reflectionEvaluator.handler(runtime, message, state);
 
-    expect(runtime.useModel).toHaveBeenCalledTimes(1);
-    expect(runtime.useModel).toHaveBeenCalledWith(
-      ModelType.TEXT_SMALL,
+    expect(onDrainMock).toHaveBeenCalledTimes(1);
+    expect(onDrainMock).toHaveBeenCalledWith(
+      `reflection-${message.roomId}`,
       expect.objectContaining({
-        prompt: expect.any(String),
+        model: "small",
+        preamble: expect.any(String),
+        schema: expect.any(Array),
       }),
     );
   });
@@ -85,30 +77,28 @@ describe("Reflection Evaluator", () => {
   it("should store new facts when parsed correctly", async () => {
     const { reflectionEvaluator } = await import("../evaluators/reflection");
 
-    const mockXmlResponse = `<response>
-  <thought>I am doing well in this conversation.</thought>
-  <facts>
-    <fact>
-      <claim>User likes ice cream</claim>
-      <type>fact</type>
-      <in_bio>false</in_bio>
-      <already_known>false</already_known>
-    </fact>
-  </facts>
-  <relationships></relationships>
-</response>`;
-
+    vi.spyOn(runtime.promptBatcher, "onDrain").mockResolvedValue({
+      fields: {
+        facts: [
+          {
+            claim: "User likes ice cream",
+            type: "fact",
+            in_bio: false,
+            already_known: false,
+          },
+        ],
+        relationships: [],
+      },
+      meta: { messages: [{ id: message.id }] },
+    });
     vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
     vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
-    vi.spyOn(runtime, "useModel").mockResolvedValue(mockXmlResponse);
-    vi.spyOn(runtime, "setCache").mockResolvedValue(true);
-    vi.spyOn(runtime, "createMemory").mockResolvedValue(message.id);
+    const createMemoryMock = vi.spyOn(runtime, "createMemory").mockResolvedValue(message.id);
     vi.spyOn(runtime, "queueEmbeddingGeneration").mockResolvedValue(undefined);
 
     await reflectionEvaluator.handler(runtime, message, state);
 
-    // If facts were parsed and processed, createMemory should be called
-    expect(runtime.useModel).toHaveBeenCalled();
+    expect(createMemoryMock).toHaveBeenCalled();
   });
 
   it("should handle model errors without crashing", async () => {
@@ -116,7 +106,7 @@ describe("Reflection Evaluator", () => {
 
     vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
     vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
-    vi.spyOn(runtime, "useModel").mockRejectedValue(new Error("Model failed"));
+    vi.spyOn(runtime.promptBatcher, "onDrain").mockRejectedValue(new Error("Model failed"));
 
     await expect(
       reflectionEvaluator.handler(runtime, message, state),
@@ -128,11 +118,12 @@ describe("Reflection Evaluator", () => {
 
     vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
     vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
-    vi.spyOn(runtime, "useModel").mockResolvedValue("not valid xml");
+    // Reflection uses promptBatcher.onDrain; mock it to return null (no result) so handler returns undefined
+    vi.spyOn(runtime.promptBatcher, "onDrain").mockResolvedValue(null);
 
     const result = await reflectionEvaluator.handler(runtime, message, state);
 
-    // Should return undefined for invalid XML
+    // Should return undefined when batcher returns no result (e.g. invalid/unparseable response)
     expect(result).toBeUndefined();
   });
 

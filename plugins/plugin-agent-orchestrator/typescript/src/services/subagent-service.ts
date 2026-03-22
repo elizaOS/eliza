@@ -234,7 +234,7 @@ export class SubagentService extends Service {
       agentId: this.runtime.agentId,
       worldId: this.runtime.agentId, // Use agent as world for simplicity
       source: "subagent",
-      metadata: roomMetadata as unknown as Metadata,
+metadata: roomMetadata as unknown as Metadata,
     };
 
     // Create the room
@@ -307,7 +307,7 @@ export class SubagentService extends Service {
       content: {
         text: params.task,
         type: "text",
-        metadata: taskMetadata as JsonObject,
+metadata: taskMetadata as JsonObject,
       },
     };
 
@@ -315,10 +315,7 @@ export class SubagentService extends Service {
     // We don't await here - the subagent runs in the background
     this.executeSubagentRun(runId, initialMessage, params.runTimeoutSeconds).catch(
       (error) => {
-        this.runtime.logger.error(
-          "Subagent execution error",
-          `${runId}: ${error instanceof Error ? error.message : String(error)}`
-        );
+this.runtime.logger.error({ runId, error }, "Subagent execution error");
         this.handleSubagentError(runId, error);
       },
     );
@@ -424,10 +421,7 @@ export class SubagentService extends Service {
 
     // Trigger announcement
     this.announceSubagentResult(runId).catch((err) => {
-      this.runtime.logger.error(
-        "Failed to announce timeout",
-        `${runId}: ${err instanceof Error ? err.message : String(err)}`
-      );
+this.runtime.logger.error({ runId, error: err }, "Failed to announce timeout");
     });
   }
 
@@ -458,9 +452,9 @@ export class SubagentService extends Service {
 
     // Trigger announcement
     this.announceSubagentResult(runId).catch((err) => {
-      this.runtime.logger.error(
-        "Failed to announce error",
-        `${runId}: ${err instanceof Error ? err.message : String(err)}`
+this.runtime.logger.error(
+        { runId, error: err },
+        "Failed to announce error"
       );
     });
   }
@@ -608,7 +602,7 @@ export class SubagentService extends Service {
         content: {
           text: triggerMessage,
           type: "text",
-          metadata: metadata as JsonObject,
+metadata: metadata as JsonObject,
         },
       };
 
@@ -789,7 +783,7 @@ export class SubagentService extends Service {
       content: {
         text: params.message,
         type: "text",
-        metadata: a2aMetadata as JsonObject,
+metadata: a2aMetadata as JsonObject,
       },
     };
 
@@ -804,10 +798,7 @@ export class SubagentService extends Service {
           source: "a2a",
         })
         .catch((err) => {
-          this.runtime.logger.error(
-          "A2A send error",
-          `${runId}: ${err instanceof Error ? err.message : String(err)}`
-        );
+this.runtime.logger.error({ runId, error: err }, "A2A send error");
         });
 
       const asyncPayload: SubagentEventPayload = {

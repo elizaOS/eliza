@@ -14,7 +14,9 @@ import type {
   TemplateType,
 } from "./types";
 import { ContentType, ModelType, type UUID } from "./types";
-import { getEnv } from "./utils/environment";
+import { parseBooleanText } from "./utils/boolean";
+import { formatTimestamp } from "./utils/time-format";
+import { getLocalServerUrl } from "./utils/node";
 
 // Text Utils
 
@@ -485,6 +487,7 @@ export const formatMessages = ({
   return messageStrings.join("\n");
 };
 
+<<<<<<< HEAD
 export const formatTimestamp = (messageDate: number) => {
   const now = new Date();
   const diff = now.getTime() - messageDate;
@@ -506,6 +509,9 @@ export const formatTimestamp = (messageDate: number) => {
   }
   return `${days} day${days !== 1 ? "s" : ""} ago`;
 };
+=======
+const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
+>>>>>>> 2338cf054 (feat: Prompt Batching/Dispatcher, task system upgrade, and prompt caching support (#6575))
 
 /**
  * Parses key-value pairs from a simple XML structure within a given text.
@@ -932,6 +938,7 @@ export function safeReplacer() {
 export function parseBooleanFromText(
   value: string | boolean | undefined | null,
 ): boolean {
+<<<<<<< HEAD
   if (value === undefined || value === null) return false;
   if (typeof value === "boolean") return value;
 
@@ -950,6 +957,9 @@ export function parseBooleanFromText(
     );
   }
   return false;
+=======
+  return parseBooleanText(value);
+>>>>>>> 2338cf054 (feat: Prompt Batching/Dispatcher, task system upgrade, and prompt caching support (#6575))
 }
 
 // UUID Utils
@@ -1254,7 +1264,4 @@ export const getContentTypeFromMimeType = (
   return undefined;
 };
 
-export function getLocalServerUrl(path: string): string {
-  const port = getEnv("SERVER_PORT", "3000");
-  return `http://localhost:${port}${path}`;
-}
+export { formatTimestamp, getLocalServerUrl };

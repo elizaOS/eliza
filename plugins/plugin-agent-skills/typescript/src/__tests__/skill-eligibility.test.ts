@@ -55,7 +55,7 @@ interface SkillEligibility {
  * Check if a binary exists in PATH
  */
 function checkBinaryExists(binaryName: string): boolean {
-  if (!binaryName || binaryName.trim() === "") {
+  if (!binaryName || !binaryName.trim()) {
     return false;
   }
   const pathEnv = process.env.PATH || "";
@@ -576,3 +576,4 @@ describe("Skill Eligibility", () => {
     });
   });
 });
+

@@ -451,7 +451,7 @@ async function processRelationship(
   const entityBId = entityB.id as UUID;
 
   // Check existing relationship
-  const relationships = await runtime.getRelationships({ entityId: entityAId });
+  const relationships = await runtime.getRelationships({ entityIds: [entityAId] });
   const existing = relationships.find(
     (r) =>
       (r.sourceEntityId === entityAId && r.targetEntityId === entityBId) ||

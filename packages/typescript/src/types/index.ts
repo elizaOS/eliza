@@ -20,6 +20,7 @@ export * from "./pairing";
 export * from "./payment";
 export * from "./plugin";
 export * from "./plugin-store";
+export * from "./prompt-batcher";
 export * from "./primitives";
 export * from "./prompts";
 // Proto-generated types (single source of truth)

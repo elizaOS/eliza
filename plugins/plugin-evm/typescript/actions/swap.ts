@@ -20,7 +20,6 @@ import {
   type Hex,
   parseAbi,
   parseUnits,
-  type ReadContractParameters,
   type SendTransactionParameters,
 } from "viem";
 import type { Account } from "viem/accounts";
@@ -270,6 +269,7 @@ export class SwapAction {
         address: params.fromToken as Address,
         abi: decimalsAbi,
         functionName: "decimals" as const,
+authorizationList: [] as const,
       };
       const decimals = await publicClient.readContract(
         readDecimalsParams as unknown as Parameters<typeof publicClient.readContract>[0]
@@ -575,9 +575,10 @@ export class SwapAction {
       abi: allowanceAbi,
       functionName: "allowance" as const,
       args: [account.address, spenderAddress],
+      authorizationList: [] as const,
     };
     const allowance = (await publicClient.readContract(
-      readAllowanceParams as unknown as Parameters<typeof publicClient.readContract>[0]
+readAllowanceParams as unknown as Parameters<typeof publicClient.readContract>[0]
     )) as bigint;
 
     if (allowance >= requiredAmount) {

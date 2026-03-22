@@ -122,9 +122,9 @@ export const modelsAction: Action = {
 
   examples: [
     [
-      { user: "user", content: { text: "/models" } },
+      { name: "user", content: { text: "/models" } },
       {
-        user: "assistant",
+        name: "assistant",
         content: {
           text: "**Available Models:**\n\n**Registered Model Types:**\n• Text (Large) (`text_large`)\n• Text (Small) (`text_small`)...",
         },

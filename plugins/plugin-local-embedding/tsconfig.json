@@ -1,10 +1,11 @@
 {
   "compilerOptions": {
+    "skipLibCheck": true,
     "outDir": "dist",
     "rootDir": "src",
     "skipLibCheck": true,
     "baseUrl": "../..",
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",

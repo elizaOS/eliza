@@ -14,6 +14,8 @@ import type {
   PairingChannel,
   PairingRequest,
   Participant,
+  ParticipantUpdateFields,
+  ParticipantUserState,
   Relationship,
   Room,
   Task,
@@ -107,10 +109,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
     options?: { entityContext?: UUID },
   ): Promise<T>;
 
-  abstract getEntitiesForRoom(
-    roomId: UUID,
+  abstract getEntitiesForRooms(
+    roomIds: UUID[],
     includeComponents?: boolean,
-  ): Promise<Entity[]>;
+  ): Promise<import("./types").EntitiesForRoomsResult>;
 
   /**
    * Creates a new entities in the database.
@@ -160,30 +162,15 @@ export abstract class DatabaseAdapter<DB extends object = object>
     entityContext?: UUID;
   }): Promise<Entity[]>;
 
-  /**
-   * Retrieves a component by entity and type (query method).
-   * @param entityId The UUID of the entity
-   * @param type The component type
-   * @param worldId Optional world ID
-   * @param sourceEntityId Optional source entity ID
-   * @returns Promise resolving to the Component if found, null otherwise
-   */
-  abstract getComponent(
-    entityId: UUID,
-    type: string,
-    worldId?: UUID,
-    sourceEntityId?: UUID,
-  ): Promise<Component | null>;
+  abstract getComponentsByNaturalKeys(keys: Array<{
+    entityId: UUID;
+    type: string;
+    worldId?: UUID;
+    sourceEntityId?: UUID;
+  }>): Promise<(Component | null)[]>;
 
-  /**
-   * Retrieves all components for an entity.
-   * @param entityId The UUID of the entity to get components for
-   * @param worldId Optional UUID of the world to filter components by
-   * @param sourceEntityId Optional UUID of the source entity to filter by
-   * @returns Promise resolving to array of Component objects
-   */
-  abstract getComponents(
-    entityId: UUID,
+  abstract getComponentsForEntities(
+    entityIds: UUID[],
     worldId?: UUID,
     sourceEntityId?: UUID,
   ): Promise<Component[]>;
@@ -208,13 +195,8 @@ export abstract class DatabaseAdapter<DB extends object = object>
     options?: { entityContext?: UUID },
   ): Promise<void>;
 
-  /**
-   * Atomic partial update to component JSONB data using JSON Patch operations.
-   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs under RLS for this entity.
-   */
-  abstract patchComponent(
-    componentId: UUID,
-    ops: PatchOp[],
+  abstract patchComponents(
+    updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
     options?: { entityContext?: UUID },
   ): Promise<void>;
 
@@ -335,33 +317,16 @@ export abstract class DatabaseAdapter<DB extends object = object>
   ): Promise<void>;
   abstract deleteMemories(memoryIds: UUID[]): Promise<void>;
 
-  /**
-   * Removes all memories associated with a specific room.
-   * @param roomId The UUID of the room whose memories should be removed.
-   * @param tableName The table from which the memories should be removed.
-   * @returns A Promise that resolves when all memories have been removed.
-   */
-  abstract deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
+  abstract deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void>;
 
-  /**
-   * Counts the number of memories matching criteria.
-   * Accepts either positional (roomId, unique?, tableName?) or a single params object.
-   * @returns A Promise that resolves to the number of memories.
-   */
-  abstract countMemories(
-    roomIdOrParams:
-      | UUID
-      | {
-          roomId?: UUID;
-          unique?: boolean;
-          tableName?: string;
-          entityId?: UUID;
-          agentId?: UUID;
-          metadata?: Record<string, unknown>;
-        },
-    unique?: boolean,
-    tableName?: string,
-  ): Promise<number>;
+  abstract countMemories(params: {
+    roomIds?: UUID[];
+    unique?: boolean;
+    tableName?: string;
+    entityId?: UUID;
+    agentId?: UUID;
+    metadata?: Record<string, unknown>;
+  }): Promise<number>;
 
   /**
    * Retrieves all worlds for an agent.
@@ -389,12 +354,11 @@ export abstract class DatabaseAdapter<DB extends object = object>
    */
   abstract getRoomsByIds(roomIds: UUID[]): Promise<Room[]>;
 
-  /**
-   * Retrieves all rooms for a given world.
-   * @param worldId The UUID of the world to retrieve rooms for.
-   * @returns A Promise that resolves to an array of Room objects.
-   */
-  abstract getRoomsByWorld(worldId: UUID, limit?: number, offset?: number): Promise<Room[]>;
+  abstract deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void>;
+
+  abstract getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]>;
+
+  abstract getRoomsByWorlds(worldIds: UUID[], limit?: number, offset?: number): Promise<Room[]>;
 
   /**
    * Creates new rooms in the database.
@@ -409,18 +373,6 @@ export abstract class DatabaseAdapter<DB extends object = object>
    * @returns A Promise that resolves when the upsert is complete.
    */
   abstract upsertRooms(rooms: Room[]): Promise<void>;
-
-  /**
-   * Retrieves room IDs for which a specific user is a participant.
-   * @param entityId The UUID of the user.
-   * @returns A Promise that resolves to an array of room IDs.
-   */
-  /**
-   * Retrieves room IDs for which specific entities are participants.
-   * @param entityIds Single entity UUID or array of entity UUIDs to check.
-   * @returns A Promise that resolves to an array of room UUIDs.
-   */
-  abstract getRoomsForParticipants(entityIds: UUID | UUID[]): Promise<UUID[]>;
 
   /**
    * Creates room participants for the specified entities.
@@ -438,64 +390,31 @@ export abstract class DatabaseAdapter<DB extends object = object>
   abstract updateParticipants(participants: Array<{
     entityId: UUID;
     roomId: UUID;
-    updates: Partial<Participant>;
+    updates: ParticipantUpdateFields;
   }>): Promise<void>;
 
   // ── Room CRUD (batch-only) ─────────────────────────────────────────
   abstract updateRooms(rooms: Room[]): Promise<void>;
   abstract deleteRooms(roomIds: UUID[]): Promise<void>;
 
-  /**
-   * Retrieves participants associated with a specific account.
-   * @param entityId The UUID of the account.
-   * @returns A Promise that resolves to an array of Participant objects.
-   */
-  abstract getParticipantsForEntity(entityId: UUID): Promise<Participant[]>;
+  abstract getParticipantsForEntities(entityIds: UUID[]): Promise<Participant[]>;
 
-  /**
-   * Retrieves participants for a specific room.
-   * @param roomId The UUID of the room for which to retrieve participants.
-   * @returns A Promise that resolves to an array of UUIDs representing the participants.
-   */
-  abstract getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
+  abstract getParticipantsForRooms(roomIds: UUID[]): Promise<import("./types").ParticipantsForRoomsResult>;
 
-  /**
-   * Check if an entity is a participant in a specific room.
-   * More efficient than getParticipantsForRoom when only checking membership.
-   * @param roomId The UUID of the room.
-   * @param entityId The UUID of the entity to check.
-   * @returns A Promise that resolves to a boolean indicating if the entity is a participant.
-   */
-  abstract isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean>;
+  abstract areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]>;
 
-  abstract getParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-  ): Promise<"FOLLOWED" | "MUTED" | null>;
+  abstract getParticipantUserStates(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<ParticipantUserState[]>;
 
-  abstract updateParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-    state: "FOLLOWED" | "MUTED" | null,
-  ): Promise<void>;
-
-  /**
-   * Retrieves a relationship between two entities (query method).
-   * @param params Object containing the source and target entity IDs
-   * @returns A Promise that resolves to the Relationship object or null if not found.
-   */
-  abstract getRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-  }): Promise<Relationship | null>;
-
-  /**
-   * Retrieves all relationships for a specific user.
-   * @param params Object containing the user ID, agent ID and optional tags to filter by
-   * @returns A Promise that resolves to an array of Relationship objects.
-   */
-  abstract getRelationships(params: {
+  abstract updateParticipantUserStates(updates: Array<{
+    roomId: UUID;
     entityId: UUID;
+    state: ParticipantUserState;
+  }>): Promise<void>;
+
+  abstract getRelationshipsByPairs(pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>): Promise<(Relationship | null)[]>;
+
+  abstract getRelationships(params: {
+    entityIds?: UUID[];
     tags?: string[];
     limit?: number;
     offset?: number;
@@ -552,6 +471,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
     roomId?: UUID;
     tags?: string[];
     entityId?: UUID;
+    agentIds: UUID[];
     limit?: number;
     offset?: number;
   }): Promise<Task[]>;
@@ -578,33 +498,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
     limit?: number;
   }): Promise<Memory[]>;
 
-  abstract deleteRoomsByWorldId(worldId: UUID): Promise<void>;
-
   // ── Pairing CRUD (batch-only for mutations) ─────────────────────────
-  // getPairingRequests() and getPairingAllowlist() are query methods
-  // (filter by channel + agentId). Mutations are batch-only.
+  abstract getPairingRequests(queries: Array<{ channel: PairingChannel; agentId: UUID }>): Promise<import("./types").PairingRequestsResult>;
 
-  /**
-   * Get all pending pairing requests for a channel and agent.
-   * @param channel The messaging channel (telegram, discord, whatsapp, etc.)
-   * @param agentId The agent ID
-   * @returns Array of pending pairing requests
-   */
-  abstract getPairingRequests(
-    channel: PairingChannel,
-    agentId: UUID,
-  ): Promise<PairingRequest[]>;
-
-  /**
-   * Get the allowlist for a channel and agent.
-   * @param channel The messaging channel
-   * @param agentId The agent ID
-   * @returns Array of allowlist entries
-   */
-  abstract getPairingAllowlist(
-    channel: PairingChannel,
-    agentId: UUID,
-  ): Promise<PairingAllowlistEntry[]>;
+  abstract getPairingAllowlists(queries: Array<{ channel: PairingChannel; agentId: UUID }>): Promise<import("./types").PairingAllowlistsResult>;
 
   abstract createPairingRequests(requests: PairingRequest[]): Promise<UUID[]>;
   abstract updatePairingRequests(requests: PairingRequest[]): Promise<void>;

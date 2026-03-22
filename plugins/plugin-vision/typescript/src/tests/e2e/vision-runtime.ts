@@ -1,4 +1,4 @@
-import type { Action, Content, IAgentRuntime, Provider } from "@elizaos/core";
+import type { Action, Content, IAgentRuntime, Provider, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { VisionService } from "../../service";
 import { VisionMode, VisionServiceType } from "../../types";
@@ -153,7 +153,8 @@ export class VisionRuntimeTestSuite {
           return [];
         };
 
-        await action.handler(runtime, message, { values: {}, data: {}, text: "" }, {}, callback);
+        const state: State = { values: {}, data: {}, text: "" };
+        await action.handler(runtime, message, state, {}, callback);
 
         if (!responseReceived) {
           throw new Error("DESCRIBE_SCENE action did not produce a response");

@@ -41,8 +41,8 @@ export async function synthesizeSamWav(runtime: AgentRuntime, text: string, opti
   const wav = service.createWAVBuffer(audio);
   // Ensure return is a plain ArrayBuffer (not SharedArrayBuffer)
   const out = new Uint8Array(wav.byteLength);
-  out.set(wav);
-  return out.buffer;
+  out.set(new Uint8Array(wav));
+  return out.buffer as ArrayBuffer;
 }
 
 export function splitForTts(text: string, maxChunkChars = 220): string[] {
@@ -68,4 +68,5 @@ export function splitForTts(text: string, maxChunkChars = 220): string[] {
   }
   return out;
 }
+
 

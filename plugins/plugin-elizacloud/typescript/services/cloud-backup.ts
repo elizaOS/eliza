@@ -6,7 +6,7 @@
  * snapshots triggered by the billing system's low-credit warning.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import type {
   AgentSnapshot,
   CreateSnapshotResponse,
@@ -19,9 +19,10 @@ import type { CloudAuthService } from "./cloud-auth";
 
 interface AutoBackupEntry {
   containerId: string;
-  timer: ReturnType<typeof setInterval>;
   lastBackupAt: number | null;
 }
+
+const CLOUD_BACKUP_TASK = "CLOUD_BACKUP";
 
 export class CloudBackupService extends Service {
   static serviceType = "CLOUD_BACKUP";
@@ -29,6 +30,7 @@ export class CloudBackupService extends Service {
 
   private authService!: CloudAuthService;
   private autoBackups: Map<string, AutoBackupEntry> = new Map();
+  private backupTaskId: UUID | null = null;
   private readonly maxSnapshots = DEFAULT_CLOUD_CONFIG.backup.maxSnapshots;
   private readonly backupIntervalMs = DEFAULT_CLOUD_CONFIG.backup.autoBackupIntervalMs;
 
@@ -43,8 +45,9 @@ export class CloudBackupService extends Service {
   }
 
   async stop(): Promise<void> {
-    for (const [, entry] of this.autoBackups) {
-      clearInterval(entry.timer);
+    if (this.backupTaskId && typeof this.runtime.deleteTask === "function") {
+      await this.runtime.deleteTask(this.backupTaskId).catch(() => {});
+      this.backupTaskId = null;
     }
     this.autoBackups.clear();
     logger.info("[CloudBackup] Service stopped");
@@ -57,7 +60,45 @@ export class CloudBackupService extends Service {
       return;
     }
     this.authService = auth as CloudAuthService;
+    this.runtime.registerTaskWorker({
+      name: CLOUD_BACKUP_TASK,
+      execute: async () => {
+        for (const [containerId] of this.autoBackups) {
+          logger.debug(`[CloudBackup] Running auto-backup for container ${containerId}`);
+          this.createSnapshot(containerId, "auto", {
+            trigger: "scheduled",
+            scheduledIntervalMs: this.backupIntervalMs,
+          })
+            .then(() => this.pruneSnapshots(containerId))
+            .catch((err: Error) => {
+              logger.error(`[CloudBackup] Auto-backup failed for ${containerId}: ${err.message}`);
+            });
+        }
+      },
+    });
+    await this.ensureBackupTask();
     logger.info("[CloudBackup] Service initialized");
+  }
+
+  private async ensureBackupTask(): Promise<void> {
+    const rt = this.runtime;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(CLOUD_BACKUP_TASK);
+    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    if (mine?.id) {
+      this.backupTaskId = mine.id;
+      return;
+    }
+    this.backupTaskId = await rt.createTask({
+      name: CLOUD_BACKUP_TASK,
+      tags: ["queue", "repeat"],
+      metadata: {
+        updateInterval: this.backupIntervalMs,
+        baseInterval: this.backupIntervalMs,
+        updatedAt: Date.now(),
+      },
+    });
   }
 
   // ─── Snapshot CRUD ─────────────────────────────────────────────────────
@@ -120,42 +161,24 @@ export class CloudBackupService extends Service {
 
   // ─── Auto-Backup Scheduling ────────────────────────────────────────────
 
-  scheduleAutoBackup(containerId: string, intervalMs?: number): void {
-    // Don't double-schedule
+  scheduleAutoBackup(containerId: string, _intervalMs?: number): void {
     if (this.autoBackups.has(containerId)) {
       logger.debug(`[CloudBackup] Auto-backup already scheduled for ${containerId}`);
       return;
     }
 
-    const interval = intervalMs ?? this.backupIntervalMs;
-
-    const timer = setInterval(() => {
-      logger.debug(`[CloudBackup] Running auto-backup for container ${containerId}`);
-      this.createSnapshot(containerId, "auto", {
-        trigger: "scheduled",
-        scheduledIntervalMs: interval,
-      }).then(() => this.pruneSnapshots(containerId))
-        .catch((err: Error) => {
-          logger.error(`[CloudBackup] Auto-backup failed for ${containerId}: ${err.message}`);
-        });
-    }, interval);
-
     this.autoBackups.set(containerId, {
       containerId,
-      timer,
       lastBackupAt: null,
     });
 
     logger.info(
-      `[CloudBackup] Scheduled auto-backup for ${containerId} every ${Math.round(interval / 60_000)} minutes`,
+      `[CloudBackup] Scheduled auto-backup for ${containerId} (driven by ${CLOUD_BACKUP_TASK} task)`,
     );
   }
 
   cancelAutoBackup(containerId: string): void {
-    const entry = this.autoBackups.get(containerId);
-    if (!entry) return;
-
-    clearInterval(entry.timer);
+    if (!this.autoBackups.has(containerId)) return;
     this.autoBackups.delete(containerId);
     logger.info(`[CloudBackup] Cancelled auto-backup for ${containerId}`);
   }

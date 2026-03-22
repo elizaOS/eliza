@@ -45,8 +45,10 @@ export class IMessageService extends Service implements IIMessageService {
 
   private settings: IMessageSettings | null = null;
   private connected: boolean = false;
-  private pollInterval: NodeJS.Timeout | null = null;
+  private pollTaskId: import("@elizaos/core").UUID | null = null;
   private lastMessageId: string | null = null;
+
+  private static readonly IMESSAGE_POLL_TASK = "IMESSAGE_POLL";
 
   /**
    * Start the iMessage service.
@@ -65,9 +67,9 @@ export class IMessageService extends Service implements IIMessageService {
     service.settings = service.loadSettings();
     await service.validateSettings();
 
-    // Start polling for new messages
     if (service.settings.pollIntervalMs > 0) {
-      service.startPolling();
+      service.registerPollWorker();
+      await service.ensurePollTask();
     }
 
     service.connected = true;
@@ -89,9 +91,9 @@ export class IMessageService extends Service implements IIMessageService {
     logger.info("Stopping iMessage service...");
     this.connected = false;
 
-    if (this.pollInterval) {
-      clearInterval(this.pollInterval);
-      this.pollInterval = null;
+    if (this.pollTaskId && typeof this.runtime.deleteTask === "function") {
+      await this.runtime.deleteTask(this.pollTaskId).catch(() => {});
+      this.pollTaskId = null;
     }
 
     this.settings = null;
@@ -419,18 +421,39 @@ export class IMessageService extends Service implements IIMessageService {
     }
   }
 
-  private startPolling(): void {
-    if (!this.settings) {
+  private registerPollWorker(): void {
+    this.runtime.registerTaskWorker({
+      name: IMessageService.IMESSAGE_POLL_TASK,
+      execute: async () => {
+        try {
+          await this.pollForNewMessages();
+        } catch (error) {
+          logger.debug(`Polling error: ${error}`);
+        }
+      },
+    });
+  }
+
+  private async ensurePollTask(): Promise<void> {
+    if (!this.settings || this.settings.pollIntervalMs <= 0) return;
+    const rt = this.runtime;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(IMessageService.IMESSAGE_POLL_TASK);
+    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    if (mine?.id) {
+      this.pollTaskId = mine.id;
       return;
     }
-
-    this.pollInterval = setInterval(async () => {
-      try {
-        await this.pollForNewMessages();
-      } catch (error) {
-        logger.debug(`Polling error: ${error}`);
-      }
-    }, this.settings.pollIntervalMs);
+    this.pollTaskId = await rt.createTask({
+      name: IMessageService.IMESSAGE_POLL_TASK,
+      tags: ["queue", "repeat"],
+      metadata: {
+        updateInterval: this.settings.pollIntervalMs,
+        baseInterval: this.settings.pollIntervalMs,
+        updatedAt: Date.now(),
+      },
+    });
   }
 
   private async pollForNewMessages(): Promise<void> {
@@ -511,10 +534,9 @@ export function parseMessagesFromAppleScript(
   }
 
   for (const line of result.split("\n")) {
-    if (!line || line.trim() === "") {
+if (!line || line.trim() === "") {
       continue;
     }
-
     const fields = line.split("\t");
     if (fields.length < 6) {
       continue;

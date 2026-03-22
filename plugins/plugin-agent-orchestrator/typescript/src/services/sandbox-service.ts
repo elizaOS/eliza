@@ -764,8 +764,8 @@ export class SandboxService extends Service {
 
     if (!result.success) {
       this.runtime.logger.error(
+{ sessionKey, error: String(result.stderr ?? "unknown") },
         "Failed to start browser container",
-        String(result.stderr ?? "unknown")
       );
       return null;
     }
@@ -841,6 +841,7 @@ export class SandboxService extends Service {
       if (idle || tooOld) {
         this.destroySandbox(sessionKey).catch((err) => {
           this.runtime.logger.error(
+{ sessionKey, error: err },
             "Failed to destroy idle sandbox",
             err instanceof Error ? err.message : String(err)
           );

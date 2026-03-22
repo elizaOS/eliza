@@ -242,7 +242,7 @@ export default function App() {
             );
 
             if (response instanceof Uint8Array || response instanceof ArrayBuffer) {
-                buffer = response instanceof Uint8Array ? response.buffer : response;
+                buffer = (response instanceof Uint8Array ? response.buffer : response) as ArrayBuffer;
             } else {
                 const stream = response as ReadableStream<Uint8Array>;
                 const reader = stream.getReader();
@@ -262,7 +262,7 @@ export default function App() {
                   merged.set(c, offset);
                   offset += c.byteLength;
                 }
-                buffer = merged.buffer;
+                buffer = merged.buffer as ArrayBuffer;
             }
 
             await lipSyncPlayerRef.current.playWav(buffer as ArrayBuffer);

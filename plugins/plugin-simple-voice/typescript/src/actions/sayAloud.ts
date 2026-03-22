@@ -1,6 +1,8 @@
 import type {
   Action,
+  ActionExample,
   ActionResult,
+  Content,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -84,36 +86,47 @@ export const sayAloudAction: Action = {
 
   examples: [
     [
-      { name: "{{user1}}", content: { text: "Can you say hello out loud?" } },
+      {
+        name: "{{user1}}",
+        content: { text: "Can you say hello out loud?" } as unknown as Content,
+      },
       {
         name: "{{agent}}",
         content: {
           text: "I'll say hello using my SAM voice.",
           action: "SAY_ALOUD",
-        },
+        } as unknown as Content,
       },
     ],
     [
       {
         name: "{{user1}}",
-        content: { text: "Please read this message aloud: Welcome to elizaOS" },
+        content: {
+          text: "Please read this message aloud: Welcome to elizaOS",
+        } as unknown as Content,
       },
       {
         name: "{{agent}}",
         content: {
           text: "I'll read that message aloud for you now.",
           action: "SAY_ALOUD",
-        },
+        } as unknown as Content,
       },
     ],
     [
-      { name: "{{user1}}", content: { text: "Speak in a higher voice" } },
+      {
+        name: "{{user1}}",
+        content: { text: "Speak in a higher voice" } as unknown as Content,
+      },
       {
         name: "{{agent}}",
-        content: { text: "I'll speak in a higher pitch.", action: "SAY_ALOUD" },
+        content: {
+          text: "I'll speak in a higher pitch.",
+          action: "SAY_ALOUD",
+        } as unknown as Content,
       },
     ],
-  ],
+  ] as ActionExample[][],
 
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const text = message.content.text.toLowerCase();
@@ -149,7 +162,7 @@ export const sayAloudAction: Action = {
       text: `I spoke: "${textToSpeak}"`,
       action: "SAY_ALOUD",
       audioData: Array.from(audioBuffer),
-    });
+    } as unknown as Content);
 
     return { success: true, text: `Spoke: "${textToSpeak}"` };
   },

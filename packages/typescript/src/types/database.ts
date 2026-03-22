@@ -242,6 +242,32 @@ export interface PatchOp {
   value?: unknown;
 }
 
+/** Participant room state for batch get/update (getParticipantUserStates, updateParticipantUserStates). */
+export type ParticipantUserState = "FOLLOWED" | "MUTED" | null;
+
+/** Fields that can be updated on a participant (Participant + DB-only roomState/metadata). */
+export type ParticipantUpdateFields = Partial<Participant> & { roomState?: ParticipantUserState; metadata?: Record<string, unknown> };
+
+/** Result of getEntitiesForRooms: one entry per requested roomId, same order. */
+export type EntitiesForRoomsResult = Array<{ roomId: UUID; entities: Entity[] }>;
+
+/** Result of getParticipantsForRooms: one entry per requested roomId, same order. */
+export type ParticipantsForRoomsResult = Array<{ roomId: UUID; entityIds: UUID[] }>;
+
+/** Result of getPairingRequests batch: one entry per (channel, agentId) query, same order. */
+export type PairingRequestsResult = Array<{
+  channel: PairingChannel;
+  agentId: UUID;
+  requests: PairingRequest[];
+}>;
+
+/** Result of getPairingAllowlists batch: one entry per (channel, agentId) query, same order. */
+export type PairingAllowlistsResult = Array<{
+  channel: PairingChannel;
+  agentId: UUID;
+  entries: PairingAllowlistEntry[];
+}>;
+
 export interface AgentRunCounts
   extends Omit<ProtoAgentRunCounts, "$typeName" | "$unknown"> {}
 
@@ -458,11 +484,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
   /** Delete participants from rooms */
   deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
 
-  /** Get entities for room */
-  getEntitiesForRoom(
-    roomId: UUID,
+  /** Get entities for multiple rooms (one entry per roomId, same order). */
+  getEntitiesForRooms(
+    roomIds: UUID[],
     includeComponents?: boolean,
-  ): Promise<Entity[]>;
+  ): Promise<EntitiesForRoomsResult>;
 
   /** Create new entities */
   createEntities(entities: Entity[]): Promise<UUID[]>;
@@ -588,17 +614,17 @@ export interface IDatabaseAdapter<DB extends object = object> {
     entityContext?: UUID;
   }): Promise<Entity[]>;
 
-  /** Get component by entity and type (query method) */
-  getComponent(
-    entityId: UUID,
-    type: string,
-    worldId?: UUID,
-    sourceEntityId?: UUID,
-  ): Promise<Component | null>;
+  /** Get components by natural keys (entityId, type, worldId?, sourceEntityId?). Same order as keys; null where not found. */
+  getComponentsByNaturalKeys(keys: Array<{
+    entityId: UUID;
+    type: string;
+    worldId?: UUID;
+    sourceEntityId?: UUID;
+  }>): Promise<(Component | null)[]>;
 
-  /** Get all components for an entity */
-  getComponents(
-    entityId: UUID,
+  /** Get all components for multiple entities. Flat list (components have entityId). */
+  getComponentsForEntities(
+    entityIds: UUID[],
     worldId?: UUID,
     sourceEntityId?: UUID,
   ): Promise<Component[]>;
@@ -659,35 +685,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
   ): Promise<void>;
 
   /**
-   * Atomic partial update to component JSONB data using JSON Patch operations.
-   * 
-   * WHY single-item (exception to batch-first): Batch patch SQL would be 
-   * O(components × ops) nested CASE expressions — unmaintainable complexity.
-   * Single-component-with-multiple-ops is the correct granularity.
-   * 
-   * WHY adapter-level: Each operation translates to completely different SQL:
-   * - set: PG jsonb_set() vs MySQL JSON_SET()
-   * - push: PG jsonb_insert() vs MySQL JSON_ARRAY_APPEND()
-   * - remove: PG #- operator vs MySQL JSON_REMOVE()
-   * - increment: PG ::numeric cast vs MySQL JSON_EXTRACT() arithmetic
-   * 
-   * All operations are applied in a SINGLE UPDATE statement (atomicity).
-   * 
-   * ERROR HANDLING:
-   * - Component not found: throws
-   * - push on non-array: throws with clear message
-   * - increment on non-numeric: throws with clear message
-   * - remove on missing path: silent success (idempotent)
-   * - Invalid path characters: throws before SQL (security)
-   * 
-   * @param componentId The component to patch
-   * @param ops Array of patch operations (applied in order, atomically)
+   * Batch patch components (JSON Patch ops per component). Run in a transaction; all commit or all roll back.
+   * @param updates Array of { componentId, ops }
    * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), patch runs under RLS for this entity.
-   * @throws Error if component not found, path invalid, or operation incompatible with data type
    */
-  patchComponent(
-    componentId: UUID,
-    ops: PatchOp[],
+  patchComponents(
+    updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
     options?: { entityContext?: UUID },
   ): Promise<void>;
 
@@ -878,27 +881,20 @@ export interface IDatabaseAdapter<DB extends object = object> {
     options?: { entityContext?: UUID },
   ): Promise<void>;
 
-  deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
+  deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void>;
 
   /**
    * Count memories matching criteria.
-   * Accepts either positional (roomId, unique?, tableName?) or a single params object.
-   * Object params enable extensibility (entityId, agentId, metadata filters).
+   * Use roomIds for room scope (pass [roomId] for a single room).
    */
-  countMemories(
-    roomIdOrParams:
-      | UUID
-      | {
-          roomId?: UUID;
-          unique?: boolean;
-          tableName?: string;
-          entityId?: UUID;
-          agentId?: UUID;
-          metadata?: Record<string, unknown>;
-        },
-    unique?: boolean,
-    tableName?: string,
-  ): Promise<number>;
+  countMemories(params: {
+    roomIds?: UUID[];
+    unique?: boolean;
+    tableName?: string;
+    entityId?: UUID;
+    agentId?: UUID;
+    metadata?: Record<string, unknown>;
+  }): Promise<number>;
 
   getAllWorlds(): Promise<World[]>;
 
@@ -937,24 +933,17 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
   createRooms(rooms: Room[]): Promise<UUID[]>;
 
-  deleteRoomsByWorldId(worldId: UUID): Promise<void>;
+  deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void>;
 
   /**
-   * Get room IDs where entities are participants
-   * 
-   * WHY merged method: Consolidated getRoomsForParticipant (singular) and
-   * getRoomsForParticipants (plural) into one method that accepts both.
-   * Implementations normalize to array internally, using efficient IN clause.
-   * 
-   * WHY: Eliminates code duplication and simplifies the interface.
-   * Callers don't need to remember which method to use.
-   * 
-   * @param entityIds Single UUID or array of UUIDs
+   * Get room IDs where entities are participants.
+   * @param entityIds Array of entity UUIDs
    * @returns Array of room IDs where any of the entities participate
    */
-  getRoomsForParticipants(entityIds: UUID | UUID[]): Promise<UUID[]>;
+  getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]>;
 
-  getRoomsByWorld(worldId: UUID, limit?: number, offset?: number): Promise<Room[]>;
+  /** Get rooms for multiple worlds. Limit/offset apply globally across all worlds. */
+  getRoomsByWorlds(worldIds: UUID[], limit?: number, offset?: number): Promise<Room[]>;
 
   // ── Room CRUD (batch-only) ───────────────────────────────────────────
   // WHY batch-only: room cleanup (e.g. deleteRoomsByWorldId) and bulk
@@ -988,11 +977,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
    */
   upsertRooms(rooms: Room[]): Promise<void>;
 
-  getParticipantsForEntity(entityId: UUID): Promise<Participant[]>;
+  getParticipantsForEntities(entityIds: UUID[]): Promise<Participant[]>;
 
-  getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
+  /** Get participants for multiple rooms (one entry per roomId, same order). */
+  getParticipantsForRooms(roomIds: UUID[]): Promise<ParticipantsForRoomsResult>;
 
-  isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean>;
+  areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]>;
 
   /**
    * Create room participants (add entities to a room)
@@ -1036,50 +1026,25 @@ export interface IDatabaseAdapter<DB extends object = object> {
   updateParticipants(participants: Array<{
     entityId: UUID;
     roomId: UUID;
-    updates: Partial<Participant>;
+    updates: ParticipantUpdateFields;
   }>): Promise<void>;
 
-  getParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-  ): Promise<"FOLLOWED" | "MUTED" | null>;
+  getParticipantUserStates(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<ParticipantUserState[]>;
+
+  updateParticipantUserStates(updates: Array<{
+    roomId: UUID;
+    entityId: UUID;
+    state: ParticipantUserState;
+  }>): Promise<void>;
+
+  /** Get relationships by (source, target) pairs. Same order as pairs; null where not found. */
+  getRelationshipsByPairs(pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>): Promise<(Relationship | null)[]>;
 
   /**
-   * Update participant's room state (FOLLOWED, MUTED, or null)
-   * 
-   * WHY renamed from setParticipantUserState: 'update' prefix aligns with CRUD
-   * naming convention. 'set' is ambiguous (could mean create OR update).
-   * 
-   * WHY three states: 
-   * - FOLLOWED: User wants notifications for this room
-   * - MUTED: User wants to suppress notifications
-   * - null: Default state (inherits from entity/agent preferences)
-   * 
-   * @param state Room notification preference for this participant
-   */
-  updateParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-    state: "FOLLOWED" | "MUTED" | null,
-  ): Promise<void>;
-
-  /**
-   * Retrieves a relationship between two entities (query method).
-   * @param params Object containing the source and target entity IDs
-   * @returns Promise resolving to the Relationship object or null if not found
-   */
-  getRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-  }): Promise<Relationship | null>;
-
-  /**
-   * Retrieves all relationships for a specific entity.
-   * @param params Object containing the user ID, agent ID and optional tags to filter by
-   * @returns Promise resolving to an array of Relationship objects
+   * Retrieves all relationships for entities. Use entityIds (pass [entityId] for a single entity).
    */
   getRelationships(params: {
-    entityId: UUID;
+    entityIds?: UUID[];
     tags?: string[];
     limit?: number;
     offset?: number;
@@ -1127,6 +1092,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
     roomId?: UUID;
     tags?: string[];
     entityId?: UUID;
+    /** Required. Only tasks with agentId in this array are returned. Single agent = [id]. WHY: multi-tenant safety; schema indexes by agent_id; daemon batches one getTasks(agentIds) for many agents. */
+    agentIds: UUID[];
     limit?: number;
     offset?: number;
   }): Promise<Task[]>;
@@ -1141,7 +1108,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
   updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
   deleteTasks(taskIds: UUID[]): Promise<void>;
 
-  /**
+/**
    * Get memories for multiple worlds (e.g. multiple servers) in one call.
    * Mirrors getMemoriesByRoomIds: limit applies to total results across all worlds.
    * Use when querying by a list of server/world IDs (world = server in messaging plugins).
@@ -1149,40 +1116,25 @@ export interface IDatabaseAdapter<DB extends object = object> {
    */
   getMemoriesByWorldIds(params: {
     worldIds: UUID[];
+    /** @deprecated use limit */
+    count?: number;
+    limit?: number;
     tableName?: string;
     limit?: number;
   }): Promise<Memory[]>;
 
   // Pairing methods for secure DM access control
 
-  /**
-   * Get all pending pairing requests for a channel and agent.
-   * @param channel The messaging channel (telegram, discord, whatsapp, etc.)
-   * @param agentId The agent ID
-   * @returns Array of pending pairing requests
-   */
-  getPairingRequests(
-    channel: PairingChannel,
-    agentId: UUID,
-  ): Promise<PairingRequest[]>;
+  /** Get pairing requests for multiple (channel, agentId) queries. One entry per query, same order. */
+  getPairingRequests(queries: Array<{ channel: PairingChannel; agentId: UUID }>): Promise<PairingRequestsResult>;
 
   // ── Pairing request CRUD (batch-only) ────────────────────────────────
-  // WHY batch-only: pairing requests arrive in bursts when a channel
-  // syncs (e.g. multiple Telegram users request DM access simultaneously).
   createPairingRequests(requests: PairingRequest[]): Promise<UUID[]>;
   updatePairingRequests(requests: PairingRequest[]): Promise<void>;
   deletePairingRequests(ids: UUID[]): Promise<void>;
 
-  /**
-   * Get the allowlist for a channel and agent.
-   * @param channel The messaging channel
-   * @param agentId The agent ID
-   * @returns Array of allowlist entries
-   */
-  getPairingAllowlist(
-    channel: PairingChannel,
-    agentId: UUID,
-  ): Promise<PairingAllowlistEntry[]>;
+  /** Get pairing allowlists for multiple (channel, agentId) queries. One entry per query, same order. */
+  getPairingAllowlists(queries: Array<{ channel: PairingChannel; agentId: UUID }>): Promise<PairingAllowlistsResult>;
 
   // ── Pairing allowlist CRUD (batch-only) ──────────────────────────────
   // WHY batch-only: allowlist management (admin adding/removing multiple

@@ -3,6 +3,7 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
+import { vi } from "vitest";
 import { AbstractDeployment } from "../src/environment/deployment";
 import {
   EnvHook,
@@ -477,7 +478,7 @@ describe("Environment", () => {
     });
 
     it("should continue even if one hook fails", async () => {
-      const consoleErrorSpy = jest
+      const consoleErrorSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => {});
 

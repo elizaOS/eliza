@@ -363,6 +363,38 @@ function normalizeLabel(value?: string): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+type NormalizedSenderParts = {
+  name?: string;
+  username?: string;
+  tag?: string;
+  e164?: string;
+  id?: string;
+  display: string;
+  idPart: string;
+};
+
+function getNormalizedSenderParts(
+  params: SenderLabelParams,
+): NormalizedSenderParts {
+  const name = normalizeLabel(params.name);
+  const username = normalizeLabel(params.username);
+  const tag = normalizeLabel(params.tag);
+  const e164 = normalizeLabel(params.e164);
+  const id = normalizeLabel(params.id);
+  const display = name ?? username ?? tag ?? "";
+  const idPart = e164 ?? id ?? "";
+
+  return {
+    name,
+    username,
+    tag,
+    e164,
+    id,
+    display,
+    idPart,
+  };
+}
+
 /**
  * Resolve a display label for a message sender.
  * Prefers name, then username, then tag, with ID appended if different.
@@ -371,14 +403,7 @@ function normalizeLabel(value?: string): string | undefined {
  * @returns Display label or null if no information available
  */
 export function resolveSenderLabel(params: SenderLabelParams): string | null {
-  const name = normalizeLabel(params.name);
-  const username = normalizeLabel(params.username);
-  const tag = normalizeLabel(params.tag);
-  const e164 = normalizeLabel(params.e164);
-  const id = normalizeLabel(params.id);
-
-  const display = name ?? username ?? tag ?? "";
-  const idPart = e164 ?? id ?? "";
+  const { display, idPart } = getNormalizedSenderParts(params);
   if (display && idPart && display !== idPart) {
     return `${display} (${idPart})`;
   }
@@ -393,11 +418,7 @@ export function resolveSenderLabel(params: SenderLabelParams): string | null {
  */
 export function listSenderLabelCandidates(params: SenderLabelParams): string[] {
   const candidates = new Set<string>();
-  const name = normalizeLabel(params.name);
-  const username = normalizeLabel(params.username);
-  const tag = normalizeLabel(params.tag);
-  const e164 = normalizeLabel(params.e164);
-  const id = normalizeLabel(params.id);
+  const { name, username, tag, e164, id } = getNormalizedSenderParts(params);
 
   if (name) {
     candidates.add(name);
@@ -540,6 +561,10 @@ export function toLocationContext(
  */
 export type LogFn = (message: string) => void;
 
+function formatTargetSuffix(target?: string): string {
+  return target ? ` target=${target}` : "";
+}
+
 /**
  * Log when an inbound message is dropped.
  *
@@ -551,8 +576,9 @@ export function logInboundDrop(params: {
   reason: string;
   target?: string;
 }): void {
-  const target = params.target ? ` target=${params.target}` : "";
-  params.log(`${params.channel}: drop ${params.reason}${target}`);
+  params.log(
+    `${params.channel}: drop ${params.reason}${formatTargetSuffix(params.target)}`,
+  );
 }
 
 /**
@@ -567,10 +593,9 @@ export function logTypingFailure(params: {
   action?: "start" | "stop";
   error: unknown;
 }): void {
-  const target = params.target ? ` target=${params.target}` : "";
   const action = params.action ? ` action=${params.action}` : "";
   params.log(
-    `${params.channel} typing${action} failed${target}: ${String(params.error)}`,
+    `${params.channel} typing${action} failed${formatTargetSuffix(params.target)}: ${String(params.error)}`,
   );
 }
 
@@ -585,8 +610,7 @@ export function logAckFailure(params: {
   target?: string;
   error: unknown;
 }): void {
-  const target = params.target ? ` target=${params.target}` : "";
   params.log(
-    `${params.channel} ack cleanup failed${target}: ${String(params.error)}`,
+    `${params.channel} ack cleanup failed${formatTargetSuffix(params.target)}: ${String(params.error)}`,
   );
 }

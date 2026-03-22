@@ -53,13 +53,13 @@ export class SelfModificationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing character evolution evaluator...');
 
-        const roomId = asUUID(randomUUID());
+const roomId = asUUID(randomUUID());
         const userId = asUUID(randomUUID());
 
         // Create messages that should trigger evolution analysis
         const messages = [
           {
-            id: asUUID(randomUUID()),
+id: asUUID(randomUUID()),
             entityId: userId,
             roomId,
             content: {
@@ -69,7 +69,7 @@ export class SelfModificationTestSuite implements TestSuite {
             createdAt: Date.now(),
           },
           {
-            id: asUUID(randomUUID()),
+id: asUUID(randomUUID()),
             entityId: runtime.agentId,
             roomId,
             content: {
@@ -79,7 +79,7 @@ export class SelfModificationTestSuite implements TestSuite {
             createdAt: Date.now() + 1000,
           },
           {
-            id: asUUID(randomUUID()),
+id: asUUID(randomUUID()),
             entityId: userId,
             roomId,
             content: {
@@ -119,7 +119,7 @@ export class SelfModificationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing MODIFY_CHARACTER action with user request...');
 
-        const roomId = asUUID(randomUUID());
+const roomId = asUUID(randomUUID());
         const userId = asUUID(randomUUID());
 
         // Create user request for character modification
@@ -183,7 +183,7 @@ export class SelfModificationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing CHARACTER_EVOLUTION provider...');
 
-        const roomId = asUUID(randomUUID());
+const roomId = asUUID(randomUUID());
         const message = {
           id: asUUID(randomUUID()),
           entityId: asUUID(randomUUID()),
@@ -269,7 +269,7 @@ export class SelfModificationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing complete character evolution workflow...');
 
-        const roomId = asUUID(randomUUID());
+const roomId = asUUID(randomUUID());
         const userId = asUUID(randomUUID());
 
         // Record baseline character state
@@ -280,7 +280,7 @@ export class SelfModificationTestSuite implements TestSuite {
 
         // Step 1: User provides feedback that should trigger evolution
         const feedbackMessage = {
-          id: asUUID(randomUUID()),
+id: asUUID(randomUUID()),
           entityId: userId,
           roomId,
           content: {
@@ -294,7 +294,7 @@ export class SelfModificationTestSuite implements TestSuite {
 
         // Step 2: Agent responds
         const agentResponse = {
-          id: asUUID(randomUUID()),
+id: asUUID(randomUUID()),
           entityId: runtime.agentId,
           roomId,
           content: {
@@ -333,7 +333,7 @@ export class SelfModificationTestSuite implements TestSuite {
 
         // Step 5: Apply modification based on feedback
         const modificationMessage = {
-          id: asUUID(randomUUID()),
+id: asUUID(randomUUID()),
           entityId: userId,
           roomId,
           content: {
@@ -395,3 +395,10 @@ export class SelfModificationTestSuite implements TestSuite {
 
 // Export default instance for test runner
 export default new SelfModificationTestSuite();
+
+import { describe, it, expect } from 'vitest';
+describe('SelfModificationTestSuite export', () => {
+  it('exports suite for plugin runner', () => {
+    expect(SelfModificationTestSuite).toBeDefined();
+  });
+});

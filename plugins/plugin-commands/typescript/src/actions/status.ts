@@ -51,8 +51,9 @@ async function buildStatusReport(
 
   // Try to get directive state from plugin-directives if available
   try {
-    const directiveService =
-      runtime.getService<DirectiveParserService>("directive-parser");
+    const directiveService = runtime.getService(
+      "directive-parser",
+    ) as DirectiveParserService | null;
     if (directiveService) {
       const state = directiveService.getSessionState?.(roomId);
       if (state) {
@@ -75,7 +76,7 @@ async function buildStatusReport(
 
   // Get pending tasks count for context
   try {
-    const tasks = await runtime.getTasks({ roomId });
+    const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
     if (tasks.length > 0) {
       lines.push(`\n**Tasks:** ${tasks.length} pending`);
     }
@@ -122,9 +123,9 @@ export const statusAction: Action = {
 
   examples: [
     [
-      { user: "user", content: { text: "/status" } },
+      { name: "user", content: { text: "/status" } },
       {
-        user: "assistant",
+        name: "assistant",
         content: {
           text: "**Session Status:**\n\n**Agent:** Eliza\n**Room:** room-456\n\n**Directives:**\n• Thinking: low...",
         },

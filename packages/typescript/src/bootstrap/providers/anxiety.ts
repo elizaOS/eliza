@@ -95,6 +95,7 @@ export const anxietyProvider: Provider = {
       values: { 
         hasAnxiety: true,
         channel: channelType || "unknown",
+        anxiety: randomAnxietyExamples,
       },
       text: anxiety,
     };

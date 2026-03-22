@@ -1,4 +1,8 @@
-import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  PromptSegment,
+} from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
 import { createAnthropicClientWithTopPSupport } from "../providers";
@@ -104,9 +108,13 @@ async function generateTextWithModel(
     metadata: agentName ? { agentName } : undefined,
   };
 
-  const generateParams = {
+  // When core provides segments, use Messages API with cache_control on stable blocks so Anthropic can cache them.
+  const promptSegments = params.promptSegments;
+  const useSegments =
+    Array.isArray(promptSegments) && promptSegments.length > 0;
+
+  const generateParams: Record<string, unknown> = {
     model: anthropic(modelName),
-    prompt: resolved.prompt,
     system: runtime.character.system ?? undefined,
     temperature: resolved.temperature,
     stopSequences: resolved.stopSequences as string[],
@@ -117,7 +125,23 @@ async function generateTextWithModel(
     topP: resolved.topP,
   };
 
-  const { text, usage } = await generateText(generateParams as Parameters<typeof generateText>[0]);
+  if (useSegments) {
+    // One content block per segment; stable blocks get cache_control so the API can reuse them across requests.
+    const content = (promptSegments as PromptSegment[]).map((seg) => ({
+      type: "text" as const,
+      text: seg.content,
+      ...(seg.stable ? { cache_control: { type: "ephemeral" as const } } : {}),
+    }));
+    (generateParams as Record<string, unknown>).messages = [
+      { role: "user" as const, content },
+    ];
+  } else {
+    (generateParams as Record<string, unknown>).prompt = resolved.prompt;
+  }
+
+  const { text, usage } = await generateText(
+    generateParams as Parameters<typeof generateText>[0],
+  );
 
   if (usage) {
     emitModelUsageEvent(runtime, modelType, resolved.prompt, usage);

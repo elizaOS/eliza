@@ -151,6 +151,34 @@ describe("SchemaRow type", () => {
     expect(row.validateField).toBeUndefined();
     expect(row.streamField).toBeUndefined();
   });
+
+  it("should support nested arrays and objects", () => {
+    const row: SchemaRow = {
+      field: "facts",
+      description: "Facts extracted from the conversation",
+      type: "array",
+      items: {
+        description: "One fact entry",
+        type: "object",
+        properties: [
+          {
+            field: "claim",
+            description: "Fact claim",
+            required: true,
+          },
+          {
+            field: "confidence",
+            description: "Confidence score",
+            type: "number",
+          },
+        ],
+      },
+    };
+
+    expect(row.type).toBe("array");
+    expect(row.items?.type).toBe("object");
+    expect(row.items?.properties?.[0]?.field).toBe("claim");
+  });
 });
 
 // ============================================================================
@@ -278,6 +306,90 @@ describe("dynamicPromptExecFromState", () => {
       expect(result).not.toBeNull();
       expect(result?.my_field).toBe("value");
     });
+
+    it("should warn on contradictory schema declarations", async () => {
+      const warnSpy = vi
+        .spyOn(runtime.logger, "warn")
+        .mockImplementation(() => {});
+
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async () => '{"facts": []}',
+        "mock",
+      );
+
+      const state = createMockState();
+      const result = await runtime.dynamicPromptExecFromState({
+        state,
+        params: { prompt: "Test prompt" },
+        schema: [
+          {
+            field: "facts",
+            description: "Facts extracted from the conversation",
+            type: "string",
+            items: {
+              description: "One fact entry",
+              type: "object",
+              properties: [
+                {
+                  field: "claim",
+                  description: "Fact claim",
+                },
+              ],
+            },
+          },
+        ],
+        options: {
+          contextCheckLevel: 0,
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'dynamicPromptExecFromState schema warning: facts is type "string" but also defines nested structure',
+        ),
+      );
+    });
+  });
+
+  describe("promptSegments invariant", () => {
+    it("should set promptSegments and satisfy prompt === concat(segments)", async () => {
+      let capturedParams: { prompt?: string; promptSegments?: Array<{ content: string; stable: boolean }> } = {};
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_, params) => {
+          capturedParams = {
+            prompt: params.prompt as string,
+            promptSegments: params.promptSegments as Array<{ content: string; stable: boolean }>,
+          };
+          return "<response><thought>ok</thought><text>Hi</text></response>";
+        },
+        "mock",
+      );
+
+      const state = createMockState();
+      await runtime.dynamicPromptExecFromState({
+        state,
+        params: { prompt: "Test prompt" },
+        schema: [
+          { field: "thought", description: "Reasoning" },
+          { field: "text", description: "Response" },
+        ],
+        options: {
+          contextCheckLevel: 0,
+        },
+      });
+
+      expect(capturedParams.promptSegments).toBeDefined();
+      expect(Array.isArray(capturedParams.promptSegments)).toBe(true);
+      const reconstructed = (capturedParams.promptSegments ?? [])
+        .map((s) => s.content)
+        .join("");
+      expect(capturedParams.prompt).toBe(reconstructed);
+      const hasStable = (capturedParams.promptSegments ?? []).some((s) => s.stable === true);
+      expect(hasStable).toBe(true);
+    });
   });
 
   describe("format handling", () => {
@@ -333,6 +445,137 @@ describe("dynamicPromptExecFromState", () => {
       expect(result).not.toBeNull();
       expect(result?.thought).toBe("I should respond");
       expect(result?.text).toBe("Hello!");
+    });
+
+    it("should automatically use JSON for nested schemas", async () => {
+      let capturedPrompt = "";
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_, params) => {
+          capturedPrompt = params.prompt as string;
+          return JSON.stringify({
+            facts: [
+              {
+                claim: "Alice likes tea",
+                confidence: 0.9,
+              },
+            ],
+            metadata: {
+              roomSummary: "Short room summary",
+            },
+          });
+        },
+        "mock",
+      );
+
+      const state = createMockState();
+      const result = await runtime.dynamicPromptExecFromState({
+        state,
+        params: { prompt: "Test prompt" },
+        schema: [
+          {
+            field: "facts",
+            description: "Facts extracted from the conversation",
+            type: "array",
+            required: true,
+            items: {
+              description: "One fact entry",
+              type: "object",
+              properties: [
+                {
+                  field: "claim",
+                  description: "Fact claim",
+                  required: true,
+                },
+                {
+                  field: "confidence",
+                  description: "Confidence score",
+                  type: "number",
+                },
+              ],
+            },
+          },
+          {
+            field: "metadata",
+            description: "Supporting metadata",
+            type: "object",
+            items: undefined,
+            properties: [
+              {
+                field: "roomSummary",
+                description: "Room summary",
+                required: true,
+              },
+            ],
+          },
+        ],
+        options: {
+          contextCheckLevel: 0,
+        },
+      });
+
+      expect(capturedPrompt).toContain("Respond using JSON format");
+      expect(result).not.toBeNull();
+      expect(result?.facts).toEqual([
+        {
+          claim: "Alice likes tea",
+          confidence: 0.9,
+        },
+      ]);
+      expect(result?.metadata).toEqual({
+        roomSummary: "Short room summary",
+      });
+    });
+
+    it("should infer nested JSON structure when type is omitted", async () => {
+      let capturedPrompt = "";
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_, params) => {
+          capturedPrompt = params.prompt as string;
+          return JSON.stringify({
+            facts: [
+              {
+                claim: "Alice likes tea",
+              },
+            ],
+          });
+        },
+        "mock",
+      );
+
+      const state = createMockState();
+      const result = await runtime.dynamicPromptExecFromState({
+        state,
+        params: { prompt: "Test prompt" },
+        schema: [
+          {
+            field: "facts",
+            description: "Facts extracted from the conversation",
+            items: {
+              description: "One fact entry",
+              type: "object",
+              properties: [
+                {
+                  field: "claim",
+                  description: "Fact claim",
+                  required: true,
+                },
+              ],
+            },
+          },
+        ],
+        options: {
+          contextCheckLevel: 0,
+        },
+      });
+
+      expect(capturedPrompt).toContain("Respond using JSON format");
+      expect(result?.facts).toEqual([
+        {
+          claim: "Alice likes tea",
+        },
+      ]);
     });
   });
 
@@ -417,6 +660,57 @@ describe("dynamicPromptExecFromState", () => {
 
       expect(result).not.toBeNull();
       expect(result?.text).toBe("Valid response");
+    });
+
+    it("should fail when nested required fields are missing", async () => {
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async () =>
+          JSON.stringify({
+            facts: [
+              {
+                confidence: 0.9,
+              },
+            ],
+          }),
+        "mock",
+      );
+
+      const state = createMockState();
+      const result = await runtime.dynamicPromptExecFromState({
+        state,
+        params: { prompt: "Test prompt" },
+        schema: [
+          {
+            field: "facts",
+            description: "Facts extracted from the conversation",
+            type: "array",
+            required: true,
+            items: {
+              description: "One fact entry",
+              type: "object",
+              properties: [
+                {
+                  field: "claim",
+                  description: "Fact claim",
+                  required: true,
+                },
+                {
+                  field: "confidence",
+                  description: "Confidence score",
+                  type: "number",
+                },
+              ],
+            },
+          },
+        ],
+        options: {
+          contextCheckLevel: 0,
+          maxRetries: 0,
+        },
+      });
+
+      expect(result).toBeNull();
     });
   });
 

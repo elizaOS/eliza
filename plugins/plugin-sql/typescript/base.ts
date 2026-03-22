@@ -319,10 +319,23 @@ export abstract class BaseDrizzleAdapter
   // Entity Methods
   // ===============================
 
-  async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
-    return this.withDatabase(() =>
-      stores.getEntitiesForRoom(this.db, this.agentId, roomId, includeComponents)
-    );
+  async getEntitiesForRooms(
+    roomIds: UUID[],
+    includeComponents?: boolean,
+  ): Promise<Array<{ roomId: UUID; entities: Entity[] }>> {
+    return this.withDatabase(async () => {
+      const result: Array<{ roomId: UUID; entities: Entity[] }> = [];
+      for (const roomId of roomIds) {
+        const entities = await stores.getEntitiesForRoom(
+          this.db,
+          this.agentId,
+          roomId,
+          includeComponents,
+        );
+        result.push({ roomId, entities });
+      }
+      return result;
+    });
   }
 
   async createEntities(entities: Entity[]): Promise<UUID[]> {
@@ -402,21 +415,77 @@ export abstract class BaseDrizzleAdapter
   // Component Methods
   // ===============================
 
+  async getComponentsByNaturalKeys(keys: Array<{
+    entityId: UUID;
+    type: string;
+    worldId?: UUID;
+    sourceEntityId?: UUID;
+  }>): Promise<(Component | null)[]> {
+    return this.withDatabase(async () => {
+      const result: (Component | null)[] = [];
+      for (const k of keys) {
+        const c = await stores.getComponent(
+          this.db,
+          k.entityId,
+          k.type,
+          k.worldId,
+          k.sourceEntityId,
+        );
+        result.push(c);
+      }
+      return result;
+    });
+  }
+
+  async getComponentsForEntities(
+    entityIds: UUID[],
+    worldId?: UUID,
+    sourceEntityId?: UUID,
+  ): Promise<Component[]> {
+    return this.withDatabase(async () => {
+      const out: Component[] = [];
+      for (const entityId of entityIds) {
+        const comps = await stores.getComponents(
+          this.db,
+          entityId,
+          worldId,
+          sourceEntityId,
+        );
+        out.push(...comps);
+      }
+      return out;
+    });
+  }
+
+  /** Single-component convenience for tests and callers. */
   async getComponent(
     entityId: UUID,
     type: string,
     worldId?: UUID,
     sourceEntityId?: UUID,
   ): Promise<Component | null> {
-    return this.withDatabase(() =>
-      stores.getComponent(this.db, entityId, type, worldId, sourceEntityId)
-    );
+    const [c] = await this.getComponentsByNaturalKeys([
+      { entityId, type, worldId, sourceEntityId },
+    ]);
+    return c ?? null;
   }
 
-  async getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]> {
-    return this.withDatabase(() =>
-      stores.getComponents(this.db, entityId, worldId, sourceEntityId)
-    );
+  /** Single-component convenience for tests and callers. */
+  async getComponents(
+    entityId: UUID,
+    worldId?: UUID,
+    sourceEntityId?: UUID,
+  ): Promise<Component[]> {
+    return this.getComponentsForEntities([entityId], worldId, sourceEntityId);
+  }
+
+  /** Single-patch convenience for tests and callers. */
+  async patchComponent(
+    componentId: UUID,
+    ops: import("@elizaos/core").PatchOp[],
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    await this.patchComponents([{ componentId, ops }], options);
   }
 
   // Batch component methods
@@ -471,22 +540,22 @@ export abstract class BaseDrizzleAdapter
   }
 
   /**
-   * Patch component JSONB data with JSON Patch ops.
+   * Batch patch components (JSON Patch ops per component). Runs in a single transaction.
    * WHY entityContext: Same as upsertComponents—scopes the patch to the entity when RLS is on.
    */
-  async patchComponent(
-    componentId: UUID,
-    ops: import("@elizaos/core").PatchOp[],
+  async patchComponents(
+    updates: Array<{ componentId: UUID; ops: import("@elizaos/core").PatchOp[] }>,
     options?: { entityContext?: UUID },
   ): Promise<void> {
+    if (updates.length === 0) return;
+    const run = (db: typeof this.db) =>
+      Promise.all(
+        updates.map((u) => stores.patchComponent(db, u.componentId, u.ops)),
+      ).then(() => {});
     if (options?.entityContext != null) {
-      return this.withIsolationContext(options.entityContext, (tx) =>
-        stores.patchComponent(tx, componentId, ops)
-      );
+      return this.withIsolationContext(options.entityContext, run);
     }
-    return this.withDatabase(() =>
-      stores.patchComponent(this.db, componentId, ops)
-    );
+    return this.withDatabase(() => run(this.db));
   }
 
   // ========================
@@ -638,36 +707,33 @@ export abstract class BaseDrizzleAdapter
     );
   }
 
-  async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
+  async deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void> {
+    return this.withDatabase(async () => {
+      for (const roomId of roomIds) {
+        await stores.deleteAllMemories(this.db, this.agentId, roomId, tableName);
+      }
+    });
+  }
+
+  async countMemories(params: {
+    roomIds?: UUID[];
+    unique?: boolean;
+    tableName?: string;
+    entityId?: UUID;
+    agentId?: UUID;
+    metadata?: Record<string, unknown>;
+  }): Promise<number> {
     return this.withDatabase(() =>
-      stores.deleteAllMemories(this.db, this.agentId, roomId, tableName)
+      stores.countMemories(this.db, params, undefined, undefined)
     );
   }
 
-  async countMemories(
-    roomIdOrParams: UUID | {
-        roomId?: UUID;
-        unique?: boolean;
-        tableName?: string;
-        entityId?: UUID;
-        agentId?: UUID;
-        metadata?: Record<string, JsonValue>;
-    },
-    unique?: boolean,
-    tableName?: string
-  ): Promise<number> {
-    // Note: roomIdOrParams accepts both UUID (legacy) and object params; stores.countMemories handles both signatures
-    return this.withDatabase(() =>
-      stores.countMemories(this.db, roomIdOrParams, unique, tableName)
-    );
-  }
-
-  async getMemoriesByWorldIds(params: {
+async getMemoriesByWorldIds(params: {
     worldIds: UUID[];
     tableName?: string;
     limit?: number;
   }): Promise<Memory[]> {
-    return this.withDatabase(() =>
+return this.withDatabase(() =>
       stores.getMemoriesByWorldIds(this.db, this.agentId, params)
     );
   }
@@ -736,8 +802,29 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.getRoomsByIds(this.db, this.agentId, roomIds));
   }
 
-  async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
-    return this.withDatabase(() => stores.getRoomsByWorld(this.db, worldId));
+  async getRoomsByWorlds(
+    worldIds: UUID[],
+    limit?: number,
+    offset?: number,
+  ): Promise<Room[]> {
+    return this.withDatabase(async () => {
+      let all: Room[] = [];
+      for (const worldId of worldIds) {
+        const rooms = await stores.getRoomsByWorld(this.db, worldId);
+        all = all.concat(rooms);
+      }
+      if (offset != null) all = all.slice(offset);
+      if (limit != null) all = all.slice(0, limit);
+      return all;
+    });
+  }
+
+  async deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void> {
+    return this.withDatabase(async () => {
+      for (const worldId of worldIds) {
+        await stores.deleteRoomsByWorldId(this.db, this.agentId, worldId);
+      }
+    });
   }
 
   async createRooms(rooms: Room[]): Promise<UUID[]> {
@@ -767,23 +854,9 @@ export abstract class BaseDrizzleAdapter
     return this.updateRooms([room]);
   }
 
-  async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
+  async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
     return this.withDatabase(() =>
-      stores.getRoomsForParticipant(this.db, this.agentId, entityId)
-    );
-  }
-
-  async getRoomsForParticipants(entityIds: UUID | UUID[]): Promise<UUID[]> {
-    // Normalize to array for consistent handling
-    const ids = Array.isArray(entityIds) ? entityIds : [entityIds];
-    return this.withDatabase(() =>
-      stores.getRoomsForParticipants(this.db, this.agentId, ids)
-    );
-  }
-
-  async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
-    return this.withDatabase(() =>
-      stores.deleteRoomsByWorldId(this.db, this.agentId, worldId)
+      stores.getRoomsForParticipants(this.db, this.agentId, entityIds)
     );
   }
 
@@ -809,8 +882,104 @@ export abstract class BaseDrizzleAdapter
     return this.createRoomParticipants(entityIds, roomId);
   }
 
-  async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
-    return this.withDatabase(() => stores.getParticipantsForEntity(this.db, entityId));
+  async getParticipantsForEntities(entityIds: UUID[]): Promise<Participant[]> {
+    return this.withDatabase(async () => {
+      const out: Participant[] = [];
+      for (const entityId of entityIds) {
+        const participants = await stores.getParticipantsForEntity(this.db, entityId);
+        out.push(...participants);
+      }
+      return out;
+    });
+  }
+
+  async getParticipantsForRooms(
+    roomIds: UUID[],
+  ): Promise<Array<{ roomId: UUID; entityIds: UUID[] }>> {
+    return this.withDatabase(async () => {
+      const result: Array<{ roomId: UUID; entityIds: UUID[] }> = [];
+      for (const roomId of roomIds) {
+        const entityIds = await stores.getParticipantsForRoom(this.db, roomId);
+        result.push({ roomId, entityIds });
+      }
+      return result;
+    });
+  }
+
+  async areRoomParticipants(
+    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+  ): Promise<boolean[]> {
+    return this.withDatabase(async () => {
+      const result: boolean[] = [];
+      for (const { roomId, entityId } of pairs) {
+        const ok = await stores.isRoomParticipant(this.db, roomId, entityId);
+        result.push(ok);
+      }
+      return result;
+    });
+  }
+
+  async getParticipantUserStates(
+    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+  ): Promise<("FOLLOWED" | "MUTED" | null)[]> {
+    return this.withDatabase(async () => {
+      const result: ("FOLLOWED" | "MUTED" | null)[] = [];
+      for (const { roomId, entityId } of pairs) {
+        const state = await stores.getParticipantUserState(
+          this.db,
+          this.agentId,
+          roomId,
+          entityId,
+        );
+        result.push(state);
+      }
+      return result;
+    });
+  }
+
+  async updateParticipantUserStates(updates: Array<{
+    roomId: UUID;
+    entityId: UUID;
+    state: "FOLLOWED" | "MUTED" | null;
+  }>): Promise<void> {
+    return this.withDatabase(async () => {
+      for (const u of updates) {
+        await stores.updateParticipantUserState(
+          this.db,
+          this.agentId,
+          u.roomId,
+          u.entityId,
+          u.state,
+        );
+      }
+    });
+  }
+
+  /** Single-id convenience for tests and callers. */
+  async getParticipantUserState(
+    roomId: UUID,
+    entityId: UUID,
+  ): Promise<"FOLLOWED" | "MUTED" | null> {
+    const [state] = await this.getParticipantUserStates([{ roomId, entityId }]);
+    return state ?? null;
+  }
+
+  /** Single-id convenience for tests and callers. */
+  async updateParticipantUserState(
+    roomId: UUID,
+    entityId: UUID,
+    state: "FOLLOWED" | "MUTED" | null,
+  ): Promise<void> {
+    await this.updateParticipantUserStates([{ roomId, entityId, state }]);
+  }
+
+  /** Alias for updateParticipantUserState for tests and callers. */
+  async setParticipantUserState(
+    roomId: UUID,
+    entityId: UUID,
+    state: "FOLLOWED" | "MUTED" | null,
+  ): Promise<void> {
+    await this.updateParticipantUserStates([{ roomId, entityId, state }]);
   }
 
   // Batch participant methods
@@ -833,55 +1002,44 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.updateParticipants(this.db, this.agentId, participants));
   }
 
-  async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
-    return this.withDatabase(() => stores.getParticipantsForRoom(this.db, roomId));
-  }
-
-  async isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
-    return this.withDatabase(() => stores.isRoomParticipant(this.db, roomId, entityId));
-  }
-
-  async getParticipantUserState(
-    roomId: UUID,
-    entityId: UUID
-  ): Promise<"FOLLOWED" | "MUTED" | null> {
-    return this.withDatabase(() =>
-      stores.getParticipantUserState(this.db, this.agentId, roomId, entityId)
-    );
-  }
-
-  async updateParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-    state: "FOLLOWED" | "MUTED" | null
-  ): Promise<void> {
-    return this.withDatabase(() =>
-      stores.updateParticipantUserState(this.db, this.agentId, roomId, entityId, state)
-    );
-  }
-
-  /** Alias for updateParticipantUserState for tests and callers. */
-  async setParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-    state: "FOLLOWED" | "MUTED",
-  ): Promise<void> {
-    return this.updateParticipantUserState(roomId, entityId, state);
-  }
-
   // ===============================
   // Relationship Methods
   // ===============================
 
-  async getRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-  }): Promise<Relationship | null> {
-    return this.withDatabase(() => stores.getRelationship(this.db, params));
+  async getRelationshipsByPairs(
+    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
+  ): Promise<(Relationship | null)[]> {
+    return this.withDatabase(async () => {
+      const result: (Relationship | null)[] = [];
+      for (const params of pairs) {
+        const rel = await stores.getRelationship(this.db, params);
+        result.push(rel);
+      }
+      return result;
+    });
   }
 
-  async getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]> {
-    return this.withDatabase(() => stores.getRelationships(this.db, params));
+  async getRelationships(params: {
+    entityIds?: UUID[];
+    tags?: string[];
+    limit?: number;
+    offset?: number;
+  }): Promise<Relationship[]> {
+    const ids = params.entityIds ?? [];
+    if (ids.length === 0) return [];
+    return this.withDatabase(async () => {
+      const all: Relationship[] = [];
+      for (const entityId of ids) {
+        const rels = await stores.getRelationships(this.db, {
+          entityId,
+          tags: params.tags,
+          limit: params.limit,
+          offset: params.offset,
+        });
+        all.push(...rels);
+      }
+      return all;
+    });
   }
 
   // Batch relationship methods
@@ -1023,8 +1181,11 @@ export abstract class BaseDrizzleAdapter
     roomId?: UUID;
     tags?: string[];
     entityId?: UUID;
+    agentIds: UUID[];
+    limit?: number;
+    offset?: number;
   }): Promise<Task[]> {
-    return this.withDatabase(() => stores.getTasks(this.db, this.agentId, params));
+    return this.withDatabase(() => stores.getTasks(this.db, params));
   }
 
   async getTasksByName(name: string): Promise<Task[]> {
@@ -1355,15 +1516,30 @@ export abstract class BaseDrizzleAdapter
   // Pairing Methods
   // ===============================
 
-  async getPairingRequests(channel: PairingChannel, agentId: UUID): Promise<PairingRequest[]> {
-    return this.withDatabase(() => stores.getPairingRequests(this.db, channel, agentId));
+  async getPairingRequests(
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+  ): Promise<Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }>> {
+    return this.withDatabase(async () => {
+      const result: Array<{ channel: PairingChannel; agentId: UUID; requests: PairingRequest[] }> = [];
+      for (const { channel, agentId } of queries) {
+        const requests = await stores.getPairingRequests(this.db, channel, agentId);
+        result.push({ channel, agentId, requests });
+      }
+      return result;
+    });
   }
 
-  async getPairingAllowlist(
-    channel: PairingChannel,
-    agentId: UUID
-  ): Promise<PairingAllowlistEntry[]> {
-    return this.withDatabase(() => stores.getPairingAllowlist(this.db, channel, agentId));
+  async getPairingAllowlists(
+    queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+  ): Promise<Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }>> {
+    return this.withDatabase(async () => {
+      const result: Array<{ channel: PairingChannel; agentId: UUID; entries: PairingAllowlistEntry[] }> = [];
+      for (const { channel, agentId } of queries) {
+        const entries = await stores.getPairingAllowlist(this.db, channel, agentId);
+        result.push({ channel, agentId, entries });
+      }
+      return result;
+    });
   }
 
   // Batch pairing methods

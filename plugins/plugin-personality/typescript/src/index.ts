@@ -27,7 +27,7 @@ export const selfModificationPlugin: Plugin = {
   // Core components
   evaluators: [characterEvolutionEvaluator],
   actions: [modifyCharacterAction],
-  services: [CharacterFileManager],
+  services: [CharacterFileManager as import('@elizaos/core').ServiceClass],
 
   // Plugin configuration
   config: {
@@ -121,7 +121,7 @@ export const selfModificationPlugin: Plugin = {
               type: MemoryType.CUSTOM,
               plugin: '@elizaos/plugin-personality',
               timestamp: Date.now(),
-              characterBaseline: characterStats,
+              characterBaseline: characterStats as unknown as Record<string, unknown>,
             } as CustomMetadata,
           };
 

@@ -6,6 +6,7 @@
  * DO NOT EDIT the spec data - update prompts/actions.json, prompts/providers.json, prompts/evaluators.json and regenerate.
  */
 
+import { getActionSpec as getCoreActionSpec } from "@elizaos/core";
 import {
   coreActionDocs,
   coreProviderDocs,
@@ -40,11 +41,12 @@ const allEvaluatorMap = new Map<string, EvaluatorDoc>(
 
 /**
  * Get an action spec by name from the core specs.
+ * Checks plugin specs first, then falls back to @elizaos/core (e.g. SEND_MESSAGE).
  * @param name - The action name
  * @returns The action spec or undefined if not found
  */
 export function getActionSpec(name: string): ActionDoc | undefined {
-  return coreActionMap.get(name) ?? allActionMap.get(name);
+  return coreActionMap.get(name) ?? allActionMap.get(name) ?? getCoreActionSpec(name) ?? undefined;
 }
 
 /**

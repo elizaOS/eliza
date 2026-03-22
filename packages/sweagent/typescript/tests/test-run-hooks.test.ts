@@ -6,23 +6,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock @octokit/rest before importing modules that use it
 vi.mock("@octokit/rest", () => ({
-  Octokit: vi.fn().mockImplementation(() => ({
-    rest: {
-      pulls: {
-        create: vi.fn().mockResolvedValue({
-          data: { html_url: "https://github.com/test/repo/pull/1" },
-        }),
+  Octokit: vi.fn(function Octokit() {
+    return {
+      rest: {
+        pulls: {
+          create: vi.fn(async () => ({
+            data: { html_url: "https://github.com/test/repo/pull/1" },
+          })),
+        },
+        repos: {
+          get: vi.fn(async () => ({ data: { default_branch: "main" } })),
+          getCommit: vi.fn(async () => ({
+            data: { commit: { message: "test commit" } },
+          })),
+        },
       },
-      repos: {
-        get: vi.fn().mockResolvedValue({
-          data: { default_branch: "main" },
-        }),
-        getCommit: vi.fn().mockResolvedValue({
-          data: { commit: { message: "test commit" } },
-        }),
-      },
-    },
-  })),
+    };
+  }),
 }));
 
 import { GithubIssue } from "../src/agent/problem-statement";
@@ -52,9 +52,15 @@ vi.mock("../src/utils/github", async () => {
   );
   return {
     ...actual,
-    parseGhIssueUrl: vi.fn(),
-    getAssociatedCommitUrls: vi.fn(),
-    getGhIssueData: vi.fn(),
+    parseGhIssueUrl: vi.fn(function parseGhIssueUrl() {
+      return undefined;
+    }),
+    getAssociatedCommitUrls: vi.fn(function getAssociatedCommitUrls() {
+      return [];
+    }),
+    getGhIssueData: vi.fn(function getGhIssueData() {
+      return null;
+    }),
   };
 });
 const mockedGithub = vi.mocked(github);

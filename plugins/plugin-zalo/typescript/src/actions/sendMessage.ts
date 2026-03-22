@@ -2,6 +2,7 @@ import type {
   Action,
   ActionExample,
   ActionResult,
+  Content,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -47,7 +48,7 @@ export const sendMessageAction: Action = {
       if (callback) {
         await callback({
           text: "Zalo service not available",
-        });
+        } as unknown as Content);
       }
       return { success: false, error: "Zalo service not initialized" };
     }
@@ -59,7 +60,7 @@ export const sendMessageAction: Action = {
       if (callback) {
         await callback({
           text: "No user ID available",
-        });
+        } as unknown as Content);
       }
       return { success: false, error: "Missing user ID" };
     }
@@ -74,7 +75,7 @@ export const sendMessageAction: Action = {
         await callback({
           text: responseText,
           action: SEND_MESSAGE_ACTION,
-        });
+        } as unknown as Content);
       }
 
       return {
@@ -92,7 +93,7 @@ export const sendMessageAction: Action = {
       if (callback) {
         await callback({
           text: `Failed to send message: ${errorMessage}`,
-        });
+        } as unknown as Content);
       }
       return { success: false, error: errorMessage };
     }

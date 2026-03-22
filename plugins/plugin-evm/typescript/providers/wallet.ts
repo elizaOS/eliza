@@ -8,6 +8,8 @@ import {
   ServiceType,
   type State,
 } from "@elizaos/core";
+
+const TEE_MODE_OFF = "off";
 import type {
   Account,
   Address,
@@ -235,8 +237,10 @@ function genChainsFromRuntime(runtime: IAgentRuntime): Record<string, Chain> {
     "evm" in settings.chains &&
     Array.isArray(settings.chains.evm)
   ) {
-    const evm = settings.chains.evm as unknown[];
-    configuredChains = evm.filter((c): c is string => typeof c === "string");
+const raw = settings.chains.evm;
+    configuredChains = Array.isArray(raw)
+      ? (raw as unknown[]).filter((c): c is string => typeof c === "string")
+      : [];
   }
 
   const chainsToUse = configuredChains.length > 0 ? configuredChains : [...DEFAULT_CHAINS];
@@ -306,10 +310,10 @@ async function generateAndStorePrivateKey(runtime: IAgentRuntime): Promise<`0x${
 
 export async function initWalletProvider(runtime: IAgentRuntime): Promise<WalletProvider> {
   const teeModeRaw = runtime.getSetting("TEE_MODE");
-  const teeMode = typeof teeModeRaw === "string" ? teeModeRaw : "off";
+const teeMode = typeof teeModeRaw === "string" ? teeModeRaw : TEE_MODE_OFF;
   const chains = genChainsFromRuntime(runtime);
 
-  if (teeMode !== "off") {
+  if (teeMode !== TEE_MODE_OFF) {
     const walletSecretSaltRaw = runtime.getSetting("WALLET_SECRET_SALT");
     if (!walletSecretSaltRaw || typeof walletSecretSaltRaw !== "string") {
       throw new EVMError(

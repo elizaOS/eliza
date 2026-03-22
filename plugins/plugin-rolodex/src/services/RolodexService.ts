@@ -390,7 +390,7 @@ export class RolodexService extends Service {
       if (age < 3_600_000) return cached; // 1 hour cache
     }
 
-    const relationships = await this.runtime.getRelationships({ entityId: sourceEntityId });
+    const relationships = await this.runtime.getRelationships({ entityIds: [sourceEntityId] });
     const relationship = relationships.find(
       (r) => r.targetEntityId === targetEntityId || r.sourceEntityId === targetEntityId
     );
@@ -453,7 +453,7 @@ export class RolodexService extends Service {
     needsAttention: Array<{ entity: Entity; daysSinceContact: number }>;
     recentInteractions: Array<{ entity: Entity; lastInteraction: string }>;
   }> {
-    const relationships = await this.runtime.getRelationships({ entityId });
+    const relationships = await this.runtime.getRelationships({ entityIds: [entityId] });
     const insights = {
       strongestRelationships: [] as Array<{ entity: Entity; analytics: RelationshipAnalytics }>,
       needsAttention: [] as Array<{ entity: Entity; daysSinceContact: number }>,

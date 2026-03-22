@@ -2,6 +2,26 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { VisionService } from "../../service";
+import type { DetectedObject, PersonInfo } from "../../types";
+
+type CaptureEntry = {
+  index: number;
+  timestamp: string;
+  timestampMs?: number;
+  elapsedMs?: number;
+  scene?: {
+    description: string;
+    changePercentage: number;
+    sceneChanged: boolean;
+    objectCount: number;
+    peopleCount: number;
+    objects: DetectedObject[];
+    people: PersonInfo[];
+  };
+  frame?: { width: number; height: number; format?: string; timestamp?: number } | null;
+  imageBase64?: string | null;
+  error?: string;
+};
 
 export class VisionCaptureLogTestSuite {
   name = "plugin-vision-capture-log";
@@ -35,7 +55,23 @@ export class VisionCaptureLogTestSuite {
         console.log(`✓ Created log directory: ${sessionDir}`);
 
         // Initialize capture data
-        const captureData = {
+        const captureData: {
+          sessionId: string;
+          startTime: string;
+          endTime: string;
+          runtime: { agentId: string; characterName: string };
+          camera: ReturnType<VisionService["getCameraInfo"]>;
+          captures: CaptureEntry[];
+          statistics: {
+            totalFrames: number;
+            totalSceneChanges: number;
+            totalObjectsDetected: number;
+            totalPeopleDetected: number;
+            averageChangePercentage: number;
+            objectTypeCounts: Record<string, number>;
+            poseCounts: Record<string, number>;
+          };
+        } = {
           sessionId: `vision-capture-${Date.now()}`,
           startTime: new Date().toISOString(),
           endTime: "",
@@ -44,17 +80,7 @@ export class VisionCaptureLogTestSuite {
             characterName: runtime.character.name,
           },
           camera: visionService.getCameraInfo(),
-          captures: [] as Array<{
-            index?: number;
-            timestamp: string | number;
-            timestampMs?: number;
-            elapsedMs?: number;
-            scene?: { description?: string; changePercentage?: number; sceneChanged?: boolean; objectCount?: number; peopleCount?: number; objects?: unknown[]; people?: unknown[] };
-            frame?: unknown;
-            imageBase64?: string | null;
-            error?: string;
-            sceneDescription?: string;
-          }>,
+          captures: [],
           statistics: {
             totalFrames: 0,
             totalSceneChanges: 0,

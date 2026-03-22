@@ -66,24 +66,38 @@ class SweAgentLogger implements AgentLogger {
     return `${threadPrefix}(${this.name}): ${prefix}${message}`;
   }
 
+  private dispatchLog(
+    method: pino.LogFn,
+    message: string,
+    args: unknown[]
+  ): void {
+    const msg = this.formatMessage(message);
+    // Note: conditionally handles the first arg as a merge-object for flexible logging formats
+    if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0])) {
+      method.call(this.logger, args[0], msg, ...args.slice(1));
+    } else {
+      method.call(this.logger, msg, ...args);
+    }
+  }
+
   debug(message: string, ...args: unknown[]): void {
-    this.logger.debug({}, this.formatMessage(message), ...(args as never[]));
+    this.dispatchLog(this.logger.debug, message, args);
   }
 
   info(message: string, ...args: unknown[]): void {
-    this.logger.info({}, this.formatMessage(message), ...(args as never[]));
+    this.dispatchLog(this.logger.info, message, args);
   }
 
   warn(message: string, ...args: unknown[]): void {
-    this.logger.warn({}, this.formatMessage(message), ...(args as never[]));
+    this.dispatchLog(this.logger.warn, message, args);
   }
 
   error(message: string, ...args: unknown[]): void {
-    this.logger.error({}, this.formatMessage(message), ...(args as never[]));
+    this.dispatchLog(this.logger.error, message, args);
   }
 
   critical(message: string, ...args: unknown[]): void {
-    this.logger.fatal({}, this.formatMessage(message), ...(args as never[]));
+    this.dispatchLog(this.logger.fatal, message, args);
   }
 
   warning(message: string, ...args: unknown[]): void {

@@ -161,7 +161,7 @@ describe("LocalDatabaseAdapter", () => {
         "messages"
       );
 
-      const count = await adapter.countMemories(roomId, false, "messages");
+      const count = await adapter.countMemories({ roomIds: [roomId], unique: false, tableName: "messages" });
       expect(count).toBe(2);
     });
   });
@@ -545,7 +545,7 @@ describe("LocalDatabaseAdapter", () => {
       });
 
       const relationships = await adapter.getRelationships({
-        entityId: sourceId,
+        entityIds: [sourceId],
       });
       expect(relationships.length).toBe(1);
     });

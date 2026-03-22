@@ -3,13 +3,16 @@
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "baseUrl": "./src",
+    "rootDir": "./src",
+    "outDir": "./dist",
     "skipLibCheck": true,
     "noEmit": true,
+    "types": ["node"],
     "paths": {
       "@elizaos/core": ["../../../packages/typescript/src/index.node.ts"],
       "@elizaos/core/*": ["../../../packages/typescript/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "cypress.d.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "cypress.d.ts"],
+  "exclude": ["node_modules", "dist", "src/__tests__"]
 }

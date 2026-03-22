@@ -84,7 +84,7 @@ const makeCallAction: Action = {
       logger.info(`Call initiated to ${phoneNumber}, Call SID: ${call.sid}`);
 
       if (callback) {
-        callback({
+        await callback({
           text: `Call initiated successfully to ${phoneNumber}. Call ID: ${call.sid}`,
           success: true,
         });
@@ -93,7 +93,7 @@ const makeCallAction: Action = {
     } catch (error) {
       logger.error({ error: String(error) }, "Error making call");
       if (callback) {
-        callback({
+        await callback({
           text: `Failed to make call: ${error instanceof Error ? error.message : "Unknown error"}`,
           success: false,
         });

@@ -271,8 +271,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
     this.initializeRegistry();
 
     logger.info(
-      '[PluginManagerService] Initialized with config:',
-      JSON.stringify(this.pluginManagerConfig)
+{ pluginManagerConfig: this.pluginManagerConfig },
+      '[PluginManagerService] Initialized with config',
     );
   }
 
@@ -570,8 +570,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
         }
         for (const eventHandler of eventHandlers) {
           await this.runtime.registerEvent(
-            eventName,
-            eventHandler as (params: import('@elizaos/core').EventPayload) => Promise<void>
+eventName as Parameters<typeof this.runtime.registerEvent>[0],
+            eventHandler as (params: import('@elizaos/core').WorldPayload) => Promise<void>,
           );
           pluginState.components!.eventHandlers
             .get(eventName)!

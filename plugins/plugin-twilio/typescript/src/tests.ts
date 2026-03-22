@@ -125,7 +125,7 @@ export class TwilioTestSuite implements TestSuite {
           try {
             // Test SMS webhook endpoint
             const smsResponse = await axios.post(
-              `http://localhost:${webhookPort}/webhooks/twilio/sms`,
+              `http://localhost:${String(webhookPort)}/webhooks/twilio/sms`,
               {
                 MessageSid: "TEST123",
                 From: "+18885551234",
@@ -372,3 +372,4 @@ export class TwilioTestSuite implements TestSuite {
     },
   ];
 }
+

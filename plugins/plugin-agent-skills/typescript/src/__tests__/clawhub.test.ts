@@ -113,7 +113,7 @@ async function downloadSkill(
   const response = await fetch(url);
 
   if (!response.ok) {
-    // 404 = not found, 429 = rate limit, 5xx = server error - treat as download unavailable
+// 404 = not found, 429 = rate limit, 5xx = server error - treat as download unavailable
     if (response.status === 404 || response.status === 429 || response.status >= 500)
       return null;
     throw new Error(`Download failed: ${response.status}`);

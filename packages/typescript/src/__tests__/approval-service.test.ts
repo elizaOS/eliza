@@ -58,16 +58,23 @@ function createMockRuntime(): IAgentRuntime & {
       return id;
     }),
 
-    getTasks: vi.fn(async (params: { roomId?: UUID; tags?: string[] }) => {
-      const result: Task[] = [];
-      for (const task of tasks.values()) {
-        if (params.roomId && task.roomId !== params.roomId) continue;
-        if (params.tags && !params.tags.every((t) => task.tags?.includes(t)))
-          continue;
-        result.push(task);
-      }
-      return result;
-    }),
+    getTasks: vi.fn(
+      async (params: {
+        roomId?: UUID;
+        tags?: string[];
+        agentIds: UUID[];
+      }) => {
+        const result: Task[] = [];
+        for (const task of tasks.values()) {
+          if (task.agentId != null && params.agentIds.length > 0 && !params.agentIds.includes(task.agentId)) continue;
+          if (params.roomId && task.roomId !== params.roomId) continue;
+          if (params.tags && !params.tags.every((t) => task.tags?.includes(t)))
+            continue;
+          result.push(task);
+        }
+        return result;
+      },
+    ),
 
     getTask: vi.fn(async (id: UUID) => tasks.get(id) ?? null),
 
@@ -220,6 +227,7 @@ describe("ApprovalService", () => {
       const tasks = await runtime.getTasks({
         roomId,
         tags: ["AWAITING_CHOICE"],
+        agentIds: [runtime.agentId],
       });
       expect(tasks.length).toBe(1);
 
@@ -248,7 +256,7 @@ describe("ApprovalService", () => {
         }),
       );
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks[0].id!, "yes");
       await approvalPromise;
     });
@@ -266,7 +274,7 @@ describe("ApprovalService", () => {
       });
 
       await new Promise((resolve) => setTimeout(resolve, 10));
-      const tasks1 = await runtime.getTasks({ roomId });
+      const tasks1 = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks1[0].id!, "confirm");
       await promise1;
 
@@ -284,7 +292,7 @@ describe("ApprovalService", () => {
       });
 
       await new Promise((resolve) => setTimeout(resolve, 10));
-      const tasks2 = await runtime.getTasks({ roomId });
+      const tasks2 = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks2[0].id!, "confirm");
       await promise2;
 
@@ -317,7 +325,7 @@ describe("ApprovalService", () => {
         }),
       );
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks[0].id!, "confirm");
       await approvalPromise;
     });
@@ -341,7 +349,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       expect(tasks[0].metadata).toMatchObject(customMetadata);
 
       await service.handleSelection(tasks[0].id!, "confirm");
@@ -395,7 +403,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.cancelApproval(tasks[0].id!);
 
       const result = await approvalPromise;
@@ -417,7 +425,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       const taskId = tasks[0].id!;
       await service.cancelApproval(taskId);
 
@@ -444,7 +452,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks[0].id!, "allow-always");
 
       const result = await approvalPromise;
@@ -470,7 +478,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks[0].id!, "abort");
 
       const result = await approvalPromise;
@@ -495,7 +503,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks[0].id!, "ABORT");
 
       const result = await approvalPromise;
@@ -517,7 +525,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks[0].id!, "confirm", resolvedBy);
 
       const result = await approvalPromise;
@@ -542,7 +550,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks[0].id!, "confirm");
 
       const result = await approvalPromise;
@@ -650,7 +658,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks[0].id!, "confirm");
 
       await approvalPromise;
@@ -677,7 +685,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks[0].id!, "cancel");
 
       await approvalPromise;
@@ -706,7 +714,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
 
       // Should not throw
       await service.handleSelection(tasks[0].id!, "confirm");
@@ -899,7 +907,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       await service.handleSelection(tasks[0].id!, "option-3");
 
       const result = await approvalPromise;
@@ -926,7 +934,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       expect(tasks[0].metadata?.options).toEqual([
         { name: "option-a", description: "A" },
         { name: "option-b", description: "B" },
@@ -955,7 +963,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       expect(tasks[0].tags).toContain("AWAITING_CHOICE");
       expect(tasks[0].tags).toContain("APPROVAL");
 
@@ -977,7 +985,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const tasks = await runtime.getTasks({ roomId, tags: ["EXEC"] });
+      const tasks = await runtime.getTasks({ roomId, tags: ["EXEC"], agentIds: [runtime.agentId] });
       expect(tasks.length).toBe(1);
       expect(tasks[0].tags).toContain("AWAITING_CHOICE");
       expect(tasks[0].tags).toContain("APPROVAL");
@@ -1012,7 +1020,7 @@ describe("ApprovalService", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 20));
 
-      const tasks = await runtime.getTasks({ roomId });
+      const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
       expect(tasks.length).toBe(5);
 
       // Resolve each approval
@@ -1056,7 +1064,7 @@ describe("Task-based Choice System Integration", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    const tasks = await runtime.getTasks({ roomId, tags: ["AWAITING_CHOICE"] });
+    const tasks = await runtime.getTasks({ roomId, tags: ["AWAITING_CHOICE"], agentIds: [runtime.agentId] });
     expect(tasks.length).toBe(1);
 
     const task = tasks[0];
@@ -1087,7 +1095,7 @@ describe("Task-based Choice System Integration", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    const tasks = await runtime.getTasks({ roomId });
+    const tasks = await runtime.getTasks({ roomId, agentIds: [runtime.agentId] });
     const approvalRequest = tasks[0].metadata?.approvalRequest as Record<
       string,
       unknown

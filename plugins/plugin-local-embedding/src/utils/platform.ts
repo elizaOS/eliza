@@ -103,7 +103,7 @@ export class PlatformManager {
       //   recommendedModel: this.capabilities.recommendedModelSize,
       // });
     } catch (error) {
-      logger.error({ msg: "Platform detection failed", error });
+logger.error({ msg: "Platform detection failed", error });
       throw error;
     }
   }
@@ -171,7 +171,7 @@ export class PlatformManager {
           return null;
       }
     } catch (error) {
-      logger.error({ msg: "GPU detection failed", error });
+logger.error({ msg: "GPU detection failed", error });
       return null;
     }
   }
@@ -205,7 +205,7 @@ export class PlatformManager {
         isAppleSilicon: false,
       };
     } catch (error) {
-      logger.error({ msg: "Mac GPU detection failed", error });
+logger.error({ msg: "Mac GPU detection failed", error });
       return {
         name: "Unknown Mac GPU",
         type: "metal",
@@ -248,7 +248,7 @@ export class PlatformManager {
         type: "directml",
       };
     } catch (error) {
-      logger.error({ msg: "Windows GPU detection failed", error });
+logger.error({ msg: "Windows GPU detection failed", error });
       return null;
     }
   }
@@ -288,7 +288,7 @@ export class PlatformManager {
           type: "none",
         };
       } catch (error) {
-        logger.error({ msg: "Linux GPU detection failed", error });
+logger.error({ msg: "Linux GPU detection failed", error });
         return null;
       }
     }
