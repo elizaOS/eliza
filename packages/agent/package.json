@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-alpha.85",
+  "version": "2.0.0-alpha.86",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -269,13 +269,13 @@
     }
   },
   "devDependencies": {
+    "@ai-sdk/openai": "^1.1.9",
     "@types/node": "^25.2.0",
     "@types/pg": "^8.15.2",
     "@types/ws": "^8.18.1",
     "ai": "^4.1.28",
-    "@ai-sdk/openai": "^1.1.9",
-    "sharp": "^0.33.5",
     "canvas": "^3.0.1",
+    "sharp": "^0.33.5",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }
