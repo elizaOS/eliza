@@ -557,8 +557,8 @@ export function logResponse(
   },
 ): string {
   if (!ensureFileLog()) return "";
-  const agentName = metadata?.agentName ?? "unknown";
-  // Use the same slug that was stored in the prompt's metadata for correlation
+  // Use the same slug that was passed from logPrompt for correlation
+  // Do NOT increment _promptLogCounter here - the prompt already did that
   const slug = metadata?.promptSlug;
   if (!slug) {
     logger.warn({ src: "core:logger" }, "logResponse missing promptSlug - responses can't be correlated");
