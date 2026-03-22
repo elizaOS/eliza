@@ -963,6 +963,8 @@ export class DefaultMessageService implements IMessageService {
           );
       }
 
+    runtime.promptBatcher?.tick(message);
+
     // Clean up the response ID
     agentResponses.delete(message.roomId);
     if (agentResponses.size === 0) {
