@@ -9,20 +9,20 @@
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required
   "@elizaos/plugin-local-embedding", // local embeddings — required for memory
-  "@elizaos/plugin-secrets-manager", // secrets management — load early, other plugins depend on it
   "@elizaos/plugin-form", // form handling for guided user journeys
   "@elizaos/plugin-knowledge", // RAG knowledge management — required for knowledge tab
-  "@elizaos/plugin-rolodex", // contact graph and relationship/social memory
   "@elizaos/plugin-trajectory-logger", // trajectory logging for debugging and RL training
   "@elizaos/plugin-agent-orchestrator", // multi-agent orchestration (PTY, SwarmCoordinator, workspace provisioning)
   "@elizaos/plugin-cron", // scheduled jobs and automation
   "@elizaos/plugin-shell", // shell command execution
-  "@elizaos/plugin-plugin-manager", // dynamic plugin management
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
-  "@elizaos/plugin-trust", // trust scoring and policy signals
-  "@elizaos/plugin-todo", // todo/task management
-  "@elizaos/plugin-personality", // personality coherence
-  "@elizaos/plugin-experience", // learning from interactions
+  // "@elizaos/plugin-secrets-manager", // secrets management — load early, other plugins depend on it
+  // "@elizaos/plugin-rolodex", // contact graph and relationship/social memory
+  // "@elizaos/plugin-plugin-manager", // dynamic plugin management
+  // "@elizaos/plugin-trust", // trust scoring and policy signals
+  // "@elizaos/plugin-todo", // todo/task management
+  // "@elizaos/plugin-personality", // personality coherence
+  // "@elizaos/plugin-experience", // learning from interactions
 ];
 
 /**
