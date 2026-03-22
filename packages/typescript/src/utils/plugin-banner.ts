@@ -174,9 +174,8 @@ export function sliceByWidth(text: string, maxWidth: number): string {
 
     // Extract text before any ANSI code to avoid segmenting ANSI sequences
     const nextAnsiIndex = ansiMatch ? ansiMatch.index : remaining.length;
-    const textSegment = remaining.slice(0, nextAnsiIndex);
     
-    for (const { segment } of segmenter.segment(textSegment)) {
+    for (const { segment } of segmenter.segment(remaining.slice(0, nextAnsiIndex))) {
       const graphemeCols = graphemeWidth(segment);
       if (width + graphemeCols > maxWidth) break;
 
