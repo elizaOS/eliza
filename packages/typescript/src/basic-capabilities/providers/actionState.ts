@@ -221,7 +221,7 @@ export const actionStateProvider: Provider = {
             return textChars + runId.length + 80;
           },
           ACTION_HISTORY_TARGET_CHARS,
-          { fromEnd: true } // Select newest entries since groupedByRun is chronological
+          // Note: groupedByRun is newest-first from getMemories(); default fromEnd:false keeps newest
         );
 
       const formattedMemories = selectedRuns
