@@ -11,22 +11,47 @@ import type {
 import { PotSigner, type PotSignature } from "openttt";
 import { getVerifiedTime } from "../providers/timeProvider.js";
 
-// Module-level signer: ephemeral Ed25519 keypair per agent process.
-// A fresh keypair is generated on startup; the public key ships with every PoT
-// so any counterparty can verify the signature without a PKI.
-const _signer = new PotSigner();
+// Module-level signer: lazily initialised on first use so that we have access
+// to IAgentRuntime.getSetting().  Until then the slot holds undefined.
+// Initialised in getOrCreateSigner() below.
+let _signer: PotSigner | undefined;
+
+/**
+ * Returns the process-level PotSigner, creating it on first call.
+ *
+ * Key lifecycle:
+ *   1. If the runtime exposes OPENTTT_PRIVATE_KEY (PKCS8 DER hex), reuse it —
+ *      this means PoT tokens issued in previous agent restarts remain verifiable
+ *      because PotSignature.issuerPubKey is self-contained and
+ *      PotSigner.verifyPotSignature() needs no external PKI.
+ *   2. Otherwise a fresh Ed25519 keypair is generated.  The caller may persist
+ *      getPrivateKeyHex() to OPENTTT_PRIVATE_KEY for cross-restart continuity.
+ *
+ * Note: verifyPotSignature() is self-contained — it reads issuerPubKey directly
+ * from the PotSignature struct, so verification works even across restarts as
+ * long as the original signature object is available (openttt SDK ≥ 0.2.x).
+ */
+function getOrCreateSigner(runtime: IAgentRuntime): PotSigner {
+  if (_signer) return _signer;
+
+  const storedKey = runtime.getSetting("OPENTTT_PRIVATE_KEY");
+  _signer = storedKey ? new PotSigner(storedKey) : new PotSigner();
+  return _signer;
+}
 
 // Module-level cache: runtime has no cacheManager in this version of @elizaos/core
 const MAX_CACHE_SIZE = 1000;
 const potCache = new Map<string, { value: string; expiresAt: number }>();
 
-// Periodic cleanup: evict expired entries every minute
+// Periodic cleanup: evict expired entries every minute.
+// .unref() prevents this timer from keeping the Node.js event loop alive when
+// the agent process is otherwise idle (e.g. during graceful shutdown).
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of potCache.entries()) {
     if (now > entry.expiresAt) potCache.delete(key);
   }
-}, 60_000);
+}, 60_000).unref();
 
 export function potCacheSet(key: string, value: string, ttlSeconds: number): void {
   // Enforce size cap: evict oldest entry if at limit
@@ -108,7 +133,7 @@ export const generatePot: Action = {
       const potHash = createHash("sha256").update(potHashRaw).digest("hex");
 
       // Sign potHash with Ed25519 — this is what makes the token tamper-evident
-      const signature = _signer.signPot(potHash);
+      const signature = getOrCreateSigner(runtime).signPot(potHash);
 
       const pot: PoTToken = {
         version: "1.0",
