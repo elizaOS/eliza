@@ -355,7 +355,9 @@ export async function handleCharacterRoutes(
         await state.runtime.updateAgent(state.runtime.agentId, {
           name: character.name,
           metadata: {
-            ...(state.runtime.character as { metadata?: Record<string, unknown> }).metadata,
+            ...(
+              state.runtime.character as { metadata?: Record<string, unknown> }
+            ).metadata,
             character: charData,
           },
         });

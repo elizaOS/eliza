@@ -695,7 +695,14 @@ export type ElizaConfig = {
     /** Accent color for Eliza UI chrome (hex). */
     seamColor?: string;
     /** User's preferred UI theme. Set during onboarding. */
-    theme?: "eliza" | "eliza" | "qt314" | "web2000" | "programmer" | "haxor" | "psycho";
+    theme?:
+      | "eliza"
+      | "eliza"
+      | "qt314"
+      | "web2000"
+      | "programmer"
+      | "haxor"
+      | "psycho";
     assistant?: {
       /** Assistant display name for UI surfaces. */
       name?: string;

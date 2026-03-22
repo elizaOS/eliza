@@ -451,7 +451,7 @@ export async function startBenchmarkServer() {
   // Load mock plugin for testing (file is gitignored for local-only use)
   if (process.env.AUTONOMOUS_BENCH_MOCK === "true") {
     try {
-      // @ts-ignore - mock-plugin.ts is gitignored, only exists for local benchmarking
+      // @ts-expect-error - mock-plugin.ts is gitignored, only exists for local benchmarking
       const { mockPlugin } = await import("./mock-plugin.ts");
       plugins.push(toPlugin(mockPlugin, "./mock-plugin.ts"));
       elizaLogger.info("[bench] Loaded mock benchmark plugin");
@@ -706,10 +706,10 @@ export async function startBenchmarkServer() {
           model_handlers: modelHandlerSummary,
           active_session: activeSession
             ? {
-              benchmark: activeSession.benchmark,
-              task_id: activeSession.taskId,
-              room_id: activeSession.roomId,
-            }
+                benchmark: activeSession.benchmark,
+                task_id: activeSession.taskId,
+                room_id: activeSession.roomId,
+              }
             : null,
         }),
       );
@@ -723,18 +723,18 @@ export async function startBenchmarkServer() {
         try {
           const parsed = body.trim()
             ? (JSON.parse(body) as {
-              task_id?: unknown;
-              benchmark?: unknown;
-            })
+                task_id?: unknown;
+                benchmark?: unknown;
+              })
             : {};
           const taskId =
             typeof parsed.task_id === "string" &&
-              parsed.task_id.trim().length > 0
+            parsed.task_id.trim().length > 0
               ? parsed.task_id
               : "default-task";
           const benchmark =
             typeof parsed.benchmark === "string" &&
-              parsed.benchmark.trim().length > 0
+            parsed.benchmark.trim().length > 0
               ? parsed.benchmark
               : "unknown";
 

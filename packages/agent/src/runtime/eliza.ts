@@ -4034,8 +4034,7 @@ export async function startEliza(
       settings.ADVANCED_CAPABILITIES === "true",
     skipCharacterProvider: false,
     enableAutonomy:
-      settings.ENABLE_AUTONOMY === true ||
-      settings.ENABLE_AUTONOMY === "true",
+      settings.ENABLE_AUTONOMY === true || settings.ENABLE_AUTONOMY === "true",
   });
   deduplicatePluginActions([
     basicCapabilitiesPlugin,
