@@ -100,6 +100,8 @@ IMPORTANT CODE BLOCK FORMATTING RULES:
 </keys>
 
 <output>
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:
 <response>
@@ -170,6 +172,8 @@ The "post" field should be the post you want to send. Do not including any think
 The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
 The "thought" field should be a short description of what the agent is thinking about before responding, including a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
 
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the XML response format without any preamble or explanation.
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
@@ -187,6 +191,8 @@ Be objective and descriptive. Focus on what you can actually see in the image ra
 </instructions>
 
 <output>
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:
 <response>
@@ -1122,8 +1128,8 @@ Continue the task. Decide the next step and take action now.`;
 
 // UPPERCASE aliases for autonomy templates
 export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE =
-  autonomyContinuousFirstTemplate;
+	autonomyContinuousFirstTemplate;
 export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE =
-  autonomyContinuousContinueTemplate;
+	autonomyContinuousContinueTemplate;
 export const AUTONOMY_TASK_FIRST_TEMPLATE = autonomyTaskFirstTemplate;
 export const AUTONOMY_TASK_CONTINUE_TEMPLATE = autonomyTaskContinueTemplate;

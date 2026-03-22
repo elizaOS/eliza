@@ -334,14 +334,14 @@ export const sendMessageAction: Action = {
 			// Try to find the target user entity
 			const lookupMessage: Memory =
 				typeof targetData.identifiers?.username === "string" &&
-					targetData.identifiers.username.trim() !== ""
+				targetData.identifiers.username.trim() !== ""
 					? {
-						...message,
-						content: {
-							...message.content,
-							text: targetData.identifiers.username,
-						},
-					}
+							...message,
+							content: {
+								...message.content,
+								text: targetData.identifiers.username,
+							},
+						}
 					: message;
 			const targetEntity = await findEntityByName(
 				runtime,

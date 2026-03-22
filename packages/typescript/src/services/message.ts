@@ -1617,26 +1617,22 @@ export class DefaultMessageService implements IMessageService {
 				if (typeof parsedXml.actions === "string") {
 					const actionsXml = parsedXml.actions;
 					// Check if it contains <action> elements (new format)
-					if (actionsXml.includes("<action>") || actionsXml.includes("<action ")) {
+					if (
+						actionsXml.includes("<action>") ||
+						actionsXml.includes("<action ")
+					) {
 						const actionEntries: Array<{
 							name: string;
 							paramsXml?: string;
 						}> = [];
-						// Use the same extractXmlChildren logic via parseActionParams
+						// Use matchAll to avoid assignment-in-expression lint warning
 						// We just need names here; params are extracted separately below
-						const actionChildRegex =
-							/<action>([\s\S]*?)<\/action>/g;
-						let match: RegExpExecArray | null;
-						while (
-							(match = actionChildRegex.exec(actionsXml)) !== null
-						) {
+						for (const match of actionsXml.matchAll(
+							/<action>([\s\S]*?)<\/action>/g,
+						)) {
 							const inner = match[1];
-							const nameMatch = inner.match(
-								/<name>([\s\S]*?)<\/name>/,
-							);
-							const paramsMatch = inner.match(
-								/<params>([\s\S]*?)<\/params>/,
-							);
+							const nameMatch = inner.match(/<name>([\s\S]*?)<\/name>/);
+							const paramsMatch = inner.match(/<params>([\s\S]*?)<\/params>/);
 							if (nameMatch) {
 								const name = nameMatch[1].trim();
 								const paramsXml = paramsMatch
