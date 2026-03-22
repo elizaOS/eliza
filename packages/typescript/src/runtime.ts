@@ -2270,14 +2270,18 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
               },
               "Provider error or timeout",
             );
-            // Return empty result so composeState continues
-            return {
-              values: {},
-              text: "",
-              data: {},
-              providerName: provider.name,
-            };
-          }
+            // Return empty result so composeState continues; one bad provider shouldn't fail the whole turn.
+                      return {
+                        values: {},
+                        text: "",
+                        data: {},
+                        providerName: provider.name,
+                      };
+                    } finally {
+                      if (timerId !== undefined) {
+                        clearTimeout(timerId);
+                      }
+                    }
       }),
     );
     const composeStateEnd = Date.now();
