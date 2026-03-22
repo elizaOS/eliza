@@ -269,7 +269,7 @@
     }
   },
   "devDependencies": {
-    "@ai-sdk/openai": "^1.1.9",
+    "@ai-sdk/openai": "^3.0.47",
     "@types/node": "^25.2.0",
     "@types/pg": "^8.15.2",
     "@types/ws": "^8.18.1",
