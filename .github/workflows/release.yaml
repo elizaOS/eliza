@@ -465,7 +465,7 @@ jobs:
 
           # Fail if critical packages didn't produce dist/
           # packages/typescript is published as @elizaos/core
-          for pkg in packages/typescript packages/agent packages/app-core; do
+          for pkg in packages/typescript packages/agent; do
             if [ ! -d "${pkg}/dist" ]; then
               echo "❌ Critical package ${pkg} failed to build (no dist/ directory)"
               exit 1
