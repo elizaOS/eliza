@@ -15,9 +15,10 @@ export const trustChangeEvaluator: Evaluator = {
     const trustEngineWrapper = runtime.getService('trust-engine') as any;
 
     if (!trustEngineWrapper) {
-      return;
+      return null;
     }
-    const trustEngine = trustEngineWrapper.trustEngine
+    // Support both wrapper (trustEngine.trustEngine) and direct engine mock
+    const trustEngine = trustEngineWrapper.trustEngine ?? trustEngineWrapper;
 
     try {
       const content = message.content.text?.toLowerCase() || '';

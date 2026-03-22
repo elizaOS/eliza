@@ -109,7 +109,7 @@ export class MattermostService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(MATTERMOST_SERVICE_NAME) as MattermostService | undefined;
+    const service = await runtime.getService(MATTERMOST_SERVICE_NAME) as MattermostService | undefined;
     if (service) {
       await service.stop();
     }

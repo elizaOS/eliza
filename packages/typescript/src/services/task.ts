@@ -130,9 +130,12 @@ export class TaskService extends Service {
   }
 
   /**
-   * Starts a timer that runs a function to check tasks at a specified interval.
+   * Start the task poll timer. Call explicitly in daemon mode; not started automatically.
+   * WHY public: initialize() does not start the task service or timer. Daemon entry points
+   * that need scheduled tasks call getService("task") then startTimer(). Edge/ephemeral
+   * runtimes typically do not call this.
    */
-  private startTimer() {
+  startTimer() {
     if (this.timer) {
       clearInterval(this.timer);
     }
@@ -397,7 +400,7 @@ export class TaskService extends Service {
    * @returns {Promise<void>} - A promise that resolves once the service has been stopped.
    */
   static async stop(runtime: IAgentRuntime) {
-    const service = runtime.getService(ServiceType.TASK);
+    const service = await runtime.getService(ServiceType.TASK);
     if (service) {
       await service.stop();
     }

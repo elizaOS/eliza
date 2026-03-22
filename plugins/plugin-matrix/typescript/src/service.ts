@@ -50,7 +50,7 @@ export class MatrixService extends Service implements IMatrixService {
    * Stop the Matrix service.
    */
   static override async stopRuntime(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(MATRIX_SERVICE_NAME) as MatrixService | undefined;
+    const service = (await runtime.getService(MATRIX_SERVICE_NAME)) as MatrixService | undefined;
     if (service) {
       await service.stop();
     }

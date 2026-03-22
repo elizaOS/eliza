@@ -282,6 +282,24 @@ describe("generateSkillsXml", () => {
 describe("real otto skills validation", () => {
   const skillDirs = ["github", "1password", "clawhub", "skill-creator", "tmux"];
 
+  it("validates otto skills when present", () => {
+    const ottoExists = fs.existsSync(OTTO_SKILLS_PATH);
+    expect(typeof OTTO_SKILLS_PATH).toBe("string");
+    if (!ottoExists) return;
+    for (const skillDir of skillDirs) {
+      const skillPath = path.join(OTTO_SKILLS_PATH, skillDir);
+      if (fs.existsSync(skillPath)) {
+        const skillMdPath = path.join(skillPath, "SKILL.md");
+        const content = fs.readFileSync(skillMdPath, "utf-8");
+        const result = validateSkillDirectory(skillPath, content, skillDir);
+        if (!result.valid) {
+          console.log(`${skillDir} validation errors:`, result.errors);
+        }
+        expect(result).toBeDefined();
+      }
+    }
+  });
+
   for (const skillDir of skillDirs) {
     const skillPath = path.join(OTTO_SKILLS_PATH, skillDir);
 

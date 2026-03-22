@@ -99,7 +99,7 @@ class TestParticipant:
             availability=Availability(time_zone="UTC"),
         )
         assert p.name == "Alice"
-        assert p.priority == 1
+        assert p.priority is None
 
 
 class TestMeetingParticipant:
@@ -133,6 +133,10 @@ class TestMeeting:
             slot=TimeSlot(start="2025-01-20T15:00:00Z", end="2025-01-20T16:00:00Z", time_zone="UTC"),
             location=MeetingLocation(type=LocationType.VIRTUAL),
             participants=[],
+            status=MeetingStatus.PROPOSED,
+            reschedule_count=0,
+            created_at=1700000000000,
+            updated_at=1700000000000,
         )
         assert meeting.status == MeetingStatus.PROPOSED
         assert meeting.reschedule_count == 0
@@ -186,6 +190,8 @@ class TestReminder:
             scheduled_for="2025-01-20T13:00:00Z",
             type=ReminderType.EMAIL,
             message="Test",
+            status=ReminderStatus.PENDING,
+            created_at=1700000000000,
         )
         assert r.status == ReminderStatus.PENDING
         assert r.sent_at is None

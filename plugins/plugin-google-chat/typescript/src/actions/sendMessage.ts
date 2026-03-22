@@ -72,7 +72,7 @@ export const sendMessage: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const gchatService = runtime.getService<GoogleChatService>(
+    const gchatService = await runtime.getService<GoogleChatService>(
       GOOGLE_CHAT_SERVICE_NAME,
     );
 

@@ -9,7 +9,7 @@ export const repositoryStateProvider: Provider = {
   description: "Provides context about the current GitHub repository including recent activity",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
-    const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
+    const service = await runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
       return { text: null };

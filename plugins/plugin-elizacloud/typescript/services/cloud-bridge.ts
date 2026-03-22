@@ -61,7 +61,7 @@ export class CloudBridgeService extends Service {
   }
 
   private async initialize(): Promise<void> {
-    const auth = this.runtime.getService("CLOUD_AUTH");
+    const auth = await this.runtime.getService("CLOUD_AUTH");
     if (!auth) {
       logger.warn("[CloudBridge] CloudAuthService not available");
       return;

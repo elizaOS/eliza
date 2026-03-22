@@ -1,6 +1,6 @@
-import { Workflow, WorkflowContext, Logger, ConsoleLogger, isWorkflowSuccess, isNextStep } from './types';
+import { Workflow, WorkflowContext, Logger, ConsoleLogger, isWorkflowSuccess, isNextStep, type Desktop } from './types';
 import { emit } from './events';
-import { Desktop } from '@elizaos/computeruse';
+import { Desktop as DesktopClass } from '@elizaos/computeruse';
 
 export interface WorkflowRunnerOptions {
   workflow: Workflow;
@@ -69,7 +69,7 @@ export class WorkflowRunner {
       };
     }
 
-    this.desktop = new Desktop();
+    this.desktop = new DesktopClass();
   }
 
   async run(): Promise<{ status: string; lastStepId?: string; lastStepIndex: number; error?: string }> {

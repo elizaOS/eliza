@@ -840,12 +840,18 @@ class BaseSQLAdapter(IDatabaseAdapter):
             await session.execute(delete(TaskTable).where(TaskTable.id == id))
             await session.commit()
 
-    async def get_memories_by_world_id(self, params: dict[str, Any]) -> list[dict[str, Any]]:
+    async def get_memories_by_world_ids(self, params: dict[str, Any]) -> list[dict[str, Any]]:
+        world_ids = params.get("worldIds") or []
+        if not world_ids:
+            return []
         async with self._get_session() as session:
-            query = select(MemoryTable).where(MemoryTable.world_id == params["worldId"])
-            if "count" in params:
-                query = query.limit(params["count"])
-
+            query = (
+                select(MemoryTable)
+                .where(MemoryTable.world_id.in_(world_ids))
+                .order_by(MemoryTable.created_at.desc())
+            )
+            if "limit" in params:
+                query = query.limit(params["limit"])
             result = await session.execute(query)
             memories = result.scalars().all()
             return [self._memory_to_dict(m) for m in memories]

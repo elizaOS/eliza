@@ -9,8 +9,8 @@ import type {
 } from "@elizaos/core";
 import type { AgentOrchestratorService } from "../services/agent-orchestrator-service.js";
 
-function getService(runtime: IAgentRuntime): AgentOrchestratorService {
-  const svc = runtime.getService("CODE_TASK") as AgentOrchestratorService | null;
+async function getService(runtime: IAgentRuntime): Promise<AgentOrchestratorService> {
+  const svc = (await runtime.getService("CODE_TASK")) as AgentOrchestratorService | null;
   if (!svc) {
     throw new Error("AgentOrchestratorService not available (CODE_TASK)");
   }
@@ -41,7 +41,7 @@ export const createTaskAction: Action = {
     "Create an orchestrated background task to be executed by a selected agent provider.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if orchestrator service is available
-    const svc = runtime.getService("CODE_TASK");
+    const svc = await runtime.getService("CODE_TASK");
     if (!svc) {
       return false;
     }
@@ -66,7 +66,7 @@ export const createTaskAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getService(runtime);
+    const svc = await getService(runtime);
     const raw = message.content.text ?? "";
 
     const opts = options as { title?: string; description?: string; steps?: string[] } | undefined;
@@ -113,7 +113,7 @@ export const listTasksAction: Action = {
   description: "List tasks managed by the orchestrator.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if orchestrator service is available
-    const svc = runtime.getService("CODE_TASK");
+    const svc = await runtime.getService("CODE_TASK");
     if (!svc) {
       return false;
     }
@@ -130,7 +130,7 @@ export const listTasksAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getService(runtime);
+    const svc = await getService(runtime);
     const tasks = await svc.getRecentTasks(20);
     if (tasks.length === 0) {
       const msg = "No tasks.";
@@ -159,7 +159,7 @@ export const switchTaskAction: Action = {
   description: "Switch the current task context to a different task.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if orchestrator service is available
-    const svc = runtime.getService("CODE_TASK");
+    const svc = await runtime.getService("CODE_TASK");
     if (!svc) {
       return false;
     }
@@ -178,7 +178,7 @@ export const switchTaskAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getService(runtime);
+    const svc = await getService(runtime);
     const query = extractQuery(message.content.text ?? "");
     if (!query) {
       const msg = "Please specify which task to switch to (by name or id).";
@@ -209,7 +209,7 @@ export const searchTasksAction: Action = {
   description: "Search tasks by query.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if orchestrator service is available
-    const svc = runtime.getService("CODE_TASK");
+    const svc = await runtime.getService("CODE_TASK");
     if (!svc) {
       return false;
     }
@@ -224,7 +224,7 @@ export const searchTasksAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getService(runtime);
+    const svc = await getService(runtime);
     const opt = options as { query?: string } | undefined;
     const query = (opt?.query ?? extractQuery(message.content.text ?? "")).trim();
     if (!query) {
@@ -258,7 +258,7 @@ export const pauseTaskAction: Action = {
   description: "Pause a running task.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if orchestrator service is available
-    const svc = runtime.getService("CODE_TASK");
+    const svc = await runtime.getService("CODE_TASK");
     if (!svc) {
       return false;
     }
@@ -273,7 +273,7 @@ export const pauseTaskAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getService(runtime);
+    const svc = await getService(runtime);
     const query = extractQuery(message.content.text ?? "");
     const task = query ? (await svc.searchTasks(query))[0] : await svc.getCurrentTask();
     if (!task?.id) {
@@ -294,7 +294,7 @@ export const resumeTaskAction: Action = {
   description: "Resume a paused task.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if orchestrator service is available
-    const svc = runtime.getService("CODE_TASK");
+    const svc = await runtime.getService("CODE_TASK");
     if (!svc) {
       return false;
     }
@@ -312,7 +312,7 @@ export const resumeTaskAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getService(runtime);
+    const svc = await getService(runtime);
     const query = extractQuery(message.content.text ?? "");
     const task = query ? (await svc.searchTasks(query))[0] : await svc.getCurrentTask();
     if (!task?.id) {
@@ -339,7 +339,7 @@ export const cancelTaskAction: Action = {
   description: "Cancel a task.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if orchestrator service is available
-    const svc = runtime.getService("CODE_TASK");
+    const svc = await runtime.getService("CODE_TASK");
     if (!svc) {
       return false;
     }
@@ -356,7 +356,7 @@ export const cancelTaskAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getService(runtime);
+    const svc = await getService(runtime);
     const query = extractQuery(message.content.text ?? "");
     const task = query ? (await svc.searchTasks(query))[0] : await svc.getCurrentTask();
     if (!task?.id) {

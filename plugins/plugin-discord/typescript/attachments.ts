@@ -82,7 +82,7 @@ export class AttachmentManager {
     } else if (attachment.contentType?.startsWith("video/")) {
       media = await this.processVideoAttachment(attachment);
     } else {
-      const videoService = this.runtime.getService(ServiceType.VIDEO) as
+      const videoService = (await this.runtime.getService(ServiceType.VIDEO)) as
         | ({ isVideoUrl?: (url: string) => boolean } & Service)
         | null;
       if (videoService?.isVideoUrl?.(attachment.url)) {
@@ -344,7 +344,7 @@ export class AttachmentManager {
     try {
       const response = await fetch(attachment.url);
       const pdfBuffer = await response.arrayBuffer();
-      const pdfService = this.runtime.getService(ServiceType.PDF) as
+      const pdfService = (await this.runtime.getService(ServiceType.PDF)) as
         | ({ convertPdfToText: (buffer: Buffer) => Promise<string> } & Service)
         | null;
       if (!pdfService) {
@@ -507,7 +507,7 @@ export class AttachmentManager {
    * @throws {Error} If video service is not available.
    */
   private async processVideoAttachment(attachment: Attachment): Promise<Media> {
-    const videoService = this.runtime.getService(ServiceType.VIDEO) as
+    const videoService = (await this.runtime.getService(ServiceType.VIDEO)) as
       | ({
           isVideoUrl?: (url: string) => boolean;
           processVideo?: (

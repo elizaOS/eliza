@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
-import { type IAgentRuntime, logger, type Plugin, stringToUuid } from "@elizaos/core";
+import { logger, type Plugin, stringToUuid } from "@elizaos/core";
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
@@ -83,58 +83,17 @@ export function createDatabaseAdapter(
   return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
 }
 
+/** Schema-only plugin: contributes migration schemas. Adapter must be created via createDatabaseAdapter() and passed to AgentRuntime constructor. */
 export const plugin: Plugin = {
   name: "@elizaos/plugin-sql",
   description: "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema: schema,
-  init: async (_config, runtime: IAgentRuntime) => {
-    runtime.logger.info(
-      { src: "plugin:sql", agentId: runtime.agentId },
-      "plugin-sql (node) init starting"
-    );
-
-    const adapterRegistered = await runtime
-      .isReady()
-      .then(() => true)
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("Database adapter not registered")) {
-          runtime.logger.info(
-            { src: "plugin:sql", agentId: runtime.agentId },
-            "No pre-registered database adapter detected; registering adapter"
-          );
-        } else {
-          runtime.logger.warn(
-            { src: "plugin:sql", agentId: runtime.agentId, error: message },
-            "Database adapter readiness check error; proceeding to register adapter"
-          );
-        }
-        return false;
-      });
-    if (adapterRegistered) {
-      runtime.logger.info(
-        { src: "plugin:sql", agentId: runtime.agentId },
-        "Database adapter already registered, skipping creation"
-      );
-      return;
-    }
-
-    const postgresUrl = runtime.getSetting("POSTGRES_URL");
-    const dataDir = runtime.getSetting("PGLITE_DATA_DIR");
-
-    const dbAdapter = createDatabaseAdapter(
-      {
-        dataDir: typeof dataDir === "string" ? dataDir : undefined,
-        postgresUrl: typeof postgresUrl === "string" ? postgresUrl : undefined,
-      },
-      runtime.agentId
-    );
-
-    runtime.registerDatabaseAdapter(dbAdapter);
-    runtime.logger.info(
-      { src: "plugin:sql", agentId: runtime.agentId },
-      "Database adapter created and registered"
+  adapter(agentId, settings) {
+    const postgresUrl = settings.POSTGRES_URL || settings.DATABASE_URL;
+    return createDatabaseAdapter(
+      postgresUrl ? { postgresUrl } : { dataDir: settings.PGLITE_DATA_DIR },
+      agentId,
     );
   },
 };

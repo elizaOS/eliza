@@ -187,7 +187,7 @@ describe("Agent UUID Identification", () => {
       getAgentRunSummaries: vi.fn().mockResolvedValue({ runs: [], totalCount: 0 }),
       deleteWorlds: vi.fn().mockResolvedValue(undefined),
       deleteRoomsByWorldId: vi.fn().mockResolvedValue(undefined),
-      getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
+      getMemoriesByWorldIds: vi.fn().mockResolvedValue([]),
     } as IDatabaseAdapter;
   });
 
@@ -210,6 +210,11 @@ describe("Agent UUID Identification", () => {
     });
 
     await runtime1.initialize();
+    await runtime1.ensureAgentExists({
+      id: agentId1,
+      name: sharedName,
+      bio: ["First agent with this name"],
+    });
 
     // Create second agent with same name but different ID
     const character2: Character = {
@@ -225,6 +230,11 @@ describe("Agent UUID Identification", () => {
     });
 
     await runtime2.initialize();
+    await runtime2.ensureAgentExists({
+      id: agentId2,
+      name: sharedName,
+      bio: ["Second agent with this name"],
+    });
 
     // Verify both agents exist in the store
     const allAgents = await mockAdapter.getAgents();
@@ -284,9 +294,19 @@ describe("Agent UUID Identification", () => {
     expect(runtime1.agentId).toBe(runtime2.agentId);
 
     await runtime1.initialize();
+    await runtime1.ensureAgentExists({
+      id: runtime1.agentId,
+      name: sharedName,
+      bio: ["First agent"],
+    });
 
     // Second runtime will update the existing agent since it has the same ID
     await runtime2.initialize();
+    await runtime2.ensureAgentExists({
+      id: runtime2.agentId,
+      name: sharedName,
+      bio: ["Second agent"],
+    });
 
     // Verify only one agent exists (same ID means same agent)
     const allAgents = await mockAdapter.getAgents();
@@ -312,6 +332,11 @@ describe("Agent UUID Identification", () => {
     expect(runtime.agentId).toBe(explicitId);
 
     await runtime.initialize();
+    await runtime.ensureAgentExists({
+      id: explicitId,
+      name: "TestAgent",
+      bio: ["Agent with explicit ID"],
+    });
 
     // Verify agent created with the explicit ID
     const agent = (await mockAdapter.getAgentsByIds([explicitId]))[0];
@@ -338,6 +363,11 @@ describe("Agent UUID Identification", () => {
     });
 
     await runtime.initialize();
+    await runtime.ensureAgentExists({
+      id: agentId,
+      name: initialName,
+      bio: ["Initial bio"],
+    });
 
     // Update agent name
     await mockAdapter.updateAgents([{ agentId, agent: { name: updatedName } }]);
@@ -379,6 +409,16 @@ describe("Agent UUID Identification", () => {
 
     await runtime1.initialize();
     await runtime2.initialize();
+    await runtime1.ensureAgentExists({
+      id: agentId1,
+      name: sharedName,
+      bio: ["First"],
+    });
+    await runtime2.ensureAgentExists({
+      id: agentId2,
+      name: sharedName,
+      bio: ["Second"],
+    });
 
     // Both should exist
     const agent1 = (await mockAdapter.getAgentsByIds([agentId1]))[0];

@@ -7,7 +7,7 @@ const conversationHistoryProvider: Provider = {
   description: "Provides recent SMS/MMS conversation history with a phone number",
   get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     try {
-      const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+      const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
       if (!twilioService) {
         return {
           text: "No Twilio conversation history available - service not initialized",

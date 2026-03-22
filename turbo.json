@@ -48,6 +48,11 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["typescript/dist/**", "rust/target/release/**", "python/dist/**"]
     },
+    "@elizaos/plugin-copilot-proxy-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    },
     "@elizaos/plugin-anthropic-root#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
@@ -164,6 +169,11 @@
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
     },
     "@elizaos/plugin-vercel-ai-gateway-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    },
+    "@elizaos/plugin-feishu-root#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
@@ -318,6 +328,14 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "eliza-vrm-demo#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@mediar-ai/workflow#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
     "@elizaos/plugin-tlon-root#build": {
       "dependsOn": ["^build"],
       "outputs": []
@@ -330,9 +348,22 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "@elizaos/example-browser-extension#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["chrome/dist/**"]
+    },
     "@elizaos/plugin-signal-root#build": {
       "dependsOn": ["^build"],
       "outputs": ["typescript/dist/**"]
+    },
+    "@elizaos/soulmates-agent#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@mediar-ai/workflow#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
     },
     "lint": {
       "outputs": []

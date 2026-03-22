@@ -37,7 +37,7 @@ export const channelStateProvider: Provider = {
     const channelId = room.channelId ?? "";
     const threadTs = room.metadata?.threadTs as string | undefined;
 
-    const slackService = runtime.getService(ServiceType.SLACK) as SlackService;
+    const slackService = await runtime.getService(ServiceType.SLACK) as SlackService;
     if (!slackService || !slackService.client) {
       runtime.logger.warn(
         {

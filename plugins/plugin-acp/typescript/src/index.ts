@@ -143,14 +143,14 @@ export default acpPlugin;
 /**
  * Helper function to get the ACPService from runtime
  */
-export function getACPService(runtime: IAgentRuntime): ACPService | null {
-  return runtime.getService<ACPService>(ACP_SERVICE_TYPE);
+export async function getACPService(runtime: IAgentRuntime): Promise<ACPService | null> {
+  return await runtime.getService<ACPService>(ACP_SERVICE_TYPE);
 }
 
 /**
  * Helper function to start the ACP server via the service
  */
-export function startAcpServer(
+export async function startAcpServer(
   runtime: IAgentRuntime,
   opts: {
     gatewayUrl?: string;
@@ -160,11 +160,11 @@ export function startAcpServer(
     defaultSessionLabel?: string;
     requireExistingSession?: boolean;
     resetSession?: boolean;
-    prefixCwd?: boolean;
-    verbose?: boolean;
+  prefixCwd?: boolean;
+  verbose?: boolean;
   } = {},
-): boolean {
-  const service = getACPService(runtime);
+): Promise<boolean> {
+  const service = await getACPService(runtime);
   if (!service) {
     logger.error("[ACP] Service not available");
     return false;

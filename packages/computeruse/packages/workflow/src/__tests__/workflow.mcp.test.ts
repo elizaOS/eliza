@@ -15,7 +15,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { EmbeddedResource, ImageContent, TextContent } from '@modelcontextprotocol/sdk/types.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Desktop } from '@elizaos/computeruse';
+import { Desktop as DesktopClass } from '@elizaos/computeruse';
+import type { Desktop } from '../types';
 
 const TEMP_WORKFLOW_DIR = path.join(process.cwd(), `__test_mcp_workflows_${Date.now()}__`);
 const shouldRunMcpTests = Boolean(process.env.COMPUTERUSE_MCP_BINARY);
@@ -38,7 +39,7 @@ const getFirstTextContent = (
 class MCPTestHarness {
   client: Client | null = null;
   transport: StdioClientTransport | null = null;
-  desktop: Desktop = new Desktop();
+  desktop: Desktop = new DesktopClass() as Desktop;
 
   async connect(): Promise<void> {
     // Support local binary for testing via COMPUTERUSE_MCP_BINARY env var
@@ -109,7 +110,7 @@ class MCPTestHarness {
     // Close Calculator if open
     try {
       const calc = await this.desktop.locator('role:Window && name:Calculator').first(1000);
-      await calc.close();
+      await (calc as any)?.close?.();
     } catch {
       // Not open
     }
@@ -124,7 +125,7 @@ class MCPTestHarness {
    */
   async verifyElementScreenshot(selector: string, expectedTexts: string[]): Promise<boolean> {
     const element = await this.desktop.locator(selector).first(5000);
-    const screenshot = element.capture();
+    const screenshot = (element as any)?.capture?.();
 
     // TODO: Add actual OCR verification here
     // For now, just verify we got a screenshot
@@ -142,7 +143,7 @@ class MCPTestHarness {
    */
   async verifyUITree(selector: string, expectedChildren: string[]): Promise<boolean> {
     const element = await this.desktop.locator(selector).first(5000);
-    const tree = element.getTree(3); // 3 levels deep
+    const tree = (element as any)?.getTree?.(3); // 3 levels deep
 
     console.log(`🌳 UI Tree:`, JSON.stringify(tree, null, 2));
 
@@ -182,7 +183,7 @@ describeMcp('MCP Client+Server Integration Tests - RIGOROUS', () => {
     // Clean up Calculator if open
     try {
       const calc = await harness.desktop.locator('role:Window && name:Calculator').first(1000);
-      await calc.close();
+      await (calc as any)?.close?.();
     } catch {
       // Not open
     }
@@ -228,7 +229,7 @@ export default createWorkflow({
       name: 'Open Calculator',
       execute: async ({ desktop }) => {
         await desktop.openApplication('calc');
-        await desktop.delay(2000);
+        await desktop.delay?.(2000);
         return { state: { opened: true } };
       },
     }),
@@ -237,8 +238,8 @@ export default createWorkflow({
       name: 'Click 1',
       execute: async ({ desktop }) => {
         const one = await desktop.locator('name:Calculator >> name:One').first(3000);
-        await one.click();
-        await desktop.delay(500);
+        await one?.click();
+        await desktop.delay?.(500);
         return { state: { clicked_one: true } };
       },
     }),
@@ -247,8 +248,8 @@ export default createWorkflow({
       name: 'Click Plus',
       execute: async ({ desktop }) => {
         const plus = await desktop.locator('name:Calculator >> name:Plus').first(3000);
-        await plus.click();
-        await desktop.delay(500);
+        await plus?.click();
+        await desktop.delay?.(500);
         return { state: { clicked_plus: true } };
       },
     }),
@@ -257,8 +258,8 @@ export default createWorkflow({
       name: 'Click 2',
       execute: async ({ desktop }) => {
         const two = await desktop.locator('name:Calculator >> name:Two').first(3000);
-        await two.click();
-        await desktop.delay(500);
+        await two?.click();
+        await desktop.delay?.(500);
         return { state: { clicked_two: true } };
       },
     }),
@@ -267,8 +268,8 @@ export default createWorkflow({
       name: 'Click Equals',
       execute: async ({ desktop }) => {
         const equals = await desktop.locator('name:Calculator >> name:Equals').first(3000);
-        await equals.click();
-        await desktop.delay(500);
+        await equals?.click();
+        await desktop.delay?.(500);
         return { state: { clicked_equals: true } };
       },
     }),
@@ -362,7 +363,7 @@ export default createWorkflow({
       name: 'Open Calculator',
       execute: async ({ desktop }) => {
         await desktop.openApplication('calc');
-        await desktop.delay(2000);
+        await desktop.delay?.(2000);
         return { state: { opened: true } };
       },
     }),
@@ -379,8 +380,8 @@ export default createWorkflow({
         }
 
         const one = await desktop.locator('name:Calculator >> name:One').first(3000);
-        await one.click();
-        await desktop.delay(500);
+        await one?.click();
+        await desktop.delay?.(500);
         return { state: { clicked: true, attempts: clickAttempts } };
       },
       onError: async ({ retry, logger }) => {

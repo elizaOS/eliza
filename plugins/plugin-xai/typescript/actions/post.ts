@@ -22,7 +22,7 @@ export const postAction: Action = {
   description: spec.description,
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    const service = runtime.getService("x");
+    const service = await runtime.getService("x");
     return !!service;
   },
 
@@ -36,7 +36,7 @@ export const postAction: Action = {
   ): Promise<ActionResult> => {
     logger.info("Executing POST action");
 
-    const xService = runtime.getService("x") as XService;
+    const xService = await runtime.getService("x") as XService;
     if (!xService?.xClient?.client) {
       throw new Error("X service not available");
     }

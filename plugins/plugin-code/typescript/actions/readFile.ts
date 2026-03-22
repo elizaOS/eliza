@@ -49,7 +49,7 @@ export const readFile: Action = {
   validate: async (
     runtime: IAgentRuntime,
     _message: Memory,
-  ): Promise<boolean> => runtime.getService<CoderService>("coder") !== null,
+  ): Promise<boolean> => (await runtime.getService<CoderService>("coder")) !== null,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -57,7 +57,7 @@ export const readFile: Action = {
     options: HandlerOptions | undefined,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = runtime.getService<CoderService>("coder");
+    const svc = await runtime.getService<CoderService>("coder");
     if (!svc) {
       const msg = "Coder service is not available.";
       if (callback) await callback({ content: { text: msg } });

@@ -14,6 +14,7 @@ import {
   createCharacter,
   type ContentValue,
   createMessageMemory,
+  InMemoryDatabaseAdapter,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -62,9 +63,16 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 
   console.log("🚀 Initializing elizaOS runtime...");
 
+  const useOpenAi = shouldUseOpenAi();
+  const adapter = useOpenAi ? undefined : new InMemoryDatabaseAdapter();
+  if (adapter) {
+    await adapter.initialize();
+  }
+
   runtime = new AgentRuntime({
     character: CHARACTER,
-    plugins: shouldUseOpenAi()
+    ...(adapter && { adapter }),
+    plugins: useOpenAi
       ? [sqlPlugin, openaiPlugin]
       : [inmemorydbPlugin, elizaClassicPlugin],
   });
@@ -186,7 +194,7 @@ export function createApp(): express.Express {
     const rt = await initializeRuntime();
     res.json({
       name: CHARACTER.name,
-      bio: CHARACTER.bio,
+      bio: Array.isArray(CHARACTER.bio) ? CHARACTER.bio[0] ?? null : (CHARACTER.bio ?? null),
       agentId: rt.agentId,
       version: "1.0.0",
       capabilities: ["chat", "reasoning", "multi-turn"],

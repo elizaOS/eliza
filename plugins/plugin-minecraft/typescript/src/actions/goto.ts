@@ -23,7 +23,7 @@ export const minecraftGotoAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
-    const service = runtime.getService<MinecraftService>(
+    const service = await runtime.getService<MinecraftService>(
       MINECRAFT_SERVICE_TYPE,
     );
     return Boolean(service) && Boolean(extractVec3(message.content.text ?? ""));
@@ -35,7 +35,7 @@ export const minecraftGotoAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<MinecraftService>(
+    const service = await runtime.getService<MinecraftService>(
       MINECRAFT_SERVICE_TYPE,
     );
     if (!service)

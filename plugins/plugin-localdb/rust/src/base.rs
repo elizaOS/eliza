@@ -196,10 +196,11 @@ pub trait DatabaseAdapter: Send + Sync {
 
     async fn ensure_embedding_dimension(&self, dimension: i32) -> Result<()>;
 
-    async fn get_memories_by_world_id(
+    /// Get memories by world IDs (one or more; for single world pass a slice of one)
+    async fn get_memories_by_world_ids(
         &self,
-        world_id: &UUID,
-        count: Option<i32>,
+        world_ids: &[UUID],
+        limit: Option<i32>,
         table_name: Option<&str>,
     ) -> Result<Vec<Memory>>;
 

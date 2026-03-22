@@ -29,7 +29,7 @@ export const minecraftAttackAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
-    const service = runtime.getService<MinecraftService>(
+    const service = await runtime.getService<MinecraftService>(
       MINECRAFT_SERVICE_TYPE,
     );
     return (
@@ -43,7 +43,7 @@ export const minecraftAttackAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<MinecraftService>(
+    const service = await runtime.getService<MinecraftService>(
       MINECRAFT_SERVICE_TYPE,
     );
     if (!service)

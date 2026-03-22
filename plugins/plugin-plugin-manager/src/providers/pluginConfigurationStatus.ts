@@ -14,12 +14,12 @@ export const pluginConfigurationStatusProvider: Provider = {
   description: 'Provides plugin configuration status based on actual plugin config schemas',
 
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    const configService = runtime.getService(
+    const configService = (await runtime.getService(
       PluginManagerServiceType.PLUGIN_CONFIGURATION
-    ) as PluginConfigurationService | null;
-    const pluginManagerService = runtime.getService(
+    )) as PluginConfigurationService | null;
+    const pluginManagerService = (await runtime.getService(
       PluginManagerServiceType.PLUGIN_MANAGER
-    ) as PluginManagerService | null;
+    )) as PluginManagerService | null;
 
     if (!configService || !pluginManagerService) {
       return {

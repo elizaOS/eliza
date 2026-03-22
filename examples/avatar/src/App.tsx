@@ -226,7 +226,7 @@ export default function App() {
             const apiKey = (config.provider.elevenlabsApiKey ?? "").trim();
             if (!apiKey) {
               // No key: fall back to robot voice.
-              const wav = synthesizeSamWav(bundle.runtime, chunk, config.sam);
+              const wav = await synthesizeSamWav(bundle.runtime, chunk, config.sam);
               await lipSyncPlayerRef.current.playWav(wav);
               continue;
             }
@@ -234,7 +234,7 @@ export default function App() {
             // Ensure runtime has the latest key (applySettings also does this).
             bundle.runtime.setSetting("ELEVENLABS_API_KEY", apiKey, true);
 
-            let buffer: ArrayBuffer;
+            let buffer: ArrayBuffer | ArrayBufferLike;
 
             const response = await bundle.runtime.useModel(
               ModelType.TEXT_TO_SPEECH,
@@ -265,9 +265,9 @@ export default function App() {
                 buffer = merged.buffer;
             }
 
-            await lipSyncPlayerRef.current.playWav(buffer);
+            await lipSyncPlayerRef.current.playWav(buffer as ArrayBuffer);
           } else {
-            const wav = synthesizeSamWav(bundle.runtime, chunk, config.sam);
+            const wav = await synthesizeSamWav(bundle.runtime, chunk, config.sam);
             await lipSyncPlayerRef.current.playWav(wav);
           }
         }

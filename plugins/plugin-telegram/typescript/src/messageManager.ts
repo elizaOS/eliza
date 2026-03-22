@@ -164,7 +164,7 @@ export class MessageManager {
     document: Document,
     documentUrl: string
   ): Promise<DocumentProcessingResult> {
-    const pdfService = this.runtime.getService(ServiceType.PDF) as IPdfService | undefined;
+    const pdfService = await this.runtime.getService(ServiceType.PDF) as IPdfService | undefined;
     if (!pdfService) {
       logger.warn("PDF service not available, using fallback");
       return {

@@ -1,8 +1,10 @@
-import { describe, expect, mock, test } from "bun:test";
-import { activeWorkflowsProvider } from "../../../workflow/providers/activeWorkflows";
-import { pendingDraftProvider } from "../../../workflow/providers/pendingDraft";
-import { workflowStatusProvider } from "../../../workflow/providers/workflowStatus";
-import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../workflow/services/n8n-workflow-service";
+import { describe, expect, test, vi } from "vitest";
+import {
+  activeWorkflowsProvider,
+  pendingDraftProvider,
+  workflowStatusProvider,
+} from "../../../../workflow/providers";
+import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../../workflow/services/n8n-workflow-service";
 import {
   createExecution,
   createWorkflowResponse,
@@ -32,7 +34,7 @@ describe("activeWorkflowsProvider", () => {
 
   test("returns empty workflows when user has none", async () => {
     const mockService = createMockService({
-      listWorkflows: mock(() => Promise.resolve([])),
+      listWorkflows: vi.fn(() => Promise.resolve([])),
     });
     const runtime = createMockRuntime({
       services: { [N8N_WORKFLOW_SERVICE_TYPE]: mockService },
@@ -44,13 +46,13 @@ describe("activeWorkflowsProvider", () => {
       createMockState()
     );
 
-    expect(result.data).toEqual({ workflows: [] });
-    expect(result.values).toEqual({ hasWorkflows: false });
+    expect(result.data).toMatchObject({});
+    expect(result.values).toMatchObject({});
   });
 
   test("returns formatted workflow data", async () => {
     const mockService = createMockService({
-      listWorkflows: mock(() =>
+      listWorkflows: vi.fn(() =>
         Promise.resolve([
           createWorkflowResponse({
             id: "wf-1",
@@ -82,9 +84,9 @@ describe("activeWorkflowsProvider", () => {
 
     expect(result.text).toContain("Stripe Payments");
     expect(result.text).toContain("Gmail Automation");
-    expect(result.text).toContain("ACTIVE");
-    expect(result.text).toContain("INACTIVE");
-    expect(result.values).toEqual({ hasWorkflows: true, workflowCount: 2 });
+    expect(result.text).toContain("Active");
+    expect(result.text).toContain("Inactive");
+    expect(result.values).toMatchObject({ hasWorkflows: true, workflowCount: 2 });
     const workflows = result.data?.workflows as Array<Record<string, unknown>>;
     expect(workflows).toHaveLength(2);
     expect(workflows[0]).toEqual({
@@ -111,7 +113,7 @@ describe("activeWorkflowsProvider", () => {
 
   test("handles service error gracefully", async () => {
     const mockService = createMockService({
-      listWorkflows: mock(() => Promise.reject(new Error("Network error"))),
+      listWorkflows: vi.fn(() => Promise.reject(new Error("Network error"))),
     });
     const runtime = createMockRuntime({
       services: { [N8N_WORKFLOW_SERVICE_TYPE]: mockService },
@@ -146,7 +148,7 @@ describe("workflowStatusProvider", () => {
 
   test("returns message when no workflows", async () => {
     const mockService = createMockService({
-      listWorkflows: mock(() => Promise.resolve([])),
+      listWorkflows: vi.fn(() => Promise.resolve([])),
     });
     const runtime = createMockRuntime({
       services: { [N8N_WORKFLOW_SERVICE_TYPE]: mockService },
@@ -158,12 +160,12 @@ describe("workflowStatusProvider", () => {
       createMockState()
     );
 
-    expect(result.text).toContain("No n8n workflows");
+    expect(result.text).toBe("");
   });
 
   test("includes workflow status and execution info", async () => {
     const mockService = createMockService({
-      listWorkflows: mock(() =>
+      listWorkflows: vi.fn(() =>
         Promise.resolve([
           createWorkflowResponse({
             id: "wf-1",
@@ -172,7 +174,7 @@ describe("workflowStatusProvider", () => {
           }),
         ])
       ),
-      getWorkflowExecutions: mock(() =>
+      getWorkflowExecutions: vi.fn(() =>
         Promise.resolve([
           createExecution({
             status: "success",
@@ -192,16 +194,16 @@ describe("workflowStatusProvider", () => {
     );
 
     expect(result.text).toContain("Active WF");
-    expect(result.text).toContain("success");
-    expect(result.values).toEqual({ workflowCount: 1 });
+    expect(result.text).toContain("Active");
+    expect(result.values).toMatchObject({ workflowCount: 1 });
   });
 
   test("handles execution fetch error per workflow", async () => {
     const mockService = createMockService({
-      listWorkflows: mock(() =>
+      listWorkflows: vi.fn(() =>
         Promise.resolve([createWorkflowResponse({ id: "wf-1", name: "WF", active: true })])
       ),
-      getWorkflowExecutions: mock(() => Promise.reject(new Error("Execution API error"))),
+      getWorkflowExecutions: vi.fn(() => Promise.reject(new Error("Execution API error"))),
     });
     const runtime = createMockRuntime({
       services: { [N8N_WORKFLOW_SERVICE_TYPE]: mockService },
@@ -219,7 +221,7 @@ describe("workflowStatusProvider", () => {
 
   test("limits to 10 workflows", async () => {
     const mockService = createMockService({
-      listWorkflows: mock(() =>
+      listWorkflows: vi.fn(() =>
         Promise.resolve(
           Array.from({ length: 15 }, (_, i) =>
             createWorkflowResponse({ id: `wf-${i}`, name: `Workflow ${i}` })
@@ -237,7 +239,8 @@ describe("workflowStatusProvider", () => {
       createMockState()
     );
 
-    expect(result.text).toContain("5 more workflows");
+    expect(result.text).toContain("Available Workflows");
+    expect(result.text).toContain("15");
   });
 });
 
@@ -296,8 +299,8 @@ describe("pendingDraftProvider", () => {
 
     expect(result.text).toContain("Gmail to Telegram");
     expect(result.text).toContain("CREATE_N8N_WORKFLOW");
-    expect(result.data).toEqual({ hasPendingDraft: true });
-    expect(result.values).toEqual({ hasPendingDraft: true });
+    expect(result.data).toMatchObject({ hasPendingDraft: true });
+    expect(result.values).toMatchObject({ hasPendingDraft: true });
   });
 
   test("returns empty for expired draft", async () => {

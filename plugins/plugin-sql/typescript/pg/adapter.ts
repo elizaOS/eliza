@@ -37,17 +37,6 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: {
-    serverId: UUID;
-    count?: number;
-  }): Promise<Memory[]> {
-    logger.warn(
-      { src: "plugin:sql" },
-      "getMemoriesByServerId called but not implemented",
-    );
-    return [];
-  }
-
   protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
     return await this.withRetry(async () => {
       return await operation();

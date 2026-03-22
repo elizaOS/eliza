@@ -1,5 +1,6 @@
 import type {
   IPluginStore,
+  PluginColumn,
   PluginFilter,
   PluginOrderBy,
   PluginQueryOptions,
@@ -492,21 +493,135 @@ async function createPluginTable(
 }
 
 /**
+ * Build DDL for a single column (for CREATE TABLE or ALTER TABLE ADD COLUMN).
+ */
+function buildColumnDdl(col: PluginColumn): string {
+  const parts: string[] = [col.name];
+  switch (col.type) {
+    case "uuid":
+      parts.push("CHAR(36)");
+      break;
+    case "string":
+      parts.push("VARCHAR(255)");
+      break;
+    case "text":
+      parts.push("TEXT");
+      break;
+    case "integer":
+      parts.push("INTEGER");
+      break;
+    case "boolean":
+      parts.push("TINYINT(1)");
+      break;
+    case "timestamp":
+      parts.push("TIMESTAMP");
+      break;
+    case "jsonb":
+      parts.push("JSON");
+      break;
+  }
+  if (col.primaryKey) parts.push("PRIMARY KEY");
+  if (col.notNull) parts.push("NOT NULL");
+  if (col.default !== undefined) {
+    if (typeof col.default === "string") {
+      parts.push(`DEFAULT '${col.default}'`);
+    } else if (col.default === null) {
+      parts.push("DEFAULT NULL");
+    } else {
+      parts.push(`DEFAULT ${col.default}`);
+    }
+  }
+  return parts.join(" ");
+}
+
+/**
+ * Fetch existing column names for a table (MySQL).
+ */
+async function getExistingColumnsMysql(db: any, fullTableName: string): Promise<Set<string>> {
+  const result = await db.execute(sql`
+    SELECT COLUMN_NAME as column_name
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE() AND table_name = ${fullTableName}
+  `);
+  const names = new Set<string>();
+  if (Array.isArray(result)) {
+    for (const row of result) {
+      const r = row as Record<string, unknown>;
+      const name = (r?.column_name ?? (r as Record<string, unknown>).COLUMN_NAME) as
+        | string
+        | undefined;
+      if (typeof name === "string") names.add(name);
+    }
+  }
+  return names;
+}
+
+/**
+ * Fetch existing index names for a table (MySQL).
+ */
+async function getExistingIndexesMysql(db: any, fullTableName: string): Promise<Set<string>> {
+  const result = await db.execute(sql`
+    SELECT DISTINCT index_name
+    FROM information_schema.STATISTICS
+    WHERE table_schema = DATABASE() AND table_name = ${fullTableName}
+  `);
+  const names = new Set<string>();
+  if (Array.isArray(result)) {
+    for (const row of result) {
+      const r = row as Record<string, unknown>;
+      const name = (r?.index_name ?? (r as Record<string, unknown>).INDEX_NAME) as
+        | string
+        | undefined;
+      if (typeof name === "string") names.add(name);
+    }
+  }
+  return names;
+}
+
+/**
  * Migrate an existing plugin table
- * 
- * WHY: When a plugin updates its schema, we need to apply changes.
- * For now, this is a placeholder - full migration support would diff
- * the current schema and apply ALTER TABLE statements.
+ *
+ * WHY: When a plugin updates its schema (new columns, indexes), we diff
+ * against the current database schema and apply only additive changes:
+ * ALTER TABLE ADD COLUMN for missing columns, CREATE INDEX for missing indexes.
+ * We do not drop columns or indexes or change column types (destructive changes).
  */
 async function migratePluginTable(
   db: any,
   pluginName: string,
   table: PluginTableSchema,
 ): Promise<void> {
-  // TODO: Implement schema diffing and migration
-  // For now, just log that the table exists
-  logger.debug(
-    { src: "plugin:mysql:schema", table: `${pluginName}_${table.name}` },
-    "Plugin table already exists (migration not yet implemented)"
-  );
+  const fullTableName = `${pluginName}_${table.name}`;
+  const existingColumns = await getExistingColumnsMysql(db, fullTableName);
+  const existingIndexes = await getExistingIndexesMysql(db, fullTableName);
+
+  for (const col of table.columns) {
+    if (!existingColumns.has(col.name)) {
+      const colDdl = buildColumnDdl(col);
+      const alterQuery = sql.raw(`ALTER TABLE ${fullTableName} ADD COLUMN ${colDdl}`);
+      await db.execute(alterQuery);
+      logger.info(
+        { src: "plugin:mysql:schema", table: fullTableName, column: col.name },
+        "Added column to plugin table"
+      );
+    }
+  }
+
+  if (table.indexes) {
+    for (const index of table.indexes) {
+      const indexName = `${fullTableName}_${index.name}`;
+      if (!existingIndexes.has(indexName)) {
+        const unique = index.unique ? "UNIQUE " : "";
+        const columns = index.columns.join(", ");
+        const createIndexQuery = sql.raw(
+          `CREATE ${unique}INDEX ${indexName} ON ${fullTableName} (${columns})`
+        );
+        await db.execute(createIndexQuery);
+        logger.info(
+          { src: "plugin:mysql:schema", table: fullTableName, index: indexName },
+          "Created index on plugin table"
+        );
+      }
+    }
+  }
 }

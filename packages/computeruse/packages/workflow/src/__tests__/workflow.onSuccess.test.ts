@@ -3,11 +3,10 @@
  * Tests both direct pattern (steps array) and builder pattern
  */
 
-import { Desktop } from "@elizaos/computeruse";
 import { createWorkflow, createStep, z } from "../index";
-import type { WorkflowErrorContext } from "../types";
+import type { Desktop, WorkflowErrorContext } from "../types";
 
-// Mock Desktop to avoid needing real automation
+// Mock Desktop to avoid needing real automation (inline so hoisted jest.mock can use it)
 jest.mock("@elizaos/computeruse", () => ({
     Desktop: jest.fn().mockImplementation(() => ({
         locator: jest.fn().mockReturnThis(),
@@ -20,8 +19,9 @@ jest.mock("@elizaos/computeruse", () => ({
 describe("Workflow onSuccess Handler", () => {
     let desktop: Desktop;
 
-    beforeEach(() => {
-        desktop = new Desktop();
+    beforeEach(async () => {
+        const { Desktop: DesktopClass } = await import("@elizaos/computeruse");
+        desktop = new (DesktopClass as any)();
     });
 
     describe("Direct Pattern (steps array)", () => {

@@ -14,13 +14,13 @@ export const cloudStatusProvider: Provider = {
   position: 90,
 
   async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
-    const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
+    const auth = await runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
     if (!auth?.isAuthenticated()) {
       return { text: "ElizaCloud: Not authenticated", values: { cloudAuthenticated: false } };
     }
 
-    const containerSvc = runtime.getService("CLOUD_CONTAINER") as CloudContainerService | undefined;
-    const bridgeSvc = runtime.getService("CLOUD_BRIDGE") as CloudBridgeService | undefined;
+    const containerSvc = await runtime.getService("CLOUD_CONTAINER") as CloudContainerService | undefined;
+    const bridgeSvc = await runtime.getService("CLOUD_BRIDGE") as CloudBridgeService | undefined;
     const containers = containerSvc?.getTrackedContainers() ?? [];
     const connected = bridgeSvc?.getConnectedContainerIds() ?? [];
 

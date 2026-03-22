@@ -9,7 +9,9 @@ import { IAgentRuntime, Service, type ServiceTypeName } from '@elizaos/core';
  */
 
 /**
- * Extended runtime interface with plugin management methods
+ * Extended runtime interface with plugin management methods.
+ * Cast via unknown when assigning from IAgentRuntime.
+ * Note: events on the runtime may be RuntimeEventStorage; unregisterEvent uses internal storage.
  */
 export interface ExtendedRuntime extends IAgentRuntime {
   unregisterEvent?: (event: string, handler: (params: Record<string, unknown>) => Promise<void>) => void;
@@ -17,7 +19,6 @@ export interface ExtendedRuntime extends IAgentRuntime {
   unregisterProvider?: (providerName: string) => void;
   unregisterEvaluator?: (evaluatorName: string) => void;
   unregisterService?: (serviceType: string) => Promise<void>;
-  events?: Map<string, Array<(params: Record<string, unknown>) => Promise<void>>>;
 }
 
 /**
@@ -25,21 +26,24 @@ export interface ExtendedRuntime extends IAgentRuntime {
  * This allows plugins to remove their event handlers when unloaded
  */
 export function extendRuntimeWithEventUnregistration(runtime: IAgentRuntime): void {
-  const extendedRuntime = runtime as ExtendedRuntime;
+  const extendedRuntime = runtime as unknown as ExtendedRuntime;
 
-  // Add unregisterEvent method if it doesn't exist
+  // Add unregisterEvent method if it doesn't exist (uses internal events storage)
   if (!extendedRuntime.unregisterEvent) {
     extendedRuntime.unregisterEvent = function (
       event: string,
       handler: (params: Record<string, unknown>) => Promise<void>
     ) {
-      const handlers = this.events?.get(event);
-      if (handlers) {
-        const filteredHandlers = handlers.filter((h) => h !== handler);
-        if (filteredHandlers.length > 0) {
-          this.events?.set(event, filteredHandlers);
-        } else {
-          this.events?.delete(event);
+      const eventsStorage = (this as any).events;
+      if (eventsStorage?.get) {
+        const handlers = eventsStorage.get(event);
+        if (handlers) {
+          const filteredHandlers = handlers.filter((h: unknown) => h !== handler);
+          if (filteredHandlers.length > 0) {
+            eventsStorage.set(event, filteredHandlers);
+          } else {
+            eventsStorage.delete(event);
+          }
         }
       }
     };
@@ -51,7 +55,7 @@ export function extendRuntimeWithEventUnregistration(runtime: IAgentRuntime): vo
  * These are needed for proper plugin unloading
  */
 export function extendRuntimeWithComponentUnregistration(runtime: IAgentRuntime): void {
-  const extendedRuntime = runtime as ExtendedRuntime;
+  const extendedRuntime = runtime as unknown as ExtendedRuntime;
 
   // Add unregisterAction method if it doesn't exist
   if (!extendedRuntime.unregisterAction) {

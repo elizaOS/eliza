@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -53,7 +54,7 @@ export const loadPluginAction: Action = {
 
   async validate(runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> {
     // Precondition: plugin manager service must be available
-    const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
+    const pluginManager = await runtime.getService('plugin_manager') as PluginManagerService;
     if (!pluginManager) {
       return false;
     }
@@ -69,8 +70,8 @@ export const loadPluginAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<void> {
-    const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
+  ): Promise<ActionResult> {
+    const pluginManager = (await runtime.getService('plugin_manager')) as PluginManagerService;
 
     if (!pluginManager) {
       if (callback) {
@@ -79,7 +80,7 @@ export const loadPluginAction: Action = {
           actions: ['LOAD_PLUGIN'],
         });
       }
-      return;
+      return { success: false, error: 'Plugin Manager service is not available.' };
     }
 
     // Extract plugin name from message
@@ -112,7 +113,7 @@ export const loadPluginAction: Action = {
           actions: ['LOAD_PLUGIN'],
         });
       }
-      return;
+      return { success: false, error: 'No plugins available to load.' };
     }
 
     logger.info(`[loadPluginAction] Loading plugin: ${pluginToLoad.name}`);
@@ -126,6 +127,7 @@ export const loadPluginAction: Action = {
           actions: ['LOAD_PLUGIN'],
         });
       }
+      return { success: true, text: `Successfully loaded plugin: ${pluginToLoad.name}` };
     } catch (error) {
       logger.error(`[loadPluginAction] Failed to load plugin:`, error);
       if (callback) {
@@ -134,6 +136,10 @@ export const loadPluginAction: Action = {
           actions: ['LOAD_PLUGIN'],
         });
       }
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   },
 };

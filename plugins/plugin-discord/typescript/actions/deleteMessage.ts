@@ -59,7 +59,7 @@ const deleteMessage: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
-    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
+    const discordService = (await runtime.getService(DISCORD_SERVICE_NAME)) as DiscordService;
 
     if (!discordService || !discordService.client) {
       await callback?.({
@@ -85,7 +85,7 @@ const deleteMessage: Action = {
         prompt,
       });
 
-      const parsedResponse = parseJSONObjectFromText(response) as DeleteMessageParams | null;
+      const parsedResponse = parseJSONObjectFromText(response) as unknown as DeleteMessageParams | null;
       if (parsedResponse?.messageId) {
         deleteParams = parsedResponse;
         break;

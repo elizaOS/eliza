@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "Dockerfile"
+      - "tee-docker-compose.yaml"
   workflow_dispatch:
     inputs:
       logLevel:

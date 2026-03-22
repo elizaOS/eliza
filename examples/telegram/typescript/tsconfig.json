@@ -10,7 +10,7 @@
     "declaration": false,
     "noEmit": true,
     "lib": ["ES2022"],
-    "types": ["node", "bun-types"]
+    "types": ["node"]
   },
   "include": ["*.ts", "*.d.ts"],
   "exclude": ["node_modules"]

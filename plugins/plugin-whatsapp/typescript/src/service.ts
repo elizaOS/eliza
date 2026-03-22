@@ -160,8 +160,7 @@ export class WhatsAppService {
      * Send a message of any type.
      */
     async sendMessage(message: WhatsAppMessage): Promise<WhatsAppMessageResponse> {
-        const response = await this.messageHandler.send(message);
-        return response.data;
+        return this.messageHandler.send(message);
     }
 
     /**

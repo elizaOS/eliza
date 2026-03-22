@@ -47,7 +47,7 @@
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "test": "vitest run || echo 'TypeScript tests skipped - no tests found'",
+    "test": "vitest run --passWithNoTests || echo 'TypeScript tests skipped - no tests found'",
     "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

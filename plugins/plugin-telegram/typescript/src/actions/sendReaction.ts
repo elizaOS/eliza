@@ -72,7 +72,7 @@ export const sendReactionAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const telegramService = runtime.getService(TELEGRAM_SERVICE_NAME) as
+    const telegramService = await runtime.getService(TELEGRAM_SERVICE_NAME) as
       | TelegramService
       | undefined;
     if (!telegramService) {

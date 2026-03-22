@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 from typing import TypedDict
 
-
 class ActionDoc(TypedDict, total=False):
     name: str
     description: str
@@ -16,13 +15,11 @@ class ActionDoc(TypedDict, total=False):
     parameters: list[object]
     examples: list[list[object]]
 
-
 class ProviderDoc(TypedDict, total=False):
     name: str
     description: str
     position: int
     dynamic: bool
-
 
 class EvaluatorDoc(TypedDict, total=False):
     name: str
@@ -31,7 +28,6 @@ class EvaluatorDoc(TypedDict, total=False):
     alwaysRun: bool
     examples: list[object]
 
-
 _CORE_ACTION_DOCS_JSON = """{
   "version": "1.0.0",
   "actions": [
@@ -39,6 +35,48 @@ _CORE_ACTION_DOCS_JSON = """{
       "name": "assistant",
       "description": "",
       "parameters": []
+    },
+    {
+      "name": "TRANSFER",
+      "description": "Transfer tokens or native asset to an address",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "SWAP_TOKENS",
+      "description": "Swap tokens via DEX or aggregator",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "BRIDGE",
+      "description": "Bridge assets across chains",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "VOTE_PROPOSAL",
+      "description": "Vote on a governance proposal",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "QUEUE_PROPOSAL",
+      "description": "Queue a governance proposal",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "GOV_PROPOSE",
+      "description": "Create a governance proposal",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "GOV_EXECUTE",
+      "description": "Execute a passed governance proposal",
+      "parameters": [],
+      "similes": []
     }
   ]
 }"""
@@ -49,6 +87,48 @@ _ALL_ACTION_DOCS_JSON = """{
       "name": "assistant",
       "description": "",
       "parameters": []
+    },
+    {
+      "name": "TRANSFER",
+      "description": "Transfer tokens or native asset to an address",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "SWAP_TOKENS",
+      "description": "Swap tokens via DEX or aggregator",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "BRIDGE",
+      "description": "Bridge assets across chains",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "VOTE_PROPOSAL",
+      "description": "Vote on a governance proposal",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "QUEUE_PROPOSAL",
+      "description": "Queue a governance proposal",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "GOV_PROPOSE",
+      "description": "Create a governance proposal",
+      "parameters": [],
+      "similes": []
+    },
+    {
+      "name": "GOV_EXECUTE",
+      "description": "Execute a passed governance proposal",
+      "parameters": [],
+      "similes": []
     }
   ]
 }"""

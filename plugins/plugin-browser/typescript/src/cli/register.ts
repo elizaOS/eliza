@@ -4,7 +4,7 @@ import { BrowserService, type Session } from "../services/browser-service.js";
 /**
  * Get the Browser service from runtime
  */
-function getBrowserService(ctx: CliContext): BrowserService | null {
+async function getBrowserService(ctx: CliContext): Promise<BrowserService | null> {
   const runtime = ctx.getRuntime?.();
   if (!runtime) {
     return null;
@@ -24,8 +24,8 @@ function handleError(error: Error | string): never {
 /**
  * Ensure service is available
  */
-function requireService(ctx: CliContext): BrowserService {
-  const service = getBrowserService(ctx);
+async function requireService(ctx: CliContext): Promise<BrowserService> {
+  const service = await getBrowserService(ctx);
   if (!service) {
     handleError("Browser service not available. Ensure the agent runtime is initialized.");
   }
@@ -68,7 +68,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .description("Show browser service status")
     .action(async (_opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = getBrowserService(ctx);
+      const service = await getBrowserService(ctx);
 
       const status = {
         serviceAvailable: service !== null,
@@ -102,7 +102,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .description("Start or ensure browser session is active")
     .action(async (_opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
 
       const session = await service.getOrCreateSession();
 
@@ -121,7 +121,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .description("Stop browser service")
     .action(async (_opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
 
       await service.stop();
 
@@ -139,7 +139,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .argument("<url>", "URL to navigate to")
     .action(async (url: string, _opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
       const client = service.getClient();
 
       const session = await service.getOrCreateSession();
@@ -158,7 +158,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .description("Navigate back in browser history")
     .action(async (_opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
       const client = service.getClient();
 
       const session = await service.getCurrentSession();
@@ -181,7 +181,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .description("Navigate forward in browser history")
     .action(async (_opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
       const client = service.getClient();
 
       const session = await service.getCurrentSession();
@@ -204,7 +204,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .description("Refresh the current page")
     .action(async (_opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
       const client = service.getClient();
 
       const session = await service.getCurrentSession();
@@ -228,7 +228,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .argument("<description>", "Description of the element to click (natural language)")
     .action(async (description: string, _opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
       const client = service.getClient();
 
       const session = await service.getCurrentSession();
@@ -256,7 +256,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .requiredOption("--field <description>", "Description of the field (natural language)")
     .action(async (text: string, opts: { field: string }, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
       const client = service.getClient();
 
       const session = await service.getCurrentSession();
@@ -284,7 +284,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .requiredOption("--dropdown <description>", "Description of the dropdown (natural language)")
     .action(async (option: string, opts: { dropdown: string }, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
       const client = service.getClient();
 
       const session = await service.getCurrentSession();
@@ -311,7 +311,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .argument("<instruction>", "What to extract (natural language)")
     .action(async (instruction: string, _opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
       const client = service.getClient();
 
       const session = await service.getCurrentSession();
@@ -336,7 +336,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .option("--output <path>", "Output file path")
     .action(async (opts: { output?: string }, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
       const client = service.getClient();
 
       const session = await service.getCurrentSession();
@@ -382,7 +382,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .description("Get current browser state")
     .action(async (_opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
       const client = service.getClient();
 
       const session = await service.getCurrentSession();
@@ -408,7 +408,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .description("Attempt to solve a captcha on the page")
     .action(async (_opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = requireService(ctx);
+      const service = await requireService(ctx);
       const client = service.getClient();
 
       const session = await service.getCurrentSession();
@@ -434,7 +434,7 @@ export function registerBrowserCli(ctx: CliContext): void {
     .description("Check browser server health")
     .action(async (_opts, cmd) => {
       const parent = cmd.parent?.opts() as { json?: boolean } | undefined;
-      const service = getBrowserService(ctx);
+      const service = await getBrowserService(ctx);
 
       let healthy = false;
       if (service) {

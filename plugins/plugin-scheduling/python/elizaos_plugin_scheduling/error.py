@@ -32,6 +32,13 @@ class NoAvailabilityError(SchedulingError):
         super().__init__(f"No availability found for entity: {entity_id}")
 
 
+class InvalidAvailabilityError(SchedulingError):
+    """Raised when availability data is invalid or cannot be parsed."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
 class StorageError(SchedulingError):
     """Raised on storage operation failures."""
 

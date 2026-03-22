@@ -25,14 +25,19 @@ export const evaluateTrustAction: Action = {
       throw new Error('Trust engine service not available');
     }
 
-    // Parse the request
+    // Parse the request (plain text like "What is my trust score?" => evaluate sender)
     const text = message.content.text || '';
-    const parsed = parseJSONObjectFromText(text);
-    const requestData = parsed as {
+    let requestData: {
       entityId?: string;
       entityName?: string;
       detailed?: boolean;
-    } | null;
+    } | null = null;
+    try {
+      const parsed = parseJSONObjectFromText(text);
+      requestData = parsed as typeof requestData;
+    } catch {
+      // Non-JSON input: default to evaluating the message sender
+    }
 
     // Try to extract entity from message if not in parsed data
     let targetEntityId: UUID | undefined;
@@ -43,7 +48,7 @@ export const evaluateTrustAction: Action = {
       return {
         success: false,
         text: 'Entity name resolution not yet implemented. Please provide entity ID.',
-        error: 'Entity name resolution not implemented',
+        error: true,
       };
     } else {
       // Default to evaluating the message sender
@@ -119,7 +124,7 @@ Last Updated: ${new Date(trustProfile.lastCalculated).toLocaleString()}`,
       return {
         success: false,
         text: 'Failed to evaluate trust. Please try again.',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: true,
       };
     }
   },

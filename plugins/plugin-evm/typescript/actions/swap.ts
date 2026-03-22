@@ -266,13 +266,14 @@ export class SwapAction {
       fromTokenDecimals = chainConfig.nativeCurrency.decimals;
     } else {
       const publicClient = this.walletProvider.getPublicClient(params.chain);
-      const readDecimalsParams: ReadContractParameters<typeof decimalsAbi, "decimals"> =
-        {
-          address: params.fromToken as Address,
-          abi: decimalsAbi,
-          functionName: "decimals",
-        };
-      const decimals = await publicClient.readContract(readDecimalsParams);
+      const readDecimalsParams = {
+        address: params.fromToken as Address,
+        abi: decimalsAbi,
+        functionName: "decimals" as const,
+      };
+      const decimals = await publicClient.readContract(
+        readDecimalsParams as unknown as Parameters<typeof publicClient.readContract>[0]
+      );
       fromTokenDecimals = Number(decimals);
     }
 
@@ -323,7 +324,8 @@ export class SwapAction {
         swapData: routes.routes[0],
       };
     } catch (error) {
-      logger.error("Error in getLifiQuote:", error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error in getLifiQuote: ${errMsg}`);
       return undefined;
     }
   }
@@ -410,7 +412,8 @@ export class SwapAction {
         swapData: route,
       };
     } catch (error) {
-      logger.error("Error in getBebopQuote:", error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error in getBebopQuote: ${errMsg}`);
       return undefined;
     }
   }
@@ -476,7 +479,7 @@ export class SwapAction {
         gasPrice: txRequest.gasPrice
           ? BigInt(Math.floor(Number(txRequest.gasPrice) * GAS_PRICE_MULTIPLIER))
           : undefined,
-      })
+      }) as unknown as Parameters<typeof walletClient.sendTransaction>[0]
     );
 
     const receipt = await publicClient.waitForTransactionReceipt({
@@ -531,7 +534,7 @@ export class SwapAction {
         value: BigInt(bebopRoute.value),
         data: bebopRoute.data as Hex,
         chain: walletClient.chain,
-      })
+      }) as unknown as Parameters<typeof walletClient.sendTransaction>[0]
     );
 
     const receipt = await publicClient.waitForTransactionReceipt({
@@ -567,16 +570,15 @@ export class SwapAction {
 
     const allowanceAbi = parseAbi(["function allowance(address,address) view returns (uint256)"]);
 
-    const readAllowanceParams: ReadContractParameters<
-      typeof allowanceAbi,
-      "allowance"
-    > = {
+    const readAllowanceParams = {
       address: tokenAddress,
       abi: allowanceAbi,
-      functionName: "allowance",
+      functionName: "allowance" as const,
       args: [account.address, spenderAddress],
     };
-    const allowance = await publicClient.readContract(readAllowanceParams);
+    const allowance = (await publicClient.readContract(
+      readAllowanceParams as unknown as Parameters<typeof publicClient.readContract>[0]
+    )) as bigint;
 
     if (allowance >= requiredAmount) {
       return;
@@ -597,7 +599,7 @@ export class SwapAction {
         value: 0n,
         data: approvalData,
         chain: walletClient.chain,
-      })
+      }) as unknown as Parameters<typeof walletClient.sendTransaction>[0]
     );
 
     logger.info(`Waiting for approval confirmation...`);

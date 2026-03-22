@@ -270,7 +270,10 @@ export class PluginManagerService extends Service implements PluginRegistry {
     // Initialize registry with existing plugins
     this.initializeRegistry();
 
-    logger.info('[PluginManagerService] Initialized with config:', this.pluginManagerConfig);
+    logger.info(
+      '[PluginManagerService] Initialized with config:',
+      JSON.stringify(this.pluginManagerConfig)
+    );
   }
 
   static async start(
@@ -566,8 +569,13 @@ export class PluginManagerService extends Service implements PluginRegistry {
           pluginState.components!.eventHandlers.set(eventName, new Set());
         }
         for (const eventHandler of eventHandlers) {
-          await this.runtime.registerEvent(eventName, eventHandler);
-          pluginState.components!.eventHandlers.get(eventName)!.add(eventHandler);
+          await this.runtime.registerEvent(
+            eventName,
+            eventHandler as (params: import('@elizaos/core').EventPayload) => Promise<void>
+          );
+          pluginState.components!.eventHandlers
+            .get(eventName)!
+            .add(eventHandler as unknown as (params: Record<string, unknown>) => Promise<void>);
           this.trackComponentRegistration(pluginState.id, 'eventHandler', eventName);
         }
       }
@@ -641,7 +649,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 
     // Unregister event handlers
     if (pluginState.components.eventHandlers.size > 0) {
-      const extendedRuntime = this.runtime as ExtendedRuntime;
+      const extendedRuntime = this.runtime as unknown as ExtendedRuntime;
       for (const [eventName, handlers] of pluginState.components.eventHandlers) {
         for (const handler of handlers) {
           if (extendedRuntime.unregisterEvent) {
@@ -655,11 +663,11 @@ export class PluginManagerService extends Service implements PluginRegistry {
 
     // Stop and remove services
     if (plugin.services) {
-      const extendedRuntime = this.runtime as ExtendedRuntime;
+      const extendedRuntime = this.runtime as unknown as ExtendedRuntime;
       for (const ServiceClass of plugin.services) {
         const serviceType = ServiceClass.serviceType;
         if (!this.originalServices.has(serviceType)) {
-          const services = this.runtime.getServicesByType(serviceType as ServiceTypeName);
+          const services = await this.runtime.getServicesByType(serviceType as ServiceTypeName);
           if (services && services.length > 0) {
             for (const service of services) {
               await service.stop();

@@ -30,7 +30,7 @@ export const issueContextProvider: Provider = {
     "Provides detailed context about a specific GitHub issue or pull request when referenced",
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
-    const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
+    const service = await runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
       return { text: null };

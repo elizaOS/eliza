@@ -55,7 +55,7 @@ export class TwitchService extends Service implements ITwitchService {
    * Stop the Twitch service.
    */
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService<TwitchService>(TWITCH_SERVICE_NAME);
+    const service = await runtime.getService<TwitchService>(TWITCH_SERVICE_NAME);
     if (service) {
       await service.stop();
     }

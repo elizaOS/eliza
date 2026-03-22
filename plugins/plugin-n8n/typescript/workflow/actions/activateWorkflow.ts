@@ -73,7 +73,7 @@ export const activateWorkflowAction: Action = {
     "Do NOT use this to deploy a new workflow — use CREATE_N8N_WORKFLOW instead.",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    const service = runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
+    const service = await runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
     return !!service;
   },
 
@@ -84,7 +84,7 @@ export const activateWorkflowAction: Action = {
     _options?: unknown,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+    const service = await runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
 
     if (!service) {
       logger.error(

@@ -16,7 +16,7 @@ import {
   type CapabilityConfig,
   createBootstrapPlugin,
 } from "./bootstrap/index";
-import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
+import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { createUniqueUuid } from "./entities";
 import { createLogger, logPrompt, logResponse } from "./logger";
 import { BM25 } from "./search";
@@ -159,7 +159,7 @@ export class AgentRuntime implements IAgentRuntime {
   #conversationLength = 100 as number;
   readonly agentId: UUID;
   readonly character: Character;
-  public adapter!: IDatabaseAdapter;
+  public adapter: IDatabaseAdapter;
   static #anonymousAgentCounter = 0;
   readonly actions: Action[] = [];
   readonly evaluators: Evaluator[] = [];
@@ -197,6 +197,8 @@ export class AgentRuntime implements IAgentRuntime {
   private settings: RuntimeSettings;
   private servicePromiseHandlers = new Map<string, ServicePromiseHandler>(); // Combined handlers for resolve/reject
   private servicePromises = new Map<string, Promise<Service>>(); // read
+  /** In-flight service start promises; dedupes concurrent getService() for the same type. */
+  private startingServices = new Map<string, Promise<Service | null>>();
   private serviceRegistrationStatus = new Map<
     ServiceTypeName,
     "pending" | "registering" | "registered" | "failed"
@@ -219,7 +221,10 @@ export class AgentRuntime implements IAgentRuntime {
   };
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
   public messageService: IMessageService | null = null; // Lazily initialized
-  private cachedEmbeddingDimension?: number; // Cache embedding dimension after first detection
+private cachedEmbeddingDimension?: number; // Cache embedding dimension after first detection
+  public companionUrl?: string;
+  /** Set when stop() has been called; prevents new service starts and use-after-stop. */
+  private stopped = false;
 
   constructor(
     opts: {
@@ -229,7 +234,8 @@ export class AgentRuntime implements IAgentRuntime {
       character?: Character;
       plugins?: Plugin[];
       fetch?: typeof fetch;
-      adapter?: IDatabaseAdapter;
+      /** Database adapter. Required; use InMemoryDatabaseAdapter for in-memory-only runs. WHY: Caller owns DB lifecycle; no plugin registration race; single source of truth. */
+      adapter: IDatabaseAdapter;
       settings?: RuntimeSettings;
       allAvailablePlugins?: Plugin[];
       /**
@@ -273,7 +279,9 @@ export class AgentRuntime implements IAgentRuntime {
        * Can be enabled at construction time or lazily via settings.
        */
       enableAutonomy?: boolean;
-    } = {},
+      /** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. WHY: Thin runtimes (e.g. serverless) delegate embeddings and task-dirty notifications without blocking. */
+      companionUrl?: string;
+    },
   ) {
     // Create default anonymous character if none provided
     let character: Character;
@@ -335,9 +343,8 @@ export class AgentRuntime implements IAgentRuntime {
         100,
       ) as number);
     }
-    if (opts.adapter) {
-      this.registerDatabaseAdapter(opts.adapter);
-    }
+    this.adapter = opts.adapter;
+    this.companionUrl = opts.companionUrl;
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
     this.settings = opts.settings ?? environmentSettings;
     const enableAutonomyFromSettings =
@@ -505,9 +512,8 @@ export class AgentRuntime implements IAgentRuntime {
     if (pluginToRegister.adapter) {
       this.logger.debug(
         { src: "agent", agentId: this.agentId, plugin: pluginToRegister.name },
-        "Registering database adapter",
+        "Plugin declares adapter factory (handled pre-construction)",
       );
-      this.registerDatabaseAdapter(pluginToRegister.adapter);
     }
     if (pluginToRegister.actions) {
       for (const action of pluginToRegister.actions) {
@@ -589,44 +595,15 @@ export class AgentRuntime implements IAgentRuntime {
           "Registering service",
         );
 
-        // ensure we have a promise, so when it's actually loaded via registerService,
-        // we can trigger the loading of service dependencies
+        // Lazy: store the ServiceClass only; start() is deferred until getService() is called.
         if (!this.servicePromises.has(serviceType)) {
           this._createServiceResolver(serviceType);
         }
-
-        // Track service registration status
         this.serviceRegistrationStatus.set(serviceType, "pending");
-
-        // Register service asynchronously; handle errors without rethrowing since
-        // we are not awaiting this promise here (to avoid unhandled rejections)
-        this.registerService(service).catch((error) => {
-          this.logger.error(
-            {
-              src: "agent",
-              agentId: this.agentId,
-              plugin: pluginToRegister.name,
-              serviceType,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Service registration failed",
-          );
-
-          // Reject the service promise so waiting consumers know about the failure
-          const handler = this.servicePromiseHandlers.get(serviceType);
-          if (handler) {
-            const serviceError = new Error(
-              `Service ${serviceType} from plugin ${pluginToRegister.name} failed to register: ${error instanceof Error ? error.message : String(error)}`,
-            );
-            handler.reject(serviceError);
-            // Clean up the promise handles
-            this.servicePromiseHandlers.delete(serviceType);
-            this.servicePromises.delete(serviceType);
-          }
-          // Update service status
-          this.serviceRegistrationStatus.set(serviceType, "failed");
-          // Do not rethrow; error is propagated via promise rejection and status update
-        });
+        if (!this.serviceTypes.has(serviceType)) {
+          this.serviceTypes.set(serviceType, []);
+        }
+        this.serviceTypes.get(serviceType)!.push(service);
       }
     }
   }
@@ -635,11 +612,34 @@ export class AgentRuntime implements IAgentRuntime {
     return this.services;
   }
 
+  /**
+   * Stops all started services and clears runtime caches/handlers.
+   * For full teardown (including DB/adapter connection), call close() after stop().
+   */
   async stop() {
+    if (this.stopped) {
+      this.logger.debug(
+        { src: "agent", agentId: this.agentId },
+        "Runtime already stopped",
+      );
+      return;
+    }
+    this.stopped = true;
     this.logger.debug(
       { src: "agent", agentId: this.agentId },
       "Stopping runtime",
     );
+
+    // Wait for any in-flight service starts so we don't leave services running
+    const inFlight = Array.from(this.startingServices.values());
+    if (inFlight.length > 0) {
+      this.logger.debug(
+        { src: "agent", agentId: this.agentId, count: inFlight.length },
+        "Waiting for in-flight service starts before stopping",
+      );
+      await Promise.all(inFlight);
+    }
+
     for (const [serviceType, services] of this.services) {
       this.logger.debug(
         { src: "agent", agentId: this.agentId, serviceType },
@@ -657,20 +657,41 @@ export class AgentRuntime implements IAgentRuntime {
         }
       }
     }
+
+    // Reject any pending service load promises so callers don't hang.
+    // Attach a no-op catch to each so the rejection is "handled" and does not
+    // become an unhandled rejection in tests (callers awaiting getService() still get the error).
+    const stopError = new Error("Runtime stopped");
+    for (const promise of this.servicePromises.values()) {
+      promise.catch(() => {});
+    }
+    for (const handler of this.servicePromiseHandlers.values()) {
+      handler.reject(stopError);
+    }
+
+    // Clear caches and handlers to avoid use-after-stop and release references
+    this.eventHandlers.clear();
+    this.events = {};
+    this.stateCache.clear();
+    this.servicePromises.clear();
+    this.servicePromiseHandlers.clear();
+    this.startingServices.clear();
   }
 
-  async initialize(options?: {
-    skipMigrations?: boolean;
-    /** Allow running without a persistent database adapter (benchmarks/tests). */
-    allowNoDatabase?: boolean;
-  }): Promise<void> {
+  /**
+   * Slim init: register plugins, ensure adapter ready, create message service.
+   * Does NOT run migrations, agent/entity/room creation, or embedding dimension.
+   * WHY: Those belong to provisioning (once at daemon boot); edge/ephemeral skip them.
+   */
+  async initialize(): Promise<void> {
+    if (!this.adapter) {
+      throw new Error("Database adapter not initialized");
+    }
     const pluginRegistrationPromises: Promise<void>[] = [];
 
-    // Bootstrap plugin is now built into core - auto-register it first
     const bootstrapPlugin = createBootstrapPlugin(this.capabilityOptions);
     pluginRegistrationPromises.push(this.registerPlugin(bootstrapPlugin));
 
-    // Advanced planning is built into core, but only loaded when enabled on the character.
     if (this.character.advancedPlanning === true) {
       const { createAdvancedPlanningPlugin } = await import(
         "./advanced-planning/index.ts"
@@ -680,7 +701,6 @@ export class AgentRuntime implements IAgentRuntime {
       );
     }
 
-    // Advanced memory is built into core, but only loaded when enabled on the character.
     if (this.character.advancedMemory === true) {
       const { createAdvancedMemoryPlugin } = await import(
         "./advanced-memory/index.ts"
@@ -697,186 +717,12 @@ export class AgentRuntime implements IAgentRuntime {
     }
     await Promise.all(pluginRegistrationPromises);
 
-    const allowNoDatabase =
-      options?.allowNoDatabase === true ||
-      String(this.getSetting("ALLOW_NO_DATABASE") ?? "").toLowerCase() ===
-        "true";
-
-    if (!this.adapter) {
-      if (allowNoDatabase) {
-        this.logger.warn(
-          { src: "agent", agentId: this.agentId },
-          "Database adapter not initialized; using in-memory adapter (ALLOW_NO_DATABASE)",
-        );
-        this.registerDatabaseAdapter(new InMemoryDatabaseAdapter());
-      } else {
-        this.logger.error(
-          { src: "agent", agentId: this.agentId },
-          "Database adapter not initialized",
-        );
-        throw new Error(
-          "Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.",
-        );
-      }
-    }
-
-    // Make adapter init idempotent - check if already initialized
     if (!(await this.adapter.isReady())) {
       await this.adapter.initialize();
     }
 
-    // Initialize message service
     this.messageService = new DefaultMessageService();
 
-    // Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
-    const skipMigrations = options?.skipMigrations ?? false;
-    if (skipMigrations) {
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId },
-        "Skipping plugin migrations",
-      );
-    } else {
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId },
-        "Running plugin migrations",
-      );
-      await this.runPluginMigrations();
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId },
-        "Plugin migrations completed",
-      );
-    }
-
-    // Ensure character has the agent ID set before calling ensureAgentExists
-    // We create a new object with the ID to avoid mutating the original character
-    const existingAgent = await this.ensureAgentExists({
-      ...this.character,
-      id: this.agentId,
-    } as Partial<Agent>);
-    if (!existingAgent) {
-      const errorMsg = `Agent ${this.agentId} does not exist in database after ensureAgentExists call`;
-      throw new Error(errorMsg);
-    }
-
-    // Merge DB-persisted settings back into runtime character
-    // This ensures settings from previous runs are available
-    if (existingAgent.settings) {
-      this.character.settings = {
-        ...existingAgent.settings,
-        ...this.character.settings, // Character file overrides DB
-      };
-
-      // Merge secrets from both character.secrets and settings.secrets
-      // getSetting() checks character.secrets first, so we need to merge there too
-      const dbSecrets =
-        existingAgent.secrets && typeof existingAgent.secrets === "object"
-          ? existingAgent.secrets
-          : {};
-      const dbSettingsSecrets =
-        existingAgent.settings.secrets &&
-        typeof existingAgent.settings.secrets === "object"
-          ? existingAgent.settings.secrets
-          : {};
-      const settingsSecrets =
-        this.character.settings.secrets &&
-        typeof this.character.settings.secrets === "object"
-          ? this.character.settings.secrets
-          : {};
-      const characterSecrets =
-        this.character.secrets && typeof this.character.secrets === "object"
-          ? this.character.secrets
-          : {};
-
-      // Merge into both locations that getSetting() checks
-      const mergedSecrets = {
-        ...dbSecrets,
-        ...dbSettingsSecrets,
-        ...characterSecrets,
-        ...settingsSecrets, // settings.secrets has priority
-      };
-
-      if (Object.keys(mergedSecrets).length > 0) {
-        const filteredSecrets: Record<string, string> = {};
-        for (const [key, value] of Object.entries(mergedSecrets)) {
-          if (value !== null && value !== undefined) {
-            filteredSecrets[key] = String(value);
-          }
-        }
-        if (Object.keys(filteredSecrets).length > 0) {
-          this.character.secrets = filteredSecrets;
-          this.character.settings.secrets = filteredSecrets;
-        }
-      }
-    }
-
-    // No need to transform agent's own ID
-    let agentEntity = (await this.adapter.getEntitiesByIds([this.agentId]))[0] ?? null;
-
-    if (!agentEntity) {
-      if (!existingAgent.id) {
-        throw new Error(`Agent ${this.agentId} has no ID`);
-      }
-      const created = await this.createEntity({
-        id: this.agentId,
-        names: [this.character.name ?? "Agent"],
-        metadata: {},
-        agentId: existingAgent.id,
-      });
-      if (!created) {
-        const errorMsg = `Failed to create entity for agent ${this.agentId}`;
-        throw new Error(errorMsg);
-      }
-
-      agentEntity = (await this.adapter.getEntitiesByIds([this.agentId]))[0] ?? null;
-      if (!agentEntity)
-        throw new Error(`Agent entity not found for ${this.agentId}`);
-
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId },
-        "Agent entity created",
-      );
-    }
-
-    // Room creation and participant setup
-    const room = await this.getRoom(this.agentId);
-    if (!room) {
-      await this.adapter.createRooms([{
-        id: this.agentId,
-        name: this.character.name,
-        source: "elizaos",
-        type: ChannelType.SELF,
-        channelId: this.agentId,
-        messageServerId: this.agentId,
-        worldId: this.agentId,
-      }]);
-    }
-    const participants = await this.adapter.getParticipantsForRoom(
-      this.agentId,
-    );
-    if (!participants.includes(this.agentId)) {
-      const added = await this.adapter.createRoomParticipants([this.agentId], this.agentId);
-      if (!added) {
-        throw new Error(
-          `Failed to add agent ${this.agentId} as participant to its own room`,
-        );
-      }
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId },
-        "Agent linked to room",
-      );
-    }
-
-    const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
-    if (!embeddingModel) {
-      this.logger.warn(
-        { src: "agent", agentId: this.agentId },
-        "No TEXT_EMBEDDING model registered, skipping embedding setup",
-      );
-    } else {
-      await this.ensureEmbeddingDimension();
-    }
-
-    // Resolve init promise to allow services to start
     if (this.initResolver) {
       this.initResolver();
       this.initResolver = undefined;
@@ -1120,21 +966,6 @@ export class AgentRuntime implements IAgentRuntime {
     return true;
   }
 
-  registerDatabaseAdapter(adapter: IDatabaseAdapter) {
-    if (this.adapter) {
-      this.logger.warn(
-        { src: "agent", agentId: this.agentId },
-        "Database adapter already registered, ignoring",
-      );
-    } else {
-      this.adapter = adapter;
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId },
-        "Database adapter registered",
-      );
-    }
-  }
-
   /**
    * Get the messaging adapter if available
    * 
@@ -1191,15 +1022,15 @@ export class AgentRuntime implements IAgentRuntime {
    * @param context - Optional policy context for filtering
    * @returns Filtered actions based on policy
    */
-  getFilteredActions(context?: {
+  async getFilteredActions(context?: {
     profile?: ToolProfileId;
     characterPolicy?: ToolPolicyConfig;
     channelPolicy?: ToolPolicyConfig;
     providerPolicy?: ToolPolicyConfig;
     worldPolicy?: ToolPolicyConfig;
     roomPolicy?: ToolPolicyConfig;
-  }): Action[] {
-    const policyService = this.getService<ToolPolicyService>("tool_policy");
+  }): Promise<Action[]> {
+    const policyService = await this.getService<ToolPolicyService>("tool_policy");
 
     if (!policyService || !context) {
       return [...this.actions];
@@ -1215,7 +1046,7 @@ export class AgentRuntime implements IAgentRuntime {
    * @param context - Optional policy context
    * @returns Whether the action is allowed
    */
-  isActionAllowed(
+  async isActionAllowed(
     actionName: string,
     context?: {
       profile?: ToolProfileId;
@@ -1225,8 +1056,8 @@ export class AgentRuntime implements IAgentRuntime {
       worldPolicy?: ToolPolicyConfig;
       roomPolicy?: ToolPolicyConfig;
     },
-  ): { allowed: boolean; reason: string } {
-    const policyService = this.getService<ToolPolicyService>("tool_policy");
+  ): Promise<{ allowed: boolean; reason: string }> {
+    const policyService = await this.getService<ToolPolicyService>("tool_policy");
 
     if (!policyService) {
       return { allowed: true, reason: "No policy service available" };
@@ -2159,23 +1990,10 @@ export class AgentRuntime implements IAgentRuntime {
     );
   }
 
-  async ensureConnection({
-    entityId,
-    roomId,
-    worldId,
-    worldName,
-    userName,
-    name,
-    source,
-    type,
-    channelId,
-    messageServerId,
-    userId,
-    metadata,
-  }: {
+  async ensureConnection(params: {
     entityId: UUID;
     roomId: UUID;
-    worldId: UUID;
+    worldId?: UUID;
     worldName?: string;
     userName?: string;
     name?: string;
@@ -2186,89 +2004,15 @@ export class AgentRuntime implements IAgentRuntime {
     userId?: UUID;
     metadata?: Record<string, JsonValue>;
   }) {
-    if (!worldId && messageServerId) {
-      worldId = createUniqueUuid(this as IAgentRuntime, messageServerId);
-    }
-    const names = [name, userName].filter(Boolean) as string[];
-    if (!source) {
-      throw new Error("Source is required for ensureEntityExists");
-    }
-    const entityMetadata = {
-      [source]: {
-        id: userId,
-        name: name,
-        userName: userName,
-      },
-    };
-    // WHY upsert instead of get-check-create: Eliminates race condition in
-    // ensureConnection where concurrent calls could both see entity doesn't
-    // exist and both try to create it. Upsert is atomic.
-
-    // Fetch existing entity to merge names (if it exists)
-    const entity = (await this.adapter.getEntitiesByIds([entityId]))[0] ?? null;
-
-    const entityToUpsert: Entity = {
-      id: entityId,
-      names: entity
-        ? [...new Set([...(entity.names || []), ...names])].filter(Boolean) as string[]
-        : names,
-      metadata: entity
-        ? {
-            ...entity.metadata,
-            [source]: {
-              ...(entity.metadata?.[source] &&
-              typeof entity.metadata[source] === "object"
-                ? (entity.metadata[source] as Record<string, JsonValue>)
-                : {}),
-              id: userId,
-              name: name,
-              userName: userName,
-            },
-          }
-        : entityMetadata,
+    await ensureConnectionStandalone(this.adapter, {
       agentId: this.agentId,
-    };
-
-    // Atomic upsert - handles both insert and update
-    await this.adapter.upsertEntities([entityToUpsert]);
-
-    this.logger.debug(
-      {
-        src: "agent",
-        agentId: this.agentId,
-        entityId,
-        userName: name || userName,
-      },
-      entity ? "Entity updated" : "Entity created",
-    );
-    await this.ensureWorldExists({
-      id: worldId,
-      name:
-        worldName || messageServerId
-          ? `World for server ${messageServerId}`
-          : `World for room ${roomId}`,
-      agentId: this.agentId,
-      messageServerId: messageServerId,
-      metadata,
+      worldId: params.worldId,
+      messageServerId: params.messageServerId,
+      ...params,
+      source: params.source ?? "default",
     });
-    await this.ensureRoomExists({
-      id: roomId,
-      name: name || "default",
-      source: source || "default",
-      type:
-        typeof type === "string" &&
-        (Object.values(ChannelType) as string[]).includes(type)
-          ? (type as ChannelType)
-          : ChannelType.DM,
-      channelId,
-      messageServerId,
-      worldId,
-    });
-    await this.ensureParticipantInRoom(entityId, roomId);
-    await this.ensureParticipantInRoom(this.agentId, roomId);
-
     this.logger.debug(
-      { src: "agent", agentId: this.agentId, entityId, channelId: roomId },
+      { src: "agent", agentId: this.agentId, entityId: params.entityId, channelId: params.roomId },
       "Entity connected",
     );
   }
@@ -2472,7 +2216,7 @@ export class AgentRuntime implements IAgentRuntime {
         query?: Record<string, string | number | boolean | null>;
       }) => void;
     };
-    const trajLogger = this.getService<TrajectoryLogger>("trajectory_logger");
+const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
     const composeStateStart = Date.now();
     const providerTimings: { name: string; durationMs: number }[] = [];
     // Per-provider timeout so one stuck provider (e.g. hung API) cannot block the whole agent.
@@ -2669,19 +2413,98 @@ export class AgentRuntime implements IAgentRuntime {
     return newState;
   }
 
-  getService<T extends Service = Service>(
-    serviceName: ServiceTypeName | string,
-  ): T | null {
-    const serviceInstances = this.services.get(serviceName as ServiceTypeName);
-    if (!serviceInstances || serviceInstances.length === 0) {
-      // it's not a warn, a plugin might just not be installed
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId, serviceName },
-        "Service not found",
-      );
+  /** WHY lazy: Service is started on first getService() so unused features don't pay startup cost; callers must await getService(). */
+  /** Dedupes concurrent getService() for the same type via startingServices so only one start runs. */
+  private async _ensureServiceStarted(
+    serviceType: ServiceTypeName | string,
+  ): Promise<Service | null> {
+    if (this.stopped) return null;
+    const key = serviceType as ServiceTypeName;
+    const instances = this.services.get(key);
+    if (instances && instances.length > 0) {
+      return instances[0];
+    }
+    const classes = this.serviceTypes.get(key);
+    if (!classes || classes.length === 0) {
       return null;
     }
-    return serviceInstances[0] as T;
+    let inFlight = this.startingServices.get(key);
+    if (!inFlight) {
+      inFlight = this._runServiceStart(key, serviceType, classes[0]);
+      this.startingServices.set(key, inFlight);
+    }
+    try {
+      return await inFlight;
+    } finally {
+      this.startingServices.delete(key);
+    }
+  }
+
+  /** Runs one service start; used by _ensureServiceStarted with startingServices dedupe. */
+  private async _runServiceStart(
+    key: ServiceTypeName,
+    serviceType: string,
+    serviceDef: ServiceClass,
+  ): Promise<Service | null> {
+    this.serviceRegistrationStatus.set(key, "registering");
+    await this.initPromise;
+    if (typeof serviceDef.start !== "function") {
+      this.logger.error(
+        { src: "agent", agentId: this.agentId, serviceType },
+        "Service class has no static start method",
+      );
+      this.serviceRegistrationStatus.set(key, "failed");
+      return null;
+    }
+    try {
+      const serviceInstance = await serviceDef.start(this as IAgentRuntime);
+      if (!serviceInstance) {
+        this.serviceRegistrationStatus.set(key, "failed");
+        return null;
+      }
+      if (!this.services.has(key)) {
+        this.services.set(key, []);
+      }
+      this.services.get(key)!.push(serviceInstance);
+      const handler = this.servicePromiseHandlers.get(serviceType);
+      if (handler) {
+        handler.resolve(serviceInstance);
+        this.servicePromiseHandlers.delete(serviceType);
+      }
+      if (serviceDef.registerSendHandlers) {
+        serviceDef.registerSendHandlers(this as IAgentRuntime, serviceInstance);
+      }
+      this.serviceRegistrationStatus.set(key, "registered");
+      return serviceInstance;
+    } catch (error) {
+      this.logger.error(
+        {
+          src: "agent",
+          agentId: this.agentId,
+          serviceType,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Service start failed",
+      );
+      const handler = this.servicePromiseHandlers.get(serviceType);
+      if (handler) {
+        handler.reject(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+        this.servicePromiseHandlers.delete(serviceType);
+        this.servicePromises.delete(serviceType);
+      }
+      this.serviceRegistrationStatus.set(key, "failed");
+      return null;
+    }
+  }
+
+  /** Returns the service instance or null; starts the service on first call (lazy). Always await. */
+  async getService<T extends Service = Service>(
+    serviceName: ServiceTypeName | string,
+  ): Promise<T | null> {
+    const instance = await this._ensureServiceStarted(serviceName);
+    return instance as T | null;
   }
 
   /**
@@ -2690,9 +2513,9 @@ export class AgentRuntime implements IAgentRuntime {
    * @param serviceName - The service type name
    * @returns The service instance with proper typing, or null if not found
    */
-  getTypedService<T extends Service = Service>(
+  async getTypedService<T extends Service = Service>(
     serviceName: ServiceTypeName | string,
-  ): T | null {
+  ): Promise<T | null> {
     return this.getService<T>(serviceName);
   }
 
@@ -2702,11 +2525,22 @@ export class AgentRuntime implements IAgentRuntime {
    * @param serviceName - The service type name
    * @returns Array of service instances with proper typing
    */
-  getServicesByType<T extends Service = Service>(
+  async getServicesByType<T extends Service = Service>(
     serviceName: ServiceTypeName | string,
-  ): T[] {
-    const serviceInstances = this.services.get(serviceName as ServiceTypeName);
-    if (!serviceInstances || serviceInstances.length === 0) {
+  ): Promise<T[]> {
+    const key = serviceName as ServiceTypeName;
+    const classes = this.serviceTypes.get(key);
+    if (!classes || classes.length === 0) {
+      return [];
+    }
+    // Start all registered services of this type (first via _ensureServiceStarted, then any remaining)
+    await this._ensureServiceStarted(serviceName);
+    let serviceInstances = this.services.get(key) ?? [];
+    while (serviceInstances.length < classes.length) {
+      await this._runServiceStart(key, serviceName, classes[serviceInstances.length]);
+      serviceInstances = this.services.get(key) ?? [];
+    }
+    if (serviceInstances.length === 0) {
       this.logger.debug(
         { src: "agent", agentId: this.agentId, serviceName },
         "No services found for type",
@@ -2717,21 +2551,21 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   /**
-   * Get all registered service types
+   * Get all registered service types (includes lazy-registered, not yet started)
    * @returns Array of registered service type names
    */
   getRegisteredServiceTypes(): ServiceTypeName[] {
-    return Array.from(this.services.keys());
+    return Array.from(this.serviceTypes.keys());
   }
 
   /**
-   * Check if a service type is registered
+   * Check if a service type is registered (class registered; may not be started yet)
    * @param serviceType - The service type to check
    * @returns true if the service is registered
    */
   hasService(serviceType: ServiceTypeName | string): boolean {
-    const serviceInstances = this.services.get(serviceType as ServiceTypeName);
-    return serviceInstances !== undefined && serviceInstances.length > 0;
+    const classes = this.serviceTypes.get(serviceType as ServiceTypeName);
+    return classes !== undefined && classes.length > 0;
   }
 
   /**
@@ -2805,88 +2639,17 @@ export class AgentRuntime implements IAgentRuntime {
     }
     this.logger.debug(
       { src: "agent", agentId: this.agentId, serviceType },
-      "Registering service",
+      "Registering service (lazy; start() on first getService)",
     );
 
-    // Update service status to registering
-    this.serviceRegistrationStatus.set(serviceType, "registering");
-
-    // ALL services wait for initialization to complete with a timeout to prevent hanging
-    // This ensures services start after all plugins are registered and runtime is ready
-    this.logger.debug(
-      { src: "agent", agentId: this.agentId, serviceType },
-      "Service waiting for init",
-    );
-
-    // Add timeout protection to prevent indefinite hangs
-    const initTimeout = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        reject(
-          new Error(
-            `Service ${serviceType} registration timed out waiting for runtime initialization (30s timeout)`,
-          ),
-        );
-      }, 30000); // 30 second timeout
-    });
-
-    await Promise.race([this.initPromise, initTimeout]);
-
-    // Check if service has a start method
-    if (typeof serviceDef.start !== "function") {
-      throw new Error(
-        `Service ${serviceType} does not have a static start method. All services must implement static async start(runtime: IAgentRuntime): Promise<Service>.`,
-      );
-    }
-    const serviceInstance = await serviceDef.start(this as IAgentRuntime);
-
-    if (!serviceInstance) {
-      throw new Error(
-        `Service ${serviceType}  start() method returned null or undefined. It must return a Service instance.`,
-      );
-    }
-
-    // Initialize arrays if they don't exist
-    if (!this.services.has(serviceType)) {
-      this.services.set(serviceType, []);
+    this.serviceRegistrationStatus.set(serviceType, "pending");
+    if (!this.servicePromises.has(serviceType)) {
+      this._createServiceResolver(serviceType);
     }
     if (!this.serviceTypes.has(serviceType)) {
       this.serviceTypes.set(serviceType, []);
     }
-
-    // Add the service to the arrays
-    const servicesArray = this.services.get(serviceType);
-    if (servicesArray) {
-      servicesArray.push(serviceInstance);
-    }
-    const serviceTypesArray = this.serviceTypes.get(serviceType);
-    if (serviceTypesArray) {
-      serviceTypesArray.push(serviceDef);
-    }
-
-    // inform everyone that's waiting for this service, that it's now available
-    // removes the need for polling and timers
-    const handler = this.servicePromiseHandlers.get(serviceType);
-    if (handler) {
-      handler.resolve(serviceInstance);
-      // Clean up the promise handler after resolving
-      this.servicePromiseHandlers.delete(serviceType);
-    } else {
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId, serviceType },
-        "Service has no promise handler",
-      );
-    }
-
-    if (serviceDef.registerSendHandlers) {
-      serviceDef.registerSendHandlers(this as IAgentRuntime, serviceInstance);
-    }
-    // Update service status to registered
-    this.serviceRegistrationStatus.set(serviceType, "registered");
-
-    this.logger.debug(
-      { src: "agent", agentId: this.agentId, serviceType },
-      "Service registered",
-    );
+    this.serviceTypes.get(serviceType)!.push(serviceDef);
   }
 
   /// ensures servicePromises & servicePromiseHandlers for a serviceType
@@ -2917,20 +2680,17 @@ export class AgentRuntime implements IAgentRuntime {
     return promise;
   }
 
-  /// returns a promise that's resolved once this service is loaded
+  /// Returns a promise that resolves once this service is loaded (starts the service on first call).
   ///
   /// Note: Plugins can register arbitrary service type strings; callers may
   /// therefore provide either a core `ServiceTypeName` or a plugin-defined string.
   getServiceLoadPromise(
     serviceType: ServiceTypeName | string,
   ): Promise<Service> {
-    // if this.isInitialized then the this p will exist and already be resolved
-    let p = this.servicePromises.get(serviceType);
-    if (!p) {
-      // not initialized or registered yet, registerPlugin is already smart enough to check to see if we make it here
-      p = this._createServiceResolver(serviceType);
-    }
-    return p;
+    return this.getService(serviceType).then((s) => {
+      if (!s) throw new Error(`Service ${serviceType} not found or failed to start`);
+      return s;
+    });
   }
 
   registerModel(
@@ -3277,24 +3037,38 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    // Only treat params as an object if it's actually an object (not a string or primitive)
-    const paramsObj =
-      params && typeof params === "object" && !Array.isArray(params)
-        ? (params as Record<string, JsonValue | object>)
+    // Normalize string or missing params to object for model types that accept string (e.g. IMAGE_DESCRIPTION)
+    // so handlers always receive an object and never hit "prompt" in params when params is a string/undefined.
+    // Use both prompt and imageUrl so handlers that expect either field work.
+    const effectiveParams =
+      modelKey === ModelType.IMAGE_DESCRIPTION &&
+      (typeof params === "string" || params == null)
+        ? ({
+            prompt: typeof params === "string" ? params : "",
+            imageUrl: typeof params === "string" ? params : "",
+          } as ModelParamsMap[T])
+        : params;
+
+    // Only treat params as an object if it's actually an object (not a string or primitive).
+    // Guard so we never use 'in' on a non-object (avoids "paramsObj is not an Object" in some runtimes).
+    const isParamsObject =
+      effectiveParams != null &&
+      typeof effectiveParams === "object" &&
+      !Array.isArray(effectiveParams);
+    const paramsObj = isParamsObject
+      ? (effectiveParams as Record<string, JsonValue | object>)
+      : null;
+    const promptContent = isParamsObject && paramsObj
+      ? (typeof paramsObj.prompt === "string"
+          ? paramsObj.prompt
+          : typeof paramsObj.input === "string"
+            ? paramsObj.input
+            : Array.isArray(paramsObj.messages)
+              ? JSON.stringify(paramsObj.messages)
+              : null) ?? (typeof params === "string" ? params : null)
+      : typeof params === "string"
+        ? params
         : null;
-    const promptContent =
-      (paramsObj &&
-      "prompt" in paramsObj &&
-      typeof paramsObj.prompt === "string"
-        ? paramsObj.prompt
-        : null) ||
-      (paramsObj && "input" in paramsObj && typeof paramsObj.input === "string"
-        ? paramsObj.input
-        : null) ||
-      (paramsObj && "messages" in paramsObj && Array.isArray(paramsObj.messages)
-        ? JSON.stringify(paramsObj.messages)
-        : null) ||
-      (typeof params === "string" ? params : null);
     const model = this.getModel(modelKey);
     const modelsForKey = this.models.get(modelKey);
     const modelWithProvider =
@@ -3349,15 +3123,15 @@ export class AgentRuntime implements IAgentRuntime {
       );
     }
     let modelParams: ModelParamsMap[T];
-    const paramsClone = isPlainObject(params)
-      ? { ...(params as Record<string, JsonValue | object>) }
-      : params;
+    const paramsClone = isPlainObject(effectiveParams)
+      ? { ...(effectiveParams as Record<string, JsonValue | object>) }
+      : effectiveParams;
     if (
-      params === null ||
-      params === undefined ||
-      typeof params !== "object" ||
-      Array.isArray(params) ||
-      BufferUtils.isBuffer(params)
+      effectiveParams === null ||
+      effectiveParams === undefined ||
+      typeof effectiveParams !== "object" ||
+      Array.isArray(effectiveParams) ||
+      BufferUtils.isBuffer(effectiveParams)
     ) {
       modelParams = paramsClone as ModelParamsMap[T];
     } else {
@@ -3508,7 +3282,7 @@ export class AgentRuntime implements IAgentRuntime {
         };
         const stepId = getTrajectoryContext()?.trajectoryStepId;
         const trajLogger =
-          this.getService<TrajectoryLogger>("trajectory_logger");
+          await this.getService<TrajectoryLogger>("trajectory_logger");
         if (stepId && trajLogger) {
           const tempRaw = isPlainObject(modelParams)
             ? (modelParams as { temperature?: number }).temperature
@@ -3587,7 +3361,7 @@ export class AgentRuntime implements IAgentRuntime {
         }) => void;
       };
       const stepId = getTrajectoryContext()?.trajectoryStepId;
-      const trajLogger = this.getService<TrajectoryLogger>("trajectory_logger");
+      const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
       if (stepId && trajLogger) {
         const tempRaw = isPlainObject(modelParams)
           ? (modelParams as { temperature?: number }).temperature
@@ -4663,6 +4437,9 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   async init(): Promise<void> {
     await this.adapter.initialize();
   }
+  /**
+   * Closes the database adapter. Call after stop() for full teardown (stops services then closes DB/connection).
+   */
   async close(): Promise<void> {
     if (this.adapter) {
       await this.adapter.close();
@@ -4680,10 +4457,12 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return ids.length > 0;
   }
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
-    return await this.adapter.updateAgents([{ agentId, agent }]);
+    await this.adapter.updateAgents([{ agentId, agent }]);
+    return true;
   }
   async deleteAgent(agentId: UUID): Promise<boolean> {
-    return await this.adapter.deleteAgents([agentId]);
+    await this.adapter.deleteAgents([agentId]);
+    return true;
   }
   async countAgents(): Promise<number> {
     return await this.adapter.countAgents();
@@ -4792,6 +4571,29 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       { src: "agent", agentId: agent.id },
       existingAgent ? "Agent updated on restart" : "Agent created",
     );
+
+    // Sync merged agent state into runtime.character so getSetting() and character stay in sync with DB
+    if (this.character && refreshedAgent) {
+      if (
+        refreshedAgent.settings &&
+        typeof refreshedAgent.settings === "object"
+      ) {
+        this.character.settings = {
+          ...this.character.settings,
+          ...refreshedAgent.settings,
+        };
+      }
+      if (
+        refreshedAgent.secrets &&
+        typeof refreshedAgent.secrets === "object"
+      ) {
+        this.character.secrets = {
+          ...this.character.secrets,
+          ...refreshedAgent.secrets,
+        };
+      }
+    }
+
     return refreshedAgent;
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
@@ -4867,29 +4669,34 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return memory;
   }
 
+  /**
+   * Queue a memory for embedding generation. If companionUrl is set, POSTs to companion
+   * and returns without waiting (fire-and-forget). WHY: Thin runtime doesn't block on embedding.
+   */
   async queueEmbeddingGeneration(
     memory: Memory,
     priority?: "high" | "normal" | "low",
   ): Promise<void> {
-    // Set default priority if not provided
     priority = priority || "normal";
-
-    // Skip if memory is null or undefined
-    if (!memory) {
+    if (!memory || memory.embedding || !memory.content?.text) {
       return;
     }
 
-    // Skip if memory already has embeddings
-    if (memory.embedding) {
+    if (this.companionUrl) {
+      const url = `${this.companionUrl.replace(/\/$/, "")}/embedding-generation`;
+      void this.fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: this.agentId,
+          memory,
+          priority,
+          runId: this.getCurrentRunId(),
+        }),
+      }).catch(() => {});
       return;
     }
 
-    // Skip if no text content
-    if (!memory.content || !memory.content.text) {
-      return;
-    }
-
-    // Emit event for async embedding generation
     await this.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
       runtime: this,
       memory,
@@ -5219,9 +5026,20 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.getTasksByName(name);
   }
 
-  // Single-item wrappers (deprecated - delegate to batch methods)
+  /** WHY fire-and-forget: Notify companion that tasks changed so it can poll/process; no need to block. */
+  private _notifyCompanionTasksDirty(): void {
+    if (!this.companionUrl) return;
+    const url = `${this.companionUrl.replace(/\/$/, "")}/task-dirty`;
+    void this.fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentId: this.agentId }),
+    }).catch(() => {});
+  }
+
   async createTask(task: Task): Promise<UUID> {
     const ids = await this.adapter.createTasks([task]);
+    this._notifyCompanionTasksDirty();
     return ids[0];
   }
 
@@ -5231,7 +5049,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   }
 
   async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
-    return await this.adapter.updateTasks([{ id, task }]);
+    await this.adapter.updateTasks([{ id, task }]);
+    this._notifyCompanionTasksDirty();
   }
 
   async deleteTask(id: UUID): Promise<void> {
@@ -5261,7 +5080,9 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
   // Batch task methods
   async createTasks(tasks: Task[]): Promise<UUID[]> {
-    return await this.adapter.createTasks(tasks);
+    const ids = await this.adapter.createTasks(tasks);
+    this._notifyCompanionTasksDirty();
+    return ids;
   }
 
   async getTasksByIds(taskIds: UUID[]): Promise<Task[]> {
@@ -5269,7 +5090,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   }
 
   async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {
-    return await this.adapter.updateTasks(updates);
+    await this.adapter.updateTasks(updates);
+    this._notifyCompanionTasksDirty();
   }
 
   async deleteTasks(taskIds: UUID[]): Promise<void> {
@@ -5582,7 +5404,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   }
 
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return await this.adapter.deleteParticipants([{ entityId, roomId }]);
+    await this.adapter.deleteParticipants([{ entityId, roomId }]);
+    return true;
   }
 
   // ── Room passthroughs & wrappers ────────────────────────────────────
@@ -5684,12 +5507,12 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     }
     await handler(this, target, content);
   }
-  async getMemoriesByWorldId(params: {
-    worldId: UUID;
-    count?: number;
+  async getMemoriesByWorldIds(params: {
+    worldIds: UUID[];
     tableName?: string;
+    limit?: number;
   }): Promise<Memory[]> {
-    return await this.adapter.getMemoriesByWorldId(params);
+    return await this.adapter.getMemoriesByWorldIds(params);
   }
   async runMigrations(migrationsPaths?: string[]): Promise<void> {
     if (this.adapter?.runMigrations) {

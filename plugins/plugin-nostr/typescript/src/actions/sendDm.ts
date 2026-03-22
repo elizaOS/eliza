@@ -64,7 +64,7 @@ export const sendDm: Action = {
     _options?: Record<string, unknown>,
     callback?: (response: { text: string; source?: string }) => void,
   ): Promise<ActionResult> => {
-    const nostrService = runtime.getService<NostrService>(NOSTR_SERVICE_NAME);
+    const nostrService = await runtime.getService<NostrService>(NOSTR_SERVICE_NAME);
 
     if (!nostrService || !nostrService.isConnected()) {
       if (callback) {

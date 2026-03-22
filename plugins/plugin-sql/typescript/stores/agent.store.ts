@@ -272,13 +272,13 @@ export async function upsertAgents(db: DrizzleDatabase, agents: Partial<Agent>[]
  *
  * @param {DrizzleDatabase} db - The database instance.
  * @param {Array<{agentId: UUID; agent: Partial<Agent>}>} updates - Array of agent updates.
- * @returns {Promise<boolean>} True if all agents were updated successfully.
+ * @returns {Promise<void>}
  */
 export async function updateAgents(
   db: DrizzleDatabase,
   updates: Array<{ agentId: UUID; agent: Partial<Agent> }>
-): Promise<boolean> {
-  if (updates.length === 0) return true;
+): Promise<void> {
+  if (updates.length === 0) return;
 
   try {
     for (const { agentId } of updates) {
@@ -355,8 +355,6 @@ export async function updateAgents(
       .update(agentTable)
       .set(setObj)
       .where(inArray(agentTable.id, ids));
-
-    return true;
   } catch (error) {
     logger.error(
       {
@@ -366,7 +364,7 @@ export async function updateAgents(
       },
       "Failed to update agents"
     );
-    return false;
+    throw error;
   }
 }
 
@@ -374,14 +372,13 @@ export async function updateAgents(
  * Deletes multiple agents from the database.
  * @param {DrizzleDatabase} db - The database instance.
  * @param {UUID[]} agentIds - Array of agent IDs to delete.
- * @returns {Promise<boolean>} True if all agents were deleted successfully.
+ * @returns {Promise<void>}
  */
-export async function deleteAgents(db: DrizzleDatabase, agentIds: UUID[]): Promise<boolean> {
-  if (agentIds.length === 0) return true;
+export async function deleteAgents(db: DrizzleDatabase, agentIds: UUID[]): Promise<void> {
+  if (agentIds.length === 0) return;
 
   try {
     await db.delete(agentTable).where(inArray(agentTable.id, agentIds));
-    return true;
   } catch (error) {
     logger.error(
       {

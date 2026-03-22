@@ -999,25 +999,21 @@ export async function countMemories(
 }
 
 /**
- * Gets memories for all rooms belonging to a specific world.
- *
- * WHY single JOIN: the old code did 2 queries -- first fetch room IDs for
- * the world, then fetch memories by those room IDs. A single JOIN does
- * the same work in one round-trip and lets the DB optimize the plan.
+ * Gets memories for all rooms belonging to any of the given worlds.
+ * Single query with WHERE room.world_id IN (...). Limit applies to total results.
+ * For a single world, pass worldIds: [worldId].
  */
-export async function getMemoriesByWorldId(
+export async function getMemoriesByWorldIds(
   db: DrizzleDatabase,
   agentId: UUID,
   params: {
-    worldId: UUID;
-    /** @deprecated use limit */
-    count?: number;
-    limit?: number;
+    worldIds: UUID[];
     tableName?: string;
+    limit?: number;
   }
 ): Promise<Memory[]> {
+  if (params.worldIds.length === 0) return [];
   const tableName = params.tableName || "messages";
-  const effectiveLimit = params.limit ?? params.count;
 
   const query = db
     .select({
@@ -1035,14 +1031,14 @@ export async function getMemoriesByWorldId(
     .innerJoin(roomTable, eq(roomTable.id, memoryTable.roomId))
     .where(
       and(
-        eq(roomTable.worldId, params.worldId),
+        inArray(roomTable.worldId, params.worldIds),
         eq(memoryTable.agentId, agentId),
         eq(memoryTable.type, tableName)
       )
     )
     .orderBy(desc(memoryTable.createdAt));
 
-  const rows = effectiveLimit ? await query.limit(effectiveLimit) : await query;
+  const rows = params.limit ? await query.limit(params.limit) : await query;
 
   return rows.map((row) => ({
     id: row.id as UUID,

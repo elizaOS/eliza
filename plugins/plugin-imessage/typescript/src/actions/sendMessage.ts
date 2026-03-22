@@ -68,7 +68,7 @@ export const sendMessage: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const imessageService = runtime.getService<IMessageService>(
+    const imessageService = await runtime.getService<IMessageService>(
       IMESSAGE_SERVICE_NAME,
     );
 

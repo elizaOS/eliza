@@ -1,4 +1,4 @@
-const { Desktop } = require("../index.js");
+const { Desktop } = require("../wrapper.js");
 
 /**
  * Test for Locator.waitFor() method with 'exists' condition

@@ -45,7 +45,8 @@ async function build(): Promise<void> {
     target: "browser",
     format: "esm",
     sourcemap: "external",
-    minify: true,
+    minify: false,
+    splitting: false,
     external: externalDeps,
   });
 
@@ -75,8 +76,21 @@ async function build(): Promise<void> {
     throw new Error("Node CJS build failed");
   }
 
+  // Fix Bun bundler bug: it emits "default2 as default" when re-exporting default from index.node.ts
+  const { readFile, writeFile, rename, access } = await import("node:fs/promises");
+  for (const file of ["dist/node/index.node.js", "dist/cjs/index.node.js"]) {
+    try {
+      let code = await readFile(file, "utf-8");
+      if (code.includes("default2 as default")) {
+        code = code.replace("default2 as default", "openaiPlugin as default");
+        await writeFile(file, code);
+      }
+    } catch (e) {
+      console.warn("Post-process default export warning:", e);
+    }
+  }
+
   // Rename .js to .cjs for correct module resolution
-  const { rename, access } = await import("node:fs/promises");
   try {
     await access("dist/cjs/index.node.js");
     await rename("dist/cjs/index.node.js", "dist/cjs/index.node.cjs");
@@ -90,7 +104,7 @@ async function build(): Promise<void> {
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
 
-  const { mkdir, writeFile } = await import("node:fs/promises");
+  const { mkdir } = await import("node:fs/promises");
   const { $ } = await import("bun");
 
   await $`tsc --project tsconfig.build.json`;

@@ -134,11 +134,12 @@ class TestGenerateIcs:
             ],
         )
         ics = generate_ics(event)
+        ics_unfolded = ics.replace("\r\n ", "")
         assert "ORGANIZER;CN=Alice:mailto:alice@example.com" in ics
         assert "ROLE=REQ-PARTICIPANT" in ics
         assert "ROLE=OPT-PARTICIPANT" in ics
-        assert "mailto:bob@example.com" in ics
-        assert "mailto:carol@example.com" in ics
+        assert "mailto:bob@example.com" in ics_unfolded
+        assert "mailto:carol@example.com" in ics_unfolded
 
     def test_with_reminders(self) -> None:
         event = CalendarEvent(

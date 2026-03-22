@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "lint": "biome check --write --unsafe .",
     "lint:fix": "biome check --write .",

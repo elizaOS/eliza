@@ -15,7 +15,7 @@
  *
  * REMOVAL: Delete this file and remove createCompatRuntime() call in service.ts
  */
-import type { ChannelType, Entity, IAgentRuntime, Room, UUID, World } from "@elizaos/core";
+import type { ChannelType, Entity, IAgentRuntime, JsonValue, Room, UUID, World } from "@elizaos/core";
 
 /**
  * Extended types that support messageServerId for cross-core compatibility.
@@ -42,9 +42,9 @@ export interface EnsureConnectionParams {
   serverId?: string;
   messageServerId?: UUID;
   type?: ChannelType | string;
-  worldId: UUID;
+  worldId?: UUID;
   userId?: UUID;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, JsonValue>;
 }
 
 /**
@@ -105,5 +105,5 @@ export function createCompatRuntime(runtime: IAgentRuntime): ICompatRuntime {
 
       return value;
     },
-  });
+  }) as ICompatRuntime;
 }

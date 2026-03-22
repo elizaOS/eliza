@@ -83,32 +83,29 @@ describe("polymarketProvider", () => {
       POLYMARKET_PROVIDER_STRICT: "true",
     });
 
-    const mockClient = {
-      getTradesPaginated: vi.fn().mockResolvedValue({
-        trades: [
-          {
-            id: "t1",
-            market: "m1",
-            asset_id: "a1",
-            side: "BUY",
-            price: "0.4",
-            size: "10",
-          },
-        ],
-        next_cursor: "",
-      }),
-      getOpenOrders: vi
-        .fn()
-        .mockResolvedValue([{ id: "o1", asset_id: "a1", market: "m1", side: "BUY", price: "0.4" }]),
-      getBalanceAllowance: vi.fn().mockResolvedValue({ balance: "100", allowance: "1000" }),
-      getOrderBook: vi.fn().mockResolvedValue({
-        bids: [{ price: "0.39" }],
-        asks: [{ price: "0.41" }],
-      }),
+    const mockAccountState = {
+      walletAddress: "0xwallet",
+      balances: {
+        collateral: { balance: "100", allowance: "1000" },
+        conditionalTokens: {} as Record<string, { balance: string; allowance: string }>,
+      },
+      recentTrades: [
+        { id: "t1", market: "m1", asset_id: "a1", side: "BUY", price: "0.4", size: "10" },
+      ] as never[],
+      activeOrders: [{ id: "o1", asset_id: "a1", market: "m1", side: "BUY", price: "0.4" }] as never[],
+      positions: [{ asset_id: "a1", size: "10", avgPrice: "0.4" }] as never[],
+      orderScoringStatus: {} as Record<string, boolean>,
+      apiKeys: [] as never[],
+      certRequired: null as boolean | null,
+      lastUpdatedAt: Date.now(),
+      expiresAt: Date.now() + 30_000,
     };
 
-    vi.mocked(initializeClobClientWithCreds).mockResolvedValue(mockClient);
-    vi.mocked(getWalletAddress).mockReturnValue("0xwallet");
+    const mockService = {
+      getCachedAccountState: vi.fn().mockReturnValue(mockAccountState),
+      getCachedActivityContext: vi.fn().mockReturnValue(null),
+    };
+    vi.mocked(runtime.getService).mockReturnValue(mockService);
 
     const result = await polymarketProvider.get(
       runtime,
@@ -146,8 +143,13 @@ describe("polymarketProvider", () => {
       POLYMARKET_PROVIDER_STRICT: "false",
     });
 
-    vi.mocked(initializeClobClientWithCreds).mockRejectedValue(new Error("boom"));
-    vi.mocked(getWalletAddress).mockReturnValue("0xwallet");
+    const mockService = {
+      getCachedAccountState: vi.fn().mockImplementation(() => {
+        throw new Error("boom");
+      }),
+      getCachedActivityContext: vi.fn().mockReturnValue(null),
+    };
+    vi.mocked(runtime.getService).mockReturnValue(mockService);
 
     const result = await polymarketProvider.get(
       runtime,

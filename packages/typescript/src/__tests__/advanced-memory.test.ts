@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { MemoryService } from "../advanced-memory";
 import { LongTermMemoryCategory } from "../advanced-memory/types";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import type { Character, UUID } from "../types";
 
@@ -20,8 +21,10 @@ describe("advanced memory (built-in)", () => {
       secrets: {},
     };
 
-    const runtime = new AgentRuntime({ character });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    const runtime = new AgentRuntime({ character, adapter });
+    await runtime.initialize();
 
     // Service registration is async and waits for runtime init to complete.
     await runtime.getServiceLoadPromise("memory");
@@ -75,8 +78,10 @@ describe("advanced memory (built-in)", () => {
       secrets: {},
     };
 
-    const runtime = new AgentRuntime({ character });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    const runtime = new AgentRuntime({ character, adapter });
+    await runtime.initialize();
 
     expect(runtime.hasService("memory")).toBe(false);
     expect(runtime.providers.some((p) => p.name === "LONG_TERM_MEMORY")).toBe(

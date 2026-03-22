@@ -25,7 +25,7 @@ export const sendCastAction: Action = {
 
     const hasKeyword = keywords.some((keyword) => text.includes(keyword));
 
-    const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
+    const service = await runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
     const isServiceAvailable = !!service?.getCastService(runtime.agentId);
 
     return hasKeyword && isServiceAvailable;
@@ -33,7 +33,7 @@ export const sendCastAction: Action = {
 
   handler: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     try {
-      const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
+      const service = await runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
       const postService = service?.getCastService(runtime.agentId);
 
       if (!postService) {

@@ -336,9 +336,9 @@ export const updateSettingsAction: Action = {
     >;
 
     // Get secrets service
-    const secretsService = runtime.getService(
+    const secretsService = (await runtime.getService(
       "SECRETS",
-    ) as SecretsService | null;
+    )) as SecretsService | null;
 
     // Extract settings from message
     logger.info("[UpdateSettings] Extracting settings from message");

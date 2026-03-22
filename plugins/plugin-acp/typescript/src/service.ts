@@ -79,7 +79,7 @@ export class ACPService extends Service {
    * Stop the ACPService
    */
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService<ACPService>(ACP_SERVICE_TYPE);
+    const service = await runtime.getService<ACPService>(ACP_SERVICE_TYPE);
     if (service) {
       await service.stop();
     }

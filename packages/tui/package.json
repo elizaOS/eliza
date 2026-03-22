@@ -8,7 +8,7 @@
 		"clean": "rm -rf dist",
 		"build": "tsc -p tsconfig.build.json",
 		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
-		"test": "node --test --import tsx test/*.test.ts",
+		"test": "bun test",
 		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"files": [
@@ -44,6 +44,7 @@
 	},
 	"devDependencies": {
 		"@xterm/headless": "^5.5.0",
-		"@xterm/xterm": "^5.5.0"
+		"@xterm/xterm": "^5.5.0",
+		"tsx": "^4.19.0"
 	}
 }

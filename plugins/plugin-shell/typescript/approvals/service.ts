@@ -349,7 +349,7 @@ export class ExecApprovalService extends Service {
   async requestApproval(
     request: ExecApprovalRequest,
   ): Promise<ExecApprovalResult> {
-    const approvalService = this.runtime?.getService(
+    const approvalService = await this.runtime?.getService(
       "approval",
     ) as ApprovalService | null;
 
@@ -427,7 +427,7 @@ export class ExecApprovalService extends Service {
       onTimeout?: () => Promise<void>;
     },
   ): Promise<UUID> {
-    const approvalService = this.runtime?.getService(
+    const approvalService = await this.runtime?.getService(
       "approval",
     ) as ApprovalService | null;
 
@@ -519,7 +519,7 @@ export class ExecApprovalService extends Service {
    * Cancel a pending approval
    */
   async cancelApproval(taskId: UUID): Promise<void> {
-    const approvalService = this.runtime?.getService(
+    const approvalService = await this.runtime?.getService(
       "approval",
     ) as ApprovalService | null;
 

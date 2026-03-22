@@ -147,7 +147,12 @@ class TestSlotFinding:
             room_id=str(uuid.uuid4()),
             title="Empty Meeting",
             participants=[],
-            constraints=SchedulingConstraints(),
+            constraints=SchedulingConstraints(
+                min_duration_minutes=30,
+                preferred_duration_minutes=30,
+                max_days_out=7,
+            ),
+            urgency=SchedulingUrgency.FLEXIBLE,
             created_at=1700000000000,
         )
 
@@ -181,7 +186,12 @@ class TestSlotFinding:
             room_id=str(uuid.uuid4()),
             title="No Overlap",
             participants=[alice, bob],
-            constraints=SchedulingConstraints(min_duration_minutes=30, max_days_out=7),
+            constraints=SchedulingConstraints(
+                min_duration_minutes=30,
+                preferred_duration_minutes=30,
+                max_days_out=7,
+            ),
+            urgency=SchedulingUrgency.FLEXIBLE,
             created_at=1700000000000,
         )
 

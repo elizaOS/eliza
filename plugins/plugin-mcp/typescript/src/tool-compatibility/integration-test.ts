@@ -67,8 +67,8 @@ function createMockRuntime(modelProvider: string, model: string): MockRuntime {
     registerPlugin: async () => {},
     initialize: async () => {},
     getConnection: async () => ({}),
-    getService: () => null,
-    getServicesByType: () => [],
+    getService: async () => null,
+    getServicesByType: async () => [],
     getAllServices: () => new Map(),
     registerService: async () => {},
     getServiceLoadPromise: async () => {
@@ -76,7 +76,6 @@ function createMockRuntime(modelProvider: string, model: string): MockRuntime {
     },
     getRegisteredServiceTypes: () => [],
     hasService: () => false,
-    registerDatabaseAdapter: () => {},
   };
 
   return {

@@ -18,7 +18,7 @@ export const minecraftDisconnectAction: Action = {
   similes: ["MINECRAFT_DISCONNECT", "LEAVE_SERVER", "QUIT_MINECRAFT"],
   description: "Disconnect the Mineflayer bot from the Minecraft server",
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    const service = runtime.getService<MinecraftService>(
+    const service = await runtime.getService<MinecraftService>(
       MINECRAFT_SERVICE_TYPE,
     );
     return Boolean(service?.getCurrentSession());
@@ -30,7 +30,7 @@ export const minecraftDisconnectAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<MinecraftService>(
+    const service = await runtime.getService<MinecraftService>(
       MINECRAFT_SERVICE_TYPE,
     );
     if (!service) {

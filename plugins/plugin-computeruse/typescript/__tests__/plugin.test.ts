@@ -1,4 +1,10 @@
-import { AgentRuntime, ChannelType, createMessageMemory, stringToUuid } from "@elizaos/core";
+import {
+  AgentRuntime,
+  ChannelType,
+  createMessageMemory,
+  InMemoryDatabaseAdapter,
+  stringToUuid,
+} from "@elizaos/core";
 import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
 import { plugin as inmemorydbPlugin } from "@elizaos/plugin-inmemorydb";
 import mcpPlugin from "@elizaos/plugin-mcp";
@@ -17,14 +23,15 @@ describe("@elizaos/plugin-computeruse", () => {
     vi.resetModules();
     const { default: computerusePlugin } = await import("../src/index.js");
 
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
     const runtime = new AgentRuntime({
       character: {
         name: "TestAgent",
         system: "You are a test agent.",
-        settings: {
-          // no MCP servers needed for this test
-        },
+        settings: {},
       },
+      adapter,
       plugins: [inmemorydbPlugin, mcpPlugin, elizaClassicPlugin, computerusePlugin],
     });
 
@@ -54,6 +61,8 @@ describe("@elizaos/plugin-computeruse", () => {
     vi.resetModules();
     const { default: computerusePlugin } = await import("../src/index.js");
 
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
     const runtime = new AgentRuntime({
       character: {
         name: "TestAgent",
@@ -61,7 +70,6 @@ describe("@elizaos/plugin-computeruse", () => {
         settings: {
           mcp: {
             servers: {
-              // Intentionally unreachable; initialization should still succeed (best-effort connect).
               computeruse: {
                 type: "streamable-http",
                 url: "http://127.0.0.1:9/mcp",
@@ -71,13 +79,14 @@ describe("@elizaos/plugin-computeruse", () => {
           },
         },
       },
+      adapter,
       plugins: [inmemorydbPlugin, mcpPlugin, elizaClassicPlugin, computerusePlugin],
     });
 
     await runtime.initialize();
 
     await runtime.getServiceLoadPromise(COMPUTERUSE_SERVICE_TYPE);
-    const svc = runtime.getService<ComputerUseService>(COMPUTERUSE_SERVICE_TYPE);
+    const svc = await runtime.getService<ComputerUseService>(COMPUTERUSE_SERVICE_TYPE);
     // Helpful debugging signal if this ever regresses.
     expect(svc).toBeTruthy();
     expect(svc?.isEnabled()).toBe(true);
@@ -117,6 +126,8 @@ describe("@elizaos/plugin-computeruse", () => {
     vi.resetModules();
     const { default: computerusePlugin } = await import("../src/index.js");
 
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
     const runtime = new AgentRuntime({
       character: {
         name: "TestAgent",
@@ -133,6 +144,7 @@ describe("@elizaos/plugin-computeruse", () => {
           },
         },
       },
+      adapter,
       plugins: [inmemorydbPlugin, mcpPlugin, elizaClassicPlugin, computerusePlugin],
     });
     await runtime.initialize();
@@ -181,6 +193,8 @@ describe("@elizaos/plugin-computeruse", () => {
     vi.resetModules();
     const { default: computerusePlugin } = await import("../src/index.js");
 
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
     const runtime = new AgentRuntime({
       character: {
         name: "TestAgent",
@@ -197,6 +211,7 @@ describe("@elizaos/plugin-computeruse", () => {
           },
         },
       },
+      adapter,
       plugins: [inmemorydbPlugin, mcpPlugin, elizaClassicPlugin, computerusePlugin],
     });
     await runtime.initialize();

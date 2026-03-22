@@ -1803,10 +1803,10 @@ class AgentRuntime(IAgentRuntime):
         if self._adapter:
             await self._adapter.delete_task(id)
 
-    async def get_memories_by_world_id(self, params: dict[str, Any]) -> list[Any]:
+    async def get_memories_by_world_ids(self, params: dict[str, Any]) -> list[Any]:
         if not self._adapter:
             return []
-        return await self._adapter.get_memories_by_world_id(params)
+        return await self._adapter.get_memories_by_world_ids(params)
 
     # ============================================================================
     # Dynamic Prompt Execution with Validation-Aware Streaming

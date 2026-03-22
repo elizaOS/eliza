@@ -31,6 +31,22 @@ vi.mock("http", () => ({
   })),
 }));
 
+// Mock ngrok so NgrokService does not run the real binary
+vi.mock("ngrok", () => ({
+  default: {
+    connect: vi.fn().mockResolvedValue("https://test.ngrok.io"),
+    disconnect: vi.fn(),
+    kill: vi.fn(),
+    authtoken: vi.fn(),
+    getVersion: vi.fn(),
+    getApi: vi.fn(),
+    getUrl: vi.fn(),
+    defaultConfigPath: vi.fn(),
+    oldDefaultConfigPath: vi.fn(),
+    upgradeConfig: vi.fn(),
+  },
+}));
+
 // Mock file system imports
 vi.mock("url", () => ({
   fileURLToPath: vi.fn(() => "/test/path/file.js"),

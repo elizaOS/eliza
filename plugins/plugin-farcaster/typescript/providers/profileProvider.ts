@@ -12,7 +12,7 @@ export const farcasterProfileProvider: Provider = {
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     try {
-      const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
+      const service = await runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
       const managers = service?.getActiveManagers();
 
       if (!managers || managers.size === 0) {

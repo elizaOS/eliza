@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test, vi } from "vitest";
 import type {
   CredentialProvider,
   CredentialProviderResult,
@@ -16,8 +16,8 @@ import {
 
 function createMockCredStore(overrides?: Partial<N8nCredentialStoreApi>): N8nCredentialStoreApi {
   return {
-    get: mock(() => Promise.resolve(null)),
-    set: mock(() => Promise.resolve()),
+    get: vi.fn(() => Promise.resolve(null)),
+    set: vi.fn(() => Promise.resolve()),
     ...overrides,
   };
 }
@@ -26,13 +26,13 @@ function createMockCredProvider(
   resolveFn?: (userId: string, credType: string) => Promise<CredentialProviderResult>
 ): CredentialProvider {
   return {
-    resolve: mock(resolveFn ?? (() => Promise.resolve(null))),
+    resolve: vi.fn(resolveFn ?? (() => Promise.resolve(null))),
   };
 }
 
 function createMockApiClient(overrides?: Partial<N8nApiClient>): N8nApiClient {
   return {
-    createCredential: mock(() =>
+    createCredential: vi.fn(() =>
       Promise.resolve({
         id: "n8n-cred-123",
         name: "gmailOAuth2Api",
@@ -156,7 +156,7 @@ describe("resolveCredentials", () => {
 
   test("db mode: resolves from credential store", async () => {
     const credStore = createMockCredStore({
-      get: mock(() => Promise.resolve("cached-cred-id")),
+      get: vi.fn(() => Promise.resolve("cached-cred-id")),
     });
 
     const res = await resolveCredentials(
@@ -173,7 +173,7 @@ describe("resolveCredentials", () => {
 
   test("db mode: takes priority over config", async () => {
     const credStore = createMockCredStore({
-      get: mock(() => Promise.resolve("db-cred-id")),
+      get: vi.fn(() => Promise.resolve("db-cred-id")),
     });
     const config: N8nPluginConfig = {
       ...baseConfig,
@@ -276,7 +276,7 @@ describe("resolveCredentials", () => {
     }));
 
     const apiClient = createMockApiClient({
-      createCredential: mock(() => Promise.reject(new Error("n8n API down"))),
+      createCredential: vi.fn(() => Promise.reject(new Error("n8n API down"))),
     });
 
     const res = await resolveCredentials(
@@ -355,7 +355,7 @@ describe("resolveCredentials", () => {
 
   test("priority: db > config > provider", async () => {
     const credStore = createMockCredStore({
-      get: mock(() => Promise.resolve("db-wins")),
+      get: vi.fn(() => Promise.resolve("db-wins")),
     });
     const config: N8nPluginConfig = {
       ...baseConfig,
