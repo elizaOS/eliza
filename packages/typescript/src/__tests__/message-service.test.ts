@@ -911,8 +911,8 @@ describe("DefaultMessageService", () => {
 
         await messageService.handleMessage(runtime, message, mockCallback);
 
-        // When DISABLE_MEMORY_CREATION is true, memory is never created regardless of allowlist
-        expect(runtime.createMemory).not.toHaveBeenCalled();
+        // ALLOW_MEMORY_SOURCE_IDS overrides DISABLE_MEMORY_CREATION for whitelisted sources
+        expect(runtime.createMemory).toHaveBeenCalled();
       });
     });
 
