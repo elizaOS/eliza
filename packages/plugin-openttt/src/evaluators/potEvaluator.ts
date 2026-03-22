@@ -36,9 +36,9 @@ export const potEvaluator: Evaluator = {
     message: Memory,
     _state?: State
   ): Promise<ActionResult | void | undefined> => {
-    // Check if a PoT was generated for this message using module-level cache
-    const potKey = `openttt:pot:${message.id}`;
-    const cached = potCacheGet(potKey);
+    // Look up the last PoT for this agent via agentId pointer, then resolve the PoT record
+    const lastHash = potCacheGet(`openttt:last:${_runtime.agentId}`);
+    const cached = lastHash ? potCacheGet(`openttt:pot:${lastHash}`) : null;
 
     if (cached) {
       try {
