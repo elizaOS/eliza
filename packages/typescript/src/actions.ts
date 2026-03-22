@@ -79,28 +79,30 @@ function formatActionCallExample(example: {
 	actions: readonly string[];
 	params?: Record<string, Record<string, string | number | boolean | null>>;
 }): string {
-	const actionTags = example.actions
-		.map((a) => `  <action>${escapeXmlText(a)}</action>`)
-		.join("\n");
-
 	const paramsByAction = example.params ?? {};
-	const paramsBlocks = Object.entries(paramsByAction)
-		.map(([actionName, params]) => {
-			const inner = Object.entries(params)
-				.map(([k, v]) => {
-					const raw =
-						typeof v === "string" ? v : v === null ? "null" : JSON.stringify(v);
-					return `    <${k}>${escapeXmlText(raw)}</${k}>`;
-				})
-				.join("\n");
-			return `  <${actionName}>\n${inner}\n  </${actionName}>`;
+
+	const actionElements = example.actions
+		.map((actionName) => {
+			const actionParams = paramsByAction[actionName];
+			if (actionParams && Object.keys(actionParams).length > 0) {
+				const paramsInner = Object.entries(actionParams)
+					.map(([k, v]) => {
+						const raw =
+							typeof v === "string"
+								? v
+								: v === null
+									? "null"
+									: JSON.stringify(v);
+						return `      <${k}>${escapeXmlText(raw)}</${k}>`;
+					})
+					.join("\n");
+				return `  <action>\n    <name>${escapeXmlText(actionName)}</name>\n    <params>\n${paramsInner}\n    </params>\n  </action>`;
+			}
+			return `  <action>\n    <name>${escapeXmlText(actionName)}</name>\n  </action>`;
 		})
 		.join("\n");
 
-	const paramsSection =
-		paramsBlocks.length > 0 ? `\n<params>\n${paramsBlocks}\n</params>` : "";
-
-	return `User: ${example.user}\nAssistant:\n<actions>\n${actionTags}\n</actions>${paramsSection}`;
+	return `User: ${example.user}\nAssistant:\n<actions>\n${actionElements}\n</actions>`;
 }
 
 /**
@@ -178,18 +180,20 @@ export function formatActionNames(actions: Action[]): string {
 export function formatActions(actions: Action[]): string {
 	if (!actions || !actions.length) return "";
 
-	return shuffleActions(actions)
+	const actionElements = shuffleActions(actions)
 		.map((action) => {
-			let actionText = `- **${action.name}**: ${action.description || "No description available"}`;
+			const descLine = `    <description>${escapeXmlText(action.description || "No description available")}</description>`;
 
 			if (action.parameters && action.parameters.length > 0) {
-				const paramsText = formatActionParameters(action.parameters);
-				actionText += `\n  Parameters:\n${paramsText}`;
+				const paramsXml = formatActionParameters(action.parameters);
+				return `  <action>\n    <name>${escapeXmlText(action.name)}</name>\n${descLine}\n    <params>\n${paramsXml}\n    </params>\n  </action>`;
 			}
 
-			return actionText;
+			return `  <action>\n    <name>${escapeXmlText(action.name)}</name>\n${descLine}\n  </action>`;
 		})
 		.join("\n");
+
+	return `<actions>\n${actionElements}\n</actions>`;
 }
 
 export function formatActionParameters(parameters: ActionParameter[]): string {
@@ -197,21 +201,25 @@ export function formatActionParameters(parameters: ActionParameter[]): string {
 
 	return parameters
 		.map((param) => {
-			const requiredStr = param.required ? " (required)" : " (optional)";
+			const requiredStr = param.required ? "true" : "false";
 			const typeStr = formatParameterType(param.schema);
-			const defaultStr =
-				param.schema.default !== undefined
-					? ` [default: ${JSON.stringify(param.schema.default)}]`
-					: "";
-			const enumStr = param.schema.enum
-				? ` [values: ${param.schema.enum.join(", ")}]`
-				: "";
-			const examplesStr =
-				param.examples && param.examples.length > 0
-					? ` [examples: ${param.examples.map((v) => JSON.stringify(v)).join(", ")}]`
-					: "";
 
-			return `    - ${param.name}${requiredStr}: ${param.description} (${typeStr}${enumStr}${defaultStr}${examplesStr})`;
+			let paramXml = `      <param>\n        <name>${escapeXmlText(param.name)}</name>\n        <description>${escapeXmlText(param.description)}</description>\n        <type>${escapeXmlText(typeStr)}</type>\n        <required>${requiredStr}</required>`;
+
+			if (param.schema.enum) {
+				paramXml += `\n        <values>${escapeXmlText(param.schema.enum.join(", "))}</values>`;
+			}
+
+			if (param.schema.default !== undefined) {
+				paramXml += `\n        <default>${escapeXmlText(JSON.stringify(param.schema.default))}</default>`;
+			}
+
+			if (param.examples && param.examples.length > 0) {
+				paramXml += `\n        <examples>${escapeXmlText(param.examples.map((v) => JSON.stringify(v)).join(", "))}</examples>`;
+			}
+
+			paramXml += `\n      </param>`;
+			return paramXml;
 		})
 		.join("\n");
 }
@@ -237,6 +245,17 @@ function formatParameterType(schema: ActionParameterSchema): string {
 	}
 }
 
+/**
+ * Parse action parameters from either the new nested format or the legacy flat format.
+ *
+ * New format (preferred):
+ *   <actions>
+ *     <action><name>ACTION1</name><params><p1>v1</p1></params></action>
+ *   </actions>
+ *
+ * Legacy format (backward-compat – previously stored in content.params):
+ *   <ACTION1><p1>v1</p1></ACTION1>
+ */
 export function parseActionParams(
 	paramsXml: string | undefined | null,
 ): Map<string, ActionParameters> {
@@ -246,9 +265,36 @@ export function parseActionParams(
 		return result;
 	}
 
-	const actionBlocks = extractXmlChildren(paramsXml);
+	// ---- New nested format: look for <action> children ----
+	const actionChildren = extractXmlChildren(paramsXml);
+	const actionElements = actionChildren.filter((c) => c.key === "action");
 
-	for (const { key: actionName, value: actionParamsXml } of actionBlocks) {
+	if (actionElements.length > 0) {
+		for (const { value: actionXml } of actionElements) {
+			const children = extractXmlChildren(actionXml);
+			const nameEntry = children.find((c) => c.key === "name");
+			const paramsEntry = children.find((c) => c.key === "params");
+
+			if (!nameEntry) continue;
+			const actionName = nameEntry.value.trim().toUpperCase();
+			if (!actionName) continue;
+
+			if (paramsEntry) {
+				const paramPairs = extractXmlChildren(paramsEntry.value);
+				const actionParams: ActionParameters = {};
+				for (const { key: paramName, value: paramValue } of paramPairs) {
+					actionParams[paramName] = parseParamValue(paramValue);
+				}
+				if (Object.keys(actionParams).length > 0) {
+					result.set(actionName, actionParams);
+				}
+			}
+		}
+		return result;
+	}
+
+	// ---- Legacy flat format: <ACTION_NAME><param>value</param></ACTION_NAME> ----
+	for (const { key: actionName, value: actionParamsXml } of actionChildren) {
 		const params = extractXmlChildren(actionParamsXml);
 		const actionParams: ActionParameters = {};
 

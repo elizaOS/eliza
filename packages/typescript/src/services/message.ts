@@ -1613,14 +1613,67 @@ export class DefaultMessageService implements IMessageService {
 			streamingExtractor?.markComplete();
 
 			const normalizedActions = (() => {
-				if (Array.isArray(parsedXml.actions)) {
-					return parsedXml.actions;
-				}
+				// New nested format: actions is a string containing <action> XML children
 				if (typeof parsedXml.actions === "string") {
-					return parsedXml.actions
+					const actionsXml = parsedXml.actions;
+					// Check if it contains <action> elements (new format)
+					if (actionsXml.includes("<action>") || actionsXml.includes("<action ")) {
+						const actionEntries: Array<{
+							name: string;
+							paramsXml?: string;
+						}> = [];
+						// Use the same extractXmlChildren logic via parseActionParams
+						// We just need names here; params are extracted separately below
+						const actionChildRegex =
+							/<action>([\s\S]*?)<\/action>/g;
+						let match: RegExpExecArray | null;
+						while (
+							(match = actionChildRegex.exec(actionsXml)) !== null
+						) {
+							const inner = match[1];
+							const nameMatch = inner.match(
+								/<name>([\s\S]*?)<\/name>/,
+							);
+							const paramsMatch = inner.match(
+								/<params>([\s\S]*?)<\/params>/,
+							);
+							if (nameMatch) {
+								const name = nameMatch[1].trim();
+								const paramsXml = paramsMatch
+									? paramsMatch[1].trim()
+									: undefined;
+								if (name) actionEntries.push({ name, paramsXml });
+							}
+						}
+
+						if (actionEntries.length > 0) {
+							// Merge inline params back into responseContent.params
+							// Build a legacy flat params string so parseActionParams can consume it
+							const inlineParamsXml = actionEntries
+								.filter((e) => e.paramsXml)
+								.map(
+									(e) =>
+										`<${e.name.toUpperCase()}>${e.paramsXml}</${e.name.toUpperCase()}>`,
+								)
+								.join("\n");
+							if (
+								inlineParamsXml &&
+								(!parsedXml.params || parsedXml.params === "")
+							) {
+								parsedXml.params = inlineParamsXml;
+							}
+
+							return actionEntries.map((e) => e.name);
+						}
+					}
+					// Legacy comma-separated format
+					return actionsXml
 						.split(",")
 						.map((action) => String(action).trim())
 						.filter((action) => action.length > 0);
+				}
+				if (Array.isArray(parsedXml.actions)) {
+					return parsedXml.actions as string[];
 				}
 				return [];
 			})();

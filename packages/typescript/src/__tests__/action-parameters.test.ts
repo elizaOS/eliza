@@ -192,8 +192,10 @@ describe("Action parameters (optional)", () => {
 				content: {
 					text: "move",
 					actions: ["MOVE"],
-					// `parseKeyValueXml` strips the outer <params> wrapper and stores the inner XML string
-					params: "<MOVE><direction>south</direction></MOVE>",
+					// New nested format: content.params holds the inner XML of <actions>
+					// `parseActionParams` will detect <action> children and parse the new format
+					params:
+						"<action><name>MOVE</name><params><direction>south</direction></params></action>",
 				},
 				type: MemoryType.MESSAGE,
 				createdAt: Date.now(),
