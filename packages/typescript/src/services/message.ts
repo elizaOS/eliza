@@ -2006,7 +2006,8 @@ Output ONLY the continuation, starting immediately after the last character abov
 
       // Total timeout for all providers running in parallel (configurable via PROVIDERS_TOTAL_TIMEOUT_MS env var)
       // Since providers run in parallel, this is the max wall-clock time allowed
-      // Note: Default of 5000ms allows providers making external API calls adequate time
+      // Note: Default increased from 1000ms to 5000ms to allow providers making external API calls adequate time.
+      // Set PROVIDERS_TOTAL_TIMEOUT_MS=1000 to restore previous behavior if needed.
       const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(
         String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "5000"),
         10,
