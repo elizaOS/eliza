@@ -79,7 +79,7 @@ export enum EventType {
 	HOOK_SESSION_END = "HOOK_SESSION_END",
 
 	// Hook system events - agent lifecycle
-	HOOK_AGENT_BOOTSTRAP = "HOOK_AGENT_BOOTSTRAP",
+	HOOK_AGENT_BASIC_CAPABILITIES = "HOOK_AGENT_BASIC_CAPABILITIES",
 	HOOK_AGENT_START = "HOOK_AGENT_START",
 	HOOK_AGENT_END = "HOOK_AGENT_END",
 
@@ -283,9 +283,9 @@ export interface HookCommandPayload extends HookEventPayload {
 }
 
 /**
- * Bootstrap file definition for agent basic-capabilities hooks
+ * File definition for agent basic-capabilities hooks
  */
-export interface BootstrapFile {
+export interface BasicCapabilitiesFile {
 	/** File path relative to workspace */
 	path: string;
 	/** File content */
@@ -297,13 +297,13 @@ export interface BootstrapFile {
 }
 
 /**
- * Payload for agent basic-capabilities hook event (HOOK_AGENT_BOOTSTRAP)
+ * Payload for agent basic-capabilities hook event (HOOK_AGENT_BASIC_CAPABILITIES)
  */
-export interface HookAgentBootstrapPayload extends HookEventPayload {
+export interface HookAgentBasicCapabilitiesPayload extends HookEventPayload {
 	/** Workspace directory path */
 	workspaceDir: string;
-	/** Bootstrap files that will be injected. Hooks can modify this array. */
-	"basic-capabilitiesFiles": BootstrapFile[];
+	/** Files that will be injected. Hooks can modify this array. */
+	"basic-capabilitiesFiles": BasicCapabilitiesFile[];
 	/** Agent ID */
 	agentId?: string;
 	/** Session ID */
@@ -439,7 +439,7 @@ export interface EventPayloadMap {
 	[EventType.HOOK_COMMAND_STOP]: HookCommandPayload;
 	[EventType.HOOK_SESSION_START]: HookSessionPayload;
 	[EventType.HOOK_SESSION_END]: HookSessionPayload;
-	[EventType.HOOK_AGENT_BOOTSTRAP]: HookAgentBootstrapPayload;
+	[EventType.HOOK_AGENT_BASIC_CAPABILITIES]: HookAgentBasicCapabilitiesPayload;
 	[EventType.HOOK_AGENT_START]: HookAgentLifecyclePayload;
 	[EventType.HOOK_AGENT_END]: HookAgentLifecyclePayload;
 	[EventType.HOOK_GATEWAY_START]: HookGatewayPayload;

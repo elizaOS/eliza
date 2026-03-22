@@ -98,4 +98,6 @@ export interface Agent
 	status?: AgentStatus | ProtoAgentStatus;
 	createdAt: number | bigint;
 	updatedAt: number | bigint;
+	/** Arbitrary metadata persisted alongside the agent record. */
+	metadata?: Record<string, unknown>;
 }

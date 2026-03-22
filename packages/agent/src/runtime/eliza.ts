@@ -41,6 +41,7 @@ import {
   ChannelType,
   type Character,
   type Component,
+  createBasicCapabilitiesPlugin,
   createMessageMemory,
   type Entity,
   type LogEntry,
@@ -2805,7 +2806,7 @@ async function registerSqlPluginWithRecovery(
  * `config.ui.assistant.name`, falling back to "Eliza".  Character
  * personality data (bio, system prompt, style, etc.) is stored in the
  * database — not the config file — so we only provide sensible defaults
- * here for the initial bootstrap.
+ * here for the initial setup.
  */
 /** @internal Exported for testing. */
 export function buildCharacterFromConfig(config: ElizaConfig): Character {
@@ -2833,7 +2834,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // Read personality fields from the agent config entry (set during
   // onboarding from the chosen style preset).  Fall back to generic
   // defaults when the preset data is not present (e.g. pre-onboarding
-  // bootstrap or configs created before this change). For built-in default
+  // setup or configs created before this change). For built-in default
   // characters, fall back to the bundled preset so legacy name-only configs
   // still retain their default posts/messages.
   const bio = agentEntry?.bio ??
@@ -3743,14 +3744,6 @@ export async function startEliza(
     process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = "true";
   }
 
-  // 2e. Prevent @elizaos/core from auto-loading @elizaos/plugin-bootstrap.
-  //     Eliza uses @elizaos/plugin-trust which provides the settings/roles
-  //     providers and actions.  plugin-bootstrap (v1.x) is incompatible with
-  //     the 2.0.0-alpha.x runtime used here.
-  if (!process.env.IGNORE_BOOTSTRAP) {
-    process.env.IGNORE_BOOTSTRAP = "true";
-  }
-
   // 2e-ii. Ensure SECRET_SALT is set to suppress the @elizaos/core default
   //        warning and avoid using a predictable value in production.
   if (!process.env.SECRET_SALT) {
@@ -3803,7 +3796,7 @@ export async function startEliza(
 
   const primaryModel = resolvePrimaryModel(config);
 
-  // 4. Ensure workspace exists with bootstrap files
+  // 4. Ensure workspace exists with required files
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
   await ensureAgentWorkspace({ dir: workspaceDir, ensureInitFiles: true });
@@ -4027,8 +4020,28 @@ export async function startEliza(
   }
 
   // Deduplicate actions across all plugins to avoid "Action already registered"
-  // warnings from elizaOS core. First plugin wins (elizaPlugin is first).
-  deduplicatePluginActions([elizaPlugin, ...pluginsForRuntime]);
+  // warnings from elizaOS core. basic-capabilities is registered first by the
+  // runtime, so include it in deduplication so its actions take precedence.
+  const settings = character.settings ?? {};
+  const basicCapabilitiesPlugin = createBasicCapabilitiesPlugin({
+    disableBasic:
+      settings.DISABLE_BASIC_CAPABILITIES === true ||
+      settings.DISABLE_BASIC_CAPABILITIES === "true",
+    enableExtended:
+      settings.ENABLE_EXTENDED_CAPABILITIES === true ||
+      settings.ENABLE_EXTENDED_CAPABILITIES === "true" ||
+      settings.ADVANCED_CAPABILITIES === true ||
+      settings.ADVANCED_CAPABILITIES === "true",
+    skipCharacterProvider: false,
+    enableAutonomy:
+      settings.ENABLE_AUTONOMY === true ||
+      settings.ENABLE_AUTONOMY === "true",
+  });
+  deduplicatePluginActions([
+    basicCapabilitiesPlugin,
+    elizaPlugin,
+    ...pluginsForRuntime,
+  ]);
 
   let runtime = new AgentRuntime({
     character,
@@ -4122,7 +4135,7 @@ export async function startEliza(
 
   // 7d. Pre-register plugin-local-embedding so its TEXT_EMBEDDING handler
   //     (priority 10) is available before runtime.initialize() starts all
-  //     plugins in parallel.  Without this, the bootstrap plugin's services
+  //     plugins in parallel.  Without this, the basic-capabilities plugin's services
   //     (ActionFilterService, EmbeddingGenerationService) race ahead and use
   //     the cloud plugin's TEXT_EMBEDDING handler — which hits a paid API —
   //     because local-embedding's heavier init hasn't completed yet.
@@ -4261,7 +4274,6 @@ export async function startEliza(
     ensureTrajectoryLoggerEnabled(runtime, "runtime.initialize()");
 
     // 8b. Ensure AutonomyService is available for trigger dispatch.
-    // IGNORE_BOOTSTRAP=true prevents the bootstrap plugin (which normally
     // registers this service) from loading, so we start it explicitly.
     if (!runtime.getService("AUTONOMY")) {
       try {
@@ -4811,9 +4823,13 @@ export async function startInCloudMode(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
   const { CloudManager } = await import("../cloud/cloud-manager");
-  const { normalizeCloudSiteUrl } = await import("../cloud/base-url");
 
-  const cloudConfig = config.cloud!;
+  const cloudConfig = config.cloud;
+  if (!cloudConfig) {
+    throw new Error(
+      "Cloud mode requires a cloud configuration block in the config",
+    );
+  }
   logger.info(
     `[eliza] Starting in cloud mode (agentId=${agentId}, baseUrl=${cloudConfig.baseUrl ?? "(default)"})`,
   );

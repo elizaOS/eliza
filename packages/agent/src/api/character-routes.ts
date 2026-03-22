@@ -339,6 +339,32 @@ export async function handleCharacterRoutes(
       if (body.postExamples != null) {
         character.postExamples = body.postExamples as string[];
       }
+
+      // Persist character fields to DB so edits survive restarts
+      try {
+        const charData = {
+          name: character.name,
+          bio: character.bio,
+          system: character.system,
+          adjectives: character.adjectives,
+          topics: (character as { topics?: string[] }).topics,
+          style: character.style,
+          messageExamples: character.messageExamples,
+          postExamples: character.postExamples,
+        };
+        await state.runtime.updateAgent(state.runtime.agentId, {
+          name: character.name,
+          metadata: {
+            ...(state.runtime.character as { metadata?: Record<string, unknown> }).metadata,
+            character: charData,
+          },
+        });
+      } catch (dbErr) {
+        // Non-fatal: config sync below is the legacy fallback
+        logger.warn(
+          `[character-routes] Failed to persist character to DB: ${dbErr instanceof Error ? dbErr.message : dbErr}`,
+        );
+      }
     }
 
     try {

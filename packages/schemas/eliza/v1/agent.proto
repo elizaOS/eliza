@@ -42,9 +42,9 @@ message CharacterSettings {
   // Maximum iterations for multi-step
   optional int32 max_multistep_iterations = 3;
   // Whether LLM is off by default in rooms
-  optional bool bootstrap_defllmoff = 4;
+  optional bool basic_capabilities_defllmoff = 4;
   // Whether to keep responses when superseded
-  optional bool bootstrap_keep_resp = 5;
+  optional bool basic_capabilities_keep_resp = 5;
   // Provider execution timeout in ms
   optional int32 providers_total_timeout_ms = 6;
   // Maximum working memory entries

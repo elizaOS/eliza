@@ -6,20 +6,20 @@ This document explains **why** core behaviors and APIs in `@elizaos/core` are th
 
 ## Message handling and race conditions
 
-### Why `keepExistingResponses` / `BOOTSTRAP_KEEP_RESP`?
+### Why `keepExistingResponses` / `BASIC_CAPABILITIES_KEEP_RESP`?
 
 When multiple messages are processed (e.g. user sends a second message before the first reply is ready), the runtime normally **discards** the first response and only sends the one for the latest message. That avoids showing stale replies.
 
 Some deployments want to **keep** every response (e.g. for audit, replay, or UX where “late” replies are still shown). So we need a switch:
 
 - **Programmatic:** `MessageProcessingOptions.keepExistingResponses` so callers can override per request.
-- **Config:** `BOOTSTRAP_KEEP_RESP` so it can be set once in env/character settings.
+- **Config:** `BASIC_CAPABILITIES_KEEP_RESP` so it can be set once in env/character settings.
 
 **Why both?** Options override config so tests or specific flows can force one behavior without changing global settings. Resolving once at `handleMessage` start keeps the two race-check sites in sync and avoids re-reading settings.
 
 ### Use case (e.g. Spartan / Investment Manager): why keep every response?
 
-In chat UIs (Telegram, Discord, etc.) users often send a **second message before the first reply is ready**. Default behavior is to **discard** the first response and only send the reply to the latest message—so the user never sees an answer to their first question. For agents like the Spartan Investment Manager, that’s undesirable: every question should get an answer. So the agent sets `BOOTSTRAP_KEEP_RESP: 'true'` (or passes `keepExistingResponses: true`). Then when message B arrives while the reply to message A is still being generated, we **keep** A’s reply and send it when ready, and we also process B and send B’s reply. Result: the user sees both replies (A then B), instead of only the reply to B.
+In chat UIs (Telegram, Discord, etc.) users often send a **second message before the first reply is ready**. Default behavior is to **discard** the first response and only send the reply to the latest message—so the user never sees an answer to their first question. For agents like the Spartan Investment Manager, that’s undesirable: every question should get an answer. So the agent sets `BASIC_CAPABILITIES_KEEP_RESP: 'true'` (or passes `keepExistingResponses: true`). Then when message B arrives while the reply to message A is still being generated, we **keep** A’s reply and send it when ready, and we also process B and send B’s reply. Result: the user sees both replies (A then B), instead of only the reply to B.
 
 Useful for: chat-first agents, support bots, and any flow where “answer every message” matters more than “only show the latest reply.”
 
@@ -28,10 +28,10 @@ Useful for: chat-first agents, support bots, and any flow where “answer every 
 `handleMessage(runtime, message, callback, options)` is called by **different callers**: Telegram plugin, Discord plugin, basic-capabilities event handler, API, tests, etc. Each call can have different needs:
 
 - **Per-call override:** One integration (e.g. Telegram) might want to keep all responses for that channel; another (e.g. a strict API) might want to discard when a newer request arrives. If the flag lived only on the runtime or in env, you’d have to change global state for one code path. Passing it in **options** lets the **caller** decide for that specific `handleMessage` call. The same runtime can therefore serve both “keep” and “discard” behavior depending on who calls it.
-- **No global state:** Tests or one-off scripts can pass `keepExistingResponses: true` or `false` without touching `BOOTSTRAP_KEEP_RESP` or character settings.
-- **Explicit contract:** The fourth parameter makes the behavior for that request explicit at the call site. Resolution is then “options ?? BOOTSTRAP_KEEP_RESP” once at the start of `handleMessage`, so both race-check sites use the same value.
+- **No global state:** Tests or one-off scripts can pass `keepExistingResponses: true` or `false` without touching `BASIC_CAPABILITIES_KEEP_RESP` or character settings.
+- **Explicit contract:** The fourth parameter makes the behavior for that request explicit at the call site. Resolution is then “options ?? BASIC_CAPABILITIES_KEEP_RESP” once at the start of `handleMessage`, so both race-check sites use the same value.
 
-So: **config** (`BOOTSTRAP_KEEP_RESP`) sets the default for the agent; **options** let each caller override that default for a single request.
+So: **config** (`BASIC_CAPABILITIES_KEEP_RESP`) sets the default for the agent; **options** let each caller override that default for a single request.
 
 ### Prevent memory saving (DISABLE_MEMORY_CREATION / ALLOW_MEMORY_SOURCE_IDS)
 
@@ -126,7 +126,7 @@ The runtime is the only place that knows which action produced the content. Pass
 
 ---
 
-## Bootstrap and plugins
+## Basic-capabilities and plugins
 
 ### Why an ANXIETY provider?
 
