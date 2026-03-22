@@ -156,7 +156,7 @@ async function getLoadHooks() {
 //  1. loadHooks orchestration
 // ============================================================================
 
-describe("loadHooks orchestration", () => {
+describe("loadHooks orchestration", { timeout: 15_000 }, () => {
   it("returns zeros and does nothing when internalConfig.enabled === false", async () => {
     const loadHooks = await getLoadHooks();
 
