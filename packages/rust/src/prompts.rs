@@ -243,8 +243,6 @@ IMPORTANT CODE BLOCK FORMATTING RULES:
 - ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
 - If including inline code (short single words or function names), use single backticks (`) as appropriate.
 - This ensures the user sees clearly formatted and copyable code when relevant.
-
-First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
 </instructions>
 
 <keys>
@@ -256,8 +254,6 @@ First, think about what you want to do next and plan your actions. Then, write t
 </keys>
 
 <output>
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:
 <response>
@@ -780,8 +776,6 @@ Agent: {{agentName}} (ID: {{agentId}})
 5. If multiple matches exist, use context to disambiguate
 6. Consider recent interactions and relationship strength when resolving ambiguity
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Return an XML response with:
 <response>
@@ -818,8 +812,6 @@ pub const COMPONENT_TEMPLATE: &str = r#"# Task: Extract Source and Update Compon
    - Includes the new information from the conversation
    - Contains only valid data for this component type
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Return an XML response with the following structure:
 <response>
@@ -951,8 +943,6 @@ Be objective and descriptive. Focus on what you can actually see in the image ra
 </instructions>
 
 <output>
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:
 <response>
@@ -979,8 +969,6 @@ pub const OPTION_EXTRACTION_TEMPLATE: &str = r#"# Task: Extract selected task an
 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
 4. If no clear selection is made, return null for both fields
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Return in XML format:
 <response>
@@ -1022,8 +1010,6 @@ Message Sender: {{senderName}} (ID: {{senderId}})
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Generate a response in the following format:
 <response>

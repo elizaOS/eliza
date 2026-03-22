@@ -91,8 +91,6 @@ Analyze the conversation to identify:
 3. Any identifying information about the target
 4. The message text to send
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Return an XML response with:
 <response>
@@ -336,14 +334,14 @@ export const sendMessageAction: Action = {
 			// Try to find the target user entity
 			const lookupMessage: Memory =
 				typeof targetData.identifiers?.username === "string" &&
-				targetData.identifiers.username.trim() !== ""
+					targetData.identifiers.username.trim() !== ""
 					? {
-							...message,
-							content: {
-								...message.content,
-								text: targetData.identifiers.username,
-							},
-						}
+						...message,
+						content: {
+							...message.content,
+							text: targetData.identifiers.username,
+						},
+					}
 					: message;
 			const targetEntity = await findEntityByName(
 				runtime,

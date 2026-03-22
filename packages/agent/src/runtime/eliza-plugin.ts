@@ -128,22 +128,22 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...baseProviders,
 
       uiCatalogProvider,
-      customActionsProvider,
+      // customActionsProvider,
     ],
 
     actions: [
       restartAction,
-      sendMessageAction,
+      // sendMessageAction,
       terminalAction,
       createTriggerTaskAction,
       emoteAction,
-      switchStreamSourceAction,
-      goLiveAction,
-      goOfflineAction,
-      setStreamDestinationAction,
-      speakOnStreamAction,
-      manageOverlayWidgetAction,
-      ...loadCustomActions(),
+      // switchStreamSourceAction,
+      // goLiveAction,
+      // goOfflineAction,
+      // setStreamDestinationAction,
+      // speakOnStreamAction,
+      // manageOverlayWidgetAction,
+      // ...loadCustomActions(),
     ],
   };
 

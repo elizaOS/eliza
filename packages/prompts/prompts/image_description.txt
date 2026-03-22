@@ -10,8 +10,6 @@ Be objective and descriptive. Focus on what you can actually see in the image ra
 </instructions>
 
 <output>
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:
 <response>

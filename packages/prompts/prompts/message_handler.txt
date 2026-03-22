@@ -66,8 +66,6 @@ First, think about what you want to do next and plan your actions. Then, write t
 </keys>
 
 <output>
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:
 <response>

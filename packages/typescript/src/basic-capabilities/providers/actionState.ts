@@ -138,7 +138,7 @@ export const actionStateProvider: Provider = {
 
 			resultsText = addHeader("# Previous Action Results", formattedResults);
 		} else {
-			resultsText = "No previous action results available.";
+			resultsText = "";
 		}
 
 		// Format working memory
