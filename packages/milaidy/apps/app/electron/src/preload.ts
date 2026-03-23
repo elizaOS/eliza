@@ -61,6 +61,23 @@ const electronAPI = {
     arch: process.arch,
     version: process.getSystemVersion(),
   },
+
+  /**
+   * Get app version information
+   */
+  getAppVersion: (): Promise<{
+    version: string;
+    name: string;
+    electron: string;
+    chrome: string;
+    node: string;
+  }> => ipcRenderer.invoke("desktop:getVersion") as Promise<{
+    version: string;
+    name: string;
+    electron: string;
+    chrome: string;
+    node: string;
+  }>,
 };
 
 // Expose to renderer
