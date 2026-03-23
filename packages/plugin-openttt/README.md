@@ -40,7 +40,7 @@ const runtime = new AgentRuntime({
 The agent will call `GENERATE_POT` automatically when it detects trade intent,
 or you can trigger it explicitly:
 
-```
+```text
 User: Generate a proof of time before I submit this swap
 Agent: Proof-of-Time generated successfully.
 
@@ -53,7 +53,7 @@ Agent: Proof-of-Time generated successfully.
 
 ### After a trade — verify the PoT token
 
-```
+```text
 User: Verify the proof of time on my last transaction
 Agent: Proof-of-Time verification PASSED.
 
@@ -70,7 +70,7 @@ The `potEvaluator` runs automatically on any message containing trade keywords
 (`trade`, `swap`, `buy`, `sell`, `submit`, `execute`, etc.) and warns if a
 transaction is missing PoT coverage:
 
-```
+```text
 [POT_COVERAGE_EVALUATOR] ⚠ No Proof-of-Time found for this transaction.
 Consider calling GENERATE_POT before submitting trades.
 ```

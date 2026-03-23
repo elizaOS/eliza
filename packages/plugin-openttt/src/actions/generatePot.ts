@@ -46,12 +46,13 @@ const potCache = new Map<string, { value: string; expiresAt: number }>();
 // Periodic cleanup: evict expired entries every minute.
 // .unref() prevents this timer from keeping the Node.js event loop alive when
 // the agent process is otherwise idle (e.g. during graceful shutdown).
-setInterval(() => {
+const cleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of potCache.entries()) {
     if (now > entry.expiresAt) potCache.delete(key);
   }
-}, 60_000).unref();
+}, 60_000);
+cleanupInterval.unref();
 
 export function potCacheSet(key: string, value: string, ttlSeconds: number): void {
   // Enforce size cap: evict oldest entry if at limit

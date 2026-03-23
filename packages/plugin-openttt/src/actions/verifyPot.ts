@@ -65,7 +65,7 @@ export const verifyPot: Action = {
         pot = options.pot as PoTToken;
       } else {
         // Issue 1 fix: look up by potHash first, then fall back to last-generated pointer
-        const potHashArg = options?.pot_hash as string | undefined;
+        const potHashArg = (options?.pot_hash as string | undefined)?.toLowerCase();
         // Try to extract potHash from message text (e.g. "verify pot abc123")
         const textMatch = (message.content?.text as string ?? "").match(/\b([0-9a-f]{64})\b/i);
         const potHashFromText = textMatch?.[1]?.toLowerCase();
