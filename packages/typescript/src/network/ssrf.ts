@@ -5,14 +5,18 @@
  * when fetching external resources.
  */
 
-import { lookup as dnsLookupCb, type LookupAddress } from "node:dns";
-import { lookup as dnsLookup } from "node:dns/promises";
+export type LookupAddress = { address: string; family: number };
 
-type LookupCallback = (
-	err: NodeJS.ErrnoException | null,
+export type LookupCallback = (
+	err: Error | null,
 	address: string | LookupAddress[],
 	family?: number,
 ) => void;
+
+export type LookupFn = (
+	hostname: string,
+	options: { all: true },
+) => Promise<LookupAddress[]>;
 
 export class SsrfBlockedError extends Error {
 	constructor(message: string) {
@@ -20,8 +24,6 @@ export class SsrfBlockedError extends Error {
 		this.name = "SsrfBlockedError";
 	}
 }
-
-export type LookupFn = typeof dnsLookup;
 
 export type SsrfPolicy = {
 	allowPrivateNetwork?: boolean;
@@ -189,10 +191,10 @@ export function isBlockedHostname(hostname: string): boolean {
 export function createPinnedLookup(params: {
 	hostname: string;
 	addresses: string[];
-	fallback?: typeof dnsLookupCb;
-}): typeof dnsLookupCb {
+	fallback?: unknown;
+}): unknown {
 	const normalizedHost = normalizeHostname(params.hostname);
-	const fallback = params.fallback ?? dnsLookupCb;
+	const fallback = params.fallback;
 	const fallbackLookup = fallback as unknown as (
 		hostname: string,
 		callback: LookupCallback,
@@ -218,10 +220,13 @@ export function createPinnedLookup(params: {
 		}
 		const normalized = normalizeHostname(host);
 		if (!normalized || normalized !== normalizedHost) {
-			if (typeof options === "function" || options === undefined) {
-				return fallbackLookup(host, cb);
+			if (fallback) {
+				if (typeof options === "function" || options === undefined) {
+					return fallbackLookup(host, cb);
+				}
+				return fallbackWithOptions(host, options, cb);
 			}
-			return fallbackWithOptions(host, options, cb);
+			throw new Error("DNS Context restricted: fallback missing.");
 		}
 
 		const opts =
@@ -246,13 +251,13 @@ export function createPinnedLookup(params: {
 		const chosen = usable[index % usable.length];
 		index += 1;
 		cb(null, chosen.address, chosen.family);
-	}) as typeof dnsLookupCb;
+	}) as unknown;
 }
 
 export type PinnedHostname = {
 	hostname: string;
 	addresses: string[];
-	lookup: typeof dnsLookupCb;
+	lookup: unknown;
 };
 
 /**
@@ -283,7 +288,9 @@ export async function resolvePinnedHostnameWithPolicy(
 		}
 	}
 
-	const lookupFn = params.lookupFn ?? dnsLookup;
+	const lookupFn = params.lookupFn;
+	if (!lookupFn)
+		throw new Error("lookupFn is required in environment agnostic core");
 	const results = await lookupFn(normalized, { all: true });
 	if (results.length === 0) {
 		throw new Error(`Unable to resolve hostname: ${hostname}`);
@@ -316,7 +323,7 @@ export async function resolvePinnedHostnameWithPolicy(
  */
 export async function resolvePinnedHostname(
 	hostname: string,
-	lookupFn: LookupFn = dnsLookup,
+	lookupFn?: LookupFn,
 ): Promise<PinnedHostname> {
 	return await resolvePinnedHostnameWithPolicy(hostname, { lookupFn });
 }
@@ -326,7 +333,7 @@ export async function resolvePinnedHostname(
  */
 export async function assertPublicHostname(
 	hostname: string,
-	lookupFn: LookupFn = dnsLookup,
+	lookupFn?: LookupFn,
 ): Promise<void> {
 	await resolvePinnedHostname(hostname, lookupFn);
 }

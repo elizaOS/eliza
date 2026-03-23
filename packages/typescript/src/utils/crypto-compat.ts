@@ -20,23 +20,8 @@
 /**
  * Check if we're in Node.js or Bun with native crypto module available
  */
-let cachedHasNodeCrypto: boolean | null = null;
 function hasNodeCrypto(): boolean {
-	if (cachedHasNodeCrypto !== null) {
-		return cachedHasNodeCrypto;
-	}
-	if (typeof require === "undefined" || typeof process === "undefined") {
-		cachedHasNodeCrypto = false;
-		return cachedHasNodeCrypto;
-	}
-	const versions = process.versions;
-	if (!versions) {
-		cachedHasNodeCrypto = false;
-		return cachedHasNodeCrypto;
-	}
-	cachedHasNodeCrypto =
-		versions.node !== undefined || versions.bun !== undefined;
-	return cachedHasNodeCrypto;
+	return false;
 }
 
 /**
@@ -52,10 +37,7 @@ const WEB_CRYPTO_ALGO_MAP: Record<string, string> = {
  * Get the appropriate crypto module for the current environment
  */
 function getNodeCrypto(): typeof import("node:crypto") {
-	if (!hasNodeCrypto()) {
-		throw new Error("Node.js crypto module not available in this environment");
-	}
-	return require("node:crypto");
+	throw new Error("Node.js crypto module not available in this environment");
 }
 
 /**
@@ -249,13 +231,6 @@ export async function createHashAsync(
 	const bytes =
 		typeof data === "string" ? new TextEncoder().encode(data) : data;
 
-	if (hasNodeCrypto()) {
-		const crypto = getNodeCrypto();
-		const hash = crypto.createHash(algorithm);
-		hash.update(bytes);
-		return new Uint8Array(hash.digest());
-	}
-
 	return webCryptoHash(algorithm, bytes);
 }
 
@@ -416,13 +391,6 @@ export async function encryptAsync(
 ): Promise<Uint8Array> {
 	validateKeyAndIv(key, iv);
 
-	if (hasNodeCrypto()) {
-		const crypto = getNodeCrypto();
-		const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
-		const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
-		return new Uint8Array(encrypted);
-	}
-
 	return webCryptoEncrypt(key, iv, data);
 }
 
@@ -442,13 +410,6 @@ export async function decryptAsync(
 	data: Uint8Array,
 ): Promise<Uint8Array> {
 	validateKeyAndIv(key, iv);
-
-	if (hasNodeCrypto()) {
-		const crypto = getNodeCrypto();
-		const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
-		const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
-		return new Uint8Array(decrypted);
-	}
 
 	return webCryptoDecrypt(key, iv, data);
 }

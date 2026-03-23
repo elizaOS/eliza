@@ -7,7 +7,7 @@ import {
 	type StreamingContext,
 	setStreamingContextManager,
 } from "../streaming-context";
-import { createNodeStreamingContextManager } from "../streaming-context.node";
+
 import type { Character, IDatabaseAdapter } from "../types";
 import {
 	type GenerateTextParams,
@@ -22,7 +22,7 @@ import { stringToUuid } from "../utils";
  * Caches mock functions so they can be inspected later.
  */
 function createMinimalMockAdapter(): IDatabaseAdapter {
-	const mockCache: Record<string, ReturnType<typeof mock>> = {};
+	const mockCache: Record<string, any> = {};
 	return new Proxy({} as IDatabaseAdapter, {
 		get: (_target, prop) => {
 			if (prop === "db") return {};
@@ -77,9 +77,14 @@ describe("useModel Streaming", () => {
 		};
 	}
 
-	beforeEach(() => {
+	beforeEach(async () => {
 		originalManager = getStreamingContextManager();
-		setStreamingContextManager(createNodeStreamingContextManager());
+		const { AsyncLocalStorage } = await import("node:async_hooks");
+		const storage = new AsyncLocalStorage<any>();
+		setStreamingContextManager({
+			run: <T>(context: any, fn: () => T) => storage.run(context, fn),
+			active: () => storage.getStore()
+		});
 
 		runtime = new AgentRuntime({
 			agentId: stringToUuid("test-streaming-agent"),
@@ -101,7 +106,7 @@ describe("useModel Streaming", () => {
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_rt, params) => {
-					const textParams = params as GenerateTextParams;
+					const textParams = params as unknown as GenerateTextParams;
 					if (textParams.stream) {
 						return createMockTextStreamResult(mockChunks);
 					}
@@ -127,7 +132,7 @@ describe("useModel Streaming", () => {
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_rt, params) => {
-					const textParams = params as GenerateTextParams;
+					const textParams = params as unknown as GenerateTextParams;
 					if (textParams.stream) {
 						return createMockTextStreamResult(mockChunks);
 					}
@@ -150,7 +155,7 @@ describe("useModel Streaming", () => {
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_rt, params) => {
-					const textParams = params as GenerateTextParams;
+					const textParams = params as unknown as GenerateTextParams;
 					streamRequested = textParams.stream === true;
 					return "Non-streamed result";
 				},
@@ -174,7 +179,7 @@ describe("useModel Streaming", () => {
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_rt, params) => {
-					const textParams = params as GenerateTextParams;
+					const textParams = params as unknown as GenerateTextParams;
 					streamRequested = textParams.stream === true;
 					return "Non-streamed result";
 				},
@@ -201,7 +206,7 @@ describe("useModel Streaming", () => {
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_rt, params) => {
-					const textParams = params as GenerateTextParams;
+					const textParams = params as unknown as GenerateTextParams;
 					streamRequested = textParams.stream === true;
 					return "Non-streamed result";
 				},
@@ -235,7 +240,7 @@ describe("useModel Streaming", () => {
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_rt, params) => {
-					const textParams = params as GenerateTextParams;
+					const textParams = params as unknown as GenerateTextParams;
 					if (textParams.stream) {
 						return createMockTextStreamResult(mockChunks);
 					}
@@ -271,7 +276,7 @@ describe("useModel Streaming", () => {
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_rt, params) => {
-					const textParams = params as GenerateTextParams;
+					const textParams = params as unknown as GenerateTextParams;
 					if (textParams.stream) {
 						return createMockTextStreamResult(mockChunks);
 					}
@@ -308,7 +313,7 @@ describe("useModel Streaming", () => {
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_rt, params) => {
-					const textParams = params as GenerateTextParams;
+					const textParams = params as unknown as GenerateTextParams;
 					if (textParams.stream) {
 						return createMockTextStreamResult(mockChunks);
 					}
@@ -379,7 +384,7 @@ describe("useModel Streaming", () => {
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_rt, params) => {
-					const textParams = params as GenerateTextParams;
+					const textParams = params as unknown as GenerateTextParams;
 					if (textParams.stream) {
 						return createMockTextStreamResult(mockChunks);
 					}
@@ -420,7 +425,7 @@ describe("useModel Streaming", () => {
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_rt, params) => {
-					const textParams = params as GenerateTextParams;
+					const textParams = params as unknown as GenerateTextParams;
 					if (textParams.stream) {
 						return createMockTextStreamResult(mockChunks);
 					}
@@ -462,7 +467,7 @@ describe("useModel Streaming", () => {
 			streamingRuntime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_rt, params) => {
-					const textParams = params as GenerateTextParams;
+					const textParams = params as unknown as GenerateTextParams;
 					if (textParams.stream) {
 						return createMockTextStreamResult(mockChunks);
 					}

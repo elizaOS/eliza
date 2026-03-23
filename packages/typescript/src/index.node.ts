@@ -12,8 +12,7 @@ export * from "./actions";
 export * from "./basic-capabilities/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
-export * from "./character-loader";
-// Export character utilities and loader (includes re-exports from constants)
+// Export character utilities
 export * from "./character-utils";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
@@ -45,8 +44,7 @@ export * from "./memory";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
 export * from "./plugin";
-// Export plugin discovery and manifest utilities
-export * from "./plugins";
+
 export * from "./prompts";
 // Export onboarding providers
 export * from "./providers/onboarding-progress";
@@ -93,7 +91,7 @@ export * from "./services/trajectoryLogger";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
-export * from "./streaming-context";
+export * from "./settings";
 export * from "./trajectory-context";
 // Export everything from types
 export * from "./types";
@@ -110,7 +108,6 @@ export * from "./utils/channel-utils";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 // Export Node-specific utilities
-export * from "./utils/paths";
 export * from "./utils/server-health";
 // Export streaming utilities
 export * from "./utils/streaming";

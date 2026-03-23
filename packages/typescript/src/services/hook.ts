@@ -13,12 +13,8 @@
  * - Integration with runtime event system
  */
 
-import fs from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 import type { EventPayload, EventType } from "../types/events";
 import type {
-	DiscoveredHook,
 	HookEligibilityResult,
 	HookFrontmatter,
 	HookHandler,
@@ -33,32 +29,11 @@ import type {
 	HookSummary,
 	IHookService,
 } from "../types/hook";
-import { DEFAULT_HOOK_PRIORITY, mapLegacyEvents } from "../types/hook";
+import { DEFAULT_HOOK_PRIORITY } from "../types/hook";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 
-/**
- * Check if a binary exists in PATH
- */
-function hasBinary(bin: string): boolean {
-	const pathEnv = process.env.PATH ?? "";
-	const pathSeparator = process.platform === "win32" ? ";" : ":";
-	const parts = pathEnv.split(pathSeparator).filter(Boolean);
-
-	for (const part of parts) {
-		const candidate = path.join(part, bin);
-		const candidateWithExe =
-			process.platform === "win32" ? `${candidate}.exe` : candidate;
-
-		for (const check of [candidate, candidateWithExe]) {
-			if (fs.existsSync(check)) {
-				const stat = fs.statSync(check);
-				if (stat.isFile()) {
-					return true;
-				}
-			}
-		}
-	}
+function hasBinary(_bin: string): boolean {
 	return false;
 }
 
@@ -66,13 +41,15 @@ function hasBinary(bin: string): boolean {
  * Get the current platform name
  */
 function getCurrentPlatform(): string {
-	return process.platform;
+	return typeof process !== "undefined" && process.platform
+		? process.platform
+		: "unknown";
 }
 
 /**
  * Parse YAML-like frontmatter from HOOK.md content
  */
-function parseFrontmatter(content: string): HookFrontmatter {
+function _parseFrontmatter(content: string): HookFrontmatter {
 	const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
 	if (!frontmatterMatch) {
 		return {};
@@ -136,93 +113,6 @@ function parseFrontmatter(content: string): HookFrontmatter {
 	}
 
 	return result;
-}
-
-/**
- * Discover a hook from a directory
- */
-function discoverHookFromDir(
-	hookDir: string,
-	source: HookSource,
-	pluginId?: string,
-): DiscoveredHook | null {
-	const hookMdPath = path.join(hookDir, "HOOK.md");
-	if (!fs.existsSync(hookMdPath)) {
-		return null;
-	}
-
-	const content = fs.readFileSync(hookMdPath, "utf-8");
-	const frontmatter = parseFrontmatter(content);
-
-	const name = frontmatter.name || path.basename(hookDir);
-	const description = frontmatter.description || "";
-
-	// Find handler file
-	const handlerCandidates = [
-		"handler.ts",
-		"handler.js",
-		"index.ts",
-		"index.js",
-	];
-	let handlerPath: string | undefined;
-
-	for (const candidate of handlerCandidates) {
-		const candidatePath = path.join(hookDir, candidate);
-		if (fs.existsSync(candidatePath)) {
-			handlerPath = candidatePath;
-			break;
-		}
-	}
-
-	if (!handlerPath) {
-		return null;
-	}
-
-	return {
-		name,
-		description,
-		source,
-		pluginId,
-		filePath: hookMdPath,
-		baseDir: hookDir,
-		handlerPath,
-		frontmatter,
-	};
-}
-
-/**
- * Scan a directory for hooks
- */
-function scanDirectoryForHooks(
-	dir: string,
-	source: HookSource,
-	pluginId?: string,
-): DiscoveredHook[] {
-	if (!fs.existsSync(dir)) {
-		return [];
-	}
-
-	const stat = fs.statSync(dir);
-	if (!stat.isDirectory()) {
-		return [];
-	}
-
-	const hooks: DiscoveredHook[] = [];
-	const entries = fs.readdirSync(dir, { withFileTypes: true });
-
-	for (const entry of entries) {
-		if (!entry.isDirectory()) {
-			continue;
-		}
-
-		const hookDir = path.join(dir, entry.name);
-		const hook = discoverHookFromDir(hookDir, source, pluginId);
-		if (hook) {
-			hooks.push(hook);
-		}
-	}
-
-	return hooks;
 }
 
 /**
@@ -436,102 +326,13 @@ export class HookService extends Service implements IHookService {
 	}
 
 	async registerFromDirectory(
-		dir: string,
-		source: HookSource,
-		options?: { pluginId?: string },
+		_dir: string,
+		_source: HookSource,
+		_options?: { pluginId?: string },
 	): Promise<HookLoadResult> {
-		const result: HookLoadResult = {
-			loaded: [],
-			skipped: [],
-			errors: [],
-		};
-
-		// Resolve directory path
-		const resolvedDir = path.isAbsolute(dir)
-			? dir
-			: path.resolve(process.cwd(), dir);
-
-		// Scan for hooks
-		const discoveredHooks = scanDirectoryForHooks(
-			resolvedDir,
-			source,
-			options?.pluginId,
+		throw new Error(
+			"registerFromDirectory is not supported in the environment-agnostic core.",
 		);
-
-		for (const hook of discoveredHooks) {
-			// Map legacy events to EventType
-			const events = mapLegacyEvents(hook.frontmatter.events ?? []);
-
-			if (events.length === 0) {
-				result.skipped.push({
-					name: hook.name,
-					reason: "No valid events defined",
-				});
-				continue;
-			}
-
-			// Build requirements from frontmatter
-			const requires: HookRequirements = {};
-			if (hook.frontmatter.os) {
-				requires.os = hook.frontmatter.os;
-			}
-			if (hook.frontmatter.requires) {
-				if (hook.frontmatter.requires.bins) {
-					requires.bins = hook.frontmatter.requires.bins;
-				}
-				if (hook.frontmatter.requires.anyBins) {
-					requires.anyBins = hook.frontmatter.requires.anyBins;
-				}
-				if (hook.frontmatter.requires.env) {
-					requires.env = hook.frontmatter.requires.env;
-				}
-				if (hook.frontmatter.requires.config) {
-					requires.config = hook.frontmatter.requires.config;
-				}
-			}
-
-			// Check eligibility before loading handler
-			const eligibility = this.checkRequirements(requires, this.hookConfig);
-			if (!eligibility.eligible && !hook.frontmatter.always) {
-				result.skipped.push({
-					name: hook.name,
-					reason: eligibility.reasons?.join(", ") ?? "Failed eligibility check",
-				});
-				continue;
-			}
-
-			// Load handler module
-			const handlerUrl = pathToFileURL(hook.handlerPath).href;
-			const cacheBustedUrl = `${handlerUrl}?t=${Date.now()}`;
-
-			const mod = (await import(cacheBustedUrl)) as Record<string, unknown>;
-			const exportName = hook.frontmatter.export ?? "default";
-			const exportedHandler = mod[exportName];
-
-			if (typeof exportedHandler !== "function") {
-				result.errors.push({
-					name: hook.name,
-					error: `Export '${exportName}' is not a function`,
-				});
-				continue;
-			}
-
-			const handler = exportedHandler as HookHandler;
-
-			// Register the hook
-			const hookId = this.register(events, handler, {
-				name: hook.name,
-				description: hook.description,
-				source,
-				pluginId: options?.pluginId,
-				always: hook.frontmatter.always,
-				requires: Object.keys(requires).length > 0 ? requires : undefined,
-			});
-
-			result.loaded.push(hookId);
-		}
-
-		return result;
 	}
 
 	// ========================================================================

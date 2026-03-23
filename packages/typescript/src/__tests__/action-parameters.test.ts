@@ -190,8 +190,8 @@ describe("Action parameters (optional)", () => {
 					| ActionParameters
 					| undefined;
 				const dirValue =
-					params && typeof params["direction"] === "string"
-						? params["direction"]
+					params && typeof params.direction === "string"
+						? params.direction
 						: "";
 				receivedDirections.push(dirValue);
 				return {
@@ -255,8 +255,8 @@ describe("Action parameters (optional)", () => {
 					| ActionParameters
 					| undefined;
 				const dirValue =
-					params && typeof params["direction"] === "string"
-						? params["direction"]
+					params && typeof params.direction === "string"
+						? params.direction
 						: "";
 				receivedDirections.push(dirValue);
 				return {

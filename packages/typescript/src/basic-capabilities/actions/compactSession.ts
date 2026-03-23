@@ -7,7 +7,6 @@
  * preserves key decisions, facts, and open items.
  */
 
-import crypto from "node:crypto";
 import { logger } from "../../logger.ts";
 import type {
 	Action,
@@ -104,7 +103,7 @@ export const compactSessionAction: Action = {
 			// Store summary as a message so it appears after the compaction point
 			await runtime.createMemory(
 				{
-					id: crypto.randomUUID() as UUID,
+					id: globalThis.crypto.randomUUID() as UUID,
 					entityId: runtime.agentId,
 					roomId,
 					content: {

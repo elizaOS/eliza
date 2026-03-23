@@ -9,8 +9,6 @@
  * @module utils/retry
  */
 
-import { setTimeout as nodeDelay } from "node:timers/promises";
-
 // ============================================================================
 // Sleep Utilities
 // ============================================================================
@@ -38,14 +36,27 @@ export async function sleepWithAbort(
 	if (ms <= 0) {
 		return;
 	}
-	try {
-		await nodeDelay(ms, undefined, { signal: abortSignal });
-	} catch (err) {
+	return new Promise((resolve, reject) => {
 		if (abortSignal?.aborted) {
-			throw new Error("aborted", { cause: err });
+			return reject(new Error("aborted"));
 		}
-		throw err;
-	}
+
+		const timeoutId = setTimeout(() => {
+			if (abortSignal) {
+				abortSignal.removeEventListener("abort", onAbort);
+			}
+			resolve();
+		}, ms);
+
+		function onAbort() {
+			clearTimeout(timeoutId);
+			reject(new Error("aborted"));
+		}
+
+		if (abortSignal) {
+			abortSignal.addEventListener("abort", onAbort);
+		}
+	});
 }
 
 // ============================================================================

@@ -10,8 +10,7 @@ import type { Provider, ProviderResult } from "../types/components.js";
 import type { Memory, MemoryMetadata } from "../types/memory.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state.js";
-import { getSessionEntry, loadSessionStore } from "./store.js";
-import type { SessionEntry, SessionStore } from "./types.js";
+import type { SessionEntry } from "./types.js";
 
 // ============================================================================
 // Session Context Extraction
@@ -94,11 +93,8 @@ export function createSessionProvider(options?: {
 				};
 			}
 
-			// Try to get full session entry
-			let entry = context.entry;
-			if (!entry && context.sessionKey && options?.storePath) {
-				entry = getSessionEntry(options.storePath, context.sessionKey);
-			}
+			// Use session entry directly from context
+			const entry = context.entry;
 
 			// Build text representation
 			const lines: string[] = [];
@@ -183,10 +179,7 @@ export function createSessionSkillsProvider(options?: {
 				};
 			}
 
-			let entry = context.entry;
-			if (!entry && context.sessionKey && options?.storePath) {
-				entry = getSessionEntry(options.storePath, context.sessionKey);
-			}
+			const entry = context.entry;
 
 			const snapshot = entry?.skillsSnapshot;
 			if (!snapshot || !snapshot.skills.length) {
@@ -256,10 +249,7 @@ export function createSendPolicyProvider(options?: {
 				};
 			}
 
-			let entry = context.entry;
-			if (!entry && context.sessionKey && options?.storePath) {
-				entry = getSessionEntry(options.storePath, context.sessionKey);
-			}
+			const entry = context.entry;
 
 			const sendPolicy = entry?.sendPolicy ?? "allow";
 
@@ -317,62 +307,4 @@ export function getSessionProviders(options?: {
 		createSessionSkillsProvider(options),
 		createSendPolicyProvider(options),
 	];
-}
-
-// ============================================================================
-// Session State Manager
-// ============================================================================
-
-/**
- * Session state manager for runtime integration.
- *
- * Provides methods to access and update session state
- * during message processing.
- */
-export class SessionStateManager {
-	private store: SessionStore | null = null;
-	private lastLoadTime = 0;
-	private readonly cacheTtlMs: number;
-
-	constructor(
-		private readonly storePath: string,
-		options?: { cacheTtlMs?: number },
-	) {
-		this.cacheTtlMs = options?.cacheTtlMs ?? 5000;
-	}
-
-	/**
-	 * Get the session store, loading if necessary.
-	 */
-	getStore(): SessionStore {
-		const now = Date.now();
-		if (!this.store || now - this.lastLoadTime > this.cacheTtlMs) {
-			this.store = loadSessionStore(this.storePath);
-			this.lastLoadTime = now;
-		}
-		return this.store;
-	}
-
-	/**
-	 * Get a session entry by key.
-	 */
-	getEntry(sessionKey: string): SessionEntry | undefined {
-		return this.getStore()[sessionKey];
-	}
-
-	/**
-	 * Get a session entry by ID.
-	 */
-	getEntryById(sessionId: string): SessionEntry | undefined {
-		const store = this.getStore();
-		return Object.values(store).find((e) => e?.sessionId === sessionId);
-	}
-
-	/**
-	 * Invalidate the cached store.
-	 */
-	invalidate(): void {
-		this.store = null;
-		this.lastLoadTime = 0;
-	}
 }

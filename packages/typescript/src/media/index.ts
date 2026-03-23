@@ -12,16 +12,7 @@ export {
 	MediaFetchError,
 	type MediaFetchErrorCode,
 } from "./fetch.js";
-export {
-	convertHeicToJpeg,
-	getImageMetadata,
-	hasAlphaChannel,
-	type ImageMetadata,
-	normalizeExifOrientation,
-	optimizeImageToPng,
-	resizeToJpeg,
-	resizeToPng,
-} from "./image-ops.js";
+
 export {
 	detectMime,
 	extensionForMime,

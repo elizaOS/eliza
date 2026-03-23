@@ -15,13 +15,6 @@ import type { Character } from "../types";
 import { stringToUuid } from "../utils";
 import { createTestCharacter, createTestDatabaseAdapter } from "./test-utils";
 
-vi.mock("../character-loader", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../character-loader")>();
-	return {
-		...actual,
-		loadCharacterFile: vi.fn(),
-	};
-});
 
 describe("runtime-composition", () => {
 	describe("getBasicCapabilitiesSettings", () => {
@@ -167,28 +160,7 @@ describe("runtime-composition", () => {
 			await expect(loadCharacters([invalidInput])).rejects.toThrow();
 		});
 
-		it("loads one character from file path when loadCharacterFile returns character", async () => {
-			const { loadCharacterFile } = await import("../character-loader");
-			const fileChar = createTestCharacter({ name: "FromFile" });
-			vi.mocked(loadCharacterFile).mockResolvedValue(fileChar);
 
-			const result = await loadCharacters(["/some/path/character.json"]);
-
-			expect(result).toHaveLength(1);
-			expect(result[0]?.name).toBe("FromFile");
-			expect(loadCharacterFile).toHaveBeenCalledWith(
-				"/some/path/character.json",
-			);
-		});
-
-		it("throws when loadCharacterFile returns null (file load failure)", async () => {
-			const { loadCharacterFile } = await import("../character-loader");
-			vi.mocked(loadCharacterFile).mockResolvedValue(null);
-
-			await expect(loadCharacters(["/missing.json"])).rejects.toThrow(
-				"Failed to load character file",
-			);
-		});
 	});
 
 	describe("createRuntimes", () => {

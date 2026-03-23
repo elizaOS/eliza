@@ -12,7 +12,6 @@
  * @module sessions/types
  */
 
-import * as crypto from "node:crypto";
 import type { SessionOrigin, SessionSkillsSnapshot } from "../types/memory.js";
 
 // ============================================================================
@@ -259,7 +258,7 @@ export function mergeSessionEntry(
 	patch: Partial<SessionEntry>,
 ): SessionEntry {
 	const sessionId =
-		patch.sessionId ?? existing?.sessionId ?? crypto.randomUUID();
+		patch.sessionId ?? existing?.sessionId ?? globalThis.crypto.randomUUID();
 	const updatedAt = Math.max(
 		existing?.updatedAt ?? 0,
 		patch.updatedAt ?? 0,
@@ -283,7 +282,7 @@ export function createSessionEntry(
 	overrides?: Partial<SessionEntry>,
 ): SessionEntry {
 	return {
-		sessionId: crypto.randomUUID(),
+		sessionId: globalThis.crypto.randomUUID(),
 		updatedAt: Date.now(),
 		...overrides,
 	};
