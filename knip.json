@@ -120,7 +120,6 @@
     "**/utils/index.ts",
     "**/types/index.ts",
     "**/managers/index.ts",
-    "**/build-utils.ts",
     "**/packages/interop/**",
     "**/packages/rust/pkg-node/**",
     "**/streaming-context.browser.ts",
@@ -187,16 +186,28 @@
   ],
   "workspaces": {
     ".": {
-      "entry": ["scripts/**/*.ts", "scripts/**/*.js"]
+      "entry": [
+        "scripts/**/*.ts",
+        "scripts/**/*.js"
+      ]
     },
     "packages/*": {
-      "entry": ["src/index.ts", "index.ts"]
+      "entry": [
+        "src/index.ts",
+        "index.ts"
+      ]
     },
     "plugins/*/typescript": {
-      "entry": ["src/index.ts", "index.ts"]
+      "entry": [
+        "src/index.ts",
+        "index.ts"
+      ]
     },
     "apps/*": {
-      "entry": ["src/index.ts", "index.ts"]
+      "entry": [
+        "src/index.ts",
+        "index.ts"
+      ]
     }
   },
   "include": [

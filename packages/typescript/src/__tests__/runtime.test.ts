@@ -1699,14 +1699,16 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			});
 
 			it("should auto-stream when streaming context is active", async () => {
-				// Configure the streaming context manager for Node.js environment
+				// Configure the streaming context manager for Node.js environment directly in test
 				const { setStreamingContextManager } = await import(
 					"../streaming-context"
 				);
-				const { createNodeStreamingContextManager } = await import(
-					"../streaming-context.node"
-				);
-				setStreamingContextManager(createNodeStreamingContextManager());
+				const { AsyncLocalStorage } = await import("node:async_hooks");
+				const storage = new AsyncLocalStorage<any>();
+				setStreamingContextManager({
+					run: (context: any, fn: any) => storage.run(context, fn),
+					active: () => storage.getStore()
+				});
 
 				const { runWithStreamingContext } = await import(
 					"../streaming-context"
@@ -1753,14 +1755,16 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			});
 
 			it("should isolate streaming contexts in parallel calls (AsyncLocalStorage)", async () => {
-				// Configure the streaming context manager for Node.js environment
+				// Configure the streaming context manager for Node.js environment directly in test
 				const { setStreamingContextManager } = await import(
 					"../streaming-context"
 				);
-				const { createNodeStreamingContextManager } = await import(
-					"../streaming-context.node"
-				);
-				setStreamingContextManager(createNodeStreamingContextManager());
+				const { AsyncLocalStorage } = await import("node:async_hooks");
+				const storage = new AsyncLocalStorage<any>();
+				setStreamingContextManager({
+					run: (context: any, fn: any) => storage.run(context, fn),
+					active: () => storage.getStore()
+				});
 
 				const { runWithStreamingContext } = await import(
 					"../streaming-context"

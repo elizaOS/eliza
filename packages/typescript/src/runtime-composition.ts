@@ -26,7 +26,6 @@
 
 import type { CharacterInput } from "./character";
 import { parseCharacter } from "./character";
-import { ensureEncryptionSalt, loadCharacterFile } from "./character-loader";
 import { COMMON_SECRET_KEYS, importSecretsFromEnv } from "./character-utils";
 import { resolvePlugins } from "./plugin";
 import {
@@ -193,37 +192,12 @@ export function mergeSettingsInto(
 }
 
 /**
- * Load one character from a file path. Reuses importSecretsFromEnv and ensureEncryptionSalt.
- * We do NOT call syncCharacterSecretsToEnv here. WHY: When loading multiple characters,
- * syncing each character's secrets into process.env would overwrite env; later characters
- * would pollute getBasicCapabilitiesSettings for earlier ones. Secrets stay on the character
- * object and are used by getBasicCapabilitiesSettings(character) without going through process.env.
- */
-async function loadOneCharacterFromFile(filePath: string): Promise<Character> {
-	const loaded = await loadCharacterFile(filePath);
-	if (loaded == null) {
-		throw new Error(`Failed to load character file: ${filePath}`);
-	}
-	let character = importSecretsFromEnv(loaded, COMMON_SECRET_KEYS);
-	character = ensureEncryptionSalt(character);
-	if (!character.id) {
-		character = {
-			...character,
-			id: stringToUuid(character.name ?? "eliza") as UUID,
-		};
-	}
-	return character;
-}
-
-/**
- * Load one character from an inline object. Uses parseCharacter (validation + normalize),
- * then the same post-processing as file load. No syncCharacterSecretsToEnv (see
- * loadOneCharacterFromFile) so multi-character load doesn't pass secrets through process.env.
+ * Load one character from an inline object. Uses parseCharacter (validation + normalize).
  */
 function loadOneCharacterFromObject(input: CharacterInput): Character {
 	const character = parseCharacter(input);
 	let out = importSecretsFromEnv(character, COMMON_SECRET_KEYS);
-	out = ensureEncryptionSalt(out);
+
 	if (!out.id) {
 		out = { ...out, id: stringToUuid(out.name ?? "eliza") as UUID };
 	}
@@ -243,7 +217,7 @@ function loadOneCharacterFromObject(input: CharacterInput): Character {
  * @throws If a file path fails to load or an object fails validation (message includes path/details)
  */
 export async function loadCharacters(
-	sources: (string | CharacterInput)[],
+	sources: CharacterInput[],
 ): Promise<Character[]> {
 	if (sources.length === 0) {
 		return [];
@@ -252,13 +226,8 @@ export async function loadCharacters(
 	const results: Character[] = [];
 
 	for (const source of sources) {
-		if (typeof source === "string") {
-			const character = await loadOneCharacterFromFile(source);
-			results.push(character);
-		} else {
-			const character = loadOneCharacterFromObject(source);
-			results.push(character);
-		}
+		const character = loadOneCharacterFromObject(source);
+		results.push(character);
 	}
 
 	return results;

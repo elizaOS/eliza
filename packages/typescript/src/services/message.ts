@@ -48,7 +48,6 @@ import {
 	extractFirstSentence,
 	hasFirstSentence,
 } from "../utils/text-splitting";
-import { VoiceCacheService } from "./voice-cache";
 
 /**
  * Escape Handlebars syntax in a string to prevent template injection.
@@ -291,8 +290,6 @@ export class DefaultMessageService implements IMessageService {
 					// Voice handling state
 					let firstSentenceSent = false;
 					let firstSentenceText = "";
-					const voiceCache = new VoiceCacheService();
-					await voiceCache.initialize(runtime);
 
 					if (opts.onStreamChunk) {
 						const extractor = new ResponseStreamExtractor();
@@ -334,14 +331,7 @@ export class DefaultMessageService implements IMessageService {
 														voiceSettings?.voiceId ||
 														"nova";
 
-													const key = voiceCache.generateKey(
-														first,
-														voiceId,
-														model,
-													);
-													let audioBuffer = voiceCache.getCached(key);
-
-													if (!audioBuffer) {
+													let audioBuffer: Buffer | null = null;
 														const params: TextToSpeechParams & {
 															model?: string;
 														} = {
@@ -349,8 +339,13 @@ export class DefaultMessageService implements IMessageService {
 															voice: voiceId,
 															model: model,
 														};
-														const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
-															? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
+														const result = runtime.getModel(
+															ModelType.TEXT_TO_SPEECH,
+														)
+															? await runtime.useModel(
+																	ModelType.TEXT_TO_SPEECH,
+																	params,
+																)
 															: undefined;
 
 														if (
@@ -365,10 +360,7 @@ export class DefaultMessageService implements IMessageService {
 															audioBuffer = Buffer.from(result);
 														}
 
-														if (audioBuffer) {
-															voiceCache.setCached(key, audioBuffer);
-														}
-													}
+
 
 													if (audioBuffer && callback) {
 														const audioBase64 = audioBuffer.toString("base64");
@@ -448,32 +440,27 @@ export class DefaultMessageService implements IMessageService {
 									const voiceId =
 										voiceSettings?.url || voiceSettings?.voiceId || "nova";
 
-									const key = voiceCache.generateKey(rest, voiceId, model);
-									let audioBuffer = voiceCache.getCached(key);
-
-									if (!audioBuffer) {
-										const params: TextToSpeechParams & {
-											model?: string;
-										} = {
-											text: rest,
-											voice: voiceId,
-											model: model,
-										};
-										const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
-											? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
-											: undefined;
-										if (
-											result instanceof ArrayBuffer ||
-											Object.prototype.toString.call(result) ===
-												"[object ArrayBuffer]"
-										) {
-											audioBuffer = Buffer.from(result as ArrayBuffer);
-										} else if (Buffer.isBuffer(result)) {
-											audioBuffer = result;
-										} else if (result instanceof Uint8Array) {
-											audioBuffer = Buffer.from(result);
-										}
-										if (audioBuffer) voiceCache.setCached(key, audioBuffer);
+									let audioBuffer: Buffer | null = null;
+									const params: TextToSpeechParams & {
+										model?: string;
+									} = {
+										text: rest,
+										voice: voiceId,
+										model: model,
+									};
+									const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
+										? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
+										: undefined;
+									if (
+										result instanceof ArrayBuffer ||
+										Object.prototype.toString.call(result) ===
+											"[object ArrayBuffer]"
+									) {
+										audioBuffer = Buffer.from(result as ArrayBuffer);
+									} else if (Buffer.isBuffer(result)) {
+										audioBuffer = result;
+									} else if (result instanceof Uint8Array) {
+										audioBuffer = Buffer.from(result);
 									}
 
 									if (audioBuffer && callback) {
@@ -485,7 +472,7 @@ export class DefaultMessageService implements IMessageService {
 													id: v4(),
 													url: `data:audio/wav;base64,${audioBase64}`,
 													title: "Voice Response",
-													source: "voice-cache",
+													source: "voice",
 													description: "Voice response for remaining text",
 													text: rest,
 													contentType: ContentType.AUDIO,

@@ -28,7 +28,7 @@ import {
 export function createPinnedDispatcher(pinned: PinnedHostname): Dispatcher {
 	return new Agent({
 		connect: {
-			lookup: pinned.lookup,
+			lookup: pinned.lookup as any,
 		},
 	});
 }

@@ -6,5 +6,4 @@
  * @module plugins
  */
 
-export * from "./discovery.ts";
-export * from "./manifest-registry.ts";
+export {};

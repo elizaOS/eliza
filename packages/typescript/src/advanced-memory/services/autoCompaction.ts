@@ -15,7 +15,6 @@
  *   the recentMessages provider includes it in future context windows.
  */
 
-import crypto from "node:crypto";
 import { logger } from "../../logger.ts";
 import type { IAgentRuntime, JsonValue, UUID } from "../../types/index.ts";
 import { MemoryType, ModelType } from "../../types/index.ts";
@@ -143,7 +142,7 @@ async function performCompaction(
 	// Store the summary as a message right at the compaction point
 	await runtime.createMemory(
 		{
-			id: crypto.randomUUID() as UUID,
+			id: globalThis.crypto.randomUUID() as UUID,
 			entityId: runtime.agentId,
 			roomId,
 			content: {

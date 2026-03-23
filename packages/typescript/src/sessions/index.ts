@@ -66,43 +66,6 @@ export {
 } from "./types.js";
 
 // ============================================================================
-// Session Store
-// ============================================================================
-
-export {
-	clearSessionStoreCacheForTest,
-	deleteSessionEntry,
-	getSessionEntry,
-	getSessionEntryById,
-	type LoadSessionStoreOptions,
-	listSessionKeys,
-	listSessions,
-	loadSessionStore,
-	readSessionUpdatedAt,
-	saveSessionStore,
-	updateSessionStore,
-	updateSessionStoreEntry,
-	upsertSessionEntry,
-} from "./store.js";
-
-// ============================================================================
-// Session Paths
-// ============================================================================
-
-export {
-	ensureSafeSessionPath,
-	isWithinStateDir,
-	resolveAgentSessionsDir,
-	resolveDefaultSessionStorePath,
-	resolveSessionFilePath,
-	resolveSessionTranscriptPath,
-	resolveSessionTranscriptsDir,
-	resolveSessionTranscriptsDirForAgent,
-	resolveStateDir,
-	resolveStorePath,
-} from "./paths.js";
-
-// ============================================================================
 // Session Providers
 // ============================================================================
 
@@ -112,5 +75,4 @@ export {
 	createSessionSkillsProvider,
 	extractSessionContext,
 	getSessionProviders,
-	SessionStateManager,
 } from "./provider.js";
