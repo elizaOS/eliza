@@ -349,10 +349,9 @@ export class DefaultMessageService implements IMessageService {
 															voice: voiceId,
 															model: model,
 														};
-														const result = await runtime.useModel(
-															ModelType.TEXT_TO_SPEECH,
-															params,
-														);
+														const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
+															? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
+															: undefined;
 
 														if (
 															result instanceof ArrayBuffer ||
@@ -460,10 +459,9 @@ export class DefaultMessageService implements IMessageService {
 											voice: voiceId,
 											model: model,
 										};
-										const result = await runtime.useModel(
-											ModelType.TEXT_TO_SPEECH,
-											params,
-										);
+										const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
+											? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
+											: undefined;
 										if (
 											result instanceof ArrayBuffer ||
 											Object.prototype.toString.call(result) ===
@@ -1011,30 +1009,43 @@ export class DefaultMessageService implements IMessageService {
 			latestResponseIds.delete(runtime.agentId);
 		}
 
-		// Run evaluators
-		await runtime.evaluate(
-			message,
-			state,
-			shouldRespondToMessage,
-			async (content) => {
-				runtime.logger.debug(
-					{ src: "service:message", content },
-					"Evaluate callback",
-				);
-				if (responseContent) {
-					responseContent.evalCallbacks = content;
-				}
-				if (callback) {
-					// Redact any secrets from evaluate callback content
-					if (content.text) {
-						content.text = runtime.redactSecrets(content.text);
+		// Run evaluators — fire-and-forget for streaming HTTP sources so the SSE
+		// response can close even if evaluators stall (e.g. auth error on TEXT_LARGE).
+		const runEvaluate = () =>
+			runtime.evaluate(
+				message,
+				state,
+				shouldRespondToMessage,
+				async (content) => {
+					runtime.logger.debug(
+						{ src: "service:message", content },
+						"Evaluate callback",
+					);
+					if (responseContent) {
+						responseContent.evalCallbacks = content;
 					}
-					return callback(content);
-				}
-				return [];
-			},
-			responseMessages,
-		);
+					if (callback) {
+						if (content.text) {
+							content.text = runtime.redactSecrets(content.text);
+						}
+						return callback(content);
+					}
+					return [];
+				},
+				responseMessages,
+			);
+
+		const source = message.content?.source;
+		if (source === "client_chat" || source === "client_direct") {
+			void runEvaluate().catch((err) => {
+				runtime.logger.warn(
+					{ err, src: "service:message" },
+					"Deferred evaluate failed",
+				);
+			});
+		} else {
+			await runEvaluate();
+		}
 
 		// Collect metadata for logging
 		let entityName = "noname";

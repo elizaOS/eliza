@@ -723,11 +723,6 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 	signalRetry(retryCount: number): { validatedFields: string[] } {
 		this.state = "retrying";
 
-		// Emit separator for simple consumers
-		if (!this.config.hasRichConsumer) {
-			this.config.onChunk("\n-- that's not right, let me start again:\n");
-		}
-
 		this.emitEvent({
 			eventType: "retry_start",
 			retryCount,
