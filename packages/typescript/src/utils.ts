@@ -754,7 +754,25 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	const children = extractDirectChildren(xmlContent);
 	for (const { key, value } of children) {
 		if (key === "actions" || key === "providers" || key === "evaluators") {
-			result[key] = value ? value.split(",").map((s) => s.trim()) : [];
+			if (
+				key === "actions" &&
+				value &&
+				(value.includes("<action>") || value.includes("<action "))
+			) {
+				// XML-structured actions: extract <name> elements into an array
+				// instead of comma-splitting (which breaks on commas in param content)
+				result[key] = [
+					...value.matchAll(
+						/<action[^>]*>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/action>/g,
+					),
+				]
+					.map((m) => m[1].trim())
+					.filter(Boolean);
+			} else {
+				result[key] = value
+					? value.split(",").map((s) => s.trim())
+					: [];
+			}
 		} else if (key === "simple") {
 			result[key] = value.toLowerCase() === "true";
 		} else {

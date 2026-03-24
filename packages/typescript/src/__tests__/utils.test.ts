@@ -460,6 +460,65 @@ describe("Utils Comprehensive Tests", () => {
 			expect(result).toBeNull();
 			expect(elapsed).toBeLessThan(100);
 		});
+
+		it("should extract action names from XML action tags instead of comma-splitting", () => {
+			const xml = `<response>
+				<actions>
+					<action>
+						<name>REPLY</name>
+					</action>
+					<action>
+						<name>START_CODING_TASK</name>
+						<params>
+							<task>Add orange, black, and red colors, hex grids</task>
+						</params>
+					</action>
+				</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			expect(result?.actions).toEqual(["REPLY", "START_CODING_TASK"]);
+		});
+
+		it("should not split on commas inside action param content", () => {
+			const xml = `<response>
+				<actions>
+					<action>
+						<name>START_CODING_TASK</name>
+						<params>
+							<repo>https://github.com/org/repo</repo>
+							<task>Fix orange, black, and red colors, hex grids, technical fonts</task>
+						</params>
+					</action>
+				</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			// Should extract just the action name, not split on commas in task text
+			expect(result?.actions).toEqual(["START_CODING_TASK"]);
+		});
+
+		it("should handle action tags with attributes", () => {
+			const xml = `<response>
+				<actions>
+					<action name="deploy">
+						<name>DEPLOY</name>
+					</action>
+				</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			expect(result?.actions).toEqual(["DEPLOY"]);
+		});
+
+		it("should still comma-split plain action lists without XML tags", () => {
+			const xml = `<response>
+				<actions>REPLY, START_CODING_TASK, IGNORE</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			expect(result?.actions).toEqual(["REPLY", "START_CODING_TASK", "IGNORE"]);
+		});
 	});
 
 	describe("formatMessages", () => {
