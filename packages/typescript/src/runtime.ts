@@ -1925,8 +1925,6 @@ this.promptBatcher.dispose();
             if (content.text) {
               content.text = this.redactSecrets(content.text);
             }
-// Pass action name so callers can attribute the response without parsing content.
-            await callback(content, action.name);
 
             const auditHandlers =
               this.promptBatcher.getPreCallbackHandlers(action.name);
@@ -2036,7 +2034,8 @@ this.promptBatcher.dispose();
               content = auditedContent;
             }
 
-            await callback(content);
+            // Pass action name so callers can attribute the response without parsing content.
+            await callback(content, action.name);
           }
         }
 
