@@ -29,7 +29,7 @@ Keep responses short - suitable for mobile chat.`,
     plugins: [adapterPlugin],
     settings: {
       OPENAI_SMALL_MODEL: "gpt-4o-mini",
-      OPENAI_LARGE_MODEL: "gpt-4o-mini",
+      OPENAI_LARGE_MODEL: "gpt-4o",
     },
     secrets: {
       // Note: stores sensitive information securely for API integration with external services
