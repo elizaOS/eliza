@@ -761,25 +761,56 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 			const hasXmlTags =
 				value && new RegExp(`<${singularTag}[\\s>/]`).test(value);
 			if (hasXmlTags) {
-				// Extract <name> elements into an array instead of comma-splitting
-				// (which breaks on commas inside param content).
-				const extracted = [
-					...value.matchAll(
-						new RegExp(
-							`<${singularTag}[^>]*>[\\s\\S]*?<name>([\\s\\S]*?)</name>[\\s\\S]*?</${singularTag}>`,
-							"g",
-						),
-					),
-				]
-					.map((m) => m[1].trim())
-					.filter(Boolean);
-				if (extracted.length === 0) {
+				// Extract <name> (and <params> for actions) into structured data
+				// instead of comma-splitting (which breaks on commas in param content).
+				const tagRegex = new RegExp(
+					`<${singularTag}[^>]*>([\\s\\S]*?)</${singularTag}>`,
+					"g",
+				);
+				const names: string[] = [];
+				const paramEntries: Array<{
+					name: string;
+					paramsXml: string | undefined;
+				}> = [];
+				for (const match of value.matchAll(tagRegex)) {
+					const inner = match[1];
+					const nameMatch = inner.match(/<name>([\s\S]*?)<\/name>/);
+					const name = nameMatch?.[1]?.trim();
+					if (!name) continue;
+					names.push(name);
+					if (key === "actions") {
+						const paramsMatch = inner.match(
+							/<params>([\s\S]*?)<\/params>/,
+						);
+						if (paramsMatch) {
+							paramEntries.push({
+								name,
+								paramsXml: paramsMatch[1].trim(),
+							});
+						}
+					}
+				}
+				if (names.length === 0) {
 					logger.warn(
 						`parseKeyValueXml: found <${singularTag}> tags in <${key}> but no <name> children — falling back to comma-split`,
 					);
 					result[key] = value.split(",").map((s) => s.trim());
 				} else {
-					result[key] = extracted;
+					result[key] = names;
+					// For actions: also populate params so downstream code can
+					// extract action-specific parameters via parseActionParams().
+					if (
+						key === "actions" &&
+						paramEntries.length > 0 &&
+						!result.params
+					) {
+						result.params = paramEntries
+							.map(
+								(e) =>
+									`<${e.name.toUpperCase()}>${e.paramsXml}</${e.name.toUpperCase()}>`,
+							)
+							.join("\n");
+					}
 				}
 			} else {
 				result[key] = value

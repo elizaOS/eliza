@@ -536,6 +536,31 @@ describe("Utils Comprehensive Tests", () => {
 			expect(Array.isArray(result?.actions)).toBe(true);
 			expect((result?.actions as string[]).length).toBeGreaterThan(0);
 		});
+
+		it("should populate params when extracting XML action names", () => {
+			const xml = `<response>
+				<actions>
+					<action>
+						<name>REPLY</name>
+					</action>
+					<action>
+						<name>START_CODING_TASK</name>
+						<params>
+							<repo>https://github.com/org/repo</repo>
+							<task>Fix the bug</task>
+						</params>
+					</action>
+				</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			expect(result?.actions).toEqual(["REPLY", "START_CODING_TASK"]);
+			// params should be populated so downstream parseActionParams can extract them
+			expect(typeof result?.params).toBe("string");
+			expect(result?.params).toContain("START_CODING_TASK");
+			expect(result?.params).toContain("repo");
+			expect(result?.params).toContain("https://github.com/org/repo");
+		});
 	});
 
 	describe("formatMessages", () => {
