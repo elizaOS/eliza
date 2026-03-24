@@ -172,7 +172,6 @@ Why this phase:
 
 ---
 
-<<<<<<< HEAD
 ## Near-term
 
 ### Observability & debugging
@@ -226,7 +225,9 @@ Why this phase:
 
 - **Re-adding a separate `generateObject` API**  
   **Why:** Dynamic execution and the evolving structured-generation path are the intended replacement; we do not plan to resurrect the old generateObject surface.
-=======
+
+---
+
 ## Next likely follow-ups
 
 - **One-shot time-based scheduling:** Delivered. Non-repeat queue tasks with `dueAt` or `metadata.scheduledAt` run when `now >= dueTime`; follow-up tasks use `queue` + `dueAt` so the scheduler runs them at the scheduled time.
@@ -245,17 +246,13 @@ Why this phase:
 - Cache TTLs that are too long can hide stale startup artifacts.
 - Immediate audits should stay narrow and deterministic to avoid user-visible latency spikes.
 - Room affinity discipline matters: if everything uses `default`, batching quality degrades quickly.
->>>>>>> 2338cf054 (feat: Prompt Batching/Dispatcher, task system upgrade, and prompt caching support (#6575))
 
 ---
 
 ## Other (existing TODO items)
 
 The README "TODO Items" section still lists improvements (e.g. plugin sources, post formatting, server ID issues, ensureConnection refactor). Those remain valid; this roadmap focuses on composition and related areas. As work is done, items can move from "Possible next steps" to "Done" or into CHANGELOG.
-<<<<<<< HEAD
 
 ---
 
 This roadmap is a living document and will be updated as priorities and constraints change.
-=======
->>>>>>> 2338cf054 (feat: Prompt Batching/Dispatcher, task system upgrade, and prompt caching support (#6575))

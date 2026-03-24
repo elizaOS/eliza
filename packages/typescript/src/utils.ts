@@ -482,44 +482,41 @@ export const formatMessages = ({
       .join("\n");
 
     messageStrings.push(messageString);
-  }
+      }
 
-  return messageStrings.join("\n");
-};
+      return messageStrings.join("\n");
+    };
 
-<<<<<<< HEAD
-export const formatTimestamp = (messageDate: number) => {
-  const now = new Date();
-  const diff = now.getTime() - messageDate;
+    export const formatTimestamp = (messageDate: number) => {
+      const now = new Date();
+      const diff = now.getTime() - messageDate;
 
-  const absDiff = Math.abs(diff);
-  const seconds = Math.floor(absDiff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
+      const absDiff = Math.abs(diff);
+      const seconds = Math.floor(absDiff / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
 
-  if (absDiff < 60000) {
-    return "just now";
-  }
-  if (minutes < 60) {
-    return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
-  }
-  if (hours < 24) {
-    return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
-  }
-  return `${days} day${days !== 1 ? "s" : ""} ago`;
-};
-=======
-const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
->>>>>>> 2338cf054 (feat: Prompt Batching/Dispatcher, task system upgrade, and prompt caching support (#6575))
+      if (absDiff < 60000) {
+        return "just now";
+      }
+      if (minutes < 60) {
+        return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
+      }
+      if (hours < 24) {
+        return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
+      }
+      return `${days} day${days !== 1 ? "s" : ""} ago`;
+    };
 
-/**
- * Parses key-value pairs from a simple XML structure within a given text.
- * It looks for an XML block (e.g., <response>...</response>) and extracts
- * text content from direct child elements (e.g., <key>value</key>).
- *
- * Uses regex - suitable for simple XML. For complex XML, use a proper parser.
- *
+    const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
+
+    /**
+     * Parses key-value pairs from a simple XML structure within a given text.
+     * It looks for an XML block (e.g., <response>...</response>) and extracts
+     * text content from direct child elements (e.g., <key>value</key>).
+     *
+     * Uses regex - suitable for simple XML. For complex XML, use a proper parser.
  * @typeParam T - The expected shape of the parsed result. Defaults to Record<string, unknown>.
  * @param text - The input text containing the XML structure.
  * @returns The parsed object cast to type T, or null if parsing fails.
@@ -938,28 +935,7 @@ export function safeReplacer() {
 export function parseBooleanFromText(
   value: string | boolean | undefined | null,
 ): boolean {
-<<<<<<< HEAD
-  if (value === undefined || value === null) return false;
-  if (typeof value === "boolean") return value;
-
-  const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
-  const negative = ["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"];
-
-  // WHY: Defensive against non-string values (e.g. from env); avoid throws and return false on error.
-  try {
-    const normalizedText = String(value).trim().toUpperCase();
-    if (affirmative.includes(normalizedText)) return true;
-    if (negative.includes(normalizedText)) return false;
-  } catch {
-    logger.warn(
-      { src: "core:utils", type: typeof value, value },
-      "parseBooleanFromText error",
-    );
-  }
-  return false;
-=======
   return parseBooleanText(value);
->>>>>>> 2338cf054 (feat: Prompt Batching/Dispatcher, task system upgrade, and prompt caching support (#6575))
 }
 
 // UUID Utils

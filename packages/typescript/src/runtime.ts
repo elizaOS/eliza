@@ -254,11 +254,8 @@ export class AgentRuntime implements IAgentRuntime {
   };
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
   public messageService: IMessageService | null = null; // Lazily initialized
-<<<<<<< HEAD
 private cachedEmbeddingDimension?: number; // Cache embedding dimension after first detection
-=======
 public promptBatcher: PromptBatcher;
->>>>>>> 2338cf054 (feat: Prompt Batching/Dispatcher, task system upgrade, and prompt caching support (#6575))
   public companionUrl?: string;
   /** Set when stop() has been called; prevents new service starts and use-after-stop. */
   private stopped = false;
@@ -1928,10 +1925,8 @@ this.promptBatcher.dispose();
             if (content.text) {
               content.text = this.redactSecrets(content.text);
             }
-<<<<<<< HEAD
-            // Pass action name so callers can attribute the response without parsing content.
+// Pass action name so callers can attribute the response without parsing content.
             await callback(content, action.name);
-=======
 
             const auditHandlers =
               this.promptBatcher.getPreCallbackHandlers(action.name);
@@ -2042,7 +2037,6 @@ this.promptBatcher.dispose();
             }
 
             await callback(content);
->>>>>>> 2338cf054 (feat: Prompt Batching/Dispatcher, task system upgrade, and prompt caching support (#6575))
           }
         }
 
