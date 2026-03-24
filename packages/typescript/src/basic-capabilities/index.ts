@@ -565,8 +565,7 @@ const postGeneratedHandler = async ({
 			const resolvedActions = Array.isArray(actionsRaw)
 				? actionsRaw
 				: typeof actionsRaw === "string" &&
-						(actionsRaw.includes("<action>") ||
-							actionsRaw.includes("<action "))
+						/<action[\s>/]/.test(actionsRaw)
 					? [
 							...actionsRaw.matchAll(
 								/<action[^>]*>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/action>/g,
