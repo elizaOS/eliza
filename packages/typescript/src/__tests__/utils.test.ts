@@ -519,6 +519,23 @@ describe("Utils Comprehensive Tests", () => {
 			const result = parseKeyValueXml(xml);
 			expect(result?.actions).toEqual(["REPLY", "START_CODING_TASK", "IGNORE"]);
 		});
+
+		it("should fall back to comma-split when action tags have no name children", () => {
+			const xml = `<response>
+				<actions>
+					<action><params><task>do something</task></params></action>
+					<action><id>123</id></action>
+				</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			// No <name> elements found — falls back to comma-splitting the raw text.
+			// The comma-split of XML content produces fragments, but the important
+			// thing is that the function doesn't silently return an empty array.
+			expect(result?.actions).toBeDefined();
+			expect(Array.isArray(result?.actions)).toBe(true);
+			expect((result?.actions as string[]).length).toBeGreaterThan(0);
+		});
 	});
 
 	describe("formatMessages", () => {
