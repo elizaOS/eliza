@@ -558,13 +558,29 @@ const postGeneratedHandler = async ({
 		if (parsedXml) {
 			const actionsRaw = parsedXml.actions;
 			const providersRaw = parsedXml.providers;
-			responseContent = {
-				thought: parsedXml.thought ?? "",
-				actions: Array.isArray(actionsRaw)
-					? actionsRaw
+			// When actions is a raw XML string (preserved by parseKeyValueXml
+			// to avoid comma-splitting), extract action names from <name> tags.
+			// The downstream processActions code in message.ts has this same
+			// guard via normalizedActions.
+			const resolvedActions = Array.isArray(actionsRaw)
+				? actionsRaw
+				: typeof actionsRaw === "string" &&
+						(actionsRaw.includes("<action>") ||
+							actionsRaw.includes("<action "))
+					? [
+							...actionsRaw.matchAll(
+								/<action[^>]*>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/action>/g,
+							),
+						]
+							.map((m) => m[1].trim())
+							.filter(Boolean)
 					: actionsRaw
 						? [actionsRaw]
-						: ["IGNORE"],
+						: ["IGNORE"];
+			responseContent = {
+				thought: parsedXml.thought ?? "",
+				actions:
+					resolvedActions.length > 0 ? resolvedActions : ["IGNORE"],
 				providers: Array.isArray(providersRaw)
 					? providersRaw
 					: providersRaw
