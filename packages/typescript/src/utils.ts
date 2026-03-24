@@ -754,20 +754,33 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	const children = extractDirectChildren(xmlContent);
 	for (const { key, value } of children) {
 		if (key === "actions" || key === "providers" || key === "evaluators") {
-			if (
-				key === "actions" &&
-				value &&
-				(value.includes("<action>") || value.includes("<action "))
-			) {
-				// XML-structured actions: extract <name> elements into an array
-				// instead of comma-splitting (which breaks on commas in param content)
-				result[key] = [
+			// Detect XML-structured content: <action>, <provider>, <evaluator>
+			// tags (including attribute variants like <action name="x"> or
+			// whitespace variants like <action\n>).
+			const singularTag = key.replace(/s$/, ""); // actions→action, providers→provider
+			const hasXmlTags =
+				value && new RegExp(`<${singularTag}[\\s>/]`).test(value);
+			if (hasXmlTags) {
+				// Extract <name> elements into an array instead of comma-splitting
+				// (which breaks on commas inside param content).
+				const extracted = [
 					...value.matchAll(
-						/<action[^>]*>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/action>/g,
+						new RegExp(
+							`<${singularTag}[^>]*>[\\s\\S]*?<name>([\\s\\S]*?)</name>[\\s\\S]*?</${singularTag}>`,
+							"g",
+						),
 					),
 				]
 					.map((m) => m[1].trim())
 					.filter(Boolean);
+				if (extracted.length === 0) {
+					logger.warn(
+						`parseKeyValueXml: found <${singularTag}> tags in <${key}> but no <name> children — falling back to comma-split`,
+					);
+					result[key] = value.split(",").map((s) => s.trim());
+				} else {
+					result[key] = extracted;
+				}
 			} else {
 				result[key] = value
 					? value.split(",").map((s) => s.trim())
