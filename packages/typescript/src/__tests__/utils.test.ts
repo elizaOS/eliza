@@ -461,7 +461,7 @@ describe("Utils Comprehensive Tests", () => {
 			expect(elapsed).toBeLessThan(100);
 		});
 
-		it("should extract action names from XML action tags instead of comma-splitting", () => {
+		it("should preserve raw XML string when actions contain action tags", () => {
 			const xml = `<response>
 				<actions>
 					<action>
@@ -477,7 +477,11 @@ describe("Utils Comprehensive Tests", () => {
 			</response>`;
 
 			const result = parseKeyValueXml(xml);
-			expect(result?.actions).toEqual(["REPLY", "START_CODING_TASK"]);
+			// Raw string preserved — downstream normalizedActions code handles
+			// both action name extraction AND inline params extraction.
+			expect(typeof result?.actions).toBe("string");
+			expect(result?.actions).toContain("<name>REPLY</name>");
+			expect(result?.actions).toContain("<name>START_CODING_TASK</name>");
 		});
 
 		it("should not split on commas inside action param content", () => {
@@ -494,11 +498,13 @@ describe("Utils Comprehensive Tests", () => {
 			</response>`;
 
 			const result = parseKeyValueXml(xml);
-			// Should extract just the action name, not split on commas in task text
-			expect(result?.actions).toEqual(["START_CODING_TASK"]);
+			// Raw string preserved — commas in task text are NOT split
+			expect(typeof result?.actions).toBe("string");
+			expect(result?.actions).toContain("orange, black, and red colors");
+			expect(result?.actions).toContain("<name>START_CODING_TASK</name>");
 		});
 
-		it("should handle action tags with attributes", () => {
+		it("should preserve raw string for action tags with attributes", () => {
 			const xml = `<response>
 				<actions>
 					<action name="deploy">
@@ -508,7 +514,8 @@ describe("Utils Comprehensive Tests", () => {
 			</response>`;
 
 			const result = parseKeyValueXml(xml);
-			expect(result?.actions).toEqual(["DEPLOY"]);
+			expect(typeof result?.actions).toBe("string");
+			expect(result?.actions).toContain("<name>DEPLOY</name>");
 		});
 
 		it("should still comma-split plain action lists without XML tags", () => {
@@ -520,29 +527,21 @@ describe("Utils Comprehensive Tests", () => {
 			expect(result?.actions).toEqual(["REPLY", "START_CODING_TASK", "IGNORE"]);
 		});
 
-		it("should fall back to comma-split when action tags have no name children", () => {
+		it("should preserve raw string even for action tags without name children", () => {
 			const xml = `<response>
 				<actions>
 					<action><params><task>do something</task></params></action>
-					<action><id>123</id></action>
 				</actions>
 			</response>`;
 
 			const result = parseKeyValueXml(xml);
-			// No <name> elements found — falls back to comma-splitting the raw text.
-			// The comma-split of XML content produces fragments, but the important
-			// thing is that the function doesn't silently return an empty array.
-			expect(result?.actions).toBeDefined();
-			expect(Array.isArray(result?.actions)).toBe(true);
-			expect((result?.actions as string[]).length).toBeGreaterThan(0);
+			// Raw string preserved — downstream code handles malformed actions
+			expect(typeof result?.actions).toBe("string");
 		});
 
-		it("should populate params when extracting XML action names", () => {
+		it("should preserve params in raw string for downstream extraction", () => {
 			const xml = `<response>
 				<actions>
-					<action>
-						<name>REPLY</name>
-					</action>
 					<action>
 						<name>START_CODING_TASK</name>
 						<params>
@@ -554,12 +553,12 @@ describe("Utils Comprehensive Tests", () => {
 			</response>`;
 
 			const result = parseKeyValueXml(xml);
-			expect(result?.actions).toEqual(["REPLY", "START_CODING_TASK"]);
-			// params should be populated so downstream parseActionParams can extract them
-			expect(typeof result?.params).toBe("string");
-			expect(result?.params).toContain("START_CODING_TASK");
-			expect(result?.params).toContain("repo");
-			expect(result?.params).toContain("https://github.com/org/repo");
+			// Raw string contains both action names and params —
+			// downstream code extracts both via matchAll.
+			expect(typeof result?.actions).toBe("string");
+			expect(result?.actions).toContain("<repo>");
+			expect(result?.actions).toContain("https://github.com/org/repo");
+			expect(result?.actions).toContain("<task>Fix the bug</task>");
 		});
 	});
 
