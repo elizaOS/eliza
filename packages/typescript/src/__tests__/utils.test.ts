@@ -460,6 +460,106 @@ describe("Utils Comprehensive Tests", () => {
 			expect(result).toBeNull();
 			expect(elapsed).toBeLessThan(100);
 		});
+
+		it("should preserve raw XML string when actions contain action tags", () => {
+			const xml = `<response>
+				<actions>
+					<action>
+						<name>REPLY</name>
+					</action>
+					<action>
+						<name>START_CODING_TASK</name>
+						<params>
+							<task>Add orange, black, and red colors, hex grids</task>
+						</params>
+					</action>
+				</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			// Raw string preserved — downstream normalizedActions code handles
+			// both action name extraction AND inline params extraction.
+			expect(typeof result?.actions).toBe("string");
+			expect(result?.actions).toContain("<name>REPLY</name>");
+			expect(result?.actions).toContain("<name>START_CODING_TASK</name>");
+		});
+
+		it("should not split on commas inside action param content", () => {
+			const xml = `<response>
+				<actions>
+					<action>
+						<name>START_CODING_TASK</name>
+						<params>
+							<repo>https://github.com/org/repo</repo>
+							<task>Fix orange, black, and red colors, hex grids, technical fonts</task>
+						</params>
+					</action>
+				</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			// Raw string preserved — commas in task text are NOT split
+			expect(typeof result?.actions).toBe("string");
+			expect(result?.actions).toContain("orange, black, and red colors");
+			expect(result?.actions).toContain("<name>START_CODING_TASK</name>");
+		});
+
+		it("should preserve raw string for action tags with attributes", () => {
+			const xml = `<response>
+				<actions>
+					<action name="deploy">
+						<name>DEPLOY</name>
+					</action>
+				</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			expect(typeof result?.actions).toBe("string");
+			expect(result?.actions).toContain("<name>DEPLOY</name>");
+		});
+
+		it("should still comma-split plain action lists without XML tags", () => {
+			const xml = `<response>
+				<actions>REPLY, START_CODING_TASK, IGNORE</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			expect(result?.actions).toEqual(["REPLY", "START_CODING_TASK", "IGNORE"]);
+		});
+
+		it("should preserve raw string even for action tags without name children", () => {
+			const xml = `<response>
+				<actions>
+					<action><params><task>do something</task></params></action>
+				</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			// Raw string preserved — downstream code handles malformed actions
+			expect(typeof result?.actions).toBe("string");
+		});
+
+		it("should preserve params in raw string for downstream extraction", () => {
+			const xml = `<response>
+				<actions>
+					<action>
+						<name>START_CODING_TASK</name>
+						<params>
+							<repo>https://github.com/org/repo</repo>
+							<task>Fix the bug</task>
+						</params>
+					</action>
+				</actions>
+			</response>`;
+
+			const result = parseKeyValueXml(xml);
+			// Raw string contains both action names and params —
+			// downstream code extracts both via matchAll.
+			expect(typeof result?.actions).toBe("string");
+			expect(result?.actions).toContain("<repo>");
+			expect(result?.actions).toContain("https://github.com/org/repo");
+			expect(result?.actions).toContain("<task>Fix the bug</task>");
+		});
 	});
 
 	describe("formatMessages", () => {
