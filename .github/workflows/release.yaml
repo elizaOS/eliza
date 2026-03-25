@@ -72,7 +72,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq-dev postgresql-client protobuf-compiler libwayland-dev
+          sudo apt-get install -y libpq-dev postgresql-client protobuf-compiler libwayland-dev libpipewire-0.3-dev
 
       - name: Setup Node
         uses: actions/setup-node@v4
