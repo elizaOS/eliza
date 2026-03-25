@@ -413,6 +413,11 @@ impl UIElementImpl for LinuxUIElement {
     fn is_selected(&self) -> Result<bool, AutomationError> {
         Ok(false)
     }
+    fn set_selected(&self, _state: bool) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "set_selected not implemented on Linux yet".to_string(),
+        ))
+    }
 }
 
 impl UIElementImpl for StubElement {
@@ -726,7 +731,7 @@ impl LinuxATSPIElement {
         // Get PID from application
         let pid = proxy.get_application().await
             .ok()
-            .and_then(|app_ref| {
+            .and_then(|_app_ref| {
                 // Try to get PID from the application accessible
                 // This is a best-effort approach
                 0u32.into()
@@ -738,9 +743,9 @@ impl LinuxATSPIElement {
         
         // Get states
         let states = proxy.get_state().await
-            .map(|state_set| {
+            .map(|_state_set| {
                 // Convert state set to HashSet of state names
-                let mut states = HashSet::new();
+                let states = HashSet::new();
                 // AT-SPI2 states are bit flags, convert to readable names
                 states
             })
@@ -786,10 +791,10 @@ impl LinuxATSPIElement {
         let extents = component.get_extents(atspi::CoordType::Screen).await.ok()?;
         
         Some((
-            extents.x as f64,
-            extents.y as f64,
-            extents.width as f64,
-            extents.height as f64,
+            extents.0 as f64,
+            extents.1 as f64,
+            extents.2 as f64,
+            extents.3 as f64,
         ))
     }
     
@@ -1632,7 +1637,7 @@ impl LinuxEngine {
             .await
             .map_err(|e| AutomationError::PlatformError(format!("Failed to connect to AT-SPI2: {e}")))?;
         
-        Ok(Arc::new(connection.into()))
+        Ok(Arc::new(connection.connection().clone()))
     }
     
     /// Get the desktop root accessible from AT-SPI2 registry
