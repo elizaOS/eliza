@@ -754,7 +754,25 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	const children = extractDirectChildren(xmlContent);
 	for (const { key, value } of children) {
 		if (key === "actions" || key === "providers" || key === "evaluators") {
-			result[key] = value ? value.split(",").map((s) => s.trim()) : [];
+			// Detect XML-structured content: <action>, <provider>, <evaluator>
+			// tags (including attribute variants like <action name="x"> or
+			// whitespace variants like <action\n>).
+			const singularTag = key.replace(/s$/, ""); // actions→action, providers→provider
+			const hasXmlTags =
+				value && new RegExp(`<${singularTag}[\\s>/]`).test(value);
+			if (hasXmlTags) {
+				// Preserve the raw XML string instead of comma-splitting.
+				// The downstream normalizedActions code (which checks
+				// typeof === "string") already handles XML action parsing,
+				// extracting both action names AND inline <params> blocks.
+				// Comma-splitting would break on commas inside param content
+				// (e.g. task descriptions with commas).
+				result[key] = value;
+			} else {
+				result[key] = value
+					? value.split(",").map((s) => s.trim())
+					: [];
+			}
 		} else if (key === "simple") {
 			result[key] = value.toLowerCase() === "true";
 		} else {
