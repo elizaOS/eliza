@@ -540,10 +540,14 @@ jobs:
             echo "⚠️ dist-tag '${DIST_TAG}' points to ${ACTUAL}, expected ${VERSION}"
             echo "Forcing dist-tag update for all published packages..."
 
-            # Get list of public packages from lerna
+            # Get list of public packages from lerna, plus @elizaos/core
+            # which is published from packages/typescript but may not appear
+            # in lerna ls if the workspace config changed.
             PACKAGES=$(bunx lerna ls --json --no-private 2>/dev/null | node -e "
               const pkgs = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-              pkgs.forEach(p => console.log(p.name));
+              const names = new Set(pkgs.map(p => p.name));
+              names.add('@elizaos/core');
+              names.forEach(n => console.log(n));
             ")
 
             FIXED=0
