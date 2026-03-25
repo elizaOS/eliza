@@ -118,7 +118,7 @@
     },
     "packages/daemon": {
       "name": "@elizaos/daemon",
-      "version": "2.0.0-alpha.105",
+      "version": "2.0.0-alpha.106",
       "devDependencies": {
         "@biomejs/biome": "^1.9.4",
         "@types/node": "^22.10.2",
@@ -132,7 +132,7 @@
     },
     "packages/elizaos": {
       "name": "elizaos",
-      "version": "2.0.0-alpha.105",
+      "version": "2.0.0-alpha.106",
       "bin": {
         "elizaos": "./dist/cli.js",
       },
@@ -149,7 +149,7 @@
     },
     "packages/interop": {
       "name": "@elizaos/interop",
-      "version": "2.0.0-alpha.105",
+      "version": "2.0.0-alpha.106",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -160,7 +160,7 @@
     },
     "packages/prompts": {
       "name": "@elizaos/prompts",
-      "version": "2.0.0-alpha.105",
+      "version": "2.0.0-alpha.106",
     },
     "packages/python": {
       "name": "@elizaos/python",
@@ -168,18 +168,18 @@
     },
     "packages/rust": {
       "name": "@elizaos/rust",
-      "version": "2.0.0-alpha.105",
+      "version": "2.0.0-alpha.106",
     },
     "packages/schemas": {
       "name": "@elizaos/schemas",
-      "version": "2.0.0-alpha.105",
+      "version": "2.0.0-alpha.106",
       "devDependencies": {
         "@bufbuild/buf": "^1.47.2",
       },
     },
     "packages/skills": {
       "name": "@elizaos/skills",
-      "version": "2.0.0-alpha.105",
+      "version": "2.0.0-alpha.106",
       "dependencies": {
         "yaml": "^2.8.2",
       },
@@ -190,7 +190,7 @@
     },
     "packages/training": {
       "name": "@elizaos/training",
-      "version": "2.0.0-alpha.105",
+      "version": "2.0.0-alpha.106",
       "dependencies": {
         "@huggingface/hub": "^2.6.12",
         "@vercel/blob": "^0.27.1",
@@ -206,7 +206,7 @@
     },
     "packages/tui": {
       "name": "@elizaos/tui",
-      "version": "2.0.0-alpha.105",
+      "version": "2.0.0-alpha.106",
       "dependencies": {
         "@types/mime-types": "^2.1.4",
         "chalk": "^5.5.0",
@@ -222,7 +222,7 @@
     },
     "packages/typescript": {
       "name": "@elizaos/core",
-      "version": "2.0.0-alpha.105",
+      "version": "2.0.0-alpha.106",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.32.1",
         "@bufbuild/protobuf": "^2.11.0",
