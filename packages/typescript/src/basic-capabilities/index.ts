@@ -576,6 +576,16 @@ const postGeneratedHandler = async ({
 					: actionsRaw
 						? [actionsRaw]
 						: ["IGNORE"];
+			if (
+				resolvedActions.length === 0 &&
+				typeof actionsRaw === "string" &&
+				/<action[\s>/]/.test(actionsRaw)
+			) {
+				logger.warn(
+					{ src: "basic-capabilities" },
+					`No <name> tags found inside <action> elements, falling back to IGNORE. actionsRaw length: ${actionsRaw.length}`,
+				);
+			}
 			responseContent = {
 				thought: parsedXml.thought ?? "",
 				actions:
