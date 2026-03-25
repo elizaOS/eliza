@@ -68,6 +68,7 @@ impl fmt::Debug for StubElement {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 struct LinuxUIElement {
     object_id: usize,
     id: Option<String>,
@@ -695,6 +696,7 @@ struct ATSPIElementInfo {
 
 /// Wrapper around an AT-SPI2 accessible object reference
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct LinuxATSPIElement {
     info: ATSPIElementInfo,
     connection: Arc<ZbusConnection>,
