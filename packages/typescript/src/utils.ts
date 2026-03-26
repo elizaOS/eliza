@@ -771,15 +771,22 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
-  const result = extractAndParseJSONObjectFromText(text);
-  if (!result) {
+  try {
+    const result = extractAndParseJSONObjectFromText(text);
+    if (!result) {
+      return null;
+    }
+    if (Array.isArray(result)) {
+      return null;
+    }
+    if (typeof result !== "object") {
+      return null;
+    }
+    return result;
+  } catch {
+    // Return null on parse failure to maintain backwards compatibility
     return null;
   }
-  if (Array.isArray(result)) {
-    return null;
-  }
-  return result;
-// Note: allows returning null for invalid or empty results to ensure safe handling downstream.
 }
 
 /**
