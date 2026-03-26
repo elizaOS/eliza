@@ -66,11 +66,7 @@ class StackContextManager implements IStreamingContextManager {
 
 // Global singleton - auto-configured on first access
 let globalContextManager: IStreamingContextManager | null = null;
-let contextManagerInitialized = false;
 
-/**
- * Detect if running in Node.js environment
- */
 function isNodeEnvironment(): boolean {
 	return (
 		typeof process !== "undefined" &&
@@ -79,68 +75,35 @@ function isNodeEnvironment(): boolean {
 	);
 }
 
-/**
- * Create the appropriate context manager for the current environment.
- * Uses AsyncLocalStorage in Node.js, Stack-based in browser.
- */
-async function createContextManager(): Promise<IStreamingContextManager> {
+// Initialize synchronously to avoid the race where early calls use the
+// StackContextManager fallback (which doesn't propagate through async/await).
+function initContextManagerSync(): IStreamingContextManager {
 	if (isNodeEnvironment()) {
 		try {
-			// Dynamic import to avoid bundling Node.js code in browser builds
-			const { AsyncLocalStorage } = await import("node:async_hooks");
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			const { AsyncLocalStorage } =
+				require("node:async_hooks") as typeof import("node:async_hooks");
+			const storage = new AsyncLocalStorage<
+				StreamingContext | undefined
+			>();
 			return {
-				storage: new AsyncLocalStorage<StreamingContext | undefined>(),
 				run<T>(context: StreamingContext | undefined, fn: () => T): T {
-					return (
-						this as {
-							storage: InstanceType<
-								typeof AsyncLocalStorage<StreamingContext | undefined>
-							>;
-						}
-					).storage.run(context, fn);
+					return storage.run(context, fn);
 				},
 				active(): StreamingContext | undefined {
-					return (
-						this as {
-							storage: InstanceType<
-								typeof AsyncLocalStorage<StreamingContext | undefined>
-							>;
-						}
-					).storage.getStore();
+					return storage.getStore();
 				},
-			} as IStreamingContextManager & {
-				storage: InstanceType<
-					typeof AsyncLocalStorage<StreamingContext | undefined>
-				>;
-			};
+			} as IStreamingContextManager;
 		} catch {
-			// Fallback to stack-based if async_hooks not available
-			return new StackContextManager();
+			// AsyncLocalStorage unavailable — fall back to stack
 		}
 	}
 	return new StackContextManager();
 }
 
-/**
- * Get or create the global context manager.
- * Lazily initializes on first access.
- */
 function getOrCreateContextManager(): IStreamingContextManager {
 	if (!globalContextManager) {
-		// Synchronous fallback - use Stack until async init completes
-		globalContextManager = new StackContextManager();
-
-		// Async upgrade to AsyncLocalStorage in Node.js
-		if (isNodeEnvironment() && !contextManagerInitialized) {
-			contextManagerInitialized = true;
-			createContextManager()
-				.then((manager) => {
-					globalContextManager = manager;
-				})
-				.catch(() => {
-					// Keep using StackContextManager
-				});
-		}
+		globalContextManager = initContextManagerSync();
 	}
 	return globalContextManager;
 }
@@ -155,7 +118,6 @@ export function setStreamingContextManager(
 	manager: IStreamingContextManager,
 ): void {
 	globalContextManager = manager;
-	contextManagerInitialized = true;
 }
 
 /**
