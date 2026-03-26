@@ -35,7 +35,7 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.1.0
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true
@@ -84,5 +84,5 @@ jobs:
 
           # Claude CLI arguments for model and allowed tools
           claude_args: |
-            --model claude-opus-4-5-20251101
+            --model claude-opus-4-6
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment *),Bash(gh pr diff *),Bash(gh pr view *),Bash(gh api *)"
