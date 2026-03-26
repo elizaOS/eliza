@@ -103,15 +103,10 @@ export const replyAction = {
     const requiredProviders = ["RECENT_MESSAGES", "ACTION_STATE"];
     const allProviders = [...new Set([...requiredProviders, ...additionalProviders])];
     
-    // Check if all required providers are already in state to avoid redundant recomposition
-    const stateProviders = state?.data?.providers;
-    const hasRequestedInState = stateProviders &&
-      typeof stateProviders === 'object' &&
-      allProviders.every(provider => provider in stateProviders);
-    
-    if (!hasRequestedInState) {
-      state = await runtime.composeState(message, allProviders);
-    }
+    // Always recompose state to ensure RECENT_MESSAGES and ACTION_STATE are fresh.
+    // In multi-action chains, these providers would contain stale data (missing earlier
+    // action results and agent replies) if we skip recomposition.
+    state = await runtime.composeState(message, allProviders);
 
     const prompt = composePromptFromState({
       state,
