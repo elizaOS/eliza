@@ -1,9 +1,9 @@
 /**
  * Trajectory context management for benchmark/training traces.
  *
- * Mirrors the streaming context design:
- * - Node.js: AsyncLocalStorage for async-safe propagation
- * - Browser: stack-based fallback
+ * Node.js: AsyncLocalStorage for async-safe propagation (initialized
+ * synchronously to avoid race with first message processing).
+ * Browser: stack-based fallback.
  */
 export interface TrajectoryContext {
 	trajectoryStepId?: string;
@@ -39,6 +39,11 @@ class StackContextManager implements ITrajectoryContextManager {
 	}
 }
 
+// Initialize the context manager synchronously in Node.js so that
+// AsyncLocalStorage is available before the first message is processed.
+// The previous lazy async init (.then()) caused a race: the stack-based
+// fallback was used for early messages, which doesn't propagate context
+// through async/await — so logLlmCall never saw the trajectory step ID.
 let globalContextManager: ITrajectoryContextManager | null = null;
 let contextManagerInitialized = false;
 
@@ -50,41 +55,33 @@ function isNodeEnvironment(): boolean {
 	);
 }
 
-async function createContextManager(): Promise<ITrajectoryContextManager> {
+function initContextManagerSync(): ITrajectoryContextManager {
 	if (isNodeEnvironment()) {
 		try {
-			// Dynamic import to avoid bundling Node.js code in browser builds
-			const { AsyncLocalStorage } = await import("node:async_hooks");
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			const { AsyncLocalStorage } =
+				require("node:async_hooks") as typeof import("node:async_hooks");
+			const storage = new AsyncLocalStorage<
+				TrajectoryContext | undefined
+			>();
 			return {
-				storage: new AsyncLocalStorage<TrajectoryContext | undefined>(),
+				storage,
 				run<T>(
 					context: TrajectoryContext | undefined,
 					fn: () => T | Promise<T>,
 				): T | Promise<T> {
 					return (
-						this as {
-							storage: InstanceType<
-								typeof AsyncLocalStorage<TrajectoryContext | undefined>
-							>;
-						}
+						this as unknown as { storage: typeof storage }
 					).storage.run(context, fn);
 				},
 				active(): TrajectoryContext | undefined {
 					return (
-						this as {
-							storage: InstanceType<
-								typeof AsyncLocalStorage<TrajectoryContext | undefined>
-							>;
-						}
+						this as unknown as { storage: typeof storage }
 					).storage.getStore();
 				},
-			} as ITrajectoryContextManager & {
-				storage: InstanceType<
-					typeof AsyncLocalStorage<TrajectoryContext | undefined>
-				>;
-			};
+			} as ITrajectoryContextManager;
 		} catch {
-			return new StackContextManager();
+			// AsyncLocalStorage unavailable — fall back to stack
 		}
 	}
 	return new StackContextManager();
@@ -92,18 +89,8 @@ async function createContextManager(): Promise<ITrajectoryContextManager> {
 
 function getOrCreateContextManager(): ITrajectoryContextManager {
 	if (!globalContextManager) {
-		globalContextManager = new StackContextManager();
-
-		if (isNodeEnvironment() && !contextManagerInitialized) {
-			contextManagerInitialized = true;
-			createContextManager()
-				.then((manager) => {
-					globalContextManager = manager;
-				})
-				.catch(() => {
-					// Keep using StackContextManager
-				});
-		}
+		globalContextManager = initContextManagerSync();
+		contextManagerInitialized = true;
 	}
 	return globalContextManager;
 }
