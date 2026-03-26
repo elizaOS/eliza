@@ -1,0 +1,54 @@
+{
+  "name": "@elizaos/plugin-gas-station",
+  "version": "1.0.0",
+  "description": "ElizaOS plugin for GasStation — swap USDC for native gas (POL/ETH) on Polygon. Solves the cold-start gas problem for AI agents.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "dev": "tsc --project tsconfig.json --watch",
+    "lint": "bunx @biomejs/biome check --write .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "gas",
+    "polygon",
+    "usdc",
+    "blockchain",
+    "ai-agent",
+    "web3"
+  ],
+  "author": "pino12033",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/plugin-gas-station"
+  }
+}
