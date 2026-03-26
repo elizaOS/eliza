@@ -915,7 +915,6 @@ describe("DefaultMessageService", () => {
         // ALLOW_MEMORY_SOURCE_IDS overrides DISABLE_MEMORY_CREATION for whitelisted sources
         expect(runtime.createMemory).toHaveBeenCalled();
       });
-    });
 
     it("should block memory creation for non-whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
       const message: Memory = {
