@@ -3207,6 +3207,8 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
 
   /**
    * Helper to log model calls to the database (used by both streaming and non-streaming paths)
+   * Note: callerInfo parameter is only captured when debug logging is enabled to avoid
+   * expensive stack trace generation on every model call in production.
    */
   private logModelCall(
     modelType: string,
@@ -3216,6 +3218,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
     elapsedTime: number,
     provider: string | undefined,
     response: unknown,
+    callerInfo?: string,
   ): void {
     // Log prompts to action context (except embeddings)
     if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
