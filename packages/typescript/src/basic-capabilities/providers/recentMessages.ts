@@ -11,11 +11,10 @@ import type {
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
 import { addHeader, formatMessages, formatPosts } from "../../utils.ts";
-import { sliceToFitBudget } from "../../utils/slice-to-fit-budget.js";
+import { sliceToFitBudget, RECENT_ACTION_RUNS_TARGET_CHARS } from "../../utils/slice-to-fit-budget.js";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("RECENT_MESSAGES");
-const RECENT_ACTION_RUNS_TARGET_CHARS = 2200;
 
 // Move getRecentInteractions outside the provider
 /**
