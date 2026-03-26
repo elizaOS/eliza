@@ -37,6 +37,11 @@ function updateGenerateScript(pluginPath, pluginName) {
     // Replace elizaos_plugin_discord with elizaos_<plugin-name>
     const pythonModuleName = pluginName.replace("plugin-", "elizaos_plugin_");
     content = content.replace(/elizaos_plugin_discord/g, pythonModuleName);
+
+    const existing = fs.readFileSync(scriptPath, "utf-8");
+    if (existing === content) {
+      return false;
+    }
     
     fs.writeFileSync(scriptPath, content);
     return true;
