@@ -9,14 +9,60 @@ import type {
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
 
+/**
+ * A bounded Set that evicts oldest entries when exceeding maxSize.
+ * Prevents unbounded memory growth in long-running deployments.
+ */
+class BoundedSet<T> implements Iterable<T> {
+  private readonly set: Set<T>;
+  private readonly maxSize: number;
+
+  constructor(maxSize = 1000) {
+    this.set = new Set<T>();
+    this.maxSize = maxSize;
+  }
+
+  add(value: T): this {
+    if (!this.set.has(value) && this.set.size >= this.maxSize) {
+      const oldest = this.set.values().next().value;
+      if (oldest !== undefined) {
+        this.set.delete(oldest);
+      }
+    }
+    this.set.add(value);
+    return this;
+  }
+
+  has(value: T): boolean {
+    return this.set.has(value);
+  }
+
+  delete(value: T): boolean {
+    return this.set.delete(value);
+  }
+
+  clear(): void {
+    this.set.clear();
+  }
+
+  get size(): number {
+    return this.set.size;
+  }
+
+  [Symbol.iterator](): IterableIterator<T> {
+    return this.set[Symbol.iterator]();
+  }
+}
+
 // Track entities we've already warned about, keyed by runtime to avoid cross-agent interference
 // Uses WeakMap so entries are garbage collected when runtime is no longer referenced
-const warnedUnnamedEntitiesByRuntime = new WeakMap<IAgentRuntime, Set<string>>();
+// Each runtime's set is bounded to prevent memory leaks with many distinct entities
+const warnedUnnamedEntitiesByRuntime = new WeakMap<IAgentRuntime, BoundedSet<string>>();
 
-function getWarnedEntities(runtime: IAgentRuntime): Set<string> {
+function getWarnedEntities(runtime: IAgentRuntime): BoundedSet<string> {
   let set = warnedUnnamedEntitiesByRuntime.get(runtime);
   if (!set) {
-    set = new Set<string>();
+    set = new BoundedSet<string>(1000);
     warnedUnnamedEntitiesByRuntime.set(runtime, set);
   }
   return set;
