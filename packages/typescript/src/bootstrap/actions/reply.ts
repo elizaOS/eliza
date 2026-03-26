@@ -100,9 +100,11 @@ export const replyAction = {
     // For subsequent REPLY actions (end of chain), regenerate using LLM
     // to produce a response that incorporates previous action results.
     // Include any additional providers that were requested in the initial responses.
+    // Preserve custom ordering from responses while ensuring required providers are included
     const additionalProviders = responses?.flatMap(res => res.content?.providers || []) || [];
     const requiredProviders = ["RECENT_MESSAGES", "ACTION_STATE"];
-    const allProviders = [...new Set([...requiredProviders, ...additionalProviders])];
+    // Put additionalProviders first to preserve custom ordering, then add required ones if missing
+    const allProviders = [...new Set([...additionalProviders, ...requiredProviders])];
     
     // Always recompose state to ensure RECENT_MESSAGES and ACTION_STATE are fresh.
     // In multi-action chains, these providers would contain stale data (missing earlier
