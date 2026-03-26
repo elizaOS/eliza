@@ -956,10 +956,9 @@ export class DefaultMessageService implements IMessageService {
         await callback(ignoreContent, "IGNORE");
       }
 
-      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION).
-      // Note: Agent responses (including IGNORE) are always persisted when memory creation is enabled,
-      // regardless of ALLOW_MEMORY_SOURCE_IDS (which filters external message sources only).
-      const canPersistIgnore = !disableMemoryCreation;
+      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
+      // Note: Apply the same allowlist policy to ignore responses for consistency.
+      const canPersistIgnore = !disableMemoryCreation || memorySourceAllowed;
       if (canPersistIgnore) {
           const ignoreMemory: Memory = {
             id: asUUID(v4()),
