@@ -3216,7 +3216,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
     elapsedTime: number,
     provider: string | undefined,
     response: unknown,
-    callerInfo?: string,
+    callerInfo: string = "unknown",
   ): void {
     // Log prompts to action context (except embeddings)
     if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
