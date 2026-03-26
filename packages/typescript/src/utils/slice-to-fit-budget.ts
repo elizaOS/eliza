@@ -21,13 +21,15 @@ export function sliceToFitBudget<T>(
   let total = 0;
   let count = 0;
 
-  // Calculate all sizes upfront to avoid double estimation
+  // Calculate all sizes upfront to avoid calling estimateChars twice per item
+  // (once for budget check and once for accumulation)
   const sizes = items.map(estimateChars);
   
   if (fromEnd) {
     for (let index = items.length - 1; index >= 0; index--) {
-      if (total + sizes[index] > targetChars) break;
-      total += sizes[index];
+      const size = sizes[index];
+      if (total + size > targetChars) break;
+      total += size;
       count++;
     }
     const take = count > 0 ? count : 0;
@@ -35,8 +37,9 @@ export function sliceToFitBudget<T>(
   }
 
   for (; count < items.length; count++) {
-    if (total + sizes[count] > targetChars) break;
-    total += sizes[count];
+    const size = sizes[count];
+    if (total + size > targetChars) break;
+    total += size;
   }
 
   return items.slice(0, count);
