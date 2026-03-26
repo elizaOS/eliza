@@ -764,27 +764,22 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 /**
  * Parses a JSON object from text (code block or raw). Uses JSON5 so LLM output with
  * trailing commas, unquoted keys, or single quotes still parses (why: strict JSON often fails on model output).
- * Returns null on parse failure so one bad block doesn't crash the flow.
  *
  * @param text - The input text from which to extract and parse the JSON object.
- * @returns An object parsed from the JSON string if successful; otherwise null.
- * @throws Will throw an error if parsing fails and cannot extract a valid JSON object.
+ * @returns An object parsed from the JSON string if successful.
+ * @throws Error if parsing fails or result is not a valid object.
  */
 export function parseJSONObjectFromText(
   text: string,
-): Record<string, unknown> | null {
-  try {
-    const result = extractAndParseJSONObjectFromText(text);
-    if (!result) {
-      return null;
-    }
-    if (Array.isArray(result)) {
-      return null;
-    }
-    return result;
-  } catch (error) {
-    return null;
+): Record<string, unknown> {
+  const result = extractAndParseJSONObjectFromText(text);
+  if (!result) {
+    throw new Error("Failed to parse JSON object from text");
   }
+  if (Array.isArray(result)) {
+    throw new Error("Parsed result is an array, not an object");
+  }
+  return result;
 }
 
 /**
