@@ -766,18 +766,17 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
  * trailing commas, unquoted keys, or single quotes still parses (why: strict JSON often fails on model output).
  *
  * @param text - The input text from which to extract and parse the JSON object.
- * @returns An object parsed from the JSON string if successful.
- * @throws Error if parsing fails or result is not a valid object.
+ * @returns An object parsed from the JSON string if successful, or null on failure.
  */
 export function parseJSONObjectFromText(
   text: string,
-): Record<string, unknown> {
+): Record<string, unknown> | null {
   const result = extractAndParseJSONObjectFromText(text);
   if (!result) {
-    throw new Error("Failed to parse JSON object from text");
+    return null;
   }
   if (Array.isArray(result)) {
-    throw new Error("Parsed result is an array, not an object");
+    return null;
   }
   return result;
 }
