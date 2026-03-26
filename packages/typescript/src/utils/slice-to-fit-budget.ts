@@ -7,6 +7,13 @@
  * still adapting to item size (short items -> more fit, long items -> fewer).
  */
 
+/** Target character budget for action results in provider output */
+export const ACTION_RESULTS_TARGET_CHARS = 2600;
+/** Target character budget for action history in provider output */
+export const ACTION_HISTORY_TARGET_CHARS = 2400;
+/** Target character budget for recent action runs in provider output */
+export const RECENT_ACTION_RUNS_TARGET_CHARS = 2000;
+
 export function sliceToFitBudget<T>(
   items: T[],
   estimateChars: (item: T) => number,
