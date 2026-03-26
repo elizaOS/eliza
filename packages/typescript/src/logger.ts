@@ -386,9 +386,9 @@ function ensureFileLog(): boolean {
     const logFilePath = isBooleanFlag
       ? pathMod.join(process.cwd(), "output.log") 
       : logFileEnv.trim();
-    const logDir = pathMod.dirname(isBooleanFlag 
-      ? pathMod.join(process.cwd(), "output.log")
-      : logFilePath);
+    // Use the directory of the log file for all log files (output.log, prompts.log, chat.log)
+    // This ensures consistent log locations when LOG_FILE is a custom path
+    const logDir = pathMod.dirname(logFilePath);
     
         // Ensure log directory exists
         fs.mkdirSync(logDir, { recursive: true });
