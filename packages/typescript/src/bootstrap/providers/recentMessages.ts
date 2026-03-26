@@ -155,7 +155,7 @@ export const recentMessagesProvider: Provider = {
           return textChars + runId.length + 80;
         },
         RECENT_ACTION_RUNS_TARGET_CHARS,
-        { fromEnd: false } // Keep newest runs (from start of array since getMemories returns newest-first)
+        { fromEnd: true } // Keep newest runs (from end of array)
       );
 
       const formattedActionResults = recentRuns
