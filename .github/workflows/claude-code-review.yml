@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
@@ -69,6 +69,12 @@ jobs:
             - Follows existing patterns
             - Docs updated if needed
 
+            Note: The PR branch is already checked out in the current working directory.
+
+            Use `gh pr comment` for top-level feedback.
+            Use `mcp__github_inline_comment__create_inline_comment` (with `confirmed: true`) to highlight specific code issues.
+            Only post GitHub comments - don't submit review text as messages.
+
             **🎯 OUTPUT FORMAT:**
             Provide detailed feedback using inline comments for specific issues.
             ```
@@ -84,5 +90,6 @@ jobs:
 
           # Claude CLI arguments for model and allowed tools
           claude_args: |
-            --model claude-opus-4-5-20251101
+            --dangerouslyAllowBrowser
+            --model claude-opus-4-6
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment *),Bash(gh pr diff *),Bash(gh pr view *),Bash(gh api *)"
