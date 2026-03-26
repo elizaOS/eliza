@@ -100,7 +100,7 @@ describe("anxietyProvider", () => {
 
     expect(result.text).toBeTruthy();
     expect(result.values.hasAnxiety).toBe(true);
-    expect(result.values.channel).toBeUndefined();
+    expect(result.values.channel).toBe("unknown");
   });
 
   it("should return consistent output regardless of runtime settings", async () => {
