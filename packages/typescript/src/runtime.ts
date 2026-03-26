@@ -2599,7 +2599,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
 
           // Execute provider with timeout race
           const result = await Promise.race([
-            provider.get(runtime, message, state),
+            provider.get(this as IAgentRuntime, message, cachedState),
             timeoutPromise
           ]);
 
