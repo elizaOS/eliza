@@ -7,12 +7,14 @@ import type {
   State,
 } from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
-import { sliceToFitBudget } from "../../utils/slice-to-fit-budget.js";
+import {
+  sliceToFitBudget,
+  ACTION_RESULTS_TARGET_CHARS,
+  ACTION_HISTORY_TARGET_CHARS,
+} from "../../utils/slice-to-fit-budget.js";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTION_STATE");
-const ACTION_RESULTS_TARGET_CHARS = 2600;
-const ACTION_HISTORY_TARGET_CHARS = 2400;
 
 type WorkingMemoryEntry = {
   actionName: string;
