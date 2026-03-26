@@ -3244,6 +3244,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
       // Always redact secrets before writing to disk or logging
       const redactedPrompt = this.redactSecrets(promptContent);
       const pSlug = logPrompt(modelKey, redactedPrompt, meta);
+      // Note: redactSecrets is applied earlier to ensure sensitive data isn't logged or saved.
       if (pSlug) {
         this.logger.debug(
           {

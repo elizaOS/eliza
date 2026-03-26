@@ -779,6 +779,7 @@ export function parseJSONObjectFromText(
     if (Array.isArray(result)) {
       return null;
     }
+    // Note: ensures result is a valid object to maintain expected data structure integrity.
     if (typeof result !== "object") {
       return null;
     }

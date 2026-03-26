@@ -168,6 +168,7 @@ export const recentMessagesProvider: Provider = {
           return textChars + runId.length + 80;
         },
         RECENT_ACTION_RUNS_TARGET_CHARS,
+      // Note: keeping oldest runs allows tracking of memory evolution over time for analysis
       );
 
       const formattedActionResults = recentRuns
