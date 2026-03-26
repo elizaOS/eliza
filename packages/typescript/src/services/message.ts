@@ -182,6 +182,10 @@ interface StrategyResult {
  * Using WeakMap would break functionality since keys must be agent IDs (strings).
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
+// Track when each agent entry was last accessed for TTL-based eviction
+const latestResponseTimestamps = new Map<string, number>();
+// TTL for agent entries: 1 hour of inactivity
+const RESPONSE_TRACKING_TTL_MS = 60 * 60 * 1000;
 
 /**
  * Cleans up response tracking for a specific agent.
@@ -190,6 +194,21 @@ const latestResponseIds = new Map<string, Map<string, string>>();
  */
 export function cleanupAgentResponseTracking(agentId: string): void {
   latestResponseIds.delete(agentId);
+  latestResponseTimestamps.delete(agentId);
+}
+
+/**
+ * Evicts stale agent entries that haven't been accessed within TTL.
+ * Called automatically during handleMessage to prevent unbounded growth.
+ */
+function evictStaleResponseTracking(): void {
+  const now = Date.now();
+  for (const [agentId, timestamp] of latestResponseTimestamps) {
+    if (now - timestamp > RESPONSE_TRACKING_TTL_MS) {
+      latestResponseIds.delete(agentId);
+      latestResponseTimestamps.delete(agentId);
+    }
+  }
 }
 
 /**
@@ -215,12 +234,14 @@ export class DefaultMessageService implements IMessageService {
     callback?: HandlerCallback,
     options?: MessageProcessingOptions,
   ): Promise<MessageProcessingResult> {
-    // Prune old agent entries when map grows too large
-    if (latestResponseIds.size > 1000) {
-      const keysToDelete = Array.from(latestResponseIds.keys()).slice(0, 500);
-      for (const key of keysToDelete) {
-        latestResponseIds.delete(key);
-      }
+    // Prune stale entries based on TTL and size
+        evictStaleResponseTracking();
+        if (latestResponseIds.size > 1000) {
+          const keysToDelete = Array.from(latestResponseIds.keys()).slice(0, 100);
+          for (const key of keysToDelete) {
+            latestResponseIds.delete(key);
+            latestResponseTimestamps.delete(key);
+          }
     }
     const trajectoryStepId =
       typeof message.metadata === "object" &&
@@ -283,10 +304,12 @@ export class DefaultMessageService implements IMessageService {
 
           // Track this response ID - ensure map exists for this agent
           let agentResponses = latestResponseIds.get(runtime.agentId);
-          if (!agentResponses) {
-            agentResponses = new Map<string, string>();
-            latestResponseIds.set(runtime.agentId, agentResponses);
-          }
+    if (!agentResponses) {
+      agentResponses = new Map<string, string>();
+      latestResponseIds.set(runtime.agentId, agentResponses);
+    }
+    // Update timestamp for TTL tracking
+    latestResponseTimestamps.set(runtime.agentId, Date.now());
 
           const previousResponseId = agentResponses.get(message.roomId);
           if (previousResponseId) {
