@@ -184,6 +184,15 @@ interface StrategyResult {
 const latestResponseIds = new Map<string, Map<string, string>>();
 
 /**
+ * Cleans up response tracking for a specific agent.
+ * Call this when an agent is shutting down to prevent memory leaks.
+ * @param agentId - The agent ID to clean up
+ */
+export function cleanupAgentResponseTracking(agentId: string): void {
+  latestResponseIds.delete(agentId);
+}
+
+/**
  * Default implementation of the MessageService interface.
  * This service handles the complete message processing pipeline including:
  * - Message validation and memory creation
@@ -945,10 +954,9 @@ export class DefaultMessageService implements IMessageService {
         await callback(ignoreContent, "IGNORE");
       }
 
-      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION).
-      // Note: Agent responses (including ignores) are always persisted when memory creation is enabled,
-      // regardless of ALLOW_MEMORY_SOURCE_IDS (which filters external message sources only).
-      if (!disableMemoryCreation) {
+      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
+      // Use same canPersistMemory logic as incoming messages for consistency.
+      if (canPersistMemory) {
           const ignoreMemory: Memory = {
             id: asUUID(v4()),
             entityId: runtime.agentId,
