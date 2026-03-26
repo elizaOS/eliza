@@ -64,19 +64,14 @@ function initContextManagerSync(): ITrajectoryContextManager {
 				TrajectoryContext | undefined
 			>();
 			return {
-				storage,
 				run<T>(
 					context: TrajectoryContext | undefined,
 					fn: () => T | Promise<T>,
 				): T | Promise<T> {
-					return (
-						this as unknown as { storage: typeof storage }
-					).storage.run(context, fn);
+					return storage.run(context, fn);
 				},
 				active(): TrajectoryContext | undefined {
-					return (
-						this as unknown as { storage: typeof storage }
-					).storage.getStore();
+					return storage.getStore();
 				},
 			} as ITrajectoryContextManager;
 		} catch {
