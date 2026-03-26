@@ -107,7 +107,8 @@ export const replyAction = {
     // Always recompose state to ensure RECENT_MESSAGES and ACTION_STATE are fresh.
     // In multi-action chains, these providers would contain stale data (missing earlier
     // action results and agent replies) if we skip recomposition.
-    state = await runtime.composeState(message, allProviders);
+    const composedState = await runtime.composeState(message, allProviders);
+    state = composedState;
 
     const prompt = composePromptFromState({
       state,
