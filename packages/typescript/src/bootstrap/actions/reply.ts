@@ -74,7 +74,7 @@ export const replyAction = {
       };
 
       if (callback) {
-        await callback(responseContent);
+        await callback(responseContent, "REPLY");
       }
 
       return {
@@ -131,7 +131,7 @@ export const replyAction = {
     };
 
     if (callback) {
-      await callback(responseContent);
+      await callback(responseContent, "REPLY");
     }
 
     return {
