@@ -40,6 +40,7 @@ function updateGenerateScript(pluginPath, pluginName) {
 
     const existing = fs.readFileSync(scriptPath, "utf-8");
     if (existing === content) {
+      console.log(`  ⏭️  Content unchanged, skipping`);
       return false;
     }
     
