@@ -45,7 +45,6 @@ class StackContextManager implements ITrajectoryContextManager {
 // fallback was used for early messages, which doesn't propagate context
 // through async/await — so logLlmCall never saw the trajectory step ID.
 let globalContextManager: ITrajectoryContextManager | null = null;
-let contextManagerInitialized = false;
 
 function isNodeEnvironment(): boolean {
 	return (
@@ -90,7 +89,6 @@ function initContextManagerSync(): ITrajectoryContextManager {
 function getOrCreateContextManager(): ITrajectoryContextManager {
 	if (!globalContextManager) {
 		globalContextManager = initContextManagerSync();
-		contextManagerInitialized = true;
 	}
 	return globalContextManager;
 }
@@ -99,7 +97,6 @@ export function setTrajectoryContextManager(
 	manager: ITrajectoryContextManager,
 ): void {
 	globalContextManager = manager;
-	contextManagerInitialized = true;
 }
 
 export function getTrajectoryContextManager(): ITrajectoryContextManager {
