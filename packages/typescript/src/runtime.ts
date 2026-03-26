@@ -2120,8 +2120,8 @@ this.promptBatcher.dispose();
     callback?: HandlerCallback,
     responses?: Memory[],
   ) {
-    // WHY: Evaluators typically create memories (fact extraction, reflection). When memory
-    // creation is disabled, running them is wasted work and may error on missing tables.
+    // Note: DISABLE_MEMORY_CREATION only skips evaluators that don't have skipMemoryCheck set.
+    // Evaluators with skipMemoryCheck: true will still run (e.g., for webhooks, analytics).
     const disableMemorySetting = this.getSetting("DISABLE_MEMORY_CREATION");
     const disableMemoryCreation =
       disableMemorySetting === true ||
@@ -2131,17 +2131,14 @@ this.promptBatcher.dispose();
           ? parseBooleanFromText(String(disableMemorySetting))
           : false);
 
-    if (disableMemoryCreation) {
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId },
-        "Skipping evaluators because DISABLE_MEMORY_CREATION is enabled",
-      );
-      return [];
-    }
-
     const evaluatorPromises = this.evaluators.map(
       async (evaluator: Evaluator) => {
         if (!evaluator.handler) {
+          return null;
+        }
+        // Skip memory-dependent evaluators when memory creation is disabled,
+        // unless the evaluator explicitly opts out via skipMemoryCheck
+        if (disableMemoryCreation && !evaluator.skipMemoryCheck) {
           return null;
         }
         if (!didRespond && !evaluator.alwaysRun) {
