@@ -544,15 +544,16 @@ export function logResponse(
   },
 ): string {
   if (!ensureFileLog()) return "";
-  // Use the same slug that was passed from logPrompt for correlation
-  // Do NOT increment _promptLogCounter here - the prompt already did that
+  // Use the same slug that was passed from logPrompt for correlation.
+  // Do NOT increment _promptLogCounter here - the prompt already did that.
+  // If no promptSlug provided, we still log but warn about correlation issues.
   const slug = metadata?.promptSlug;
   if (!slug) {
-    logger.warn({ src: "core:logger" }, "logResponse missing promptSlug - responses can't be correlated");
-    return "";
+    logger.warn({ src: "core:logger" }, "logResponse missing promptSlug - responses can't be correlated with prompts");
   }
-  writeToPromptLog(slug, "RESPONSE", modelType, response, metadata);
-  return slug;
+  const effectiveSlug = slug || `#${String(++_promptLogCounter).padStart(4, "0")}`;
+  writeToPromptLog(effectiveSlug, "RESPONSE", modelType, response, metadata);
+  return effectiveSlug;
 }
 
 // ============================================================================
