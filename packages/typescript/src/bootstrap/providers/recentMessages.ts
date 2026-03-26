@@ -10,9 +10,10 @@ import type {
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
 import { addHeader, formatMessages, formatPosts } from "../../utils.ts";
-import { sliceToFitBudget } from "../../utils/slice-to-fit-budget.js";
-
-const RECENT_ACTION_RUNS_TARGET_CHARS = 2200;
+import {
+  sliceToFitBudget,
+  RECENT_ACTION_RUNS_TARGET_CHARS,
+} from "../../utils/slice-to-fit-budget.js";
 
 // Move getRecentInteractions outside the provider
 /**

@@ -6,14 +6,18 @@ import type {
   State,
 } from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
-import { sliceToFitBudget } from "../../utils/slice-to-fit-budget.js";
-
-const ACTION_RESULTS_TARGET_CHARS = 2600;
-const ACTION_HISTORY_TARGET_CHARS = 2400;
+import {
+  sliceToFitBudget,
+  ACTION_RESULTS_TARGET_CHARS,
+  ACTION_HISTORY_TARGET_CHARS,
+} from "../../utils/slice-to-fit-budget.js";
 
 /**
  * Provider for sharing action execution state and plan between actions
  * Makes previous action results and execution plan available to subsequent actions
+ * 
+ * Note: sliceToFitBudget, ACTION_RESULTS_TARGET_CHARS, and ACTION_HISTORY_TARGET_CHARS
+ * are imported from the shared utility to avoid duplication with basic-capabilities.
  */
 export const actionStateProvider: Provider = {
   name: "ACTION_STATE",
@@ -88,7 +92,7 @@ export const actionStateProvider: Provider = {
             } catch {
               return 0;
             }
-          })() + 80, // Add formatting overhead consistent with basic-capabilities
+          })() + 80,
         ACTION_RESULTS_TARGET_CHARS,
       );
 
@@ -137,7 +141,7 @@ export const actionStateProvider: Provider = {
     if (workingMemory && Object.keys(workingMemory).length > 0) {
       const memoryEntries = Object.entries(workingMemory)
         .sort((a, b) => b[1].timestamp - a[1].timestamp)
-        .slice(0, 10) // Show last 10 entries
+        .slice(0, 10)
         .map(([key, entry]) => {
           const result: ActionResult = entry.result;
           const resultText =
@@ -154,7 +158,6 @@ export const actionStateProvider: Provider = {
     }
 
     // Get recent action result memories from the database
-    // Get messages with type 'action_result' from the room
     const recentMessages = await runtime.getMemories({
       tableName: "messages",
       roomId: message.roomId,
@@ -197,7 +200,7 @@ export const actionStateProvider: Provider = {
                 String(content?.text || "").length
               );
             }, 0);
-            return textChars + runId.length + 80; // Add formatting overhead consistent with basic-capabilities
+            return textChars + runId.length + 80;
           },
           ACTION_HISTORY_TARGET_CHARS,
           { fromEnd: false },
