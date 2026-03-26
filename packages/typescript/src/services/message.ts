@@ -468,10 +468,11 @@ export class DefaultMessageService implements IMessageService {
     // When allowedSources is null, all sources are allowed (no whitelist filtering)
     const memorySourceAllowed = allowedSources === null || 
       (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
-    // Memory persistence requires both:
-    // 1. Memory creation enabled OR source in allowlist (ALLOW_MEMORY_SOURCE_IDS can bypass DISABLE_MEMORY_CREATION) 
-    // 2. Source allowed by whitelist (when one exists)
-    const canPersistMemory = (!disableMemoryCreation || (allowedSources && memorySourceAllowed)) && memorySourceAllowed;
+    // Memory persistence logic:
+    // - If memory creation is enabled (!disableMemoryCreation), persist unless allowlist exists and source not in it
+    // - If memory creation is disabled, only persist if source is explicitly whitelisted
+    // Note: When allowedSources is null (no whitelist), memorySourceAllowed is true, so all messages persist
+    const canPersistMemory = !disableMemoryCreation || (allowedSources !== null && memorySourceAllowed);
 
     let memoryToQueue: Memory | null = null;
     if (canPersistMemory) {
@@ -962,8 +963,6 @@ export class DefaultMessageService implements IMessageService {
             "Saved ignore response to memory",
           );
       }
-
-    runtime.promptBatcher?.tick(message);
 
     runtime.promptBatcher?.tick(message);
 
