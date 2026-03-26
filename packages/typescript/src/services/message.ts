@@ -478,11 +478,12 @@ export class DefaultMessageService implements IMessageService {
     const memorySourceAllowed = allowedSources === null || 
       (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
     // Memory persistence logic:
-    // - If memory creation is disabled, skip persistence entirely
+    // - If memory creation is disabled BUT source is in ALLOW_MEMORY_SOURCE_IDS whitelist, persist (whitelist overrides)
+    // - If memory creation is disabled and source is NOT whitelisted, skip persistence
     // - If memory creation is enabled and no allowlist exists, persist all messages
     // - If memory creation is enabled and allowlist exists, only persist if source is in allowlist
-    // Note: ALLOW_MEMORY_SOURCE_IDS does NOT override DISABLE_MEMORY_CREATION; when disabled, all persistence is skipped.
-    const canPersistMemory = !disableMemoryCreation && memorySourceAllowed;
+    // Note: ALLOW_MEMORY_SOURCE_IDS overrides DISABLE_MEMORY_CREATION for whitelisted sources.
+    const canPersistMemory = !disableMemoryCreation || memorySourceAllowed;
 
     let memoryToQueue: Memory | null = null;
     if (canPersistMemory) {
