@@ -971,6 +971,7 @@ export class DefaultMessageService implements IMessageService {
             "Saved ignore response to memory",
           );
       }
+    }
 
     runtime.promptBatcher?.tick(message);
 
