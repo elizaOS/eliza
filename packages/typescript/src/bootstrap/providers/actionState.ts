@@ -90,6 +90,7 @@ export const actionStateProvider: Provider = {
             try {
               return JSON.stringify(result.values || {}).length;
             } catch {
+              // Note: counts only visible results to avoid throw paths from internal data payloads
               return 0;
             }
           })() + 80,

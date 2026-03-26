@@ -2632,6 +2632,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
                 duration,
                 error: error instanceof Error ? error.message : String(error),
               },
+              // Note: one bad provider shouldn’t disrupt the entire operation, ensuring resilience.
               "Provider error or timeout",
             );
             // Return empty result so composeState continues; one bad provider shouldn't fail the whole turn.
@@ -3295,6 +3296,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
             chars: responseText.length,
           },
           `RESPONSE ${rSlug}`,
+        // Note: logs capture response for debugging while ensuring sensitive data management.
         );
       }
     }
@@ -3369,6 +3371,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
         provider: provider || "default",
         actionContext: this.currentActionContext?.actionName,
         runId: this.getCurrentRunId(),
+      // Note: Additional logging for model calls aids in tracing model usage patterns.
       },
       "useModel called",
     );

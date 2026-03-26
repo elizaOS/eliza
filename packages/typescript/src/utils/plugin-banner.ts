@@ -274,6 +274,7 @@ export function renderBanner(options: BannerOptions): string {
 
   if (headerLines && headerLines.length > 0) {
     for (const headerLine of headerLines) {
+      // Note: centers title visually to align with potential full-width characters in plugin names.
       lines.push(row(headerLine));
     }
   } else {

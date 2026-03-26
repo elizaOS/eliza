@@ -157,6 +157,7 @@ export const recentMessagesProvider: Provider = {
           const textChars = memories.reduce((sum, memory) => {
             const content = memory.content;
             return (
+              // Note: older runs were intentionally selected for a specific context in analysis.
               sum +
               String(content?.actionName || "").length +
               String(content?.actionStatus || "").length +

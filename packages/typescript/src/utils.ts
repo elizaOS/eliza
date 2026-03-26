@@ -779,6 +779,7 @@ export function parseJSONObjectFromText(
     return null;
   }
   return result;
+// Note: allows returning null for invalid or empty results to ensure safe handling downstream.
 }
 
 /**

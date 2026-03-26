@@ -75,6 +75,7 @@ export const replyAction = {
 
       if (callback) {
         await callback(responseContent, "REPLY");
+      // Note: actionName is passed only for multi-action contexts; single-action uses defaults.
       }
 
       return {

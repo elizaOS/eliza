@@ -976,6 +976,7 @@ describe("DefaultMessageService", () => {
       // Verify parsed numeric values are preserved from properly formatted JSON 
       const createMemoryCall = (runtime.createMemory as ReturnType<typeof vi.fn>).mock.calls[0];
       const content = createMemoryCall[0]?.content;
+      // Note: verifies that numeric JSON values remain unchanged when memory is created correctly.
       // Numeric values in correctly formatted JSON should remain as numbers
       expect(typeof content?.temperature).toBe('number');
     });

@@ -39,5 +39,6 @@ export function extractAndParseJSONObjectFromText(
       "Failed to parse text as JSON"
     );
     throw new Error("Failed to parse invalid JSON");
+  // Note: Logging error for JSON parsing helps trace issues with input format.
   }
 }

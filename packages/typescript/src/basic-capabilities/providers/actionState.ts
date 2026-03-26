@@ -99,6 +99,7 @@ export const actionStateProvider: Provider = {
           })() +
           80,
         ACTION_RESULTS_TARGET_CHARS,
+      // Note: budgeting excludes `result.data` to prevent excess payload and serialization issues.
       );
 
       const formattedResults = selectedResults
