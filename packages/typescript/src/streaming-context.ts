@@ -87,16 +87,11 @@ function initContextManagerSync(): IStreamingContextManager {
 				StreamingContext | undefined
 			>();
 			return {
-				storage,
 				run<T>(context: StreamingContext | undefined, fn: () => T): T {
-					return (
-						this as unknown as { storage: typeof storage }
-					).storage.run(context, fn);
+					return storage.run(context, fn);
 				},
 				active(): StreamingContext | undefined {
-					return (
-						this as unknown as { storage: typeof storage }
-					).storage.getStore();
+					return storage.getStore();
 				},
 			} as IStreamingContextManager;
 		} catch {
