@@ -209,7 +209,10 @@ export class DefaultMessageService implements IMessageService {
 									streamText = streamTextFallback;
 								}
 
-								if (!firstSentenceSent && hasFirstSentence(streamText)) {
+								// Only run first-sentence TTS detection when `accumulated` is present.
+								// Raw-token streams (no accumulated) may contain XML markup or partial
+								// structured output that would garble hasFirstSentence() and TTS.
+								if (!firstSentenceSent && accumulated !== undefined && hasFirstSentence(streamText)) {
 									const { first } = extractFirstSentence(streamText);
 									firstSentenceText = first;
 									if (first.length > 5) {
