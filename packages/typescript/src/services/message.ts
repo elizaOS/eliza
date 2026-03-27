@@ -199,7 +199,10 @@ export class DefaultMessageService implements IMessageService {
 					userOnStreamChunk
 						? async (chunk, messageId, accumulated) => {
 								let streamText: string;
+								// If we have accumulated text, also sync streamTextFallback so the
+								// fallback path has accurate state if the stream source later changes.
 								if (accumulated !== undefined) {
+									streamTextFallback = accumulated;
 									streamText = accumulated;
 								} else {
 									streamTextFallback += chunk;
