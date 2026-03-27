@@ -50,6 +50,51 @@ import {
 } from "../utils/text-splitting";
 
 /**
+ * Reserved XML response keys that are NOT action names.
+ * Used when scanning parsedXml for standalone action param blocks.
+ */
+export const RESERVED_XML_KEYS = new Set([
+	"actions",
+	"thought",
+	"text",
+	"simple",
+	"providers",
+]);
+
+/**
+ * Extract action params from standalone XML blocks in a parsedXml object.
+ *
+ * When the LLM outputs `<actions>REPLY,START_CODING_TASK</actions>` alongside
+ * `<START_CODING_TASK><repo>...</repo></START_CODING_TASK>`, the XML parser
+ * puts the action block as a top-level key on parsedXml. This function finds
+ * those keys and assembles them into the legacy flat params format that
+ * `parseActionParams` consumes.
+ *
+ * Returns the assembled params string, or empty string if none found.
+ */
+export function extractStandaloneActionParams(
+	actionNames: string[],
+	parsedXml: Record<string, unknown>,
+): string {
+	const fragments: string[] = [];
+	for (const actionName of actionNames) {
+		const upperName = actionName.toUpperCase();
+		const matchingKey = Object.keys(parsedXml).find(
+			(k) => k.toUpperCase() === upperName,
+		);
+		if (
+			matchingKey &&
+			!RESERVED_XML_KEYS.has(matchingKey.toLowerCase()) &&
+			typeof parsedXml[matchingKey] === "string" &&
+			(parsedXml[matchingKey] as string).includes("<")
+		) {
+			fragments.push(`<${upperName}>${parsedXml[matchingKey]}</${upperName}>`);
+		}
+	}
+	return fragments.join("\n");
+}
+
+/**
  * Escape Handlebars syntax in a string to prevent template injection.
  *
  * WHY: When embedding LLM-generated text into continuation prompts, the text
@@ -332,35 +377,33 @@ export class DefaultMessageService implements IMessageService {
 														"nova";
 
 													let audioBuffer: Buffer | null = null;
-														const params: TextToSpeechParams & {
-															model?: string;
-														} = {
-															text: first,
-															voice: voiceId,
-															model: model,
-														};
-														const result = runtime.getModel(
-															ModelType.TEXT_TO_SPEECH,
-														)
-															? await runtime.useModel(
-																	ModelType.TEXT_TO_SPEECH,
-																	params,
-																)
-															: undefined;
+													const params: TextToSpeechParams & {
+														model?: string;
+													} = {
+														text: first,
+														voice: voiceId,
+														model: model,
+													};
+													const result = runtime.getModel(
+														ModelType.TEXT_TO_SPEECH,
+													)
+														? await runtime.useModel(
+																ModelType.TEXT_TO_SPEECH,
+																params,
+															)
+														: undefined;
 
-														if (
-															result instanceof ArrayBuffer ||
-															Object.prototype.toString.call(result) ===
-																"[object ArrayBuffer]"
-														) {
-															audioBuffer = Buffer.from(result as ArrayBuffer);
-														} else if (Buffer.isBuffer(result)) {
-															audioBuffer = result;
-														} else if (result instanceof Uint8Array) {
-															audioBuffer = Buffer.from(result);
-														}
-
-
+													if (
+														result instanceof ArrayBuffer ||
+														Object.prototype.toString.call(result) ===
+															"[object ArrayBuffer]"
+													) {
+														audioBuffer = Buffer.from(result as ArrayBuffer);
+													} else if (Buffer.isBuffer(result)) {
+														audioBuffer = result;
+													} else if (result instanceof Uint8Array) {
+														audioBuffer = Buffer.from(result);
+													}
 
 													if (audioBuffer && callback) {
 														const audioBase64 = audioBuffer.toString("base64");
@@ -1661,10 +1704,24 @@ export class DefaultMessageService implements IMessageService {
 						}
 					}
 					// Legacy comma-separated format
-					return actionsXml
+					const commaSplitActions = actionsXml
 						.split(",")
 						.map((action) => String(action).trim())
 						.filter((action) => action.length > 0);
+
+					// Extract params from standalone action blocks in parsedXml
+					// (e.g. <START_CODING_TASK><repo>...</repo></START_CODING_TASK>).
+					if (!parsedXml.params || parsedXml.params === "") {
+						const assembled = extractStandaloneActionParams(
+							commaSplitActions,
+							parsedXml as Record<string, unknown>,
+						);
+						if (assembled) {
+							parsedXml.params = assembled;
+						}
+					}
+
+					return commaSplitActions;
 				}
 				if (Array.isArray(parsedXml.actions)) {
 					return parsedXml.actions as string[];
