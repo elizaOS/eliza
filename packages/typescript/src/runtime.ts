@@ -27,6 +27,7 @@ import { decryptSecret, getSalt } from "./settings";
 import {
 	getStreamingContext,
 	runWithStreamingContext,
+	type StreamingContext,
 } from "./streaming-context";
 import { getTrajectoryContext } from "./trajectory-context";
 import {
@@ -4088,7 +4089,11 @@ ${section_end}`;
 					streamFields: finalStreamFields,
 					expectedCodes: perFieldCodes,
 					onChunk: (chunk, _field, accumulated) => {
-						options.onStreamChunk?.(chunk, streamMessageId, accumulated);
+						return options.onStreamChunk?.(
+							chunk,
+							streamMessageId,
+							accumulated,
+						);
 					},
 					onEvent: options.onStreamEvent
 						? (event) => options.onStreamEvent?.(event, streamMessageId)
