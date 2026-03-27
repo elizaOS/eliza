@@ -9,12 +9,14 @@
  * @see https://opentelemetry.io/docs/languages/js/context/
  */
 
+import type { StreamChunkCallback } from "./types/components";
+
 /**
  * Streaming context containing callbacks for streaming lifecycle.
  */
 export interface StreamingContext {
 	/** Called for each chunk of streamed content */
-	onStreamChunk: (chunk: string, messageId?: string) => Promise<void>;
+	onStreamChunk: StreamChunkCallback;
 	/** Called when a useModel streaming call completes (allows reset between calls) */
 	onStreamEnd?: () => void;
 	messageId?: string;
@@ -83,9 +85,7 @@ function initContextManagerSync(): IStreamingContextManager {
 			// eslint-disable-next-line @typescript-eslint/no-require-imports
 			const { AsyncLocalStorage } =
 				require("node:async_hooks") as typeof import("node:async_hooks");
-			const storage = new AsyncLocalStorage<
-				StreamingContext | undefined
-			>();
+			const storage = new AsyncLocalStorage<StreamingContext | undefined>();
 			return {
 				run<T>(context: StreamingContext | undefined, fn: () => T): T {
 					return storage.run(context, fn);
