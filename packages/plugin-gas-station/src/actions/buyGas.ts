@@ -20,7 +20,7 @@ import type { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@eli
 
 // ─── GasStation ABI (minimal — only the functions we need) ────────────────────
 
-const GAS_STATION_ABI = [
+export const GAS_STATION_ABI = [
   // quote(uint256 tokenAmount) → (grossNative, feeNative, netNative, sufficient)
   {
     name: "quote",
@@ -74,7 +74,6 @@ const ERC20_ABI = [
 const DEFAULT_RPC = "https://polygon-rpc.com";
 const POLYGON_USDC = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
 const USDC_DECIMALS = 6;
-const ONE_USDC = BigInt(10 ** USDC_DECIMALS);
 
 // ─── Helper: parse USDC amount from user input ────────────────────────────────
 
@@ -127,7 +126,7 @@ async function liveBuyGas(
   recipient?: string,
 ): Promise<LiveBuyGasResult> {
   // Dynamic import of viem — keeps this optional if not installed
-  const { createPublicClient, createWalletClient, http, parseEther, formatEther } =
+  const { createPublicClient, createWalletClient, http, formatEther } =
     await import("viem");
   const { privateKeyToAccount } = await import("viem/accounts");
   const { polygon } = await import("viem/chains");
@@ -165,7 +164,10 @@ async function liveBuyGas(
     functionName: "approve",
     args: [contractAddress as `0x${string}`, tokenAmount],
   });
-  await publicClient.waitForTransactionReceipt({ hash: approveTx });
+  const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveTx });
+  if (approveReceipt.status !== "success") {
+    throw new Error(`USDC approve transaction reverted: ${approveTx}`);
+  }
 
   // 3. Buy gas
   const buyTx = await walletClient.writeContract({
@@ -199,7 +201,6 @@ export const buyGasAction: Action = {
     "Specify the USDC amount (e.g. 'buy gas for 2 USDC', 'get 5 USDC worth of gas').",
 
   similes: [
-    "BUY_GAS",
     "GET_GAS",
     "SWAP_USDC_FOR_GAS",
     "BUY_POL",
@@ -296,9 +297,9 @@ export const buyGasAction: Action = {
       amountUsdc = parseFloat(match[1]);
     }
 
-    if (isNaN(amountUsdc) || amountUsdc <= 0) {
+    if (isNaN(amountUsdc) || amountUsdc <= 0 || amountUsdc > 50) {
       await callback?.({
-        text: `Invalid USDC amount: ${params.amount_usdc}. Please provide a positive number.`,
+        text: `Invalid USDC amount: ${params.amount_usdc ?? amountUsdc}. Please provide a number between 0.01 and 50.`,
         actions: ["REPLY"],
       });
       return { success: false, error: "Invalid amount" };
@@ -349,8 +350,8 @@ export const buyGasAction: Action = {
 
       const result = await liveBuyGas(
         amountUsdc,
-        contractAddress,
-        privateKey,
+        contractAddress as string,
+        privateKey as string,
         rpcUrl,
         usdcAddress,
         recipient,

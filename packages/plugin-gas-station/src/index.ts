@@ -34,9 +34,9 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import { buyGasAction } from "./actions/buyGas.js";
+import { buyGasAction, GAS_STATION_ABI } from "./actions/buyGas.js";
 
-export { buyGasAction } from "./actions/buyGas.js";
+export { buyGasAction, GAS_STATION_ABI } from "./actions/buyGas.js";
 
 /**
  * GasStation plugin for ElizaOS.
@@ -90,15 +90,7 @@ export const gasStationPlugin: Plugin = {
 
           const liquidity = await client.readContract({
             address: contractAddress as `0x${string}`,
-            abi: [
-              {
-                name: "liquidity",
-                type: "function",
-                stateMutability: "view",
-                inputs: [],
-                outputs: [{ name: "", type: "uint256" }],
-              },
-            ] as const,
+            abi: GAS_STATION_ABI,
             functionName: "liquidity",
           });
 
