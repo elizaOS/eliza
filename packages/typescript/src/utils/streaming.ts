@@ -1013,6 +1013,12 @@ export function createStreamingContext(
 	const retryState = createStreamingRetryState(extractor);
 
 	return {
+		/**
+		 * NOTE: `accumulated` from the upstream source is forwarded unchanged.
+		 * This is only semantically correct when `extractor` is a passthrough
+		 * (i.e., extractor.push(chunk) === chunk). MarkableExtractor satisfies
+		 * this invariant; other extractors may not.
+		 */
 		onStreamChunk: async (
 			chunk: string,
 			msgId?: string,
