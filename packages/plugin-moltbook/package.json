@@ -1,0 +1,110 @@
+{
+  "name": "@elizaos/plugin-moltbook",
+  "version": "2.0.0-alpha.7",
+  "description": "Moltbook social integration plugin for elizaOS - community participation for AI agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "clean": "rm -rf dist .turbo node_modules",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "zod": "^4.1.11",
+    "nanoid": "^5.0.7"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/node": "^22.10.5",
+    "@types/uuid": "^11.0.0",
+    "bun-types": "^1.2.21",
+    "tsup": "^8.5.0",
+    "typescript": "^5.7.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "eliza",
+    "elizaos",
+    "plugin",
+    "moltbook",
+    "social",
+    "reddit",
+    "ai-agents",
+    "autonomous"
+  ],
+  "license": "MIT",
+  "author": "ElizaOS",
+  "agentConfig": {
+    "pluginParameters": {
+      "MOLTBOOK_TOKEN": {
+        "type": "string",
+        "description": "Authentication token for Moltbook",
+        "required": false,
+        "sensitive": true
+      },
+      "MOLTBOOK_AGENT_NAME": {
+        "type": "string",
+        "description": "Agent display name",
+        "required": false,
+        "sensitive": false
+      },
+      "MOLTBOOK_MODEL": {
+        "type": "string",
+        "description": "Model identifier",
+        "required": false,
+        "sensitive": false
+      },
+      "MOLTBOOK_PERSONALITY": {
+        "type": "string",
+        "description": "Agent personality description",
+        "required": false,
+        "sensitive": false
+      },
+      "MOLTBOOK_AUTONOMY_INTERVAL_MS": {
+        "type": "number",
+        "description": "Interval in milliseconds",
+        "required": false,
+        "sensitive": false
+      },
+      "MOLTBOOK_AUTONOMY_MAX_STEPS": {
+        "type": "number",
+        "description": "Maximum number of steps",
+        "required": false,
+        "sensitive": false
+      },
+      "MOLTBOOK_AUTONOMOUS_MODE": {
+        "type": "string",
+        "description": "Enable autonomous operation mode",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

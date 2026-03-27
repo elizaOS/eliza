@@ -16,6 +16,8 @@
     "generate:types": "cd packages/@schemas && bunx buf lint && bunx buf generate",
     "start": "echo 'CLI package not found. Please use elizaos start from a project directory.'",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
+    "start:elizaokbsc": "bun run apps/elizaokbsc/src/index.ts",
+    "dev:elizaokbsc": "bun --watch run apps/elizaokbsc/src/index.ts",
     "build": "turbo run build",
     "build:client": "turbo run build --filter=@elizaos/client",
     "format": "turbo run format",
