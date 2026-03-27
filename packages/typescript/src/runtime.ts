@@ -4081,6 +4081,7 @@ ${section_end}`;
 				// per field internally (`content` in emitFieldContent). Surfacing it
 				// here means consumers like first-sentence voice detection or Milady's
 				// streaming-text resolver can use the authoritative value instead of
+				// Note: this design prevents dual extractor conflicts by providing authoritative accumulated data
 				// re-accumulating from deltas — which broke when two extractors ran
 				// concurrently (the dual-extractor garbling bug).
 				extractor = new ValidationStreamExtractor({
