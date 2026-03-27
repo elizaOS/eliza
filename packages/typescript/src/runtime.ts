@@ -1790,25 +1790,32 @@ export class AgentRuntime implements IAgentRuntime {
 				if (processOptions?.onStreamChunk) {
 					let currentFilter: ActionStreamFilter | null = null;
 					const onStreamChunk = processOptions.onStreamChunk;
+					// Track locally accumulated filtered text for this action stream.
+					// Note: upstream `accumulated` is discarded because ActionStreamFilter may
+					// transform/drop content, making upstream accumulated inconsistent with
+					// the actual deltas the consumer receives.
+					let filteredAccumulated = "";
 
 					actionStreamingContext = {
 						messageId: responseMessageId,
 						onStreamChunk: async (
 							chunk: string,
 							msgId?: string,
-							accumulated?: string,
+							_accumulated?: string,
 						) => {
 							if (!currentFilter) {
 								currentFilter = new ActionStreamFilter();
 							}
 							const textToStream = currentFilter.push(chunk);
 							if (textToStream && onStreamChunk) {
-								await onStreamChunk(textToStream, msgId, accumulated);
+								filteredAccumulated += textToStream;
+								await onStreamChunk(textToStream, msgId, filteredAccumulated);
 							}
 						},
 						onStreamEnd: () => {
-							// Reset filter for next useModel call
+							// Reset filter and local accumulator for next useModel call
 							currentFilter = null;
+							filteredAccumulated = "";
 						},
 					};
 				}
