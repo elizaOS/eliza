@@ -1,4 +1,4 @@
-import type { HandlerCallback } from "./components";
+import type { HandlerCallback, StreamChunkCallback } from "./components";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";
 import type { Content, Media, MentionContext, UUID } from "./primitives";
@@ -29,7 +29,7 @@ export interface MessageProcessingOptions
 	useMultiStep?: boolean;
 	maxMultiStepIterations?: number;
 	shouldRespondModel?: ShouldRespondModelType;
-	onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+	onStreamChunk?: StreamChunkCallback;
 	/** Signal to abort message processing */
 	abortSignal?: AbortSignal;
 	/**
