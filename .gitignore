@@ -340,6 +340,7 @@ packages/elizaos/examples/
 skills/.cache/
 **/skills/.cache/
 .cache/
+/.elizaok/
 
 # Local vendored experiments (do not commit)
 /plugins/plugin-local-ai/rust/vendor/llama_cpp_rs/

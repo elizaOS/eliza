@@ -1,9 +1,12 @@
 import "dotenv/config";
 
 import { AgentRuntime, createCharacter } from "@elizaos/core";
-import { moltbookPlugin } from "@elizaos/plugin-moltbook";
+import { moltbookPlugin, type MoltbookService } from "@elizaos/plugin-moltbook";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
+import { getDiscoveryConfig } from "./memecoin/config";
+import { startDashboardServer } from "./memecoin/server";
+import { setupElizaOkDiscovery } from "./memecoin/setup";
 
 function requiredSecrets(): Record<string, string> {
   const keys = [
@@ -18,6 +21,9 @@ function requiredSecrets(): Record<string, string> {
     "MOLTBOOK_AUTONOMY_MAX_STEPS",
     "MOLTBOOK_MODEL",
     "MOLTBOOK_PERSONALITY",
+    "MOLTBOOK_BOOT_POST_ENABLED",
+    "MOLTBOOK_BOOT_POST_TITLE",
+    "MOLTBOOK_BOOT_POST_TEXT",
     "PGLITE_DATA_DIR",
   ];
 
@@ -31,8 +37,52 @@ function requiredSecrets(): Record<string, string> {
   return secrets;
 }
 
+function envBool(name: string, defaultValue = false): boolean {
+  const raw = process.env[name];
+  if (raw === undefined) return defaultValue;
+  return ["1", "true", "yes", "on"].includes(String(raw).trim().toLowerCase());
+}
+
+async function tryBootPost(runtime: AgentRuntime): Promise<void> {
+  if (!envBool("MOLTBOOK_BOOT_POST_ENABLED", false)) {
+    return;
+  }
+
+  const title =
+    process.env.MOLTBOOK_BOOT_POST_TITLE?.trim() || "Joining the BNB Hackathon";
+  const content =
+    process.env.MOLTBOOK_BOOT_POST_TEXT?.trim() ||
+    "elizaOKBSC is powered by elizaOS.\n\nwe’re joining the BNB Hackathon and building in public.";
+
+  try {
+    const service = (await runtime.getServiceLoadPromise("moltbook" as never)) as MoltbookService;
+
+    const creds = await service.ensureAuthenticated();
+    if (!creds) {
+      console.warn("Boot post skipped: Moltbook credentials are unavailable.");
+      return;
+    }
+
+    if (creds.claimStatus !== "claimed") {
+      console.warn(`Boot post skipped: Moltbook account ${creds.username} is not claimed yet.`);
+      return;
+    }
+
+    const post = await service.createPost(title, content);
+    if (!post) {
+      console.warn("Boot post attempt completed, but Moltbook did not return a post object.");
+      return;
+    }
+
+    console.log(`Boot post created on Moltbook: ${post.id}`);
+  } catch (error) {
+    console.error("Boot post failed:", error);
+  }
+}
+
 async function main(): Promise<void> {
   const hasOpenAI = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const discoveryConfig = getDiscoveryConfig();
 
   if (!hasOpenAI) {
     console.warn(
@@ -111,9 +161,33 @@ async function main(): Promise<void> {
   console.log("Loaded plugins:", runtime.plugins.map((plugin) => plugin.name).join(", "));
   console.log("PGLite:", pgliteDir);
   console.log("Moltbook agent name:", process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC");
+  console.log(
+    "ElizaOK discovery:",
+    discoveryConfig.enabled
+      ? `enabled every ${Math.round(discoveryConfig.intervalMs / 60_000)} minutes`
+      : "disabled"
+  );
+  console.log(
+    "ElizaOK Goo scan:",
+    discoveryConfig.goo.enabled && discoveryConfig.goo.rpcUrl && discoveryConfig.goo.registryAddress
+      ? `enabled with registry ${discoveryConfig.goo.registryAddress}`
+      : "disabled"
+  );
+  console.log(
+    "ElizaOK dashboard:",
+    discoveryConfig.dashboard.enabled
+      ? `http://localhost:${discoveryConfig.dashboard.port}`
+      : "disabled"
+  );
+
+  await setupElizaOkDiscovery(runtime);
+  const dashboardServer = startDashboardServer(runtime);
+
+  await tryBootPost(runtime);
 
   const stop = async () => {
     console.log("Stopping elizaOK_BSC...");
+    dashboardServer?.close();
     await runtime.stop();
     process.exit(0);
   };

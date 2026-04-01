@@ -50,6 +50,7 @@
         "@elizaos/plugin-openai": "alpha",
         "@elizaos/plugin-sql": "alpha",
         "dotenv": "^17.2.3",
+        "ethers": "^6.16.0",
       },
       "devDependencies": {
         "@types/node": "^25.4.0",
