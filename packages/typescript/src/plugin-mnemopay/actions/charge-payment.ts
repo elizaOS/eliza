@@ -19,8 +19,9 @@ import type {
 import type { MnemoPayService } from "../services/mnemopay-service.ts";
 
 function extractAmount(text: string): number | null {
+	// Require a currency marker ($, USD) to avoid matching IDs, years, or counts
 	const match = text.match(
-		/(?:\$|USD\s*)?(\d+(?:\.\d{1,2})?)/i,
+		/(?:\$|USD\s*)(\d+(?:\.\d{1,2})?)/i,
 	);
 	return match ? Number.parseFloat(match[1]) : null;
 }
@@ -29,7 +30,7 @@ function extractDescription(text: string): string {
 	// Remove the amount part and common trigger words to get the description
 	return text
 		.replace(/(?:charge|pay|payment|escrow|send)\s*/gi, "")
-		.replace(/(?:\$|USD\s*)?(\d+(?:\.\d{1,2})?)/i, "")
+		.replace(/(?:\$|USD\s*)(\d+(?:\.\d{1,2})?)/i, "")
 		.replace(/^\s*(?:for|to|of)\s*/i, "")
 		.trim() || "Payment";
 }
@@ -52,7 +53,7 @@ export const chargePaymentAction: Action = {
 		const text = typeof message.content === "string"
 			? message.content
 			: message.content?.text ?? "";
-		const hasAmount = /\d+(?:\.\d{1,2})?/.test(text);
+		const hasAmount = /(?:\$|USD\s*)\d+(?:\.\d{1,2})?/i.test(text);
 		const hasTrigger =
 			text.toLowerCase().includes("charge") ||
 			text.toLowerCase().includes("pay") ||
