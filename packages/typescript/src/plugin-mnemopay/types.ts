@@ -29,7 +29,6 @@ export interface MnemoPayBalance {
 export interface MnemoPayConfig {
 	agentId: string;
 	reputationDelta: number;
-	initialBalance?: number;
 }
 
 export type MnemoPayServiceTypeName = "mnemopay";

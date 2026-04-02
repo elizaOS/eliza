@@ -17,11 +17,7 @@ import type {
 	State,
 } from "../../types/index.ts";
 import type { MnemoPayService } from "../services/mnemopay-service.ts";
-
-function extractTransactionId(text: string): string | null {
-	const match = text.match(/tx_[a-zA-Z0-9_]+/);
-	return match ? match[0] : null;
-}
+import { extractTransactionId } from "./utils.ts";
 
 export const refundPaymentAction: Action = {
 	name: "REFUND_PAYMENT",

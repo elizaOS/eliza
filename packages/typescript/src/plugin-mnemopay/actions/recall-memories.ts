@@ -44,7 +44,6 @@ export const recallMemoriesAction: Action = {
 			: message.content?.text ?? "";
 		return (
 			text.toLowerCase().includes("recall") ||
-			text.toLowerCase().includes("remember") ||
 			text.toLowerCase().includes("what do you know about") ||
 			text.toLowerCase().includes("past experience") ||
 			text.toLowerCase().includes("history with")

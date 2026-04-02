@@ -7,6 +7,9 @@
  * In production, this wraps @mnemopay/sdk's MnemoPayLite. For environments
  * where the SDK is not installed, a built-in lite implementation is used
  * that provides the same core API surface.
+ *
+ * State is persisted via Eliza's runtime settings so economic memory
+ * survives agent restarts.
  */
 
 import { logger } from "../../logger.ts";
@@ -21,12 +24,29 @@ import type {
 	MnemoPayTransaction,
 } from "../types.ts";
 
+/** Maximum number of memories before oldest low-score entries are evicted. */
+const MAX_MEMORIES = 1000;
+
+/** Key used to persist MnemoPay state in Eliza's settings store. */
+const PERSIST_KEY = "mnemopay_state";
+
+interface PersistedState {
+	walletBalance: number;
+	reputation: number;
+	memories: MnemoPayMemoryEntry[];
+	transactions: Array<[string, MnemoPayTransaction]>;
+	txCounter: number;
+}
+
 /**
  * Built-in lightweight MnemoPay engine.
  *
  * Mirrors the core API of @mnemopay/sdk's MnemoPayLite so the plugin
  * works out-of-the-box without requiring the external package.
  * If @mnemopay/sdk is installed, consumers can swap this for the real SDK.
+ *
+ * State is persisted through a save callback so economic memory survives
+ * agent restarts.
  */
 class MnemoPayLiteEngine {
 	private agentId: string;
@@ -37,6 +57,7 @@ class MnemoPayLiteEngine {
 	private transactions: Map<string, MnemoPayTransaction>;
 	private txCounter: number;
 	private listeners: Map<string, Array<(data: unknown) => void>>;
+	private saveFn: ((state: PersistedState) => Promise<void>) | null = null;
 
 	constructor(agentId: string, reputationDelta = 0.05) {
 		this.agentId = agentId;
@@ -47,6 +68,35 @@ class MnemoPayLiteEngine {
 		this.transactions = new Map();
 		this.txCounter = 0;
 		this.listeners = new Map();
+	}
+
+	/** Register a persistence callback. Called after every state mutation. */
+	onSave(fn: (state: PersistedState) => Promise<void>): void {
+		this.saveFn = fn;
+	}
+
+	/** Restore state from a previous session. */
+	restore(state: PersistedState): void {
+		this.walletBalance = state.walletBalance ?? 0;
+		this.reputation = state.reputation ?? 1.0;
+		this.memories = state.memories ?? [];
+		this.transactions = new Map(state.transactions ?? []);
+		this.txCounter = state.txCounter ?? 0;
+	}
+
+	private async persist(): Promise<void> {
+		if (!this.saveFn) return;
+		try {
+			await this.saveFn({
+				walletBalance: this.walletBalance,
+				reputation: this.reputation,
+				memories: this.memories,
+				transactions: Array.from(this.transactions.entries()),
+				txCounter: this.txCounter,
+			});
+		} catch (err) {
+			logger.warn({ src: "mnemopay:engine", err }, "Failed to persist state");
+		}
 	}
 
 	getAgentId(): string {
@@ -70,6 +120,21 @@ class MnemoPayLiteEngine {
 		}
 	}
 
+	/**
+	 * Evict lowest-importance memories when exceeding MAX_MEMORIES.
+	 */
+	private evictIfNeeded(): void {
+		if (this.memories.length <= MAX_MEMORIES) return;
+		// Sort by importance ascending, evict the lowest
+		this.memories.sort((a, b) => a.importance - b.importance);
+		const evicted = this.memories.length - MAX_MEMORIES;
+		this.memories.splice(0, evicted);
+		logger.debug(
+			{ src: "mnemopay:engine", evicted, remaining: this.memories.length },
+			"Evicted low-importance memories",
+		);
+	}
+
 	async remember(
 		content: string,
 		options: { importance?: number; tags?: string[] } = {},
@@ -81,7 +146,9 @@ class MnemoPayLiteEngine {
 			timestamp: Date.now(),
 		};
 		this.memories.push(entry);
+		this.evictIfNeeded();
 		this.emit("memory:stored", entry);
+		await this.persist();
 		return entry;
 	}
 
@@ -120,6 +187,7 @@ class MnemoPayLiteEngine {
 		this.transactions.set(txId, tx);
 		this.walletBalance -= amount;
 		this.emit("payment:completed", tx);
+		await this.persist();
 		return txId;
 	}
 
@@ -139,6 +207,7 @@ class MnemoPayLiteEngine {
 			delta: this.reputationDelta,
 			reason: "settlement",
 		});
+		await this.persist();
 		return tx;
 	}
 
@@ -160,6 +229,7 @@ class MnemoPayLiteEngine {
 			delta: -this.reputationDelta,
 			reason: "refund",
 		});
+		await this.persist();
 		return tx;
 	}
 
@@ -185,6 +255,7 @@ export class MnemoPayService extends Service {
 	static serviceType: ServiceTypeName = "mnemopay" as ServiceTypeName;
 
 	private engine!: MnemoPayLiteEngine;
+	private runtime!: IAgentRuntime;
 
 	capabilityDescription =
 		"Economic memory for AI agents — tracks payments, reputation, and financial interaction outcomes";
@@ -209,11 +280,44 @@ export class MnemoPayService extends Service {
 		const agentId =
 			(runtime.getSetting("MNEMOPAY_AGENT_ID") as string) ??
 			runtime.agentId;
-		const reputationDelta = Number.parseFloat(
-			(runtime.getSetting("MNEMOPAY_REPUTATION_DELTA") as string) ?? "0.05",
-		);
+
+		// P1 fix: guard against NaN from invalid env var
+		const raw = runtime.getSetting("MNEMOPAY_REPUTATION_DELTA") as string | undefined;
+		const parsed = raw !== undefined ? Number.parseFloat(raw) : Number.NaN;
+		const reputationDelta = Number.isFinite(parsed) && parsed > 0 ? parsed : 0.05;
 
 		this.engine = new MnemoPayLiteEngine(agentId, reputationDelta);
+
+		// P0 fix: restore persisted state from previous session
+		try {
+			const saved = runtime.getSetting(PERSIST_KEY) as string | undefined;
+			if (saved) {
+				const state: PersistedState = JSON.parse(saved);
+				this.engine.restore(state);
+				logger.info(
+					{
+						src: "service:mnemopay",
+						memories: state.memories?.length ?? 0,
+						transactions: state.transactions?.length ?? 0,
+					},
+					"Restored MnemoPay state from previous session",
+				);
+			}
+		} catch (err) {
+			logger.warn(
+				{ src: "service:mnemopay", err },
+				"Failed to restore persisted state, starting fresh",
+			);
+		}
+
+		// Register persistence callback — saves state after every mutation
+		this.engine.onSave(async (state) => {
+			try {
+				await runtime.setSetting(PERSIST_KEY, JSON.stringify(state));
+			} catch (err) {
+				logger.warn({ src: "service:mnemopay", err }, "Failed to persist state");
+			}
+		});
 
 		// Wire SDK events to Eliza logger
 		this.engine.on("memory:stored", (data) => {
