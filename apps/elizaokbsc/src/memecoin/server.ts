@@ -11,6 +11,7 @@ import { getLatestSnapshot } from "./store";
 import type { CandidateDetail, DashboardSnapshot, PortfolioPositionDetail } from "./types";
 
 const ELIZAOK_LOGO_ASSET_PATHS = [
+  path.resolve(process.cwd(), "apps/elizaokbsc/assets/elizaok-logo.png"),
   "/Users/baoger/.cursor/projects/Users-baoger-polymarket-agent/assets/Untitled-20260401-191459-3424-92579f8c-32e9-492a-b56b-cdefdd4c6858.png",
   "/Users/baoger/.cursor/projects/Users-baoger-polymarket-agent/assets/Untitled-20260401-191459-3424-6b4ab8e2-1062-4421-a562-c21be524f0e5.png",
   "/Users/baoger/.cursor/projects/Users-baoger-polymarket-agent/assets/Untitled-20260401-191459-3424-d9d36740-5e03-42ff-93d1-d93cb2e471ef.png",
