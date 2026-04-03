@@ -11,6 +11,7 @@ import { getLatestSnapshot } from "./store";
 import type { CandidateDetail, DashboardSnapshot, PortfolioPositionDetail } from "./types";
 
 const ELIZAOK_LOGO_ASSET_PATHS = [
+  "/Users/baoger/.cursor/projects/Users-baoger-polymarket-agent/assets/Untitled-20260401-191459-3424-92579f8c-32e9-492a-b56b-cdefdd4c6858.png",
   "/Users/baoger/.cursor/projects/Users-baoger-polymarket-agent/assets/Untitled-20260401-191459-3424-6b4ab8e2-1062-4421-a562-c21be524f0e5.png",
   "/Users/baoger/.cursor/projects/Users-baoger-polymarket-agent/assets/Untitled-20260401-191459-3424-d9d36740-5e03-42ff-93d1-d93cb2e471ef.png",
 ];
@@ -225,6 +226,19 @@ function renderBrandLogoImage(className = "brand-image"): string {
   return `<img class="${className}" src="/assets/elizaok-logo.png" alt="ElizaOK logo" />`;
 }
 
+function renderHeadBrandAssets(title: string): string {
+  const safeTitle = escapeHtml(title);
+  return `
+  <title>${safeTitle}</title>
+  <link rel="icon" type="image/png" href="/assets/elizaok-logo.png" />
+  <link rel="apple-touch-icon" href="/assets/elizaok-logo.png" />
+  <meta property="og:title" content="${safeTitle}" />
+  <meta property="og:image" content="/assets/elizaok-logo.png" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="${safeTitle}" />
+  <meta name="twitter:image" content="/assets/elizaok-logo.png" />`;
+}
+
 function renderGithubIconSvg(): string {
   return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.12.82-.26.82-.58v-2.04c-3.34.73-4.04-1.42-4.04-1.42-.54-1.38-1.34-1.75-1.34-1.75-1.1-.74.08-.73.08-.73 1.22.09 1.86 1.25 1.86 1.25 1.08 1.86 2.84 1.32 3.53 1.01.11-.79.42-1.32.76-1.63-2.67-.3-5.47-1.34-5.47-5.95 0-1.31.47-2.38 1.24-3.22-.13-.31-.54-1.53.12-3.19 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.25 2.88.12 3.19.77.84 1.24 1.91 1.24 3.22 0 4.62-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.23v3.31c0 .32.21.7.82.58A12 12 0 0 0 12 .5Z"/></svg>`;
 }
@@ -371,7 +385,7 @@ function renderCandidateDetail(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(detail.tokenSymbol)} · ElizaOK Candidate</title>
+  ${renderHeadBrandAssets(`${detail.tokenSymbol} | ElizaOK`)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -705,7 +719,7 @@ function renderGooCandidateDetail(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Goo Agent ${escapeHtml(candidate.agentId)} · ElizaOK</title>
+  ${renderHeadBrandAssets(`Goo Agent ${candidate.agentId} | ElizaOK`)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -1016,7 +1030,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ElizaOK Dashboard</title>
+  ${renderHeadBrandAssets("ElizaOK | elizaOK_BSC")}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -1776,7 +1790,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ElizaOK Dashboard</title>
+  ${renderHeadBrandAssets("ElizaOK | elizaOK_BSC")}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
