@@ -82,11 +82,18 @@ async function tryBootPost(runtime: AgentRuntime): Promise<void> {
 
 async function main(): Promise<void> {
   const hasOpenAI = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const hasMoltbook = Boolean(process.env.MOLTBOOK_API_KEY?.trim());
   const discoveryConfig = getDiscoveryConfig();
 
   if (!hasOpenAI) {
     console.warn(
       "OPENAI_API_KEY is not set. elizaOKBSC can still initialize, but message generation will be limited."
+    );
+  }
+
+  if (!hasMoltbook) {
+    console.warn(
+      "MOLTBOOK_API_KEY is not set. Moltbook plugin will stay disabled so the dashboard can run without upstream Moltbook errors."
     );
   }
 
@@ -118,40 +125,48 @@ async function main(): Promise<void> {
     plugins: [
       "@elizaos/plugin-sql",
       ...(hasOpenAI ? ["@elizaos/plugin-openai"] : []),
-      "@elizaos/plugin-moltbook",
+      ...(hasMoltbook ? ["@elizaos/plugin-moltbook"] : []),
     ],
     settings: {
-      moltbook: {
-        MOLTBOOK_AGENT_NAME: process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC",
-        MOLTBOOK_AUTO_REGISTER: process.env.MOLTBOOK_AUTO_REGISTER || "true",
-        MOLTBOOK_AUTO_ENGAGE: process.env.MOLTBOOK_AUTO_ENGAGE || "false",
-        MOLTBOOK_MIN_QUALITY_SCORE: process.env.MOLTBOOK_MIN_QUALITY_SCORE || "7",
-        MOLTBOOK_AUTONOMOUS_MODE: process.env.MOLTBOOK_AUTONOMOUS_MODE || "false",
-        MOLTBOOK_MODEL: process.env.MOLTBOOK_MODEL || "gpt-4o-mini",
-        MOLTBOOK_PERSONALITY:
-          process.env.MOLTBOOK_PERSONALITY ||
-          "A community-native ElizaOS agent representing ElizaOK on BNB Chain.",
-      },
+      ...(hasMoltbook
+        ? {
+            moltbook: {
+              MOLTBOOK_AGENT_NAME: process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC",
+              MOLTBOOK_AUTO_REGISTER: process.env.MOLTBOOK_AUTO_REGISTER || "true",
+              MOLTBOOK_AUTO_ENGAGE: process.env.MOLTBOOK_AUTO_ENGAGE || "false",
+              MOLTBOOK_MIN_QUALITY_SCORE: process.env.MOLTBOOK_MIN_QUALITY_SCORE || "7",
+              MOLTBOOK_AUTONOMOUS_MODE: process.env.MOLTBOOK_AUTONOMOUS_MODE || "false",
+              MOLTBOOK_MODEL: process.env.MOLTBOOK_MODEL || "gpt-4o-mini",
+              MOLTBOOK_PERSONALITY:
+                process.env.MOLTBOOK_PERSONALITY ||
+                "A community-native ElizaOS agent representing ElizaOK on BNB Chain.",
+            },
+          }
+        : {}),
     },
     secrets: requiredSecrets(),
   });
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [sqlPlugin, ...(hasOpenAI ? [openaiPlugin] : []), moltbookPlugin],
+    plugins: [sqlPlugin, ...(hasOpenAI ? [openaiPlugin] : []), ...(hasMoltbook ? [moltbookPlugin] : [])],
     settings: {
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       PGLITE_DATA_DIR: pgliteDir,
-      MOLTBOOK_API_KEY: process.env.MOLTBOOK_API_KEY,
-      MOLTBOOK_AUTO_REGISTER: process.env.MOLTBOOK_AUTO_REGISTER || "true",
-      MOLTBOOK_AUTO_ENGAGE: process.env.MOLTBOOK_AUTO_ENGAGE || "false",
-      MOLTBOOK_MIN_QUALITY_SCORE: process.env.MOLTBOOK_MIN_QUALITY_SCORE || "7",
-      MOLTBOOK_AGENT_NAME: process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC",
-      MOLTBOOK_AUTONOMOUS_MODE: process.env.MOLTBOOK_AUTONOMOUS_MODE || "false",
-      MOLTBOOK_AUTONOMY_INTERVAL_MS: process.env.MOLTBOOK_AUTONOMY_INTERVAL_MS,
-      MOLTBOOK_AUTONOMY_MAX_STEPS: process.env.MOLTBOOK_AUTONOMY_MAX_STEPS,
-      MOLTBOOK_MODEL: process.env.MOLTBOOK_MODEL,
-      MOLTBOOK_PERSONALITY: process.env.MOLTBOOK_PERSONALITY,
+      ...(hasMoltbook
+        ? {
+            MOLTBOOK_API_KEY: process.env.MOLTBOOK_API_KEY,
+            MOLTBOOK_AUTO_REGISTER: process.env.MOLTBOOK_AUTO_REGISTER || "true",
+            MOLTBOOK_AUTO_ENGAGE: process.env.MOLTBOOK_AUTO_ENGAGE || "false",
+            MOLTBOOK_MIN_QUALITY_SCORE: process.env.MOLTBOOK_MIN_QUALITY_SCORE || "7",
+            MOLTBOOK_AGENT_NAME: process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC",
+            MOLTBOOK_AUTONOMOUS_MODE: process.env.MOLTBOOK_AUTONOMOUS_MODE || "false",
+            MOLTBOOK_AUTONOMY_INTERVAL_MS: process.env.MOLTBOOK_AUTONOMY_INTERVAL_MS,
+            MOLTBOOK_AUTONOMY_MAX_STEPS: process.env.MOLTBOOK_AUTONOMY_MAX_STEPS,
+            MOLTBOOK_MODEL: process.env.MOLTBOOK_MODEL,
+            MOLTBOOK_PERSONALITY: process.env.MOLTBOOK_PERSONALITY,
+          }
+        : {}),
     },
   });
 
@@ -160,7 +175,10 @@ async function main(): Promise<void> {
   console.log("elizaOK_BSC initialized.");
   console.log("Loaded plugins:", runtime.plugins.map((plugin) => plugin.name).join(", "));
   console.log("PGLite:", pgliteDir);
-  console.log("Moltbook agent name:", process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC");
+  console.log(
+    "Moltbook:",
+    hasMoltbook ? `enabled as ${process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC"}` : "disabled"
+  );
   console.log(
     "ElizaOK discovery:",
     discoveryConfig.enabled
@@ -183,7 +201,9 @@ async function main(): Promise<void> {
   await setupElizaOkDiscovery(runtime);
   const dashboardServer = startDashboardServer(runtime);
 
-  await tryBootPost(runtime);
+  if (hasMoltbook) {
+    await tryBootPost(runtime);
+  }
 
   const stop = async () => {
     console.log("Stopping elizaOK_BSC...");
