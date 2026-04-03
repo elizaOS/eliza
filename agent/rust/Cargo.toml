@@ -1,0 +1,10 @@
+[package]
+name = "elizaos_agent"
+version = "0.1.0"
+edition = "2021"
+description = "Placeholder for Rust-side agent harness tooling (parity with typescript/)."
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"

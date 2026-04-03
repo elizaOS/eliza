@@ -1,8 +1,11 @@
 /**
  * Tests for runtime composition: getBasicCapabilitiesSettings, mergeSettingsInto,
- * loadCharacters (object source, file path via mock, empty), createRuntimes with adapter override.
+ * loadCharacters (object source, JSON file path, empty), createRuntimes with adapter override.
  */
 
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type AgentRecordForMerge,
@@ -160,7 +163,51 @@ describe("runtime-composition", () => {
 			await expect(loadCharacters([invalidInput])).rejects.toThrow();
 		});
 
+		it("loads character from a JSON file path", async () => {
+			const dir = mkdtempSync(join(tmpdir(), "eliza-load-chars-"));
+			const file = join(dir, "character.json");
+			writeFileSync(
+				file,
+				JSON.stringify({
+					name: "FileBot",
+					bio: ["from file"],
+					plugins: [],
+					settings: {},
+					secrets: {},
+				}),
+				"utf8",
+			);
+			const result = await loadCharacters([file]);
+			expect(result).toHaveLength(1);
+			expect(result[0]?.name).toBe("FileBot");
+		});
 
+		it("throws when character file path does not exist", async () => {
+			await expect(
+				loadCharacters(["/nonexistent/eliza-character-xyz.json"]),
+			).rejects.toThrow(/not found/);
+		});
+
+		it("resolves relative paths against options.cwd", async () => {
+			const root = mkdtempSync(join(tmpdir(), "eliza-load-chars-cwd-"));
+			const sub = join(root, "characters");
+			mkdirSync(sub, { recursive: true });
+			const file = join(sub, "bot.json");
+			writeFileSync(
+				file,
+				JSON.stringify({
+					name: "CwdBot",
+					bio: ["from cwd option"],
+					plugins: [],
+					settings: {},
+					secrets: {},
+				}),
+				"utf8",
+			);
+			const result = await loadCharacters(["bot.json"], { cwd: sub });
+			expect(result).toHaveLength(1);
+			expect(result[0]?.name).toBe("CwdBot");
+		});
 	});
 
 	describe("createRuntimes", () => {

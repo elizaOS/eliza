@@ -41,6 +41,19 @@
         "vitest": "^4.0.17",
       },
     },
+    "agent": {
+      "name": "@elizaos/agent",
+      "version": "2.0.0-alpha.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-ollama": "alpha",
+        "@elizaos/plugin-openai": "alpha",
+        "@elizaos/plugin-sql": "alpha",
+      },
+      "devDependencies": {
+        "typescript": "^5.9.3",
+      },
+    },
     "packages/computeruse": {
       "name": "@elizaos/computeruse-root",
       "version": "2.0.0-alpha.93",
@@ -508,6 +521,8 @@
     "@drizzle-team/brocli": ["@drizzle-team/brocli@0.10.2", "", {}, "sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w=="],
 
     "@electric-sql/pglite": ["@electric-sql/pglite@0.3.16", "", {}, "sha512-mZkZfOd9OqTMHsK+1cje8OSzfAQcpD7JmILXTl5ahdempjUDdmg4euf1biDex5/LfQIDJ3gvCu6qDgdnDxfJmA=="],
+
+    "@elizaos/agent": ["@elizaos/agent@workspace:agent"],
 
     "@elizaos/computeruse": ["@elizaos/computeruse@workspace:packages/computeruse/packages/computeruse-ts"],
 
@@ -2894,6 +2909,10 @@
     "@babel/helper-compilation-targets/semver": ["semver@6.3.1", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
     "@babel/helper-create-class-features-plugin/semver": ["semver@6.3.1", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
+
+    "@elizaos/agent/@elizaos/plugin-ollama": ["@elizaos/plugin-ollama@2.0.0-alpha.13", "", { "dependencies": { "@ai-sdk/ui-utils": "^1.2.8", "ai": "^4.3.9", "js-tiktoken": "^1.0.18", "ollama-ai-provider": "^1.2.0" }, "peerDependencies": { "@elizaos/core": ">=2.0.0-alpha.98 <3.0.0" } }, "sha512-lRcPGj76HclXSf0JC+TzdHrmipfpf7hYQqDk1zxCLmQdlSuxsYKaUyGrAzkwPQmDvAXECY0nvX6fpb/wmA+2ig=="],
+
+    "@elizaos/agent/@elizaos/plugin-openai": ["@elizaos/plugin-openai@2.0.0-alpha.15", "", { "dependencies": { "@ai-sdk/openai": "^3.0.9", "ai": "^6.0.30", "js-tiktoken": "^1.0.21", "undici": "^7.16.0" }, "peerDependencies": { "@elizaos/core": ">=2.0.0-alpha.98 <3.0.0", "zod": "^4.3.6" } }, "sha512-F2DQhiZ4AEWeCXB5m0NTWDSJjSJEj5RymFbDvMbwc2DeVdL61HD83USZ/oWODIzg5Wwbs9JVXf0ORG86LOhuIQ=="],
 
     "@elizaos/computeruse/@mediar-ai/kv": ["@mediar-ai/kv@0.23.51", "", { "dependencies": { "ioredis": "^5.3.2" } }, "sha512-7tDiy/s4Y8QPa+JtIbkuSh/GXtDEHIYNBQDdaMRaJBNNHXHEg2PRfkd/JzYgFxokd6FMrjXTbEBRcBrCcVQMPg=="],
 
