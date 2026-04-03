@@ -15,8 +15,9 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-ollama": "alpha",
+    "@elizaos/plugin-local-ai": "workspace:*",
+    "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-openai": "alpha",
-    "@elizaos/plugin-sql": "alpha"
+    "@elizaos/plugin-sql": "workspace:*"
   }
 }

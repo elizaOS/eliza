@@ -10,10 +10,12 @@
  * Usage:
  *   bun run harness
  *   bun run harness -- --character ./path/to/character.json
+ *   bun run harness -- --log-level info
  *
  * Inference: set OPENAI_API_KEY for OpenAI, or run Ollama locally. Override with HARNESS_PROVIDER=openai|ollama.
  *
  * Database: PGLite via @elizaos/plugin-sql (default). Data dir: PGLITE_DATA_DIR, HARNESS_PGLITE_DIR, or `.eliza/harness-pglite`.
+ * For in-memory DB instead, use `InMemoryDatabaseAdapter` from `@elizaos/core`, drop plugin-sql from the character, and pass that adapter to `createRuntimes`.
  */
 
 import { createInterface } from "node:readline/promises";
@@ -28,7 +30,6 @@ import {
 	MemoryType,
 	stringToUuid,
 	type Character,
-	type CharacterInput,
 	type Content,
 	type HandlerCallback,
 	type IAgentRuntime,
@@ -37,15 +38,74 @@ import {
 } from "@elizaos/core";
 import { defaultCharacter } from "./defaultCharacter";
 
-function parseHarnessArgs(): { characterPath?: string } {
+const LOG_LEVELS = [
+	"trace",
+	"debug",
+	"info",
+	"warn",
+	"error",
+	"fatal",
+] as const;
+
+type HarnessLogLevel = (typeof LOG_LEVELS)[number];
+
+function isHarnessLogLevel(s: string): s is HarnessLogLevel {
+	return (LOG_LEVELS as readonly string[]).includes(s);
+}
+
+function parseHarnessArgs(): {
+	characterPath?: string;
+	logLevel?: HarnessLogLevel;
+	help?: boolean;
+	unknownFlags: string[];
+} {
 	const args = process.argv.slice(2);
 	let characterPath: string | undefined;
+	let logLevel: HarnessLogLevel | undefined;
+	let help = false;
+	const unknownFlags: string[] = [];
+
 	for (let i = 0; i < args.length; i++) {
-		if (args[i] === "--character" && args[i + 1]) {
+		const a = args[i];
+		if (a === "--help" || a === "-h") {
+			help = true;
+			continue;
+		}
+		if (a === "--character" && args[i + 1]) {
 			characterPath = args[++i];
+			continue;
+		}
+		if (a === "--log-level" && args[i + 1]) {
+			const v = args[++i];
+			if (isHarnessLogLevel(v)) {
+				logLevel = v;
+			} else {
+				unknownFlags.push(`--log-level ${v} (expected ${LOG_LEVELS.join("|")})`);
+			}
+			continue;
+		}
+		if (a?.startsWith("-")) {
+			unknownFlags.push(a);
 		}
 	}
-	return { characterPath };
+
+	return { characterPath, logLevel, help, unknownFlags };
+}
+
+function printUsage(): void {
+	output.write(`@elizaos/agent harness
+
+Usage:
+  bun run harness [options]
+
+Options:
+  --character <path>     Load character JSON (relative paths use process.cwd())
+  --log-level <level>    ${LOG_LEVELS.join(" | ")} (overrides LOG_LEVEL when set)
+  -h, --help             Show this message
+
+Environment:
+  LOG_LEVEL, OPENAI_API_KEY, HARNESS_PROVIDER=openai|ollama, PGLITE_DATA_DIR, HARNESS_PGLITE_DIR
+`);
 }
 
 function preferOpenAiPlugin(): boolean {
@@ -67,7 +127,9 @@ function mergeHarnessSqlPlugins(character: Character): Character {
 	}
 	if (
 		!list.some((s) =>
-			/plugin-openai|plugin-ollama|plugin-anthropic|plugin-groq/.test(s),
+			/plugin-openai|plugin-ollama|plugin-local-ai|plugin-anthropic|plugin-groq/.test(
+				s,
+			),
 		)
 	) {
 		list.push(
@@ -79,39 +141,43 @@ function mergeHarnessSqlPlugins(character: Character): Character {
 	return { ...character, plugins: list };
 }
 
-/** For in-memory DB: drop plugin-sql, keep inference defaults. */
-function mergeHarnessPluginsNoSql(character: Character): Character {
-	const existing = (character.plugins ?? []).filter(
-		(p: unknown): p is string =>
-			typeof p === "string" && !p.includes("plugin-sql"),
-	);
-	const list = [...existing];
-	if (
-		!list.some((s) =>
-			/plugin-openai|plugin-ollama|plugin-anthropic|plugin-groq/.test(s),
-		)
-	) {
-		list.push(
-			preferOpenAiPlugin()
-				? "@elizaos/plugin-openai"
-				: "@elizaos/plugin-ollama",
-		);
+function resolveLogLevel(cli?: HarnessLogLevel): HarnessLogLevel {
+	if (cli) {
+		return cli;
 	}
-	return { ...character, plugins: list };
+	const env = process.env.LOG_LEVEL?.trim();
+	if (env && isHarnessLogLevel(env)) {
+		return env;
+	}
+	return "debug";
 }
 
 async function main(): Promise<void> {
-	const { characterPath } = parseHarnessArgs();
+	const { characterPath, logLevel: cliLogLevel, help, unknownFlags } =
+		parseHarnessArgs();
 
-	const sources: Array<CharacterInput | string> = characterPath
+	if (help) {
+		printUsage();
+		return;
+	}
+
+	if (unknownFlags.length > 0) {
+		for (const f of unknownFlags) {
+			console.error(`Unknown or invalid option: ${f}`);
+		}
+		printUsage();
+		process.exitCode = 1;
+		return;
+	}
+
+	const sources: Array<Character | string> = characterPath
 		? [characterPath]
-		: [defaultCharacter as CharacterInput];
+		: [defaultCharacter];
 
 	let characters = await loadCharacters(sources);
 
 	const pgliteDirDefault = path.join(process.cwd(), ".eliza", "harness-pglite");
 
-	// --- PGLite only: merge data dir into settings (comment this whole block for in-memory DB) ---
 	characters = characters.map((c: Character) => ({
 		...c,
 		settings: {
@@ -120,19 +186,14 @@ async function main(): Promise<void> {
 				process.env.PGLITE_DATA_DIR ??
 				process.env.HARNESS_PGLITE_DIR ??
 				pgliteDirDefault,
+			/** Harness is direct chat: always respond (overrides character JSON if set). */
+			CHECK_SHOULD_RESPOND: false,
 		},
 	}));
 
 	characters = characters.map(mergeHarnessSqlPlugins);
 
-	const logLevel =
-		(process.env.LOG_LEVEL as
-			| "trace"
-			| "debug"
-			| "info"
-			| "warn"
-			| "error"
-			| "fatal") ?? "debug";
+	const logLevel = resolveLogLevel(cliLogLevel);
 
 	const primary = characters[0]!;
 	const caps = getBasicCapabilitiesSettings(primary);
@@ -147,24 +208,12 @@ async function main(): Promise<void> {
 	const runtimes = await createRuntimes(characters, {
 		adapter: sqlAdapter,
 		logLevel,
-		checkShouldRespond: false,
 	});
 
 	const runtime = runtimes[0] as IAgentRuntime | undefined;
 	if (!runtime) {
 		throw new Error("createRuntimes returned no runtimes");
 	}
-
-	// --- Database: in-memory (comment out PGLite sections above; uncomment below + add import) ---
-	// import { InMemoryDatabaseAdapter } from "@elizaos/core";
-	// let characters = await loadCharacters(sources);
-	// characters = characters.map(mergeHarnessPluginsNoSql);
-	// const runtimes = await createRuntimes(characters, {
-	// 	adapter: new InMemoryDatabaseAdapter(),
-	// 	logLevel,
-	// 	checkShouldRespond: false,
-	// });
-	// const runtime = runtimes[0] as IAgentRuntime | undefined;
 
 	const character = characters[0]!;
 
@@ -184,6 +233,28 @@ async function main(): Promise<void> {
 
 	const rl = createInterface({ input, output, terminal: true });
 
+	let shuttingDown = false;
+	const shutdown = async (code: number) => {
+		if (shuttingDown) {
+			return;
+		}
+		shuttingDown = true;
+		try {
+			rl.close();
+		} catch {
+			/* ignore */
+		}
+		try {
+			await runtime.stop();
+		} catch {
+			/* ignore */
+		}
+		process.exit(code);
+	};
+
+	process.once("SIGINT", () => void shutdown(0));
+	process.once("SIGTERM", () => void shutdown(0));
+
 	output.write(
 		`\n@elizaos/agent harness | ${character.name ?? "agent"} | type "exit" or Ctrl+D to quit\n\n`,
 	);
@@ -198,9 +269,22 @@ async function main(): Promise<void> {
 
 	try {
 		while (true) {
-			const line = await rl.question("> ");
+			let line: string;
+			try {
+				line = await rl.question("> ");
+			} catch {
+				break;
+			}
+
+			if (line === undefined || line === null) {
+				break;
+			}
+
 			const trimmed = line.trim();
-			if (trimmed === "" || trimmed.toLowerCase() === "exit") {
+			if (trimmed === "") {
+				continue;
+			}
+			if (trimmed.toLowerCase() === "exit") {
 				break;
 			}
 
@@ -234,8 +318,10 @@ async function main(): Promise<void> {
 			}
 		}
 	} finally {
-		rl.close();
-		await runtime.stop();
+		if (!shuttingDown) {
+			rl.close();
+			await runtime.stop();
+		}
 	}
 }
 

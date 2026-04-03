@@ -5,7 +5,7 @@
     "url": "https://github.com/elizaos/eliza/issues"
   },
   "dependencies": {
-    "@mediar-ai/kv": "^0.23.30"
+    "@mediar-ai/kv": "workspace:*"
   },
   "description": "Node.js/TypeScript bindings for the ComputerUse Rust library (via napi-rs)",
   "devDependencies": {
