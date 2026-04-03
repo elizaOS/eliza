@@ -11,12 +11,12 @@
 export {
   moltbookReadAction,
   moltbookSubmoltsAction,
-} from "./actions";
+} from "./actions/index";
 export * from "./constants";
 // Export environment utilities from next branch
 export { getMoltbookSettings, validateMoltbookSettings } from "./environment";
 // Export evaluators for external use
-export { reflectionEvaluator } from "./evaluators";
+export { reflectionEvaluator } from "./evaluators/index";
 // Export learning utilities for advanced use cases
 export {
   formatCulturalLearnings,
@@ -39,6 +39,6 @@ export {
 } from "./lib/mentions";
 export { moltbookPlugin, moltbookPlugin as default } from "./plugin";
 // Export new provider from next branch
-export { moltbookStateProvider } from "./providers";
+export { moltbookStateProvider } from "./providers/index";
 export { MoltbookService } from "./service";
 export * from "./types";

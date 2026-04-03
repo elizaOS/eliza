@@ -45,7 +45,7 @@ import {
 } from "./constants";
 import * as api from "./lib/api";
 import { getAgentState, getRateLimitStatus } from "./lib/rateLimiter";
-import { moltbookCycleWorker } from "./tasks";
+import { moltbookCycleWorker } from "./tasks/index";
 import type {
   CacheOptions,
   MoltbookComment,

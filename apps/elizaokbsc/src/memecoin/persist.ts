@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createUniqueUuid, type IAgentRuntime } from "@elizaos/core";
 import {
@@ -8,16 +8,38 @@ import {
   ELIZAOK_SCAN_RUNS_TABLE,
 } from "./constants";
 import type {
+  CandidateDetail,
   DashboardSnapshot,
+  DistributionPlan,
+  DistributionExecutionLedger,
+  DistributionExecutionState,
+  ExecutionState,
   GooAgentCandidate,
+  HistoryEntry,
+  PortfolioLifecycle,
   PersistedScanArtifacts,
   ScanMemo,
   ScoredCandidate,
+  TradeLedger,
+  TreasurySimulation,
 } from "./types";
 import { setLatestSnapshot } from "./store";
+import { buildWatchlist, mergeCandidateHistory } from "./watchlist";
 
 function sanitizeTimestamp(iso: string): string {
   return iso.replace(/[:.]/g, "-");
+}
+
+function safeJsonStringify(value: unknown): string {
+  return JSON.stringify(
+    value,
+    (_key, currentValue) => (typeof currentValue === "bigint" ? currentValue.toString() : currentValue),
+    2
+  );
+}
+
+function toJsonSafe<T>(value: T): T {
+  return JSON.parse(safeJsonStringify(value)) as T;
 }
 
 export async function persistScanArtifacts(
@@ -26,7 +48,15 @@ export async function persistScanArtifacts(
   candidates: ScoredCandidate[],
   gooCandidates: GooAgentCandidate[],
   memo: ScanMemo,
-  reportsDir: string
+  treasurySimulation: TreasurySimulation,
+  portfolioLifecycle: PortfolioLifecycle,
+  executionState: ExecutionState,
+  tradeLedger: TradeLedger,
+  distributionPlan: DistributionPlan,
+  distributionExecution: DistributionExecutionState,
+  distributionLedger: DistributionExecutionLedger,
+  reportsDir: string,
+  historyLimit: number
 ): Promise<PersistedScanArtifacts> {
   const memoId = createUniqueUuid(runtime, `elizaok-memo-${runId}`);
   const runMemoryId = createUniqueUuid(runtime, `elizaok-run-${runId}`);
@@ -66,7 +96,7 @@ export async function persistScanArtifacts(
           metadata: {
             type: "elizaok_candidate_snapshot",
             runId,
-            candidate,
+            candidate: toJsonSafe(candidate),
           } as any,
         },
       },
@@ -89,7 +119,7 @@ export async function persistScanArtifacts(
           metadata: {
             type: "elizaok_goo_candidate",
             runId,
-            candidate,
+            candidate: toJsonSafe(candidate),
           } as any,
         },
       },
@@ -109,7 +139,7 @@ export async function persistScanArtifacts(
           type: "elizaok_scan_memo",
           runId,
           title: memo.title,
-          summary: memo.summary,
+          summary: toJsonSafe(memo.summary),
         } as any,
       },
     },
@@ -127,25 +157,148 @@ export async function persistScanArtifacts(
   );
   await writeFile(reportPath, memo.markdown, "utf8");
 
+  const historyPath = path.join(absoluteReportsDir, "history.json");
+  let history: HistoryEntry[] = [];
+  try {
+    const content = await readFile(historyPath, "utf8");
+    history = JSON.parse(content) as HistoryEntry[];
+  } catch {
+    history = [];
+  }
+
+  const historyEntry: HistoryEntry = {
+    runId,
+    generatedAt: memo.summary.completedAt,
+    candidateCount: memo.summary.candidateCount,
+    topRecommendationCount: memo.summary.topRecommendationCount,
+    averageScore: memo.summary.averageScore,
+    gooAgentCount: memo.summary.gooAgentCount,
+    gooPriorityCount: memo.summary.gooPriorityCount,
+    strongestCandidate: memo.summary.strongestCandidate,
+    treasuryAllocatedUsd: treasurySimulation.allocatedUsd,
+    treasuryDryPowderUsd: treasurySimulation.dryPowderUsd,
+  };
+  history = [historyEntry, ...history.filter((entry) => entry.runId !== runId)].slice(0, historyLimit);
+  await writeFile(historyPath, safeJsonStringify(history), "utf8");
+
+  const candidateHistoryPath = path.join(absoluteReportsDir, "candidate-history.json");
+  let candidateHistory: CandidateDetail[] = [];
+  try {
+    const content = await readFile(candidateHistoryPath, "utf8");
+    candidateHistory = JSON.parse(content) as CandidateDetail[];
+  } catch {
+    candidateHistory = [];
+  }
+
+  candidateHistory = mergeCandidateHistory(candidateHistory, runId, memo.summary.completedAt, candidates);
+  await writeFile(candidateHistoryPath, safeJsonStringify(candidateHistory), "utf8");
+
+  const watchlist = buildWatchlist(candidateHistory).slice(0, 24);
+  const watchlistPath = path.join(absoluteReportsDir, "watchlist.json");
+  await writeFile(watchlistPath, safeJsonStringify(watchlist), "utf8");
+
+  const distributionPath = path.join(absoluteReportsDir, "distribution.json");
+  await writeFile(distributionPath, safeJsonStringify(distributionPlan), "utf8");
+
+  const distributionExecutionPath = path.join(absoluteReportsDir, "distribution-execution.json");
+  await writeFile(distributionExecutionPath, safeJsonStringify(distributionExecution), "utf8");
+
+  const distributionLedgerPath = path.join(absoluteReportsDir, "distribution-ledger.json");
+  await writeFile(distributionLedgerPath, safeJsonStringify(distributionLedger), "utf8");
+
+  const executionPath = path.join(absoluteReportsDir, "execution.json");
+  await writeFile(executionPath, safeJsonStringify(executionState), "utf8");
+
+  const tradesPath = path.join(absoluteReportsDir, "trades.json");
+  await writeFile(tradesPath, safeJsonStringify(tradeLedger), "utf8");
+
+  const portfolioPath = path.join(absoluteReportsDir, "portfolio.json");
+  await writeFile(portfolioPath, safeJsonStringify(portfolioLifecycle), "utf8");
+
+  const timelinePath = path.join(absoluteReportsDir, "timeline.json");
+  await writeFile(timelinePath, safeJsonStringify(portfolioLifecycle.timeline), "utf8");
+
   const snapshotPath = path.join(absoluteReportsDir, "latest.json");
   const snapshot: DashboardSnapshot = {
     generatedAt: memo.summary.completedAt,
     summary: memo.summary,
+    treasurySimulation,
+    portfolioLifecycle,
+    executionState,
+    tradeLedger,
+    distributionPlan,
+    distributionExecution,
+    distributionLedger,
+    recentHistory: history,
+    watchlist,
     topCandidates: candidates.slice(0, 10),
     topGooCandidates: gooCandidates.slice(0, 10),
     memoTitle: memo.title,
     reportPath,
     snapshotPath,
   };
-  await writeFile(snapshotPath, JSON.stringify(snapshot, null, 2), "utf8");
-  setLatestSnapshot(snapshot);
+  await writeFile(snapshotPath, safeJsonStringify(snapshot), "utf8");
+  setLatestSnapshot(toJsonSafe(snapshot));
 
   return {
     reportPath,
     snapshotPath,
+    historyPath,
+    watchlistPath,
+    candidateHistoryPath,
+    distributionPath,
+    distributionExecutionPath,
+    distributionLedgerPath,
+    executionPath,
+    tradesPath,
+    portfolioPath,
+    timelinePath,
     memoId,
     runMemoryId,
     candidateMemoryIds,
     gooMemoryIds,
   };
+}
+
+export async function loadCandidateHistory(reportsDir: string): Promise<CandidateDetail[]> {
+  const absoluteReportsDir = path.isAbsolute(reportsDir) ? reportsDir : path.join(process.cwd(), reportsDir);
+  const candidateHistoryPath = path.join(absoluteReportsDir, "candidate-history.json");
+
+  try {
+    const content = await readFile(candidateHistoryPath, "utf8");
+    return JSON.parse(content) as CandidateDetail[];
+  } catch {
+    return [];
+  }
+}
+
+export async function persistDistributionExecutionState(
+  snapshot: DashboardSnapshot,
+  reportsDir: string,
+  distributionPlan: DistributionPlan,
+  distributionExecution: DistributionExecutionState,
+  distributionLedger: DistributionExecutionLedger
+): Promise<void> {
+  const absoluteReportsDir = path.isAbsolute(reportsDir) ? reportsDir : path.join(process.cwd(), reportsDir);
+  await mkdir(absoluteReportsDir, { recursive: true });
+
+  const distributionPath = path.join(absoluteReportsDir, "distribution.json");
+  await writeFile(distributionPath, safeJsonStringify(distributionPlan), "utf8");
+
+  const distributionExecutionPath = path.join(absoluteReportsDir, "distribution-execution.json");
+  await writeFile(distributionExecutionPath, safeJsonStringify(distributionExecution), "utf8");
+
+  const distributionLedgerPath = path.join(absoluteReportsDir, "distribution-ledger.json");
+  await writeFile(distributionLedgerPath, safeJsonStringify(distributionLedger), "utf8");
+
+  const updatedSnapshot: DashboardSnapshot = {
+    ...snapshot,
+    generatedAt: new Date().toISOString(),
+    distributionPlan,
+    distributionExecution,
+    distributionLedger,
+  };
+  const snapshotPath = snapshot.snapshotPath || path.join(absoluteReportsDir, "latest.json");
+  await writeFile(snapshotPath, safeJsonStringify(updatedSnapshot), "utf8");
+  setLatestSnapshot(toJsonSafe(updatedSnapshot));
 }

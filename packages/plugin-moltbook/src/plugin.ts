@@ -37,15 +37,15 @@ import {
   postAction,
   searchAction,
   voteAction,
-} from "./actions";
+} from "./actions/index";
 import { type PluginSetting, printBanner } from "./banner";
 import { PLUGIN_DESCRIPTION, PLUGIN_NAME } from "./constants";
-import { reflectionEvaluator } from "./evaluators";
+import { reflectionEvaluator } from "./evaluators/index";
 import {
   moltbookContextProvider,
   moltbookFullAnalysisProvider,
   moltbookStatusProvider,
-} from "./providers";
+} from "./providers/index";
 import { MoltbookService } from "./service";
 
 /**

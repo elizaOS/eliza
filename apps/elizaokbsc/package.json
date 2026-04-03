@@ -13,6 +13,7 @@
     "@elizaos/plugin-moltbook": "workspace:*",
     "@elizaos/plugin-openai": "alpha",
     "@elizaos/plugin-sql": "alpha",
+    "@meme-sdk/trade": "^1.0.1",
     "dotenv": "^17.2.3",
     "ethers": "^6.16.0"
   },

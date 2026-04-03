@@ -1,0 +1,37 @@
+[
+  {
+    "address": "0x5a4d3d746e7eb0a7a4adf3f1d7ae5f0d6db5c101",
+    "balance": 250000,
+    "label": "core_long_term_holder"
+  },
+  {
+    "address": "0x8d7f61c2e1f387217bc6f8ee86e3fb95ad0f1202",
+    "balance": 180000,
+    "label": "community_whale"
+  },
+  {
+    "address": "0x9b6a61b8a3876a6cf4f3fdb4e25b6fb1a035a303",
+    "balance": 120000,
+    "label": "early_supporter"
+  },
+  {
+    "address": "0x7f0b2c8d50e6d3d9cbb0d22d4efcb4a71f9d4404",
+    "balance": 90000,
+    "label": "builder_pool"
+  },
+  {
+    "address": "0xa1c8f887d65b476f92dbf0d5c6df1e2db6a3e505",
+    "balance": 62000,
+    "label": "community_active"
+  },
+  {
+    "address": "0xc0f8a8d18f75a7dba4530a0f5bb31c95b1ee6606",
+    "balance": 40000,
+    "label": "holder_alpha"
+  },
+  {
+    "address": "0xd1f97a6d1af91ce583c59f4bf58d8f7a3bc06707",
+    "balance": 22000,
+    "label": "holder_beta"
+  }
+]
