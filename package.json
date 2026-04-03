@@ -14,9 +14,13 @@
     "ensure-plugin-test-conventions": "bun scripts/ensure-plugin-test-conventions.mjs",
     "ensure-plugin-test-conventions:check": "bun scripts/ensure-plugin-test-conventions.mjs --check",
     "generate:types": "cd packages/@schemas && bunx buf lint && bunx buf generate",
-    "start": "echo 'CLI package not found. Please use elizaos start from a project directory.'",
-    "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
+    "start": "bun run --cwd agent start",
+    "dev": "bun run --cwd agent dev",
+    "harness": "bun run --cwd agent start",
+    "dev:core": "bun run --cwd packages/typescript dev",
+    "start:debug": "NODE_NO_WARNINGS=1 LOG_LEVEL=debug bun run --cwd agent start",
     "build": "turbo run build",
+    "build:typescript": "turbo run build --filter=!@elizaos/python --filter=!@elizaos/rust --filter=!@elizaos/computeruse --filter=!@elizaos/computeruse-nodejs --filter=!@elizaos/computeruse-root --filter=!@mediar-ai/workflow",
     "build:client": "turbo run build --filter=@elizaos/client",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
@@ -60,7 +64,8 @@
   "workspaces": [
     "packages/*",
     "packages/computeruse/packages/*",
-    "apps/*"
+    "apps/*",
+    "agent"
   ],
   "devDependencies": {
     "@bufbuild/buf": "^1.47.2",
