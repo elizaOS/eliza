@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import path from "node:path";
 import { URL } from "node:url";
 import type { AgentRuntime } from "@elizaos/core";
+import { ethers } from "ethers";
 import { getDiscoveryConfig } from "./config";
 import { executeDistributionLane } from "./distribution-execution";
 import { buildDistributionPlan } from "./distribution";
@@ -56,8 +57,203 @@ function sendBinary(
   res.end(payload);
 }
 
-function escapeHtml(value: string): string {
-  return value
+function sendHtml(
+  res: ServerResponse,
+  statusCode: number,
+  html: string,
+  cookieHeaders?: string[]
+): void {
+  res.writeHead(statusCode, {
+    "content-type": "text/html; charset=utf-8",
+    ...(cookieHeaders && cookieHeaders.length > 0 ? { "set-cookie": cookieHeaders } : {}),
+  });
+  res.end(html);
+}
+
+function sendRedirect(
+  res: ServerResponse,
+  location: string,
+  cookieHeaders?: string[]
+): void {
+  res.writeHead(302, {
+    location,
+    ...(cookieHeaders && cookieHeaders.length > 0 ? { "set-cookie": cookieHeaders } : {}),
+  });
+  res.end();
+}
+
+function renderCloudPopupResultHtml(status: "success" | "error", message: string): string {
+  const escapedMessage = escapeHtml(message);
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ElizaOK | ElizaCloud</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #090909;
+      color: #f4ecd2;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .panel {
+      width: min(420px, calc(100vw - 32px));
+      padding: 24px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,214,10,0.16);
+      background: rgba(255,214,10,0.05);
+      box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+    }
+    .eyebrow {
+      color: #ffd60a;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    h1 { margin: 0 0 10px; font-size: 24px; }
+    p { margin: 0; line-height: 1.6; color: rgba(244,236,210,0.82); }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="eyebrow">ElizaCloud</div>
+    <h1>${status === "success" ? "Authentication Complete" : "Authentication Error"}</h1>
+    <p>${escapedMessage}</p>
+  </div>
+  <script>
+    try {
+      if (window.opener) {
+        window.opener.postMessage(
+          { type: "eliza-cloud-auth-complete", status: "${status}", message: ${JSON.stringify(message)} },
+          "*"
+        );
+      }
+    } catch {}
+    window.setTimeout(function () { window.close(); }, 350);
+  </script>
+</body>
+</html>`;
+}
+
+function renderCloudCallbackBridgeHtml(popupMode: boolean): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ElizaOK | ElizaCloud Callback</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #090909;
+      color: #f4ecd2;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .panel {
+      width: min(440px, calc(100vw - 32px));
+      padding: 24px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,214,10,0.16);
+      background: rgba(255,214,10,0.05);
+      box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+    }
+    .eyebrow {
+      color: #ffd60a;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    h1 { margin: 0 0 10px; font-size: 24px; }
+    p { margin: 0; line-height: 1.6; color: rgba(244,236,210,0.82); }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="eyebrow">ElizaCloud</div>
+    <h1>Completing Sign-In</h1>
+    <p>Finalizing hosted app authentication for ElizaOK...</p>
+  </div>
+  <script>
+    (function () {
+      function toObject(params) {
+        var result = {};
+        params.forEach(function (value, key) {
+          result[key] = value;
+        });
+        return result;
+      }
+      var search = new URLSearchParams(window.location.search);
+      var hash = new URLSearchParams((window.location.hash || "").replace(/^#/, ""));
+      var payload = Object.assign({}, toObject(search), toObject(hash), {
+        popup: ${popupMode ? '"1"' : '"0"'}
+      });
+      fetch("/api/eliza-cloud/app-auth/complete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(payload)
+      })
+        .then(function (response) {
+          return response.json().then(function (data) {
+            if (!response.ok) {
+              throw new Error(data && data.error ? data.error : "ElizaCloud app auth failed.");
+            }
+            return data;
+          });
+        })
+        .then(function () {
+          if (${popupMode ? "true" : "false"}) {
+            try {
+              if (window.opener) {
+                window.opener.postMessage(
+                  { type: "eliza-cloud-auth-complete", status: "success", message: "ElizaCloud connected." },
+                  "*"
+                );
+              }
+            } catch {}
+            window.close();
+            return;
+          }
+          window.location.href = "/?cloud_connected=1";
+        })
+        .catch(function (error) {
+          var message = error && error.message ? error.message : String(error);
+          if (${popupMode ? "true" : "false"}) {
+            try {
+              if (window.opener) {
+                window.opener.postMessage(
+                  { type: "eliza-cloud-auth-complete", status: "error", message: message },
+                  "*"
+                );
+              }
+            } catch {}
+            document.body.innerHTML =
+              '<div class="panel"><div class="eyebrow">ElizaCloud</div><h1>Authentication Error</h1><p>' +
+              message.replace(/[<>&]/g, "") +
+              "</p></div>";
+            return;
+          }
+          window.location.href = "/?cloud_error=" + encodeURIComponent(message);
+        });
+    })();
+  </script>
+</body>
+</html>`;
+}
+
+function escapeHtml(value: string | number | null | undefined): string {
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -79,8 +275,683 @@ function formatBnb(value: number): string {
   return `${value.toFixed(4)} BNB`;
 }
 
+async function fetchWalletNativeBalanceLabel(rpcUrl: string | null, walletAddress: string): Promise<string> {
+  if (!rpcUrl || !walletAddress) return "n/a";
+  try {
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const balance = await provider.getBalance(walletAddress);
+    return `${Number(ethers.formatEther(balance)).toFixed(4)} BNB`;
+  } catch {
+    return "n/a";
+  }
+}
+
 function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+interface ElizaCloudSession {
+  provider: "eliza-cloud";
+  authMode: "demo" | "siwe" | "app-auth";
+  displayName: string;
+  email: string;
+  credits: string;
+  model: string;
+  apiKey: string;
+  apiKeyHint: string;
+  plan: string;
+  avatarUrl: string | null;
+  walletAddress: string;
+  organizationName: string;
+  organizationSlug: string;
+  appId: string;
+}
+
+const ELIZAOK_CLOUD_COOKIE = "elizaok_cloud_session";
+const ELIZAOK_CLOUD_STATE_COOKIE = "elizaok_cloud_state";
+
+function parseCookies(header: string | undefined): Record<string, string> {
+  if (!header) return {};
+  return Object.fromEntries(
+    header
+      .split(";")
+      .map((entry) => {
+        const separatorIndex = entry.indexOf("=");
+        if (separatorIndex === -1) return null;
+        return [
+          entry.slice(0, separatorIndex).trim(),
+          decodeURIComponent(entry.slice(separatorIndex + 1).trim()),
+        ] as const;
+      })
+      .filter((entry): entry is readonly [string, string] => Boolean(entry))
+  );
+}
+
+function readElizaCloudSession(header: string | undefined): ElizaCloudSession | null {
+  const raw = parseCookies(header)[ELIZAOK_CLOUD_COOKIE];
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as ElizaCloudSession;
+    return parsed?.provider === "eliza-cloud" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function serializeElizaCloudSession(session: ElizaCloudSession): string {
+  const payload = Buffer.from(JSON.stringify(session)).toString("base64url");
+  return `${ELIZAOK_CLOUD_COOKIE}=${payload}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`;
+}
+
+function clearElizaCloudSession(): string {
+  return `${ELIZAOK_CLOUD_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+}
+
+function readElizaCloudAuthState(header: string | undefined): string | null {
+  return parseCookies(header)[ELIZAOK_CLOUD_STATE_COOKIE] || null;
+}
+
+function serializeElizaCloudAuthState(state: string): string {
+  return `${ELIZAOK_CLOUD_STATE_COOKIE}=${encodeURIComponent(state)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=900`;
+}
+
+function clearElizaCloudAuthState(): string {
+  return `${ELIZAOK_CLOUD_STATE_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+}
+
+function isElizaCloudDemoEnabled(): boolean {
+  return process.env.ELIZAOK_ELIZA_CLOUD_DEMO_ENABLED?.trim() === "true";
+}
+
+function inferOrigin(req: IncomingMessage): string {
+  const protocol =
+    (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim() || "http";
+  const host = req.headers.host || "localhost";
+  return `${protocol}://${host}`;
+}
+
+function isLocalRequest(req: IncomingMessage): boolean {
+  const host = (req.headers.host || "").toLowerCase();
+  return host.includes("localhost") || host.includes("127.0.0.1");
+}
+
+function buildElizaCloudDemoUrl(req: IncomingMessage): string {
+  const callbackUrl = new URL(`${inferOrigin(req)}/auth/eliza-cloud/callback`);
+  callbackUrl.searchParams.set("name", "Baoger");
+  callbackUrl.searchParams.set("email", "baoger@elizacloud.local");
+  callbackUrl.searchParams.set("credits", "10,000");
+  callbackUrl.searchParams.set("model", "gpt-4o-mini");
+  callbackUrl.searchParams.set("api_key", "eliza_demo_7H3K9A");
+  callbackUrl.searchParams.set("plan", "ElizaCloud Alpha");
+  callbackUrl.searchParams.set("avatar", "/assets/elizaok-logo.png");
+  callbackUrl.searchParams.set("mode", "demo");
+  return callbackUrl.toString();
+}
+
+function getElizaCloudAppId(): string {
+  return process.env.ELIZAOK_ELIZA_CLOUD_APP_ID?.trim() || "";
+}
+
+function getElizaCloudAuthorizeUrl(): string {
+  return (
+    process.env.ELIZAOK_ELIZA_CLOUD_AUTHORIZE_URL?.trim() ||
+    `${getElizaCloudBaseUrl().replace(/\/$/, "")}/app-auth/authorize`
+  );
+}
+
+function buildElizaCloudCliLoginUrl(sessionId: string): string {
+  return `${getElizaCloudBaseUrl().replace(/\/$/, "")}/auth/cli-login?session=${encodeURIComponent(sessionId)}`;
+}
+
+function getElizaCloudCallbackUrl(req: IncomingMessage, popup = false): string {
+  const callbackUrl = new URL(
+    process.env.ELIZAOK_ELIZA_CLOUD_CALLBACK_URL?.trim() || `${inferOrigin(req)}/auth/eliza-cloud/callback`
+  );
+  if (popup) {
+    callbackUrl.searchParams.set("popup", "1");
+  }
+  return callbackUrl.toString();
+}
+
+function hasElizaCloudAppAuthConfig(): boolean {
+  return Boolean(getElizaCloudAppId() && getElizaCloudAuthorizeUrl());
+}
+
+function buildElizaCloudLoginUrl(req: IncomingMessage, state?: string, popup = false): string | null {
+  if (hasElizaCloudAppAuthConfig()) {
+    const loginUrl = new URL(getElizaCloudAuthorizeUrl());
+    const callbackUrl = getElizaCloudCallbackUrl(req, popup);
+    const appId = getElizaCloudAppId();
+    loginUrl.searchParams.set("appId", appId);
+    loginUrl.searchParams.set("app_id", appId);
+    loginUrl.searchParams.set("redirect_uri", callbackUrl);
+    loginUrl.searchParams.set("return_to", callbackUrl);
+    loginUrl.searchParams.set("callback_url", callbackUrl);
+    loginUrl.searchParams.set("client", "elizaok");
+    if (state) {
+      loginUrl.searchParams.set("state", state);
+    }
+    return loginUrl.toString();
+  }
+
+  const configured = process.env.ELIZAOK_ELIZA_CLOUD_LOGIN_URL?.trim() || "";
+  if (configured) {
+    const loginUrl = new URL(configured);
+    const callbackUrl = getElizaCloudCallbackUrl(req, popup);
+    loginUrl.searchParams.set("return_to", callbackUrl);
+    loginUrl.searchParams.set("redirect_uri", callbackUrl);
+    loginUrl.searchParams.set("client", "elizaok");
+    if (state) {
+      loginUrl.searchParams.set("state", state);
+    }
+    return loginUrl.toString();
+  }
+
+  return isLocalRequest(req) && isElizaCloudDemoEnabled() ? buildElizaCloudDemoUrl(req) : null;
+}
+
+function buildElizaCloudSessionFromQuery(requestUrl: URL): ElizaCloudSession | null {
+  const displayName = requestUrl.searchParams.get("name")?.trim() || "";
+  const email = requestUrl.searchParams.get("email")?.trim() || "";
+  const credits = requestUrl.searchParams.get("credits")?.trim() || "n/a";
+  const model = requestUrl.searchParams.get("model")?.trim() || "n/a";
+  const apiKeyHint =
+    requestUrl.searchParams.get("api_key")?.trim() ||
+    requestUrl.searchParams.get("apiKey")?.trim() ||
+    "n/a";
+  const plan = requestUrl.searchParams.get("plan")?.trim() || "ElizaCloud";
+  const avatarUrl =
+    requestUrl.searchParams.get("avatar_url")?.trim() ||
+    requestUrl.searchParams.get("avatar")?.trim() ||
+    null;
+  const apiKey =
+    requestUrl.searchParams.get("api_key_full")?.trim() ||
+    requestUrl.searchParams.get("api_key")?.trim() ||
+    requestUrl.searchParams.get("apiKey")?.trim() ||
+    "";
+  const walletAddress = requestUrl.searchParams.get("wallet")?.trim() || "";
+  const organizationName = requestUrl.searchParams.get("org_name")?.trim() || "ElizaCloud";
+  const organizationSlug = requestUrl.searchParams.get("org_slug")?.trim() || "elizacloud";
+
+  if (!displayName && !email && credits === "n/a" && model === "n/a" && apiKeyHint === "n/a") {
+    return null;
+  }
+
+  return {
+    provider: "eliza-cloud",
+    authMode: requestUrl.searchParams.get("mode")?.trim() === "demo" ? "demo" : "siwe",
+    displayName: displayName || email || "ElizaCloud User",
+    email: email || "connected-via-elizacloud",
+    credits,
+    model,
+    apiKey,
+    apiKeyHint,
+    plan,
+    avatarUrl,
+    walletAddress,
+    organizationName,
+    organizationSlug,
+    appId: requestUrl.searchParams.get("app_id")?.trim() || requestUrl.searchParams.get("appId")?.trim() || "",
+  };
+}
+
+async function readRequestBody(req: IncomingMessage): Promise<string> {
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function readRequestJson<T>(req: IncomingMessage): Promise<T | null> {
+  const body = await readRequestBody(req);
+  if (!body.trim()) return null;
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    return null;
+  }
+}
+
+function getElizaCloudBaseUrl(): string {
+  return process.env.ELIZAOK_ELIZA_CLOUD_URL?.trim() || "https://elizacloud.ai";
+}
+
+function getElizaCloudApiBaseUrl(): string {
+  return process.env.ELIZAOK_ELIZA_CLOUD_API_URL?.trim() || "https://cloud.milady.ai";
+}
+
+function getElizaOkDocsUrl(): string {
+  return process.env.ELIZAOK_DOCS_URL?.trim() || "#";
+}
+
+function getElizaOkPrivyUrl(): string {
+  return process.env.ELIZAOK_PRIVY_URL?.trim() || "https://privy.io/";
+}
+
+async function connectElizaCloudAppAuth(authToken: string, appId: string): Promise<Response> {
+  const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/app-auth/connect`;
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({ appId }),
+  });
+}
+
+async function fetchElizaCloudAppAuthSession(authToken: string, appId: string): Promise<Response> {
+  const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/app-auth/session`;
+  return fetch(url, {
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${authToken}`,
+      "x-app-id": appId,
+    },
+  });
+}
+
+async function createElizaCloudCliSession(sessionId: string): Promise<Response> {
+  const url = `${getElizaCloudBaseUrl().replace(/\/$/, "")}/api/auth/cli-session`;
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
+async function fetchElizaCloudCliSession(sessionId: string): Promise<Response> {
+  const url = `${getElizaCloudBaseUrl().replace(/\/$/, "")}/api/auth/cli-session/${encodeURIComponent(
+    sessionId
+  )}`;
+  return fetch(url, {
+    headers: {
+      accept: "application/json",
+    },
+  });
+}
+
+async function fetchElizaCloudNonce(req: IncomingMessage): Promise<Response> {
+  const url = `${getElizaCloudBaseUrl().replace(/\/$/, "")}/api/auth/siwe/nonce`;
+  return fetch(url, {
+    headers: {
+      accept: "application/json",
+      ...(req.headers["user-agent"] ? { "user-agent": String(req.headers["user-agent"]) } : {}),
+    },
+  });
+}
+
+interface ElizaCloudVerifyResponse {
+  apiKey: string;
+  address: string;
+  isNewAccount: boolean;
+  user: {
+    id: string;
+    wallet_address: string | null;
+    organization_id: string | null;
+  };
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+  } | null;
+}
+
+async function verifyElizaCloudSiwe(payload: { message: string; signature: string }): Promise<Response> {
+  const url = `${getElizaCloudBaseUrl().replace(/\/$/, "")}/api/auth/siwe/verify`;
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+async function fetchElizaCloudModels(apiKey: string): Promise<string[]> {
+  const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/models`;
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+  });
+  if (!response.ok) {
+    return [];
+  }
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Array<{ id?: string }> }
+    | null;
+  return (payload?.data || [])
+    .map((entry) => entry.id?.trim())
+    .filter((id): id is string => Boolean(id))
+    .slice(0, 24);
+}
+
+async function fetchElizaCloudUser(apiKey: string): Promise<Partial<ElizaCloudSession> | null> {
+  const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/user`;
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+  });
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        data?: Record<string, unknown>;
+        user?: Record<string, unknown>;
+        organization?: Record<string, unknown>;
+      }
+    | Record<string, unknown>
+    | null;
+  const payloadRecord =
+    payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
+  const data =
+    payloadRecord && payloadRecord["data"] && typeof payloadRecord["data"] === "object"
+      ? (payloadRecord["data"] as Record<string, unknown>)
+      : payloadRecord && payloadRecord["user"] && typeof payloadRecord["user"] === "object"
+        ? (payloadRecord["user"] as Record<string, unknown>)
+        : payloadRecord
+          ? payloadRecord
+          : null;
+
+  if (!data) {
+    return null;
+  }
+
+  const organization =
+    payloadRecord && payloadRecord["organization"] && typeof payloadRecord["organization"] === "object"
+      ? (payloadRecord["organization"] as Record<string, unknown>)
+      : data["organization"] && typeof data["organization"] === "object"
+        ? (data["organization"] as Record<string, unknown>)
+        : null;
+
+  const email =
+    (typeof data["email"] === "string" && data["email"]) ||
+    (typeof data["user_email"] === "string" && data["user_email"]) ||
+    "";
+  const displayName =
+    (typeof data["name"] === "string" && data["name"]) ||
+    (typeof data["displayName"] === "string" && data["displayName"]) ||
+    (typeof data["username"] === "string" && data["username"]) ||
+    email ||
+    "ElizaCloud User";
+  const creditsRaw =
+    (typeof data["credits"] === "string" && data["credits"]) ||
+    (typeof data["credits"] === "number" && String(data["credits"])) ||
+    (typeof data["credit_balance"] === "string" && data["credit_balance"]) ||
+    (typeof data["credit_balance"] === "number" && String(data["credit_balance"])) ||
+    (organization && typeof organization["credit_balance"] === "string" && organization["credit_balance"]) ||
+    (organization && typeof organization["credit_balance"] === "number" && String(organization["credit_balance"])) ||
+    (typeof data["remainingCredits"] === "string" && data["remainingCredits"]) ||
+    (typeof data["remainingCredits"] === "number" && String(data["remainingCredits"])) ||
+    "linked";
+  const plan =
+    (typeof data["plan"] === "string" && data["plan"]) ||
+    (typeof data["subscription_plan"] === "string" && data["subscription_plan"]) ||
+    "ElizaCloud";
+  const avatarUrl =
+    (typeof data["avatar_url"] === "string" && data["avatar_url"]) ||
+    (typeof data["image"] === "string" && data["image"]) ||
+    (typeof data["avatar"] === "string" && data["avatar"]) ||
+    null;
+  const walletAddress =
+    (typeof data["wallet_address"] === "string" && data["wallet_address"]) ||
+    (typeof data["walletAddress"] === "string" && data["walletAddress"]) ||
+    "";
+  const organizationName =
+    (organization && typeof organization["name"] === "string" && organization["name"]) ||
+    (typeof data["organization_name"] === "string" && data["organization_name"]) ||
+    "ElizaCloud";
+  const organizationSlug =
+    (organization && typeof organization["slug"] === "string" && organization["slug"]) ||
+    (typeof data["organization_slug"] === "string" && data["organization_slug"]) ||
+    "elizacloud";
+
+  return {
+    displayName,
+    email,
+    credits: creditsRaw,
+    plan,
+    avatarUrl,
+    walletAddress,
+    organizationName,
+    organizationSlug,
+  };
+}
+
+async function fetchElizaCloudCreditsBalance(apiKey: string): Promise<string | null> {
+  const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/credits/balance`;
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+  });
+  if (!response.ok) {
+    return null;
+  }
+  const payload = (await response.json().catch(() => null)) as { balance?: number | string } | null;
+  if (!payload || payload.balance === undefined || payload.balance === null) {
+    return null;
+  }
+  return String(payload.balance);
+}
+
+async function fetchElizaCloudCreditsSummary(
+  apiKey: string
+): Promise<Partial<ElizaCloudSession> | null> {
+  const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/credits/summary`;
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+  });
+  if (!response.ok) {
+    return null;
+  }
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        organization?: {
+          name?: string | null;
+          creditBalance?: number | string | null;
+        };
+      }
+    | null;
+  const organizationName = payload?.organization?.name?.trim() || "";
+  const creditBalance = payload?.organization?.creditBalance;
+  return {
+    displayName: organizationName || undefined,
+    organizationName: organizationName || undefined,
+    credits:
+      creditBalance === undefined || creditBalance === null ? undefined : String(creditBalance),
+  };
+}
+
+function buildElizaCloudApiSession(
+  apiKey: string,
+  profile: Partial<ElizaCloudSession> | null,
+  models: string[],
+  authMode: ElizaCloudSession["authMode"] = "siwe",
+  appId = ""
+): ElizaCloudSession {
+  return {
+    provider: "eliza-cloud",
+    authMode,
+    displayName: profile?.displayName || profile?.organizationName || "ElizaCloud User",
+    email: profile?.email || "connected-via-elizacloud",
+    credits: profile?.credits || "linked",
+    model: models[0] || "n/a",
+    apiKey,
+    apiKeyHint: `${apiKey.slice(0, 10)}...`,
+    plan: profile?.plan || "ElizaCloud",
+    avatarUrl: profile?.avatarUrl || "/assets/elizaok-logo.png",
+    walletAddress: profile?.walletAddress || "",
+    organizationName: profile?.organizationName || "ElizaCloud",
+    organizationSlug: profile?.organizationSlug || "elizacloud",
+    appId,
+  };
+}
+
+function hasMeaningfulCloudValue(value: string | null | undefined): boolean {
+  const normalized = (value || "").trim().toLowerCase();
+  return Boolean(
+    normalized &&
+      normalized !== "n/a" &&
+      normalized !== "linked" &&
+      normalized !== "credits linked" &&
+      normalized !== "connected-via-elizacloud" &&
+      normalized !== "elizacloud user" &&
+      normalized !== "elizacloud"
+  );
+}
+
+function getCloudIdentityLabel(session: ElizaCloudSession | null): string {
+  if (!session) return "";
+  if (hasMeaningfulCloudValue(session.displayName)) return session.displayName;
+  if (hasMeaningfulCloudValue(session.organizationName)) return session.organizationName;
+  if (hasMeaningfulCloudValue(session.email)) return session.email;
+  if (hasMeaningfulCloudValue(session.walletAddress)) return shortAddress(session.walletAddress);
+  return "ElizaCloud";
+}
+
+function getCloudCreditsLabel(session: ElizaCloudSession | null): string {
+  if (!session) return "";
+  if (hasMeaningfulCloudValue(session.credits)) return `${session.credits} credits`;
+  return "credits syncing";
+}
+
+function getCloudApiLabel(session: ElizaCloudSession | null): string {
+  if (!session) return "";
+  if (hasMeaningfulCloudValue(session.apiKeyHint)) return session.apiKeyHint;
+  return session.authMode === "app-auth" ? "browser session" : "api linked";
+}
+
+async function buildElizaCloudSessionFromAppAuth(
+  authToken: string,
+  appId: string
+): Promise<{ session: ElizaCloudSession | null; error: string | null }> {
+  if (!authToken.trim()) {
+    return { session: null, error: "Missing ElizaCloud auth token." };
+  }
+  if (!appId.trim()) {
+    return { session: null, error: "Missing ElizaCloud app ID." };
+  }
+
+  const connectResponse = await connectElizaCloudAppAuth(authToken, appId);
+  const connectPayload = (await connectResponse.json().catch(() => null)) as { error?: string } | null;
+  if (!connectResponse.ok) {
+    return {
+      session: null,
+      error: connectPayload?.error || "Failed to connect ElizaCloud app session.",
+    };
+  }
+
+  const [appSessionResponse, models, profile, credits, creditSummary] = await Promise.all([
+    fetchElizaCloudAppAuthSession(authToken, appId),
+    fetchElizaCloudModels(authToken),
+    fetchElizaCloudUser(authToken),
+    fetchElizaCloudCreditsBalance(authToken),
+    fetchElizaCloudCreditsSummary(authToken),
+  ]);
+
+  const appSessionPayload = (await appSessionResponse.json().catch(() => null)) as
+    | {
+        success?: boolean;
+        error?: string;
+        user?: { email?: string | null; name?: string | null; avatar?: string | null };
+        app?: { id?: string | null; name?: string | null };
+      }
+    | null;
+
+  if (!appSessionResponse.ok || !appSessionPayload?.success) {
+    return {
+      session: null,
+      error: appSessionPayload?.error || "Failed to verify ElizaCloud app session.",
+    };
+  }
+
+  const session = buildElizaCloudApiSession(
+    "",
+    {
+      ...creditSummary,
+      ...profile,
+      displayName:
+        profile?.displayName ||
+        appSessionPayload.user?.name ||
+        creditSummary?.displayName ||
+        profile?.organizationName ||
+        "ElizaCloud User",
+      email: profile?.email || appSessionPayload.user?.email || "connected-via-elizacloud",
+      avatarUrl: profile?.avatarUrl || appSessionPayload.user?.avatar || "/assets/elizaok-logo.png",
+      organizationName:
+        profile?.organizationName || creditSummary?.organizationName || appSessionPayload.app?.name || "ElizaCloud",
+      credits: credits || creditSummary?.credits || profile?.credits || "linked",
+    },
+    models,
+    "app-auth",
+    appId
+  );
+  session.apiKeyHint = "Browser session";
+  session.plan = profile?.plan || "ElizaCloud App Auth";
+  return { session, error: null };
+}
+
+async function refreshElizaCloudSession(
+  session: ElizaCloudSession | null
+): Promise<{ session: ElizaCloudSession | null; models: string[] }> {
+  if (!session?.apiKey) {
+    return { session, models: [] };
+  }
+
+  const [models, profile, credits, creditSummary] = await Promise.all([
+    fetchElizaCloudModels(session.apiKey),
+    fetchElizaCloudUser(session.apiKey),
+    fetchElizaCloudCreditsBalance(session.apiKey),
+    fetchElizaCloudCreditsSummary(session.apiKey),
+  ]);
+
+  const refreshed = buildElizaCloudApiSession(
+    session.apiKey,
+    {
+      ...creditSummary,
+      ...profile,
+      displayName:
+        profile?.displayName ||
+        creditSummary?.displayName ||
+        session.displayName ||
+        session.organizationName ||
+        "ElizaCloud User",
+      email: profile?.email || session.email || "connected-via-elizacloud",
+      avatarUrl: profile?.avatarUrl || session.avatarUrl || "/assets/elizaok-logo.png",
+      walletAddress: profile?.walletAddress || session.walletAddress || "",
+      organizationName:
+        profile?.organizationName ||
+        creditSummary?.organizationName ||
+        session.organizationName ||
+        "ElizaCloud",
+      organizationSlug: profile?.organizationSlug || session.organizationSlug || "elizacloud",
+      credits: credits || creditSummary?.credits || profile?.credits || session.credits || "linked",
+      plan: profile?.plan || session.plan || "ElizaCloud",
+    },
+    models,
+    session.authMode,
+    session.appId
+  );
+  refreshed.apiKeyHint = session.apiKeyHint || refreshed.apiKeyHint;
+  return { session: refreshed, models };
 }
 
 function shortAddress(value: string): string {
@@ -248,6 +1119,10 @@ function renderXIconSvg(): string {
   return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-6.77 7.74L23.2 22h-6.26l-4.9-7.4L5.53 22H2.4l7.24-8.28L1.2 2H7.6l4.43 6.73L18.9 2Zm-1.1 18h1.73L6.66 3.9H4.8L17.8 20Z"/></svg>`;
 }
 
+function renderDocsIconSvg(): string {
+  return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M7 3.75A2.25 2.25 0 0 0 4.75 6v12A2.25 2.25 0 0 0 7 20.25h10A2.25 2.25 0 0 0 19.25 18V8.56a2.25 2.25 0 0 0-.66-1.59l-2.56-2.56a2.25 2.25 0 0 0-1.59-.66H7Z" stroke="currentColor" stroke-width="1.6"/><path d="M14 3.75V7a1 1 0 0 0 1 1h3.25" stroke="currentColor" stroke-width="1.6"/><path d="M8 11.25h8M8 14.75h8M8 18.25h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+}
+
 function renderNavGlyph(view: string): string {
   const glyphs: Record<string, string> = {
     overview: "◉",
@@ -286,8 +1161,9 @@ function renderMetricCard(label: string, value: string, detail: string): string 
 }
 
 function renderFeatureDockCard(
-  href: string,
+  targetId: string,
   label: string,
+  pctLabel: string,
   value: string,
   meta: string,
   pct: number,
@@ -295,17 +1171,22 @@ function renderFeatureDockCard(
 ): string {
   const safePct = clampPercent(pct);
   return `
-    <a class="feature-dock-card feature-dock-card--${tone}" href="${href}">
+    <button
+      class="feature-dock-card feature-dock-card--${tone}"
+      type="button"
+      data-modal-target="${escapeHtml(targetId)}"
+      data-modal-title="${escapeHtml(label)}"
+    >
       <div class="feature-dock-card__top">
         <span>${escapeHtml(label)}</span>
-        <em>${safePct}%</em>
       </div>
-      <strong>${escapeHtml(value)}</strong>
-      <small>${escapeHtml(meta)}</small>
+      <strong class="feature-dock-card__pct">${escapeHtml(pctLabel)}</strong>
+      <b class="feature-dock-card__value">${escapeHtml(value)}</b>
+      <small class="feature-dock-card__meta">${escapeHtml(meta)}</small>
       <div class="feature-dock-card__track">
         <div class="feature-dock-card__fill" style="width:${safePct}%"></div>
       </div>
-    </a>`;
+    </button>`;
 }
 
 function formatPct(value: number | null): string {
@@ -1024,14 +1905,19 @@ function pnlTone(value: number): string {
   return "tone-cool";
 }
 
-function renderHtml(snapshot: DashboardSnapshot | null): string {
+function renderHtml(
+  snapshot: DashboardSnapshot | null,
+  cloudSession: ElizaCloudSession | null,
+  cloudModels: string[],
+  sidebarWalletBalanceLabel = "n/a"
+): string {
   if (!snapshot) {
     return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  ${renderHeadBrandAssets("ElizaOK | elizaOK_BSC")}
+  ${renderHeadBrandAssets("ElizaOK | elizaOK")}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -1362,24 +2248,40 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
   const timezoneLabel = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const currentModel = process.env.OPENAI_MODEL?.trim() || process.env.MOLTBOOK_MODEL?.trim() || "n/a";
   const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const cloudModelOptions = cloudModels.length
+    ? cloudModels
+        .map(
+          (model) =>
+            `<option value="${escapeHtml(model)}"${model === cloudSession?.model ? " selected" : ""}>${escapeHtml(
+              model
+            )}</option>`
+        )
+        .join("")
+    : `<option value="${escapeHtml(cloudSession?.model || "n/a")}" selected>${escapeHtml(
+        cloudSession?.model || "n/a"
+      )}</option>`;
+  const cloudDisplayName = getCloudIdentityLabel(cloudSession);
+  const cloudCreditsLabel = getCloudCreditsLabel(cloudSession);
+  const cloudApiLabel = getCloudApiLabel(cloudSession);
+  const cloudAccountRows = "";
   const riskProfile =
     executionState.risk.maxBuyBnb <= 0.02 && executionState.risk.maxDailyDeployBnb <= 0.05
       ? "Conservative"
       : executionState.risk.maxBuyBnb <= 0.05 && executionState.risk.maxDailyDeployBnb <= 0.2
         ? "Balanced"
         : "Aggressive";
+  const sidebarWalletAddress = "0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F";
   const sidebarMasterCard = `
     <article class="sidebar-panel sidebar-panel--master">
       <div class="sidebar-panel__head">
         <div class="sidebar-avatar">${renderBrandLogoImage("sidebar-avatar__image")}</div>
         <div>
-          <strong>elizaOK_BSC</strong>
-          <small>@elizaok_bsc</small>
+          <strong>elizaOK</strong>
         </div>
       </div>
-      <div class="sidebar-action-row">
-        <a class="sidebar-action" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer">X</a>
-        <a class="sidebar-action" href="https://github.com/elizaokbsc" target="_blank" rel="noreferrer">GitHub</a>
+      <div class="status-panel compact-status">
+        <div class="status-row"><span>Wallet</span><strong>${escapeHtml(shortAddress(sidebarWalletAddress))}</strong></div>
+        <div class="status-row"><span>Balance</span><strong>${escapeHtml(sidebarWalletBalanceLabel)}</strong></div>
       </div>
       <div class="status-panel compact-status">
         <div class="status-row"><span>TZ</span><strong>${escapeHtml(timezoneLabel)}</strong></div>
@@ -1395,6 +2297,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
         ${renderUsageRow("API key", hasOpenAiKey ? 100 : 0, hasOpenAiKey ? "100%" : "0%")}
         ${renderUsageRow("Model set", currentModel === "n/a" ? 0 : 100, currentModel === "n/a" ? "0%" : "100%")}
       </div>
+      ${cloudAccountRows}
       <div class="sidebar-panel__title">System</div>
       <div class="status-panel compact-status">
         <div class="status-row"><span>Discovery</span><strong>${Math.round(getDiscoveryConfig().intervalMs / 60_000)}m</strong></div>
@@ -1404,7 +2307,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       </div>
       <div class="sidebar-panel__title">Runtime</div>
       <div class="status-panel compact-status">
-        <div class="status-row"><span>Agent</span><strong>elizaOK_BSC / elizaOS</strong></div>
+        <div class="status-row"><span>Agent</span><strong>elizaOS</strong></div>
         <div class="status-row"><span>Health</span><strong>Discovery ${snapshot.summary.candidateCount > 0 ? "online" : "warming"} · Goo ${getDiscoveryConfig().goo.enabled ? "armed" : "standby"}</strong></div>
       </div>
     </article>`;
@@ -1438,40 +2341,45 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
   const gooPct = (gooConfigReadiness / 3) * 100;
   const featureDockCards = [
     renderFeatureDockCard(
-      "#discovery-section",
+      "discovery-section",
       "Discovery",
+      `${clampPercent(discoveryPct)}%`,
       `${snapshot.summary.candidateCount}`,
       `${snapshot.summary.topRecommendationCount} ready`,
       discoveryPct,
       "hot"
     ),
     renderFeatureDockCard(
-      "#portfolio-section",
+      "portfolio-section",
       "Portfolio",
+      `${clampPercent(portfolioPct)}%`,
       `${portfolioLifecycle.activePositions.length}`,
       `${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}`,
       portfolioPct,
       "cool"
     ),
     renderFeatureDockCard(
-      "#treasury-section",
+      "treasury-section",
       "Execution",
+      `${clampPercent(executionPct)}%`,
       `${eligibleExecutionPlans}`,
       `${executionState.mode}`,
       executionPct,
       executionState.dryRun ? "warm" : "hot"
     ),
     renderFeatureDockCard(
-      "#distribution-section",
+      "distribution-section",
       "Distribution",
+      `${clampPercent(distributionPct)}%`,
       `${distributionPlan.eligibleHolderCount}`,
       `${distributionPlan.recipients.length} recipients`,
       distributionPct,
       distributionExecution.dryRun ? "warm" : "hot"
     ),
     renderFeatureDockCard(
-      "#goo-section",
+      "goo-section",
       "Goo",
+      `${clampPercent(gooPct)}%`,
       `${snapshot.summary.gooAgentCount}`,
       `${snapshot.summary.gooPriorityCount} priority`,
       gooPct,
@@ -1683,6 +2591,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
   ]
     .map((item) => `<div class="state-chip">${item}</div>`)
     .join("");
+  const cloudTopAction = "";
   const heroKpiCards = [
     {
       label: "Live candidates",
@@ -1791,32 +2700,33 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  ${renderHeadBrandAssets("ElizaOK | elizaOK_BSC")}
+  ${renderHeadBrandAssets("ElizaOK | elizaOK")}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     :root {
       color-scheme: dark;
-      --bg: #16130e;
-      --bg-soft: #242017;
-      --panel: rgba(24, 21, 16, 0.88);
-      --panel-strong: rgba(30, 27, 20, 0.94);
-      --border: rgba(215, 164, 40, 0.16);
-      --border-strong: rgba(240, 198, 79, 0.3);
-      --text: #f4ecd2;
-      --muted: #bca36d;
-      --accent: #d7a428;
-      --shadow: rgba(0, 0, 0, 0.55);
+      --bg: #030301;
+      --bg-soft: #080805;
+      --panel: rgba(5, 5, 4, 0.9);
+      --panel-strong: rgba(8, 8, 6, 0.96);
+      --border: rgba(246, 231, 15, 0.14);
+      --border-strong: rgba(246, 231, 15, 0.34);
+      --text: #ffffff;
+      --muted: rgba(255, 255, 255, 0.62);
+      --accent: #F6E70F;
+      --shadow: rgba(0, 0, 0, 0.72);
+      --glow: 0 0 0 1px rgba(246, 231, 15, 0.06), 0 0 28px rgba(246, 231, 15, 0.08);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       height: 100vh;
       background:
-        radial-gradient(circle at 18% 14%, rgba(215,164,40,0.08), transparent 18%),
-        radial-gradient(circle at 82% 22%, rgba(215,164,40,0.04), transparent 16%),
-        linear-gradient(180deg, #040404 0%, #080808 55%, #060606 100%);
+        radial-gradient(circle at 18% 14%, rgba(246,231,15,0.07), transparent 18%),
+        radial-gradient(circle at 82% 22%, rgba(246,231,15,0.03), transparent 16%),
+        linear-gradient(180deg, #030301 0%, #030301 56%, #050503 100%);
       color: var(--text);
       font-family: "Kode Mono", monospace;
       overflow-x: hidden;
@@ -1828,8 +2738,8 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       inset: 0;
       pointer-events: none;
       background-image:
-        linear-gradient(rgba(215,164,40,0.018) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(215,164,40,0.018) 1px, transparent 1px),
+        linear-gradient(rgba(246,231,15,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(246,231,15,0.018) 1px, transparent 1px),
         repeating-linear-gradient(180deg, rgba(255,255,255,0.018) 0 1px, transparent 1px 18px);
       background-size: 34px 34px, 34px 34px, 100% 18px;
       mask-image: linear-gradient(180deg, rgba(0,0,0,0.85), transparent);
@@ -1841,8 +2751,8 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       pointer-events: none;
       background:
         radial-gradient(circle at 18% 20%, rgba(255,255,255,0.03), transparent 14%),
-        radial-gradient(circle at 72% 24%, rgba(215,164,40,0.05), transparent 18%),
-        radial-gradient(circle at 60% 76%, rgba(215,164,40,0.035), transparent 18%);
+        radial-gradient(circle at 72% 24%, rgba(246,231,15,0.05), transparent 18%),
+        radial-gradient(circle at 60% 76%, rgba(246,231,15,0.035), transparent 18%);
       animation: ambient 10s ease-in-out infinite alternate;
       opacity: 0.7;
     }
@@ -1869,20 +2779,20 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       gap: 10px;
       justify-content: flex-start;
       overflow: visible;
-      border-right: 1px solid rgba(215,164,40,0.1);
+      border-right: 1px solid rgba(246,231,15,0.09);
       background:
         radial-gradient(circle at top left, rgba(255,255,255,0.03), transparent 20%),
-        linear-gradient(180deg, rgba(215,164,40,0.07), transparent 18%),
-        rgba(8, 8, 8, 0.96);
+        linear-gradient(180deg, rgba(246,231,15,0.06), transparent 18%),
+        rgba(3, 3, 1, 0.98);
       backdrop-filter: blur(14px);
-      box-shadow: inset -1px 0 0 rgba(255,214,10,0.05);
+      box-shadow: inset -1px 0 0 rgba(246,231,15,0.05);
     }
     .app-shell::before {
       content: "// ELIZAOK :: SIGNAL_MESH :: 010110";
       position: fixed;
       right: 18px;
       bottom: 14px;
-      color: rgba(244,236,210,0.14);
+      color: rgba(255,255,255,0.12);
       font-size: 10px;
       letter-spacing: 0.18em;
       pointer-events: none;
@@ -2060,11 +2970,11 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
     .sidebar-panel {
       padding: 11px;
       border-radius: 16px;
-      border: 1px solid rgba(255,214,10,0.1);
+      border: 1px solid rgba(246,231,15,0.12);
       background:
-        linear-gradient(180deg, rgba(255,214,10,0.07), rgba(255,214,10,0.02)),
-        rgba(11,11,11,0.84);
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.03);
+        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
+        rgba(6,6,5,0.92);
+      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.035);
       display: grid;
       gap: 8px;
     }
@@ -2073,6 +2983,13 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       align-items: center;
       gap: 10px;
     }
+    .sidebar-panel--master .sidebar-panel__head {
+      justify-items: center;
+      justify-content: center;
+      text-align: center;
+      flex-direction: column;
+      gap: 12px;
+    }
     .sidebar-panel__head strong,
     .sidebar-panel__title {
       display: block;
@@ -2080,21 +2997,17 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
-    .sidebar-panel__head small {
-      display: block;
-      color: var(--muted);
-      font-size: 10px;
-      margin-top: 2px;
-    }
+    .sidebar-panel__head small { display: none; }
     .sidebar-avatar {
-      width: 40px;
-      height: 40px;
+      width: 84px;
+      height: 84px;
       border-radius: 50%;
       overflow: hidden;
       border: 1px solid rgba(255,214,10,0.18);
-      background: rgba(255,214,10,0.05);
-      box-shadow: 0 0 16px rgba(255,214,10,0.08);
+      background: rgba(246,231,15,0.05);
+      box-shadow: 0 0 24px rgba(246,231,15,0.16);
       flex: 0 0 auto;
+      margin: 0 auto;
     }
     .sidebar-avatar__image {
       width: 100%;
@@ -2102,11 +3015,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       object-fit: cover;
       display: block;
     }
-    .sidebar-action-row {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
+    .sidebar-action-row { display: none; }
     .sidebar-action {
       display: inline-flex;
       align-items: center;
@@ -2114,7 +3023,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       min-height: 34px;
       border-radius: 10px;
       border: 1px solid rgba(255,214,10,0.16);
-      background: rgba(255,214,10,0.04);
+      background: rgba(246,231,15,0.035);
       font-size: 10px;
       letter-spacing: 0.1em;
       text-transform: uppercase;
@@ -2124,6 +3033,15 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       border-color: var(--border-strong);
       color: var(--accent);
       transform: translateY(-1px);
+    }
+    .sidebar-action.is-busy,
+    .sidebar-action[aria-disabled="true"] {
+      pointer-events: none;
+      opacity: 0.72;
+    }
+    .sidebar-action--primary {
+      border-color: rgba(255,214,10,0.22);
+      background: linear-gradient(135deg, rgba(255,214,10,0.18), rgba(255,214,10,0.05));
     }
     .compact-status {
       gap: 8px;
@@ -2198,10 +3116,10 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       border-radius: 16px;
       border: 1px solid var(--border);
       background:
-        linear-gradient(180deg, rgba(255,214,10,0.06), rgba(255,214,10,0.015)),
-        rgba(12,12,12,0.82);
+        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
+        rgba(6,6,5,0.9);
       backdrop-filter: blur(10px);
-      box-shadow: 0 18px 48px rgba(0,0,0,0.28);
+      box-shadow: var(--glow), 0 22px 56px rgba(0,0,0,0.34);
       width: min(100%, 1440px);
     }
     .topbar::after {
@@ -2245,15 +3163,75 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
     .meta-chip {
       padding: 6px 9px;
       border-radius: 999px;
-      background: rgba(255,214,10,0.07);
-      border: 1px solid rgba(255,214,10,0.14);
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: var(--text);
       font-size: 10px;
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.03);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.025);
     }
     .social-actions {
       display: flex;
       align-items: center;
       gap: 8px;
+    }
+    .auth-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 138px;
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,214,10,0.2);
+      background: linear-gradient(135deg, rgba(255,214,10,0.18), rgba(255,214,10,0.05));
+      color: var(--text);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      transition: 180ms ease;
+      cursor: pointer;
+      appearance: none;
+      font-family: inherit;
+    }
+    .auth-link:hover {
+      border-color: var(--border-strong);
+      color: var(--text);
+      transform: translateY(-1px);
+    }
+    .auth-link.is-busy,
+    .auth-link[aria-disabled="true"] {
+      pointer-events: none;
+      opacity: 0.72;
+    }
+    .auth-link--connected {
+      min-width: 320px;
+      max-width: 520px;
+      justify-content: flex-start;
+      gap: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      background: rgba(255,214,10,0.08);
+    }
+    .cloud-model-picker {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .cloud-model-picker select {
+      width: 100%;
+      min-height: 34px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,214,10,0.16);
+      background: rgba(255,214,10,0.04);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 11px;
+      padding: 0 10px;
+      outline: none;
     }
     .social-link {
       width: 34px;
@@ -2261,14 +3239,15 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       display: grid;
       place-items: center;
       border-radius: 10px;
-      border: 1px solid rgba(255,214,10,0.14);
-      background: rgba(255,214,10,0.04);
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
       transition: 180ms ease;
     }
     .social-link:hover {
-      color: var(--accent);
-      border-color: var(--border-strong);
-      box-shadow: 0 0 24px rgba(255,214,10,0.1);
+      color: var(--text);
+      border-color: rgba(255,255,255,0.18);
+      box-shadow: 0 0 24px rgba(255,255,255,0.1);
       transform: translateY(-1px);
     }
     .social-link svg { width: 16px; height: 16px; }
@@ -2292,9 +3271,9 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       border-radius: 28px;
       border: 1px solid var(--border);
       background:
-        linear-gradient(180deg, rgba(255,214,10,0.07), rgba(255,214,10,0.015)),
-        rgba(11,11,11,0.86);
-      box-shadow: 0 24px 72px var(--shadow);
+        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
+        rgba(5,5,4,0.92);
+      box-shadow: var(--glow), 0 24px 72px var(--shadow);
       overflow: hidden;
       position: relative;
       backdrop-filter: blur(10px);
@@ -2353,7 +3332,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      color: var(--accent);
+      color: var(--text);
       font-size: 10px;
       letter-spacing: 0.2em;
       text-transform: uppercase;
@@ -2399,9 +3378,11 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
     .hero-kpi-card {
       padding: 18px 20px;
       border-radius: 20px;
-      border: 1px solid rgba(255,214,10,0.12);
-      background: linear-gradient(180deg, rgba(255,214,10,0.08), rgba(255,214,10,0.025));
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.04);
+      border: 1px solid rgba(246,231,15,0.12);
+      background:
+        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
+        rgba(7,7,6,0.92);
+      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.03);
       position: relative;
       overflow: hidden;
     }
@@ -2449,15 +3430,15 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       margin-top: -4px;
       padding: 16px 18px;
       border-radius: 20px;
-      border: 1px solid rgba(255,214,10,0.1);
-      background: linear-gradient(90deg, rgba(255,214,10,0.08), rgba(255,214,10,0.02));
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.04);
+      border: 1px solid rgba(246,231,15,0.12);
+      background: linear-gradient(90deg, rgba(246,231,15,0.07), rgba(246,231,15,0.018));
+      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.03);
     }
     .summary-pill {
       padding: 8px 12px;
       border-radius: 999px;
-      background: rgba(255,214,10,0.08);
-      border: 1px solid rgba(255,214,10,0.12);
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
       color: var(--text);
       font-size: 11px;
       text-transform: uppercase;
@@ -2495,9 +3476,16 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       gap: 6px;
       padding: 10px;
       border-radius: 16px;
-      border: 1px solid rgba(255,214,10,0.1);
-      background: rgba(255,214,10,0.04);
+      border: 1px solid rgba(246,231,15,0.1);
+      background:
+        linear-gradient(180deg, rgba(246,231,15,0.045), rgba(246,231,15,0.01)),
+        rgba(7,7,6,0.9);
+      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.025);
       transition: 180ms ease;
+      width: 100%;
+      text-align: left;
+      cursor: pointer;
+      font-family: inherit;
     }
     .feature-dock-card:hover {
       transform: translateY(-2px);
@@ -2527,18 +3515,30 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       gap: 10px;
     }
     .feature-dock-card span {
-      color: var(--muted);
+      color: var(--text);
       font-size: 11px;
       letter-spacing: 0.14em;
       text-transform: uppercase;
     }
-    .feature-dock-card strong {
-      font-size: 16px;
-      line-height: 1.05;
+    .feature-dock-card strong,
+    .feature-dock-card b {
+      display: block;
+      color: var(--text);
+    }
+    .feature-dock-card__pct {
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 700;
+    }
+    .feature-dock-card__value {
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 700;
+      margin-top: 2px;
     }
     .feature-dock-card small {
-      color: var(--muted);
-      font-size: 10px;
+      color: var(--text);
+      font-size: 11px;
       line-height: 1.35;
     }
     .feature-dock-card em {
@@ -2565,15 +3565,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       background: linear-gradient(90deg, #745519, #d7a428, #f1df9a);
       box-shadow: 0 0 14px rgba(255,214,10,0.28);
     }
-    .fold-section {
-      border-radius: 16px;
-      border: 1px solid rgba(255,214,10,0.1);
-      background:
-        linear-gradient(180deg, rgba(255,214,10,0.06), rgba(255,214,10,0.02)),
-        rgba(11,11,11,0.86);
-      overflow: hidden;
-      box-shadow: 0 12px 28px rgba(0,0,0,0.18);
-    }
+    .fold-section { display: none; }
     .fold-summary {
       list-style: none;
       display: flex;
@@ -2599,7 +3591,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
     }
     .fold-summary::after {
       content: "+";
-      color: var(--accent);
+      color: var(--text);
       font-size: 15px;
       line-height: 1;
     }
@@ -2613,8 +3605,11 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
     .snapshot-tile {
       padding: 10px 12px;
       border-radius: 14px;
-      border: 1px solid rgba(255,214,10,0.1);
-      background: rgba(255,214,10,0.04);
+      border: 1px solid rgba(246,231,15,0.1);
+      background:
+        linear-gradient(180deg, rgba(246,231,15,0.045), rgba(246,231,15,0.012)),
+        rgba(7,7,6,0.9);
+      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.025);
     }
     .snapshot-tile span {
       display: block;
@@ -2634,9 +3629,9 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       align-items: center;
       padding: 8px 12px;
       border-radius: 999px;
-      border: 1px solid rgba(255,214,10,0.14);
-      background: rgba(255,214,10,0.06);
-      color: var(--accent);
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
       font-size: 12px;
       letter-spacing: 0.12em;
       text-transform: uppercase;
@@ -2711,8 +3706,11 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
     .candidate-card,
     .goo-card {
       border-radius: 18px;
-      border: 1px solid rgba(255,214,10,0.12);
-      background: linear-gradient(180deg, rgba(255,214,10,0.05), rgba(255,214,10,0.02));
+      border: 1px solid rgba(246,231,15,0.12);
+      background:
+        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
+        rgba(7,7,6,0.92);
+      box-shadow: var(--glow);
     }
     .progress-card { padding: 12px 14px; }
     .progress-head {
@@ -2746,7 +3744,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
     .section-card:hover {
       transform: translateY(-3px);
       border-color: var(--border-strong);
-      box-shadow: 0 30px 84px rgba(0,0,0,0.38);
+      box-shadow: 0 0 0 1px rgba(246,231,15,0.08), 0 0 28px rgba(246,231,15,0.12), 0 30px 84px rgba(0,0,0,0.42);
     }
     .stat-card span,
     .candidate-stats span,
@@ -2796,10 +3794,10 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      color: var(--accent);
-      background: rgba(255,214,10,0.08);
-      border: 1px solid rgba(255,214,10,0.12);
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.05);
+      color: var(--text);
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.025);
       font-size: 11px;
       flex-shrink: 0;
       margin-top: 2px;
@@ -2815,9 +3813,11 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
     .metric-card {
       padding: 10px;
       border-radius: 14px;
-      border: 1px solid rgba(255,214,10,0.1);
-      background: linear-gradient(180deg, rgba(255,214,10,0.08), rgba(255,214,10,0.025));
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.04);
+      border: 1px solid rgba(246,231,15,0.1);
+      background:
+        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
+        rgba(7,7,6,0.9);
+      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.03);
       transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
     }
     .metric-card:hover {
@@ -2849,9 +3849,11 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
     .mini-panel {
       padding: 14px 16px;
       border-radius: 18px;
-      border: 1px solid rgba(255,214,10,0.1);
-      background: linear-gradient(180deg, rgba(255,214,10,0.08), rgba(255,214,10,0.03));
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.04);
+      border: 1px solid rgba(246,231,15,0.1);
+      background:
+        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.014)),
+        rgba(7,7,6,0.92);
+      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.03);
     }
     .mini-panel span {
       display: block;
@@ -2908,7 +3910,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       margin-bottom: 10px;
     }
     .candidate-rank {
-      color: var(--accent);
+      color: var(--text);
       font-size: 11px;
       letter-spacing: 0.18em;
     }
@@ -2945,8 +3947,8 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
     .candidate-stats div {
       padding: 7px 8px;
       border-radius: 10px;
-      background: rgba(255,214,10,0.05);
-      border: 1px solid rgba(255,214,10,0.08);
+      background: rgba(246,231,15,0.04);
+      border: 1px solid rgba(246,231,15,0.08);
     }
     .candidate-stats strong { font-size: 12px; line-height: 1.35; }
     .candidate-thesis { margin: 0; font-size: 11px; line-height: 1.5; }
@@ -2957,15 +3959,15 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       gap: 10px;
       padding: 7px 9px;
       border-radius: 10px;
-      background: rgba(255,214,10,0.05);
-      border: 1px solid rgba(255,214,10,0.1);
+      background: rgba(246,231,15,0.04);
+      border: 1px solid rgba(246,231,15,0.1);
       transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.025);
+      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.025);
     }
     .status-row:hover {
       transform: translateX(2px);
-      border-color: rgba(255,214,10,0.18);
-      background: rgba(255,214,10,0.07);
+      border-color: rgba(246,231,15,0.18);
+      background: rgba(246,231,15,0.06);
     }
     .status-row strong { text-align: right; font-size: 11px; line-height: 1.35; }
     .footer-note { margin-top: 10px; font-size: 10px; line-height: 1.45; }
@@ -2973,37 +3975,138 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
     .content-stack > .view-panel[data-view-panel="overview"] {
       grid-column: 1 / -1;
     }
-    .content-stack > .fold-section {
-      min-height: 0;
-    }
-    body:has(.fold-section[open]) {
-      height: auto;
-      overflow-y: auto;
-    }
-    body:has(.fold-section[open]) .app-shell {
-      height: auto;
-      overflow: visible;
-    }
-    body:has(.fold-section[open]) .workspace {
-      height: auto;
-      overflow: visible;
-    }
-    body:has(.fold-section[open]) .content-stack {
-      grid-template-columns: 1fr;
-    }
-    body:has(.fold-section[open]) .content-stack > .view-panel[data-view-panel="overview"] {
-      display: none;
-    }
-    body:has(.fold-section[open]) .content-stack > .fold-section:not([open]) {
-      display: none;
-    }
-    body:has(.fold-section[open]) .content-stack > .fold-section[open] {
-      grid-column: 1 / -1;
-    }
     .view-panel[data-view-panel="overview"] {
       grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
       align-items: start;
     }
+    .detail-modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      background: rgba(0,0,0,0.66);
+      backdrop-filter: blur(10px);
+      z-index: 20;
+    }
+    .detail-modal.is-open { display: flex; }
+    .detail-modal__dialog {
+      width: min(1500px, 95vw);
+      max-height: 92vh;
+      border-radius: 22px;
+      border: 1px solid rgba(246,231,15,0.14);
+      background:
+        linear-gradient(180deg, rgba(246,231,15,0.045), rgba(246,231,15,0.012)),
+        rgba(5,5,4,0.96);
+      box-shadow: var(--glow), 0 28px 80px rgba(0,0,0,0.5);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    .detail-modal__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(246,231,15,0.08);
+      background: rgba(255,255,255,0.03);
+    }
+    .detail-modal__title {
+      margin: 0;
+      font-size: 17px;
+      letter-spacing: 0.02em;
+      color: var(--text);
+    }
+    .detail-modal__close {
+      width: 34px;
+      height: 34px;
+      border-radius: 11px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+    .detail-modal__body {
+      overflow: auto;
+      padding: 14px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .detail-modal__body::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;
+    }
+    .detail-modal__body .view-panel {
+      display: grid;
+      gap: 10px;
+    }
+    .detail-modal__body .glass-card {
+      border-radius: 18px;
+    }
+    .detail-modal__body .section-card,
+    .detail-modal__body .hero-card,
+    .detail-modal__body .metric-card,
+    .detail-modal__body .mini-panel,
+    .detail-modal__body .candidate-card,
+    .detail-modal__body .goo-card,
+    .detail-modal__body .progress-card {
+      padding: 10px;
+    }
+    .detail-modal__body .section-title {
+      margin-bottom: 10px;
+    }
+    .detail-modal__body .section-title h2 {
+      font-size: 15px;
+    }
+    .detail-modal__body .section-title p,
+    .detail-modal__body .candidate-subtitle,
+    .detail-modal__body .footer-note,
+    .detail-modal__body .metric-card p,
+    .detail-modal__body .mini-panel p {
+      font-size: 10px;
+      line-height: 1.45;
+    }
+    .detail-modal__body .status-panel,
+    .detail-modal__body .section-stack,
+    .detail-modal__body .split-grid,
+    .detail-modal__body .metric-grid {
+      gap: 10px;
+    }
+    .detail-modal__body .status-row {
+      padding: 7px 9px;
+    }
+    .detail-modal__body .status-row span,
+    .detail-modal__body .status-row strong,
+    .detail-modal__body .metric-card span,
+    .detail-modal__body .metric-card strong,
+    .detail-modal__body .candidate-stats span,
+    .detail-modal__body .candidate-stats strong,
+    .detail-modal__body .candidate-card h3,
+    .detail-modal__body .goo-card h3 {
+      font-size: 11px;
+      line-height: 1.3;
+    }
+    .detail-modal__body .action-row {
+      margin-top: 8px;
+      gap: 8px;
+    }
+    .detail-modal__body .action-button {
+      padding: 9px 12px;
+      font-size: 10px;
+    }
+    .detail-modal__body .summary-ribbon {
+      padding: 10px 12px;
+      gap: 8px;
+    }
+    .detail-modal__body .summary-pill {
+      padding: 6px 9px;
+      font-size: 10px;
+    }
+    body.is-modal-open { overflow: hidden; }
     .view-panel[data-view-panel="overview"] > .hero-card {
       grid-column: 1;
       grid-row: 1;
@@ -3080,15 +4183,20 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
             <strong id="view-title">Overview</strong>
             <small id="view-subtitle"></small>
           </div>
-          <div class="meta-chip">Generated ${escapeHtml(snapshot.generatedAt)}</div>
-          <div class="meta-chip">Run ${escapeHtml(snapshot.summary.runId)}</div>
         </div>
         <div class="social-actions">
+          <a class="social-link" href="${escapeHtml(getElizaOkDocsUrl())}" target="_blank" rel="noreferrer" aria-label="Docs">
+            ${renderDocsIconSvg()}
+          </a>
+          ${cloudTopAction}
           <a class="social-link" href="https://github.com/elizaokbsc" target="_blank" rel="noreferrer" aria-label="GitHub">
             ${renderGithubIconSvg()}
           </a>
           <a class="social-link" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer" aria-label="X">
             ${renderXIconSvg()}
+          </a>
+          <a class="auth-link" href="${escapeHtml(getElizaOkPrivyUrl())}" target="_blank" rel="noreferrer">
+            Sign in / Sign up
           </a>
         </div>
       </header>
@@ -3244,7 +4352,7 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
               </div>
               <div class="action-row">
                 <button class="action-button" type="button" data-distribution-run>Run Distribution Now</button>
-                <span class="footer-note" id="distribution-run-status">Idle.</span>
+                <span class="footer-note" data-distribution-run-status>Idle.</span>
               </div>
             </article>
             <article class="glass-card section-card section-card--dense">
@@ -3363,30 +4471,215 @@ function renderHtml(snapshot: DashboardSnapshot | null): string {
       </main>
     </div>
   </div>
+  <div class="detail-modal" id="detail-modal" aria-hidden="true">
+    <div class="detail-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
+      <div class="detail-modal__header">
+        <h2 class="detail-modal__title" id="detail-modal-title">Details</h2>
+        <button class="detail-modal__close" type="button" data-modal-close aria-label="Close">×</button>
+      </div>
+      <div class="detail-modal__body" id="detail-modal-body"></div>
+    </div>
+  </div>
   <script>
     (function () {
-      var distributionRunButton = document.querySelector("[data-distribution-run]");
-      var distributionRunStatus = document.getElementById("distribution-run-status");
-      if (distributionRunButton) {
-        distributionRunButton.addEventListener("click", function () {
-          distributionRunButton.disabled = true;
-          if (distributionRunStatus) distributionRunStatus.textContent = "Running manual distribution...";
-          fetch("/api/elizaok/distribution/run", { method: "POST" })
-            .then(function (response) { return response.json(); })
-            .then(function (payload) {
-              if (distributionRunStatus) {
-                distributionRunStatus.textContent = payload && payload.message
-                  ? payload.message
-                  : "Manual distribution run completed.";
-              }
-              window.setTimeout(function () { window.location.reload(); }, 800);
-            })
-            .catch(function (error) {
-              if (distributionRunStatus) distributionRunStatus.textContent = "Manual run failed: " + error;
-              distributionRunButton.disabled = false;
-            });
+      var cloudAuthButtons = Array.prototype.slice.call(
+        document.querySelectorAll("[data-cloud-hosted-auth]")
+      );
+      var cloudModelSelect = document.querySelector("[data-cloud-model-select]");
+      var cloudPollTimer = null;
+      var modal = document.getElementById("detail-modal");
+      var modalBody = document.getElementById("detail-modal-body");
+      var modalTitle = document.getElementById("detail-modal-title");
+      var modalOpenButtons = Array.prototype.slice.call(document.querySelectorAll("[data-modal-target]"));
+
+      function openModal(title, sourceId) {
+        var source = document.querySelector("#" + sourceId + " .fold-body");
+        if (!modal || !modalBody || !modalTitle || !source) return;
+        modalTitle.textContent = title || "Details";
+        modalBody.innerHTML = source.innerHTML;
+        modal.classList.add("is-open");
+        modal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("is-modal-open");
+      }
+
+      function closeModal() {
+        if (!modal || !modalBody) return;
+        modal.classList.remove("is-open");
+        modal.setAttribute("aria-hidden", "true");
+        modalBody.innerHTML = "";
+        document.body.classList.remove("is-modal-open");
+      }
+
+      function runDistribution(button) {
+        if (!button) return;
+        var host = button.parentNode;
+        var status = host ? host.querySelector("[data-distribution-run-status]") : null;
+        button.disabled = true;
+        if (status) status.textContent = "Running manual distribution...";
+        fetch("/api/elizaok/distribution/run", { method: "POST" })
+          .then(function (response) { return response.json(); })
+          .then(function (payload) {
+            if (status) {
+              status.textContent = payload && payload.message
+                ? payload.message
+                : "Manual distribution run completed.";
+            }
+            window.setTimeout(function () { window.location.reload(); }, 800);
+          })
+          .catch(function (error) {
+            if (status) status.textContent = "Manual run failed: " + error;
+            button.disabled = false;
+          });
+      }
+
+      function setCloudButtonsBusy(isBusy) {
+        cloudAuthButtons.forEach(function (button) {
+          if (isBusy) {
+            button.setAttribute("aria-disabled", "true");
+            button.classList.add("is-busy");
+          } else {
+            button.removeAttribute("aria-disabled");
+            button.classList.remove("is-busy");
+          }
         });
       }
+
+      function clearCloudPoll() {
+        if (cloudPollTimer) {
+          window.clearTimeout(cloudPollTimer);
+          cloudPollTimer = null;
+        }
+      }
+
+      function pollCloudHostedSession(sessionId, attempt) {
+        return fetch("/api/eliza-cloud/hosted/poll?session=" + encodeURIComponent(sessionId))
+          .then(function (response) {
+            return response.json().then(function (payload) {
+              if (!response.ok) {
+                throw new Error(
+                  payload && payload.error ? payload.error : "Failed to read ElizaCloud session."
+                );
+              }
+              return payload;
+            });
+          })
+          .then(function (payload) {
+            if (payload.status === "authenticated") {
+              clearCloudPoll();
+              setCloudButtonsBusy(false);
+              window.location.reload();
+              return;
+            }
+            if (attempt >= 180) {
+              throw new Error("ElizaCloud sign-in timed out. Please try again.");
+            }
+            cloudPollTimer = window.setTimeout(function () {
+              pollCloudHostedSession(sessionId, attempt + 1).catch(function (error) {
+                clearCloudPoll();
+                setCloudButtonsBusy(false);
+                window.alert(error && error.message ? error.message : String(error));
+              });
+            }, 2000);
+          });
+      }
+
+      if (cloudAuthButtons.length > 0) {
+        cloudAuthButtons.forEach(function (cloudAuthButton) {
+          cloudAuthButton.addEventListener("click", function (event) {
+            event.preventDefault();
+            setCloudButtonsBusy(true);
+            fetch("/api/eliza-cloud/hosted/start", { method: "POST" })
+              .then(function (response) {
+                return response.json().then(function (payload) {
+                  if (!response.ok) {
+                    throw new Error(
+                      payload && payload.error
+                        ? payload.error
+                        : "Failed to start hosted ElizaCloud sign-in."
+                    );
+                  }
+                  return payload;
+                });
+              })
+              .then(function (payload) {
+                var popup = window.open(
+                  payload.loginUrl,
+                  "elizaCloudLogin",
+                  "popup=yes,width=540,height=760,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes"
+                );
+                if (!popup) {
+                  window.location.href = payload.loginUrl;
+                  return;
+                }
+                if (payload.mode === "cli-session" && payload.sessionId) {
+                  return pollCloudHostedSession(payload.sessionId, 0);
+                }
+              })
+              .catch(function (error) {
+                clearCloudPoll();
+                setCloudButtonsBusy(false);
+                window.alert(error && error.message ? error.message : String(error));
+              });
+          });
+        });
+
+        window.addEventListener("message", function (event) {
+          var data = event && event.data;
+          if (!data || data.type !== "eliza-cloud-auth-complete") {
+            return;
+          }
+          setCloudButtonsBusy(false);
+          if (data.status === "success") {
+            window.location.reload();
+            return;
+          }
+          window.alert(data && data.message ? data.message : "ElizaCloud sign-in failed.");
+        });
+      }
+
+      if (cloudModelSelect) {
+        cloudModelSelect.addEventListener("change", function () {
+          fetch("/api/eliza-cloud/model", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ model: cloudModelSelect.value }),
+          }).catch(function () {
+            // Ignore UI-only model persistence failures for now.
+          });
+        });
+      }
+
+      modalOpenButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          openModal(button.getAttribute("data-modal-title"), button.getAttribute("data-modal-target"));
+        });
+      });
+
+      document.addEventListener("click", function (event) {
+        var target = event.target;
+        if (!(target instanceof Element)) return;
+
+        if (target.closest("[data-modal-close]")) {
+          closeModal();
+          return;
+        }
+
+        if (modal && target === modal) {
+          closeModal();
+          return;
+        }
+
+        var runButton = target.closest("[data-distribution-run]");
+        if (runButton) {
+          runDistribution(runButton);
+        }
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          closeModal();
+        }
+      });
     })();
   </script>
 </body>
@@ -3547,6 +4840,8 @@ async function handleRequest(
     .slice(0, Math.max(1, distributionExecution.maxRecipientsPerRun || 5));
   const requestUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
   const pathname = requestUrl.pathname;
+  const storedCloudSession = readElizaCloudSession(req.headers.cookie);
+  let cloudSession = storedCloudSession;
 
   if (pathname === "/assets/elizaok-logo.png") {
     for (const assetPath of ELIZAOK_LOGO_ASSET_PATHS) {
@@ -3591,6 +4886,386 @@ async function handleRequest(
       executionLiveTradingArmed: executionState.liveTradingArmed,
       latestRunId: snapshot?.summary.runId ?? null,
     });
+    return;
+  }
+
+  if (pathname === "/auth/eliza-cloud") {
+    const state =
+      globalThis.crypto && typeof globalThis.crypto.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `elizaok-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    if (!hasElizaCloudAppAuthConfig()) {
+      const createResponse = await createElizaCloudCliSession(state);
+      const createPayload = (await createResponse.json().catch(() => null)) as { error?: string } | null;
+      if (!createResponse.ok) {
+        sendRedirect(
+          res,
+          `/?cloud_error=${encodeURIComponent(createPayload?.error || "failed_to_create_elizacloud_session")}`
+        );
+        return;
+      }
+      sendRedirect(res, buildElizaCloudCliLoginUrl(state));
+      return;
+    }
+
+    const loginUrl = buildElizaCloudLoginUrl(req, state, false);
+    if (!loginUrl) {
+      sendRedirect(res, "/?cloud_error=missing_elizacloud_app_auth_config");
+      return;
+    }
+    sendRedirect(res, loginUrl, [serializeElizaCloudAuthState(state)]);
+    return;
+  }
+
+  if (pathname === "/api/eliza-cloud/hosted/start") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+
+    const state =
+      globalThis.crypto && typeof globalThis.crypto.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `elizaok-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    if (!hasElizaCloudAppAuthConfig()) {
+      const createResponse = await createElizaCloudCliSession(state);
+      const createPayload = (await createResponse.json().catch(() => null)) as
+        | { error?: string }
+        | { status?: string }
+        | null;
+      if (!createResponse.ok) {
+        sendJson(res, createResponse.status || 500, {
+          error:
+            (createPayload && "error" in createPayload && createPayload.error) ||
+            "Failed to create ElizaCloud session",
+        });
+        return;
+      }
+      sendJson(res, 200, {
+        loginUrl: buildElizaCloudCliLoginUrl(state),
+        sessionId: state,
+        mode: "cli-session",
+      });
+      return;
+    }
+
+    const loginUrl = buildElizaCloudLoginUrl(req, state, true);
+    if (!loginUrl) {
+      sendJson(res, 500, { error: "Missing ElizaCloud hosted app auth URL" });
+      return;
+    }
+
+    res.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "set-cookie": serializeElizaCloudAuthState(state),
+    });
+    res.end(JSON.stringify({ loginUrl, state, mode: "app-auth" }, null, 2));
+    return;
+  }
+
+  if (pathname === "/api/eliza-cloud/hosted/poll") {
+    const sessionId = requestUrl.searchParams.get("session")?.trim() || "";
+    if (!sessionId) {
+      sendJson(res, 400, { error: "session is required" });
+      return;
+    }
+
+    const statusResponse = await fetchElizaCloudCliSession(sessionId);
+    const statusPayload = (await statusResponse.json().catch(() => null)) as
+      | { error?: string; status?: string; apiKey?: string; keyPrefix?: string }
+      | null;
+
+    if (!statusResponse.ok || !statusPayload) {
+      sendJson(res, statusResponse.status || 500, statusPayload || { error: "Failed to poll ElizaCloud" });
+      return;
+    }
+
+    if (statusPayload.status === "authenticated" && statusPayload.apiKey) {
+      const [models, profile, credits, creditSummary] = await Promise.all([
+        fetchElizaCloudModels(statusPayload.apiKey),
+        fetchElizaCloudUser(statusPayload.apiKey),
+        fetchElizaCloudCreditsBalance(statusPayload.apiKey),
+        fetchElizaCloudCreditsSummary(statusPayload.apiKey),
+      ]);
+      const session = buildElizaCloudApiSession(
+        statusPayload.apiKey,
+        {
+          ...creditSummary,
+          ...profile,
+          displayName: profile?.displayName || creditSummary?.displayName || profile?.organizationName || "ElizaCloud User",
+          organizationName: profile?.organizationName || creditSummary?.organizationName || "ElizaCloud",
+          credits: credits || creditSummary?.credits || profile?.credits || "linked",
+        },
+        models,
+        "siwe"
+      );
+      res.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+        "set-cookie": serializeElizaCloudSession(session),
+      });
+      res.end(JSON.stringify({ status: "authenticated", session }, null, 2));
+      return;
+    }
+
+    if (statusPayload.status === "authenticated" && cloudSession) {
+      sendJson(res, 200, { status: "authenticated", session: cloudSession });
+      return;
+    }
+
+    sendJson(res, 200, { status: statusPayload.status || "pending" });
+    return;
+  }
+
+  if (pathname === "/api/eliza-cloud/siwe/nonce") {
+    const response = await fetchElizaCloudNonce(req);
+    const body = await response.text();
+    res.writeHead(response.status, {
+      "content-type": response.headers.get("content-type") || "application/json; charset=utf-8",
+    });
+    res.end(body);
+    return;
+  }
+
+  if (pathname === "/api/eliza-cloud/siwe/verify") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+
+    const payload = await readRequestJson<{ message?: string; signature?: string }>(req);
+    if (!payload?.message || !payload?.signature) {
+      sendJson(res, 400, { error: "message and signature are required" });
+      return;
+    }
+
+    const response = await verifyElizaCloudSiwe({
+      message: payload.message,
+      signature: payload.signature,
+    });
+    const data = (await response.json().catch(() => null)) as ElizaCloudVerifyResponse | { error?: string } | null;
+
+    if (!response.ok || !data || !("apiKey" in data)) {
+      sendJson(res, response.status || 500, data || { error: "ElizaCloud verification failed" });
+      return;
+    }
+
+    const [models, profile, credits, creditSummary] = await Promise.all([
+      fetchElizaCloudModels(data.apiKey),
+      fetchElizaCloudUser(data.apiKey),
+      fetchElizaCloudCreditsBalance(data.apiKey),
+      fetchElizaCloudCreditsSummary(data.apiKey),
+    ]);
+    const session = buildElizaCloudApiSession(
+      data.apiKey,
+      {
+        ...creditSummary,
+        ...profile,
+        displayName:
+          profile?.displayName ||
+          creditSummary?.displayName ||
+          data.organization?.name ||
+          profile?.email ||
+          shortAddress(data.address),
+        email: profile?.email || data.user.id,
+        walletAddress: profile?.walletAddress || data.address,
+        organizationName:
+          profile?.organizationName || creditSummary?.organizationName || data.organization?.name || "ElizaCloud",
+        organizationSlug: profile?.organizationSlug || data.organization?.slug || "elizacloud",
+        credits: credits || creditSummary?.credits || profile?.credits || "linked",
+      },
+      models,
+      "siwe"
+    );
+
+    res.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "set-cookie": serializeElizaCloudSession(session),
+    });
+    res.end(JSON.stringify({ success: true, session }, null, 2));
+    return;
+  }
+
+  if (pathname === "/api/eliza-cloud/model") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!cloudSession) {
+      sendJson(res, 401, { error: "Not connected to ElizaCloud" });
+      return;
+    }
+    const payload = await readRequestJson<{ model?: string }>(req);
+    if (!payload?.model?.trim()) {
+      sendJson(res, 400, { error: "model is required" });
+      return;
+    }
+    const updatedSession: ElizaCloudSession = {
+      ...cloudSession,
+      model: payload.model.trim(),
+    };
+    res.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "set-cookie": serializeElizaCloudSession(updatedSession),
+    });
+    res.end(JSON.stringify({ success: true, model: updatedSession.model }, null, 2));
+    return;
+  }
+
+  if (pathname === "/api/eliza-cloud/app-auth/complete") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+
+    const payload = await readRequestJson<{
+      state?: string;
+      appId?: string;
+      app_id?: string;
+      access_token?: string;
+      token?: string;
+      authToken?: string;
+      auth_token?: string;
+      bearer?: string;
+    }>(req);
+    const stateFromPayload = payload?.state?.trim() || "";
+    const expectedState = readElizaCloudAuthState(req.headers.cookie);
+    if (stateFromPayload && expectedState && stateFromPayload !== expectedState) {
+      res.writeHead(400, {
+        "content-type": "application/json; charset=utf-8",
+        "set-cookie": clearElizaCloudAuthState(),
+      });
+      res.end(JSON.stringify({ error: "ElizaCloud state verification failed." }, null, 2));
+      return;
+    }
+
+    const authToken =
+      payload?.access_token?.trim() ||
+      payload?.token?.trim() ||
+      payload?.authToken?.trim() ||
+      payload?.auth_token?.trim() ||
+      payload?.bearer?.trim() ||
+      "";
+    const appId = payload?.appId?.trim() || payload?.app_id?.trim() || getElizaCloudAppId();
+    const result = await buildElizaCloudSessionFromAppAuth(authToken, appId);
+    if (!result.session) {
+      res.writeHead(400, {
+        "content-type": "application/json; charset=utf-8",
+        "set-cookie": clearElizaCloudAuthState(),
+      });
+      res.end(JSON.stringify({ error: result.error || "ElizaCloud app auth failed." }, null, 2));
+      return;
+    }
+
+    res.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "set-cookie": [serializeElizaCloudSession(result.session), clearElizaCloudAuthState()],
+    });
+    res.end(JSON.stringify({ success: true, session: result.session }, null, 2));
+    return;
+  }
+
+  if (pathname === "/auth/eliza-cloud/demo") {
+    if (!isLocalRequest(req) || !isElizaCloudDemoEnabled()) {
+      sendRedirect(res, "/?cloud_error=eliza_cloud_demo_disabled");
+      return;
+    }
+    sendRedirect(res, buildElizaCloudDemoUrl(req));
+    return;
+  }
+
+  if (pathname === "/auth/eliza-cloud/callback") {
+    const popupMode = requestUrl.searchParams.get("popup") === "1";
+    const stateFromQuery = requestUrl.searchParams.get("state")?.trim() || "";
+    const expectedState = readElizaCloudAuthState(req.headers.cookie);
+    const appAuthToken =
+      requestUrl.searchParams.get("access_token")?.trim() ||
+      requestUrl.searchParams.get("token")?.trim() ||
+      requestUrl.searchParams.get("authToken")?.trim() ||
+      requestUrl.searchParams.get("auth_token")?.trim() ||
+      requestUrl.searchParams.get("bearer")?.trim() ||
+      "";
+    const appIdFromQuery =
+      requestUrl.searchParams.get("appId")?.trim() ||
+      requestUrl.searchParams.get("app_id")?.trim() ||
+      getElizaCloudAppId();
+
+    if (requestUrl.searchParams.get("error")) {
+      const message = requestUrl.searchParams.get("error_description") || requestUrl.searchParams.get("error") || "ElizaCloud authentication failed.";
+      const cookieHeaders = [clearElizaCloudAuthState()];
+      if (popupMode) {
+        sendHtml(res, 200, renderCloudPopupResultHtml("error", message), cookieHeaders);
+        return;
+      }
+      sendRedirect(res, `/?cloud_error=${encodeURIComponent(message)}`, cookieHeaders);
+      return;
+    }
+
+    if (stateFromQuery && expectedState && stateFromQuery !== expectedState) {
+      const cookieHeaders = [clearElizaCloudAuthState()];
+      if (popupMode) {
+        sendHtml(res, 200, renderCloudPopupResultHtml("error", "ElizaCloud state verification failed."), cookieHeaders);
+        return;
+      }
+      sendRedirect(res, "/?cloud_error=invalid_elizacloud_state", cookieHeaders);
+      return;
+    }
+
+    if (appAuthToken && appIdFromQuery) {
+      const result = await buildElizaCloudSessionFromAppAuth(appAuthToken, appIdFromQuery);
+      const cookieHeaders = result.session
+        ? [serializeElizaCloudSession(result.session), clearElizaCloudAuthState()]
+        : [clearElizaCloudAuthState()];
+      if (!result.session) {
+        const message = result.error || "ElizaCloud app auth failed.";
+        if (popupMode) {
+          sendHtml(res, 200, renderCloudPopupResultHtml("error", message), cookieHeaders);
+          return;
+        }
+        sendRedirect(res, `/?cloud_error=${encodeURIComponent(message)}`, cookieHeaders);
+        return;
+      }
+      if (popupMode) {
+        sendHtml(res, 200, renderCloudPopupResultHtml("success", "ElizaCloud connected."), cookieHeaders);
+        return;
+      }
+      sendRedirect(res, "/?cloud_connected=1", cookieHeaders);
+      return;
+    }
+
+    if (hasElizaCloudAppAuthConfig()) {
+      sendHtml(res, 200, renderCloudCallbackBridgeHtml(popupMode));
+      return;
+    }
+
+    const session = buildElizaCloudSessionFromQuery(requestUrl);
+    if (!session) {
+      const cookieHeaders = [clearElizaCloudAuthState()];
+      if (popupMode) {
+        sendHtml(
+          res,
+          200,
+          renderCloudPopupResultHtml(
+            "error",
+            "ElizaCloud callback did not include a supported app auth token."
+          ),
+          cookieHeaders
+        );
+        return;
+      }
+      sendRedirect(res, "/?cloud_error=missing_callback_payload", cookieHeaders);
+      return;
+    }
+    const cookieHeaders = [serializeElizaCloudSession(session), clearElizaCloudAuthState()];
+    if (popupMode) {
+      sendHtml(res, 200, renderCloudPopupResultHtml("success", "ElizaCloud connected."), cookieHeaders);
+      return;
+    }
+    sendRedirect(res, "/?cloud_connected=1", cookieHeaders);
+    return;
+  }
+
+  if (pathname === "/auth/eliza-cloud/logout") {
+    sendRedirect(res, "/?cloud_disconnected=1", [clearElizaCloudSession()]);
     return;
   }
 
@@ -3908,8 +5583,17 @@ async function handleRequest(
   }
 
   if (pathname === "/") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(renderHtml(snapshot));
+    const refreshedCloud = await refreshElizaCloudSession(cloudSession);
+    cloudSession = refreshedCloud.session;
+    const sidebarWalletBalanceLabel = await fetchWalletNativeBalanceLabel(
+      config.execution.rpcUrl,
+      "0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F"
+    );
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      ...(cloudSession ? { "set-cookie": serializeElizaCloudSession(cloudSession) } : {}),
+    });
+    res.end(renderHtml(snapshot, cloudSession, refreshedCloud.models, sidebarWalletBalanceLabel));
     return;
   }
 
@@ -3926,7 +5610,11 @@ export function startDashboardServer(runtime: AgentRuntime) {
   const server = createServer((req, res) => {
     void handleRequest(req, res, runtime).catch((error) => {
       runtime.logger.error({ error }, "ElizaOK dashboard server request failed");
-      sendJson(res, 500, { error: "Internal server error" });
+      if (!res.headersSent) {
+        sendJson(res, 500, { error: "Internal server error" });
+      } else {
+        res.end();
+      }
     });
   });
 
