@@ -23,6 +23,24 @@ type WorkingMemoryEntry = {
 };
 
 /**
+ * Estimates character count for an action run entry (used for budget slicing).
+ */
+function estimateActionRunChars([runId, memories]: [string, Memory[]]): number {
+  const textChars = memories.reduce((sum, memory) => {
+    const content = memory.content;
+    return (
+      sum +
+      String(content?.actionName || "").length +
+      String(content?.actionStatus || "").length +
+      String(content?.planStep || "").length +
+      String(content?.text || "").length +
+      String(content?.error || "").length
+    );
+  }, 0);
+  return textChars + runId.length + 80;
+}
+
+/**
  * Provider for sharing action execution state and plan between actions
  * Makes previous action results and execution plan available to subsequent actions
  */
