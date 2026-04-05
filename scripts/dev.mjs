@@ -42,6 +42,12 @@ if (needsInstall) {
 	console.log("\n[dev] bun install skipped (deps unchanged)\n");
 }
 
+const coreDist = join(ROOT, "packages", "typescript", "dist");
+if (!existsSync(coreDist)) {
+	console.log("\n[dev] building `@elizaos/core` (no dist/)…\n");
+	run("bun", ["run", "build:core"]);
+}
+
 for (const rel of PLUGIN_TYPESCRIPT) {
 	const dir = join(ROOT, rel);
 	if (!existsSync(join(dir, "package.json"))) {
