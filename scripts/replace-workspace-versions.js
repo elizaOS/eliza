@@ -10,7 +10,7 @@
  *
  * Usage: node scripts/replace-workspace-versions.js [--dry-run]
  *
- * For git submodule plugins (elizaos-plugins/*), see plugin-submodules-dev.mjs and
+ * For git submodule plugins (plugins/*), see plugin-submodules-dev.mjs and
  * bun run dev (submodule link) / plugin-submodules:restore instead.
  */
 
