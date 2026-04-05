@@ -3278,9 +3278,10 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
           responseText = "[non-serializable response]";
         }
       }
+      // Pass promptSlug for correlation - this ensures prompt-response pairs share the same slug
       const rSlug = logResponse(modelKey, responseText, {
         ...meta,
-        promptSlug: pSlug,
+        promptSlug: pSlug || undefined,
         duration: Number(elapsedTime.toFixed(2)),
       });
       if (rSlug) {
