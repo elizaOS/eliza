@@ -27,7 +27,7 @@
  *   5. Commit your changes
  *   6. `bun run fix-deps` again — back to workspace:* for more dev
  *
- * Git submodule plugins (elizaos-plugins/*) use `alpha` in the repo until you run
+ * Git submodule plugins (plugins/*) use `alpha` in the repo until you run
  * `bun run dev` (see scripts/dev.mjs + plugin-submodules-dev.mjs). That flow
  * inits submodules, adds their typescript/ paths to workspaces, then runs this script.
  * `bun run plugin-submodules:restore` runs fix-deps --restore, strips those workspaces,
