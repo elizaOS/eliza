@@ -10,14 +10,16 @@ import {
   sliceToFitBudget,
   ACTION_RESULTS_TARGET_CHARS,
   ACTION_HISTORY_TARGET_CHARS,
+  estimateActionResultChars,
+  estimateActionRunChars,
 } from "../../utils/slice-to-fit-budget.js";
 
 /**
  * Provider for sharing action execution state and plan between actions
  * Makes previous action results and execution plan available to subsequent actions
  * 
- * Note: sliceToFitBudget, ACTION_RESULTS_TARGET_CHARS, and ACTION_HISTORY_TARGET_CHARS
- * are imported from the shared utility to avoid duplication with basic-capabilities.
+ * Note: sliceToFitBudget, constants, and cost estimators are imported from the shared
+ * utility to avoid duplication with basic-capabilities.
  */
 export const actionStateProvider: Provider = {
   name: "ACTION_STATE",
@@ -83,17 +85,7 @@ export const actionStateProvider: Provider = {
     if (actionResults.length > 0) {
       const selectedResults = sliceToFitBudget(
         actionResults,
-        (result) =>
-          String(result.text || "").length +
-          String(result.error || "").length +
-          (() => {
-            try {
-              return JSON.stringify(result.values || {}).length;
-            } catch {
-              // Note: counts only visible results to avoid throw paths from internal data payloads
-              return 0;
-            }
-          })() + 80,
+        estimateActionResultChars,
         ACTION_RESULTS_TARGET_CHARS,
       );
 
@@ -190,19 +182,7 @@ export const actionStateProvider: Provider = {
       // Note: recentMessages returns newest-first, so use fromEnd:false to keep newest runs
       const selectedRuns = sliceToFitBudget(
           Array.from(groupedByRun.entries()),
-          ([runId, memories]) => {
-            const textChars = memories.reduce((sum, memory) => {
-              const content = memory.content;
-              return (
-                sum +
-                String(content?.actionName || "").length +
-                String(content?.actionStatus || "").length +
-                String(content?.planStep || "").length +
-                String(content?.text || "").length
-              );
-            }, 0);
-            return textChars + runId.length + 80;
-          },
+          estimateActionRunChars,
           ACTION_HISTORY_TARGET_CHARS,
           { fromEnd: false },
         );

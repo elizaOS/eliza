@@ -7,6 +7,7 @@
  */
 
 import JSON5 from "json5";
+import logger from "../logger";
 import { logger } from "../logger.js";
 
 const jsonBlockPattern = /```(?:json|json5)\s*\r?\n([\s\S]*?)\r?\n```/i;
@@ -19,9 +20,13 @@ const jsonBlockPattern = /```(?:json|json5)\s*\r?\n([\s\S]*?)\r?\n```/i;
  * @returns Parsed object/array
  * @throws {Error} If the JSON is invalid or parsing fails
  */
+/**
+ * Extracts and parses JSON from text. Throws on parse failure to maintain
+ * the documented @throws contract for parseJSONObjectFromText.
+ */
 export function extractAndParseJSONObjectFromText(
   text: string,
-): Record<string, unknown> | unknown[] {
+): Record<string, unknown> | unknown[] | null {
   if (!text || typeof text !== "string") {
     throw new Error("Invalid input: text must be a non-empty string");
   }

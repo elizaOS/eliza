@@ -778,11 +778,12 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
  *
  * @param text - The input text from which to extract and parse the JSON object.
  * @returns An object parsed from the JSON string if successful, or null on failure.
- * @throws Error if JSON parsing fails (maintains documented throw contract)
  */
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
+  // Note: extractAndParseJSONObjectFromText returns null on parse failure rather than throwing.
+  // This is intentional for LLM output which may contain malformed JSON that needs graceful handling.
   const result = extractAndParseJSONObjectFromText(text);
   if (!result) {
     return null;

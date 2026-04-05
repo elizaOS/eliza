@@ -193,6 +193,11 @@ export interface Action {
  * Evaluator for assessing agent responses
  */
 export interface Evaluator {
+  /**
+   * When true, this evaluator runs even when DISABLE_MEMORY_CREATION is enabled.
+   * Use for evaluators that don't depend on memory persistence (e.g., webhooks, analytics).
+   */
+  skipMemoryCheck?: boolean;
   /** Whether to always run */
   alwaysRun?: boolean;
 
