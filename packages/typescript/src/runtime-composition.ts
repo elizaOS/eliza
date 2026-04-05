@@ -80,9 +80,15 @@ export function getBasicCapabilitiesSettings(
 		character.settings && typeof character.settings === "object"
 			? character.settings
 			: {};
+	// Settings that should remain as booleans (not coerced to "true"/"false" strings)
+	const booleanSettings = new Set(["CHECK_SHOULD_RESPOND"]);
 	for (const [key, value] of Object.entries(settings)) {
 		if (value === undefined || value === null) continue;
 		if (key === "secrets" && typeof value === "object") continue;
+		if (booleanSettings.has(key) && typeof value === "boolean") {
+			// Skip boolean settings here; they should be passed via CreateRuntimesOptions
+			continue;
+		}
 		out[key] = typeof value === "string" ? value : String(value);
 	}
 
@@ -248,9 +254,17 @@ export async function loadCharacters(
 			if (!existsSync(resolved)) {
 				throw new Error(`loadCharacters: character file not found: ${resolved}`);
 			}
-			const raw = await readFile(resolved, "utf8");
-			const json = JSON.parse(raw) as CharacterInput;
-			results.push(loadOneCharacterFromObject(json));
+			try {
+				const raw = await readFile(resolved, "utf8");
+				const json = JSON.parse(raw) as CharacterInput;
+				results.push(loadOneCharacterFromObject(json));
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : String(error);
+				throw new Error(
+					`loadCharacters: failed to load ${resolved}: ${message}`,
+				);
+			}
 		} else {
 			results.push(loadOneCharacterFromObject(source));
 		}
