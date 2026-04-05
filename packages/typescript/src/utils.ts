@@ -15,7 +15,7 @@ import type {
 } from "./types";
 import { ContentType, ModelType, type UUID } from "./types";
 import { parseBooleanText } from "./utils/boolean";
-import { formatTimestamp } from "./utils/time-format";
+import { formatTimestamp as formatTimestampVerbose } from "./utils/time-format";
 import { getLocalServerUrl } from "./utils/node";
 
 // Text Utils
@@ -384,7 +384,7 @@ export const formatPosts = ({
         return `Name: ${userName} (@${displayName} EntityID:${message.entityId})
 MessageID: ${message.id}${message.content.inReplyTo ? `\nIn reply to: ${message.content.inReplyTo}` : ""}
 Source: ${message.content.source}
-Date: ${formatTimestamp(message.createdAt || 0)}
+Date: ${formatTimestampSimple(message.createdAt || 0)}
 
 --- Text Start ---
 ${message.content.text ?? ""}
@@ -455,7 +455,7 @@ export const formatMessages = ({
     const minutes = messageTime.getMinutes().toString().padStart(2, "0");
     const timeString = `${hours}:${minutes}`;
 
-    const timestamp = formatTimestamp(message.createdAt || 0);
+    const timestamp = formatTimestampSimple(message.createdAt || 0);
 
     const thoughtString = messageThought
       ? `(${formattedName}'s internal thought: ${messageThought})`
@@ -487,7 +487,11 @@ export const formatMessages = ({
       return messageStrings.join("\n");
     };
 
-    export const formatTimestamp = (messageDate: number) => {
+    /**
+     * Format a timestamp as a human-readable relative time string.
+     * This simplified version returns "just now", "X minutes ago", etc.
+     */
+    export const formatTimestampSimple = (messageDate: number) => {
       const now = new Date();
       const diff = now.getTime() - messageDate;
 
@@ -768,26 +772,28 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
  * @param text - The input text from which to extract and parse the JSON object.
  * @returns An object parsed from the JSON string if successful, or null on failure.
  */
+/**
+ * Parses a JSON object from text (code block or raw). Uses JSON5 so LLM output with
+ * trailing commas, unquoted keys, or single quotes still parses.
+ *
+ * @param text - The input text from which to extract and parse the JSON object.
+ * @returns An object parsed from the JSON string if successful, or null on failure.
+ * @throws Error if JSON parsing fails (maintains documented throw contract)
+ */
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
-  try {
-    const result = extractAndParseJSONObjectFromText(text);
-    if (!result) {
-      return null;
-    }
-    if (Array.isArray(result)) {
-      return null;
-    }
-    // Note: ensures result is a valid object to maintain expected data structure integrity.
-    if (typeof result !== "object") {
-      return null;
-    }
-    return result;
-  } catch {
-    // Return null on parse failure to maintain backwards compatibility
+  const result = extractAndParseJSONObjectFromText(text);
+  if (!result) {
     return null;
   }
+  if (Array.isArray(result)) {
+    return null;
+  }
+  if (typeof result !== "object") {
+    return null;
+  }
+  return result;
 }
 
 /**
@@ -1243,4 +1249,4 @@ export const getContentTypeFromMimeType = (
   return undefined;
 };
 
-export { formatTimestamp, getLocalServerUrl };
+export { formatTimestampSimple as formatTimestamp, getLocalServerUrl };
