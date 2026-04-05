@@ -35,11 +35,15 @@ rules[8]:
 - think briefly, then respond
 - actions execute in listed order
 - if replying, REPLY goes first
-- use IGNORE only by itself
+- use IGNORE or STOP only by themselves
 - include providers only when needed
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include a <params> block with the required fields
 - if a required param is unknown, ask for clarification in <text>
+
+control_actions:
+- STOP means the task is done and the agent should end the run without executing more actions
+- STOP is a terminal control action even if it is not listed in available actions
 
 fields[5]{name,meaning}:
 - thought | short plan
@@ -226,6 +230,47 @@ Here are the actions taken by the assistant to fulfill the request:
 </response>
 </output>
 `;
+
+export const postActionDecisionTemplate = `<task>
+Continue helping the user after reviewing the latest action results.
+</task>
+
+context:
+{{providers}}
+
+recent conversation:
+{{recentMessages}}
+
+recent action results:
+{{actionResults}}
+
+rules[9]:
+- think briefly, then continue the task from the latest action results
+- actions execute in listed order
+- if replying, REPLY goes first
+- use IGNORE or STOP only by themselves
+- include providers only when needed
+- use provider_hints from context when present instead of restating the same rules
+- if an action needs inputs, include a <params> block with the required fields
+- if a required param is unknown, ask for clarification in <text>
+- if the task is complete, either reply to the user or use STOP to end the run
+- STOP is a terminal control action even if it is not listed in available actions
+
+<output>
+XML only. Return exactly one <response> block. No prose before or after it. No <think>.
+
+<response>
+  <thought>Your thought here</thought>
+  <actions>
+    <action>
+      <name>ACTION</name>
+    </action>
+  </actions>
+  <providers></providers>
+  <text>Your message here</text>
+  <simple>true</simple>
+</response>
+</output>`;
 
 // Shared action templates
 export const replyTemplate = `# Task: Generate dialog for the character {{agentName}}.

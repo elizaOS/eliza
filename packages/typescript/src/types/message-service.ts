@@ -30,6 +30,13 @@ export interface MessageProcessingOptions
 	maxMultiStepIterations?: number;
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+	/**
+	 * When true, run a follow-up reasoning pass after actions complete so the
+	 * agent can decide whether to share results, run another action, or stop.
+	 * Defaults to enabled unless runtime.getSetting("CONTINUE_AFTER_ACTIONS")
+	 * explicitly disables it.
+	 */
+	continueAfterActions?: boolean;
 	/** Signal to abort message processing */
 	abortSignal?: AbortSignal;
 	/**

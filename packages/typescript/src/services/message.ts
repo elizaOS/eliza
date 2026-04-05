@@ -7,6 +7,7 @@ import {
 	messageHandlerTemplate,
 	multiStepDecisionTemplate,
 	multiStepSummaryTemplate,
+	postActionDecisionTemplate,
 	shouldRespondTemplate,
 } from "../prompts";
 import { runWithStreamingContext } from "../streaming-context";
@@ -130,6 +131,7 @@ type ResolvedMessageOptions = {
 	timeoutDuration: number;
 	useMultiStep: boolean;
 	maxMultiStepIterations: number;
+	continueAfterActions: boolean;
 	onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
 	shouldRespondModel: ShouldRespondModelType;
 };
@@ -176,6 +178,74 @@ export function isSimpleReplyResponse(
 		typeof responseContent.actions[0] === "string" &&
 		responseContent.actions[0].toUpperCase() === "REPLY"
 	);
+}
+
+function isStopResponse(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	return !!(
+		responseContent?.actions &&
+		responseContent.actions.length === 1 &&
+		typeof responseContent.actions[0] === "string" &&
+		responseContent.actions[0].toUpperCase() === "STOP"
+	);
+}
+
+function shouldContinueAfterActions(
+	responseContent: Content | null | undefined,
+): boolean {
+	return !!responseContent?.actions?.some((action) => {
+		if (typeof action !== "string") return false;
+		const normalized = action.trim().toUpperCase();
+		return (
+			normalized !== "REPLY" && normalized !== "IGNORE" && normalized !== "STOP"
+		);
+	});
+}
+
+function formatActionResultsForPrompt(actionResults: ActionResult[]): string {
+	if (actionResults.length === 0) {
+		return "No action results available.";
+	}
+
+	return [
+		"# Action Results",
+		...actionResults.map((result, index) => {
+			const actionNameValue = result.data?.actionName;
+			const actionName =
+				typeof actionNameValue === "string"
+					? actionNameValue
+					: "Unknown Action";
+			const lines = [
+				`${index + 1}. ${actionName} - ${result.success === false ? "failed" : "succeeded"}`,
+			];
+			if (typeof result.text === "string" && result.text.trim()) {
+				lines.push(`Output: ${result.text.trim().slice(0, 2000)}`);
+			}
+			if (result.error) {
+				const errorText =
+					result.error instanceof Error
+						? result.error.message
+						: String(result.error);
+				lines.push(`Error: ${errorText.slice(0, 1000)}`);
+			}
+			return lines.join("\n");
+		}),
+	].join("\n\n");
+}
+
+function withActionResults(state: State, actionResults: ActionResult[]): State {
+	return {
+		...state,
+		values: {
+			...state.values,
+			actionResults: formatActionResultsForPrompt(actionResults),
+		},
+		data: {
+			...state.data,
+			actionResults,
+		},
+	};
 }
 
 /**
@@ -234,6 +304,11 @@ export class DefaultMessageService implements IMessageService {
 						parseInt(
 							String(runtime.getSetting("MAX_MULTISTEP_ITERATIONS") ?? "6"),
 							10,
+						),
+					continueAfterActions:
+						options?.continueAfterActions ??
+						parseBooleanFromText(
+							String(runtime.getSetting("CONTINUE_AFTER_ACTIONS") ?? "true"),
 						),
 					onStreamChunk: options?.onStreamChunk,
 					shouldRespondModel: resolvedShouldRespondModel,
@@ -696,6 +771,7 @@ export class DefaultMessageService implements IMessageService {
 		}
 
 		let shouldRespondToMessage = true;
+		let terminalDecision: "IGNORE" | "STOP" | null = null;
 		const metadata =
 			typeof message.content.metadata === "object" &&
 			message.content.metadata !== null
@@ -813,9 +889,16 @@ export class DefaultMessageService implements IMessageService {
 					"Parsed evaluation result",
 				);
 
-				// If an action is provided, the agent intends to respond in some way
-				const nonResponseActions = ["IGNORE", "NONE"];
+				// A classifier output can either continue the turn or terminate it.
+				const nonResponseActions = ["IGNORE", "NONE", "STOP"];
 				const actionValue = responseObject?.action;
+				if (
+					typeof actionValue === "string" &&
+					(actionValue.toUpperCase() === "IGNORE" ||
+						actionValue.toUpperCase() === "STOP")
+				) {
+					terminalDecision = actionValue.toUpperCase() as "IGNORE" | "STOP";
+				}
 				shouldRespondToMessage =
 					typeof actionValue === "string" &&
 					!nonResponseActions.includes(actionValue.toUpperCase());
@@ -949,6 +1032,32 @@ export class DefaultMessageService implements IMessageService {
 						},
 						{ onStreamChunk: opts.onStreamChunk },
 					);
+
+					if (
+						opts.continueAfterActions &&
+						message.id &&
+						shouldContinueAfterActions(responseContent)
+					) {
+						const continuation = await this.runPostActionContinuation(
+							runtime,
+							message,
+							state,
+							callback,
+							opts,
+							runtime.getActionResults(message.id),
+						);
+						if (continuation.responseMessages.length > 0) {
+							responseMessages = [
+								...responseMessages,
+								...continuation.responseMessages,
+							];
+						}
+						if (continuation.responseContent) {
+							responseContent = continuation.responseContent;
+							mode = continuation.mode;
+						}
+						state = continuation.state;
+					}
 				}
 			}
 		} else {
@@ -1004,32 +1113,36 @@ export class DefaultMessageService implements IMessageService {
 				};
 			}
 
-			// Construct a minimal content object indicating ignore
-			const ignoreContent: Content = {
-				thought: "Agent decided not to respond to this message.",
-				actions: ["IGNORE"],
+			// Construct a minimal content object indicating the terminal decision
+			const terminalAction = terminalDecision ?? "IGNORE";
+			const terminalContent: Content = {
+				thought:
+					terminalAction === "STOP"
+						? "Agent decided to stop and end the run."
+						: "Agent decided not to respond to this message.",
+				actions: [terminalAction],
 				simple: true,
 				inReplyTo: createUniqueUuid(runtime, message.id),
 			};
 
-			// Call the callback with the ignore content
+			// Call the callback with the terminal content
 			if (callback) {
-				await callback(ignoreContent);
+				await callback(terminalContent);
 			}
 
-			// Save this ignore action/thought to memory
-			const ignoreMemory: Memory = {
+			// Save this terminal action/thought to memory
+			const terminalMemory: Memory = {
 				id: asUUID(v4()),
 				entityId: runtime.agentId,
 				agentId: runtime.agentId,
-				content: ignoreContent,
+				content: terminalContent,
 				roomId: message.roomId,
 				createdAt: Date.now(),
 			};
-			await runtime.createMemory(ignoreMemory, "messages");
+			await runtime.createMemory(terminalMemory, "messages");
 			runtime.logger.debug(
-				{ src: "service:message", memoryId: ignoreMemory.id },
-				"Saved ignore response to memory",
+				{ src: "service:message", memoryId: terminalMemory.id },
+				"Saved terminal response to memory",
 			);
 		}
 
@@ -1039,13 +1152,16 @@ export class DefaultMessageService implements IMessageService {
 			latestResponseIds.delete(runtime.agentId);
 		}
 
+		const didRespond =
+			shouldRespondToMessage && !isStopResponse(responseContent);
+
 		// Run evaluators — fire-and-forget for streaming HTTP sources so the SSE
 		// response can close even if evaluators stall (e.g. auth error on TEXT_LARGE).
 		const runEvaluate = () =>
 			runtime.evaluate(
 				message,
 				state,
-				shouldRespondToMessage,
+				didRespond,
 				async (content) => {
 					runtime.logger.debug(
 						{ src: "service:message", content },
@@ -1153,7 +1269,7 @@ export class DefaultMessageService implements IMessageService {
 		} as RunEventPayload);
 
 		return {
-			didRespond: shouldRespondToMessage,
+			didRespond,
 			responseContent,
 			responseMessages,
 			state,
@@ -1553,6 +1669,154 @@ export class DefaultMessageService implements IMessageService {
 		return processedAttachments;
 	}
 
+	private async runPostActionContinuation(
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+		callback: HandlerCallback | undefined,
+		opts: ResolvedMessageOptions,
+		initialActionResults: ActionResult[],
+	): Promise<StrategyResult> {
+		if (!message.id || initialActionResults.length === 0) {
+			return {
+				responseContent: null,
+				responseMessages: [],
+				state,
+				mode: "none",
+			};
+		}
+
+		const traceActionResults: ActionResult[] = [...initialActionResults];
+		const responseMessages: Memory[] = [];
+		let accumulatedState = state;
+		let responseContent: Content | null = null;
+
+		for (
+			let iterationCount = 0;
+			iterationCount < opts.maxMultiStepIterations;
+			iterationCount++
+		) {
+			accumulatedState = withActionResults(
+				await runtime.composeState(message, ["ACTIONS"], false, false),
+				traceActionResults,
+			);
+
+			const continuation = await this.runSingleShotCore(
+				runtime,
+				message,
+				accumulatedState,
+				opts,
+				asUUID(v4()),
+				{
+					prompt:
+						runtime.character.templates?.postActionDecisionTemplate ||
+						postActionDecisionTemplate,
+					precomposedState: accumulatedState,
+				},
+			);
+
+			if (!continuation.responseContent) {
+				runtime.logger.debug(
+					{ src: "service:message", iteration: iterationCount + 1 },
+					"Post-action continuation produced no response",
+				);
+				break;
+			}
+
+			responseContent = continuation.responseContent;
+			if (message.id) {
+				responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
+			}
+
+			if (responseContent.providers && responseContent.providers.length > 0) {
+				accumulatedState = withActionResults(
+					await runtime.composeState(
+						message,
+						responseContent.providers,
+						false,
+						false,
+					),
+					traceActionResults,
+				);
+			} else {
+				accumulatedState = withActionResults(
+					continuation.state,
+					traceActionResults,
+				);
+			}
+
+			if (continuation.responseMessages.length > 0) {
+				for (const responseMemory of continuation.responseMessages) {
+					responseMemory.content = responseContent;
+					await runtime.createMemory(responseMemory, "messages");
+					await runtime.emitEvent(EventType.MESSAGE_SENT, {
+						runtime,
+						message: responseMemory,
+						source: message.content.source ?? "messageHandler",
+					});
+				}
+				responseMessages.push(...continuation.responseMessages);
+			}
+
+			if (continuation.mode === "simple") {
+				if (callback) {
+					if (responseContent.text) {
+						responseContent.text = runtime.redactSecrets(responseContent.text);
+					}
+					await callback(responseContent);
+				}
+				break;
+			}
+
+			if (continuation.mode !== "actions") {
+				break;
+			}
+
+			await runtime.processActions(
+				message,
+				continuation.responseMessages,
+				accumulatedState,
+				async (content) => {
+					runtime.logger.debug(
+						{ src: "service:message", content },
+						"Post-action callback",
+					);
+					if (responseContent) {
+						responseContent.actionCallbacks = content;
+					}
+					if (callback) {
+						return callback(content);
+					}
+					return [];
+				},
+				{ onStreamChunk: opts.onStreamChunk },
+			);
+
+			if (!shouldContinueAfterActions(responseContent)) {
+				break;
+			}
+
+			const latestActionResults = runtime.getActionResults(message.id);
+			if (latestActionResults.length === 0) {
+				runtime.logger.warn(
+					{ src: "service:message", iteration: iterationCount + 1 },
+					"Post-action continuation produced no new action results",
+				);
+				break;
+			}
+			traceActionResults.push(...latestActionResults);
+		}
+
+		accumulatedState = withActionResults(accumulatedState, traceActionResults);
+
+		return {
+			responseContent,
+			responseMessages,
+			state: accumulatedState,
+			mode: responseContent ? "simple" : "none",
+		};
+	}
+
 	/**
 	 * Single-shot strategy: one LLM call to generate response
 	 * Uses dynamicPromptExecFromState for validation-aware structured output
@@ -1563,8 +1827,14 @@ export class DefaultMessageService implements IMessageService {
 		state: State,
 		opts: ResolvedMessageOptions,
 		responseId: UUID,
+		overrides?: {
+			prompt?: string;
+			precomposedState?: State;
+		},
 	): Promise<StrategyResult> {
-		state = await runtime.composeState(message, ["ACTIONS"], false, false);
+		state =
+			overrides?.precomposedState ??
+			(await runtime.composeState(message, ["ACTIONS"], false, false));
 
 		if (!state.values || !state.values.actionNames) {
 			runtime.logger.warn(
@@ -1591,6 +1861,7 @@ export class DefaultMessageService implements IMessageService {
 		// Resolve the template prompt once so it's available for both the primary
 		// call and any follow-up repair prompts (e.g. parameter repair).
 		const prompt =
+			overrides?.prompt ||
 			runtime.character.templates?.messageHandlerTemplate ||
 			messageHandlerTemplate;
 
@@ -1929,11 +2200,14 @@ Output ONLY the continuation, starting immediately after the last character abov
 			}
 		}
 
-		// LLM IGNORE/REPLY ambiguity handling
+		// LLM terminal-control ambiguity handling
 		if (responseContent.actions && responseContent.actions.length > 1) {
 			const isIgnore = (a: unknown) =>
 				typeof a === "string" && a.toUpperCase() === "IGNORE";
+			const isStop = (a: unknown) =>
+				typeof a === "string" && a.toUpperCase() === "STOP";
 			const hasIgnore = responseContent.actions.some(isIgnore);
+			const hasStop = responseContent.actions.some(isStop);
 
 			if (hasIgnore) {
 				if (!responseContent.text || responseContent.text.trim() === "") {
@@ -1943,10 +2217,16 @@ Output ONLY the continuation, starting immediately after the last character abov
 					responseContent.actions = filtered.length ? filtered : ["REPLY"];
 				}
 			}
+
+			if (hasStop) {
+				const filtered = responseContent.actions.filter((a) => !isStop(a));
+				responseContent.actions = filtered.length ? filtered : ["STOP"];
+			}
 		}
 
 		// Automatically determine if response is simple
 		const isSimple = isSimpleReplyResponse(responseContent);
+		const isStop = isStopResponse(responseContent);
 
 		responseContent.simple = isSimple;
 		// Include message ID for streaming coordination (so broadcast uses same ID)
@@ -1967,7 +2247,11 @@ Output ONLY the continuation, starting immediately after the last character abov
 			responseContent,
 			responseMessages,
 			state,
-			mode: isSimple && responseContent.text ? "simple" : "actions",
+			mode: isStop
+				? "none"
+				: isSimple && responseContent.text
+					? "simple"
+					: "actions",
 		};
 	}
 

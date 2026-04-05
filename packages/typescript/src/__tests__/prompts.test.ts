@@ -42,6 +42,8 @@ describe("Prompts", () => {
 			expect(messageHandlerTemplate).toContain(
 				"actions execute in listed order",
 			);
+			expect(messageHandlerTemplate).toContain("IGNORE or STOP");
+			expect(messageHandlerTemplate).toContain("STOP means the task is done");
 			expect(messageHandlerTemplate).toContain("fields[5]{name,meaning}:");
 			expect(messageHandlerTemplate).toContain("provider_hints");
 			expect(messageHandlerTemplate).toContain("formatting:");

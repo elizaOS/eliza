@@ -501,6 +501,262 @@ describe("DefaultMessageService", () => {
 				"messages",
 			);
 		});
+
+		it("should continue after an action and emit a follow-up reply", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Run git status first",
+					actions: "SHELL",
+					text: "",
+					simple: false,
+				})
+				.mockResolvedValueOnce({
+					thought: "Share the result and stop",
+					actions: "REPLY",
+					providers: "",
+					text: "The repo is clean, so there is nothing else to do.",
+					simple: true,
+				});
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+			vi.spyOn(runtime, "getActionResults").mockReturnValue([
+				{
+					success: true,
+					text: "On branch main\nnothing to commit, working tree clean",
+					data: { actionName: "SHELL" },
+				},
+			]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174025" as UUID,
+				content: {
+					text: "Run git status",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).toHaveBeenCalledTimes(1);
+			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(2);
+			expect(mockCallback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					text: "The repo is clean, so there is nothing else to do.",
+				}),
+			);
+			expect(result.responseContent?.text).toBe(
+				"The repo is clean, so there is nothing else to do.",
+			);
+		});
+
+		it("should treat STOP as terminal control and skip processActions", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				thought: "The task is complete",
+				actions: "STOP",
+				text: "",
+				simple: false,
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174028" as UUID,
+				content: {
+					text: "Check the repo and stop when done",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).not.toHaveBeenCalled();
+			expect(result.didRespond).toBe(false);
+			expect(result.mode).toBe("none");
+			expect(result.responseContent?.actions).toEqual(["STOP"]);
+		});
+
+		it("should allow continuation to issue another multi-action response", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Run git status first",
+					actions: "SHELL",
+					text: "",
+					simple: false,
+				})
+				.mockResolvedValueOnce({
+					thought: "Tell the user what happened, then inspect the diff",
+					actions: "REPLY,SHELL",
+					providers: "",
+					text: "The tree is clean so far. I am checking the diff next.",
+					simple: false,
+				})
+				.mockResolvedValueOnce({
+					thought: "Done after the second tool run",
+					actions: "REPLY",
+					providers: "",
+					text: "There is no diff either, so the task is complete.",
+					simple: true,
+				});
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+			vi.spyOn(runtime, "getActionResults")
+				.mockReturnValueOnce([
+					{
+						success: true,
+						text: "On branch main\nnothing to commit, working tree clean",
+						data: { actionName: "SHELL" },
+					},
+				])
+				.mockReturnValueOnce([
+					{
+						success: true,
+						text: "diff --git a/foo b/foo",
+						data: { actionName: "SHELL" },
+					},
+				]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174027" as UUID,
+				content: {
+					text: "Inspect the repo state",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).toHaveBeenCalledTimes(2);
+			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(3);
+			expect(result.responseContent?.text).toBe(
+				"There is no diff either, so the task is complete.",
+			);
+		});
+
+		it("should honor STOP from shouldRespond without generating a reply", async () => {
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				name: "TestAgent",
+				reasoning: "The user asked the agent to stop",
+				action: "STOP",
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174029" as UUID,
+				content: {
+					text: "please stop",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).not.toHaveBeenCalled();
+			expect(result.didRespond).toBe(false);
+			expect(result.responseContent).toBeNull();
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({
+						actions: ["STOP"],
+					}),
+				}),
+				"messages",
+			);
+		});
+
+		it("should allow post-action continuation to be disabled explicitly", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+				if (key === "CONTINUE_AFTER_ACTIONS") return "false";
+				const settings: Record<string, string> = {
+					ALWAYS_RESPOND_CHANNELS: "",
+					ALWAYS_RESPOND_SOURCES: "",
+					SHOULD_RESPOND_BYPASS_TYPES: "",
+					SHOULD_RESPOND_BYPASS_SOURCES: "",
+				};
+				return settings[key] ?? null;
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				thought: "Run git status first",
+				actions: "SHELL",
+				text: "",
+				simple: false,
+			});
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+			vi.spyOn(runtime, "getActionResults").mockReturnValue([
+				{
+					success: true,
+					text: "On branch main\nnothing to commit, working tree clean",
+					data: { actionName: "SHELL" },
+				},
+			]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026" as UUID,
+				content: {
+					text: "Run git status",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback);
+
+			expect(runtime.processActions).toHaveBeenCalledTimes(1);
+			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(1);
+		});
 	});
 
 	describe("integration scenarios", () => {
