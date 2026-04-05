@@ -39,6 +39,9 @@ export function sliceToFitBudget<T>(
       total += size;
       count++;
     }
+    // Return empty array if no items fit within budget (count is 0)
+    return items.slice(items.length - count);
+  }
     const take = count > 0 ? count : 0;
     return items.slice(items.length - take);
   }
@@ -49,5 +52,7 @@ export function sliceToFitBudget<T>(
     total += size;
   }
 
+  // Return empty array if no items fit within budget (count is 0)
+  return items.slice(0, count);
   return items.slice(0, count);
 }
