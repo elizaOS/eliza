@@ -342,11 +342,13 @@ function getFs(): typeof import("node:fs") | null {
 /**
  * Strip ANSI escape codes from a string for plain-text logging.
  */
+const ANSI_REGEX = new RegExp(
+  "\\x1B(?:\\[[\\x20-\\x3F]*[\\x40-\\x7E]|\\].*?(?:\\x07|\\x1B\\\\)|\\(B)",
+  "g",
+);
+
 function stripAnsi(str: string): string {
-  return str.replace(
-    /\x1B(?:\[[\x20-\x3F]*[\x40-\x7E]|\].*?(?:\x07|\x1B\\)|\(B)/g,
-    "",
-  );
+  return str.replace(ANSI_REGEX, "");
 }
 
 /**
@@ -357,15 +359,19 @@ function ensureFileLog(): boolean {
   if (_fileLogState === "active") return true;
   if (_fileLogState === "disabled") return false;
 
-  _fileLogState = "disabled";
   try {
     if (
       typeof process === "undefined" ||
       !process.env ||
       !process.versions
-    )
+    ) {
+      _fileLogState = "disabled";
       return false;
-    if (!process.versions.node && !process.versions.bun) return false;
+    }
+    if (!process.versions.node && !process.versions.bun) {
+      _fileLogState = "disabled";
+      return false;
+    }
 
     const logFileEnv = process.env.LOG_FILE;
     if (
@@ -374,6 +380,7 @@ function ensureFileLog(): boolean {
       logFileEnv.trim() === "0" ||
       logFileEnv.trim().toLowerCase() === "false"
     ) {
+      _fileLogState = "disabled";
       return false;
     }
 
@@ -431,6 +438,7 @@ function ensureFileLog(): boolean {
 
     return true;
   } catch {
+    _fileLogState = "disabled";
     return false;
   }
 }
@@ -529,6 +537,7 @@ export function logPrompt(
 
 /**
  * Log a response to prompts.log. Returns a slug for output.log.
+ * Pass metadata.promptSlug from the corresponding logPrompt call for correlation.
  */
 export function logResponse(
   modelType: string,
@@ -546,12 +555,12 @@ export function logResponse(
   if (!ensureFileLog()) return "";
   // Use the same slug that was passed from logPrompt for correlation.
   // Do NOT increment _promptLogCounter here - the prompt already did that.
-  // If no promptSlug provided, we still log but warn about correlation issues.
   const slug = metadata?.promptSlug;
   if (!slug) {
-    logger.warn({ src: "core:logger" }, "logResponse missing promptSlug - responses can't be correlated with prompts");
+    // Note: Without promptSlug, responses cannot be correlated with their prompts in concurrent scenarios.
+    // Callers should pass metadata.promptSlug from logPrompt's return value.
   }
-  const effectiveSlug = slug || `#${String(++_promptLogCounter).padStart(4, "0")}`;
+  const effectiveSlug = slug || `#UNCORRELATED-${Date.now()}`;
   writeToPromptLog(effectiveSlug, "RESPONSE", modelType, response, metadata);
   return effectiveSlug;
 }
