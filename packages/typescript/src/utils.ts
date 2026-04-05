@@ -14,6 +14,7 @@ import type {
 } from "./types";
 import { ContentType, ModelType, type UUID } from "./types";
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
+import { normalizeStructuredRecord, tryParseToonValue } from "./utils/toon";
 
 // Token / embedding budget constants
 export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
@@ -525,14 +526,15 @@ export const formatTimestamp = (messageDate: number) => {
 };
 
 /**
- * Parses key-value pairs from a simple XML structure within a given text.
- * It looks for an XML block (e.g., <response>...</response>) and extracts
- * text content from direct child elements (e.g., <key>value</key>).
+ * Parses structured LLM output from TOON first, then falls back to the legacy
+ * XML response format.
  *
- * Uses regex - suitable for simple XML. For complex XML, use a proper parser.
+ * TOON is the preferred format in elizaOS because it is materially more token
+ * efficient than XML while preserving JSON-compatible structure. XML fallback
+ * remains here for backwards compatibility with older prompts and models.
  *
  * @typeParam T - The expected shape of the parsed result. Defaults to Record<string, unknown>.
- * @param text - The input text containing the XML structure.
+ * @param text - The input text containing the TOON or XML structure.
  * @returns The parsed object cast to type T, or null if parsing fails.
  *
  * @example
@@ -544,6 +546,11 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	text: string,
 ): T | null {
 	if (!text) return null;
+
+	const parsedToon = normalizeStructuredRecord(tryParseToonValue(text));
+	if (parsedToon) {
+		return parsedToon as T;
+	}
 
 	// First, try to find a specific <response> block using linear search (avoids regex ReDoS)
 	let xmlContent: string | null = null;

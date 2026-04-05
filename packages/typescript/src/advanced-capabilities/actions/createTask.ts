@@ -83,8 +83,9 @@ function describeSchedule(t: TriggerConfig): string {
 }
 
 const EXTRACTION_PROMPT_PREFIX = [
-	"Extract trigger config from the request. Output XML only.",
+	"Extract trigger config from the request. Output TOON only.",
 	"Keys: triggerType(interval|once|cron), displayName, instructions, wakeMode(inject_now|next_autonomy_cycle), intervalMs, scheduledAtIso, cronExpression, maxRuns",
+	"Return only top-level TOON fields for keys that are known.",
 	"Default to interval if no schedule is explicit.",
 	"",
 ].join("\n");

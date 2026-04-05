@@ -27,7 +27,10 @@ import type {
 	MessageProcessingResult,
 	ResponseDecision,
 } from "../types/message-service";
-import type { TextToSpeechParams } from "../types/model";
+import type {
+	GenerateTextAttachment,
+	TextToSpeechParams,
+} from "../types/model";
 import { ModelType } from "../types/model";
 import type { Content, Media, MentionContext, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
@@ -118,6 +121,66 @@ function escapeHandlebars(text: string): string {
 interface ImageDescriptionResponse {
 	description: string;
 	title?: string;
+}
+
+type MediaWithInlineData = Media & {
+	_data?: unknown;
+	_mimeType?: unknown;
+};
+
+function sanitizeAttachmentsForStorage(
+	attachments: Media[] | undefined,
+): Media[] | undefined {
+	if (!attachments?.length) {
+		return attachments;
+	}
+
+	return attachments.map((attachment) => {
+		const { _data: _discardData, _mimeType: _discardMimeType, ...rest } =
+			attachment as MediaWithInlineData;
+		return rest;
+	});
+}
+
+function resolvePromptAttachments(
+	attachments: Media[] | undefined,
+): GenerateTextAttachment[] | undefined {
+	if (!attachments?.length) {
+		return undefined;
+	}
+
+	const resolved = attachments.flatMap((attachment) => {
+		const withInlineData = attachment as MediaWithInlineData;
+		if (
+			typeof withInlineData._data === "string" &&
+			withInlineData._data.trim() &&
+			typeof withInlineData._mimeType === "string" &&
+			withInlineData._mimeType.trim()
+		) {
+			return [
+				{
+					data: withInlineData._data,
+					mediaType: withInlineData._mimeType,
+					filename: attachment.title,
+				},
+			];
+		}
+
+		const dataUrlMatch = attachment.url.match(/^data:([^;,]+);base64,(.+)$/i);
+		if (dataUrlMatch) {
+			return [
+				{
+					data: dataUrlMatch[2],
+					mediaType: dataUrlMatch[1],
+					filename: attachment.title,
+				},
+			];
+		}
+
+		return [];
+	});
+
+	return resolved.length > 0 ? resolved : undefined;
 }
 
 import type { ShouldRespondModelType } from "../types/message-service";
@@ -765,10 +828,17 @@ export class DefaultMessageService implements IMessageService {
 			if (message.id) {
 				await runtime.updateMemory({
 					id: message.id,
-					content: message.content,
+					content: {
+						...message.content,
+						attachments: sanitizeAttachmentsForStorage(
+							message.content.attachments,
+						),
+					},
 				});
 			}
 		}
+
+		const promptAttachments = resolvePromptAttachments(message.content.attachments);
 
 		let shouldRespondToMessage = true;
 		let terminalDecision: "IGNORE" | "STOP" | null = null;
@@ -854,6 +924,7 @@ export class DefaultMessageService implements IMessageService {
 						prompt:
 							runtime.character.templates?.shouldRespondTemplate ||
 							shouldRespondTemplate,
+						...(promptAttachments ? { attachments: promptAttachments } : {}),
 					},
 					schema: [
 						// Decision schema - no streaming, no per-field validation needed
@@ -880,7 +951,7 @@ export class DefaultMessageService implements IMessageService {
 					options: {
 						contextCheckLevel: 0, // Set to 0 for now
 						modelSize: opts.shouldRespondModel === "large" ? "large" : "small",
-						preferredEncapsulation: "xml",
+						preferredEncapsulation: "toon",
 					},
 				});
 
@@ -918,6 +989,7 @@ export class DefaultMessageService implements IMessageService {
 						callback,
 						opts,
 						responseId,
+						promptAttachments,
 					)
 				: await this.runSingleShotCore(
 						runtime,
@@ -925,6 +997,7 @@ export class DefaultMessageService implements IMessageService {
 						state,
 						opts,
 						responseId,
+						promptAttachments,
 					);
 
 			responseContent = result.responseContent;
@@ -1423,8 +1496,16 @@ export class DefaultMessageService implements IMessageService {
 
 					let imageUrl = url;
 					const runtimeFetch = runtime.fetch ?? globalThis.fetch;
+					const inlineData = attachment as MediaWithInlineData;
 
-					if (!isRemote) {
+					if (
+						typeof inlineData._data === "string" &&
+						inlineData._data.trim() &&
+						typeof inlineData._mimeType === "string" &&
+						inlineData._mimeType.trim()
+					) {
+						imageUrl = `data:${inlineData._mimeType};base64,${inlineData._data}`;
+					} else if (!isRemote) {
 						// Convert local/internal media to base64
 						const res = await runtimeFetch(url);
 						if (!res.ok)
@@ -1707,6 +1788,7 @@ export class DefaultMessageService implements IMessageService {
 				accumulatedState,
 				opts,
 				asUUID(v4()),
+				resolvePromptAttachments(message.content.attachments),
 				{
 					prompt:
 						runtime.character.templates?.postActionDecisionTemplate ||
@@ -1827,6 +1909,7 @@ export class DefaultMessageService implements IMessageService {
 		state: State,
 		opts: ResolvedMessageOptions,
 		responseId: UUID,
+		promptAttachments?: GenerateTextAttachment[],
 		overrides?: {
 			prompt?: string;
 			precomposedState?: State;
@@ -1870,6 +1953,7 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			params: {
 				prompt,
+				...(promptAttachments ? { attachments: promptAttachments } : {}),
 			},
 			schema: [
 				// WHY validateField: false on non-streamed fields?
@@ -1907,7 +1991,7 @@ export class DefaultMessageService implements IMessageService {
 			],
 			options: {
 				modelSize: "large",
-				preferredEncapsulation: "xml",
+				preferredEncapsulation: opts.onStreamChunk ? "xml" : "toon",
 				requiredFields: ["thought", "actions"],
 				maxRetries: opts.maxRetries,
 				// Stream through the filtered context callback for real-time output
@@ -2063,7 +2147,10 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 				const continuationParsed = await runtime.dynamicPromptExecFromState({
 					state,
-					params: { prompt: continuationPrompt },
+					params: {
+						prompt: continuationPrompt,
+						...(promptAttachments ? { attachments: promptAttachments } : {}),
+					},
 					schema: [
 						{
 							field: "text",
@@ -2074,7 +2161,9 @@ Output ONLY the continuation, starting immediately after the last character abov
 					],
 					options: {
 						modelSize: "large",
-						preferredEncapsulation: "xml",
+						preferredEncapsulation: streamingCtx?.onStreamChunk
+							? "xml"
+							: "toon",
 						contextCheckLevel: 0, // Fast mode for continuations - we trust the model
 						onStreamChunk: streamingCtx?.onStreamChunk,
 					},
@@ -2130,9 +2219,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 			}
 		}
 
-		const existingParamsXml =
-			typeof responseContent.params === "string" ? responseContent.params : "";
-		const existingParams = parseActionParams(existingParamsXml);
+		const existingParams = parseActionParams(responseContent.params);
 
 		const missingRequiredParams = (): boolean => {
 			for (const [actionName, required] of requiredByAction) {
@@ -2153,34 +2240,28 @@ Output ONLY the continuation, starting immediately after the last character abov
 				prompt,
 				"",
 				"# Parameter Repair",
-				"You selected actions that require parameters but did not include a complete <params> block.",
-				"Return ONLY a <params>...</params> XML block that satisfies ALL required parameters.",
+				"You selected actions that require parameters but did not include a complete params object.",
+				"Return ONLY a TOON document with a top-level params field keyed by action name.",
+				'Example:',
+				'params:',
+				'  SEND_MESSAGE:',
+				'    target: room-or-channel-id',
+				'    text: message body',
 				"",
 				"Required parameters by action:",
 				requirementLines,
 				"",
-				"Do not include <response>, <thought>, <actions>, <providers>, <text>, or any other content.",
+				"Do not include thought, actions, providers, text, or any other fields.",
 			].join("\n");
 
 			const repairResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
 				prompt: repairPrompt,
-			});
-			const start = repairResponse.indexOf("<params>");
-			if (start !== -1) {
-				const end = repairResponse.indexOf(
-					"</params>",
-					start + "<params>".length,
-				);
-				if (end !== -1) {
-					const inner = repairResponse
-						.slice(start + "<params>".length, end)
-						.trim();
-					if (inner) {
-						responseContent.params = inner;
-					}
+				});
+				const repairParsed = parseKeyValueXml<Record<string, unknown>>(repairResponse);
+				if (repairParsed?.params) {
+					responseContent.params = repairParsed.params as Content["params"];
 				}
 			}
-		}
 
 		// Benchmark mode (Python parity): force action-based loop when benchmark context is present.
 		const benchmarkMode = state.values.benchmark_has_context === true;
@@ -2265,6 +2346,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 		callback: HandlerCallback | undefined,
 		opts: ResolvedMessageOptions,
 		responseId: UUID,
+		promptAttachments?: GenerateTextAttachment[],
 	): Promise<StrategyResult> {
 		const traceActionResult: MultiStepActionResult[] = [];
 		let accumulatedState: MultiStepState = state as MultiStepState;
@@ -2296,6 +2378,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 					prompt:
 						runtime.character.templates?.multiStepDecisionTemplate ||
 						multiStepDecisionTemplate,
+					...(promptAttachments ? { attachments: promptAttachments } : {}),
 				},
 				schema: [
 					// Multi-step decision loop - internal reasoning, no streaming needed
@@ -2326,7 +2409,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 					{
 						field: "params",
 						description:
-							"Optional XML parameters for the selected action. Use nested XML tags only when the action needs input.",
+							"Optional TOON parameters for the selected action. Use a `params` object keyed by action name when the action needs input.",
 						validateField: false,
 						streamField: false,
 					},
@@ -2340,7 +2423,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				],
 				options: {
 					modelSize: "large",
-					preferredEncapsulation: "xml",
+					preferredEncapsulation: "toon",
 				},
 			});
 
@@ -2655,6 +2738,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				prompt:
 					runtime.character.templates?.multiStepSummaryTemplate ||
 					multiStepSummaryTemplate,
+				...(promptAttachments ? { attachments: promptAttachments } : {}),
 			},
 			schema: [
 				{
@@ -2673,7 +2757,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 			],
 			options: {
 				modelSize: "large",
-				preferredEncapsulation: "xml",
+				preferredEncapsulation: opts.onStreamChunk ? "xml" : "toon",
 				requiredFields: ["text"],
 				// Stream the final summary to the user
 				onStreamChunk: opts.onStreamChunk,

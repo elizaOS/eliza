@@ -46,38 +46,28 @@ interface TargetExtractionResult {
  * 3. Any identifying information about the target
  * 4. The message text to send
  *
- * Return an XML response with:
- * <response>
- *   <targetType>user|room</targetType>
- *   <source>platform-name</source>
- *   <messageText>text_to_send</messageText>
- *   <identifiers>
- *     <username>username_if_applicable</username>
- *     <roomName>room_name_if_applicable</roomName>
- *     <!-- Add other relevant identifiers as needed -->
- *   </identifiers>
- * </response>
+ * Return a TOON document with:
+ * targetType: user|room
+ * source: platform-name
+ * messageText: text_to_send
+ * identifiers:
+ *   username: username_if_applicable
+ *   roomName: room_name_if_applicable
  *
  * Example outputs:
  * For "send a message to @dev_guru on telegram":
- * <response>
- *   <targetType>user</targetType>
- *   <source>telegram</source>
- *   <messageText>Hello!</messageText>
- *   <identifiers>
- *     <username>dev_guru</username>
- *   </identifiers>
- * </response>
+ * targetType: user
+ * source: telegram
+ * messageText: Hello!
+ * identifiers:
+ *   username: dev_guru
  *
  * For "post this in #announcements":
- * <response>
- *   <targetType>room</targetType>
- *   <source>discord</source>
- *   <messageText>Important announcement!</messageText>
- *   <identifiers>
- *     <roomName>announcements</roomName>
- *   </identifiers>
- * </response>
+ * targetType: room
+ * source: discord
+ * messageText: Important announcement!
+ * identifiers:
+ *   roomName: announcements
  */
 const targetExtractionTemplate = `# Task: Extract Target and Source Information
 
@@ -91,40 +81,30 @@ Analyze the conversation to identify:
 3. Any identifying information about the target
 4. The message text to send
 
-
-Return an XML response with:
-<response>
-  <targetType>user|room</targetType>
-  <source>platform-name</source>
-  <messageText>text_to_send</messageText>
-  <identifiers>
-    <username>username_if_applicable</username>
-    <roomName>room_name_if_applicable</roomName>
-  </identifiers>
-</response>
+Return a TOON document with:
+targetType: user|room
+source: platform-name
+messageText: text_to_send
+identifiers:
+  username: username_if_applicable
+  roomName: room_name_if_applicable
 
 Example outputs:
 1. For "send a message to @dev_guru on telegram":
-<response>
-  <targetType>user</targetType>
-  <source>telegram</source>
-  <messageText>Hello!</messageText>
-  <identifiers>
-    <username>dev_guru</username>
-  </identifiers>
-</response>
+targetType: user
+source: telegram
+messageText: Hello!
+identifiers:
+  username: dev_guru
 
 2. For "post this in #announcements":
-<response>
-  <targetType>room</targetType>
-  <source>discord</source>
-  <messageText>Important announcement!</messageText>
-  <identifiers>
-    <roomName>announcements</roomName>
-  </identifiers>
-</response>
+targetType: room
+source: discord
+messageText: Important announcement!
+identifiers:
+  roomName: announcements
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
 /**
  * Represents an action to send a message to a user or room.
  *

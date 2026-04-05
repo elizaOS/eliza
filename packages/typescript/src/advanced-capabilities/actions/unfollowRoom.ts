@@ -11,7 +11,11 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import { composePromptFromState, parseBooleanFromText } from "../../utils.ts";
+import {
+	composePromptFromState,
+	parseBooleanFromText,
+	parseKeyValueXml,
+} from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UNFOLLOW_ROOM");
@@ -47,7 +51,10 @@ export const unfollowRoomAction: Action = {
 				prompt: shouldUnfollowPrompt,
 			});
 
-			const parsedResponse = parseBooleanFromText(response.trim());
+			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(response);
+			const parsedResponse = parseBooleanFromText(
+				parsed?.decision ?? response.trim(),
+			);
 
 			return parsedResponse as boolean;
 		}

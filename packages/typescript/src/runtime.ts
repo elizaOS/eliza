@@ -30,6 +30,7 @@ import {
 	runWithStreamingContext,
 } from "./streaming-context";
 import { getTrajectoryContext } from "./trajectory-context";
+import { encodeToonValue } from "./utils/toon";
 import {
 	type Action,
 	type ActionContext,
@@ -1527,11 +1528,7 @@ export class AgentRuntime implements IAgentRuntime {
 				continue;
 			}
 			const actions = response.content.actions;
-			const paramsXml =
-				response.content && typeof response.content.params === "string"
-					? response.content.params
-					: undefined;
-			const actionParamsByName = parseActionParams(paramsXml);
+			const actionParamsByName = parseActionParams(response.content?.params);
 
 			const actionResults: ActionResult[] = [];
 			let accumulatedState = state;
@@ -3739,8 +3736,8 @@ export class AgentRuntime implements IAgentRuntime {
 			key?: string;
 			modelSize?: "small" | "large";
 			model?: string;
-			preferredEncapsulation?: "json" | "xml";
-			forceFormat?: "json" | "xml";
+			preferredEncapsulation?: "json" | "xml" | "toon";
+			forceFormat?: "json" | "xml" | "toon";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
 			checkpointCodes?: boolean;
@@ -3871,6 +3868,7 @@ export class AgentRuntime implements IAgentRuntime {
 			// unaffected because they never reach this code path.
 			const output = rawOutput
 				.replace(/<output>[\s\S]*?<\/output>\s*/g, "")
+				.replace(/\noutput:\n[\s\S]*$/i, "")
 				.replace(/\r\n/g, "\n")
 				.replace(/[ \t]+\n/g, "\n")
 				.replace(/\n{3,}/g, "\n\n")
@@ -3878,7 +3876,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 			// Process format options
 			const hasNestedSchema = this.schemaHasNestedStructure(schema);
-			let format: "XML" | "JSON" = "XML";
+			let format: "XML" | "JSON" | "TOON" = "TOON";
 			if (options.forceFormat) {
 				if (options.forceFormat === "xml" && hasNestedSchema) {
 					this.logger.warn(
@@ -3886,10 +3884,15 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					format = "JSON";
 				} else {
-					format = options.forceFormat.toUpperCase() as "XML" | "JSON";
+					format = options.forceFormat.toUpperCase() as
+						| "XML"
+						| "JSON"
+						| "TOON";
 				}
 			} else if (options.preferredEncapsulation === "json" || hasNestedSchema) {
 				format = "JSON";
+			} else if (options.preferredEncapsulation === "xml") {
+				format = "XML";
 			}
 
 			/**
@@ -3989,12 +3992,15 @@ export class AgentRuntime implements IAgentRuntime {
 
 			// Generate prompt with format example
 			const isXML = format === "XML";
-			const CONTAINER_START = isXML ? "<response>" : "{";
-			const CONTAINER_END = isXML ? "</response>" : "}";
+			const isJSON = format === "JSON";
+			const CONTAINER_START = isXML ? "<response>" : isJSON ? "{" : "TOON root";
+			const CONTAINER_END = isXML ? "</response>" : isJSON ? "}" : "[end]";
 
 			const EXAMPLE = isXML
 				? this.renderXmlSchemaExample(schema)
-				: this.renderJsonSchemaExample(schema);
+				: isJSON
+					? this.renderJsonSchemaExample(schema)
+					: this.renderToonSchemaExample(schema);
 			const VALIDATION_INSTRUCTIONS = this.buildValidationOutputInstructions({
 				format,
 				schema,
@@ -4041,7 +4047,9 @@ export class AgentRuntime implements IAgentRuntime {
 Use this shape:
 ${EXAMPLE}
 
-Return exactly one ${isXML ? `${CONTAINER_START}...${CONTAINER_END}` : "JSON object"}.
+Return exactly one ${
+	isXML ? `${CONTAINER_START}...${CONTAINER_END}` : isJSON ? "JSON object" : "TOON document"
+}.
 ${section_end}`;
 			const endBlock = checkpointCodesEnabled
 				? `\nend code: ${finalCode}\n`
@@ -4200,7 +4208,9 @@ ${section_end}`;
 			try {
 				responseContent = isXML
 					? parseKeyValueXml(cleanResponse)
-					: parseJSONObjectFromText(cleanResponse);
+					: isJSON
+						? parseJSONObjectFromText(cleanResponse)
+						: parseKeyValueXml(cleanResponse);
 				this.logger.debug(
 					`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
 				);
@@ -4412,7 +4422,15 @@ ${section_end}`;
 						for (const [field, content] of validatedContent) {
 							const truncated =
 								content.length > 500 ? `${content.slice(0, 500)}...` : content;
-							validatedParts.push(`<${field}>${truncated}</${field}>`);
+							if (format === "TOON") {
+								validatedParts.push(
+									encodeToonValue({
+										[field]: truncated,
+									}),
+								);
+							} else {
+								validatedParts.push(`<${field}>${truncated}</${field}>`);
+							}
 						}
 						if (validatedParts.length > 0) {
 							smartRetryContextNext = `\n\n[RETRY CONTEXT]\nYou previously produced these valid fields:\n${validatedParts.join("\n")}\n\nPlease complete: ${diagnosis.missingFields.concat(diagnosis.invalidFields, diagnosis.incompleteFields).join(", ") || "all fields"}`;
@@ -4499,6 +4517,13 @@ ${section_end}`;
 			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
 		);
 		return `${JSON.stringify(exampleObject, null, 2)}\n`;
+	}
+
+	private renderToonSchemaExample(rows: SchemaRow[]): string {
+		const exampleObject = Object.fromEntries(
+			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
+		);
+		return `${encodeToonValue(exampleObject)}\n`;
 	}
 
 	private buildJsonExampleValue(spec: SchemaValueSpec): unknown {
@@ -4677,20 +4702,23 @@ ${section_end}`;
 		includeFirstCheckpoint,
 		includeLastCheckpoint,
 	}: {
-		format: "XML" | "JSON";
+		format: "XML" | "JSON" | "TOON";
 		schema: SchemaRow[];
 		perFieldCodes: Map<string, string>;
 		includeFirstCheckpoint: boolean;
 		includeLastCheckpoint: boolean;
 	}): string {
 		const isXML = format === "XML";
+		const isJsonLike = format === "JSON" || format === "TOON";
 		const lines: string[] = [];
 
 		if (includeFirstCheckpoint) {
 			lines.push(
 				isXML
 					? "Echo the prompt checkpoint tags: <one_initial_code>, <one_middle_code>, <one_end_code>."
-					: 'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".',
+					: isJsonLike
+						? 'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".'
+						: "",
 			);
 		}
 
@@ -4703,7 +4731,9 @@ ${section_end}`;
 			lines.push(
 				isXML
 					? `Wrap <${row.field}> with <code_${row.field}_start>${fieldCode}</code_${row.field}_start> and <code_${row.field}_end>${fieldCode}</code_${row.field}_end>.`
-					: `For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`,
+					: isJsonLike
+						? `For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`
+						: "",
 			);
 		}
 
@@ -4711,7 +4741,9 @@ ${section_end}`;
 			lines.push(
 				isXML
 					? "Echo the final checkpoint tags: <two_initial_code>, <two_middle_code>, <two_end_code>."
-					: 'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".',
+					: isJsonLike
+						? 'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".'
+						: "",
 			);
 		}
 

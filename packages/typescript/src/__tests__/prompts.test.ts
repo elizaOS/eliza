@@ -12,12 +12,11 @@ describe("Prompts", () => {
 		it("shouldRespondTemplate should contain required placeholders and response structure", () => {
 			expect(shouldRespondTemplate).toContain("{{agentName}}");
 			expect(shouldRespondTemplate).toContain("{{providers}}");
-			expect(shouldRespondTemplate).toContain("<response>");
-			expect(shouldRespondTemplate).toContain("</response>");
-			expect(shouldRespondTemplate).toContain("<name>");
-			expect(shouldRespondTemplate).toContain("<reasoning>");
-			expect(shouldRespondTemplate).toContain("<action>");
-			expect(shouldRespondTemplate).toMatch(/RESPOND \| IGNORE \| STOP/);
+			expect(shouldRespondTemplate).toContain("output:");
+			expect(shouldRespondTemplate).toContain("name: {{agentName}}");
+			expect(shouldRespondTemplate).toContain("reasoning:");
+			expect(shouldRespondTemplate).toContain("action: RESPOND");
+			expect(shouldRespondTemplate).toContain("request to stop or be quiet -> STOP");
 
 			expect(shouldRespondTemplate).toContain("rules[6]:");
 			expect(shouldRespondTemplate).toContain(
@@ -30,13 +29,11 @@ describe("Prompts", () => {
 		it("messageHandlerTemplate should contain required placeholders and structure", () => {
 			expect(messageHandlerTemplate).toContain("{{agentName}}");
 			expect(messageHandlerTemplate).toContain("{{providers}}");
-			expect(messageHandlerTemplate).toContain("<response>");
-			expect(messageHandlerTemplate).toContain("</response>");
-			expect(messageHandlerTemplate).toContain("<thought>");
-			expect(messageHandlerTemplate).toContain("<actions>");
-			expect(messageHandlerTemplate).toContain("<providers>");
-			expect(messageHandlerTemplate).toContain("<text>");
-			expect(messageHandlerTemplate).toContain("<simple>");
+			expect(messageHandlerTemplate).toContain("thought:");
+			expect(messageHandlerTemplate).toContain("actions[1]:");
+			expect(messageHandlerTemplate).toContain("providers[0]:");
+			expect(messageHandlerTemplate).toContain("text:");
+			expect(messageHandlerTemplate).toContain("simple: true");
 
 			expect(messageHandlerTemplate).toContain("rules[8]:");
 			expect(messageHandlerTemplate).toContain(
@@ -57,11 +54,9 @@ describe("Prompts", () => {
 			expect(postCreationTemplate).toContain("{{providers}}");
 			expect(postCreationTemplate).toContain("{{adjective}}");
 			expect(postCreationTemplate).toContain("{{topic}}");
-			expect(postCreationTemplate).toContain("<response>");
-			expect(postCreationTemplate).toContain("</response>");
-			expect(postCreationTemplate).toContain("<thought>");
-			expect(postCreationTemplate).toContain("<post>");
-			expect(postCreationTemplate).toContain("<imagePrompt>");
+			expect(postCreationTemplate).toContain("thought:");
+			expect(postCreationTemplate).toContain("post:");
+			expect(postCreationTemplate).toContain("imagePrompt:");
 
 			// Check for example outputs
 			expect(postCreationTemplate).toMatch(/Example task outputs:/);
@@ -73,15 +68,13 @@ describe("Prompts", () => {
 			expect(booleanFooter).toMatch(/^Respond with only a YES or a NO\.$/);
 		});
 
-		it("imageDescriptionTemplate should contain proper XML structure", () => {
-			expect(imageDescriptionTemplate).toContain("<task>");
-			expect(imageDescriptionTemplate).toContain("<instructions>");
-			expect(imageDescriptionTemplate).toContain("<output>");
-			expect(imageDescriptionTemplate).toContain("<response>");
-			expect(imageDescriptionTemplate).toContain("</response>");
-			expect(imageDescriptionTemplate).toContain("<title>");
-			expect(imageDescriptionTemplate).toContain("<description>");
-			expect(imageDescriptionTemplate).toContain("<text>");
+		it("imageDescriptionTemplate should contain proper TOON structure", () => {
+			expect(imageDescriptionTemplate).toContain("Task:");
+			expect(imageDescriptionTemplate).toContain("Instructions:");
+			expect(imageDescriptionTemplate).toContain("Output:");
+			expect(imageDescriptionTemplate).toContain("title:");
+			expect(imageDescriptionTemplate).toContain("description:");
+			expect(imageDescriptionTemplate).toContain("text:");
 
 			// Check for important instructions
 			expect(imageDescriptionTemplate).toContain("Analyze the provided image");
@@ -101,58 +94,17 @@ describe("Prompts", () => {
 
 		it("all templates should have concise output-only instructions", () => {
 			templates.forEach((template) => {
-				expect(template).toMatch(/No <think>|Do NOT include any thinking/);
-				expect(
-					template.includes("Return exactly one <response>") ||
-						template.includes(
-							"IMPORTANT: Your response must ONLY contain the <response></response> XML block",
-						),
-				).toBe(true);
+				expect(template).toMatch(
+					/No <think>|Do NOT include any thinking|Do not include any text, thinking, or reasoning before or after it/,
+				);
+				expect(template.includes("TOON")).toBe(true);
 			});
 		});
 
-		it("all templates should use proper XML closing tags", () => {
+		it("all templates should avoid legacy XML response wrappers", () => {
 			templates.forEach((template) => {
-				// Extract only the XML response format sections (not instructions mentioning tags)
-				const responseBlocks =
-					template.match(/<response>[\s\S]*?<\/response>/g) || [];
-
-				responseBlocks.forEach((block) => {
-					// Get all open tags within response blocks
-					const openTags = (block.match(/<[^/][^>]+>/g) || [])
-						.filter((tag) => !tag.includes("/>"))
-						.filter((tag) => !tag.includes("think")); // Exclude mentioned-but-not-present tags
-
-					const closeTags = block.match(/<\/[^>]+>/g) || [];
-
-					// For each unique open tag, there should be a corresponding close tag
-					openTags.forEach((openTag) => {
-						const tagName = openTag.match(/<([^\s>]+)/)?.[1];
-						if (
-							tagName &&
-							!["br", "hr", "img", "input", "meta", "link"].includes(tagName)
-						) {
-							expect(
-								closeTags.some((closeTag) => closeTag.includes(tagName)),
-							).toBe(true);
-						}
-					});
-				});
-
-				// Also check the main structural tags outside response blocks
-				const mainTags = [
-					"task",
-					"providers",
-					"instructions",
-					"output",
-					"keys",
-					"actionNames",
-				];
-				mainTags.forEach((tag) => {
-					if (template.includes(`<${tag}>`)) {
-						expect(template).toContain(`</${tag}>`);
-					}
-				});
+				expect(template).not.toContain("<response>");
+				expect(template).not.toContain("</response>");
 			});
 		});
 	});
