@@ -44,6 +44,10 @@ async function resolveProviderPlugin(
 			const mod = await import("@elizaos/plugin-anthropic");
 			return mod.anthropicPlugin ?? mod.default ?? null;
 		}
+		case "groq": {
+			const mod = await import("@elizaos/plugin-groq");
+			return mod.groqPlugin ?? mod.default ?? null;
+		}
 		case "google": {
 			try {
 				const mod = await import("@elizaos/plugin-google-genai");
@@ -65,6 +69,52 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 		req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
 		req.on("error", reject);
 	});
+}
+
+async function verifyInferenceProvider(runtime: AgentRuntime): Promise<void> {
+	await runtime.generateText("Reply with OK.", {
+		modelType: "TEXT_LARGE" as "TEXT_LARGE",
+		maxTokens: 8,
+	});
+}
+
+function applyProviderSettings(
+	runtime: AgentRuntime,
+	providerName: string,
+): void {
+	switch (providerName) {
+		case "openai":
+			runtime.setSetting("OPENAI_API_KEY", process.env.OPENAI_API_KEY ?? "", true);
+			break;
+		case "anthropic":
+			runtime.setSetting(
+				"ANTHROPIC_API_KEY",
+				process.env.ANTHROPIC_API_KEY ?? "",
+				true,
+			);
+			break;
+		case "google":
+			runtime.setSetting(
+				"GOOGLE_GENERATIVE_AI_API_KEY",
+				process.env.GOOGLE_API_KEY ??
+					process.env.GOOGLE_AI_API_KEY ??
+					process.env.GOOGLE_GENERATIVE_AI_API_KEY ??
+					"",
+				true,
+			);
+			break;
+		case "groq":
+			runtime.setSetting("GROQ_API_KEY", process.env.GROQ_API_KEY ?? "", true);
+			runtime.setSetting(
+				"GROQ_SMALL_MODEL",
+				process.env.GROQ_SMALL_MODEL ?? "llama-3.1-8b-instant",
+			);
+			runtime.setSetting(
+				"GROQ_LARGE_MODEL",
+				process.env.GROQ_LARGE_MODEL ?? "llama-3.3-70b-versatile",
+			);
+			break;
+	}
 }
 
 export default async function globalSetup(): Promise<void> {
@@ -108,6 +158,8 @@ export default async function globalSetup(): Promise<void> {
 		logLevel: "warn",
 	});
 
+	applyProviderSettings(runtime, provider.name);
+
 	// For Ollama without a plugin package, register model handlers directly.
 	if (provider.name === "ollama" && !providerPlugin) {
 		const handlers = createOllamaModelHandlers();
@@ -127,6 +179,18 @@ export default async function globalSetup(): Promise<void> {
 
 	await runtime.initialize();
 	console.log("[e2e] Runtime initialized");
+
+	try {
+		await verifyInferenceProvider(runtime);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(
+			`\n[e2e] Provider preflight failed. Skipping E2E tests.\n${message}\n`,
+		);
+		process.env.__E2E_SKIP__ = "1";
+		await runtime.stop();
+		return;
+	}
 
 	// ── 4. Prepare a default room & entity for chat ────────────────────────
 	const worldId = uuidv4() as UUID;
