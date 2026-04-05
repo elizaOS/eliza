@@ -120,12 +120,16 @@ function preferOpenAiPlugin(): boolean {
 	);
 }
 
-/** Ensure string plugin names for SQL + inference (createRuntimes only collects string entries from character.plugins). */
+/** Ensure string plugin names for SQL + inference are present; preserves existing non-string Plugin objects. */
 function mergeHarnessSqlPlugins(character: Character): Character {
-	const existing = (character.plugins ?? []).filter(
+	const existingPlugins = character.plugins ?? [];
+	const stringPlugins = existingPlugins.filter(
 		(p: unknown): p is string => typeof p === "string",
 	);
-	const list = [...existing];
+	const nonStringPlugins = existingPlugins.filter(
+		(p: unknown) => typeof p !== "string",
+	);
+	const list = [...stringPlugins];
 	if (!list.some((s) => s.includes("plugin-sql"))) {
 		list.unshift("@elizaos/plugin-sql");
 	}
@@ -142,7 +146,7 @@ function mergeHarnessSqlPlugins(character: Character): Character {
 				: "@elizaos/plugin-ollama",
 		);
 	}
-	return { ...character, plugins: list };
+	return { ...character, plugins: [...nonStringPlugins, ...list] };
 }
 
 function resolveLogLevel(cli?: HarnessLogLevel): HarnessLogLevel {
