@@ -149,14 +149,13 @@ export const recentMessagesProvider: Provider = {
       }
 
       // Note: getMemories() returns newest-first, so Map entries are newest-first.
-      // Default fromEnd:false keeps items from the start (newest runs).
+      // Use fromEnd:true to select most recent runs (matching original .slice(-3) behavior).
       const recentRuns = sliceToFitBudget(
         Array.from(groupedByRun.entries()),
         ([runId, memories]) => {
           const textChars = memories.reduce((sum, memory) => {
             const content = memory.content;
             return (
-              // Note: older runs were intentionally selected for a specific context in analysis.
               sum +
               String(content?.actionName || "").length +
               String(content?.actionStatus || "").length +
@@ -168,7 +167,7 @@ export const recentMessagesProvider: Provider = {
           return textChars + runId.length + 80;
         },
         RECENT_ACTION_RUNS_TARGET_CHARS,
-      // Note: keeping oldest runs allows tracking of memory evolution over time for analysis
+        { fromEnd: true },
       );
 
       const formattedActionResults = recentRuns
