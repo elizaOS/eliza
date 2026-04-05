@@ -5,6 +5,10 @@
  * `@elizaos/plugin-sql` registers the DB in `init` only (no `adapter` factory), so we build the adapter with
  * `createDatabaseAdapter` and pass `createRuntimes(characters, { adapter })` — equivalent to what the plugin does at runtime.
  *
+ * Limitation: In multi-character setups, a single database adapter is created from the primary character's
+ * settings (PGLITE_DATA_DIR / POSTGRES_URL). All characters share this adapter; per-character database
+ * settings are ignored.
+ *
  * Prerequisite: built core (`bun run build:core` from repo root) so workspace `@elizaos/core` resolves to `dist/`.
  *
  * Usage:
@@ -300,7 +304,7 @@ async function main(): Promise<void> {
 
 			if (!runtime.messageService) {
 				output.write("messageService not ready\n");
-				break;
+				continue;
 			}
 
 			try {
