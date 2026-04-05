@@ -48,6 +48,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      issues: write
       id-token: write
 
     steps:
@@ -530,50 +531,81 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
+          INITIAL_ATTEMPTS=6
+          FIX_ATTEMPTS=12
+          SLEEP_SECONDS=10
 
           echo "Verifying dist-tag '${DIST_TAG}' points to ${VERSION}..."
 
-          # Check a representative package (@elizaos/core)
-          ACTUAL=$(npm view "@elizaos/core@${DIST_TAG}" version 2>/dev/null || echo "unknown")
+          get_actual_tag() {
+            npm view "@elizaos/core@${DIST_TAG}" version 2>/dev/null || echo "unknown"
+          }
 
-          if [[ "$ACTUAL" != "$VERSION" ]]; then
-            echo "⚠️ dist-tag '${DIST_TAG}' points to ${ACTUAL}, expected ${VERSION}"
-            echo "Forcing dist-tag update for all published packages..."
+          wait_for_dist_tag() {
+            local expected="$1"
+            local attempts="$2"
+            local phase="$3"
+            local actual=""
 
-            # Get list of public packages from lerna, plus @elizaos/core
-            # which is published from packages/typescript but may not appear
-            # in lerna ls if the workspace config changed.
-            PACKAGES=$(bunx lerna ls --json --no-private 2>/dev/null | node -e "
-              const pkgs = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-              const names = new Set(pkgs.map(p => p.name));
-              names.add('@elizaos/core');
-              names.forEach(n => console.log(n));
-            ")
+            for attempt in $(seq 1 "${attempts}"); do
+              actual=$(get_actual_tag)
 
-            FIXED=0
-            FAILED=0
-            for PKG in $PACKAGES; do
-              if npm view "${PKG}@${VERSION}" version >/dev/null 2>&1; then
-                if npm dist-tag add "${PKG}@${VERSION}" "${DIST_TAG}" 2>/dev/null; then
-                  echo "  ✅ Updated dist-tag for ${PKG}"
-                  FIXED=$((FIXED + 1))
-                else
-                  echo "  ⚠️ Failed to update dist-tag for ${PKG}"
-                  FAILED=$((FAILED + 1))
-                fi
+              if [[ "$actual" == "$expected" ]]; then
+                echo "✅ dist-tag '${DIST_TAG}' points to ${expected} during ${phase} check (attempt ${attempt}/${attempts})"
+                return 0
+              fi
+
+              if [[ "$attempt" -lt "$attempts" ]]; then
+                echo "⏳ dist-tag '${DIST_TAG}' currently points to ${actual}; waiting ${SLEEP_SECONDS}s for ${phase} propagation (${attempt}/${attempts})..."
+                sleep "${SLEEP_SECONDS}"
               fi
             done
 
-            echo "✅ Updated dist-tag for ${FIXED} packages (${FAILED} failures)"
+            echo "⚠️ dist-tag '${DIST_TAG}' still points to ${actual} after ${phase} check"
+            return 1
+          }
 
-            # Re-verify
-            ACTUAL2=$(npm view "@elizaos/core@${DIST_TAG}" version 2>/dev/null || echo "unknown")
-            if [[ "$ACTUAL2" != "$VERSION" ]]; then
-              echo "❌ dist-tag still not pointing to ${VERSION} after fix attempt"
-              exit 1
+          if wait_for_dist_tag "${VERSION}" "${INITIAL_ATTEMPTS}" "initial"; then
+            exit 0
+          fi
+
+          ACTUAL=$(get_actual_tag)
+          echo "⚠️ dist-tag '${DIST_TAG}' points to ${ACTUAL}, expected ${VERSION}"
+          echo "Forcing dist-tag update for all published packages..."
+
+          # Get list of public packages from lerna, plus @elizaos/core
+          # which is published from packages/typescript but may not appear
+          # in lerna ls if the workspace config changed.
+          PACKAGES=$(bunx lerna ls --json --no-private 2>/dev/null | node -e "
+            const pkgs = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+            const names = new Set(pkgs.map(p => p.name));
+            names.add('@elizaos/core');
+            names.forEach(n => console.log(n));
+          ")
+
+          FIXED=0
+          FAILED=0
+          PENDING=0
+          for PKG in $PACKAGES; do
+            if npm view "${PKG}@${VERSION}" version >/dev/null 2>&1; then
+              if npm dist-tag add "${PKG}@${VERSION}" "${DIST_TAG}" 2>/dev/null; then
+                echo "  ✅ Updated dist-tag for ${PKG}"
+                FIXED=$((FIXED + 1))
+              else
+                echo "  ⚠️ Failed to update dist-tag for ${PKG}"
+                FAILED=$((FAILED + 1))
+              fi
+            else
+              echo "  ⏳ ${PKG}@${VERSION} is not visible on npm yet"
+              PENDING=$((PENDING + 1))
             fi
-          else
-            echo "✅ dist-tag '${DIST_TAG}' correctly points to ${VERSION}"
+          done
+
+          echo "✅ Dist-tag update attempts: ${FIXED} updated, ${FAILED} failed, ${PENDING} pending visibility"
+
+          if ! wait_for_dist_tag "${VERSION}" "${FIX_ATTEMPTS}" "post-fix"; then
+            echo "❌ dist-tag still not pointing to ${VERSION} after fix attempt"
+            exit 1
           fi
 
       # Always restore workspace:* references after publish (success or failure)
