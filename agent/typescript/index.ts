@@ -276,10 +276,6 @@ async function main(): Promise<void> {
 				break;
 			}
 
-			if (line === undefined || line === null) {
-				break;
-			}
-
 			const trimmed = line.trim();
 			if (trimmed === "") {
 				continue;
