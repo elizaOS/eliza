@@ -611,9 +611,11 @@ export class DefaultMessageService implements IMessageService {
         runtime,
         message.content.attachments,
       );
-      if (message.id) {
+      // Only update memory if we have a persisted record (memoryToQueue?.id)
+      // to avoid DB writes with synthetic IDs when persistence was skipped
+      if (memoryToQueue?.id) {
         await runtime.updateMemory({
-          id: message.id,
+          id: memoryToQueue.id,
           content: message.content,
         });
       }
@@ -2048,10 +2050,17 @@ Output ONLY the continuation, starting immediately after the last character abov
       // Since providers run in parallel, this is the max wall-clock time allowed
       // Note: Default increased from 1000ms to 5000ms to allow providers making external API calls adequate time.
       // Set PROVIDERS_TOTAL_TIMEOUT_MS=1000 to restore previous behavior if needed.
+      const providersTimeoutSetting = runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS");
       const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(
-        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "5000"),
+        String(providersTimeoutSetting || "5000"),
         10,
       );
+      if (!providersTimeoutSetting) {
+        runtime.logger.debug(
+          { src: "service:message", defaultTimeoutMs: PROVIDERS_TOTAL_TIMEOUT_MS },
+          "Using default PROVIDERS_TOTAL_TIMEOUT_MS=5000; set PROVIDERS_TOTAL_TIMEOUT_MS=1000 to restore previous 1s timeout",
+        );
+      }
 
       // Track which providers have completed (for timeout diagnostics)
       const completedProviders = new Set<string>();
