@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChannelType, EventType, ModelType } from "../index";
+import { ChannelType, ContentType, EventType, ModelType } from "../index";
 import { DefaultMessageService } from "../services/message";
 import type { Content, HandlerCallback, Memory, UUID } from "../types";
 import type { IMessageService } from "../types/message-service";
@@ -373,6 +373,76 @@ describe("DefaultMessageService", () => {
 			expect(result.skipEvaluation).toBe(true);
 			expect(result.reason).toBe("no room context");
 		});
+	});
+
+	it("describes inline chat images without fetching placeholder URLs and strips raw bytes on update", async () => {
+		const updateMemorySpy = vi
+			.spyOn(runtime, "updateMemory")
+			.mockResolvedValue(true);
+		const useModelSpy = vi.spyOn(runtime, "useModel").mockImplementation(
+			async (
+				modelType: (typeof ModelType)[keyof typeof ModelType],
+				params: unknown,
+			) => {
+				if (modelType === ModelType.IMAGE_DESCRIPTION) {
+					const imageParams = params as { imageUrl?: string };
+					expect(imageParams.imageUrl).toBe(
+						"data:image/png;base64,abc123",
+					);
+					return {
+						title: "Screenshot",
+						description: "A test attachment",
+					};
+				}
+				if (modelType === ModelType.TEXT_SMALL) {
+					return "<response><action>REPLY</action><reason>User asked a question</reason></response>";
+				}
+				return "<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>";
+			},
+		);
+
+		const message: Memory = {
+			id: "123e4567-e89b-12d3-a456-426614174050" as UUID,
+			content: {
+				text: "what's in this image?",
+				channelType: ChannelType.DM,
+				attachments: [
+					{
+						id: "img-0",
+						url: "attachment:img-0",
+						title: "photo.png",
+						source: "client_chat",
+						contentType: ContentType.IMAGE,
+						_data: "abc123",
+						_mimeType: "image/png",
+					},
+				],
+			} as unknown as Content,
+			entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+			roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+			agentId: runtime.agentId,
+			createdAt: Date.now(),
+		};
+
+		await messageService.handleMessage(runtime, message, mockCallback);
+
+		expect(useModelSpy).toHaveBeenCalledWith(
+			ModelType.IMAGE_DESCRIPTION,
+			expect.objectContaining({
+				imageUrl: "data:image/png;base64,abc123",
+			}),
+		);
+
+		const storedUpdate = updateMemorySpy.mock.calls.find(
+			([memory]) => memory.id === message.id,
+		)?.[0];
+		const storedAttachment = (
+			storedUpdate?.content?.attachments as Array<Record<string, unknown>>
+		)?.[0];
+		expect(storedAttachment).toBeDefined();
+		expect(storedAttachment).not.toHaveProperty("_data");
+		expect(storedAttachment).not.toHaveProperty("_mimeType");
+		expect(storedAttachment?.description).toBe("A test attachment");
 	});
 
 	describe("handleMessage", () => {

@@ -39,10 +39,42 @@ interface RelationshipXml {
 interface ReflectionXmlResult {
 	facts?: {
 		fact?: FactXml | FactXml[];
-	};
+	} | FactXml[];
 	relationships?: {
 		relationship?: RelationshipXml | RelationshipXml[];
-	};
+	} | RelationshipXml[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeFactEntries(value: unknown): FactXml[] {
+	if (Array.isArray(value)) {
+		return value.filter(isRecord) as FactXml[];
+	}
+
+	if (isRecord(value) && "fact" in value) {
+		return normalizeFactEntries(value.fact);
+	}
+
+	return isRecord(value) ? [value as FactXml] : [];
+}
+
+function normalizeRelationshipEntries(value: unknown): RelationshipXml[] {
+	if (Array.isArray(value)) {
+		return value.filter(isRecord) as RelationshipXml[];
+	}
+
+	if (isRecord(value) && "relationship" in value) {
+		return normalizeRelationshipEntries(value.relationship);
+	}
+
+	return isRecord(value) ? [value as RelationshipXml] : [];
+}
+
+function isFalseLike(value: unknown): boolean {
+	return value === false || value === "false";
 }
 
 // Schema definitions for the reflection output
@@ -238,20 +270,14 @@ async function handler(
 
 	// Handle facts - parseKeyValueXml returns nested structures differently
 	// Facts might be a single object or an array depending on the count
-	let factsArray: FactXml[] = [];
-	if (reflection.facts.fact) {
-		// Normalize to array
-		factsArray = Array.isArray(reflection.facts.fact)
-			? reflection.facts.fact
-			: [reflection.facts.fact];
-	}
+	const factsArray = normalizeFactEntries(reflection.facts);
 
 	// Store new facts - filter for valid new facts with claim text
 	const newFacts = factsArray.filter(
 		(fact): fact is FactXml & { claim: string } =>
 			fact != null &&
-			fact.already_known === "false" &&
-			fact.in_bio === "false" &&
+			isFalseLike(fact.already_known) &&
+			isFalseLike(fact.in_bio) &&
 			typeof fact.claim === "string" &&
 			fact.claim.trim() !== "",
 	);
@@ -281,12 +307,9 @@ async function handler(
 	);
 
 	// Handle relationships - similar structure normalization
-	let relationshipsArray: RelationshipXml[] = [];
-	if (reflection.relationships.relationship) {
-		relationshipsArray = Array.isArray(reflection.relationships.relationship)
-			? reflection.relationships.relationship
-			: [reflection.relationships.relationship];
-	}
+	const relationshipsArray = normalizeRelationshipEntries(
+		reflection.relationships,
+	);
 
 	const relationshipByPair = new Map<
 		string,
@@ -323,12 +346,14 @@ async function handler(
 		);
 
 		// Parse tags from comma-separated string
-		const tags = relationship.tags
-			? relationship.tags
-					.split(",")
-					.map((tag: string) => tag.trim())
-					.filter(Boolean)
-			: [];
+		const tags = Array.isArray(relationship.tags)
+			? relationship.tags.map((tag) => tag.trim()).filter(Boolean)
+			: relationship.tags
+				? relationship.tags
+						.split(",")
+						.map((tag: string) => tag.trim())
+						.filter(Boolean)
+				: [];
 
 		if (existingRelationship) {
 			const updatedMetadata = {

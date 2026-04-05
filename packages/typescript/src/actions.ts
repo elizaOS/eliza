@@ -9,6 +9,7 @@ import type {
 	ActionParameterValue,
 	JsonValue,
 } from "./types";
+import { encodeToonValue, parseToonActionParams } from "./utils/toon";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
@@ -67,42 +68,21 @@ export const composeActionExamples = (
 	return formatSelectedExamples(selectedExamples);
 };
 
-function escapeXmlText(text: string): string {
-	return text
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;");
-}
-
 function formatActionCallExample(example: {
 	user: string;
 	actions: readonly string[];
 	params?: Record<string, Record<string, string | number | boolean | null>>;
 }): string {
 	const paramsByAction = example.params ?? {};
+	const assistantPayload: Record<string, unknown> = {
+		actions: [...example.actions],
+	};
 
-	const actionElements = example.actions
-		.map((actionName) => {
-			const actionParams = paramsByAction[actionName];
-			if (actionParams && Object.keys(actionParams).length > 0) {
-				const paramsInner = Object.entries(actionParams)
-					.map(([k, v]) => {
-						const raw =
-							typeof v === "string"
-								? v
-								: v === null
-									? "null"
-									: JSON.stringify(v);
-						return `      <${k}>${escapeXmlText(raw)}</${k}>`;
-					})
-					.join("\n");
-				return `  <action>\n    <name>${escapeXmlText(actionName)}</name>\n    <params>\n${paramsInner}\n    </params>\n  </action>`;
-			}
-			return `  <action>\n    <name>${escapeXmlText(actionName)}</name>\n  </action>`;
-		})
-		.join("\n");
+	if (Object.keys(paramsByAction).length > 0) {
+		assistantPayload.params = paramsByAction;
+	}
 
-	return `User: ${example.user}\nAssistant:\n<actions>\n${actionElements}\n</actions>`;
+	return `User: ${example.user}\nAssistant:\n${encodeToonValue(assistantPayload)}`;
 }
 
 /**
@@ -262,13 +242,19 @@ function formatParameterType(schema: ActionParameterSchema): string {
  *   <ACTION1><p1>v1</p1></ACTION1>
  */
 export function parseActionParams(
-	paramsXml: string | undefined | null,
+	paramsInput: unknown,
 ): Map<string, ActionParameters> {
-	const result = new Map<string, ActionParameters>();
+	const toonParams = parseToonActionParams(paramsInput);
+	if (toonParams.size > 0) {
+		return toonParams;
+	}
 
-	if (!paramsXml || typeof paramsXml !== "string") {
+	const result = new Map<string, ActionParameters>();
+	if (!paramsInput || typeof paramsInput !== "string") {
 		return result;
 	}
+
+	const paramsXml = paramsInput;
 
 	// ---- New nested format: look for <action> children ----
 	const actionChildren = extractXmlChildren(paramsXml);
