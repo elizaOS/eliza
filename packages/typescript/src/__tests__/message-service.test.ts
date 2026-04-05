@@ -885,9 +885,9 @@ describe("DefaultMessageService", () => {
     });
   });
 
-  it("should ALLOW memory creation for whitelisted source IDs even when DISABLE_MEMORY_CREATION is true", async () => {
-        // Configure settings to disable memory creation but with an allowlisted source
-        // Note: ALLOW_MEMORY_SOURCE_IDS overrides DISABLE_MEMORY_CREATION
+  it("should NOT allow memory creation for whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
+        // Configure settings to disable memory creation with an allowlisted source
+        // Note: DISABLE_MEMORY_CREATION=true takes precedence; ALLOW_MEMORY_SOURCE_IDS only applies when DISABLE_MEMORY_CREATION=false
         vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
           if (key === "DISABLE_MEMORY_CREATION") return "true";
           if (key === "ALLOW_MEMORY_SOURCE_IDS") return "whitelisted-source-123";
@@ -912,8 +912,8 @@ describe("DefaultMessageService", () => {
 
         await messageService.handleMessage(runtime, message, mockCallback);
 
-        // ALLOW_MEMORY_SOURCE_IDS overrides DISABLE_MEMORY_CREATION for whitelisted sources
-        expect(runtime.createMemory).toHaveBeenCalled();
+        // DISABLE_MEMORY_CREATION=true takes precedence over ALLOW_MEMORY_SOURCE_IDS
+        expect(runtime.createMemory).not.toHaveBeenCalled();
       });
 
     it("should block memory creation for non-whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
