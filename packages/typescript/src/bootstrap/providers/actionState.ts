@@ -95,6 +95,7 @@ export const actionStateProvider: Provider = {
           const actionName =
             typeof actionNameValue === "string"
               ? actionNameValue
+              // Note: fallback to "Unknown Action" for missing action names ensures consistent output.
               : "Unknown Action";
           const success = result.success;
           const status = success ? "Success" : "Failed";

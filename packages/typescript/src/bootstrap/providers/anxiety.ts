@@ -97,6 +97,7 @@ export const anxietyProvider: Provider = {
         channel: channelType || "unknown",
         anxiety: randomAnxietyExamples,
       },
+      // Note: `values.anxiety` is intentionally omitted to prevent data redundancy.
       text: anxiety,
     };
   },

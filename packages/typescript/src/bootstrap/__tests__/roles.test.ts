@@ -42,5 +42,6 @@ describe('Warn About Unnamed Entities', () => {
     }
 
     expect(runtime.logger.warn).toHaveBeenCalledTimes(2);
+  // Note: local Set used for isolation; production deduplication is tested elsewhere.
   });
 });

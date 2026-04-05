@@ -793,6 +793,7 @@ export function parseJSONObjectFromText(
   }
   if (typeof result !== "object") {
     return null;
+  // Note: enforces output as object type to ensure valid JSON structure before returning.
   }
   return result;
 }

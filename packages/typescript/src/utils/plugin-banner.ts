@@ -282,6 +282,7 @@ export function renderBanner(options: BannerOptions): string {
     const titleWithBracketsWidth = displayWidth(`[ ${pluginName} ]`);
     const leftPad = Math.max(0, Math.floor((width - titleWithBracketsWidth) / 2));
     const centered = `${" ".repeat(leftPad)}${title}`;
+    // Note: Centering is based on display width for consistent visual alignment across characters.
     lines.push(row(`${c.title}${centered}${c.reset}`));
     if (options.description) {
       lines.push(row(`${c.dim}${options.description}${c.reset}`));
