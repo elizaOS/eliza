@@ -131,6 +131,41 @@ export type AdapterFactory = (
 	settings: Record<string, string>,
 ) => IDatabaseAdapter | Promise<IDatabaseAdapter>;
 
+export type PluginAppSessionMode = "viewer" | "spectate-and-steer" | "external";
+
+export type PluginAppSessionFeature =
+	| "commands"
+	| "telemetry"
+	| "pause"
+	| "resume"
+	| "suggestions";
+
+export interface PluginAppViewer {
+	url: string;
+	embedParams?: Record<string, string>;
+	postMessageAuth?: boolean;
+	sandbox?: string;
+}
+
+export interface PluginAppSession {
+	mode: PluginAppSessionMode;
+	features?: PluginAppSessionFeature[];
+}
+
+export interface PluginApp {
+	displayName?: string;
+	category?: string;
+	launchType?: string;
+	launchUrl?: string | null;
+	icon?: string | null;
+	capabilities?: string[];
+	minPlayers?: number | null;
+	maxPlayers?: number | null;
+	runtimePlugin?: string;
+	viewer?: PluginAppViewer;
+	session?: PluginAppSession;
+}
+
 export interface Plugin {
 	name: string;
 	description: string;
@@ -183,6 +218,8 @@ export interface Plugin {
 	priority?: number;
 
 	schema?: Record<string, JsonValue | object>;
+
+	app?: PluginApp;
 }
 
 export interface ProjectAgent {
