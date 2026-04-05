@@ -284,8 +284,8 @@ export const addHeader = (header: string, body: string) => {
  * Generates a string with random user names populated in a template.
  *
  * This function generates random user names and populates placeholders
- * in the provided template with these names. Placeholders in the template should follow the format `{{userX}}`
- * where `X` is the position of the user (e.g., `{{name1}}`, `{{name2}}`).
+ * in the provided template with these names. Placeholders in the template should follow the format
+ * `{{nameX}}` or `{{userX}}`, where `X` is the position of the user.
  *
  * @param {string} template - The template string containing placeholders for random user names.
  * @param {number} length - The number of random user names to generate.
@@ -307,6 +307,7 @@ const composeRandomUser = (template: string, length: number) => {
 	let result = template;
 	for (let i = 0; i < exampleNames.length; i++) {
 		result = result.replaceAll(`{{name${i + 1}}}`, exampleNames[i]);
+		result = result.replaceAll(`{{user${i + 1}}}`, exampleNames[i]);
 	}
 
 	return result;
@@ -769,9 +770,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 				// (e.g. task descriptions with commas).
 				result[key] = value;
 			} else {
-				result[key] = value
-					? value.split(",").map((s) => s.trim())
-					: [];
+				result[key] = value ? value.split(",").map((s) => s.trim()) : [];
 			}
 		} else if (key === "simple") {
 			result[key] = value.toLowerCase() === "true";

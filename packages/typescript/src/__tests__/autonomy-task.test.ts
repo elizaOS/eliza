@@ -5,7 +5,7 @@ import {
 	AUTONOMY_TASK_TAGS,
 	AutonomyService,
 } from "../autonomy/service";
-import type { IAgentRuntime, Task, UUID } from "../types";
+import type { Entity, IAgentRuntime, Task, UUID } from "../types";
 
 const asTestUuid = (id: string): UUID => id as UUID;
 
@@ -24,6 +24,16 @@ describe("autonomy service (prompt batcher Option A, no Task)", () => {
 
 		const agentId = asTestUuid(uuidv4());
 		const roomId = asTestUuid(uuidv4());
+		const entities = new Map<UUID, Entity>([
+			[
+				agentId,
+				{
+					id: agentId,
+					agentId,
+					names: ["Test Agent"],
+				},
+			],
+		]);
 
 		mockRuntime = {
 			agentId,
@@ -38,7 +48,17 @@ describe("autonomy service (prompt batcher Option A, no Task)", () => {
 			getRoomsForParticipants: async () => [roomId],
 			getRoomsByIds: async () => [{ id: roomId, name: "Test Room" }],
 			getMemoriesByRoomIds: async () => [],
-			getEntityById: async () => ({ id: agentId, names: ["Test Agent"] }),
+			getEntityById: async (entityId) => entities.get(entityId) ?? null,
+			createEntity: async (entity) => {
+				if (entities.has(entity.id)) {
+					return false;
+				}
+				entities.set(entity.id, entity);
+				return true;
+			},
+			updateEntity: async (entity) => {
+				entities.set(entity.id, entity);
+			},
 			ensureWorldExists: async () => undefined,
 			ensureRoomExists: async () => undefined,
 			addParticipant: async () => undefined,

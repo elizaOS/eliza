@@ -137,137 +137,75 @@ Respond using XML format like this:
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
 
-SHOULD_RESPOND_TEMPLATE = """<task>Decide on behalf of {{agentName}} whether they should respond to the message, ignore it or stop the conversation.</task>
+SHOULD_RESPOND_TEMPLATE = """task: Decide whether {{agentName}} should respond, ignore, or stop.
 
-<providers>
+context:
 {{providers}}
-</providers>
 
-<instructions>Decide if {{agentName}} should respond to or interact with the conversation.
+rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name -> IGNORE
+- continuing an active thread with {{agentName}} -> RESPOND
+- request to stop or be quiet -> STOP
+- talking to someone else -> IGNORE
+- if unsure, prefer IGNORE over hallucinating relevance
 
-IMPORTANT RULES FOR RESPONDING:
-- If YOUR name ({{agentName}}) is directly mentioned → RESPOND
-- If someone uses a DIFFERENT name (not {{agentName}}) → IGNORE (they're talking to someone else)
-- If you're actively participating in a conversation and the message continues that thread → RESPOND
-- If someone tells you to stop or be quiet → STOP
-- Otherwise → IGNORE
-
-The key distinction is:
-- "Talking TO {{agentName}}" (your name mentioned, replies to you, continuing your conversation) → RESPOND
-- "Talking ABOUT {{agentName}}" or to someone else → IGNORE
-</instructions>
+decision_note:
+- talking TO {{agentName}} means name mention, reply chain, or direct continuation
+- talking ABOUT {{agentName}} is not enough
 
 <output>
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
+XML only. Return exactly one <response> block. No prose before or after it. No <think>.
 
-Respond using XML format like this:
+Example:
 <response>
   <name>{{agentName}}</name>
-  <reasoning>Your reasoning here</reasoning>
+  <reasoning>Direct mention and clear follow-up.</reasoning>
   <action>RESPOND | IGNORE | STOP</action>
 </response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
 </output>"""
 
-MESSAGE_HANDLER_TEMPLATE = """<task>Generate dialog and actions for the character {{agentName}}.</task>
+MESSAGE_HANDLER_TEMPLATE = """task: Generate dialog and actions for {{agentName}}.
 
-<providers>
+context:
 {{providers}}
-</providers>
 
-<instructions>
-Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
+rules[8]:
+- think briefly, then respond
+- actions execute in listed order
+- if replying, REPLY goes first
+- use IGNORE only by itself
+- include providers only when needed
+- use provider_hints from context when present instead of restating the same rules
+- if an action needs inputs, include a <params> block with the required fields
+- if a required param is unknown, ask for clarification in <text>
 
-IMPORTANT ACTION ORDERING RULES:
-- Actions are executed in the ORDER you list them - the order MATTERS!
-- REPLY should come FIRST to acknowledge the user's request before executing other actions
-- Common patterns:
-  - For requests requiring tool use: REPLY,CALL_MCP_TOOL (acknowledge first, then gather info)
-  - For task execution: REPLY,SEND_MESSAGE or REPLY,EVM_SWAP_TOKENS (acknowledge first, then do the task)
-  - For multi-step operations: REPLY,ACTION1,ACTION2 (acknowledge first, then complete all steps)
-- REPLY is used to acknowledge and inform the user about what you're going to do
-- Follow-up actions execute the actual tasks after acknowledgment
-- Use IGNORE only when you should not respond at all
-- If you use IGNORE, do not include any other actions. IGNORE should be used alone when you should not respond or take any actions.
+fields[5]{name,meaning}:
+- thought | short plan
+- actions | ordered XML <action> elements
+- providers | comma-separated provider names, or empty
+- text | next message for {{agentName}}
+- simple | true or false
 
-IMPORTANT ACTION PARAMETERS:
-- When an action has parameters listed in its description, include a <params> block for that action
-- Extract parameter values from the user's message and conversation context
-- Required parameters MUST be provided; optional parameters can be omitted if not mentioned
-- If you cannot determine a required parameter value, ask the user for clarification in your <text>
-
-EXAMPLE (action parameters):
-User message: "Send a message to @dev_guru on telegram saying Hello!"
-<actions>
-  <action>
-    <name>REPLY</name>
-  </action>
-  <action>
-    <name>SEND_MESSAGE</name>
-    <params>
-      <targetType>user</targetType>
-      <source>telegram</source>
-      <target>dev_guru</target>
-      <text>Hello!</text>
-    </params>
-  </action>
-</actions>
-
-IMPORTANT PROVIDER SELECTION RULES:
-- Only include providers if they are needed to respond accurately.
-- If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
-- If the message asks about or references specific people, include "ENTITIES" in your providers list
-- If the message asks about relationships or connections between people, include "RELATIONSHIPS" in your providers list
-- If the message asks about facts or specific information, include "FACTS" in your providers list
-- If the message asks about the environment or world context, include "WORLD" in your providers list
-- If no additional context is needed, you may leave the providers list empty.
-
-IMPORTANT CODE BLOCK FORMATTING RULES:
-- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with ``` fenced code blocks (specify the language if known, e.g., ```python).
-- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
-- If including inline code (short single words or function names), use single backticks (`) as appropriate.
-- This ensures the user sees clearly formatted and copyable code when relevant.
-</instructions>
-
-<keys>
-"thought" should be a short description of what the agent is thinking about and planning.
-"actions" should be a list of <action> elements IN THE ORDER THEY SHOULD BE EXECUTED (if none, use a single <action><name>IGNORE</name></action>, if simply responding with text, use <action><name>REPLY</name></action>). Each action that requires parameters should include a <params> child element.
-"providers" should be a comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting (NEVER use "IGNORE" as a provider - use specific provider names like ATTACHMENTS, ENTITIES, FACTS, KNOWLEDGE, etc.)
-"text" should be the text of the next message for {{agentName}} which they will send to the conversation.
-</keys>
+formatting:
+- wrap multi-line code in fenced code blocks
+- use inline backticks for short code identifiers
 
 <output>
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
+XML only. Return exactly one <response> block. No prose before or after it. No <think>.
 
-Respond using XML format like this:
+Example:
 <response>
-    <thought>Your thought here</thought>
-    <actions>
-        <action>
-            <name>ACTION1</name>
-            <params>
-                <paramName1>value1</paramName1>
-                <paramName2>value2</paramName2>
-            </params>
-        </action>
-        <action>
-            <name>ACTION2</name>
-            <params>
-                <paramName1>value1</paramName1>
-            </params>
-        </action>
-    </actions>
-    <providers>PROVIDER1,PROVIDER2</providers>
-    <text>Your response text here</text>
+  <thought>Reply briefly. No extra providers needed.</thought>
+  <actions>
+    <action>
+      <name>REPLY</name>
+    </action>
+  </actions>
+  <providers></providers>
+  <text>Your message here</text>
+  <simple>true</simple>
 </response>
-
-Note: The <params> block inside each <action> is optional and should only be included when that action requires input parameters.
-If an action has no parameters or you're only using REPLY/IGNORE, omit the <params> child entirely.
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
 </output>"""
 
 MULTI_STEP_DECISION_TEMPLATE = """<task>

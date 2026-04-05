@@ -109,30 +109,35 @@ fn format_action_parameters(params: &[ActionParameterDoc]) -> String {
     }
     let mut lines: Vec<String> = Vec::new();
     for p in params {
-        let required_str = if p.required {
-            " (required)"
-        } else {
-            " (optional)"
-        };
         let schema_str = format_schema(&p.schema);
         let examples_str = if p.examples.is_empty() {
-            String::new()
+            None
         } else {
-            format!(
-                " [examples: {}]",
+            Some(format!(
+                "examples={}",
                 p.examples
                     .iter()
                     .map(|v| v.to_string())
                     .collect::<Vec<String>>()
-                    .join(", ")
-            )
+                    .join("|")
+            ))
+        };
+        let modifiers = examples_str.into_iter().collect::<Vec<String>>().join("; ");
+        let suffix = if modifiers.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", modifiers)
         };
         lines.push(format!(
-            "    - {}{}: {} ({}{})",
-            p.name, required_str, p.description, schema_str, examples_str
+            "{}{}:{}{} - {}",
+            p.name,
+            if p.required { "" } else { "?" },
+            schema_str,
+            suffix,
+            p.description
         ));
     }
-    lines.join("\n")
+    lines.join("; ")
 }
 
 /// Provider for available actions.
@@ -213,15 +218,15 @@ impl Provider for ActionsProvider {
         for a in shuffled_descriptions.iter() {
             let doc = docs_by_name.get(&a.name);
             let mut line = if let Some(d) = doc {
-                format!("- **{}**: {}", a.name, d.description)
+                format!("- {}: {}", a.name, d.description)
             } else {
-                format!("- **{}**: {}", a.name, a.description)
+                format!("- {}: {}", a.name, a.description)
             };
             if let Some(d) = doc {
                 if !d.parameters.is_empty() {
                     let params_text = format_action_parameters(&d.parameters);
                     if !params_text.is_empty() {
-                        line.push_str("\n  Parameters:\n");
+                        line.push_str(&format!("\n  params[{}]: ", d.parameters.len()));
                         line.push_str(&params_text);
                     }
                 }
@@ -242,8 +247,9 @@ impl Provider for ActionsProvider {
         }
 
         let text = format!(
-            "Possible response actions: {}\n\n# Available Actions\n{}",
+            "Possible response actions: {}\n\n# Available Actions\nactions[{}]:\n{}",
             names_text,
+            actions.len(),
             formatted_actions.join("\n")
         );
 
@@ -268,5 +274,23 @@ mod tests {
         let second = deterministic_shuffle(&input, "seed", "surface");
         assert_eq!(first, second);
         assert_eq!(first.len(), input.len());
+    }
+
+    #[test]
+    fn format_action_parameters_is_compact() {
+        let formatted = format_action_parameters(&[ActionParameterDoc {
+            name: "direction".to_string(),
+            description: "Direction to move.".to_string(),
+            required: true,
+            schema: serde_json::json!({
+                "type": "string",
+                "enum": ["north", "south"]
+            }),
+            examples: vec![serde_json::json!("north"), serde_json::json!("south")],
+        }]);
+
+        assert!(formatted.contains("direction:string"));
+        assert!(formatted.contains("values: north, south"));
+        assert!(formatted.contains("examples=\"north\"|\"south\""));
     }
 }

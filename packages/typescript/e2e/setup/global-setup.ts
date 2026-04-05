@@ -6,11 +6,11 @@ import http from "node:http";
 import { v4 as uuidv4 } from "uuid";
 import { InMemoryDatabaseAdapter } from "../../src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../src/runtime";
-import { DefaultMessageService } from "../../src/services/message";
 import { detectInferenceProviders } from "../../src/testing/inference-provider";
 import { createOllamaModelHandlers } from "../../src/testing/ollama-provider";
 import type { Character, Memory, Plugin, UUID } from "../../src/types";
 import { ChannelType } from "../../src/types";
+import { loadEnvFile } from "../../src/utils/environment";
 
 const PORT = 13789;
 
@@ -37,22 +37,16 @@ async function resolveProviderPlugin(
 ): Promise<Plugin | null> {
 	switch (providerName) {
 		case "openai": {
-			const mod = await import(
-				"../../../../plugins/plugin-openai/typescript/index"
-			);
+			const mod = await import("@elizaos/plugin-openai");
 			return mod.openaiPlugin ?? mod.default ?? null;
 		}
 		case "anthropic": {
-			const mod = await import(
-				"../../../../plugins/plugin-anthropic/typescript/index"
-			);
+			const mod = await import("@elizaos/plugin-anthropic");
 			return mod.anthropicPlugin ?? mod.default ?? null;
 		}
 		case "google": {
 			try {
-				const mod = await import(
-					"../../../../plugins/plugin-google-genai/typescript/index"
-				);
+				const mod = await import("@elizaos/plugin-google-genai");
 				return mod.default ?? null;
 			} catch {
 				return null;
@@ -74,6 +68,10 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 }
 
 export default async function globalSetup(): Promise<void> {
+	// Load repo-local credentials before provider detection so Playwright e2e
+	// behaves the same way as the rest of the workspace.
+	loadEnvFile();
+
 	// ── 1. Detect inference provider ───────────────────────────────────────
 	const detection = await detectInferenceProviders();
 	if (!detection.hasProvider || !detection.primaryProvider) {
@@ -193,18 +191,6 @@ export default async function globalSetup(): Promise<void> {
 				}
 
 				const chatRoomId = (body.roomId as UUID) ?? roomId;
-				const chatEntityId = (body.entityId as UUID) ?? testEntityId;
-
-				const message: Memory = {
-					id: uuidv4() as UUID,
-					entityId: chatEntityId,
-					roomId: chatRoomId,
-					content: {
-						text: body.text.trim(),
-						source: "e2e",
-					},
-					createdAt: Date.now(),
-				};
 
 				// Use generateText for a reliable, simpler path than full messageService
 				const result = await runtime.generateText(body.text.trim(), {

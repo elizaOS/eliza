@@ -1853,6 +1853,9 @@ class AgentRuntime(IAgentRuntime):
         3. Structured parsing: XML/JSON response parsing with nested support
         4. Streaming support: ValidationStreamExtractor for incremental output with validation
 
+        Checkpoint prompt wrappers are optional and disabled by default. Set
+        options.checkpoint_codes or PROMPT_CHECKPOINT_CODES=true to enable them.
+
         For streaming, provide `on_stream_chunk` in options. Streaming uses
         ValidationStreamExtractor which streams validated content in real-time
         while detecting truncation via validation codes.
@@ -1908,8 +1911,16 @@ class AgentRuntime(IAgentRuntime):
             if options.context_check_level is not None
             else default_context_level
         )
+        checkpoint_codes_enabled = (
+            options.checkpoint_codes
+            if options.checkpoint_codes is not None
+            else _is_truthy_setting(self.get_setting("PROMPT_CHECKPOINT_CODES"))
+        )
         max_retries = options.max_retries if options.max_retries is not None else default_retries
         current_retry = 0
+
+        def prompt_code() -> str:
+            return uuid.uuid4().hex[:8]
 
         # Generate per-field validation codes for levels 0-1
         per_field_codes: dict[str, str] = {}
@@ -1920,7 +1931,7 @@ class AgentRuntime(IAgentRuntime):
                     row.validate_field if row.validate_field is not None else default_validate
                 )
                 if needs_validation:
-                    per_field_codes[row.field] = str(uuid.uuid4())[:8]
+                    per_field_codes[row.field] = prompt_code()
 
         # Streaming extractor (created on first iteration if streaming enabled)
         extractor: ValidationStreamExtractor | None = None
@@ -1988,12 +1999,16 @@ class AgentRuntime(IAgentRuntime):
 
             # Add smart retry context if present
             if "_smartRetryContext" in context:
-                rendered += str(context.pop("_smartRetryContext"))
+                retry_context = str(context.pop("_smartRetryContext")).strip()
+                if retry_context:
+                    rendered = f"{rendered.rstrip()}\n\n{retry_context}"
 
             # Perform substitution
             for key, value in context.items():
                 placeholder = f"{{{{{key}}}}}"
                 rendered = rendered.replace(placeholder, str(value))
+
+            rendered = rendered.replace("\r\n", "\n").replace("\r", "\n").rstrip()
 
             # Build format
             format_type = (options.force_format or "xml").upper()
@@ -2002,16 +2017,16 @@ class AgentRuntime(IAgentRuntime):
             container_end = "</response>" if is_xml else "}"
 
             # Build extended schema with validation codes
-            first = validation_level >= 2
-            last = validation_level >= 3
+            first = checkpoint_codes_enabled and validation_level >= 2
+            last = checkpoint_codes_enabled and validation_level >= 3
 
             ext_schema: list[tuple[str, str]] = []
 
             def codes_schema(prefix: str) -> list[tuple[str, str]]:
                 return [
-                    (f"{prefix}initial_code", "echo the initial UUID code from prompt"),
-                    (f"{prefix}middle_code", "echo the middle UUID code from prompt"),
-                    (f"{prefix}end_code", "echo the end UUID code from prompt"),
+                    (f"{prefix}initial_code", "echo the initial prompt code"),
+                    (f"{prefix}middle_code", "echo the middle prompt code"),
+                    (f"{prefix}end_code", "echo the end prompt code"),
                 ]
 
             if first:
@@ -2044,27 +2059,33 @@ class AgentRuntime(IAgentRuntime):
             example_lines.append(container_end)
             example = "\n".join(example_lines)
 
-            init_code = str(uuid.uuid4())
-            mid_code = str(uuid.uuid4())
-            final_code = str(uuid.uuid4())
+            init_code = prompt_code() if checkpoint_codes_enabled else ""
+            mid_code = prompt_code() if checkpoint_codes_enabled else ""
+            final_code = prompt_code() if checkpoint_codes_enabled else ""
 
             section_start = "<output>" if is_xml else "# Strict Output instructions"
             section_end = "</output>" if is_xml else ""
 
-            full_prompt = f"""initial code: {init_code}
-{rendered}
-middle code: {mid_code}
-{section_start}
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the {format_type} response format without any preamble or explanation.
+            prompt_parts = []
+            if checkpoint_codes_enabled:
+                prompt_parts.append(f"initial code: {init_code}")
+            prompt_parts.append(rendered)
+            if checkpoint_codes_enabled:
+                prompt_parts.append(f"middle code: {mid_code}")
+            prompt_parts.append(
+                f"""{section_start}
+Return only {format_type}. No prose before or after it. No <think>.
 
-Respond using {format_type} format like this:
+Use this shape:
 {example}
 
-IMPORTANT: Your response must ONLY contain the {container_start}{container_end} {format_type} block above. Do not include any text, thinking, or reasoning before or after this {format_type} block. Start your response immediately with {container_start} and end with {container_end}.
-{section_end}
-end code: {final_code}
-"""
+Return exactly one {"<response>...</response>" if is_xml else "JSON object"}.
+{section_end}"""
+            )
+            if checkpoint_codes_enabled:
+                prompt_parts.append(f"end code: {final_code}")
+
+            full_prompt = "\n".join(part for part in prompt_parts if part) + "\n"
 
             self.logger.debug(f"dynamic_prompt_exec_from_state: using format {format_type}")
 
@@ -2425,7 +2446,10 @@ class DynamicPromptOptions:
     """Required fields that must be present and non-empty"""
 
     context_check_level: int | None = None
-    """Validation level (0=trusted, 1=progressive, 2=checkpoint, 3=full)"""
+    """Validation level (0=trusted, 1=progressive, 2=buffered, 3=strict buffered)"""
+
+    checkpoint_codes: bool | None = None
+    """Enable prompt checkpoint wrappers and echo validation. Default: False."""
 
     max_retries: int | None = None
     """Maximum retry attempts"""
@@ -2443,3 +2467,14 @@ class DynamicPromptOptions:
 
     abort_signal: Callable[[], bool] | None = None
     """Callable returning True if the operation should be aborted."""
+
+
+def _is_truthy_setting(value: Any) -> bool:
+    """Parse runtime settings booleans consistently."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes", "on"}
+    return False
