@@ -30,30 +30,14 @@ Message Sender: {{senderName}} (ID: {{senderId}})
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
 
 
-Generate a response in the following format:
-<response>
-  <thought>a self-reflective thought on the conversation</thought>
-  <facts>
-    <fact>
-      <claim>factual statement</claim>
-      <type>fact|opinion|status</type>
-      <in_bio>false</in_bio>
-      <already_known>false</already_known>
-    </fact>
-    <!-- Add more facts as needed -->
-  </facts>
-  <relationships>
-    <relationship>
-      <sourceEntityId>entity_initiating_interaction</sourceEntityId>
-      <targetEntityId>entity_being_interacted_with</targetEntityId>
-      <tags>group_interaction,voice_interaction,dm_interaction,additional_tag1,additional_tag2</tags>
-    </relationship>
-    <!-- Add more relationships as needed -->
-  </relationships>
-</response>
+Generate a response in the following TOON format:
+thought: a self-reflective thought on the conversation
+facts[1]{claim,type,in_bio,already_known}:
+  "factual statement",fact,false,false
+relationships[1]{sourceEntityId,targetEntityId,tags}:
+  entity_initiating_interaction,entity_being_interacted_with,"group_interaction,voice_interaction,dm_interaction,additional_tag1,additional_tag2"
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
-
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.
 
 
 

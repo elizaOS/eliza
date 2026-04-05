@@ -19,15 +19,13 @@ Also extract:
 - **Topics**: List of main topics discussed (comma-separated)
 - **Key Points**: Important facts or decisions (bullet points)
 
-Respond in this XML format:
-<summary>
-  <text>Your comprehensive summary here</text>
-  <topics>topic1, topic2, topic3</topics>
-  <keyPoints>
-    <point>First key point</point>
-    <point>Second key point</point>
-  </keyPoints>
-</summary>`;
+Respond in TOON:
+text: Your comprehensive summary here
+topics[0]: topic1
+topics[1]: topic2
+topics[2]: topic3
+keyPoints[0]: First key point
+keyPoints[1]: Second key point`;
 
 export const updateSummarizationTemplate = `# Task: Update and Condense Conversation Summary
 
@@ -52,15 +50,13 @@ Update the summary by:
 
 The goal is a rolling summary that captures the essence of the conversation without growing indefinitely.
 
-Respond in this XML format:
-<summary>
-  <text>Your updated and condensed summary here</text>
-  <topics>topic1, topic2, topic3</topics>
-  <keyPoints>
-    <point>First key point</point>
-    <point>Second key point</point>
-  </keyPoints>
-</summary>`;
+Respond in TOON:
+text: Your updated and condensed summary here
+topics[0]: topic1
+topics[1]: topic2
+topics[2]: topic3
+keyPoints[0]: First key point
+keyPoints[1]: Second key point`;
 
 export const longTermExtractionTemplate = `# Task: Extract Long-Term Memory (Strict Criteria)
 
@@ -174,24 +170,19 @@ Skills, workflows, methodologies, and how-to knowledge.
 4. **Verify against existing memories** - Don't duplicate or contradict
 5. **Maximum 2-3 extractions per run** - Quality over quantity
 
-**If there are no qualifying facts (which is common), respond with <memories></memories>**
+**If there are no qualifying facts (which is common), return no memories entries.**
 
 # Response Format
 
-<memories>
-  <memory>
-    <category>semantic</category>
-    <content>User is a senior TypeScript developer with 8 years of backend experience</content>
-    <confidence>0.95</confidence>
-  </memory>
-  <memory>
-    <category>procedural</category>
-    <content>User follows TDD workflow: writes tests before implementation, runs tests after each change</content>
-    <confidence>0.88</confidence>
-  </memory>
-  <memory>
-    <category>episodic</category>
-    <content>User led database migration from MongoDB to PostgreSQL for payment system in Q2 2024</content>
-    <confidence>0.92</confidence>
-  </memory>
-</memories>`;
+memories[0]:
+  category: semantic
+  content: User is a senior TypeScript developer with 8 years of backend experience
+  confidence: 0.95
+memories[1]:
+  category: procedural
+  content: User follows TDD workflow: writes tests before implementation, runs tests after each change
+  confidence: 0.88
+memories[2]:
+  category: episodic
+  content: User led database migration from MongoDB to PostgreSQL for payment system in Q2 2024
+  confidence: 0.92`;

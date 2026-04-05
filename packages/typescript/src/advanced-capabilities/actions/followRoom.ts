@@ -12,7 +12,11 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import { composePromptFromState } from "../../utils.ts";
+import {
+	composePromptFromState,
+	parseBooleanFromText,
+	parseKeyValueXml,
+} from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("FOLLOW_ROOM");
@@ -87,12 +91,12 @@ export const followRoomAction: Action = {
 				stopSequences: [],
 			});
 
-			const cleanedResponse = response.trim().toLowerCase();
+			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(response);
+			const decisionValue = parsed?.decision ?? response.trim();
+			const cleanedResponse = String(decisionValue).trim().toLowerCase();
 
 			if (
-				cleanedResponse === "true" ||
-				cleanedResponse === "yes" ||
-				cleanedResponse === "y" ||
+				parseBooleanFromText(decisionValue) ||
 				cleanedResponse.includes("true") ||
 				cleanedResponse.includes("yes")
 			) {

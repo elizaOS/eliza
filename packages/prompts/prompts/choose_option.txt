@@ -9,14 +9,11 @@
 Analyze the options and select the most appropriate one based on the current context.
 Provide your reasoning and the selected option ID.
 
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the selection</thought>
-    <selected_id>The ID of the selected option</selected_id>
-</response>
+Respond using TOON like this:
+thought: Your reasoning for the selection
+selected_id: The ID of the selected option
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.
-
+IMPORTANT: Your response must ONLY contain the TOON document above.
 
 
 

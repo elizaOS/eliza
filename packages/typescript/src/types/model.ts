@@ -226,6 +226,22 @@ export interface PromptSegment {
 }
 
 /**
+ * Provider-neutral attachment content for text-generation models.
+ *
+ * `data` is intentionally broad enough to cover:
+ * - raw base64 payloads (string)
+ * - inline bytes (Uint8Array)
+ * - remote URLs (URL)
+ *
+ * Providers decide whether to send these natively or ignore them.
+ */
+export interface GenerateTextAttachment {
+	mediaType: string;
+	data: string | Uint8Array | URL;
+	filename?: string;
+}
+
+/**
  * Parameters for generating text using a language model.
  * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
  * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, `ModelType.TEXT_REASONING_SMALL`,
@@ -246,6 +262,12 @@ export interface GenerateTextParams
 	stopSequences?: string[];
 	onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
 	user?: string;
+	/**
+	 * Optional multimodal attachments for the current turn. Providers that
+	 * support native file/image inputs can send these directly alongside the
+	 * prompt; others may ignore them and rely on prompt-only fallbacks.
+	 */
+	attachments?: GenerateTextAttachment[];
 	/**
 	 * Optional ordered segments for prompt cache hints. When set, must satisfy:
 	 * prompt === promptSegments.map(s => s.content).join("")
