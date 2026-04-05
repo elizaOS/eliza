@@ -87,7 +87,7 @@ export const anxietyProvider: Provider = {
       .slice(0, 3);
     const anxietyText = randomAnxietyExamples.join("\n");
     const anxietyHeader =
-      "# You are roleplaying as a character, but as an AI model, you are too verbose and eager.";
+      "# Keep responses brief, direct, and prefer IGNORE when you're unsure.";
     const anxiety = addHeader(anxietyHeader, anxietyText);
 
     return {
