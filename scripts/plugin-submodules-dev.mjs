@@ -81,6 +81,7 @@ function readRootPackage() {
 	const p = join(ROOT, "package.json");
 	const raw = readFileSync(p, "utf8");
 	return { path: p, raw, pkg: JSON.parse(raw) };
+// Note: reads file once, storing raw data for both returning and parsing efficiency
 }
 
 function writePackageJson(path, raw, pkg) {
