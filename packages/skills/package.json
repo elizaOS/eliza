@@ -48,6 +48,9 @@
 	"dependencies": {
 		"yaml": "^2.8.2"
 	},
+	"devDependencies": {
+		"tsx": "^4.19.2"
+	},
 	"publishConfig": {
 		"access": "public"
 	},

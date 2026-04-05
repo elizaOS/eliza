@@ -1894,10 +1894,14 @@ impl AgentRuntime {
         };
 
         let validation_level = options.context_check_level.unwrap_or(default_context_level);
+        let checkpoint_codes_enabled = options.checkpoint_codes.unwrap_or(parse_truthy_setting(
+            self.get_setting("PROMPT_CHECKPOINT_CODES").await,
+        ));
         let max_retries = options.max_retries.unwrap_or(default_retries);
         let mut current_retry = 0;
         let mut last_error: Option<String> = None;
         let mut smart_retry_context: Option<String> = None;
+        let prompt_code = || Uuid::new_v4().to_string()[..8].to_string();
 
         // Generate per-field validation codes for levels 0-1
         let mut per_field_codes: HashMap<String, String> = HashMap::new();
@@ -1906,10 +1910,7 @@ impl AgentRuntime {
                 let default_validate = validation_level == 1;
                 let needs_validation = row.validate_field.unwrap_or(default_validate);
                 if needs_validation {
-                    per_field_codes.insert(
-                        row.field.clone(),
-                        Uuid::new_v4().to_string()[..8].to_string(),
-                    );
+                    per_field_codes.insert(row.field.clone(), prompt_code());
                 }
             }
         }
@@ -1935,8 +1936,14 @@ impl AgentRuntime {
 
             // Append smart retry context if available from previous retry
             if let Some(ref ctx) = smart_retry_context {
-                rendered.push_str(ctx);
+                let trimmed = ctx.trim();
+                if !trimmed.is_empty() {
+                    rendered = format!("{}\n\n{}", rendered.trim_end(), trimmed);
+                }
             }
+
+            rendered = rendered.replace("\r\n", "\n").replace('\r', "\n");
+            rendered = rendered.trim().to_string();
 
             // Build format
             let format = options
@@ -1949,8 +1956,8 @@ impl AgentRuntime {
             let container_end = if is_xml { "</response>" } else { "}" };
 
             // Build extended schema with validation codes
-            let first = validation_level >= 2;
-            let last = validation_level >= 3;
+            let first = checkpoint_codes_enabled && validation_level >= 2;
+            let last = checkpoint_codes_enabled && validation_level >= 3;
 
             let mut ext_schema: Vec<(String, String)> = Vec::new();
 
@@ -1958,15 +1965,15 @@ impl AgentRuntime {
                 vec![
                     (
                         format!("{}initial_code", prefix),
-                        "echo the initial UUID code from prompt".to_string(),
+                        "echo the initial prompt code".to_string(),
                     ),
                     (
                         format!("{}middle_code", prefix),
-                        "echo the middle UUID code from prompt".to_string(),
+                        "echo the middle prompt code".to_string(),
                     ),
                     (
                         format!("{}end_code", prefix),
-                        "echo the end UUID code from prompt".to_string(),
+                        "echo the end prompt code".to_string(),
                     ),
                 ]
             };
@@ -2010,9 +2017,21 @@ impl AgentRuntime {
             }
             example.push_str(container_end);
 
-            let init_code = Uuid::new_v4().to_string();
-            let mid_code = Uuid::new_v4().to_string();
-            let final_code = Uuid::new_v4().to_string();
+            let init_code = if checkpoint_codes_enabled {
+                prompt_code()
+            } else {
+                String::new()
+            };
+            let mid_code = if checkpoint_codes_enabled {
+                prompt_code()
+            } else {
+                String::new()
+            };
+            let final_code = if checkpoint_codes_enabled {
+                prompt_code()
+            } else {
+                String::new()
+            };
 
             let section_start = if is_xml {
                 "<output>"
@@ -2021,31 +2040,31 @@ impl AgentRuntime {
             };
             let section_end = if is_xml { "</output>" } else { "" };
 
-            let full_prompt = format!(
-                "initial code: {}\n{}\nmiddle code: {}\n{}\n\
-                Do NOT include any thinking, reasoning, or <think> sections in your response.\n\
-                Go directly to the {} response format without any preamble or explanation.\n\n\
-                Respond using {} format like this:\n{}\n\n\
-                IMPORTANT: Your response must ONLY contain the {}{} {} block above. \
-                Do not include any text, thinking, or reasoning before or after this {} block. \
-                Start your response immediately with {} and end with {}.\n\
-                {}\nend code: {}\n",
-                init_code,
-                rendered,
-                mid_code,
+            let mut prompt_sections = Vec::new();
+            if checkpoint_codes_enabled {
+                prompt_sections.push(format!("initial code: {}", init_code));
+            }
+            prompt_sections.push(rendered.clone());
+            if checkpoint_codes_enabled {
+                prompt_sections.push(format!("middle code: {}", mid_code));
+            }
+            prompt_sections.push(format!(
+                "{}\nReturn only {}. No prose before or after it. No <think>.\n\nUse this shape:\n{}\n\nReturn exactly one {}.\n{}",
                 section_start,
                 format,
-                format,
                 example,
-                container_start,
-                container_end,
-                format,
-                format,
-                container_start,
-                container_end,
-                section_end,
-                final_code
-            );
+                if is_xml {
+                    "<response>...</response>"
+                } else {
+                    "JSON object"
+                },
+                section_end
+            ));
+            if checkpoint_codes_enabled {
+                prompt_sections.push(format!("end code: {}", final_code));
+            }
+
+            let full_prompt = format!("{}\n", prompt_sections.join("\n"));
 
             debug!("dynamic_prompt_exec_from_state: using format {}", format);
 
@@ -2305,8 +2324,10 @@ pub struct DynamicPromptOptions {
     pub force_format: Option<String>,
     /// Required fields that must be present and non-empty
     pub required_fields: Option<Vec<String>>,
-    /// Validation level (0=trusted, 1=progressive, 2=checkpoint, 3=full)
+    /// Validation level (0=trusted, 1=progressive, 2=buffered, 3=strict buffered)
     pub context_check_level: Option<u8>,
+    /// Enable prompt checkpoint wrappers and echo validation. Default: false.
+    pub checkpoint_codes: Option<bool>,
     /// Maximum retry attempts
     pub max_retries: Option<u32>,
     /// Retry backoff configuration
@@ -2517,6 +2538,7 @@ fn parse_truthy_setting(v: Option<SettingValue>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
 
     #[tokio::test]
     async fn test_runtime_creation() {
@@ -2669,6 +2691,161 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(runtime.log_level(), LogLevel::Debug);
+    }
+
+    #[tokio::test]
+    async fn test_dynamic_prompt_exec_omits_checkpoint_codes_by_default() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(Character {
+                name: "PromptTest".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let captured_prompt = Arc::new(Mutex::new(String::new()));
+        let captured_prompt_for_model = Arc::clone(&captured_prompt);
+
+        runtime
+            .register_model(
+                "TEXT_LARGE",
+                Box::new(move |params| {
+                    let prompt = params
+                        .get("prompt")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    let captured_prompt_for_model = Arc::clone(&captured_prompt_for_model);
+                    Box::pin(async move {
+                        {
+                            let mut guard = captured_prompt_for_model.lock().unwrap();
+                            *guard = prompt.clone();
+                        }
+
+                        Ok("<response><text>ok</text></response>".to_string())
+                    })
+                }),
+            )
+            .await;
+
+        let state = crate::types::State {
+            values: None,
+            data: None,
+            text: String::new(),
+            extra: None,
+        };
+
+        let result = runtime
+            .dynamic_prompt_exec_from_state(
+                &state,
+                "Test prompt",
+                &[crate::types::state::SchemaRow::new("text", "Response")],
+                DynamicPromptOptions {
+                    context_check_level: Some(2),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let prompt = captured_prompt.lock().unwrap().clone();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap()["text"], "ok");
+        assert!(!prompt.contains("initial code: "));
+        assert!(!prompt.contains("middle code: "));
+        assert!(!prompt.contains("end code: "));
+    }
+
+    #[tokio::test]
+    async fn test_dynamic_prompt_exec_uses_short_codes_when_enabled() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(Character {
+                name: "PromptTest".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let captured_prompt = Arc::new(Mutex::new(String::new()));
+        let captured_prompt_for_model = Arc::clone(&captured_prompt);
+
+        runtime
+            .register_model("TEXT_LARGE", Box::new(move |params| {
+                let prompt = params
+                    .get("prompt")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let captured_prompt_for_model = Arc::clone(&captured_prompt_for_model);
+                Box::pin(async move {
+                    {
+                        let mut guard = captured_prompt_for_model.lock().unwrap();
+                        *guard = prompt.clone();
+                    }
+
+                    let init_code = prompt
+                        .split("initial code: ")
+                        .nth(1)
+                        .and_then(|s: &str| s.split('\n').next())
+                        .unwrap_or_default();
+                    let mid_code = prompt
+                        .split("middle code: ")
+                        .nth(1)
+                        .and_then(|s: &str| s.split('\n').next())
+                        .unwrap_or_default();
+                    let end_code = prompt
+                        .split("end code: ")
+                        .nth(1)
+                        .and_then(|s: &str| s.split('\n').next())
+                        .unwrap_or_default();
+
+                    Ok(format!(
+                        "<response><one_initial_code>{}</one_initial_code><one_middle_code>{}</one_middle_code><one_end_code>{}</one_end_code><text>ok</text></response>",
+                        init_code, mid_code, end_code
+                    ))
+                })
+            }))
+            .await;
+
+        let state = crate::types::State {
+            values: None,
+            data: None,
+            text: String::new(),
+            extra: None,
+        };
+
+        let result = runtime
+            .dynamic_prompt_exec_from_state(
+                &state,
+                "Test prompt",
+                &[crate::types::state::SchemaRow::new("text", "Response")],
+                DynamicPromptOptions {
+                    context_check_level: Some(2),
+                    checkpoint_codes: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let prompt = captured_prompt.lock().unwrap().clone();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap()["text"], "ok");
+        assert!(prompt.contains("middle code: "));
+        assert!(!prompt.contains("</output>middle code:"));
+
+        for label in ["initial code: ", "middle code: ", "end code: "] {
+            let code = prompt
+                .split(label)
+                .nth(1)
+                .and_then(|s| s.split('\n').next())
+                .unwrap_or_default();
+            assert_eq!(code.len(), 8);
+        }
     }
 
     #[test]

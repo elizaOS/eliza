@@ -7,6 +7,7 @@
  * @module network/dispatcher
  */
 
+import type * as dns from "node:dns";
 import { Agent, type Dispatcher } from "undici";
 import {
 	type LookupFn,
@@ -28,7 +29,7 @@ import {
 export function createPinnedDispatcher(pinned: PinnedHostname): Dispatcher {
 	return new Agent({
 		connect: {
-			lookup: pinned.lookup as any,
+			lookup: pinned.lookup as typeof dns.lookup,
 		},
 	});
 }

@@ -279,6 +279,7 @@ class TestDynamicPromptOptions:
         assert options.force_format is None
         assert options.required_fields is None
         assert options.context_check_level is None
+        assert options.checkpoint_codes is None
         assert options.max_retries is None
         assert options.retry_backoff is None
 
@@ -290,6 +291,7 @@ class TestDynamicPromptOptions:
             force_format="xml",
             required_fields=["text", "actions"],
             context_check_level=1,
+            checkpoint_codes=True,
             max_retries=3,
             retry_backoff=backoff,
         )
@@ -298,6 +300,7 @@ class TestDynamicPromptOptions:
         assert options.force_format == "xml"
         assert options.required_fields == ["text", "actions"]
         assert options.context_check_level == 1
+        assert options.checkpoint_codes is True
         assert options.max_retries == 3
         assert options.retry_backoff.initial_ms == 500
 
@@ -404,6 +407,77 @@ class TestDynamicPromptExecFromState:
 
         # Should return None because text is empty and required
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_prompt_omits_checkpoint_codes_by_default(self, runtime: AgentRuntime) -> None:
+        """Prompt checkpoint wrappers should be off by default."""
+        captured_prompt: dict[str, str] = {}
+
+        async def mock_model_handler(rt: AgentRuntime, params: dict[str, object]) -> str:
+            prompt = str(params.get("prompt", ""))
+            captured_prompt["value"] = prompt
+            return "<response><text>Response text</text></response>"
+
+        runtime.register_model("TEXT_LARGE", mock_model_handler, "mock")
+
+        state = MagicMock()
+        state.values = {}
+
+        result = await runtime.dynamic_prompt_exec_from_state(
+            state=state,
+            prompt="Test prompt",
+            schema=[SchemaRow("text", "Response")],
+            options=DynamicPromptOptions(context_check_level=2),
+        )
+
+        prompt = captured_prompt["value"]
+        assert result is not None
+        assert result.get("text") == "Response text"
+        assert "initial code: " not in prompt
+        assert "middle code: " not in prompt
+        assert "end code: " not in prompt
+
+    @pytest.mark.asyncio
+    async def test_prompt_codes_are_short_and_separated_when_enabled(
+        self, runtime: AgentRuntime
+    ) -> None:
+        """Prompt checkpoint codes should be clipped and separated by newlines."""
+        captured_prompt: dict[str, str] = {}
+
+        async def mock_model_handler(rt: AgentRuntime, params: dict[str, object]) -> str:
+            prompt = str(params.get("prompt", ""))
+            captured_prompt["value"] = prompt
+            init_code = prompt.split("initial code: ", 1)[1].split("\n", 1)[0]
+            mid_code = prompt.split("middle code: ", 1)[1].split("\n", 1)[0]
+            end_code = prompt.split("end code: ", 1)[1].split("\n", 1)[0]
+            return f"""<response>
+                <one_initial_code>{init_code}</one_initial_code>
+                <one_middle_code>{mid_code}</one_middle_code>
+                <one_end_code>{end_code}</one_end_code>
+                <text>Response text</text>
+            </response>"""
+
+        runtime.register_model("TEXT_LARGE", mock_model_handler, "mock")
+
+        state = MagicMock()
+        state.values = {}
+
+        result = await runtime.dynamic_prompt_exec_from_state(
+            state=state,
+            prompt="Test prompt",
+            schema=[SchemaRow("text", "Response")],
+            options=DynamicPromptOptions(context_check_level=2, checkpoint_codes=True),
+        )
+
+        prompt = captured_prompt["value"]
+        assert result is not None
+        assert result.get("text") == "Response text"
+        assert "one_initial_code" not in result
+        assert "middle code: " in prompt
+        assert "</output>middle code:" not in prompt
+        for label in ("initial code: ", "middle code: ", "end code: "):
+            code = prompt.split(label, 1)[1].split("\n", 1)[0]
+            assert len(code) == 8
 
     @pytest.mark.asyncio
     async def test_callable_prompt(self, runtime: AgentRuntime) -> None:

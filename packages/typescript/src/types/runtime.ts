@@ -37,6 +37,7 @@ import type {
 import type { PairingAllowlistEntry, PairingRequest } from "./pairing";
 import type {
 	Plugin,
+	PluginOwnership,
 	Route,
 	RuntimeEventStorage,
 	ServiceClass,
@@ -81,6 +82,14 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	// Methods
 	registerPlugin(plugin: Plugin): Promise<void>;
+	unloadPlugin(pluginName: string): Promise<PluginOwnership | null>;
+	reloadPlugin(plugin: Plugin): Promise<void>;
+	applyPluginConfig(
+		pluginName: string,
+		config: Record<string, string>,
+	): Promise<boolean>;
+	getPluginOwnership(pluginName: string): PluginOwnership | null;
+	getAllPluginOwnership(): PluginOwnership[];
 
 	initialize(options?: { skipMigrations?: boolean }): Promise<void>;
 
@@ -379,8 +388,8 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 * VALIDATION LEVELS:
 	 * - Level 0 (Trusted): No codes. Maximum speed. Use for reliable models.
 	 * - Level 1 (Progressive): Per-field codes. Balance of safety + speed.
-	 * - Level 2 (First Checkpoint): Codes at start. Default. Catches ignored prompts.
-	 * - Level 3 (Full): Codes at start AND end. Maximum correctness.
+	 * - Level 2: Buffered validation. Optional checkpoint codes can validate the prompt envelope.
+	 * - Level 3: Strict buffered validation. Optional checkpoint codes validate both ends.
 	 *
 	 * @param state - State object to inject into the prompt template
 	 * @param params - LLM parameters with a prompt template
@@ -402,6 +411,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 			forceFormat?: "json" | "xml";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
+			checkpointCodes?: boolean;
 			maxRetries?: number;
 			retryBackoff?: number | import("./state").RetryBackoffConfig;
 			disableCache?: boolean;

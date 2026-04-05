@@ -83,9 +83,7 @@ function initContextManagerSync(): IStreamingContextManager {
 			// eslint-disable-next-line @typescript-eslint/no-require-imports
 			const { AsyncLocalStorage } =
 				require("node:async_hooks") as typeof import("node:async_hooks");
-			const storage = new AsyncLocalStorage<
-				StreamingContext | undefined
-			>();
+			const storage = new AsyncLocalStorage<StreamingContext | undefined>();
 			return {
 				run<T>(context: StreamingContext | undefined, fn: () => T): T {
 					return storage.run(context, fn);

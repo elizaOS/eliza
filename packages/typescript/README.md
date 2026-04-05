@@ -43,10 +43,10 @@ The `@elizaos/core` package features a dual build system that provides optimized
 - **Node.js Build**: Full API surface with all features including server utilities
 - **Browser Build**: Optimized, minified build with browser-safe APIs and polyfills
 
-The correct build is automatically selected based on your environment through package.json conditional exports. For browser usage, ensure you have the necessary polyfills installed:
+The correct build is automatically selected based on your environment through package.json conditional exports. For browser usage, ensure your app provides the standard platform primitives it depends on, such as `Buffer` where needed.
 
 ```bash
-npm install buffer crypto-browserify stream-browserify events
+npm install buffer
 ```
 
 The dual build system uses conditional exports in package.json to automatically select the appropriate build based on the runtime environment.
