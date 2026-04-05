@@ -5,9 +5,8 @@
  * `@elizaos/plugin-sql` registers the DB in `init` only (no `adapter` factory), so we build the adapter with
  * `createDatabaseAdapter` and pass `createRuntimes(characters, { adapter })` — equivalent to what the plugin does at runtime.
  *
- * Limitation: In multi-character setups, a single database adapter is created from the primary character's
- * settings (PGLITE_DATA_DIR / POSTGRES_URL). All characters share this adapter; per-character database
- * settings are ignored.
+ * Multi-character support: Each character gets its own database adapter using its own PGLITE_DATA_DIR / POSTGRES_URL
+ * settings. Characters without explicit settings fall back to the harness default.
  *
  * Prerequisite: built core (`bun run build:core` from repo root) so workspace `@elizaos/core` resolves to `dist/`.
  *
@@ -203,20 +202,34 @@ async function main(): Promise<void> {
 
 	const logLevel = resolveLogLevel(cliLogLevel);
 
-	const primary = characters[0]!;
-	const caps = getBasicCapabilitiesSettings(primary);
-	const sqlAdapter = createDatabaseAdapter(
-		{
-			dataDir: caps.PGLITE_DATA_DIR,
-			postgresUrl: caps.POSTGRES_URL,
-		},
-		(primary.id ?? stringToUuid(primary.name ?? "eliza")) as UUID,
-	);
+	// Create one adapter per character so each can use its own DB settings
+	const adapters: Map<string, ReturnType<typeof createDatabaseAdapter>> = new Map();
+	for (const char of characters) {
+		const caps = getBasicCapabilitiesSettings(char);
+		const charId = (char.id ?? stringToUuid(char.name ?? "eliza")) as UUID;
+		const adapter = createDatabaseAdapter(
+			{
+				dataDir: caps.PGLITE_DATA_DIR,
+				postgresUrl: caps.POSTGRES_URL,
+			},
+			charId,
+		);
+		adapters.set(charId, adapter);
+	}
 
-	const runtimes = await createRuntimes(characters, {
-		adapter: sqlAdapter,
-		logLevel,
-	});
+	// Create runtimes individually with per-character adapters
+	const runtimes: IAgentRuntime[] = [];
+	for (const char of characters) {
+		const charId = (char.id ?? stringToUuid(char.name ?? "eliza")) as UUID;
+		const adapter = adapters.get(charId)!;
+		const [runtime] = await createRuntimes([char], {
+			adapter,
+			logLevel,
+		});
+		if (runtime) {
+			runtimes.push(runtime);
+		}
+	}
 
 	const runtime = runtimes[0] as IAgentRuntime | undefined;
 	if (!runtime) {
