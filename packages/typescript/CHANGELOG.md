@@ -47,8 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - **Why:** The message service already requested `ANXIETY` in initial state; the provider was missing so the name was a no-op. Adding it makes the intent effective and improves behavior in groups and DMs.
 
 - **Prevent memory saving: DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS**
-  // Note: only specific sources persist when memory creation is enabled for retention management.
-  - **What:** When `DISABLE_MEMORY_CREATION` is true, the message service skips persisting the incoming message (and embedding queue), response memories, and ignore response to memory. Optional `ALLOW_MEMORY_SOURCE_IDS` whitelist: when memory creation is disabled, only messages whose `metadata.sourceId` is in the list are persisted (so you can disable by default but allow specific sources).
+  - **What:** When `DISABLE_MEMORY_CREATION` is true, the message service skips persisting the incoming message (and embedding queue), response memories, and ignores response-to-memory entirely (no sources are persisted). Optional `ALLOW_MEMORY_SOURCE_IDS` whitelist: when memory creation is enabled (i.e. `DISABLE_MEMORY_CREATION` is false), only messages whose `metadata.sourceId` is in the list are persisted; all other sources are skipped (so you can allow only specific sources by default).
   - **Why:** Reduces storage, complies with retention policy, or limits which channels/sources are stored. Banner already showed these settings; the behavior is now implemented in the message pipeline.
 
 ### Changed
