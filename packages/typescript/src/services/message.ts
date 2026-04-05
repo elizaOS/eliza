@@ -493,20 +493,20 @@ export class DefaultMessageService implements IMessageService {
     const allowedSources = getAllowedMemorySources(runtime);
     const messageSourceId = (message.metadata as Record<string, unknown> | undefined)
       ?.sourceId as string | undefined;
-    // When allowedSources is set, messages must have a matching sourceId
-    // When allowedSources is null, all messages are allowed (no filtering)
-    // When allowedSources is set, messages must have a matching sourceId in the whitelist
-    // Note: allows all messages when no sources are defined, enabling flexible persistence options
+    // Check if the message source matches the allowlist (only when allowlist is configured)
+    const sourceMatchesAllowlist =
+      typeof messageSourceId === "string" &&
+      allowedSources?.includes(messageSourceId) === true;
     // When allowedSources is null, all sources are allowed (no whitelist filtering)
-    const memorySourceAllowed = allowedSources === null || 
-      (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
+    // When allowedSources is set, messages must have a matching sourceId in the whitelist
+    const memorySourceAllowed = allowedSources === null || sourceMatchesAllowlist;
     // Memory persistence logic:
-    // - If memory creation is disabled BUT source is in ALLOW_MEMORY_SOURCE_IDS whitelist, persist (whitelist overrides)
-    // - If memory creation is disabled and source is NOT whitelisted, skip persistence
+    // - If memory creation is disabled, only persist if source is explicitly in ALLOW_MEMORY_SOURCE_IDS whitelist
     // - If memory creation is enabled and no allowlist exists, persist all messages
     // - If memory creation is enabled and allowlist exists, only persist if source is in allowlist
-    // Note: ALLOW_MEMORY_SOURCE_IDS overrides DISABLE_MEMORY_CREATION for whitelisted sources.
-    const canPersistMemory = !disableMemoryCreation || memorySourceAllowed;
+    const canPersistMemory = disableMemoryCreation
+      ? sourceMatchesAllowlist
+      : memorySourceAllowed;
 
     let memoryToQueue: Memory | null = null;
     if (canPersistMemory) {
@@ -980,8 +980,10 @@ export class DefaultMessageService implements IMessageService {
       }
 
       // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
-      // Note: Apply the same allowlist policy to ignore responses for consistency.
-      const canPersistIgnore = !disableMemoryCreation || memorySourceAllowed;
+      // Note: Apply the same policy as regular responses - only whitelist overrides when disabled.
+      const canPersistIgnore = disableMemoryCreation
+        ? sourceMatchesAllowlist
+        : memorySourceAllowed;
       if (canPersistIgnore) {
           const ignoreMemory: Memory = {
             id: asUUID(v4()),
