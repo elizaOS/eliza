@@ -67,10 +67,7 @@
     "packages/*",
     "packages/computeruse/packages/*",
     "apps/*",
-    "agent",
-    "plugins/plugin-sql/typescript",
-    "plugins/plugin-ollama/typescript",
-    "plugins/plugin-local-ai/typescript"
+    "agent"
   ],
   "devDependencies": {
     "@bufbuild/buf": "^1.47.2",
@@ -155,10 +152,10 @@
     "@elizaos/plugin-anthropic": "alpha",
     "@elizaos/plugin-groq": "alpha",
     "@elizaos/plugin-local-embedding": "alpha",
-    "@elizaos/plugin-local-ai": "workspace:*",
-    "@elizaos/plugin-ollama": "workspace:*",
+    "@elizaos/plugin-local-ai": "alpha",
+    "@elizaos/plugin-ollama": "alpha",
     "@elizaos/plugin-openai": "alpha",
-    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-sql": "alpha",
     "@elysiajs/cors": "^1.4.1",
     "@polymarket/clob-client": "^5.2.0",
     "@sinclair/typebox": "^0.34.47",
