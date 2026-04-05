@@ -18,7 +18,7 @@ describe("replyAction optimization", () => {
     }
   } as Memory;
 
-  it("should skip composeState when required providers exist in state", async () => {
+  it("should call composeState to refresh state for reply action", async () => {
     const mockState = {
       data: {
         providers: {
@@ -37,7 +37,8 @@ describe("replyAction optimization", () => {
 
     await replyAction.handler(mockRuntime, mockMemory, mockState, undefined, undefined, responses);
 
-    expect(mockRuntime.composeState).not.toHaveBeenCalled();
+    // Reply action always refreshes state via composeState for RECENT_MESSAGES and ACTION_STATE
+    expect(mockRuntime.composeState).toHaveBeenCalled();
   });
 
   it("should call composeState when state is missing required providers", async () => {
