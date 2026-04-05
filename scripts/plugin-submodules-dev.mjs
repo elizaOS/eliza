@@ -2,7 +2,7 @@
 /**
  * plugin-submodules-dev.mjs
  *
- * Git submodule plugins (elizaos-plugins/*) are optional for local development.
+ * Git submodule plugins (plugins/*) are optional for local development.
  * The repo can stay on registry versions (`alpha`, semver) until you link them for editing.
  *
  *   DEV (default — no flag, or `--dev`):
@@ -52,14 +52,17 @@ const PLUGIN_SUBMODULES = [
 	{
 		submodulePath: "plugins/plugin-sql",
 		workspaceEntry: "plugins/plugin-sql/typescript",
+		packageName: "@elizaos/plugin-sql",
 	},
 	{
 		submodulePath: "plugins/plugin-ollama",
 		workspaceEntry: "plugins/plugin-ollama/typescript",
+		packageName: "@elizaos/plugin-ollama",
 	},
 	{
 		submodulePath: "plugins/plugin-local-ai",
 		workspaceEntry: "plugins/plugin-local-ai/typescript",
+		packageName: "@elizaos/plugin-local-ai",
 	},
 ];
 
@@ -76,7 +79,8 @@ function log(...args) {
 
 function readRootPackage() {
 	const p = join(ROOT, "package.json");
-	return { path: p, raw: readFileSync(p, "utf8"), pkg: JSON.parse(readFileSync(p, "utf8")) };
+	const raw = readFileSync(p, "utf8");
+	return { path: p, raw, pkg: JSON.parse(raw) };
 }
 
 function writePackageJson(path, raw, pkg) {
@@ -184,17 +188,7 @@ function submoduleInit() {
  * Force registry tag for known submodule plugin names on root + agent only.
  */
 function fallbackPluginDepsToRegistry() {
-	const names = new Set();
-	for (const { workspaceEntry } of PLUGIN_SUBMODULES) {
-		const pkgPath = join(ROOT, workspaceEntry, "package.json");
-		if (!existsSync(pkgPath)) continue;
-		try {
-			const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-			if (pkg.name) names.add(pkg.name);
-		} catch {
-			/* skip */
-		}
-	}
+	const names = new Set(PLUGIN_SUBMODULES.map((plugin) => plugin.packageName));
 	for (const path of ROOT_AND_AGENT_PKG) {
 		if (!existsSync(path)) continue;
 		const raw = readFileSync(path, "utf8");
@@ -267,6 +261,11 @@ function fixWorkspaceDepsCheckPasses() {
 if (DEV) {
 	log("plugin-submodules-dev: dev (link submodules for local editing)\n");
 	let mutated = submoduleInit();
+	if (!pluginPackagesPresent()) {
+		throw new Error(
+			"Plugin submodules are unavailable; aborting workspace/dependency rewrites.",
+		);
+	}
 	mutated = ensureWorkspaces() || mutated;
 	mutated = removeSelfDependencies() || mutated;
 
