@@ -304,6 +304,7 @@ async function main(): Promise<void> {
 			if (trimmed.toLowerCase() === "exit") {
 				break;
 			}
+// Note: empty lines and "exit" command are handled to maintain clean input processing.
 
 			const message: Memory = {
 				id: crypto.randomUUID() as UUID,
@@ -321,6 +322,7 @@ async function main(): Promise<void> {
 
 			if (!runtime.messageService) {
 				output.write("messageService not ready\n");
+				// Note: continues to next iteration if messageService isn't ready, preventing errors.
 				continue;
 			}
 
