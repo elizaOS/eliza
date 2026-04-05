@@ -43,7 +43,7 @@
     },
     "packages/daemon": {
       "name": "@elizaos/daemon",
-      "version": "2.0.0-alpha.111",
+      "version": "2.0.0-alpha.112",
       "devDependencies": {
         "@biomejs/biome": "^1.9.4",
         "@types/node": "^22.10.2",
@@ -57,7 +57,7 @@
     },
     "packages/elizaos": {
       "name": "elizaos",
-      "version": "2.0.0-alpha.111",
+      "version": "2.0.0-alpha.112",
       "bin": {
         "elizaos": "./dist/cli.js",
       },
@@ -74,7 +74,7 @@
     },
     "packages/interop": {
       "name": "@elizaos/interop",
-      "version": "2.0.0-alpha.111",
+      "version": "2.0.0-alpha.112",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -85,7 +85,7 @@
     },
     "packages/prompts": {
       "name": "@elizaos/prompts",
-      "version": "2.0.0-alpha.111",
+      "version": "2.0.0-alpha.112",
     },
     "packages/python": {
       "name": "@elizaos/python",
@@ -93,18 +93,18 @@
     },
     "packages/rust": {
       "name": "@elizaos/rust",
-      "version": "2.0.0-alpha.111",
+      "version": "2.0.0-alpha.112",
     },
     "packages/schemas": {
       "name": "@elizaos/schemas",
-      "version": "2.0.0-alpha.111",
+      "version": "2.0.0-alpha.112",
       "devDependencies": {
         "@bufbuild/buf": "^1.47.2",
       },
     },
     "packages/skills": {
       "name": "@elizaos/skills",
-      "version": "2.0.0-alpha.111",
+      "version": "2.0.0-alpha.112",
       "dependencies": {
         "yaml": "^2.8.2",
       },
@@ -114,7 +114,7 @@
     },
     "packages/typescript": {
       "name": "@elizaos/core",
-      "version": "2.0.0-alpha.111",
+      "version": "2.0.0-alpha.112",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.32.1",
         "@bufbuild/protobuf": "^2.11.0",
