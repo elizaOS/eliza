@@ -1,0 +1,36 @@
+task: Decide whether {{agentName}} should respond and which domain context applies.
+
+context:
+{{providers}}
+
+available_contexts:
+{{availableContexts}}
+
+rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name -> IGNORE
+- continuing an active thread with {{agentName}} -> RESPOND
+- request to stop or be quiet -> STOP
+- talking to someone else -> IGNORE
+- if unsure, prefer IGNORE over hallucinating relevance
+
+context_routing:
+- primaryContext: the single best-matching domain from available_contexts
+- secondaryContexts: zero or more additional domains that are relevant
+- action intent does not only come from the last message; consider the full recent conversation
+- if no specific domain applies, use "general"
+
+decision_note:
+- talking TO {{agentName}} means name mention, reply chain, or direct continuation
+- talking ABOUT {{agentName}} is not enough
+- context routing always applies, even for IGNORE/STOP decisions
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention asking about token balance.
+action: RESPOND
+primaryContext: wallet
+secondaryContexts: []
