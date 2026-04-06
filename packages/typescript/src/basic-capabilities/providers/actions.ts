@@ -8,6 +8,7 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
+import { buildDeterministicSeed } from "../../utils/deterministic";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTIONS");
@@ -61,13 +62,21 @@ export const actionsProvider: Provider = {
 		const resolvedActions = await Promise.all(actionPromises);
 
 		const actionsData = resolvedActions.filter(Boolean) as Action[];
+		const actionSeed = buildDeterministicSeed(
+			runtime.agentId,
+			message.roomId,
+			"ACTIONS",
+		);
 
 		// Format action-related texts
-		const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
+		const actionNames = `Possible response actions: ${formatActionNames(actionsData, actionSeed)}`;
 
 		const actionsWithDescriptions =
 			actionsData.length > 0
-				? addHeader("# Available Actions", formatActions(actionsData))
+				? addHeader(
+						"# Available Actions",
+						formatActions(actionsData, actionSeed),
+					)
 				: "";
 
 		const values = {
