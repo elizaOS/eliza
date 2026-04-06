@@ -482,62 +482,62 @@ export async function getEntityDetails({
 	}
 
 	const pendingPromise = (async () => {
-	const [room, roomEntities] = await Promise.all([
-		runtime.getRoom(roomId),
-		runtime.getEntitiesForRoom(roomId, true),
-	]);
+		const [room, roomEntities] = await Promise.all([
+			runtime.getRoom(roomId),
+			runtime.getEntitiesForRoom(roomId, true),
+		]);
 
-	const uniqueEntities = new Map();
+		const uniqueEntities = new Map<string, EntityDetailsRecord>();
 
-	for (const entity of roomEntities) {
-		if (uniqueEntities.has(entity.id)) continue;
+		for (const entity of roomEntities) {
+			if (uniqueEntities.has(entity.id)) continue;
 
-		const allData = {};
-		for (const component of entity.components || []) {
-			Object.assign(allData, component.data);
-		}
-
-		const mergedData: Record<string, unknown> = {};
-		for (const [key, value] of Object.entries(allData)) {
-			if (!mergedData[key]) {
-				mergedData[key] = value;
-				continue;
+			const allData = {};
+			for (const component of entity.components || []) {
+				Object.assign(allData, component.data);
 			}
 
-			if (Array.isArray(mergedData[key]) && Array.isArray(value)) {
-				mergedData[key] = [...new Set([...mergedData[key], ...value])];
-			} else if (
-				typeof mergedData[key] === "object" &&
-				typeof value === "object"
-			) {
-				mergedData[key] = { ...mergedData[key], ...value };
-			}
-		}
+			const mergedData: Record<string, unknown> = {};
+			for (const [key, value] of Object.entries(allData)) {
+				if (!mergedData[key]) {
+					mergedData[key] = value;
+					continue;
+				}
 
-		const getEntityNameFromMetadata = (source: string): string | undefined => {
-			const sourceMetadata = entity.metadata?.[source];
-			if (
-				sourceMetadata &&
-				typeof sourceMetadata === "object" &&
-				sourceMetadata !== null
-			) {
-				const metadataObj = sourceMetadata as Record<string, unknown>;
-				if ("name" in metadataObj && typeof metadataObj.name === "string") {
-					return metadataObj.name;
+				if (Array.isArray(mergedData[key]) && Array.isArray(value)) {
+					mergedData[key] = [...new Set([...mergedData[key], ...value])];
+				} else if (
+					typeof mergedData[key] === "object" &&
+					typeof value === "object"
+				) {
+					mergedData[key] = { ...mergedData[key], ...value };
 				}
 			}
-			return undefined;
-		};
 
-		uniqueEntities.set(entity.id, {
-			id: entity.id,
-			name: room?.source
-				? getEntityNameFromMetadata(room.source) || entity.names[0]
-				: entity.names[0],
-			names: entity.names,
-			data: JSON.stringify({ ...mergedData, ...entity.metadata }),
-		});
-	}
+			const getEntityNameFromMetadata = (source: string): string | undefined => {
+				const sourceMetadata = entity.metadata?.[source];
+				if (
+					sourceMetadata &&
+					typeof sourceMetadata === "object" &&
+					sourceMetadata !== null
+				) {
+					const metadataObj = sourceMetadata as Record<string, unknown>;
+					if ("name" in metadataObj && typeof metadataObj.name === "string") {
+						return metadataObj.name;
+					}
+				}
+				return undefined;
+			};
+
+			uniqueEntities.set(entity.id, {
+				id: entity.id,
+				name: room?.source
+					? getEntityNameFromMetadata(room.source) || entity.names[0]
+					: entity.names[0],
+				names: entity.names,
+				data: stableStringify({ ...mergedData, ...entity.metadata }),
+			});
+		}
 
 		return Array.from(uniqueEntities.values()).sort((left, right) => {
 			const leftName = left.name ?? left.names[0] ?? "";
