@@ -174,13 +174,20 @@ function resolvePromptSeed(
 	stateValues?: Record<string, unknown>,
 	stateData?: Record<string, unknown>,
 ): string {
+	const normalizeSeedValue = (value: unknown): string | number | undefined => {
+		if (typeof value === "string" || typeof value === "number") {
+			return value;
+		}
+		return undefined;
+	};
+
 	return buildDeterministicSeed(
-		stateValues?.__conversationSeed,
-		stateData?.__conversationSeed,
-		stateLike.__conversationSeed,
-		stateValues?.agentName,
-		stateLike.agentName,
-		stateLike.roomId,
+		normalizeSeedValue(stateValues?.__conversationSeed),
+		normalizeSeedValue(stateData?.__conversationSeed),
+		normalizeSeedValue(stateLike.__conversationSeed),
+		normalizeSeedValue(stateValues?.agentName),
+		normalizeSeedValue(stateLike.agentName),
+		normalizeSeedValue(stateLike.roomId),
 		"prompt",
 	);
 }

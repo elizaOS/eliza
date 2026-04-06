@@ -490,7 +490,8 @@ export async function getEntityDetails({
 		const uniqueEntities = new Map<string, EntityDetailsRecord>();
 
 		for (const entity of roomEntities) {
-			if (uniqueEntities.has(entity.id)) continue;
+			const entityId = entity.id;
+			if (!entityId || uniqueEntities.has(entityId)) continue;
 
 			const allData = {};
 			for (const component of entity.components || []) {
@@ -529,10 +530,10 @@ export async function getEntityDetails({
 				return undefined;
 			};
 
-			uniqueEntities.set(entity.id, {
-				id: entity.id,
+			uniqueEntities.set(entityId, {
+				id: entityId,
 				name: room?.source
-					? getEntityNameFromMetadata(room.source) || entity.names[0]
+					? getEntityNameFromMetadata(String(room.source)) || entity.names[0]
 					: entity.names[0],
 				names: entity.names,
 				data: stableStringify({ ...mergedData, ...entity.metadata }),
@@ -542,7 +543,10 @@ export async function getEntityDetails({
 		return Array.from(uniqueEntities.values()).sort((left, right) => {
 			const leftName = left.name ?? left.names[0] ?? "";
 			const rightName = right.name ?? right.names[0] ?? "";
-			return leftName.localeCompare(rightName) || left.id.localeCompare(right.id);
+			return (
+				leftName.localeCompare(rightName) ||
+				String(left.id ?? "").localeCompare(String(right.id ?? ""))
+			);
 		});
 	})();
 
@@ -563,7 +567,10 @@ export function formatEntities({ entities }: { entities: Entity[] }) {
 	const sortedEntities = [...entities].sort((left, right) => {
 		const leftName = left.names[0] ?? "";
 		const rightName = right.names[0] ?? "";
-		return leftName.localeCompare(rightName) || left.id.localeCompare(right.id);
+		return (
+			leftName.localeCompare(rightName) ||
+			String(left.id ?? "").localeCompare(String(right.id ?? ""))
+		);
 	});
 
 	const entityStrings = sortedEntities.map((entity: Entity) => {

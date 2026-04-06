@@ -1291,6 +1291,27 @@ describe("Utils Comprehensive Tests", () => {
 		//spy.mockRestore();
 	});
 
+	it("composePromptFromState keeps seeded placeholder replacement deterministic", () => {
+		const state = {
+			values: { __conversationSeed: "room-seed" },
+			data: {},
+			text: "",
+		} as State;
+
+		const first = utils.composePromptFromState({
+			state,
+			template: "hi {{name1}} and {{user2}}",
+		});
+		const second = utils.composePromptFromState({
+			state,
+			template: "hi {{name1}} and {{user2}}",
+		});
+
+		expect(first).toBe(second);
+		expect(first).not.toContain("{{name1}}");
+		expect(first).not.toContain("{{user2}}");
+	});
+
 	it("formatPosts formats conversation text", () => {
 		const messages = [
 			{
