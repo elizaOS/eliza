@@ -149,4 +149,36 @@ describe("characterProvider", () => {
 		expect(text).not.toContain("{{agentName}}");
 		expect(text).not.toContain("{{user1}}");
 	});
+
+	it("stays deterministic for the same conversation", async () => {
+		const character = makeCharacter({
+			bio: ["first", "second", "third"],
+			topics: ["alpha", "beta", "gamma"],
+			adjectives: ["calm", "sharp"],
+			postExamples: ["one", "two", "three"],
+			messageExamples: [
+				{
+					examples: [
+						{ name: "{{agentName}}", content: { text: "hi {{user1}}" } },
+						{ name: "{{user1}}", content: { text: "yo {{agentName}}" } },
+					],
+				},
+				{
+					examples: [
+						{ name: "{{agentName}}", content: { text: "hello {{user1}}" } },
+						{ name: "{{user1}}", content: { text: "hey {{agentName}}" } },
+					],
+				},
+			],
+		});
+		const runtime = makeRuntime(character);
+		const message = makeMessage();
+
+		const first = await characterProvider.get(runtime, message, makeState());
+		const second = await characterProvider.get(runtime, message, makeState());
+
+		expect(first.text).toBe(second.text);
+		expect(first.values.topics).toBe(second.values.topics);
+		expect(first.values.adjective).toBe(second.values.adjective);
+	});
 });
