@@ -1,4 +1,3 @@
-import { names, uniqueNamesGenerator } from "unique-names-generator";
 import { allActionDocs } from "./generated/action-docs.ts";
 import type {
 	Action,
@@ -9,6 +8,12 @@ import type {
 	ActionParameterValue,
 	JsonValue,
 } from "./types";
+import {
+	buildDeterministicSeed,
+	createDeterministicRandom,
+	deterministicShuffle,
+	getDeterministicNames,
+} from "./utils/deterministic";
 import { encodeToonValue, parseToonActionParams } from "./utils/toon";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
@@ -24,6 +29,7 @@ const actionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByName>(
 export const composeActionExamples = (
 	actionsData: Action[],
 	count: number,
+	seed = "actions",
 ): string => {
 	if (!actionsData.length || count <= 0) {
 		return "";
@@ -45,19 +51,18 @@ export const composeActionExamples = (
 	);
 
 	const selectedExamples: ActionExample[][] = [];
+	const random = createDeterministicRandom(buildDeterministicSeed(seed, "examples"));
 
 	const availableActionIndices = examplesCopy
 		.map((examples, index) => (examples.length > 0 ? index : -1))
 		.filter((index) => index !== -1);
 
 	while (selectedExamples.length < count && availableActionIndices.length > 0) {
-		const randomIndex = Math.floor(
-			Math.random() * availableActionIndices.length,
-		);
+		const randomIndex = Math.floor(random() * availableActionIndices.length);
 		const actionIndex = availableActionIndices[randomIndex];
 		const examples = examplesCopy[actionIndex];
 
-		const exampleIndex = Math.floor(Math.random() * examples.length);
+		const exampleIndex = Math.floor(random() * examples.length);
 		selectedExamples.push(examples.splice(exampleIndex, 1)[0]);
 
 		if (examples.length === 0) {
@@ -65,7 +70,7 @@ export const composeActionExamples = (
 		}
 	}
 
-	return formatSelectedExamples(selectedExamples);
+	return formatSelectedExamples(selectedExamples, buildDeterministicSeed(seed, "names"));
 };
 
 function formatActionCallExample(example: {
@@ -111,13 +116,17 @@ export function composeActionCallExamples(
 	return blocks.join("\n\n");
 }
 
-const formatSelectedExamples = (examples: ActionExample[][]): string => {
+const formatSelectedExamples = (
+	examples: ActionExample[][],
+	seed = "actions",
+): string => {
 	const MAX_NAME_PLACEHOLDERS = 5;
 
 	return examples
-		.map((example) => {
-			const randomNames = Array.from({ length: MAX_NAME_PLACEHOLDERS }, () =>
-				uniqueNamesGenerator({ dictionaries: [names] }),
+		.map((example, index) => {
+			const randomNames = getDeterministicNames(
+				MAX_NAME_PLACEHOLDERS,
+				buildDeterministicSeed(seed, index),
 			);
 
 			const conversation = example
@@ -140,27 +149,22 @@ const formatSelectedExamples = (examples: ActionExample[][]): string => {
 		.join("\n");
 };
 
-function shuffleActions<T>(items: T[]): T[] {
-	const shuffled = [...items];
-	for (let i = shuffled.length - 1; i > 0; i--) {
-		const j = Math.floor(Math.random() * (i + 1));
-		[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-	}
-	return shuffled;
+function shuffleActions<T>(items: T[], seed = "actions"): T[] {
+	return deterministicShuffle(items, seed);
 }
 
-export function formatActionNames(actions: Action[]): string {
+export function formatActionNames(actions: Action[], seed = "actions"): string {
 	if (!actions || !actions.length) return "";
 
-	return shuffleActions(actions)
+	return shuffleActions(actions, buildDeterministicSeed(seed, "names"))
 		.map((action) => action.name)
 		.join(", ");
 }
 
-export function formatActions(actions: Action[]): string {
+export function formatActions(actions: Action[], seed = "actions"): string {
 	if (!actions || !actions.length) return "";
 
-	const actionLines = shuffleActions(actions)
+	const actionLines = shuffleActions(actions, buildDeterministicSeed(seed, "descriptions"))
 		.map((action) => {
 			const lines = [
 				`- ${action.name}: ${action.description || "No description available"}`,

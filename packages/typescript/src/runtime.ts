@@ -109,6 +109,10 @@ import {
 } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
+import {
+	buildDeterministicSeed,
+	hashStringToUint32,
+} from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import {
 	ActionStreamFilter,
@@ -117,6 +121,34 @@ import {
 import { isPlainObject } from "./utils/type-guards";
 
 const environmentSettings: RuntimeSettings = {};
+const RUNTIME_TEMPLATE_CACHE = new Map<
+	string,
+	Handlebars.TemplateDelegate<Record<string, unknown>>
+>();
+const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
+const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
+const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
+	"agentName",
+	"bio",
+	"system",
+	"topic",
+	"topics",
+	"adjective",
+	"messageDirections",
+	"postDirections",
+	"directions",
+	"examples",
+	"characterPostExamples",
+	"characterMessageExamples",
+	"actionNames",
+	"actionsWithDescriptions",
+	"providersWithDescriptions",
+]);
+const STABLE_PROMPT_PROVIDER_NAMES = new Set([
+	"ACTIONS",
+	"CHARACTER",
+	"PROVIDERS",
+]);
 
 export class Semaphore {
 	private permits: number;
@@ -2519,7 +2551,11 @@ export class AgentRuntime implements IAgentRuntime {
 				providersToGet.push(provider);
 			}
 		}
-		providersToGet.sort((a, b) => (a.position || 0) - (b.position || 0));
+		providersToGet.sort(
+			(a, b) =>
+				(a.position || 0) - (b.position || 0) ||
+				a.name.localeCompare(b.name),
+		);
 
 		// Optional trajectory logging service (no-op by default).
 		type TrajectoryLogger = Service & {
@@ -2632,6 +2668,11 @@ export class AgentRuntime implements IAgentRuntime {
 		// Redact any secrets from provider context before use
 		const rawProvidersText = orderedTexts.join("\n");
 		const providersText = this.redactSecrets(rawProvidersText);
+		const conversationSeed = buildDeterministicSeed(
+			this.agentId,
+			message.roomId,
+			"conversation",
+		);
 		const aggregatedStateValues: Record<string, StateValue> = {
 			...(cachedState.values || {}),
 		};
@@ -2660,10 +2701,13 @@ export class AgentRuntime implements IAgentRuntime {
 		const newState = {
 			values: {
 				...aggregatedStateValues,
+				__conversationSeed: conversationSeed,
 				providers: providersText,
 			},
 			data: {
 				...(cachedState.data || {}),
+				__conversationSeed: conversationSeed,
+				providerOrder: providersToGet.map((provider) => provider.name),
 				providers: currentProviderResults,
 			},
 			text: providersText,
@@ -3333,6 +3377,68 @@ export class AgentRuntime implements IAgentRuntime {
 					modelParamsRecord.user = this.character.name;
 				}
 			}
+
+			if (shouldAttachUser && isPlainObject(modelParams)) {
+				const modelParamsRecord = modelParams as Record<
+					string,
+					JsonValue | object
+				>;
+				const promptSegments = Array.isArray(modelParamsRecord.promptSegments)
+					? (modelParamsRecord.promptSegments as PromptSegment[])
+					: [];
+				const stablePrefix = promptSegments
+					.filter((segment, index) => {
+						if (!segment?.stable) {
+							return false;
+						}
+						return promptSegments
+							.slice(0, index)
+							.every((previous) => previous?.stable === true);
+					})
+					.map((segment) => segment.content)
+					.join("");
+
+				if (stablePrefix.length > 0) {
+					const providerOptions = isPlainObject(modelParamsRecord.providerOptions)
+						? {
+								...(modelParamsRecord.providerOptions as Record<
+									string,
+									JsonValue | object
+								>),
+							}
+						: {};
+					const openAIOptions = isPlainObject(providerOptions.openai)
+						? {
+								...(providerOptions.openai as Record<string, JsonValue | object>),
+							}
+						: {};
+
+					if (openAIOptions.promptCacheKey === undefined) {
+						openAIOptions.promptCacheKey = buildDeterministicSeed(
+							this.agentId,
+							this.currentRoomId ?? this.agentId,
+							modelKey,
+							hashStringToUint32(stablePrefix).toString(16),
+						);
+					}
+
+					const promptCacheRetention = this.getSetting(
+						"OPENAI_PROMPT_CACHE_RETENTION",
+					);
+					if (
+						openAIOptions.promptCacheRetention === undefined &&
+						(promptCacheRetention === "in_memory" ||
+							promptCacheRetention === "24h")
+					) {
+						openAIOptions.promptCacheRetention = promptCacheRetention;
+					}
+
+					if (Object.keys(openAIOptions).length > 0) {
+						providerOptions.openai = openAIOptions;
+						modelParamsRecord.providerOptions = providerOptions;
+					}
+				}
+			}
 		}
 		const startTime =
 			typeof performance !== "undefined" &&
@@ -3853,26 +3959,14 @@ export class AgentRuntime implements IAgentRuntime {
 				},
 				{},
 			);
+			const templateContext = { ...filteredState, ...state.values };
 
-			// Compile template
-			const templateFunction = Handlebars.compile(
-				this.upgradeDoubleToTriple(templateStr),
+			const outputSegments = this.renderPromptTemplateSegments(
+				templateStr,
+				templateContext,
+				state,
 			);
-			const rawOutput = templateFunction({ ...filteredState, ...state.values });
-			// Strip any <output>...</output> section from the compiled template.
-			// dynamicPromptExecFromState appends its own <output> block with
-			// validation codes; keeping the template's copy creates duplicate
-			// conflicting format instructions that cause the model to follow the
-			// first block and ignore the validation-code echo-back request.
-			// Templates used via composePromptFromState (e.g. post generation) are
-			// unaffected because they never reach this code path.
-			const output = rawOutput
-				.replace(/<output>[\s\S]*?<\/output>\s*/g, "")
-				.replace(/\noutput:\n[\s\S]*$/i, "")
-				.replace(/\r\n/g, "\n")
-				.replace(/[ \t]+\n/g, "\n")
-				.replace(/\n{3,}/g, "\n\n")
-				.trim();
+			const output = outputSegments.map((segment) => segment.content).join("");
 
 			// Process format options
 			const hasNestedSchema = this.schemaHasNestedStructure(schema);
@@ -4024,15 +4118,18 @@ export class AgentRuntime implements IAgentRuntime {
 			const section_start = isXML ? "<output>" : "# Strict Output instructions";
 			const section_end = isXML ? "</output>" : "";
 
-			const variableBlock = [
-				checkpointCodesEnabled ? `initial code: ${initCode}` : "",
-				output,
-				smartRetryContext,
-				checkpointCodesEnabled ? `middle code: ${midCode}` : "",
-			]
-				.filter((part) => part && part.length > 0)
-				.join("\n\n")
-				.concat("\n");
+			const variableSegments = this.joinPromptSegmentGroups([
+				checkpointCodesEnabled
+					? [{ content: `initial code: ${initCode}`, stable: false }]
+					: [],
+				outputSegments,
+				smartRetryContext
+					? [{ content: smartRetryContext, stable: false }]
+					: [],
+				checkpointCodesEnabled
+					? [{ content: `middle code: ${midCode}`, stable: false }]
+					: [],
+			]).concat({ content: "\n", stable: false });
 			// Prompt cache hints: build segments so providers can cache the stable prefix.
 			// WHY: We only mark content stable when it is identical across calls for the same
 			// schema/character. VALIDATION_INSTRUCTIONS contains per-call UUIDs (perFieldCodes,
@@ -4059,13 +4156,13 @@ ${section_end}`;
 				? `${VALIDATION_INSTRUCTIONS}\n\n`
 				: "\n\n";
 
-			const segments: PromptSegment[] = [
-				{ content: variableBlock, stable: false },
+			const segments: PromptSegment[] = this.mergePromptSegments([
+				...variableSegments,
 				{ content: formatStablePrefix, stable: true },
 				{ content: formatMiddleBlock, stable: false },
 				{ content: formatStableSuffix, stable: true },
 				{ content: endBlock, stable: false },
-			];
+			]);
 			const prompt = segments.map((s) => s.content).join("");
 
 			// Token estimate used for:

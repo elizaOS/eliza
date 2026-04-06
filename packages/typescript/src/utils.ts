@@ -1,6 +1,5 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import Handlebars from "handlebars";
-import { names, uniqueNamesGenerator } from "unique-names-generator";
 import { z } from "zod";
 
 import logger from "./logger";
@@ -13,6 +12,10 @@ import type {
 	TemplateType,
 } from "./types";
 import { ContentType, ModelType, type UUID } from "./types";
+import {
+	buildDeterministicSeed,
+	getDeterministicNames,
+} from "./utils/deterministic";
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import { normalizeStructuredRecord, tryParseToonValue } from "./utils/toon";
 
@@ -36,6 +39,11 @@ export const DEFAULT_MAX_PROMPT_TOKENS = 128_000;
  * where eval() and new Function() are not allowed.
  */
 let _isRestrictedCSP: boolean | null = null;
+const COMPILED_TEMPLATE_CACHE = new Map<
+	string,
+	HandlebarsTemplateDelegate<Record<string, unknown>>
+>();
+const COMPILED_TEMPLATE_CACHE_LIMIT = 256;
 
 function isRestrictedCSPEnvironment(): boolean {
 	if (_isRestrictedCSP !== null) return _isRestrictedCSP;
@@ -140,6 +148,43 @@ function upgradeDoubleToTriple(tpl: string) {
 	);
 }
 
+function getCompiledTemplate(
+	template: string,
+): HandlebarsTemplateDelegate<Record<string, unknown>> {
+	const upgraded = upgradeDoubleToTriple(template);
+	const cached = COMPILED_TEMPLATE_CACHE.get(upgraded);
+	if (cached) {
+		return cached;
+	}
+
+	const compiled = Handlebars.compile(upgraded);
+	COMPILED_TEMPLATE_CACHE.set(upgraded, compiled);
+	if (COMPILED_TEMPLATE_CACHE.size > COMPILED_TEMPLATE_CACHE_LIMIT) {
+		const oldestKey = COMPILED_TEMPLATE_CACHE.keys().next().value;
+		if (typeof oldestKey === "string") {
+			COMPILED_TEMPLATE_CACHE.delete(oldestKey);
+		}
+	}
+
+	return compiled;
+}
+
+function resolvePromptSeed(
+	stateLike: Record<string, unknown>,
+	stateValues?: Record<string, unknown>,
+	stateData?: Record<string, unknown>,
+): string {
+	return buildDeterministicSeed(
+		stateValues?.__conversationSeed,
+		stateData?.__conversationSeed,
+		stateLike.__conversationSeed,
+		stateValues?.agentName,
+		stateLike.agentName,
+		stateLike.roomId,
+		"prompt",
+	);
+}
+
 /**
  * Composes a context string by replacing placeholders in a template with corresponding values from the state.
  *
@@ -196,13 +241,11 @@ export const composePrompt = ({
 		const upgraded = upgradeDoubleToTriple(templateStr);
 		rendered = simpleTemplateReplace(upgraded, state);
 	} else {
-		const templateFunction = Handlebars.compile(
-			upgradeDoubleToTriple(templateStr),
-		);
+		const templateFunction = getCompiledTemplate(templateStr);
 		rendered = templateFunction(state);
 	}
 
-	const output = composeRandomUser(rendered, 10);
+	const output = composeRandomUser(rendered, 10, resolvePromptSeed(state));
 	return output;
 };
 
@@ -247,14 +290,16 @@ export const composePromptFromState = ({
 		const upgraded = upgradeDoubleToTriple(templateStr);
 		rendered = simpleTemplateReplace(upgraded, context);
 	} else {
-		const templateFunction = Handlebars.compile(
-			upgradeDoubleToTriple(templateStr),
-		);
+		const templateFunction = getCompiledTemplate(templateStr);
 		rendered = templateFunction(context);
 	}
 
 	// and then we flat state.values again
-	const output = composeRandomUser(rendered, 10);
+	const output = composeRandomUser(
+		rendered,
+		10,
+		resolvePromptSeed(filteredState, state.values, state.data),
+	);
 	return output;
 };
 
@@ -301,10 +346,12 @@ export const addHeader = (header: string, body: string) => {
  * // "Hello, John! Meet Alice and Bob."
  * const result = composeRandomUser(template, length);
  */
-const composeRandomUser = (template: string, length: number) => {
-	const exampleNames = Array.from({ length }, () =>
-		uniqueNamesGenerator({ dictionaries: [names] }),
-	);
+const composeRandomUser = (
+	template: string,
+	length: number,
+	seed = "prompt-users",
+) => {
+	const exampleNames = getDeterministicNames(length, seed);
 	let result = template;
 	for (let i = 0; i < exampleNames.length; i++) {
 		result = result.replaceAll(`{{name${i + 1}}}`, exampleNames[i]);
