@@ -41,7 +41,7 @@ export const DEFAULT_MAX_PROMPT_TOKENS = 128_000;
 let _isRestrictedCSP: boolean | null = null;
 const COMPILED_TEMPLATE_CACHE = new Map<
 	string,
-	HandlebarsTemplateDelegate<Record<string, unknown>>
+	Handlebars.TemplateDelegate<Record<string, unknown>>
 >();
 const COMPILED_TEMPLATE_CACHE_LIMIT = 256;
 
@@ -150,7 +150,7 @@ function upgradeDoubleToTriple(tpl: string) {
 
 function getCompiledTemplate(
 	template: string,
-): HandlebarsTemplateDelegate<Record<string, unknown>> {
+): Handlebars.TemplateDelegate<Record<string, unknown>> {
 	const upgraded = upgradeDoubleToTriple(template);
 	const cached = COMPILED_TEMPLATE_CACHE.get(upgraded);
 	if (cached) {
