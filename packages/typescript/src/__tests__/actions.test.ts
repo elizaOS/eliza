@@ -84,6 +84,12 @@ describe("Actions", () => {
 	];
 
 	describe("composeActionExamples", () => {
+		it("should be deterministic for the same seed", () => {
+			const first = composeActionExamples(mockActions, 2, "room-seed");
+			const second = composeActionExamples(mockActions, 2, "room-seed");
+			expect(first).toBe(second);
+		});
+
 		it("should generate examples with correct format", () => {
 			const examples = composeActionExamples(mockActions, 1);
 			const lines = examples.trim().split("\n");
@@ -151,6 +157,18 @@ describe("Actions", () => {
 	});
 
 	describe("formatActionNames", () => {
+		it("should keep action ordering deterministic for the same seed", () => {
+			const first = formatActionNames(
+				[mockActions[0], mockActions[1], mockActions[2]],
+				"room-seed",
+			);
+			const second = formatActionNames(
+				[mockActions[0], mockActions[1], mockActions[2]],
+				"room-seed",
+			);
+			expect(first).toBe(second);
+		});
+
 		it("should format action names correctly", () => {
 			const formatted = formatActionNames([mockActions[0], mockActions[1]]);
 			expect(formatted).toMatch(/^(greet|farewell)(, (greet|farewell))?$/);
