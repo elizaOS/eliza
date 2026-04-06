@@ -530,6 +530,14 @@ function getElizaOkPrivyUrl(): string {
   return process.env.ELIZAOK_PRIVY_URL?.trim() || "https://privy.io/";
 }
 
+function getElizaOkPrivyAppId(): string {
+  return process.env.ELIZAOK_PRIVY_APP_ID?.trim() || "";
+}
+
+function getElizaOkPrivyClientId(): string {
+  return process.env.ELIZAOK_PRIVY_CLIENT_ID?.trim() || "";
+}
+
 async function connectElizaCloudAppAuth(authToken: string, appId: string): Promise<Response> {
   const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/app-auth/connect`;
   return fetch(url, {
@@ -3213,6 +3221,173 @@ function renderHtml(
       text-overflow: ellipsis;
       background: rgba(255,214,10,0.08);
     }
+    .auth-sheet {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(0,0,0,0.78);
+      backdrop-filter: blur(18px);
+      z-index: 50;
+    }
+    .auth-sheet.is-open {
+      display: flex;
+    }
+    .auth-sheet__dialog {
+      width: min(440px, 100%);
+      border-radius: 22px;
+      border: 1px solid rgba(246,231,15,0.18);
+      background: linear-gradient(180deg, rgba(9,9,7,0.98), rgba(4,4,3,0.98));
+      box-shadow: 0 28px 90px rgba(0,0,0,0.62), 0 0 0 1px rgba(246,231,15,0.06);
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+    .auth-sheet__header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .auth-sheet__title {
+      display: grid;
+      gap: 4px;
+    }
+    .auth-sheet__title strong {
+      font-size: 15px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+    .auth-sheet__title span {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .auth-sheet__close {
+      width: 34px;
+      height: 34px;
+      border-radius: 11px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+    .auth-sheet__provider,
+    .auth-sheet__submit,
+    .auth-sheet__secondary {
+      width: 100%;
+      min-height: 42px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+      transition: 160ms ease;
+    }
+    .auth-sheet__provider:hover,
+    .auth-sheet__submit:hover,
+    .auth-sheet__secondary:hover {
+      border-color: rgba(246,231,15,0.28);
+      transform: translateY(-1px);
+    }
+    .auth-sheet__provider {
+      background: linear-gradient(135deg, rgba(246,231,15,0.14), rgba(255,255,255,0.02));
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+    .auth-sheet__secondary {
+      background: rgba(255,255,255,0.02);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .auth-sheet__divider {
+      position: relative;
+      text-align: center;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.4);
+    }
+    .auth-sheet__divider::before {
+      content: "";
+      position: absolute;
+      inset: 50% 0 auto;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .auth-sheet__divider span {
+      position: relative;
+      padding: 0 10px;
+      background: rgba(7,7,5,0.98);
+    }
+    .auth-sheet__stack {
+      display: grid;
+      gap: 10px;
+    }
+    .auth-sheet__field {
+      display: grid;
+      gap: 6px;
+    }
+    .auth-sheet__field label {
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.58);
+    }
+    .auth-sheet__field input {
+      width: 100%;
+      min-height: 42px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      padding: 0 12px;
+      font: inherit;
+      outline: none;
+    }
+    .auth-sheet__field input:focus {
+      border-color: rgba(246,231,15,0.32);
+      box-shadow: 0 0 0 1px rgba(246,231,15,0.08);
+    }
+    .auth-sheet__status {
+      min-height: 18px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .auth-sheet__status.is-error {
+      color: #ff8c7a;
+    }
+    .auth-sheet__status.is-success {
+      color: #d8ff88;
+    }
+    .auth-sheet__account {
+      display: grid;
+      gap: 6px;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+    }
+    .auth-sheet__account strong {
+      font-size: 12px;
+      color: var(--text);
+    }
+    .auth-sheet__account span {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .auth-sheet__logout[hidden],
+    .auth-sheet__otp[hidden] {
+      display: none;
+    }
     .cloud-model-picker {
       display: grid;
       gap: 6px;
@@ -4107,6 +4282,7 @@ function renderHtml(
       font-size: 10px;
     }
     body.is-modal-open { overflow: hidden; }
+    body.is-auth-open { overflow: hidden; }
     .view-panel[data-view-panel="overview"] > .hero-card {
       grid-column: 1;
       grid-row: 1;
@@ -4195,9 +4371,9 @@ function renderHtml(
           <a class="social-link" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer" aria-label="X">
             ${renderXIconSvg()}
           </a>
-          <a class="auth-link" href="${escapeHtml(getElizaOkPrivyUrl())}" target="_blank" rel="noreferrer">
+          <button class="auth-link" type="button" data-privy-auth-open>
             Sign in / Sign up
-          </a>
+          </button>
         </div>
       </header>
 
@@ -4480,6 +4656,52 @@ function renderHtml(
       <div class="detail-modal__body" id="detail-modal-body"></div>
     </div>
   </div>
+  <div class="auth-sheet" id="privy-auth-modal" aria-hidden="true">
+    <div class="auth-sheet__dialog" role="dialog" aria-modal="true" aria-labelledby="privy-auth-title">
+      <div class="auth-sheet__header">
+        <div class="auth-sheet__title">
+          <strong id="privy-auth-title">Privy Access</strong>
+          <span>Use X, Google, or Email to open your ElizaOK personal view.</span>
+        </div>
+        <button class="auth-sheet__close" type="button" data-privy-auth-close aria-label="Close">×</button>
+      </div>
+      <div class="auth-sheet__account" data-privy-account-card hidden>
+        <span>Connected Account</span>
+        <strong data-privy-account-label>Not connected</strong>
+      </div>
+      <button class="auth-sheet__provider" type="button" data-privy-google>
+        Continue with Google
+      </button>
+      <button class="auth-sheet__provider" type="button" data-privy-twitter>
+        Continue with X
+      </button>
+      <div class="auth-sheet__divider"><span>or</span></div>
+      <div class="auth-sheet__stack">
+        <div class="auth-sheet__field">
+          <label for="privy-email-input">Email</label>
+          <input id="privy-email-input" type="email" autocomplete="email" placeholder="you@example.com" />
+        </div>
+        <button class="auth-sheet__submit" type="button" data-privy-send-email-code>
+          Send Email Code
+        </button>
+        <div class="auth-sheet__otp" data-privy-email-otp hidden>
+          <div class="auth-sheet__field">
+            <label for="privy-email-code-input">Verification Code</label>
+            <input id="privy-email-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" />
+          </div>
+          <button class="auth-sheet__submit" type="button" data-privy-verify-email-code>
+            Verify Code
+          </button>
+        </div>
+      </div>
+      <div class="auth-sheet__status" data-privy-status></div>
+      <div class="auth-sheet__logout" data-privy-logout-wrap hidden>
+        <button class="auth-sheet__secondary" type="button" data-privy-logout>
+          Sign Out
+        </button>
+      </div>
+    </div>
+  </div>
   <script>
     (function () {
       var cloudAuthButtons = Array.prototype.slice.call(
@@ -4680,6 +4902,359 @@ function renderHtml(
           closeModal();
         }
       });
+    })();
+  </script>
+  <script type="module">
+    import Privy, { LocalStorage } from "https://esm.sh/@privy-io/js-sdk-core@0.60.7?bundle";
+
+    (function () {
+      var appId = ${JSON.stringify(getElizaOkPrivyAppId())};
+      var clientId = ${JSON.stringify(getElizaOkPrivyClientId())};
+      var fallbackUrl = ${JSON.stringify(getElizaOkPrivyUrl())};
+      var authButton = document.querySelector("[data-privy-auth-open]");
+      var authModal = document.getElementById("privy-auth-modal");
+      var authCloseButtons = Array.prototype.slice.call(document.querySelectorAll("[data-privy-auth-close]"));
+      var googleButton = document.querySelector("[data-privy-google]");
+      var twitterButton = document.querySelector("[data-privy-twitter]");
+      var emailInput = document.getElementById("privy-email-input");
+      var codeInput = document.getElementById("privy-email-code-input");
+      var sendCodeButton = document.querySelector("[data-privy-send-email-code]");
+      var verifyCodeButton = document.querySelector("[data-privy-verify-email-code]");
+      var otpWrap = document.querySelector("[data-privy-email-otp]");
+      var statusNode = document.querySelector("[data-privy-status]");
+      var accountCard = document.querySelector("[data-privy-account-card]");
+      var accountLabel = document.querySelector("[data-privy-account-label]");
+      var logoutWrap = document.querySelector("[data-privy-logout-wrap]");
+      var logoutButton = document.querySelector("[data-privy-logout]");
+
+      if (!authButton || !authModal) return;
+
+      function setStatus(message, tone) {
+        if (!statusNode) return;
+        statusNode.textContent = message || "";
+        statusNode.classList.remove("is-error", "is-success");
+        if (tone === "error") statusNode.classList.add("is-error");
+        if (tone === "success") statusNode.classList.add("is-success");
+      }
+
+      function setOtpVisible(isVisible) {
+        if (!otpWrap) return;
+        otpWrap.hidden = !isVisible;
+      }
+
+      function openAuthModal() {
+        authModal.classList.add("is-open");
+        authModal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("is-auth-open");
+      }
+
+      function closeAuthModal() {
+        var activeElement = document.activeElement;
+        if (activeElement && typeof activeElement.blur === "function") {
+          activeElement.blur();
+        }
+        authModal.classList.remove("is-open");
+        authModal.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("is-auth-open");
+        if (authButton && typeof authButton.focus === "function") {
+          authButton.focus();
+        }
+      }
+
+      function setBusy(isBusy) {
+        [authButton, googleButton, twitterButton, sendCodeButton, verifyCodeButton, logoutButton].forEach(function (node) {
+          if (!node) return;
+          if (isBusy) {
+            node.setAttribute("aria-disabled", "true");
+            node.disabled = true;
+          } else {
+            node.removeAttribute("aria-disabled");
+            node.disabled = false;
+          }
+        });
+      }
+
+      if (!appId || !clientId) {
+        authButton.addEventListener("click", function () {
+          if (fallbackUrl && fallbackUrl !== "#") {
+            window.open(fallbackUrl, "_blank", "noopener,noreferrer");
+            return;
+          }
+          window.alert("Privy is not configured yet.");
+        });
+        return;
+      }
+
+      var privy = new Privy({
+        appId: appId,
+        clientId: clientId,
+        supportedChains: [],
+        storage: new LocalStorage(),
+      });
+
+      function firstAccount(user, predicate) {
+        var accounts = user && Array.isArray(user.linkedAccounts) ? user.linkedAccounts : [];
+        for (var index = 0; index < accounts.length; index += 1) {
+          if (predicate(accounts[index])) return accounts[index];
+        }
+        return null;
+      }
+
+      function readAccountValue(account) {
+        if (!account || typeof account !== "object") return "";
+        return account.email || account.address || account.subject || account.username || "";
+      }
+
+      function formatConnectedIdentity(account) {
+        if (!account || typeof account !== "object") return "";
+        var name = typeof account.name === "string" ? account.name.trim() : "";
+        var email = typeof account.email === "string"
+          ? account.email.trim()
+          : typeof account.address === "string"
+            ? account.address.trim()
+            : "";
+        var username = typeof account.username === "string" ? account.username.trim() : "";
+
+        if (name && email) return name + " · " + email;
+        if (name && username) return name + " · @" + username;
+        if (email) return email;
+        if (username) return "@" + username;
+        if (name) return name;
+        return readAccountValue(account);
+      }
+
+      function getPrimaryLinkedAccount(user) {
+        if (!user) return null;
+        var twitterAccount = firstAccount(user, function (account) {
+          return String((account && account.type) || "") === "twitter_oauth";
+        });
+        if (twitterAccount) return twitterAccount;
+
+        var googleAccount = firstAccount(user, function (account) {
+          return String((account && account.type) || "") === "google_oauth";
+        });
+        if (googleAccount) return googleAccount;
+
+        var emailAccount = firstAccount(user, function (account) {
+          return String((account && account.type) || "") === "email";
+        });
+        if (emailAccount) return emailAccount;
+
+        return firstAccount(user, function () { return true; });
+      }
+
+      function getUserDisplay(user) {
+        if (!user) return "Sign in / Sign up";
+        var primaryAccount = getPrimaryLinkedAccount(user);
+        var value = formatConnectedIdentity(primaryAccount);
+        if (value) return value;
+        if (user.id && String(user.id).indexOf("did:priv") === 0) return "Privy connected";
+        if (user.id) return "Privy " + String(user.id).slice(0, 8);
+        return "Privy connected";
+      }
+
+      function getUserProvider(user) {
+        if (!user) return "";
+        var twitterAccount = firstAccount(user, function (account) {
+          return String((account && account.type) || "").indexOf("twitter") !== -1;
+        });
+        if (twitterAccount) return "X";
+        var googleAccount = firstAccount(user, function (account) {
+          return String((account && account.type) || "").indexOf("google") !== -1;
+        });
+        if (googleAccount) return "Google";
+        var emailAccount = firstAccount(user, function (account) {
+          return String((account && account.type) || "") === "email";
+        });
+        if (emailAccount) return "Email";
+        return "Privy";
+      }
+
+      async function fetchCurrentUser() {
+        try {
+          var result = await privy.user.get();
+          return result && result.user ? result.user : null;
+        } catch (_error) {
+          return null;
+        }
+      }
+
+      async function refreshAuthState(statusMessage, tone) {
+        var user = await fetchCurrentUser();
+        authButton.textContent = user ? getUserDisplay(user) : "Sign in / Sign up";
+        authButton.classList.toggle("auth-link--connected", Boolean(user));
+        if (accountCard) accountCard.hidden = !user;
+        if (accountLabel) {
+          accountLabel.textContent = user
+            ? getUserProvider(user) + " · " + getUserDisplay(user)
+            : "Not connected";
+        }
+        if (logoutWrap) logoutWrap.hidden = !user;
+        if (statusMessage) setStatus(statusMessage, tone || "success");
+        return user;
+      }
+
+      async function handleOAuthCallback() {
+        var params = new URLSearchParams(window.location.search);
+        var oauthCode = params.get("privy_oauth_code");
+        var oauthState = params.get("privy_oauth_state");
+        var oauthProvider = params.get("privy_oauth_provider");
+        if (!oauthCode || !oauthState) return;
+
+        var provider = oauthProvider === "twitter" ? "twitter" : "google";
+        var providerLabel = provider === "twitter" ? "X" : "Google";
+
+        openAuthModal();
+        setBusy(true);
+        setStatus("Completing " + providerLabel + " sign-in...", "");
+
+        try {
+          await privy.auth.oauth.loginWithCode(oauthCode, oauthState, provider);
+          params.delete("privy_oauth_code");
+          params.delete("privy_oauth_state");
+          params.delete("privy_oauth_provider");
+          var nextQuery = params.toString();
+          var nextUrl = window.location.pathname + (nextQuery ? "?" + nextQuery : "") + window.location.hash;
+          window.history.replaceState({}, "", nextUrl);
+          await refreshAuthState(providerLabel + " connected.", "success");
+          window.setTimeout(closeAuthModal, 500);
+        } catch (error) {
+          setStatus(error && error.message ? error.message : providerLabel + " sign-in failed.", "error");
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      authButton.addEventListener("click", function () {
+        setStatus("", "");
+        openAuthModal();
+      });
+
+      authCloseButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          closeAuthModal();
+        });
+      });
+
+      authModal.addEventListener("click", function (event) {
+        if (event.target === authModal) {
+          closeAuthModal();
+        }
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          closeAuthModal();
+        }
+      });
+
+      async function startOAuthLogin(provider, providerLabel) {
+        setBusy(true);
+        setStatus("Redirecting to " + providerLabel + "...", "");
+        try {
+          var redirectUrl = window.location.origin + window.location.pathname;
+          var oauthInit = await privy.auth.oauth.generateURL(provider, redirectUrl);
+          var oauthUrl =
+            typeof oauthInit === "string"
+              ? oauthInit
+              : oauthInit && typeof oauthInit.url === "string"
+                ? oauthInit.url
+                : "";
+          if (!oauthUrl) {
+            throw new Error("Privy did not return a valid " + providerLabel + " login URL.");
+          }
+          window.location.assign(oauthUrl);
+        } catch (error) {
+          setStatus(
+            error && error.message ? error.message : "Unable to start " + providerLabel + " sign-in.",
+            "error"
+          );
+          setBusy(false);
+        }
+      }
+
+      if (googleButton) {
+        googleButton.addEventListener("click", async function () {
+          await startOAuthLogin("google", "Google");
+        });
+      }
+
+      if (twitterButton) {
+        twitterButton.addEventListener("click", async function () {
+          await startOAuthLogin("twitter", "X");
+        });
+      }
+
+      if (sendCodeButton) {
+        sendCodeButton.addEventListener("click", async function () {
+          var email = emailInput && emailInput.value ? emailInput.value.trim() : "";
+          if (!email) {
+            setStatus("Enter your email first.", "error");
+            return;
+          }
+          setBusy(true);
+          setStatus("Sending code...", "");
+          try {
+            await privy.auth.email.sendCode(email);
+            setOtpVisible(true);
+            setStatus("Code sent. Check your inbox for the OTP.", "success");
+            if (codeInput) codeInput.focus();
+          } catch (error) {
+            setStatus(error && error.message ? error.message : "Unable to send email code.", "error");
+          } finally {
+            setBusy(false);
+          }
+        });
+      }
+
+      if (verifyCodeButton) {
+        verifyCodeButton.addEventListener("click", async function () {
+          var email = emailInput && emailInput.value ? emailInput.value.trim() : "";
+          var code = codeInput && codeInput.value ? codeInput.value.trim() : "";
+          if (!email || !code) {
+            setStatus("Enter both email and verification code.", "error");
+            return;
+          }
+          setBusy(true);
+          setStatus("Verifying code...", "");
+          try {
+            await privy.auth.email.loginWithCode(email, code);
+            await refreshAuthState("Email connected.", "success");
+            window.setTimeout(closeAuthModal, 500);
+          } catch (error) {
+            setStatus(error && error.message ? error.message : "Email verification failed.", "error");
+          } finally {
+            setBusy(false);
+          }
+        });
+      }
+
+      if (logoutButton) {
+        logoutButton.addEventListener("click", async function () {
+          setBusy(true);
+          try {
+            await privy.auth.logout();
+            if (emailInput) emailInput.value = "";
+            if (codeInput) codeInput.value = "";
+            setOtpVisible(false);
+            await refreshAuthState("Signed out.", "success");
+            window.setTimeout(closeAuthModal, 250);
+          } catch (error) {
+            setStatus(error && error.message ? error.message : "Unable to sign out.", "error");
+          } finally {
+            setBusy(false);
+          }
+        });
+      }
+
+      Promise.resolve()
+        .then(handleOAuthCallback)
+        .then(function () {
+          return refreshAuthState();
+        })
+        .catch(function () {
+          authButton.textContent = "Sign in / Sign up";
+        });
     })();
   </script>
 </body>
