@@ -7,21 +7,15 @@ import type {
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
+import {
+	buildDeterministicSeed,
+	deterministicPick,
+	deterministicSample,
+	getDeterministicNames,
+} from "../../utils/deterministic";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("CHARACTER");
-
-function randomSample<T>(items: T[], count: number): T[] {
-	const copy = items.slice();
-	const max = Math.min(count, copy.length);
-	for (let i = 0; i < max; i += 1) {
-		const j = i + Math.floor(Math.random() * (copy.length - i));
-		const tmp = copy[i];
-		copy[i] = copy[j];
-		copy[j] = tmp;
-	}
-	return copy.slice(0, max);
-}
 
 function resolveCharacterPlaceholders(
 	text: string | undefined,
@@ -73,6 +67,11 @@ export const characterProvider: Provider = {
 	description: spec.description,
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
 		const character = runtime.character;
+		const characterSeed = buildDeterministicSeed(
+			runtime.agentId,
+			message.roomId,
+			"CHARACTER",
+		);
 
 		// Character name
 		const agentName = character.name ?? "";
@@ -80,7 +79,13 @@ export const characterProvider: Provider = {
 		// Handle bio (random selection from array)
 		const bioArray = resolveCharacterList(character.bio ?? [], agentName);
 		const bioText =
-			bioArray.length > 0 ? randomSample(bioArray, 10).join(" ") : "";
+			bioArray.length > 0
+				? deterministicSample(
+						bioArray,
+						10,
+						buildDeterministicSeed(characterSeed, "bio"),
+					).join(" ")
+				: "";
 
 		const bio = addHeader(`# About ${agentName}`, bioText);
 
@@ -94,9 +99,10 @@ export const characterProvider: Provider = {
 		const topicString =
 			character.topics && character.topics.length > 0
 				? resolveCharacterPlaceholders(
-						character.topics[
-							Math.floor(Math.random() * character.topics.length)
-						],
+						deterministicPick(
+							character.topics,
+							buildDeterministicSeed(characterSeed, "topic"),
+						),
 						agentName,
 					)
 				: null;
@@ -109,11 +115,12 @@ export const characterProvider: Provider = {
 		// Format topics list
 		const topics =
 			character.topics && character.topics.length > 0
-				? `${agentName} is also interested in ${randomSample(
+				? `${agentName} is also interested in ${deterministicSample(
 						resolveCharacterList(character.topics, agentName).filter(
 							(topic: string) => topic !== topicString,
 						),
 						5,
+						buildDeterministicSeed(characterSeed, "topics"),
 					)
 						.map((topic, index, array) => {
 							if (index === array.length - 2) {
@@ -131,9 +138,10 @@ export const characterProvider: Provider = {
 		const adjectiveString =
 			character.adjectives && character.adjectives.length > 0
 				? resolveCharacterPlaceholders(
-						character.adjectives[
-							Math.floor(Math.random() * character.adjectives.length)
-						],
+						deterministicPick(
+							character.adjectives,
+							buildDeterministicSeed(characterSeed, "adjective"),
+						),
 						agentName,
 					)
 				: "";
@@ -144,7 +152,11 @@ export const characterProvider: Provider = {
 		const postExamplesArray = character.postExamples ?? [];
 		const formattedCharacterPostExamples =
 			postExamplesArray.length > 0
-				? randomSample(postExamplesArray, 50)
+				? deterministicSample(
+						postExamplesArray,
+						50,
+						buildDeterministicSeed(characterSeed, "posts"),
+					)
 						.map((post) => resolveCharacterPlaceholders(`${post}`, agentName))
 						.join("\n")
 				: "";
@@ -162,10 +174,15 @@ export const characterProvider: Provider = {
 		const messageExamplesArray = character.messageExamples ?? [];
 		const formattedCharacterMessageExamples =
 			messageExamplesArray.length > 0
-				? randomSample(messageExamplesArray, 5)
-						.map((group) => {
-							const exampleNames = Array.from({ length: 5 }, () =>
-								Math.random().toString(36).substring(2, 8),
+				? deterministicSample(
+						messageExamplesArray,
+						5,
+						buildDeterministicSeed(characterSeed, "message-examples"),
+					)
+						.map((group, index) => {
+							const exampleNames = getDeterministicNames(
+								5,
+								buildDeterministicSeed(characterSeed, "participants", index),
 							);
 
 							return group.examples

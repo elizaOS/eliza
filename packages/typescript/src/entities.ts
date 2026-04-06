@@ -10,6 +10,18 @@ import {
 	type World,
 } from "./types";
 import * as utils from "./utils";
+import { stableStringify } from "./utils/deterministic";
+
+type EntityDetailsRecord = Pick<Entity, "id" | "names"> & {
+	name?: string;
+	data: string;
+};
+
+const ENTITY_DETAILS_CACHE_TTL_MS = 1_000;
+const entityDetailsCache = new WeakMap<
+	IAgentRuntime,
+	Map<string, { expiresAt: number; promise: Promise<EntityDetailsRecord[]> }>
+>();
 
 interface EntityMatch {
 	name?: string;
@@ -460,6 +472,16 @@ export async function getEntityDetails({
 	runtime: IAgentRuntime;
 	roomId: UUID;
 }) {
+	const runtimeCache = entityDetailsCache.get(runtime) ?? new Map();
+	entityDetailsCache.set(runtime, runtimeCache);
+
+	const cacheKey = String(roomId);
+	const cachedEntry = runtimeCache.get(cacheKey);
+	if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+		return cachedEntry.promise;
+	}
+
+	const pendingPromise = (async () => {
 	const [room, roomEntities] = await Promise.all([
 		runtime.getRoom(roomId),
 		runtime.getEntitiesForRoom(roomId, true),
@@ -517,12 +539,39 @@ export async function getEntityDetails({
 		});
 	}
 
-	return Array.from(uniqueEntities.values());
+		return Array.from(uniqueEntities.values()).sort((left, right) => {
+			const leftName = left.name ?? left.names[0] ?? "";
+			const rightName = right.name ?? right.names[0] ?? "";
+			return leftName.localeCompare(rightName) || left.id.localeCompare(right.id);
+		});
+	})();
+
+	runtimeCache.set(cacheKey, {
+		expiresAt: Date.now() + ENTITY_DETAILS_CACHE_TTL_MS,
+		promise: pendingPromise,
+	});
+
+	try {
+		return await pendingPromise;
+	} catch (error) {
+		runtimeCache.delete(cacheKey);
+		throw error;
+	}
 }
 
 export function formatEntities({ entities }: { entities: Entity[] }) {
-	const entityStrings = entities.map((entity: Entity) => {
-		const header = `"${entity.names.join('" aka "')}"\nID: ${entity.id}${entity.metadata && Object.keys(entity.metadata).length > 0 ? `\nData: ${JSON.stringify(entity.metadata)}\n` : "\n"}`;
+	const sortedEntities = [...entities].sort((left, right) => {
+		const leftName = left.names[0] ?? "";
+		const rightName = right.names[0] ?? "";
+		return leftName.localeCompare(rightName) || left.id.localeCompare(right.id);
+	});
+
+	const entityStrings = sortedEntities.map((entity: Entity) => {
+		const header = `"${entity.names.join('" aka "')}"\nID: ${entity.id}${
+			entity.metadata && Object.keys(entity.metadata).length > 0
+				? `\nData: ${stableStringify(entity.metadata)}\n`
+				: "\n"
+		}`;
 		return header;
 	});
 	return entityStrings.join("\n");
