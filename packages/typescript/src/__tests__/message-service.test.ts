@@ -916,7 +916,7 @@ describe("DefaultMessageService", () => {
         expect(runtime.createMemory).not.toHaveBeenCalled();
       });
 
-    it("should block memory creation for non-whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
+      it("should block memory creation for non-whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
       vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         if (key === "DISABLE_MEMORY_CREATION") return "true";
         if (key === "ALLOW_MEMORY_SOURCE_IDS") return "whitelisted-source-123";
@@ -947,6 +947,7 @@ describe("DefaultMessageService", () => {
         (call: unknown[]) => call[0]?.content?.text === "Test message from blocked source"
       );
       expect(incomingMemoryCall).toBeUndefined();
+      });
     });
 
   describe("ALLOW_MEMORY_SOURCE_IDS", () => {
