@@ -49,7 +49,6 @@ import {
 	type ContextRoutingDecision,
 	CONTEXT_ROUTING_STATE_KEY,
 	parseContextRoutingMetadata,
-	getActiveRoutingContexts,
 	mergeContextRouting,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
@@ -1016,8 +1015,8 @@ export class DefaultMessageService implements IMessageService {
 
 		if (shouldRespondToMessage) {
 			const resolvedRouting = mergeContextRouting(state, message);
-			const activeContextIds = getActiveRoutingContexts(resolvedRouting);
-			if (resolvedRouting && Object.keys(resolvedRouting).length > 0) {
+			let executionState = state;
+			if (routedDecision) {
 				state = {
 					...state,
 					values: {
@@ -1028,7 +1027,7 @@ export class DefaultMessageService implements IMessageService {
 						[CONTEXT_ROUTING_STATE_KEY]: resolvedRouting,
 					},
 				};
-				routingState = await runtime.composeState(
+				executionState = await runtime.composeState(
 					message,
 					["ACTIONS", "PROVIDERS"],
 					false,
@@ -1040,7 +1039,7 @@ export class DefaultMessageService implements IMessageService {
 				? await this.runMultiStepCore(
 						runtime,
 						message,
-						routingState,
+							executionState,
 						callback,
 						opts,
 						responseId,
@@ -1049,7 +1048,7 @@ export class DefaultMessageService implements IMessageService {
 				: await this.runSingleShotCore(
 						runtime,
 						message,
-						routingState,
+							executionState,
 						opts,
 						responseId,
 						promptAttachments,
@@ -1414,12 +1413,13 @@ export class DefaultMessageService implements IMessageService {
 		message: Memory,
 		room?: Room,
 		mentionContext?: MentionContext,
-	): ResponseDecision {
+	): ContextRoutedResponseDecision {
 		if (!room) {
 			return {
 				shouldRespond: false,
 				skipEvaluation: true,
 				reason: "no room context",
+				primaryContext: "general",
 			};
 		}
 
@@ -1473,6 +1473,7 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespond: true,
 				skipEvaluation: true,
 				reason: `private channel: ${roomType}`,
+				primaryContext: "general",
 			};
 		}
 
@@ -1482,6 +1483,7 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespond: true,
 				skipEvaluation: true,
 				reason: `whitelisted source: ${sourceStr}`,
+				primaryContext: "general",
 			};
 		}
 
@@ -1495,6 +1497,7 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespond: true,
 				skipEvaluation: true,
 				reason: `platform ${mentionType}`,
+				primaryContext: "general",
 			};
 		}
 
@@ -1503,6 +1506,7 @@ export class DefaultMessageService implements IMessageService {
 			shouldRespond: false,
 			skipEvaluation: false,
 			reason: "needs LLM evaluation",
+			primaryContext: "general",
 		};
 	}
 
