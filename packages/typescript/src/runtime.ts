@@ -1513,14 +1513,21 @@ this.promptBatcher.dispose();
           message,
           ["RECENT_MESSAGES", "ACTION_STATE"],
           true, // onlyInclude
-                  );
-                  // Merge fresh provider data with accumulated state, preserving action results and values
-                  accumulatedState = {
-                    ...accumulatedState,
-                    ...freshProviderState,
-                    values: { ...accumulatedState.values, ...freshProviderState.values },
-                    data: { ...accumulatedState.data, ...freshProviderState.data },
-                  };
+        );
+        // Merge fresh provider data with accumulated state, preserving action results and values
+        // Ensure non-null base to prevent dereferencing undefined
+        const baseState = accumulatedState || { values: {}, data: {}, text: "" };
+        // Preserve existing provider text by concatenating rather than overwriting
+        const mergedText = baseState.text && freshProviderState.text
+          ? `${baseState.text}\n\n${freshProviderState.text}`
+          : freshProviderState.text || baseState.text || "";
+        accumulatedState = {
+          ...baseState,
+          ...freshProviderState,
+          text: mergedText,
+          values: { ...baseState.values, ...freshProviderState.values },
+          data: { ...baseState.data, ...freshProviderState.data },
+        };
 
         // Add action plan to state if it exists
         if (actionPlan && accumulatedState.data) {
