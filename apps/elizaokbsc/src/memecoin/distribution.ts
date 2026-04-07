@@ -2,8 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ethers } from "ethers";
 import type {
-  DistributionConfig,
   DistributionAssetSelection,
+  DistributionConfig,
   DistributionPlan,
   DistributionPublication,
   DistributionRecipient,
@@ -28,14 +28,20 @@ interface LoadedSnapshot {
 }
 
 function absolutePath(filePath: string): string {
-  return path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
+  return path.isAbsolute(filePath)
+    ? filePath
+    : path.join(process.cwd(), filePath);
 }
 
-async function loadSnapshotEntries(snapshotPath: string): Promise<HolderSnapshotEntry[]> {
+async function loadSnapshotEntries(
+  snapshotPath: string,
+): Promise<HolderSnapshotEntry[]> {
   try {
     const content = await readFile(absolutePath(snapshotPath), "utf8");
     const parsed = JSON.parse(content) as HolderSnapshotEntry[];
-    return parsed.filter((entry) => entry.address && typeof entry.balance === "number");
+    return parsed.filter(
+      (entry) => entry.address && typeof entry.balance === "number",
+    );
   } catch {
     return [];
   }
@@ -53,7 +59,7 @@ function normalizeAddress(value: string): string {
 
 async function loadOnchainSnapshot(
   config: DistributionConfig,
-  rpcUrl: string
+  rpcUrl: string,
 ): Promise<LoadedSnapshot> {
   if (!config.holderTokenAddress) {
     return {
@@ -67,7 +73,11 @@ async function loadOnchainSnapshot(
 
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   const tokenAddress = normalizeAddress(config.holderTokenAddress);
-  const contract = new ethers.Contract(tokenAddress, ERC20_TRANSFER_ABI, provider);
+  const contract = new ethers.Contract(
+    tokenAddress,
+    ERC20_TRANSFER_ABI,
+    provider,
+  );
   const transferTopic = ethers.id("Transfer(address,address,uint256)");
   const latestBlock = await provider.getBlockNumber();
   const fromBlock = Math.max(0, config.startBlock ?? 0);
@@ -109,9 +119,13 @@ async function loadOnchainSnapshot(
           address,
           balance: Number.parseFloat(ethers.formatUnits(rawBalance, decimals)),
         } satisfies HolderSnapshotEntry;
-      })
+      }),
     );
-    balances.push(...chunkBalances.filter((entry): entry is HolderSnapshotEntry => entry !== null));
+    balances.push(
+      ...chunkBalances.filter(
+        (entry): entry is HolderSnapshotEntry => entry !== null,
+      ),
+    );
   }
 
   balances.sort((a, b) => b.balance - a.balance);
@@ -128,7 +142,7 @@ async function loadOnchainSnapshot(
 
 async function loadSnapshot(
   config: DistributionConfig,
-  rpcUrl: string | null
+  rpcUrl: string | null,
 ): Promise<LoadedSnapshot> {
   if (config.holderTokenAddress && rpcUrl) {
     try {
@@ -164,16 +178,23 @@ async function loadSnapshot(
 function buildRecipients(
   holders: HolderSnapshotEntry[],
   distributionPoolUsd: number,
-  maxRecipients: number
+  maxRecipients: number,
 ): DistributionRecipient[] {
   const selected = holders.slice(0, maxRecipients);
-  const totalBalance = selected.reduce((sum, holder) => sum + holder.balance, 0);
+  const totalBalance = selected.reduce(
+    (sum, holder) => sum + holder.balance,
+    0,
+  );
 
   return selected.map((holder) => {
     const allocationUsd =
-      totalBalance > 0 ? Math.round((distributionPoolUsd * holder.balance) / totalBalance) : 0;
+      totalBalance > 0
+        ? Math.round((distributionPoolUsd * holder.balance) / totalBalance)
+        : 0;
     const allocationPct =
-      distributionPoolUsd > 0 ? Math.round((allocationUsd / distributionPoolUsd) * 1000) / 10 : 0;
+      distributionPoolUsd > 0
+        ? Math.round((allocationUsd / distributionPoolUsd) * 1000) / 10
+        : 0;
 
     return {
       address: holder.address,
@@ -182,7 +203,9 @@ function buildRecipients(
       allocationUsd,
       allocationPct,
       allocationBps:
-        totalBalance > 0 ? Math.round((holder.balance / totalBalance) * 10_000) : 0,
+        totalBalance > 0
+          ? Math.round((holder.balance / totalBalance) * 10_000)
+          : 0,
     };
   });
 }
@@ -199,9 +222,16 @@ function formatTokenAmount(value: number): string {
   return value.toFixed(12).replace(/\.?0+$/, "");
 }
 
-function portfolioSharePct(position: PortfolioPosition, portfolioLifecycle: PortfolioLifecycle): number {
-  const denominator = portfolioLifecycle.grossPortfolioValueUsd || portfolioLifecycle.totalCurrentValueUsd || 0;
-  const currentQuoteUsd = position.walletQuoteUsd ?? position.currentValueUsd ?? 0;
+function portfolioSharePct(
+  position: PortfolioPosition,
+  portfolioLifecycle: PortfolioLifecycle,
+): number {
+  const denominator =
+    portfolioLifecycle.grossPortfolioValueUsd ||
+    portfolioLifecycle.totalCurrentValueUsd ||
+    0;
+  const currentQuoteUsd =
+    position.walletQuoteUsd ?? position.currentValueUsd ?? 0;
   if (denominator <= 0 || currentQuoteUsd <= 0) return 0;
   return (currentQuoteUsd / denominator) * 100;
 }
@@ -209,7 +239,7 @@ function portfolioSharePct(position: PortfolioPosition, portfolioLifecycle: Port
 function buildSelectedAsset(
   config: DistributionConfig,
   distributionPoolUsd: number,
-  portfolioLifecycle: PortfolioLifecycle
+  portfolioLifecycle: PortfolioLifecycle,
 ): DistributionAssetSelection {
   if (config.execution.assetTokenAddress && config.execution.assetTotalAmount) {
     return {
@@ -233,7 +263,8 @@ function buildSelectedAsset(
       walletBalance: null,
       walletQuoteUsd: null,
       sourcePositionTokenAddress: null,
-      reason: "Automatic asset selection is disabled and no manual asset override was provided.",
+      reason:
+        "Automatic asset selection is disabled and no manual asset override was provided.",
     };
   }
 
@@ -246,7 +277,10 @@ function buildSelectedAsset(
     if (position.executionSource === "paper") {
       reasons.push("paper-only position");
     }
-    if (config.execution.requireVerifiedWallet && position.walletVerification !== "present") {
+    if (
+      config.execution.requireVerifiedWallet &&
+      position.walletVerification !== "present"
+    ) {
       reasons.push(`wallet verification is ${position.walletVerification}`);
     }
     if (walletBalance === null || walletBalance <= 0) {
@@ -256,16 +290,25 @@ function buildSelectedAsset(
       reasons.push("wallet quote is unavailable");
     }
     if (walletQuoteUsd < config.execution.minWalletQuoteUsd) {
-      reasons.push(`wallet quote ${Math.round(walletQuoteUsd)} is below ${config.execution.minWalletQuoteUsd} USD`);
+      reasons.push(
+        `wallet quote ${Math.round(walletQuoteUsd)} is below ${config.execution.minWalletQuoteUsd} USD`,
+      );
     }
     if (config.execution.requirePositivePnl && position.unrealizedPnlUsd <= 0) {
-      reasons.push(`unrealized PnL ${Math.round(position.unrealizedPnlUsd)} is not positive`);
+      reasons.push(
+        `unrealized PnL ${Math.round(position.unrealizedPnlUsd)} is not positive`,
+      );
     }
-    if (config.execution.requireTakeProfitHit && position.takeProfitCount <= 0) {
+    if (
+      config.execution.requireTakeProfitHit &&
+      position.takeProfitCount <= 0
+    ) {
       reasons.push("no take-profit stage has been hit yet");
     }
     if (sharePct < config.execution.minPortfolioSharePct) {
-      reasons.push(`portfolio share ${sharePct.toFixed(1)}% is below ${config.execution.minPortfolioSharePct}%`);
+      reasons.push(
+        `portfolio share ${sharePct.toFixed(1)}% is below ${config.execution.minPortfolioSharePct}%`,
+      );
     }
 
     return {
@@ -286,7 +329,7 @@ function buildSelectedAsset(
       .slice(0, 4)
       .map(
         (entry) =>
-          `${entry.position.tokenSymbol}: ${entry.reasons.join(", ") || "did not qualify"}`
+          `${entry.position.tokenSymbol}: ${entry.reasons.join(", ") || "did not qualify"}`,
       )
       .join(" | ");
     return {
@@ -297,16 +340,18 @@ function buildSelectedAsset(
       walletBalance: null,
       walletQuoteUsd: null,
       sourcePositionTokenAddress: null,
-      reason:
-        rejectedPreview
-          ? `No treasury position passed the current distribution asset policy. ${rejectedPreview}`
-          : "No live wallet-backed treasury position currently has enough balance and quote data for automatic distribution asset selection.",
+      reason: rejectedPreview
+        ? `No treasury position passed the current distribution asset policy. ${rejectedPreview}`
+        : "No live wallet-backed treasury position currently has enough balance and quote data for automatic distribution asset selection.",
     };
   }
 
   const walletBalance = selected.walletBalance ?? 0;
   const walletQuoteUsd = selected.walletQuoteUsd;
-  const ratio = walletQuoteUsd > 0 ? Math.max(0, Math.min(1, distributionPoolUsd / walletQuoteUsd)) : 0;
+  const ratio =
+    walletQuoteUsd > 0
+      ? Math.max(0, Math.min(1, distributionPoolUsd / walletQuoteUsd))
+      : 0;
   const totalAmount = walletBalance * ratio;
   if (totalAmount <= 0) {
     return {
@@ -335,20 +380,26 @@ function buildSelectedAsset(
 
 function buildPublication(
   plan: Omit<DistributionPlan, "publication">,
-  generatedAt: string
+  generatedAt: string,
 ): DistributionPublication | null {
   if (!plan.enabled || plan.recipients.length === 0) {
     return null;
   }
 
   const snapshotResolvedPath = absolutePath(plan.snapshotPath);
-  const publicationPath = path.join(path.dirname(snapshotResolvedPath), "distribution-publication.md");
-  const manifestPath = path.join(path.dirname(snapshotResolvedPath), "distribution-manifest.json");
+  const publicationPath = path.join(
+    path.dirname(snapshotResolvedPath),
+    "distribution-publication.md",
+  );
+  const manifestPath = path.join(
+    path.dirname(snapshotResolvedPath),
+    "distribution-manifest.json",
+  );
   const topRows = plan.recipients
     .slice(0, 10)
     .map(
       (recipient, index) =>
-        `${index + 1}. \`${recipient.address}\` - ${recipient.balance.toLocaleString()} tokens - ${recipient.allocationPct}%`
+        `${index + 1}. \`${recipient.address}\` - ${recipient.balance.toLocaleString()} tokens - ${recipient.allocationPct}%`,
     );
   const title = `ElizaOK Distribution Preview ${generatedAt}`;
   const markdown = [
@@ -393,17 +444,23 @@ export async function buildDistributionPlan(
   config: DistributionConfig,
   treasurySimulation: TreasurySimulation,
   rpcUrl: string | null,
-  portfolioLifecycle: PortfolioLifecycle
+  portfolioLifecycle: PortfolioLifecycle,
 ): Promise<DistributionPlan> {
   const distributionPoolUsd = Math.round(
-    (treasurySimulation.allocatedUsd * Math.max(0, Math.min(100, config.poolPct))) / 100
+    (treasurySimulation.allocatedUsd *
+      Math.max(0, Math.min(100, config.poolPct))) /
+      100,
   );
 
   const snapshot = await loadSnapshot(config, rpcUrl);
   const eligible = snapshot.entries
     .filter((entry) => entry.balance >= config.minEligibleBalance)
     .sort((a, b) => b.balance - a.balance);
-  const selectedAsset = buildSelectedAsset(config, distributionPoolUsd, portfolioLifecycle);
+  const selectedAsset = buildSelectedAsset(
+    config,
+    distributionPoolUsd,
+    portfolioLifecycle,
+  );
 
   const planWithoutPublication: Omit<DistributionPlan, "publication"> = {
     enabled: config.enabled,
@@ -414,7 +471,10 @@ export async function buildDistributionPlan(
     snapshotBlockNumber: snapshot.blockNumber,
     minEligibleBalance: config.minEligibleBalance,
     eligibleHolderCount: eligible.length,
-    totalQualifiedBalance: eligible.reduce((sum, entry) => sum + entry.balance, 0),
+    totalQualifiedBalance: eligible.reduce(
+      (sum, entry) => sum + entry.balance,
+      0,
+    ),
     distributionPoolUsd,
     maxRecipients: config.maxRecipients,
     selectedAsset,
@@ -428,7 +488,10 @@ export async function buildDistributionPlan(
       : [],
   };
 
-  const publication = buildPublication(planWithoutPublication, new Date().toISOString());
+  const publication = buildPublication(
+    planWithoutPublication,
+    new Date().toISOString(),
+  );
   if (publication?.manifestPath) {
     await writeJsonFile(publication.manifestPath, {
       generatedAt: new Date().toISOString(),

@@ -338,6 +338,10 @@
     "typecheck": {
       "outputs": []
     },
+    "@elizaokbsc/elizaokbsc#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-moltbook#build"],
+      "outputs": []
+    },
     "typecheck:rust": {
       "outputs": []
     },

@@ -288,7 +288,11 @@ export interface GooAgentCandidate {
   secondsUntilPulseTimeout: number | null;
   registeredAtBlock: number;
   score: number;
-  recommendation: "monitor" | "priority_due_diligence" | "cto_candidate" | "ignore";
+  recommendation:
+    | "monitor"
+    | "priority_due_diligence"
+    | "cto_candidate"
+    | "ignore";
   synergyThesis: string[];
   risks: string[];
 }
@@ -388,7 +392,13 @@ export interface PortfolioPosition {
 export interface TreasuryTimelineEvent {
   runId: string;
   generatedAt: string;
-  type: "entered" | "promoted" | "watched" | "exited" | "rebalanced" | "take_profit";
+  type:
+    | "entered"
+    | "promoted"
+    | "watched"
+    | "exited"
+    | "rebalanced"
+    | "take_profit";
   tokenAddress: string;
   tokenSymbol: string;
   detail: string;

@@ -1,10 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { DEFAULT_ADDRESSES, FourMemeTrader, type BuyResult } from "@meme-sdk/trade";
+import {
+  type BuyResult,
+  DEFAULT_ADDRESSES,
+  FourMemeTrader,
+} from "@meme-sdk/trade";
 import { ethers } from "ethers";
-import { evaluateKolSupport } from "./kol";
-import { warmPublicKolWallets } from "./public-kol";
 import type {
   DiscoveryConfig,
   ExecutionState,
@@ -14,6 +16,8 @@ import type {
   TradeLedger,
   TradeRecord,
 } from "../types";
+import { evaluateKolSupport } from "./kol";
+import { warmPublicKolWallets } from "./public-kol";
 
 interface ExecuteTradeLaneArgs {
   runId: string;
@@ -59,8 +63,9 @@ function errorMessage(error: unknown): string {
 function stringifyForLedger(value: unknown): string {
   return JSON.stringify(
     value,
-    (_key, currentValue) => (typeof currentValue === "bigint" ? currentValue.toString() : currentValue),
-    2
+    (_key, currentValue) =>
+      typeof currentValue === "bigint" ? currentValue.toString() : currentValue,
+    2,
   );
 }
 
@@ -78,10 +83,14 @@ function emptyLedger(): TradeLedger {
 }
 
 function tradesPathFor(reportsDir: string): string {
-  return path.isAbsolute(reportsDir) ? path.join(reportsDir, "trades.json") : path.join(process.cwd(), reportsDir, "trades.json");
+  return path.isAbsolute(reportsDir)
+    ? path.join(reportsDir, "trades.json")
+    : path.join(process.cwd(), reportsDir, "trades.json");
 }
 
-export async function loadTradeLedger(reportsDir: string): Promise<TradeLedger> {
+export async function loadTradeLedger(
+  reportsDir: string,
+): Promise<TradeLedger> {
   try {
     const content = await readFile(tradesPathFor(reportsDir), "utf8");
     const parsed = JSON.parse(content) as TradeLedger;
@@ -104,7 +113,7 @@ function hasRecentDryRunForToken(
   ledger: TradeLedger,
   tokenAddress: string,
   generatedAt: string,
-  cooldownMs: number
+  cooldownMs: number,
 ): boolean {
   if (cooldownMs <= 0) return false;
 
@@ -124,7 +133,9 @@ function hasRecentDryRunForToken(
 
 function createTrader(config: DiscoveryConfig["execution"]): FourMemeTrader {
   if (!config.rpcUrl || !config.privateKey) {
-    throw new Error("Four.meme SDK requires both ELIZAOK_BSC_RPC_URL and ELIZAOK_EXECUTION_PRIVATE_KEY.");
+    throw new Error(
+      "Four.meme SDK requires both ELIZAOK_BSC_RPC_URL and ELIZAOK_EXECUTION_PRIVATE_KEY.",
+    );
   }
 
   return new FourMemeTrader({
@@ -133,31 +144,47 @@ function createTrader(config: DiscoveryConfig["execution"]): FourMemeTrader {
   });
 }
 
-function createExecutionWallet(config: DiscoveryConfig["execution"]): ethers.Wallet {
+function createExecutionWallet(
+  config: DiscoveryConfig["execution"],
+): ethers.Wallet {
   if (!config.rpcUrl || !config.privateKey) {
-    throw new Error("Execution preflight requires both ELIZAOK_BSC_RPC_URL and ELIZAOK_EXECUTION_PRIVATE_KEY.");
+    throw new Error(
+      "Execution preflight requires both ELIZAOK_BSC_RPC_URL and ELIZAOK_EXECUTION_PRIVATE_KEY.",
+    );
   }
 
-  const provider = new ethers.JsonRpcProvider(config.rpcUrl, { name: "bsc", chainId: 56 });
+  const provider = new ethers.JsonRpcProvider(config.rpcUrl, {
+    name: "bsc",
+    chainId: 56,
+  });
   return new ethers.Wallet(config.privateKey, provider);
 }
 
 async function preflightTradeRoute(
   config: DiscoveryConfig["execution"],
   tokenAddress: string,
-  fundsWei: bigint
+  fundsWei: bigint,
 ): Promise<PreflightResult> {
   try {
     const wallet = createExecutionWallet(config);
-    const helper3 = new ethers.Contract(DEFAULT_ADDRESSES.HELPER3, HELPER3_READ_ABI, wallet);
-    const tryPancakeFallback = async (reasonPrefix: string): Promise<PreflightResult> => {
+    const helper3 = new ethers.Contract(
+      DEFAULT_ADDRESSES.HELPER3,
+      HELPER3_READ_ABI,
+      wallet,
+    );
+    const tryPancakeFallback = async (
+      reasonPrefix: string,
+    ): Promise<PreflightResult> => {
       try {
         const router = new ethers.Contract(
           DEFAULT_ADDRESSES.PANCAKE_ROUTER,
           PANCAKE_READ_ABI,
-          wallet
+          wallet,
         );
-        await router.getAmountsOut(fundsWei, [DEFAULT_ADDRESSES.WBNB, tokenAddress]);
+        await router.getAmountsOut(fundsWei, [
+          DEFAULT_ADDRESSES.WBNB,
+          tokenAddress,
+        ]);
         return { ok: true, route: "pancakeswap" };
       } catch (error) {
         return {
@@ -185,7 +212,9 @@ async function preflightTradeRoute(
     const liquidityAdded = tokenInfo[11];
 
     if (!tokenManager || tokenManager === ethers.ZeroAddress) {
-      return tryPancakeFallback("Helper3 returned no token manager for this token.");
+      return tryPancakeFallback(
+        "Helper3 returned no token manager for this token.",
+      );
     }
 
     if (!liquidityAdded) {
@@ -193,33 +222,47 @@ async function preflightTradeRoute(
         await helper3.tryBuy(tokenAddress, 0n, fundsWei);
         return { ok: true, route: "fourmeme" };
       } catch (error) {
-        return tryPancakeFallback(`Four.meme preflight rejected token: ${errorMessage(error)}`);
+        return tryPancakeFallback(
+          `Four.meme preflight rejected token: ${errorMessage(error)}`,
+        );
       }
     }
 
     return tryPancakeFallback("Liquidity has migrated.");
   } catch (error) {
-    return { ok: false, reason: `Trade route preflight failed: ${errorMessage(error)}` };
+    return {
+      ok: false,
+      reason: `Trade route preflight failed: ${errorMessage(error)}`,
+    };
   }
 }
 
 async function preflightSellRoute(
   config: DiscoveryConfig["execution"],
   tokenAddress: string,
-  tokenAmountRaw: bigint
+  tokenAmountRaw: bigint,
 ): Promise<
-  | { ok: true; route: "fourmeme" | "pancakeswap"; quoteBnb: number; quoteUsd: number }
+  | {
+      ok: true;
+      route: "fourmeme" | "pancakeswap";
+      quoteBnb: number;
+      quoteUsd: number;
+    }
   | { ok: false; reason: string }
 > {
   try {
     const wallet = createExecutionWallet(config);
-    const helper3 = new ethers.Contract(DEFAULT_ADDRESSES.HELPER3, HELPER3_READ_ABI, wallet);
+    const helper3 = new ethers.Contract(
+      DEFAULT_ADDRESSES.HELPER3,
+      HELPER3_READ_ABI,
+      wallet,
+    );
     const tryPancakeFallback = async (reasonPrefix: string) => {
       try {
         const router = new ethers.Contract(
           DEFAULT_ADDRESSES.PANCAKE_ROUTER,
           PANCAKE_READ_ABI,
-          wallet
+          wallet,
         );
         const amounts = (await router.getAmountsOut(tokenAmountRaw, [
           tokenAddress,
@@ -231,7 +274,12 @@ async function preflightSellRoute(
           ok: true as const,
           route: "pancakeswap" as const,
           quoteBnb,
-          quoteUsd: Math.round(quoteBnb * Number.parseFloat(process.env.ELIZAOK_TEST_BNB_USD_PRICE || "600")),
+          quoteUsd: Math.round(
+            quoteBnb *
+              Number.parseFloat(
+                process.env.ELIZAOK_TEST_BNB_USD_PRICE || "600",
+              ),
+          ),
         };
       } catch (error) {
         return {
@@ -259,33 +307,43 @@ async function preflightSellRoute(
     const liquidityAdded = tokenInfo[11];
 
     if (!tokenManager || tokenManager === ethers.ZeroAddress) {
-      return tryPancakeFallback("Helper3 returned no token manager for this token.");
+      return tryPancakeFallback(
+        "Helper3 returned no token manager for this token.",
+      );
     }
 
     if (!liquidityAdded) {
       try {
-        const [, , funds, fee] = (await helper3.trySell(tokenAddress, tokenAmountRaw)) as readonly [
-          string,
-          string,
-          bigint,
-          bigint,
-        ];
+        const [, , funds, fee] = (await helper3.trySell(
+          tokenAddress,
+          tokenAmountRaw,
+        )) as readonly [string, string, bigint, bigint];
         const netFunds = funds > fee ? funds - fee : 0n;
         const quoteBnb = Number(ethers.formatEther(netFunds));
         return {
           ok: true,
           route: "fourmeme",
           quoteBnb,
-          quoteUsd: Math.round(quoteBnb * Number.parseFloat(process.env.ELIZAOK_TEST_BNB_USD_PRICE || "600")),
+          quoteUsd: Math.round(
+            quoteBnb *
+              Number.parseFloat(
+                process.env.ELIZAOK_TEST_BNB_USD_PRICE || "600",
+              ),
+          ),
         };
       } catch (error) {
-        return tryPancakeFallback(`Four.meme sell preflight rejected token: ${errorMessage(error)}`);
+        return tryPancakeFallback(
+          `Four.meme sell preflight rejected token: ${errorMessage(error)}`,
+        );
       }
     }
 
     return tryPancakeFallback("Liquidity has migrated.");
   } catch (error) {
-    return { ok: false, reason: `Sell route preflight failed: ${errorMessage(error)}` };
+    return {
+      ok: false,
+      reason: `Sell route preflight failed: ${errorMessage(error)}`,
+    };
   }
 }
 
@@ -293,7 +351,7 @@ async function executeSdkBuy(
   trader: FourMemeTrader,
   route: "fourmeme" | "pancakeswap",
   tokenAddress: string,
-  bnbAmount: number
+  bnbAmount: number,
 ): Promise<{ result: BuyResult; route: "fourmeme" | "pancakeswap" }> {
   try {
     const result =
@@ -304,7 +362,10 @@ async function executeSdkBuy(
     return { result, route };
   } catch (error) {
     const message = errorMessage(error);
-    if (!message.includes("REPLACEMENT_UNDERPRICED") && !message.includes("replacement fee too low")) {
+    if (
+      !message.includes("REPLACEMENT_UNDERPRICED") &&
+      !message.includes("replacement fee too low")
+    ) {
       throw error;
     }
 
@@ -323,8 +384,12 @@ async function executeSdkSell(
   trader: FourMemeTrader,
   route: "fourmeme" | "pancakeswap",
   tokenAddress: string,
-  tokenAmount: number
-): Promise<{ txHash: string; gasUsed: string; route: "fourmeme" | "pancakeswap" }> {
+  tokenAmount: number,
+): Promise<{
+  txHash: string;
+  gasUsed: string;
+  route: "fourmeme" | "pancakeswap";
+}> {
   const result =
     route === "pancakeswap"
       ? await trader.sellPancakeToken(tokenAddress, tokenAmount)
@@ -336,15 +401,24 @@ async function executeSdkSell(
 function buildSellIntent(
   position: PortfolioPosition,
   candidate: ScoredCandidate | undefined,
-  treasury: DiscoveryConfig["treasury"]
+  treasury: DiscoveryConfig["treasury"],
 ): SellIntent | null {
-  if (position.executionSource !== "live" && position.executionSource !== "hybrid") return null;
+  if (
+    position.executionSource !== "live" &&
+    position.executionSource !== "hybrid"
+  )
+    return null;
   if (position.state !== "active") return null;
   if (position.walletVerification !== "present") return null;
-  const tokenDecimals = normalizeTokenDecimals(position.walletTokenDecimals as number | string | null);
+  const tokenDecimals = normalizeTokenDecimals(
+    position.walletTokenDecimals as number | string | null,
+  );
   if (!position.walletTokenBalance || tokenDecimals === null) return null;
 
-  const rawBalance = ethers.parseUnits(position.walletTokenBalance, tokenDecimals);
+  const rawBalance = ethers.parseUnits(
+    position.walletTokenBalance,
+    tokenDecimals,
+  );
   if (rawBalance <= 0n) return null;
 
   for (const rule of treasury.takeProfitRules) {
@@ -378,7 +452,10 @@ function buildSellIntent(
     };
   }
 
-  if (candidate.recommendation === "observe" || candidate.recommendation === "reject") {
+  if (
+    candidate.recommendation === "observe" ||
+    candidate.recommendation === "reject"
+  ) {
     return {
       position,
       reason: `Live exit triggered because the candidate was downgraded to ${candidate.recommendation}.`,
@@ -392,7 +469,7 @@ function buildSellIntent(
 
 function createTradeRecord(
   base: Omit<TradeRecord, "id">,
-  ledger: TradeLedger
+  ledger: TradeLedger,
 ): TradeLedger {
   const record: TradeRecord = {
     id: randomUUID(),
@@ -404,13 +481,17 @@ function createTradeRecord(
     records,
     lastUpdatedAt: base.generatedAt,
     totalExecutedBnb:
-      ledger.totalExecutedBnb + (record.disposition === "executed" ? record.plannedBuyBnb : 0),
+      ledger.totalExecutedBnb +
+      (record.disposition === "executed" ? record.plannedBuyBnb : 0),
     totalDryRunBnb:
-      ledger.totalDryRunBnb + (record.disposition === "dry_run" ? record.plannedBuyBnb : 0),
+      ledger.totalDryRunBnb +
+      (record.disposition === "dry_run" ? record.plannedBuyBnb : 0),
   };
 }
 
-function normalizeTokenDecimals(value: number | string | null | undefined): number | null {
+function normalizeTokenDecimals(
+  value: number | string | null | undefined,
+): number | null {
   if (value === null || value === undefined) return null;
   const parsed = typeof value === "number" ? value : Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : null;
@@ -424,26 +505,45 @@ export async function executeTradeLane({
   portfolioLifecycle,
   executionState,
   reportsDir,
-}: ExecuteTradeLaneArgs): Promise<{ executionState: ExecutionState; tradeLedger: TradeLedger }> {
+}: ExecuteTradeLaneArgs): Promise<{
+  executionState: ExecutionState;
+  tradeLedger: TradeLedger;
+}> {
   let tradeLedger = await loadTradeLedger(reportsDir);
-  const candidateMap = new Map(candidates.map((candidate) => [candidate.tokenAddress, candidate]));
+  const candidateMap = new Map(
+    candidates.map((candidate) => [candidate.tokenAddress, candidate]),
+  );
   const plans = executionState.plans.map((plan) => ({ ...plan }));
   const preflightMap = new Map<string, PreflightResult>();
-  if (config.execution.kol.enabled && config.execution.kol.publicSourceEnabled && !config.execution.kol.walletsPath) {
+  if (
+    config.execution.kol.enabled &&
+    config.execution.kol.publicSourceEnabled &&
+    !config.execution.kol.walletsPath
+  ) {
     await warmPublicKolWallets(
       config.execution,
-      candidates.slice(0, config.execution.kol.publicSourceTokenLimit).map((candidate) => candidate.tokenAddress)
+      candidates
+        .slice(0, config.execution.kol.publicSourceTokenLimit)
+        .map((candidate) => candidate.tokenAddress),
     );
   }
   for (const plan of plans) {
     if (!plan.eligible) continue;
-    const kolSupport = await evaluateKolSupport(config.execution, plan.tokenAddress);
+    const kolSupport = await evaluateKolSupport(
+      config.execution,
+      plan.tokenAddress,
+    );
     plan.kolSupport = kolSupport;
     if (!kolSupport.qualified) {
       plan.eligible = false;
       plan.routeTradable = "blocked";
       plan.routeReason = kolSupport.reason;
-      plan.reasons = [...plan.reasons.filter((reason) => !reason.includes("tracked KOL wallets")), kolSupport.reason];
+      plan.reasons = [
+        ...plan.reasons.filter(
+          (reason) => !reason.includes("tracked KOL wallets"),
+        ),
+        kolSupport.reason,
+      ];
     } else if (kolSupport.enabled) {
       plan.reasons = [...plan.reasons, kolSupport.reason];
     }
@@ -457,7 +557,11 @@ export async function executeTradeLane({
     }
 
     const fundsWei = ethers.parseUnits(plan.plannedBuyBnb.toFixed(8), 18);
-    const preflight = await preflightTradeRoute(config.execution, plan.tokenAddress, fundsWei);
+    const preflight = await preflightTradeRoute(
+      config.execution,
+      plan.tokenAddress,
+      fundsWei,
+    );
     preflightMap.set(plan.tokenAddress, preflight);
     if (preflight.ok) {
       plan.routeTradable = "tradable";
@@ -471,10 +575,18 @@ export async function executeTradeLane({
   }
 
   const eligiblePlans = plans.filter((plan) => plan.eligible);
-  const tradableEligiblePlans = eligiblePlans.filter((plan) => plan.routeTradable === "tradable");
-  const blockedEligiblePlans = eligiblePlans.filter((plan) => plan.routeTradable === "blocked");
+  const tradableEligiblePlans = eligiblePlans.filter(
+    (plan) => plan.routeTradable === "tradable",
+  );
+  const blockedEligiblePlans = eligiblePlans.filter(
+    (plan) => plan.routeTradable === "blocked",
+  );
   const executedTodayBnb = tradeLedger.records
-    .filter((record) => record.disposition === "executed" && isSameUtcDay(record.generatedAt, generatedAt))
+    .filter(
+      (record) =>
+        record.disposition === "executed" &&
+        isSameUtcDay(record.generatedAt, generatedAt),
+    )
     .reduce((sum, record) => sum + record.plannedBuyBnb, 0);
 
   const cycleSummary = {
@@ -503,7 +615,10 @@ export async function executeTradeLane({
     return {
       executionState: {
         ...executionState,
-        cycleSummary: { ...cycleSummary, note: "Execution mode is paper, so no live buy attempts were made." },
+        cycleSummary: {
+          ...cycleSummary,
+          note: "Execution mode is paper, so no live buy attempts were made.",
+        },
       },
       tradeLedger,
     };
@@ -550,17 +665,22 @@ export async function executeTradeLane({
 
   let activeSlots = portfolioLifecycle.activePositions.length;
   let dailySpentBnb = executedTodayBnb;
-  const effectiveDailyDeployBnb = Math.max(0, config.execution.risk.maxDailyDeployBnb - (gooLane?.reserveBnb ?? 0));
+  const effectiveDailyDeployBnb = Math.max(
+    0,
+    config.execution.risk.maxDailyDeployBnb - (gooLane?.reserveBnb ?? 0),
+  );
   let bnbUsdPrice: number | null = null;
   let trader: FourMemeTrader | null = null;
-  const sellCandidateMap = new Map(candidates.map((candidate) => [candidate.tokenAddress, candidate]));
+  const sellCandidateMap = new Map(
+    candidates.map((candidate) => [candidate.tokenAddress, candidate]),
+  );
 
   if (config.execution.mode === "live_full") {
     for (const position of portfolioLifecycle.activePositions) {
       const sellIntent = buildSellIntent(
         position,
         sellCandidateMap.get(position.tokenAddress),
-        config.treasury
+        config.treasury,
       );
       if (!sellIntent) continue;
 
@@ -568,7 +688,7 @@ export async function executeTradeLane({
       const sellPreflight = await preflightSellRoute(
         config.execution,
         position.tokenAddress,
-        sellIntent.tokenAmountRaw
+        sellIntent.tokenAmountRaw,
       );
 
       if (!sellPreflight.ok) {
@@ -594,7 +714,7 @@ export async function executeTradeLane({
             reason: sellPreflight.reason,
             command: `sdk:sell-auto-route ${position.tokenAddress} ${sellIntent.tokenAmount}`,
           },
-          tradeLedger
+          tradeLedger,
         );
         continue;
       }
@@ -621,7 +741,7 @@ export async function executeTradeLane({
             reason: `${sellIntent.reason} Dry-run is enabled, so no on-chain sell was sent.`,
             command: `sdk:sell-auto-route ${position.tokenAddress} ${sellIntent.tokenAmount}`,
           },
-          tradeLedger
+          tradeLedger,
         );
         continue;
       }
@@ -632,7 +752,7 @@ export async function executeTradeLane({
           trader,
           sellPreflight.route,
           position.tokenAddress,
-          Number.parseFloat(sellIntent.tokenAmount)
+          Number.parseFloat(sellIntent.tokenAmount),
         );
         cycleSummary.executedCount += 1;
         tradeLedger = createTradeRecord(
@@ -654,15 +774,13 @@ export async function executeTradeLane({
             disposition: "executed",
             reason: `${sellIntent.reason} SDK sell completed successfully via ${sellResult.route}.`,
             command: `sdk:sell-auto-route ${position.tokenAddress} ${sellIntent.tokenAmount}`,
-            stdout: stringifyForLedger(
-              {
-                gasUsed: sellResult.gasUsed,
-              },
-            ),
+            stdout: stringifyForLedger({
+              gasUsed: sellResult.gasUsed,
+            }),
             stderr: "",
             txHash: sellResult.txHash,
           },
-          tradeLedger
+          tradeLedger,
         );
       } catch (error) {
         cycleSummary.failedCount += 1;
@@ -686,7 +804,7 @@ export async function executeTradeLane({
             reason: errorMessage(error),
             command: `sdk:sell-auto-route ${position.tokenAddress} ${sellIntent.tokenAmount}`,
           },
-          tradeLedger
+          tradeLedger,
         );
       }
     }
@@ -707,7 +825,10 @@ export async function executeTradeLane({
     };
   }
 
-  for (const plan of tradableEligiblePlans.slice(0, config.execution.maxBuysPerCycle)) {
+  for (const plan of tradableEligiblePlans.slice(
+    0,
+    config.execution.maxBuysPerCycle,
+  )) {
     const candidate = candidateMap.get(plan.tokenAddress);
     if (!candidate) {
       cycleSummary.skippedCount += 1;
@@ -726,7 +847,7 @@ export async function executeTradeLane({
           disposition: "skipped",
           reason: "Candidate disappeared before execution could start.",
         },
-        tradeLedger
+        tradeLedger,
       );
       continue;
     }
@@ -737,11 +858,12 @@ export async function executeTradeLane({
         tradeLedger,
         candidate.tokenAddress,
         generatedAt,
-        config.execution.dryRunCooldownMs
+        config.execution.dryRunCooldownMs,
       )
     ) {
       cycleSummary.skippedCount += 1;
-      cycleSummary.note = "Dry-run cooldown suppressed a duplicate preview for the same token.";
+      cycleSummary.note =
+        "Dry-run cooldown suppressed a duplicate preview for the same token.";
       continue;
     }
 
@@ -762,7 +884,7 @@ export async function executeTradeLane({
           disposition: "skipped",
           reason: "Max active position limit is already reached.",
         },
-        tradeLedger
+        tradeLedger,
       );
       continue;
     }
@@ -787,7 +909,7 @@ export async function executeTradeLane({
               ? `Daily BNB deployment cap would be exceeded after reserving ${gooLane.reserveBnb.toFixed(4)} BNB for Goo.`
               : "Daily BNB deployment cap would be exceeded by this trade.",
         },
-        tradeLedger
+        tradeLedger,
       );
       continue;
     }
@@ -797,7 +919,7 @@ export async function executeTradeLane({
         (record) =>
           record.tokenAddress === candidate.tokenAddress &&
           record.disposition === "executed" &&
-          record.mode !== "paper"
+          record.mode !== "paper",
       )
     ) {
       cycleSummary.skippedCount += 1;
@@ -816,7 +938,7 @@ export async function executeTradeLane({
           disposition: "skipped",
           reason: "Token already has a previously executed live buy on record.",
         },
-        tradeLedger
+        tradeLedger,
       );
       continue;
     }
@@ -824,7 +946,9 @@ export async function executeTradeLane({
     cycleSummary.attemptedCount += 1;
 
     try {
-      bnbUsdPrice ??= Number.parseFloat(process.env.ELIZAOK_TEST_BNB_USD_PRICE || "600");
+      bnbUsdPrice ??= Number.parseFloat(
+        process.env.ELIZAOK_TEST_BNB_USD_PRICE || "600",
+      );
       const plannedBuyUsd = Math.round(plan.plannedBuyBnb * bnbUsdPrice);
       const entryReferenceUsd = candidateReferenceUsd(candidate);
       const fundsBnb = plan.plannedBuyBnb;
@@ -857,7 +981,7 @@ export async function executeTradeLane({
             reason: preflight.reason,
             command,
           },
-          tradeLedger
+          tradeLedger,
         );
         continue;
       }
@@ -883,7 +1007,7 @@ export async function executeTradeLane({
             reason: "Dry-run is enabled, so no on-chain order was sent.",
             command,
           },
-          tradeLedger
+          tradeLedger,
         );
         continue;
       }
@@ -892,7 +1016,7 @@ export async function executeTradeLane({
         trader,
         preflight.route,
         candidate.tokenAddress,
-        plan.plannedBuyBnb
+        plan.plannedBuyBnb,
       );
       cycleSummary.executedCount += 1;
       activeSlots += 1;
@@ -912,21 +1036,22 @@ export async function executeTradeLane({
           entryReferenceUsd,
           fundsBnb,
           fundsWei,
-          tokenAmount: result.estimatedTokens != null ? String(result.estimatedTokens) : null,
+          tokenAmount:
+            result.estimatedTokens != null
+              ? String(result.estimatedTokens)
+              : null,
           disposition: "executed",
           reason: `SDK buy completed successfully via ${route}.`,
           command,
-          stdout: stringifyForLedger(
-            {
-              estimatedTokens: result.estimatedTokens,
-              gasUsed: result.gasUsed,
-              duration: result.duration,
-            },
-          ),
+          stdout: stringifyForLedger({
+            estimatedTokens: result.estimatedTokens,
+            gasUsed: result.gasUsed,
+            duration: result.duration,
+          }),
           stderr: "",
           txHash: result.txHash,
         },
-        tradeLedger
+        tradeLedger,
       );
     } catch (error) {
       cycleSummary.failedCount += 1;
@@ -943,9 +1068,12 @@ export async function executeTradeLane({
           fundsBnb: null,
           fundsWei: null,
           disposition: "failed",
-          reason: error instanceof Error ? error.message : "Unknown trade execution error.",
+          reason:
+            error instanceof Error
+              ? error.message
+              : "Unknown trade execution error.",
         },
-        tradeLedger
+        tradeLedger,
       );
     }
   }
@@ -957,15 +1085,16 @@ export async function executeTradeLane({
         ? "Execution lane produced dry-run trade previews."
         : cycleSummary.failedCount > 0
           ? "Execution lane attempted live buys, but at least one trade failed."
-          : blockedEligiblePlans.length > 0 && tradableEligiblePlans.length === 0
+          : blockedEligiblePlans.length > 0 &&
+              tradableEligiblePlans.length === 0
             ? `All ${blockedEligiblePlans.length} strategy-eligible candidates failed route tradability checks.`
             : tradableEligiblePlans.length > 0 && cycleSummary.skippedCount > 0
               ? cycleSummary.note
               : tradableEligiblePlans.length > 0
                 ? `Found ${tradableEligiblePlans.length} route-tradable candidates, but none were executed in this cycle.`
-          : cycleSummary.skippedCount > 0
-            ? cycleSummary.note
-            : cycleSummary.note;
+                : cycleSummary.skippedCount > 0
+                  ? cycleSummary.note
+                  : cycleSummary.note;
 
   return {
     executionState: {

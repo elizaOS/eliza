@@ -93,6 +93,7 @@
     "drizzle-orm": "^0.45.1"
   },
   "overrides": {
+    "@elizaos/plugin-sql": "2.0.0-alpha.17",
     "@types/node": "25.4.0",
     "@nrwl/devkit": "19.8.4",
     "@nrwl/tao": "19.8.4",

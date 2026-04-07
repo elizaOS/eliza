@@ -8,10 +8,15 @@ import type {
 
 function buildProposal(
   candidate: GooAgentCandidate,
-  config: DiscoveryConfig
+  config: DiscoveryConfig,
 ): ExecutionGooProposal {
-  const reserveBnb = Math.min(candidate.minimumCtoBnb, config.execution.risk.maxDailyDeployBnb);
-  const affordable = candidate.minimumCtoBnb > 0 && candidate.minimumCtoBnb <= config.execution.risk.maxDailyDeployBnb;
+  const reserveBnb = Math.min(
+    candidate.minimumCtoBnb,
+    config.execution.risk.maxDailyDeployBnb,
+  );
+  const affordable =
+    candidate.minimumCtoBnb > 0 &&
+    candidate.minimumCtoBnb <= config.execution.risk.maxDailyDeployBnb;
 
   if (candidate.recommendation === "cto_candidate" && affordable) {
     return {
@@ -27,7 +32,10 @@ function buildProposal(
     };
   }
 
-  if (candidate.recommendation === "cto_candidate" || candidate.recommendation === "priority_due_diligence") {
+  if (
+    candidate.recommendation === "cto_candidate" ||
+    candidate.recommendation === "priority_due_diligence"
+  ) {
     return {
       agentId: candidate.agentId,
       tokenAddress: candidate.tokenAddress,
@@ -63,7 +71,7 @@ function buildProposal(
 export function buildExecutionGooLane(
   config: DiscoveryConfig,
   gooCandidates: GooAgentCandidate[],
-  tradeLedger?: TradeLedger | null
+  tradeLedger?: TradeLedger | null,
 ): ExecutionGooLane {
   if (!config.goo.enabled) {
     return {
@@ -77,19 +85,30 @@ export function buildExecutionGooLane(
     };
   }
 
-  const proposals = gooCandidates.slice(0, 5).map((candidate) => buildProposal(candidate, config));
+  const proposals = gooCandidates
+    .slice(0, 5)
+    .map((candidate) => buildProposal(candidate, config));
   const priorityCount = proposals.filter(
-    (proposal) => proposal.action === "reserve_treasury" || proposal.action === "due_diligence"
+    (proposal) =>
+      proposal.action === "reserve_treasury" ||
+      proposal.action === "due_diligence",
   ).length;
-  const reservedProposal = proposals.find((proposal) => proposal.action === "reserve_treasury") ?? null;
+  const reservedProposal =
+    proposals.find((proposal) => proposal.action === "reserve_treasury") ??
+    null;
   const reserveBnb = reservedProposal?.reserveBnb ?? 0;
   const executedTodayBnb =
     tradeLedger?.records
       .filter((record) => record.disposition === "executed")
       .reduce((sum, record) => sum + record.plannedBuyBnb, 0) ?? 0;
-  const remainingDailyCapacity = Math.max(0, config.execution.risk.maxDailyDeployBnb - executedTodayBnb);
+  const remainingDailyCapacity = Math.max(
+    0,
+    config.execution.risk.maxDailyDeployBnb - executedTodayBnb,
+  );
   const blocksMemecoinBuys = Boolean(
-    reservedProposal && reserveBnb >= remainingDailyCapacity && remainingDailyCapacity > 0
+    reservedProposal &&
+      reserveBnb >= remainingDailyCapacity &&
+      remainingDailyCapacity > 0,
   );
 
   return {

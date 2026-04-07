@@ -27,17 +27,23 @@ function scoreGenomeSynergy(genomeUri: string, thesis: string[]): number {
 
   if (/(alpha|trade|treasury|defi|market|liquidity|yield|quant)/.test(lower)) {
     score += 16;
-    thesis.push("Genome URI suggests direct overlap with treasury, trading, or DeFi alpha.");
+    thesis.push(
+      "Genome URI suggests direct overlap with treasury, trading, or DeFi alpha.",
+    );
   }
 
   if (/(social|meme|content|community|signal|discovery)/.test(lower)) {
     score += 12;
-    thesis.push("Genome URI suggests social or discovery signals that can strengthen memecoin scouting.");
+    thesis.push(
+      "Genome URI suggests social or discovery signals that can strengthen memecoin scouting.",
+    );
   }
 
   if (/(bnb|bsc|pancake|four\.meme)/.test(lower)) {
     score += 8;
-    thesis.push("Genome URI looks BNB-native, which improves execution relevance for ElizaOK.");
+    thesis.push(
+      "Genome URI looks BNB-native, which improves execution relevance for ElizaOK.",
+    );
   }
 
   return score;
@@ -54,20 +60,31 @@ function toRecommendation(score: number): GooAgentCandidate["recommendation"] {
   return "ignore";
 }
 
-function scoreGooCandidate(candidate: Omit<GooAgentCandidate, "score" | "recommendation" | "synergyThesis" | "risks">): GooAgentCandidate {
+function scoreGooCandidate(
+  candidate: Omit<
+    GooAgentCandidate,
+    "score" | "recommendation" | "synergyThesis" | "risks"
+  >,
+): GooAgentCandidate {
   let score = 25;
   const synergyThesis: string[] = [];
   const risks: string[] = [];
 
   if (candidate.status === "DYING") {
     score += 26;
-    synergyThesis.push("Agent is already in DYING, so it fits the turnaround window.");
+    synergyThesis.push(
+      "Agent is already in DYING, so it fits the turnaround window.",
+    );
   } else if (candidate.status === "STARVING") {
     score += 14;
-    synergyThesis.push("Agent is STARVING, making it a near-term turnaround candidate.");
+    synergyThesis.push(
+      "Agent is STARVING, making it a near-term turnaround candidate.",
+    );
   } else if (candidate.status === "ACTIVE") {
     score -= 8;
-    risks.push("Agent is still ACTIVE, so it is not yet a true turnaround target.");
+    risks.push(
+      "Agent is still ACTIVE, so it is not yet a true turnaround target.",
+    );
   } else if (candidate.status === "DEAD") {
     score -= 22;
     risks.push("Agent is already DEAD and outside the CTO path.");
@@ -80,7 +97,9 @@ function scoreGooCandidate(candidate: Omit<GooAgentCandidate, "score" | "recomme
 
   if (candidate.minimumCtoBnb > 0 && candidate.minimumCtoBnb <= 0.2) {
     score += 12;
-    synergyThesis.push("Minimum CTO amount is relatively cheap for an experimental acquisition.");
+    synergyThesis.push(
+      "Minimum CTO amount is relatively cheap for an experimental acquisition.",
+    );
   } else if (candidate.minimumCtoBnb > 1) {
     score -= 12;
     risks.push("Minimum CTO amount is expensive for an MVP treasury strategy.");
@@ -88,15 +107,22 @@ function scoreGooCandidate(candidate: Omit<GooAgentCandidate, "score" | "recomme
 
   if (candidate.treasuryBnb > 0.2) {
     score += 10;
-    synergyThesis.push("Treasury still holds meaningful BNB that may justify rescue.");
+    synergyThesis.push(
+      "Treasury still holds meaningful BNB that may justify rescue.",
+    );
   } else if (candidate.treasuryBnb < candidate.starvingThresholdBnb) {
     score += 6;
     synergyThesis.push("Treasury stress aligns with the turnaround thesis.");
   }
 
-  if (candidate.secondsUntilPulseTimeout !== null && candidate.secondsUntilPulseTimeout < 3_600) {
+  if (
+    candidate.secondsUntilPulseTimeout !== null &&
+    candidate.secondsUntilPulseTimeout < 3_600
+  ) {
     score += 8;
-    synergyThesis.push("Pulse timeout is approaching, making the opportunity time-sensitive.");
+    synergyThesis.push(
+      "Pulse timeout is approaching, making the opportunity time-sensitive.",
+    );
   }
 
   if (!candidate.genomeUri || candidate.genomeUri === "unknown") {
@@ -114,7 +140,9 @@ function scoreGooCandidate(candidate: Omit<GooAgentCandidate, "score" | "recomme
   };
 }
 
-export async function discoverGooCandidates(config: GooConfig): Promise<GooAgentCandidate[]> {
+export async function discoverGooCandidates(
+  config: GooConfig,
+): Promise<GooAgentCandidate[]> {
   if (!config.enabled || !config.rpcUrl || !config.registryAddress) {
     return [];
   }
@@ -122,12 +150,16 @@ export async function discoverGooCandidates(config: GooConfig): Promise<GooAgent
   const provider = new ethers.JsonRpcProvider(config.rpcUrl);
   const latestBlock = await provider.getBlockNumber();
   const fromBlock = Math.max(0, latestBlock - config.lookbackBlocks);
-  const registry = new ethers.Contract(config.registryAddress, REGISTRY_ABI, provider);
+  const registry = new ethers.Contract(
+    config.registryAddress,
+    REGISTRY_ABI,
+    provider,
+  );
 
   const registeredEvents = await registry.queryFilter(
     registry.filters.AgentRegistered(),
     fromBlock,
-    latestBlock
+    latestBlock,
   );
 
   const recentEvents = registeredEvents
@@ -166,9 +198,12 @@ export async function discoverGooCandidates(config: GooConfig): Promise<GooAgent
       const now = Math.floor(Date.now() / 1000);
       const lastPulseNum = Number(lastPulseAt);
       const pulseTimeoutSecs = Number(pulseTimeout);
-      const secondsSinceLastPulse = lastPulseNum > 0 ? Math.max(0, now - lastPulseNum) : null;
+      const secondsSinceLastPulse =
+        lastPulseNum > 0 ? Math.max(0, now - lastPulseNum) : null;
       const secondsUntilPulseTimeout =
-        secondsSinceLastPulse === null ? null : Math.max(0, pulseTimeoutSecs - secondsSinceLastPulse);
+        secondsSinceLastPulse === null
+          ? null
+          : Math.max(0, pulseTimeoutSecs - secondsSinceLastPulse);
 
       return scoreGooCandidate({
         agentId,
@@ -178,13 +213,15 @@ export async function discoverGooCandidates(config: GooConfig): Promise<GooAgent
         genomeUri: genomeUri || "unknown",
         status: normalizeStatus(statusRaw),
         treasuryBnb: Number.parseFloat(ethers.formatEther(treasuryBalance)),
-        starvingThresholdBnb: Number.parseFloat(ethers.formatEther(starvingThreshold)),
+        starvingThresholdBnb: Number.parseFloat(
+          ethers.formatEther(starvingThreshold),
+        ),
         minimumCtoBnb: Number.parseFloat(ethers.formatEther(minimumCtoAmount)),
         secondsSinceLastPulse,
         secondsUntilPulseTimeout,
         registeredAtBlock: event.blockNumber,
       });
-    })
+    }),
   );
 
   return candidates

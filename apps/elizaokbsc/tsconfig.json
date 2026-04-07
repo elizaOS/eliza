@@ -4,7 +4,11 @@
     "types": ["node"],
     "baseUrl": ".",
     "rootDir": "./src",
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@elizaos/core": ["../../packages/typescript/dist/node/index.d.ts"],
+      "@elizaos/core/*": ["../../packages/typescript/dist/node/*"]
+    }
   },
   "include": ["src/**/*.ts"]
 }

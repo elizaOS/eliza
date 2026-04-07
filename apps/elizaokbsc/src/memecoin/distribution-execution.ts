@@ -1,4 +1,4 @@
-import { randomUUID, createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ethers } from "ethers";
@@ -29,11 +29,18 @@ interface RecipientAllocation {
 }
 
 function absolutePath(filePath: string): string {
-  return path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
+  return path.isAbsolute(filePath)
+    ? filePath
+    : path.join(process.cwd(), filePath);
 }
 
-async function loadLedger(reportsDir: string): Promise<DistributionExecutionLedger> {
-  const ledgerPath = path.join(absolutePath(reportsDir), "distribution-ledger.json");
+async function loadLedger(
+  reportsDir: string,
+): Promise<DistributionExecutionLedger> {
+  const ledgerPath = path.join(
+    absolutePath(reportsDir),
+    "distribution-ledger.json",
+  );
   try {
     const content = await readFile(ledgerPath, "utf8");
     return JSON.parse(content) as DistributionExecutionLedger;
@@ -47,8 +54,14 @@ async function loadLedger(reportsDir: string): Promise<DistributionExecutionLedg
   }
 }
 
-async function saveLedger(reportsDir: string, ledger: DistributionExecutionLedger): Promise<string> {
-  const ledgerPath = path.join(absolutePath(reportsDir), "distribution-ledger.json");
+async function saveLedger(
+  reportsDir: string,
+  ledger: DistributionExecutionLedger,
+): Promise<string> {
+  const ledgerPath = path.join(
+    absolutePath(reportsDir),
+    "distribution-ledger.json",
+  );
   await mkdir(path.dirname(ledgerPath), { recursive: true });
   await writeFile(ledgerPath, JSON.stringify(ledger, null, 2), "utf8");
   return ledgerPath;
@@ -56,14 +69,15 @@ async function saveLedger(reportsDir: string, ledger: DistributionExecutionLedge
 
 function appendRecord(
   ledger: DistributionExecutionLedger,
-  record: Omit<DistributionExecutionRecord, "id">
+  record: Omit<DistributionExecutionRecord, "id">,
 ): DistributionExecutionLedger {
   const next: DistributionExecutionRecord = { id: randomUUID(), ...record };
   return {
     records: [next, ...ledger.records].slice(0, 500),
     lastUpdatedAt: record.generatedAt,
     totalRecipientsExecuted:
-      ledger.totalRecipientsExecuted + (record.disposition === "executed" ? 1 : 0),
+      ledger.totalRecipientsExecuted +
+      (record.disposition === "executed" ? 1 : 0),
     totalRecipientsDryRun:
       ledger.totalRecipientsDryRun + (record.disposition === "dry_run" ? 1 : 0),
   };
@@ -72,7 +86,7 @@ function appendRecord(
 function buildFingerprint(
   assetTokenAddress: string,
   assetTotalAmount: string,
-  recipients: ManifestShape["recipients"]
+  recipients: ManifestShape["recipients"],
 ): string {
   return createHash("sha256")
     .update(
@@ -83,14 +97,14 @@ function buildFingerprint(
           address: recipient.address.toLowerCase(),
           allocationBps: recipient.allocationBps,
         })),
-      })
+      }),
     )
     .digest("hex");
 }
 
 function buildRecipientAllocations(
   recipients: ManifestShape["recipients"],
-  totalAmountRaw: bigint
+  totalAmountRaw: bigint,
 ): RecipientAllocation[] {
   let allocated = 0n;
   return recipients.map((recipient, index) => {
@@ -117,7 +131,10 @@ export async function executeDistributionLane({
   distributionPlan: DistributionPlan;
   reportsDir: string;
   rpcUrl: string | null;
-}): Promise<{ distributionExecution: DistributionExecutionState; distributionLedger: DistributionExecutionLedger }> {
+}): Promise<{
+  distributionExecution: DistributionExecutionState;
+  distributionLedger: DistributionExecutionLedger;
+}> {
   let distributionLedger = await loadLedger(reportsDir);
   const execution = config.execution;
   const manifestPath = distributionPlan.publication?.manifestPath ?? null;
@@ -129,13 +146,20 @@ export async function executeDistributionLane({
     {
       label: "Execution enabled",
       ready: execution.enabled,
-      detail: execution.enabled ? "Airdrop execution lane is enabled." : "Enable ELIZAOK_DISTRIBUTION_EXECUTION_ENABLED.",
+      detail: execution.enabled
+        ? "Airdrop execution lane is enabled."
+        : "Enable ELIZAOK_DISTRIBUTION_EXECUTION_ENABLED.",
     },
     {
       label: "Distribution plan available",
-      ready: distributionPlan.enabled && distributionPlan.recipients.length > 0 && Boolean(manifestPath),
+      ready:
+        distributionPlan.enabled &&
+        distributionPlan.recipients.length > 0 &&
+        Boolean(manifestPath),
       detail:
-        distributionPlan.enabled && distributionPlan.recipients.length > 0 && manifestPath
+        distributionPlan.enabled &&
+        distributionPlan.recipients.length > 0 &&
+        manifestPath
           ? "Distribution manifest is available."
           : "Generate a non-empty distribution plan first.",
     },
@@ -171,14 +195,18 @@ export async function executeDistributionLane({
           execution.liveConfirmArmed),
       detail: execution.dryRun
         ? "Dry-run mode does not require live wallet confirmation."
-        : execution.walletAddress && execution.privateKey && execution.liveConfirmArmed
+        : execution.walletAddress &&
+            execution.privateKey &&
+            execution.liveConfirmArmed
           ? "Live airdrop wallet is configured and manually armed."
           : `Add wallet credentials and set ELIZAOK_DISTRIBUTION_LIVE_CONFIRM=${execution.liveConfirmPhrase}.`,
     },
   ];
   const readinessScore = readinessChecks.filter((item) => item.ready).length;
   const readinessTotal = readinessChecks.length;
-  const configured = readinessChecks.every((item, index) => (index === 0 ? true : item.ready));
+  const configured = readinessChecks.every((item, index) =>
+    index === 0 ? true : item.ready,
+  );
   const baseState: DistributionExecutionState = {
     enabled: execution.enabled,
     dryRun: execution.dryRun,
@@ -209,18 +237,28 @@ export async function executeDistributionLane({
   if (!execution.enabled) {
     return { distributionExecution: baseState, distributionLedger };
   }
-  if (!configured || !manifestPath || !rpcUrl || !effectiveAssetTokenAddress || !effectiveAssetTotalAmount) {
+  if (
+    !configured ||
+    !manifestPath ||
+    !rpcUrl ||
+    !effectiveAssetTokenAddress ||
+    !effectiveAssetTotalAmount
+  ) {
     return { distributionExecution: baseState, distributionLedger };
   }
 
-  const manifest = JSON.parse(await readFile(absolutePath(manifestPath), "utf8")) as ManifestShape;
+  const manifest = JSON.parse(
+    await readFile(absolutePath(manifestPath), "utf8"),
+  ) as ManifestShape;
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   const signer =
-    execution.dryRun || !execution.privateKey ? null : new ethers.Wallet(execution.privateKey, provider);
+    execution.dryRun || !execution.privateKey
+      ? null
+      : new ethers.Wallet(execution.privateKey, provider);
   const contract = new ethers.Contract(
     effectiveAssetTokenAddress,
     ERC20_AIRDROP_ABI,
-    signer ?? provider
+    signer ?? provider,
   );
   const decimalsRaw = await contract.decimals();
   const decimals = Number(decimalsRaw);
@@ -228,9 +266,12 @@ export async function executeDistributionLane({
   const manifestFingerprint = buildFingerprint(
     effectiveAssetTokenAddress,
     effectiveAssetTotalAmount,
-    manifest.recipients
+    manifest.recipients,
   );
-  const recipientAllocations = buildRecipientAllocations(manifest.recipients, totalAmountRaw);
+  const recipientAllocations = buildRecipientAllocations(
+    manifest.recipients,
+    totalAmountRaw,
+  );
   const recipients = recipientAllocations
     .filter(
       (recipient) =>
@@ -238,9 +279,10 @@ export async function executeDistributionLane({
         !distributionLedger.records.some(
           (record) =>
             record.manifestFingerprint === manifestFingerprint &&
-            record.recipientAddress.toLowerCase() === recipient.address.toLowerCase() &&
-            record.disposition === "executed"
-        )
+            record.recipientAddress.toLowerCase() ===
+              recipient.address.toLowerCase() &&
+            record.disposition === "executed",
+        ),
     )
     .slice(0, execution.maxRecipientsPerRun);
   const state: DistributionExecutionState = {
@@ -256,13 +298,16 @@ export async function executeDistributionLane({
     return {
       distributionExecution: {
         ...state,
-        cycleSummary: { ...state.cycleSummary, note: "No recipients were present in the manifest." },
+        cycleSummary: {
+          ...state.cycleSummary,
+          note: "No recipients were present in the manifest.",
+        },
       },
       distributionLedger,
     };
   }
 
-  let cycleSummary = { ...state.cycleSummary };
+  const cycleSummary = { ...state.cycleSummary };
 
   for (const recipient of recipients) {
     cycleSummary.attemptedCount += 1;
