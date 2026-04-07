@@ -379,27 +379,27 @@ describe("DefaultMessageService", () => {
 		const updateMemorySpy = vi
 			.spyOn(runtime, "updateMemory")
 			.mockResolvedValue(true);
-		const useModelSpy = vi.spyOn(runtime, "useModel").mockImplementation(
-			async (
-				modelType: (typeof ModelType)[keyof typeof ModelType],
-				params: unknown,
-			) => {
-				if (modelType === ModelType.IMAGE_DESCRIPTION) {
-					const imageParams = params as { imageUrl?: string };
-					expect(imageParams.imageUrl).toBe(
-						"data:image/png;base64,abc123",
-					);
-					return {
-						title: "Screenshot",
-						description: "A test attachment",
-					};
-				}
-				if (modelType === ModelType.TEXT_SMALL) {
-					return "<response><action>REPLY</action><reason>User asked a question</reason></response>";
-				}
-				return "<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>";
-			},
-		);
+		const useModelSpy = vi
+			.spyOn(runtime, "useModel")
+			.mockImplementation(
+				async (
+					modelType: (typeof ModelType)[keyof typeof ModelType],
+					params: unknown,
+				) => {
+					if (modelType === ModelType.IMAGE_DESCRIPTION) {
+						const imageParams = params as { imageUrl?: string };
+						expect(imageParams.imageUrl).toBe("data:image/png;base64,abc123");
+						return {
+							title: "Screenshot",
+							description: "A test attachment",
+						};
+					}
+					if (modelType === ModelType.TEXT_SMALL) {
+						return "<response><action>REPLY</action><reason>User asked a question</reason></response>";
+					}
+					return "<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>";
+				},
+			);
 
 		const message: Memory = {
 			id: "123e4567-e89b-12d3-a456-426614174050" as UUID,

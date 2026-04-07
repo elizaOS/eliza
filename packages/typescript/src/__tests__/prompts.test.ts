@@ -12,11 +12,17 @@ describe("Prompts", () => {
 		it("shouldRespondTemplate should contain required placeholders and response structure", () => {
 			expect(shouldRespondTemplate).toContain("{{agentName}}");
 			expect(shouldRespondTemplate).toContain("{{providers}}");
+			expect(shouldRespondTemplate).toContain("available_contexts:");
+			expect(shouldRespondTemplate).toContain("context_routing:");
 			expect(shouldRespondTemplate).toContain("output:");
 			expect(shouldRespondTemplate).toContain("name: {{agentName}}");
 			expect(shouldRespondTemplate).toContain("reasoning:");
 			expect(shouldRespondTemplate).toContain("action: RESPOND");
-			expect(shouldRespondTemplate).toContain("request to stop or be quiet -> STOP");
+			expect(shouldRespondTemplate).toContain("primaryContext:");
+			expect(shouldRespondTemplate).toContain("secondaryContexts:");
+			expect(shouldRespondTemplate).toContain(
+				"request to stop or be quiet -> STOP",
+			);
 
 			expect(shouldRespondTemplate).toContain("rules[6]:");
 			expect(shouldRespondTemplate).toContain(

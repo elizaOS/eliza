@@ -82,7 +82,7 @@ export class SandboxTokenManager {
 
 	/** Replace tokens → real values (outbound). */
 	detokenizeString(input: string): string {
-		if (!input || !input.includes(SANDBOX_TOKEN_PREFIX)) return input;
+		if (!input?.includes(SANDBOX_TOKEN_PREFIX)) return input;
 		let result = input;
 		for (const [token, entry] of this.tokenToEntry) {
 			if (result.includes(token)) {

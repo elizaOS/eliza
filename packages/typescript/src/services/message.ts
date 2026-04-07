@@ -15,7 +15,6 @@ import { runWithTrajectoryContext } from "../trajectory-context";
 import type {
 	Action,
 	ActionResult,
-	AgentContext,
 	HandlerCallback,
 } from "../types/components";
 import type { Room } from "../types/environment";
@@ -23,14 +22,16 @@ import type { RunEventPayload } from "../types/events";
 import { EventType } from "../types/events";
 import type { Memory } from "../types/memory";
 import type {
+	ContextRoutedResponseDecision,
 	IMessageService,
 	MessageProcessingOptions,
 	MessageProcessingResult,
-	ContextRoutedResponseDecision,
-	ResponseDecision,
 	ShouldRespondModelType,
 } from "../types/message-service";
-import type { GenerateTextAttachment, TextToSpeechParams } from "../types/model";
+import type {
+	GenerateTextAttachment,
+	TextToSpeechParams,
+} from "../types/model";
 import { ModelType } from "../types/model";
 import type { Content, Media, MentionContext, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
@@ -46,10 +47,10 @@ import {
 import {
 	AVAILABLE_CONTEXTS_STATE_KEY,
 	attachAvailableContexts,
-	type ContextRoutingDecision,
 	CONTEXT_ROUTING_STATE_KEY,
-	parseContextRoutingMetadata,
+	type ContextRoutingDecision,
 	mergeContextRouting,
+	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
 import {
@@ -145,8 +146,11 @@ function sanitizeAttachmentsForStorage(
 	}
 
 	return attachments.map((attachment) => {
-		const { _data: _discardData, _mimeType: _discardMimeType, ...rest } =
-			attachment as MediaWithInlineData;
+		const {
+			_data: _discardData,
+			_mimeType: _discardMimeType,
+			...rest
+		} = attachment as MediaWithInlineData;
 		return rest;
 	});
 }
@@ -315,6 +319,39 @@ function withActionResults(state: State, actionResults: ActionResult[]): State {
 			...state.data,
 			actionResults,
 		},
+	};
+}
+
+type ContextRoutingStateValues = {
+	[AVAILABLE_CONTEXTS_STATE_KEY]?: unknown;
+	[CONTEXT_ROUTING_STATE_KEY]?: unknown;
+};
+
+function withContextRoutingValues(
+	state: State,
+	contextRoutingStateValues?: ContextRoutingStateValues,
+): State {
+	if (!contextRoutingStateValues) {
+		return state;
+	}
+
+	const mergedStateValues = {
+		...state.values,
+	};
+
+	if (contextRoutingStateValues[AVAILABLE_CONTEXTS_STATE_KEY] !== undefined) {
+		mergedStateValues[AVAILABLE_CONTEXTS_STATE_KEY] =
+			contextRoutingStateValues[AVAILABLE_CONTEXTS_STATE_KEY];
+	}
+
+	if (contextRoutingStateValues[CONTEXT_ROUTING_STATE_KEY] !== undefined) {
+		mergedStateValues[CONTEXT_ROUTING_STATE_KEY] =
+			contextRoutingStateValues[CONTEXT_ROUTING_STATE_KEY];
+	}
+
+	return {
+		...state,
+		values: mergedStateValues,
 	};
 }
 
@@ -815,13 +852,13 @@ export class DefaultMessageService implements IMessageService {
 		}
 
 		// Compose initial state
-			let state = await runtime.composeState(
-				message,
-				["ANXIETY", "ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
-				true,
-				false,
-			);
-			state = attachAvailableContexts(state, runtime);
+		let state = await runtime.composeState(
+			message,
+			["ANXIETY", "ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
+			true,
+			false,
+		);
+		state = attachAvailableContexts(state, runtime);
 
 		// Get room and mention context
 		const mentionContext = message.content.mentionContext;
@@ -846,16 +883,18 @@ export class DefaultMessageService implements IMessageService {
 			}
 		}
 
-		const promptAttachments = resolvePromptAttachments(message.content.attachments);
+		const promptAttachments = resolvePromptAttachments(
+			message.content.attachments,
+		);
 
-			let shouldRespondToMessage = true;
-			let terminalDecision: "IGNORE" | "STOP" | null = null;
-			let routedDecision: ContextRoutingDecision | null = null;
-			const metadata =
-				typeof message.content.metadata === "object" &&
-				message.content.metadata !== null
-					? (message.content.metadata as Record<string, unknown>)
-					: null;
+		let shouldRespondToMessage = true;
+		let terminalDecision: "IGNORE" | "STOP" | null = null;
+		let routedDecision: ContextRoutingDecision | null = null;
+		const metadata =
+			typeof message.content.metadata === "object" &&
+			message.content.metadata !== null
+				? (message.content.metadata as Record<string, unknown>)
+				: null;
 		const isAutonomous = metadata?.isAutonomous === true;
 		const autonomyMode =
 			typeof metadata?.autonomyMode === "string" ? metadata.autonomyMode : null;
@@ -871,12 +910,12 @@ export class DefaultMessageService implements IMessageService {
 			const checkShouldRespondEnabled = runtime.isCheckShouldRespondEnabled();
 
 			// Determine if we should respond
-				const responseDecision = this.shouldRespond(
-					runtime,
-					message,
-					room ?? undefined,
-					mentionContext,
-				);
+			const responseDecision = this.shouldRespond(
+				runtime,
+				message,
+				room ?? undefined,
+				mentionContext,
+			);
 
 			runtime.logger.debug(
 				{ src: "service:message", responseDecision, checkShouldRespondEnabled },
@@ -926,11 +965,11 @@ export class DefaultMessageService implements IMessageService {
 					"Using LLM evaluation",
 				);
 
-					// Use dynamicPromptExecFromState for structured output with validation
-					const responseObject = await runtime.dynamicPromptExecFromState({
-						state,
-						params: {
-							prompt:
+				// Use dynamicPromptExecFromState for structured output with validation
+				const responseObject = await runtime.dynamicPromptExecFromState({
+					state,
+					params: {
+						prompt:
 							runtime.character.templates?.shouldRespondTemplate ||
 							shouldRespondTemplate,
 						...(promptAttachments ? { attachments: promptAttachments } : {}),
@@ -950,34 +989,34 @@ export class DefaultMessageService implements IMessageService {
 							validateField: false,
 							streamField: false,
 						},
-							{
-								field: "action",
-								description: "RESPOND | IGNORE | STOP",
-								validateField: false,
-								streamField: false,
-							},
-							{
-								field: "primaryContext",
-								description:
-									"Primary domain context from available_contexts (e.g., wallet, knowledge)",
-								validateField: false,
-								streamField: false,
-							},
-							{
-								field: "secondaryContexts",
-								description:
-									"Optional comma-separated additional domain contexts",
-								validateField: false,
-								streamField: false,
-							},
-							{
-								field: "evidenceTurnIds",
-								description:
-									"Optional comma-separated message IDs that influenced this decision",
-								validateField: false,
-								streamField: false,
-							},
-						],
+						{
+							field: "action",
+							description: "RESPOND | IGNORE | STOP",
+							validateField: false,
+							streamField: false,
+						},
+						{
+							field: "primaryContext",
+							description:
+								"Primary domain context from available_contexts (e.g., wallet, knowledge)",
+							validateField: false,
+							streamField: false,
+						},
+						{
+							field: "secondaryContexts",
+							description:
+								"Optional comma-separated additional domain contexts",
+							validateField: false,
+							streamField: false,
+						},
+						{
+							field: "evidenceTurnIds",
+							description:
+								"Optional comma-separated message IDs that influenced this decision",
+							validateField: false,
+							streamField: false,
+						},
+					],
 					options: {
 						contextCheckLevel: 0, // Set to 0 for now
 						modelSize: opts.shouldRespondModel === "large" ? "large" : "small",
@@ -990,22 +1029,22 @@ export class DefaultMessageService implements IMessageService {
 					"Parsed evaluation result",
 				);
 
-					// A classifier output can either continue the turn or terminate it.
-					const nonResponseActions = ["IGNORE", "NONE", "STOP"];
-					const actionValue = responseObject?.action;
-					routedDecision = parseContextRoutingMetadata(responseObject);
-					setContextRoutingMetadata(message, routedDecision);
+				// A classifier output can either continue the turn or terminate it.
+				const nonResponseActions = ["IGNORE", "NONE", "STOP"];
+				const actionValue = responseObject?.action;
+				routedDecision = parseContextRoutingMetadata(responseObject);
+				setContextRoutingMetadata(message, routedDecision);
 
-					if (
-						typeof actionValue === "string" &&
-						(actionValue.toUpperCase() === "IGNORE" ||
-							actionValue.toUpperCase() === "STOP")
-					) {
-						terminalDecision = actionValue.toUpperCase() as "IGNORE" | "STOP";
-					}
-					shouldRespondToMessage =
-						typeof actionValue === "string" &&
-						!nonResponseActions.includes(actionValue.toUpperCase());
+				if (
+					typeof actionValue === "string" &&
+					(actionValue.toUpperCase() === "IGNORE" ||
+						actionValue.toUpperCase() === "STOP")
+				) {
+					terminalDecision = actionValue.toUpperCase() as "IGNORE" | "STOP";
+				}
+				shouldRespondToMessage =
+					typeof actionValue === "string" &&
+					!nonResponseActions.includes(actionValue.toUpperCase());
 			}
 		}
 
@@ -1017,21 +1056,18 @@ export class DefaultMessageService implements IMessageService {
 			const resolvedRouting = mergeContextRouting(state, message);
 			let executionState = state;
 			if (routedDecision) {
-				state = {
-					...state,
-					values: {
-						...(state.values || {}),
-						[AVAILABLE_CONTEXTS_STATE_KEY]: state.values?.[
-							AVAILABLE_CONTEXTS_STATE_KEY
-						],
+				executionState = withContextRoutingValues(
+					await runtime.composeState(
+						message,
+						["ACTIONS", "PROVIDERS"],
+						false,
+						false,
+					),
+					{
+						[AVAILABLE_CONTEXTS_STATE_KEY]:
+							state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
 						[CONTEXT_ROUTING_STATE_KEY]: resolvedRouting,
 					},
-				};
-				executionState = await runtime.composeState(
-					message,
-					["ACTIONS", "PROVIDERS"],
-					false,
-					false,
 				);
 			}
 
@@ -1039,19 +1075,25 @@ export class DefaultMessageService implements IMessageService {
 				? await this.runMultiStepCore(
 						runtime,
 						message,
-							executionState,
+						executionState,
 						callback,
 						opts,
 						responseId,
 						promptAttachments,
+						{
+							precomposedState: executionState,
+						},
 					)
 				: await this.runSingleShotCore(
 						runtime,
 						message,
-							executionState,
+						executionState,
 						opts,
 						responseId,
 						promptAttachments,
+						{
+							precomposedState: executionState,
+						},
 					);
 
 			responseContent = result.responseContent;
@@ -1817,6 +1859,12 @@ export class DefaultMessageService implements IMessageService {
 		opts: ResolvedMessageOptions,
 		initialActionResults: ActionResult[],
 	): Promise<StrategyResult> {
+		const contextRoutingStateValues = {
+			[AVAILABLE_CONTEXTS_STATE_KEY]:
+				state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
+			[CONTEXT_ROUTING_STATE_KEY]: state.values?.[CONTEXT_ROUTING_STATE_KEY],
+		};
+
 		if (!message.id || initialActionResults.length === 0) {
 			return {
 				responseContent: null,
@@ -1837,7 +1885,10 @@ export class DefaultMessageService implements IMessageService {
 			iterationCount++
 		) {
 			accumulatedState = withActionResults(
-				await runtime.composeState(message, ["ACTIONS"], false, false),
+				withContextRoutingValues(
+					await runtime.composeState(message, ["ACTIONS"], false, false),
+					contextRoutingStateValues,
+				),
 				traceActionResults,
 			);
 
@@ -1871,11 +1922,14 @@ export class DefaultMessageService implements IMessageService {
 
 			if (responseContent.providers && responseContent.providers.length > 0) {
 				accumulatedState = withActionResults(
-					await runtime.composeState(
-						message,
-						responseContent.providers,
-						false,
-						false,
+					withContextRoutingValues(
+						await runtime.composeState(
+							message,
+							responseContent.providers,
+							false,
+							false,
+						),
+						contextRoutingStateValues,
 					),
 					traceActionResults,
 				);
@@ -1978,7 +2032,7 @@ export class DefaultMessageService implements IMessageService {
 			overrides?.precomposedState ??
 			(await runtime.composeState(message, ["ACTIONS"], false, false));
 
-		if (!state.values || !state.values.actionNames) {
+		if (!state.values?.actionNames) {
 			runtime.logger.warn(
 				{ src: "service:message" },
 				"actionNames data missing from state",
@@ -2301,11 +2355,11 @@ Output ONLY the continuation, starting immediately after the last character abov
 				"# Parameter Repair",
 				"You selected actions that require parameters but did not include a complete params object.",
 				"Return ONLY a TOON document with a top-level params field keyed by action name.",
-				'Example:',
-				'params:',
-				'  SEND_MESSAGE:',
-				'    target: room-or-channel-id',
-				'    text: message body',
+				"Example:",
+				"params:",
+				"  SEND_MESSAGE:",
+				"    target: room-or-channel-id",
+				"    text: message body",
 				"",
 				"Required parameters by action:",
 				requirementLines,
@@ -2315,12 +2369,13 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 			const repairResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
 				prompt: repairPrompt,
-				});
-				const repairParsed = parseKeyValueXml<Record<string, unknown>>(repairResponse);
-				if (repairParsed?.params) {
-					responseContent.params = repairParsed.params as Content["params"];
-				}
+			});
+			const repairParsed =
+				parseKeyValueXml<Record<string, unknown>>(repairResponse);
+			if (repairParsed?.params) {
+				responseContent.params = repairParsed.params as Content["params"];
 			}
+		}
 
 		// Benchmark mode (Python parity): force action-based loop when benchmark context is present.
 		const benchmarkMode = state.values.benchmark_has_context === true;
@@ -2406,7 +2461,17 @@ Output ONLY the continuation, starting immediately after the last character abov
 		opts: ResolvedMessageOptions,
 		responseId: UUID,
 		promptAttachments?: GenerateTextAttachment[],
+		overrides?: {
+			precomposedState?: State;
+		},
 	): Promise<StrategyResult> {
+		const contextRoutingStateValues = {
+			[AVAILABLE_CONTEXTS_STATE_KEY]:
+				overrides?.precomposedState?.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
+			[CONTEXT_ROUTING_STATE_KEY]:
+				overrides?.precomposedState?.values?.[CONTEXT_ROUTING_STATE_KEY],
+		};
+
 		const traceActionResult: MultiStepActionResult[] = [];
 		let accumulatedState: MultiStepState = state as MultiStepState;
 		let iterationCount = 0;
@@ -2422,12 +2487,15 @@ Output ONLY the continuation, starting immediately after the last character abov
 				"Starting multi-step iteration",
 			);
 
-			accumulatedState = (await runtime.composeState(
-				message,
-				["RECENT_MESSAGES", "ACTION_STATE", "PROVIDERS"],
-				false,
-				false,
-			)) as MultiStepState;
+			accumulatedState = withContextRoutingValues(
+				(await runtime.composeState(
+					message,
+					["RECENT_MESSAGES", "ACTION_STATE", "PROVIDERS"],
+					false,
+					false,
+				)) as MultiStepState,
+				contextRoutingStateValues,
+			) as MultiStepState;
 			accumulatedState.data.actionResults = traceActionResult;
 
 			// Use dynamicPromptExecFromState for structured decision output
@@ -2782,12 +2850,15 @@ Output ONLY the continuation, starting immediately after the last character abov
 			);
 		}
 
-		accumulatedState = (await runtime.composeState(
-			message,
-			["RECENT_MESSAGES", "ACTION_STATE"],
-			false,
-			false,
-		)) as MultiStepState;
+		accumulatedState = withContextRoutingValues(
+			(await runtime.composeState(
+				message,
+				["RECENT_MESSAGES", "ACTION_STATE"],
+				false,
+				false,
+			)) as MultiStepState,
+			contextRoutingStateValues,
+		) as MultiStepState;
 
 		// Use dynamicPromptExecFromState for final summary generation
 		// Stream the final summary for better UX

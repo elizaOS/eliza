@@ -27,9 +27,11 @@ interface RoleAssignmentXml {
 
 /** Shape of the role extraction XML response */
 interface RoleExtractionResult {
-	assignments?: {
-		assignment?: RoleAssignmentXml | RoleAssignmentXml[];
-	} | RoleAssignmentXml[];
+	assignments?:
+		| {
+				assignment?: RoleAssignmentXml | RoleAssignmentXml[];
+		  }
+		| RoleAssignmentXml[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -41,7 +43,8 @@ function normalizeRoleAssignments(value: unknown): RoleAssignmentXml[] {
 		return value.filter(
 			(entry): entry is RoleAssignmentXml =>
 				isRecord(entry) &&
-				(typeof entry.entityId === "string" || typeof entry.newRole === "string"),
+				(typeof entry.entityId === "string" ||
+					typeof entry.newRole === "string"),
 		);
 	}
 
@@ -141,7 +144,7 @@ export const updateRoleAction: Action = {
 
 		// Then, check if we have a server/world context
 		const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
-		if (!room || !room.messageServerId) {
+		if (!room?.messageServerId) {
 			return false;
 		}
 

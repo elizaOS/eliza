@@ -51,7 +51,9 @@ export const unfollowRoomAction: Action = {
 				prompt: shouldUnfollowPrompt,
 			});
 
-			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(response);
+			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(
+				response,
+			);
 			const parsedResponse = parseBooleanFromText(
 				parsed?.decision ?? response.trim(),
 			);

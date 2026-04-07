@@ -22,9 +22,7 @@ export function hashStringToUint32(value: string): number {
 	return hash >>> 0;
 }
 
-export function createDeterministicRandom(
-	seed: string | number,
-): () => number {
+export function createDeterministicRandom(seed: string | number): () => number {
 	let state =
 		typeof seed === "number" ? seed >>> 0 : hashStringToUint32(String(seed));
 
@@ -59,7 +57,10 @@ export function deterministicSample<T>(
 		return [];
 	}
 
-	return deterministicShuffle(items, seed).slice(0, Math.min(count, items.length));
+	return deterministicShuffle(items, seed).slice(
+		0,
+		Math.min(count, items.length),
+	);
 }
 
 export function deterministicPick<T>(
@@ -77,7 +78,10 @@ export function getDeterministicNames(
 		return [];
 	}
 
-	const ordered = deterministicShuffle(names, buildDeterministicSeed(seed, "names"));
+	const ordered = deterministicShuffle(
+		names,
+		buildDeterministicSeed(seed, "names"),
+	);
 	return Array.from({ length: count }, (_, index) => {
 		const name = ordered[index % ordered.length];
 		return typeof name === "string" && name.length > 0

@@ -11,6 +11,14 @@ rules[6]:
 - talking to someone else -> IGNORE
 - if unsure, prefer IGNORE over hallucinating relevance
 
+available_contexts:
+{{availableContexts}}
+
+context_routing:
+- primaryContext: choose one context from available_contexts, or "general" if none apply
+- secondaryContexts: optional comma-separated list of additional relevant contexts
+- evidenceTurnIds: optional comma-separated list of message IDs supporting the decision
+
 decision_note:
 - talking TO {{agentName}} means name mention, reply chain, or direct continuation
 - talking ABOUT {{agentName}} is not enough
@@ -22,3 +30,6 @@ Example:
 name: {{agentName}}
 reasoning: Direct mention and clear follow-up.
 action: RESPOND
+primaryContext: general
+secondaryContexts:
+evidenceTurnIds:

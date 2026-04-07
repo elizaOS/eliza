@@ -30,7 +30,6 @@ import {
 	runWithStreamingContext,
 } from "./streaming-context";
 import { getTrajectoryContext } from "./trajectory-context";
-import { encodeToonValue } from "./utils/toon";
 import {
 	type Action,
 	type ActionContext,
@@ -118,6 +117,7 @@ import {
 	ActionStreamFilter,
 	ValidationStreamExtractor,
 } from "./utils/streaming";
+import { encodeToonValue } from "./utils/toon";
 import { isPlainObject } from "./utils/type-guards";
 
 const environmentSettings: RuntimeSettings = {};
@@ -1548,11 +1548,7 @@ export class AgentRuntime implements IAgentRuntime {
 		let actionIndex = 0;
 
 		for (const response of responsesToProcess) {
-			if (
-				!response.content ||
-				!response.content.actions ||
-				response.content.actions.length === 0
-			) {
+			if (!response.content?.actions || response.content.actions.length === 0) {
 				this.logger.warn(
 					{ src: "agent", agentId: this.agentId },
 					"No action found in response",
@@ -2553,8 +2549,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		providersToGet.sort(
 			(a, b) =>
-				(a.position || 0) - (b.position || 0) ||
-				a.name.localeCompare(b.name),
+				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
 		);
 
 		// Optional trajectory logging service (no-op by default).
@@ -3058,7 +3053,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const modelKey =
 			typeof modelType === "string" ? modelType : ModelType[modelType];
 		const models = this.models.get(modelKey);
-		if (!models || !models.length) {
+		if (!models?.length) {
 			return undefined;
 		}
 
@@ -3399,7 +3394,9 @@ export class AgentRuntime implements IAgentRuntime {
 					.join("");
 
 				if (stablePrefix.length > 0) {
-					const providerOptions = isPlainObject(modelParamsRecord.providerOptions)
+					const providerOptions = isPlainObject(
+						modelParamsRecord.providerOptions,
+					)
 						? {
 								...(modelParamsRecord.providerOptions as Record<
 									string,
@@ -3409,7 +3406,10 @@ export class AgentRuntime implements IAgentRuntime {
 						: {};
 					const openAIOptions = isPlainObject(providerOptions.openai)
 						? {
-								...(providerOptions.openai as Record<string, JsonValue | object>),
+								...(providerOptions.openai as Record<
+									string,
+									JsonValue | object
+								>),
 							}
 						: {};
 
@@ -3669,7 +3669,7 @@ export class AgentRuntime implements IAgentRuntime {
 		input: string,
 		options?: GenerateTextOptions,
 	): Promise<GenerateTextResult> {
-		if (!input || !input.trim()) {
+		if (!input?.trim()) {
 			throw new Error("Input cannot be empty");
 		}
 
@@ -3978,10 +3978,7 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					format = "JSON";
 				} else {
-					format = options.forceFormat.toUpperCase() as
-						| "XML"
-						| "JSON"
-						| "TOON";
+					format = options.forceFormat.toUpperCase() as "XML" | "JSON" | "TOON";
 				}
 			} else if (options.preferredEncapsulation === "json" || hasNestedSchema) {
 				format = "JSON";
@@ -4145,8 +4142,12 @@ Use this shape:
 ${EXAMPLE}
 
 Return exactly one ${
-	isXML ? `${CONTAINER_START}...${CONTAINER_END}` : isJSON ? "JSON object" : "TOON document"
-}.
+				isXML
+					? `${CONTAINER_START}...${CONTAINER_END}`
+					: isJSON
+						? "JSON object"
+						: "TOON document"
+			}.
 ${section_end}`;
 			const endBlock = checkpointCodesEnabled
 				? `\nend code: ${finalCode}\n`
@@ -5054,8 +5055,7 @@ ${section_end}`;
 	private isTemplateChunkStable(templateChunk: string): boolean {
 		const placeholderKeys = this.extractTemplatePlaceholderKeys(templateChunk);
 		return placeholderKeys.every(
-			(key) =>
-				key !== "providers" && STABLE_PROMPT_TEMPLATE_KEYS.has(key),
+			(key) => key !== "providers" && STABLE_PROMPT_TEMPLATE_KEYS.has(key),
 		);
 	}
 
@@ -5150,9 +5150,7 @@ ${section_end}`;
 			}
 
 			if (i < renderedChunks.length - 1) {
-				segments.push(
-					...providerSegments.map((segment) => ({ ...segment })),
-				);
+				segments.push(...providerSegments.map((segment) => ({ ...segment })));
 			}
 		}
 
@@ -5345,7 +5343,7 @@ ${section_end}`;
 		// Pass null to get a test vector for dimension detection
 		// Model handlers should return a zero-filled vector of the correct dimension when null is passed
 		const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
-		if (!embedding || !embedding.length) {
+		if (!embedding?.length) {
 			throw new Error("Invalid embedding received");
 		}
 
@@ -5516,7 +5514,7 @@ ${section_end}`;
 	}
 	async getEntityById(entityId: UUID): Promise<Entity | null> {
 		const entities = await this.adapter.getEntitiesByIds([entityId]);
-		if (!entities || !entities.length) return null;
+		if (!entities?.length) return null;
 		return entities[0];
 	}
 
@@ -5894,7 +5892,7 @@ ${section_end}`;
 
 	async getRoom(roomId: UUID): Promise<Room | null> {
 		const rooms = await this.adapter.getRoomsByIds([roomId]);
-		if (!rooms || !rooms.length) return null;
+		if (!rooms?.length) return null;
 		return rooms[0];
 	}
 

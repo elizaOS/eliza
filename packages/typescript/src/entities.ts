@@ -515,7 +515,9 @@ export async function getEntityDetails({
 				}
 			}
 
-			const getEntityNameFromMetadata = (source: string): string | undefined => {
+			const getEntityNameFromMetadata = (
+				source: string,
+			): string | undefined => {
 				const sourceMetadata = entity.metadata?.[source];
 				if (
 					sourceMetadata &&

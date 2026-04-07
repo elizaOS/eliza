@@ -563,7 +563,8 @@ Focus on:
 		context: PlanningContext,
 	): ActionPlan {
 		try {
-			const parsedResponse = parseKeyValueXml<Record<string, unknown>>(response);
+			const parsedResponse =
+				parseKeyValueXml<Record<string, unknown>>(response);
 
 			const planId = asUUID(uuidv4());
 			const steps: ActionStep[] = [];
@@ -571,8 +572,7 @@ Focus on:
 			const goal =
 				(typeof parsedResponse?.goal === "string"
 					? parsedResponse.goal
-					: null) ||
-				context.goal;
+					: null) || context.goal;
 			const executionModel =
 				(typeof parsedResponse?.execution_model === "string"
 					? parsedResponse.execution_model
@@ -1172,7 +1172,8 @@ Return the adapted plan in the same TOON format as the original planning respons
 	): ActionPlan {
 		try {
 			const adaptedSteps: ActionStep[] = [];
-			const parsedResponse = parseKeyValueXml<Record<string, unknown>>(response);
+			const parsedResponse =
+				parseKeyValueXml<Record<string, unknown>>(response);
 			const toonSteps = Array.isArray(parsedResponse?.steps)
 				? parsedResponse.steps.filter(isRecord)
 				: [];

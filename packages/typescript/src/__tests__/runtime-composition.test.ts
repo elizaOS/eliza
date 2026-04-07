@@ -3,7 +3,7 @@
  * loadCharacters (object source, file path via mock, empty), createRuntimes with adapter override.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type vi } from "vitest";
 import {
 	type AgentRecordForMerge,
 	createRuntimes,

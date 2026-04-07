@@ -76,7 +76,9 @@ export const muteRoomAction: Action = {
 				stopSequences: [],
 			});
 
-			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(response);
+			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(
+				response,
+			);
 			const decisionValue = parsed?.decision ?? response.trim();
 			const cleanedResponse = String(decisionValue).trim().toLowerCase();
 
