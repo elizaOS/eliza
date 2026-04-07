@@ -15,6 +15,7 @@ import { runWithTrajectoryContext } from "../trajectory-context";
 import type {
 	Action,
 	ActionResult,
+	AgentContext,
 	HandlerCallback,
 } from "../types/components";
 import type { Room } from "../types/environment";
@@ -25,12 +26,11 @@ import type {
 	IMessageService,
 	MessageProcessingOptions,
 	MessageProcessingResult,
+	ContextRoutedResponseDecision,
 	ResponseDecision,
+	ShouldRespondModelType,
 } from "../types/message-service";
-import type {
-	GenerateTextAttachment,
-	TextToSpeechParams,
-} from "../types/model";
+import type { GenerateTextAttachment, TextToSpeechParams } from "../types/model";
 import { ModelType } from "../types/model";
 import type { Content, Media, MentionContext, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
@@ -43,6 +43,16 @@ import {
 	parseKeyValueXml,
 	truncateToCompleteSentence,
 } from "../utils";
+import {
+	AVAILABLE_CONTEXTS_STATE_KEY,
+	attachAvailableContexts,
+	type ContextRoutingDecision,
+	CONTEXT_ROUTING_STATE_KEY,
+	parseContextRoutingMetadata,
+	getActiveRoutingContexts,
+	mergeContextRouting,
+	setContextRoutingMetadata,
+} from "../utils/context-routing";
 import {
 	createStreamingContext,
 	MarkableExtractor,
@@ -182,8 +192,6 @@ function resolvePromptAttachments(
 
 	return resolved.length > 0 ? resolved : undefined;
 }
-
-import type { ShouldRespondModelType } from "../types/message-service";
 
 /**
  * Resolved message options with defaults applied.
@@ -808,12 +816,13 @@ export class DefaultMessageService implements IMessageService {
 		}
 
 		// Compose initial state
-		let state = await runtime.composeState(
-			message,
-			["ANXIETY", "ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
-			true,
-			false,
-		);
+			let state = await runtime.composeState(
+				message,
+				["ANXIETY", "ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
+				true,
+				false,
+			);
+			state = attachAvailableContexts(state, runtime);
 
 		// Get room and mention context
 		const mentionContext = message.content.mentionContext;
@@ -840,13 +849,14 @@ export class DefaultMessageService implements IMessageService {
 
 		const promptAttachments = resolvePromptAttachments(message.content.attachments);
 
-		let shouldRespondToMessage = true;
-		let terminalDecision: "IGNORE" | "STOP" | null = null;
-		const metadata =
-			typeof message.content.metadata === "object" &&
-			message.content.metadata !== null
-				? (message.content.metadata as Record<string, unknown>)
-				: null;
+			let shouldRespondToMessage = true;
+			let terminalDecision: "IGNORE" | "STOP" | null = null;
+			let routedDecision: ContextRoutingDecision | null = null;
+			const metadata =
+				typeof message.content.metadata === "object" &&
+				message.content.metadata !== null
+					? (message.content.metadata as Record<string, unknown>)
+					: null;
 		const isAutonomous = metadata?.isAutonomous === true;
 		const autonomyMode =
 			typeof metadata?.autonomyMode === "string" ? metadata.autonomyMode : null;
@@ -862,12 +872,12 @@ export class DefaultMessageService implements IMessageService {
 			const checkShouldRespondEnabled = runtime.isCheckShouldRespondEnabled();
 
 			// Determine if we should respond
-			const responseDecision = this.shouldRespond(
-				runtime,
-				message,
-				room ?? undefined,
-				mentionContext,
-			);
+				const responseDecision = this.shouldRespond(
+					runtime,
+					message,
+					room ?? undefined,
+					mentionContext,
+				);
 
 			runtime.logger.debug(
 				{ src: "service:message", responseDecision, checkShouldRespondEnabled },
@@ -917,11 +927,11 @@ export class DefaultMessageService implements IMessageService {
 					"Using LLM evaluation",
 				);
 
-				// Use dynamicPromptExecFromState for structured output with validation
-				const responseObject = await runtime.dynamicPromptExecFromState({
-					state,
-					params: {
-						prompt:
+					// Use dynamicPromptExecFromState for structured output with validation
+					const responseObject = await runtime.dynamicPromptExecFromState({
+						state,
+						params: {
+							prompt:
 							runtime.character.templates?.shouldRespondTemplate ||
 							shouldRespondTemplate,
 						...(promptAttachments ? { attachments: promptAttachments } : {}),
@@ -941,13 +951,34 @@ export class DefaultMessageService implements IMessageService {
 							validateField: false,
 							streamField: false,
 						},
-						{
-							field: "action",
-							description: "RESPOND | IGNORE | STOP",
-							validateField: false,
-							streamField: false,
-						},
-					],
+							{
+								field: "action",
+								description: "RESPOND | IGNORE | STOP",
+								validateField: false,
+								streamField: false,
+							},
+							{
+								field: "primaryContext",
+								description:
+									"Primary domain context from available_contexts (e.g., wallet, knowledge)",
+								validateField: false,
+								streamField: false,
+							},
+							{
+								field: "secondaryContexts",
+								description:
+									"Optional comma-separated additional domain contexts",
+								validateField: false,
+								streamField: false,
+							},
+							{
+								field: "evidenceTurnIds",
+								description:
+									"Optional comma-separated message IDs that influenced this decision",
+								validateField: false,
+								streamField: false,
+							},
+						],
 					options: {
 						contextCheckLevel: 0, // Set to 0 for now
 						modelSize: opts.shouldRespondModel === "large" ? "large" : "small",
@@ -960,19 +991,22 @@ export class DefaultMessageService implements IMessageService {
 					"Parsed evaluation result",
 				);
 
-				// A classifier output can either continue the turn or terminate it.
-				const nonResponseActions = ["IGNORE", "NONE", "STOP"];
-				const actionValue = responseObject?.action;
-				if (
-					typeof actionValue === "string" &&
-					(actionValue.toUpperCase() === "IGNORE" ||
-						actionValue.toUpperCase() === "STOP")
-				) {
-					terminalDecision = actionValue.toUpperCase() as "IGNORE" | "STOP";
-				}
-				shouldRespondToMessage =
-					typeof actionValue === "string" &&
-					!nonResponseActions.includes(actionValue.toUpperCase());
+					// A classifier output can either continue the turn or terminate it.
+					const nonResponseActions = ["IGNORE", "NONE", "STOP"];
+					const actionValue = responseObject?.action;
+					routedDecision = parseContextRoutingMetadata(responseObject);
+					setContextRoutingMetadata(message, routedDecision);
+
+					if (
+						typeof actionValue === "string" &&
+						(actionValue.toUpperCase() === "IGNORE" ||
+							actionValue.toUpperCase() === "STOP")
+					) {
+						terminalDecision = actionValue.toUpperCase() as "IGNORE" | "STOP";
+					}
+					shouldRespondToMessage =
+						typeof actionValue === "string" &&
+						!nonResponseActions.includes(actionValue.toUpperCase());
 			}
 		}
 
@@ -981,11 +1015,32 @@ export class DefaultMessageService implements IMessageService {
 		let mode: StrategyMode = "none";
 
 		if (shouldRespondToMessage) {
+			const resolvedRouting = mergeContextRouting(state, message);
+			const activeContextIds = getActiveRoutingContexts(resolvedRouting);
+			if (resolvedRouting && Object.keys(resolvedRouting).length > 0) {
+				state = {
+					...state,
+					values: {
+						...(state.values || {}),
+						[AVAILABLE_CONTEXTS_STATE_KEY]: state.values?.[
+							AVAILABLE_CONTEXTS_STATE_KEY
+						],
+						[CONTEXT_ROUTING_STATE_KEY]: resolvedRouting,
+					},
+				};
+				routingState = await runtime.composeState(
+					message,
+					["ACTIONS", "PROVIDERS"],
+					false,
+					false,
+				);
+			}
+
 			const result = opts.useMultiStep
 				? await this.runMultiStepCore(
 						runtime,
 						message,
-						state,
+						routingState,
 						callback,
 						opts,
 						responseId,
@@ -994,7 +1049,7 @@ export class DefaultMessageService implements IMessageService {
 				: await this.runSingleShotCore(
 						runtime,
 						message,
-						state,
+						routingState,
 						opts,
 						responseId,
 						promptAttachments,
