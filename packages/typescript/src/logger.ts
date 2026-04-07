@@ -397,15 +397,15 @@ function ensureFileLog(): boolean {
     // This ensures consistent log locations when LOG_FILE is a custom path
     const logDir = pathMod.dirname(logFilePath);
     
-        // Ensure log directory exists
-        fs.mkdirSync(logDir, { recursive: true });
+    // Ensure log directory exists
+    fs.mkdirSync(logDir, { recursive: true });
     
-        const promptLogPath = pathMod.join(logDir, "prompts.log");
-        const chatLogPath = pathMod.join(logDir, "chat.log");
+    const promptLogPath = pathMod.join(logDir, "prompts.log");
+    const chatLogPath = pathMod.join(logDir, "chat.log");
 
-        _fileLogFd = fs.openSync(logFilePath, "a");
-        _promptLogFd = fs.openSync(promptLogPath, "a");
-        _chatLogFd = fs.openSync(chatLogPath, "a");
+    _fileLogFd = fs.openSync(logFilePath, "a");
+    _promptLogFd = fs.openSync(promptLogPath, "a");
+    _chatLogFd = fs.openSync(chatLogPath, "a");
     _fileLogState = "active";
 
     process.on("exit", () => {
