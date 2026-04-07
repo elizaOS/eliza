@@ -35,7 +35,7 @@ describe("anxietyProvider", () => {
       mockState
     );
     
-    expect(result.text).toContain("AI model, you are too verbose and eager.");
+    expect(result.text).toContain("Keep responses brief");
     expect(result.text).toBeTruthy();
     expect(result.values).toBeDefined();
     expect(result.values.anxiety).toBeDefined();
@@ -51,7 +51,7 @@ describe("anxietyProvider", () => {
       mockState
     );
     
-    expect(result.text).toContain("AI model, you are too verbose and eager.");
+    expect(result.text).toContain("Keep responses brief");
     expect(result.text).toBeTruthy();
     expect(result.values).toBeDefined();
     expect(result.values.anxiety).toBeDefined();
@@ -67,7 +67,7 @@ describe("anxietyProvider", () => {
       mockState
     );
     
-    expect(result.text).toContain("AI model, you are too verbose and eager.");
+    expect(result.text).toContain("Keep responses brief");
     expect(result.values).toBeDefined();
     expect(result.values.anxiety).toBeDefined();
   });
