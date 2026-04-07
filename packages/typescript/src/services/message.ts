@@ -257,12 +257,15 @@ function isStopResponse(
 function shouldContinueAfterActions(
 	responseContent: Content | null | undefined,
 ): boolean {
+	// Actions that handle their own async work and should not trigger
+	// post-action continuation loops (which generate noisy follow-up messages).
+	const terminalActions = new Set([
+		"REPLY", "IGNORE", "STOP", "CREATE_TASK", "START_CODING_TASK",
+		"CODE_TASK", "SPAWN_AGENT", "SPAWN_CODING_AGENT",
+	]);
 	return !!responseContent?.actions?.some((action) => {
 		if (typeof action !== "string") return false;
-		const normalized = action.trim().toUpperCase();
-		return (
-			normalized !== "REPLY" && normalized !== "IGNORE" && normalized !== "STOP"
-		);
+		return !terminalActions.has(action.trim().toUpperCase());
 	});
 }
 
@@ -1981,6 +1984,13 @@ export class DefaultMessageService implements IMessageService {
 					field: "text",
 					description: "The text response to send to the user",
 					streamField: true,
+				},
+				{
+					field: "params",
+					description:
+						"Optional TOON parameters for the selected action. Use a params object keyed by action name when the action needs input, e.g. params: { RUN_IN_TERMINAL: { command: \"ls -la\" } }",
+					validateField: false,
+					streamField: false,
 				},
 				{
 					field: "simple",
