@@ -10,6 +10,7 @@ import {
   sliceToFitBudget,
   ACTION_RESULTS_TARGET_CHARS,
   ACTION_HISTORY_TARGET_CHARS,
+  estimateActionRunChars,
 } from "../../utils/slice-to-fit-budget.js";
 
 /**
@@ -22,19 +23,6 @@ function estimateActionResultChars(result: { data?: { actionName?: string }; tex
   const error = result.error || "";
   // Account for formatting overhead (labels, newlines, index)
   return actionName.length + text.length + error.length + 50;
-}
-
-/**
- * Estimate the character count for a grouped action run entry.
- * Each entry is [runId, memories[]] where memories contain action execution data.
- */
-function estimateActionRunChars(entry: [string, Array<{ content?: { text?: string } }>]): number {
-  const [runId, memories] = entry;
-  let total = runId.length + 30; // runId + formatting overhead
-  for (const mem of memories) {
-    total += (mem.content?.text?.length || 0) + 20;
-  }
-  return total;
 }
 
 /**
