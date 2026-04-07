@@ -365,7 +365,7 @@ function ensureFileLog(): boolean {
       !process.env ||
       !process.versions
     ) {
-      _fileLogState = "disabled";
+      // Environment not ready yet - return false but don't disable permanently
       return false;
     }
     if (!process.versions.node && !process.versions.bun) {
