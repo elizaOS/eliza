@@ -103,8 +103,12 @@ export const replyAction = {
     // Preserve custom ordering from responses while ensuring required providers are included
     const additionalProviders = responses?.flatMap(res => res.content?.providers || []) || [];
     const requiredProviders = ["RECENT_MESSAGES", "ACTION_STATE"];
-    // Put additionalProviders first to preserve custom ordering, then add required ones if missing
-    const allProviders = [...new Set([...additionalProviders, ...requiredProviders])];
+    // Put additionalProviders first to preserve custom ordering, then append required ones only if missing
+    const additionalSet = new Set(additionalProviders);
+    const allProviders = [
+      ...additionalProviders,
+      ...requiredProviders.filter(p => !additionalSet.has(p))
+    ];
     
     // Always recompose state to ensure RECENT_MESSAGES and ACTION_STATE are fresh.
     // In multi-action chains, these providers would contain stale data (missing earlier
