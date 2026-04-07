@@ -179,7 +179,7 @@ export function setContextRoutingMetadata(
 			...existingMetadata,
 			[CONTEXT_ROUTING_METADATA_KEY]: routing,
 		},
-	} as Content;
+	} as unknown as Content;
 }
 
 export function deriveAvailableContexts(
@@ -188,12 +188,12 @@ export function deriveAvailableContexts(
 ): AgentContext[] {
 	const contextSet = new Set<AgentContext>(["general"]);
 	for (const action of actions) {
-	for (const context of action.contexts || []) {
-		const normalized = normalizeContext(context);
-		if (normalized) {
-			contextSet.add(normalized);
+		for (const context of action.contexts || []) {
+			const normalized = normalizeContext(context);
+			if (normalized) {
+				contextSet.add(normalized);
+			}
 		}
-	}
 	}
 	for (const provider of providers) {
 		for (const context of provider.contexts || []) {
