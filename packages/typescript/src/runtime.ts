@@ -3369,6 +3369,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
     }
 
     // Log model usage with caller information 
+    // Note: logs model usage with caller info for debugging model invocation context
     this.logger.debug(
       {
         src: "agent",

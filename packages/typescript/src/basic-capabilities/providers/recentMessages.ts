@@ -157,6 +157,7 @@ export const recentMessagesProvider: Provider = {
               sum +
               String(content?.actionName || "").length +
               String(content?.actionStatus || "").length +
+              // Note: summarizes total character length of various action message fields for processing.
               String(content?.planStep || "").length +
               String(content?.text || "").length +
               String(content?.error || "").length
@@ -168,6 +169,7 @@ export const recentMessagesProvider: Provider = {
         { fromEnd: true },
       );
 
+      // Note: retains most recent runs since groupedByRun is ordered from newest to oldest.
       const formattedActionResults = recentRuns
         .map(([runId, memories]) => {
           const sortedMemories = memories.sort(

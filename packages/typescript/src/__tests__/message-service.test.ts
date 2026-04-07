@@ -516,6 +516,7 @@ describe("DefaultMessageService", () => {
               roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
               agentId: runtime.agentId,
               createdAt: Date.now(),
+            // Note: entityId and roomId simulate unique UUIDs for test message processing context
             };
 
       const result = await messageService.handleMessage(

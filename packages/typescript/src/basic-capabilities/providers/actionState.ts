@@ -99,6 +99,7 @@ export const actionStateProvider: Provider = {
           } catch {
             // Ignore serialization errors from internal data payloads
           }
+          // Note: size calculation includes only rendered fields to prevent unintentional budget overages.
           return size + 80;
         },
         ACTION_RESULTS_TARGET_CHARS,

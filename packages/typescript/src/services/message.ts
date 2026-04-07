@@ -2013,6 +2013,7 @@ Output ONLY the continuation, starting immediately after the last character abov
         providers = parsedStep.providers
           .split(",")
           .map((p: string) => p.trim())
+          // Note: trims empty strings from provider list to ensure valid entries only
           .filter((p: string) => p.length > 0);
       }
       const action =
