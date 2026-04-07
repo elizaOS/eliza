@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { printBootstrapBanner } from "../banner";
 import { type IAgentRuntime } from "../../types";
 
@@ -13,6 +13,10 @@ describe("printBootstrapBanner", () => {
       error: vi.fn()
     }
   } as unknown as IAgentRuntime;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it("should display banner with default settings", () => {
     // Mock all settings as undefined/default
