@@ -1,7 +1,7 @@
 import type { Action, AgentContext, Provider } from "../types/components";
 import type { Memory } from "../types/memory";
-import type { State } from "../types/state";
 import type { Content } from "../types/primitives";
+import type { State } from "../types/state";
 
 export const AVAILABLE_CONTEXTS_STATE_KEY = "availableContexts";
 export const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
@@ -44,7 +44,9 @@ function parseDelimitedList(value: unknown): string[] {
 	if (Array.isArray(value)) {
 		return dedupeStringValues(
 			value.flatMap((entry) =>
-				typeof entry === "string" ? entry.split(LIST_SPLIT_RE) : [String(entry)],
+				typeof entry === "string"
+					? entry.split(LIST_SPLIT_RE)
+					: [String(entry)],
 			),
 		);
 	}
@@ -60,7 +62,9 @@ export function parseContextList(value: unknown): AgentContext[] {
 		.filter((context): context is AgentContext => Boolean(context));
 }
 
-export function parseContextRoutingMetadata(raw: unknown): ContextRoutingDecision {
+export function parseContextRoutingMetadata(
+	raw: unknown,
+): ContextRoutingDecision {
 	if (!raw || typeof raw !== "object") {
 		return {};
 	}
@@ -68,7 +72,9 @@ export function parseContextRoutingMetadata(raw: unknown): ContextRoutingDecisio
 	const value = raw as Record<string, unknown>;
 	const primaryContext = normalizeContext(value.primaryContext);
 	const secondaryContexts = parseContextList(value.secondaryContexts);
-	const evidenceTurnIds = dedupeStringValues(parseDelimitedList(value.evidenceTurnIds));
+	const evidenceTurnIds = dedupeStringValues(
+		parseDelimitedList(value.evidenceTurnIds),
+	);
 
 	return {
 		primaryContext,
@@ -210,7 +216,10 @@ export function attachAvailableContexts(
 	state: State,
 	runtime: { actions: Action[]; providers: Provider[] },
 ): State {
-	const availableContexts = deriveAvailableContexts(runtime.actions, runtime.providers);
+	const availableContexts = deriveAvailableContexts(
+		runtime.actions,
+		runtime.providers,
+	);
 	return {
 		...state,
 		values: {

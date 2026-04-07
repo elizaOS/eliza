@@ -237,7 +237,7 @@ export async function getWorldSettings(
 ): Promise<WorldSettings | null> {
 	const world = await runtime.getWorld(worldId);
 
-	if (!world || !world.metadata?.settings) {
+	if (!world?.metadata?.settings) {
 		return null;
 	}
 

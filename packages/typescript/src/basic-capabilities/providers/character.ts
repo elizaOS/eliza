@@ -6,13 +6,13 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
-import { addHeader } from "../../utils.ts";
 import {
 	buildDeterministicSeed,
 	deterministicPick,
 	deterministicSample,
 	getDeterministicNames,
 } from "../../utils/deterministic";
+import { addHeader } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("CHARACTER");

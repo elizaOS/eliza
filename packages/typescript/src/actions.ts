@@ -51,7 +51,9 @@ export const composeActionExamples = (
 	);
 
 	const selectedExamples: ActionExample[][] = [];
-	const random = createDeterministicRandom(buildDeterministicSeed(seed, "examples"));
+	const random = createDeterministicRandom(
+		buildDeterministicSeed(seed, "examples"),
+	);
 
 	const availableActionIndices = examplesCopy
 		.map((examples, index) => (examples.length > 0 ? index : -1))
@@ -70,7 +72,10 @@ export const composeActionExamples = (
 		}
 	}
 
-	return formatSelectedExamples(selectedExamples, buildDeterministicSeed(seed, "names"));
+	return formatSelectedExamples(
+		selectedExamples,
+		buildDeterministicSeed(seed, "names"),
+	);
 };
 
 function formatActionCallExample(example: {
@@ -154,7 +159,7 @@ function shuffleActions<T>(items: T[], seed = "actions"): T[] {
 }
 
 export function formatActionNames(actions: Action[], seed = "actions"): string {
-	if (!actions || !actions.length) return "";
+	if (!actions?.length) return "";
 
 	return shuffleActions(actions, buildDeterministicSeed(seed, "names"))
 		.map((action) => action.name)
@@ -162,9 +167,12 @@ export function formatActionNames(actions: Action[], seed = "actions"): string {
 }
 
 export function formatActions(actions: Action[], seed = "actions"): string {
-	if (!actions || !actions.length) return "";
+	if (!actions?.length) return "";
 
-	const actionLines = shuffleActions(actions, buildDeterministicSeed(seed, "descriptions"))
+	const actionLines = shuffleActions(
+		actions,
+		buildDeterministicSeed(seed, "descriptions"),
+	)
 		.map((action) => {
 			const lines = [
 				`- ${action.name}: ${action.description || "No description available"}`,
@@ -186,7 +194,7 @@ export function formatActions(actions: Action[], seed = "actions"): string {
 }
 
 export function formatActionParameters(parameters: ActionParameter[]): string {
-	if (!parameters || !parameters.length) return "";
+	if (!parameters?.length) return "";
 
 	return parameters
 		.map((param) => {

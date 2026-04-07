@@ -32,12 +32,16 @@ interface RelationshipXml {
 
 /** Shape of the reflection XML response */
 interface ReflectionXmlResult {
-	facts?: {
-		fact?: FactXml | FactXml[];
-	} | FactXml[];
-	relationships?: {
-		relationship?: RelationshipXml | RelationshipXml[];
-	} | RelationshipXml[];
+	facts?:
+		| {
+				fact?: FactXml | FactXml[];
+		  }
+		| FactXml[];
+	relationships?:
+		| {
+				relationship?: RelationshipXml | RelationshipXml[];
+		  }
+		| RelationshipXml[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

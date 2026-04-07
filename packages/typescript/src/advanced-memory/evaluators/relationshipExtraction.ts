@@ -807,7 +807,7 @@ async function handleAdminUpdates(
 ) {
 	// Check if user has admin role
 	const entity = await runtime.getEntityById(message.entityId);
-	if (!entity || !entity.metadata?.isAdmin) return;
+	if (!entity?.metadata?.isAdmin) return;
 
 	// Look for admin update patterns
 	const text = message.content?.text;

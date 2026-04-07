@@ -424,7 +424,8 @@ describe("dynamicPromptExecFromState", () => {
 				state: {
 					values: {
 						agentName: "Tester",
-						providers: "# Available Actions\nACTIONS\n# Conversation Messages\nhi",
+						providers:
+							"# Available Actions\nACTIONS\n# Conversation Messages\nhi",
 					},
 					data: {
 						providerOrder: ["ACTIONS", "RECENT_MESSAGES"],

@@ -1,5 +1,5 @@
 import { decode as decodeToon, encode as encodeToon } from "@toon-format/toon";
-import type { ActionParameterValue, ActionParameters } from "../types";
+import type { ActionParameters, ActionParameterValue } from "../types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -68,7 +68,8 @@ export function normalizeStructuredRecord(
 		if (key === "simple") {
 			result[key] =
 				rawValue === true ||
-				(typeof rawValue === "string" && rawValue.trim().toLowerCase() === "true");
+				(typeof rawValue === "string" &&
+					rawValue.trim().toLowerCase() === "true");
 			continue;
 		}
 
@@ -78,9 +79,7 @@ export function normalizeStructuredRecord(
 	return Object.keys(result).length > 0 ? result : null;
 }
 
-function toActionParameterValue(
-	value: unknown,
-): ActionParameters[string] {
+function toActionParameterValue(value: unknown): ActionParameters[string] {
 	if (
 		typeof value === "string" ||
 		typeof value === "number" ||
@@ -110,7 +109,7 @@ export function parseToonActionParams(
 	input: unknown,
 ): Map<string, ActionParameters> {
 	const parsed =
-		typeof input === "string" ? tryParseToonValue(input) : input ?? null;
+		typeof input === "string" ? tryParseToonValue(input) : (input ?? null);
 	if (!isRecord(parsed)) {
 		return new Map();
 	}

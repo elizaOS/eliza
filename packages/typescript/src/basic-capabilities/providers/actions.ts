@@ -7,8 +7,14 @@ import type {
 	Provider,
 	State,
 } from "../../types/index.ts";
-import { addHeader } from "../../utils.ts";
+import {
+	CONTEXT_ROUTING_STATE_KEY,
+	getActiveRoutingContexts,
+	parseContextRoutingMetadata,
+	shouldIncludeByContext,
+} from "../../utils/context-routing.ts";
 import { buildDeterministicSeed } from "../../utils/deterministic";
+import { addHeader } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTIONS");
@@ -50,8 +56,16 @@ export const actionsProvider: Provider = {
 	description: spec.description,
 	position: spec.position ?? -1,
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+		const activeContexts = getActiveRoutingContexts(
+			parseContextRoutingMetadata(state?.values?.[CONTEXT_ROUTING_STATE_KEY]),
+		);
+
 		// Get actions that validate for this message
 		const actionPromises = runtime.actions.map(async (action: Action) => {
+			if (!shouldIncludeByContext(action.contexts, activeContexts)) {
+				return null;
+			}
+
 			const result = await action.validate(runtime, message, state);
 			if (result) {
 				return action;

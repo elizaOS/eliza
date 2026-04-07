@@ -283,8 +283,7 @@ export const sendMessageAction: Action = {
 		}
 
 		if (
-			!targetData ||
-			!targetData.targetType ||
+			!targetData?.targetType ||
 			!targetData.source ||
 			!targetData.messageText
 		) {

@@ -256,7 +256,7 @@ export const updateEntityAction: Action = {
 		const agentId = runtime.agentId;
 		const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
-		if (!room || !room.worldId) {
+		if (!room?.worldId) {
 			return {
 				text: "Could not find room or world",
 				values: { success: false, error: "ROOM_NOT_FOUND" },
@@ -310,7 +310,7 @@ export const updateEntityAction: Action = {
 		// Parse the generated data
 		const parsedResult = parseKeyValueXml<ComponentExtractionResult>(result);
 
-		if (!parsedResult || !parsedResult.source || !parsedResult.data) {
+		if (!parsedResult?.source || !parsedResult.data) {
 			logger.error(
 				{
 					src: "plugin:advanced-capabilities:action:update_entity",
