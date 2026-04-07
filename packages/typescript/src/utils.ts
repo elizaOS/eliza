@@ -15,7 +15,6 @@ import type {
 } from "./types";
 import { ContentType, ModelType, type UUID } from "./types";
 import { parseBooleanText } from "./utils/boolean";
-import { formatTimestamp as formatTimestampVerbose } from "./utils/time-format";
 import { getLocalServerUrl } from "./utils/node";
 
 // Text Utils
@@ -488,10 +487,10 @@ export const formatMessages = ({
     };
 
     /**
-     * Format a timestamp as a human-readable relative time string.
-     * This simplified version returns "just now", "X minutes ago", etc.
-     */
-    export const formatTimestampSimple = (messageDate: number) => {
+ * Format a timestamp as a human-readable relative time string.
+ * This simplified version returns "just now", "X minutes ago", etc.
+ */
+export const formatTimestampSimple = (messageDate: number) => {
       const now = new Date();
       const diff = now.getTime() - messageDate;
 
