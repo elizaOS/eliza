@@ -11,6 +11,7 @@ import {
   sliceToFitBudget,
   ACTION_RESULTS_TARGET_CHARS,
   ACTION_HISTORY_TARGET_CHARS,
+  estimateActionRunChars,
 } from "../../utils/slice-to-fit-budget.js";
 
 // Get text content from centralized specs
@@ -21,24 +22,6 @@ type WorkingMemoryEntry = {
   result: ActionResult;
   timestamp: number;
 };
-
-/**
- * Estimates character count for an action run entry (used for budget slicing).
- */
-function estimateActionRunChars([runId, memories]: [string, Memory[]]): number {
-  const textChars = memories.reduce((sum, memory) => {
-    const content = memory.content;
-    return (
-      sum +
-      String(content?.actionName || "").length +
-      String(content?.actionStatus || "").length +
-      String(content?.planStep || "").length +
-      String(content?.text || "").length +
-      String(content?.error || "").length
-    );
-  }, 0);
-  return textChars + runId.length + 80;
-}
 
 /**
  * Provider for sharing action execution state and plan between actions
