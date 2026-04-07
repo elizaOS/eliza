@@ -605,6 +605,9 @@ export const shouldRespondTemplate = `task: Decide whether {{agentName}} should 
 context:
 {{providers}}
 
+available_contexts:
+{{availableContexts}}
+
 rules[6]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name -> IGNORE
@@ -612,6 +615,11 @@ rules[6]:
 - request to stop or be quiet -> STOP
 - talking to someone else -> IGNORE
 - if unsure, prefer IGNORE over hallucinating relevance
+
+context_routing:
+- primaryContext: choose one context from available_contexts, or "general" if none apply
+- secondaryContexts: optional comma-separated list of additional relevant contexts
+- evidenceTurnIds: optional comma-separated list of memory IDs supporting the decision
 
 decision_note:
 - talking TO {{agentName}} means name mention, reply chain, or direct continuation
@@ -623,7 +631,18 @@ TOON only. Return exactly one TOON document. No prose before or after it. No <th
 Example:
 name: {{agentName}}
 reasoning: Direct mention and clear follow-up.
-action: RESPOND`;
+action: RESPOND
+primaryContext: wallet
+secondaryContexts:
+evidenceTurnIds:
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention but no relevant action.
+action: IGNORE
+primaryContext: general
+secondaryContexts:
+evidenceTurnIds:`;
 
 export const SHOULD_RESPOND_TEMPLATE = shouldRespondTemplate;
 
