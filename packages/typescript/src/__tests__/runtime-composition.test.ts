@@ -15,6 +15,12 @@ import type { Character } from "../types";
 import { stringToUuid } from "../utils";
 import { createTestCharacter, createTestDatabaseAdapter } from "./test-utils";
 
+type MockFn = ReturnType<typeof vi.fn>;
+
+function asMock(fn: unknown): MockFn {
+	return fn as MockFn;
+}
+
 describe("runtime-composition", () => {
 	describe("getBasicCapabilitiesSettings", () => {
 		it("returns a Record with string values only", () => {
@@ -172,8 +178,8 @@ describe("runtime-composition", () => {
 				plugins: ["@elizaos/plugin-sql"],
 			});
 			const adapter = createTestDatabaseAdapter(character.id);
-			vi.mocked(adapter.initialize).mockResolvedValue(undefined);
-			vi.mocked(adapter.isReady).mockResolvedValue(true);
+			asMock(adapter.initialize).mockResolvedValue(undefined);
+			asMock(adapter.isReady).mockResolvedValue(true);
 
 			const runtimes = await createRuntimes([character], {
 				adapter,
@@ -196,9 +202,9 @@ describe("runtime-composition", () => {
 			const agentId =
 				character.id ?? stringToUuid(character.name ?? "MergeTest");
 			const adapter = createTestDatabaseAdapter(agentId);
-			vi.mocked(adapter.initialize).mockResolvedValue(undefined);
-			vi.mocked(adapter.isReady).mockResolvedValue(true);
-			vi.mocked(adapter.getAgentsByIds).mockImplementation(async (ids) => {
+			asMock(adapter.initialize).mockResolvedValue(undefined);
+			asMock(adapter.isReady).mockResolvedValue(true);
+			asMock(adapter.getAgentsByIds).mockImplementation(async (ids) => {
 				return ids.map((id) => ({
 					id,
 					name: "FromDB",
