@@ -42,10 +42,8 @@ export function sliceToFitBudget<T>(
     // Return empty array if no items fit within budget (count is 0)
     return items.slice(items.length - count);
   }
-    const take = count > 0 ? count : 0;
-    return items.slice(items.length - take);
-  }
 
+  // Forward iteration (fromEnd = false, the default)
   for (; count < items.length; count++) {
     const size = sizes[count];
     if (total + size > targetChars) break;
@@ -54,5 +52,47 @@ export function sliceToFitBudget<T>(
 
   // Return empty array if no items fit within budget (count is 0)
   return items.slice(0, count);
-  return items.slice(0, count);
+}
+
+/**
+ * Estimates character count for an action result entry (used for budget slicing).
+ */
+export function estimateActionResultChars(result: {
+  text?: string;
+  error?: unknown;
+  values?: Record<string, unknown>;
+}): number {
+  let size = String(result.text || "").length + String(result.error || "").length;
+  try {
+    size += JSON.stringify(result.values || {}).length;
+  } catch {
+    // Ignore serialization errors
+  }
+  return size + 80;
+}
+
+/**
+ * Estimates character count for an action run entry (used for budget slicing).
+ */
+export function estimateActionRunChars([runId, memories]: [string, Array<{
+  content?: {
+    actionName?: string;
+    actionStatus?: string;
+    planStep?: string;
+    text?: string;
+    error?: string;
+  };
+}>]): number {
+  const textChars = memories.reduce((sum, memory) => {
+    const content = memory.content;
+    return (
+      sum +
+      String(content?.actionName || "").length +
+      String(content?.actionStatus || "").length +
+      String(content?.planStep || "").length +
+      String(content?.text || "").length +
+      String(content?.error || "").length
+    );
+  }, 0);
+  return textChars + runId.length + 80;
 }
