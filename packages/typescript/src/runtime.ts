@@ -3306,12 +3306,14 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
       }
     }
 
-    // Log to database
+    // Log to database - redact sensitive data before storing
+    const redactedPromptForDb = promptContent ? this.redactSecrets(promptContent) : undefined;
+    const redactedSystemPrompt = this.character.system ? this.redactSecrets(this.character.system) : undefined;
     const responseValue =
       Array.isArray(response) && response.every((x) => typeof x === "number")
         ? "[array]"
         : typeof response === "string"
-          ? response
+          ? this.redactSecrets(response)
           : undefined;
     this.adapter.createLogs([{
       entityId: this.agentId,
@@ -3319,8 +3321,8 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
       body: {
         modelType,
         modelKey,
-        prompt: promptContent ?? undefined,
-        systemPrompt: this.character.system ?? undefined,
+        prompt: redactedPromptForDb,
+        systemPrompt: redactedSystemPrompt,
         runId: this.getCurrentRunId(),
         timestamp: Date.now(),
         executionTime: elapsedTime,
