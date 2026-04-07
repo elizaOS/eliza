@@ -148,8 +148,6 @@ export const recentMessagesProvider: Provider = {
         }
       }
 
-      // Note: getMemories() returns newest-first, so Map entries are newest-first.
-      // Use fromEnd:true to select most recent runs (matching original .slice(-3) behavior).
       const recentRuns = sliceToFitBudget(
         Array.from(groupedByRun.entries()),
         ([runId, memories]) => {
