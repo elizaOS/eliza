@@ -549,7 +549,9 @@ export class DefaultMessageService implements IMessageService {
         },
         "Message source not whitelisted; skipping memory persistence",
       );
-      if (!message.id) message.id = asUUID(v4());
+      // Note: Do NOT assign synthetic message.id here to prevent later DB writes
+      // via updateMemory() for attachment-bearing messages when persistence is skipped.
+      // The memoryToQueue?.id guard in attachment processing handles this correctly.
     }
 
     // Check if LLM is off by default
@@ -981,11 +983,11 @@ export class DefaultMessageService implements IMessageService {
         await callback(ignoreContent, "IGNORE");
       }
 
-      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
-      // Note: Apply the same policy as regular responses - only whitelist overrides when disabled.
-      const canPersistIgnore = disableMemoryCreation
-        ? sourceMatchesAllowlist
-        : memorySourceAllowed;
+      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION).
+      // Note: Agent-generated IGNORE memories follow same policy as regular responses -
+      // they are persisted when memory creation is enabled, regardless of ALLOW_MEMORY_SOURCE_IDS
+      // (which only filters external message sources, not agent-generated content).
+      const canPersistIgnore = !disableMemoryCreation;
       if (canPersistIgnore) {
           const ignoreMemory: Memory = {
             id: asUUID(v4()),
