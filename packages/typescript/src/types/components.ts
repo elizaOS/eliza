@@ -181,6 +181,16 @@ export interface Action {
 	tags?: string[];
 
 	/**
+	 * When true, the message service should stop after executing this action
+	 * instead of running a post-action continuation LLM turn.
+	 *
+	 * Use this for actions that already emit a complete user-facing reply or
+	 * that launch asynchronous background work whose progress will continue
+	 * outside the current chat turn.
+	 */
+	suppressPostActionContinuation?: boolean;
+
+	/**
 	 * Optional input parameters for the action.
 	 * When defined, the LLM will be prompted to extract these parameters from the conversation
 	 * and they will be validated before being passed to the handler via HandlerOptions.parameters.

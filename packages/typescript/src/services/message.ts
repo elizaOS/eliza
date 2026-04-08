@@ -333,6 +333,29 @@ function shouldContinueAfterActions(
 	});
 }
 
+function suppressesPostActionContinuation(
+	runtime: IAgentRuntime,
+	responseContent: Content | null | undefined,
+): boolean {
+	if (!responseContent?.actions?.length) {
+		return false;
+	}
+
+	const actionMap = new Map(
+		(runtime.actions ?? []).map((action) => [
+			action.name.toUpperCase(),
+			action,
+		]),
+	);
+
+	return responseContent.actions.some((action) => {
+		if (typeof action !== "string") return false;
+		const normalized = action.trim().toUpperCase();
+		if (!normalized) return false;
+		return actionMap.get(normalized)?.suppressPostActionContinuation === true;
+	});
+}
+
 function formatActionResultsForPrompt(actionResults: ActionResult[]): string {
 	if (actionResults.length === 0) {
 		return "No action results available.";
@@ -448,10 +471,7 @@ export class DefaultMessageService implements IMessageService {
 				: undefined;
 
 		if (
-			!(
-				typeof trajectoryStepId === "string" &&
-				trajectoryStepId.trim() !== ""
-			)
+			!(typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== "")
 		) {
 			try {
 				await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
@@ -1117,9 +1137,7 @@ export class DefaultMessageService implements IMessageService {
 							multiplier: 2,
 							maxMs: 2000,
 						},
-						modelType: resolveShouldRespondModelType(
-							opts.shouldRespondModel,
-						),
+						modelType: resolveShouldRespondModelType(opts.shouldRespondModel),
 						preferredEncapsulation: "toon",
 					},
 				});
@@ -1304,7 +1322,8 @@ export class DefaultMessageService implements IMessageService {
 					if (
 						opts.continueAfterActions &&
 						message.id &&
-						shouldContinueAfterActions(responseContent)
+						shouldContinueAfterActions(responseContent) &&
+						!suppressesPostActionContinuation(runtime, responseContent)
 					) {
 						const continuation = await this.runPostActionContinuation(
 							runtime,
@@ -2091,7 +2110,10 @@ export class DefaultMessageService implements IMessageService {
 				{ onStreamChunk: opts.onStreamChunk },
 			);
 
-			if (!shouldContinueAfterActions(responseContent)) {
+			if (
+				!shouldContinueAfterActions(responseContent) ||
+				suppressesPostActionContinuation(runtime, responseContent)
+			) {
 				break;
 			}
 
