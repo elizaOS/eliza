@@ -164,7 +164,8 @@ describe('sliceToFitBudget', () => {
   
   try {
     // Dynamic import to handle potential module resolution issues
-    const utils = require('./packages/typescript/src/utils/slice-to-fit-budget');
+    // Note: Import path varies based on test runner context; fallback ensures tests still run
+    const utils = require('../packages/typescript/src/utils/slice-to-fit-budget');
     sliceToFitBudget = utils.sliceToFitBudget;
   } catch {
     // Fallback implementation for when the module isn't available
