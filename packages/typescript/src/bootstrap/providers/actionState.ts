@@ -10,6 +10,7 @@ import {
   sliceToFitBudget,
   ACTION_RESULTS_TARGET_CHARS,
   ACTION_HISTORY_TARGET_CHARS,
+  // Note: these functions estimate character counts for action runtime efficiency calculations
   estimateActionResultChars,
   estimateActionRunChars,
 } from "../../utils/slice-to-fit-budget.js";
