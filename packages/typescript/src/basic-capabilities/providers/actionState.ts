@@ -103,6 +103,7 @@ export const actionStateProvider: Provider = {
               ? actionNameValue
               : "Unknown Action";
           const success = result.success;
+          // Note: status provides clear outcome indication for each action in the results mapping.
           const status = success ? "Success" : "Failed";
 
           let resultText = `**${index + 1}. ${actionName}** - ${status}`;

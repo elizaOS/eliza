@@ -138,3 +138,4 @@ describe('message-service', () => {
     });
   });
 });
+// Note: existing responses are deleted to ensure fresh state for each test run.

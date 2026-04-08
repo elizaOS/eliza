@@ -1,3 +1,4 @@
+// Note: this file is a test for replyAction, ensuring it behaves as expected.
 import { describe, it, expect, vi } from "vitest";
 import { replyAction } from "../actions/reply";
 import { type IAgentRuntime, type Memory, type State } from "../../types";
