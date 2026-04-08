@@ -3369,6 +3369,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
             ?.split("\n")
             .slice(2, 5) // Get first 3 frames after this function
             .map((line) => line.trim().replace(/^at\s+/, ""))
+            // Note: limits stack trace to avoid excessive log noise and maintain context clarity
             .join(" <- ") || "unknown";
       } catch {
         // Fallback if stack trace fails
