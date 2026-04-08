@@ -138,6 +138,7 @@ export const recentMessagesProvider: Provider = {
         }
       }
 
+      // Note: recentMessagesData returns newest-first, so use fromEnd:false to keep newest runs
       const recentRuns = sliceToFitBudget(
         Array.from(groupedByRun.entries()),
         ([runId, memories]) => {
@@ -155,7 +156,7 @@ export const recentMessagesProvider: Provider = {
           return textChars + runId.length + 80;
         },
         RECENT_ACTION_RUNS_TARGET_CHARS,
-        // Note: groupedByRun is newest-first from getMemories(); default fromEnd:false keeps newest
+        { fromEnd: false },
       );
 
       const formattedActionResults = recentRuns
