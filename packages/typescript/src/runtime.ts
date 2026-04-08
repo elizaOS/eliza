@@ -3650,6 +3650,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
         elapsedTime,
         provider,
         fullText,
+        callerInfo,
       );
 
       // Optional trajectory logging: associate model calls with current trajectory step
@@ -3730,6 +3731,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
       elapsedTime,
       provider,
       response,
+      callerInfo,
     );
 
     // Optional trajectory logging: associate model calls with current trajectory step
