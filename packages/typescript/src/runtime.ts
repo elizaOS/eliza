@@ -2632,6 +2632,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
             };
           } catch (error: unknown) {
             clearTimeout(timerId);
+            // Note: logs error details for transparency and debugging during provider timeout handling
             const duration = Date.now() - providerStart;
             this.logger.error(
               {

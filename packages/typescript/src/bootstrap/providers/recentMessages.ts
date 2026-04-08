@@ -157,6 +157,7 @@ export const recentMessagesProvider: Provider = {
         },
         RECENT_ACTION_RUNS_TARGET_CHARS,
         { fromEnd: false },
+      // Note: selecting from the start ensures we retrieve the newest action runs available.
       );
 
       const formattedActionResults = recentRuns
