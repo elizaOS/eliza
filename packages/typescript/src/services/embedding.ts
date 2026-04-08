@@ -395,7 +395,7 @@ export class EmbeddingGenerationService extends Service {
 		const { memory } = item;
 
 		const memoryContent = memory.content;
-		if (!memoryContent || !memoryContent.text) {
+		if (!memoryContent?.text) {
 			this.runtime.logger.warn(
 				{
 					src: "plugin:basic-capabilities:service:embedding",

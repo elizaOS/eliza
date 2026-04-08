@@ -7,7 +7,7 @@ import {
 	type Memory,
 	ModelType,
 } from "../../types/index.ts";
-import { composePromptFromState } from "../../utils.ts";
+import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 import { longTermExtractionTemplate } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
@@ -15,8 +15,55 @@ import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
 const spec = requireEvaluatorSpec("LONG_TERM_MEMORY_EXTRACTION");
 const validMemoryCategories = new Set(Object.values(LongTermMemoryCategory));
 
-function parseMemoryExtractionXML(xml: string): MemoryExtraction[] {
-	const memoryMatches = xml.matchAll(
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseMemoryExtractionResponse(text: string): MemoryExtraction[] {
+	const parsed = parseKeyValueXml<Record<string, unknown>>(text);
+	if (parsed) {
+		const rawMemories = parsed.memories;
+		const candidateEntries = Array.isArray(rawMemories)
+			? rawMemories
+			: isRecord(rawMemories) && "memory" in rawMemories
+				? Array.isArray(rawMemories.memory)
+					? rawMemories.memory
+					: [rawMemories.memory]
+				: [];
+
+		const memories = candidateEntries
+			.filter(isRecord)
+			.map((entry) => {
+				const category =
+					typeof entry.category === "string"
+						? (entry.category.trim() as LongTermMemoryCategory)
+						: null;
+				const content =
+					typeof entry.content === "string" ? entry.content.trim() : "";
+				const confidenceRaw = entry.confidence;
+				const confidence =
+					typeof confidenceRaw === "number"
+						? confidenceRaw
+						: Number.parseFloat(String(confidenceRaw ?? "").trim());
+
+				if (!category || !validMemoryCategories.has(category)) {
+					return null;
+				}
+
+				if (!content || Number.isNaN(confidence)) {
+					return null;
+				}
+
+				return { category, content, confidence };
+			})
+			.filter((entry): entry is MemoryExtraction => entry !== null);
+
+		if (memories.length > 0) {
+			return memories;
+		}
+	}
+
+	const memoryMatches = text.matchAll(
 		/<memory>[\s\S]*?<category>(.*?)<\/category>[\s\S]*?<content>(.*?)<\/content>[\s\S]*?<confidence>(.*?)<\/confidence>[\s\S]*?<\/memory>/g,
 	);
 
@@ -140,7 +187,7 @@ export const longTermExtractionEvaluator: Evaluator = {
 			});
 
 			const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-			const extractions = parseMemoryExtractionXML(response);
+			const extractions = parseMemoryExtractionResponse(response);
 
 			logger.info(
 				{ src: "evaluator:memory" },

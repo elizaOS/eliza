@@ -19,6 +19,7 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createLogger } from "./logger";
+import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
@@ -64,6 +65,7 @@ import {
 	type ModelParamsMap,
 	type ModelResultMap,
 	ModelType,
+	getModelFallbackChain,
 	type ModelTypeName,
 	type PairingAllowlistEntry,
 	type PairingChannel,
@@ -71,6 +73,7 @@ import {
 	type Participant,
 	type PatchOp,
 	type Plugin,
+	type PluginOwnership,
 	type PromptSegment,
 	type Provider,
 	type ProviderValue,
@@ -106,15 +109,72 @@ import {
 	parseKeyValueXml,
 	stringToUuid,
 } from "./utils";
+import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
+import {
+	buildDeterministicSeed,
+	hashStringToUint32,
+} from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import {
 	ActionStreamFilter,
 	ValidationStreamExtractor,
 } from "./utils/streaming";
+import { encodeToonValue } from "./utils/toon";
 import { isPlainObject } from "./utils/type-guards";
 
 const environmentSettings: RuntimeSettings = {};
+const RUNTIME_TEMPLATE_CACHE = new Map<
+	string,
+	Handlebars.TemplateDelegate<Record<string, unknown>>
+>();
+const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
+const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
+const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
+	"agentName",
+	"bio",
+	"system",
+	"topic",
+	"topics",
+	"adjective",
+	"messageDirections",
+	"postDirections",
+	"directions",
+	"examples",
+	"characterPostExamples",
+	"characterMessageExamples",
+	"actionNames",
+	"actionsWithDescriptions",
+	"providersWithDescriptions",
+]);
+const STABLE_PROMPT_PROVIDER_NAMES = new Set([
+	"ACTIONS",
+	"CHARACTER",
+	"PROVIDERS",
+]);
+
+function resolveDynamicPromptModelType(
+	modelType?: ModelTypeName,
+	modelSize?: "nano" | "mini" | "small" | "large" | "mega",
+): ModelTypeName {
+	if (modelType) {
+		return modelType;
+	}
+
+	switch (modelSize) {
+		case "nano":
+			return ModelType.TEXT_NANO;
+		case "mini":
+			return ModelType.TEXT_MINI;
+		case "small":
+			return ModelType.TEXT_SMALL;
+		case "mega":
+			return ModelType.TEXT_MEGA;
+		case "large":
+		default:
+			return ModelType.TEXT_LARGE;
+	}
+}
 
 export class Semaphore {
 	private permits: number;
@@ -171,6 +231,14 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly evaluators: Evaluator[] = [];
 	readonly providers: Provider[] = [];
 	readonly plugins: Plugin[] = [];
+	public unloadPlugin!: (pluginName: string) => Promise<PluginOwnership | null>;
+	public reloadPlugin!: (plugin: Plugin) => Promise<void>;
+	public applyPluginConfig!: (
+		pluginName: string,
+		config: Record<string, string>,
+	) => Promise<boolean>;
+	public getPluginOwnership!: (pluginName: string) => PluginOwnership | null;
+	public getAllPluginOwnership!: () => PluginOwnership[];
 	events: RuntimeEventStorage = {};
 	stateCache = new Map<string, State>();
 	readonly fetch = fetch;
@@ -391,6 +459,8 @@ export class AgentRuntime implements IAgentRuntime {
 				50,
 			) as number;
 		}
+
+		installRuntimePluginLifecycle(this);
 	}
 
 	/**
@@ -1504,11 +1574,7 @@ export class AgentRuntime implements IAgentRuntime {
 		let actionIndex = 0;
 
 		for (const response of responsesToProcess) {
-			if (
-				!response.content ||
-				!response.content.actions ||
-				response.content.actions.length === 0
-			) {
+			if (!response.content?.actions || response.content.actions.length === 0) {
 				this.logger.warn(
 					{ src: "agent", agentId: this.agentId },
 					"No action found in response",
@@ -1516,11 +1582,7 @@ export class AgentRuntime implements IAgentRuntime {
 				continue;
 			}
 			const actions = response.content.actions;
-			const paramsXml =
-				response.content && typeof response.content.params === "string"
-					? response.content.params
-					: undefined;
-			const actionParamsByName = parseActionParams(paramsXml);
+			const actionParamsByName = parseActionParams(response.content?.params);
 
 			const actionResults: ActionResult[] = [];
 			let accumulatedState = state;
@@ -2515,7 +2577,10 @@ export class AgentRuntime implements IAgentRuntime {
 				providersToGet.push(provider);
 			}
 		}
-		providersToGet.sort((a, b) => (a.position || 0) - (b.position || 0));
+		providersToGet.sort(
+			(a, b) =>
+				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
+		);
 
 		// Optional trajectory logging service (no-op by default).
 		type TrajectoryLogger = Service & {
@@ -2628,6 +2693,11 @@ export class AgentRuntime implements IAgentRuntime {
 		// Redact any secrets from provider context before use
 		const rawProvidersText = orderedTexts.join("\n");
 		const providersText = this.redactSecrets(rawProvidersText);
+		const conversationSeed = buildDeterministicSeed(
+			this.agentId,
+			message.roomId,
+			"conversation",
+		);
 		const aggregatedStateValues: Record<string, StateValue> = {
 			...(cachedState.values || {}),
 		};
@@ -2656,10 +2726,13 @@ export class AgentRuntime implements IAgentRuntime {
 		const newState = {
 			values: {
 				...aggregatedStateValues,
+				__conversationSeed: conversationSeed,
 				providers: providersText,
 			},
 			data: {
 				...(cachedState.data || {}),
+				__conversationSeed: conversationSeed,
+				providerOrder: providersToGet.map((provider) => provider.name),
 				providers: currentProviderResults,
 			},
 			text: providersText,
@@ -2999,6 +3072,62 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
+	private resolveModelRegistration(
+		modelType: ModelTypeName | string,
+		provider?: string,
+	):
+		| {
+				handler: (
+					runtime: IAgentRuntime,
+					params: Record<string, JsonValue | object>,
+				) => Promise<JsonValue | object>;
+				modelKey: string;
+				provider: string;
+		  }
+		| undefined {
+		const requestedModelKey =
+			typeof modelType === "string" ? modelType : ModelType[modelType];
+
+		for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
+			const models = this.models.get(candidateKey);
+			if (!models?.length) {
+				continue;
+			}
+
+			const modelWithProvider =
+				provider && models.find((model) => model.provider === provider);
+			if (provider && !modelWithProvider) {
+				continue;
+			}
+
+			const resolvedModel = modelWithProvider ?? models[0];
+			if (!resolvedModel) {
+				continue;
+			}
+
+			if (candidateKey !== requestedModelKey) {
+				this.logger.debug(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						requestedModel: requestedModelKey,
+						resolvedModel: candidateKey,
+						provider: resolvedModel.provider,
+					},
+					"Model fallback applied",
+				);
+			}
+
+			return {
+				handler: resolvedModel.handler,
+				modelKey: candidateKey,
+				provider: resolvedModel.provider,
+			};
+		}
+
+		return undefined;
+	}
+
 	getModel(
 		modelType: ModelTypeName | string,
 	):
@@ -3007,10 +3136,8 @@ export class AgentRuntime implements IAgentRuntime {
 				params: Record<string, JsonValue | object>,
 		  ) => Promise<JsonValue | object>)
 		| undefined {
-		const modelKey =
-			typeof modelType === "string" ? modelType : ModelType[modelType];
-		const models = this.models.get(modelKey);
-		if (!models || !models.length) {
+		const resolvedModel = this.resolveModelRegistration(modelType);
+		if (!resolvedModel) {
 			return undefined;
 		}
 
@@ -3019,12 +3146,12 @@ export class AgentRuntime implements IAgentRuntime {
 			{
 				src: "agent",
 				agentId: this.agentId,
-				model: modelKey,
-				provider: models[0].provider,
+				model: resolvedModel.modelKey,
+				provider: resolvedModel.provider,
 			},
 			"Using model",
 		);
-		return models[0].handler;
+		return resolvedModel.handler;
 	}
 
 	/**
@@ -3172,7 +3299,7 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
-		let modelKey =
+		let requestedModelKey =
 			typeof modelType === "string" ? modelType : ModelType[modelType];
 
 		// Apply LLM mode override for text generation models
@@ -3180,8 +3307,13 @@ export class AgentRuntime implements IAgentRuntime {
 		if (llmMode !== "DEFAULT") {
 			// List of text generation model types that can be overridden
 			const textGenerationModels = [
+				ModelType.TEXT_NANO,
+				ModelType.TEXT_MINI,
 				ModelType.TEXT_SMALL,
 				ModelType.TEXT_LARGE,
+				ModelType.TEXT_MEGA,
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
 				ModelType.TEXT_REASONING_SMALL,
 				ModelType.TEXT_REASONING_LARGE,
 				ModelType.TEXT_COMPLETION,
@@ -3189,23 +3321,23 @@ export class AgentRuntime implements IAgentRuntime {
 
 			if (
 				textGenerationModels.includes(
-					modelKey as (typeof textGenerationModels)[number],
+					requestedModelKey as (typeof textGenerationModels)[number],
 				)
 			) {
 				const overrideModelKey =
 					llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
-				if (modelKey !== overrideModelKey) {
+				if (requestedModelKey !== overrideModelKey) {
 					this.logger.debug(
 						{
 							src: "agent",
 							agentId: this.agentId,
-							originalModel: modelKey,
+							originalModel: requestedModelKey,
 							overrideModel: overrideModelKey,
 							llmMode,
 						},
 						"LLM mode override applied",
 					);
-					modelKey = overrideModelKey as typeof modelKey;
+					requestedModelKey = overrideModelKey as typeof requestedModelKey;
 				}
 			}
 		}
@@ -3228,13 +3360,14 @@ export class AgentRuntime implements IAgentRuntime {
 				? JSON.stringify(paramsObj.messages)
 				: null) ||
 			(typeof params === "string" ? params : null);
-		const model = this.getModel(modelKey);
-		const modelsForKey = this.models.get(modelKey);
-		const modelWithProvider =
-			provider && modelsForKey?.find((m) => m.provider === provider);
-		const handler = modelWithProvider ? modelWithProvider.handler : model;
+		const resolvedModel = this.resolveModelRegistration(
+			requestedModelKey,
+			provider,
+		);
+		const resolvedModelKey = resolvedModel?.modelKey ?? requestedModelKey;
+		const handler = resolvedModel?.handler;
 		if (!handler) {
-			const errorMsg = `No handler found for delegate type: ${modelKey}`;
+			const errorMsg = `No handler found for delegate type: ${requestedModelKey}`;
 			throw new Error(errorMsg);
 		}
 
@@ -3246,9 +3379,14 @@ export class AgentRuntime implements IAgentRuntime {
 			ModelType.AUDIO,
 			ModelType.VIDEO,
 		];
-		if (!binaryModels.includes(modelKey)) {
+		if (!binaryModels.includes(resolvedModelKey)) {
 			this.logger.trace(
-				{ src: "agent", agentId: this.agentId, model: modelKey, params },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					model: resolvedModelKey,
+					params,
+				},
 				"Model input",
 			);
 		} else {
@@ -3273,7 +3411,7 @@ export class AgentRuntime implements IAgentRuntime {
 				{
 					src: "agent",
 					agentId: this.agentId,
-					model: modelKey,
+					model: resolvedModelKey,
 					size: sizeInfo,
 				},
 				"Model input (binary)",
@@ -3293,7 +3431,7 @@ export class AgentRuntime implements IAgentRuntime {
 			modelParams = paramsClone as ModelParamsMap[T];
 		} else {
 			// Include model settings from character configuration if available
-			const modelSettings = this.getModelSettings(modelKey);
+			const modelSettings = this.getModelSettings(requestedModelKey);
 
 			if (modelSettings) {
 				// Apply model settings if configured
@@ -3311,11 +3449,16 @@ export class AgentRuntime implements IAgentRuntime {
 			// We only auto-populate when user is undefined (not explicitly set to empty string or null)
 			// to allow users to intentionally set an empty identifier if needed.
 			const shouldAttachUser =
-				modelKey === ModelType.TEXT_SMALL ||
-				modelKey === ModelType.TEXT_LARGE ||
-				modelKey === ModelType.TEXT_REASONING_SMALL ||
-				modelKey === ModelType.TEXT_REASONING_LARGE ||
-				modelKey === ModelType.TEXT_COMPLETION;
+				requestedModelKey === ModelType.TEXT_NANO ||
+				requestedModelKey === ModelType.TEXT_MINI ||
+				requestedModelKey === ModelType.TEXT_SMALL ||
+				requestedModelKey === ModelType.TEXT_LARGE ||
+				requestedModelKey === ModelType.TEXT_MEGA ||
+				requestedModelKey === ModelType.RESPONSE_HANDLER ||
+				requestedModelKey === ModelType.ACTION_PLANNER ||
+				requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
+				requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
+				requestedModelKey === ModelType.TEXT_COMPLETION;
 			if (
 				shouldAttachUser &&
 				isPlainObject(modelParams) &&
@@ -3327,6 +3470,73 @@ export class AgentRuntime implements IAgentRuntime {
 				>;
 				if (modelParamsRecord.user === undefined) {
 					modelParamsRecord.user = this.character.name;
+				}
+			}
+
+			if (shouldAttachUser && isPlainObject(modelParams)) {
+				const modelParamsRecord = modelParams as Record<
+					string,
+					JsonValue | object
+				>;
+				const promptSegments = Array.isArray(modelParamsRecord.promptSegments)
+					? (modelParamsRecord.promptSegments as PromptSegment[])
+					: [];
+				const stablePrefix = promptSegments
+					.filter((segment, index) => {
+						if (!segment?.stable) {
+							return false;
+						}
+						return promptSegments
+							.slice(0, index)
+							.every((previous) => previous?.stable === true);
+					})
+					.map((segment) => segment.content)
+					.join("");
+
+				if (stablePrefix.length > 0) {
+					const providerOptions = isPlainObject(
+						modelParamsRecord.providerOptions,
+					)
+						? {
+								...(modelParamsRecord.providerOptions as Record<
+									string,
+									JsonValue | object
+								>),
+							}
+						: {};
+					const openAIOptions = isPlainObject(providerOptions.openai)
+						? {
+								...(providerOptions.openai as Record<
+									string,
+									JsonValue | object
+								>),
+							}
+						: {};
+
+					if (openAIOptions.promptCacheKey === undefined) {
+						openAIOptions.promptCacheKey = buildDeterministicSeed(
+							this.agentId,
+							this.currentRoomId ?? this.agentId,
+							requestedModelKey,
+							hashStringToUint32(stablePrefix).toString(16),
+						);
+					}
+
+					const promptCacheRetention = this.getSetting(
+						"OPENAI_PROMPT_CACHE_RETENTION",
+					);
+					if (
+						openAIOptions.promptCacheRetention === undefined &&
+						(promptCacheRetention === "in_memory" ||
+							promptCacheRetention === "24h")
+					) {
+						openAIOptions.promptCacheRetention = promptCacheRetention;
+					}
+
+					if (Object.keys(openAIOptions).length > 0) {
+						providerOptions.openai = openAIOptions;
+						modelParamsRecord.providerOptions = providerOptions;
+					}
 				}
 			}
 		}
@@ -3403,7 +3613,7 @@ export class AgentRuntime implements IAgentRuntime {
 				{
 					src: "agent",
 					agentId: this.agentId,
-					model: modelKey,
+					model: resolvedModelKey,
 					duration: Number(elapsedTime.toFixed(2)),
 					streaming: true,
 				},
@@ -3412,11 +3622,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 			this.logModelCall(
 				modelType,
-				modelKey,
+				resolvedModelKey,
 				params,
 				promptContent,
 				elapsedTime,
-				provider,
+				resolvedModel?.provider ?? provider,
 				fullText,
 			);
 
@@ -3451,7 +3661,7 @@ export class AgentRuntime implements IAgentRuntime {
 							: undefined;
 						trajLogger.logLlmCall({
 							stepId,
-							model: String(modelKey),
+							model: String(resolvedModelKey),
 							systemPrompt:
 								typeof this.character.system === "string"
 									? this.character.system
@@ -3484,7 +3694,7 @@ export class AgentRuntime implements IAgentRuntime {
 			{
 				src: "agent",
 				agentId: this.agentId,
-				model: modelKey,
+				model: resolvedModelKey,
 				duration: Number(elapsedTime.toFixed(2)),
 			},
 			"Model output",
@@ -3492,11 +3702,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.logModelCall(
 			modelType,
-			modelKey,
+			resolvedModelKey,
 			params,
 			promptContent,
 			elapsedTime,
-			provider,
+			resolvedModel?.provider ?? provider,
 			response,
 		);
 
@@ -3531,7 +3741,7 @@ export class AgentRuntime implements IAgentRuntime {
 						: undefined;
 					trajLogger.logLlmCall({
 						stepId,
-						model: String(modelKey),
+						model: String(resolvedModelKey),
 						systemPrompt:
 							typeof this.character.system === "string"
 								? this.character.system
@@ -3562,7 +3772,7 @@ export class AgentRuntime implements IAgentRuntime {
 		input: string,
 		options?: GenerateTextOptions,
 	): Promise<GenerateTextResult> {
-		if (!input || !input.trim()) {
+		if (!input?.trim()) {
 			throw new Error("Input cannot be empty");
 		}
 
@@ -3733,12 +3943,14 @@ export class AgentRuntime implements IAgentRuntime {
 		schema: SchemaRow[];
 		options?: {
 			key?: string;
-			modelSize?: "small" | "large";
+			modelSize?: "nano" | "mini" | "small" | "large" | "mega";
+			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json" | "xml";
-			forceFormat?: "json" | "xml";
+			preferredEncapsulation?: "json" | "xml" | "toon";
+			forceFormat?: "json" | "xml" | "toon";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
+			checkpointCodes?: boolean;
 			maxRetries?: number;
 			retryBackoff?: number | RetryBackoffConfig;
 			disableCache?: boolean;
@@ -3780,9 +3992,11 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		// Generate keys for metrics
-		const modelIdentifier =
-			options.model ||
-			(options.modelSize === "small" ? "TEXT_SMALL" : "TEXT_LARGE");
+		const resolvedModelType = resolveDynamicPromptModelType(
+			options.modelType,
+			options.modelSize,
+		);
+		const modelIdentifier = options.modelType || options.model || resolvedModelType;
 		const schemaKey = this.buildSchemaMetricKey(schema);
 		const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
 
@@ -3816,7 +4030,12 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		const maxRetries = options.maxRetries ?? defaultRetries;
+		const checkpointCodesEnabled =
+			options.checkpointCodes ??
+			parseBooleanValue(this.getSetting("PROMPT_CHECKPOINT_CODES")) ??
+			false;
 		let currentRetry = 0;
+		const promptCode = () => uuidv4().replaceAll("-", "").slice(0, 8);
 
 		// Initialize metrics with LRU eviction
 		const metric = AgentRuntime.getOrCreateMetrics(modelSchemaKey);
@@ -3843,26 +4062,18 @@ export class AgentRuntime implements IAgentRuntime {
 				},
 				{},
 			);
+			const templateContext = { ...filteredState, ...state.values };
 
-			// Compile template
-			const templateFunction = Handlebars.compile(
-				this.upgradeDoubleToTriple(templateStr),
+			const outputSegments = this.renderPromptTemplateSegments(
+				templateStr,
+				templateContext,
+				state,
 			);
-			const rawOutput = templateFunction({ ...filteredState, ...state.values });
-			// Strip any <output>...</output> section from the compiled template.
-			// dynamicPromptExecFromState appends its own <output> block with
-			// validation codes; keeping the template's copy creates duplicate
-			// conflicting format instructions that cause the model to follow the
-			// first block and ignore the validation-code echo-back request.
-			// Templates used via composePromptFromState (e.g. post generation) are
-			// unaffected because they never reach this code path.
-			const output = rawOutput
-				.replace(/<output>[\s\S]*?<\/output>\s*/g, "")
-				.trimEnd();
+			const output = outputSegments.map((segment) => segment.content).join("");
 
 			// Process format options
 			const hasNestedSchema = this.schemaHasNestedStructure(schema);
-			let format: "XML" | "JSON" = "XML";
+			let format: "XML" | "JSON" | "TOON" = "TOON";
 			if (options.forceFormat) {
 				if (options.forceFormat === "xml" && hasNestedSchema) {
 					this.logger.warn(
@@ -3870,10 +4081,12 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					format = "JSON";
 				} else {
-					format = options.forceFormat.toUpperCase() as "XML" | "JSON";
+					format = options.forceFormat.toUpperCase() as "XML" | "JSON" | "TOON";
 				}
 			} else if (options.preferredEncapsulation === "json" || hasNestedSchema) {
 				format = "JSON";
+			} else if (options.preferredEncapsulation === "xml") {
+				format = "XML";
 			}
 
 			/**
@@ -3913,15 +4126,15 @@ export class AgentRuntime implements IAgentRuntime {
 						const defaultValidate = contextLevel === 1;
 						const needsValidation = row.validateField ?? defaultValidate;
 						if (needsValidation) {
-							perFieldCodes.set(row.field, uuidv4().slice(0, 8));
+							perFieldCodes.set(row.field, promptCode());
 						}
 					}
 				}
 			}
 
-			// Checkpoint codes: level 2+ gets first codes, level 3 gets both
-			const first = contextLevel >= 2;
-			const last = contextLevel >= 3;
+			// Optional checkpoint codes: level 2+ gets first codes, level 3 gets both.
+			const first = checkpointCodesEnabled && contextLevel >= 2;
+			const last = checkpointCodesEnabled && contextLevel >= 3;
 
 			// Build extended schema with validation codes
 			const extSchema: Array<{
@@ -3933,15 +4146,15 @@ export class AgentRuntime implements IAgentRuntime {
 			const codesSchema = (prefix: string) => [
 				{
 					field: `${prefix}initial_code`,
-					description: "echo the initial UUID code from prompt",
+					description: "echo the initial prompt code",
 				},
 				{
 					field: `${prefix}middle_code`,
-					description: "echo the middle UUID code from prompt",
+					description: "echo the middle prompt code",
 				},
 				{
 					field: `${prefix}end_code`,
-					description: "echo the end UUID code from prompt",
+					description: "echo the end prompt code",
 				},
 			];
 
@@ -3973,12 +4186,15 @@ export class AgentRuntime implements IAgentRuntime {
 
 			// Generate prompt with format example
 			const isXML = format === "XML";
-			const CONTAINER_START = isXML ? "<response>" : "{";
-			const CONTAINER_END = isXML ? "</response>" : "}";
+			const isJSON = format === "JSON";
+			const CONTAINER_START = isXML ? "<response>" : isJSON ? "{" : "TOON root";
+			const CONTAINER_END = isXML ? "</response>" : isJSON ? "}" : "[end]";
 
 			const EXAMPLE = isXML
 				? this.renderXmlSchemaExample(schema)
-				: this.renderJsonSchemaExample(schema);
+				: isJSON
+					? this.renderJsonSchemaExample(schema)
+					: this.renderToonSchemaExample(schema);
 			const VALIDATION_INSTRUCTIONS = this.buildValidationOutputInstructions({
 				format,
 				schema,
@@ -3987,26 +4203,33 @@ export class AgentRuntime implements IAgentRuntime {
 				includeLastCheckpoint: last,
 			});
 
-			const initCode = uuidv4();
-			const midCode = uuidv4();
-			const finalCode = uuidv4();
+			const initCode = checkpointCodesEnabled ? promptCode() : "";
+			const midCode = checkpointCodesEnabled ? promptCode() : "";
+			const finalCode = checkpointCodesEnabled ? promptCode() : "";
 
 			// Check for smart retry context (set by previous retry iteration)
+			const smartRetryContextRaw = (state as Record<string, unknown>)
+				._smartRetryContext;
 			const smartRetryContext =
-				(state as Record<string, unknown>)._smartRetryContext || "";
+				typeof smartRetryContextRaw === "string"
+					? smartRetryContextRaw.trim()
+					: "";
 
 			const section_start = isXML ? "<output>" : "# Strict Output instructions";
 			const section_end = isXML ? "</output>" : "";
 
-			const variableBlock =
-				"initial code: " +
-				initCode +
-				"\n" +
-				output +
-				smartRetryContext +
-				"middle code: " +
-				midCode +
-				"\n";
+			const variableSegments = this.joinPromptSegmentGroups([
+				checkpointCodesEnabled
+					? [{ content: `initial code: ${initCode}`, stable: false }]
+					: [],
+				outputSegments,
+				smartRetryContext
+					? [{ content: smartRetryContext, stable: false }]
+					: [],
+				checkpointCodesEnabled
+					? [{ content: `middle code: ${midCode}`, stable: false }]
+					: [],
+			]).concat({ content: "\n", stable: false });
 			// Prompt cache hints: build segments so providers can cache the stable prefix.
 			// WHY: We only mark content stable when it is identical across calls for the same
 			// schema/character. VALIDATION_INSTRUCTIONS contains per-call UUIDs (perFieldCodes,
@@ -4014,30 +4237,36 @@ export class AgentRuntime implements IAgentRuntime {
 			// would never hit. Format instructions and example (same for same schema) are stable.
 			const formatStablePrefix =
 				section_start +
-				`
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the ${format} response format without any preamble or explanation.
+				`\nReturn only ${format}. No prose before or after it. No <think>.
 
 `;
 			const formatStableSuffix = `
-Respond using ${format} format like this:
+Use this shape:
 ${EXAMPLE}
 
-IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END} ${format} block above. Do not include any text, thinking, or reasoning before or after this ${format} block. Start your response immediately with ${CONTAINER_START} and end with ${CONTAINER_END}.
+Return exactly one ${
+				isXML
+					? `${CONTAINER_START}...${CONTAINER_END}`
+					: isJSON
+						? "JSON object"
+						: "TOON document"
+			}.
 ${section_end}`;
-			const endBlock = `\nend code: ${finalCode}\n`;
+			const endBlock = checkpointCodesEnabled
+				? `\nend code: ${finalCode}\n`
+				: "\n";
 			// Middle block: validation text when present (unstable); else "\n\n" so prompt string is unchanged.
 			const formatMiddleBlock = VALIDATION_INSTRUCTIONS
 				? `${VALIDATION_INSTRUCTIONS}\n\n`
 				: "\n\n";
 
-			const segments: PromptSegment[] = [
-				{ content: variableBlock, stable: false },
+			const segments: PromptSegment[] = this.mergePromptSegments([
+				...variableSegments,
 				{ content: formatStablePrefix, stable: true },
 				{ content: formatMiddleBlock, stable: false },
 				{ content: formatStableSuffix, stable: true },
 				{ content: endBlock, stable: false },
-			];
+			]);
 			const prompt = segments.map((s) => s.content).join("");
 
 			// Token estimate used for:
@@ -4104,11 +4333,6 @@ ${section_end}`;
 				});
 			}
 
-			const modelType =
-				options.modelSize === "small"
-					? ModelType.TEXT_SMALL
-					: ModelType.TEXT_LARGE;
-
 			// Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
 			const modelParams = {
 				...params,
@@ -4137,8 +4361,8 @@ ${section_end}`;
 
 			let response: string;
 			try {
-				response = await this.useModel<typeof modelType, string>(
-					modelType,
+				response = await this.useModel<typeof resolvedModelType, string>(
+					resolvedModelType,
 					modelParams,
 					options.model,
 				);
@@ -4191,7 +4415,9 @@ ${section_end}`;
 			try {
 				responseContent = isXML
 					? parseKeyValueXml(cleanResponse)
-					: parseJSONObjectFromText(cleanResponse);
+					: isJSON
+						? parseJSONObjectFromText(cleanResponse)
+						: parseKeyValueXml(cleanResponse);
 				this.logger.debug(
 					`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
 				);
@@ -4403,7 +4629,15 @@ ${section_end}`;
 						for (const [field, content] of validatedContent) {
 							const truncated =
 								content.length > 500 ? `${content.slice(0, 500)}...` : content;
-							validatedParts.push(`<${field}>${truncated}</${field}>`);
+							if (format === "TOON") {
+								validatedParts.push(
+									encodeToonValue({
+										[field]: truncated,
+									}),
+								);
+							} else {
+								validatedParts.push(`<${field}>${truncated}</${field}>`);
+							}
 						}
 						if (validatedParts.length > 0) {
 							smartRetryContextNext = `\n\n[RETRY CONTEXT]\nYou previously produced these valid fields:\n${validatedParts.join("\n")}\n\nPlease complete: ${diagnosis.missingFields.concat(diagnosis.invalidFields, diagnosis.incompleteFields).join(", ") || "all fields"}`;
@@ -4490,6 +4724,13 @@ ${section_end}`;
 			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
 		);
 		return `${JSON.stringify(exampleObject, null, 2)}\n`;
+	}
+
+	private renderToonSchemaExample(rows: SchemaRow[]): string {
+		const exampleObject = Object.fromEntries(
+			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
+		);
+		return `${encodeToonValue(exampleObject)}\n`;
 	}
 
 	private buildJsonExampleValue(spec: SchemaValueSpec): unknown {
@@ -4668,20 +4909,23 @@ ${section_end}`;
 		includeFirstCheckpoint,
 		includeLastCheckpoint,
 	}: {
-		format: "XML" | "JSON";
+		format: "XML" | "JSON" | "TOON";
 		schema: SchemaRow[];
 		perFieldCodes: Map<string, string>;
 		includeFirstCheckpoint: boolean;
 		includeLastCheckpoint: boolean;
 	}): string {
 		const isXML = format === "XML";
+		const isJsonLike = format === "JSON" || format === "TOON";
 		const lines: string[] = [];
 
 		if (includeFirstCheckpoint) {
 			lines.push(
 				isXML
-					? "Also include <one_initial_code>, <one_middle_code>, and <one_end_code> tags that echo the matching prompt UUIDs."
-					: 'Also include "one_initial_code", "one_middle_code", and "one_end_code" fields that echo the matching prompt UUIDs.',
+					? "Echo the prompt checkpoint tags: <one_initial_code>, <one_middle_code>, <one_end_code>."
+					: isJsonLike
+						? 'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".'
+						: "",
 			);
 		}
 
@@ -4693,16 +4937,20 @@ ${section_end}`;
 
 			lines.push(
 				isXML
-					? `For <${row.field}>, also include <code_${row.field}_start>${fieldCode}</code_${row.field}_start> before it and <code_${row.field}_end>${fieldCode}</code_${row.field}_end> after it.`
-					: `For "${row.field}", also include sibling fields "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`,
+					? `Wrap <${row.field}> with <code_${row.field}_start>${fieldCode}</code_${row.field}_start> and <code_${row.field}_end>${fieldCode}</code_${row.field}_end>.`
+					: isJsonLike
+						? `For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`
+						: "",
 			);
 		}
 
 		if (includeLastCheckpoint) {
 			lines.push(
 				isXML
-					? "Also include <two_initial_code>, <two_middle_code>, and <two_end_code> tags that echo the matching prompt UUIDs."
-					: 'Also include "two_initial_code", "two_middle_code", and "two_end_code" fields that echo the matching prompt UUIDs.',
+					? "Echo the final checkpoint tags: <two_initial_code>, <two_middle_code>, <two_end_code>."
+					: isJsonLike
+						? 'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".'
+						: "",
 			);
 		}
 
@@ -4864,6 +5112,199 @@ ${section_end}`;
 	}
 
 	/**
+	 * Template rendering helpers for prompt caching and deterministic compilation.
+	 */
+	private getCompiledRuntimeTemplate(
+		template: string,
+		alreadyUpgraded = false,
+	): Handlebars.TemplateDelegate<Record<string, unknown>> {
+		const source = alreadyUpgraded
+			? template
+			: this.upgradeDoubleToTriple(template);
+		const cached = RUNTIME_TEMPLATE_CACHE.get(source);
+		if (cached) {
+			return cached;
+		}
+
+		const compiled = Handlebars.compile(source);
+		RUNTIME_TEMPLATE_CACHE.set(source, compiled);
+		if (RUNTIME_TEMPLATE_CACHE.size > RUNTIME_TEMPLATE_CACHE_LIMIT) {
+			const oldestKey = RUNTIME_TEMPLATE_CACHE.keys().next().value;
+			if (typeof oldestKey === "string") {
+				RUNTIME_TEMPLATE_CACHE.delete(oldestKey);
+			}
+		}
+
+		return compiled;
+	}
+
+	private cleanDynamicPromptTemplateOutput(rawOutput: string): string {
+		return rawOutput
+			.replace(/<output>[\s\S]*?<\/output>\s*/g, "")
+			.replace(/\noutput:\n[\s\S]*$/i, "")
+			.replace(/\r\n/g, "\n")
+			.replace(/[ \t]+\n/g, "\n")
+			.replace(/\n{3,}/g, "\n\n")
+			.trim();
+	}
+
+	private extractTemplatePlaceholderKeys(templateChunk: string): string[] {
+		const keys = new Set<string>();
+		const PLACEHOLDER_PATTERN = /\{\{\{?\s*([a-zA-Z0-9_.]+)\s*\}?\}\}/g;
+		let match = PLACEHOLDER_PATTERN.exec(templateChunk);
+		while (match) {
+			if (match[1]) {
+				keys.add(match[1]);
+			}
+			match = PLACEHOLDER_PATTERN.exec(templateChunk);
+		}
+		return [...keys];
+	}
+
+	private isTemplateChunkStable(templateChunk: string): boolean {
+		const placeholderKeys = this.extractTemplatePlaceholderKeys(templateChunk);
+		return placeholderKeys.every(
+			(key) => key !== "providers" && STABLE_PROMPT_TEMPLATE_KEYS.has(key),
+		);
+	}
+
+	private getPromptProviderSegments(state: State): PromptSegment[] {
+		const providerResults = state.data.providers as
+			| Record<string, { text?: string; providerName?: string }>
+			| undefined;
+		if (!providerResults) {
+			return [];
+		}
+
+		const providerOrder = Array.isArray(state.data.providerOrder)
+			? (state.data.providerOrder as string[])
+			: Object.keys(providerResults).sort((left, right) =>
+					left.localeCompare(right),
+				);
+
+		const segments: PromptSegment[] = [];
+		for (const providerName of providerOrder) {
+			const result = providerResults[providerName];
+			if (!result?.text || result.text.trim() === "") {
+				continue;
+			}
+
+			if (segments.length > 0) {
+				segments.push({ content: "\n", stable: false });
+			}
+
+			segments.push({
+				content: result.text,
+				stable: STABLE_PROMPT_PROVIDER_NAMES.has(providerName),
+			});
+		}
+
+		return this.mergePromptSegments(segments);
+	}
+
+	private renderPromptTemplateSegments(
+		templateStr: string,
+		context: Record<string, unknown>,
+		state: State,
+	): PromptSegment[] {
+		const upgradedTemplate = this.upgradeDoubleToTriple(templateStr);
+		const templateWithMarkers = upgradedTemplate.replace(
+			/\{\{\{?\s*providers\s*\}?\}\}/g,
+			PROVIDERS_PROMPT_MARKER,
+		);
+		const templateFunction = this.getCompiledRuntimeTemplate(
+			templateWithMarkers,
+			true,
+		);
+		const renderedWithMarkers = this.cleanDynamicPromptTemplateOutput(
+			templateFunction(context),
+		);
+
+		if (
+			!templateWithMarkers.includes(PROVIDERS_PROMPT_MARKER) ||
+			!renderedWithMarkers.includes(PROVIDERS_PROMPT_MARKER)
+		) {
+			return [
+				{
+					content: renderedWithMarkers,
+					stable: this.isTemplateChunkStable(upgradedTemplate),
+				},
+			];
+		}
+
+		const providerSegments = this.getPromptProviderSegments(state);
+		if (providerSegments.length === 0) {
+			return [
+				{
+					content: renderedWithMarkers.replaceAll(
+						PROVIDERS_PROMPT_MARKER,
+						String(context.providers ?? ""),
+					),
+					stable: false,
+				},
+			];
+		}
+
+		const templateChunks = templateWithMarkers.split(PROVIDERS_PROMPT_MARKER);
+		const renderedChunks = renderedWithMarkers.split(PROVIDERS_PROMPT_MARKER);
+		const segments: PromptSegment[] = [];
+
+		for (let i = 0; i < renderedChunks.length; i += 1) {
+			const renderedChunk = renderedChunks[i] ?? "";
+			if (renderedChunk.length > 0) {
+				segments.push({
+					content: renderedChunk,
+					stable: this.isTemplateChunkStable(templateChunks[i] ?? ""),
+				});
+			}
+
+			if (i < renderedChunks.length - 1) {
+				segments.push(...providerSegments.map((segment) => ({ ...segment })));
+			}
+		}
+
+		return this.mergePromptSegments(segments);
+	}
+
+	private joinPromptSegmentGroups(groups: PromptSegment[][]): PromptSegment[] {
+		const result: PromptSegment[] = [];
+
+		for (const group of groups) {
+			const normalized = this.mergePromptSegments(group);
+			if (normalized.length === 0) {
+				continue;
+			}
+
+			if (result.length > 0) {
+				result.push({ content: "\n\n", stable: false });
+			}
+
+			result.push(...normalized.map((segment) => ({ ...segment })));
+		}
+
+		return result;
+	}
+
+	private mergePromptSegments(segments: PromptSegment[]): PromptSegment[] {
+		const merged: PromptSegment[] = [];
+
+		for (const segment of segments) {
+			if (!segment.content || segment.content.length === 0) {
+				continue;
+			}
+
+			const previous = merged[merged.length - 1];
+			if (previous && previous.stable === segment.stable) {
+				previous.content += segment.content;
+			} else {
+				merged.push({ ...segment });
+			}
+		}
+
+		return merged;
+	}
+
+	/**
 	 * Convert double-brace Handlebars bindings to triple-brace (non-escaping).
 	 *
 	 * Handlebars uses:
@@ -5011,7 +5452,7 @@ ${section_end}`;
 		// Pass null to get a test vector for dimension detection
 		// Model handlers should return a zero-filled vector of the correct dimension when null is passed
 		const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
-		if (!embedding || !embedding.length) {
+		if (!embedding?.length) {
 			throw new Error("Invalid embedding received");
 		}
 
@@ -5182,7 +5623,7 @@ ${section_end}`;
 	}
 	async getEntityById(entityId: UUID): Promise<Entity | null> {
 		const entities = await this.adapter.getEntitiesByIds([entityId]);
-		if (!entities || !entities.length) return null;
+		if (!entities?.length) return null;
 		return entities[0];
 	}
 
@@ -5560,7 +6001,7 @@ ${section_end}`;
 
 	async getRoom(roomId: UUID): Promise<Room | null> {
 		const rooms = await this.adapter.getRoomsByIds([roomId]);
-		if (!rooms || !rooms.length) return null;
+		if (!rooms?.length) return null;
 		return rooms[0];
 	}
 

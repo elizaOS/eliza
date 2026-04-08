@@ -22,9 +22,9 @@
  *   bun run ensure-plugin-test-conventions --check     # exit 1 if any would change (CI)
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync } from "node:fs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -34,6 +34,7 @@ const RUST_SKIP_MSG = "Rust tests skipped";
 const PYTHON_SKIP_MSG = "Python tests skipped";
 
 function findPackageJsonFiles(dir, list = []) {
+  if (!existsSync(dir)) return list;
   const entries = readdirSync(dir, { withFileTypes: true });
   for (const e of entries) {
     const p = join(dir, e.name);

@@ -55,19 +55,17 @@ Extract the follow-up scheduling information from the message:
 {{currentDateTime}}
 
 Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
+Go directly to the TOON response format without any preamble or explanation.
 
 ## Response Format
-<response>
-<contactName>Name of the contact to follow up with</contactName>
-<entityId>ID if known, otherwise leave empty</entityId>
-<scheduledAt>ISO datetime for the follow-up</scheduledAt>
-<reason>Reason for the follow-up</reason>
-<priority>high, medium, or low</priority>
-<message>Optional message or notes for the follow-up</message>
-</response>
+contactName: Name of the contact to follow up with
+entityId: ID if known, otherwise leave empty
+scheduledAt: ISO datetime for the follow-up
+reason: Reason for the follow-up
+priority: high, medium, or low
+message: Optional message or notes for the follow-up
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
 
 export const scheduleFollowUpAction: Action = {
 	name: "SCHEDULE_FOLLOW_UP",

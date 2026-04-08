@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChannelType, EventType, ModelType } from "../index";
+import { ChannelType, ContentType, EventType, ModelType } from "../index";
 import { DefaultMessageService } from "../services/message";
 import type { Content, HandlerCallback, Memory, UUID } from "../types";
 import type { IMessageService } from "../types/message-service";
@@ -58,7 +58,12 @@ describe("DefaultMessageService", () => {
 				modelType: (typeof ModelType)[keyof typeof ModelType],
 				params: unknown,
 			) => {
-				if (modelType === ModelType.TEXT_SMALL) {
+				if (
+					modelType === ModelType.TEXT_SMALL ||
+					modelType === ModelType.TEXT_MINI ||
+					modelType === ModelType.TEXT_NANO ||
+					modelType === ModelType.RESPONSE_HANDLER
+				) {
 					// Response for shouldRespond check (no streaming)
 					return "<response><action>REPLY</action><reason>User asked a question</reason></response>";
 				}
@@ -375,6 +380,76 @@ describe("DefaultMessageService", () => {
 		});
 	});
 
+	it("describes inline chat images without fetching placeholder URLs and strips raw bytes on update", async () => {
+		const updateMemorySpy = vi
+			.spyOn(runtime, "updateMemory")
+			.mockResolvedValue(true);
+		const useModelSpy = vi
+			.spyOn(runtime, "useModel")
+			.mockImplementation(
+				async (
+					modelType: (typeof ModelType)[keyof typeof ModelType],
+					params: unknown,
+				) => {
+					if (modelType === ModelType.IMAGE_DESCRIPTION) {
+						const imageParams = params as { imageUrl?: string };
+						expect(imageParams.imageUrl).toBe("data:image/png;base64,abc123");
+						return {
+							title: "Screenshot",
+							description: "A test attachment",
+						};
+					}
+					if (modelType === ModelType.TEXT_SMALL) {
+						return "<response><action>REPLY</action><reason>User asked a question</reason></response>";
+					}
+					return "<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>";
+				},
+			);
+
+		const message: Memory = {
+			id: "123e4567-e89b-12d3-a456-426614174050" as UUID,
+			content: {
+				text: "what's in this image?",
+				channelType: ChannelType.DM,
+				attachments: [
+					{
+						id: "img-0",
+						url: "attachment:img-0",
+						title: "photo.png",
+						source: "client_chat",
+						contentType: ContentType.IMAGE,
+						_data: "abc123",
+						_mimeType: "image/png",
+					},
+				],
+			} as unknown as Content,
+			entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+			roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+			agentId: runtime.agentId,
+			createdAt: Date.now(),
+		};
+
+		await messageService.handleMessage(runtime, message, mockCallback);
+
+		expect(useModelSpy).toHaveBeenCalledWith(
+			ModelType.IMAGE_DESCRIPTION,
+			expect.objectContaining({
+				imageUrl: "data:image/png;base64,abc123",
+			}),
+		);
+
+		const storedUpdate = updateMemorySpy.mock.calls.find(
+			([memory]) => memory.id === message.id,
+		)?.[0];
+		const storedAttachment = (
+			storedUpdate?.content?.attachments as Array<Record<string, unknown>>
+		)?.[0];
+		expect(storedAttachment).toBeDefined();
+		expect(storedAttachment).not.toHaveProperty("_data");
+		expect(storedAttachment).not.toHaveProperty("_mimeType");
+		expect(storedAttachment?.description).toBe("A test attachment");
+	});
+
 	describe("handleMessage", () => {
 		it("should process a simple message and generate response", async () => {
 			const message: Memory = {
@@ -501,10 +576,312 @@ describe("DefaultMessageService", () => {
 				"messages",
 			);
 		});
+
+		it("should continue after an action and emit a follow-up reply", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Run git status first",
+					actions: "SHELL",
+					text: "",
+					simple: false,
+				})
+				.mockResolvedValueOnce({
+					thought: "Share the result and stop",
+					actions: "REPLY",
+					providers: "",
+					text: "The repo is clean, so there is nothing else to do.",
+					simple: true,
+				});
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+			vi.spyOn(runtime, "getActionResults").mockReturnValue([
+				{
+					success: true,
+					text: "On branch main\nnothing to commit, working tree clean",
+					data: { actionName: "SHELL" },
+				},
+			]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174025" as UUID,
+				content: {
+					text: "Run git status",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).toHaveBeenCalledTimes(1);
+			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(2);
+			expect(mockCallback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					text: "The repo is clean, so there is nothing else to do.",
+				}),
+			);
+			expect(result.responseContent?.text).toBe(
+				"The repo is clean, so there is nothing else to do.",
+			);
+		});
+
+		it("should treat STOP as terminal control and skip processActions", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				thought: "The task is complete",
+				actions: "STOP",
+				text: "",
+				simple: false,
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174028" as UUID,
+				content: {
+					text: "Check the repo and stop when done",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).not.toHaveBeenCalled();
+			expect(result.didRespond).toBe(false);
+			expect(result.mode).toBe("none");
+			expect(result.responseContent?.actions).toEqual(["STOP"]);
+		});
+
+		it("should allow continuation to issue another multi-action response", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Run git status first",
+					actions: "SHELL",
+					text: "",
+					simple: false,
+				})
+				.mockResolvedValueOnce({
+					thought: "Tell the user what happened, then inspect the diff",
+					actions: "REPLY,SHELL",
+					providers: "",
+					text: "The tree is clean so far. I am checking the diff next.",
+					simple: false,
+				})
+				.mockResolvedValueOnce({
+					thought: "Done after the second tool run",
+					actions: "REPLY",
+					providers: "",
+					text: "There is no diff either, so the task is complete.",
+					simple: true,
+				});
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+			vi.spyOn(runtime, "getActionResults")
+				.mockReturnValueOnce([
+					{
+						success: true,
+						text: "On branch main\nnothing to commit, working tree clean",
+						data: { actionName: "SHELL" },
+					},
+				])
+				.mockReturnValueOnce([
+					{
+						success: true,
+						text: "diff --git a/foo b/foo",
+						data: { actionName: "SHELL" },
+					},
+				]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174027" as UUID,
+				content: {
+					text: "Inspect the repo state",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).toHaveBeenCalledTimes(2);
+			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(3);
+			expect(result.responseContent?.text).toBe(
+				"There is no diff either, so the task is complete.",
+			);
+		});
+
+		it("should honor STOP from shouldRespond without generating a reply", async () => {
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				name: "TestAgent",
+				reasoning: "The user asked the agent to stop",
+				action: "STOP",
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174029" as UUID,
+				content: {
+					text: "please stop",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).not.toHaveBeenCalled();
+			expect(result.didRespond).toBe(false);
+			expect(result.responseContent).toBeNull();
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({
+						actions: ["STOP"],
+					}),
+				}),
+				"messages",
+			);
+		});
+
+		it("uses RESPONSE_HANDLER as the default shouldRespond model route", async () => {
+			const dynamicPromptSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					name: "TestAgent",
+					reasoning: "Directly addressed",
+					action: "RESPOND",
+					primaryContext: "general",
+				})
+				.mockResolvedValueOnce({
+					thought: "Reply directly",
+					actions: "REPLY",
+					text: "hello there",
+					simple: true,
+				});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174030" as UUID,
+				content: {
+					text: "hey test agent",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback, {
+				useMultiStep: false,
+			});
+
+			expect(dynamicPromptSpy).toHaveBeenCalledTimes(2);
+			expect(dynamicPromptSpy.mock.calls[0]?.[0]?.options?.modelType).toBe(
+				ModelType.RESPONSE_HANDLER,
+			);
+		});
+
+		it("should allow post-action continuation to be disabled explicitly", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+				if (key === "CONTINUE_AFTER_ACTIONS") return "false";
+				const settings: Record<string, string> = {
+					ALWAYS_RESPOND_CHANNELS: "",
+					ALWAYS_RESPOND_SOURCES: "",
+					SHOULD_RESPOND_BYPASS_TYPES: "",
+					SHOULD_RESPOND_BYPASS_SOURCES: "",
+				};
+				return settings[key] ?? null;
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				thought: "Run git status first",
+				actions: "SHELL",
+				text: "",
+				simple: false,
+			});
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+			vi.spyOn(runtime, "getActionResults").mockReturnValue([
+				{
+					success: true,
+					text: "On branch main\nnothing to commit, working tree clean",
+					data: { actionName: "SHELL" },
+				},
+			]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026" as UUID,
+				content: {
+					text: "Run git status",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback);
+
+			expect(runtime.processActions).toHaveBeenCalledTimes(1);
+			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(1);
+		});
 	});
 
 	describe("integration scenarios", () => {
 		it("should handle voice message flow", async () => {
+			vi.spyOn(runtime, "getRoom").mockResolvedValue({
+				id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				type: ChannelType.VOICE_DM,
+				name: "Voice DM",
+				worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
+			});
+
 			const voiceMessage: Memory = {
 				id: "123e4567-e89b-12d3-a456-426614174303" as UUID,
 				content: {

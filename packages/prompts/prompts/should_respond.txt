@@ -1,40 +1,35 @@
-<task>Decide on behalf of {{agentName}} whether they should respond to the message, ignore it or stop the conversation.</task>
+task: Decide whether {{agentName}} should respond, ignore, or stop.
 
-<providers>
+context:
 {{providers}}
-</providers>
 
-<instructions>Decide if {{agentName}} should respond to or interact with the conversation.
+rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name -> IGNORE
+- continuing an active thread with {{agentName}} -> RESPOND
+- request to stop or be quiet -> STOP
+- talking to someone else -> IGNORE
+- if unsure, prefer IGNORE over hallucinating relevance
 
-IMPORTANT RULES FOR RESPONDING:
-- If YOUR name ({{agentName}}) is directly mentioned → RESPOND
-- If someone uses a DIFFERENT name (not {{agentName}}) → IGNORE (they're talking to someone else)
-- If you're actively participating in a conversation and the message continues that thread → RESPOND
-- If someone tells you to stop or be quiet → STOP
-- Otherwise → IGNORE
+available_contexts:
+{{availableContexts}}
 
-The key distinction is:
-- "Talking TO {{agentName}}" (your name mentioned, replies to you, continuing your conversation) → RESPOND
-- "Talking ABOUT {{agentName}}" or to someone else → IGNORE
-</instructions>
+context_routing:
+- primaryContext: choose one context from available_contexts, or "general" if none apply
+- secondaryContexts: optional comma-separated list of additional relevant contexts
+- evidenceTurnIds: optional comma-separated list of message IDs supporting the decision
 
-<output>
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
+decision_note:
+- talking TO {{agentName}} means name mention, reply chain, or direct continuation
+- talking ABOUT {{agentName}} is not enough
 
-Respond using XML format like this:
-<response>
-  <name>{{agentName}}</name>
-  <reasoning>Your reasoning here</reasoning>
-  <action>RESPOND | IGNORE | STOP</action>
-</response>
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
-</output>
-
-
-
-
-
-
-
+Example:
+name: {{agentName}}
+reasoning: Direct mention and clear follow-up.
+action: RESPOND
+primaryContext: general
+secondaryContexts:
+evidenceTurnIds:

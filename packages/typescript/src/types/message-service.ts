@@ -1,6 +1,7 @@
-import type { HandlerCallback, StreamChunkCallback } from "./components";
+import type { AgentContext, HandlerCallback } from "./components";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";
+import { ModelType } from "./model";
 import type { Content, Media, MentionContext, UUID } from "./primitives";
 import type {
 	MessageProcessingMode as ProtoMessageProcessingMode,
@@ -29,7 +30,14 @@ export interface MessageProcessingOptions
 	useMultiStep?: boolean;
 	maxMultiStepIterations?: number;
 	shouldRespondModel?: ShouldRespondModelType;
-	onStreamChunk?: StreamChunkCallback;
+	onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+	/**
+	 * When true, run a follow-up reasoning pass after actions complete so the
+	 * agent can decide whether to share results, run another action, or stop.
+	 * Defaults to enabled unless runtime.getSetting("CONTINUE_AFTER_ACTIONS")
+	 * explicitly disables it.
+	 */
+	continueAfterActions?: boolean;
 	/** Signal to abort message processing */
 	abortSignal?: AbortSignal;
 	/**
@@ -61,10 +69,34 @@ export interface ResponseDecision {
 	reason: string;
 }
 
+/**
+ * Extended response decision that includes context routing.
+ * Used by the fine-tuned shouldRespond + context-routing classifier.
+ * Falls back to ResponseDecision when context routing is not available.
+ */
+export interface ContextRoutedResponseDecision extends ResponseDecision {
+	/** The single best-matching domain context for this turn */
+	primaryContext?: AgentContext;
+	/** Additional relevant contexts (may enable extra providers/actions) */
+	secondaryContexts?: AgentContext[];
+	/** Turn IDs that contributed to the intent (for multi-turn extraction) */
+	evidenceTurnIds?: string[];
+}
+
 export type ShouldRespondModelType =
 	| ProtoShouldRespondModelType
+	| "nano"
+	| "mini"
 	| "small"
-	| "large";
+	| "large"
+	| "mega"
+	| "response-handler"
+	| typeof ModelType.TEXT_NANO
+	| typeof ModelType.TEXT_MINI
+	| typeof ModelType.TEXT_SMALL
+	| typeof ModelType.TEXT_LARGE
+	| typeof ModelType.TEXT_MEGA
+	| typeof ModelType.RESPONSE_HANDLER;
 export type MessageProcessingMode =
 	| ProtoMessageProcessingMode
 	| "simple"

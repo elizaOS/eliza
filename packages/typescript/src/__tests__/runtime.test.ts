@@ -803,6 +803,46 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			expect(params.onStreamChunk).toBe(onStreamChunk);
 			expect(params.stream).toBe(true);
 		});
+
+		it("falls back from TEXT_MINI to TEXT_SMALL when no mini handler is registered", async () => {
+			const smallHandler = vi.fn().mockResolvedValue("small-response");
+			runtime.registerModel(
+				ModelType.TEXT_SMALL,
+				smallHandler as ModelHandlerFunction,
+				"test-provider",
+			);
+
+			const result = await runtime.useModel(ModelType.TEXT_MINI, {
+				prompt: "mini request",
+			});
+
+			expect(smallHandler).toHaveBeenCalledTimes(1);
+			expect(result).toBe("small-response");
+		});
+
+		it("prefers TEXT_MINI over TEXT_SMALL when RESPONSE_HANDLER falls back", async () => {
+			const miniHandler = vi.fn().mockResolvedValue("mini-response");
+			const smallHandler = vi.fn().mockResolvedValue("small-response");
+
+			runtime.registerModel(
+				ModelType.TEXT_MINI,
+				miniHandler as ModelHandlerFunction,
+				"mini-provider",
+			);
+			runtime.registerModel(
+				ModelType.TEXT_SMALL,
+				smallHandler as ModelHandlerFunction,
+				"small-provider",
+			);
+
+			const result = await runtime.useModel(ModelType.RESPONSE_HANDLER, {
+				prompt: "should respond?",
+			});
+
+			expect(miniHandler).toHaveBeenCalledTimes(1);
+			expect(smallHandler).not.toHaveBeenCalled();
+			expect(result).toBe("mini-response");
+		});
 	});
 
 	describe("Action Processing", () => {
@@ -1708,10 +1748,17 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 					"../streaming-context"
 				);
 				const { AsyncLocalStorage } = await import("node:async_hooks");
-				const storage = new AsyncLocalStorage<any>();
+				const storage = new AsyncLocalStorage<
+					import("../streaming-context").StreamingContext | undefined
+				>();
 				setStreamingContextManager({
-					run: (context: any, fn: any) => storage.run(context, fn),
-					active: () => storage.getStore()
+					run: <T>(
+						context:
+							| import("../streaming-context").StreamingContext
+							| undefined,
+						fn: () => T,
+					) => storage.run(context, fn),
+					active: () => storage.getStore(),
 				});
 
 				const { runWithStreamingContext } = await import(
@@ -1764,10 +1811,17 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 					"../streaming-context"
 				);
 				const { AsyncLocalStorage } = await import("node:async_hooks");
-				const storage = new AsyncLocalStorage<any>();
+				const storage = new AsyncLocalStorage<
+					import("../streaming-context").StreamingContext | undefined
+				>();
 				setStreamingContextManager({
-					run: (context: any, fn: any) => storage.run(context, fn),
-					active: () => storage.getStore()
+					run: <T>(
+						context:
+							| import("../streaming-context").StreamingContext
+							| undefined,
+						fn: () => T,
+					) => storage.run(context, fn),
+					active: () => storage.getStore(),
 				});
 
 				const { runWithStreamingContext } = await import(

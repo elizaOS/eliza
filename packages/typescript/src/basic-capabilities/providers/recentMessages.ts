@@ -308,10 +308,11 @@ export const recentMessagesProvider: Provider = {
 
 			// Add entities already fetched in entitiesData to the map
 			const entitiesDataIdSet = new Set<UUID>();
-			entitiesData.forEach((entity) => {
-				if (uniqueEntityIdSet.has(entity.id)) {
-					interactionEntityMap.set(entity.id, entity);
-					entitiesDataIdSet.add(entity.id);
+			entitiesData.forEach((entity: Entity) => {
+				const entityId = entity.id;
+				if (entityId && uniqueEntityIdSet.has(entityId)) {
+					interactionEntityMap.set(entityId, entity);
+					entitiesDataIdSet.add(entityId);
 				}
 			});
 
