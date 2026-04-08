@@ -1,6 +1,5 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import Handlebars from "handlebars";
-import { names, uniqueNamesGenerator } from "unique-names-generator";
 import { z } from "zod";
 
 import logger from "./logger";
@@ -13,7 +12,12 @@ import type {
 	TemplateType,
 } from "./types";
 import { ContentType, ModelType, type UUID } from "./types";
+import {
+	buildDeterministicSeed,
+	getDeterministicNames,
+} from "./utils/deterministic";
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
+import { normalizeStructuredRecord, tryParseToonValue } from "./utils/toon";
 
 // Token / embedding budget constants
 export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
@@ -35,6 +39,11 @@ export const DEFAULT_MAX_PROMPT_TOKENS = 128_000;
  * where eval() and new Function() are not allowed.
  */
 let _isRestrictedCSP: boolean | null = null;
+const COMPILED_TEMPLATE_CACHE = new Map<
+	string,
+	Handlebars.TemplateDelegate<Record<string, unknown>>
+>();
+const COMPILED_TEMPLATE_CACHE_LIMIT = 256;
 
 function isRestrictedCSPEnvironment(): boolean {
 	if (_isRestrictedCSP !== null) return _isRestrictedCSP;
@@ -139,6 +148,50 @@ function upgradeDoubleToTriple(tpl: string) {
 	);
 }
 
+function getCompiledTemplate(
+	template: string,
+): Handlebars.TemplateDelegate<Record<string, unknown>> {
+	const upgraded = upgradeDoubleToTriple(template);
+	const cached = COMPILED_TEMPLATE_CACHE.get(upgraded);
+	if (cached) {
+		return cached;
+	}
+
+	const compiled = Handlebars.compile(upgraded);
+	COMPILED_TEMPLATE_CACHE.set(upgraded, compiled);
+	if (COMPILED_TEMPLATE_CACHE.size > COMPILED_TEMPLATE_CACHE_LIMIT) {
+		const oldestKey = COMPILED_TEMPLATE_CACHE.keys().next().value;
+		if (typeof oldestKey === "string") {
+			COMPILED_TEMPLATE_CACHE.delete(oldestKey);
+		}
+	}
+
+	return compiled;
+}
+
+function resolvePromptSeed(
+	stateLike: Record<string, unknown>,
+	stateValues?: Record<string, unknown>,
+	stateData?: Record<string, unknown>,
+): string {
+	const normalizeSeedValue = (value: unknown): string | number | undefined => {
+		if (typeof value === "string" || typeof value === "number") {
+			return value;
+		}
+		return undefined;
+	};
+
+	return buildDeterministicSeed(
+		normalizeSeedValue(stateValues?.__conversationSeed),
+		normalizeSeedValue(stateData?.__conversationSeed),
+		normalizeSeedValue(stateLike.__conversationSeed),
+		normalizeSeedValue(stateValues?.agentName),
+		normalizeSeedValue(stateLike.agentName),
+		normalizeSeedValue(stateLike.roomId),
+		"prompt",
+	);
+}
+
 /**
  * Composes a context string by replacing placeholders in a template with corresponding values from the state.
  *
@@ -195,13 +248,11 @@ export const composePrompt = ({
 		const upgraded = upgradeDoubleToTriple(templateStr);
 		rendered = simpleTemplateReplace(upgraded, state);
 	} else {
-		const templateFunction = Handlebars.compile(
-			upgradeDoubleToTriple(templateStr),
-		);
+		const templateFunction = getCompiledTemplate(templateStr);
 		rendered = templateFunction(state);
 	}
 
-	const output = composeRandomUser(rendered, 10);
+	const output = composeRandomUser(rendered, 10, resolvePromptSeed(state));
 	return output;
 };
 
@@ -246,14 +297,16 @@ export const composePromptFromState = ({
 		const upgraded = upgradeDoubleToTriple(templateStr);
 		rendered = simpleTemplateReplace(upgraded, context);
 	} else {
-		const templateFunction = Handlebars.compile(
-			upgradeDoubleToTriple(templateStr),
-		);
+		const templateFunction = getCompiledTemplate(templateStr);
 		rendered = templateFunction(context);
 	}
 
 	// and then we flat state.values again
-	const output = composeRandomUser(rendered, 10);
+	const output = composeRandomUser(
+		rendered,
+		10,
+		resolvePromptSeed(filteredState, state.values, state.data),
+	);
 	return output;
 };
 
@@ -300,10 +353,12 @@ export const addHeader = (header: string, body: string) => {
  * // "Hello, John! Meet Alice and Bob."
  * const result = composeRandomUser(template, length);
  */
-const composeRandomUser = (template: string, length: number) => {
-	const exampleNames = Array.from({ length }, () =>
-		uniqueNamesGenerator({ dictionaries: [names] }),
-	);
+const composeRandomUser = (
+	template: string,
+	length: number,
+	seed = "prompt-users",
+) => {
+	const exampleNames = getDeterministicNames(length, seed);
 	let result = template;
 	for (let i = 0; i < exampleNames.length; i++) {
 		result = result.replaceAll(`{{name${i + 1}}}`, exampleNames[i]);
@@ -525,14 +580,15 @@ export const formatTimestamp = (messageDate: number) => {
 };
 
 /**
- * Parses key-value pairs from a simple XML structure within a given text.
- * It looks for an XML block (e.g., <response>...</response>) and extracts
- * text content from direct child elements (e.g., <key>value</key>).
+ * Parses structured LLM output from TOON first, then falls back to the legacy
+ * XML response format.
  *
- * Uses regex - suitable for simple XML. For complex XML, use a proper parser.
+ * TOON is the preferred format in elizaOS because it is materially more token
+ * efficient than XML while preserving JSON-compatible structure. XML fallback
+ * remains here for backwards compatibility with older prompts and models.
  *
  * @typeParam T - The expected shape of the parsed result. Defaults to Record<string, unknown>.
- * @param text - The input text containing the XML structure.
+ * @param text - The input text containing the TOON or XML structure.
  * @returns The parsed object cast to type T, or null if parsing fails.
  *
  * @example
@@ -544,6 +600,11 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	text: string,
 ): T | null {
 	if (!text) return null;
+
+	const parsedToon = normalizeStructuredRecord(tryParseToonValue(text));
+	if (parsedToon) {
+		return parsedToon as T;
+	}
 
 	// First, try to find a specific <response> block using linear search (avoids regex ReDoS)
 	let xmlContent: string | null = null;

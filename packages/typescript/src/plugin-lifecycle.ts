@@ -142,6 +142,21 @@ function pushUniqueString(items: string[], value: string): void {
 	}
 }
 
+function inheritPluginContexts<
+	T extends {
+		contexts?: Plugin["contexts"];
+	},
+>(component: T, pluginContexts: Plugin["contexts"] | undefined): T {
+	if (!pluginContexts?.length || (component.contexts?.length ?? 0) > 0) {
+		return component;
+	}
+
+	return {
+		...component,
+		contexts: [...pluginContexts],
+	};
+}
+
 function pushUniqueEvent(
 	items: RuntimeEventRegistration[],
 	next: RuntimeEventRegistration,
@@ -552,7 +567,9 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	runtimeWithLifecycle.registerAction = ((action: RuntimeAction) => {
 		const capture = pluginRegistrationContext.getStore();
 		const actionsBefore = runtimeWithLifecycle.actions.length;
-		originalRegisterAction(action);
+		originalRegisterAction(
+			inheritPluginContexts(action, capture?.ownership.plugin.contexts),
+		);
 		if (!capture || runtimeWithLifecycle.actions.length <= actionsBefore)
 			return;
 		for (const registeredAction of runtimeWithLifecycle.actions.slice(
@@ -565,7 +582,9 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	runtimeWithLifecycle.registerProvider = ((provider: RuntimeProvider) => {
 		const capture = pluginRegistrationContext.getStore();
 		const providersBefore = runtimeWithLifecycle.providers.length;
-		originalRegisterProvider(provider);
+		originalRegisterProvider(
+			inheritPluginContexts(provider, capture?.ownership.plugin.contexts),
+		);
 		if (!capture || runtimeWithLifecycle.providers.length <= providersBefore)
 			return;
 		for (const registeredProvider of runtimeWithLifecycle.providers.slice(

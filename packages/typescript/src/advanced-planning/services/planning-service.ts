@@ -72,6 +72,52 @@ interface PlanExecutionResult {
 type WorkingMemory = Record<string, JsonValue>;
 type RuntimeAction = IAgentRuntime["actions"][number];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeActionParameters(value: unknown): ActionParameters {
+	if (isRecord(value)) {
+		return value as ActionParameters;
+	}
+
+	if (typeof value === "string" && value.trim().length > 0) {
+		try {
+			const parsed = JSON.parse(value) as unknown;
+			if (isRecord(parsed)) {
+				return parsed as ActionParameters;
+			}
+		} catch {
+			// ignore
+		}
+	}
+
+	return {};
+}
+
+function normalizeDependencyStrings(value: unknown): string[] {
+	if (Array.isArray(value)) {
+		return value
+			.map((entry) => String(entry).trim())
+			.filter((entry) => entry.length > 0);
+	}
+
+	if (typeof value === "string" && value.trim().length > 0) {
+		try {
+			const parsed = JSON.parse(value) as unknown;
+			if (Array.isArray(parsed)) {
+				return parsed
+					.map((entry) => String(entry).trim())
+					.filter((entry) => entry.length > 0);
+			}
+		} catch {
+			return [value.trim()];
+		}
+	}
+
+	return [];
+}
+
 class PlanWorkingMemory {
 	private memory = new Map<string, JsonValue>();
 
@@ -492,21 +538,17 @@ MAX STEPS: ${context.preferences?.maxSteps || 10}
 ${message ? `CONTEXT MESSAGE: ${message.content.text}` : ""}
 ${state ? `CURRENT STATE: ${JSON.stringify(state.values)}` : ""}
 
-Create a detailed plan with the following structure:
-<plan>
-<goal>${context.goal}</goal>
-<execution_model>${context.preferences?.executionModel || "sequential"}</execution_model>
-<steps>
-<step>
-<id>step_1</id>
-<action>ACTION_NAME</action>
-<parameters>{"key": "value"}</parameters>
-<dependencies>[]</dependencies>
-<description>What this step accomplishes</description>
-</step>
-</steps>
-<estimated_duration>Total estimated time in milliseconds</estimated_duration>
-</plan>
+Create a detailed plan with the following TOON structure:
+goal: ${context.goal}
+execution_model: ${context.preferences?.executionModel || "sequential"}
+steps[0]:
+  id: step_1
+  action: ACTION_NAME
+  parameters:
+    key: value
+  dependencies[0]: step_0
+  description: What this step accomplishes
+estimated_duration: Total estimated time in milliseconds
 
 Focus on:
 1. Breaking down the goal into logical, executable steps
@@ -521,86 +563,93 @@ Focus on:
 		context: PlanningContext,
 	): ActionPlan {
 		try {
-			const parsedXml = parseKeyValueXml(response);
+			const parsedResponse =
+				parseKeyValueXml<Record<string, unknown>>(response);
 
 			const planId = asUUID(uuidv4());
 			const steps: ActionStep[] = [];
 
 			const goal =
-				(typeof parsedXml?.goal === "string" ? parsedXml.goal : null) ||
-				context.goal;
+				(typeof parsedResponse?.goal === "string"
+					? parsedResponse.goal
+					: null) || context.goal;
 			const executionModel =
-				(typeof parsedXml?.execution_model === "string"
-					? parsedXml.execution_model
+				(typeof parsedResponse?.execution_model === "string"
+					? parsedResponse.execution_model
 					: null) ||
 				context.preferences?.executionModel ||
 				"sequential";
 
-			const estimatedDurationRaw =
-				typeof parsedXml?.estimated_duration === "string"
-					? parsedXml.estimated_duration
-					: "30000";
+			const estimatedDurationRaw = parsedResponse?.estimated_duration;
 			const estimatedDuration =
-				Number.parseInt(estimatedDurationRaw, 10) || 30000;
+				typeof estimatedDurationRaw === "number"
+					? estimatedDurationRaw
+					: Number.parseInt(String(estimatedDurationRaw ?? "30000"), 10) ||
+						30000;
 
-			const stepMatches = response.match(/<step>(.*?)<\/step>/gs) || [];
 			const stepIdMap = new Map<string, UUID>();
+			const toonSteps = Array.isArray(parsedResponse?.steps)
+				? parsedResponse.steps.filter(isRecord)
+				: [];
 
-			for (const stepMatch of stepMatches) {
-				const idMatch = stepMatch.match(/<id>(.*?)<\/id>/);
-				const actionMatch = stepMatch.match(/<action>(.*?)<\/action>/);
-				const parametersMatch = stepMatch.match(
-					/<parameters>(.*?)<\/parameters>/,
-				);
-				const dependenciesMatch = stepMatch.match(
-					/<dependencies>(.*?)<\/dependencies>/,
-				);
-
-				if (!actionMatch || !idMatch) {
-					continue;
-				}
-
-				const originalId = idMatch[1].trim();
-				const actualId = asUUID(uuidv4());
-				stepIdMap.set(originalId, actualId);
-
-				let dependencyStrings: string[] = [];
-				if (dependenciesMatch?.[1]) {
-					try {
-						const depArray = JSON.parse(dependenciesMatch[1]) as string[];
-						if (Array.isArray(depArray)) {
-							dependencyStrings = depArray
-								.map((dep) => String(dep).trim())
-								.filter((dep) => dep.length > 0);
-						}
-					} catch {
-						dependencyStrings = [];
+			if (toonSteps.length > 0) {
+				for (const step of toonSteps) {
+					const actionName =
+						typeof step.action === "string"
+							? step.action.trim()
+							: typeof step.actionName === "string"
+								? step.actionName.trim()
+								: "";
+					if (!actionName) {
+						continue;
 					}
-				}
 
-				let parameters: ActionParameters = {};
-				if (parametersMatch?.[1]) {
-					try {
-						const parsed = JSON.parse(parametersMatch[1]) as ActionParameters;
-						if (
-							parsed &&
-							typeof parsed === "object" &&
-							!Array.isArray(parsed)
-						) {
-							parameters = parsed as ActionParameters;
-						}
-					} catch {
-						parameters = {};
+					const originalId =
+						typeof step.id === "string" && step.id.trim().length > 0
+							? step.id.trim()
+							: `step_${steps.length + 1}`;
+					const actualId = asUUID(uuidv4());
+					stepIdMap.set(originalId, actualId);
+
+					steps.push({
+						id: actualId,
+						actionName,
+						parameters: normalizeActionParameters(step.parameters),
+						dependencies: [],
+						_dependencyStrings: normalizeDependencyStrings(step.dependencies),
+					});
+				}
+			} else {
+				const stepMatches = response.match(/<step>(.*?)<\/step>/gs) || [];
+
+				for (const stepMatch of stepMatches) {
+					const idMatch = stepMatch.match(/<id>(.*?)<\/id>/);
+					const actionMatch = stepMatch.match(/<action>(.*?)<\/action>/);
+					const parametersMatch = stepMatch.match(
+						/<parameters>(.*?)<\/parameters>/,
+					);
+					const dependenciesMatch = stepMatch.match(
+						/<dependencies>(.*?)<\/dependencies>/,
+					);
+
+					if (!actionMatch || !idMatch) {
+						continue;
 					}
-				}
 
-				steps.push({
-					id: actualId,
-					actionName: actionMatch[1].trim(),
-					parameters,
-					dependencies: [],
-					_dependencyStrings: dependencyStrings,
-				});
+					const originalId = idMatch[1].trim();
+					const actualId = asUUID(uuidv4());
+					stepIdMap.set(originalId, actualId);
+
+					steps.push({
+						id: actualId,
+						actionName: actionMatch[1].trim(),
+						parameters: normalizeActionParameters(parametersMatch?.[1]),
+						dependencies: [],
+						_dependencyStrings: normalizeDependencyStrings(
+							dependenciesMatch?.[1],
+						),
+					});
+				}
 			}
 
 			for (const step of steps) {
@@ -1113,7 +1162,7 @@ Analyze the situation and provide an adapted plan that:
 3. Uses available actions effectively
 4. Considers what has already been completed
 
-Return the adapted plan in the same XML format as the original planning response.`;
+Return the adapted plan in the same TOON format as the original planning response.`;
 	}
 
 	private parseAdaptationResponse(
@@ -1123,39 +1172,48 @@ Return the adapted plan in the same XML format as the original planning response
 	): ActionPlan {
 		try {
 			const adaptedSteps: ActionStep[] = [];
-			const stepMatches = response.match(/<step>(.*?)<\/step>/gs) || [];
+			const parsedResponse =
+				parseKeyValueXml<Record<string, unknown>>(response);
+			const toonSteps = Array.isArray(parsedResponse?.steps)
+				? parsedResponse.steps.filter(isRecord)
+				: [];
 
-			for (const stepMatch of stepMatches) {
-				const idMatch = stepMatch.match(/<id>(.*?)<\/id>/);
-				const actionMatch = stepMatch.match(/<action>(.*?)<\/action>/);
-				const parametersMatch = stepMatch.match(
-					/<parameters>(.*?)<\/parameters>/,
-				);
+			if (toonSteps.length > 0) {
+				for (const step of toonSteps) {
+					const actionName =
+						typeof step.action === "string"
+							? step.action.trim()
+							: typeof step.actionName === "string"
+								? step.actionName.trim()
+								: "";
+					if (!actionName) continue;
 
-				if (!actionMatch || !idMatch) continue;
-
-				let parameters: ActionParameters = {};
-				if (parametersMatch?.[1]) {
-					try {
-						const parsed = JSON.parse(parametersMatch[1]) as ActionParameters;
-						if (
-							parsed &&
-							typeof parsed === "object" &&
-							!Array.isArray(parsed)
-						) {
-							parameters = parsed as ActionParameters;
-						}
-					} catch {
-						parameters = {};
-					}
+					adaptedSteps.push({
+						id: asUUID(uuidv4()),
+						actionName,
+						parameters: normalizeActionParameters(step.parameters),
+						dependencies: [],
+					});
 				}
+			} else {
+				const stepMatches = response.match(/<step>(.*?)<\/step>/gs) || [];
 
-				adaptedSteps.push({
-					id: asUUID(uuidv4()),
-					actionName: actionMatch[1].trim(),
-					parameters,
-					dependencies: [],
-				});
+				for (const stepMatch of stepMatches) {
+					const idMatch = stepMatch.match(/<id>(.*?)<\/id>/);
+					const actionMatch = stepMatch.match(/<action>(.*?)<\/action>/);
+					const parametersMatch = stepMatch.match(
+						/<parameters>(.*?)<\/parameters>/,
+					);
+
+					if (!actionMatch || !idMatch) continue;
+
+					adaptedSteps.push({
+						id: asUUID(uuidv4()),
+						actionName: actionMatch[1].trim(),
+						parameters: normalizeActionParameters(parametersMatch?.[1]),
+						dependencies: [],
+					});
+				}
 			}
 
 			if (adaptedSteps.length === 0) {

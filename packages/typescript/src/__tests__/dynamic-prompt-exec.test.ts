@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { messageHandlerTemplate } from "../prompts";
 import { AgentRuntime } from "../runtime";
 import type { Character, IDatabaseAdapter, State, UUID } from "../types";
 import { ModelType } from "../types";
@@ -309,6 +310,25 @@ describe("dynamicPromptExecFromState", () => {
 			expect(result?.my_field).toBe("value");
 		});
 
+		it("uses explicit modelType when provided", async () => {
+			const miniHandler = vi.fn(async () => "<response><text>mini</text></response>");
+			runtime.registerModel(ModelType.TEXT_MINI, miniHandler, "mock");
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [{ field: "text", description: "Response text" }],
+				options: {
+					modelType: ModelType.TEXT_MINI,
+					contextCheckLevel: 0,
+				},
+			});
+
+			expect(miniHandler).toHaveBeenCalledTimes(1);
+			expect(result?.text).toBe("mini");
+		});
+
 		it("should warn on contradictory schema declarations", async () => {
 			const warnSpy = vi
 				.spyOn(runtime.logger, "warn")
@@ -399,6 +419,75 @@ describe("dynamicPromptExecFromState", () => {
 				(s) => s.stable === true,
 			);
 			expect(hasStable).toBe(true);
+		});
+
+		it("should preserve provider stability inside segmented prompts", async () => {
+			let capturedParams: {
+				promptSegments?: Array<{ content: string; stable: boolean }>;
+			} = {};
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async (_, params) => {
+					capturedParams = {
+						promptSegments: params.promptSegments as Array<{
+							content: string;
+							stable: boolean;
+						}>,
+					};
+					return "<response><thought>ok</thought><text>Hi</text></response>";
+				},
+				"mock",
+			);
+
+			await runtime.dynamicPromptExecFromState({
+				state: {
+					values: {
+						agentName: "Tester",
+						providers:
+							"# Available Actions\nACTIONS\n# Conversation Messages\nhi",
+					},
+					data: {
+						providerOrder: ["ACTIONS", "RECENT_MESSAGES"],
+						providers: {
+							ACTIONS: {
+								providerName: "ACTIONS",
+								text: "# Available Actions\nACTIONS",
+							},
+							RECENT_MESSAGES: {
+								providerName: "RECENT_MESSAGES",
+								text: "# Conversation Messages\nhi",
+							},
+						},
+					},
+					text: "",
+				} as State,
+				params: { prompt: messageHandlerTemplate },
+				schema: [
+					{ field: "thought", description: "Reasoning" },
+					{ field: "text", description: "Response" },
+				],
+				options: {
+					contextCheckLevel: 0,
+				},
+			});
+
+			expect(capturedParams.promptSegments).toBeDefined();
+			const stableSegments = (capturedParams.promptSegments ?? []).filter(
+				(segment) => segment.stable,
+			);
+			const unstableSegments = (capturedParams.promptSegments ?? []).filter(
+				(segment) => !segment.stable,
+			);
+			expect(
+				stableSegments.some((segment) =>
+					segment.content.includes("# Available Actions"),
+				),
+			).toBe(true);
+			expect(
+				unstableSegments.some((segment) =>
+					segment.content.includes("# Conversation Messages"),
+				),
+			).toBe(true);
 		});
 	});
 

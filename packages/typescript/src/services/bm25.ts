@@ -241,7 +241,7 @@ export class BM25Index {
 	 * the Tokenizer's stemming and normalization for supported scripts.
 	 */
 	private tokenize(text: string): string[] {
-		if (!text || !text.trim()) return [];
+		if (!text?.trim()) return [];
 
 		// Primary: shared Tokenizer (handles English + CJK + Hangul, with stemming)
 		let primaryTokens: string[] = [];

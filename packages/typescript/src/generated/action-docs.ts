@@ -2667,7 +2667,7 @@ export const coreEvaluatorsSpec = {
 						},
 					],
 					outcome:
-						"<response>\n  <thought>I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome.</thought>\n  <facts>\n    <fact>\n      <claim>John is new to the community</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n    <fact>\n      <claim>John found the community through a friend interested in AI</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n  </facts>\n  <relationships>\n    <relationship>\n      <sourceEntityId>sarah-agent</sourceEntityId>\n      <targetEntityId>user-123</targetEntityId>\n      <tags>group_interaction</tags>\n    </relationship>\n  </relationships>\n</response>",
+						'thought: "I\'m engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome."\nfacts[0]:\n  claim: John is new to the community\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: John found the community through a friend interested in AI\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: sarah-agent\n  targetEntityId: user-123\n  tags[0]: group_interaction',
 				},
 				{
 					prompt:
@@ -2699,7 +2699,7 @@ export const coreEvaluatorsSpec = {
 						},
 					],
 					outcome:
-						"<response>\n  <thought>I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions.</thought>\n  <facts>\n    <fact>\n      <claim>Emma is having technical issues with file uploads</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n    <fact>\n      <claim>Emma stopped responding after the first troubleshooting suggestion</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n  </facts>\n  <relationships>\n    <relationship>\n      <sourceEntityId>alex-agent</sourceEntityId>\n      <targetEntityId>user-456</targetEntityId>\n      <tags>group_interaction,support_interaction,incomplete_interaction</tags>\n    </relationship>\n  </relationships>\n</response>",
+						"thought: \"I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions.\"\nfacts[0]:\n  claim: Emma is having technical issues with file uploads\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Emma stopped responding after the first troubleshooting suggestion\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: alex-agent\n  targetEntityId: user-456\n  tags[0]: group_interaction\n  tags[1]: support_interaction\n  tags[2]: incomplete_interaction",
 				},
 				{
 					prompt:
@@ -2737,7 +2737,7 @@ export const coreEvaluatorsSpec = {
 						},
 					],
 					outcome:
-						"<response>\n  <thought>I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.</thought>\n  <facts>\n    <fact>\n      <claim>The discussion is about chapter 5 of a book</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n    <fact>\n      <claim>Max has sent 4 consecutive messages without user responses</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n  </facts>\n  <relationships>\n    <relationship>\n      <sourceEntityId>max-agent</sourceEntityId>\n      <targetEntityId>user-789</targetEntityId>\n      <tags>group_interaction,excessive_interaction</tags>\n    </relationship>\n  </relationships>\n</response>",
+						"thought: \"I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.\"\nfacts[0]:\n  claim: The discussion is about chapter 5 of a book\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Max has sent 4 consecutive messages without user responses\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: max-agent\n  targetEntityId: user-789\n  tags[0]: group_interaction\n  tags[1]: excessive_interaction",
 				},
 			],
 		},
@@ -2832,7 +2832,7 @@ export const allEvaluatorsSpec = {
 						},
 					],
 					outcome:
-						"<response>\n  <thought>I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome.</thought>\n  <facts>\n    <fact>\n      <claim>John is new to the community</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n    <fact>\n      <claim>John found the community through a friend interested in AI</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n  </facts>\n  <relationships>\n    <relationship>\n      <sourceEntityId>sarah-agent</sourceEntityId>\n      <targetEntityId>user-123</targetEntityId>\n      <tags>group_interaction</tags>\n    </relationship>\n  </relationships>\n</response>",
+						'thought: "I\'m engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome."\nfacts[0]:\n  claim: John is new to the community\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: John found the community through a friend interested in AI\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: sarah-agent\n  targetEntityId: user-123\n  tags[0]: group_interaction',
 				},
 				{
 					prompt:
@@ -2864,7 +2864,7 @@ export const allEvaluatorsSpec = {
 						},
 					],
 					outcome:
-						"<response>\n  <thought>I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions.</thought>\n  <facts>\n    <fact>\n      <claim>Emma is having technical issues with file uploads</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n    <fact>\n      <claim>Emma stopped responding after the first troubleshooting suggestion</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n  </facts>\n  <relationships>\n    <relationship>\n      <sourceEntityId>alex-agent</sourceEntityId>\n      <targetEntityId>user-456</targetEntityId>\n      <tags>group_interaction,support_interaction,incomplete_interaction</tags>\n    </relationship>\n  </relationships>\n</response>",
+						"thought: \"I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions.\"\nfacts[0]:\n  claim: Emma is having technical issues with file uploads\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Emma stopped responding after the first troubleshooting suggestion\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: alex-agent\n  targetEntityId: user-456\n  tags[0]: group_interaction\n  tags[1]: support_interaction\n  tags[2]: incomplete_interaction",
 				},
 				{
 					prompt:
@@ -2902,7 +2902,7 @@ export const allEvaluatorsSpec = {
 						},
 					],
 					outcome:
-						"<response>\n  <thought>I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.</thought>\n  <facts>\n    <fact>\n      <claim>The discussion is about chapter 5 of a book</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n    <fact>\n      <claim>Max has sent 4 consecutive messages without user responses</claim>\n      <type>fact</type>\n      <in_bio>false</in_bio>\n      <already_known>false</already_known>\n    </fact>\n  </facts>\n  <relationships>\n    <relationship>\n      <sourceEntityId>max-agent</sourceEntityId>\n      <targetEntityId>user-789</targetEntityId>\n      <tags>group_interaction,excessive_interaction</tags>\n    </relationship>\n  </relationships>\n</response>",
+						"thought: \"I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.\"\nfacts[0]:\n  claim: The discussion is about chapter 5 of a book\n  type: fact\n  in_bio: false\n  already_known: false\nfacts[1]:\n  claim: Max has sent 4 consecutive messages without user responses\n  type: fact\n  in_bio: false\n  already_known: false\nrelationships[0]:\n  sourceEntityId: max-agent\n  targetEntityId: user-789\n  tags[0]: group_interaction\n  tags[1]: excessive_interaction",
 				},
 			],
 		},

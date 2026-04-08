@@ -28,6 +28,7 @@ EvaluationExample = components_pb2.EvaluationExample
 
 # Runtime handler signatures (not in proto)
 HandlerCallback = Callable[[Content], Awaitable[list["Memory"]]]
+# Note: designed for simplicity; accumulated parameter handled in TypeScript for sync.
 StreamChunkCallback = Callable[[str, str | None], Awaitable[None]]
 
 Handler = Callable[

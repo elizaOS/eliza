@@ -1,5 +1,5 @@
 import type { Character } from "./agent";
-import type { Action, Evaluator, Provider } from "./components";
+import type { Action, AgentContext, Evaluator, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
@@ -272,6 +272,13 @@ export interface Plugin {
 	schema?: Record<string, JsonValue | object>;
 
 	app?: PluginApp;
+
+	/**
+	 * Domain contexts this plugin's components belong to.
+	 * Acts as a default for all actions/providers/evaluators in the plugin
+	 * unless they declare their own contexts.
+	 */
+	contexts?: AgentContext[];
 }
 
 export interface ProjectAgent {

@@ -12,6 +12,26 @@ import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
 /**
+ * Canonical domain contexts for routing and plugin/action gating.
+ *
+ * The shouldRespond + context-routing classifier assigns one primary context
+ * and zero or more secondary contexts per turn.  Plugins, actions, and
+ * providers declare which contexts they belong to so the planner can scope
+ * its search space accordingly.
+ */
+export type AgentContext =
+	| "general"
+	| "wallet"
+	| "knowledge"
+	| "browser"
+	| "code"
+	| "media"
+	| "automation"
+	| "social"
+	| "system"
+	| (string & {}); // extensible — plugins can declare custom contexts
+
+/**
  * JSON Schema type for action parameter validation.
  * Supports basic JSON Schema properties for parameter definition.
  */
@@ -187,6 +207,14 @@ export interface Action {
 	 * ```
 	 */
 	parameters?: ActionParameter[];
+
+	/**
+	 * Domain contexts this action belongs to.
+	 * Used by the context-routing classifier to scope the planner's action search.
+	 * An action may belong to multiple contexts (e.g., a token-swap action is both
+	 * "wallet" and "automation").
+	 */
+	contexts?: AgentContext[];
 }
 
 /**
@@ -297,6 +325,13 @@ export interface Provider {
 	/** Keywords used to determine relevance for action filtering */
 	relevanceKeywords?: string[];
 
+	/**
+	 * Domain contexts this provider belongs to.
+	 * The context-routing classifier uses these to decide which providers to
+	 * include in the planner's state composition for a given turn.
+	 */
+	contexts?: AgentContext[];
+
 	/** Data retrieval function */
 	get: (
 		runtime: IAgentRuntime,
@@ -348,13 +383,36 @@ export interface ActionContext {
 }
 
 /**
- * Callback for streaming response chunks during action execution.
- * messageId is a string that can be either a UUID or other identifier.
+ * Canonical callback type for streaming response chunks.
+ *
+ * WHY one type: Before this consolidation the same `(chunk, messageId?) => …`
+ * signature was inlined in 8+ locations across runtime, model, message-service,
+ * and streaming-context types — with inconsistent return types (`Promise<void>`
+ * vs `void | Promise<void>`). Adding data (e.g. `accumulated`) required editing
+ * every copy. A single alias eliminates drift and makes future extensions
+ * (field name, token index, session handle) a one-line additive change.
+ *
+ * WHY `accumulated`: Two independent XML stream extractors in `useModel`
+ * previously caused TTS garbling because consumers had to re-derive the full
+ * text from deltas — and the two extractors produced deltas at different
+ * timings. Providing the authoritative accumulated text from the extractor
+ * makes that entire category of reassembly bugs impossible.
+ *
+ * WHY `void | Promise<void>`: The most permissive return — allows both sync
+ * callbacks (simple loggers, test spies) and async ones (network, TTS).
+ *
+ * @param chunk - Delta text since the last emission for this field.
+ * @param messageId - Streaming session / message identifier (UUID or opaque string).
+ * @param accumulated - Full extracted text so far for the streaming field.
+ *   Present when the emission originates from a ValidationStreamExtractor
+ *   (structured XML output). Undefined for raw-token streams (useModel
+ *   without an extractor) where no field-level accumulation exists.
  */
 export type StreamChunkCallback = (
 	chunk: string,
 	messageId?: string,
-) => Promise<void>;
+	accumulated?: string,
+) => void | Promise<void>;
 
 /**
  * Options passed to action handlers during execution

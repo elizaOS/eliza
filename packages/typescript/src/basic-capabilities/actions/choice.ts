@@ -40,7 +40,7 @@ export const choiceAction: Action = {
 
 		const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
-		if (!room || !room.messageServerId) {
+		if (!room?.messageServerId) {
 			return false;
 		}
 

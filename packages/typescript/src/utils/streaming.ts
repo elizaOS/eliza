@@ -11,6 +11,7 @@
  * Implementations can use these or create their own extractors.
  */
 
+import type { StreamChunkCallback } from "../types/components";
 import type { IStreamExtractor } from "../types/streaming";
 
 // ============================================================================
@@ -598,8 +599,15 @@ export interface ValidationStreamExtractorConfig {
 	streamFields: string[];
 	/** Expected validation codes per field */
 	expectedCodes: Map<string, string>;
-	/** Callback for streaming chunks */
-	onChunk: (chunk: string, field?: string) => void;
+	/**
+	 * Callback for streaming chunks.
+	 * WHY accumulated: consumers (voice detection, client-side merge) need the
+	 * full field text to avoid re-deriving it from deltas — which caused the
+	 * dual-extractor garbling bug when two pipelines accumulated differently.
+	 * The extractor already tracks this as `content` in emitFieldContent, so
+	 * surfacing it is zero-cost.
+	 */
+	onChunk: (chunk: string, field?: string, accumulated?: string) => void;
 	/** Rich event callback for sophisticated consumers */
 	onEvent?: (event: StreamEvent) => void;
 	/** Abort signal for cancellation */
@@ -928,7 +936,7 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 			// Content shrunk unexpectedly - reset tracking and emit full content
 			this.emittedContent.set(field, content);
 			if (content) {
-				this.config.onChunk(content, field);
+				this.config.onChunk(content, field, content);
 				this.emitEvent({
 					eventType: "chunk",
 					field,
@@ -942,7 +950,7 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 		const newContent = content.substring(previouslyEmitted.length);
 
 		if (newContent) {
-			this.config.onChunk(newContent, field);
+			this.config.onChunk(newContent, field, content);
 			this.emitEvent({
 				eventType: "chunk",
 				field,
@@ -999,18 +1007,28 @@ export function createStreamingRetryState(
  */
 export function createStreamingContext(
 	extractor: IStreamExtractor,
-	onStreamChunk: (chunk: string, messageId?: string) => Promise<void>,
+	onStreamChunk: StreamChunkCallback,
 	messageId?: string,
 ): StreamingContext & IStreamingRetryState {
 	const retryState = createStreamingRetryState(extractor);
 
 	return {
-		onStreamChunk: async (chunk: string, msgId?: string) => {
+		/**
+		 * NOTE: `accumulated` from the upstream source is forwarded unchanged.
+		 * This is only semantically correct when `extractor` is a passthrough
+		 * (i.e., extractor.push(chunk) === chunk). MarkableExtractor satisfies
+		 * this invariant; other extractors may not.
+		 */
+		onStreamChunk: async (
+			chunk: string,
+			msgId?: string,
+			accumulated?: string,
+		) => {
 			if (extractor.done) return;
 			const textToStream = extractor.push(chunk);
 			if (textToStream) {
 				retryState.appendText(textToStream);
-				await onStreamChunk(textToStream, msgId);
+				await onStreamChunk(textToStream, msgId, accumulated);
 			}
 		},
 		messageId,

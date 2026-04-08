@@ -367,7 +367,7 @@ export class TaskService extends Service {
 	 * @param {Task} task - The task to be executed.
 	 */
 	private async executeTask(task: Task) {
-		if (!task || !task.id) {
+		if (!task?.id) {
 			this.runtime.logger.debug(
 				{
 					src: "plugin:basic-capabilities:service:task",

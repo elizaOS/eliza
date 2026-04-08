@@ -995,7 +995,7 @@ const events: PluginEvents = {
 				return;
 			}
 			const payloadMetadata = payload.metadata;
-			if (!payloadMetadata || !payloadMetadata.type) {
+			if (!payloadMetadata?.type) {
 				payload.runtime.logger.error(
 					{ src: "basic-capabilities", agentId: payload.runtime.agentId },
 					"No type provided for entity joined",
