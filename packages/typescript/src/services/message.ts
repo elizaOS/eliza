@@ -1247,12 +1247,11 @@ export class DefaultMessageService implements IMessageService {
 					);
 					await runtime.createMemory(responseMemory, "messages");
 
-					// Emit MESSAGE_SENT event after saving to memory
-					await runtime.emitEvent(EventType.MESSAGE_SENT, {
+					await this.emitMessageSent(
 						runtime,
-						message: responseMemory,
-						source: message.content.source ?? "messageHandler",
-					});
+						responseMemory,
+						message.content.source ?? "messageHandler",
+					);
 				}
 			}
 
@@ -1409,6 +1408,11 @@ export class DefaultMessageService implements IMessageService {
 				createdAt: Date.now(),
 			};
 			await runtime.createMemory(terminalMemory, "messages");
+			await this.emitMessageSent(
+				runtime,
+				terminalMemory,
+				message.content.source ?? "messageHandler",
+			);
 			runtime.logger.debug(
 				{ src: "service:message", memoryId: terminalMemory.id },
 				"Saved terminal response to memory",
@@ -2044,11 +2048,11 @@ export class DefaultMessageService implements IMessageService {
 				for (const responseMemory of continuation.responseMessages) {
 					responseMemory.content = responseContent;
 					await runtime.createMemory(responseMemory, "messages");
-					await runtime.emitEvent(EventType.MESSAGE_SENT, {
+					await this.emitMessageSent(
 						runtime,
-						message: responseMemory,
-						source: message.content.source ?? "messageHandler",
-					});
+						responseMemory,
+						message.content.source ?? "messageHandler",
+					);
 				}
 				responseMessages.push(...continuation.responseMessages);
 			}
@@ -3053,6 +3057,18 @@ Output ONLY the continuation, starting immediately after the last character abov
 			endTime: Date.now(),
 			duration: Date.now() - startTime,
 		} as RunEventPayload);
+	}
+
+	private async emitMessageSent(
+		runtime: IAgentRuntime,
+		message: Memory,
+		source: string,
+	): Promise<void> {
+		await runtime.emitEvent(EventType.MESSAGE_SENT, {
+			runtime,
+			message,
+			source,
+		});
 	}
 
 	/**
