@@ -27,9 +27,39 @@ interface RoleAssignmentXml {
 
 /** Shape of the role extraction XML response */
 interface RoleExtractionResult {
-	assignments?: {
-		assignment?: RoleAssignmentXml | RoleAssignmentXml[];
-	};
+	assignments?:
+		| {
+				assignment?: RoleAssignmentXml | RoleAssignmentXml[];
+		  }
+		| RoleAssignmentXml[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeRoleAssignments(value: unknown): RoleAssignmentXml[] {
+	if (Array.isArray(value)) {
+		return value.filter(
+			(entry): entry is RoleAssignmentXml =>
+				isRecord(entry) &&
+				(typeof entry.entityId === "string" ||
+					typeof entry.newRole === "string"),
+		);
+	}
+
+	if (isRecord(value) && "assignment" in value) {
+		return normalizeRoleAssignments(value.assignment);
+	}
+
+	if (
+		isRecord(value) &&
+		(typeof value.entityId === "string" || typeof value.newRole === "string")
+	) {
+		return [value as RoleAssignmentXml];
+	}
+
+	return [];
 }
 
 /**
@@ -114,7 +144,7 @@ export const updateRoleAction: Action = {
 
 		// Then, check if we have a server/world context
 		const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
-		if (!room || !room.messageServerId) {
+		if (!room?.messageServerId) {
 			return false;
 		}
 
@@ -223,21 +253,15 @@ The available role types are:
 {{content}}
 
 
-Format your response as XML with multiple assignments:
-<response>
-  <assignments>
-    <assignment>
-      <entityId>John</entityId>
-      <newRole>ADMIN</newRole>
-    </assignment>
-    <assignment>
-      <entityId>Sarah</entityId>
-      <newRole>OWNER</newRole>
-    </assignment>
-  </assignments>
-</response>
+Format your response as TOON with multiple assignments:
+assignments[0]:
+  entityId: John
+  newRole: ADMIN
+assignments[1]:
+  entityId: Sarah
+  newRole: OWNER
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`,
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`,
 		});
 
 		// Extract role assignments using text model with XML parsing
@@ -249,22 +273,16 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
 		const parsedXml = parseKeyValueXml<RoleExtractionResult>(response);
 
 		// Handle the parsed XML structure
-		let assignments: RoleAssignment[] = [];
-		if (parsedXml?.assignments?.assignment) {
-			// Normalize to array
-			const assignmentArray = Array.isArray(parsedXml.assignments.assignment)
-				? parsedXml.assignments.assignment
-				: [parsedXml.assignments.assignment];
-
-			assignments = assignmentArray
-				.filter(
-					(a): a is RoleAssignmentXml & { entityId: string } => !!a.entityId,
-				)
-				.map((a) => ({
-					entityId: a.entityId,
-					newRole: a.newRole as Role,
-				}));
-		}
+		const assignmentArray = normalizeRoleAssignments(parsedXml?.assignments);
+		const assignments: RoleAssignment[] = assignmentArray
+			.filter(
+				(a): a is RoleAssignmentXml & { entityId: string; newRole: string } =>
+					typeof a.entityId === "string" && typeof a.newRole === "string",
+			)
+			.map((a) => ({
+				entityId: a.entityId,
+				newRole: a.newRole as Role,
+			}));
 
 		if (!assignments.length) {
 			await callback?.({

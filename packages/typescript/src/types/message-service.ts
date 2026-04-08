@@ -1,6 +1,7 @@
-import type { HandlerCallback } from "./components";
+import type { AgentContext, HandlerCallback } from "./components";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";
+import { ModelType } from "./model";
 import type { Content, Media, MentionContext, UUID } from "./primitives";
 import type {
 	MessageProcessingMode as ProtoMessageProcessingMode,
@@ -68,10 +69,34 @@ export interface ResponseDecision {
 	reason: string;
 }
 
+/**
+ * Extended response decision that includes context routing.
+ * Used by the fine-tuned shouldRespond + context-routing classifier.
+ * Falls back to ResponseDecision when context routing is not available.
+ */
+export interface ContextRoutedResponseDecision extends ResponseDecision {
+	/** The single best-matching domain context for this turn */
+	primaryContext?: AgentContext;
+	/** Additional relevant contexts (may enable extra providers/actions) */
+	secondaryContexts?: AgentContext[];
+	/** Turn IDs that contributed to the intent (for multi-turn extraction) */
+	evidenceTurnIds?: string[];
+}
+
 export type ShouldRespondModelType =
 	| ProtoShouldRespondModelType
+	| "nano"
+	| "mini"
 	| "small"
-	| "large";
+	| "large"
+	| "mega"
+	| "response-handler"
+	| typeof ModelType.TEXT_NANO
+	| typeof ModelType.TEXT_MINI
+	| typeof ModelType.TEXT_SMALL
+	| typeof ModelType.TEXT_LARGE
+	| typeof ModelType.TEXT_MEGA
+	| typeof ModelType.RESPONSE_HANDLER;
 export type MessageProcessingMode =
 	| ProtoMessageProcessingMode
 	| "simple"

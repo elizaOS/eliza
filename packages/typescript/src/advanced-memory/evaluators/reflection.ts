@@ -32,12 +32,48 @@ interface RelationshipXml {
 
 /** Shape of the reflection XML response */
 interface ReflectionXmlResult {
-	facts?: {
-		fact?: FactXml | FactXml[];
-	};
-	relationships?: {
-		relationship?: RelationshipXml | RelationshipXml[];
-	};
+	facts?:
+		| {
+				fact?: FactXml | FactXml[];
+		  }
+		| FactXml[];
+	relationships?:
+		| {
+				relationship?: RelationshipXml | RelationshipXml[];
+		  }
+		| RelationshipXml[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeFactEntries(value: unknown): FactXml[] {
+	if (Array.isArray(value)) {
+		return value.filter(isRecord) as FactXml[];
+	}
+
+	if (isRecord(value) && "fact" in value) {
+		return normalizeFactEntries(value.fact);
+	}
+
+	return isRecord(value) ? [value as FactXml] : [];
+}
+
+function normalizeRelationshipEntries(value: unknown): RelationshipXml[] {
+	if (Array.isArray(value)) {
+		return value.filter(isRecord) as RelationshipXml[];
+	}
+
+	if (isRecord(value) && "relationship" in value) {
+		return normalizeRelationshipEntries(value.relationship);
+	}
+
+	return isRecord(value) ? [value as RelationshipXml] : [];
+}
+
+function isFalseLike(value: unknown): boolean {
+	return value === false || value === "false";
 }
 
 // Schema definitions for the reflection output
@@ -233,20 +269,14 @@ async function handler(
 
 	// Handle facts - parseKeyValueXml returns nested structures differently
 	// Facts might be a single object or an array depending on the count
-	let factsArray: FactXml[] = [];
-	if (reflection.facts.fact) {
-		// Normalize to array
-		factsArray = Array.isArray(reflection.facts.fact)
-			? reflection.facts.fact
-			: [reflection.facts.fact];
-	}
+	const factsArray = normalizeFactEntries(reflection.facts);
 
 	// Store new facts - filter for valid new facts with claim text
 	const newFacts = factsArray.filter(
 		(fact): fact is FactXml & { claim: string } =>
 			fact != null &&
-			fact.already_known === "false" &&
-			fact.in_bio === "false" &&
+			isFalseLike(fact.already_known) &&
+			isFalseLike(fact.in_bio) &&
 			typeof fact.claim === "string" &&
 			fact.claim.trim() !== "",
 	);
@@ -276,12 +306,9 @@ async function handler(
 	);
 
 	// Handle relationships - similar structure normalization
-	let relationshipsArray: RelationshipXml[] = [];
-	if (reflection.relationships.relationship) {
-		relationshipsArray = Array.isArray(reflection.relationships.relationship)
-			? reflection.relationships.relationship
-			: [reflection.relationships.relationship];
-	}
+	const relationshipsArray = normalizeRelationshipEntries(
+		reflection.relationships,
+	);
 
 	// Update or create relationships
 	for (const relationship of relationshipsArray) {
@@ -310,12 +337,14 @@ async function handler(
 		});
 
 		// Parse tags from comma-separated string
-		const tags = relationship.tags
-			? relationship.tags
-					.split(",")
-					.map((tag: string) => tag.trim())
-					.filter(Boolean)
-			: [];
+		const tags = Array.isArray(relationship.tags)
+			? relationship.tags.map((tag) => tag.trim()).filter(Boolean)
+			: relationship.tags
+				? relationship.tags
+						.split(",")
+						.map((tag: string) => tag.trim())
+						.filter(Boolean)
+				: [];
 
 		if (existingRelationship) {
 			const updatedMetadata = {
@@ -412,35 +441,25 @@ Message Sender: John (user-123)`,
 					content: { text: "Through a friend who's really into AI" },
 				},
 			],
-			outcome: `<response>
-    <thought>I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome.</thought>
-    <facts>
-        <fact>
-            <claim>John is new to the community</claim>
-            <type>fact</type>
-            <in_bio>false</in_bio>
-            <already_known>false</already_known>
-        </fact>
-        <fact>
-            <claim>John found the community through a friend interested in AI</claim>
-            <type>fact</type>
-            <in_bio>false</in_bio>
-            <already_known>false</already_known>
-        </fact>
-    </facts>
-    <relationships>
-        <relationship>
-            <sourceEntityId>sarah-agent</sourceEntityId>
-            <targetEntityId>user-123</targetEntityId>
-            <tags>group_interaction</tags>
-        </relationship>
-        <relationship>
-            <sourceEntityId>user-123</sourceEntityId>
-            <targetEntityId>sarah-agent</targetEntityId>
-            <tags>group_interaction</tags>
-        </relationship>
-    </relationships>
-</response>`,
+			outcome: `thought: "I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome."
+facts[0]:
+  claim: John is new to the community
+  type: fact
+  in_bio: false
+  already_known: false
+facts[1]:
+  claim: John found the community through a friend interested in AI
+  type: fact
+  in_bio: false
+  already_known: false
+relationships[0]:
+  sourceEntityId: sarah-agent
+  targetEntityId: user-123
+  tags[0]: group_interaction
+relationships[1]:
+  sourceEntityId: user-123
+  targetEntityId: sarah-agent
+  tags[0]: group_interaction`,
 		},
 		{
 			prompt: `Agent Name: Alex
@@ -468,30 +487,23 @@ Message Sender: Emma (user-456)`,
 					},
 				},
 			],
-			outcome: `<response>
-    <thought>I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions.</thought>
-    <facts>
-        <fact>
-            <claim>Emma is having technical issues with file uploads</claim>
-            <type>fact</type>
-            <in_bio>false</in_bio>
-            <already_known>false</already_known>
-        </fact>
-        <fact>
-            <claim>Emma stopped responding after the first troubleshooting suggestion</claim>
-            <type>fact</type>
-            <in_bio>false</in_bio>
-            <already_known>false</already_known>
-        </fact>
-    </facts>
-    <relationships>
-        <relationship>
-            <sourceEntityId>alex-agent</sourceEntityId>
-            <targetEntityId>user-456</targetEntityId>
-            <tags>group_interaction,support_interaction,incomplete_interaction</tags>
-        </relationship>
-    </relationships>
-</response>`,
+			outcome: `thought: "I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions."
+facts[0]:
+  claim: Emma is having technical issues with file uploads
+  type: fact
+  in_bio: false
+  already_known: false
+facts[1]:
+  claim: Emma stopped responding after the first troubleshooting suggestion
+  type: fact
+  in_bio: false
+  already_known: false
+relationships[0]:
+  sourceEntityId: alex-agent
+  targetEntityId: user-456
+  tags[0]: group_interaction
+  tags[1]: support_interaction
+  tags[2]: incomplete_interaction`,
 		},
 		{
 			prompt: `Agent Name: Max
@@ -529,30 +541,22 @@ Message Sender: Lisa (user-789)`,
 					},
 				},
 			],
-			outcome: `<response>
-    <thought>I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.</thought>
-    <facts>
-        <fact>
-            <claim>The discussion is about chapter 5 of a book</claim>
-            <type>fact</type>
-            <in_bio>false</in_bio>
-            <already_known>false</already_known>
-        </fact>
-        <fact>
-            <claim>Max has sent 4 consecutive messages without user responses</claim>
-            <type>fact</type>
-            <in_bio>false</in_bio>
-            <already_known>false</already_known>
-        </fact>
-    </facts>
-    <relationships>
-        <relationship>
-            <sourceEntityId>max-agent</sourceEntityId>
-            <targetEntityId>user-789</targetEntityId>
-            <tags>group_interaction,excessive_interaction</tags>
-        </relationship>
-    </relationships>
-</response>`,
+			outcome: `thought: "I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate."
+facts[0]:
+  claim: The discussion is about chapter 5 of a book
+  type: fact
+  in_bio: false
+  already_known: false
+facts[1]:
+  claim: Max has sent 4 consecutive messages without user responses
+  type: fact
+  in_bio: false
+  already_known: false
+relationships[0]:
+  sourceEntityId: max-agent
+  targetEntityId: user-789
+  tags[0]: group_interaction
+  tags[1]: excessive_interaction`,
 		},
 	],
 };

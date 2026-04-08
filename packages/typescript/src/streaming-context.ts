@@ -9,12 +9,14 @@
  * @see https://opentelemetry.io/docs/languages/js/context/
  */
 
+import type { StreamChunkCallback } from "./types/components";
+
 /**
  * Streaming context containing callbacks for streaming lifecycle.
  */
 export interface StreamingContext {
 	/** Called for each chunk of streamed content */
-	onStreamChunk: (chunk: string, messageId?: string) => Promise<void>;
+	onStreamChunk: StreamChunkCallback;
 	/** Called when a useModel streaming call completes (allows reset between calls) */
 	onStreamEnd?: () => void;
 	messageId?: string;

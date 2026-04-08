@@ -1,4 +1,3 @@
-import { names, uniqueNamesGenerator } from "unique-names-generator";
 import { allActionDocs } from "./generated/action-docs.ts";
 import type {
 	Action,
@@ -9,6 +8,13 @@ import type {
 	ActionParameterValue,
 	JsonValue,
 } from "./types";
+import {
+	buildDeterministicSeed,
+	createDeterministicRandom,
+	deterministicShuffle,
+	getDeterministicNames,
+} from "./utils/deterministic";
+import { encodeToonValue, parseToonActionParams } from "./utils/toon";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
@@ -23,6 +29,7 @@ const actionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByName>(
 export const composeActionExamples = (
 	actionsData: Action[],
 	count: number,
+	seed = "actions",
 ): string => {
 	if (!actionsData.length || count <= 0) {
 		return "";
@@ -44,19 +51,20 @@ export const composeActionExamples = (
 	);
 
 	const selectedExamples: ActionExample[][] = [];
+	const random = createDeterministicRandom(
+		buildDeterministicSeed(seed, "examples"),
+	);
 
 	const availableActionIndices = examplesCopy
 		.map((examples, index) => (examples.length > 0 ? index : -1))
 		.filter((index) => index !== -1);
 
 	while (selectedExamples.length < count && availableActionIndices.length > 0) {
-		const randomIndex = Math.floor(
-			Math.random() * availableActionIndices.length,
-		);
+		const randomIndex = Math.floor(random() * availableActionIndices.length);
 		const actionIndex = availableActionIndices[randomIndex];
 		const examples = examplesCopy[actionIndex];
 
-		const exampleIndex = Math.floor(Math.random() * examples.length);
+		const exampleIndex = Math.floor(random() * examples.length);
 		selectedExamples.push(examples.splice(exampleIndex, 1)[0]);
 
 		if (examples.length === 0) {
@@ -64,15 +72,11 @@ export const composeActionExamples = (
 		}
 	}
 
-	return formatSelectedExamples(selectedExamples);
+	return formatSelectedExamples(
+		selectedExamples,
+		buildDeterministicSeed(seed, "names"),
+	);
 };
-
-function escapeXmlText(text: string): string {
-	return text
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;");
-}
 
 function formatActionCallExample(example: {
 	user: string;
@@ -80,29 +84,15 @@ function formatActionCallExample(example: {
 	params?: Record<string, Record<string, string | number | boolean | null>>;
 }): string {
 	const paramsByAction = example.params ?? {};
+	const assistantPayload: Record<string, unknown> = {
+		actions: [...example.actions],
+	};
 
-	const actionElements = example.actions
-		.map((actionName) => {
-			const actionParams = paramsByAction[actionName];
-			if (actionParams && Object.keys(actionParams).length > 0) {
-				const paramsInner = Object.entries(actionParams)
-					.map(([k, v]) => {
-						const raw =
-							typeof v === "string"
-								? v
-								: v === null
-									? "null"
-									: JSON.stringify(v);
-						return `      <${k}>${escapeXmlText(raw)}</${k}>`;
-					})
-					.join("\n");
-				return `  <action>\n    <name>${escapeXmlText(actionName)}</name>\n    <params>\n${paramsInner}\n    </params>\n  </action>`;
-			}
-			return `  <action>\n    <name>${escapeXmlText(actionName)}</name>\n  </action>`;
-		})
-		.join("\n");
+	if (Object.keys(paramsByAction).length > 0) {
+		assistantPayload.params = paramsByAction;
+	}
 
-	return `User: ${example.user}\nAssistant:\n<actions>\n${actionElements}\n</actions>`;
+	return `User: ${example.user}\nAssistant:\n${encodeToonValue(assistantPayload)}`;
 }
 
 /**
@@ -131,13 +121,17 @@ export function composeActionCallExamples(
 	return blocks.join("\n\n");
 }
 
-const formatSelectedExamples = (examples: ActionExample[][]): string => {
+const formatSelectedExamples = (
+	examples: ActionExample[][],
+	seed = "actions",
+): string => {
 	const MAX_NAME_PLACEHOLDERS = 5;
 
 	return examples
-		.map((example) => {
-			const randomNames = Array.from({ length: MAX_NAME_PLACEHOLDERS }, () =>
-				uniqueNamesGenerator({ dictionaries: [names] }),
+		.map((example, index) => {
+			const randomNames = getDeterministicNames(
+				MAX_NAME_PLACEHOLDERS,
+				buildDeterministicSeed(seed, index),
 			);
 
 			const conversation = example
@@ -160,27 +154,25 @@ const formatSelectedExamples = (examples: ActionExample[][]): string => {
 		.join("\n");
 };
 
-function shuffleActions<T>(items: T[]): T[] {
-	const shuffled = [...items];
-	for (let i = shuffled.length - 1; i > 0; i--) {
-		const j = Math.floor(Math.random() * (i + 1));
-		[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-	}
-	return shuffled;
+function shuffleActions<T>(items: T[], seed = "actions"): T[] {
+	return deterministicShuffle(items, seed);
 }
 
-export function formatActionNames(actions: Action[]): string {
-	if (!actions || !actions.length) return "";
+export function formatActionNames(actions: Action[], seed = "actions"): string {
+	if (!actions?.length) return "";
 
-	return shuffleActions(actions)
+	return shuffleActions(actions, buildDeterministicSeed(seed, "names"))
 		.map((action) => action.name)
 		.join(", ");
 }
 
-export function formatActions(actions: Action[]): string {
-	if (!actions || !actions.length) return "";
+export function formatActions(actions: Action[], seed = "actions"): string {
+	if (!actions?.length) return "";
 
-	const actionLines = shuffleActions(actions)
+	const actionLines = shuffleActions(
+		actions,
+		buildDeterministicSeed(seed, "descriptions"),
+	)
 		.map((action) => {
 			const lines = [
 				`- ${action.name}: ${action.description || "No description available"}`,
@@ -202,7 +194,7 @@ export function formatActions(actions: Action[]): string {
 }
 
 export function formatActionParameters(parameters: ActionParameter[]): string {
-	if (!parameters || !parameters.length) return "";
+	if (!parameters?.length) return "";
 
 	return parameters
 		.map((param) => {
@@ -262,13 +254,19 @@ function formatParameterType(schema: ActionParameterSchema): string {
  *   <ACTION1><p1>v1</p1></ACTION1>
  */
 export function parseActionParams(
-	paramsXml: string | undefined | null,
+	paramsInput: unknown,
 ): Map<string, ActionParameters> {
-	const result = new Map<string, ActionParameters>();
+	const toonParams = parseToonActionParams(paramsInput);
+	if (toonParams.size > 0) {
+		return toonParams;
+	}
 
-	if (!paramsXml || typeof paramsXml !== "string") {
+	const result = new Map<string, ActionParameters>();
+	if (!paramsInput || typeof paramsInput !== "string") {
 		return result;
 	}
+
+	const paramsXml = paramsInput;
 
 	// ---- New nested format: look for <action> children ----
 	const actionChildren = extractXmlChildren(paramsXml);

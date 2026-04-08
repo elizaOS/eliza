@@ -10,8 +10,8 @@ rules[8]:
 - use IGNORE or STOP only by themselves
 - include providers only when needed
 - use provider_hints from context when present instead of restating the same rules
-- if an action needs inputs, include a <params> block with the required fields
-- if a required param is unknown, ask for clarification in <text>
+- if an action needs inputs, include them under params keyed by action name
+- if a required param is unknown, ask for clarification in text
 
 control_actions:
 - STOP means the task is done and the agent should end the run without executing more actions
@@ -19,28 +19,22 @@ control_actions:
 
 fields[5]{name,meaning}:
 - thought | short plan
-- actions | ordered XML <action> elements
-- providers | comma-separated provider names, or empty
+- actions | ordered array of action names
+- providers | array of provider names, or empty
 - text | next message for {{agentName}}
 - simple | true or false
+- params | optional object keyed by action name containing required inputs
 
 formatting:
 - wrap multi-line code in fenced code blocks
 - use inline backticks for short code identifiers
 
-<output>
-XML only. Return exactly one <response> block. No prose before or after it. No <think>.
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
 
 Example:
-<response>
-  <thought>Reply briefly. No extra providers needed.</thought>
-  <actions>
-    <action>
-      <name>REPLY</name>
-    </action>
-  </actions>
-  <providers></providers>
-  <text>Your message here</text>
-  <simple>true</simple>
-</response>
-</output>
+thought: Reply briefly. No extra providers needed.
+actions[1]: REPLY
+providers[0]:
+text: Your message here
+simple: true

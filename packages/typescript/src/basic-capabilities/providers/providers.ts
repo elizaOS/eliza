@@ -5,6 +5,12 @@ import type {
 	Provider,
 	State,
 } from "../../types/index.ts";
+import {
+	CONTEXT_ROUTING_STATE_KEY,
+	getActiveRoutingContexts,
+	parseContextRoutingMetadata,
+	shouldIncludeByContext,
+} from "../../utils/context-routing.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("PROVIDERS");
@@ -28,7 +34,17 @@ export const providersProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
-		const allProviders = runtime.providers;
+		const allProviders = [...runtime.providers].sort(
+			(left, right) =>
+				(left.position ?? 0) - (right.position ?? 0) ||
+				left.name.localeCompare(right.name),
+		);
+		const activeContexts = getActiveRoutingContexts(
+			parseContextRoutingMetadata(_state?.values?.[CONTEXT_ROUTING_STATE_KEY]),
+		);
+		const isInContext = (provider: Provider) =>
+			shouldIncludeByContext(provider.contexts, activeContexts);
+		const contextFilteredProviders = allProviders.filter(isInContext);
 		const selectionHints = [
 			"images, attachments, or visual content -> ATTACHMENTS",
 			"specific people or agents -> ENTITIES",
@@ -38,7 +54,7 @@ export const providersProvider: Provider = {
 		];
 
 		// Filter providers with dynamic: true
-		const dynamicProviders = allProviders.filter(
+		const dynamicProviders = contextFilteredProviders.filter(
 			(provider) => provider.dynamic === true,
 		);
 
@@ -59,7 +75,7 @@ export const providersProvider: Provider = {
 		const dynamicSection = formatProviders(dynamicProviders, "# Providers");
 
 		const providersWithDescriptions = formatProviders(
-			allProviders,
+			contextFilteredProviders,
 			"# Available Providers",
 		);
 
@@ -68,7 +84,7 @@ export const providersProvider: Provider = {
 				name: provider.name,
 				description: provider.description || "",
 			})),
-			allProviders: allProviders.map((provider) => ({
+			allProviders: contextFilteredProviders.map((provider) => ({
 				name: provider.name,
 				description: provider.description || "",
 				dynamic: provider.dynamic === true,

@@ -36,7 +36,7 @@ export const resetSessionAction: Action = {
 		}
 
 		const room = state.data.room ?? (await runtime.getRoom(message.roomId));
-		if (!room || !room.worldId) {
+		if (!room?.worldId) {
 			// Allow in DMs without world/server context
 			return true;
 		}

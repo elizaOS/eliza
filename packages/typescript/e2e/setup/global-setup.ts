@@ -118,6 +118,8 @@ function applyProviderSettings(
 }
 
 export default async function globalSetup(): Promise<void> {
+	process.env.ELIZA_PLAYWRIGHT_E2E = "1";
+
 	// Load repo-local credentials before provider detection so Playwright e2e
 	// behaves the same way as the rest of the workspace.
 	loadEnvFile();
