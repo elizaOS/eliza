@@ -324,6 +324,7 @@ async function main(): Promise<void> {
 				roomId,
 				agentId: runtime.agentId,
 				createdAt: Date.now(),
+				// Note: skips current message handling if messageService isn't ready, allowing REPL to continue.
 				metadata: { type: MemoryType.MESSAGE },
 			};
 
