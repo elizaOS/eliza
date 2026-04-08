@@ -888,6 +888,41 @@ describe("DefaultMessageService", () => {
 			);
 		});
 
+		it("emits MESSAGE_SENT for terminal STOP decisions", async () => {
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				name: "TestAgent",
+				reasoning: "The user asked the agent to stop",
+				action: "STOP",
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174031" as UUID,
+				content: {
+					text: "please stop",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback);
+
+			expect(runtime.emitEvent).toHaveBeenCalledWith(
+				EventType.MESSAGE_SENT,
+				expect.objectContaining({
+					message: expect.objectContaining({
+						content: expect.objectContaining({
+							actions: ["STOP"],
+						}),
+					}),
+					source: "discord",
+				}),
+			);
+		});
+
 		it("uses RESPONSE_HANDLER as the default shouldRespond model route", async () => {
 			const dynamicPromptSpy = vi
 				.spyOn(runtime, "dynamicPromptExecFromState")
