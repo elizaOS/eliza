@@ -2021,6 +2021,64 @@ class AgentRuntime(IAgentRuntime):
             return []
         return await self._adapter.get_relationships(params)
 
+    async def get_relationships_by_pairs(
+        self, pairs: list[dict[str, str]]
+    ) -> list[Any | None]:
+        if not self._adapter:
+            return [None] * len(pairs)
+        if hasattr(self._adapter, "get_relationships_by_pairs"):
+            return await self._adapter.get_relationships_by_pairs(pairs)
+        # Fallback: look up each pair individually
+        results: list[Any | None] = []
+        for pair in pairs:
+            result = await self._adapter.get_relationship(pair)
+            results.append(result)
+        return results
+
+    async def create_relationships(self, relationships: list[dict[str, Any]]) -> list[str]:
+        if not self._adapter:
+            return []
+        if hasattr(self._adapter, "create_relationships"):
+            return await self._adapter.create_relationships(relationships)
+        # Fallback: create each relationship individually
+        ids: list[str] = []
+        for rel in relationships:
+            result = await self._adapter.create_relationship(rel)
+            if isinstance(result, str):
+                ids.append(result)
+            elif isinstance(result, bool) and result:
+                ids.append(rel.get("id", ""))
+        return ids
+
+    async def get_relationships_by_ids(self, relationship_ids: list[str]) -> list[Any]:
+        if not self._adapter:
+            return []
+        if hasattr(self._adapter, "get_relationships_by_ids"):
+            return await self._adapter.get_relationships_by_ids(relationship_ids)
+        # No single-item fallback available for ID lookup
+        return []
+
+    async def update_relationships(self, relationships: list[Any]) -> None:
+        if not self._adapter:
+            return
+        if hasattr(self._adapter, "update_relationships"):
+            await self._adapter.update_relationships(relationships)
+            return
+        # Fallback: update each relationship individually
+        for rel in relationships:
+            await self._adapter.update_relationship(rel)
+
+    async def delete_relationships(self, relationship_ids: list[str]) -> None:
+        if not self._adapter:
+            return
+        if hasattr(self._adapter, "delete_relationships"):
+            await self._adapter.delete_relationships(relationship_ids)
+            return
+        # No single-item delete available on the adapter; skip silently
+        self.logger.warn(
+            "delete_relationships called but adapter has no delete support"
+        )
+
     async def get_cache(self, key: str) -> Any | None:
         if not self._adapter:
             return None

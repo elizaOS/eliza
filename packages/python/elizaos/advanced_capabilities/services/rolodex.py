@@ -12,13 +12,21 @@ if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime
 
 
-class ContactCategory(str, Enum):
+class ContactCategoryEnum(str, Enum):
     FRIEND = "friend"
     FAMILY = "family"
     COLLEAGUE = "colleague"
     ACQUAINTANCE = "acquaintance"
     VIP = "vip"
     BUSINESS = "business"
+
+
+@dataclass
+class ContactCategory:
+    id: str
+    name: str
+    description: str = ""
+    color: str = ""
 
 
 @dataclass
@@ -50,6 +58,25 @@ class RelationshipAnalytics:
     average_response_time: float | None = None
     sentiment_score: float | None = None
     topics_discussed: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RelationshipInsight:
+    entity_id: str
+    analytics: RelationshipAnalytics
+
+
+@dataclass
+class NeedsAttention:
+    entity_id: str
+    days_since_contact: int
+
+
+@dataclass
+class RelationshipInsights:
+    strongest_relationships: list[RelationshipInsight] = field(default_factory=list)
+    needs_attention: list[NeedsAttention] = field(default_factory=list)
+    recent_interactions: list[RelationshipInsight] = field(default_factory=list)
 
 
 def calculate_relationship_strength(
@@ -100,9 +127,19 @@ class RelationshipsService(Service):
     def capability_description(self) -> str:
         return "Comprehensive contact and relationship management service"
 
+    _DEFAULT_CATEGORIES: list[ContactCategory] = [
+        ContactCategory(id="friend", name="Friend", color="#4CAF50"),
+        ContactCategory(id="family", name="Family", color="#2196F3"),
+        ContactCategory(id="colleague", name="Colleague", color="#FF9800"),
+        ContactCategory(id="acquaintance", name="Acquaintance", color="#9E9E9E"),
+        ContactCategory(id="vip", name="VIP", color="#9C27B0"),
+        ContactCategory(id="business", name="Business", color="#795548"),
+    ]
+
     def __init__(self) -> None:
         self._contacts: dict[UUID, ContactInfo] = {}
         self._analytics: dict[str, RelationshipAnalytics] = {}
+        self._categories: list[ContactCategory] = list(self._DEFAULT_CATEGORIES)
         self._runtime: IAgentRuntime | None = None
 
     @classmethod
@@ -125,6 +162,7 @@ class RelationshipsService(Service):
             )
         self._contacts.clear()
         self._analytics.clear()
+        self._categories.clear()
         self._runtime = None
 
     async def add_contact(
@@ -242,6 +280,173 @@ class RelationshipsService(Service):
 
         self._analytics[key] = analytics
         return analytics
+
+    # ------------------------------------------------------------------
+    # Relationship analysis
+    # ------------------------------------------------------------------
+
+    async def analyze_relationship(
+        self,
+        source_entity_id: str,
+        target_entity_id: str,
+    ) -> RelationshipAnalytics | None:
+        """Analyze the relationship between two specific entities.
+
+        Looks up the analytics stored for *source* -> *target* (or
+        *target* -> *source*).  Returns ``None`` when no analytics exist
+        for either direction.
+        """
+        for key in (
+            f"{source_entity_id}-{target_entity_id}",
+            f"{target_entity_id}-{source_entity_id}",
+        ):
+            analytics = self._analytics.get(key)
+            if analytics is not None:
+                return analytics
+        return None
+
+    async def get_relationship_insights(
+        self,
+        entity_id: str,
+    ) -> RelationshipInsights:
+        """Return categorized insights for all relationships of *entity_id*.
+
+        * **strongest_relationships** -- top 10 by strength (descending).
+        * **needs_attention** -- contacts with no interaction in 30+ days,
+          sorted by days since contact descending.
+        * **recent_interactions** -- last 10 by timestamp (most recent first).
+        """
+        strongest: list[RelationshipInsight] = []
+        attention: list[NeedsAttention] = []
+        recent: list[tuple[str, RelationshipInsight]] = []  # (iso-ts, insight)
+
+        now = datetime.utcnow()
+
+        for key, analytics in self._analytics.items():
+            parts = key.split("-", 1)
+            if len(parts) != 2:
+                continue
+
+            # Only consider analytics that involve *entity_id*.
+            if entity_id not in parts:
+                continue
+
+            other_id = parts[1] if parts[0] == entity_id else parts[0]
+            insight = RelationshipInsight(entity_id=other_id, analytics=analytics)
+
+            strongest.append(insight)
+
+            if analytics.last_interaction_at:
+                last_dt = datetime.fromisoformat(
+                    analytics.last_interaction_at.replace("Z", "+00:00")
+                )
+                # Make *now* offset-aware when the stored timestamp is.
+                ref = now if last_dt.tzinfo is None else now.replace(tzinfo=last_dt.tzinfo)
+                days_since = (ref - last_dt).days
+                if days_since >= 30:
+                    attention.append(
+                        NeedsAttention(entity_id=other_id, days_since_contact=days_since)
+                    )
+                recent.append((analytics.last_interaction_at, insight))
+
+        # Top 10 strongest by strength descending.
+        strongest.sort(key=lambda i: i.analytics.strength, reverse=True)
+        strongest = strongest[:10]
+
+        # Needs attention sorted by staleness descending.
+        attention.sort(key=lambda a: a.days_since_contact, reverse=True)
+
+        # Last 10 recent interactions by timestamp descending.
+        recent.sort(key=lambda pair: pair[0], reverse=True)
+        recent_insights = [pair[1] for pair in recent[:10]]
+
+        return RelationshipInsights(
+            strongest_relationships=strongest,
+            needs_attention=attention,
+            recent_interactions=recent_insights,
+        )
+
+    # ------------------------------------------------------------------
+    # Category management
+    # ------------------------------------------------------------------
+
+    async def get_categories(self) -> list[ContactCategory]:
+        """Return all contact categories."""
+        return list(self._categories)
+
+    async def add_category(self, category: ContactCategory) -> None:
+        """Add a new category.
+
+        Raises ``ValueError`` if a category with the same *id* already
+        exists.
+        """
+        if any(c.id == category.id for c in self._categories):
+            raise ValueError(f"Category '{category.id}' already exists")
+        self._categories.append(category)
+        if self._runtime:
+            self._runtime.logger.info(
+                f"Added category {category.name}",
+                src="service:relationships",
+            )
+
+    # ------------------------------------------------------------------
+    # Privacy management
+    # ------------------------------------------------------------------
+
+    async def set_contact_privacy(
+        self,
+        entity_id: str,
+        privacy_level: str,
+    ) -> bool:
+        """Set the privacy level on a contact.
+
+        Returns ``True`` on success, ``False`` if the contact does not
+        exist.
+        """
+        if privacy_level not in ("public", "private", "restricted"):
+            return False
+        uid = UUID(entity_id) if isinstance(entity_id, str) else entity_id
+        contact = self._contacts.get(uid)
+        if contact is None:
+            return False
+        contact.privacy_level = privacy_level
+        contact.last_modified = datetime.utcnow().isoformat()
+        if self._runtime:
+            self._runtime.logger.info(
+                f"Set privacy for {entity_id} to {privacy_level}",
+                src="service:relationships",
+            )
+        return True
+
+    async def can_access_contact(
+        self,
+        requesting_entity_id: str,
+        target_entity_id: str,
+    ) -> bool:
+        """Check whether *requesting_entity_id* may access *target_entity_id*.
+
+        Access rules based on the target contact's ``privacy_level``:
+
+        * ``"public"``     -- always accessible.
+        * ``"private"``    -- accessible only to the entity itself.
+        * ``"restricted"`` -- agent-only (returns ``False`` for all
+          external callers; the owning agent bypasses this check).
+        """
+        uid = UUID(target_entity_id) if isinstance(target_entity_id, str) else target_entity_id
+        contact = self._contacts.get(uid)
+        if contact is None:
+            return False
+
+        level = contact.privacy_level
+
+        if level == "public":
+            return True
+
+        if level == "private":
+            return requesting_entity_id == target_entity_id
+
+        # "restricted" — agent-only; non-agent callers always denied.
+        return False
 
 
 RolodexService = RelationshipsService

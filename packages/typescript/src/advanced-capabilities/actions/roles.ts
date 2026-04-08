@@ -78,28 +78,35 @@ function normalizeRoleAssignments(value: unknown): RoleAssignmentXml[] {
  */
 const ROLE_OWNER: Role = "OWNER";
 const ROLE_ADMIN: Role = "ADMIN";
+const ROLE_MEMBER: Role = "MEMBER";
+const ROLE_GUEST: Role = "GUEST";
 const ROLE_NONE: Role = "NONE";
+
+/** Numeric hierarchy for permission checks — higher number = more privilege. */
+const ROLE_LEVEL: Record<Role, number> = {
+	[ROLE_OWNER]: 4,
+	[ROLE_ADMIN]: 3,
+	[ROLE_MEMBER]: 2,
+	[ROLE_GUEST]: 1,
+	[ROLE_NONE]: 0,
+};
 
 const canModifyRole = (
 	currentRole: Role,
 	targetRole: Role | null,
 	newRole: Role,
 ): boolean => {
-	// User's can't change their own role
+	// Users can't change their own role
 	if (targetRole === currentRole) {
 		return false;
 	}
 
-	switch (currentRole) {
-		// Owners can do everything
-		case ROLE_OWNER:
-			return true;
-		// Admins can only create/modify users up to their level
-		case ROLE_ADMIN:
-			return newRole !== ROLE_OWNER;
-		default:
-			return false;
-	}
+	const currentLevel = ROLE_LEVEL[currentRole] ?? 0;
+	const targetLevel = targetRole !== null ? (ROLE_LEVEL[targetRole] ?? 0) : -1;
+	const newLevel = ROLE_LEVEL[newRole] ?? 0;
+
+	// Must outrank the target and the destination role
+	return currentLevel > targetLevel && currentLevel > newLevel;
 };
 
 /**
@@ -247,7 +254,9 @@ I need to extract user role assignments from the input text. Users can be refere
 The available role types are:
 - OWNER: Full control over the server and all settings
 - ADMIN: Ability to manage channels and moderate content
-- NONE: Regular user with no special permissions
+- MEMBER: Regular member with standard permissions
+- GUEST: Limited, read-oriented permissions
+- NONE: No specific role or permissions
 
 # Current context:
 {{content}}
