@@ -1519,7 +1519,8 @@ this.promptBatcher.dispose();
         const baseState = accumulatedState || { values: {}, data: {}, text: "" };
         // Replace text entirely with fresh provider text to prevent unbounded growth in action chains
         // Note: Only RECENT_MESSAGES and ACTION_STATE are re-fetched; their fresh text reflects current state
-        // Note: baseState spread first preserves custom state fields; freshProviderState overrides only values/data/text
+        // Note: baseState is spread to preserve custom state fields from earlier providers.
+        // Only values, data, and text are explicitly merged from freshProviderState.
         accumulatedState = {
           ...baseState,
           values: { ...baseState.values, ...freshProviderState.values },
