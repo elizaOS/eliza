@@ -29,6 +29,7 @@ describe("printBootstrapBanner", () => {
     const bannerCall = mockRuntime.logger.info.mock.calls[0][0];
     expect(bannerCall).toContain("Bootstrap");
     expect(bannerCall).toContain("plugin");
+  // Note: shared mock ensures consistency across tests but requires careful handling of state.
   });
 
   it("should display banner with custom settings", () => {

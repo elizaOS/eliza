@@ -382,6 +382,7 @@ function ensureFileLog(): boolean {
     ) {
       _fileLogState = "disabled";
       return false;
+    // Note: initializes log state as 'disabled' to prevent logging if no valid config found
     }
 
     const fs = getFs();

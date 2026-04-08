@@ -95,4 +95,5 @@ export function estimateActionRunChars([runId, memories]: [string, Array<{
     );
   }, 0);
   return textChars + runId.length + 80;
+// Note: total includes fixed buffer to ensure adequate space for additional prompt data
 }

@@ -976,6 +976,7 @@ describe("DefaultMessageService", () => {
         createdAt: Date.now(),
       };
 
+      // Note: designed to test messages processing under memory creation constraints for whitelisted IDs
       await messageService.handleMessage(runtime, message, mockCallback);
 
       // Check memory was created since source is whitelisted and memory creation is enabled
