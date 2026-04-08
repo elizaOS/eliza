@@ -1,4 +1,4 @@
-export { TrajectoryLoggerService } from "../features/trajectories/TrajectoryLoggerService";
+export { TrajectoriesService } from "../features/trajectories/TrajectoriesService";
 
 export type TrajectoryScalar = string | number | boolean | null;
 export type TrajectoryData = Record<string, TrajectoryScalar>;

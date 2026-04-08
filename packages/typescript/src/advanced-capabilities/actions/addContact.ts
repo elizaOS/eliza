@@ -2,7 +2,7 @@ import { findEntityByName } from "../../entities.ts";
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
 import { logger } from "../../logger.ts";
 import { addContactTemplate } from "../../prompts.ts";
-import type { RolodexService } from "../../services/rolodex.ts";
+import type { RelationshipsService } from "../../services/relationships.ts";
 import type {
 	Action,
 	ActionExample,
@@ -28,7 +28,7 @@ const ADD_KEYWORDS = [
 	"remember",
 	"categorize",
 	"contact",
-	"rolodex",
+	"relationships",
 ];
 
 interface AddContactXmlResult {
@@ -52,9 +52,9 @@ export const addContactAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
-		if (!rolodexService) {
-			logger.warn("[AddContact] RolodexService not available");
+		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+		if (!relationshipsService) {
+			logger.warn("[AddContact] RelationshipsService not available");
 			return false;
 		}
 
@@ -70,10 +70,10 @@ export const addContactAction: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
+		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
 
-		if (!rolodexService) {
-			throw new Error("RolodexService not available");
+		if (!relationshipsService) {
+			throw new Error("RelationshipsService not available");
 		}
 
 		if (!state) {
@@ -148,7 +148,7 @@ export const addContactAction: Action = {
 		if (parsedResponse.language) preferences.language = parsedResponse.language;
 		if (parsedResponse.notes) preferences.notes = parsedResponse.notes;
 
-		const _contact = await rolodexService.addContact(
+		const _contact = await relationshipsService.addContact(
 			entityId,
 			categories,
 			preferences,
@@ -157,7 +157,7 @@ export const addContactAction: Action = {
 		logger.info(`[AddContact] Added contact ${contactName} (${entityId})`);
 
 		const responseText = `I've added ${contactName} to your contacts as ${categories.join(", ")}. ${
-			parsedResponse.reason || "They have been saved to your rolodex."
+			parsedResponse.reason || "They have been saved to your relationships."
 		}`;
 
 		if (callback) {

@@ -7,7 +7,7 @@ import {
 } from "../../types";
 import crypto from "node:crypto";
 import { createUniqueUuid } from "../../entities";
-import { TrajectoryLoggerService } from "./TrajectoryLoggerService";
+import { TrajectoriesService } from "./TrajectoriesService";
 
 const pendingTrajectoryStepByReplyId = new Map<string, string>();
 const pendingTrajectoryStepByMessageId = new Map<string, string>();
@@ -41,7 +41,7 @@ async function endPendingTrajectory(
 	trajectoryStepId: string,
 	status: TrajectoryFinalStatus,
 ): Promise<void> {
-	const logger = TrajectoryLoggerService.resolveFromRuntime(runtime);
+	const logger = TrajectoriesService.resolveFromRuntime(runtime);
 	if (!logger) {
 		cleanupPendingTrajectory(runtime, trajectoryStepId);
 		return;
@@ -99,23 +99,23 @@ function buildTrajectoryMetadata(
 }
 
 /**
- * Trajectory Logger Plugin
+ * Native trajectories plugin.
  *
  * Captures complete agent interaction trajectories for:
  * - Debugging and analysis (UI viewing)
  * - RL training data collection
  * - Export to various formats (JSON, ART, CSV)
  *
- * Registers as the "trajectory_logger" service so the @elizaos/core runtime
- * automatically logs LLM calls and provider accesses when trajectories are active.
+ * Registers the native "trajectories" service so the runtime can automatically
+ * log LLM calls and provider accesses when trajectory capture is active.
  */
-export const trajectoryLoggerPlugin: Plugin = {
+export const trajectoriesPlugin: Plugin = {
 	name: "trajectories",
 	description:
 		"Captures and persists complete agent interaction trajectories for debugging, analysis, and RL training. " +
 		"Records LLM calls, provider accesses, actions, environment state, and computes rewards.",
 	dependencies: ["@elizaos/plugin-sql"],
-	services: [TrajectoryLoggerService],
+	services: [TrajectoriesService],
 	events: {
 		MESSAGE_RECEIVED: [
 			async (payload: MessagePayload) => {
@@ -131,7 +131,7 @@ export const trajectoryLoggerPlugin: Plugin = {
 				const meta = message.metadata as Record<string, unknown>;
 
 				const logger =
-					TrajectoryLoggerService.resolveFromRuntime(runtime);
+					TrajectoriesService.resolveFromRuntime(runtime);
 				if (!logger) return;
 
 				// Start trajectory
@@ -290,12 +290,12 @@ export const trajectoryLoggerPlugin: Plugin = {
 	},
 };
 
-export default trajectoryLoggerPlugin;
+export default trajectoriesPlugin;
 
 // ==========================================
 // SERVICE (Core trajectory logging)
 // ==========================================
-export { TrajectoryLoggerService } from "./TrajectoryLoggerService";
+export { TrajectoriesService } from "./TrajectoriesService";
 export type {
 	TrajectoryListOptions,
 	TrajectoryListResult,
@@ -305,7 +305,7 @@ export type {
 	TrajectoryZipExportOptions,
 	TrajectoryZipEntry,
 	TrajectoryZipExportResult,
-} from "./TrajectoryLoggerService";
+} from "./TrajectoriesService";
 
 // ==========================================
 // CORE TYPES

@@ -3,7 +3,7 @@ import { requireActionSpec } from "../../generated/spec-helpers.ts";
 import { logger } from "../../logger.ts";
 import { scheduleFollowUpTemplate } from "../../prompts.ts";
 import type { FollowUpService } from "../../services/followUp.ts";
-import type { RolodexService } from "../../services/rolodex.ts";
+import type { RelationshipsService } from "../../services/relationships.ts";
 import type {
 	Action,
 	ActionExample,
@@ -49,10 +49,10 @@ export const scheduleFollowUpAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
+		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
 		const followUpService = runtime.getService("follow_up") as FollowUpService;
 
-		if (!rolodexService || !followUpService) {
+		if (!relationshipsService || !followUpService) {
 			logger.warn("[ScheduleFollowUp] Required services not available");
 			return false;
 		}
@@ -69,10 +69,10 @@ export const scheduleFollowUpAction: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
+		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
 		const followUpService = runtime.getService("follow_up") as FollowUpService;
 
-		if (!rolodexService || !followUpService) {
+		if (!relationshipsService || !followUpService) {
 			throw new Error("Required services not available");
 		}
 
@@ -122,7 +122,7 @@ export const scheduleFollowUpAction: Action = {
 			if (entity?.id) {
 				entityId = entity.id;
 			} else {
-				throw new Error(`Contact "${contactName}" not found in rolodex`);
+				throw new Error(`Contact "${contactName}" not found in relationships`);
 			}
 		}
 
@@ -130,9 +130,9 @@ export const scheduleFollowUpAction: Action = {
 			throw new Error("Could not determine contact to follow up with");
 		}
 
-		const contact = await rolodexService.getContact(entityId);
+		const contact = await relationshipsService.getContact(entityId);
 		if (!contact) {
-			throw new Error("Contact not found in rolodex. Please add them first.");
+			throw new Error("Contact not found in relationships. Please add them first.");
 		}
 
 		const scheduledAt = new Date(parsedResponse.scheduledAt || "");

@@ -40,7 +40,7 @@ export function logAdvancedMemoryTrajectory(params: {
 	}
 
 	const trajectoryLogger = params.runtime.getService(
-		"trajectory_logger",
+		"trajectories",
 	) as TrajectoryLogger | null;
 	if (
 		!trajectoryLogger ||

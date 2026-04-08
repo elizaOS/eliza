@@ -7,7 +7,7 @@ use crate::advanced_planning;
 use crate::native_features::{
     create_knowledge_plugin, create_relationships_plugin, create_trajectories_plugin,
     resolve_native_runtime_feature_from_plugin_name, FollowUpServiceAdapter,
-    NativeRuntimeFeature, RelationshipsService, TrajectoryLoggerService,
+    NativeRuntimeFeature, RelationshipsService, TrajectoriesService,
     NATIVE_RUNTIME_FEATURE_DEFAULTS,
 };
 use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
@@ -600,11 +600,7 @@ impl AgentRuntime {
     }
 
     fn resolve_service_type_alias(&self, service_type: &str) -> String {
-        match service_type {
-            "rolodex" => "relationships".to_string(),
-            "trajectory_logger" => "trajectories".to_string(),
-            other => other.to_string(),
-        }
+        service_type.to_string()
     }
 
     async fn resolve_native_feature_enabled(&self, feature: NativeRuntimeFeature) -> bool {
@@ -624,18 +620,6 @@ impl AgentRuntime {
         };
         if let Some(enabled) = parse_optional_bool_setting(self.get_setting(setting_key).await) {
             return enabled;
-        }
-
-        if feature == NativeRuntimeFeature::Trajectories {
-            for env_key in [
-                "MILADY_TRAJECTORY_LOGGING",
-                "ENABLE_TRAJECTORY_LOGGING",
-                "TRAJECTORY_LOGGING",
-            ] {
-                if let Some(enabled) = parse_optional_env_bool(env_key) {
-                    return enabled;
-                }
-            }
         }
 
         NATIVE_RUNTIME_FEATURE_DEFAULTS
@@ -912,7 +896,7 @@ impl AgentRuntime {
                 if !self.has_registered_service_type("trajectories").await {
                     self.register_service(
                         "trajectories",
-                        Arc::new(TrajectoryLoggerService::new(Arc::downgrade(self))),
+                        Arc::new(TrajectoriesService::new(Arc::downgrade(self))),
                     )
                     .await;
                 }

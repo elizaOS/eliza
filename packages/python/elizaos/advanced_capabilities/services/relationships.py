@@ -449,4 +449,4 @@ class RelationshipsService(Service):
         return False
 
 
-RolodexService = RelationshipsService
+RelationshipsService = RelationshipsService

@@ -5,7 +5,7 @@
  */
 
 import { logger } from "../../logger";
-import type { TrajectoryLoggerService } from "./TrajectoryLoggerService";
+import type { TrajectoriesService } from "./TrajectoriesService";
 import type { EnvironmentState, JsonValue } from "./types";
 
 export interface TrajectoryMetadata {
@@ -25,7 +25,7 @@ export interface ProviderAccessData {
 export type WrappedFunctionArgs = JsonValue[];
 
 export async function startAutonomousTick(
-	trajectoryLogger: TrajectoryLoggerService,
+	trajectoryLogger: TrajectoriesService,
 	context: {
 		agentId: string;
 		source?: string;
@@ -62,7 +62,7 @@ export async function startAutonomousTick(
 }
 
 export async function endAutonomousTick(
-	trajectoryLogger: TrajectoryLoggerService,
+	trajectoryLogger: TrajectoriesService,
 	trajectoryId: string,
 	status: "completed" | "terminated" | "error" | "timeout" = "completed",
 	finalMetrics?: FinalMetrics,
@@ -81,7 +81,7 @@ export async function endAutonomousTick(
 }
 
 export async function loggedLLMCall(
-	trajectoryLogger: TrajectoryLoggerService,
+	trajectoryLogger: TrajectoriesService,
 	trajectoryId: string,
 	options: {
 		model: string;
@@ -131,7 +131,7 @@ export async function loggedLLMCall(
 }
 
 export function logProviderAccess(
-	trajectoryLogger: TrajectoryLoggerService,
+	trajectoryLogger: TrajectoriesService,
 	trajectoryId: string,
 	access: {
 		providerName: string;
@@ -152,7 +152,7 @@ export function withTrajectoryLogging<
 	TResult extends JsonValue,
 >(
 	fn: AsyncFunction<TArgs, TResult>,
-	trajectoryLogger: TrajectoryLoggerService,
+	trajectoryLogger: TrajectoriesService,
 	trajectoryId: string,
 	context: {
 		actionType?: string;

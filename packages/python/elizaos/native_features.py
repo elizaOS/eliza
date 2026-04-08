@@ -23,7 +23,7 @@ from elizaos.advanced_capabilities.providers import (
     relationships_provider,
 )
 from elizaos.advanced_capabilities.services import FollowUpService, RelationshipsService
-from elizaos.services.trajectory_logger import TrajectoryLoggerService
+from elizaos.services.trajectories import TrajectoriesService
 from elizaos.types import Plugin
 
 NativeRuntimeFeature = Literal["knowledge", "relationships", "trajectories"]
@@ -63,7 +63,7 @@ relationships_plugin = Plugin(
 trajectories_plugin = Plugin(
     name="trajectories",
     description="Native trajectory logging capabilities.",
-    services=[TrajectoryLoggerService],
+    services=[TrajectoriesService],
 )
 
 native_runtime_feature_plugins: dict[NativeRuntimeFeature, Plugin] = {
@@ -82,17 +82,6 @@ native_runtime_feature_plugin_names: dict[NativeRuntimeFeature, str] = {
     feature: plugin.name for feature, plugin in native_runtime_feature_plugins.items()
 }
 
-native_runtime_feature_legacy_plugin_names: dict[NativeRuntimeFeature, list[str]] = {
-    "knowledge": ["plugin-knowledge", "@elizaos/plugin-knowledge"],
-    "relationships": ["rolodex", "plugin-rolodex", "@elizaos/plugin-rolodex"],
-    "trajectories": [
-        "trajectory_logger",
-        "plugin-trajectory-logger",
-        "@elizaos/plugin-trajectory-logger",
-    ],
-}
-
-
 def get_native_runtime_feature_plugin(feature: NativeRuntimeFeature) -> Plugin:
     return native_runtime_feature_plugins[feature]
 
@@ -105,8 +94,6 @@ def resolve_native_runtime_feature_from_plugin_name(
 
     for feature, canonical_name in native_runtime_feature_plugin_names.items():
         if plugin_name == canonical_name:
-            return feature
-        if plugin_name in native_runtime_feature_legacy_plugin_names[feature]:
             return feature
 
     return None

@@ -1,4 +1,4 @@
-task: Extract contact information to add to the rolodex.
+task: Extract contact information to add to the relationships.
 
 context:
 {{providers}}

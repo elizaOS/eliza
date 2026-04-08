@@ -1,7 +1,7 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
 import { logger } from "../../logger.ts";
 import { updateContactTemplate } from "../../prompts.ts";
-import type { ContactInfo, RolodexService } from "../../services/rolodex.ts";
+import type { ContactInfo, RelationshipsService } from "../../services/relationships.ts";
 import type {
 	Action,
 	ActionExample,
@@ -53,7 +53,7 @@ export const updateContactAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		const hasService = !!runtime.getService("rolodex");
+		const hasService = !!runtime.getService("relationships");
 		const text = message.content.text;
 		if (!text) return false;
 		const hasIntent = UPDATE_CONTACT_INTENT.test(text);
@@ -68,9 +68,9 @@ export const updateContactAction: Action = {
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		try {
-			const rolodexService = runtime.getService("rolodex") as RolodexService;
-			if (!rolodexService) {
-				throw new Error("RolodexService not available");
+			const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+			if (!relationshipsService) {
+				throw new Error("RelationshipsService not available");
 			}
 
 			// Build state for prompt composition
@@ -114,13 +114,13 @@ export const updateContactAction: Action = {
 			}
 
 			// Find the contact entity
-			const contacts = await rolodexService.searchContacts({
+			const contacts = await relationshipsService.searchContacts({
 				searchTerm: contactName,
 			});
 
 			if (contacts.length === 0) {
 				await callback?.({
-					text: `I couldn't find a contact named "${contactName}" in the rolodex.`,
+					text: `I couldn't find a contact named "${contactName}" in the relationships.`,
 				});
 				return;
 			}
@@ -180,7 +180,7 @@ export const updateContactAction: Action = {
 			}
 
 			// Update the contact
-			const updated = await rolodexService.updateContact(
+			const updated = await relationshipsService.updateContact(
 				contact.entityId,
 				updateData,
 			);

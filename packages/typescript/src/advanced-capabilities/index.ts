@@ -8,7 +8,7 @@
  * - Extended providers (facts, contacts, relationships, roles, settings, knowledge)
  * - Advanced actions (contacts management, room management, image generation, etc.)
  * - Evaluators (reflection, relationship extraction)
- * - Additional services (rolodex, follow-ups)
+ * - Additional services (relationships, follow-ups)
  */
 
 import { withCanonicalActionDocs } from "../action-docs.ts";

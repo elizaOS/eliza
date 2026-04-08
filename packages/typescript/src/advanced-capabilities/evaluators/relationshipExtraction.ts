@@ -1,6 +1,6 @@
 import { requireEvaluatorSpec } from "../../generated/spec-helpers.ts";
 import { logger } from "../../logger.ts";
-import type { RolodexService } from "../../services/rolodex.ts";
+import type { RelationshipsService } from "../../services/relationships.ts";
 import type {
 	ActionResult,
 	Entity,
@@ -73,9 +73,9 @@ export const relationshipExtractionEvaluator: Evaluator = {
 		message: Memory,
 		_state?: State,
 	): Promise<ActionResult | undefined> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
-		if (!rolodexService) {
-			logger.warn("[RelationshipExtraction] RolodexService not available");
+		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+		if (!relationshipsService) {
+			logger.warn("[RelationshipExtraction] RelationshipsService not available");
 			return;
 		}
 
@@ -105,7 +105,7 @@ export const relationshipExtractionEvaluator: Evaluator = {
 
 		// Analyze relationships between participants
 		if (recentMessages.length > 1) {
-			await analyzeRelationships(runtime, recentMessages, rolodexService);
+			await analyzeRelationships(runtime, recentMessages, relationshipsService);
 		}
 
 		// Extract information about mentioned third parties
@@ -298,7 +298,7 @@ async function handleDispute(
 		agentId: runtime.agentId,
 		entityId: message.entityId,
 		roomId: message.roomId,
-		worldId: stringToUuid(`rolodex-world-${runtime.agentId}`),
+		worldId: stringToUuid(`relationships-world-${runtime.agentId}`),
 		sourceEntityId: message.entityId,
 		data: {
 			disputedEntity: dispute.disputedEntity,
@@ -323,7 +323,7 @@ async function handleDispute(
 async function analyzeRelationships(
 	runtime: IAgentRuntime,
 	messages: Memory[],
-	_rolodexService: RolodexService,
+	_relationshipsService: RelationshipsService,
 ) {
 	// Group messages by sender
 	const messagesBySender = new Map<UUID, Memory[]>();
@@ -535,7 +535,7 @@ async function updateRelationship(
 		await runtime.createRelationship({
 			sourceEntityId: entityA,
 			targetEntityId: entityB,
-			tags: ["rolodex", primaryType],
+			tags: ["relationships", primaryType],
 			metadata: {
 				sentiment,
 				indicators: serializeIndicators(indicators) as MetadataCompatibleArray,
@@ -780,7 +780,7 @@ async function handlePrivacyBoundary(
 		agentId: runtime.agentId,
 		entityId: message.entityId,
 		roomId: message.roomId,
-		worldId: stringToUuid(`rolodex-world-${runtime.agentId}`),
+		worldId: stringToUuid(`relationships-world-${runtime.agentId}`),
 		sourceEntityId: message.entityId,
 		data: {
 			privacyType: privacyInfo.type,

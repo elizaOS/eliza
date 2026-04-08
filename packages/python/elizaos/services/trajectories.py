@@ -39,7 +39,7 @@ class TrajectoryLlmCall:
     timestamp_ms: int = 0
 
 
-class TrajectoryLoggerService(Service):
+class TrajectoriesService(Service):
     name = "trajectories"
     service_type = ServiceType.TRAJECTORIES
 
@@ -53,11 +53,11 @@ class TrajectoryLoggerService(Service):
         self._llm_calls: list[TrajectoryLlmCall] = []
 
     @classmethod
-    async def start(cls, runtime: IAgentRuntime) -> TrajectoryLoggerService:
+    async def start(cls, runtime: IAgentRuntime) -> TrajectoriesService:
         service = cls()
         service.runtime = runtime
         runtime.logger.info(
-            "Trajectory logger service started",
+            "Trajectories service started",
             src="service:trajectories",
             agentId=str(runtime.agent_id),
         )
@@ -65,7 +65,7 @@ class TrajectoryLoggerService(Service):
 
     async def stop(self) -> None:
         self.runtime.logger.info(
-            "Trajectory logger service stopped",
+            "Trajectories service stopped",
             src="service:trajectories",
             agentId=str(self.runtime.agent_id),
         )

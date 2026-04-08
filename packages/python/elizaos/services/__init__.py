@@ -23,8 +23,8 @@ from elizaos.services.message_service import (
     MessageProcessingResult,
     StreamingMessageResult,
 )
-from elizaos.services.trajectory_logger import (
-    TrajectoryLoggerService,
+from elizaos.services.trajectories import (
+    TrajectoriesService,
 )
 
 __all__ = [
@@ -50,5 +50,5 @@ __all__ = [
     "MessageProcessingResult",
     "StreamingMessageResult",
     # Trajectory Service
-    "TrajectoryLoggerService",
+    "TrajectoriesService",
 ]

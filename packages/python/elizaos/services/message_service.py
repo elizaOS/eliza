@@ -406,7 +406,7 @@ class DefaultMessageService(IMessageService):
                 query: dict[str, str | int | float | bool | None] | None = None,
             ) -> None: ...
 
-        traj_svc = runtime.get_service("trajectory_logger")
+        traj_svc = runtime.get_service("trajectories")
         traj_logger = traj_svc if isinstance(traj_svc, _TrajectoryLogger) else None
 
         def _as_json_scalar(value: object) -> str | int | float | bool | None:

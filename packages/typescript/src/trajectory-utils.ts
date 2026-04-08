@@ -81,8 +81,8 @@ export function resolveTrajectoryLogger(
 		candidates.push(candidate);
 	};
 
-	push(runtime.getService("trajectory_logger"));
-	for (const candidate of runtime.getServicesByType("trajectory_logger")) {
+	push(runtime.getService("trajectories"));
+	for (const candidate of runtime.getServicesByType("trajectories")) {
 		push(candidate);
 	}
 

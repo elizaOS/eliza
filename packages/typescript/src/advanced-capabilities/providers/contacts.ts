@@ -1,5 +1,5 @@
 import { requireProviderSpec } from "../../generated/spec-helpers.ts";
-import type { RolodexService } from "../../services/rolodex.ts";
+import type { RelationshipsService } from "../../services/relationships.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -19,18 +19,18 @@ export const contactsProvider: Provider = {
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
-		if (!rolodexService) {
-			runtime.logger.warn("[ContactsProvider] RolodexService not available");
+		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+		if (!relationshipsService) {
+			runtime.logger.warn("[ContactsProvider] RelationshipsService not available");
 			return { text: "", values: {}, data: {} };
 		}
 
 		// Get all contacts
-		const contacts = await rolodexService.searchContacts({});
+		const contacts = await relationshipsService.searchContacts({});
 
 		if (contacts.length === 0) {
 			return {
-				text: "No contacts in rolodex.",
+				text: "No contacts in relationships.",
 				values: { contactCount: 0 },
 				data: {},
 			};
@@ -65,7 +65,7 @@ export const contactsProvider: Provider = {
 		}
 
 		const lines: string[] = [];
-		lines.push(`You have ${contacts.length} contacts in your rolodex:`);
+		lines.push(`You have ${contacts.length} contacts in your relationships:`);
 
 		const categoryCounts: Record<string, number> = {};
 		for (const category in grouped) {

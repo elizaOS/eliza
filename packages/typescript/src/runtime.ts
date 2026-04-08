@@ -262,10 +262,6 @@ export class AgentRuntime implements IAgentRuntime {
 	private characterPlugins: Plugin[] = [];
 	// Capability options for basic capabilities configuration
 	private capabilityOptions: CapabilityConfig = {};
-	private readonly serviceAliases = new Map<string, string>([
-		["relationships", "rolodex"],
-		["trajectories", "trajectory_logger"],
-	]);
 	private readonly nativeFeatureOptions: Partial<
 		Record<NativeRuntimeFeature, boolean>
 	>;
@@ -520,7 +516,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	private resolveServiceTypeAlias(serviceType: ServiceTypeName | string): string {
-		return this.serviceAliases.get(serviceType) ?? serviceType;
+		return serviceType;
 	}
 
 	private resolveNativeFeatureEnabled(feature: NativeRuntimeFeature): boolean {
@@ -533,19 +529,6 @@ export class AgentRuntime implements IAgentRuntime {
 		const settingValue = parseBooleanValue(this.getSetting(settingKey));
 		if (settingValue !== undefined) {
 			return settingValue;
-		}
-
-		if (feature === "trajectories") {
-			for (const envKey of [
-				"MILADY_TRAJECTORY_LOGGING",
-				"ENABLE_TRAJECTORY_LOGGING",
-				"TRAJECTORY_LOGGING",
-			]) {
-				const envValue = parseBooleanValue(process.env[envKey]);
-				if (envValue !== undefined) {
-					return envValue;
-				}
-			}
 		}
 
 		return nativeRuntimeFeatureDefaults[feature];
@@ -563,10 +546,8 @@ export class AgentRuntime implements IAgentRuntime {
 			case "knowledge":
 				return "knowledge";
 			case "relationships":
-			case "rolodex":
 				return "relationships";
 			case "trajectories":
-			case "trajectory_logger":
 				return "trajectories";
 			default:
 				return null;
@@ -2756,7 +2737,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}) => void;
 		};
 		const trajLogger = (await this._ensureServiceStarted(
-			"trajectory_logger",
+			"trajectories",
 		)) as TrajectoryLogger | null;
 		const providerData = await Promise.all(
 			providersToGet.map(async (provider) => {
@@ -3759,7 +3740,7 @@ export class AgentRuntime implements IAgentRuntime {
 					};
 					const stepId = getTrajectoryContext()?.trajectoryStepId;
 					const trajLogger = (await this._ensureServiceStarted(
-						"trajectory_logger",
+						"trajectories",
 					)) as TrajectoryLogger | null;
 					if (stepId && trajLogger) {
 						const tempRaw = isPlainObject(modelParams)
@@ -3839,7 +3820,7 @@ export class AgentRuntime implements IAgentRuntime {
 				};
 				const stepId = getTrajectoryContext()?.trajectoryStepId;
 				const trajLogger = (await this._ensureServiceStarted(
-					"trajectory_logger",
+					"trajectories",
 				)) as TrajectoryLogger | null;
 				if (stepId && trajLogger) {
 					const tempRaw = isPlainObject(modelParams)
