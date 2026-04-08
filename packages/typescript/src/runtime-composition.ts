@@ -80,15 +80,9 @@ export function getBasicCapabilitiesSettings(
 		character.settings && typeof character.settings === "object"
 			? character.settings
 			: {};
-	// Settings that should remain as booleans (not coerced to "true"/"false" strings)
-	const booleanSettings = new Set(["CHECK_SHOULD_RESPOND"]);
 	for (const [key, value] of Object.entries(settings)) {
 		if (value === undefined || value === null) continue;
 		if (key === "secrets" && typeof value === "object") continue;
-		if (booleanSettings.has(key) && typeof value === "boolean") {
-			// Skip boolean settings here; they should be passed via CreateRuntimesOptions
-			continue;
-		}
 		out[key] = typeof value === "string" ? value : String(value);
 	}
 
