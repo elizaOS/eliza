@@ -6,6 +6,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	type TextGenerationModelType,
 	type UUID,
 } from "../../types/index.ts";
 import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
@@ -14,6 +15,7 @@ import {
 	updateSummarizationTemplate,
 } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
+import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import type { SummaryResult } from "../types.ts";
 
 // Get text content from centralized specs
@@ -250,12 +252,31 @@ export const summarizationEvaluator: Evaluator = {
 				});
 			}
 
-			const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+			const modelType = (config.summaryModelType ??
+				ModelType.TINY) as TextGenerationModelType;
+			const response = await runtime.useModel(modelType, {
 				prompt,
 				maxTokens: config.summaryMaxTokens || 2500,
 			});
 
 			const summaryResult = parseSummaryResponse(response);
+			logAdvancedMemoryTrajectory({
+				runtime,
+				message,
+				providerName: "MEMORY_SUMMARIZATION",
+				purpose: "evaluate",
+				data: {
+					hasExistingSummary: !!existingSummary,
+					processedDialogueMessages: newDialogueMessages.length,
+					totalDialogueMessages: totalDialogueCount,
+					topicCount: summaryResult.topics.length,
+					keyPointCount: summaryResult.keyPoints.length,
+				},
+				query: {
+					modelType: String(modelType),
+					roomId,
+				},
+			});
 
 			logger.info(
 				{ src: "evaluator:memory" },

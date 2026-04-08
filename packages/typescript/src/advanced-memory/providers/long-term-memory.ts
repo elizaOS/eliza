@@ -8,6 +8,7 @@ import type {
 } from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
+import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 
 export const longTermMemoryProvider: Provider = {
 	name: "LONG_TERM_MEMORY",
@@ -46,6 +47,19 @@ export const longTermMemoryProvider: Provider = {
 				25,
 			);
 			if (memories.length === 0) {
+				logAdvancedMemoryTrajectory({
+					runtime,
+					message,
+					providerName: "LONG_TERM_MEMORY",
+					purpose: "long_term_memory",
+					data: {
+						memoryCount: 0,
+						categoryCount: 0,
+					},
+					query: {
+						entityId,
+					},
+				});
 				return {
 					data: { memoryCount: 0 },
 					values: { longTermMemories: "" },
@@ -66,6 +80,19 @@ export const longTermMemoryProvider: Provider = {
 			const categoryList = Array.from(categoryCounts.entries())
 				.map(([cat, count]) => `${cat}: ${count}`)
 				.join(", ");
+			logAdvancedMemoryTrajectory({
+				runtime,
+				message,
+				providerName: "LONG_TERM_MEMORY",
+				purpose: "long_term_memory",
+				data: {
+					memoryCount: memories.length,
+					categoryCount: categoryCounts.size,
+				},
+				query: {
+					entityId,
+				},
+			});
 
 			return {
 				data: {

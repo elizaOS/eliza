@@ -6,10 +6,12 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	type TextGenerationModelType,
 } from "../../types/index.ts";
 import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 import { longTermExtractionTemplate } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
+import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
 
 const spec = requireEvaluatorSpec("LONG_TERM_MEMORY_EXTRACTION");
@@ -186,7 +188,9 @@ export const longTermExtractionEvaluator: Evaluator = {
 				template: longTermExtractionTemplate,
 			});
 
-			const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+			const modelType = (config.summaryModelType ??
+				ModelType.TINY) as TextGenerationModelType;
+			const response = await runtime.useModel(modelType, { prompt });
 			const extractions = parseMemoryExtractionResponse(response);
 
 			logger.info(
@@ -196,6 +200,7 @@ export const longTermExtractionEvaluator: Evaluator = {
 
 			const minConfidence = Math.max(config.longTermConfidenceThreshold, 0.85);
 			const extractedAt = new Date().toISOString();
+			let storedCount = 0;
 			await Promise.all(
 				extractions.map(async (extraction) => {
 					if (extraction.confidence >= minConfidence) {
@@ -211,6 +216,7 @@ export const longTermExtractionEvaluator: Evaluator = {
 								extractedAt,
 							},
 						});
+						storedCount += 1;
 
 						logger.info(
 							{ src: "evaluator:memory" },
@@ -224,6 +230,23 @@ export const longTermExtractionEvaluator: Evaluator = {
 					}
 				}),
 			);
+			logAdvancedMemoryTrajectory({
+				runtime,
+				message,
+				providerName: "LONG_TERM_MEMORY_EXTRACTION",
+				purpose: "evaluate",
+				data: {
+					recentMessageCount: recentMessages.length,
+					existingMemoryCount: existingMemories.length,
+					extractedMemoryCount: extractions.length,
+					storedMemoryCount: storedCount,
+				},
+				query: {
+					modelType: String(modelType),
+					entityId,
+					roomId,
+				},
+			});
 
 			const currentMessageCount = await runtime.countMemories({
 				roomIds: [roomId],

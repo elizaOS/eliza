@@ -1,6 +1,7 @@
 import { logger } from "../../logger.ts";
 import {
 	type IAgentRuntime,
+	ModelType,
 	Service,
 	type ServiceTypeName,
 	type UUID,
@@ -39,7 +40,7 @@ export class MemoryService extends Service {
 			longTermConfidenceThreshold: 0.85,
 			longTermExtractionThreshold: 30,
 			longTermExtractionInterval: 10,
-			summaryModelType: "TEXT_LARGE",
+			summaryModelType: ModelType.TINY,
 			summaryMaxTokens: 2500,
 			summaryMaxNewMessages: 20,
 		};
@@ -60,9 +61,20 @@ export class MemoryService extends Service {
 
 		// Discover the storage provider registered by a database plugin.
 		// If none exists, storage-backed features are disabled.
-		const provider = runtime.getService(
-			"memoryStorage",
-		) as unknown as MemoryStorageProvider | null;
+		let provider: MemoryStorageProvider | null = null;
+		if (runtime.hasService("memoryStorage")) {
+			try {
+				provider = (await runtime.getServiceLoadPromise(
+					"memoryStorage",
+				)) as unknown as MemoryStorageProvider | null;
+			} catch (error) {
+				const err = error instanceof Error ? error.message : String(error);
+				logger.warn(
+					{ src: "service:memory", agentId: runtime.agentId, err },
+					"MemoryStorageProvider failed to start — storage-backed advanced memory disabled",
+				);
+			}
+		}
 		if (!provider) {
 			logger.warn(
 				{ src: "service:memory", agentId: runtime.agentId },
