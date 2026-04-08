@@ -1517,9 +1517,9 @@ this.promptBatcher.dispose();
         // Merge fresh provider data with accumulated state, preserving action results and values
         // Ensure non-null base to prevent dereferencing undefined
         const baseState = accumulatedState || { values: {}, data: {}, text: "" };
-        // Use only fresh provider text to avoid quadratic growth in action chains
-        // Note: Only RECENT_MESSAGES and ACTION_STATE are re-fetched; their text replaces prior text
-        const mergedText = freshProviderState.text || "";
+        // Preserve base text and append fresh provider text to maintain all provider context
+        // Note: Only RECENT_MESSAGES and ACTION_STATE are re-fetched; append their text to preserve other providers
+        const mergedText = baseState.text + (freshProviderState.text ? "\n" + freshProviderState.text : "");
         accumulatedState = {
           ...baseState,
           ...freshProviderState,
