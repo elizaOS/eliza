@@ -51,8 +51,10 @@ export const replyAction = {
     const initialThought = responses?.[0]?.content?.thought;
     const isFirstAction = previousResults.length === 0;
 
+    // Note: Only use optimization when callback exists, otherwise response would be silently dropped
     if (
       isFirstAction &&
+      callback &&
       initialText &&
       typeof initialText === "string" &&
       initialText.trim() !== ""
