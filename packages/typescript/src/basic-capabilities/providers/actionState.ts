@@ -200,11 +200,13 @@ export const actionStateProvider: Provider = {
         }
       }
 
+      // Note: sliceToFitBudget with default fromEnd:false iterates from the start of the array.
+      // Since Map preserves insertion order and getMemories() returns newest-first,
+      // this keeps the most recent runs when budget is limited.
       const selectedRuns = sliceToFitBudget(
           Array.from(groupedByRun.entries()),
           estimateActionRunChars,
           ACTION_HISTORY_TARGET_CHARS,
-          // Note: getMemories() returns newest-first; default fromEnd:false iterates from start, keeping most recent runs
         );
 
       const formattedMemories = selectedRuns

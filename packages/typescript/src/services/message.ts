@@ -235,13 +235,13 @@ export class DefaultMessageService implements IMessageService {
     options?: MessageProcessingOptions,
   ): Promise<MessageProcessingResult> {
     // Prune stale entries based on TTL and size
-        evictStaleResponseTracking();
-        if (latestResponseIds.size > 1000) {
-          const keysToDelete = Array.from(latestResponseIds.keys()).slice(0, 100);
-          for (const key of keysToDelete) {
-            latestResponseIds.delete(key);
-            latestResponseTimestamps.delete(key);
-          }
+    evictStaleResponseTracking();
+    if (latestResponseIds.size > 1000) {
+      const keysToDelete = Array.from(latestResponseIds.keys()).slice(0, 100);
+      for (const key of keysToDelete) {
+        latestResponseIds.delete(key);
+        latestResponseTimestamps.delete(key);
+      }
     }
     const trajectoryStepId =
       typeof message.metadata === "object" &&
