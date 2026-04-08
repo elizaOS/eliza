@@ -1,3 +1,4 @@
+// Note: test file verifies replyAction behavior for the specific test suite context
 import { describe, it, expect, vi } from "vitest";
 import { replyAction } from "../actions/reply";
 import { type IAgentRuntime, type Memory, type State } from "../../types";
