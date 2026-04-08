@@ -75,10 +75,8 @@ export const replyAction = {
         actions: ["REPLY"] as string[],
       };
 
-      if (callback) {
-        await callback(responseContent, "REPLY");
-      // Note: actionName is passed only for multi-action contexts; single-action uses defaults.
-      }
+      // Note: callback is already verified truthy by outer condition (line 57)
+      await callback(responseContent, "REPLY");
 
       return {
         text: `Generated reply: ${responseContent.text}`,
