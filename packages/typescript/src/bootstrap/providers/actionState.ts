@@ -10,9 +10,34 @@ import {
   sliceToFitBudget,
   ACTION_RESULTS_TARGET_CHARS,
   ACTION_HISTORY_TARGET_CHARS,
-  estimateActionRunChars,
-  estimateActionResultChars,
 } from "../../utils/slice-to-fit-budget.js";
+
+/**
+ * Estimate character count for an action result entry.
+ */
+function estimateActionResultChars(result: ActionResult): number {
+  let chars = 50; // base overhead for formatting
+  chars += result.text?.length || 0;
+  if (result.error) {
+    chars += result.error instanceof Error ? result.error.message.length : String(result.error).length;
+  }
+  if (result.values) {
+    chars += JSON.stringify(result.values).length;
+  }
+  return chars;
+}
+
+/**
+ * Estimate character count for an action run (group of memories).
+ */
+function estimateActionRunChars([_runId, memories]: [string, Memory[]]): number {
+  let chars = 30; // base overhead for run header
+  for (const mem of memories) {
+    chars += 50; // base per-memory overhead
+    chars += mem.content?.text?.length || 0;
+  }
+  return chars;
+}
 
 /**
  * Provider for sharing action execution state and plan between actions
