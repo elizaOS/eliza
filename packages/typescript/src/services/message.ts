@@ -105,8 +105,9 @@ function isMemoryCreationDisabled(runtime: IAgentRuntime): boolean {
  * Allowed memory source IDs from ALLOW_MEMORY_SOURCE_IDS (whitelist).
  * When set, only messages whose metadata.sourceId is in this list are persisted.
  * WHY: When DISABLE_MEMORY_CREATION is false but you want to restrict *which* sources
- * get persisted (e.g. only one channel), set this list. When DISABLE_MEMORY_CREATION is
- * true, persistence is skipped UNLESS the source matches this whitelist (allowlist override).
+ * get persisted (e.g. only one channel), set this list.
+ * Note: When DISABLE_MEMORY_CREATION is true, all persistence is skipped unconditionally
+ * (this allowlist does NOT override the disable flag).
  */
 function getAllowedMemorySources(runtime: IAgentRuntime): string[] | null {
   const setting = runtime.getSetting("ALLOW_MEMORY_SOURCE_IDS");
