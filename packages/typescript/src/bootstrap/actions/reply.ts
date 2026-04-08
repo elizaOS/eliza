@@ -51,10 +51,10 @@ export const replyAction = {
     const initialThought = responses?.[0]?.content?.thought;
     const isFirstAction = previousResults.length === 0;
 
-    // Note: Only use optimization when callback exists, otherwise response would be silently dropped
+    // Note: Optimization applies when we have valid initial text from the first action.
+    // The callback is optional - if absent, the response is still returned in ActionResult.
     if (
       isFirstAction &&
-      callback &&
       initialText &&
       typeof initialText === "string" &&
       initialText.trim() !== ""
@@ -75,8 +75,9 @@ export const replyAction = {
         actions: ["REPLY"] as string[],
       };
 
-      // Note: callback is already verified truthy by outer condition (line 57)
-      await callback(responseContent, "REPLY");
+      if (callback) {
+        await callback(responseContent, "REPLY");
+      }
 
       return {
         text: `Generated reply: ${responseContent.text}`,
