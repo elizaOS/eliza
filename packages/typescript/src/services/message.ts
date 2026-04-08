@@ -10,12 +10,12 @@ import {
 	postActionDecisionTemplate,
 	shouldRespondTemplate,
 } from "../prompts";
-import { runWithStreamingContext } from "../streaming-context";
 import { runWithTrajectoryContext } from "../trajectory-context";
 import type {
 	Action,
 	ActionResult,
 	HandlerCallback,
+	StreamChunkCallback,
 } from "../types/components";
 import type { Room } from "../types/environment";
 import type { RunEventPayload } from "../types/events";
@@ -454,6 +454,132 @@ export class DefaultMessageService implements IMessageService {
 					options?.shouldRespondModel ?? shouldRespondModelSetting,
 				);
 
+				// WHY voice detection wraps onStreamChunk here instead of using a
+				// separate ResponseStreamExtractor + AsyncLocalStorage context:
+				//
+				// Previously handleMessage created a second XML extractor
+				// (ResponseStreamExtractor) and injected it via runWithStreamingContext.
+				// Both extractors received the same raw LLM tokens in useModel and
+				// emitted independently, causing the dual-extractor garbling bug —
+				// consumers saw overlapping deltas that produced unintelligible TTS.
+				//
+				// The fix: a single extractor (ValidationStreamExtractor in
+				// dynamicPromptExecFromState) now provides `accumulated` — the full
+				// extracted text — via the third StreamChunkCallback argument. Voice
+				// detection wraps the caller's callback to intercept accumulated text
+				// for first-sentence detection, then forwards to the original. This
+				// keeps voice logic in handleMessage (encapsulation) without adding a
+				// second extraction pipeline.
+				//
+				// The `streamTextFallback` path exists for action handlers or other
+				// call sites that don't provide `accumulated` (raw token streams).
+				let firstSentenceSent = false;
+				let firstSentenceText = "";
+				let streamTextFallback = "";
+				const userOnStreamChunk = options?.onStreamChunk;
+				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
+					userOnStreamChunk
+						? async (chunk, messageId, accumulated) => {
+								let streamText: string;
+								// If we have accumulated text, also sync streamTextFallback so the
+								// fallback path has accurate state if the stream source later changes.
+								if (accumulated !== undefined) {
+									streamTextFallback = accumulated;
+									streamText = accumulated;
+								} else {
+									streamTextFallback += chunk;
+									streamText = streamTextFallback;
+								}
+
+								// Only run first-sentence TTS detection when `accumulated` is present.
+								// Raw-token streams (no accumulated) may contain XML markup or partial
+								// structured output that would garble hasFirstSentence() and TTS.
+								if (!firstSentenceSent && accumulated !== undefined && hasFirstSentence(streamText)) {
+									const { first } = extractFirstSentence(streamText);
+									firstSentenceText = first;
+									if (first.length > 5) {
+										firstSentenceSent = true;
+
+										(async () => {
+											try {
+												const voiceSettings = runtime.character.settings
+													?.voice as
+													| {
+															model?: string;
+															url?: string;
+															voiceId?: string;
+													  }
+													| undefined;
+
+												const model =
+													voiceSettings?.model || "en_US-male-medium";
+												const voiceId =
+													voiceSettings?.url ||
+													voiceSettings?.voiceId ||
+													"nova";
+
+												let audioBuffer: Buffer | null = null;
+												const params: TextToSpeechParams & {
+													model?: string;
+												} = {
+													text: first,
+													voice: voiceId,
+													model: model,
+												};
+												const result = runtime.getModel(
+													ModelType.TEXT_TO_SPEECH,
+												)
+													? await runtime.useModel(
+															ModelType.TEXT_TO_SPEECH,
+															params,
+														)
+													: undefined;
+
+												if (
+													result instanceof ArrayBuffer ||
+													Object.prototype.toString.call(result) ===
+														"[object ArrayBuffer]"
+												) {
+													audioBuffer = Buffer.from(result as ArrayBuffer);
+												} else if (Buffer.isBuffer(result)) {
+													audioBuffer = result;
+												} else if (result instanceof Uint8Array) {
+													audioBuffer = Buffer.from(result);
+												}
+
+												if (audioBuffer && callback) {
+													const audioBase64 = audioBuffer.toString("base64");
+													await callback({
+														text: "",
+														attachments: [
+															{
+																id: v4(),
+																url: `data:audio/wav;base64,${audioBase64}`,
+																title: "Voice Response",
+																source: "voice-cache",
+																description:
+																	"Voice response for first sentence",
+																text: first,
+																contentType: ContentType.AUDIO,
+															},
+														],
+														source: "voice",
+													});
+												}
+											} catch (error) {
+												runtime.logger.error(
+													{ error },
+													"Error generating voice for first sentence",
+												);
+											}
+										})();
+									}
+								}
+
+								await userOnStreamChunk(chunk, messageId, accumulated);
+							}
+						: undefined;
+
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
 					timeoutDuration: options?.timeoutDuration ?? 60 * 60 * 1000, // 1 hour
@@ -553,150 +679,150 @@ export class DefaultMessageService implements IMessageService {
 								status: "timeout",
 								endTime: Date.now(),
 								duration: Date.now() - startTime,
-								error: "Run exceeded timeout",
-							} as RunEventPayload);
-							reject(new Error("Run exceeded timeout"));
-						}, opts.timeoutDuration);
-					});
+						error: "Run exceeded timeout",
+					} as RunEventPayload);
+					reject(new Error("Run exceeded timeout"));
+				}, opts.timeoutDuration);
+			});
 
-					// Wrap processing with streaming context for automatic streaming in useModel calls
-					// Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
-					let streamingContext:
-						| {
-								onStreamChunk: (
-									chunk: string,
-									messageId?: string,
-								) => Promise<void>;
-								messageId?: string;
-						  }
-						| undefined;
-					// Voice handling state
-					let firstSentenceSent = false;
-					let firstSentenceText = "";
+			// Wrap processing with streaming context for automatic streaming in useModel calls
+			// Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
+			let streamingContext:
+				| {
+						onStreamChunk: (
+							chunk: string,
+							messageId?: string,
+						) => Promise<void>;
+						messageId?: string;
+				  }
+				| undefined;
+			// Voice handling state
+			let firstSentenceSent = false;
+			let firstSentenceText = "";
 
-					if (opts.onStreamChunk) {
-						const extractor = new ResponseStreamExtractor();
-						const onStreamChunk = opts.onStreamChunk;
+			if (opts.onStreamChunk) {
+				const extractor = new ResponseStreamExtractor();
+				const onStreamChunk = opts.onStreamChunk;
 
-						let streamText = "";
+				let streamText = "";
 
-						streamingContext = {
-							onStreamChunk: async (chunk: string, msgId?: string) => {
-								if (extractor.done) return;
-								const textToStream = extractor.push(chunk);
-								if (textToStream) {
-									streamText += textToStream;
+				streamingContext = {
+					onStreamChunk: async (chunk: string, msgId?: string) => {
+						if (extractor.done) return;
+						const textToStream = extractor.push(chunk);
+						if (textToStream) {
+							streamText += textToStream;
 
-									// Check for first sentence to send to voice
-									if (!firstSentenceSent && hasFirstSentence(streamText)) {
-										const { first } = extractFirstSentence(streamText);
-										firstSentenceText = first;
-										if (first.length > 5) {
-											// Minimal length check
-											firstSentenceSent = true;
+							// Check for first sentence to send to voice
+							if (!firstSentenceSent && hasFirstSentence(streamText)) {
+								const { first } = extractFirstSentence(streamText);
+								firstSentenceText = first;
+								if (first.length > 5) {
+									// Minimal length check
+									firstSentenceSent = true;
 
-											// Process voice in background
-											(async () => {
-												try {
-													const voiceSettings = runtime.character.settings
-														?.voice as
-														| {
-																model?: string;
-																url?: string;
-																voiceId?: string;
-														  }
-														| undefined;
-
-													const model =
-														voiceSettings?.model || "en_US-male-medium";
-													const voiceId =
-														voiceSettings?.url ||
-														voiceSettings?.voiceId ||
-														"nova";
-
-													let audioBuffer: Buffer | null = null;
-													const params: TextToSpeechParams & {
+									// Process voice in background
+									(async () => {
+										try {
+											const voiceSettings = runtime.character.settings
+												?.voice as
+												| {
 														model?: string;
-													} = {
-														text: first,
-														voice: voiceId,
-														model: model,
-													};
-													const result = runtime.getModel(
+														url?: string;
+														voiceId?: string;
+												  }
+												| undefined;
+
+											const model =
+												voiceSettings?.model || "en_US-male-medium";
+											const voiceId =
+												voiceSettings?.url ||
+												voiceSettings?.voiceId ||
+												"nova";
+
+											let audioBuffer: Buffer | null = null;
+											const params: TextToSpeechParams & {
+												model?: string;
+											} = {
+												text: first,
+												voice: voiceId,
+												model: model,
+											};
+											const result = runtime.getModel(
+												ModelType.TEXT_TO_SPEECH,
+											)
+												? await runtime.useModel(
 														ModelType.TEXT_TO_SPEECH,
+														params,
 													)
-														? await runtime.useModel(
-																ModelType.TEXT_TO_SPEECH,
-																params,
-															)
-														: undefined;
+												: undefined;
 
-													if (
-														result instanceof ArrayBuffer ||
-														Object.prototype.toString.call(result) ===
-															"[object ArrayBuffer]"
-													) {
-														audioBuffer = Buffer.from(result as ArrayBuffer);
-													} else if (Buffer.isBuffer(result)) {
-														audioBuffer = result;
-													} else if (result instanceof Uint8Array) {
-														audioBuffer = Buffer.from(result);
-													}
+											if (
+												result instanceof ArrayBuffer ||
+												Object.prototype.toString.call(result) ===
+													"[object ArrayBuffer]"
+											) {
+												audioBuffer = Buffer.from(result as ArrayBuffer);
+											} else if (Buffer.isBuffer(result)) {
+												audioBuffer = result;
+											} else if (result instanceof Uint8Array) {
+												audioBuffer = Buffer.from(result);
+											}
 
-													if (audioBuffer && callback) {
-														const audioBase64 = audioBuffer.toString("base64");
-														await callback({
-															text: "",
-															attachments: [
-																{
-																	id: v4(),
-																	url: `data:audio/wav;base64,${audioBase64}`,
-																	title: "Voice Response",
-																	source: "voice-cache",
-																	description:
-																		"Voice response for first sentence",
-																	text: first,
-																	contentType: ContentType.AUDIO,
-																},
-															],
-															source: "voice",
-														});
-													}
-												} catch (error) {
-													runtime.logger.error(
-														{ error },
-														"Error generating voice for first sentence",
-													);
-												}
-											})();
+											if (audioBuffer && callback) {
+												const audioBase64 = audioBuffer.toString("base64");
+												await callback({
+													text: "",
+													attachments: [
+														{
+															id: v4(),
+															url: `data:audio/wav;base64,${audioBase64}`,
+															title: "Voice Response",
+															source: "voice-cache",
+															description:
+																"Voice response for first sentence",
+															text: first,
+															contentType: ContentType.AUDIO,
+														},
+													],
+													source: "voice",
+												});
+											}
+										} catch (error) {
+											runtime.logger.error(
+												{ error },
+												"Error generating voice for first sentence",
+											);
 										}
-									}
-
-									await onStreamChunk(textToStream, msgId);
+									})();
 								}
-							},
-							messageId: responseId,
-						};
-					}
+							}
 
-					const processingPromise = runWithStreamingContext(
-						streamingContext,
-						() =>
-							this.processMessage(
-								runtime,
-								message,
-								callback,
-								responseId,
-								runId,
-								startTime,
-								opts,
-							),
-					);
+							await onStreamChunk(textToStream, msgId);
+						}
+					},
+					messageId: responseId,
+				};
+			}
 
-					const result = await Promise.race([
-						processingPromise,
-						timeoutPromise,
-					]);
+			const processingPromise = runWithStreamingContext(
+				streamingContext,
+				() =>
+					this.processMessage(
+						runtime,
+						message,
+						callback,
+						responseId,
+						runId,
+						startTime,
+						opts,
+					),
+			);
+
+			const result = await Promise.race([
+				processingPromise,
+				timeoutPromise,
+			]);
 
 					// Clean up timeout
 					clearTimeout(timeoutId);

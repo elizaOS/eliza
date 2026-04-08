@@ -383,13 +383,36 @@ export interface ActionContext {
 }
 
 /**
- * Callback for streaming response chunks during action execution.
- * messageId is a string that can be either a UUID or other identifier.
+ * Canonical callback type for streaming response chunks.
+ *
+ * WHY one type: Before this consolidation the same `(chunk, messageId?) => …`
+ * signature was inlined in 8+ locations across runtime, model, message-service,
+ * and streaming-context types — with inconsistent return types (`Promise<void>`
+ * vs `void | Promise<void>`). Adding data (e.g. `accumulated`) required editing
+ * every copy. A single alias eliminates drift and makes future extensions
+ * (field name, token index, session handle) a one-line additive change.
+ *
+ * WHY `accumulated`: Two independent XML stream extractors in `useModel`
+ * previously caused TTS garbling because consumers had to re-derive the full
+ * text from deltas — and the two extractors produced deltas at different
+ * timings. Providing the authoritative accumulated text from the extractor
+ * makes that entire category of reassembly bugs impossible.
+ *
+ * WHY `void | Promise<void>`: The most permissive return — allows both sync
+ * callbacks (simple loggers, test spies) and async ones (network, TTS).
+ *
+ * @param chunk - Delta text since the last emission for this field.
+ * @param messageId - Streaming session / message identifier (UUID or opaque string).
+ * @param accumulated - Full extracted text so far for the streaming field.
+ *   Present when the emission originates from a ValidationStreamExtractor
+ *   (structured XML output). Undefined for raw-token streams (useModel
+ *   without an extractor) where no field-level accumulation exists.
  */
 export type StreamChunkCallback = (
 	chunk: string,
 	messageId?: string,
-) => Promise<void>;
+	accumulated?: string,
+) => void | Promise<void>;
 
 /**
  * Options passed to action handlers during execution
