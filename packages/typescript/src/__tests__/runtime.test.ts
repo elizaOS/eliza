@@ -1704,10 +1704,17 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 					"../streaming-context"
 				);
 				const { AsyncLocalStorage } = await import("node:async_hooks");
-				const storage = new AsyncLocalStorage<any>();
+				const storage = new AsyncLocalStorage<
+					import("../streaming-context").StreamingContext | undefined
+				>();
 				setStreamingContextManager({
-					run: (context: any, fn: any) => storage.run(context, fn),
-					active: () => storage.getStore()
+					run: <T>(
+						context:
+							| import("../streaming-context").StreamingContext
+							| undefined,
+						fn: () => T,
+					) => storage.run(context, fn),
+					active: () => storage.getStore(),
 				});
 
 				const { runWithStreamingContext } = await import(
@@ -1760,10 +1767,17 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 					"../streaming-context"
 				);
 				const { AsyncLocalStorage } = await import("node:async_hooks");
-				const storage = new AsyncLocalStorage<any>();
+				const storage = new AsyncLocalStorage<
+					import("../streaming-context").StreamingContext | undefined
+				>();
 				setStreamingContextManager({
-					run: (context: any, fn: any) => storage.run(context, fn),
-					active: () => storage.getStore()
+					run: <T>(
+						context:
+							| import("../streaming-context").StreamingContext
+							| undefined,
+						fn: () => T,
+					) => storage.run(context, fn),
+					active: () => storage.getStore(),
 				});
 
 				const { runWithStreamingContext } = await import(

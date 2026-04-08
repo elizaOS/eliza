@@ -5,7 +5,7 @@
 
 use crate::prompts::{
     MESSAGE_HANDLER_TEMPLATE, MULTI_STEP_DECISION_TEMPLATE, MULTI_STEP_SUMMARY_TEMPLATE,
-    SHOULD_RESPOND_TEMPLATE,
+    POST_ACTION_DECISION_TEMPLATE, SHOULD_RESPOND_TEMPLATE,
 };
 use crate::runtime::AgentRuntime;
 use crate::template::render_template;
@@ -27,6 +27,8 @@ pub struct MessageProcessingOptions {
     pub max_retries: Option<u32>,
     /// Timeout for message processing in milliseconds
     pub timeout_duration: Option<u64>,
+    /// Whether to run a continuation planner after actions complete
+    pub continue_after_actions: Option<bool>,
 }
 
 /// Result of message processing
@@ -91,7 +93,7 @@ impl IMessageService for DefaultMessageService {
         runtime: &AgentRuntime,
         message: &mut Memory,
         callback: Option<HandlerCallback>,
-        _options: Option<MessageProcessingOptions>,
+        options: Option<MessageProcessingOptions>,
     ) -> Result<MessageProcessingResult> {
         // Bind trajectory step for benchmark/tracing (if present)
         let trajectory_step_id = message.metadata.as_ref().and_then(|meta| {
@@ -194,13 +196,14 @@ impl IMessageService for DefaultMessageService {
 
             let decision_upper = decision.trim().to_uppercase();
             if decision_upper == "IGNORE" || decision_upper == "STOP" {
-                runtime.end_run();
-                return Ok(MessageProcessingResult {
-                    did_respond: false,
-                    response_content: None,
-                    response_messages: Vec::new(),
-                    state,
-                });
+                return handle_terminal_decision(
+                    runtime,
+                    message,
+                    &state,
+                    callback.as_ref(),
+                    &decision_upper,
+                )
+                .await;
             }
         }
 
@@ -211,6 +214,19 @@ impl IMessageService for DefaultMessageService {
                 parse_int_setting(runtime.get_setting("MAX_MULTISTEP_ITERATIONS").await, 6);
             return run_multi_step(runtime, message, &state, callback, max_iters).await;
         }
+
+        let continue_after_actions = if let Some(value) = options
+            .as_ref()
+            .and_then(|opts| opts.continue_after_actions)
+        {
+            value
+        } else {
+            runtime
+                .get_setting("CONTINUE_AFTER_ACTIONS")
+                .await
+                .map(|value| parse_bool_setting(Some(value)))
+                .unwrap_or(true)
+        };
 
         // Use dynamicPromptExecFromState for structured message response
         let schema = vec![
@@ -231,6 +247,12 @@ impl IMessageService for DefaultMessageService {
                 .required()
                 .validate(false)
                 .stream(false),
+            SchemaRow::new(
+                "params",
+                "XML <params> block or JSON object containing action parameters",
+            )
+            .validate(false)
+            .stream(false),
             SchemaRow::new("text", "The text response to send to the user").stream(true),
             SchemaRow::new("simple", "Whether this is a simple response (true/false)")
                 .validate(false)
@@ -280,6 +302,8 @@ impl IMessageService for DefaultMessageService {
         if actions.is_empty() {
             actions.push("IGNORE".to_string());
         }
+
+        actions = sanitize_actions(actions, !text.trim().is_empty());
 
         // Limit to single action if action planning is disabled
         if !runtime.is_action_planning_enabled().await && actions.len() > 1 {
@@ -391,8 +415,19 @@ impl IMessageService for DefaultMessageService {
             }
         }
 
+        if is_terminal_control_actions(&actions) {
+            return handle_terminal_decision(
+                runtime,
+                message,
+                &state,
+                callback.as_ref(),
+                &actions[0],
+            )
+            .await;
+        }
+
         // Create response content with actions/providers/params
-        let response_content = Content {
+        let mut response_content = Content {
             thought: Some(thought),
             text: Some(text.clone()),
             actions: Some(actions.clone()),
@@ -447,9 +482,11 @@ impl IMessageService for DefaultMessageService {
         let is_simple_reply =
             actions.len() == 1 && actions[0].to_uppercase() == "REPLY" && providers.is_empty();
 
+        let mut action_results: Vec<crate::types::ActionResult> = Vec::new();
+
         if is_simple_reply && !benchmark_mode {
             // Simple chat-style response: return the model text directly.
-            if let Some(cb) = callback {
+            if let Some(cb) = callback.as_ref() {
                 let outbound = cb(response_content.clone()).await;
                 persist_outbound_memories(runtime, &outbound).await?;
                 response_messages.extend(outbound);
@@ -460,13 +497,13 @@ impl IMessageService for DefaultMessageService {
                 .map(crate::xml::parse_action_params)
                 .unwrap_or_default();
 
-            let results = runtime
+            action_results = runtime
                 .process_selected_actions(message, &state, &actions, &action_params)
                 .await?;
 
             // If REPLY executed, emit the action's text as callback output (if available)
-            if let Some(cb) = callback {
-                if let Some(reply) = results.iter().find(|r| {
+            if let Some(cb) = callback.as_ref() {
+                if let Some(reply) = action_results.iter().find(|r| {
                     r.data
                         .as_ref()
                         .and_then(|d| d.get("actionName"))
@@ -487,9 +524,36 @@ impl IMessageService for DefaultMessageService {
             }
         }
 
+        let mut state = state;
+        if continue_after_actions
+            && should_continue_after_actions(&actions)
+            && !action_results.is_empty()
+        {
+            let continuation = run_post_action_continuation(
+                runtime,
+                message,
+                &state,
+                callback.as_ref(),
+                &action_results,
+                parse_int_setting(runtime.get_setting("MAX_MULTISTEP_ITERATIONS").await, 6),
+            )
+            .await?;
+
+            if !continuation.response_messages.is_empty() {
+                response_messages.extend(continuation.response_messages);
+            }
+            if let Some(content) = continuation.response_content {
+                response_content = content;
+            }
+            state = continuation.state;
+        }
+
         // Run evaluators (parity with TS/Python)
-        let evaluator_results = runtime.evaluate_message(message, &state).await?;
-        persist_evaluator_results(runtime, message, &evaluator_results).await?;
+        let did_respond = !is_terminal_content(&response_content);
+        if did_respond {
+            let evaluator_results = runtime.evaluate_message(message, &state).await?;
+            persist_evaluator_results(runtime, message, &evaluator_results).await?;
+        }
 
         let elapsed = start_time.elapsed();
         info!("Message processing completed in {:?}", elapsed);
@@ -498,12 +562,314 @@ impl IMessageService for DefaultMessageService {
         runtime.set_trajectory_step_id(None);
 
         Ok(MessageProcessingResult {
-            did_respond: true,
+            did_respond,
             response_content: Some(response_content),
             response_messages,
-            state,
+            state: state.clone(),
         })
     }
+}
+
+#[derive(Default)]
+struct ContinuationResult {
+    response_content: Option<Content>,
+    response_messages: Vec<Memory>,
+    state: State,
+}
+
+fn sanitize_actions(mut actions: Vec<String>, has_response_text: bool) -> Vec<String> {
+    if actions.is_empty() {
+        return vec!["IGNORE".to_string()];
+    }
+
+    if actions.len() > 1 && actions.iter().any(|a| a.eq_ignore_ascii_case("IGNORE")) {
+        if has_response_text {
+            actions.retain(|a| !a.eq_ignore_ascii_case("IGNORE"));
+            if actions.is_empty() {
+                actions.push("REPLY".to_string());
+            }
+        } else {
+            return vec!["IGNORE".to_string()];
+        }
+    }
+
+    if actions.len() > 1 && actions.iter().any(|a| a.eq_ignore_ascii_case("STOP")) {
+        actions.retain(|a| !a.eq_ignore_ascii_case("STOP"));
+        if actions.is_empty() {
+            actions.push("STOP".to_string());
+        }
+    }
+
+    actions
+}
+
+fn is_terminal_control_actions(actions: &[String]) -> bool {
+    actions.len() == 1
+        && actions
+            .first()
+            .map(|a| a.eq_ignore_ascii_case("IGNORE") || a.eq_ignore_ascii_case("STOP"))
+            .unwrap_or(false)
+}
+
+fn is_terminal_content(content: &Content) -> bool {
+    content
+        .actions
+        .as_ref()
+        .map(|actions| is_terminal_control_actions(actions))
+        .unwrap_or(false)
+}
+
+fn should_continue_after_actions(actions: &[String]) -> bool {
+    actions.iter().any(|action| {
+        !action.eq_ignore_ascii_case("REPLY")
+            && !action.eq_ignore_ascii_case("IGNORE")
+            && !action.eq_ignore_ascii_case("STOP")
+    })
+}
+
+fn build_response_memory(runtime: &AgentRuntime, message: &Memory, content: Content) -> Memory {
+    Memory {
+        id: Some(UUID::new_v4()),
+        entity_id: runtime.agent_id.clone(),
+        agent_id: Some(runtime.agent_id.clone()),
+        room_id: message.room_id.clone(),
+        content,
+        created_at: Some(chrono_timestamp()),
+        embedding: None,
+        world_id: None,
+        unique: Some(true),
+        similarity: None,
+        metadata: None,
+    }
+}
+
+async fn handle_terminal_decision(
+    runtime: &AgentRuntime,
+    message: &Memory,
+    state: &State,
+    callback: Option<&HandlerCallback>,
+    terminal_action: &str,
+) -> Result<MessageProcessingResult> {
+    let terminal_action = terminal_action.trim().to_uppercase();
+    let terminal_content = Content {
+        thought: Some(if terminal_action == "STOP" {
+            "Agent decided to stop and end the run.".to_string()
+        } else {
+            "Agent decided not to respond to this message.".to_string()
+        }),
+        actions: Some(vec![terminal_action.clone()]),
+        simple: Some(true),
+        ..Default::default()
+    };
+
+    if let Some(cb) = callback {
+        let _ = cb(terminal_content.clone()).await;
+    }
+
+    let terminal_memory = build_response_memory(runtime, message, terminal_content);
+    if let Some(adapter) = runtime.get_adapter() {
+        adapter.create_memory(&terminal_memory, "messages").await?;
+    }
+
+    runtime.end_run();
+    runtime.set_trajectory_step_id(None);
+
+    Ok(MessageProcessingResult {
+        did_respond: false,
+        response_content: None,
+        response_messages: Vec::new(),
+        state: state.clone(),
+    })
+}
+
+async fn run_post_action_continuation(
+    runtime: &AgentRuntime,
+    message: &Memory,
+    state: &State,
+    callback: Option<&HandlerCallback>,
+    initial_results: &[crate::types::ActionResult],
+    max_iters: i64,
+) -> Result<ContinuationResult> {
+    if initial_results.is_empty() {
+        return Ok(ContinuationResult {
+            state: state.clone(),
+            ..Default::default()
+        });
+    }
+
+    let mut trace_results = initial_results.to_vec();
+    let mut response_messages: Vec<Memory> = Vec::new();
+    let mut response_content: Option<Content> = None;
+    let mut accumulated_state = state.clone();
+
+    for _ in 0..max_iters.max(1) {
+        accumulated_state = runtime.compose_state(message).await?;
+        accumulated_state.set_value(
+            "actionResults",
+            Value::String(format_action_results(&trace_results)),
+        );
+
+        let schema = vec![
+            SchemaRow::new("thought", "Your internal reasoning about the next step")
+                .validate(false)
+                .stream(false),
+            SchemaRow::new(
+                "providers",
+                "List of providers to use for additional context (comma-separated)",
+            )
+            .validate(false)
+            .stream(false),
+            SchemaRow::new("actions", "List of actions to take (comma-separated)")
+                .required()
+                .validate(false)
+                .stream(false),
+            SchemaRow::new(
+                "params",
+                "XML <params> block or JSON object containing action parameters",
+            )
+            .validate(false)
+            .stream(false),
+            SchemaRow::new("text", "The text response to send to the user").stream(true),
+            SchemaRow::new("simple", "Whether this is a simple response (true/false)")
+                .validate(false)
+                .stream(false),
+        ];
+
+        let parsed = runtime
+            .dynamic_prompt_exec_from_state(
+                &accumulated_state,
+                POST_ACTION_DECISION_TEMPLATE,
+                &schema,
+                crate::runtime::DynamicPromptOptions {
+                    model_size: Some(crate::runtime::ModelSize::Large),
+                    force_format: Some("xml".to_string()),
+                    required_fields: Some(vec!["actions".to_string()]),
+                    ..Default::default()
+                },
+            )
+            .await?;
+
+        let Some(parsed) = parsed else {
+            break;
+        };
+
+        let thought = parsed
+            .get("thought")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let mut text = parsed
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let mut actions = split_csv(
+            parsed
+                .get("actions")
+                .and_then(|v| v.as_str())
+                .unwrap_or("IGNORE"),
+        );
+        let providers = split_csv(
+            parsed
+                .get("providers")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
+        let params_xml = parsed
+            .get("params")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        if actions.is_empty() {
+            actions.push("IGNORE".to_string());
+        }
+        actions = sanitize_actions(actions, !text.trim().is_empty());
+        if !runtime.is_action_planning_enabled().await && actions.len() > 1 {
+            actions.truncate(1);
+        }
+
+        if is_terminal_control_actions(&actions) {
+            response_content = Some(Content {
+                thought: Some(thought),
+                text: if text.is_empty() { None } else { Some(text) },
+                actions: Some(actions),
+                providers: if providers.is_empty() {
+                    None
+                } else {
+                    Some(providers)
+                },
+                ..Default::default()
+            });
+            break;
+        }
+
+        let content = Content {
+            thought: Some(thought),
+            text: Some(std::mem::take(&mut text)),
+            actions: Some(actions.clone()),
+            providers: if providers.is_empty() {
+                None
+            } else {
+                Some(providers.clone())
+            },
+            data: params_xml
+                .clone()
+                .map(|p| serde_json::json!({ "params": p })),
+            ..Default::default()
+        };
+
+        let response_memory = build_response_memory(runtime, message, content.clone());
+        if let Some(adapter) = runtime.get_adapter() {
+            adapter.create_memory(&response_memory, "messages").await?;
+        }
+
+        let mut extra = HashMap::new();
+        if let Ok(message_json) = serde_json::to_value(&response_memory) {
+            extra.insert("message".to_string(), message_json);
+        }
+        let _ = runtime
+            .emit_event(
+                EventType::MessageSent,
+                EventPayload {
+                    source: "message-service".to_string(),
+                    extra,
+                },
+            )
+            .await;
+
+        response_messages.push(response_memory.clone());
+        response_content = Some(content.clone());
+
+        let is_simple_reply =
+            actions.len() == 1 && actions[0].eq_ignore_ascii_case("REPLY") && providers.is_empty();
+        if is_simple_reply {
+            if let Some(cb) = callback {
+                let outbound = cb(content).await;
+                persist_outbound_memories(runtime, &outbound).await?;
+                response_messages.extend(outbound);
+            }
+            break;
+        }
+
+        let action_params = params_xml
+            .as_deref()
+            .map(crate::xml::parse_action_params)
+            .unwrap_or_default();
+        let results = runtime
+            .process_selected_actions(message, &accumulated_state, &actions, &action_params)
+            .await?;
+
+        if !should_continue_after_actions(&actions) || results.is_empty() {
+            break;
+        }
+        trace_results.extend(results);
+    }
+
+    Ok(ContinuationResult {
+        response_content,
+        response_messages,
+        state: accumulated_state,
+    })
 }
 
 async fn persist_outbound_memories(runtime: &AgentRuntime, memories: &[Memory]) -> Result<()> {
@@ -1027,5 +1393,190 @@ mod tests {
             .unwrap();
 
         assert_eq!(hits.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_should_respond_stop_short_circuits() {
+        use crate::runtime::RuntimeOptions;
+        use crate::types::agent::Character;
+        use std::sync::{Arc, Mutex};
+
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(Character {
+                name: "TestAgent".to_string(),
+                system: Some("system".to_string()),
+                ..Default::default()
+            }),
+            check_should_respond: Some(true),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        runtime
+            .register_model(
+                "TEXT_SMALL",
+                Box::new(|_params| {
+                    Box::pin(
+                        async move { Ok("<response><action>STOP</action></response>".to_string()) },
+                    )
+                }),
+            )
+            .await;
+
+        runtime
+            .register_model(
+                "TEXT_LARGE",
+                Box::new(|_params| {
+                    Box::pin(async move { Err(anyhow::anyhow!("TEXT_LARGE should not be called")) })
+                }),
+            )
+            .await;
+
+        let callback_actions: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let callback_actions_clone = Arc::clone(&callback_actions);
+        let callback: HandlerCallback = Box::new(move |content| {
+            let callback_actions = Arc::clone(&callback_actions_clone);
+            Box::pin(async move {
+                if let Some(actions) = content.actions {
+                    callback_actions
+                        .lock()
+                        .expect("lock poisoned")
+                        .extend(actions);
+                }
+                Vec::new()
+            })
+        });
+
+        let service = DefaultMessageService::new();
+        let mut msg = Memory::message(UUID::new_v4(), UUID::new_v4(), "stop");
+        let result = service
+            .handle_message(&runtime, &mut msg, Some(callback), None)
+            .await
+            .unwrap();
+
+        assert!(!result.did_respond);
+        assert_eq!(
+            callback_actions.lock().expect("lock poisoned").as_slice(),
+            &["STOP".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_continues_after_action_results() {
+        use crate::runtime::RuntimeOptions;
+        use crate::types::{
+            ActionDefinition, ActionExample, ActionHandler, ActionResult, Character,
+            HandlerOptions, Plugin,
+        };
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        struct TestAction {
+            hits: Arc<AtomicUsize>,
+        }
+
+        #[async_trait::async_trait]
+        impl ActionHandler for TestAction {
+            fn definition(&self) -> ActionDefinition {
+                ActionDefinition {
+                    name: "TEST_ACTION".to_string(),
+                    description: "test action".to_string(),
+                    similes: None,
+                    examples: Some(vec![vec![ActionExample::default()]]),
+                    parameters: None,
+                    ..Default::default()
+                }
+            }
+
+            async fn validate(&self, _message: &Memory, _state: Option<&State>) -> bool {
+                true
+            }
+
+            async fn handle(
+                &self,
+                _message: &Memory,
+                _state: Option<&State>,
+                _options: Option<&HandlerOptions>,
+            ) -> Result<Option<ActionResult>, anyhow::Error> {
+                self.hits.fetch_add(1, Ordering::SeqCst);
+                Ok(Some(ActionResult::success_with_text("tool output")))
+            }
+        }
+
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(Character {
+                name: "TestAgent".to_string(),
+                system: Some("system".to_string()),
+                ..Default::default()
+            }),
+            check_should_respond: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let model_calls = Arc::new(AtomicUsize::new(0));
+        let model_calls_clone = Arc::clone(&model_calls);
+        runtime
+            .register_model(
+                "TEXT_LARGE",
+                Box::new(move |_params| {
+                    let model_calls = Arc::clone(&model_calls_clone);
+                    Box::pin(async move {
+                        let call = model_calls.fetch_add(1, Ordering::SeqCst);
+                        if call == 0 {
+                            Ok("<response><thought>Run the tool.</thought><actions>TEST_ACTION</actions><providers></providers><text></text></response>".to_string())
+                        } else {
+                            Ok("<response><thought>Done.</thought><actions>REPLY</actions><providers></providers><text>Final answer from continuation.</text></response>".to_string())
+                        }
+                    })
+                }),
+            )
+            .await;
+
+        let action_hits = Arc::new(AtomicUsize::new(0));
+        let plugin = Plugin::new("test", "test").with_action(Arc::new(TestAction {
+            hits: Arc::clone(&action_hits),
+        }));
+        runtime.register_plugin(plugin).await.unwrap();
+
+        let callback_texts: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let callback_texts_clone = Arc::clone(&callback_texts);
+        let callback: HandlerCallback = Box::new(move |content| {
+            let callback_texts = Arc::clone(&callback_texts_clone);
+            Box::pin(async move {
+                if let Some(text) = content.text {
+                    callback_texts.lock().expect("lock poisoned").push(text);
+                }
+                Vec::new()
+            })
+        });
+
+        let service = DefaultMessageService::new();
+        let mut msg = Memory::message(UUID::new_v4(), UUID::new_v4(), "continue");
+        let result = service
+            .handle_message(&runtime, &mut msg, Some(callback), None)
+            .await
+            .unwrap();
+
+        assert_eq!(model_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(action_hits.load(Ordering::SeqCst), 1);
+        assert!(result.did_respond);
+        assert_eq!(
+            result
+                .response_content
+                .as_ref()
+                .and_then(|c| c.text.clone()),
+            Some("Final answer from continuation.".to_string())
+        );
+        assert_eq!(
+            callback_texts
+                .lock()
+                .expect("lock poisoned")
+                .last()
+                .cloned(),
+            Some("Final answer from continuation.".to_string())
+        );
     }
 }

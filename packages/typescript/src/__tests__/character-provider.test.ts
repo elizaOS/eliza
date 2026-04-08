@@ -1,9 +1,5 @@
 /**
  * Unit tests for the CHARACTER provider.
- *
- * Tests for {{name}} placeholder resolution have been removed because
- * the character provider does not currently perform this substitution.
- * Re-add those tests when {{name}} resolution is implemented.
  */
 import { describe, expect, it, vi } from "vitest";
 import { characterProvider } from "../basic-capabilities/providers/character.ts";
@@ -107,7 +103,50 @@ describe("characterProvider", () => {
 		);
 		const text = result.text as string;
 		expect(text).toContain("# About Sakuya");
-		expect(text).toContain("Sakuya");
+		expect(text).toContain("Sakuya is cool.");
 		expect(result.values.agentName).toBe("Sakuya");
+	});
+
+	it("resolves {{agentName}} placeholders in character content", async () => {
+		const character = makeCharacter({
+			bio: ["{{agentName}} stays calm."],
+			system: "Speak as {{agentName}} would.",
+		});
+		const result = await characterProvider.get(
+			makeRuntime(character),
+			makeMessage(),
+			makeState(),
+		);
+		const text = result.text as string;
+		expect(text).toContain("Sakuya stays calm.");
+		expect(result.values.system).toBe("Speak as Sakuya would.");
+	});
+
+	it("resolves example participant placeholders in message examples", async () => {
+		const character = makeCharacter({
+			messageExamples: [
+				{
+					examples: [
+						{
+							name: "{{agentName}}",
+							content: { text: "hi {{user1}}" },
+						},
+						{
+							name: "{{user1}}",
+							content: { text: "hey {{agentName}}" },
+						},
+					],
+				},
+			],
+		});
+		const result = await characterProvider.get(
+			makeRuntime(character),
+			makeMessage(),
+			makeState(),
+		);
+		const text = result.text as string;
+		expect(text).toContain("Sakuya:");
+		expect(text).not.toContain("{{agentName}}");
+		expect(text).not.toContain("{{user1}}");
 	});
 });

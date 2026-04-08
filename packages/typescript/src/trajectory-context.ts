@@ -60,9 +60,7 @@ function initContextManagerSync(): ITrajectoryContextManager {
 			// eslint-disable-next-line @typescript-eslint/no-require-imports
 			const { AsyncLocalStorage } =
 				require("node:async_hooks") as typeof import("node:async_hooks");
-			const storage = new AsyncLocalStorage<
-				TrajectoryContext | undefined
-			>();
+			const storage = new AsyncLocalStorage<TrajectoryContext | undefined>();
 			return {
 				run<T>(
 					context: TrajectoryContext | undefined,

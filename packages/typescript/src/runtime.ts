@@ -19,6 +19,7 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createLogger } from "./logger";
+import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
@@ -70,6 +71,7 @@ import {
 	type Participant,
 	type PatchOp,
 	type Plugin,
+	type PluginOwnership,
 	type PromptSegment,
 	type Provider,
 	type ProviderValue,
@@ -104,6 +106,7 @@ import {
 	parseKeyValueXml,
 	stringToUuid,
 } from "./utils";
+import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
 import { getNumberEnv } from "./utils/environment";
 import {
@@ -169,6 +172,14 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly evaluators: Evaluator[] = [];
 	readonly providers: Provider[] = [];
 	readonly plugins: Plugin[] = [];
+	public unloadPlugin!: (pluginName: string) => Promise<PluginOwnership | null>;
+	public reloadPlugin!: (plugin: Plugin) => Promise<void>;
+	public applyPluginConfig!: (
+		pluginName: string,
+		config: Record<string, string>,
+	) => Promise<boolean>;
+	public getPluginOwnership!: (pluginName: string) => PluginOwnership | null;
+	public getAllPluginOwnership!: () => PluginOwnership[];
 	events: RuntimeEventStorage = {};
 	stateCache = new Map<string, State>();
 	readonly fetch = fetch;
@@ -389,6 +400,8 @@ export class AgentRuntime implements IAgentRuntime {
 				50,
 			) as number;
 		}
+
+		installRuntimePluginLifecycle(this);
 	}
 
 	/**
@@ -3730,6 +3743,7 @@ export class AgentRuntime implements IAgentRuntime {
 			forceFormat?: "json" | "xml";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
+			checkpointCodes?: boolean;
 			maxRetries?: number;
 			retryBackoff?: number | RetryBackoffConfig;
 			disableCache?: boolean;
@@ -3810,7 +3824,12 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		const maxRetries = options.maxRetries ?? defaultRetries;
+		const checkpointCodesEnabled =
+			options.checkpointCodes ??
+			parseBooleanValue(this.getSetting("PROMPT_CHECKPOINT_CODES")) ??
+			false;
 		let currentRetry = 0;
+		const promptCode = () => uuidv4().replaceAll("-", "").slice(0, 8);
 
 		// Initialize metrics with LRU eviction
 		const metric = AgentRuntime.getOrCreateMetrics(modelSchemaKey);
@@ -3852,7 +3871,10 @@ export class AgentRuntime implements IAgentRuntime {
 			// unaffected because they never reach this code path.
 			const output = rawOutput
 				.replace(/<output>[\s\S]*?<\/output>\s*/g, "")
-				.trimEnd();
+				.replace(/\r\n/g, "\n")
+				.replace(/[ \t]+\n/g, "\n")
+				.replace(/\n{3,}/g, "\n\n")
+				.trim();
 
 			// Process format options
 			const hasNestedSchema = this.schemaHasNestedStructure(schema);
@@ -3907,15 +3929,15 @@ export class AgentRuntime implements IAgentRuntime {
 						const defaultValidate = contextLevel === 1;
 						const needsValidation = row.validateField ?? defaultValidate;
 						if (needsValidation) {
-							perFieldCodes.set(row.field, uuidv4().slice(0, 8));
+							perFieldCodes.set(row.field, promptCode());
 						}
 					}
 				}
 			}
 
-			// Checkpoint codes: level 2+ gets first codes, level 3 gets both
-			const first = contextLevel >= 2;
-			const last = contextLevel >= 3;
+			// Optional checkpoint codes: level 2+ gets first codes, level 3 gets both.
+			const first = checkpointCodesEnabled && contextLevel >= 2;
+			const last = checkpointCodesEnabled && contextLevel >= 3;
 
 			// Build extended schema with validation codes
 			const extSchema: Array<{
@@ -3927,15 +3949,15 @@ export class AgentRuntime implements IAgentRuntime {
 			const codesSchema = (prefix: string) => [
 				{
 					field: `${prefix}initial_code`,
-					description: "echo the initial UUID code from prompt",
+					description: "echo the initial prompt code",
 				},
 				{
 					field: `${prefix}middle_code`,
-					description: "echo the middle UUID code from prompt",
+					description: "echo the middle prompt code",
 				},
 				{
 					field: `${prefix}end_code`,
-					description: "echo the end UUID code from prompt",
+					description: "echo the end prompt code",
 				},
 			];
 
@@ -3981,26 +4003,30 @@ export class AgentRuntime implements IAgentRuntime {
 				includeLastCheckpoint: last,
 			});
 
-			const initCode = uuidv4();
-			const midCode = uuidv4();
-			const finalCode = uuidv4();
+			const initCode = checkpointCodesEnabled ? promptCode() : "";
+			const midCode = checkpointCodesEnabled ? promptCode() : "";
+			const finalCode = checkpointCodesEnabled ? promptCode() : "";
 
 			// Check for smart retry context (set by previous retry iteration)
+			const smartRetryContextRaw = (state as Record<string, unknown>)
+				._smartRetryContext;
 			const smartRetryContext =
-				(state as Record<string, unknown>)._smartRetryContext || "";
+				typeof smartRetryContextRaw === "string"
+					? smartRetryContextRaw.trim()
+					: "";
 
 			const section_start = isXML ? "<output>" : "# Strict Output instructions";
 			const section_end = isXML ? "</output>" : "";
 
-			const variableBlock =
-				"initial code: " +
-				initCode +
-				"\n" +
-				output +
-				smartRetryContext +
-				"middle code: " +
-				midCode +
-				"\n";
+			const variableBlock = [
+				checkpointCodesEnabled ? `initial code: ${initCode}` : "",
+				output,
+				smartRetryContext,
+				checkpointCodesEnabled ? `middle code: ${midCode}` : "",
+			]
+				.filter((part) => part && part.length > 0)
+				.join("\n\n")
+				.concat("\n");
 			// Prompt cache hints: build segments so providers can cache the stable prefix.
 			// WHY: We only mark content stable when it is identical across calls for the same
 			// schema/character. VALIDATION_INSTRUCTIONS contains per-call UUIDs (perFieldCodes,
@@ -4008,18 +4034,18 @@ export class AgentRuntime implements IAgentRuntime {
 			// would never hit. Format instructions and example (same for same schema) are stable.
 			const formatStablePrefix =
 				section_start +
-				`
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the ${format} response format without any preamble or explanation.
+				`\nReturn only ${format}. No prose before or after it. No <think>.
 
 `;
 			const formatStableSuffix = `
-Respond using ${format} format like this:
+Use this shape:
 ${EXAMPLE}
 
-IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END} ${format} block above. Do not include any text, thinking, or reasoning before or after this ${format} block. Start your response immediately with ${CONTAINER_START} and end with ${CONTAINER_END}.
+Return exactly one ${isXML ? `${CONTAINER_START}...${CONTAINER_END}` : "JSON object"}.
 ${section_end}`;
-			const endBlock = `\nend code: ${finalCode}\n`;
+			const endBlock = checkpointCodesEnabled
+				? `\nend code: ${finalCode}\n`
+				: "\n";
 			// Middle block: validation text when present (unstable); else "\n\n" so prompt string is unchanged.
 			const formatMiddleBlock = VALIDATION_INSTRUCTIONS
 				? `${VALIDATION_INSTRUCTIONS}\n\n`
@@ -4663,8 +4689,8 @@ ${section_end}`;
 		if (includeFirstCheckpoint) {
 			lines.push(
 				isXML
-					? "Also include <one_initial_code>, <one_middle_code>, and <one_end_code> tags that echo the matching prompt UUIDs."
-					: 'Also include "one_initial_code", "one_middle_code", and "one_end_code" fields that echo the matching prompt UUIDs.',
+					? "Echo the prompt checkpoint tags: <one_initial_code>, <one_middle_code>, <one_end_code>."
+					: 'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".',
 			);
 		}
 
@@ -4676,16 +4702,16 @@ ${section_end}`;
 
 			lines.push(
 				isXML
-					? `For <${row.field}>, also include <code_${row.field}_start>${fieldCode}</code_${row.field}_start> before it and <code_${row.field}_end>${fieldCode}</code_${row.field}_end> after it.`
-					: `For "${row.field}", also include sibling fields "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`,
+					? `Wrap <${row.field}> with <code_${row.field}_start>${fieldCode}</code_${row.field}_start> and <code_${row.field}_end>${fieldCode}</code_${row.field}_end>.`
+					: `For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`,
 			);
 		}
 
 		if (includeLastCheckpoint) {
 			lines.push(
 				isXML
-					? "Also include <two_initial_code>, <two_middle_code>, and <two_end_code> tags that echo the matching prompt UUIDs."
-					: 'Also include "two_initial_code", "two_middle_code", and "two_end_code" fields that echo the matching prompt UUIDs.',
+					? "Echo the final checkpoint tags: <two_initial_code>, <two_middle_code>, <two_end_code>."
+					: 'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".',
 			);
 		}
 

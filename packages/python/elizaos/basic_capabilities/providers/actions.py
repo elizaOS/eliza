@@ -43,35 +43,38 @@ def _format_action_parameters(parameters: list[ActionParameter]) -> str:
     for param in parameters:
         schema = _get_param_schema(param)
         if schema is None:
-            lines.append(f"    - {param.name}: {param.description}")
+            lines.append(
+                f"{param.name}{'' if param.required else '?'}:unknown - {param.description}"
+            )
             continue
-        required_str = " (required)" if param.required else " (optional)"
         type_str = _format_parameter_type(schema)
         default_val = getattr(schema, "default", None) or getattr(schema, "default_value", None)
-        default_str = f" [default: {default_val}]" if default_val else ""
+        default_str = f"default={default_val}" if default_val is not None else ""
         enum_vals = getattr(schema, "enum", None) or getattr(schema, "enum_values", None)
-        enum_str = f" [values: {', '.join(enum_vals)}]" if enum_vals else ""
+        enum_str = f"values={'|'.join(enum_vals)}" if enum_vals else ""
         examples_str = (
-            f" [examples: {', '.join(repr(v) for v in param.examples)}]"
+            f"examples={'|'.join(repr(v) for v in param.examples)}"
             if getattr(param, "examples", None)
             else ""
         )
+        modifiers = "; ".join(part for part in [enum_str, default_str, examples_str] if part)
+        suffix = f" [{modifiers}]" if modifiers else ""
         lines.append(
-            f"    - {param.name}{required_str}: {param.description} ({type_str}{enum_str}{default_str}{examples_str})"
+            f"{param.name}{'' if param.required else '?'}:{type_str}{suffix} - {param.description}"
         )
-    return "\n".join(lines)
+    return "; ".join(lines)
 
 
 def format_actions(actions: list[Action]) -> str:
     lines: list[str] = []
     for action in actions:
-        line = f"- **{action.name}**: {action.description or 'No description'}"
+        line = f"- {action.name}: {action.description or 'No description'}"
         if action.parameters:
             params_text = _format_action_parameters(action.parameters)
             if params_text:
-                line += f"\n  Parameters:\n{params_text}"
+                line += f"\n  params[{len(action.parameters)}]: {params_text}"
         lines.append(line)
-    return "\n".join(lines)
+    return f"actions[{len(actions)}]:\n" + "\n".join(lines)
 
 
 async def get_actions(

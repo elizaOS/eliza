@@ -5,7 +5,6 @@ import type {
 	Provider,
 	State,
 } from "../../types/index.ts";
-import { addHeader } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("PROVIDERS");
@@ -30,36 +29,38 @@ export const providersProvider: Provider = {
 	description: spec.description,
 	get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
 		const allProviders = runtime.providers;
+		const selectionHints = [
+			"images, attachments, or visual content -> ATTACHMENTS",
+			"specific people or agents -> ENTITIES",
+			"connections between people -> RELATIONSHIPS",
+			"factual lookup -> FACTS",
+			"world or environment context -> WORLD",
+		];
 
 		// Filter providers with dynamic: true
 		const dynamicProviders = allProviders.filter(
 			(provider) => provider.dynamic === true,
 		);
 
-		// Create formatted text for each provider
-		const dynamicDescriptions = dynamicProviders.map((provider) => {
-			return `- **${provider.name}**: ${provider.description || "No description available"}`;
-		});
+		const formatProviders = (providers: typeof allProviders, title: string) =>
+			[
+				title,
+				`providers[${providers.length}]:`,
+				...(providers.length > 0
+					? providers.map(
+							(provider) =>
+								`- ${provider.name}: ${provider.description || "No description available"}`,
+						)
+					: ["- none"]),
+				`provider_hints[${selectionHints.length}]:`,
+				...selectionHints.map((hint) => `- ${hint}`),
+			].join("\n");
 
-		const allDescriptions = allProviders.map((provider) => {
-			return `- **${provider.name}**: ${provider.description || "No description available"}`;
-		});
+		const dynamicSection = formatProviders(dynamicProviders, "# Providers");
 
-		// Create the header text
-		const headerText =
-			"# Providers\n\nThese providers are available for the agent to select and use:";
-
-		const dynamicSection =
-			dynamicDescriptions.length > 0
-				? addHeader(headerText, dynamicDescriptions.join("\n"))
-				: addHeader(
-						headerText,
-						"No dynamic providers are currently available.",
-					);
-
-		const providersWithDescriptions = addHeader(
+		const providersWithDescriptions = formatProviders(
+			allProviders,
 			"# Available Providers",
-			allDescriptions.join("\n"),
 		);
 
 		const data = {
