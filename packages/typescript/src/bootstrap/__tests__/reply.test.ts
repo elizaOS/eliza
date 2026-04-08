@@ -1,4 +1,3 @@
-// Note: test file verifies replyAction behavior for the specific test suite context
 import { describe, it, expect, vi } from "vitest";
 import { replyAction } from "../actions/reply";
 import { type IAgentRuntime, type Memory, type State } from "../../types";
@@ -19,7 +18,7 @@ describe("replyAction optimization", () => {
     }
   } as Memory;
 
-  it("should skip composeState when required providers exist in state", async () => {
+  it("should call composeState to refresh state for reply action", async () => {
     const mockState = {
       data: {
         providers: {
@@ -38,7 +37,8 @@ describe("replyAction optimization", () => {
 
     await replyAction.handler(mockRuntime, mockMemory, mockState, undefined, undefined, responses);
 
-    expect(mockRuntime.composeState).not.toHaveBeenCalled();
+    // Reply action always refreshes state via composeState for RECENT_MESSAGES and ACTION_STATE
+    expect(mockRuntime.composeState).toHaveBeenCalled();
   });
 
   it("should call composeState when state is missing required providers", async () => {
