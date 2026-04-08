@@ -166,10 +166,10 @@ export const recentMessagesProvider: Provider = {
           return textChars + runId.length + 80;
         },
         RECENT_ACTION_RUNS_TARGET_CHARS,
-        { fromEnd: true },
+        { fromEnd: false },
       );
 
-      // Note: retains most recent runs since groupedByRun is ordered from oldest to newest (insertion order from getMemories).
+      // Note: retains most recent runs since groupedByRun is ordered from newest to oldest (insertion order from getMemories which returns desc).
       const formattedActionResults = recentRuns
         .map(([runId, memories]) => {
           const sortedMemories = memories.sort(
