@@ -451,6 +451,107 @@ describe("DefaultMessageService", () => {
 	});
 
 	describe("handleMessage", () => {
+		it("emits MESSAGE_RECEIVED before connector messages hit the model pipeline", async () => {
+			const sequence: string[] = [];
+			(runtime.emitEvent as ReturnType<typeof vi.fn>).mockImplementation(
+				async (event: unknown, payload?: unknown) => {
+					if (event === EventType.MESSAGE_RECEIVED) {
+						sequence.push("MESSAGE_RECEIVED");
+						const messagePayload = (payload as { message?: Memory } | undefined)
+							?.message;
+						if (messagePayload) {
+							messagePayload.metadata = {
+								...(messagePayload.metadata ?? {}),
+								type: "message",
+								trajectoryStepId: "connector-step",
+							};
+						}
+						return;
+					}
+					sequence.push(String(event));
+				},
+			);
+			(runtime.useModel as ReturnType<typeof vi.fn>).mockImplementation(
+				async (
+					modelType: (typeof ModelType)[keyof typeof ModelType],
+					params: unknown,
+				) => {
+					sequence.push(`MODEL:${String(modelType)}`);
+					if (
+						modelType === ModelType.TEXT_SMALL ||
+						modelType === ModelType.TEXT_MINI ||
+						modelType === ModelType.TEXT_NANO ||
+						modelType === ModelType.RESPONSE_HANDLER
+					) {
+						return "<response><action>REPLY</action><reason>User asked a question</reason></response>";
+					}
+					const responseText =
+						"<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>";
+					const textParams = params as GenerateTextParams;
+					if (textParams?.stream) {
+						return {
+							textStream: (async function* () {
+								yield "<response><thought>Processing message</thought>";
+								yield "<actions>REPLY</actions><providers></providers>";
+								yield "<text>Hello! How can I help you?</text></response>";
+							})(),
+							text: Promise.resolve(responseText),
+						};
+					}
+					return responseText;
+				},
+			);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174020" as UUID,
+				content: {
+					text: "Hello from Discord",
+					source: "discord",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback);
+
+			expect(message.metadata).toMatchObject({
+				trajectoryStepId: "connector-step",
+			});
+			expect(sequence.indexOf("MESSAGE_RECEIVED")).toBeGreaterThanOrEqual(0);
+			expect(
+				sequence.findIndex((entry) => entry.startsWith("MODEL:")),
+			).toBeGreaterThan(sequence.indexOf("MESSAGE_RECEIVED"));
+		});
+
+		it("skips MESSAGE_RECEIVED when the message already has a trajectory step id", async () => {
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174020" as UUID,
+				content: {
+					text: "Hello, how are you?",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+				metadata: {
+					type: "message",
+					trajectoryStepId: "existing-step",
+				},
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback);
+
+			expect(runtime.emitEvent).not.toHaveBeenCalledWith(
+				EventType.MESSAGE_RECEIVED,
+				expect.anything(),
+			);
+		});
+
 		it("should process a simple message and generate response", async () => {
 			const message: Memory = {
 				id: "123e4567-e89b-12d3-a456-426614174020" as UUID,

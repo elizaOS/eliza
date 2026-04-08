@@ -434,12 +434,52 @@ export class DefaultMessageService implements IMessageService {
 		callback?: HandlerCallback,
 		options?: MessageProcessingOptions,
 	): Promise<MessageProcessingResult> {
-		const trajectoryStepId =
+		const source =
+			typeof message.content?.source === "string" &&
+			message.content.source.trim() !== ""
+				? message.content.source
+				: "messageService";
+
+		let trajectoryStepId =
 			typeof message.metadata === "object" &&
 			message.metadata !== null &&
 			"trajectoryStepId" in message.metadata
 				? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
 				: undefined;
+
+		if (
+			!(
+				typeof trajectoryStepId === "string" &&
+				trajectoryStepId.trim() !== ""
+			)
+		) {
+			try {
+				await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+					runtime,
+					message,
+					callback,
+					source,
+				});
+			} catch (error) {
+				runtime.logger.warn(
+					{
+						src: "service:message",
+						agentId: runtime.agentId,
+						entityId: message.entityId,
+						roomId: message.roomId,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Failed to emit MESSAGE_RECEIVED before handling message",
+				);
+			}
+
+			trajectoryStepId =
+				typeof message.metadata === "object" &&
+				message.metadata !== null &&
+				"trajectoryStepId" in message.metadata
+					? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
+					: undefined;
+		}
 
 		return await runWithTrajectoryContext<MessageProcessingResult>(
 			typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
