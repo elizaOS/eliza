@@ -203,8 +203,10 @@ async function main(): Promise<void> {
 	const logLevel = resolveLogLevel(cliLogLevel);
 
 	// Create one adapter per character so each can use its own DB settings
-	const adapters: Map<string, ReturnType<typeof createDatabaseAdapter>> = new Map();
-	for (const char of characters) {
+	// Note: Using array index as key to avoid collision when multiple characters share the same name.
+	const adapters: Map<number, ReturnType<typeof createDatabaseAdapter>> = new Map();
+	for (let i = 0; i < characters.length; i++) {
+		const char = characters[i]!;
 		const caps = getBasicCapabilitiesSettings(char);
 		const charId = (char.id ?? stringToUuid(char.name ?? "eliza")) as UUID;
 		const adapter = createDatabaseAdapter(
@@ -214,14 +216,14 @@ async function main(): Promise<void> {
 			},
 			charId,
 		);
-		adapters.set(charId, adapter);
+		adapters.set(i, adapter);
 	}
 
 	// Create runtimes individually with per-character adapters
 	const runtimes: IAgentRuntime[] = [];
-	for (const char of characters) {
-		const charId = (char.id ?? stringToUuid(char.name ?? "eliza")) as UUID;
-		const adapter = adapters.get(charId)!;
+	for (let i = 0; i < characters.length; i++) {
+		const char = characters[i]!;
+		const adapter = adapters.get(i)!;
 		const [runtime] = await createRuntimes([char], {
 			adapter,
 			logLevel,
