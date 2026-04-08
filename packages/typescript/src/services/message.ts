@@ -501,7 +501,7 @@ export class DefaultMessageService implements IMessageService {
     // When allowedSources is set, messages must have a matching sourceId in the whitelist
     const memorySourceAllowed = allowedSources === null || sourceMatchesAllowlist;
     // Note: Memory persistence logic:
-    // - If DISABLE_MEMORY_CREATION is true, persistence is skipped unconditionally (regardless of allowlist)
+    // - If DISABLE_MEMORY_CREATION is true, persistence is skipped unconditionally
     // - If memory creation is enabled and no allowlist exists, persist all messages
     // - If memory creation is enabled and allowlist exists, only persist if source is in allowlist
     const canPersistMemory = disableMemoryCreation
