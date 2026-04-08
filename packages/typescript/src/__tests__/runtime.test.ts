@@ -777,7 +777,11 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
 		it("should not mutate input params when streaming callbacks are provided", async () => {
 			type StreamingParams = GenerateTextParams & {
-				onStreamChunk: (chunk: string, messageId?: string) => void;
+				onStreamChunk: (
+					chunk: string,
+					messageId?: string,
+					accumulated?: string,
+				) => void;
 				stream?: boolean;
 			};
 			const mockHandler = vi.fn().mockResolvedValue("ok");

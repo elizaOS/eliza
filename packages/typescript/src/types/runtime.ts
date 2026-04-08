@@ -7,6 +7,7 @@ import type {
 	Evaluator,
 	HandlerCallback,
 	Provider,
+	StreamChunkCallback,
 } from "./components";
 import type { IDatabaseAdapter, LogBody, PatchOp } from "./database";
 import type {
@@ -171,7 +172,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		state?: State,
 		callback?: HandlerCallback,
 		options?: {
-			onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+			onStreamChunk?: StreamChunkCallback;
 		},
 	): Promise<void>;
 
@@ -418,10 +419,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 			retryBackoff?: number | import("./state").RetryBackoffConfig;
 			disableCache?: boolean;
 			cacheTTL?: number;
-			onStreamChunk?: (
-				chunk: string,
-				messageId?: string,
-			) => void | Promise<void>;
+			onStreamChunk?: StreamChunkCallback;
 			onStreamEvent?: (
 				event: import("./state").StreamEvent,
 				messageId?: string,
