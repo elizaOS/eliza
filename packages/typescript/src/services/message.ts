@@ -538,7 +538,8 @@ export class DefaultMessageService implements IMessageService {
         { src: "service:message", messageId: message.id, sourceId: messageSourceId ?? null },
         "DISABLE_MEMORY_CREATION enabled; skipping message persistence and embedding queue",
       );
-      if (!message.id) message.id = asUUID(v4());
+      // Note: Do NOT assign synthetic message.id here - memoryToQueue remains null
+      // to prevent later DB writes via updateMemory() for attachment-bearing messages.
     } else {
       runtime.logger.info(
         {
