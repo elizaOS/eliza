@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { nativeRuntimeFeatureLegacyPluginNames } from "../plugins/native-features";
 import { AgentRuntime } from "../runtime";
 import type { Plugin } from "../types";
 
@@ -93,8 +94,10 @@ describe("native runtime features", () => {
 	});
 
 	it("skips legacy wrapper plugins that are now native", async () => {
+		const legacyKnowledgePluginName =
+			nativeRuntimeFeatureLegacyPluginNames.knowledge[0];
 		const legacyKnowledgePlugin: Plugin = {
-			name: "@elizaos/plugin-knowledge",
+			name: legacyKnowledgePluginName,
 			description: "legacy knowledge wrapper",
 		};
 
@@ -110,7 +113,7 @@ describe("native runtime features", () => {
 		expect(runtime.plugins.filter((plugin) => plugin.name === "knowledge")).toHaveLength(1);
 		expect(
 			runtime.plugins.some(
-				(plugin) => plugin.name === "@elizaos/plugin-knowledge",
+				(plugin) => plugin.name === legacyKnowledgePluginName,
 			),
 		).toBe(false);
 	});

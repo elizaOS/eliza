@@ -193,7 +193,7 @@ export const trajectoryLoggerPlugin: Plugin = {
 					runtime.logger?.warn(
 						{
 							err,
-							src: "plugin-trajectory-logger",
+							src: "trajectories",
 							roomId: message.roomId,
 						},
 						"Failed to start trajectory logging",
@@ -228,7 +228,7 @@ export const trajectoryLoggerPlugin: Plugin = {
 					runtime.logger?.warn(
 						{
 							err,
-							src: "plugin-trajectory-logger",
+							src: "trajectories",
 							trajectoryStepId,
 						},
 						"Failed to end trajectory logging",
@@ -255,7 +255,7 @@ export const trajectoryLoggerPlugin: Plugin = {
 					runtime.logger?.warn(
 						{
 							err,
-							src: "plugin-trajectory-logger",
+							src: "trajectories",
 							messageId,
 							trajectoryStepId,
 						},
@@ -278,7 +278,7 @@ export const trajectoryLoggerPlugin: Plugin = {
 					runtime.logger?.warn(
 						{
 							err,
-							src: "plugin-trajectory-logger",
+							src: "trajectories",
 							messageId,
 							trajectoryStepId,
 						},

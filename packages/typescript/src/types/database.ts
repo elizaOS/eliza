@@ -710,7 +710,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * Get memories matching criteria
 	 *
 	 * WHY metadata parameter: Eliminates the "fetch 50K rows, filter in JS" antipattern
-	 * seen in plugin-knowledge. Database-level JSON filtering is 50-100x faster:
+	 * seen in the legacy knowledge implementation. Database-level JSON filtering is 50-100x faster:
 	 * - PostgreSQL: Uses GIN-indexed @> operator on jsonb columns
 	 * - MySQL: Uses JSON_CONTAINS() function
 	 * - InMemory: Deep equality check (less efficient but correct)
