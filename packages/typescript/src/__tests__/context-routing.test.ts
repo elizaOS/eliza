@@ -68,14 +68,13 @@ describe("context-routing utilities", () => {
 		const contexts = deriveAvailableContexts(
 			[
 				{
-					name: "A1",
+					name: "SEND_TOKEN",
 					description: "A1",
 					handler: async () => ({
 						success: true,
 						text: "",
 					}),
 					validate: async () => true,
-					contexts: ["wallet", "media"],
 				},
 				{
 					name: "A2",
@@ -90,12 +89,11 @@ describe("context-routing utilities", () => {
 			] as Action[],
 			[
 				{
-					name: "P1",
+					name: "knowledge",
 					description: "P1",
 					position: 0,
 					get: async () => ({}),
 					dynamic: true,
-					contexts: ["knowledge"],
 				},
 				{
 					name: "P2",
@@ -112,7 +110,6 @@ describe("context-routing utilities", () => {
 			"automation",
 			"general",
 			"knowledge",
-			"media",
 			"wallet",
 		]);
 	});
@@ -162,11 +159,10 @@ describe("context-gated providers", () => {
 			agentId: "agent",
 			actions: [
 				{
-					name: "WalletAction",
+					name: "SEND_TOKEN",
 					description: "wallet",
 					handler: async () => ({ success: true, text: "ok" }),
 					validate: async () => true,
-					contexts: ["wallet"],
 				},
 				{
 					name: "SocialAction",
@@ -191,7 +187,7 @@ describe("context-gated providers", () => {
 		);
 
 		expect(result.data?.actionsData?.map((action) => action.name)).toEqual([
-			"WalletAction",
+			"SEND_TOKEN",
 			"GenericAction",
 		]);
 	});
@@ -202,11 +198,10 @@ describe("context-gated providers", () => {
 			actions: [],
 			providers: [
 				{
-					name: "WalletProvider",
+					name: "walletBalance",
 					description: "wallet",
 					get: async () => ({ text: "" }),
 					dynamic: true,
-					contexts: ["wallet"],
 				},
 				{
 					name: "GeneralProvider",
@@ -225,9 +220,9 @@ describe("context-gated providers", () => {
 
 		expect(
 			result.data?.allProviders?.map((provider: Provider) => provider.name),
-		).toEqual(["GeneralProvider", "WalletProvider"]);
+		).toEqual(["GeneralProvider", "walletBalance"]);
 		expect(
 			result.data?.dynamicProviders?.map((provider: Provider) => provider.name),
-		).toEqual(["GeneralProvider", "WalletProvider"]);
+		).toEqual(["GeneralProvider", "walletBalance"]);
 	});
 });

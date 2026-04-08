@@ -13,6 +13,7 @@ import {
 	parseContextRoutingMetadata,
 	shouldIncludeByContext,
 } from "../../utils/context-routing.ts";
+import { resolveActionContexts } from "../../utils/context-catalog";
 import { buildDeterministicSeed } from "../../utils/deterministic";
 import { addHeader } from "../../utils.ts";
 
@@ -62,7 +63,12 @@ export const actionsProvider: Provider = {
 
 		// Get actions that validate for this message
 		const actionPromises = runtime.actions.map(async (action: Action) => {
-			if (!shouldIncludeByContext(action.contexts, activeContexts)) {
+			if (
+				!shouldIncludeByContext(
+					resolveActionContexts(action),
+					activeContexts,
+				)
+			) {
 				return null;
 			}
 
