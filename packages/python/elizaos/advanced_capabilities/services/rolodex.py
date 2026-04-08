@@ -92,9 +92,9 @@ def calculate_relationship_strength(
     return max(0.0, min(100.0, round(total, 1)))
 
 
-class RolodexService(Service):
-    name = "rolodex"
-    service_type = ServiceType.UNKNOWN
+class RelationshipsService(Service):
+    name = "relationships"
+    service_type = ServiceType.RELATIONSHIPS
 
     @property
     def capability_description(self) -> str:
@@ -106,12 +106,12 @@ class RolodexService(Service):
         self._runtime: IAgentRuntime | None = None
 
     @classmethod
-    async def start(cls, runtime: IAgentRuntime) -> RolodexService:
+    async def start(cls, runtime: IAgentRuntime) -> RelationshipsService:
         service = cls()
         service._runtime = runtime
         runtime.logger.info(
-            "Rolodex service started",
-            src="service:rolodex",
+            "Relationships service started",
+            src="service:relationships",
             agentId=str(runtime.agent_id),
         )
         return service
@@ -119,8 +119,8 @@ class RolodexService(Service):
     async def stop(self) -> None:
         if self._runtime:
             self._runtime.logger.info(
-                "Rolodex service stopped",
-                src="service:rolodex",
+                "Relationships service stopped",
+                src="service:relationships",
                 agentId=str(self._runtime.agent_id),
             )
         self._contacts.clear()
@@ -149,7 +149,7 @@ class RolodexService(Service):
         if self._runtime:
             self._runtime.logger.info(
                 f"Added contact {entity_id}",
-                src="service:rolodex",
+                src="service:relationships",
                 categories=contact.categories,
             )
 
@@ -242,3 +242,6 @@ class RolodexService(Service):
 
         self._analytics[key] = analytics
         return analytics
+
+
+RolodexService = RelationshipsService

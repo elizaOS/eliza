@@ -197,6 +197,44 @@ providers[0]:
 text: Your message here
 simple: true"""
 
+MESSAGE_CLASSIFIER_TEMPLATE = """Analyze this user request and classify it for planning purposes:
+
+"{{text}}"
+
+Classify the request across these dimensions:
+
+1. COMPLEXITY LEVEL:
+- simple: Direct actions that don't require planning
+- medium: Multi-step tasks requiring coordination
+- complex: Strategic initiatives with multiple stakeholders
+- enterprise: Large-scale transformations with full complexity
+
+2. PLANNING TYPE:
+- direct_action: Single action, no planning needed
+- sequential_planning: Multiple steps in sequence
+- strategic_planning: Complex coordination with stakeholders
+
+3. REQUIRED CAPABILITIES:
+- List specific capabilities needed (analysis, communication, project_management, etc.)
+
+4. STAKEHOLDERS:
+- List types of people/groups involved
+
+5. CONSTRAINTS:
+- List limitations or requirements mentioned
+
+6. DEPENDENCIES:
+- List dependencies between tasks or external factors
+
+Respond in this exact format:
+COMPLEXITY: [simple|medium|complex|enterprise]
+PLANNING: [direct_action|sequential_planning|strategic_planning]
+CAPABILITIES: [comma-separated list]
+STAKEHOLDERS: [comma-separated list]
+CONSTRAINTS: [comma-separated list]
+DEPENDENCIES: [comma-separated list]
+CONFIDENCE: [0.0-1.0]"""
+
 MULTI_STEP_DECISION_TEMPLATE = """Determine the next step the assistant should take in this conversation to help the user reach their goal.
 
 {{recentMessages}}
@@ -668,6 +706,36 @@ updates[1]{name,value}:
 
 IMPORTANT: Your response must ONLY contain the TOON document above."""
 
+UPDATE_ROLE_TEMPLATE = """task: Extract the requested role change.
+
+context:
+{{providers}}
+
+current_roles:
+{{roles}}
+
+recent_messages:
+{{recentMessages}}
+
+current_message:
+{{message}}
+
+instructions[6]:
+- identify the single entity whose role should be updated
+- return entity_id only when the UUID is explicit in context
+- normalize new_role to one of OWNER, ADMIN, MEMBER, GUEST, or NONE
+- if the user is removing elevated access without naming a new role, use NONE
+- do not invent entity ids or roles
+- include a short thought describing the change
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+thought: Sarah should become an admin.
+entity_id: 00000000-0000-0000-0000-000000000000
+new_role: ADMIN"""
+
 UPDATE_SETTINGS_TEMPLATE = """# Task: Update settings based on the request.
 
 {{providers}}
@@ -698,6 +766,7 @@ __all__ = [
     "IMAGE_DESCRIPTION_TEMPLATE",
     "IMAGE_GENERATION_TEMPLATE",
     "MESSAGE_HANDLER_TEMPLATE",
+    "MESSAGE_CLASSIFIER_TEMPLATE",
     "MULTI_STEP_DECISION_TEMPLATE",
     "MULTI_STEP_SUMMARY_TEMPLATE",
     "OPTION_EXTRACTION_TEMPLATE",
@@ -716,6 +785,7 @@ __all__ = [
     "SHOULD_UNMUTE_ROOM_TEMPLATE",
     "UPDATE_CONTACT_TEMPLATE",
     "UPDATE_ENTITY_TEMPLATE",
+    "UPDATE_ROLE_TEMPLATE",
     "UPDATE_SETTINGS_TEMPLATE",
     "BOOLEAN_FOOTER",
 ]

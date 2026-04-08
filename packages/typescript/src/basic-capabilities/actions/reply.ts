@@ -90,7 +90,7 @@ export const replyAction = {
 
 		const now = Date.now();
 		return {
-			text: `Generated reply: ${responseContent.text}`,
+			text: responseContent.text,
 			values: {
 				success: true,
 				responded: true,

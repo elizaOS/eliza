@@ -26,8 +26,9 @@ use crate::types::settings::SettingValue;
 use crate::types::state::State;
 use crate::types::Memory;
 
-// Import templates from centralized prompts
-use crate::prompts::{
+mod prompts;
+
+use self::prompts::{
     INITIAL_SUMMARIZATION_TEMPLATE, LONG_TERM_EXTRACTION_TEMPLATE, UPDATE_SUMMARIZATION_TEMPLATE,
 };
 

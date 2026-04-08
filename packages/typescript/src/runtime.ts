@@ -20,6 +20,13 @@ import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createLogger } from "./logger";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
+import {
+	getNativeRuntimeFeaturePlugin,
+	nativeRuntimeFeatureDefaults,
+	nativeRuntimeFeaturePluginNames,
+	type NativeRuntimeFeature,
+	resolveNativeRuntimeFeatureFromPluginName,
+} from "./plugins/native-features";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
@@ -66,6 +73,7 @@ import {
 	ModelType,
 	getModelFallbackChain,
 	type ModelTypeName,
+	type TextGenerationModelType,
 	type PairingAllowlistEntry,
 	type PairingChannel,
 	type PairingRequest,
@@ -111,7 +119,6 @@ import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
 import {
 	buildDeterministicSeed,
-	hashStringToUint32,
 } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import {
@@ -152,9 +159,9 @@ const STABLE_PROMPT_PROVIDER_NAMES = new Set([
 ]);
 
 function resolveDynamicPromptModelType(
-	modelType?: ModelTypeName,
+	modelType?: TextGenerationModelType,
 	modelSize?: "nano" | "mini" | "small" | "large" | "mega",
-): ModelTypeName {
+): TextGenerationModelType {
 	if (modelType) {
 		return modelType;
 	}
@@ -255,6 +262,14 @@ export class AgentRuntime implements IAgentRuntime {
 	private characterPlugins: Plugin[] = [];
 	// Capability options for basic capabilities configuration
 	private capabilityOptions: CapabilityConfig = {};
+	private readonly serviceAliases = new Map<string, string>([
+		["relationships", "rolodex"],
+		["trajectories", "trajectory_logger"],
+	]);
+	private readonly nativeFeatureOptions: Partial<
+		Record<NativeRuntimeFeature, boolean>
+	>;
+	private nativeFeatureStates = new Map<NativeRuntimeFeature, boolean>();
 	// Action planning option (undefined means use settings, true/false is explicit)
 	private actionPlanningOption?: boolean;
 	// LLM mode option for overriding model selection (undefined means use settings)
@@ -349,6 +364,9 @@ export class AgentRuntime implements IAgentRuntime {
 		 * Can be enabled at construction time or lazily via settings.
 		 */
 		enableAutonomy?: boolean;
+		enableKnowledge?: boolean;
+		enableRelationships?: boolean;
+		enableTrajectories?: boolean;
 		/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. WHY: Thin runtimes (e.g. serverless) delegate embeddings and task-dirty notifications without blocking. */
 		companionUrl?: string;
 	}) {
@@ -383,6 +401,11 @@ export class AgentRuntime implements IAgentRuntime {
 			advancedCapabilities: opts.advancedCapabilities,
 			skipCharacterProvider: this.isAnonymousCharacter,
 			enableAutonomy: opts.enableAutonomy,
+		};
+		this.nativeFeatureOptions = {
+			knowledge: opts.enableKnowledge,
+			relationships: opts.enableRelationships,
+			trajectories: opts.enableTrajectories,
 		};
 		// Generate deterministic UUID from character name
 		// Falls back to random UUID only if no character name is provided
@@ -494,6 +517,133 @@ export class AgentRuntime implements IAgentRuntime {
 			this.currentRunId = this.createRunId();
 		}
 		return this.currentRunId;
+	}
+
+	private resolveServiceTypeAlias(serviceType: ServiceTypeName | string): string {
+		return this.serviceAliases.get(serviceType) ?? serviceType;
+	}
+
+	private resolveNativeFeatureEnabled(feature: NativeRuntimeFeature): boolean {
+		const explicit = this.nativeFeatureOptions[feature];
+		if (explicit !== undefined) {
+			return explicit;
+		}
+
+		const settingKey = `ENABLE_${feature.toUpperCase()}`;
+		const settingValue = parseBooleanValue(this.getSetting(settingKey));
+		if (settingValue !== undefined) {
+			return settingValue;
+		}
+
+		if (feature === "trajectories") {
+			for (const envKey of [
+				"MILADY_TRAJECTORY_LOGGING",
+				"ENABLE_TRAJECTORY_LOGGING",
+				"TRAJECTORY_LOGGING",
+			]) {
+				const envValue = parseBooleanValue(process.env[envKey]);
+				if (envValue !== undefined) {
+					return envValue;
+				}
+			}
+		}
+
+		return nativeRuntimeFeatureDefaults[feature];
+	}
+
+	private hasNativeRuntimeFeature(feature: NativeRuntimeFeature): boolean {
+		const pluginName = nativeRuntimeFeaturePluginNames[feature];
+		return this.plugins.some((plugin) => plugin.name === pluginName);
+	}
+
+	private resolveNativeFeatureForServiceType(
+		serviceType: ServiceTypeName | string,
+	): NativeRuntimeFeature | null {
+		switch (serviceType) {
+			case "knowledge":
+				return "knowledge";
+			case "relationships":
+			case "rolodex":
+				return "relationships";
+			case "trajectories":
+			case "trajectory_logger":
+				return "trajectories";
+			default:
+				return null;
+		}
+	}
+
+	private isNativeFeatureServiceEnabled(
+		serviceType: ServiceTypeName | string,
+	): boolean {
+		const feature = this.resolveNativeFeatureForServiceType(serviceType);
+		if (!feature) {
+			return true;
+		}
+		return this.nativeFeatureStates.get(feature) ?? false;
+	}
+
+	private isPluginManagedAsNativeFeature(
+		plugin: Plugin | null | undefined,
+	): boolean {
+		return resolveNativeRuntimeFeatureFromPluginName(plugin?.name) !== null;
+	}
+
+	private async setNativeRuntimeFeatureEnabled(
+		feature: NativeRuntimeFeature,
+		enabled: boolean,
+	): Promise<void> {
+		const current = this.nativeFeatureStates.get(feature);
+		if (current === enabled) {
+			return;
+		}
+
+		if (enabled) {
+			if (!this.hasNativeRuntimeFeature(feature)) {
+				await this.registerPlugin(getNativeRuntimeFeaturePlugin(feature));
+			}
+		} else if (this.hasNativeRuntimeFeature(feature)) {
+			await this.unloadPlugin(nativeRuntimeFeaturePluginNames[feature]);
+		}
+
+		this.nativeFeatureStates.set(feature, enabled);
+		this.setSetting(`ENABLE_${feature.toUpperCase()}`, enabled);
+	}
+
+	async enableKnowledge(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("knowledge", true);
+	}
+
+	async disableKnowledge(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("knowledge", false);
+	}
+
+	isKnowledgeEnabled(): boolean {
+		return this.nativeFeatureStates.get("knowledge") ?? false;
+	}
+
+	async enableRelationships(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("relationships", true);
+	}
+
+	async disableRelationships(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("relationships", false);
+	}
+
+	isRelationshipsEnabled(): boolean {
+		return this.nativeFeatureStates.get("relationships") ?? false;
+	}
+
+	async enableTrajectories(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("trajectories", true);
+	}
+
+	async disableTrajectories(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("trajectories", false);
+	}
+
+	isTrajectoriesEnabled(): boolean {
+		return this.nativeFeatureStates.get("trajectories") ?? false;
 	}
 
 	async registerPlugin(plugin: Plugin): Promise<void> {
@@ -812,6 +962,18 @@ export class AgentRuntime implements IAgentRuntime {
 			this.registerPlugin(basicCapabilitiesPlugin),
 		);
 
+		for (const feature of Object.keys(
+			nativeRuntimeFeatureDefaults,
+		) as NativeRuntimeFeature[]) {
+			const enabled = this.resolveNativeFeatureEnabled(feature);
+			this.nativeFeatureStates.set(feature, enabled);
+			if (enabled) {
+				pluginRegistrationPromises.push(
+					this.registerPlugin(getNativeRuntimeFeaturePlugin(feature)),
+				);
+			}
+		}
+
 		if (this.character.advancedPlanning === true) {
 			const { createAdvancedPlanningPlugin } = await import(
 				"./advanced-planning/index.ts"
@@ -831,7 +993,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		for (const plugin of this.characterPlugins) {
-			if (plugin) {
+			if (plugin && !this.isPluginManagedAsNativeFeature(plugin)) {
 				pluginRegistrationPromises.push(this.registerPlugin(plugin));
 			}
 		}
@@ -2035,18 +2197,25 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 				}
 
-				// Store action result as memory
-				const actionMemory: Memory = {
-					id: actionId,
-					entityId: this.agentId,
-					roomId: message.roomId,
-					worldId: message.worldId,
-					content: {
-						text: actionResult?.text || `Executed action: ${action.name}`,
-						source: "action",
-					},
-				};
-				await this.createMemory(actionMemory, "messages");
+				// Only persist action memories when the handler returned a real user-facing
+				// message. Placeholder bookkeeping text is internal runtime state, not chat.
+				const actionText =
+					typeof actionResult?.text === "string"
+						? actionResult.text.trim()
+						: "";
+				if (actionText) {
+					const actionMemory: Memory = {
+						id: actionId,
+						entityId: this.agentId,
+						roomId: message.roomId,
+						worldId: message.worldId,
+						content: {
+							text: actionText,
+							source: "action",
+						},
+					};
+					await this.createMemory(actionMemory, "messages");
+				}
 
 				this.logger.debug(
 					{ src: "agent", agentId: this.agentId, action: action.name },
@@ -2743,7 +2912,8 @@ export class AgentRuntime implements IAgentRuntime {
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null> {
 		if (this.stopped) return null;
-		const key = serviceType as ServiceTypeName;
+		if (!this.isNativeFeatureServiceEnabled(serviceType)) return null;
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		const instances = this.services.get(key);
 		if (instances && instances.length > 0) {
 			return instances[0];
@@ -2844,7 +3014,11 @@ export class AgentRuntime implements IAgentRuntime {
 	getService<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
 	): T | null {
-		const instances = this.services.get(serviceName as ServiceTypeName);
+		if (!this.isNativeFeatureServiceEnabled(serviceName)) {
+			return null;
+		}
+		const key = this.resolveServiceTypeAlias(serviceName) as ServiceTypeName;
+		const instances = this.services.get(key);
 		if (instances && instances.length > 0) {
 			return instances[0] as T;
 		}
@@ -2872,10 +3046,14 @@ export class AgentRuntime implements IAgentRuntime {
 	getServicesByType<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
 	): T[] {
-		const serviceInstances = this.services.get(serviceName as ServiceTypeName);
+		if (!this.isNativeFeatureServiceEnabled(serviceName)) {
+			return [];
+		}
+		const key = this.resolveServiceTypeAlias(serviceName) as ServiceTypeName;
+		const serviceInstances = this.services.get(key);
 		if (!serviceInstances || serviceInstances.length === 0) {
 			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, serviceName },
+				{ src: "agent", agentId: this.agentId, serviceName: key },
 				"No services found for type",
 			);
 			return [];
@@ -2897,7 +3075,11 @@ export class AgentRuntime implements IAgentRuntime {
 	 * @returns true if the service is registered
 	 */
 	hasService(serviceType: ServiceTypeName | string): boolean {
-		const classes = this.serviceTypes.get(serviceType as ServiceTypeName);
+		if (!this.isNativeFeatureServiceEnabled(serviceType)) {
+			return false;
+		}
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		const classes = this.serviceTypes.get(key);
 		return classes !== undefined && classes.length > 0;
 	}
 
@@ -2909,10 +3091,11 @@ export class AgentRuntime implements IAgentRuntime {
 	getServiceRegistrationStatus(
 		serviceType: ServiceTypeName | string,
 	): "pending" | "registering" | "registered" | "failed" | "unknown" {
-		return (
-			this.serviceRegistrationStatus.get(serviceType as ServiceTypeName) ||
-			"unknown"
-		);
+		if (!this.isNativeFeatureServiceEnabled(serviceType)) {
+			return "unknown";
+		}
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		return this.serviceRegistrationStatus.get(key) || "unknown";
 	}
 
 	/**
@@ -3026,9 +3209,10 @@ export class AgentRuntime implements IAgentRuntime {
 	getServiceLoadPromise(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service> {
-		return this._ensureServiceStarted(serviceType).then((s) => {
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		return this._ensureServiceStarted(key).then((s) => {
 			if (!s)
-				throw new Error(`Service ${serviceType} not found or failed to start`);
+				throw new Error(`Service ${String(serviceType)} not found or failed to start`);
 			return s;
 		});
 	}
@@ -3467,72 +3651,6 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 			}
 
-			if (shouldAttachUser && isPlainObject(modelParams)) {
-				const modelParamsRecord = modelParams as Record<
-					string,
-					JsonValue | object
-				>;
-				const promptSegments = Array.isArray(modelParamsRecord.promptSegments)
-					? (modelParamsRecord.promptSegments as PromptSegment[])
-					: [];
-				const stablePrefix = promptSegments
-					.filter((segment, index) => {
-						if (!segment?.stable) {
-							return false;
-						}
-						return promptSegments
-							.slice(0, index)
-							.every((previous) => previous?.stable === true);
-					})
-					.map((segment) => segment.content)
-					.join("");
-
-				if (stablePrefix.length > 0) {
-					const providerOptions = isPlainObject(
-						modelParamsRecord.providerOptions,
-					)
-						? {
-								...(modelParamsRecord.providerOptions as Record<
-									string,
-									JsonValue | object
-								>),
-							}
-						: {};
-					const openAIOptions = isPlainObject(providerOptions.openai)
-						? {
-								...(providerOptions.openai as Record<
-									string,
-									JsonValue | object
-								>),
-							}
-						: {};
-
-					if (openAIOptions.promptCacheKey === undefined) {
-						openAIOptions.promptCacheKey = buildDeterministicSeed(
-							this.agentId,
-							this.currentRoomId ?? this.agentId,
-							requestedModelKey,
-							hashStringToUint32(stablePrefix).toString(16),
-						);
-					}
-
-					const promptCacheRetention = this.getSetting(
-						"OPENAI_PROMPT_CACHE_RETENTION",
-					);
-					if (
-						openAIOptions.promptCacheRetention === undefined &&
-						(promptCacheRetention === "in_memory" ||
-							promptCacheRetention === "24h")
-					) {
-						openAIOptions.promptCacheRetention = promptCacheRetention;
-					}
-
-					if (Object.keys(openAIOptions).length > 0) {
-						providerOptions.openai = openAIOptions;
-						modelParamsRecord.providerOptions = providerOptions;
-					}
-				}
-			}
 		}
 		const startTime =
 			typeof performance !== "undefined" &&
@@ -6077,12 +6195,23 @@ ${section_end}`;
 		await this.adapter.updateParticipantUserStates(updates);
 	}
 	async getRelationships(params: {
-		entityId: UUID;
+		entityIds?: UUID[];
+		entityId?: UUID;
 		tags?: string[];
+		limit?: number;
+		offset?: number;
 	}): Promise<Relationship[]> {
+		const entityIds =
+			Array.isArray(params.entityIds) && params.entityIds.length > 0
+				? params.entityIds
+				: params.entityId
+					? [params.entityId]
+					: [];
 		return await this.adapter.getRelationships({
-			entityIds: [params.entityId],
+			entityIds,
 			tags: params.tags,
+			limit: params.limit,
+			offset: params.offset,
 		});
 	}
 	// Batch cache methods

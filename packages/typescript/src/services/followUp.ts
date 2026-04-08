@@ -39,22 +39,6 @@ export class FollowUpService extends Service {
 		super();
 		if (runtime) {
 			this.runtime = runtime;
-			// Wait for RolodexService to become available using service promise
-			this.runtime
-				.getServiceLoadPromise("rolodex" as ServiceTypeName)
-				.then((service) => {
-					this.rolodexService = service as RolodexService;
-					logger.info(
-						"[FollowUpService] Successfully acquired RolodexService via service promise",
-					);
-				})
-				.catch((error) => {
-					logger.error(
-						"[FollowUpService] Failed to acquire RolodexService:",
-						error instanceof Error ? error.message : String(error),
-					);
-					throw new Error("[FollowUpService] RolodexService is not available");
-				});
 		}
 	}
 

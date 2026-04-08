@@ -22,7 +22,6 @@ import {
 } from "../prompts.ts";
 import { EmbeddingGenerationService } from "../services/embedding.ts";
 import { TaskService } from "../services/task.ts";
-import { TrajectoryLoggerService } from "../services/trajectoryLogger.ts";
 import type { Role } from "../types/environment.ts";
 import { EventType } from "../types/events.ts";
 import type {
@@ -1301,7 +1300,6 @@ export const basicEvaluators: never[] = [];
 export const basicServices: ServiceClass[] = [
 	TaskService,
 	EmbeddingGenerationService,
-	TrajectoryLoggerService,
 ];
 
 /**

@@ -42,7 +42,7 @@ class KnowledgeDirectory(_message.Message):
     def __init__(self, path: _Optional[str] = ..., shared: bool = ...) -> None: ...
 
 class CharacterSettings(_message.Message):
-    __slots__ = ("should_respond_model", "use_multi_step", "max_multistep_iterations", "basic_capabilities_defllmoff", "basic_capabilities_keep_resp", "providers_total_timeout_ms", "max_working_memory_entries", "always_respond_channels", "always_respond_sources", "default_temperature", "default_max_tokens", "default_frequency_penalty", "default_presence_penalty", "disable_basic_capabilities", "extra")
+    __slots__ = ("should_respond_model", "use_multi_step", "max_multistep_iterations", "basic_capabilities_defllmoff", "basic_capabilities_keep_resp", "providers_total_timeout_ms", "max_working_memory_entries", "always_respond_channels", "always_respond_sources", "default_temperature", "default_max_tokens", "default_frequency_penalty", "default_presence_penalty", "disable_basic_capabilities", "enable_extended_capabilities", "extra", "enable_knowledge", "enable_relationships", "enable_trajectories")
     SHOULD_RESPOND_MODEL_FIELD_NUMBER: _ClassVar[int]
     USE_MULTI_STEP_FIELD_NUMBER: _ClassVar[int]
     MAX_MULTISTEP_ITERATIONS_FIELD_NUMBER: _ClassVar[int]
@@ -57,7 +57,11 @@ class CharacterSettings(_message.Message):
     DEFAULT_FREQUENCY_PENALTY_FIELD_NUMBER: _ClassVar[int]
     DEFAULT_PRESENCE_PENALTY_FIELD_NUMBER: _ClassVar[int]
     DISABLE_BASIC_CAPABILITIES_FIELD_NUMBER: _ClassVar[int]
+    ENABLE_EXTENDED_CAPABILITIES_FIELD_NUMBER: _ClassVar[int]
     EXTRA_FIELD_NUMBER: _ClassVar[int]
+    ENABLE_KNOWLEDGE_FIELD_NUMBER: _ClassVar[int]
+    ENABLE_RELATIONSHIPS_FIELD_NUMBER: _ClassVar[int]
+    ENABLE_TRAJECTORIES_FIELD_NUMBER: _ClassVar[int]
     should_respond_model: str
     use_multi_step: bool
     max_multistep_iterations: int
@@ -72,8 +76,12 @@ class CharacterSettings(_message.Message):
     default_frequency_penalty: float
     default_presence_penalty: float
     disable_basic_capabilities: bool
+    enable_extended_capabilities: bool
     extra: _struct_pb2.Struct
-    def __init__(self, should_respond_model: _Optional[str] = ..., use_multi_step: bool = ..., max_multistep_iterations: _Optional[int] = ..., basic_capabilities_defllmoff: bool = ..., basic_capabilities_keep_resp: bool = ..., providers_total_timeout_ms: _Optional[int] = ..., max_working_memory_entries: _Optional[int] = ..., always_respond_channels: _Optional[str] = ..., always_respond_sources: _Optional[str] = ..., default_temperature: _Optional[float] = ..., default_max_tokens: _Optional[int] = ..., default_frequency_penalty: _Optional[float] = ..., default_presence_penalty: _Optional[float] = ..., disable_basic_capabilities: bool = ..., extra: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
+    enable_knowledge: bool
+    enable_relationships: bool
+    enable_trajectories: bool
+    def __init__(self, should_respond_model: _Optional[str] = ..., use_multi_step: bool = ..., max_multistep_iterations: _Optional[int] = ..., basic_capabilities_defllmoff: bool = ..., basic_capabilities_keep_resp: bool = ..., providers_total_timeout_ms: _Optional[int] = ..., max_working_memory_entries: _Optional[int] = ..., always_respond_channels: _Optional[str] = ..., always_respond_sources: _Optional[str] = ..., default_temperature: _Optional[float] = ..., default_max_tokens: _Optional[int] = ..., default_frequency_penalty: _Optional[float] = ..., default_presence_penalty: _Optional[float] = ..., disable_basic_capabilities: bool = ..., enable_extended_capabilities: bool = ..., extra: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., enable_knowledge: bool = ..., enable_relationships: bool = ..., enable_trajectories: bool = ...) -> None: ...
 
 class StyleGuides(_message.Message):
     __slots__ = ("all", "chat", "post")

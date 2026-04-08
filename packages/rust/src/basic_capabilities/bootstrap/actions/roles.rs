@@ -104,6 +104,21 @@ impl Action for UpdateRoleAction {
             .compose_state(message, &["RECENT_MESSAGES", "ACTION_STATE", "WORLD_INFO"])
             .await?;
 
+        let roles_context = world
+            .metadata
+            .get("roles")
+            .and_then(|roles| roles.as_object())
+            .map(|roles| {
+                roles
+                    .iter()
+                    .map(|(entity_id, role)| {
+                        format!("- {}: {}", entity_id, role.as_str().unwrap_or("NONE"))
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .unwrap_or_default();
+
         // Get template
         let template = runtime
             .character()
@@ -112,7 +127,9 @@ impl Action for UpdateRoleAction {
             .map(|s| s.as_str())
             .unwrap_or(UPDATE_ROLE_TEMPLATE);
 
-        let prompt = runtime.compose_prompt(&composed_state, template);
+        let prompt = runtime
+            .compose_prompt(&composed_state, template)
+            .replace("{{roles}}", &roles_context);
 
         // Call the model
         let response = runtime

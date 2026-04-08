@@ -44,6 +44,7 @@ export * from "./memory";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
 export * from "./plugin";
+export * from "./plugins";
 
 export * from "./prompts";
 // Export onboarding providers

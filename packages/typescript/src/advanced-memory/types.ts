@@ -1,4 +1,4 @@
-import type { UUID } from "../types/index.ts";
+import type { TextGenerationModelType, UUID } from "../types/index.ts";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
@@ -55,7 +55,7 @@ export interface MemoryConfig {
 	longTermConfidenceThreshold: number;
 	longTermExtractionThreshold: number;
 	longTermExtractionInterval: number;
-	summaryModelType?: string;
+	summaryModelType?: TextGenerationModelType;
 	summaryMaxTokens?: number;
 	summaryMaxNewMessages?: number;
 }

@@ -963,6 +963,43 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			expect(replyHandler).not.toHaveBeenCalled();
 		});
 
+		it("does not create a placeholder action memory when the handler returns no text", async () => {
+			const createMemorySpy = vi
+				.spyOn(runtime, "createMemory")
+				.mockResolvedValue(stringToUuid(uuidv4()));
+
+			mockActionHandler.mockResolvedValueOnce({
+				success: true,
+			});
+
+			await runtime.processActions(message, [responseMemory]);
+
+			expect(createMemorySpy).not.toHaveBeenCalled();
+		});
+
+		it("persists trimmed action text when the handler returns a real message", async () => {
+			const createMemorySpy = vi
+				.spyOn(runtime, "createMemory")
+				.mockResolvedValue(stringToUuid(uuidv4()));
+
+			mockActionHandler.mockResolvedValueOnce({
+				success: true,
+				text: "  Action completed successfully.  ",
+			});
+
+			await runtime.processActions(message, [responseMemory]);
+
+			expect(createMemorySpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({
+						text: "Action completed successfully.",
+						source: "action",
+					}),
+				}),
+				"messages",
+			);
+		});
+
 		// "should evict oldest working memory entries when limit exceeded" test removed —
 		// Working memory eviction is not yet implemented. Re-add when the feature is added.
 	});

@@ -23,6 +23,9 @@ from elizaos.services.message_service import (
     MessageProcessingResult,
     StreamingMessageResult,
 )
+from elizaos.services.trajectory_logger import (
+    TrajectoryLoggerService,
+)
 
 __all__ = [
     # Hook Service
@@ -46,4 +49,6 @@ __all__ = [
     "IMessageService",
     "MessageProcessingResult",
     "StreamingMessageResult",
+    # Trajectory Service
+    "TrajectoryLoggerService",
 ]
