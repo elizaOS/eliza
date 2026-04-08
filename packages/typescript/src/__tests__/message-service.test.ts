@@ -886,70 +886,71 @@ describe("DefaultMessageService", () => {
     });
   });
 
-  it("should NOT allow memory creation for whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
-        // Configure settings to disable memory creation with an allowlisted source
-        // Note: DISABLE_MEMORY_CREATION=true takes precedence; ALLOW_MEMORY_SOURCE_IDS only applies when DISABLE_MEMORY_CREATION=false
-        vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+  describe("DISABLE_MEMORY_CREATION with ALLOW_MEMORY_SOURCE_IDS interaction", () => {
+    it("should NOT allow memory creation for whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
+      // Configure settings to disable memory creation with an allowlisted source
+      // Note: DISABLE_MEMORY_CREATION=true takes precedence; ALLOW_MEMORY_SOURCE_IDS only applies when DISABLE_MEMORY_CREATION=false
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
           if (key === "DISABLE_MEMORY_CREATION") return "true";
-          if (key === "ALLOW_MEMORY_SOURCE_IDS") return "whitelisted-source-123";
-          return null;
-        });
+        if (key === "ALLOW_MEMORY_SOURCE_IDS") return "whitelisted-source-123";
+        return null;
+      });
 
-        const message: Memory = {
-          id: "123e4567-e89b-12d3-a456-426614174301" as UUID,
+      const message: Memory = {
+        id: "123e4567-e89b-12d3-a456-426614174301" as UUID,
           content: {
             text: "Test message from whitelisted source",
-            source: "test",
-            channelType: ChannelType.DM,
-          } as Content,
-          metadata: {
-            sourceId: "whitelisted-source-123",
-          },
-          entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
-          roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-          agentId: runtime.agentId,
-          createdAt: Date.now(),
-        };
+        source: "test",
+        channelType: ChannelType.DM,
+      } as Content,
+      metadata: {
+        sourceId: "whitelisted-source-123",
+      },
+      entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+      roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+      agentId: runtime.agentId,
+      createdAt: Date.now(),
+    };
 
-        await messageService.handleMessage(runtime, message, mockCallback);
+    await messageService.handleMessage(runtime, message, mockCallback);
 
-        // DISABLE_MEMORY_CREATION=true takes precedence over ALLOW_MEMORY_SOURCE_IDS
-        expect(runtime.createMemory).not.toHaveBeenCalled();
-      });
+    // DISABLE_MEMORY_CREATION=true takes precedence over ALLOW_MEMORY_SOURCE_IDS
+    expect(runtime.createMemory).not.toHaveBeenCalled();
+  });
 
-      it("should block memory creation for non-whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
-        vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
-          if (key === "DISABLE_MEMORY_CREATION") return "true";
-          if (key === "ALLOW_MEMORY_SOURCE_IDS") return "whitelisted-source-123";
-          return null;
-        });
-
-        const message: Memory = {
-          id: "123e4567-e89b-12d3-a456-426614174303" as UUID,
-          content: {
-            text: "Test message from blocked source", 
-            source: "test",
-            channelType: ChannelType.DM,
-          } as Content,
-          metadata: {
-            sourceId: "blocked-source-456",
-          },
-          entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
-          roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-          agentId: runtime.agentId,
-          createdAt: Date.now(),
-        };
-
-        await messageService.handleMessage(runtime, message, mockCallback);
-
-        // Check that memory was not created for the incoming message
-        const createMemoryCalls = (runtime.createMemory as ReturnType<typeof vi.fn>).mock.calls;
-        const incomingMemoryCall = createMemoryCalls.find(
-          (call: unknown[]) => call[0]?.content?.text === "Test message from blocked source"
-        );
-        expect(incomingMemoryCall).toBeUndefined();
-      });
+  it("should block memory creation for non-whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      if (key === "DISABLE_MEMORY_CREATION") return "true";
+      if (key === "ALLOW_MEMORY_SOURCE_IDS") return "whitelisted-source-123";
+      return null;
     });
+
+    const message: Memory = {
+      id: "123e4567-e89b-12d3-a456-426614174303" as UUID,
+      content: {
+        text: "Test message from blocked source", 
+        source: "test",
+        channelType: ChannelType.DM,
+      } as Content,
+      metadata: {
+        sourceId: "blocked-source-456",
+      },
+      entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+      roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+      agentId: runtime.agentId,
+      createdAt: Date.now(),
+    };
+
+    await messageService.handleMessage(runtime, message, mockCallback);
+
+    // Check that memory was not created for the incoming message
+    const createMemoryCalls = (runtime.createMemory as ReturnType<typeof vi.fn>).mock.calls;
+    const incomingMemoryCall = createMemoryCalls.find(
+      (call: unknown[]) => call[0]?.content?.text === "Test message from blocked source"
+    );
+    expect(incomingMemoryCall).toBeUndefined();
+  });
+});
 
   describe("ALLOW_MEMORY_SOURCE_IDS", () => {
     it("should allow memory creation when source ID is whitelisted and DISABLE_MEMORY_CREATION is false", async () => {
