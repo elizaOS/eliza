@@ -1069,6 +1069,14 @@ export class DefaultMessageService implements IMessageService {
 					],
 					options: {
 						contextCheckLevel: 0, // Set to 0 for now
+						// Classifier failures are usually transient provider hiccups;
+						// give this internal decision one short retry window.
+						maxRetries: Math.max(1, Math.min(opts.maxRetries, 2)),
+						retryBackoff: {
+							initialMs: 500,
+							multiplier: 2,
+							maxMs: 2000,
+						},
 						modelType: resolveShouldRespondModelType(
 							opts.shouldRespondModel,
 						),

@@ -824,6 +824,12 @@ describe("DefaultMessageService", () => {
 			expect(dynamicPromptSpy.mock.calls[0]?.[0]?.options?.modelType).toBe(
 				ModelType.RESPONSE_HANDLER,
 			);
+			expect(dynamicPromptSpy.mock.calls[0]?.[0]?.options?.maxRetries).toBe(2);
+			expect(dynamicPromptSpy.mock.calls[0]?.[0]?.options?.retryBackoff).toEqual({
+				initialMs: 500,
+				multiplier: 2,
+				maxMs: 2000,
+			});
 		});
 
 		it("should allow post-action continuation to be disabled explicitly", async () => {
