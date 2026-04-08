@@ -51,8 +51,10 @@ export const replyAction = {
     const initialThought = responses?.[0]?.content?.thought;
     const isFirstAction = previousResults.length === 0;
 
-    // Note: Optimization applies when we have valid initial text from the first action.
-    // The callback is optional - if absent, the response is still returned in ActionResult.
+    // Note: First-action optimization applies when we have valid initial text.
+    // This optimization is used regardless of whether callback is present - the response
+    // is always returned in ActionResult. When callback is absent, the response won't be
+    // delivered to the user in real-time, but the LLM call is still avoided.
     if (
       isFirstAction &&
       initialText &&
@@ -63,6 +65,7 @@ export const replyAction = {
         {
           src: "plugin:bootstrap:action:reply",
           agentId: runtime.agentId,
+          hasCallback: !!callback,
         },
         "Reusing initial response text (first action in chain)",
       );
@@ -79,12 +82,12 @@ export const replyAction = {
         await callback(responseContent, "REPLY");
       } else {
         // Note: No callback provided - response is returned in ActionResult but not delivered to user
-        logger.warn(
+        logger.debug(
           {
             src: "plugin:bootstrap:action:reply",
             agentId: runtime.agentId,
           },
-          "REPLY action executed without callback - response not delivered to user",
+          "REPLY action executed without callback - response returned in ActionResult only",
         );
       }
 
@@ -154,12 +157,12 @@ export const replyAction = {
       await callback(responseContent, "REPLY");
     } else {
       // Note: No callback provided - response is returned in ActionResult but not delivered to user
-      logger.warn(
+      logger.debug(
         {
           src: "plugin:bootstrap:action:reply",
           agentId: runtime.agentId,
         },
-        "REPLY action executed without callback - response not delivered to user",
+        "REPLY action executed without callback - response returned in ActionResult only",
       );
     }
 
