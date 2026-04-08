@@ -92,6 +92,8 @@ export const replyAction = {
         data: {
           actionName: "REPLY",
           response: responseContent,
+          responseText: initialText,
+          responseThought: thought,
           thought,
           messageGenerated: true,
         },
@@ -155,8 +157,9 @@ export const replyAction = {
       },
       data: {
         actionName: "REPLY",
+        response: responseContent,
+        responseText: text,
         responseThought: thought,
-        responseText: text, 
         thought,
         messageGenerated: true,
       },
