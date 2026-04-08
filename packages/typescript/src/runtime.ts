@@ -3306,6 +3306,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
     }
 
     // Log to database - redact sensitive data before storing
+    // Note: callerInfo is included in database logs for debugging model invocation context
     const redactedPromptForDb = promptContent ? this.redactSecrets(promptContent) : undefined;
     const redactedSystemPrompt = this.character.system ? this.redactSecrets(this.character.system) : undefined;
     const responseValue =
@@ -3334,6 +3335,7 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
             }
           : undefined,
         response: responseValue,
+        callerInfo: callerInfo,
       },
       type: `useModel:${modelKey}`,
     }]);
@@ -3348,8 +3350,13 @@ const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
       typeof modelType === "string" ? modelType : ModelType[modelType];
 
     // Get call stack to identify caller (only when debug logging is enabled to avoid overhead)
+    // Note: logger.level may be numeric or string depending on implementation; check both forms
     let callerInfo = "unknown";
-    if (this.logger.level === "debug" || this.logger.level === "trace") {
+    const logLevel = this.logger.level;
+    const isDebugEnabled = logLevel === "debug" || logLevel === "trace" || 
+      logLevel === 0 || logLevel === 1 || // trace=0, debug=1 in some implementations
+      (typeof logLevel === "number" && logLevel <= 20); // Adze/pino use numeric levels where lower = more verbose
+    if (isDebugEnabled) {
       try {
         const stackLimit = Error.stackTraceLimit;
         Error.stackTraceLimit = 5; // Limit stack depth for efficiency
