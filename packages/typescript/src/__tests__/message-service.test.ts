@@ -1095,31 +1095,31 @@ describe("keepExistingResponses", () => {
   });
 
   describe("provider timeout", () => {
-    it("should use default timeout of 1000ms when PROVIDERS_TOTAL_TIMEOUT_MS is not set", () => {
+    it("should use default timeout of 5000ms when PROVIDERS_TOTAL_TIMEOUT_MS is not set", () => {
       vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         if (key === "PROVIDERS_TOTAL_TIMEOUT_MS") return null;
         return null;
       });
 
-      // The default timeout should be 1000ms (1 second)
+      // The default timeout should be 5000ms (5 seconds) to match message.ts implementation
       const timeout = parseInt(
-        String(runtime.getSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
+        String(runtime.getSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "5000"),
         10,
       );
-      expect(timeout).toBe(1000);
+      expect(timeout).toBe(5000);
     });
 
     it("should use custom timeout when PROVIDERS_TOTAL_TIMEOUT_MS is set", () => {
       vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
-        if (key === "PROVIDERS_TOTAL_TIMEOUT_MS") return "5000";
+        if (key === "PROVIDERS_TOTAL_TIMEOUT_MS") return "10000";
         return null;
       });
 
       const timeout = parseInt(
-        String(runtime.getSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
+        String(runtime.getSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "5000"),
         10,
       );
-      expect(timeout).toBe(5000);
+      expect(timeout).toBe(10000);
     });
 
     it("should track completed providers for timeout diagnostics", async () => {
