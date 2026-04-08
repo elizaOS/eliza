@@ -63,11 +63,13 @@ export type LLMModeType = (typeof LLMMode)[keyof typeof LLMMode];
  * String values are used for extensibility with custom model types.
  */
 export const ModelType = {
+	TINY: "TEXT_SMALL", // semantic alias for the lowest-latency general text tier
 	SMALL: "TEXT_SMALL", // kept for backwards compatibility
 	MEDIUM: "TEXT_LARGE", // kept for backwards compatibility
 	LARGE: "TEXT_LARGE", // kept for backwards compatibility
 	TEXT_NANO: "TEXT_NANO",
 	TEXT_MINI: "TEXT_MINI",
+	TEXT_TINY: "TEXT_SMALL", // semantic alias for provider fast/cheap chat models
 	TEXT_SMALL: "TEXT_SMALL",
 	TEXT_LARGE: "TEXT_LARGE",
 	TEXT_MEGA: "TEXT_MEGA",
@@ -889,10 +891,7 @@ const MODEL_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = {
 		ModelType.TEXT_MINI,
 		ModelType.TEXT_SMALL,
 	],
-	[ModelType.ACTION_PLANNER]: [
-		ModelType.ACTION_PLANNER,
-		ModelType.TEXT_SMALL,
-	],
+	[ModelType.ACTION_PLANNER]: [ModelType.ACTION_PLANNER, ModelType.TEXT_SMALL],
 };
 
 export function getModelFallbackChain(modelType: ModelTypeName): string[] {
