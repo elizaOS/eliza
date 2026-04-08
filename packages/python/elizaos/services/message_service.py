@@ -351,7 +351,10 @@ class DefaultMessageService(IMessageService):
             MESSAGE_HANDLER_TEMPLATE,
             MULTI_STEP_DECISION_TEMPLATE,
             MULTI_STEP_SUMMARY_TEMPLATE,
+            POST_ACTION_DECISION_TEMPLATE,
+            SHOULD_RESPOND_TEMPLATE,
         )
+        from elizaos.runtime import DynamicPromptOptions
         from elizaos.utils import compose_prompt_from_state
 
         _ = runtime.start_run(message.room_id)
@@ -426,7 +429,7 @@ class DefaultMessageService(IMessageService):
                 )
 
             # Step 1: Save incoming message to memory (if adapter available)
-            if message.id is None:
+            if not message.id:
                 message.id = as_uuid(str(uuid.uuid4()))
             try:
                 existing_memory = await runtime.get_memory_by_id(message.id)
@@ -438,6 +441,54 @@ class DefaultMessageService(IMessageService):
 
             # Step 2: Compose state from providers
             state = await runtime.compose_state(message)
+
+            if check_should_respond:
+                decision_schema = [
+                    SchemaRow(
+                        field="name",
+                        description="The name of the agent responding",
+                        validate_field=False,
+                        stream_field=False,
+                    ),
+                    SchemaRow(
+                        field="reasoning",
+                        description="Your reasoning for this decision",
+                        validate_field=False,
+                        stream_field=False,
+                    ),
+                    SchemaRow(
+                        field="action",
+                        description="RESPOND | IGNORE | STOP",
+                        validate_field=False,
+                        stream_field=False,
+                    ),
+                ]
+                decision_result = await runtime.dynamic_prompt_exec_from_state(
+                    state=state,
+                    prompt=runtime.character.templates.get(
+                        "shouldRespondTemplate", SHOULD_RESPOND_TEMPLATE
+                    )
+                    if runtime.character.templates
+                    else SHOULD_RESPOND_TEMPLATE,
+                    schema=decision_schema,
+                    options=DynamicPromptOptions(
+                        model_size="small",
+                        force_format="xml",
+                    ),
+                )
+                decision_action = (
+                    str(decision_result.get("action", "RESPOND")).strip().upper()
+                    if decision_result
+                    else "RESPOND"
+                )
+                if decision_action in {"IGNORE", "STOP"}:
+                    return await self._handle_terminal_decision(
+                        runtime=runtime,
+                        message=message,
+                        state=state,
+                        callback=callback,
+                        terminal_action=decision_action,
+                    )
 
             # Optional: multi-step strategy (TypeScript parity)
             use_multi_step = _parse_bool(runtime.get_setting("USE_MULTI_STEP"))
@@ -505,8 +556,6 @@ class DefaultMessageService(IMessageService):
                 ),
             ]
 
-            from elizaos.runtime import DynamicPromptOptions
-
             parsed_response = await runtime.dynamic_prompt_exec_from_state(
                 state=state,
                 prompt=template,
@@ -528,40 +577,22 @@ class DefaultMessageService(IMessageService):
                     state=state,
                 )
 
-            # Extract parsed fields
-            thought = str(parsed_response.get("thought", ""))
-            actions_raw = str(parsed_response.get("actions", "REPLY"))
-            providers_raw = str(parsed_response.get("providers", ""))
-            response_text = str(parsed_response.get("text", ""))
+            thought, actions, providers, response_text, params, raw_response_str = (
+                self._extract_response_fields(parsed_response)
+            )
+            actions = self._normalize_actions(actions, response_text)
 
-            # Parse actions and providers from comma-separated strings
-            actions = [a.strip().upper() for a in actions_raw.split(",") if a.strip()]
-            providers = [p.strip() for p in providers_raw.split(",") if p.strip()]
+            if not runtime.is_action_planning_enabled() and len(actions) > 1:
+                actions = actions[:1]
 
-            # Parse params from response if available
-            import json as json_module
-
-            params: dict[str, list[dict[str, str]]] = {}
-            if parsed_response:
-                params_raw = parsed_response.get("params", "")
-                if params_raw:
-                    # Try to parse as JSON if it's a string
-                    if isinstance(params_raw, str):
-                        try:
-                            params_parsed = json_module.loads(params_raw)
-                            if isinstance(params_parsed, dict):
-                                # Convert to expected format: {ACTION: [{param: value}]}
-                                for action_name, action_params in params_parsed.items():
-                                    if isinstance(action_params, dict):
-                                        params[action_name] = [action_params]
-                        except json_module.JSONDecodeError:
-                            pass
-                    elif isinstance(params_raw, dict):
-                        # Already a dict, convert to expected format
-                        for action_name, action_params in params_raw.items():
-                            if isinstance(action_params, dict):
-                                params[action_name] = [action_params]
-            raw_response_str = json_module.dumps(parsed_response) if parsed_response else ""
+            if self._is_terminal_control(actions):
+                return await self._handle_terminal_decision(
+                    runtime=runtime,
+                    message=message,
+                    state=state,
+                    callback=callback,
+                    terminal_action=actions[0],
+                )
 
             # Step 5b: If actions require params but none were provided, run a parameter-repair pass
             # using the SAME model. This keeps behavior canonical while preventing "action without params"
@@ -629,27 +660,15 @@ class DefaultMessageService(IMessageService):
             )
 
             # Step 6: Create response content with actions
-            response_content = Content(
-                text=response_text,
-                thought=thought if thought else None,
-                actions=actions if actions else None,
-                providers=providers if providers else None,
+            response_content = self._build_response_content(
+                thought=thought,
+                actions=actions,
+                providers=providers,
+                response_text=response_text,
+                params=params,
             )
-            # Store params in Content.data for protobuf compatibility
-            if params:
-                if not response_content.data:
-                    response_content.data = Struct()
-                response_content.data.update({"params": params})
 
-            response_id = as_uuid(str(uuid.uuid4()))
-            response_memory = Memory(
-                id=response_id,
-                entity_id=runtime.agent_id,
-                agent_id=runtime.agent_id,
-                room_id=message.room_id,
-                content=response_content,
-                created_at=int(time.time() * 1000),
-            )
+            response_memory = self._build_response_memory(runtime, message, response_content)
 
             # Save response memory (if adapter available)
             try:
@@ -677,16 +696,43 @@ class DefaultMessageService(IMessageService):
             if actions and (benchmark_mode or not (len(actions) == 1 and actions[0] == "REPLY")):
                 runtime.logger.debug(f"Processing {len(actions)} actions: {actions}")
                 await runtime.process_actions(message, responses, state, callback)
+
+                if (
+                    message.id
+                    and self._continue_after_actions_enabled(runtime)
+                    and self._should_continue_after_actions(actions)
+                ):
+                    continuation_content, continuation_messages, state = (
+                        await self._run_post_action_continuation(
+                            runtime=runtime,
+                            message=message,
+                            state=state,
+                            callback=callback,
+                            template=runtime.character.templates.get(
+                                "postActionDecisionTemplate", POST_ACTION_DECISION_TEMPLATE
+                            )
+                            if runtime.character.templates
+                            else POST_ACTION_DECISION_TEMPLATE,
+                            initial_action_results=runtime.get_action_results(message.id),
+                        )
+                    )
+                    if continuation_messages:
+                        responses.extend(continuation_messages)
+                    if continuation_content is not None:
+                        response_content = continuation_content
             elif callback:
                 # Simple chat-style response
                 await callback(response_content)
 
             # Step 8: Run evaluators via runtime.evaluate()
             runtime.logger.debug("Running evaluators")
+            did_respond = not self._is_terminal_control(
+                list(response_content.actions) if response_content.actions else []
+            )
             await runtime.evaluate(
                 message,
                 state,
-                did_respond=True,
+                did_respond=did_respond,
                 callback=callback,
                 responses=responses,
             )
@@ -694,7 +740,7 @@ class DefaultMessageService(IMessageService):
             _ = time.time() - start_time
 
             return MessageProcessingResult(
-                did_respond=True,
+                did_respond=did_respond,
                 response_content=response_content,
                 response_messages=responses,
                 state=state,
@@ -710,6 +756,321 @@ class DefaultMessageService(IMessageService):
         finally:
             CURRENT_TRAJECTORY_STEP_ID.reset(token)
             runtime.end_run()
+
+    def _extract_response_fields(
+        self,
+        parsed_response: dict[str, object] | None,
+    ) -> tuple[str, list[str], list[str], str, dict[str, list[dict[str, str]]], str]:
+        import json as json_module
+
+        thought = str(parsed_response.get("thought", "")) if parsed_response else ""
+        actions_raw = str(parsed_response.get("actions", "REPLY")) if parsed_response else "REPLY"
+        providers_raw = str(parsed_response.get("providers", "")) if parsed_response else ""
+        response_text = str(parsed_response.get("text", "")) if parsed_response else ""
+
+        actions = [a.strip().upper() for a in actions_raw.split(",") if a.strip()]
+        providers = [p.strip() for p in providers_raw.split(",") if p.strip()]
+
+        params: dict[str, list[dict[str, str]]] = {}
+        if parsed_response:
+            params_raw = parsed_response.get("params", "")
+            if params_raw:
+                if isinstance(params_raw, str):
+                    try:
+                        params_parsed = json_module.loads(params_raw)
+                        if isinstance(params_parsed, dict):
+                            for action_name, action_params in params_parsed.items():
+                                if isinstance(action_params, dict):
+                                    params[str(action_name).upper()] = [action_params]
+                    except json_module.JSONDecodeError:
+                        pass
+                elif isinstance(params_raw, dict):
+                    for action_name, action_params in params_raw.items():
+                        if isinstance(action_params, dict):
+                            params[str(action_name).upper()] = [action_params]
+
+        raw_response_str = json_module.dumps(parsed_response) if parsed_response else ""
+        return thought, actions, providers, response_text, params, raw_response_str
+
+    def _normalize_actions(self, actions: list[str], response_text: str) -> list[str]:
+        normalized = [a.strip().upper() for a in actions if a.strip()]
+        if not normalized:
+            return ["IGNORE"]
+
+        if len(normalized) > 1 and "IGNORE" in normalized:
+            if response_text.strip():
+                normalized = [a for a in normalized if a != "IGNORE"] or ["REPLY"]
+            else:
+                normalized = ["IGNORE"]
+
+        if len(normalized) > 1 and "STOP" in normalized:
+            normalized = [a for a in normalized if a != "STOP"] or ["STOP"]
+
+        return normalized
+
+    def _is_terminal_control(self, actions: list[str]) -> bool:
+        return len(actions) == 1 and actions[0].upper() in {"IGNORE", "STOP"}
+
+    def _is_stop_response(self, content: Content | None) -> bool:
+        return bool(
+            content
+            and content.actions
+            and len(content.actions) == 1
+            and str(content.actions[0]).upper() == "STOP"
+        )
+
+    def _should_continue_after_actions(self, actions: list[str]) -> bool:
+        return any(a.upper() not in {"REPLY", "IGNORE", "STOP"} for a in actions)
+
+    def _continue_after_actions_enabled(self, runtime: IAgentRuntime) -> bool:
+        setting = runtime.get_setting("CONTINUE_AFTER_ACTIONS")
+        if setting is None:
+            return True
+        return _parse_bool(setting)
+
+    def _build_response_content(
+        self,
+        *,
+        thought: str,
+        actions: list[str],
+        providers: list[str],
+        response_text: str,
+        params: dict[str, list[dict[str, str]]],
+    ) -> Content:
+        response_content = Content(
+            text=response_text,
+            thought=thought if thought else None,
+            actions=actions if actions else None,
+            providers=providers if providers else None,
+        )
+        if params:
+            if not response_content.data:
+                response_content.data = Struct()
+            response_content.data.update({"params": params})
+        return response_content
+
+    def _build_response_memory(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+        response_content: Content,
+    ) -> Memory:
+        return Memory(
+            id=as_uuid(str(uuid.uuid4())),
+            entity_id=runtime.agent_id,
+            agent_id=runtime.agent_id,
+            room_id=message.room_id,
+            content=response_content,
+            created_at=int(time.time() * 1000),
+        )
+
+    async def _handle_terminal_decision(
+        self,
+        *,
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: State,
+        callback: HandlerCallback | None,
+        terminal_action: str,
+    ) -> MessageProcessingResult:
+        terminal_action = terminal_action.upper()
+        terminal_content = Content(
+            thought=(
+                "Agent decided to stop and end the run."
+                if terminal_action == "STOP"
+                else "Agent decided not to respond to this message."
+            ),
+            actions=[terminal_action],
+            simple=True,
+        )
+
+        if callback:
+            await callback(terminal_content)
+
+        terminal_memory = self._build_response_memory(runtime, message, terminal_content)
+        try:
+            await runtime.create_memory(terminal_memory, "messages")
+        except RuntimeError:
+            runtime.logger.debug("No database adapter, skipping terminal persistence")
+
+        await runtime.evaluate(
+            message,
+            state,
+            did_respond=False,
+            callback=callback,
+            responses=[],
+        )
+
+        return MessageProcessingResult(
+            did_respond=False,
+            response_content=None,
+            response_messages=[],
+            state=state,
+        )
+
+    async def _run_post_action_continuation(
+        self,
+        *,
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: State,
+        callback: HandlerCallback | None,
+        template: str,
+        initial_action_results: list[object],
+    ) -> tuple[Content | None, list[Memory], State]:
+        from elizaos.runtime import DynamicPromptOptions
+
+        if not message.id or not initial_action_results:
+            return None, [], state
+
+        trace_action_results = list(initial_action_results)
+        response_messages: list[Memory] = []
+        response_content: Content | None = None
+        accumulated_state = state
+        max_iterations = _parse_int(runtime.get_setting("MAX_MULTISTEP_ITERATIONS"), default=6)
+
+        continuation_schema = [
+            SchemaRow(
+                field="thought",
+                description="Your internal reasoning about the next step",
+                validate_field=False,
+                stream_field=False,
+            ),
+            SchemaRow(
+                field="providers",
+                description="List of providers to use for additional context (comma-separated)",
+                validate_field=False,
+                stream_field=False,
+            ),
+            SchemaRow(
+                field="actions",
+                description="List of actions to take (comma-separated)",
+                required=True,
+                validate_field=False,
+                stream_field=False,
+            ),
+            SchemaRow(
+                field="params",
+                description='JSON object with action parameters, e.g. {"ACTION_NAME": {"param": "value"}}',
+                validate_field=False,
+                stream_field=False,
+            ),
+            SchemaRow(
+                field="text",
+                description="The text response to send to the user",
+                stream_field=True,
+            ),
+            SchemaRow(
+                field="simple",
+                description="Whether this is a simple response (true/false)",
+                validate_field=False,
+                stream_field=False,
+            ),
+        ]
+
+        for _ in range(max(1, int(max_iterations))):
+            accumulated_state = await runtime.compose_state(
+                message,
+                include_list=["RECENT_MESSAGES", "ACTION_STATE", "ACTIONS", "PROVIDERS"],
+                only_include=True,
+                skip_cache=True,
+            )
+            accumulated_state.data.ClearField("action_results")
+            accumulated_state.data.action_results.extend(trace_action_results)
+            accumulated_state.values.extra["actionResults"] = _format_action_results(
+                trace_action_results
+            )
+
+            parsed_response = await runtime.dynamic_prompt_exec_from_state(
+                state=accumulated_state,
+                prompt=template,
+                schema=continuation_schema,
+                options=DynamicPromptOptions(
+                    model_size="large",
+                    force_format="xml",
+                    required_fields=["actions"],
+                ),
+            )
+            if parsed_response is None:
+                break
+
+            thought, actions, providers, response_text, params, raw_response_str = (
+                self._extract_response_fields(parsed_response)
+            )
+            actions = self._normalize_actions(actions, response_text)
+
+            if not runtime.is_action_planning_enabled() and len(actions) > 1:
+                actions = actions[:1]
+
+            if self._is_terminal_control(actions):
+                response_content = self._build_response_content(
+                    thought=thought,
+                    actions=actions,
+                    providers=providers,
+                    response_text=response_text,
+                    params=params,
+                )
+                break
+
+            if actions:
+                params = await self._repair_missing_action_params(
+                    runtime=runtime,
+                    message=message,
+                    state=accumulated_state,
+                    actions=actions,
+                    providers=providers,
+                    raw_response=raw_response_str,
+                    params=params,
+                    template=template,
+                )
+
+            response_content = self._build_response_content(
+                thought=thought,
+                actions=actions,
+                providers=providers,
+                response_text=response_text,
+                params=params,
+            )
+            response_memory = self._build_response_memory(runtime, message, response_content)
+
+            try:
+                await runtime.create_memory(response_memory, "messages")
+            except RuntimeError:
+                runtime.logger.debug(
+                    "No database adapter, skipping continuation response persistence"
+                )
+
+            await runtime.emit_event(
+                "MESSAGE_SENT",
+                {
+                    "runtime": runtime,
+                    "source": "message-service",
+                    "message": response_memory,
+                },
+            )
+            response_messages.append(response_memory)
+
+            if len(actions) == 1 and actions[0] == "REPLY":
+                if callback:
+                    await callback(response_content)
+                break
+
+            await runtime.process_actions(
+                message,
+                [response_memory],
+                accumulated_state,
+                callback,
+            )
+
+            if not self._should_continue_after_actions(actions):
+                break
+
+            latest_results = runtime.get_action_results(message.id)
+            if len(latest_results) <= len(trace_action_results):
+                break
+            trace_action_results = list(latest_results)
+
+        return response_content, response_messages, accumulated_state
 
     def _build_canonical_prompt(
         self,
@@ -814,8 +1175,9 @@ class DefaultMessageService(IMessageService):
                 only_include=True,
                 skip_cache=True,
             )
-            state.data.action_results = list(trace_results)
-            state.values["actionResults"] = _format_action_results(trace_results)
+            state.data.ClearField("action_results")
+            state.data.action_results.extend(trace_results)
+            state.values.extra["actionResults"] = _format_action_results(trace_results)
 
             # Use dynamicPromptExecFromState for multi-step decision
             decision_schema = [
@@ -934,14 +1296,15 @@ class DefaultMessageService(IMessageService):
             only_include=True,
             skip_cache=True,
         )
-        state.data.action_results = list(trace_results)
-        state.values["actionResults"] = _format_action_results(trace_results)
-        state.values["recentMessage"] = last_thought
+        state.data.ClearField("action_results")
+        state.data.action_results.extend(trace_results)
+        state.values.extra["actionResults"] = _format_action_results(trace_results)
+        state.values.extra["recentMessage"] = last_thought
         # Best-effort fill template values
         bio_val = runtime.character.bio if isinstance(runtime.character.bio, str) else ""
-        state.values["bio"] = bio_val
-        state.values["system"] = runtime.character.system or ""
-        state.values["messageDirections"] = ""
+        state.values.extra["bio"] = bio_val
+        state.values.extra["system"] = runtime.character.system or ""
+        state.values.extra["messageDirections"] = ""
 
         # Use dynamicPromptExecFromState for final summary
         summary_schema = [

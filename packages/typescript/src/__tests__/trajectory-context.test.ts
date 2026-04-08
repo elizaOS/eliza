@@ -64,22 +64,16 @@ describe("Trajectory Context", () => {
 		const results: string[] = [];
 
 		await Promise.all([
-			runWithTrajectoryContext(
-				{ trajectoryStepId: "call-A" },
-				async () => {
-					await new Promise((r) => setTimeout(r, 20));
-					const ctx = getTrajectoryContext();
-					results.push(ctx?.trajectoryStepId ?? "missing");
-				},
-			),
-			runWithTrajectoryContext(
-				{ trajectoryStepId: "call-B" },
-				async () => {
-					await new Promise((r) => setTimeout(r, 10));
-					const ctx = getTrajectoryContext();
-					results.push(ctx?.trajectoryStepId ?? "missing");
-				},
-			),
+			runWithTrajectoryContext({ trajectoryStepId: "call-A" }, async () => {
+				await new Promise((r) => setTimeout(r, 20));
+				const ctx = getTrajectoryContext();
+				results.push(ctx?.trajectoryStepId ?? "missing");
+			}),
+			runWithTrajectoryContext({ trajectoryStepId: "call-B" }, async () => {
+				await new Promise((r) => setTimeout(r, 10));
+				const ctx = getTrajectoryContext();
+				results.push(ctx?.trajectoryStepId ?? "missing");
+			}),
 		]);
 
 		expect(results).toContain("call-A");

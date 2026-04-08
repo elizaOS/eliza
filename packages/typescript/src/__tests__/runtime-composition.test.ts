@@ -18,7 +18,6 @@ import type { Character } from "../types";
 import { stringToUuid } from "../utils";
 import { createTestCharacter, createTestDatabaseAdapter } from "./test-utils";
 
-
 describe("runtime-composition", () => {
 	describe("getBasicCapabilitiesSettings", () => {
 		it("returns a Record with string values only", () => {

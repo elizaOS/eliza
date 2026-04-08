@@ -1,10 +1,18 @@
-task: Generate dialog and actions for {{agentName}}.
+<task>
+Continue helping the user after reviewing the latest action results.
+</task>
 
 context:
 {{providers}}
 
-rules[8]:
-- think briefly, then respond
+recent conversation:
+{{recentMessages}}
+
+recent action results:
+{{actionResults}}
+
+rules[9]:
+- think briefly, then continue the task from the latest action results
 - actions execute in listed order
 - if replying, REPLY goes first
 - use IGNORE or STOP only by themselves
@@ -12,31 +20,17 @@ rules[8]:
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include a <params> block with the required fields
 - if a required param is unknown, ask for clarification in <text>
-
-control_actions:
-- STOP means the task is done and the agent should end the run without executing more actions
+- if the task is complete, either reply to the user or use STOP to end the run
 - STOP is a terminal control action even if it is not listed in available actions
-
-fields[5]{name,meaning}:
-- thought | short plan
-- actions | ordered XML <action> elements
-- providers | comma-separated provider names, or empty
-- text | next message for {{agentName}}
-- simple | true or false
-
-formatting:
-- wrap multi-line code in fenced code blocks
-- use inline backticks for short code identifiers
 
 <output>
 XML only. Return exactly one <response> block. No prose before or after it. No <think>.
 
-Example:
 <response>
-  <thought>Reply briefly. No extra providers needed.</thought>
+  <thought>Your thought here</thought>
   <actions>
     <action>
-      <name>REPLY</name>
+      <name>ACTION</name>
     </action>
   </actions>
   <providers></providers>

@@ -524,7 +524,7 @@ describe("dynamicPromptExecFromState", () => {
 				},
 			});
 
-			expect(capturedPrompt).toContain("Respond using JSON format");
+			expect(capturedPrompt).toContain("Return only JSON.");
 			expect(result).not.toBeNull();
 			expect(result?.facts).toEqual([
 				{
@@ -580,7 +580,7 @@ describe("dynamicPromptExecFromState", () => {
 				},
 			});
 
-			expect(capturedPrompt).toContain("Respond using JSON format");
+			expect(capturedPrompt).toContain("Return only JSON.");
 			expect(result?.facts).toEqual([
 				{
 					claim: "Alice likes tea",
@@ -590,12 +590,42 @@ describe("dynamicPromptExecFromState", () => {
 	});
 
 	describe("validation code handling", () => {
-		it("should handle validation codes at level 2", async () => {
+		it("should omit checkpoint codes by default at level 2", async () => {
+			let capturedPrompt = "";
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_, params) => {
-					// Extract codes from the prompt
 					const prompt = params.prompt as string;
+					capturedPrompt = prompt;
+					return "<response><text>Response text</text></response>";
+				},
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [{ field: "text", description: "Response" }],
+				options: {
+					contextCheckLevel: 2,
+				},
+			});
+
+			expect(result).not.toBeNull();
+			expect(result?.text).toBe("Response text");
+			expect(capturedPrompt).not.toContain("initial code: ");
+			expect(capturedPrompt).not.toContain("middle code: ");
+			expect(capturedPrompt).not.toContain("end code: ");
+		});
+
+		it("should handle checkpoint codes when explicitly enabled", async () => {
+			let capturedPrompt = "";
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async (_, params) => {
+					const prompt = params.prompt as string;
+					capturedPrompt = prompt;
 					const initMatch = prompt.match(/initial code: ([a-f0-9-]+)/);
 					const midMatch = prompt.match(/middle code: ([a-f0-9-]+)/);
 					const endMatch = prompt.match(/end code: ([a-f0-9-]+)/);
@@ -617,13 +647,17 @@ describe("dynamicPromptExecFromState", () => {
 				schema: [{ field: "text", description: "Response" }],
 				options: {
 					contextCheckLevel: 2,
+					checkpointCodes: true,
 				},
 			});
 
 			expect(result).not.toBeNull();
 			expect(result?.text).toBe("Response text");
-			// Validation codes should be removed from result
 			expect(result?.one_initial_code).toBeUndefined();
+			expect(capturedPrompt).toMatch(/initial code: [a-f0-9]{8}\n/);
+			expect(capturedPrompt).toMatch(/\nmiddle code: [a-f0-9]{8}\n/);
+			expect(capturedPrompt).toMatch(/\nend code: [a-f0-9]{8}\n/);
+			expect(capturedPrompt).not.toContain("</output>middle code:");
 		});
 	});
 

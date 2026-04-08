@@ -9,7 +9,7 @@ import {
 
 describe("Prompts", () => {
 	describe("Template Structure", () => {
-		it("shouldRespondTemplate should contain required placeholders and XML structure", () => {
+		it("shouldRespondTemplate should contain required placeholders and response structure", () => {
 			expect(shouldRespondTemplate).toContain("{{agentName}}");
 			expect(shouldRespondTemplate).toContain("{{providers}}");
 			expect(shouldRespondTemplate).toContain("<response>");
@@ -19,13 +19,12 @@ describe("Prompts", () => {
 			expect(shouldRespondTemplate).toContain("<action>");
 			expect(shouldRespondTemplate).toMatch(/RESPOND \| IGNORE \| STOP/);
 
-			// Check for important rules section
+			expect(shouldRespondTemplate).toContain("rules[6]:");
 			expect(shouldRespondTemplate).toContain(
-				"IMPORTANT RULES FOR RESPONDING:",
+				"direct mention of {{agentName}}",
 			);
-			expect(shouldRespondTemplate).toContain("directly mentioned");
-			expect(shouldRespondTemplate).toContain("Talking TO {{agentName}}");
-			expect(shouldRespondTemplate).toContain("Talking ABOUT {{agentName}}");
+			expect(shouldRespondTemplate).toContain("decision_note:");
+			expect(shouldRespondTemplate).toContain("talking TO {{agentName}}");
 		});
 
 		it("messageHandlerTemplate should contain required placeholders and structure", () => {
@@ -37,28 +36,19 @@ describe("Prompts", () => {
 			expect(messageHandlerTemplate).toContain("<actions>");
 			expect(messageHandlerTemplate).toContain("<providers>");
 			expect(messageHandlerTemplate).toContain("<text>");
+			expect(messageHandlerTemplate).toContain("<simple>");
 
-			// Check for important action ordering rules
+			expect(messageHandlerTemplate).toContain("rules[8]:");
 			expect(messageHandlerTemplate).toContain(
-				"IMPORTANT ACTION ORDERING RULES",
+				"actions execute in listed order",
 			);
-			expect(messageHandlerTemplate).toContain(
-				"Actions are executed in the ORDER you list them",
-			);
-
-			// Ensure code block formatting rules are explicitly included
-			expect(messageHandlerTemplate).toContain(
-				"IMPORTANT CODE BLOCK FORMATTING RULES",
-			);
+			expect(messageHandlerTemplate).toContain("IGNORE or STOP");
+			expect(messageHandlerTemplate).toContain("STOP means the task is done");
+			expect(messageHandlerTemplate).toContain("fields[5]{name,meaning}:");
+			expect(messageHandlerTemplate).toContain("provider_hints");
+			expect(messageHandlerTemplate).toContain("formatting:");
 			expect(messageHandlerTemplate).toContain("fenced code blocks");
-			expect(messageHandlerTemplate).toContain("single backticks");
-
-			// Check for provider selection rules
-			expect(messageHandlerTemplate).toContain(
-				"IMPORTANT PROVIDER SELECTION RULES",
-			);
-			expect(messageHandlerTemplate).toContain("ATTACHMENTS");
-			expect(messageHandlerTemplate).toContain("ENTITIES");
+			expect(messageHandlerTemplate).toContain("inline backticks");
 		});
 
 		it("postCreationTemplate should contain required placeholders and examples", () => {
@@ -109,14 +99,15 @@ describe("Prompts", () => {
 			imageDescriptionTemplate,
 		];
 
-		it("all templates should have consistent XML output format instructions", () => {
+		it("all templates should have concise output-only instructions", () => {
 			templates.forEach((template) => {
-				expect(template).toContain(
-					"Do NOT include any thinking, reasoning, or <think> sections",
-				);
-				expect(template).toContain(
-					"IMPORTANT: Your response must ONLY contain the <response></response> XML block",
-				);
+				expect(template).toMatch(/No <think>|Do NOT include any thinking/);
+				expect(
+					template.includes("Return exactly one <response>") ||
+						template.includes(
+							"IMPORTANT: Your response must ONLY contain the <response></response> XML block",
+						),
+				).toBe(true);
 			});
 		});
 

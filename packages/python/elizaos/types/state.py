@@ -55,7 +55,8 @@ class SchemaRow:
     Behavior by level:
     - Level 0 (Trusted): default False. Set to True to opt-in to per-field codes.
     - Level 1 (Progressive): default True. Set to False to opt-out of codes.
-    - Levels 2-3: ignored (uses checkpoint codes at start/end of response instead).
+    - Levels 2-3: ignored for per-field wrapping. Those levels can use optional
+      checkpoint codes instead.
     """
 
     stream_field: bool | None = None

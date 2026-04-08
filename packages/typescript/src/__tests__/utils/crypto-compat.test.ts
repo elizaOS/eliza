@@ -3,6 +3,11 @@
  * Verifies cross-platform cryptographic operations work correctly
  */
 
+import {
+	createCipheriv as createNodeCipheriv,
+	createDecipheriv as createNodeDecipheriv,
+	createHash as createNodeHash,
+} from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { BufferUtils } from "../../utils/buffer";
 import {
@@ -112,6 +117,29 @@ describe("crypto-compat", () => {
 				.digest();
 
 			expect(result).toBeInstanceOf(Uint8Array);
+		});
+
+		it("should match node crypto output for supported algorithms", () => {
+			for (const algorithm of [
+				"sha1",
+				"sha224",
+				"sha256",
+				"sha384",
+				"sha512",
+			]) {
+				const actual = createHash(algorithm)
+					.update("hello")
+					.update(" ")
+					.update("world")
+					.digest();
+				const expected = createNodeHash(algorithm)
+					.update("hello")
+					.update(" ")
+					.update("world")
+					.digest();
+
+				expect(Buffer.from(actual)).toEqual(expected);
+			}
 		});
 	});
 
@@ -270,6 +298,41 @@ describe("crypto-compat", () => {
 			const decrypted = decryptAes256Gcm(key, iv, ciphertext, tag, aad);
 			expect(decrypted).toEqual(plaintext);
 		});
+
+		it("should match node crypto ciphertext and tag output", async () => {
+			const key = await createHashAsync("sha256", "node-compatible-key");
+			const iv = new Uint8Array(12);
+			for (let i = 0; i < iv.length; i++) iv[i] = 11 - i;
+			const aad = new TextEncoder().encode("gcm-aad");
+			const plaintext = new TextEncoder().encode("gcm plaintext");
+
+			const actual = encryptAes256Gcm(key, iv, plaintext, aad);
+
+			const nodeCipher = createNodeCipheriv("aes-256-gcm", key, iv);
+			nodeCipher.setAAD(aad);
+			const expectedCiphertext = Buffer.concat([
+				nodeCipher.update(plaintext),
+				nodeCipher.final(),
+			]);
+			const expectedTag = nodeCipher.getAuthTag();
+
+			expect(Buffer.from(actual.ciphertext)).toEqual(expectedCiphertext);
+			expect(Buffer.from(actual.tag)).toEqual(expectedTag);
+		});
+
+		it("should reject a modified authentication tag", async () => {
+			const key = await createHashAsync("sha256", "tamper-key");
+			const iv = new Uint8Array(12);
+			const aad = new TextEncoder().encode("aad");
+			const plaintext = new TextEncoder().encode("message");
+			const { ciphertext, tag } = encryptAes256Gcm(key, iv, plaintext, aad);
+			const tamperedTag = Uint8Array.from(tag);
+			tamperedTag[0] ^= 0xff;
+
+			expect(() =>
+				decryptAes256Gcm(key, iv, ciphertext, tamperedTag, aad),
+			).toThrow();
+		});
 	});
 
 	describe("createCipheriv / createDecipheriv (Node.js synchronous)", () => {
@@ -302,6 +365,59 @@ describe("crypto-compat", () => {
 			decrypted += decipher.final("utf8");
 
 			expect(decrypted).toBe(plaintext);
+		});
+
+		it("should match node crypto for split CBC updates", async () => {
+			const key = await createTestKey();
+			const iv = createTestIV();
+			const plaintext = "Secret message with multiple AES blocks.";
+
+			const cipher = createCipheriv("aes-256-cbc", key, iv);
+			let encrypted = cipher.update(plaintext.slice(0, 7), "utf8", "hex");
+			encrypted += cipher.update(plaintext.slice(7, 19), "utf8", "hex");
+			encrypted += cipher.update(plaintext.slice(19), "utf8", "hex");
+			encrypted += cipher.final("hex");
+
+			const nodeCipher = createNodeCipheriv("aes-256-cbc", key, iv);
+			let expectedEncrypted = nodeCipher.update(
+				plaintext.slice(0, 7),
+				"utf8",
+				"hex",
+			);
+			expectedEncrypted += nodeCipher.update(
+				plaintext.slice(7, 19),
+				"utf8",
+				"hex",
+			);
+			expectedEncrypted += nodeCipher.update(
+				plaintext.slice(19),
+				"utf8",
+				"hex",
+			);
+			expectedEncrypted += nodeCipher.final("hex");
+
+			expect(encrypted).toBe(expectedEncrypted);
+
+			const decipher = createDecipheriv("aes-256-cbc", key, iv);
+			let decrypted = decipher.update(encrypted.slice(0, 32), "hex", "utf8");
+			decrypted += decipher.update(encrypted.slice(32), "hex", "utf8");
+			decrypted += decipher.final("utf8");
+
+			const nodeDecipher = createNodeDecipheriv("aes-256-cbc", key, iv);
+			let expectedDecrypted = nodeDecipher.update(
+				encrypted.slice(0, 32),
+				"hex",
+				"utf8",
+			);
+			expectedDecrypted += nodeDecipher.update(
+				encrypted.slice(32),
+				"hex",
+				"utf8",
+			);
+			expectedDecrypted += nodeDecipher.final("utf8");
+
+			expect(decrypted).toBe(plaintext);
+			expect(decrypted).toBe(expectedDecrypted);
 		});
 
 		it("should throw on unsupported algorithm", async () => {

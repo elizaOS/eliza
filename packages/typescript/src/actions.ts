@@ -180,20 +180,25 @@ export function formatActionNames(actions: Action[]): string {
 export function formatActions(actions: Action[]): string {
 	if (!actions || !actions.length) return "";
 
-	const actionElements = shuffleActions(actions)
+	const actionLines = shuffleActions(actions)
 		.map((action) => {
-			const descLine = `    <description>${escapeXmlText(action.description || "No description available")}</description>`;
+			const lines = [
+				`- ${action.name}: ${action.description || "No description available"}`,
+			];
 
 			if (action.parameters && action.parameters.length > 0) {
-				const paramsXml = formatActionParameters(action.parameters);
-				return `  <action>\n    <name>${escapeXmlText(action.name)}</name>\n${descLine}\n    <params>\n${paramsXml}\n    </params>\n  </action>`;
+				lines.push(
+					`  params[${action.parameters.length}]: ${formatActionParameters(
+						action.parameters,
+					)}`,
+				);
 			}
 
-			return `  <action>\n    <name>${escapeXmlText(action.name)}</name>\n${descLine}\n  </action>`;
+			return lines.join("\n");
 		})
 		.join("\n");
 
-	return `<actions>\n${actionElements}\n</actions>`;
+	return `actions[${actions.length}]:\n${actionLines}`;
 }
 
 export function formatActionParameters(parameters: ActionParameter[]): string {
@@ -201,27 +206,27 @@ export function formatActionParameters(parameters: ActionParameter[]): string {
 
 	return parameters
 		.map((param) => {
-			const requiredStr = param.required ? "true" : "false";
 			const typeStr = formatParameterType(param.schema);
+			const modifiers: string[] = [];
 
-			let paramXml = `      <param>\n        <name>${escapeXmlText(param.name)}</name>\n        <description>${escapeXmlText(param.description)}</description>\n        <type>${escapeXmlText(typeStr)}</type>\n        <required>${requiredStr}</required>`;
-
-			if (param.schema.enum) {
-				paramXml += `\n        <values>${escapeXmlText(param.schema.enum.join(", "))}</values>`;
+			if (param.schema.enum?.length) {
+				modifiers.push(`values=${param.schema.enum.join("|")}`);
 			}
 
 			if (param.schema.default !== undefined) {
-				paramXml += `\n        <default>${escapeXmlText(JSON.stringify(param.schema.default))}</default>`;
+				modifiers.push(`default=${JSON.stringify(param.schema.default)}`);
 			}
 
 			if (param.examples && param.examples.length > 0) {
-				paramXml += `\n        <examples>${escapeXmlText(param.examples.map((v) => JSON.stringify(v)).join(", "))}</examples>`;
+				modifiers.push(
+					`examples=${param.examples.map((v) => JSON.stringify(v)).join("|")}`,
+				);
 			}
 
-			paramXml += `\n      </param>`;
-			return paramXml;
+			const suffix = modifiers.length > 0 ? ` [${modifiers.join("; ")}]` : "";
+			return `${param.name}${param.required ? "" : "?"}:${typeStr}${suffix} - ${param.description}`;
 		})
-		.join("\n");
+		.join("; ");
 }
 
 function formatParameterType(schema: ActionParameterSchema): string {

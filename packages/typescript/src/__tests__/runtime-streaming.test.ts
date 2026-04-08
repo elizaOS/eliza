@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	type Mock,
+	vi,
+} from "vitest";
 import { AgentRuntime } from "../runtime";
 import {
 	getStreamingContextManager,
@@ -22,7 +30,7 @@ import { stringToUuid } from "../utils";
  * Caches mock functions so they can be inspected later.
  */
 function createMinimalMockAdapter(): IDatabaseAdapter {
-	const mockCache: Record<string, any> = {};
+	const mockCache: Record<string, Mock> = {};
 	return new Proxy({} as IDatabaseAdapter, {
 		get: (_target, prop) => {
 			if (prop === "db") return {};
@@ -80,10 +88,11 @@ describe("useModel Streaming", () => {
 	beforeEach(async () => {
 		originalManager = getStreamingContextManager();
 		const { AsyncLocalStorage } = await import("node:async_hooks");
-		const storage = new AsyncLocalStorage<any>();
+		const storage = new AsyncLocalStorage<StreamingContext | undefined>();
 		setStreamingContextManager({
-			run: <T>(context: any, fn: () => T) => storage.run(context, fn),
-			active: () => storage.getStore()
+			run: <T>(context: StreamingContext | undefined, fn: () => T) =>
+				storage.run(context, fn),
+			active: () => storage.getStore(),
 		});
 
 		runtime = new AgentRuntime({
