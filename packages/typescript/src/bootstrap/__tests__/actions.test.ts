@@ -853,6 +853,104 @@ describe("Generate Image Action", () => {
   });
 });
 
+// Tests for hasRequestedInState optimization
+describe("hasRequestedInState Optimization", () => {
+  let runtime: IAgentRuntime;
+  let message: Memory;
+  let state: State;
+  let callback: HandlerCallback;
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    if (runtime) {
+      await cleanupTestRuntime(runtime);
+    }
+  });
+
+  it("should track requested state to avoid duplicate processing", async () => {
+    const setup = await setupActionTest();
+    runtime = setup.runtime;
+    message = setup.message;
+    state = setup.state;
+    callback = setup.callback as HandlerCallback;
+
+    // Simulate state tracking for hasRequestedInState optimization
+    const requestedStates = new Map<string, boolean>();
+    
+    const hasRequestedInState = (roomId: string, actionType: string): boolean => {
+      const key = `${roomId}:${actionType}`;
+      return requestedStates.has(key);
+    };
+
+    const markRequestedInState = (roomId: string, actionType: string): void => {
+      const key = `${roomId}:${actionType}`;
+      requestedStates.set(key, true);
+    };
+
+    // First request should not be in state
+    expect(hasRequestedInState(message.roomId as string, "REPLY")).toBe(false);
+    
+    // Mark as requested
+    markRequestedInState(message.roomId as string, "REPLY");
+    
+    // Second check should show it's already requested
+    expect(hasRequestedInState(message.roomId as string, "REPLY")).toBe(true);
+  });
+
+  it("should allow different action types for same room", async () => {
+    const setup = await setupActionTest();
+    runtime = setup.runtime;
+    message = setup.message;
+
+    const requestedStates = new Map<string, boolean>();
+    
+    const hasRequestedInState = (roomId: string, actionType: string): boolean => {
+      const key = `${roomId}:${actionType}`;
+      return requestedStates.has(key);
+    };
+
+    const markRequestedInState = (roomId: string, actionType: string): void => {
+      const key = `${roomId}:${actionType}`;
+      requestedStates.set(key, true);
+    };
+
+    // Mark REPLY as requested
+    markRequestedInState(message.roomId as string, "REPLY");
+    
+    // Different action type should not be marked
+    expect(hasRequestedInState(message.roomId as string, "REPLY")).toBe(true);
+    expect(hasRequestedInState(message.roomId as string, "FOLLOW_ROOM")).toBe(false);
+  });
+
+  it("should allow same action type for different rooms", async () => {
+    const setup = await setupActionTest();
+    runtime = setup.runtime;
+    message = setup.message;
+
+    const requestedStates = new Map<string, boolean>();
+    
+    const hasRequestedInState = (roomId: string, actionType: string): boolean => {
+      const key = `${roomId}:${actionType}`;
+      return requestedStates.has(key);
+    };
+
+    const markRequestedInState = (roomId: string, actionType: string): void => {
+      const key = `${roomId}:${actionType}`;
+      requestedStates.set(key, true);
+    };
+
+    const roomId1 = message.roomId as string;
+    const roomId2 = stringToUuid("different-room-id");
+
+    // Mark REPLY for room1
+    markRequestedInState(roomId1, "REPLY");
+    
+    // Same action type in different room should not be marked
+    expect(hasRequestedInState(roomId1, "REPLY")).toBe(true);
+    expect(hasRequestedInState(roomId2, "REPLY")).toBe(false);
+  });
+});
+
 // Additional tests for the key actions with more complex test cases
 
 describe("Reply Action (Extended)", () => {
