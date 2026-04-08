@@ -282,7 +282,8 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	/**
 	 * Use a model for inference with proper type inference based on parameters.
 	 *
-	 * For text generation models (TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*):
+	 * For text generation models (nano/mini/small/large/mega, handler/planner,
+	 * TEXT_REASONING_*, and TEXT_COMPLETION):
 	 * - Always returns `string`
 	 * - If streaming context is active, chunks are sent to callback automatically
 	 *
@@ -394,7 +395,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 * @param state - State object to inject into the prompt template
 	 * @param params - LLM parameters with a prompt template
 	 * @param schema - Array of field definitions for structured output
-	 * @param options - Configuration (modelSize, validation level, streaming callbacks, etc.)
+	 * @param options - Configuration (modelSize/modelType, validation level, streaming callbacks, etc.)
 	 * @returns Parsed structured response object, or null on failure
 	 */
 	dynamicPromptExecFromState(args: {
@@ -405,7 +406,8 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		schema: import("./state").SchemaRow[];
 		options?: {
 			key?: string;
-			modelSize?: "small" | "large";
+			modelSize?: "nano" | "mini" | "small" | "large" | "mega";
+			modelType?: TextGenerationModelType;
 			model?: string;
 			preferredEncapsulation?: "json" | "xml" | "toon";
 			forceFormat?: "json" | "xml" | "toon";
