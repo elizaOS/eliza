@@ -190,6 +190,7 @@ async function main(): Promise<void> {
 		settings: {
 			...c.settings,
 			PGLITE_DATA_DIR:
+				(c.settings as Record<string, unknown> | undefined)?.PGLITE_DATA_DIR ??
 				process.env.PGLITE_DATA_DIR ??
 				process.env.HARNESS_PGLITE_DIR ??
 				pgliteDirDefault,
@@ -267,10 +268,13 @@ async function main(): Promise<void> {
 		} catch {
 			/* ignore */
 		}
-		try {
-			await runtime.stop();
-		} catch {
-			/* ignore */
+		// Stop all runtimes to avoid leaking resources
+		for (const rt of runtimes) {
+			try {
+				await rt.stop();
+			} catch {
+				/* ignore */
+			}
 		}
 		process.exit(code);
 	};
@@ -341,7 +345,14 @@ async function main(): Promise<void> {
 	} finally {
 		if (!shuttingDown) {
 			rl.close();
-			await runtime.stop();
+			// Stop all runtimes to avoid leaking resources
+			for (const rt of runtimes) {
+				try {
+					await rt.stop();
+				} catch {
+					/* ignore */
+				}
+			}
 		}
 	}
 }
