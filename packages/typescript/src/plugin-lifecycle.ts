@@ -170,6 +170,11 @@ function applyEffectiveActionContexts(
 		return inherited;
 	}
 
+	if (inherited === action) {
+		action.contexts = [...resolveActionContexts(inherited)];
+		return action;
+	}
+
 	return {
 		...inherited,
 		contexts: [...resolveActionContexts(inherited)],
@@ -183,6 +188,11 @@ function applyEffectiveProviderContexts(
 	const inherited = inheritPluginContexts(provider, pluginContexts);
 	if ((inherited.contexts?.length ?? 0) > 0) {
 		return inherited;
+	}
+
+	if (inherited === provider) {
+		provider.contexts = [...resolveProviderContexts(inherited)];
+		return provider;
 	}
 
 	return {

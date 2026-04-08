@@ -3,6 +3,11 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if env::var_os("PROTOC").is_none() {
+        let protoc = protoc_bin_vendored::protoc_bin_path()?;
+        env::set_var("PROTOC", protoc);
+    }
+
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
 
     // Proto files are in the @schemas package, relative to this crate

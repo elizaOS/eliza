@@ -19,6 +19,7 @@ async fn test_trajectory_parity_logging() -> Result<()> {
         ..Default::default()
     })
     .await?;
+    runtime.initialize().await?;
 
     // 2. Enable Trajectory Logging
     let step_id = "step_123".to_string();

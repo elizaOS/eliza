@@ -5,7 +5,7 @@ import re
 import uuid
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
@@ -82,6 +82,42 @@ class StreamingModelHandlerWrapper:
 _anonymous_agent_counter = 0
 
 
+@dataclass
+class PluginRuntimeComponents:
+    actions: list[Action] = field(default_factory=list)
+    providers: list[Provider] = field(default_factory=list)
+    evaluators: list[Evaluator] = field(default_factory=list)
+    services: dict[str, list[Service]] = field(default_factory=dict)
+
+
+def _setting_key_to_proto_field_name(key: str) -> str:
+    return key.strip().lower()
+
+
+def _character_settings_to_dict(settings: object | None) -> dict[str, object]:
+    if settings is None:
+        return {}
+    if isinstance(settings, dict):
+        return settings
+    if hasattr(settings, "DESCRIPTOR"):
+        from google.protobuf.json_format import MessageToDict
+
+        return MessageToDict(settings, preserving_proto_field_name=True)
+    return {}
+
+
+def _parse_bool_setting(value: object | None) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered == "true":
+            return True
+        if lowered == "false":
+            return False
+    return None
+
+
 class AgentRuntime(IAgentRuntime):
     def __init__(
         self,
@@ -98,6 +134,9 @@ class AgentRuntime(IAgentRuntime):
         llm_mode: LLMMode | None = None,
         check_should_respond: bool | None = None,
         enable_autonomy: bool = False,
+        enable_knowledge: bool | None = None,
+        enable_relationships: bool | None = None,
+        enable_trajectories: bool | None = None,
     ) -> None:
         global _anonymous_agent_counter
         if character is not None:
@@ -118,6 +157,12 @@ class AgentRuntime(IAgentRuntime):
         self._action_planning_option = action_planning
         self._llm_mode_option = llm_mode
         self._check_should_respond_option = check_should_respond
+        self._native_feature_options: dict[str, bool | None] = {
+            "knowledge": enable_knowledge,
+            "relationships": enable_relationships,
+            "trajectories": enable_trajectories,
+        }
+        self._native_feature_states: dict[str, bool] = {}
         self._agent_id = (
             agent_id or resolved_character.id or string_to_uuid(resolved_character.name)
         )
@@ -133,7 +178,12 @@ class AgentRuntime(IAgentRuntime):
         self._actions: list[Action] = []
         self._evaluators: list[Evaluator] = []
         self._plugins: list[Plugin] = []
+        self._plugin_components: dict[str, PluginRuntimeComponents] = {}
         self._services: dict[str, list[Service]] = {}
+        self._service_aliases = {
+            "rolodex": "relationships",
+            "trajectory_logger": "trajectories",
+        }
         self._routes: list[Route] = []
         self._events: dict[str, list[Callable[[Any], Awaitable[None]]]] = {}
         self._models: dict[str, list[ModelHandler]] = {}
@@ -219,6 +269,136 @@ class AgentRuntime(IAgentRuntime):
             raise RuntimeError("Database adapter not set")
         return self._adapter.db
 
+    def _resolve_service_type_alias(self, service_type: str) -> str:
+        return self._service_aliases.get(service_type, service_type)
+
+    def _resolve_native_feature_enabled(self, feature: str) -> bool:
+        explicit = self._native_feature_options.get(feature)
+        if explicit is not None:
+            return explicit
+
+        setting_value = _parse_bool_setting(self.get_setting(f"ENABLE_{feature.upper()}"))
+        if setting_value is not None:
+            return setting_value
+
+        from elizaos.native_features import (
+            get_native_runtime_feature_plugin,
+            native_runtime_feature_defaults,
+        )
+
+        return native_runtime_feature_defaults[feature]  # type: ignore[index]
+
+    def _has_native_runtime_feature(self, feature: str) -> bool:
+        from elizaos.native_features import native_runtime_feature_plugin_names
+
+        plugin_name = native_runtime_feature_plugin_names[feature]  # type: ignore[index]
+        return any(plugin.name == plugin_name for plugin in self._plugins)
+
+    def _resolve_native_feature_for_service_type(self, service_type: str) -> str | None:
+        resolved_service_type = self._resolve_service_type_alias(service_type)
+        if resolved_service_type == "knowledge":
+            return "knowledge"
+        if resolved_service_type in {"relationships", "follow_up"}:
+            return "relationships"
+        if resolved_service_type == "trajectories":
+            return "trajectories"
+        return None
+
+    def _is_native_feature_service_enabled(self, service_type: str) -> bool:
+        feature = self._resolve_native_feature_for_service_type(service_type)
+        if feature is None:
+            return True
+        return self._native_feature_states.get(feature, False)
+
+    def _is_plugin_managed_as_native_feature(self, plugin: Plugin | None) -> bool:
+        from elizaos.native_features import resolve_native_runtime_feature_from_plugin_name
+
+        return resolve_native_runtime_feature_from_plugin_name(plugin.name if plugin else None) is not None
+
+    async def _unregister_plugin(self, plugin_name: str) -> None:
+        components = self._plugin_components.pop(plugin_name, None)
+        if components is not None:
+            self._actions = [
+                action
+                for action in self._actions
+                if all(action is not owned for owned in components.actions)
+            ]
+            self._providers = [
+                provider
+                for provider in self._providers
+                if all(provider is not owned for owned in components.providers)
+            ]
+            self._evaluators = [
+                evaluator
+                for evaluator in self._evaluators
+                if all(evaluator is not owned for owned in components.evaluators)
+            ]
+
+            for service_type, owned_services in components.services.items():
+                existing_services = self._services.get(service_type, [])
+                remaining_services = [
+                    service
+                    for service in existing_services
+                    if all(service is not owned for owned in owned_services)
+                ]
+                for service in owned_services:
+                    await service.stop()
+                if remaining_services:
+                    self._services[service_type] = remaining_services
+                else:
+                    self._services.pop(service_type, None)
+
+        self._plugins = [plugin for plugin in self._plugins if plugin.name != plugin_name]
+
+    async def _set_native_runtime_feature_enabled(self, feature: str, enabled: bool) -> None:
+        current = self._native_feature_states.get(feature)
+        if current == enabled:
+            return
+
+        from elizaos.native_features import (
+            get_native_runtime_feature_plugin,
+            native_runtime_feature_plugin_names,
+        )
+
+        if enabled:
+            self._native_feature_states[feature] = True
+            if not self._has_native_runtime_feature(feature):
+                await self.register_plugin(get_native_runtime_feature_plugin(feature))  # type: ignore[arg-type]
+        else:
+            plugin_name = native_runtime_feature_plugin_names[feature]  # type: ignore[index]
+            if any(plugin.name == plugin_name for plugin in self._plugins):
+                await self._unregister_plugin(plugin_name)
+            self._native_feature_states[feature] = False
+
+        self.set_setting(f"ENABLE_{feature.upper()}", enabled)
+
+    async def enable_knowledge(self) -> None:
+        await self._set_native_runtime_feature_enabled("knowledge", True)
+
+    async def disable_knowledge(self) -> None:
+        await self._set_native_runtime_feature_enabled("knowledge", False)
+
+    def is_knowledge_enabled(self) -> bool:
+        return self._native_feature_states.get("knowledge", False)
+
+    async def enable_relationships(self) -> None:
+        await self._set_native_runtime_feature_enabled("relationships", True)
+
+    async def disable_relationships(self) -> None:
+        await self._set_native_runtime_feature_enabled("relationships", False)
+
+    def is_relationships_enabled(self) -> bool:
+        return self._native_feature_states.get("relationships", False)
+
+    async def enable_trajectories(self) -> None:
+        await self._set_native_runtime_feature_enabled("trajectories", True)
+
+    async def disable_trajectories(self) -> None:
+        await self._set_native_runtime_feature_enabled("trajectories", False)
+
+    def is_trajectories_enabled(self) -> bool:
+        return self._native_feature_states.get("trajectories", False)
+
     async def initialize(self, config: dict[str, str | int | bool | None] | None = None) -> None:
         _ = config
         self.logger.info("Initializing AgentRuntime...")
@@ -227,42 +407,45 @@ class AgentRuntime(IAgentRuntime):
             await self._adapter.initialize()
             self.logger.debug("Database adapter initialized")
 
-        has_basic_capabilities = any(p.name == "basic_capabilities" for p in self._initial_plugins)
-        if not has_basic_capabilities:
-            from elizaos.basic_capabilities_compat import basic_capabilities_plugin
+        basic_capabilities_plugin = next(
+            (plugin for plugin in self._initial_plugins if plugin.name == "basic_capabilities"),
+            None,
+        )
+        if basic_capabilities_plugin is None:
+            from elizaos.basic_capabilities_compat import basic_capabilities_plugin as default_basic_capabilities_plugin
 
-            self._initial_plugins.insert(0, basic_capabilities_plugin)
+            basic_capabilities_plugin = default_basic_capabilities_plugin
+
+        await self.register_plugin(basic_capabilities_plugin)
+
+        from elizaos.native_features import (
+            get_native_runtime_feature_plugin,
+            native_runtime_feature_defaults,
+        )
+
+        for feature in native_runtime_feature_defaults:
+            enabled = self._resolve_native_feature_enabled(feature)
+            self._native_feature_states[feature] = enabled
+            if enabled:
+                await self.register_plugin(get_native_runtime_feature_plugin(feature))
 
         # Advanced planning is built into core, but only loaded when enabled on the character.
         if getattr(self._character, "advanced_planning", None) is True:
-            has_adv = any(p.name == "advanced-planning" for p in self._initial_plugins)
-            if not has_adv:
-                from elizaos.advanced_planning import advanced_planning_plugin
+            from elizaos.advanced_planning import advanced_planning_plugin
 
-                # Register after basic_capabilities so core providers/actions are available.
-                insert_at = (
-                    1
-                    if self._initial_plugins
-                    and self._initial_plugins[0].name == "basic_capabilities"
-                    else 0
-                )
-                self._initial_plugins.insert(insert_at, advanced_planning_plugin)
+            await self.register_plugin(advanced_planning_plugin)
 
         # Advanced memory is built into core, but only loaded when enabled on the character.
         if getattr(self._character, "advanced_memory", None) is True:
-            has_adv = any(p.name == "memory" for p in self._initial_plugins)
-            if not has_adv:
-                from elizaos.advanced_memory import advanced_memory_plugin
+            from elizaos.advanced_memory import advanced_memory_plugin
 
-                insert_at = (
-                    1
-                    if self._initial_plugins
-                    and self._initial_plugins[0].name == "basic_capabilities"
-                    else 0
-                )
-                self._initial_plugins.insert(insert_at, advanced_memory_plugin)
+            await self.register_plugin(advanced_memory_plugin)
 
         for plugin in self._initial_plugins:
+            if plugin.name == "basic_capabilities":
+                continue
+            if self._is_plugin_managed_as_native_feature(plugin):
+                continue
             await self.register_plugin(plugin)
 
         self._init_complete = True
@@ -271,29 +454,34 @@ class AgentRuntime(IAgentRuntime):
 
     async def register_plugin(self, plugin: Plugin) -> None:
         from elizaos.plugin import register_plugin
+        from elizaos.native_features import (
+            get_native_runtime_feature_plugin,
+            resolve_native_runtime_feature_from_plugin_name,
+        )
 
         plugin_to_register = plugin
+        native_feature = resolve_native_runtime_feature_from_plugin_name(plugin.name)
+        if native_feature is not None:
+            if self._native_feature_states.get(native_feature, True) is False:
+                return
+            plugin_to_register = get_native_runtime_feature_plugin(native_feature)
+
+        if any(existing_plugin.name == plugin_to_register.name for existing_plugin in self._plugins):
+            return
 
         if plugin.name == "basic_capabilities":
-            char_settings_obj = self._character.settings
-            char_settings: dict[str, object] = {}
-            if hasattr(char_settings_obj, "DESCRIPTOR"):
-                from google.protobuf.json_format import MessageToDict
-
-                char_settings = MessageToDict(char_settings_obj, preserving_proto_field_name=True)
-            elif isinstance(char_settings_obj, dict):
-                char_settings = char_settings_obj
+            char_settings = _character_settings_to_dict(self._character.settings)
 
             disable_basic = self._capability_disable_basic or (
-                char_settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
+                char_settings.get("disable_basic_capabilities") in (True, "true")
             )
             enable_extended = self._capability_enable_extended or (
-                char_settings.get("ENABLE_EXTENDED_CAPABILITIES") in (True, "true")
+                char_settings.get("enable_extended_capabilities") in (True, "true")
             )
             skip_character_provider = self._is_anonymous_character
 
             enable_autonomy = self._capability_enable_autonomy or (
-                char_settings.get("ENABLE_AUTONOMY") in (True, "true")
+                self.get_setting("ENABLE_AUTONOMY") in (True, "true")
             )
 
             if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
@@ -310,21 +498,54 @@ class AgentRuntime(IAgentRuntime):
                 )
                 plugin_to_register = create_basic_capabilities_plugin(config)
 
+        before_action_count = len(self._actions)
+        before_provider_count = len(self._providers)
+        before_evaluator_count = len(self._evaluators)
+        before_services = {
+            service_type: list(services) for service_type, services in self._services.items()
+        }
+
         await register_plugin(self, plugin_to_register)
         self._plugins.append(plugin_to_register)
+        recorded_services: dict[str, list[Service]] = {}
+        for service_type, services in self._services.items():
+            prior_services = before_services.get(service_type, [])
+            new_services = [
+                service
+                for service in services
+                if all(service is not prior_service for prior_service in prior_services)
+            ]
+            if new_services:
+                recorded_services[service_type] = new_services
+        self._plugin_components[plugin_to_register.name] = PluginRuntimeComponents(
+            actions=self._actions[before_action_count:],
+            providers=self._providers[before_provider_count:],
+            evaluators=self._evaluators[before_evaluator_count:],
+            services=recorded_services,
+        )
 
     def get_service(self, service: str) -> Service | None:
-        services = self._services.get(service)
+        resolved_service = self._resolve_service_type_alias(service)
+        if not self._is_native_feature_service_enabled(resolved_service):
+            return None
+        services = self._services.get(resolved_service)
         return services[0] if services else None
 
     def get_services_by_type(self, service: str) -> list[Service]:
-        return self._services.get(service, [])
+        resolved_service = self._resolve_service_type_alias(service)
+        if not self._is_native_feature_service_enabled(resolved_service):
+            return []
+        return list(self._services.get(resolved_service, []))
 
     def get_all_services(self) -> dict[str, list[Service]]:
-        return self._services
+        return {
+            service_type: list(services)
+            for service_type, services in self._services.items()
+            if self._is_native_feature_service_enabled(service_type)
+        }
 
     async def register_service(self, service_class: type[Service]) -> None:
-        service_type = service_class.service_type
+        service_type = self._resolve_service_type_alias(service_class.service_type)
         service = await service_class.start(self)
 
         if service_type not in self._services:
@@ -343,10 +564,17 @@ class AgentRuntime(IAgentRuntime):
         return service
 
     def get_registered_service_types(self) -> list[str]:
-        return list(self._services.keys())
+        return [
+            service_type
+            for service_type in self._services
+            if self._is_native_feature_service_enabled(service_type)
+        ]
 
     def has_service(self, service_type: str) -> bool:
-        return service_type in self._services and len(self._services[service_type]) > 0
+        resolved_service_type = self._resolve_service_type_alias(service_type)
+        if not self._is_native_feature_service_enabled(resolved_service_type):
+            return False
+        return resolved_service_type in self._services and len(self._services[resolved_service_type]) > 0
 
     def set_setting(self, key: str, value: object | None, secret: bool = False) -> None:
         if value is None:
@@ -365,6 +593,12 @@ class AgentRuntime(IAgentRuntime):
         # Try to set on character.settings if it's a dict
         if isinstance(self._character.settings, dict):
             self._character.settings[key] = value  # type: ignore[assignment]
+        elif self._character.settings is not None:
+            proto_field_name = _setting_key_to_proto_field_name(key)
+            if hasattr(self._character.settings, proto_field_name):
+                setattr(self._character.settings, proto_field_name, value)
+            else:
+                self._settings[key] = value  # type: ignore[assignment]
         else:
             # Fall back to internal settings dict for protobuf objects
             self._settings[key] = value  # type: ignore[assignment]
@@ -372,20 +606,26 @@ class AgentRuntime(IAgentRuntime):
     def get_setting(self, key: str) -> object | None:
         settings = self._character.settings
         secrets = self._character.secrets
+        settings_dict = _character_settings_to_dict(settings)
+        proto_field_name = _setting_key_to_proto_field_name(key)
 
         nested_secrets: dict[str, object] | None = None
-        if isinstance(settings, dict):
-            nested = settings.get("secrets")
+        if settings_dict:
+            nested = settings_dict.get("secrets")
             if isinstance(nested, dict):
                 nested_secrets = nested
 
         value: object | None
         if isinstance(secrets, dict) and key in secrets:
             value = secrets.get(key)
-        elif isinstance(settings, dict) and key in settings:
-            value = settings.get(key)
+        elif key in settings_dict:
+            value = settings_dict.get(key)
+        elif proto_field_name in settings_dict:
+            value = settings_dict.get(proto_field_name)
         elif isinstance(nested_secrets, dict) and key in nested_secrets:
             value = nested_secrets.get(key)
+        elif isinstance(nested_secrets, dict) and proto_field_name in nested_secrets:
+            value = nested_secrets.get(proto_field_name)
         else:
             value = self._settings.get(key)
 
@@ -410,9 +650,10 @@ class AgentRuntime(IAgentRuntime):
 
     def get_all_settings(self) -> dict[str, object | None]:
         keys: set[str] = set(self._settings.keys())
-        if isinstance(self._character.settings, dict):
-            keys.update(self._character.settings.keys())
-            nested = self._character.settings.get("secrets")
+        settings_dict = _character_settings_to_dict(self._character.settings)
+        if settings_dict:
+            keys.update(settings_dict.keys())
+            nested = settings_dict.get("secrets")
             if isinstance(nested, dict):
                 keys.update(nested.keys())
         if isinstance(self._character.secrets, dict):
@@ -974,7 +1215,7 @@ class AgentRuntime(IAgentRuntime):
         traj_step_id: str | None = None
         if message.metadata is not None:
             maybe_step = getattr(message.metadata, "trajectoryStepId", None)
-            if isinstance(maybe_step, str) and maybe_step:
+            if isinstance(maybe_step, str) and maybe_step and self.is_trajectories_enabled():
                 traj_step_id = maybe_step
                 skip_cache = True
 

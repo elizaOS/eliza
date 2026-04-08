@@ -32,7 +32,7 @@ class FollowUpSuggestion:
 
 class FollowUpService(Service):
     name = "follow_up"
-    service_type = ServiceType.TASK
+    service_type = ServiceType.FOLLOW_UP
 
     @property
     def capability_description(self) -> str:
