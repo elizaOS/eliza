@@ -29,17 +29,18 @@ export const anxietyProvider: Provider = {
       "You often provide more detail than necessary in an attempt to be thorough. If you can't give a clear, concise answer, please use IGNORE instead.",
     ];
 
-    const directAnxietyExamples = [
-      "Be engaging and helpful in direct conversations, but keep responses focused and relevant.",
-      "In DMs, you should be responsive and friendly while maintaining professionalism and clarity.",
-      "While being helpful in direct messages, avoid unnecessary tangents or over-explaining.",
-      "Engage naturally in DMs but stay on topic - no need to explain every detail.",
-      "Be conversational and helpful in direct chats while keeping responses concise.",
-      "In private conversations, focus on being helpful while avoiding excessive verbosity.",
-      "Maintain a friendly and responsive tone in DMs without overcomplicating your answers.",
-      "Direct messages should be engaging but focused - avoid unnecessary elaboration.",
-      "Be natural and helpful in DMs while keeping your responses clear and to-the-point.",
-      "Respond thoughtfully in direct conversations without falling into over-explanation.",
+    // Note: genericAnxietyExamples is used as fallback for unknown/API/FEED channels - kept channel-neutral
+    const genericAnxietyExamples = [
+      "Be engaging and helpful, but keep responses focused and relevant.",
+      "Be responsive and friendly while maintaining professionalism and clarity.",
+      "While being helpful, avoid unnecessary tangents or over-explaining.",
+      "Stay on topic - no need to explain every detail.",
+      "Be conversational and helpful while keeping responses concise.",
+      "Focus on being helpful while avoiding excessive verbosity.",
+      "Maintain a friendly and responsive tone without overcomplicating your answers.",
+      "Keep responses engaging but focused - avoid unnecessary elaboration.",
+      "Be natural and helpful while keeping your responses clear and to-the-point.",
+      "Respond thoughtfully without falling into over-explanation.",
     ];
 
     const dmAnxietyExamples = [
@@ -79,7 +80,7 @@ export const anxietyProvider: Provider = {
     ) {
       anxietyExamples = voiceAnxietyExamples;
     } else {
-      anxietyExamples = directAnxietyExamples;
+      anxietyExamples = genericAnxietyExamples;
     }
 
     const randomAnxietyExamples = [...anxietyExamples]
