@@ -209,7 +209,8 @@ async function main(): Promise<void> {
 	for (let i = 0; i < characters.length; i++) {
 		const char = characters[i]!;
 		const caps = getBasicCapabilitiesSettings(char);
-		const charId = (char.id ?? stringToUuid(char.name ?? "eliza")) as UUID;
+		// Use explicit id if present; otherwise generate unique id by including index to avoid collision for same-named characters
+		const charId = (char.id ?? stringToUuid(`${char.name ?? "eliza"}-${i}`)) as UUID;
 		const adapter = createDatabaseAdapter(
 			{
 				dataDir: caps.PGLITE_DATA_DIR,
