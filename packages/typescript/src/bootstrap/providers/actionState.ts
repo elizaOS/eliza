@@ -6,10 +6,21 @@ import type {
   State,
 } from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
+import {
+  sliceToFitBudget,
+  ACTION_RESULTS_TARGET_CHARS,
+  ACTION_HISTORY_TARGET_CHARS,
+  // Note: these functions estimate character counts for action runtime efficiency calculations
+  estimateActionResultChars,
+  estimateActionRunChars,
+} from "../../utils/slice-to-fit-budget.js";
 
 /**
  * Provider for sharing action execution state and plan between actions
  * Makes previous action results and execution plan available to subsequent actions
+ * 
+ * Note: sliceToFitBudget, constants, and cost estimators are imported from the shared
+ * utility to avoid duplication with basic-capabilities.
  */
 export const actionStateProvider: Provider = {
   name: "ACTION_STATE",
@@ -73,12 +84,19 @@ export const actionStateProvider: Provider = {
     // Format previous action results
     let resultsText = "";
     if (actionResults.length > 0) {
-      const formattedResults = actionResults
+      const selectedResults = sliceToFitBudget(
+        actionResults,
+        estimateActionResultChars,
+        ACTION_RESULTS_TARGET_CHARS,
+      );
+
+      const formattedResults = selectedResults
         .map((result, index) => {
           const actionNameValue = result.data?.actionName;
           const actionName =
             typeof actionNameValue === "string"
               ? actionNameValue
+              // Note: fallback to "Unknown Action" for missing action names ensures consistent output.
               : "Unknown Action";
           const success = result.success;
           const status = success ? "Success" : "Failed";
@@ -118,7 +136,7 @@ export const actionStateProvider: Provider = {
     if (workingMemory && Object.keys(workingMemory).length > 0) {
       const memoryEntries = Object.entries(workingMemory)
         .sort((a, b) => b[1].timestamp - a[1].timestamp)
-        .slice(0, 10) // Show last 10 entries
+        .slice(0, 10)
         .map(([key, entry]) => {
           const result: ActionResult = entry.result;
           const resultText =
@@ -135,7 +153,6 @@ export const actionStateProvider: Provider = {
     }
 
     // Get recent action result memories from the database
-    // Get messages with type 'action_result' from the room
     const recentMessages = await runtime.getMemories({
       tableName: "messages",
       roomId: message.roomId,
@@ -164,7 +181,15 @@ export const actionStateProvider: Provider = {
         }
       }
 
-      const formattedMemories = Array.from(groupedByRun.entries())
+      // Note: recentMessages returns newest-first, so use fromEnd:false to keep newest runs
+      const selectedRuns = sliceToFitBudget(
+          Array.from(groupedByRun.entries()),
+          estimateActionRunChars,
+          ACTION_HISTORY_TARGET_CHARS,
+          { fromEnd: false },
+        );
+
+      const formattedMemories = selectedRuns
         .map(([runId, memories]) => {
           const sortedMemories = memories.sort(
             (a: Memory, b: Memory) => (a.createdAt || 0) - (b.createdAt || 0),

@@ -1,0 +1,49 @@
+/**
+ * JSON parsing helpers for LLM output.
+ *
+ * WHY: Model output commonly includes trailing commas, single quotes, unquoted
+ * keys, or fenced code blocks. Keep the tolerant extraction/parsing path in a
+ * dedicated helper so callers parsing LLM text do not each reinvent it.
+ */
+
+import JSON5 from "json5";
+import logger from "../logger";
+import { logger } from "../logger.js";
+
+const jsonBlockPattern = /```(?:json|json5)\s*\r?\n([\s\S]*?)\r?\n```/i;
+
+/**
+ * Extract and parse JSON from text using JSON5 for LLM output tolerance.
+ * Throws on parse failure for invalid JSON.
+ * 
+ * @param text - The input text containing JSON
+ * @returns Parsed object/array
+ * @throws {Error} If the JSON is invalid or parsing fails
+ */
+/**
+ * Extracts and parses JSON from text. Throws on parse failure to maintain
+ * the documented @throws contract for parseJSONObjectFromText.
+ */
+export function extractAndParseJSONObjectFromText(
+  text: string,
+): Record<string, unknown> | unknown[] | null {
+  if (!text || typeof text !== "string") {
+    throw new Error("Invalid input: text must be a non-empty string");
+  }
+
+  // First try to extract JSON from code blocks if present
+  const match = text.match(jsonBlockPattern);
+  const textToParse = match ? match[1].trim() : text.trim();
+
+  // Use JSON5.parse directly - it already handles unquoted keys, single quotes, trailing commas
+  try {
+    return JSON5.parse(textToParse) as Record<string, unknown>;
+  } catch (err) {
+    logger.warn(
+      { src: "core:utils:json-llm", err },
+      "Failed to parse text as JSON"
+    );
+    throw new Error("Failed to parse invalid JSON");
+  // Note: Logging error for JSON parsing helps trace issues with input format.
+  }
+}

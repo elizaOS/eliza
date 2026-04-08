@@ -54,6 +54,20 @@ export {
 export { type SchemaValueSpec, type SchemaValueType } from "../types/state.js";
 
 export {
+  type BannerColors,
+  type BannerOptions,
+  type PluginSetting,
+  displayWidth,
+  lineToWidth,
+  maskSecret,
+  padToWidth,
+  printBanner,
+  renderBanner,
+  sliceByWidth,
+  stripAnsi,
+} from "./plugin-banner.js";
+
+export {
   type BinaryDetectResult,
   type BinariesCheckResult,
   type Platform,
@@ -77,3 +91,33 @@ export {
   detectPip,
   detectCargo,
 } from "./binary-detect.js";
+
+export { deferStartupWork } from "./defer-startup-work.js";
+
+export { extractAndParseJSONObjectFromText } from "./json-llm.js";
+
+export {
+  type ConfigSettingValue,
+  type LoadPluginConfigOptions,
+  type SettingSourceOptions,
+  collectSettings,
+  formatConfigErrors,
+  getBooleanSetting,
+  getCsvSetting,
+  getEnumSetting,
+  getNumberSetting,
+  getStringSetting,
+  loadPluginConfig,
+  resolveSettingRaw,
+} from "./plugin-config.js";
+
+export { sliceToFitBudget } from "./slice-to-fit-budget.js";
+
+export {
+  cosineSimilarity,
+  levenshteinDistance,
+  similarityRatio,
+  tokenize,
+  wordOverlapSimilarity,
+} from "./text-similarity.js";
+

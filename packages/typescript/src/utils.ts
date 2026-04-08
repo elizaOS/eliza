@@ -4,6 +4,7 @@ import { names, uniqueNamesGenerator } from "unique-names-generator";
 import { z } from "zod";
 
 import logger from "./logger";
+import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import type {
   Content,
   Entity,
@@ -14,7 +15,6 @@ import type {
 } from "./types";
 import { ContentType, ModelType, type UUID } from "./types";
 import { parseBooleanText } from "./utils/boolean";
-import { formatTimestamp } from "./utils/time-format";
 import { getLocalServerUrl } from "./utils/node";
 
 // Text Utils
@@ -348,16 +348,46 @@ export const formatPosts = ({
             "No entity found for message",
           );
         }
-        const entityNames = entity?.names;
-        const userName = entityNames?.[0] || "Unknown User";
-        const displayName = entityNames?.[0] || "unknown";
+        // WHY: Multi-platform entities often have names only in metadata[source]; fallbacks avoid "Unknown User" everywhere.
+        let userName = entity?.names?.[0];
+        let displayName = entity?.names?.[0];
+        if (!userName && entity?.metadata && typeof entity.metadata === "object") {
+          const source = message.content.source as string | undefined;
+          const sourceMeta =
+            source &&
+            (entity.metadata as Record<string, unknown>)[source] as
+              | { name?: string; userName?: string; username?: string }
+              | undefined;
+          if (sourceMeta) {
+            userName =
+              sourceMeta.name ?? sourceMeta.userName ?? sourceMeta.username;
+            displayName =
+              sourceMeta.userName ?? sourceMeta.username ?? sourceMeta.name;
+          }
+          if (!userName) {
+            const meta = entity.metadata as Record<string, unknown>;
+            userName =
+              (meta.name as string) ??
+              (meta.userName as string) ??
+              (meta.username as string);
+            displayName =
+              (meta.userName as string) ??
+              (meta.username as string) ??
+              (meta.name as string);
+          }
+        }
+        userName = userName || "Unknown User";
+        displayName = displayName || "unknown";
 
+        // WHY: Delimiters give the model clear message boundaries and reduce bleed-between in long context.
         return `Name: ${userName} (@${displayName} EntityID:${message.entityId})
 MessageID: ${message.id}${message.content.inReplyTo ? `\nIn reply to: ${message.content.inReplyTo}` : ""}
 Source: ${message.content.source}
-Date: ${formatTimestamp(message.createdAt || 0)}
-Text:
-${message.content.text}`;
+Date: ${formatTimestampSimple(message.createdAt || 0)}
+
+--- Text Start ---
+${message.content.text ?? ""}
+--- Text End ---`;
       });
 
     const header = conversationHeader
@@ -424,7 +454,7 @@ export const formatMessages = ({
     const minutes = messageTime.getMinutes().toString().padStart(2, "0");
     const timeString = `${hours}:${minutes}`;
 
-    const timestamp = formatTimestamp(message.createdAt || 0);
+    const timestamp = formatTimestampSimple(message.createdAt || 0);
 
     const thoughtString = messageThought
       ? `(${formattedName}'s internal thought: ${messageThought})`
@@ -451,20 +481,45 @@ export const formatMessages = ({
       .join("\n");
 
     messageStrings.push(messageString);
-  }
+      }
 
-  return messageStrings.join("\n");
-};
+      return messageStrings.join("\n");
+    };
 
-const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
+    /**
+ * Format a timestamp as a human-readable relative time string.
+ * This simplified version returns "just now", "X minutes ago", etc.
+ */
+export const formatTimestampSimple = (messageDate: number) => {
+      const now = new Date();
+      const diff = now.getTime() - messageDate;
 
-/**
- * Parses key-value pairs from a simple XML structure within a given text.
- * It looks for an XML block (e.g., <response>...</response>) and extracts
- * text content from direct child elements (e.g., <key>value</key>).
- *
- * Uses regex - suitable for simple XML. For complex XML, use a proper parser.
- *
+      const absDiff = Math.abs(diff);
+      const seconds = Math.floor(absDiff / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+
+      if (absDiff < 60000) {
+        return "just now";
+      }
+      if (minutes < 60) {
+        return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
+      }
+      if (hours < 24) {
+        return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
+      }
+      return `${days} day${days !== 1 ? "s" : ""} ago`;
+    };
+
+    const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
+
+    /**
+     * Parses key-value pairs from a simple XML structure within a given text.
+     * It looks for an XML block (e.g., <response>...</response>) and extracts
+     * text content from direct child elements (e.g., <key>value</key>).
+     *
+     * Uses regex - suitable for simple XML. For complex XML, use a proper parser.
  * @typeParam T - The expected shape of the parsed result. Defaults to Record<string, unknown>.
  * @param text - The input text containing the XML structure.
  * @returns The parsed object cast to type T, or null if parsing fails.
@@ -710,35 +765,41 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 }
 
 /**
- * Parses a JSON object from a given text. The function looks for a JSON block wrapped in triple backticks
- * with `json` language identifier, and if not found, it searches for an object pattern within the text.
- * It then attempts to parse the JSON string into a JavaScript object. If parsing is successful and the result
- * is an object (but not an array), it returns the object; otherwise, it tries to parse an array if the result
- * is an array, or returns null if parsing is unsuccessful or the result is neither an object nor an array.
+ * Parses a JSON object from text (code block or raw). Uses JSON5 so LLM output with
+ * trailing commas, unquoted keys, or single quotes still parses (why: strict JSON often fails on model output).
  *
  * @param text - The input text from which to extract and parse the JSON object.
- * @returns An object parsed from the JSON string if successful; otherwise, null or the result of parsing an array.
+ * @returns An object parsed from the JSON string if successful, or null on failure.
+ */
+/**
+ * Parses a JSON object from text (code block or raw). Uses JSON5 so LLM output with
+ * trailing commas, unquoted keys, or single quotes still parses.
+ *
+ * @param text - The input text from which to extract and parse the JSON object.
+ * @returns An object parsed from the JSON string if successful, or null on failure.
  */
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
-  const jsonBlockMatch = text.match(jsonBlockPattern);
-
-  let jsonData: Record<string, unknown>;
-  if (jsonBlockMatch) {
-    // Parse the JSON from inside the code block
-    jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
-  } else {
-    // Try to parse the text directly if it's not in a code block
-    jsonData = JSON.parse(normalizeJsonString(text.trim()));
+  // Note: extractAndParseJSONObjectFromText may throw on parse failure; we catch and return null
+  // for graceful handling of malformed LLM output.
+  let result: unknown;
+  try {
+    result = extractAndParseJSONObjectFromText(text);
+  } catch {
+    return null;
   }
-
-  // Ensure we have a non-null object that's not an array
-  if (jsonData && typeof jsonData === "object" && !Array.isArray(jsonData)) {
-    return jsonData;
+  if (!result) {
+    return null;
   }
-
-  return null;
+  if (Array.isArray(result)) {
+    return null;
+  }
+  if (typeof result !== "object") {
+    return null;
+  // Note: enforces output as object type to ensure valid JSON structure before returning.
+  }
+  return result;
 }
 
 /**
@@ -1194,4 +1255,4 @@ export const getContentTypeFromMimeType = (
   return undefined;
 };
 
-export { formatTimestamp, getLocalServerUrl };
+export { formatTimestampSimple as formatTimestamp, getLocalServerUrl };

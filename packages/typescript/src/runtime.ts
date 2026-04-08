@@ -18,7 +18,7 @@ import {
 } from "./bootstrap/index";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { createUniqueUuid } from "./entities";
-import { createLogger } from "./logger";
+import { createLogger, logPrompt, logResponse } from "./logger";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
@@ -102,8 +102,10 @@ import type {
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import { ToolPolicyService } from "./services/tool-policy";
 import {
+  parseBooleanFromText,
   parseJSONObjectFromText,
   parseKeyValueXml,
+  safeReplacer,
   stringToUuid,
 } from "./utils";
 import {
@@ -252,6 +254,7 @@ export class AgentRuntime implements IAgentRuntime {
   };
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
   public messageService: IMessageService | null = null; // Lazily initialized
+private cachedEmbeddingDimension?: number; // Cache embedding dimension after first detection
 public promptBatcher: PromptBatcher;
   public companionUrl?: string;
   /** Set when stop() has been called; prevents new service starts and use-after-stop. */
@@ -658,6 +661,18 @@ public promptBatcher: PromptBatcher;
     }
     if (pluginToRegister.services) {
       for (const service of pluginToRegister.services) {
+        // Skip null/undefined so a malformed services array doesn't crash when we read service.serviceType.
+        if (service == null) {
+          this.logger.warn(
+            {
+              src: "agent",
+              agentId: this.agentId,
+              plugin: pluginToRegister.name,
+            },
+            "Plugin has null/undefined entry in services array, skipping",
+          );
+          continue;
+        }
         const serviceType = service.serviceType as ServiceTypeName;
 
         this.logger.debug(
@@ -1483,11 +1498,41 @@ this.promptBatcher.dispose();
           });
         }
 
-        // Compose state with previous action results and plan
-        accumulatedState = await this.composeState(message, [
-          "RECENT_MESSAGES",
-          "ACTION_STATE", // This will include the action plan
-        ]);
+        // Compose state with only the providers needed between actions.
+        // Using onlyInclude=true so only RECENT_MESSAGES and ACTION_STATE
+        // are re-fetched. All other provider data (GitHub, roles, settings,
+        // etc.) is preserved from the stateCache populated by earlier
+        // composeState calls (e.g. runSingleShotCore). This avoids
+        // re-running every registered provider for each action in a chain.
+        // Cache current accumulated state so composeState reads fresh action outputs
+        if (message.id && accumulatedState) {
+          this.stateCache.set(message.id, accumulatedState);
+        }
+        // Compose from cached state (now updated) but preserve current accumulated values/data
+        const freshProviderState = await this.composeState(
+          message,
+          ["RECENT_MESSAGES", "ACTION_STATE"],
+          true, // onlyInclude
+        );
+        // Merge fresh provider data with accumulated state, preserving action results and values
+        // Ensure non-null base to prevent dereferencing undefined
+        const baseState = accumulatedState || { values: {}, data: {}, text: "" };
+        // Preserve the original base state text (contains full provider context from initial composeState).
+        // Fresh provider text (RECENT_MESSAGES, ACTION_STATE) is appended to data for actions that need it,
+        // but we don't replace baseState.text to avoid losing character, capabilities, entities context.
+        // This prevents both unbounded growth (no concatenation) and context loss (no overwrite).
+        accumulatedState = {
+          ...baseState,
+          values: { ...baseState.values, ...freshProviderState.values },
+          data: {
+            ...baseState.data,
+            ...freshProviderState.data,
+            // Store fresh provider text separately for actions that need current state
+            freshProviderText: freshProviderState.text,
+          },
+          // Keep original text to preserve full provider context (character, capabilities, etc.)
+          text: baseState.text,
+        };
 
         // Add action plan to state if it exists
         if (actionPlan && accumulatedState.data) {
@@ -2001,7 +2046,8 @@ this.promptBatcher.dispose();
               content = auditedContent;
             }
 
-            await callback(content);
+            // Pass action name so callers can attribute the response without parsing content.
+            await callback(content, action.name);
           }
         }
 
@@ -2064,7 +2110,7 @@ this.promptBatcher.dispose();
         this.stateCache.set(`${message.id}_action_results`, {
           values: { actionResults },
           data: { actionResults, actionPlan },
-          text: JSON.stringify(actionResults),
+          text: JSON.stringify(actionResults, safeReplacer()),
         });
       }
     }
@@ -2086,9 +2132,25 @@ this.promptBatcher.dispose();
     callback?: HandlerCallback,
     responses?: Memory[],
   ) {
+    // Note: DISABLE_MEMORY_CREATION only skips evaluators that don't have skipMemoryCheck set.
+    // Evaluators with skipMemoryCheck: true will still run (e.g., for webhooks, analytics).
+    const disableMemorySetting = this.getSetting("DISABLE_MEMORY_CREATION");
+    const disableMemoryCreation =
+      disableMemorySetting === true ||
+      (typeof disableMemorySetting === "string"
+        ? parseBooleanFromText(disableMemorySetting)
+        : disableMemorySetting != null
+          ? parseBooleanFromText(String(disableMemorySetting))
+          : false);
+
     const evaluatorPromises = this.evaluators.map(
       async (evaluator: Evaluator) => {
         if (!evaluator.handler) {
+          return null;
+        }
+        // Skip memory-dependent evaluators when memory creation is disabled,
+        // unless the evaluator explicitly opts out via skipMemoryCheck
+        if (disableMemoryCreation && !evaluator.skipMemoryCheck) {
           return null;
         }
         if (!didRespond && !evaluator.alwaysRun) {
@@ -2527,35 +2589,97 @@ this.promptBatcher.dispose();
         query?: Record<string, string | number | boolean | null>;
       }) => void;
     };
-    const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
+const trajLogger = await this.getService<TrajectoryLogger>("trajectory_logger");
+    const composeStateStart = Date.now();
+    const providerTimings: { name: string; durationMs: number }[] = [];
+    // Per-provider timeout so one stuck provider (e.g. hung API) cannot block the whole agent.
+    const PROVIDER_TIMEOUT = 30_000; // 30 second timeout per provider
     const providerData = await Promise.all(
       providersToGet.map(async (provider) => {
-        const start = Date.now();
-        const result = await provider.get(
-          this as IAgentRuntime,
-          message,
-          cachedState,
-        );
-        const duration = Date.now() - start;
+        const providerStart = Date.now();
+        let timerId: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timerId = setTimeout(
+              () => reject(new Error(`Provider ${provider.name} timed out after ${PROVIDER_TIMEOUT}ms`)),
+              PROVIDER_TIMEOUT
+            );
+          });
 
-        // only need to inform if it's taking a long time
-        if (duration > 100) {
-          this.logger.debug(
-            {
-              src: "agent",
-              agentId: this.agentId,
-              provider: provider.name,
-              duration,
-            },
-            "Slow provider",
-          );
-        }
-        return {
-          ...result,
-          providerName: provider.name,
-        };
+          // Execute provider with timeout race
+          const result = await Promise.race([
+            provider.get(this as IAgentRuntime, message, cachedState),
+            timeoutPromise
+          ]);
+
+          clearTimeout(timerId); // Clear on success
+          const duration = Date.now() - providerStart;
+          providerTimings.push({ name: provider.name, durationMs: duration });
+          if (duration > 100) {
+            this.logger.debug(
+                {
+                  src: "agent", 
+                  agentId: this.agentId,
+                  provider: provider.name,
+                  duration,
+                },
+                "Slow provider"
+              );
+            }
+            return {
+              ...result, 
+              providerName: provider.name,
+            };
+          } catch (error: unknown) {
+            clearTimeout(timerId);
+            // Note: logs error details for transparency and debugging during provider timeout handling
+            const duration = Date.now() - providerStart;
+            this.logger.error(
+              {
+                src: "agent",
+                agentId: this.agentId,
+                provider: provider.name,
+                duration,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              // Note: one bad provider shouldn’t disrupt the entire operation, ensuring resilience.
+              "Provider error or timeout",
+            );
+            // Return empty result so composeState continues; one bad provider shouldn't fail the whole turn.
+                      return {
+                        values: {},
+                        text: "",
+                        data: {},
+                        providerName: provider.name,
+                      };
+                    } finally {
+                      if (timerId !== undefined) {
+                        clearTimeout(timerId);
+                      }
+                    }
       }),
     );
+    const composeStateEnd = Date.now();
+    const totalProviderTime = composeStateEnd - composeStateStart;
+    if (totalProviderTime > 500 || providerTimings.length > 5) {
+      const sortedTimings = [...providerTimings].sort(
+        (a, b) => b.durationMs - a.durationMs,
+      );
+      const topTimings = sortedTimings
+        .slice(0, 5)
+        .map((t) => `${t.name}=${t.durationMs.toLocaleString()}ms`)
+        .join(", ");
+      this.logger.info(
+        {
+          src: "agent:composeState:profile",
+          agentId: this.agentId,
+          totalMs: totalProviderTime,
+          providerCount: providersToGet.length,
+          timings: sortedTimings,
+        },
+        `[PROFILE:composeState] ${totalProviderTime.toLocaleString()}ms for ${providersToGet.length} providers. Top: ${topTimings}`,
+      );
+    }
 
     if (trajectoryStepId && trajLogger) {
       const userText =
@@ -3094,6 +3218,8 @@ this.promptBatcher.dispose();
 
   /**
    * Helper to log model calls to the database (used by both streaming and non-streaming paths)
+   * Note: callerInfo parameter is only captured when debug logging is enabled to avoid
+   * expensive stack trace generation on every model call in production.
    */
   private logModelCall(
     modelType: string,
@@ -3103,6 +3229,7 @@ this.promptBatcher.dispose();
     elapsedTime: number,
     provider: string | undefined,
     response: unknown,
+    callerInfo: string = "unknown",
   ): void {
     // Log prompts to action context (except embeddings)
     if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
@@ -3115,12 +3242,86 @@ this.promptBatcher.dispose();
       }
     }
 
-    // Log to database
+    // prompts.log: log prompt and response when LOG_FILE is set
+    // Note: Prompts may contain sensitive data; LOG_FILE should only be enabled in secure environments
+    const providerStr =
+      provider || this.models.get(modelKey)?.[0]?.provider || "unknown";
+    const meta = {
+      agentName: this.character?.name,
+      agentId: this.agentId,
+      runId: this.getCurrentRunId(),
+      provider: providerStr,
+      actionContext: this.currentActionContext?.actionName,
+    };
+    if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
+      // Always redact secrets before writing to disk or logging
+      const redactedPrompt = this.redactSecrets(promptContent);
+      const pSlug = logPrompt(modelKey, redactedPrompt, meta);
+      // Note: redactSecrets is applied earlier to ensure sensitive data isn't logged or saved.
+      if (pSlug) {
+        this.logger.debug(
+          {
+            src: "agent",
+            agentId: this.agentId,
+            model: modelKey,
+            slug: pSlug,
+            chars: promptContent.length,
+          },
+          `PROMPT ${pSlug}`,
+        );
+      }
+
+      let responseText: string;
+      if (typeof response === "string") {
+        responseText = this.redactSecrets(response);
+      } else if (
+        Array.isArray(response) &&
+        response.every((x) => typeof x === "number")
+      ) {
+        responseText = "[embedding-array]";
+      } else {
+        try {
+          const raw = this.redactSecrets(JSON.stringify(response));
+          responseText =
+            raw.length > 100_000
+              ? raw.substring(0, 100_000) +
+                `... [truncated, ${raw.length} total chars]`
+              : raw;
+        } catch {
+          responseText = "[non-serializable response]";
+        }
+      }
+      // Pass promptSlug for correlation - this ensures prompt-response pairs share the same slug
+      const rSlug = logResponse(modelKey, responseText, {
+        ...meta,
+        promptSlug: pSlug || undefined,
+        duration: Number(elapsedTime.toFixed(2)),
+      });
+      if (rSlug) {
+        this.logger.debug(
+          {
+            src: "agent",
+            agentId: this.agentId,
+            model: modelKey,
+            slug: rSlug,
+            duration: Number(elapsedTime.toFixed(2)),
+            chars: responseText.length,
+          },
+          `RESPONSE ${rSlug}`,
+        // Note: logs capture response for debugging while ensuring sensitive data management.
+        );
+      }
+    }
+
+    // Log to database - redact sensitive data before storing
+    // Note: callerInfo is included in database logs for debugging model invocation context
+    const redactedPromptForDb = promptContent ? this.redactSecrets(promptContent) : undefined;
+    const redactedSystemPrompt = this.character.system ? this.redactSecrets(this.character.system) : undefined;
     const responseValue =
       Array.isArray(response) && response.every((x) => typeof x === "number")
         ? "[array]"
         : typeof response === "string"
-          ? response
+          ? this.redactSecrets(response)
           : undefined;
     this.adapter.createLogs([{
       entityId: this.agentId,
@@ -3128,8 +3329,8 @@ this.promptBatcher.dispose();
       body: {
         modelType,
         modelKey,
-        prompt: promptContent ?? undefined,
-        systemPrompt: this.character.system ?? undefined,
+        prompt: redactedPromptForDb,
+        systemPrompt: redactedSystemPrompt,
         runId: this.getCurrentRunId(),
         timestamp: Date.now(),
         executionTime: elapsedTime,
@@ -3142,6 +3343,7 @@ this.promptBatcher.dispose();
             }
           : undefined,
         response: responseValue,
+        callerInfo: callerInfo,
       },
       type: `useModel:${modelKey}`,
     }]);
@@ -3154,6 +3356,48 @@ this.promptBatcher.dispose();
   ): Promise<R> {
     let modelKey =
       typeof modelType === "string" ? modelType : ModelType[modelType];
+
+    // Get call stack to identify caller (only when debug logging is enabled to avoid overhead)
+    // Note: logger.level may be numeric or string depending on implementation; check both forms
+    let callerInfo = "unknown";
+    const logLevel = this.logger.level;
+    const isDebugEnabled = logLevel === "debug" || logLevel === "trace" || 
+      logLevel === 0 || logLevel === 1 || // trace=0, debug=1 in some implementations
+      (typeof logLevel === "number" && logLevel <= 20); // Adze/pino use numeric levels where lower = more verbose
+    if (isDebugEnabled) {
+      try {
+        const stackLimit = Error.stackTraceLimit;
+        Error.stackTraceLimit = 5; // Limit stack depth for efficiency
+        const stack = new Error().stack;
+        Error.stackTraceLimit = stackLimit;
+        callerInfo =
+          stack
+            ?.split("\n")
+            .slice(2, 5) // Get first 3 frames after this function
+            .map((line) => line.trim().replace(/^at\s+/, ""))
+            // Note: limits stack trace to avoid excessive log noise and maintain context clarity
+            .join(" <- ") || "unknown";
+      } catch {
+        // Fallback if stack trace fails
+        callerInfo = "unknown (stack error)";
+      }
+    }
+
+    // Log model usage with caller information 
+    // Note: logs model usage with caller info for debugging model invocation context
+    this.logger.debug(
+      {
+        src: "agent",
+        agentId: this.agentId,
+        model: modelKey,
+        caller: callerInfo,
+        provider: provider || "default",
+        actionContext: this.currentActionContext?.actionName,
+        runId: this.getCurrentRunId(),
+      // Note: Additional logging for model calls aids in tracing model usage patterns.
+      },
+      "useModel called",
+    );
 
     // Apply LLM mode override for text generation models
     const llmMode = this.getLLMMode();
@@ -3392,15 +3636,19 @@ this.promptBatcher.dispose();
         typeof performance.now === "function"
           ? performance.now()
           : Date.now()) - startTime;
-      this.logger.trace(
+      this.logger.debug(
         {
           src: "agent",
           agentId: this.agentId,
           model: modelKey,
           duration: Number(elapsedTime.toFixed(2)),
           streaming: true,
+          caller: callerInfo,
+          provider:
+            provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
+          actionContext: this.currentActionContext?.actionName,
         },
-        "Model output (stream with callback complete)",
+        "useModel completed (stream with callback complete)",
       );
 
       this.logModelCall(
@@ -3411,6 +3659,7 @@ this.promptBatcher.dispose();
         elapsedTime,
         provider,
         fullText,
+        callerInfo,
       );
 
       // Optional trajectory logging: associate model calls with current trajectory step
@@ -3468,15 +3717,19 @@ this.promptBatcher.dispose();
         ? performance.now()
         : Date.now()) - startTime;
 
-    // Log timing / response (keep debug log if useful)
-    this.logger.trace(
+    // Log timing / response with caller info for debugging
+    this.logger.debug(
       {
         src: "agent",
         agentId: this.agentId,
         model: modelKey,
         duration: Number(elapsedTime.toFixed(2)),
+        caller: callerInfo,
+        provider:
+          provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
+        actionContext: this.currentActionContext?.actionName,
       },
-      "Model output",
+      "useModel completed",
     );
 
     this.logModelCall(
@@ -3487,6 +3740,7 @@ this.promptBatcher.dispose();
       elapsedTime,
       provider,
       response,
+      callerInfo,
     );
 
     // Optional trajectory logging: associate model calls with current trajectory step
@@ -4952,12 +5206,17 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       throw new Error("No TEXT_EMBEDDING model registered");
     }
 
-    // Pass null to get a test vector for dimension detection
-    // Model handlers should return a zero-filled vector of the correct dimension when null is passed
-    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
+    // Use a non-empty test string to avoid warnings from embedding providers
+    // Some providers (like OpenAI) reject empty strings as invalid input
+    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
+      text: "test",
+    });
     if (!embedding || !embedding.length) {
       throw new Error("Invalid embedding received");
     }
+
+    // Cache the dimension for future use
+    this.cachedEmbeddingDimension = embedding.length;
 
     await this.adapter.ensureEmbeddingDimension(embedding.length);
     this.logger.debug(
@@ -5209,9 +5468,21 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     if (!memoryText) {
       throw new Error("Cannot generate embedding: Memory content is empty");
     }
-    memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
-      text: memoryText,
-    });
+    try {
+      memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
+        text: memoryText,
+      });
+    } catch (error: unknown) {
+      this.logger.error(
+        {
+          src: "agent",
+          agentId: this.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Embedding generation failed",
+      );
+      throw error;
+    }
     return memory;
   }
 

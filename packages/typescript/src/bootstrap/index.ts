@@ -48,6 +48,7 @@ import { getLocalServerUrl } from "../utils.ts";
 import { composePromptFromState, parseKeyValueXml } from "../utils.ts";
 import * as actions from "./actions/index.ts";
 import * as autonomy from "../autonomy/index.ts";
+import { printBootstrapBanner } from "./banner.ts";
 import * as evaluators from "./evaluators/index.ts";
 import * as providers from "./providers/index.ts";
 
@@ -1201,6 +1202,7 @@ const basic = {
   providers: [
     providers.actionsProvider,
     providers.actionStateProvider,
+    providers.anxietyProvider,
     providers.attachmentsProvider,
     providers.capabilitiesProvider,
     providers.characterProvider,
@@ -1283,6 +1285,9 @@ export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
   return {
     name: "bootstrap",
     description: "Agent bootstrap with basic actions and evaluators",
+    init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+      printBootstrapBanner(runtime);
+    },
     actions: [
       ...(config.disableBasic ? [] : basic.actions),
       ...(config.enableExtended ? extended.actions : []),

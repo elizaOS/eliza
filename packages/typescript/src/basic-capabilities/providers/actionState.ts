@@ -7,6 +7,13 @@ import type {
   State,
 } from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
+import {
+  sliceToFitBudget,
+  ACTION_RESULTS_TARGET_CHARS,
+  ACTION_HISTORY_TARGET_CHARS,
+  estimateActionRunChars,
+  estimateActionResultChars,
+} from "../../utils/slice-to-fit-budget.js";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTION_STATE");
@@ -82,7 +89,13 @@ export const actionStateProvider: Provider = {
     // Format previous action results
     let resultsText = "";
     if (actionResults.length > 0) {
-      const formattedResults = actionResults
+      const selectedResults = sliceToFitBudget(
+        actionResults,
+        estimateActionResultChars,
+        ACTION_RESULTS_TARGET_CHARS,
+      );
+
+      const formattedResults = selectedResults
         .map((result, index) => {
           const actionNameValue = result.data?.actionName;
           const actionName =
@@ -90,6 +103,7 @@ export const actionStateProvider: Provider = {
               ? actionNameValue
               : "Unknown Action";
           const success = result.success;
+          // Note: status provides clear outcome indication for each action in the results mapping.
           const status = success ? "Success" : "Failed";
 
           let resultText = `**${index + 1}. ${actionName}** - ${status}`;
@@ -186,7 +200,16 @@ export const actionStateProvider: Provider = {
         }
       }
 
-      const formattedMemories = Array.from(groupedByRun.entries())
+      // Note: sliceToFitBudget with default fromEnd:false iterates from the start of the array.
+      // Since Map preserves insertion order and getMemories() returns newest-first,
+      // this keeps the most recent runs when budget is limited.
+      const selectedRuns = sliceToFitBudget(
+          Array.from(groupedByRun.entries()),
+          estimateActionRunChars,
+          ACTION_HISTORY_TARGET_CHARS,
+        );
+
+      const formattedMemories = selectedRuns
         .map(([runId, memories]) => {
           const sortedMemories = memories.sort(
             (a: Memory, b: Memory) => (a.createdAt || 0) - (b.createdAt || 0),

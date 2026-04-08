@@ -1,7 +1,7 @@
 import { v4 } from "uuid";
 import { parseActionParams } from "../actions";
 import { createUniqueUuid } from "../entities";
-import { logger } from "../logger";
+import { logChatIn, logChatOut, logger } from "../logger";
 import {
   imageDescriptionTemplate,
   messageHandlerTemplate,
@@ -82,7 +82,68 @@ type ResolvedMessageOptions = {
   maxMultiStepIterations: number;
   onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
   shouldRespondModel: ShouldRespondModelType;
+  /**
+   * Same as BOOTSTRAP_KEEP_RESP: when true, do not discard responses when a newer message
+   * is being processed. Resolved once at handleMessage start so both race-check sites stay in sync.
+   */
+  keepExistingResponses: boolean;
 };
+
+/**
+ * Whether memory creation is disabled via DISABLE_MEMORY_CREATION.
+ * WHY: Lets callers skip persisting messages/responses (e.g. to reduce storage or comply with policy).
+ */
+function isMemoryCreationDisabled(runtime: IAgentRuntime): boolean {
+  const setting = runtime.getSetting("DISABLE_MEMORY_CREATION");
+  if (typeof setting === "boolean") return setting;
+  if (typeof setting === "string") return parseBooleanFromText(setting);
+  if (setting != null) return parseBooleanFromText(String(setting));
+  return false;
+}
+
+/**
+ * Allowed memory source IDs from ALLOW_MEMORY_SOURCE_IDS (whitelist).
+ * When set, only messages whose metadata.sourceId is in this list are persisted.
+ * WHY: When DISABLE_MEMORY_CREATION is false but you want to restrict *which* sources
+ * get persisted (e.g. only one channel), set this list.
+ * Note: When DISABLE_MEMORY_CREATION is true, all persistence is skipped unconditionally
+ * (this allowlist does NOT override the disable flag).
+ */
+function getAllowedMemorySources(runtime: IAgentRuntime): string[] | null {
+  const setting = runtime.getSetting("ALLOW_MEMORY_SOURCE_IDS");
+  if (Array.isArray(setting)) {
+    return setting.map((v) => String(v).trim()).filter(Boolean);
+  }
+  if (typeof setting === "string") {
+    const trimmed = setting.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((v) => String(v).trim()).filter(Boolean);
+        }
+        logger.warn(
+          { src: "service:message", parsed },
+          "ALLOW_MEMORY_SOURCE_IDS JSON did not parse to an array; ignoring",
+        );
+        return null;
+      } catch (err) {
+        logger.warn(
+          { src: "service:message", err, setting: trimmed },
+          "Failed to parse ALLOW_MEMORY_SOURCE_IDS JSON; ignoring",
+        );
+        return null;
+      }
+    }
+    return trimmed
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+  if (setting != null) return [String(setting).trim()].filter(Boolean);
+  return null;
+}
 
 /**
  * Multi-step workflow action result with action name tracking
@@ -115,7 +176,41 @@ interface StrategyResult {
 /**
  * Tracks the latest response ID per agent+room to handle message superseding
  */
+/**
+ * Tracks the latest response ID per agent+room to handle message superseding.
+ * Note: This map is pruned in handleMessage() when size exceeds 1000 entries,
+ * and individual agent entries are cleaned up when their agentResponses map empties.
+ * Using WeakMap would break functionality since keys must be agent IDs (strings).
+ */
 const latestResponseIds = new Map<string, Map<string, string>>();
+// Track when each agent entry was last accessed for TTL-based eviction
+const latestResponseTimestamps = new Map<string, number>();
+// TTL for agent entries: 1 hour of inactivity
+const RESPONSE_TRACKING_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Cleans up response tracking for a specific agent.
+ * Call this when an agent is shutting down to prevent memory leaks.
+ * @param agentId - The agent ID to clean up
+ */
+export function cleanupAgentResponseTracking(agentId: string): void {
+  latestResponseIds.delete(agentId);
+  latestResponseTimestamps.delete(agentId);
+}
+
+/**
+ * Evicts stale agent entries that haven't been accessed within TTL.
+ * Called automatically during handleMessage to prevent unbounded growth.
+ */
+function evictStaleResponseTracking(): void {
+  const now = Date.now();
+  for (const [agentId, timestamp] of latestResponseTimestamps) {
+    if (now - timestamp > RESPONSE_TRACKING_TTL_MS) {
+      latestResponseIds.delete(agentId);
+      latestResponseTimestamps.delete(agentId);
+    }
+  }
+}
 
 /**
  * Default implementation of the MessageService interface.
@@ -140,6 +235,15 @@ export class DefaultMessageService implements IMessageService {
     callback?: HandlerCallback,
     options?: MessageProcessingOptions,
   ): Promise<MessageProcessingResult> {
+    // Prune stale entries based on TTL and size
+    evictStaleResponseTracking();
+    if (latestResponseIds.size > 1000) {
+      const keysToDelete = Array.from(latestResponseIds.keys()).slice(0, 100);
+      for (const key of keysToDelete) {
+        latestResponseIds.delete(key);
+        latestResponseTimestamps.delete(key);
+      }
+    }
     const trajectoryStepId =
       typeof message.metadata === "object" &&
       message.metadata !== null &&
@@ -176,6 +280,11 @@ export class DefaultMessageService implements IMessageService {
             ),
           onStreamChunk: options?.onStreamChunk,
           shouldRespondModel: resolvedShouldRespondModel,
+          keepExistingResponses:
+            options?.keepExistingResponses ??
+            parseBooleanFromText(
+              String(runtime.getSetting("BOOTSTRAP_KEEP_RESP") ?? ""),
+            ),
         };
 
         // Set up timeout monitoring
@@ -196,10 +305,12 @@ export class DefaultMessageService implements IMessageService {
 
           // Track this response ID - ensure map exists for this agent
           let agentResponses = latestResponseIds.get(runtime.agentId);
-          if (!agentResponses) {
-            agentResponses = new Map<string, string>();
-            latestResponseIds.set(runtime.agentId, agentResponses);
-          }
+    if (!agentResponses) {
+      agentResponses = new Map<string, string>();
+      latestResponseIds.set(runtime.agentId, agentResponses);
+    }
+    // Update timestamp for TTL tracking
+    latestResponseTimestamps.set(runtime.agentId, Date.now());
 
           const previousResponseId = agentResponses.get(message.roomId);
           if (previousResponseId) {
@@ -363,31 +474,86 @@ export class DefaultMessageService implements IMessageService {
       "Processing message",
     );
 
-    // Save the incoming message to memory
-    runtime.logger.debug(
-      { src: "service:message" },
-      "Saving message to memory",
+    // Chat instrumentation: log incoming message to chat.log when LOG_FILE is set
+    const chatInLine = logChatIn({
+      agentName: runtime.character?.name ?? "unknown",
+      agentId: runtime.agentId,
+      roomId: message.roomId,
+      messageId: message.id ?? "pending",
+      text: message.content.text ?? "",
+      source: (message.metadata as Record<string, unknown> | undefined)
+        ?.source as string | undefined,
+    });
+    runtime.logger.info(
+      { src: "chat", direction: "in", roomId: message.roomId, messageId: message.id },
+      chatInLine,
     );
-    let memoryToQueue: Memory;
 
-    if (message.id) {
-      const existingMemory = await runtime.getMemoryById(message.id);
-      if (existingMemory) {
-        runtime.logger.debug(
-          { src: "service:message" },
-          "Memory already exists, skipping creation",
-        );
-        memoryToQueue = existingMemory;
+    // Memory creation can be disabled or restricted by source (DISABLE_MEMORY_CREATION / ALLOW_MEMORY_SOURCE_IDS).
+    const disableMemoryCreation = isMemoryCreationDisabled(runtime);
+    const allowedSources = getAllowedMemorySources(runtime);
+    const messageSourceId = (message.metadata as Record<string, unknown> | undefined)
+      ?.sourceId as string | undefined;
+    // Check if the message source matches the allowlist (only when allowlist is configured)
+    const sourceMatchesAllowlist =
+      typeof messageSourceId === "string" &&
+      allowedSources?.includes(messageSourceId) === true;
+    // When allowedSources is null, all sources are allowed (no whitelist filtering)
+    // When allowedSources is set, messages must have a matching sourceId in the whitelist
+    const memorySourceAllowed = allowedSources === null || sourceMatchesAllowlist;
+    // Note: Memory persistence logic:
+    // - If DISABLE_MEMORY_CREATION is true, persistence is skipped unconditionally
+    // - If memory creation is enabled and no allowlist exists, persist all messages
+    // - If memory creation is enabled and allowlist exists, only persist if source is in allowlist
+    const canPersistMemory = disableMemoryCreation
+      ? false
+      : memorySourceAllowed;
+
+    let memoryToQueue: Memory | null = null;
+    if (canPersistMemory) {
+      runtime.logger.debug(
+        { src: "service:message", messageId: message.id, sourceId: messageSourceId ?? null },
+        "Saving message to memory",
+      );
+      if (message.id) {
+        const existingMemory = await runtime.getMemoryById(message.id);
+        if (existingMemory) {
+          runtime.logger.debug(
+            { src: "service:message" },
+            "Memory already exists, skipping creation",
+          );
+          memoryToQueue = existingMemory;
+        } else {
+          const createdMemoryId = await runtime.createMemory(message, "messages");
+          memoryToQueue = { ...message, id: createdMemoryId };
+        }
+        await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
       } else {
-        const createdMemoryId = await runtime.createMemory(message, "messages");
-        memoryToQueue = { ...message, id: createdMemoryId };
+        const memoryId = await runtime.createMemory(message, "messages");
+        message.id = memoryId;
+        memoryToQueue = { ...message, id: memoryId };
+        await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
       }
-      await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
+    } else if (disableMemoryCreation) {
+      runtime.logger.debug(
+        { src: "service:message", messageId: message.id, sourceId: messageSourceId ?? null },
+        "DISABLE_MEMORY_CREATION enabled; skipping message persistence and embedding queue",
+      );
+      // Note: Do NOT assign synthetic message.id here - memoryToQueue remains null
+      // to prevent later DB writes via updateMemory() for attachment-bearing messages.
     } else {
-      const memoryId = await runtime.createMemory(message, "messages");
-      message.id = memoryId;
-      memoryToQueue = { ...message, id: memoryId };
-      await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
+      runtime.logger.info(
+        {
+          src: "service:message",
+          messageId: message.id,
+          sourceId: messageSourceId ?? null,
+          allowedSources,
+        },
+        "Message source not whitelisted; skipping memory persistence",
+      );
+      // Note: Do NOT assign synthetic message.id here to prevent later DB writes
+      // via updateMemory() for attachment-bearing messages when persistence is skipped.
+      // The memoryToQueue?.id guard in attachment processing handles this correctly.
     }
 
     // Check if LLM is off by default
@@ -449,9 +615,11 @@ export class DefaultMessageService implements IMessageService {
         runtime,
         message.content.attachments,
       );
-      if (message.id) {
+      // Only update memory if we have a persisted record (memoryToQueue?.id)
+      // to avoid DB writes with synthetic IDs when persistence was skipped
+      if (memoryToQueue?.id) {
         await runtime.updateMemory({
-          id: message.id,
+          id: memoryToQueue.id,
           content: message.content,
         });
       }
@@ -612,7 +780,7 @@ export class DefaultMessageService implements IMessageService {
 
       // Race check before we send anything
       const currentResponseId = agentResponses.get(message.roomId);
-      if (currentResponseId !== responseId) {
+      if (currentResponseId !== responseId && !opts.keepExistingResponses) {
         runtime.logger.info(
           {
             src: "service:message",
@@ -638,8 +806,11 @@ export class DefaultMessageService implements IMessageService {
         state = await runtime.composeState(message, responseContent.providers);
       }
 
-      // Save response memory to database
-      if (responseMessages.length > 0) {
+      // Save response memory to database (respect DISABLE_MEMORY_CREATION).
+      // Note: Agent responses are always persisted when memory creation is enabled,
+      // regardless of ALLOW_MEMORY_SOURCE_IDS (which filters external message sources only).
+      const canPersistMemory = !disableMemoryCreation;
+      if (responseMessages.length > 0 && canPersistMemory) {
         for (const responseMemory of responseMessages) {
           // Update the content in case inReplyTo was added
           if (responseContent) {
@@ -669,6 +840,30 @@ export class DefaultMessageService implements IMessageService {
             );
           }
           if (callback) {
+            const chatOutLine = logChatOut({
+              agentName: runtime.character?.name ?? "unknown",
+              agentId: runtime.agentId,
+              roomId: message.roomId,
+              action: responseContent.actions?.[0] ?? "REPLY",
+              text: responseContent.text,
+              providers: responseContent.providers,
+              reasoning:
+                typeof responseContent.thought === "string"
+                  ? responseContent.thought
+                  : undefined,
+              actions: Array.isArray(responseContent.actions)
+                ? responseContent.actions
+                : undefined,
+            });
+            runtime.logger.info(
+              {
+                src: "chat",
+                direction: "out",
+                roomId: message.roomId,
+                action: responseContent.actions?.[0],
+              },
+              chatOutLine,
+            );
             // Redact any secrets from response content before sending
             if (responseContent.text) {
               responseContent.text = runtime.redactSecrets(
@@ -683,16 +878,43 @@ export class DefaultMessageService implements IMessageService {
             message,
             responseMessages,
             state,
-            async (content) => {
+            async (content, actionName) => {
               runtime.logger.debug(
-                { src: "service:message", content },
+                { src: "service:message", content, actionName },
                 "Action callback",
               );
               if (responseContent) {
                 responseContent.actionCallbacks = content;
               }
               if (callback) {
-                return callback(content);
+                const actionList = Array.isArray(content?.actions)
+                  ? content.actions
+                  : content?.actions
+                    ? [content.actions]
+                    : undefined;
+                const chatOutLine = logChatOut({
+                  agentName: runtime.character?.name ?? "unknown",
+                  agentId: runtime.agentId,
+                  roomId: message.roomId,
+                  action:
+                    actionName ??
+                    (Array.isArray(content?.actions)
+                      ? content.actions[0]
+                      : content?.actions) ??
+                    "REPLY",
+                  text: typeof content?.text === "string" ? content.text : undefined,
+                  providers: content?.providers,
+                  reasoning:
+                    typeof content?.thought === "string"
+                      ? content.thought
+                      : undefined,
+                  actions: actionList,
+                });
+                runtime.logger.info(
+                  { src: "chat", direction: "out", roomId: message.roomId },
+                  chatOutLine,
+                );
+                return callback(content, actionName);
               }
               return [];
             },
@@ -709,11 +931,7 @@ export class DefaultMessageService implements IMessageService {
 
       // Check if we still have the latest response ID
       const currentResponseId = agentResponses.get(message.roomId);
-      const keepResp = parseBooleanFromText(
-        String(runtime.getSetting("BOOTSTRAP_KEEP_RESP") || ""),
-      );
-
-      if (currentResponseId !== responseId && !keepResp) {
+      if (currentResponseId !== responseId && !opts.keepExistingResponses) {
         runtime.logger.info(
           {
             src: "service:message",
@@ -756,30 +974,37 @@ export class DefaultMessageService implements IMessageService {
       // Construct a minimal content object indicating ignore
       const ignoreContent: Content = {
         thought: "Agent decided not to respond to this message.",
+        // Note: IGNORES are explicitly permitted for minimal response handling, bypassing persist checks.
         actions: ["IGNORE"],
         simple: true,
         inReplyTo: createUniqueUuid(runtime, message.id),
       };
 
-      // Call the callback with the ignore content
+      // Call the callback with the ignore content and action name
       if (callback) {
-        await callback(ignoreContent);
+        await callback(ignoreContent, "IGNORE");
       }
 
-      // Save this ignore action/thought to memory
-      const ignoreMemory: Memory = {
-        id: asUUID(v4()),
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: ignoreContent,
-        roomId: message.roomId,
-        createdAt: Date.now(),
-      };
-      await runtime.createMemory(ignoreMemory, "messages");
-      runtime.logger.debug(
-        { src: "service:message", memoryId: ignoreMemory.id },
-        "Saved ignore response to memory",
-      );
+      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION).
+      // Note: Agent-generated IGNORE memories follow same policy as regular responses -
+      // they are persisted when memory creation is enabled, regardless of ALLOW_MEMORY_SOURCE_IDS
+      // (which only filters external message sources, not agent-generated content).
+      const canPersistIgnore = !disableMemoryCreation;
+      if (canPersistIgnore) {
+          const ignoreMemory: Memory = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: ignoreContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          await runtime.createMemory(ignoreMemory, "messages");
+          runtime.logger.debug(
+            { src: "service:message", memoryId: ignoreMemory.id },
+            "Saved ignore response to memory",
+          );
+      }
     }
 
     runtime.promptBatcher?.tick(message);
@@ -795,20 +1020,45 @@ export class DefaultMessageService implements IMessageService {
       message,
       state,
       shouldRespondToMessage,
-      async (content) => {
+      async (content, actionName) => {
         runtime.logger.debug(
-          { src: "service:message", content },
+          { src: "service:message", content, actionName },
           "Evaluate callback",
         );
         if (responseContent) {
           responseContent.evalCallbacks = content;
         }
         if (callback) {
+          const actionList = Array.isArray(content?.actions)
+            ? content.actions
+            : content?.actions
+              ? [content.actions]
+              : undefined;
+          const chatOutLine = logChatOut({
+            agentName: runtime.character?.name ?? "unknown",
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+            action:
+              actionName ??
+              (Array.isArray(content?.actions)
+                ? content.actions[0]
+                : content?.actions) ??
+              "REPLY",
+            text: typeof content?.text === "string" ? content.text : undefined,
+            providers: content?.providers,
+            reasoning:
+              typeof content?.thought === "string" ? content.thought : undefined,
+            actions: actionList,
+          });
+          runtime.logger.info(
+            { src: "chat", direction: "out", roomId: message.roomId },
+            chatOutLine,
+          );
           // Redact any secrets from evaluate callback content
           if (content.text) {
             content.text = runtime.redactSecrets(content.text);
           }
-          return callback(content);
+          return callback(content, actionName);
         }
         return [];
       },
@@ -1765,6 +2015,7 @@ Output ONLY the continuation, starting immediately after the last character abov
         providers = parsedStep.providers
           .split(",")
           .map((p: string) => p.trim())
+          // Note: trims empty strings from provider list to ensure valid entries only
           .filter((p: string) => p.length > 0);
       }
       const action =
@@ -1802,10 +2053,19 @@ Output ONLY the continuation, starting immediately after the last character abov
 
       // Total timeout for all providers running in parallel (configurable via PROVIDERS_TOTAL_TIMEOUT_MS env var)
       // Since providers run in parallel, this is the max wall-clock time allowed
+      // Note: Default increased from 1000ms to 5000ms to allow providers making external API calls adequate time.
+      // Set PROVIDERS_TOTAL_TIMEOUT_MS=1000 to restore previous behavior if needed.
+      const providersTimeoutSetting = runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS");
       const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(
-        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
+        String(providersTimeoutSetting || "5000"),
         10,
       );
+      if (!providersTimeoutSetting) {
+        runtime.logger.debug(
+          { src: "service:message", defaultTimeoutMs: PROVIDERS_TOTAL_TIMEOUT_MS },
+          "Using default PROVIDERS_TOTAL_TIMEOUT_MS=5000; set PROVIDERS_TOTAL_TIMEOUT_MS=1000 to restore previous 1s timeout",
+        );
+      }
 
       // Track which providers have completed (for timeout diagnostics)
       const completedProviders = new Set<string>();

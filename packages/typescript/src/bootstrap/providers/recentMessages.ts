@@ -10,6 +10,10 @@ import type {
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
 import { addHeader, formatMessages, formatPosts } from "../../utils.ts";
+import {
+  sliceToFitBudget,
+  RECENT_ACTION_RUNS_TARGET_CHARS,
+} from "../../utils/slice-to-fit-budget.js";
 
 // Move getRecentInteractions outside the provider
 /**
@@ -134,8 +138,29 @@ export const recentMessagesProvider: Provider = {
         }
       }
 
-      const formattedActionResults = Array.from(groupedByRun.entries())
-        .slice(-3) // Show last 3 runs
+      // Note: recentMessagesData returns newest-first, so use fromEnd:false to keep newest runs
+      const recentRuns = sliceToFitBudget(
+        Array.from(groupedByRun.entries()),
+        ([runId, memories]) => {
+          const textChars = memories.reduce((sum, memory) => {
+            const content = memory.content;
+            return (
+              sum +
+              String(content?.actionName || "").length +
+              String(content?.actionStatus || "").length +
+              String(content?.planStep || "").length +
+              String(content?.text || "").length +
+              String(content?.error || "").length
+            );
+          }, 0);
+          return textChars + runId.length + 80;
+        },
+        RECENT_ACTION_RUNS_TARGET_CHARS,
+        { fromEnd: false },
+      // Note: selecting from the start ensures we retrieve the newest action runs available.
+      );
+
+      const formattedActionResults = recentRuns
         .map(([runId, memories]) => {
           const sortedMemories = memories.sort(
             (a: Memory, b: Memory) => (a.createdAt || 0) - (b.createdAt || 0),

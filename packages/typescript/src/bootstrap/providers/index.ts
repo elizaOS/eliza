@@ -1,5 +1,6 @@
 export { actionStateProvider } from "./actionState";
 export { actionsProvider } from "./actions";
+export { anxietyProvider } from "./anxiety";
 export { attachmentsProvider } from "./attachments";
 export { capabilitiesProvider } from "./capabilities";
 export { characterProvider } from "./character";
