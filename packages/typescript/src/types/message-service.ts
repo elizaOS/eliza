@@ -1,6 +1,7 @@
 import type { AgentContext, HandlerCallback } from "./components";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";
+import { ModelType } from "./model";
 import type { Content, Media, MentionContext, UUID } from "./primitives";
 import type {
 	MessageProcessingMode as ProtoMessageProcessingMode,
@@ -84,8 +85,18 @@ export interface ContextRoutedResponseDecision extends ResponseDecision {
 
 export type ShouldRespondModelType =
 	| ProtoShouldRespondModelType
+	| "nano"
+	| "mini"
 	| "small"
-	| "large";
+	| "large"
+	| "mega"
+	| "response-handler"
+	| typeof ModelType.TEXT_NANO
+	| typeof ModelType.TEXT_MINI
+	| typeof ModelType.TEXT_SMALL
+	| typeof ModelType.TEXT_LARGE
+	| typeof ModelType.TEXT_MEGA
+	| typeof ModelType.RESPONSE_HANDLER;
 export type MessageProcessingMode =
 	| ProtoMessageProcessingMode
 	| "simple"

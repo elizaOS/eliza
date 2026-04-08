@@ -30,6 +30,7 @@ import type {
 } from "../types/message-service";
 import type {
 	GenerateTextAttachment,
+	TextGenerationModelType,
 	TextToSpeechParams,
 } from "../types/model";
 import { ModelType } from "../types/model";
@@ -209,6 +210,61 @@ type ResolvedMessageOptions = {
 	onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
 	shouldRespondModel: ShouldRespondModelType;
 };
+
+function normalizeShouldRespondModelType(
+	value: unknown,
+): ShouldRespondModelType {
+	if (typeof value !== "string") {
+		return "response-handler";
+	}
+
+	const normalized = value.trim().toLowerCase();
+	switch (normalized) {
+		case "nano":
+		case "text_nano":
+			return "nano";
+		case "mini":
+		case "text_mini":
+			return "mini";
+		case "small":
+		case "text_small":
+			return "small";
+		case "large":
+		case "text_large":
+			return "large";
+		case "mega":
+		case "text_mega":
+			return "mega";
+		case "response-handler":
+		case "response_handler":
+		case "responsehandler":
+			return "response-handler";
+		case "response_handler_model":
+			return "response-handler";
+		default:
+			return "response-handler";
+	}
+}
+
+function resolveShouldRespondModelType(
+	model: ShouldRespondModelType,
+): TextGenerationModelType {
+	switch (normalizeShouldRespondModelType(model)) {
+		case "nano":
+			return ModelType.TEXT_NANO;
+		case "mini":
+			return ModelType.TEXT_MINI;
+		case "small":
+			return ModelType.TEXT_SMALL;
+		case "large":
+			return ModelType.TEXT_LARGE;
+		case "mega":
+			return ModelType.TEXT_MEGA;
+		case "response-handler":
+		default:
+			return ModelType.RESPONSE_HANDLER;
+	}
+}
 
 /**
  * Multi-step workflow action result with action name tracking
@@ -394,9 +450,9 @@ export class DefaultMessageService implements IMessageService {
 				const shouldRespondModelSetting = runtime.getSetting(
 					"SHOULD_RESPOND_MODEL",
 				);
-				const resolvedShouldRespondModel: ShouldRespondModelType =
-					options?.shouldRespondModel ??
-					(shouldRespondModelSetting === "large" ? "large" : "small");
+				const resolvedShouldRespondModel = normalizeShouldRespondModelType(
+					options?.shouldRespondModel ?? shouldRespondModelSetting,
+				);
 
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
@@ -949,12 +1005,6 @@ export class DefaultMessageService implements IMessageService {
 						shouldRespondTemplate,
 				});
 
-				// Select model based on configuration - "large" enables better context analysis and planning
-				const _shouldRespondModelType =
-					opts.shouldRespondModel === "large"
-						? ModelType.TEXT_LARGE
-						: ModelType.TEXT_SMALL;
-
 				runtime.logger.debug(
 					{
 						src: "service:message",
@@ -1019,7 +1069,9 @@ export class DefaultMessageService implements IMessageService {
 					],
 					options: {
 						contextCheckLevel: 0, // Set to 0 for now
-						modelSize: opts.shouldRespondModel === "large" ? "large" : "small",
+						modelType: resolveShouldRespondModelType(
+							opts.shouldRespondModel,
+						),
 						preferredEncapsulation: "toon",
 					},
 				});
@@ -2103,7 +2155,7 @@ export class DefaultMessageService implements IMessageService {
 				},
 			],
 			options: {
-				modelSize: "large",
+				modelType: ModelType.ACTION_PLANNER,
 				preferredEncapsulation: opts.onStreamChunk ? "xml" : "toon",
 				requiredFields: ["thought", "actions"],
 				maxRetries: opts.maxRetries,
@@ -2273,7 +2325,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 						},
 					],
 					options: {
-						modelSize: "large",
+						modelType: ModelType.ACTION_PLANNER,
 						preferredEncapsulation: streamingCtx?.onStreamChunk
 							? "xml"
 							: "toon",
@@ -2549,7 +2601,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 					},
 				],
 				options: {
-					modelSize: "large",
+					modelType: ModelType.ACTION_PLANNER,
 					preferredEncapsulation: "toon",
 				},
 			});

@@ -338,6 +338,27 @@ describe("installRuntimePluginLifecycle", () => {
 		).rejects.toThrow("requires a runtime reload");
 	});
 
+	it("inherits plugin contexts for unscoped actions and providers", async () => {
+		const runtime = createMockRuntime();
+
+		await runtime.registerPlugin({
+			name: "@elizaos/plugin-wallet-demo",
+			description: "wallet demo",
+			contexts: ["wallet"],
+			actions: [{ name: "WALLET_ACTION" } as never],
+			providers: [{ name: "walletProvider" } as never],
+		});
+
+		expect(runtime.actions[0]).toMatchObject({
+			name: "WALLET_ACTION",
+			contexts: ["wallet"],
+		});
+		expect(runtime.providers[0]).toMatchObject({
+			name: "walletProvider",
+			contexts: ["wallet"],
+		});
+	});
+
 	it("installs lifecycle methods on real AgentRuntime instances", async () => {
 		const runtime = new AgentRuntime({
 			character: createCharacter("Lifecycle Test"),

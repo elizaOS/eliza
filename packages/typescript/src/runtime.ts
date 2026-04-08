@@ -64,6 +64,7 @@ import {
 	type ModelParamsMap,
 	type ModelResultMap,
 	ModelType,
+	getModelFallbackChain,
 	type ModelTypeName,
 	type PairingAllowlistEntry,
 	type PairingChannel,
@@ -149,6 +150,29 @@ const STABLE_PROMPT_PROVIDER_NAMES = new Set([
 	"CHARACTER",
 	"PROVIDERS",
 ]);
+
+function resolveDynamicPromptModelType(
+	modelType?: ModelTypeName,
+	modelSize?: "nano" | "mini" | "small" | "large" | "mega",
+): ModelTypeName {
+	if (modelType) {
+		return modelType;
+	}
+
+	switch (modelSize) {
+		case "nano":
+			return ModelType.TEXT_NANO;
+		case "mini":
+			return ModelType.TEXT_MINI;
+		case "small":
+			return ModelType.TEXT_SMALL;
+		case "mega":
+			return ModelType.TEXT_MEGA;
+		case "large":
+		default:
+			return ModelType.TEXT_LARGE;
+	}
+}
 
 export class Semaphore {
 	private permits: number;
@@ -3042,6 +3066,62 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
+	private resolveModelRegistration(
+		modelType: ModelTypeName | string,
+		provider?: string,
+	):
+		| {
+				handler: (
+					runtime: IAgentRuntime,
+					params: Record<string, JsonValue | object>,
+				) => Promise<JsonValue | object>;
+				modelKey: string;
+				provider: string;
+		  }
+		| undefined {
+		const requestedModelKey =
+			typeof modelType === "string" ? modelType : ModelType[modelType];
+
+		for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
+			const models = this.models.get(candidateKey);
+			if (!models?.length) {
+				continue;
+			}
+
+			const modelWithProvider =
+				provider && models.find((model) => model.provider === provider);
+			if (provider && !modelWithProvider) {
+				continue;
+			}
+
+			const resolvedModel = modelWithProvider ?? models[0];
+			if (!resolvedModel) {
+				continue;
+			}
+
+			if (candidateKey !== requestedModelKey) {
+				this.logger.debug(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						requestedModel: requestedModelKey,
+						resolvedModel: candidateKey,
+						provider: resolvedModel.provider,
+					},
+					"Model fallback applied",
+				);
+			}
+
+			return {
+				handler: resolvedModel.handler,
+				modelKey: candidateKey,
+				provider: resolvedModel.provider,
+			};
+		}
+
+		return undefined;
+	}
+
 	getModel(
 		modelType: ModelTypeName | string,
 	):
@@ -3050,10 +3130,8 @@ export class AgentRuntime implements IAgentRuntime {
 				params: Record<string, JsonValue | object>,
 		  ) => Promise<JsonValue | object>)
 		| undefined {
-		const modelKey =
-			typeof modelType === "string" ? modelType : ModelType[modelType];
-		const models = this.models.get(modelKey);
-		if (!models?.length) {
+		const resolvedModel = this.resolveModelRegistration(modelType);
+		if (!resolvedModel) {
 			return undefined;
 		}
 
@@ -3062,12 +3140,12 @@ export class AgentRuntime implements IAgentRuntime {
 			{
 				src: "agent",
 				agentId: this.agentId,
-				model: modelKey,
-				provider: models[0].provider,
+				model: resolvedModel.modelKey,
+				provider: resolvedModel.provider,
 			},
 			"Using model",
 		);
-		return models[0].handler;
+		return resolvedModel.handler;
 	}
 
 	/**
@@ -3215,7 +3293,7 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
-		let modelKey =
+		let requestedModelKey =
 			typeof modelType === "string" ? modelType : ModelType[modelType];
 
 		// Apply LLM mode override for text generation models
@@ -3223,8 +3301,13 @@ export class AgentRuntime implements IAgentRuntime {
 		if (llmMode !== "DEFAULT") {
 			// List of text generation model types that can be overridden
 			const textGenerationModels = [
+				ModelType.TEXT_NANO,
+				ModelType.TEXT_MINI,
 				ModelType.TEXT_SMALL,
 				ModelType.TEXT_LARGE,
+				ModelType.TEXT_MEGA,
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
 				ModelType.TEXT_REASONING_SMALL,
 				ModelType.TEXT_REASONING_LARGE,
 				ModelType.TEXT_COMPLETION,
@@ -3232,23 +3315,23 @@ export class AgentRuntime implements IAgentRuntime {
 
 			if (
 				textGenerationModels.includes(
-					modelKey as (typeof textGenerationModels)[number],
+					requestedModelKey as (typeof textGenerationModels)[number],
 				)
 			) {
 				const overrideModelKey =
 					llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
-				if (modelKey !== overrideModelKey) {
+				if (requestedModelKey !== overrideModelKey) {
 					this.logger.debug(
 						{
 							src: "agent",
 							agentId: this.agentId,
-							originalModel: modelKey,
+							originalModel: requestedModelKey,
 							overrideModel: overrideModelKey,
 							llmMode,
 						},
 						"LLM mode override applied",
 					);
-					modelKey = overrideModelKey as typeof modelKey;
+					requestedModelKey = overrideModelKey as typeof requestedModelKey;
 				}
 			}
 		}
@@ -3271,13 +3354,14 @@ export class AgentRuntime implements IAgentRuntime {
 				? JSON.stringify(paramsObj.messages)
 				: null) ||
 			(typeof params === "string" ? params : null);
-		const model = this.getModel(modelKey);
-		const modelsForKey = this.models.get(modelKey);
-		const modelWithProvider =
-			provider && modelsForKey?.find((m) => m.provider === provider);
-		const handler = modelWithProvider ? modelWithProvider.handler : model;
+		const resolvedModel = this.resolveModelRegistration(
+			requestedModelKey,
+			provider,
+		);
+		const resolvedModelKey = resolvedModel?.modelKey ?? requestedModelKey;
+		const handler = resolvedModel?.handler;
 		if (!handler) {
-			const errorMsg = `No handler found for delegate type: ${modelKey}`;
+			const errorMsg = `No handler found for delegate type: ${requestedModelKey}`;
 			throw new Error(errorMsg);
 		}
 
@@ -3289,9 +3373,14 @@ export class AgentRuntime implements IAgentRuntime {
 			ModelType.AUDIO,
 			ModelType.VIDEO,
 		];
-		if (!binaryModels.includes(modelKey)) {
+		if (!binaryModels.includes(resolvedModelKey)) {
 			this.logger.trace(
-				{ src: "agent", agentId: this.agentId, model: modelKey, params },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					model: resolvedModelKey,
+					params,
+				},
 				"Model input",
 			);
 		} else {
@@ -3316,7 +3405,7 @@ export class AgentRuntime implements IAgentRuntime {
 				{
 					src: "agent",
 					agentId: this.agentId,
-					model: modelKey,
+					model: resolvedModelKey,
 					size: sizeInfo,
 				},
 				"Model input (binary)",
@@ -3336,7 +3425,7 @@ export class AgentRuntime implements IAgentRuntime {
 			modelParams = paramsClone as ModelParamsMap[T];
 		} else {
 			// Include model settings from character configuration if available
-			const modelSettings = this.getModelSettings(modelKey);
+			const modelSettings = this.getModelSettings(requestedModelKey);
 
 			if (modelSettings) {
 				// Apply model settings if configured
@@ -3354,11 +3443,16 @@ export class AgentRuntime implements IAgentRuntime {
 			// We only auto-populate when user is undefined (not explicitly set to empty string or null)
 			// to allow users to intentionally set an empty identifier if needed.
 			const shouldAttachUser =
-				modelKey === ModelType.TEXT_SMALL ||
-				modelKey === ModelType.TEXT_LARGE ||
-				modelKey === ModelType.TEXT_REASONING_SMALL ||
-				modelKey === ModelType.TEXT_REASONING_LARGE ||
-				modelKey === ModelType.TEXT_COMPLETION;
+				requestedModelKey === ModelType.TEXT_NANO ||
+				requestedModelKey === ModelType.TEXT_MINI ||
+				requestedModelKey === ModelType.TEXT_SMALL ||
+				requestedModelKey === ModelType.TEXT_LARGE ||
+				requestedModelKey === ModelType.TEXT_MEGA ||
+				requestedModelKey === ModelType.RESPONSE_HANDLER ||
+				requestedModelKey === ModelType.ACTION_PLANNER ||
+				requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
+				requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
+				requestedModelKey === ModelType.TEXT_COMPLETION;
 			if (
 				shouldAttachUser &&
 				isPlainObject(modelParams) &&
@@ -3417,7 +3511,7 @@ export class AgentRuntime implements IAgentRuntime {
 						openAIOptions.promptCacheKey = buildDeterministicSeed(
 							this.agentId,
 							this.currentRoomId ?? this.agentId,
-							modelKey,
+							requestedModelKey,
 							hashStringToUint32(stablePrefix).toString(16),
 						);
 					}
@@ -3510,7 +3604,7 @@ export class AgentRuntime implements IAgentRuntime {
 				{
 					src: "agent",
 					agentId: this.agentId,
-					model: modelKey,
+					model: resolvedModelKey,
 					duration: Number(elapsedTime.toFixed(2)),
 					streaming: true,
 				},
@@ -3519,11 +3613,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 			this.logModelCall(
 				modelType,
-				modelKey,
+				resolvedModelKey,
 				params,
 				promptContent,
 				elapsedTime,
-				provider,
+				resolvedModel?.provider ?? provider,
 				fullText,
 			);
 
@@ -3558,7 +3652,7 @@ export class AgentRuntime implements IAgentRuntime {
 							: undefined;
 						trajLogger.logLlmCall({
 							stepId,
-							model: String(modelKey),
+							model: String(resolvedModelKey),
 							systemPrompt:
 								typeof this.character.system === "string"
 									? this.character.system
@@ -3591,7 +3685,7 @@ export class AgentRuntime implements IAgentRuntime {
 			{
 				src: "agent",
 				agentId: this.agentId,
-				model: modelKey,
+				model: resolvedModelKey,
 				duration: Number(elapsedTime.toFixed(2)),
 			},
 			"Model output",
@@ -3599,11 +3693,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.logModelCall(
 			modelType,
-			modelKey,
+			resolvedModelKey,
 			params,
 			promptContent,
 			elapsedTime,
-			provider,
+			resolvedModel?.provider ?? provider,
 			response,
 		);
 
@@ -3638,7 +3732,7 @@ export class AgentRuntime implements IAgentRuntime {
 						: undefined;
 					trajLogger.logLlmCall({
 						stepId,
-						model: String(modelKey),
+						model: String(resolvedModelKey),
 						systemPrompt:
 							typeof this.character.system === "string"
 								? this.character.system
@@ -3840,7 +3934,8 @@ export class AgentRuntime implements IAgentRuntime {
 		schema: SchemaRow[];
 		options?: {
 			key?: string;
-			modelSize?: "small" | "large";
+			modelSize?: "nano" | "mini" | "small" | "large" | "mega";
+			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
 			preferredEncapsulation?: "json" | "xml" | "toon";
 			forceFormat?: "json" | "xml" | "toon";
@@ -3891,9 +3986,11 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		// Generate keys for metrics
-		const modelIdentifier =
-			options.model ||
-			(options.modelSize === "small" ? "TEXT_SMALL" : "TEXT_LARGE");
+		const resolvedModelType = resolveDynamicPromptModelType(
+			options.modelType,
+			options.modelSize,
+		);
+		const modelIdentifier = options.modelType || options.model || resolvedModelType;
 		const schemaKey = this.buildSchemaMetricKey(schema);
 		const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
 
@@ -4219,11 +4316,6 @@ ${section_end}`;
 				});
 			}
 
-			const modelType =
-				options.modelSize === "small"
-					? ModelType.TEXT_SMALL
-					: ModelType.TEXT_LARGE;
-
 			// Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
 			const modelParams = {
 				...params,
@@ -4252,8 +4344,8 @@ ${section_end}`;
 
 			let response: string;
 			try {
-				response = await this.useModel<typeof modelType, string>(
-					modelType,
+				response = await this.useModel<typeof resolvedModelType, string>(
+					resolvedModelType,
 					modelParams,
 					options.model,
 				);

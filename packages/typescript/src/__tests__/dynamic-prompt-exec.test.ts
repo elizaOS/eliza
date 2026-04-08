@@ -310,6 +310,25 @@ describe("dynamicPromptExecFromState", () => {
 			expect(result?.my_field).toBe("value");
 		});
 
+		it("uses explicit modelType when provided", async () => {
+			const miniHandler = vi.fn(async () => "<response><text>mini</text></response>");
+			runtime.registerModel(ModelType.TEXT_MINI, miniHandler, "mock");
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [{ field: "text", description: "Response text" }],
+				options: {
+					modelType: ModelType.TEXT_MINI,
+					contextCheckLevel: 0,
+				},
+			});
+
+			expect(miniHandler).toHaveBeenCalledTimes(1);
+			expect(result?.text).toBe("mini");
+		});
+
 		it("should warn on contradictory schema declarations", async () => {
 			const warnSpy = vi
 				.spyOn(runtime.logger, "warn")

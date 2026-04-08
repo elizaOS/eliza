@@ -58,7 +58,12 @@ describe("DefaultMessageService", () => {
 				modelType: (typeof ModelType)[keyof typeof ModelType],
 				params: unknown,
 			) => {
-				if (modelType === ModelType.TEXT_SMALL) {
+				if (
+					modelType === ModelType.TEXT_SMALL ||
+					modelType === ModelType.TEXT_MINI ||
+					modelType === ModelType.TEXT_NANO ||
+					modelType === ModelType.RESPONSE_HANDLER
+				) {
 					// Response for shouldRespond check (no streaming)
 					return "<response><action>REPLY</action><reason>User asked a question</reason></response>";
 				}
@@ -782,6 +787,45 @@ describe("DefaultMessageService", () => {
 			);
 		});
 
+		it("uses RESPONSE_HANDLER as the default shouldRespond model route", async () => {
+			const dynamicPromptSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					name: "TestAgent",
+					reasoning: "Directly addressed",
+					action: "RESPOND",
+					primaryContext: "general",
+				})
+				.mockResolvedValueOnce({
+					thought: "Reply directly",
+					actions: "REPLY",
+					text: "hello there",
+					simple: true,
+				});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174030" as UUID,
+				content: {
+					text: "hey test agent",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback, {
+				useMultiStep: false,
+			});
+
+			expect(dynamicPromptSpy).toHaveBeenCalledTimes(2);
+			expect(dynamicPromptSpy.mock.calls[0]?.[0]?.options?.modelType).toBe(
+				ModelType.RESPONSE_HANDLER,
+			);
+		});
+
 		it("should allow post-action continuation to be disabled explicitly", async () => {
 			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
 			vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
@@ -831,6 +875,13 @@ describe("DefaultMessageService", () => {
 
 	describe("integration scenarios", () => {
 		it("should handle voice message flow", async () => {
+			vi.spyOn(runtime, "getRoom").mockResolvedValue({
+				id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				type: ChannelType.VOICE_DM,
+				name: "Voice DM",
+				worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
+			});
+
 			const voiceMessage: Memory = {
 				id: "123e4567-e89b-12d3-a456-426614174303" as UUID,
 				content: {
