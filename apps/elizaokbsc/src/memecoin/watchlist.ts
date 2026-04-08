@@ -7,13 +7,15 @@ import type {
 
 function average(values: number[]): number {
   if (values.length === 0) return 0;
-  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+  return Math.round(
+    values.reduce((sum, value) => sum + value, 0) / values.length,
+  );
 }
 
 export function recordCandidateRun(
   runId: string,
   generatedAt: string,
-  candidate: ScoredCandidate
+  candidate: ScoredCandidate,
 ): CandidateRunRecord {
   return {
     runId,
@@ -45,9 +47,11 @@ export function mergeCandidateHistory(
   runId: string,
   generatedAt: string,
   candidates: ScoredCandidate[],
-  historyLimitPerCandidate = 12
+  historyLimitPerCandidate = 12,
 ): CandidateDetail[] {
-  const byToken = new Map(existingHistory.map((detail) => [detail.tokenAddress, detail]));
+  const byToken = new Map(
+    existingHistory.map((detail) => [detail.tokenAddress, detail]),
+  );
 
   for (const candidate of candidates) {
     const record = recordCandidateRun(runId, generatedAt, candidate);
@@ -63,10 +67,10 @@ export function mergeCandidateHistory(
       continue;
     }
 
-    const mergedHistory = [record, ...existing.history.filter((entry) => entry.runId !== runId)].slice(
-      0,
-      historyLimitPerCandidate
-    );
+    const mergedHistory = [
+      record,
+      ...existing.history.filter((entry) => entry.runId !== runId),
+    ].slice(0, historyLimitPerCandidate);
     byToken.set(candidate.tokenAddress, {
       tokenAddress: candidate.tokenAddress,
       tokenSymbol: candidate.tokenSymbol,
@@ -76,11 +80,14 @@ export function mergeCandidateHistory(
   }
 
   return Array.from(byToken.values()).sort(
-    (a, b) => Date.parse(b.latest.generatedAt) - Date.parse(a.latest.generatedAt)
+    (a, b) =>
+      Date.parse(b.latest.generatedAt) - Date.parse(a.latest.generatedAt),
   );
 }
 
-export function buildWatchlist(candidateDetails: CandidateDetail[]): CandidateWatchlistEntry[] {
+export function buildWatchlist(
+  candidateDetails: CandidateDetail[],
+): CandidateWatchlistEntry[] {
   return candidateDetails
     .map((detail) => {
       const scores = detail.history.map((entry) => entry.score);
@@ -94,7 +101,9 @@ export function buildWatchlist(candidateDetails: CandidateDetail[]): CandidateWa
         currentRecommendation: latest.recommendation,
         currentConviction: latest.conviction,
         appearances: detail.history.length,
-        firstSeenAt: detail.history[detail.history.length - 1]?.generatedAt || latest.generatedAt,
+        firstSeenAt:
+          detail.history[detail.history.length - 1]?.generatedAt ||
+          latest.generatedAt,
         lastSeenAt: latest.generatedAt,
         bestScore: Math.max(...scores),
         averageScore: average(scores),
@@ -106,7 +115,8 @@ export function buildWatchlist(candidateDetails: CandidateDetail[]): CandidateWa
       };
     })
     .sort((a, b) => {
-      if (b.currentScore !== a.currentScore) return b.currentScore - a.currentScore;
+      if (b.currentScore !== a.currentScore)
+        return b.currentScore - a.currentScore;
       if (b.appearances !== a.appearances) return b.appearances - a.appearances;
       return Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt);
     });

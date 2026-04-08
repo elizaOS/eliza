@@ -1,4 +1,7 @@
-import { DEFAULT_QUOTE_TOKEN_ADDRESSES, TARGET_EARLY_MCAP_USD } from "./constants";
+import {
+  DEFAULT_QUOTE_TOKEN_ADDRESSES,
+  TARGET_EARLY_MCAP_USD,
+} from "./constants";
 import type { PoolSnapshot, ScoredCandidate } from "./types";
 
 function clampScore(score: number): number {
@@ -26,13 +29,19 @@ export function scoreCandidate(candidate: PoolSnapshot): ScoredCandidate {
   const effectiveMcap = candidate.marketCapUsd ?? candidate.fdvUsd;
   if (effectiveMcap !== null && effectiveMcap <= TARGET_EARLY_MCAP_USD) {
     score += 24;
-    thesis.push(`Early-stage valuation remains under the $${TARGET_EARLY_MCAP_USD.toLocaleString()} target.`);
+    thesis.push(
+      `Early-stage valuation remains under the $${TARGET_EARLY_MCAP_USD.toLocaleString()} target.`,
+    );
   } else if (effectiveMcap !== null && effectiveMcap <= 150_000) {
     score += 14;
-    thesis.push("Valuation is still relatively early for a first-pass watchlist.");
+    thesis.push(
+      "Valuation is still relatively early for a first-pass watchlist.",
+    );
   } else if (effectiveMcap !== null && effectiveMcap > 500_000) {
     score -= 12;
-    risks.push("Valuation is already stretched versus the early-entry mandate.");
+    risks.push(
+      "Valuation is already stretched versus the early-entry mandate.",
+    );
   } else {
     score -= 4;
     risks.push("Valuation is incomplete, so conviction is lower.");
@@ -40,24 +49,34 @@ export function scoreCandidate(candidate: PoolSnapshot): ScoredCandidate {
 
   if (candidate.reserveUsd >= 20_000) {
     score += 18;
-    thesis.push("Liquidity reserve is strong enough for a controlled simulated entry.");
+    thesis.push(
+      "Liquidity reserve is strong enough for a controlled simulated entry.",
+    );
   } else if (candidate.reserveUsd >= 10_000) {
     score += 12;
-    thesis.push("Liquidity is adequate for monitoring and possible small-size entry.");
+    thesis.push(
+      "Liquidity is adequate for monitoring and possible small-size entry.",
+    );
   } else if (candidate.reserveUsd >= 5_000) {
     score += 5;
     thesis.push("Liquidity exists, but size should stay conservative.");
   } else {
     score -= 18;
-    risks.push("Liquidity reserve is very thin and could break under volatility.");
+    risks.push(
+      "Liquidity reserve is very thin and could break under volatility.",
+    );
   }
 
   if (candidate.volumeUsdM5 >= 5_000) {
     score += 14;
-    thesis.push("Recent volume confirms live market interest instead of a dead launch.");
+    thesis.push(
+      "Recent volume confirms live market interest instead of a dead launch.",
+    );
   } else if (candidate.volumeUsdM5 >= 1_000) {
     score += 9;
-    thesis.push("Short-term volume is healthy enough to justify a closer look.");
+    thesis.push(
+      "Short-term volume is healthy enough to justify a closer look.",
+    );
   } else if (candidate.volumeUsdM5 > 0) {
     score += 3;
   } else {
@@ -79,23 +98,31 @@ export function scoreCandidate(candidate: PoolSnapshot): ScoredCandidate {
 
   if (candidate.poolAgeMinutes <= 120) {
     score += 12;
-    thesis.push("The pool is extremely fresh, which fits the early-discovery mandate.");
+    thesis.push(
+      "The pool is extremely fresh, which fits the early-discovery mandate.",
+    );
   } else if (candidate.poolAgeMinutes <= 1_440) {
     score += 6;
     thesis.push("The pool is still recent enough for the watchlist.");
   } else {
     score -= 5;
-    risks.push("The pool is no longer especially fresh, reducing first-mover advantage.");
+    risks.push(
+      "The pool is no longer especially fresh, reducing first-mover advantage.",
+    );
   }
 
   if (DEFAULT_QUOTE_TOKEN_ADDRESSES.has(candidate.quoteTokenAddress)) {
     score += 8;
-    thesis.push(`Quote pair ${candidate.quoteTokenSymbol} improves routing and execution confidence.`);
+    thesis.push(
+      `Quote pair ${candidate.quoteTokenSymbol} improves routing and execution confidence.`,
+    );
   }
 
   if (candidate.source === "trending_pools") {
     score += 8;
-    thesis.push("Trending-pool discovery suggests the market is already paying attention.");
+    thesis.push(
+      "Trending-pool discovery suggests the market is already paying attention.",
+    );
   } else {
     score += 4;
   }
@@ -109,7 +136,9 @@ export function scoreCandidate(candidate: PoolSnapshot): ScoredCandidate {
   const recommendation = getRecommendation(finalScore);
 
   if (recommendation === "simulate_buy") {
-    thesis.push("Candidate is strong enough to enter the simulated treasury queue.");
+    thesis.push(
+      "Candidate is strong enough to enter the simulated treasury queue.",
+    );
   } else if (recommendation === "watch") {
     thesis.push("Candidate merits watchlist tracking before simulated entry.");
   } else if (recommendation === "reject") {
@@ -127,10 +156,8 @@ export function scoreCandidate(candidate: PoolSnapshot): ScoredCandidate {
 }
 
 export function scoreCandidates(candidates: PoolSnapshot[]): ScoredCandidate[] {
-  return candidates
-    .map(scoreCandidate)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return b.reserveUsd - a.reserveUsd;
-    });
+  return candidates.map(scoreCandidate).sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return b.reserveUsd - a.reserveUsd;
+  });
 }

@@ -1,9 +1,15 @@
-import { createUniqueUuid, type IAgentRuntime, type Task, type TaskWorker } from "@elizaos/core";
+import {
+  createUniqueUuid,
+  type IAgentRuntime,
+  type Task,
+  type TaskMetadata,
+  type TaskWorker,
+} from "@elizaos/core";
 import { getDiscoveryConfig } from "./config";
 import { ELIZAOK_DISCOVERY_TASK } from "./constants";
 import { discoverBnbPools } from "./discover";
-import { executeDistributionLane } from "./distribution-execution";
 import { buildDistributionPlan } from "./distribution";
+import { executeDistributionLane } from "./distribution-execution";
 import { buildFourMemeAdapterPreview } from "./execution/fourmeme";
 import { buildExecutionGooLane } from "./execution/goo-lane";
 import { reconcilePortfolioWithWallet } from "./execution/reconcile";
@@ -11,8 +17,8 @@ import { buildExecutionState } from "./execution/state";
 import { executeTradeLane } from "./execution/trades";
 import { discoverGooCandidates } from "./goo";
 import { buildScanMemo } from "./memo";
-import { buildPortfolioLifecycle, loadPortfolioLifecycle } from "./portfolio";
 import { loadCandidateHistory, persistScanArtifacts } from "./persist";
+import { buildPortfolioLifecycle, loadPortfolioLifecycle } from "./portfolio";
 import { scoreCandidates } from "./score";
 import { buildTreasurySimulation } from "./simulation";
 
@@ -31,7 +37,7 @@ export const elizaOkDiscoveryWorker: TaskWorker = {
 
 export async function runElizaOkDiscoveryCycle(
   runtime: IAgentRuntime,
-  trigger: "startup" | "scheduled"
+  trigger: "startup" | "scheduled",
 ): Promise<void> {
   const config = getDiscoveryConfig();
   if (!config.enabled) {
@@ -40,7 +46,10 @@ export async function runElizaOkDiscoveryCycle(
   }
 
   const startedAt = new Date().toISOString();
-  const runId = createUniqueUuid(runtime, `elizaok-scan-${startedAt}-${trigger}`);
+  const runId = createUniqueUuid(
+    runtime,
+    `elizaok-scan-${startedAt}-${trigger}`,
+  );
 
   runtime.logger.info(
     {
@@ -48,7 +57,7 @@ export async function runElizaOkDiscoveryCycle(
       newPoolsLimit: config.newPoolsLimit,
       trendingPoolsLimit: config.trendingPoolsLimit,
     },
-    "ElizaOK: Starting treasury discovery cycle"
+    "ElizaOK: Starting treasury discovery cycle",
   );
 
   try {
@@ -57,16 +66,25 @@ export async function runElizaOkDiscoveryCycle(
       discoverGooCandidates(config.goo),
     ]);
     const candidates = scoreCandidates(rawCandidates);
-    const previousCandidateHistory = await loadCandidateHistory(config.reportsDir);
-    const treasurySimulation = buildTreasurySimulation(candidates, config.treasury);
+    const previousCandidateHistory = await loadCandidateHistory(
+      config.reportsDir,
+    );
+    const treasurySimulation = buildTreasurySimulation(
+      candidates,
+      config.treasury,
+    );
     const gooLane = buildExecutionGooLane(config, gooCandidates);
     const baseExecutionState = buildExecutionState(
       config.execution,
       candidates,
       previousCandidateHistory,
-      gooLane
+      gooLane,
     );
-    const fourMemePreview = buildFourMemeAdapterPreview(config.execution, baseExecutionState, candidates);
+    const fourMemePreview = buildFourMemeAdapterPreview(
+      config.execution,
+      baseExecutionState,
+      candidates,
+    );
     const previousPortfolio = await loadPortfolioLifecycle(config.reportsDir);
     const paperPortfolioLifecycle = buildPortfolioLifecycle({
       previous: previousPortfolio,
@@ -103,14 +121,15 @@ export async function runElizaOkDiscoveryCycle(
       config.distribution,
       treasurySimulation,
       config.execution.rpcUrl,
-      portfolioLifecycle
+      portfolioLifecycle,
     );
-    const { distributionExecution, distributionLedger } = await executeDistributionLane({
-      config: config.distribution,
-      distributionPlan,
-      reportsDir: config.reportsDir,
-      rpcUrl: config.execution.rpcUrl,
-    });
+    const { distributionExecution, distributionLedger } =
+      await executeDistributionLane({
+        config: config.distribution,
+        distributionPlan,
+        reportsDir: config.reportsDir,
+        rpcUrl: config.execution.rpcUrl,
+      });
     const completedAt = new Date().toISOString();
     const memo = buildScanMemo(
       runId,
@@ -120,7 +139,7 @@ export async function runElizaOkDiscoveryCycle(
       config.memoTopCount,
       gooCandidates,
       config.goo.memoTopCount,
-      config.goo.enabled
+      config.goo.enabled,
     );
     const persisted = await persistScanArtifacts(
       runtime,
@@ -136,7 +155,7 @@ export async function runElizaOkDiscoveryCycle(
       distributionExecution,
       distributionLedger,
       config.reportsDir,
-      config.historyLimit
+      config.historyLimit,
     );
 
     runtime.logger.info(
@@ -162,21 +181,30 @@ export async function runElizaOkDiscoveryCycle(
         portfolioActiveCount: portfolioLifecycle.activePositions.length,
         portfolioUnrealizedPnlUsd: portfolioLifecycle.totalUnrealizedPnlUsd,
         distributionPoolUsd: distributionPlan.distributionPoolUsd,
-        distributionExecutionAttemptedCount: distributionExecution.cycleSummary.attemptedCount,
-        distributionExecutionExecutedCount: distributionExecution.cycleSummary.executedCount,
+        distributionExecutionAttemptedCount:
+          distributionExecution.cycleSummary.attemptedCount,
+        distributionExecutionExecutedCount:
+          distributionExecution.cycleSummary.executedCount,
         reportPath: persisted.reportPath,
       },
-      "ElizaOK: Treasury discovery cycle completed"
+      "ElizaOK: Treasury discovery cycle completed",
     );
   } catch (error) {
-    runtime.logger.error({ error: cycleErrorMessage(error), trigger, runId }, "ElizaOK: Treasury discovery cycle failed");
+    runtime.logger.error(
+      { error: cycleErrorMessage(error), trigger, runId },
+      "ElizaOK: Treasury discovery cycle failed",
+    );
   }
 }
 
-export async function ensureDiscoveryTask(runtime: IAgentRuntime): Promise<void> {
+export async function ensureDiscoveryTask(
+  runtime: IAgentRuntime,
+): Promise<void> {
   const config = getDiscoveryConfig();
   if (!config.enabled) {
-    runtime.logger.info("ElizaOK discovery is disabled; task will not be created");
+    runtime.logger.info(
+      "ElizaOK discovery is disabled; task will not be created",
+    );
     return;
   }
 
@@ -184,11 +212,13 @@ export async function ensureDiscoveryTask(runtime: IAgentRuntime): Promise<void>
   runtime.registerTaskWorker(elizaOkDiscoveryWorker);
 
   const existingTasks = await runtime.getTasksByName(ELIZAOK_DISCOVERY_TASK);
-  const agentTasks = existingTasks.filter((task) => task.worldId === runtime.agentId);
+  const agentTasks = existingTasks.filter(
+    (task) => task.worldId === runtime.agentId,
+  );
   if (agentTasks.length > 0) {
     runtime.logger.debug(
       { taskCount: agentTasks.length },
-      "ElizaOK discovery task already exists"
+      "ElizaOK discovery task already exists",
     );
     return;
   }
@@ -199,15 +229,15 @@ export async function ensureDiscoveryTask(runtime: IAgentRuntime): Promise<void>
     description: "Periodic ElizaOK BNB Chain discovery and treasury memo cycle",
     worldId: runtime.agentId,
     metadata: {
-      createdAt: Date.now() as any,
-      updatedAt: Date.now() as any,
-      updateInterval: config.intervalMs as any,
-    },
+      createdAt: String(Date.now()),
+      updatedAt: Date.now(),
+      updateInterval: config.intervalMs,
+    } satisfies TaskMetadata,
     tags: ["queue", "repeat", "elizaok", "discovery", "treasury"],
   } satisfies Task);
 
   runtime.logger.info(
     { intervalMinutes: Math.round(config.intervalMs / 60_000) },
-    "ElizaOK discovery task created"
+    "ElizaOK discovery task created",
   );
 }

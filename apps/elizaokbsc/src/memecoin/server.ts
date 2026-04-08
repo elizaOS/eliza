@@ -1,15 +1,31 @@
 import { readFile } from "node:fs/promises";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import path from "node:path";
 import { URL } from "node:url";
 import type { AgentRuntime } from "@elizaos/core";
 import { ethers } from "ethers";
 import { getDiscoveryConfig } from "./config";
-import { executeDistributionLane } from "./distribution-execution";
 import { buildDistributionPlan } from "./distribution";
+import { executeDistributionLane } from "./distribution-execution";
+// ElizaCloud v1 calls live in ./elizacloud-api.ts (auth header rules, parsers, 429 retry) — why: testability
+// and alignment with Cloud’s requireAuthOrApiKey order; see docs/elizacloud-integration.md.
+import {
+  fetchElizaCloudCreditsBalance,
+  fetchElizaCloudCreditsSummary,
+  fetchElizaCloudModels,
+  fetchElizaCloudUser,
+} from "./elizacloud-api";
 import { persistDistributionExecutionState } from "./persist";
 import { getLatestSnapshot } from "./store";
-import type { CandidateDetail, DashboardSnapshot, PortfolioPositionDetail } from "./types";
+import type {
+  CandidateDetail,
+  DashboardSnapshot,
+  PortfolioPositionDetail,
+} from "./types";
 
 const ELIZAOK_LOGO_ASSET_PATHS = [
   path.resolve(process.cwd(), "apps/elizaokbsc/assets/elizaok-logo.png"),
@@ -22,7 +38,9 @@ const ELIZAOK_BANNER_ASSET_PATHS = [
   "/Users/baoger/.cursor/projects/Users-baoger-polymarket-agent/assets/1500x500-8f387aee-fe62-46d8-8506-4aa8e185618b.png",
 ];
 
-async function loadSnapshotFromDisk(reportsDir: string): Promise<DashboardSnapshot | null> {
+async function loadSnapshotFromDisk(
+  reportsDir: string,
+): Promise<DashboardSnapshot | null> {
   const snapshotPath = path.join(process.cwd(), reportsDir, "latest.json");
   try {
     const content = await readFile(snapshotPath, "utf8");
@@ -32,8 +50,14 @@ async function loadSnapshotFromDisk(reportsDir: string): Promise<DashboardSnapsh
   }
 }
 
-async function loadCandidateHistoryFromDisk(reportsDir: string): Promise<CandidateDetail[]> {
-  const historyPath = path.join(process.cwd(), reportsDir, "candidate-history.json");
+async function loadCandidateHistoryFromDisk(
+  reportsDir: string,
+): Promise<CandidateDetail[]> {
+  const historyPath = path.join(
+    process.cwd(),
+    reportsDir,
+    "candidate-history.json",
+  );
   try {
     const content = await readFile(historyPath, "utf8");
     return JSON.parse(content) as CandidateDetail[];
@@ -42,8 +66,14 @@ async function loadCandidateHistoryFromDisk(reportsDir: string): Promise<Candida
   }
 }
 
-function sendJson(res: ServerResponse, statusCode: number, payload: unknown): void {
-  res.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
+function sendJson(
+  res: ServerResponse,
+  statusCode: number,
+  payload: unknown,
+): void {
+  res.writeHead(statusCode, {
+    "content-type": "application/json; charset=utf-8",
+  });
   res.end(JSON.stringify(payload, null, 2));
 }
 
@@ -51,7 +81,7 @@ function sendBinary(
   res: ServerResponse,
   statusCode: number,
   contentType: string,
-  payload: Buffer | Uint8Array
+  payload: Buffer | Uint8Array,
 ): void {
   res.writeHead(statusCode, { "content-type": contentType });
   res.end(payload);
@@ -61,11 +91,13 @@ function sendHtml(
   res: ServerResponse,
   statusCode: number,
   html: string,
-  cookieHeaders?: string[]
+  cookieHeaders?: string[],
 ): void {
   res.writeHead(statusCode, {
     "content-type": "text/html; charset=utf-8",
-    ...(cookieHeaders && cookieHeaders.length > 0 ? { "set-cookie": cookieHeaders } : {}),
+    ...(cookieHeaders && cookieHeaders.length > 0
+      ? { "set-cookie": cookieHeaders }
+      : {}),
   });
   res.end(html);
 }
@@ -73,16 +105,21 @@ function sendHtml(
 function sendRedirect(
   res: ServerResponse,
   location: string,
-  cookieHeaders?: string[]
+  cookieHeaders?: string[],
 ): void {
   res.writeHead(302, {
     location,
-    ...(cookieHeaders && cookieHeaders.length > 0 ? { "set-cookie": cookieHeaders } : {}),
+    ...(cookieHeaders && cookieHeaders.length > 0
+      ? { "set-cookie": cookieHeaders }
+      : {}),
   });
   res.end();
 }
 
-function renderCloudPopupResultHtml(status: "success" | "error", message: string): string {
+function renderCloudPopupResultHtml(
+  status: "success" | "error",
+  message: string,
+): string {
   const escapedMessage = escapeHtml(message);
   return `<!doctype html>
 <html lang="en">
@@ -275,7 +312,10 @@ function formatBnb(value: number): string {
   return `${value.toFixed(4)} BNB`;
 }
 
-async function fetchWalletNativeBalanceLabel(rpcUrl: string | null, walletAddress: string): Promise<string> {
+async function fetchWalletNativeBalanceLabel(
+  rpcUrl: string | null,
+  walletAddress: string,
+): Promise<string> {
   if (!rpcUrl || !walletAddress) return "n/a";
   try {
     const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -323,16 +363,20 @@ function parseCookies(header: string | undefined): Record<string, string> {
           decodeURIComponent(entry.slice(separatorIndex + 1).trim()),
         ] as const;
       })
-      .filter((entry): entry is readonly [string, string] => Boolean(entry))
+      .filter((entry): entry is readonly [string, string] => Boolean(entry)),
   );
 }
 
-function readElizaCloudSession(header: string | undefined): ElizaCloudSession | null {
+function readElizaCloudSession(
+  header: string | undefined,
+): ElizaCloudSession | null {
   const raw = parseCookies(header)[ELIZAOK_CLOUD_COOKIE];
   if (!raw) return null;
 
   try {
-    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as ElizaCloudSession;
+    const parsed = JSON.parse(
+      Buffer.from(raw, "base64url").toString("utf8"),
+    ) as ElizaCloudSession;
     return parsed?.provider === "eliza-cloud" ? parsed : null;
   } catch {
     return null;
@@ -366,7 +410,9 @@ function isElizaCloudDemoEnabled(): boolean {
 
 function inferOrigin(req: IncomingMessage): string {
   const protocol =
-    (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim() || "http";
+    (req.headers["x-forwarded-proto"] as string | undefined)
+      ?.split(",")[0]
+      ?.trim() || "http";
   const host = req.headers.host || "localhost";
   return `${protocol}://${host}`;
 }
@@ -406,7 +452,8 @@ function buildElizaCloudCliLoginUrl(sessionId: string): string {
 
 function getElizaCloudCallbackUrl(req: IncomingMessage, popup = false): string {
   const callbackUrl = new URL(
-    process.env.ELIZAOK_ELIZA_CLOUD_CALLBACK_URL?.trim() || `${inferOrigin(req)}/auth/eliza-cloud/callback`
+    process.env.ELIZAOK_ELIZA_CLOUD_CALLBACK_URL?.trim() ||
+      `${inferOrigin(req)}/auth/eliza-cloud/callback`,
   );
   if (popup) {
     callbackUrl.searchParams.set("popup", "1");
@@ -418,7 +465,11 @@ function hasElizaCloudAppAuthConfig(): boolean {
   return Boolean(getElizaCloudAppId() && getElizaCloudAuthorizeUrl());
 }
 
-function buildElizaCloudLoginUrl(req: IncomingMessage, state?: string, popup = false): string | null {
+function buildElizaCloudLoginUrl(
+  req: IncomingMessage,
+  state?: string,
+  popup = false,
+): string | null {
   if (hasElizaCloudAppAuthConfig()) {
     const loginUrl = new URL(getElizaCloudAuthorizeUrl());
     const callbackUrl = getElizaCloudCallbackUrl(req, popup);
@@ -448,10 +499,14 @@ function buildElizaCloudLoginUrl(req: IncomingMessage, state?: string, popup = f
     return loginUrl.toString();
   }
 
-  return isLocalRequest(req) && isElizaCloudDemoEnabled() ? buildElizaCloudDemoUrl(req) : null;
+  return isLocalRequest(req) && isElizaCloudDemoEnabled()
+    ? buildElizaCloudDemoUrl(req)
+    : null;
 }
 
-function buildElizaCloudSessionFromQuery(requestUrl: URL): ElizaCloudSession | null {
+function buildElizaCloudSessionFromQuery(
+  requestUrl: URL,
+): ElizaCloudSession | null {
   const displayName = requestUrl.searchParams.get("name")?.trim() || "";
   const email = requestUrl.searchParams.get("email")?.trim() || "";
   const credits = requestUrl.searchParams.get("credits")?.trim() || "n/a";
@@ -471,16 +526,25 @@ function buildElizaCloudSessionFromQuery(requestUrl: URL): ElizaCloudSession | n
     requestUrl.searchParams.get("apiKey")?.trim() ||
     "";
   const walletAddress = requestUrl.searchParams.get("wallet")?.trim() || "";
-  const organizationName = requestUrl.searchParams.get("org_name")?.trim() || "ElizaCloud";
-  const organizationSlug = requestUrl.searchParams.get("org_slug")?.trim() || "elizacloud";
+  const organizationName =
+    requestUrl.searchParams.get("org_name")?.trim() || "ElizaCloud";
+  const organizationSlug =
+    requestUrl.searchParams.get("org_slug")?.trim() || "elizacloud";
 
-  if (!displayName && !email && credits === "n/a" && model === "n/a" && apiKeyHint === "n/a") {
+  if (
+    !displayName &&
+    !email &&
+    credits === "n/a" &&
+    model === "n/a" &&
+    apiKeyHint === "n/a"
+  ) {
     return null;
   }
 
   return {
     provider: "eliza-cloud",
-    authMode: requestUrl.searchParams.get("mode")?.trim() === "demo" ? "demo" : "siwe",
+    authMode:
+      requestUrl.searchParams.get("mode")?.trim() === "demo" ? "demo" : "siwe",
     displayName: displayName || email || "ElizaCloud User",
     email: email || "connected-via-elizacloud",
     credits,
@@ -492,7 +556,10 @@ function buildElizaCloudSessionFromQuery(requestUrl: URL): ElizaCloudSession | n
     walletAddress,
     organizationName,
     organizationSlug,
-    appId: requestUrl.searchParams.get("app_id")?.trim() || requestUrl.searchParams.get("appId")?.trim() || "",
+    appId:
+      requestUrl.searchParams.get("app_id")?.trim() ||
+      requestUrl.searchParams.get("appId")?.trim() ||
+      "",
   };
 }
 
@@ -519,7 +586,9 @@ function getElizaCloudBaseUrl(): string {
 }
 
 function getElizaCloudApiBaseUrl(): string {
-  return process.env.ELIZAOK_ELIZA_CLOUD_API_URL?.trim() || "https://cloud.milady.ai";
+  return (
+    process.env.ELIZAOK_ELIZA_CLOUD_API_URL?.trim() || "https://cloud.milady.ai"
+  );
 }
 
 function getElizaOkDocsUrl(): string {
@@ -538,7 +607,10 @@ function getElizaOkPrivyClientId(): string {
   return process.env.ELIZAOK_PRIVY_CLIENT_ID?.trim() || "";
 }
 
-async function connectElizaCloudAppAuth(authToken: string, appId: string): Promise<Response> {
+async function connectElizaCloudAppAuth(
+  authToken: string,
+  appId: string,
+): Promise<Response> {
   const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/app-auth/connect`;
   return fetch(url, {
     method: "POST",
@@ -551,7 +623,10 @@ async function connectElizaCloudAppAuth(authToken: string, appId: string): Promi
   });
 }
 
-async function fetchElizaCloudAppAuthSession(authToken: string, appId: string): Promise<Response> {
+async function fetchElizaCloudAppAuthSession(
+  authToken: string,
+  appId: string,
+): Promise<Response> {
   const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/app-auth/session`;
   return fetch(url, {
     headers: {
@@ -562,7 +637,9 @@ async function fetchElizaCloudAppAuthSession(authToken: string, appId: string): 
   });
 }
 
-async function createElizaCloudCliSession(sessionId: string): Promise<Response> {
+async function createElizaCloudCliSession(
+  sessionId: string,
+): Promise<Response> {
   const url = `${getElizaCloudBaseUrl().replace(/\/$/, "")}/api/auth/cli-session`;
   return fetch(url, {
     method: "POST",
@@ -576,7 +653,7 @@ async function createElizaCloudCliSession(sessionId: string): Promise<Response> 
 
 async function fetchElizaCloudCliSession(sessionId: string): Promise<Response> {
   const url = `${getElizaCloudBaseUrl().replace(/\/$/, "")}/api/auth/cli-session/${encodeURIComponent(
-    sessionId
+    sessionId,
   )}`;
   return fetch(url, {
     headers: {
@@ -590,7 +667,9 @@ async function fetchElizaCloudNonce(req: IncomingMessage): Promise<Response> {
   return fetch(url, {
     headers: {
       accept: "application/json",
-      ...(req.headers["user-agent"] ? { "user-agent": String(req.headers["user-agent"]) } : {}),
+      ...(req.headers["user-agent"]
+        ? { "user-agent": String(req.headers["user-agent"]) }
+        : {}),
     },
   });
 }
@@ -611,7 +690,10 @@ interface ElizaCloudVerifyResponse {
   } | null;
 }
 
-async function verifyElizaCloudSiwe(payload: { message: string; signature: string }): Promise<Response> {
+async function verifyElizaCloudSiwe(payload: {
+  message: string;
+  signature: string;
+}): Promise<Response> {
   const url = `${getElizaCloudBaseUrl().replace(/\/$/, "")}/api/auth/siwe/verify`;
   return fetch(url, {
     method: "POST",
@@ -623,187 +705,32 @@ async function verifyElizaCloudSiwe(payload: { message: string; signature: strin
   });
 }
 
-async function fetchElizaCloudModels(apiKey: string): Promise<string[]> {
-  const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/models`;
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-  });
-  if (!response.ok) {
-    return [];
-  }
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Array<{ id?: string }> }
-    | null;
-  return (payload?.data || [])
-    .map((entry) => entry.id?.trim())
-    .filter((id): id is string => Boolean(id))
-    .slice(0, 24);
+/** Trailing-slash-normalized `ELIZAOK_ELIZA_CLOUD_API_URL` — why: v1 paths must hit the API host, not SIWE host. */
+function elizaCloudApiBase(): string {
+  return getElizaCloudApiBaseUrl().replace(/\/$/, "");
 }
 
-async function fetchElizaCloudUser(apiKey: string): Promise<Partial<ElizaCloudSession> | null> {
-  const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/user`;
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-  });
-  if (!response.ok) {
-    return null;
-  }
-
-  const payload = (await response.json().catch(() => null)) as
-    | {
-        data?: Record<string, unknown>;
-        user?: Record<string, unknown>;
-        organization?: Record<string, unknown>;
-      }
-    | Record<string, unknown>
-    | null;
-  const payloadRecord =
-    payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
-  const data =
-    payloadRecord && payloadRecord["data"] && typeof payloadRecord["data"] === "object"
-      ? (payloadRecord["data"] as Record<string, unknown>)
-      : payloadRecord && payloadRecord["user"] && typeof payloadRecord["user"] === "object"
-        ? (payloadRecord["user"] as Record<string, unknown>)
-        : payloadRecord
-          ? payloadRecord
-          : null;
-
-  if (!data) {
-    return null;
-  }
-
-  const organization =
-    payloadRecord && payloadRecord["organization"] && typeof payloadRecord["organization"] === "object"
-      ? (payloadRecord["organization"] as Record<string, unknown>)
-      : data["organization"] && typeof data["organization"] === "object"
-        ? (data["organization"] as Record<string, unknown>)
-        : null;
-
-  const email =
-    (typeof data["email"] === "string" && data["email"]) ||
-    (typeof data["user_email"] === "string" && data["user_email"]) ||
-    "";
-  const displayName =
-    (typeof data["name"] === "string" && data["name"]) ||
-    (typeof data["displayName"] === "string" && data["displayName"]) ||
-    (typeof data["username"] === "string" && data["username"]) ||
-    email ||
-    "ElizaCloud User";
-  const creditsRaw =
-    (typeof data["credits"] === "string" && data["credits"]) ||
-    (typeof data["credits"] === "number" && String(data["credits"])) ||
-    (typeof data["credit_balance"] === "string" && data["credit_balance"]) ||
-    (typeof data["credit_balance"] === "number" && String(data["credit_balance"])) ||
-    (organization && typeof organization["credit_balance"] === "string" && organization["credit_balance"]) ||
-    (organization && typeof organization["credit_balance"] === "number" && String(organization["credit_balance"])) ||
-    (typeof data["remainingCredits"] === "string" && data["remainingCredits"]) ||
-    (typeof data["remainingCredits"] === "number" && String(data["remainingCredits"])) ||
-    "linked";
-  const plan =
-    (typeof data["plan"] === "string" && data["plan"]) ||
-    (typeof data["subscription_plan"] === "string" && data["subscription_plan"]) ||
-    "ElizaCloud";
-  const avatarUrl =
-    (typeof data["avatar_url"] === "string" && data["avatar_url"]) ||
-    (typeof data["image"] === "string" && data["image"]) ||
-    (typeof data["avatar"] === "string" && data["avatar"]) ||
-    null;
-  const walletAddress =
-    (typeof data["wallet_address"] === "string" && data["wallet_address"]) ||
-    (typeof data["walletAddress"] === "string" && data["walletAddress"]) ||
-    "";
-  const organizationName =
-    (organization && typeof organization["name"] === "string" && organization["name"]) ||
-    (typeof data["organization_name"] === "string" && data["organization_name"]) ||
-    "ElizaCloud";
-  const organizationSlug =
-    (organization && typeof organization["slug"] === "string" && organization["slug"]) ||
-    (typeof data["organization_slug"] === "string" && data["organization_slug"]) ||
-    "elizacloud";
-
-  return {
-    displayName,
-    email,
-    credits: creditsRaw,
-    plan,
-    avatarUrl,
-    walletAddress,
-    organizationName,
-    organizationSlug,
-  };
-}
-
-async function fetchElizaCloudCreditsBalance(apiKey: string): Promise<string | null> {
-  const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/credits/balance`;
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-  });
-  if (!response.ok) {
-    return null;
-  }
-  const payload = (await response.json().catch(() => null)) as { balance?: number | string } | null;
-  if (!payload || payload.balance === undefined || payload.balance === null) {
-    return null;
-  }
-  return String(payload.balance);
-}
-
-async function fetchElizaCloudCreditsSummary(
-  apiKey: string
-): Promise<Partial<ElizaCloudSession> | null> {
-  const url = `${getElizaCloudApiBaseUrl().replace(/\/$/, "")}/api/v1/credits/summary`;
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-  });
-  if (!response.ok) {
-    return null;
-  }
-  const payload = (await response.json().catch(() => null)) as
-    | {
-        organization?: {
-          name?: string | null;
-          creditBalance?: number | string | null;
-        };
-      }
-    | null;
-  const organizationName = payload?.organization?.name?.trim() || "";
-  const creditBalance = payload?.organization?.creditBalance;
-  return {
-    displayName: organizationName || undefined,
-    organizationName: organizationName || undefined,
-    credits:
-      creditBalance === undefined || creditBalance === null ? undefined : String(creditBalance),
-  };
-}
-
+/** Persists dashboard Cloud identity; apiKeyHint uses "Browser session" when key empty — why: app-auth has no key. */
 function buildElizaCloudApiSession(
   apiKey: string,
   profile: Partial<ElizaCloudSession> | null,
   models: string[],
   authMode: ElizaCloudSession["authMode"] = "siwe",
-  appId = ""
+  appId = "",
 ): ElizaCloudSession {
   return {
     provider: "eliza-cloud",
     authMode,
-    displayName: profile?.displayName || profile?.organizationName || "ElizaCloud User",
+    displayName:
+      profile?.displayName || profile?.organizationName || "ElizaCloud User",
     email: profile?.email || "connected-via-elizacloud",
     credits: profile?.credits || "linked",
     model: models[0] || "n/a",
     apiKey,
-    apiKeyHint: `${apiKey.slice(0, 10)}...`,
+    apiKeyHint:
+      !apiKey || apiKey.length < 4
+        ? "Browser session"
+        : `${apiKey.slice(0, 10)}...`,
     plan: profile?.plan || "ElizaCloud",
     avatarUrl: profile?.avatarUrl || "/assets/elizaok-logo.png",
     walletAddress: profile?.walletAddress || "",
@@ -813,43 +740,9 @@ function buildElizaCloudApiSession(
   };
 }
 
-function hasMeaningfulCloudValue(value: string | null | undefined): boolean {
-  const normalized = (value || "").trim().toLowerCase();
-  return Boolean(
-    normalized &&
-      normalized !== "n/a" &&
-      normalized !== "linked" &&
-      normalized !== "credits linked" &&
-      normalized !== "connected-via-elizacloud" &&
-      normalized !== "elizacloud user" &&
-      normalized !== "elizacloud"
-  );
-}
-
-function getCloudIdentityLabel(session: ElizaCloudSession | null): string {
-  if (!session) return "";
-  if (hasMeaningfulCloudValue(session.displayName)) return session.displayName;
-  if (hasMeaningfulCloudValue(session.organizationName)) return session.organizationName;
-  if (hasMeaningfulCloudValue(session.email)) return session.email;
-  if (hasMeaningfulCloudValue(session.walletAddress)) return shortAddress(session.walletAddress);
-  return "ElizaCloud";
-}
-
-function getCloudCreditsLabel(session: ElizaCloudSession | null): string {
-  if (!session) return "";
-  if (hasMeaningfulCloudValue(session.credits)) return `${session.credits} credits`;
-  return "credits syncing";
-}
-
-function getCloudApiLabel(session: ElizaCloudSession | null): string {
-  if (!session) return "";
-  if (hasMeaningfulCloudValue(session.apiKeyHint)) return session.apiKeyHint;
-  return session.authMode === "app-auth" ? "browser session" : "api linked";
-}
-
 async function buildElizaCloudSessionFromAppAuth(
   authToken: string,
-  appId: string
+  appId: string,
 ): Promise<{ session: ElizaCloudSession | null; error: string | null }> {
   if (!authToken.trim()) {
     return { session: null, error: "Missing ElizaCloud auth token." };
@@ -859,35 +752,45 @@ async function buildElizaCloudSessionFromAppAuth(
   }
 
   const connectResponse = await connectElizaCloudAppAuth(authToken, appId);
-  const connectPayload = (await connectResponse.json().catch(() => null)) as { error?: string } | null;
+  const connectPayload = (await connectResponse.json().catch(() => null)) as {
+    error?: string;
+  } | null;
   if (!connectResponse.ok) {
     return {
       session: null,
-      error: connectPayload?.error || "Failed to connect ElizaCloud app session.",
+      error:
+        connectPayload?.error || "Failed to connect ElizaCloud app session.",
     };
   }
 
-  const [appSessionResponse, models, profile, credits, creditSummary] = await Promise.all([
-    fetchElizaCloudAppAuthSession(authToken, appId),
-    fetchElizaCloudModels(authToken),
-    fetchElizaCloudUser(authToken),
-    fetchElizaCloudCreditsBalance(authToken),
-    fetchElizaCloudCreditsSummary(authToken),
-  ]);
+  const apiBase = elizaCloudApiBase();
+  const [appSessionResponse, models, profile, credits, creditSummary] =
+    await Promise.all([
+      fetchElizaCloudAppAuthSession(authToken, appId),
+      fetchElizaCloudModels(apiBase, authToken),
+      fetchElizaCloudUser(apiBase, authToken),
+      fetchElizaCloudCreditsBalance(apiBase, authToken),
+      fetchElizaCloudCreditsSummary(apiBase, authToken),
+    ]);
 
-  const appSessionPayload = (await appSessionResponse.json().catch(() => null)) as
-    | {
-        success?: boolean;
-        error?: string;
-        user?: { email?: string | null; name?: string | null; avatar?: string | null };
-        app?: { id?: string | null; name?: string | null };
-      }
-    | null;
+  const appSessionPayload = (await appSessionResponse
+    .json()
+    .catch(() => null)) as {
+    success?: boolean;
+    error?: string;
+    user?: {
+      email?: string | null;
+      name?: string | null;
+      avatar?: string | null;
+    };
+    app?: { id?: string | null; name?: string | null };
+  } | null;
 
   if (!appSessionResponse.ok || !appSessionPayload?.success) {
     return {
       session: null,
-      error: appSessionPayload?.error || "Failed to verify ElizaCloud app session.",
+      error:
+        appSessionPayload?.error || "Failed to verify ElizaCloud app session.",
     };
   }
 
@@ -902,15 +805,26 @@ async function buildElizaCloudSessionFromAppAuth(
         creditSummary?.displayName ||
         profile?.organizationName ||
         "ElizaCloud User",
-      email: profile?.email || appSessionPayload.user?.email || "connected-via-elizacloud",
-      avatarUrl: profile?.avatarUrl || appSessionPayload.user?.avatar || "/assets/elizaok-logo.png",
+      email:
+        profile?.email ||
+        appSessionPayload.user?.email ||
+        "connected-via-elizacloud",
+      avatarUrl:
+        profile?.avatarUrl ||
+        appSessionPayload.user?.avatar ||
+        "/assets/elizaok-logo.png",
       organizationName:
-        profile?.organizationName || creditSummary?.organizationName || appSessionPayload.app?.name || "ElizaCloud",
-      credits: credits || creditSummary?.credits || profile?.credits || "linked",
+        profile?.organizationName ||
+        creditSummary?.organizationName ||
+        appSessionPayload.app?.name ||
+        "ElizaCloud",
+      // Balance first, then summary, then user placeholder "linked" — why: profile spread can carry credits: "linked".
+      credits:
+        credits || creditSummary?.credits || profile?.credits || "linked",
     },
     models,
     "app-auth",
-    appId
+    appId,
   );
   session.apiKeyHint = "Browser session";
   session.plan = profile?.plan || "ElizaCloud App Auth";
@@ -918,17 +832,24 @@ async function buildElizaCloudSessionFromAppAuth(
 }
 
 async function refreshElizaCloudSession(
-  session: ElizaCloudSession | null
+  session: ElizaCloudSession | null,
 ): Promise<{ session: ElizaCloudSession | null; models: string[] }> {
-  if (!session?.apiKey) {
-    return { session, models: [] };
+  if (!session) {
+    return { session: null, models: [] };
+  }
+  if (!session.apiKey) {
+    return {
+      session,
+      models: session.model && session.model !== "n/a" ? [session.model] : [],
+    };
   }
 
+  const apiBase = elizaCloudApiBase();
   const [models, profile, credits, creditSummary] = await Promise.all([
-    fetchElizaCloudModels(session.apiKey),
-    fetchElizaCloudUser(session.apiKey),
-    fetchElizaCloudCreditsBalance(session.apiKey),
-    fetchElizaCloudCreditsSummary(session.apiKey),
+    fetchElizaCloudModels(apiBase, session.apiKey),
+    fetchElizaCloudUser(apiBase, session.apiKey),
+    fetchElizaCloudCreditsBalance(apiBase, session.apiKey),
+    fetchElizaCloudCreditsSummary(apiBase, session.apiKey),
   ]);
 
   const refreshed = buildElizaCloudApiSession(
@@ -943,20 +864,28 @@ async function refreshElizaCloudSession(
         session.organizationName ||
         "ElizaCloud User",
       email: profile?.email || session.email || "connected-via-elizacloud",
-      avatarUrl: profile?.avatarUrl || session.avatarUrl || "/assets/elizaok-logo.png",
+      avatarUrl:
+        profile?.avatarUrl || session.avatarUrl || "/assets/elizaok-logo.png",
       walletAddress: profile?.walletAddress || session.walletAddress || "",
       organizationName:
         profile?.organizationName ||
         creditSummary?.organizationName ||
         session.organizationName ||
         "ElizaCloud",
-      organizationSlug: profile?.organizationSlug || session.organizationSlug || "elizacloud",
-      credits: credits || creditSummary?.credits || profile?.credits || session.credits || "linked",
+      organizationSlug:
+        profile?.organizationSlug || session.organizationSlug || "elizacloud",
+      // Same precedence as app-auth: real balance/summary beats profile "linked" and stale session.credits.
+      credits:
+        credits ||
+        creditSummary?.credits ||
+        profile?.credits ||
+        session.credits ||
+        "linked",
       plan: profile?.plan || session.plan || "ElizaCloud",
     },
     models,
     session.authMode,
-    session.appId
+    session.appId,
   );
   refreshed.apiKeyHint = session.apiKeyHint || refreshed.apiKeyHint;
   return { session: refreshed, models };
@@ -992,12 +921,16 @@ function buildGooReadiness(config: ReturnType<typeof getDiscoveryConfig>) {
     {
       label: "Module enabled",
       done: config.goo.enabled,
-      detail: config.goo.enabled ? "Goo scan loop is enabled." : "Enable ELIZAOK_GOO_SCAN_ENABLED.",
+      detail: config.goo.enabled
+        ? "Goo scan loop is enabled."
+        : "Enable ELIZAOK_GOO_SCAN_ENABLED.",
     },
     {
       label: "RPC configured",
       done: Boolean(config.goo.rpcUrl),
-      detail: config.goo.rpcUrl ? "RPC endpoint is configured." : "Add ELIZAOK_GOO_RPC_URL.",
+      detail: config.goo.rpcUrl
+        ? "RPC endpoint is configured."
+        : "Add ELIZAOK_GOO_RPC_URL.",
     },
     {
       label: "Registry configured",
@@ -1017,22 +950,27 @@ function buildGooReadiness(config: ReturnType<typeof getDiscoveryConfig>) {
     nextAction:
       score === checklist.length
         ? "Live Goo scanning is ready. The operator layer can now be judged on candidate quality."
-        : checklist.find((item) => !item.done)?.detail || "Complete remaining Goo configuration checks.",
+        : checklist.find((item) => !item.done)?.detail ||
+          "Complete remaining Goo configuration checks.",
   };
 }
 
 function buildGooCandidateDetail(
   candidate: DashboardSnapshot["topGooCandidates"][number],
-  config: ReturnType<typeof getDiscoveryConfig>
+  config: ReturnType<typeof getDiscoveryConfig>,
 ) {
   const readiness = buildGooReadiness(config);
-  const treasuryStressGapBnb = Math.max(0, candidate.starvingThresholdBnb - candidate.treasuryBnb);
+  const treasuryStressGapBnb = Math.max(
+    0,
+    candidate.starvingThresholdBnb - candidate.treasuryBnb,
+  );
   const urgency =
     candidate.status === "DYING"
       ? "critical"
       : candidate.status === "STARVING"
         ? "high"
-        : candidate.secondsUntilPulseTimeout !== null && candidate.secondsUntilPulseTimeout < 3_600
+        : candidate.secondsUntilPulseTimeout !== null &&
+            candidate.secondsUntilPulseTimeout < 3_600
           ? "high"
           : candidate.recommendation === "priority_due_diligence"
             ? "medium"
@@ -1065,7 +1003,7 @@ function buildGooCandidateDetail(
 
 function buildPortfolioPositionDetail(
   snapshot: DashboardSnapshot | null,
-  tokenAddress: string
+  tokenAddress: string,
 ): PortfolioPositionDetail {
   const allPositions = [
     ...(snapshot?.portfolioLifecycle.activePositions ?? []),
@@ -1073,9 +1011,11 @@ function buildPortfolioPositionDetail(
     ...(snapshot?.portfolioLifecycle.exitedPositions ?? []),
   ];
   const position =
-    allPositions.find((item) => item.tokenAddress.toLowerCase() === tokenAddress.toLowerCase()) ?? null;
+    allPositions.find(
+      (item) => item.tokenAddress.toLowerCase() === tokenAddress.toLowerCase(),
+    ) ?? null;
   const timeline = (snapshot?.portfolioLifecycle.timeline ?? []).filter(
-    (event) => event.tokenAddress.toLowerCase() === tokenAddress.toLowerCase()
+    (event) => event.tokenAddress.toLowerCase() === tokenAddress.toLowerCase(),
   );
 
   return {
@@ -1084,22 +1024,6 @@ function buildPortfolioPositionDetail(
     position,
     timeline,
   };
-}
-
-function renderBrandLogoSvg(): string {
-  return `
-    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect x="1.5" y="1.5" width="61" height="61" rx="20" fill="#FFD60A" stroke="rgba(0,0,0,.18)" />
-      <circle cx="17" cy="14" r="6" fill="rgba(0,0,0,.12)" />
-      <circle cx="10" cy="24" r="4" fill="rgba(0,0,0,.12)" />
-      <path d="M46 20c0 11-8 22-22 26 6-4 8-7 8-10-6 1-11-1-13-5-1-3 0-7 3-10 4-4 9-7 16-7 4 0 8 2 8 6Z" fill="#0A0A0A"/>
-      <path d="M44 16c2 1 3 3 3 6 0 8-5 18-15 24 12-3 20-14 20-25 0-6-3-10-8-12-4-2-8-2-14 0 5 0 10 2 14 7Z" fill="#0A0A0A"/>
-      <path d="M18 35c5 1 9 0 14-3-2 5-7 9-14 10-4 0-7-2-8-5 2-1 5-2 8-2Z" fill="#FFD9C3"/>
-      <path d="M24 27c3-3 6-4 10-4-4 1-7 3-10 7-1 1-2 1-3 0 0-1 1-2 3-3Z" fill="#FFD9C3"/>
-      <path d="M34 28c2-1 4-1 6 0-2 1-4 1-6 0Z" fill="#0A0A0A"/>
-      <path d="M39 33h4v10h-4z" fill="#0A0A0A"/>
-      <rect x="38" y="31" width="6" height="6" rx="1.5" fill="#FFD60A" stroke="#0A0A0A" stroke-width="1.4"/>
-    </svg>`;
 }
 
 function renderBrandLogoImage(className = "brand-image"): string {
@@ -1131,21 +1055,12 @@ function renderDocsIconSvg(): string {
   return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M7 3.75A2.25 2.25 0 0 0 4.75 6v12A2.25 2.25 0 0 0 7 20.25h10A2.25 2.25 0 0 0 19.25 18V8.56a2.25 2.25 0 0 0-.66-1.59l-2.56-2.56a2.25 2.25 0 0 0-1.59-.66H7Z" stroke="currentColor" stroke-width="1.6"/><path d="M14 3.75V7a1 1 0 0 0 1 1h3.25" stroke="currentColor" stroke-width="1.6"/><path d="M8 11.25h8M8 14.75h8M8 18.25h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 }
 
-function renderNavGlyph(view: string): string {
-  const glyphs: Record<string, string> = {
-    overview: "◉",
-    discovery: "△",
-    portfolio: "▣",
-    treasury: "◌",
-    watchlist: "✦",
-    distribution: "◫",
-    goo: "◎",
-    reports: "≣",
-  };
-  return glyphs[view] || "•";
-}
-
-function renderProgress(label: string, current: number, max: number, meta: string): string {
+function renderProgress(
+  label: string,
+  current: number,
+  max: number,
+  meta: string,
+): string {
   const pct = max > 0 ? clampPercent((current / max) * 100) : 0;
   return `
     <div class="progress-card">
@@ -1159,7 +1074,11 @@ function renderProgress(label: string, current: number, max: number, meta: strin
     </div>`;
 }
 
-function renderMetricCard(label: string, value: string, detail: string): string {
+function renderMetricCard(
+  label: string,
+  value: string,
+  detail: string,
+): string {
   return `
     <article class="metric-card">
       <span>${escapeHtml(label)}</span>
@@ -1175,7 +1094,7 @@ function renderFeatureDockCard(
   value: string,
   meta: string,
   pct: number,
-  tone: "hot" | "warm" | "cool" = "cool"
+  tone: "hot" | "warm" | "cool" = "cool",
 ): string {
   const safePct = clampPercent(pct);
   return `
@@ -1228,7 +1147,10 @@ function average(values: number[]): number | null {
 
 function renderUsageRow(label: string, pct: number, value: string): string {
   const blockCount = 10;
-  const activeBlocks = Math.max(0, Math.min(blockCount, Math.round((pct / 100) * blockCount)));
+  const activeBlocks = Math.max(
+    0,
+    Math.min(blockCount, Math.round((pct / 100) * blockCount)),
+  );
   return `
     <div class="usage-row">
       <span>${escapeHtml(label)}</span>
@@ -1241,7 +1163,7 @@ function renderUsageRow(label: string, pct: number, value: string): string {
 
 function renderCandidateDetail(
   detail: CandidateDetail,
-  portfolioDetail: PortfolioPositionDetail | null
+  portfolioDetail: PortfolioPositionDetail | null,
 ): string {
   const historyRows = detail.history
     .map(
@@ -1252,7 +1174,7 @@ function renderCandidateDetail(
           <td>${escapeHtml(entry.recommendation)}</td>
           <td>${formatUsd(entry.reserveUsd)}</td>
           <td>${formatUsd(entry.volumeUsdM5)}</td>
-        </tr>`
+        </tr>`,
     )
     .join("");
   const position = portfolioDetail?.position ?? null;
@@ -1265,7 +1187,7 @@ function renderCandidateDetail(
           <td>${escapeHtml(event.type)}</td>
           <td>${escapeHtml(event.stateAfter)}</td>
           <td>${escapeHtml(event.detail)}</td>
-        </tr>`
+        </tr>`,
       )
       .join("") || "";
   const backHref = `/?view=discovery`;
@@ -1589,7 +1511,7 @@ function renderCandidateDetail(
         <thead>
           <tr><th>Generated</th><th>Event</th><th>State after</th><th>Detail</th></tr>
         </thead>
-        <tbody>${treasuryTimelineRows || "<tr><td colspan=\"4\">No treasury lifecycle events yet.</td></tr>"}</tbody>
+        <tbody>${treasuryTimelineRows || '<tr><td colspan="4">No treasury lifecycle events yet.</td></tr>'}</tbody>
       </table></div>
     </div>
   </main>
@@ -1598,10 +1520,17 @@ function renderCandidateDetail(
 }
 
 function renderGooCandidateDetail(
-  detail: ReturnType<typeof buildGooCandidateDetail>
+  detail: ReturnType<typeof buildGooCandidateDetail>,
 ): string {
-  const { candidate, readiness, urgency, treasuryStressGapBnb, operatorAction, acquisitionFit, pulseWindowLabel } =
-    detail;
+  const {
+    candidate,
+    readiness,
+    urgency,
+    treasuryStressGapBnb,
+    operatorAction,
+    acquisitionFit,
+    pulseWindowLabel,
+  } = detail;
   const backHref = `/?view=goo`;
 
   return `<!doctype html>
@@ -1805,7 +1734,7 @@ function renderGooCandidateDetail(
     .metric strong { font-size:22px; line-height:1.35; }
     .progress-track { height:10px; border-radius:999px; background:rgba(255,214,10,.08); overflow:hidden; margin-top:12px; }
     .progress-fill { height:100%; background:linear-gradient(90deg,#9c6a00,#ffd60a); width:${Math.round(
-      (readiness.score / readiness.total) * 100
+      (readiness.score / readiness.total) * 100,
     )}%; box-shadow:0 0 18px rgba(255,214,10,.45); }
     .table-shell {
       border-radius:18px;
@@ -1913,11 +1842,48 @@ function pnlTone(value: number): string {
   return "tone-cool";
 }
 
+function renderDashboardCloudSidebar(
+  cloudSession: ElizaCloudSession | null,
+  cloudModels: string[],
+): string {
+  if (!cloudSession) {
+    return `
+      <div class="sidebar-panel__title">ElizaCloud</div>
+      <div class="status-panel compact-status">
+        <button type="button" class="auth-link" data-cloud-hosted-auth>
+          Connect ElizaCloud
+        </button>
+      </div>`;
+  }
+  const modelChoices =
+    cloudModels.length > 0
+      ? cloudModels
+      : cloudSession.model && cloudSession.model !== "n/a"
+        ? [cloudSession.model]
+        : ["n/a"];
+  const modelOptions = modelChoices
+    .map(
+      (model) =>
+        `<option value="${escapeHtml(model)}"${model === cloudSession.model ? " selected" : ""}>${escapeHtml(model)}</option>`,
+    )
+    .join("");
+  return `
+      <div class="sidebar-panel__title">ElizaCloud</div>
+      <div class="status-panel compact-status">
+        <div class="status-row"><span>Account</span><strong>${escapeHtml(cloudSession.displayName)}</strong></div>
+        <div class="status-row"><span>Org</span><strong>${escapeHtml(cloudSession.organizationName)}</strong></div>
+        <div class="status-row"><span>Credits</span><strong>${escapeHtml(cloudSession.credits)}</strong></div>
+        <div class="status-row"><span>API</span><strong>${escapeHtml(cloudSession.apiKeyHint)}</strong></div>
+        <div class="status-row"><span>Model</span><strong><select class="auth-link" data-cloud-model-select aria-label="ElizaCloud model">${modelOptions}</select></strong></div>
+        <div class="status-row"><span></span><strong><a class="watchlist-link" href="/auth/eliza-cloud/logout">Disconnect</a></strong></div>
+      </div>`;
+}
+
 function renderHtml(
   snapshot: DashboardSnapshot | null,
   cloudSession: ElizaCloudSession | null,
   cloudModels: string[],
-  sidebarWalletBalanceLabel = "n/a"
+  sidebarWalletBalanceLabel = "n/a",
 ): string {
   if (!snapshot) {
     return `<!doctype html>
@@ -1996,7 +1962,8 @@ function renderHtml(
     positionCount: 0,
     averagePositionUsd: 0,
     highestConvictionSymbol: undefined,
-    strategyNote: "Treasury simulation will appear after the next completed scan.",
+    strategyNote:
+      "Treasury simulation will appear after the next completed scan.",
     positions: [],
   };
   const portfolioLifecycle = snapshot.portfolioLifecycle ?? {
@@ -2012,7 +1979,8 @@ function renderHtml(
     totalRealizedPnlUsd: 0,
     totalUnrealizedPnlUsd: 0,
     totalUnrealizedPnlPct: 0,
-    healthNote: "Portfolio lifecycle will appear after the next completed scan.",
+    healthNote:
+      "Portfolio lifecycle will appear after the next completed scan.",
   };
   const distributionPlan = snapshot.distributionPlan ?? {
     enabled: false,
@@ -2035,7 +2003,8 @@ function renderHtml(
       walletBalance: null,
       walletQuoteUsd: null,
       sourcePositionTokenAddress: null,
-      reason: "Distribution asset selection will appear after configuration is enabled.",
+      reason:
+        "Distribution asset selection will appear after configuration is enabled.",
     },
     recipients: [],
     publication: null,
@@ -2048,7 +2017,8 @@ function renderHtml(
     readinessScore: 0,
     readinessTotal: 0,
     readinessChecks: [],
-    nextAction: "Distribution execution state will appear after the next completed scan.",
+    nextAction:
+      "Distribution execution state will appear after the next completed scan.",
     assetTokenAddress: null,
     assetTotalAmount: null,
     walletAddress: null,
@@ -2119,11 +2089,8 @@ function renderHtml(
   };
   const recentHistory = snapshot.recentHistory ?? [];
   const watchlist = snapshot.watchlist ?? [];
-  const eligibleExecutionPlans = executionState.plans.filter((plan) => plan.eligible).length;
-  const gooReadyCount = snapshot.topGooCandidates.filter(
-    (candidate) =>
-      candidate.recommendation === "priority_due_diligence" ||
-      candidate.recommendation === "cto_candidate"
+  const eligibleExecutionPlans = executionState.plans.filter(
+    (plan) => plan.eligible,
   ).length;
   const gooConfigReadiness = [
     getDiscoveryConfig().goo.enabled ? 1 : 0,
@@ -2153,7 +2120,7 @@ function renderHtml(
             <div><span>Volume 5m</span><strong>$${Math.round(candidate.volumeUsdM5).toLocaleString()}</strong></div>
             <div><span>Age</span><strong>${candidate.poolAgeMinutes}m</strong></div>
           </div>
-        </article>`
+        </article>`,
     )
     .join("");
 
@@ -2174,7 +2141,7 @@ function renderHtml(
             <div><span>Threshold</span><strong>${candidate.starvingThresholdBnb} BNB</strong></div>
             <div><span>Pulse</span><strong>${candidate.secondsUntilPulseTimeout ?? "n/a"}s</strong></div>
           </div>
-        </article>`
+        </article>`,
     )
     .join("");
 
@@ -2210,7 +2177,7 @@ function renderHtml(
             <div><span>Score</span><strong>${position.score}/100</strong></div>
             <div><span>Liquidity</span><strong>${formatUsd(position.reserveUsd)}</strong></div>
           </div>
-        </article>`
+        </article>`,
     )
     .join("");
 
@@ -2224,7 +2191,7 @@ function renderHtml(
             ${entry.candidateCount} scans / ${entry.topRecommendationCount} buys<br />
             Avg ${entry.averageScore} / Treasury ${formatUsd(entry.treasuryAllocatedUsd)}
           </strong>
-        </div>`
+        </div>`,
     )
     .join("");
 
@@ -2238,44 +2205,51 @@ function renderHtml(
             ${entry.currentRecommendation} · ${entry.currentScore}/100<br />
             Seen ${entry.appearances}x · Δ ${entry.scoreChange >= 0 ? "+" : ""}${entry.scoreChange}
           </strong>
-        </div>`
+        </div>`,
     )
     .join("");
 
   const closedPositions = portfolioLifecycle.exitedPositions;
-  const profitableClosedPositions = closedPositions.filter((position) => position.realizedPnlUsd > 0);
+  const profitableClosedPositions = closedPositions.filter(
+    (position) => position.realizedPnlUsd > 0,
+  );
   const winRatePct = closedPositions.length
     ? (profitableClosedPositions.length / closedPositions.length) * 100
     : null;
-  const tradeRecords = tradeLedger.records.filter((record) => record.plannedBuyBnb > 0);
-  const averageBuyBnb = average(tradeRecords.map((record) => record.plannedBuyBnb));
-  const holdDurationsMs = (closedPositions.length > 0 ? closedPositions : portfolioLifecycle.activePositions)
-    .map((position) => Date.parse(position.lastUpdatedAt) - Date.parse(position.firstSeenAt))
+  const tradeRecords = tradeLedger.records.filter(
+    (record) => record.plannedBuyBnb > 0,
+  );
+  const averageBuyBnb = average(
+    tradeRecords.map((record) => record.plannedBuyBnb),
+  );
+  const holdDurationsMs = (
+    closedPositions.length > 0
+      ? closedPositions
+      : portfolioLifecycle.activePositions
+  )
+    .map(
+      (position) =>
+        Date.parse(position.lastUpdatedAt) - Date.parse(position.firstSeenAt),
+    )
     .filter((value) => Number.isFinite(value) && value > 0);
   const averageHoldMs = average(holdDurationsMs);
-  const timezoneLabel = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  const currentModel = process.env.OPENAI_MODEL?.trim() || process.env.MOLTBOOK_MODEL?.trim() || "n/a";
+  const timezoneLabel =
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const currentModel =
+    process.env.OPENAI_MODEL?.trim() ||
+    process.env.MOLTBOOK_MODEL?.trim() ||
+    "n/a";
   const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
-  const cloudModelOptions = cloudModels.length
-    ? cloudModels
-        .map(
-          (model) =>
-            `<option value="${escapeHtml(model)}"${model === cloudSession?.model ? " selected" : ""}>${escapeHtml(
-              model
-            )}</option>`
-        )
-        .join("")
-    : `<option value="${escapeHtml(cloudSession?.model || "n/a")}" selected>${escapeHtml(
-        cloudSession?.model || "n/a"
-      )}</option>`;
-  const cloudDisplayName = getCloudIdentityLabel(cloudSession);
-  const cloudCreditsLabel = getCloudCreditsLabel(cloudSession);
-  const cloudApiLabel = getCloudApiLabel(cloudSession);
-  const cloudAccountRows = "";
+  const cloudAccountRows = renderDashboardCloudSidebar(
+    cloudSession,
+    cloudModels,
+  );
   const riskProfile =
-    executionState.risk.maxBuyBnb <= 0.02 && executionState.risk.maxDailyDeployBnb <= 0.05
+    executionState.risk.maxBuyBnb <= 0.02 &&
+    executionState.risk.maxDailyDeployBnb <= 0.05
       ? "Conservative"
-      : executionState.risk.maxBuyBnb <= 0.05 && executionState.risk.maxDailyDeployBnb <= 0.2
+      : executionState.risk.maxBuyBnb <= 0.05 &&
+          executionState.risk.maxDailyDeployBnb <= 0.2
         ? "Balanced"
         : "Aggressive";
   const sidebarWalletAddress = "0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F";
@@ -2323,20 +2297,25 @@ function renderHtml(
     { label: "Win Rate", value: formatPct(winRatePct) },
     { label: "Trades", value: String(tradeRecords.length) },
     { label: "Avg Hold", value: formatDuration(averageHoldMs) },
-    { label: "Avg Size", value: averageBuyBnb === null ? "n/a" : formatBnb(averageBuyBnb) },
+    {
+      label: "Avg Size",
+      value: averageBuyBnb === null ? "n/a" : formatBnb(averageBuyBnb),
+    },
   ]
     .map(
       (item) => `
         <article class="snapshot-tile">
           <span>${escapeHtml(item.label)}</span>
           <strong>${escapeHtml(item.value)}</strong>
-        </article>`
+        </article>`,
     )
     .join("");
   const discoveryPct = snapshot.summary.averageScore;
   const portfolioPct =
     portfolioLifecycle.grossPortfolioValueUsd > 0
-      ? (portfolioLifecycle.totalCurrentValueUsd / portfolioLifecycle.grossPortfolioValueUsd) * 100
+      ? (portfolioLifecycle.totalCurrentValueUsd /
+          portfolioLifecycle.grossPortfolioValueUsd) *
+        100
       : 0;
   const executionPct =
     executionState.readinessTotal > 0
@@ -2344,7 +2323,9 @@ function renderHtml(
       : 0;
   const distributionPct =
     distributionExecution.readinessTotal > 0
-      ? (distributionExecution.readinessScore / distributionExecution.readinessTotal) * 100
+      ? (distributionExecution.readinessScore /
+          distributionExecution.readinessTotal) *
+        100
       : 0;
   const gooPct = (gooConfigReadiness / 3) * 100;
   const featureDockCards = [
@@ -2355,7 +2336,7 @@ function renderHtml(
       `${snapshot.summary.candidateCount}`,
       `${snapshot.summary.topRecommendationCount} ready`,
       discoveryPct,
-      "hot"
+      "hot",
     ),
     renderFeatureDockCard(
       "portfolio-section",
@@ -2364,7 +2345,7 @@ function renderHtml(
       `${portfolioLifecycle.activePositions.length}`,
       `${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}`,
       portfolioPct,
-      "cool"
+      "cool",
     ),
     renderFeatureDockCard(
       "treasury-section",
@@ -2373,7 +2354,7 @@ function renderHtml(
       `${eligibleExecutionPlans}`,
       `${executionState.mode}`,
       executionPct,
-      executionState.dryRun ? "warm" : "hot"
+      executionState.dryRun ? "warm" : "hot",
     ),
     renderFeatureDockCard(
       "distribution-section",
@@ -2382,7 +2363,7 @@ function renderHtml(
       `${distributionPlan.eligibleHolderCount}`,
       `${distributionPlan.recipients.length} recipients`,
       distributionPct,
-      distributionExecution.dryRun ? "warm" : "hot"
+      distributionExecution.dryRun ? "warm" : "hot",
     ),
     renderFeatureDockCard(
       "goo-section",
@@ -2391,7 +2372,7 @@ function renderHtml(
       `${snapshot.summary.gooAgentCount}`,
       `${snapshot.summary.gooPriorityCount} priority`,
       gooPct,
-      "cool"
+      "cool",
     ),
   ].join("");
   const discoveryFoldSummary = `${snapshot.summary.candidateCount} scanned · ${snapshot.summary.topRecommendationCount} buy-ready · avg ${snapshot.summary.averageScore}`;
@@ -2400,32 +2381,33 @@ function renderHtml(
   const distributionFoldSummary = `${distributionPlan.eligibleHolderCount} holders · ${distributionPlan.recipients.length} recipients · ${distributionExecution.dryRun ? "dry-run" : "live"}`;
   const gooFoldSummary = `${snapshot.summary.gooAgentCount} reviewed · ${snapshot.summary.gooPriorityCount} priority · ${gooConfigReadiness}/3 ready`;
   const overviewVisualBars = [
-    renderProgress("Discovery", snapshot.summary.averageScore, 100, `${snapshot.summary.averageScore}%`),
-    renderProgress("Win rate", winRatePct ?? 0, 100, formatPct(winRatePct)),
-    renderProgress("Execution", executionPct, 100, `${clampPercent(executionPct)}%`),
-    renderProgress("Distribution", distributionPct, 100, `${clampPercent(distributionPct)}%`),
-    renderProgress("Goo", gooPct, 100, `${clampPercent(gooPct)}%`),
-    renderProgress("Reserve", treasurySimulation.reservePct, 100, `${treasurySimulation.reservePct}%`),
-  ].join("");
-  const riskProfileBars = [
-    renderProgress("Stop loss", treasuryRules.stopLossPct, 100, `${treasuryRules.stopLossPct}%`),
-    renderProgress("Reserve buffer", treasurySimulation.reservePct, 100, `${treasurySimulation.reservePct}%`),
     renderProgress(
-      "Daily deploy",
-      executionState.risk.maxDailyDeployBnb,
-      Math.max(executionState.risk.maxDailyDeployBnb, 0.1),
-      formatBnb(executionState.risk.maxDailyDeployBnb)
+      "Discovery",
+      snapshot.summary.averageScore,
+      100,
+      `${snapshot.summary.averageScore}%`,
+    ),
+    renderProgress("Win rate", winRatePct ?? 0, 100, formatPct(winRatePct)),
+    renderProgress(
+      "Execution",
+      executionPct,
+      100,
+      `${clampPercent(executionPct)}%`,
+    ),
+    renderProgress(
+      "Distribution",
+      distributionPct,
+      100,
+      `${clampPercent(distributionPct)}%`,
+    ),
+    renderProgress("Goo", gooPct, 100, `${clampPercent(gooPct)}%`),
+    renderProgress(
+      "Reserve",
+      treasurySimulation.reservePct,
+      100,
+      `${treasurySimulation.reservePct}%`,
     ),
   ].join("");
-  const tradingProfileRows = `
-    <div class="status-row"><span>Mode</span><strong>${escapeHtml(executionState.mode)}</strong></div>
-    <div class="status-row"><span>Router</span><strong>${escapeHtml(executionState.router)}</strong></div>
-    <div class="status-row"><span>Max buy</span><strong>${formatBnb(executionState.risk.maxBuyBnb)}</strong></div>
-    <div class="status-row"><span>Daily deploy</span><strong>${formatBnb(executionState.risk.maxDailyDeployBnb)}</strong></div>
-    <div class="status-row"><span>Max active</span><strong>${executionState.risk.maxActivePositions}</strong></div>
-    <div class="status-row"><span>KOL gate</span><strong>${getDiscoveryConfig().execution.kol.enabled ? "enabled" : "off"}</strong></div>
-    <div class="status-row"><span>Watchlist</span><strong>${watchlist.length}</strong></div>
-    <div class="status-row"><span>Active positions</span><strong>${portfolioLifecycle.activePositions.length}</strong></div>`;
 
   const distributionRecipients = distributionPlan.recipients
     .slice(0, 8)
@@ -2444,7 +2426,7 @@ function renderHtml(
             <div><span>Weight</span><strong>${recipient.allocationPct}%</strong></div>
             <div><span>Status</span><strong>Eligible</strong></div>
           </div>
-        </article>`
+        </article>`,
     )
     .join("");
 
@@ -2454,13 +2436,17 @@ function renderHtml(
         (record) =>
           record.disposition === "executed" &&
           distributionExecution.manifestFingerprint &&
-          record.manifestFingerprint === distributionExecution.manifestFingerprint
+          record.manifestFingerprint ===
+            distributionExecution.manifestFingerprint,
       )
-      .map((record) => record.recipientAddress.toLowerCase())
+      .map((record) => record.recipientAddress.toLowerCase()),
   );
 
   const distributionPendingRecipients = distributionPlan.recipients
-    .filter((recipient) => !distributionExecutedRecipients.has(recipient.address.toLowerCase()))
+    .filter(
+      (recipient) =>
+        !distributionExecutedRecipients.has(recipient.address.toLowerCase()),
+    )
     .slice(0, Math.max(1, distributionExecution.maxRecipientsPerRun || 5));
 
   const distributionPendingRows = distributionPendingRecipients
@@ -2472,7 +2458,7 @@ function renderHtml(
             ${escapeHtml(shortAddress(recipient.address))} · ${recipient.allocationPct}%<br />
             ${formatUsd(recipient.allocationUsd)} current allocation plan
           </strong>
-        </div>`
+        </div>`,
     )
     .join("");
 
@@ -2482,7 +2468,7 @@ function renderHtml(
         <div class="status-row">
           <span>${escapeHtml(check.label)}</span>
           <strong>${check.ready ? "READY" : "TODO"}<br />${escapeHtml(check.detail)}</strong>
-        </div>`
+        </div>`,
     )
     .join("");
 
@@ -2496,7 +2482,7 @@ function renderHtml(
             ${escapeHtml(record.disposition)} · ${escapeHtml(record.amount)}${record.txHash ? ` · ${escapeHtml(shortAddress(record.txHash))}` : ""}<br />
             ${escapeHtml(record.reason)}
           </strong>
-        </div>`
+        </div>`,
     )
     .join("");
 
@@ -2510,7 +2496,7 @@ function renderHtml(
             strategy ${plan.eligible ? "eligible" : "blocked"} · route ${escapeHtml(plan.routeTradable)} · ${plan.score}/100 · ${formatBnb(plan.plannedBuyBnb)}<br />
             ${escapeHtml(plan.routeReason || plan.reasons[0] || "No execution note.")}
           </strong>
-        </div>`
+        </div>`,
     )
     .join("");
 
@@ -2524,7 +2510,7 @@ function renderHtml(
             ${escapeHtml(trade.side || "buy")} · ${escapeHtml(trade.disposition)} · ${formatBnb(trade.plannedBuyBnb)}${trade.txHash ? ` · ${escapeHtml(shortAddress(trade.txHash))}` : ""}<br />
             ${escapeHtml(trade.reason)}
           </strong>
-        </div>`
+        </div>`,
     )
     .join("");
 
@@ -2548,7 +2534,7 @@ function renderHtml(
             <div><span>Unrealized</span><strong>${position.unrealizedPnlPct}%</strong></div>
             <div><span>Appearances</span><strong>${position.appearanceCount}</strong></div>
           </div>
-        </article>`
+        </article>`,
     )
     .join("");
 
@@ -2562,36 +2548,10 @@ function renderHtml(
             ${escapeHtml(event.tokenSymbol)} · ${escapeHtml(event.type)}<br />
             ${escapeHtml(event.detail)}
           </strong>
-        </div>`
+        </div>`,
     )
     .join("");
 
-  const signalBars = [
-    renderProgress(
-      "Signal strength",
-      snapshot.summary.averageScore,
-      100,
-      `${snapshot.summary.averageScore}/100`
-    ),
-    renderProgress(
-      "Treasury deployment",
-      treasurySimulation.allocatedUsd,
-      treasurySimulation.paperCapitalUsd,
-      `${formatUsd(treasurySimulation.allocatedUsd)}`
-    ),
-    renderProgress(
-      "Watchlist retention",
-      watchlist.filter((entry) => entry.appearances > 1).length,
-      Math.max(1, watchlist.length),
-      `${watchlist.filter((entry) => entry.appearances > 1).length}/${watchlist.length || 0}`
-    ),
-    renderProgress(
-      "Goo readiness",
-      gooConfigReadiness,
-      3,
-      `${gooConfigReadiness}/3 checks`
-    ),
-  ].join("");
   const overviewStateChips = [
     `execution ${escapeHtml(executionState.dryRun ? "dry-run" : "live")} / ${escapeHtml(executionState.mode)}`,
     `distribution ${escapeHtml(distributionExecution.dryRun ? "dry-run" : "live")} / ${escapeHtml(distributionPlan.selectedAsset.mode)}`,
@@ -2599,66 +2559,100 @@ function renderHtml(
   ]
     .map((item) => `<div class="state-chip">${item}</div>`)
     .join("");
-  const cloudTopAction = "";
-  const heroKpiCards = [
-    {
-      label: "Live candidates",
-      value: String(snapshot.summary.candidateCount),
-      meta: `${snapshot.summary.topRecommendationCount} buy-ready now`,
-    },
-    {
-      label: "Treasury value",
-      value: formatUsd(portfolioLifecycle.grossPortfolioValueUsd),
-      meta: `${portfolioLifecycle.activePositions.length} active / ${portfolioLifecycle.watchPositions.length} watch`,
-    },
-    {
-      label: "Distribution asset",
-      value: escapeHtml(
-        distributionPlan.selectedAsset.tokenSymbol ||
-          shortAddress(distributionPlan.selectedAsset.tokenAddress || "none")
-      ),
-      meta: escapeHtml(distributionPlan.selectedAsset.mode),
-    },
-  ]
-    .map(
-      (item) => `
-        <div class="hero-kpi-card">
-          <span>${item.label}</span>
-          <strong>${item.value}</strong>
-          <small>${item.meta}</small>
-        </div>`
-    )
-    .join("");
-  const overviewRibbon = [
-    `run ${escapeHtml(snapshot.summary.runId)}`,
-    `${snapshot.summary.topRecommendationCount} buy-ready`,
-    `${portfolioLifecycle.activePositions.length} active positions`,
-    `${distributionPlan.eligibleHolderCount} eligible holders`,
-  ]
-    .map((item) => `<div class="summary-pill">${item}</div>`)
-    .join("");
+  const cloudTopAction = cloudSession
+    ? `<a class="social-link" href="/auth/eliza-cloud/logout" aria-label="Disconnect ElizaCloud" title="${escapeHtml(cloudSession.displayName)}">ElizaCloud</a>`
+    : `<a class="social-link" href="#" data-cloud-hosted-auth aria-label="Connect ElizaCloud">ElizaCloud</a>`;
   const treasuryModelCards = [
-    renderMetricCard("Capital model", formatUsd(treasurySimulation.paperCapitalUsd), "Current treasury capital model baseline."),
-    renderMetricCard("Deployable", formatUsd(treasurySimulation.deployableCapitalUsd), "Capital currently available for new deployment."),
-    renderMetricCard("Allocated", formatUsd(treasurySimulation.allocatedUsd), "Capital presently assigned inside the treasury model."),
-    renderMetricCard("Dry powder", formatUsd(treasurySimulation.dryPowderUsd), "Remaining unallocated treasury capacity."),
-    renderMetricCard("Reserve", `${formatUsd(treasurySimulation.reserveUsd)} / ${treasurySimulation.reservePct}%`, "Capital held back under reserve discipline."),
-    renderMetricCard("Highest conviction", treasurySimulation.highestConvictionSymbol || "n/a", "Top name by current treasury conviction."),
+    renderMetricCard(
+      "Capital model",
+      formatUsd(treasurySimulation.paperCapitalUsd),
+      "Current treasury capital model baseline.",
+    ),
+    renderMetricCard(
+      "Deployable",
+      formatUsd(treasurySimulation.deployableCapitalUsd),
+      "Capital currently available for new deployment.",
+    ),
+    renderMetricCard(
+      "Allocated",
+      formatUsd(treasurySimulation.allocatedUsd),
+      "Capital presently assigned inside the treasury model.",
+    ),
+    renderMetricCard(
+      "Dry powder",
+      formatUsd(treasurySimulation.dryPowderUsd),
+      "Remaining unallocated treasury capacity.",
+    ),
+    renderMetricCard(
+      "Reserve",
+      `${formatUsd(treasurySimulation.reserveUsd)} / ${treasurySimulation.reservePct}%`,
+      "Capital held back under reserve discipline.",
+    ),
+    renderMetricCard(
+      "Highest conviction",
+      treasurySimulation.highestConvictionSymbol || "n/a",
+      "Top name by current treasury conviction.",
+    ),
   ].join("");
   const executionControlCards = [
-    renderMetricCard("Mode", executionState.mode, `Router ${executionState.router} in ${executionState.dryRun ? "dry-run" : "live"} mode.`),
-    renderMetricCard("Readiness", `${executionState.readinessScore}/${executionState.readinessTotal}`, "Current live execution readiness checks."),
-    renderMetricCard("Risk cap", formatBnb(executionState.risk.maxBuyBnb), `Daily cap ${formatBnb(executionState.risk.maxDailyDeployBnb)}.`),
-    renderMetricCard("Eligible lanes", String(eligibleExecutionPlans), "Candidates currently passing execution gates."),
-    renderMetricCard("Cycle result", `${executionState.cycleSummary.executedCount}/${executionState.cycleSummary.dryRunCount}/${executionState.cycleSummary.failedCount}`, "Executed / dry-run / failed counts for the latest cycle."),
+    renderMetricCard(
+      "Mode",
+      executionState.mode,
+      `Router ${executionState.router} in ${executionState.dryRun ? "dry-run" : "live"} mode.`,
+    ),
+    renderMetricCard(
+      "Readiness",
+      `${executionState.readinessScore}/${executionState.readinessTotal}`,
+      "Current live execution readiness checks.",
+    ),
+    renderMetricCard(
+      "Risk cap",
+      formatBnb(executionState.risk.maxBuyBnb),
+      `Daily cap ${formatBnb(executionState.risk.maxDailyDeployBnb)}.`,
+    ),
+    renderMetricCard(
+      "Eligible lanes",
+      String(eligibleExecutionPlans),
+      "Candidates currently passing execution gates.",
+    ),
+    renderMetricCard(
+      "Cycle result",
+      `${executionState.cycleSummary.executedCount}/${executionState.cycleSummary.dryRunCount}/${executionState.cycleSummary.failedCount}`,
+      "Executed / dry-run / failed counts for the latest cycle.",
+    ),
   ].join("");
   const distributionStateCards = [
-    renderMetricCard("Holder pool", String(distributionPlan.eligibleHolderCount), `Minimum balance ${distributionPlan.minEligibleBalance}.`),
-    renderMetricCard("Distribution pool", formatUsd(distributionPlan.distributionPoolUsd), `Snapshot source ${distributionPlan.snapshotSource}.`),
-    renderMetricCard("Asset mode", distributionPlan.selectedAsset.mode, distributionPlan.selectedAsset.tokenSymbol || shortAddress(distributionPlan.selectedAsset.tokenAddress || "n/a")),
-    renderMetricCard("Execution mode", distributionExecution.dryRun ? "dry_run" : "live", `${distributionExecution.readinessScore}/${distributionExecution.readinessTotal} readiness.`),
-    renderMetricCard("Batch size", String(distributionExecution.maxRecipientsPerRun), `Pending ${Math.max(0, distributionPlan.recipients.length - distributionExecutedRecipients.size)} recipients.`),
-    renderMetricCard("Fingerprint", shortAddress(distributionExecution.manifestFingerprint || "n/a"), "Current distribution campaign identity."),
+    renderMetricCard(
+      "Holder pool",
+      String(distributionPlan.eligibleHolderCount),
+      `Minimum balance ${distributionPlan.minEligibleBalance}.`,
+    ),
+    renderMetricCard(
+      "Distribution pool",
+      formatUsd(distributionPlan.distributionPoolUsd),
+      `Snapshot source ${distributionPlan.snapshotSource}.`,
+    ),
+    renderMetricCard(
+      "Asset mode",
+      distributionPlan.selectedAsset.mode,
+      distributionPlan.selectedAsset.tokenSymbol ||
+        shortAddress(distributionPlan.selectedAsset.tokenAddress || "n/a"),
+    ),
+    renderMetricCard(
+      "Execution mode",
+      distributionExecution.dryRun ? "dry_run" : "live",
+      `${distributionExecution.readinessScore}/${distributionExecution.readinessTotal} readiness.`,
+    ),
+    renderMetricCard(
+      "Batch size",
+      String(distributionExecution.maxRecipientsPerRun),
+      `Pending ${Math.max(0, distributionPlan.recipients.length - distributionExecutedRecipients.size)} recipients.`,
+    ),
+    renderMetricCard(
+      "Fingerprint",
+      shortAddress(distributionExecution.manifestFingerprint || "n/a"),
+      "Current distribution campaign identity.",
+    ),
   ].join("");
   const distributionRibbon = [
     `mode ${escapeHtml(distributionExecution.dryRun ? "dry_run" : "live")}`,
@@ -2683,25 +2677,6 @@ function renderHtml(
         <div class="status-row"><span>Memo title</span><strong>${escapeHtml(snapshot.memoTitle)}</strong></div>
       </div>
     </article>`;
-
-  const overviewIntelRail = `
-    <div class="hero-side-stack">
-      <div class="mini-panel">
-        <span>Discovery</span>
-        <strong>${snapshot.summary.topRecommendationCount} buy lanes</strong>
-        <p>${snapshot.summary.candidateCount} scanned · avg ${snapshot.summary.averageScore}/100</p>
-      </div>
-      <div class="mini-panel">
-        <span>Treasury</span>
-        <strong>${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}</strong>
-        <p>Cash ${formatUsd(portfolioLifecycle.cashBalanceUsd)} · Reserve ${formatUsd(portfolioLifecycle.reservedUsd)}</p>
-      </div>
-      <div class="mini-panel">
-        <span>Goo</span>
-        <strong>${gooConfigReadiness}/3 ready</strong>
-        <p>${escapeHtml(gooReadiness.nextAction)}</p>
-      </div>
-    </div>`;
 
   return `<!doctype html>
 <html lang="en">
@@ -4402,13 +4377,13 @@ function renderHtml(
               <section class="split-grid">
                 <article class="glass-card section-card">
                   <div class="section-title"><div><h2>Discovery Feed</h2></div></div>
-                  <div class="section-stack">${topCandidates || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+                  <div class="section-stack">${topCandidates || '<p class="candidate-thesis">No data.</p>'}</div>
                 </article>
                 ${systemPulse}
               </section>
               <article class="glass-card section-card">
                 <div class="section-title"><div><h2>Recent Runs</h2></div></div>
-                <div class="status-panel">${recentRuns || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+                <div class="status-panel">${recentRuns || '<p class="candidate-thesis">No data.</p>'}</div>
               </article>
             </section>
           </div>
@@ -4434,17 +4409,17 @@ function renderHtml(
             </article>
             <article class="glass-card section-card">
               <div class="section-title"><div class="section-heading"><span class="section-icon">≋</span><div><h2>Timeline</h2></div></div></div>
-              <div class="status-panel">${timelineRows || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+              <div class="status-panel">${timelineRows || '<p class="candidate-thesis">No data.</p>'}</div>
             </article>
           </section>
           <section class="split-grid">
             <article class="glass-card section-card">
               <div class="section-title"><div><h2>Active Positions</h2></div></div>
-              <div class="section-stack">${activePortfolioCards || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+              <div class="section-stack">${activePortfolioCards || '<p class="candidate-thesis">No data.</p>'}</div>
             </article>
             <article class="glass-card section-card">
               <div class="section-title"><div><h2>Watchlist</h2></div></div>
-              <div class="status-panel">${watchlistRows || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+              <div class="status-panel">${watchlistRows || '<p class="candidate-thesis">No data.</p>'}</div>
             </article>
           </section>
         </section>
@@ -4477,7 +4452,7 @@ function renderHtml(
             </article>
             <article class="glass-card section-card">
               <div class="section-title"><div class="section-heading"><span class="section-icon">⊛</span><div><h2>Execution Gates</h2></div></div></div>
-              <div class="status-panel">${executionPlanRows || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+              <div class="status-panel">${executionPlanRows || '<p class="candidate-thesis">No data.</p>'}</div>
             </article>
           </section>
           <section class="split-grid">
@@ -4492,12 +4467,12 @@ function renderHtml(
             </article>
             <article class="glass-card section-card">
               <div class="section-title"><div class="section-heading"><span class="section-icon">≣</span><div><h2>Recent Trades</h2></div></div></div>
-              <div class="status-panel">${recentTradeRows || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+              <div class="status-panel">${recentTradeRows || '<p class="candidate-thesis">No data.</p>'}</div>
             </article>
           </section>
           <article class="glass-card section-card">
             <div class="section-title"><div><h2>Allocations</h2></div></div>
-            <div class="section-stack">${treasuryAllocationCards || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+            <div class="section-stack">${treasuryAllocationCards || '<p class="candidate-thesis">No data.</p>'}</div>
           </article>
         </section>
           </div>
@@ -4515,7 +4490,7 @@ function renderHtml(
             </article>
             <article class="glass-card section-card section-card--spotlight">
               <div class="section-title"><div><h2>Recipients</h2></div></div>
-              <div class="section-stack">${distributionRecipients || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+              <div class="section-stack">${distributionRecipients || '<p class="candidate-thesis">No data.</p>'}</div>
             </article>
           </section>
           <section class="split-grid">
@@ -4561,7 +4536,7 @@ function renderHtml(
             </article>
             <article class="glass-card section-card section-card--dense">
               <div class="section-title"><div><h2>Checklist</h2></div></div>
-              <div class="status-panel">${distributionExecutionRows || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+              <div class="status-panel">${distributionExecutionRows || '<p class="candidate-thesis">No data.</p>'}</div>
             </article>
           </section>
           <section class="split-grid">
@@ -4576,13 +4551,13 @@ function renderHtml(
             </article>
             <article class="glass-card section-card section-card--dense">
               <div class="section-title"><div><h2>Recent Events</h2></div></div>
-              <div class="status-panel">${distributionLedgerRows || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+              <div class="status-panel">${distributionLedgerRows || '<p class="candidate-thesis">No data.</p>'}</div>
             </article>
           </section>
           <section class="split-grid">
             <article class="glass-card section-card section-card--spotlight">
               <div class="section-title"><div><h2>Next Batch</h2></div></div>
-              <div class="status-panel">${distributionPendingRows || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+              <div class="status-panel">${distributionPendingRows || '<p class="candidate-thesis">No data.</p>'}</div>
             </article>
             <article class="glass-card section-card section-card--dense">
               <div class="section-title"><div><h2>Resume</h2></div></div>
@@ -4624,7 +4599,7 @@ function renderHtml(
                       <div class="status-row">
                         <span>${escapeHtml(item.label)}</span>
                         <strong>${item.done ? "READY" : "TODO"}<br />${escapeHtml(item.detail)}</strong>
-                      </div>`
+                      </div>`,
                   )
                   .join("")}
               </div>
@@ -4633,11 +4608,11 @@ function renderHtml(
           <section class="split-grid">
             <article class="glass-card section-card">
               <div class="section-title"><div class="section-heading"><span class="section-icon">◈</span><div><h2>Queue</h2></div></div></div>
-              <div class="status-panel">${gooQueueRows || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+              <div class="status-panel">${gooQueueRows || '<p class="candidate-thesis">No data.</p>'}</div>
             </article>
             <article class="glass-card section-card">
               <div class="section-title"><div class="section-heading"><span class="section-icon">◔</span><div><h2>Candidates</h2></div></div></div>
-              <div class="section-stack">${gooCandidates || "<p class=\"candidate-thesis\">No data.</p>"}</div>
+              <div class="section-stack">${gooCandidates || '<p class="candidate-thesis">No data.</p>'}</div>
             </article>
           </section>
         </section>
@@ -5264,10 +5239,11 @@ function renderHtml(
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  runtime: AgentRuntime
+  runtime: AgentRuntime,
 ): Promise<void> {
   const config = getDiscoveryConfig();
-  const snapshot = getLatestSnapshot() || (await loadSnapshotFromDisk(config.reportsDir));
+  const snapshot =
+    getLatestSnapshot() || (await loadSnapshotFromDisk(config.reportsDir));
   const recentHistory = snapshot?.recentHistory ?? [];
   const treasurySimulation = snapshot?.treasurySimulation ?? {
     paperCapitalUsd: 0,
@@ -5279,7 +5255,8 @@ async function handleRequest(
     positionCount: 0,
     averagePositionUsd: 0,
     highestConvictionSymbol: undefined,
-    strategyNote: "Treasury simulation will appear after the next completed scan.",
+    strategyNote:
+      "Treasury simulation will appear after the next completed scan.",
     positions: [],
   };
   const portfolioLifecycle = snapshot?.portfolioLifecycle ?? {
@@ -5295,7 +5272,8 @@ async function handleRequest(
     totalRealizedPnlUsd: 0,
     totalUnrealizedPnlUsd: 0,
     totalUnrealizedPnlPct: 0,
-    healthNote: "Portfolio lifecycle will appear after the next completed scan.",
+    healthNote:
+      "Portfolio lifecycle will appear after the next completed scan.",
   };
   const executionState = snapshot?.executionState ?? {
     enabled: false,
@@ -5365,7 +5343,8 @@ async function handleRequest(
       walletBalance: null,
       walletQuoteUsd: null,
       sourcePositionTokenAddress: null,
-      reason: "Distribution asset selection will appear after configuration is enabled.",
+      reason:
+        "Distribution asset selection will appear after configuration is enabled.",
     },
     recipients: [],
     publication: null,
@@ -5378,7 +5357,8 @@ async function handleRequest(
     readinessScore: 0,
     readinessTotal: 0,
     readinessChecks: [],
-    nextAction: "Distribution execution state will appear after the next completed scan.",
+    nextAction:
+      "Distribution execution state will appear after the next completed scan.",
     assetTokenAddress: null,
     assetTotalAmount: null,
     walletAddress: null,
@@ -5406,14 +5386,21 @@ async function handleRequest(
         (record) =>
           record.disposition === "executed" &&
           distributionExecution.manifestFingerprint &&
-          record.manifestFingerprint === distributionExecution.manifestFingerprint
+          record.manifestFingerprint ===
+            distributionExecution.manifestFingerprint,
       )
-      .map((record) => record.recipientAddress.toLowerCase())
+      .map((record) => record.recipientAddress.toLowerCase()),
   );
   const distributionPendingRecipients = distributionPlan.recipients
-    .filter((recipient) => !distributionExecutedRecipients.has(recipient.address.toLowerCase()))
+    .filter(
+      (recipient) =>
+        !distributionExecutedRecipients.has(recipient.address.toLowerCase()),
+    )
     .slice(0, Math.max(1, distributionExecution.maxRecipientsPerRun || 5));
-  const requestUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  const requestUrl = new URL(
+    req.url || "/",
+    `http://${req.headers.host || "localhost"}`,
+  );
   const pathname = requestUrl.pathname;
   const storedCloudSession = readElizaCloudSession(req.headers.cookie);
   let cloudSession = storedCloudSession;
@@ -5424,9 +5411,7 @@ async function handleRequest(
         const content = await readFile(assetPath);
         sendBinary(res, 200, "image/png", content);
         return;
-      } catch {
-        continue;
-      }
+      } catch {}
     }
 
     sendJson(res, 404, { error: "Logo asset not found" });
@@ -5439,9 +5424,7 @@ async function handleRequest(
         const content = await readFile(assetPath);
         sendBinary(res, 200, "image/png", content);
         return;
-      } catch {
-        continue;
-      }
+      } catch {}
     }
 
     sendJson(res, 404, { error: "Banner asset not found" });
@@ -5471,11 +5454,13 @@ async function handleRequest(
         : `elizaok-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     if (!hasElizaCloudAppAuthConfig()) {
       const createResponse = await createElizaCloudCliSession(state);
-      const createPayload = (await createResponse.json().catch(() => null)) as { error?: string } | null;
+      const createPayload = (await createResponse.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       if (!createResponse.ok) {
         sendRedirect(
           res,
-          `/?cloud_error=${encodeURIComponent(createPayload?.error || "failed_to_create_elizacloud_session")}`
+          `/?cloud_error=${encodeURIComponent(createPayload?.error || "failed_to_create_elizacloud_session")}`,
         );
         return;
       }
@@ -5511,7 +5496,9 @@ async function handleRequest(
       if (!createResponse.ok) {
         sendJson(res, createResponse.status || 500, {
           error:
-            (createPayload && "error" in createPayload && createPayload.error) ||
+            (createPayload &&
+              "error" in createPayload &&
+              createPayload.error) ||
             "Failed to create ElizaCloud session",
         });
         return;
@@ -5546,33 +5533,49 @@ async function handleRequest(
     }
 
     const statusResponse = await fetchElizaCloudCliSession(sessionId);
-    const statusPayload = (await statusResponse.json().catch(() => null)) as
-      | { error?: string; status?: string; apiKey?: string; keyPrefix?: string }
-      | null;
+    const statusPayload = (await statusResponse.json().catch(() => null)) as {
+      error?: string;
+      status?: string;
+      apiKey?: string;
+      keyPrefix?: string;
+    } | null;
 
     if (!statusResponse.ok || !statusPayload) {
-      sendJson(res, statusResponse.status || 500, statusPayload || { error: "Failed to poll ElizaCloud" });
+      sendJson(
+        res,
+        statusResponse.status || 500,
+        statusPayload || { error: "Failed to poll ElizaCloud" },
+      );
       return;
     }
 
     if (statusPayload.status === "authenticated" && statusPayload.apiKey) {
+      const apiBase = elizaCloudApiBase();
       const [models, profile, credits, creditSummary] = await Promise.all([
-        fetchElizaCloudModels(statusPayload.apiKey),
-        fetchElizaCloudUser(statusPayload.apiKey),
-        fetchElizaCloudCreditsBalance(statusPayload.apiKey),
-        fetchElizaCloudCreditsSummary(statusPayload.apiKey),
+        fetchElizaCloudModels(apiBase, statusPayload.apiKey),
+        fetchElizaCloudUser(apiBase, statusPayload.apiKey),
+        fetchElizaCloudCreditsBalance(apiBase, statusPayload.apiKey),
+        fetchElizaCloudCreditsSummary(apiBase, statusPayload.apiKey),
       ]);
       const session = buildElizaCloudApiSession(
         statusPayload.apiKey,
         {
           ...creditSummary,
           ...profile,
-          displayName: profile?.displayName || creditSummary?.displayName || profile?.organizationName || "ElizaCloud User",
-          organizationName: profile?.organizationName || creditSummary?.organizationName || "ElizaCloud",
-          credits: credits || creditSummary?.credits || profile?.credits || "linked",
+          displayName:
+            profile?.displayName ||
+            creditSummary?.displayName ||
+            profile?.organizationName ||
+            "ElizaCloud User",
+          organizationName:
+            profile?.organizationName ||
+            creditSummary?.organizationName ||
+            "ElizaCloud",
+          credits:
+            credits || creditSummary?.credits || profile?.credits || "linked",
         },
         models,
-        "siwe"
+        "siwe",
       );
       res.writeHead(200, {
         "content-type": "application/json; charset=utf-8",
@@ -5595,7 +5598,9 @@ async function handleRequest(
     const response = await fetchElizaCloudNonce(req);
     const body = await response.text();
     res.writeHead(response.status, {
-      "content-type": response.headers.get("content-type") || "application/json; charset=utf-8",
+      "content-type":
+        response.headers.get("content-type") ||
+        "application/json; charset=utf-8",
     });
     res.end(body);
     return;
@@ -5607,7 +5612,10 @@ async function handleRequest(
       return;
     }
 
-    const payload = await readRequestJson<{ message?: string; signature?: string }>(req);
+    const payload = await readRequestJson<{
+      message?: string;
+      signature?: string;
+    }>(req);
     if (!payload?.message || !payload?.signature) {
       sendJson(res, 400, { error: "message and signature are required" });
       return;
@@ -5617,18 +5625,26 @@ async function handleRequest(
       message: payload.message,
       signature: payload.signature,
     });
-    const data = (await response.json().catch(() => null)) as ElizaCloudVerifyResponse | { error?: string } | null;
+    const data = (await response.json().catch(() => null)) as
+      | ElizaCloudVerifyResponse
+      | { error?: string }
+      | null;
 
     if (!response.ok || !data || !("apiKey" in data)) {
-      sendJson(res, response.status || 500, data || { error: "ElizaCloud verification failed" });
+      sendJson(
+        res,
+        response.status || 500,
+        data || { error: "ElizaCloud verification failed" },
+      );
       return;
     }
 
+    const apiBase = elizaCloudApiBase();
     const [models, profile, credits, creditSummary] = await Promise.all([
-      fetchElizaCloudModels(data.apiKey),
-      fetchElizaCloudUser(data.apiKey),
-      fetchElizaCloudCreditsBalance(data.apiKey),
-      fetchElizaCloudCreditsSummary(data.apiKey),
+      fetchElizaCloudModels(apiBase, data.apiKey),
+      fetchElizaCloudUser(apiBase, data.apiKey),
+      fetchElizaCloudCreditsBalance(apiBase, data.apiKey),
+      fetchElizaCloudCreditsSummary(apiBase, data.apiKey),
     ]);
     const session = buildElizaCloudApiSession(
       data.apiKey,
@@ -5644,12 +5660,17 @@ async function handleRequest(
         email: profile?.email || data.user.id,
         walletAddress: profile?.walletAddress || data.address,
         organizationName:
-          profile?.organizationName || creditSummary?.organizationName || data.organization?.name || "ElizaCloud",
-        organizationSlug: profile?.organizationSlug || data.organization?.slug || "elizacloud",
-        credits: credits || creditSummary?.credits || profile?.credits || "linked",
+          profile?.organizationName ||
+          creditSummary?.organizationName ||
+          data.organization?.name ||
+          "ElizaCloud",
+        organizationSlug:
+          profile?.organizationSlug || data.organization?.slug || "elizacloud",
+        credits:
+          credits || creditSummary?.credits || profile?.credits || "linked",
       },
       models,
-      "siwe"
+      "siwe",
     );
 
     res.writeHead(200, {
@@ -5682,7 +5703,9 @@ async function handleRequest(
       "content-type": "application/json; charset=utf-8",
       "set-cookie": serializeElizaCloudSession(updatedSession),
     });
-    res.end(JSON.stringify({ success: true, model: updatedSession.model }, null, 2));
+    res.end(
+      JSON.stringify({ success: true, model: updatedSession.model }, null, 2),
+    );
     return;
   }
 
@@ -5704,12 +5727,22 @@ async function handleRequest(
     }>(req);
     const stateFromPayload = payload?.state?.trim() || "";
     const expectedState = readElizaCloudAuthState(req.headers.cookie);
-    if (stateFromPayload && expectedState && stateFromPayload !== expectedState) {
+    if (
+      stateFromPayload &&
+      expectedState &&
+      stateFromPayload !== expectedState
+    ) {
       res.writeHead(400, {
         "content-type": "application/json; charset=utf-8",
         "set-cookie": clearElizaCloudAuthState(),
       });
-      res.end(JSON.stringify({ error: "ElizaCloud state verification failed." }, null, 2));
+      res.end(
+        JSON.stringify(
+          { error: "ElizaCloud state verification failed." },
+          null,
+          2,
+        ),
+      );
       return;
     }
 
@@ -5720,22 +5753,34 @@ async function handleRequest(
       payload?.auth_token?.trim() ||
       payload?.bearer?.trim() ||
       "";
-    const appId = payload?.appId?.trim() || payload?.app_id?.trim() || getElizaCloudAppId();
+    const appId =
+      payload?.appId?.trim() || payload?.app_id?.trim() || getElizaCloudAppId();
     const result = await buildElizaCloudSessionFromAppAuth(authToken, appId);
     if (!result.session) {
       res.writeHead(400, {
         "content-type": "application/json; charset=utf-8",
         "set-cookie": clearElizaCloudAuthState(),
       });
-      res.end(JSON.stringify({ error: result.error || "ElizaCloud app auth failed." }, null, 2));
+      res.end(
+        JSON.stringify(
+          { error: result.error || "ElizaCloud app auth failed." },
+          null,
+          2,
+        ),
+      );
       return;
     }
 
     res.writeHead(200, {
       "content-type": "application/json; charset=utf-8",
-      "set-cookie": [serializeElizaCloudSession(result.session), clearElizaCloudAuthState()],
+      "set-cookie": [
+        serializeElizaCloudSession(result.session),
+        clearElizaCloudAuthState(),
+      ],
     });
-    res.end(JSON.stringify({ success: true, session: result.session }, null, 2));
+    res.end(
+      JSON.stringify({ success: true, session: result.session }, null, 2),
+    );
     return;
   }
 
@@ -5765,42 +5810,86 @@ async function handleRequest(
       getElizaCloudAppId();
 
     if (requestUrl.searchParams.get("error")) {
-      const message = requestUrl.searchParams.get("error_description") || requestUrl.searchParams.get("error") || "ElizaCloud authentication failed.";
+      const message =
+        requestUrl.searchParams.get("error_description") ||
+        requestUrl.searchParams.get("error") ||
+        "ElizaCloud authentication failed.";
       const cookieHeaders = [clearElizaCloudAuthState()];
       if (popupMode) {
-        sendHtml(res, 200, renderCloudPopupResultHtml("error", message), cookieHeaders);
+        sendHtml(
+          res,
+          200,
+          renderCloudPopupResultHtml("error", message),
+          cookieHeaders,
+        );
         return;
       }
-      sendRedirect(res, `/?cloud_error=${encodeURIComponent(message)}`, cookieHeaders);
+      sendRedirect(
+        res,
+        `/?cloud_error=${encodeURIComponent(message)}`,
+        cookieHeaders,
+      );
       return;
     }
 
     if (stateFromQuery && expectedState && stateFromQuery !== expectedState) {
       const cookieHeaders = [clearElizaCloudAuthState()];
       if (popupMode) {
-        sendHtml(res, 200, renderCloudPopupResultHtml("error", "ElizaCloud state verification failed."), cookieHeaders);
+        sendHtml(
+          res,
+          200,
+          renderCloudPopupResultHtml(
+            "error",
+            "ElizaCloud state verification failed.",
+          ),
+          cookieHeaders,
+        );
         return;
       }
-      sendRedirect(res, "/?cloud_error=invalid_elizacloud_state", cookieHeaders);
+      sendRedirect(
+        res,
+        "/?cloud_error=invalid_elizacloud_state",
+        cookieHeaders,
+      );
       return;
     }
 
     if (appAuthToken && appIdFromQuery) {
-      const result = await buildElizaCloudSessionFromAppAuth(appAuthToken, appIdFromQuery);
+      const result = await buildElizaCloudSessionFromAppAuth(
+        appAuthToken,
+        appIdFromQuery,
+      );
       const cookieHeaders = result.session
-        ? [serializeElizaCloudSession(result.session), clearElizaCloudAuthState()]
+        ? [
+            serializeElizaCloudSession(result.session),
+            clearElizaCloudAuthState(),
+          ]
         : [clearElizaCloudAuthState()];
       if (!result.session) {
         const message = result.error || "ElizaCloud app auth failed.";
         if (popupMode) {
-          sendHtml(res, 200, renderCloudPopupResultHtml("error", message), cookieHeaders);
+          sendHtml(
+            res,
+            200,
+            renderCloudPopupResultHtml("error", message),
+            cookieHeaders,
+          );
           return;
         }
-        sendRedirect(res, `/?cloud_error=${encodeURIComponent(message)}`, cookieHeaders);
+        sendRedirect(
+          res,
+          `/?cloud_error=${encodeURIComponent(message)}`,
+          cookieHeaders,
+        );
         return;
       }
       if (popupMode) {
-        sendHtml(res, 200, renderCloudPopupResultHtml("success", "ElizaCloud connected."), cookieHeaders);
+        sendHtml(
+          res,
+          200,
+          renderCloudPopupResultHtml("success", "ElizaCloud connected."),
+          cookieHeaders,
+        );
         return;
       }
       sendRedirect(res, "/?cloud_connected=1", cookieHeaders);
@@ -5821,18 +5910,30 @@ async function handleRequest(
           200,
           renderCloudPopupResultHtml(
             "error",
-            "ElizaCloud callback did not include a supported app auth token."
+            "ElizaCloud callback did not include a supported app auth token.",
           ),
-          cookieHeaders
+          cookieHeaders,
         );
         return;
       }
-      sendRedirect(res, "/?cloud_error=missing_callback_payload", cookieHeaders);
+      sendRedirect(
+        res,
+        "/?cloud_error=missing_callback_payload",
+        cookieHeaders,
+      );
       return;
     }
-    const cookieHeaders = [serializeElizaCloudSession(session), clearElizaCloudAuthState()];
+    const cookieHeaders = [
+      serializeElizaCloudSession(session),
+      clearElizaCloudAuthState(),
+    ];
     if (popupMode) {
-      sendHtml(res, 200, renderCloudPopupResultHtml("success", "ElizaCloud connected."), cookieHeaders);
+      sendHtml(
+        res,
+        200,
+        renderCloudPopupResultHtml("success", "ElizaCloud connected."),
+        cookieHeaders,
+      );
       return;
     }
     sendRedirect(res, "/?cloud_connected=1", cookieHeaders);
@@ -5972,22 +6073,24 @@ async function handleRequest(
       config.distribution,
       snapshot.treasurySimulation,
       config.execution.rpcUrl,
-      snapshot.portfolioLifecycle
+      snapshot.portfolioLifecycle,
     );
-    const { distributionExecution: refreshedExecution, distributionLedger: refreshedLedger } =
-      await executeDistributionLane({
-        config: config.distribution,
-        distributionPlan: refreshedDistributionPlan,
-        reportsDir: config.reportsDir,
-        rpcUrl: config.execution.rpcUrl,
-      });
+    const {
+      distributionExecution: refreshedExecution,
+      distributionLedger: refreshedLedger,
+    } = await executeDistributionLane({
+      config: config.distribution,
+      distributionPlan: refreshedDistributionPlan,
+      reportsDir: config.reportsDir,
+      rpcUrl: config.execution.rpcUrl,
+    });
 
     await persistDistributionExecutionState(
       snapshot,
       config.reportsDir,
       refreshedDistributionPlan,
       refreshedExecution,
-      refreshedLedger
+      refreshedLedger,
     );
 
     sendJson(res, 200, {
@@ -6036,7 +6139,11 @@ async function handleRequest(
       generatedAt: snapshot.generatedAt,
       manifestFingerprint: distributionExecution.manifestFingerprint,
       pendingRecipients: distributionPendingRecipients,
-      pendingCount: Math.max(0, distributionPlan.recipients.length - distributionExecutedRecipients.size),
+      pendingCount: Math.max(
+        0,
+        distributionPlan.recipients.length -
+          distributionExecutedRecipients.size,
+      ),
       maxRecipientsPerRun: distributionExecution.maxRecipientsPerRun,
     });
     return;
@@ -6070,7 +6177,9 @@ async function handleRequest(
     const candidates = snapshot?.topGooCandidates ?? [];
     const agentId = requestUrl.searchParams.get("agent");
     if (agentId) {
-      const detail = candidates.find((candidate) => candidate.agentId === agentId);
+      const detail = candidates.find(
+        (candidate) => candidate.agentId === agentId,
+      );
       if (!detail) {
         sendJson(res, 404, { error: "Goo candidate not found" });
         return;
@@ -6082,7 +6191,9 @@ async function handleRequest(
 
     sendJson(res, 200, {
       generatedAt: snapshot?.generatedAt ?? null,
-      candidates: candidates.map((candidate) => buildGooCandidateDetail(candidate, config)),
+      candidates: candidates.map((candidate) =>
+        buildGooCandidateDetail(candidate, config),
+      ),
     });
     return;
   }
@@ -6101,11 +6212,15 @@ async function handleRequest(
   }
 
   if (pathname === "/api/elizaok/candidates") {
-    const candidateHistory = await loadCandidateHistoryFromDisk(config.reportsDir);
+    const candidateHistory = await loadCandidateHistoryFromDisk(
+      config.reportsDir,
+    );
     const tokenAddress = requestUrl.searchParams.get("token")?.toLowerCase();
 
     if (tokenAddress) {
-      const detail = candidateHistory.find((candidate) => candidate.tokenAddress.toLowerCase() === tokenAddress);
+      const detail = candidateHistory.find(
+        (candidate) => candidate.tokenAddress.toLowerCase() === tokenAddress,
+      );
       if (!detail) {
         sendJson(res, 404, { error: "Candidate not found" });
         return;
@@ -6126,34 +6241,47 @@ async function handleRequest(
   }
 
   if (pathname === "/candidate") {
-    const candidateHistory = await loadCandidateHistoryFromDisk(config.reportsDir);
+    const candidateHistory = await loadCandidateHistoryFromDisk(
+      config.reportsDir,
+    );
     const tokenAddress = requestUrl.searchParams.get("token")?.toLowerCase();
     if (!tokenAddress) {
       sendJson(res, 400, { error: "Missing token query parameter" });
       return;
     }
 
-    const detail = candidateHistory.find((candidate) => candidate.tokenAddress.toLowerCase() === tokenAddress);
+    const detail = candidateHistory.find(
+      (candidate) => candidate.tokenAddress.toLowerCase() === tokenAddress,
+    );
     if (!detail) {
       sendJson(res, 404, { error: "Candidate not found" });
       return;
     }
 
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(renderCandidateDetail(detail, buildPortfolioPositionDetail(snapshot, tokenAddress)));
+    res.end(
+      renderCandidateDetail(
+        detail,
+        buildPortfolioPositionDetail(snapshot, tokenAddress),
+      ),
+    );
     return;
   }
 
   if (pathname === "/goo-candidate") {
     const agentId = requestUrl.searchParams.get("agent");
-    const candidate = snapshot?.topGooCandidates.find((item) => item.agentId === agentId);
+    const candidate = snapshot?.topGooCandidates.find(
+      (item) => item.agentId === agentId,
+    );
     if (!candidate) {
       sendJson(res, 404, { error: "Goo candidate not found" });
       return;
     }
 
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(renderGooCandidateDetail(buildGooCandidateDetail(candidate, config)));
+    res.end(
+      renderGooCandidateDetail(buildGooCandidateDetail(candidate, config)),
+    );
     return;
   }
 
@@ -6162,13 +6290,22 @@ async function handleRequest(
     cloudSession = refreshedCloud.session;
     const sidebarWalletBalanceLabel = await fetchWalletNativeBalanceLabel(
       config.execution.rpcUrl,
-      "0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F"
+      "0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F",
     );
     res.writeHead(200, {
       "content-type": "text/html; charset=utf-8",
-      ...(cloudSession ? { "set-cookie": serializeElizaCloudSession(cloudSession) } : {}),
+      ...(cloudSession
+        ? { "set-cookie": serializeElizaCloudSession(cloudSession) }
+        : {}),
     });
-    res.end(renderHtml(snapshot, cloudSession, refreshedCloud.models, sidebarWalletBalanceLabel));
+    res.end(
+      renderHtml(
+        snapshot,
+        cloudSession,
+        refreshedCloud.models,
+        sidebarWalletBalanceLabel,
+      ),
+    );
     return;
   }
 
@@ -6184,7 +6321,10 @@ export function startDashboardServer(runtime: AgentRuntime) {
 
   const server = createServer((req, res) => {
     void handleRequest(req, res, runtime).catch((error) => {
-      runtime.logger.error({ error }, "ElizaOK dashboard server request failed");
+      runtime.logger.error(
+        { error },
+        "ElizaOK dashboard server request failed",
+      );
       if (!res.headersSent) {
         sendJson(res, 500, { error: "Internal server error" });
       } else {
@@ -6196,7 +6336,7 @@ export function startDashboardServer(runtime: AgentRuntime) {
   server.listen(config.dashboard.port, () => {
     runtime.logger.info(
       { port: config.dashboard.port },
-      "ElizaOK dashboard server started"
+      "ElizaOK dashboard server started",
     );
   });
 

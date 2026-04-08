@@ -51,6 +51,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["apps/elizaokbsc/src/memecoin/elizacloud-api.ts"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "useLiteralKeys": "off"
+          }
+        }
+      }
     }
   ],
   "formatter": {

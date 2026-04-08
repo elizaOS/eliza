@@ -3,7 +3,9 @@ import path from "node:path";
 import { ethers } from "ethers";
 import type { ExecutionConfig } from "../types";
 
-const TRANSFER_ABI = ["event Transfer(address indexed from, address indexed to, uint256 value)"] as const;
+const TRANSFER_ABI = [
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+] as const;
 const GMGN_PUBLIC_BASE = "https://gmgn.ai/defi/quotation/v1";
 
 interface KolWalletEntry {
@@ -43,16 +45,23 @@ function cachePathFor(config: ExecutionConfig): string | null {
   return path.isAbsolute(raw) ? raw : path.join(process.cwd(), raw);
 }
 
-async function loadCachedWallets(config: ExecutionConfig): Promise<KolWalletEntry[]> {
+async function loadCachedWallets(
+  config: ExecutionConfig,
+): Promise<KolWalletEntry[]> {
   const cachePath = cachePathFor(config);
   if (!cachePath) return [];
 
   try {
     const content = await readFile(cachePath, "utf8");
-    const parsed = JSON.parse(content) as Array<{ label?: string; address?: string }>;
+    const parsed = JSON.parse(content) as Array<{
+      label?: string;
+      address?: string;
+    }>;
     return parsed
       .map((entry) => {
-        const normalized = entry.address ? normalizeAddress(entry.address) : null;
+        const normalized = entry.address
+          ? normalizeAddress(entry.address)
+          : null;
         if (!normalized) return null;
         return { label: entry.label, address: normalized };
       })
@@ -62,7 +71,10 @@ async function loadCachedWallets(config: ExecutionConfig): Promise<KolWalletEntr
   }
 }
 
-async function saveCachedWallets(config: ExecutionConfig, wallets: KolWalletEntry[]): Promise<void> {
+async function saveCachedWallets(
+  config: ExecutionConfig,
+  wallets: KolWalletEntry[],
+): Promise<void> {
   const cachePath = cachePathFor(config);
   if (!cachePath) return;
 
@@ -72,14 +84,16 @@ async function saveCachedWallets(config: ExecutionConfig, wallets: KolWalletEntr
 
 async function fetchRankAddresses(
   orderby: "smartmoney" | "holder_count" | "swaps",
-  limit: number
+  limit: number,
 ): Promise<string[]> {
   const url =
     `${GMGN_PUBLIC_BASE}/rank/bsc/swaps/24h?orderby=${orderby}&direction=desc` +
     `&filters[]=not_honeypot&filters[]=verified&filters[]=renounced`;
   const response = await fetch(url, { headers: GMGN_HEADERS });
   if (!response.ok) {
-    throw new Error(`GMGN public ${orderby} rank request failed: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `GMGN public ${orderby} rank request failed: ${response.status} ${response.statusText}`,
+    );
   }
 
   const payload = (await response.json()) as GmgnRankResponse;
@@ -91,7 +105,9 @@ async function fetchRankAddresses(
     .slice(0, limit);
 }
 
-async function fetchCandidateTokenUniverse(config: ExecutionConfig): Promise<string[]> {
+async function fetchCandidateTokenUniverse(
+  config: ExecutionConfig,
+): Promise<string[]> {
   const [smartMoney, holders, swaps] = await Promise.allSettled([
     fetchRankAddresses("smartmoney", config.kol.publicSourceTokenLimit),
     fetchRankAddresses("holder_count", config.kol.publicSourceTokenLimit),
@@ -101,15 +117,17 @@ async function fetchCandidateTokenUniverse(config: ExecutionConfig): Promise<str
   return Array.from(
     new Set(
       [smartMoney, holders, swaps]
-        .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
-        .filter((value): value is string => Boolean(value))
-    )
+        .flatMap((result) =>
+          result.status === "fulfilled" ? result.value : [],
+        )
+        .filter((value): value is string => Boolean(value)),
+    ),
   );
 }
 
 export async function collectPublicKolWallets(
   config: ExecutionConfig,
-  seedTokenAddresses: string[] = []
+  seedTokenAddresses: string[] = [],
 ): Promise<KolWalletEntry[]> {
   if (!config.kol.publicSourceEnabled || !config.rpcUrl) {
     return [];
@@ -123,8 +141,8 @@ export async function collectPublicKolWallets(
       new Set(
         [...publicUniverse, ...seedTokenAddresses]
           .map((value) => normalizeAddress(value))
-          .filter((value): value is string => Boolean(value))
-      )
+          .filter((value): value is string => Boolean(value)),
+      ),
     );
     if (tokenAddresses.length === 0) {
       return loadCachedWallets(config);
@@ -137,7 +155,10 @@ export async function collectPublicKolWallets(
       try {
         const logs = await provider.getLogs({
           address: tokenAddress,
-          fromBlock: Math.max(0, latestBlock - config.kol.publicSourceLookbackBlocks),
+          fromBlock: Math.max(
+            0,
+            latestBlock - config.kol.publicSourceLookbackBlocks,
+          ),
           toBlock: latestBlock,
           topics: [ethers.id("Transfer(address,address,uint256)")],
         });
@@ -195,7 +216,7 @@ export async function collectPublicKolWallets(
 
 export async function warmPublicKolWallets(
   config: ExecutionConfig,
-  seedTokenAddresses: string[] = []
+  seedTokenAddresses: string[] = [],
 ): Promise<KolWalletEntry[]> {
   return collectPublicKolWallets(config, seedTokenAddresses);
 }

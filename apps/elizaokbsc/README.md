@@ -15,6 +15,7 @@ This app is built inside the `eliza` monorepo and is designed for:
 - supports Four.meme execution with dry-run and live-buy modes
 - tracks portfolio, treasury, execution, and distribution state in one dashboard
 - supports Privy-based user sign-in with Google, X, and email OTP
+- integrates **ElizaCloud** for dashboard identity, models, and credits (SIWE, CLI login, or hosted app auth)
 - includes Goo and distribution lanes for broader treasury workflows
 
 ## Current Scope
@@ -47,9 +48,13 @@ Important files:
 
 - `apps/elizaokbsc/src/index.ts`: app entrypoint
 - `apps/elizaokbsc/src/memecoin/server.ts`: dashboard server and UI
+- `apps/elizaokbsc/src/memecoin/elizacloud-api.ts`: ElizaCloud v1 client (auth headers, credits parsers, 429 retry)
+- `apps/elizaokbsc/docs/elizacloud-integration.md`: **why** the Cloud client works the way it does (URLs, headers, merges)
 - `apps/elizaokbsc/.env.example`: public environment template
 - `apps/elizaokbsc/ecosystem.config.cjs`: `pm2` production entry
 - `apps/elizaokbsc/RUNBOOK_RELEASE_VPS.md`: release checklist and VPS notes
+- `apps/elizaokbsc/CHANGELOG.md`: app-level notable changes
+- `apps/elizaokbsc/ROADMAP.md`: planned integration and product follow-ups
 
 ## Prerequisites
 
@@ -64,10 +69,12 @@ Important files:
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/elizaokbsc/eliza.git
+git clone https://github.com/elizaOS/eliza.git
 cd eliza
 bun install
 ```
+
+Use your fork URL if you are not working from the upstream elizaOS repo.
 
 ### 2. Prepare env
 
@@ -192,6 +199,25 @@ ELIZAOK_EXECUTION_LIVE_CONFIRM=I_UNDERSTAND_ELIZAOK_LIVE
 - `MOLTBOOK_AUTO_REGISTER`
 - `MOLTBOOK_AUTO_ENGAGE`
 
+### ElizaCloud (dashboard identity and credits)
+
+**Why two variables:** ElizaCloud often splits **marketing / SIWE / CLI** entrypoints from the **`/api/v1/*` API host**. ElizaOK calls SIWE on `ELIZAOK_ELIZA_CLOUD_URL` but loads models, user, and credits from `ELIZAOK_ELIZA_CLOUD_API_URL`. They must refer to the **same logical environment** (e.g. both prod or both staging), or API keys and JWTs will not validate.
+
+| Variable | Role |
+|----------|------|
+| `ELIZAOK_ELIZA_CLOUD_URL` | SIWE nonce/verify, CLI session, hosted login links |
+| `ELIZAOK_ELIZA_CLOUD_API_URL` | `/api/v1/models`, `/api/v1/user`, `/api/v1/credits/*` |
+| `ELIZAOK_ELIZA_CLOUD_APP_ID` | Hosted app auth |
+| `ELIZAOK_ELIZA_CLOUD_AUTHORIZE_URL` / `LOGIN_URL` / `CALLBACK_URL` | Optional overrides |
+
+**Why you might see “credits syncing”:** Credits endpoints can return **403** if the Cloud account has no organization, while `/api/v1/user` may still return **200**. See comments in `.env.example` and [docs/elizacloud-integration.md](docs/elizacloud-integration.md).
+
+**Tests for the Cloud client:**
+
+```bash
+cd apps/elizaokbsc && bun test
+```
+
 ## Security Notes
 
 - never commit your real `.env`
@@ -246,6 +272,9 @@ If you are forking this repository:
 
 ## Related Docs
 
+- `apps/elizaokbsc/docs/elizacloud-integration.md` — ElizaCloud auth, URLs, and session merge rationale
+- `apps/elizaokbsc/CHANGELOG.md` — app-level changes
+- `apps/elizaokbsc/ROADMAP.md` — planned improvements
 - `apps/elizaokbsc/RUNBOOK_RELEASE_VPS.md`
 - `apps/elizaokbsc/.env.example`
 

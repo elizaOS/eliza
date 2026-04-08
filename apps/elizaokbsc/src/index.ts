@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import { AgentRuntime, createCharacter } from "@elizaos/core";
-import { moltbookPlugin, type MoltbookService } from "@elizaos/plugin-moltbook";
+import { type MoltbookService, moltbookPlugin } from "@elizaos/plugin-moltbook";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
 import { getDiscoveryConfig } from "./memecoin/config";
@@ -55,7 +55,9 @@ async function tryBootPost(runtime: AgentRuntime): Promise<void> {
     "elizaOKBSC is powered by elizaOS.\n\nwe’re joining the BNB Hackathon and building in public.";
 
   try {
-    const service = (await runtime.getServiceLoadPromise("moltbook" as never)) as MoltbookService;
+    const service = (await runtime.getServiceLoadPromise(
+      "moltbook" as never,
+    )) as MoltbookService;
 
     const creds = await service.ensureAuthenticated();
     if (!creds) {
@@ -64,13 +66,17 @@ async function tryBootPost(runtime: AgentRuntime): Promise<void> {
     }
 
     if (creds.claimStatus !== "claimed") {
-      console.warn(`Boot post skipped: Moltbook account ${creds.username} is not claimed yet.`);
+      console.warn(
+        `Boot post skipped: Moltbook account ${creds.username} is not claimed yet.`,
+      );
       return;
     }
 
     const post = await service.createPost(title, content);
     if (!post) {
-      console.warn("Boot post attempt completed, but Moltbook did not return a post object.");
+      console.warn(
+        "Boot post attempt completed, but Moltbook did not return a post object.",
+      );
       return;
     }
 
@@ -87,13 +93,13 @@ async function main(): Promise<void> {
 
   if (!hasOpenAI) {
     console.warn(
-      "OPENAI_API_KEY is not set. elizaOKBSC can still initialize, but message generation will be limited."
+      "OPENAI_API_KEY is not set. elizaOKBSC can still initialize, but message generation will be limited.",
     );
   }
 
   if (!hasMoltbook) {
     console.warn(
-      "MOLTBOOK_API_KEY is not set. Moltbook plugin will stay disabled so the dashboard can run without upstream Moltbook errors."
+      "MOLTBOOK_API_KEY is not set. Moltbook plugin will stay disabled so the dashboard can run without upstream Moltbook errors.",
     );
   }
 
@@ -131,11 +137,15 @@ async function main(): Promise<void> {
       ...(hasMoltbook
         ? {
             moltbook: {
-              MOLTBOOK_AGENT_NAME: process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC",
-              MOLTBOOK_AUTO_REGISTER: process.env.MOLTBOOK_AUTO_REGISTER || "true",
+              MOLTBOOK_AGENT_NAME:
+                process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC",
+              MOLTBOOK_AUTO_REGISTER:
+                process.env.MOLTBOOK_AUTO_REGISTER || "true",
               MOLTBOOK_AUTO_ENGAGE: process.env.MOLTBOOK_AUTO_ENGAGE || "false",
-              MOLTBOOK_MIN_QUALITY_SCORE: process.env.MOLTBOOK_MIN_QUALITY_SCORE || "7",
-              MOLTBOOK_AUTONOMOUS_MODE: process.env.MOLTBOOK_AUTONOMOUS_MODE || "false",
+              MOLTBOOK_MIN_QUALITY_SCORE:
+                process.env.MOLTBOOK_MIN_QUALITY_SCORE || "7",
+              MOLTBOOK_AUTONOMOUS_MODE:
+                process.env.MOLTBOOK_AUTONOMOUS_MODE || "false",
               MOLTBOOK_MODEL: process.env.MOLTBOOK_MODEL || "gpt-4o-mini",
               MOLTBOOK_PERSONALITY:
                 process.env.MOLTBOOK_PERSONALITY ||
@@ -149,20 +159,30 @@ async function main(): Promise<void> {
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [sqlPlugin, ...(hasOpenAI ? [openaiPlugin] : []), ...(hasMoltbook ? [moltbookPlugin] : [])],
+    plugins: [
+      sqlPlugin,
+      ...(hasOpenAI ? [openaiPlugin] : []),
+      ...(hasMoltbook ? [moltbookPlugin] : []),
+    ],
     settings: {
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       PGLITE_DATA_DIR: pgliteDir,
       ...(hasMoltbook
         ? {
             MOLTBOOK_API_KEY: process.env.MOLTBOOK_API_KEY,
-            MOLTBOOK_AUTO_REGISTER: process.env.MOLTBOOK_AUTO_REGISTER || "true",
+            MOLTBOOK_AUTO_REGISTER:
+              process.env.MOLTBOOK_AUTO_REGISTER || "true",
             MOLTBOOK_AUTO_ENGAGE: process.env.MOLTBOOK_AUTO_ENGAGE || "false",
-            MOLTBOOK_MIN_QUALITY_SCORE: process.env.MOLTBOOK_MIN_QUALITY_SCORE || "7",
-            MOLTBOOK_AGENT_NAME: process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC",
-            MOLTBOOK_AUTONOMOUS_MODE: process.env.MOLTBOOK_AUTONOMOUS_MODE || "false",
-            MOLTBOOK_AUTONOMY_INTERVAL_MS: process.env.MOLTBOOK_AUTONOMY_INTERVAL_MS,
-            MOLTBOOK_AUTONOMY_MAX_STEPS: process.env.MOLTBOOK_AUTONOMY_MAX_STEPS,
+            MOLTBOOK_MIN_QUALITY_SCORE:
+              process.env.MOLTBOOK_MIN_QUALITY_SCORE || "7",
+            MOLTBOOK_AGENT_NAME:
+              process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC",
+            MOLTBOOK_AUTONOMOUS_MODE:
+              process.env.MOLTBOOK_AUTONOMOUS_MODE || "false",
+            MOLTBOOK_AUTONOMY_INTERVAL_MS:
+              process.env.MOLTBOOK_AUTONOMY_INTERVAL_MS,
+            MOLTBOOK_AUTONOMY_MAX_STEPS:
+              process.env.MOLTBOOK_AUTONOMY_MAX_STEPS,
             MOLTBOOK_MODEL: process.env.MOLTBOOK_MODEL,
             MOLTBOOK_PERSONALITY: process.env.MOLTBOOK_PERSONALITY,
           }
@@ -173,29 +193,36 @@ async function main(): Promise<void> {
   await runtime.initialize();
 
   console.log("elizaOK_BSC initialized.");
-  console.log("Loaded plugins:", runtime.plugins.map((plugin) => plugin.name).join(", "));
+  console.log(
+    "Loaded plugins:",
+    runtime.plugins.map((plugin) => plugin.name).join(", "),
+  );
   console.log("PGLite:", pgliteDir);
   console.log(
     "Moltbook:",
-    hasMoltbook ? `enabled as ${process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC"}` : "disabled"
+    hasMoltbook
+      ? `enabled as ${process.env.MOLTBOOK_AGENT_NAME || "elizaOK_BSC"}`
+      : "disabled",
   );
   console.log(
     "ElizaOK discovery:",
     discoveryConfig.enabled
       ? `enabled every ${Math.round(discoveryConfig.intervalMs / 60_000)} minutes`
-      : "disabled"
+      : "disabled",
   );
   console.log(
     "ElizaOK Goo scan:",
-    discoveryConfig.goo.enabled && discoveryConfig.goo.rpcUrl && discoveryConfig.goo.registryAddress
+    discoveryConfig.goo.enabled &&
+      discoveryConfig.goo.rpcUrl &&
+      discoveryConfig.goo.registryAddress
       ? `enabled with registry ${discoveryConfig.goo.registryAddress}`
-      : "disabled"
+      : "disabled",
   );
   console.log(
     "ElizaOK dashboard:",
     discoveryConfig.dashboard.enabled
       ? `http://localhost:${discoveryConfig.dashboard.port}`
-      : "disabled"
+      : "disabled",
   );
 
   await setupElizaOkDiscovery(runtime);

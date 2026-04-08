@@ -1,9 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { ethers } from "ethers";
-import { collectPublicKolWallets } from "./public-kol";
 import type { ExecutionConfig, ExecutionKolSupport } from "../types";
+import { collectPublicKolWallets } from "./public-kol";
 
-const ERC20_BALANCE_ABI = ["function balanceOf(address owner) view returns (uint256)"] as const;
+const ERC20_BALANCE_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+] as const;
 
 interface KolWalletEntry {
   label: string | undefined;
@@ -20,7 +22,9 @@ function normalizeAddress(value: string): string | null {
   }
 }
 
-async function loadKolWallets(config: ExecutionConfig): Promise<KolWalletEntry[]> {
+async function loadKolWallets(
+  config: ExecutionConfig,
+): Promise<KolWalletEntry[]> {
   if (inMemoryKolWallets && inMemoryKolWallets.length > 0) {
     return inMemoryKolWallets;
   }
@@ -32,7 +36,9 @@ async function loadKolWallets(config: ExecutionConfig): Promise<KolWalletEntry[]
 
   try {
     const content = await readFile(config.kol.walletsPath, "utf8");
-    const parsed = JSON.parse(content) as Array<string | { label?: string; address?: string }>;
+    const parsed = JSON.parse(content) as Array<
+      string | { label?: string; address?: string }
+    >;
     const wallets = parsed
       .map((entry) => {
         const address = typeof entry === "string" ? entry : entry?.address;
@@ -53,7 +59,9 @@ async function loadKolWallets(config: ExecutionConfig): Promise<KolWalletEntry[]
   }
 }
 
-export function setKolWalletCache(wallets: Array<{ label?: string; address: string }>): void {
+export function setKolWalletCache(
+  wallets: Array<{ label?: string; address: string }>,
+): void {
   inMemoryKolWallets = wallets
     .map((wallet) => {
       const normalized = normalizeAddress(wallet.address);
@@ -68,7 +76,7 @@ export function setKolWalletCache(wallets: Array<{ label?: string; address: stri
 
 export async function evaluateKolSupport(
   config: ExecutionConfig,
-  tokenAddress: string
+  tokenAddress: string,
 ): Promise<ExecutionKolSupport> {
   if (!config.kol.enabled) {
     return {
@@ -103,7 +111,11 @@ export async function evaluateKolSupport(
 
   try {
     const provider = new ethers.JsonRpcProvider(config.rpcUrl);
-    const contract = new ethers.Contract(tokenAddress, ERC20_BALANCE_ABI, provider);
+    const contract = new ethers.Contract(
+      tokenAddress,
+      ERC20_BALANCE_ABI,
+      provider,
+    );
     const balances = await Promise.all(
       wallets.map(async (wallet) => {
         const balance = (await contract.balanceOf(wallet.address)) as bigint;
@@ -111,7 +123,7 @@ export async function evaluateKolSupport(
           wallet,
           isHolder: balance > 0n,
         };
-      })
+      }),
     );
     const holders = balances.filter((entry) => entry.isHolder);
     const qualified = holders.length >= config.kol.minHolderCount;
@@ -131,7 +143,10 @@ export async function evaluateKolSupport(
       trackedWalletCount: wallets.length,
       holderCount: 0,
       qualified: false,
-      reason: error instanceof Error ? `KOL gate check failed: ${error.message}` : "KOL gate check failed.",
+      reason:
+        error instanceof Error
+          ? `KOL gate check failed: ${error.message}`
+          : "KOL gate check failed.",
     };
   }
 }

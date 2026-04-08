@@ -1,5 +1,9 @@
 import { ethers } from "ethers";
-import type { ExecutionConfig, PortfolioLifecycle, PortfolioPosition } from "../types";
+import type {
+  ExecutionConfig,
+  PortfolioLifecycle,
+  PortfolioPosition,
+} from "../types";
 
 const ERC20_BALANCE_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
@@ -26,13 +30,21 @@ function bnbUsdPrice(): number {
 async function quoteTokenValue(
   provider: ethers.JsonRpcProvider,
   tokenAddress: string,
-  rawBalance: bigint
-): Promise<{ route: "fourmeme" | "pancakeswap"; quoteBnb: number; quoteUsd: number } | null> {
+  rawBalance: bigint,
+): Promise<{
+  route: "fourmeme" | "pancakeswap";
+  quoteBnb: number;
+  quoteUsd: number;
+} | null> {
   if (rawBalance <= 0n) {
     return { route: "fourmeme", quoteBnb: 0, quoteUsd: 0 };
   }
 
-  const helper3 = new ethers.Contract(HELPER3_ADDRESS, HELPER3_READ_ABI, provider);
+  const helper3 = new ethers.Contract(
+    HELPER3_ADDRESS,
+    HELPER3_READ_ABI,
+    provider,
+  );
   try {
     const tokenInfo = (await helper3.getTokenInfo(tokenAddress)) as readonly [
       bigint,
@@ -51,13 +63,15 @@ async function quoteTokenValue(
     const tokenManager = tokenInfo[1];
     const liquidityAdded = tokenInfo[11];
 
-    if (tokenManager && tokenManager !== ethers.ZeroAddress && !liquidityAdded) {
-      const [, , funds, fee] = (await helper3.trySell(tokenAddress, rawBalance)) as readonly [
-        string,
-        string,
-        bigint,
-        bigint,
-      ];
+    if (
+      tokenManager &&
+      tokenManager !== ethers.ZeroAddress &&
+      !liquidityAdded
+    ) {
+      const [, , funds, fee] = (await helper3.trySell(
+        tokenAddress,
+        rawBalance,
+      )) as readonly [string, string, bigint, bigint];
       const netFunds = funds > fee ? funds - fee : 0n;
       const quoteBnb = Number(ethers.formatEther(netFunds));
       return {
@@ -71,8 +85,15 @@ async function quoteTokenValue(
   }
 
   try {
-    const router = new ethers.Contract(PANCAKE_ROUTER_ADDRESS, PANCAKE_READ_ABI, provider);
-    const amounts = (await router.getAmountsOut(rawBalance, [tokenAddress, WBNB_ADDRESS])) as bigint[];
+    const router = new ethers.Contract(
+      PANCAKE_ROUTER_ADDRESS,
+      PANCAKE_READ_ABI,
+      provider,
+    );
+    const amounts = (await router.getAmountsOut(rawBalance, [
+      tokenAddress,
+      WBNB_ADDRESS,
+    ])) as bigint[];
     const out = amounts[amounts.length - 1] ?? 0n;
     const quoteBnb = Number(ethers.formatEther(out));
     return {
@@ -89,10 +110,14 @@ async function reconcilePositionBalance(
   provider: ethers.JsonRpcProvider,
   walletAddress: string,
   position: PortfolioPosition,
-  generatedAt: string
+  generatedAt: string,
 ): Promise<PortfolioPosition> {
   try {
-    const contract = new ethers.Contract(position.tokenAddress, ERC20_BALANCE_ABI, provider);
+    const contract = new ethers.Contract(
+      position.tokenAddress,
+      ERC20_BALANCE_ABI,
+      provider,
+    );
     const [rawBalance, decimalsRaw] = (await Promise.all([
       contract.balanceOf(walletAddress),
       contract.decimals(),
@@ -100,22 +125,33 @@ async function reconcilePositionBalance(
     const decimals = Number(decimalsRaw);
 
     const formattedBalance = ethers.formatUnits(rawBalance, decimals);
-    const quote = await quoteTokenValue(provider, position.tokenAddress, rawBalance);
+    const quote = await quoteTokenValue(
+      provider,
+      position.tokenAddress,
+      rawBalance,
+    );
     const currentValueUsd =
-      quote && (position.executionSource === "live" || position.executionSource === "hybrid")
+      quote &&
+      (position.executionSource === "live" ||
+        position.executionSource === "hybrid")
         ? quote.quoteUsd
         : position.currentValueUsd;
     const fullyExited = rawBalance === 0n && position.allocationUsd <= 0;
-    const unrealizedPnlUsd = fullyExited ? 0 : currentValueUsd - position.allocationUsd;
+    const unrealizedPnlUsd = fullyExited
+      ? 0
+      : currentValueUsd - position.allocationUsd;
     const unrealizedPnlPct =
       !fullyExited && position.allocationUsd > 0
-        ? Math.round(((unrealizedPnlUsd / position.allocationUsd) * 100) * 10) / 10
+        ? Math.round((unrealizedPnlUsd / position.allocationUsd) * 100 * 10) /
+          10
         : 0;
 
     return {
       ...position,
       state: fullyExited ? "exited" : position.state,
-      exitReason: fullyExited ? position.exitReason ?? "Wallet balance is empty after live exit." : position.exitReason,
+      exitReason: fullyExited
+        ? (position.exitReason ?? "Wallet balance is empty after live exit.")
+        : position.exitReason,
       walletVerification: rawBalance > 0n ? "present" : "empty",
       walletTokenBalance: formattedBalance,
       walletTokenDecimals: decimals,
@@ -143,13 +179,21 @@ async function reconcilePositionBalance(
 
 function summarizeVerification(positions: PortfolioPosition[]): string | null {
   const target = positions.filter(
-    (position) => position.executionSource === "live" || position.executionSource === "hybrid"
+    (position) =>
+      position.executionSource === "live" ||
+      position.executionSource === "hybrid",
   );
   if (target.length === 0) return null;
 
-  const present = target.filter((position) => position.walletVerification === "present").length;
-  const empty = target.filter((position) => position.walletVerification === "empty").length;
-  const errored = target.filter((position) => position.walletVerification === "error").length;
+  const present = target.filter(
+    (position) => position.walletVerification === "present",
+  ).length;
+  const empty = target.filter(
+    (position) => position.walletVerification === "empty",
+  ).length;
+  const errored = target.filter(
+    (position) => position.walletVerification === "error",
+  ).length;
   return `Wallet reconciliation checked ${target.length} live-linked positions: ${present} present, ${empty} empty, ${errored} errors.`;
 }
 
@@ -159,16 +203,25 @@ export async function reconcilePortfolioWithWallet(params: {
   generatedAt: string;
 }): Promise<PortfolioLifecycle> {
   const { portfolio, execution, generatedAt } = params;
-  if (!execution.rpcUrl || !execution.walletAddress) {
+  const walletAddress = execution.walletAddress;
+  if (!execution.rpcUrl || !walletAddress) {
     return portfolio;
   }
 
   const provider = new ethers.JsonRpcProvider(execution.rpcUrl);
   const reconcile = async (position: PortfolioPosition) => {
-    if (position.executionSource !== "live" && position.executionSource !== "hybrid") {
+    if (
+      position.executionSource !== "live" &&
+      position.executionSource !== "hybrid"
+    ) {
       return position;
     }
-    return reconcilePositionBalance(provider, execution.walletAddress!, position, generatedAt);
+    return reconcilePositionBalance(
+      provider,
+      walletAddress,
+      position,
+      generatedAt,
+    );
   };
 
   const [activePositions, watchPositions, exitedPositions] = await Promise.all([
@@ -183,7 +236,11 @@ export async function reconcilePortfolioWithWallet(params: {
     ...exitedPositions,
   ]);
 
-  const allPositions = [...activePositions, ...watchPositions, ...exitedPositions];
+  const allPositions = [
+    ...activePositions,
+    ...watchPositions,
+    ...exitedPositions,
+  ];
   const normalizedActive = allPositions
     .filter((position) => position.state === "active")
     .sort((a, b) => b.currentScore - a.currentScore);
@@ -193,12 +250,26 @@ export async function reconcilePortfolioWithWallet(params: {
   const normalizedExited = allPositions
     .filter((position) => position.state === "exited")
     .sort((a, b) => Date.parse(b.lastUpdatedAt) - Date.parse(a.lastUpdatedAt));
-  const totalAllocatedUsd = normalizedActive.reduce((sum, position) => sum + position.allocationUsd, 0);
-  const totalCurrentValueUsd = normalizedActive.reduce((sum, position) => sum + position.currentValueUsd, 0);
-  const totalRealizedPnlUsd = allPositions.reduce((sum, position) => sum + position.realizedPnlUsd, 0);
-  const totalUnrealizedPnlUsd = normalizedActive.reduce((sum, position) => sum + position.unrealizedPnlUsd, 0);
+  const totalAllocatedUsd = normalizedActive.reduce(
+    (sum, position) => sum + position.allocationUsd,
+    0,
+  );
+  const totalCurrentValueUsd = normalizedActive.reduce(
+    (sum, position) => sum + position.currentValueUsd,
+    0,
+  );
+  const totalRealizedPnlUsd = allPositions.reduce(
+    (sum, position) => sum + position.realizedPnlUsd,
+    0,
+  );
+  const totalUnrealizedPnlUsd = normalizedActive.reduce(
+    (sum, position) => sum + position.unrealizedPnlUsd,
+    0,
+  );
   const totalUnrealizedPnlPct =
-    totalAllocatedUsd > 0 ? Math.round(((totalUnrealizedPnlUsd / totalAllocatedUsd) * 100) * 10) / 10 : 0;
+    totalAllocatedUsd > 0
+      ? Math.round((totalUnrealizedPnlUsd / totalAllocatedUsd) * 100 * 10) / 10
+      : 0;
 
   return {
     ...portfolio,
@@ -210,7 +281,8 @@ export async function reconcilePortfolioWithWallet(params: {
     totalRealizedPnlUsd,
     totalUnrealizedPnlUsd,
     totalUnrealizedPnlPct,
-    grossPortfolioValueUsd: portfolio.cashBalanceUsd + totalCurrentValueUsd + portfolio.reservedUsd,
+    grossPortfolioValueUsd:
+      portfolio.cashBalanceUsd + totalCurrentValueUsd + portfolio.reservedUsd,
     healthNote: verificationSummary
       ? `${portfolio.healthNote} ${verificationSummary}`
       : portfolio.healthNote,

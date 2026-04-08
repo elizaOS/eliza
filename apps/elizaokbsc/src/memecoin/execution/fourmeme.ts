@@ -1,4 +1,8 @@
-import type { ExecutionConfig, ExecutionState, ScoredCandidate } from "../types";
+import type {
+  ExecutionConfig,
+  ExecutionState,
+  ScoredCandidate,
+} from "../types";
 
 export interface FourMemeCommandPreview {
   command: string;
@@ -13,14 +17,20 @@ export interface FourMemeAdapterPreview {
   commands: FourMemeCommandPreview[];
 }
 
-function quoteBuyCommand(candidate: ScoredCandidate, config: ExecutionConfig): FourMemeCommandPreview {
+function quoteBuyCommand(
+  candidate: ScoredCandidate,
+  _config: ExecutionConfig,
+): FourMemeCommandPreview {
   return {
     command: `sdk:getMigrationStatus("${candidate.tokenAddress}")`,
     description: `Check whether ${candidate.tokenSymbol} is still on Four.meme or has migrated to PancakeSwap.`,
   };
 }
 
-function buyCommand(candidate: ScoredCandidate, config: ExecutionConfig): FourMemeCommandPreview {
+function buyCommand(
+  candidate: ScoredCandidate,
+  config: ExecutionConfig,
+): FourMemeCommandPreview {
   return {
     command: `sdk:${config.mode === "live_buy_only" || config.mode === "live_full" ? "buyToken/buyPancakeToken" : "buy-preview"}("${candidate.tokenAddress}", ${config.risk.maxBuyBnb})`,
     description: `Execute a routed SDK buy for ${candidate.tokenSymbol} with ${config.risk.maxBuyBnb} BNB once safeguards allow it.`,
@@ -30,9 +40,11 @@ function buyCommand(candidate: ScoredCandidate, config: ExecutionConfig): FourMe
 export function buildFourMemeAdapterPreview(
   config: ExecutionConfig,
   executionState: ExecutionState,
-  candidates: ScoredCandidate[]
+  candidates: ScoredCandidate[],
 ): FourMemeAdapterPreview {
-  const primary = candidates.find((candidate) => candidate.recommendation === "simulate_buy");
+  const primary = candidates.find(
+    (candidate) => candidate.recommendation === "simulate_buy",
+  );
   const commands: FourMemeCommandPreview[] = [];
 
   if (primary) {

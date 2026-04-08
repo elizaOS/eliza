@@ -1,4 +1,8 @@
-import type { ScoredCandidate, TreasuryConfig, TreasurySimulation } from "./types";
+import type {
+  ScoredCandidate,
+  TreasuryConfig,
+  TreasurySimulation,
+} from "./types";
 
 function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value));
@@ -6,7 +10,7 @@ function clampPercent(value: number): number {
 
 export function buildTreasurySimulation(
   candidates: ScoredCandidate[],
-  treasury: TreasuryConfig
+  treasury: TreasuryConfig,
 ): TreasurySimulation {
   const reservePct = clampPercent(treasury.reservePct);
   const paperCapitalUsd = treasury.paperCapitalUsd;
@@ -17,12 +21,17 @@ export function buildTreasurySimulation(
     .filter((candidate) => candidate.recommendation === "simulate_buy")
     .slice(0, treasury.maxActivePositions);
 
-  const weightBase = selected.reduce((sum, candidate) => sum + candidate.score, 0);
+  const weightBase = selected.reduce(
+    (sum, candidate) => sum + candidate.score,
+    0,
+  );
   const positions = selected.map((candidate) => {
     const weight = weightBase > 0 ? candidate.score / weightBase : 0;
     const allocationUsd = Math.round(deployableCapitalUsd * weight);
     const allocationPct =
-      paperCapitalUsd > 0 ? Math.round((allocationUsd / paperCapitalUsd) * 1000) / 10 : 0;
+      paperCapitalUsd > 0
+        ? Math.round((allocationUsd / paperCapitalUsd) * 1000) / 10
+        : 0;
 
     return {
       tokenSymbol: candidate.tokenSymbol,
@@ -38,7 +47,10 @@ export function buildTreasurySimulation(
     };
   });
 
-  const allocatedUsd = positions.reduce((sum, position) => sum + position.allocationUsd, 0);
+  const allocatedUsd = positions.reduce(
+    (sum, position) => sum + position.allocationUsd,
+    0,
+  );
   const dryPowderUsd = Math.max(0, paperCapitalUsd - reserveUsd - allocatedUsd);
   const averagePositionUsd =
     positions.length > 0 ? Math.round(allocatedUsd / positions.length) : 0;

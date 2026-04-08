@@ -67,7 +67,10 @@ function getTokenSymbol(poolName: string, index: number): string {
   return parts[index] || "UNKNOWN";
 }
 
-function toSnapshot(record: GeckoPoolRecord, source: DiscoverySource): PoolSnapshot | null {
+function toSnapshot(
+  record: GeckoPoolRecord,
+  source: DiscoverySource,
+): PoolSnapshot | null {
   const attrs = record.attributes;
   const rel = record.relationships;
   if (!attrs?.address || !attrs?.name || !attrs.pool_created_at) {
@@ -105,7 +108,10 @@ function toSnapshot(record: GeckoPoolRecord, source: DiscoverySource): PoolSnaps
   };
 }
 
-async function fetchPools(source: DiscoverySource, limit: number): Promise<PoolSnapshot[]> {
+async function fetchPools(
+  source: DiscoverySource,
+  limit: number,
+): Promise<PoolSnapshot[]> {
   if (limit <= 0) {
     return [];
   }
@@ -122,7 +128,9 @@ async function fetchPools(source: DiscoverySource, limit: number): Promise<PoolS
   });
 
   if (!response.ok) {
-    throw new Error(`GeckoTerminal ${source} request failed: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `GeckoTerminal ${source} request failed: ${response.status} ${response.statusText}`,
+    );
   }
 
   const payload = (await response.json()) as GeckoResponse;
@@ -134,7 +142,9 @@ async function fetchPools(source: DiscoverySource, limit: number): Promise<PoolS
     .slice(0, limit);
 }
 
-export async function discoverBnbPools(config: DiscoveryConfig): Promise<PoolSnapshot[]> {
+export async function discoverBnbPools(
+  config: DiscoveryConfig,
+): Promise<PoolSnapshot[]> {
   const [newPools, trendingPools] = await Promise.all([
     fetchPools("new_pools", config.newPoolsLimit),
     fetchPools("trending_pools", config.trendingPoolsLimit),
@@ -148,7 +158,10 @@ export async function discoverBnbPools(config: DiscoveryConfig): Promise<PoolSna
       continue;
     }
 
-    if (existing.source === "new_pools" && candidate.source === "trending_pools") {
+    if (
+      existing.source === "new_pools" &&
+      candidate.source === "trending_pools"
+    ) {
       deduped.set(candidate.poolAddress, candidate);
     }
   }

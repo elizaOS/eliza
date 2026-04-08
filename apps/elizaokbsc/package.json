@@ -6,13 +6,14 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bunx tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-moltbook": "workspace:*",
     "@elizaos/plugin-openai": "alpha",
-    "@elizaos/plugin-sql": "alpha",
+    "@elizaos/plugin-sql": "2.0.0-alpha.17",
     "@meme-sdk/trade": "^1.0.1",
     "dotenv": "^17.2.3",
     "ethers": "^6.16.0"
