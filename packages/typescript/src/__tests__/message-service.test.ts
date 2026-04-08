@@ -961,7 +961,9 @@ describe("DefaultMessageService", () => {
 				ModelType.RESPONSE_HANDLER,
 			);
 			expect(dynamicPromptSpy.mock.calls[0]?.[0]?.options?.maxRetries).toBe(2);
-			expect(dynamicPromptSpy.mock.calls[0]?.[0]?.options?.retryBackoff).toEqual({
+			expect(
+				dynamicPromptSpy.mock.calls[0]?.[0]?.options?.retryBackoff,
+			).toEqual({
 				initialMs: 500,
 				multiplier: 2,
 				maxMs: 2000,
@@ -999,6 +1001,56 @@ describe("DefaultMessageService", () => {
 				id: "123e4567-e89b-12d3-a456-426614174026" as UUID,
 				content: {
 					text: "Run git status",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback);
+
+			expect(runtime.processActions).toHaveBeenCalledTimes(1);
+			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(1);
+		});
+
+		it("skips post-action continuation for actions that suppress it", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			runtime.actions = [
+				{
+					name: "CREATE_TASK",
+					description: "Launch an asynchronous task",
+					handler: vi.fn(),
+					validate: vi.fn(async () => true),
+					suppressPostActionContinuation: true,
+				},
+			];
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				thought: "Start a task agent",
+				actions: "CREATE_TASK",
+				text: "",
+				simple: false,
+			});
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+			vi.spyOn(runtime, "getActionResults").mockReturnValue([
+				{
+					success: true,
+					text: "Launched 1 background task.",
+					data: { actionName: "CREATE_TASK" },
+				},
+			]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174031" as UUID,
+				content: {
+					text: "Build me a page in the background",
 					source: "client_chat",
 					channelType: ChannelType.DM,
 				} as Content,

@@ -842,8 +842,9 @@ async function generateTypeScriptDeclarations() {
 	console.log(`✅ TypeScript declarations generated in ${duration}s`);
 }
 
-// Execute the build
-buildAll().catch((error) => {
-	console.error("Build script error:", error);
-	process.exit(1);
-});
+if (import.meta.main) {
+	buildAll().catch((error) => {
+		console.error("Build script error:", error);
+		process.exit(1);
+	});
+}
