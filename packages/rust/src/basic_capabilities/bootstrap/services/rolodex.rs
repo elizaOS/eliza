@@ -12,6 +12,47 @@ use crate::runtime::IAgentRuntime;
 
 use super::{Service, ServiceType};
 
+/// A named contact category (e.g., "friend", "family", "vip").
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContactCategory {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub color: String,
+}
+
+/// Categorized relationship insights for an entity.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RelationshipInsights {
+    /// Top relationships sorted by strength (up to 10).
+    pub strongest_relationships: Vec<RelationshipInsightEntry>,
+    /// Contacts with no interaction in 30+ days.
+    pub needs_attention: Vec<NeedsAttentionEntry>,
+    /// Most recent interactions (up to 10, newest first).
+    pub recent_interactions: Vec<RecentInteractionEntry>,
+}
+
+/// A single entry in the "strongest relationships" list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelationshipInsightEntry {
+    pub entity_id: Uuid,
+    pub analytics: RelationshipAnalytics,
+}
+
+/// A contact that has not been interacted with recently.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NeedsAttentionEntry {
+    pub entity_id: Uuid,
+    pub days_since_contact: i64,
+}
+
+/// A recently-interacted contact.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentInteractionEntry {
+    pub entity_id: Uuid,
+    pub last_interaction: DateTime<Utc>,
+}
+
 /// Contact preferences.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ContactPreferences {
@@ -94,6 +135,7 @@ pub fn calculate_relationship_strength(
 pub struct RolodexService {
     contacts: HashMap<Uuid, ContactInfo>,
     analytics: HashMap<Uuid, RelationshipAnalytics>,
+    categories: Vec<ContactCategory>,
     runtime: Option<Arc<dyn IAgentRuntime>>,
 }
 
@@ -103,6 +145,7 @@ impl RolodexService {
         Self {
             contacts: HashMap::new(),
             analytics: HashMap::new(),
+            categories: default_categories(),
             runtime: None,
         }
     }
@@ -230,6 +273,259 @@ impl RolodexService {
 
         analytics
     }
+
+    /// Analyze the relationship between two entities, returning computed
+    /// analytics (strength, interaction count, sentiment, topics).
+    ///
+    /// Returns `None` if neither entity has analytics recorded.
+    pub fn analyze_relationship(
+        &self,
+        source_entity_id: &Uuid,
+        target_entity_id: &Uuid,
+    ) -> Option<RelationshipAnalytics> {
+        // Check the composite key first, then fall back to per-entity analytics.
+        let composite_key = composite_analytics_key(source_entity_id, target_entity_id);
+        if let Some(a) = self.analytics.get(&composite_key) {
+            return Some(a.clone());
+        }
+
+        // Fall back: merge data from both sides.
+        let source = self.analytics.get(source_entity_id);
+        let target = self.analytics.get(target_entity_id);
+
+        match (source, target) {
+            (Some(s), Some(t)) => {
+                let interaction_count = s.interaction_count + t.interaction_count;
+                let last_interaction_at = match (s.last_interaction_at, t.last_interaction_at) {
+                    (Some(a), Some(b)) => Some(a.max(b)),
+                    (a @ Some(_), None) | (None, a @ Some(_)) => a,
+                    (None, None) => None,
+                };
+                let sentiment_score = match (s.sentiment_score, t.sentiment_score) {
+                    (Some(a), Some(b)) => Some((a + b) / 2.0),
+                    (a, b) => a.or(b),
+                };
+                let mut topics: Vec<String> = s.topics_discussed.clone();
+                for topic in &t.topics_discussed {
+                    if !topics.contains(topic) {
+                        topics.push(topic.clone());
+                    }
+                }
+                let relationship_type = self
+                    .contacts
+                    .get(source_entity_id)
+                    .or_else(|| self.contacts.get(target_entity_id))
+                    .and_then(|c| c.categories.first())
+                    .map(|s| s.as_str())
+                    .unwrap_or("acquaintance");
+                let strength = calculate_relationship_strength(
+                    interaction_count,
+                    last_interaction_at,
+                    5.0,
+                    relationship_type,
+                );
+                Some(RelationshipAnalytics {
+                    strength,
+                    interaction_count,
+                    last_interaction_at,
+                    average_response_time: s.average_response_time.or(t.average_response_time),
+                    sentiment_score,
+                    topics_discussed: topics,
+                })
+            }
+            (Some(a), None) | (None, Some(a)) => Some(a.clone()),
+            (None, None) => None,
+        }
+    }
+
+    /// Return categorized relationship insights for an entity.
+    ///
+    /// * **strongest_relationships** -- top 10 contacts by strength score.
+    /// * **needs_attention** -- contacts with no interaction in 30+ days.
+    /// * **recent_interactions** -- last 10 contacts by interaction time.
+    pub fn get_relationship_insights(&self, entity_id: &Uuid) -> RelationshipInsights {
+        let now = Utc::now();
+
+        // Collect analytics for every *other* entity that shares analytics with `entity_id`.
+        let mut entries: Vec<(Uuid, RelationshipAnalytics)> = Vec::new();
+        for (other_id, analytics) in &self.analytics {
+            if other_id == entity_id {
+                continue;
+            }
+            entries.push((*other_id, analytics.clone()));
+        }
+
+        // Strongest (top 10 by strength, descending).
+        let mut by_strength = entries.clone();
+        by_strength.sort_by(|a, b| b.1.strength.partial_cmp(&a.1.strength).unwrap_or(std::cmp::Ordering::Equal));
+        let strongest_relationships: Vec<RelationshipInsightEntry> = by_strength
+            .iter()
+            .take(10)
+            .map(|(id, a)| RelationshipInsightEntry {
+                entity_id: id.clone(),
+                analytics: a.clone(),
+            })
+            .collect();
+
+        // Needs attention (no interaction in 30+ days).
+        let needs_attention: Vec<NeedsAttentionEntry> = entries
+            .iter()
+            .filter_map(|(id, a)| {
+                a.last_interaction_at.and_then(|last| {
+                    let days = (now - last).num_days();
+                    if days >= 30 {
+                        Some(NeedsAttentionEntry {
+                            entity_id: id.clone(),
+                            days_since_contact: days,
+                        })
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+
+        // Recent interactions (last 10, newest first).
+        let mut with_interaction: Vec<(Uuid, DateTime<Utc>)> = entries
+            .iter()
+            .filter_map(|(id, a)| a.last_interaction_at.map(|ts| (id.clone(), ts)))
+            .collect();
+        with_interaction.sort_by(|a, b| b.1.cmp(&a.1));
+        let recent_interactions: Vec<RecentInteractionEntry> = with_interaction
+            .into_iter()
+            .take(10)
+            .map(|(id, ts)| RecentInteractionEntry {
+                entity_id: id,
+                last_interaction: ts,
+            })
+            .collect();
+
+        RelationshipInsights {
+            strongest_relationships,
+            needs_attention,
+            recent_interactions,
+        }
+    }
+
+    /// Return all contact categories.
+    pub fn get_categories(&self) -> &[ContactCategory] {
+        &self.categories
+    }
+
+    /// Add a new contact category. Does nothing if a category with the same
+    /// `id` already exists.
+    pub fn add_category(&mut self, category: ContactCategory) {
+        if self.categories.iter().any(|c| c.id == category.id) {
+            return;
+        }
+        if let Some(runtime) = &self.runtime {
+            runtime.log_info(
+                "service:rolodex",
+                &format!("Added category: {}", category.name),
+            );
+        }
+        self.categories.push(category);
+    }
+
+    /// Set the privacy level on a contact. Returns `false` if the contact does
+    /// not exist.
+    pub fn set_contact_privacy(&mut self, entity_id: &Uuid, privacy_level: &str) -> bool {
+        let valid = matches!(privacy_level, "public" | "private" | "restricted");
+        if !valid {
+            return false;
+        }
+        if let Some(contact) = self.contacts.get_mut(entity_id) {
+            contact.privacy_level = privacy_level.to_string();
+            contact.last_modified = Utc::now();
+            if let Some(runtime) = &self.runtime {
+                runtime.log_info(
+                    "service:rolodex",
+                    &format!("Set privacy for {} to {}", entity_id, privacy_level),
+                );
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check whether `requesting_entity_id` can access the contact record of
+    /// `target_entity_id`. The owning agent always has access.
+    pub fn can_access_contact(
+        &self,
+        requesting_entity_id: &Uuid,
+        target_entity_id: &Uuid,
+    ) -> bool {
+        let contact = match self.contacts.get(target_entity_id) {
+            Some(c) => c,
+            None => return false,
+        };
+        match contact.privacy_level.as_str() {
+            "public" => true,
+            "private" => requesting_entity_id == target_entity_id,
+            "restricted" => false,
+            _ => false,
+        }
+    }
+}
+
+/// Build a deterministic composite key for a pair of entity IDs so that
+/// `(a, b)` and `(b, a)` map to the same analytics entry.
+fn composite_analytics_key(a: &Uuid, b: &Uuid) -> Uuid {
+    use std::hash::{Hash, Hasher};
+    let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    lo.hash(&mut hasher);
+    hi.hash(&mut hasher);
+    let hash = hasher.finish();
+    // Construct a v4-shaped UUID from the hash (not cryptographic, just a key).
+    let bytes = hash.to_le_bytes();
+    let mut buf = [0u8; 16];
+    buf[..8].copy_from_slice(&bytes);
+    buf[8..16].copy_from_slice(&bytes);
+    Uuid::from_bytes(buf)
+}
+
+/// Default contact categories matching the TypeScript service.
+fn default_categories() -> Vec<ContactCategory> {
+    vec![
+        ContactCategory {
+            id: "friend".into(),
+            name: "Friend".into(),
+            description: String::new(),
+            color: "#4CAF50".into(),
+        },
+        ContactCategory {
+            id: "family".into(),
+            name: "Family".into(),
+            description: String::new(),
+            color: "#2196F3".into(),
+        },
+        ContactCategory {
+            id: "colleague".into(),
+            name: "Colleague".into(),
+            description: String::new(),
+            color: "#FF9800".into(),
+        },
+        ContactCategory {
+            id: "acquaintance".into(),
+            name: "Acquaintance".into(),
+            description: String::new(),
+            color: "#9E9E9E".into(),
+        },
+        ContactCategory {
+            id: "vip".into(),
+            name: "VIP".into(),
+            description: String::new(),
+            color: "#9C27B0".into(),
+        },
+        ContactCategory {
+            id: "business".into(),
+            name: "Business".into(),
+            description: String::new(),
+            color: "#795548".into(),
+        },
+    ]
 }
 
 impl Default for RolodexService {
@@ -260,6 +556,7 @@ impl Service for RolodexService {
         }
         self.contacts.clear();
         self.analytics.clear();
+        self.categories.clear();
         self.runtime = None;
         Ok(())
     }

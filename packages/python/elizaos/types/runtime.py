@@ -476,6 +476,23 @@ class IAgentRuntime(ABC):
     async def get_relationships(self, params: dict[str, object]) -> list[object]: ...
 
     @abstractmethod
+    async def get_relationships_by_pairs(
+        self, pairs: list[dict[str, str]]
+    ) -> list[object | None]: ...
+
+    @abstractmethod
+    async def create_relationships(self, relationships: list[dict[str, Any]]) -> list[str]: ...
+
+    @abstractmethod
+    async def get_relationships_by_ids(self, relationship_ids: list[str]) -> list[object]: ...
+
+    @abstractmethod
+    async def update_relationships(self, relationships: list[object]) -> None: ...
+
+    @abstractmethod
+    async def delete_relationships(self, relationship_ids: list[str]) -> None: ...
+
+    @abstractmethod
     async def search_knowledge(self, query: str, limit: int = 5) -> list[object]: ...
 
     @abstractmethod

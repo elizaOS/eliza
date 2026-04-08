@@ -96,6 +96,47 @@ pub struct RelationshipAnalytics {
     pub topics_discussed: Vec<String>,
 }
 
+/// A named contact category (e.g., "friend", "family", "vip").
+#[derive(Clone, Debug)]
+pub struct ContactCategory {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub color: String,
+}
+
+/// Categorized relationship insights for an entity.
+#[derive(Clone, Debug, Default)]
+pub struct RelationshipInsights {
+    /// Top relationships sorted by strength (up to 10).
+    pub strongest_relationships: Vec<RelationshipInsightEntry>,
+    /// Contacts with no interaction in 30+ days.
+    pub needs_attention: Vec<NeedsAttentionEntry>,
+    /// Most recent interactions (up to 10, newest first).
+    pub recent_interactions: Vec<RecentInteractionEntry>,
+}
+
+/// A single entry in the "strongest relationships" list.
+#[derive(Clone, Debug)]
+pub struct RelationshipInsightEntry {
+    pub entity_id: UUID,
+    pub analytics: RelationshipAnalytics,
+}
+
+/// A contact that has not been interacted with recently.
+#[derive(Clone, Debug)]
+pub struct NeedsAttentionEntry {
+    pub entity_id: UUID,
+    pub days_since_contact: i64,
+}
+
+/// A recently-interacted contact.
+#[derive(Clone, Debug)]
+pub struct RecentInteractionEntry {
+    pub entity_id: UUID,
+    pub last_interaction: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct FollowUpTask {
     pub entity_id: UUID,
@@ -244,6 +285,7 @@ async fn follow_up_service(runtime: &AgentRuntime) -> Option<Arc<dyn RuntimeServ
 pub struct RelationshipsService {
     contacts: Mutex<HashMap<UUID, ContactInfo>>,
     analytics: Mutex<HashMap<String, RelationshipAnalytics>>,
+    categories: Mutex<Vec<ContactCategory>>,
 }
 
 impl RelationshipsService {
@@ -252,6 +294,7 @@ impl RelationshipsService {
         Self {
             contacts: Mutex::new(HashMap::new()),
             analytics: Mutex::new(HashMap::new()),
+            categories: Mutex::new(default_native_categories()),
         }
     }
 
@@ -400,6 +443,282 @@ impl RelationshipsService {
         );
         entry.clone()
     }
+
+    /// Analyze the relationship between two specific entities.
+    ///
+    /// Looks up the composite key `"source-target"` first, then merges
+    /// per-entity analytics as a fallback. Returns `None` when neither entity
+    /// has any recorded analytics.
+    pub fn analyze_relationship(
+        &self,
+        source_entity_id: &UUID,
+        target_entity_id: &UUID,
+    ) -> Option<RelationshipAnalytics> {
+        let analytics = self
+            .analytics
+            .lock()
+            .expect("relationships analytics lock poisoned");
+
+        // Composite key (canonical order so (a,b) == (b,a)).
+        let composite = composite_analytics_key_native(source_entity_id, target_entity_id);
+        if let Some(a) = analytics.get(&composite) {
+            return Some(a.clone());
+        }
+
+        let source = analytics.get(source_entity_id.as_str());
+        let target = analytics.get(target_entity_id.as_str());
+
+        // Extract owned data while the lock is held, then drop it before
+        // calling `get_contact` (which acquires the contacts lock).
+        let merged = match (source, target) {
+            (Some(s), Some(t)) => {
+                let interaction_count = s.interaction_count + t.interaction_count;
+                let last_interaction_at = match (&s.last_interaction_at, &t.last_interaction_at) {
+                    (Some(a), Some(b)) => Some(a.max(b).clone()),
+                    (Some(a), None) => Some(a.clone()),
+                    (None, Some(b)) => Some(b.clone()),
+                    (None, None) => None,
+                };
+                let sentiment_score = match (s.sentiment_score, t.sentiment_score) {
+                    (Some(a), Some(b)) => Some((a + b) / 2.0),
+                    (a, b) => a.or(b),
+                };
+                let average_response_time = s.average_response_time.or(t.average_response_time);
+                let mut topics: Vec<String> = s.topics_discussed.clone();
+                for topic in &t.topics_discussed {
+                    if !topics.contains(topic) {
+                        topics.push(topic.clone());
+                    }
+                }
+                Some((interaction_count, last_interaction_at, sentiment_score, average_response_time, topics))
+            }
+            (Some(a), None) | (None, Some(a)) => {
+                let result = a.clone();
+                drop(analytics);
+                return Some(result);
+            }
+            (None, None) => {
+                return None;
+            }
+        };
+
+        drop(analytics); // release lock before calling get_contact
+
+        let (interaction_count, last_interaction_at, sentiment_score, average_response_time, topics) =
+            merged.expect("already handled None cases above");
+
+        let relationship_type = self
+            .get_contact(source_entity_id)
+            .or_else(|| self.get_contact(target_entity_id))
+            .and_then(|c| c.categories.first().cloned())
+            .unwrap_or_else(|| "acquaintance".to_string());
+        let strength = calculate_relationship_strength(
+            interaction_count,
+            last_interaction_at.as_deref(),
+            &relationship_type,
+        );
+        Some(RelationshipAnalytics {
+            strength,
+            interaction_count,
+            last_interaction_at,
+            average_response_time,
+            sentiment_score,
+            topics_discussed: topics,
+        })
+    }
+
+    /// Return categorized relationship insights for an entity.
+    ///
+    /// * **strongest_relationships** -- top 10 by strength score (descending).
+    /// * **needs_attention** -- contacts with no interaction in 30+ days.
+    /// * **recent_interactions** -- last 10 by interaction timestamp (newest first).
+    pub fn get_relationship_insights(&self, entity_id: &UUID) -> RelationshipInsights {
+        let analytics = self
+            .analytics
+            .lock()
+            .expect("relationships analytics lock poisoned");
+
+        let entity_key = entity_id.as_str();
+
+        // Collect analytics for every *other* entity.
+        let mut entries: Vec<(String, RelationshipAnalytics)> = analytics
+            .iter()
+            .filter(|(key, _)| key.as_str() != entity_key)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
+        // Strongest (top 10 by strength, descending).
+        entries.sort_by(|a, b| {
+            b.1.strength
+                .partial_cmp(&a.1.strength)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let strongest_relationships: Vec<RelationshipInsightEntry> = entries
+            .iter()
+            .take(10)
+            .map(|(id, a)| RelationshipInsightEntry {
+                entity_id: UUID::new(id).expect("valid UUID from analytics key"),
+                analytics: a.clone(),
+            })
+            .collect();
+
+        // Needs attention (no interaction in 30+ days).
+        let now = Utc::now();
+        let needs_attention: Vec<NeedsAttentionEntry> = entries
+            .iter()
+            .filter_map(|(id, a)| {
+                a.last_interaction_at.as_deref().and_then(|ts| {
+                    DateTime::parse_from_rfc3339(ts).ok().and_then(|last| {
+                        let days = (now - last.with_timezone(&Utc)).num_days();
+                        if days >= 30 {
+                            Some(NeedsAttentionEntry {
+                                entity_id: UUID::new(id).expect("valid UUID from analytics key"),
+                                days_since_contact: days,
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                })
+            })
+            .collect();
+
+        // Recent interactions (last 10, newest first).
+        let mut with_interaction: Vec<(String, String)> = entries
+            .iter()
+            .filter_map(|(id, a)| {
+                a.last_interaction_at
+                    .as_ref()
+                    .map(|ts| (id.clone(), ts.clone()))
+            })
+            .collect();
+        with_interaction.sort_by(|a, b| b.1.cmp(&a.1));
+        let recent_interactions: Vec<RecentInteractionEntry> = with_interaction
+            .into_iter()
+            .take(10)
+            .map(|(id, ts)| RecentInteractionEntry {
+                entity_id: UUID::new(&id).expect("valid UUID from analytics key"),
+                last_interaction: ts,
+            })
+            .collect();
+
+        RelationshipInsights {
+            strongest_relationships,
+            needs_attention,
+            recent_interactions,
+        }
+    }
+
+    /// Return all contact categories.
+    pub fn get_categories(&self) -> Vec<ContactCategory> {
+        self.categories
+            .lock()
+            .expect("categories lock poisoned")
+            .clone()
+    }
+
+    /// Add a new contact category. Does nothing if a category with the same
+    /// `id` already exists.
+    pub fn add_category(&self, category: ContactCategory) {
+        let mut cats = self.categories.lock().expect("categories lock poisoned");
+        if cats.iter().any(|c| c.id == category.id) {
+            return;
+        }
+        cats.push(category);
+    }
+
+    /// Set the privacy level on a contact. Returns `false` if the contact does
+    /// not exist or the privacy level is invalid.
+    pub fn set_contact_privacy(&self, entity_id: &UUID, privacy_level: &str) -> bool {
+        if !matches!(privacy_level, "public" | "private" | "restricted") {
+            return false;
+        }
+        let mut contacts = self.contacts.lock().expect("relationships lock poisoned");
+        if let Some(contact) = contacts.get_mut(entity_id) {
+            contact.privacy_level = privacy_level.to_string();
+            contact.last_modified = Utc::now().to_rfc3339();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check whether `requesting_entity_id` can access the contact record of
+    /// `target_entity_id`.
+    ///
+    /// * `"public"` -- anyone can access.
+    /// * `"private"` -- only the target entity itself.
+    /// * `"restricted"` -- nobody (except the owning agent, which is checked
+    ///   at a higher layer).
+    pub fn can_access_contact(
+        &self,
+        requesting_entity_id: &UUID,
+        target_entity_id: &UUID,
+    ) -> bool {
+        let contacts = self.contacts.lock().expect("relationships lock poisoned");
+        let contact = match contacts.get(target_entity_id) {
+            Some(c) => c,
+            None => return false,
+        };
+        match contact.privacy_level.as_str() {
+            "public" => true,
+            "private" => requesting_entity_id == target_entity_id,
+            "restricted" => false,
+            _ => false,
+        }
+    }
+}
+
+/// Canonical composite key for a pair of entity IDs (order-independent).
+fn composite_analytics_key_native(a: &UUID, b: &UUID) -> String {
+    let (lo, hi) = if a.as_str() <= b.as_str() {
+        (a.as_str(), b.as_str())
+    } else {
+        (b.as_str(), a.as_str())
+    };
+    format!("{}-{}", lo, hi)
+}
+
+/// Default contact categories matching the TypeScript service.
+fn default_native_categories() -> Vec<ContactCategory> {
+    vec![
+        ContactCategory {
+            id: "friend".into(),
+            name: "Friend".into(),
+            description: String::new(),
+            color: "#4CAF50".into(),
+        },
+        ContactCategory {
+            id: "family".into(),
+            name: "Family".into(),
+            description: String::new(),
+            color: "#2196F3".into(),
+        },
+        ContactCategory {
+            id: "colleague".into(),
+            name: "Colleague".into(),
+            description: String::new(),
+            color: "#FF9800".into(),
+        },
+        ContactCategory {
+            id: "acquaintance".into(),
+            name: "Acquaintance".into(),
+            description: String::new(),
+            color: "#9E9E9E".into(),
+        },
+        ContactCategory {
+            id: "vip".into(),
+            name: "VIP".into(),
+            description: String::new(),
+            color: "#9C27B0".into(),
+        },
+        ContactCategory {
+            id: "business".into(),
+            name: "Business".into(),
+            description: String::new(),
+            color: "#795548".into(),
+        },
+    ]
 }
 
 impl Default for RelationshipsService {
@@ -426,6 +745,10 @@ impl RuntimeService for RelationshipsService {
         self.analytics
             .lock()
             .expect("relationships analytics lock poisoned")
+            .clear();
+        self.categories
+            .lock()
+            .expect("categories lock poisoned")
             .clear();
         Ok(())
     }
