@@ -307,8 +307,16 @@ export function findEnvFile(
 		return null;
 	}
 
-	const fs = require("node:fs");
-	const path = require("node:path");
+	const moduleBuiltin = process.getBuiltinModule?.("module") as
+		| { createRequire?: (filename: string) => NodeJS.Require }
+		| undefined;
+	const nodeRequire = moduleBuiltin?.createRequire?.(import.meta.url);
+	if (!nodeRequire) {
+		return null;
+	}
+
+	const fs = nodeRequire("node:fs") as typeof import("node:fs");
+	const path = nodeRequire("node:path") as typeof import("node:path");
 
 	let currentDir = startDir || process.cwd();
 
@@ -344,7 +352,15 @@ export function loadEnvFile(envPath?: string): boolean {
 		return false;
 	}
 
-	const dotenv = require("dotenv");
+	const moduleBuiltin = process.getBuiltinModule?.("module") as
+		| { createRequire?: (filename: string) => NodeJS.Require }
+		| undefined;
+	const nodeRequire = moduleBuiltin?.createRequire?.(import.meta.url);
+	if (!nodeRequire) {
+		return false;
+	}
+
+	const dotenv = nodeRequire("dotenv") as typeof import("dotenv");
 
 	const resolvedPath = envPath || findEnvFile();
 	if (!resolvedPath) {

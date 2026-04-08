@@ -1,5 +1,5 @@
 import type { Character } from "./agent";
-import type { Action, Evaluator, Provider } from "./components";
+import type { Action, AgentContext, Evaluator, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
@@ -131,6 +131,78 @@ export type AdapterFactory = (
 	settings: Record<string, string>,
 ) => IDatabaseAdapter | Promise<IDatabaseAdapter>;
 
+export type PluginAppSessionMode = "viewer" | "spectate-and-steer" | "external";
+
+export type PluginAppSessionFeature =
+	| "commands"
+	| "telemetry"
+	| "pause"
+	| "resume"
+	| "suggestions";
+
+export interface PluginAppViewer {
+	url: string;
+	embedParams?: Record<string, string>;
+	postMessageAuth?: boolean;
+	sandbox?: string;
+}
+
+export interface PluginAppSession {
+	mode: PluginAppSessionMode;
+	features?: PluginAppSessionFeature[];
+}
+
+export interface PluginApp {
+	displayName?: string;
+	category?: string;
+	launchType?: string;
+	launchUrl?: string | null;
+	icon?: string | null;
+	capabilities?: string[];
+	minPlayers?: number | null;
+	maxPlayers?: number | null;
+	runtimePlugin?: string;
+	viewer?: PluginAppViewer;
+	session?: PluginAppSession;
+}
+
+export interface PluginEventRegistration {
+	eventName: string;
+	handler: (
+		params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
+	) => Promise<void> | void;
+}
+
+export interface PluginModelRegistration {
+	modelType: string;
+	handler: (
+		runtime: IAgentRuntime,
+		params: Record<string, JsonValue | object>,
+	) => Promise<JsonValue | object>;
+	provider: string;
+}
+
+export interface PluginServiceRegistration {
+	serviceType: string;
+	serviceClass: ServiceClass;
+}
+
+export interface PluginOwnership {
+	pluginName: string;
+	plugin: Plugin;
+	registeredPlugin: Plugin | null;
+	actions: Action[];
+	providers: Provider[];
+	evaluators: Evaluator[];
+	routes: Route[];
+	events: PluginEventRegistration[];
+	models: PluginModelRegistration[];
+	services: PluginServiceRegistration[];
+	sendHandlerSources: string[];
+	hasAdapter: boolean;
+	registeredAt: number;
+}
+
 export interface Plugin {
 	name: string;
 	description: string;
@@ -139,7 +211,22 @@ export interface Plugin {
 	init?: (
 		config: Record<string, string>,
 		runtime: IAgentRuntime,
-	) => Promise<void>;
+	) => Promise<void> | void;
+
+	/**
+	 * Optional lifecycle hook invoked before a plugin is unloaded from a running runtime.
+	 * Use this to clean up timers, sockets, or other plugin-owned resources.
+	 */
+	dispose?: (runtime: IAgentRuntime) => Promise<void> | void;
+
+	/**
+	 * Optional lifecycle hook invoked for config-only updates that do not require
+	 * a full plugin reload.
+	 */
+	applyConfig?: (
+		config: Record<string, string>,
+		runtime: IAgentRuntime,
+	) => Promise<void> | void;
 
 	/** Plugin configuration - string keys to primitive values */
 	config?: Record<string, string | number | boolean | null>;
@@ -183,6 +270,15 @@ export interface Plugin {
 	priority?: number;
 
 	schema?: Record<string, JsonValue | object>;
+
+	app?: PluginApp;
+
+	/**
+	 * Domain contexts this plugin's components belong to.
+	 * Acts as a default for all actions/providers/evaluators in the plugin
+	 * unless they declare their own contexts.
+	 */
+	contexts?: AgentContext[];
 }
 
 export interface ProjectAgent {

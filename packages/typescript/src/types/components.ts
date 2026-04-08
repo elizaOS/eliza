@@ -12,6 +12,26 @@ import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
 /**
+ * Canonical domain contexts for routing and plugin/action gating.
+ *
+ * The shouldRespond + context-routing classifier assigns one primary context
+ * and zero or more secondary contexts per turn.  Plugins, actions, and
+ * providers declare which contexts they belong to so the planner can scope
+ * its search space accordingly.
+ */
+export type AgentContext =
+	| "general"
+	| "wallet"
+	| "knowledge"
+	| "browser"
+	| "code"
+	| "media"
+	| "automation"
+	| "social"
+	| "system"
+	| (string & {}); // extensible — plugins can declare custom contexts
+
+/**
  * JSON Schema type for action parameter validation.
  * Supports basic JSON Schema properties for parameter definition.
  */
@@ -187,6 +207,14 @@ export interface Action {
 	 * ```
 	 */
 	parameters?: ActionParameter[];
+
+	/**
+	 * Domain contexts this action belongs to.
+	 * Used by the context-routing classifier to scope the planner's action search.
+	 * An action may belong to multiple contexts (e.g., a token-swap action is both
+	 * "wallet" and "automation").
+	 */
+	contexts?: AgentContext[];
 }
 
 /**
@@ -296,6 +324,13 @@ export interface Provider {
 
 	/** Keywords used to determine relevance for action filtering */
 	relevanceKeywords?: string[];
+
+	/**
+	 * Domain contexts this provider belongs to.
+	 * The context-routing classifier uses these to decide which providers to
+	 * include in the planner's state composition for a given turn.
+	 */
+	contexts?: AgentContext[];
 
 	/** Data retrieval function */
 	get: (

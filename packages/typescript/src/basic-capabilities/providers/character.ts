@@ -6,21 +6,46 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
+import {
+	buildDeterministicSeed,
+	deterministicPick,
+	deterministicSample,
+	getDeterministicNames,
+} from "../../utils/deterministic";
 import { addHeader } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("CHARACTER");
 
-function randomSample<T>(items: T[], count: number): T[] {
-	const copy = items.slice();
-	const max = Math.min(count, copy.length);
-	for (let i = 0; i < max; i += 1) {
-		const j = i + Math.floor(Math.random() * (copy.length - i));
-		const tmp = copy[i];
-		copy[i] = copy[j];
-		copy[j] = tmp;
-	}
-	return copy.slice(0, max);
+function resolveCharacterPlaceholders(
+	text: string | undefined,
+	agentName: string,
+	exampleNames: string[] = [],
+): string {
+	let resolved = (text ?? "")
+		.replaceAll("{{agentName}}", agentName)
+		.replaceAll("{{name}}", agentName);
+
+	exampleNames.forEach((name, index) => {
+		const slot = index + 1;
+		resolved = resolved
+			.replaceAll(`{{name${slot}}}`, name)
+			.replaceAll(`{{user${slot}}}`, name);
+	});
+
+	return resolved;
+}
+
+function resolveCharacterList(
+	items: readonly (string | undefined)[] | undefined,
+	agentName: string,
+	exampleNames: string[] = [],
+): string[] {
+	return (items ?? []).flatMap((item) =>
+		item === undefined
+			? []
+			: [resolveCharacterPlaceholders(item, agentName, exampleNames)],
+	);
 }
 
 /**
@@ -42,24 +67,44 @@ export const characterProvider: Provider = {
 	description: spec.description,
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
 		const character = runtime.character;
+		const characterSeed = buildDeterministicSeed(
+			runtime.agentId,
+			message.roomId,
+			"CHARACTER",
+		);
 
 		// Character name
-		const agentName = character.name;
+		const agentName = character.name ?? "";
 
 		// Handle bio (random selection from array)
-		const bioArray = character.bio ?? [];
+		const bioArray = resolveCharacterList(character.bio ?? [], agentName);
 		const bioText =
-			bioArray.length > 0 ? randomSample(bioArray, 10).join(" ") : "";
+			bioArray.length > 0
+				? deterministicSample(
+						bioArray,
+						10,
+						buildDeterministicSeed(characterSeed, "bio"),
+					).join(" ")
+				: "";
 
-		const bio = addHeader(`# About ${character.name}`, bioText);
+		const bio = addHeader(`# About ${agentName}`, bioText);
 
 		// System prompt
-		const system = character.system ?? "";
+		const system = resolveCharacterPlaceholders(
+			character.system ?? "",
+			agentName,
+		);
 
 		// Select random topic if available
 		const topicString =
 			character.topics && character.topics.length > 0
-				? character.topics[Math.floor(Math.random() * character.topics.length)]
+				? resolveCharacterPlaceholders(
+						deterministicPick(
+							character.topics,
+							buildDeterministicSeed(characterSeed, "topic"),
+						),
+						agentName,
+					)
 				: null;
 
 		// postCreationTemplate in core prompts.ts
@@ -70,9 +115,12 @@ export const characterProvider: Provider = {
 		// Format topics list
 		const topics =
 			character.topics && character.topics.length > 0
-				? `${character.name} is also interested in ${randomSample(
-						character.topics.filter((topic: string) => topic !== topicString),
+				? `${agentName} is also interested in ${deterministicSample(
+						resolveCharacterList(character.topics, agentName).filter(
+							(topic: string) => topic !== topicString,
+						),
 						5,
+						buildDeterministicSeed(characterSeed, "topics"),
 					)
 						.map((topic, index, array) => {
 							if (index === array.length - 2) {
@@ -89,9 +137,13 @@ export const characterProvider: Provider = {
 		// Select random adjective if available
 		const adjectiveString =
 			character.adjectives && character.adjectives.length > 0
-				? character.adjectives[
-						Math.floor(Math.random() * character.adjectives.length)
-					]
+				? resolveCharacterPlaceholders(
+						deterministicPick(
+							character.adjectives,
+							buildDeterministicSeed(characterSeed, "adjective"),
+						),
+						agentName,
+					)
 				: "";
 
 		const adjective = adjectiveString || "";
@@ -100,8 +152,12 @@ export const characterProvider: Provider = {
 		const postExamplesArray = character.postExamples ?? [];
 		const formattedCharacterPostExamples =
 			postExamplesArray.length > 0
-				? randomSample(postExamplesArray, 50)
-						.map((post) => `${post}`)
+				? deterministicSample(
+						postExamplesArray,
+						50,
+						buildDeterministicSeed(characterSeed, "posts"),
+					)
+						.map((post) => resolveCharacterPlaceholders(`${post}`, agentName))
 						.join("\n")
 				: "";
 
@@ -109,7 +165,7 @@ export const characterProvider: Provider = {
 			formattedCharacterPostExamples &&
 			formattedCharacterPostExamples.replaceAll("\n", "").length > 0
 				? addHeader(
-						`# Example Posts for ${character.name}`,
+						`# Example Posts for ${agentName}`,
 						formattedCharacterPostExamples,
 					)
 				: "";
@@ -118,10 +174,15 @@ export const characterProvider: Provider = {
 		const messageExamplesArray = character.messageExamples ?? [];
 		const formattedCharacterMessageExamples =
 			messageExamplesArray.length > 0
-				? randomSample(messageExamplesArray, 5)
-						.map((group) => {
-							const exampleNames = Array.from({ length: 5 }, () =>
-								Math.random().toString(36).substring(2, 8),
+				? deterministicSample(
+						messageExamplesArray,
+						5,
+						buildDeterministicSeed(characterSeed, "message-examples"),
+					)
+						.map((group, index) => {
+							const exampleNames = getDeterministicNames(
+								5,
+								buildDeterministicSeed(characterSeed, "participants", index),
 							);
 
 							return group.examples
@@ -129,13 +190,18 @@ export const characterProvider: Provider = {
 									const messageContent = message.content;
 									const actionsText = messageContent?.actions?.join(", ");
 									const text = messageContent?.text ?? "";
-									let messageString = `${message.name}: ${text}${
+									const exampleText = resolveCharacterPlaceholders(
+										text,
+										agentName,
+										exampleNames,
+									);
+									const messageString = `${resolveCharacterPlaceholders(
+										message.name,
+										agentName,
+										exampleNames,
+									)}: ${exampleText}${
 										actionsText ? ` (actions: ${actionsText})` : ""
 									}`;
-									exampleNames.forEach((name, index) => {
-										const placeholder = `{{name${index + 1}}}`;
-										messageString = messageString.replaceAll(placeholder, name);
-									});
 									return messageString;
 								})
 								.join("\n");
@@ -147,7 +213,7 @@ export const characterProvider: Provider = {
 			formattedCharacterMessageExamples &&
 			formattedCharacterMessageExamples.replaceAll("\n", "").length > 0
 				? addHeader(
-						`# Example Conversations for ${character.name}`,
+						`# Example Conversations for ${agentName}`,
 						formattedCharacterMessageExamples,
 					)
 				: "";
@@ -160,32 +226,31 @@ export const characterProvider: Provider = {
 
 		// Style directions
 		const characterStyle = character.style;
-		const characterStyleAll = characterStyle?.all;
-		const characterStylePost = characterStyle?.post;
+		const characterStyleAll = resolveCharacterList(
+			characterStyle?.all || [],
+			agentName,
+		);
+		const characterStylePost = resolveCharacterList(
+			characterStyle?.post || [],
+			agentName,
+		);
 		const postDirections =
-			(characterStyleAll && characterStyleAll.length > 0) ||
-			(characterStylePost && characterStylePost.length > 0)
+			characterStyleAll.length > 0 || characterStylePost.length > 0
 				? addHeader(
-						`# Post Directions for ${character.name}`,
-						(() => {
-							const all = characterStyleAll || [];
-							const post = characterStylePost || [];
-							return [...all, ...post].join("\n");
-						})(),
+						`# Post Directions for ${agentName}`,
+						[...characterStyleAll, ...characterStylePost].join("\n"),
 					)
 				: "";
 
-		const characterStyleChat = characterStyle?.chat;
+		const characterStyleChat = resolveCharacterList(
+			characterStyle?.chat || [],
+			agentName,
+		);
 		const messageDirections =
-			(characterStyleAll && characterStyleAll.length > 0) ||
-			(characterStyleChat && characterStyleChat.length > 0)
+			characterStyleAll.length > 0 || characterStyleChat.length > 0
 				? addHeader(
-						`# Message Directions for ${character.name}`,
-						(() => {
-							const all = characterStyleAll || [];
-							const chat = characterStyleChat || [];
-							return [...all, ...chat].join("\n");
-						})(),
+						`# Message Directions for ${agentName}`,
+						[...characterStyleAll, ...characterStyleChat].join("\n"),
 					)
 				: "";
 
@@ -221,10 +286,10 @@ export const characterProvider: Provider = {
 		};
 
 		const topicSentence = topicString
-			? `${character.name} is currently interested in ${topicString}`
+			? `${agentName} is currently interested in ${topicString}`
 			: "";
 		const adjectiveSentence = adjectiveString
-			? `${character.name} is ${adjectiveString}`
+			? `${agentName} is ${adjectiveString}`
 			: "";
 		// Combine all text sections
 		const text = [

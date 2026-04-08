@@ -564,8 +564,7 @@ const postGeneratedHandler = async ({
 			// guard via normalizedActions.
 			const resolvedActions = Array.isArray(actionsRaw)
 				? actionsRaw
-				: typeof actionsRaw === "string" &&
-						/<action[\s>/]/.test(actionsRaw)
+				: typeof actionsRaw === "string" && /<action[\s>/]/.test(actionsRaw)
 					? [
 							...actionsRaw.matchAll(
 								/<action[^>]*>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/action>/g,
@@ -588,8 +587,7 @@ const postGeneratedHandler = async ({
 			}
 			responseContent = {
 				thought: parsedXml.thought ?? "",
-				actions:
-					resolvedActions.length > 0 ? resolvedActions : ["IGNORE"],
+				actions: resolvedActions.length > 0 ? resolvedActions : ["IGNORE"],
 				providers: Array.isArray(providersRaw)
 					? providersRaw
 					: providersRaw
@@ -997,7 +995,7 @@ const events: PluginEvents = {
 				return;
 			}
 			const payloadMetadata = payload.metadata;
-			if (!payloadMetadata || !payloadMetadata.type) {
+			if (!payloadMetadata?.type) {
 				payload.runtime.logger.error(
 					{ src: "basic-capabilities", agentId: payload.runtime.agentId },
 					"No type provided for entity joined",
@@ -1287,7 +1285,6 @@ export const basicProviders = [
  */
 export const basicActions = [
 	withCanonicalActionDocs(actions.choiceAction),
-	withCanonicalActionDocs(actions.compactSessionAction),
 	withCanonicalActionDocs(actions.replyAction),
 	withCanonicalActionDocs(actions.ignoreAction),
 	withCanonicalActionDocs(actions.noneAction),

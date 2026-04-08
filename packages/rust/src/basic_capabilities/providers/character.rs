@@ -14,12 +14,12 @@ use super::Provider;
 static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
     Lazy::new(|| require_provider_spec("CHARACTER"));
 
-/// Replace `{{name}}` placeholders with the character's name.
+/// Replace `{{name}}` and `{{agentName}}` placeholders with the character's name.
 ///
 /// Supports character template files where the name is injected at render time
 /// so changing the character's name doesn't require rewriting every field.
 fn resolve_name(text: &str, name: &str) -> String {
-    text.replace("{{name}}", name)
+    text.replace("{{agentName}}", name).replace("{{name}}", name)
 }
 
 /// Resolve `{{name}}` in every element of a string slice.
@@ -128,6 +128,14 @@ mod tests {
         assert_eq!(
             resolve_name("{{name}} is {{name}}", "Reimu"),
             "Reimu is Reimu"
+        );
+    }
+
+    #[test]
+    fn test_resolve_agent_name_placeholder() {
+        assert_eq!(
+            resolve_name("Speak as {{agentName}} would.", "Marisa"),
+            "Speak as Marisa would."
         );
     }
 

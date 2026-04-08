@@ -67,8 +67,13 @@ export const ModelType = {
 	SMALL: "TEXT_SMALL", // kept for backwards compatibility
 	MEDIUM: "TEXT_LARGE", // kept for backwards compatibility
 	LARGE: "TEXT_LARGE", // kept for backwards compatibility
+	TEXT_NANO: "TEXT_NANO",
+	TEXT_MINI: "TEXT_MINI",
 	TEXT_SMALL: "TEXT_SMALL",
 	TEXT_LARGE: "TEXT_LARGE",
+	TEXT_MEGA: "TEXT_MEGA",
+	RESPONSE_HANDLER: "RESPONSE_HANDLER",
+	ACTION_PLANNER: "ACTION_PLANNER",
 	TEXT_EMBEDDING: "TEXT_EMBEDDING",
 	TEXT_TOKENIZER_ENCODE: "TEXT_TOKENIZER_ENCODE",
 	TEXT_TOKENIZER_DECODE: "TEXT_TOKENIZER_DECODE",
@@ -91,8 +96,13 @@ export const ModelType = {
  * These models accept GenerateTextParams
  */
 export type TextGenerationModelType =
+	| typeof ModelType.TEXT_NANO
+	| typeof ModelType.TEXT_MINI
 	| typeof ModelType.TEXT_SMALL
 	| typeof ModelType.TEXT_LARGE
+	| typeof ModelType.TEXT_MEGA
+	| typeof ModelType.RESPONSE_HANDLER
+	| typeof ModelType.ACTION_PLANNER
 	| typeof ModelType.TEXT_REASONING_SMALL
 	| typeof ModelType.TEXT_REASONING_LARGE
 	| typeof ModelType.TEXT_COMPLETION;
@@ -140,6 +150,28 @@ export const MODEL_SETTINGS = {
 	TEXT_SMALL_FREQUENCY_PENALTY: "TEXT_SMALL_FREQUENCY_PENALTY",
 	TEXT_SMALL_PRESENCE_PENALTY: "TEXT_SMALL_PRESENCE_PENALTY",
 
+	// TEXT_NANO specific settings
+	TEXT_NANO_MAX_TOKENS: "TEXT_NANO_MAX_TOKENS",
+	TEXT_NANO_TEMPERATURE: "TEXT_NANO_TEMPERATURE",
+	TEXT_NANO_TOP_P: "TEXT_NANO_TOP_P",
+	TEXT_NANO_TOP_K: "TEXT_NANO_TOP_K",
+	TEXT_NANO_MIN_P: "TEXT_NANO_MIN_P",
+	TEXT_NANO_SEED: "TEXT_NANO_SEED",
+	TEXT_NANO_REPETITION_PENALTY: "TEXT_NANO_REPETITION_PENALTY",
+	TEXT_NANO_FREQUENCY_PENALTY: "TEXT_NANO_FREQUENCY_PENALTY",
+	TEXT_NANO_PRESENCE_PENALTY: "TEXT_NANO_PRESENCE_PENALTY",
+
+	// TEXT_MINI specific settings
+	TEXT_MINI_MAX_TOKENS: "TEXT_MINI_MAX_TOKENS",
+	TEXT_MINI_TEMPERATURE: "TEXT_MINI_TEMPERATURE",
+	TEXT_MINI_TOP_P: "TEXT_MINI_TOP_P",
+	TEXT_MINI_TOP_K: "TEXT_MINI_TOP_K",
+	TEXT_MINI_MIN_P: "TEXT_MINI_MIN_P",
+	TEXT_MINI_SEED: "TEXT_MINI_SEED",
+	TEXT_MINI_REPETITION_PENALTY: "TEXT_MINI_REPETITION_PENALTY",
+	TEXT_MINI_FREQUENCY_PENALTY: "TEXT_MINI_FREQUENCY_PENALTY",
+	TEXT_MINI_PRESENCE_PENALTY: "TEXT_MINI_PRESENCE_PENALTY",
+
 	// TEXT_LARGE specific settings
 	TEXT_LARGE_MAX_TOKENS: "TEXT_LARGE_MAX_TOKENS",
 	TEXT_LARGE_TEMPERATURE: "TEXT_LARGE_TEMPERATURE",
@@ -150,6 +182,39 @@ export const MODEL_SETTINGS = {
 	TEXT_LARGE_REPETITION_PENALTY: "TEXT_LARGE_REPETITION_PENALTY",
 	TEXT_LARGE_FREQUENCY_PENALTY: "TEXT_LARGE_FREQUENCY_PENALTY",
 	TEXT_LARGE_PRESENCE_PENALTY: "TEXT_LARGE_PRESENCE_PENALTY",
+
+	// TEXT_MEGA specific settings
+	TEXT_MEGA_MAX_TOKENS: "TEXT_MEGA_MAX_TOKENS",
+	TEXT_MEGA_TEMPERATURE: "TEXT_MEGA_TEMPERATURE",
+	TEXT_MEGA_TOP_P: "TEXT_MEGA_TOP_P",
+	TEXT_MEGA_TOP_K: "TEXT_MEGA_TOP_K",
+	TEXT_MEGA_MIN_P: "TEXT_MEGA_MIN_P",
+	TEXT_MEGA_SEED: "TEXT_MEGA_SEED",
+	TEXT_MEGA_REPETITION_PENALTY: "TEXT_MEGA_REPETITION_PENALTY",
+	TEXT_MEGA_FREQUENCY_PENALTY: "TEXT_MEGA_FREQUENCY_PENALTY",
+	TEXT_MEGA_PRESENCE_PENALTY: "TEXT_MEGA_PRESENCE_PENALTY",
+
+	// RESPONSE_HANDLER specific settings
+	RESPONSE_HANDLER_MAX_TOKENS: "RESPONSE_HANDLER_MAX_TOKENS",
+	RESPONSE_HANDLER_TEMPERATURE: "RESPONSE_HANDLER_TEMPERATURE",
+	RESPONSE_HANDLER_TOP_P: "RESPONSE_HANDLER_TOP_P",
+	RESPONSE_HANDLER_TOP_K: "RESPONSE_HANDLER_TOP_K",
+	RESPONSE_HANDLER_MIN_P: "RESPONSE_HANDLER_MIN_P",
+	RESPONSE_HANDLER_SEED: "RESPONSE_HANDLER_SEED",
+	RESPONSE_HANDLER_REPETITION_PENALTY: "RESPONSE_HANDLER_REPETITION_PENALTY",
+	RESPONSE_HANDLER_FREQUENCY_PENALTY: "RESPONSE_HANDLER_FREQUENCY_PENALTY",
+	RESPONSE_HANDLER_PRESENCE_PENALTY: "RESPONSE_HANDLER_PRESENCE_PENALTY",
+
+	// ACTION_PLANNER specific settings
+	ACTION_PLANNER_MAX_TOKENS: "ACTION_PLANNER_MAX_TOKENS",
+	ACTION_PLANNER_TEMPERATURE: "ACTION_PLANNER_TEMPERATURE",
+	ACTION_PLANNER_TOP_P: "ACTION_PLANNER_TOP_P",
+	ACTION_PLANNER_TOP_K: "ACTION_PLANNER_TOP_K",
+	ACTION_PLANNER_MIN_P: "ACTION_PLANNER_MIN_P",
+	ACTION_PLANNER_SEED: "ACTION_PLANNER_SEED",
+	ACTION_PLANNER_REPETITION_PENALTY: "ACTION_PLANNER_REPETITION_PENALTY",
+	ACTION_PLANNER_FREQUENCY_PENALTY: "ACTION_PLANNER_FREQUENCY_PENALTY",
+	ACTION_PLANNER_PRESENCE_PENALTY: "ACTION_PLANNER_PRESENCE_PENALTY",
 
 	// OBJECT_SMALL specific settings
 	OBJECT_SMALL_MAX_TOKENS: "OBJECT_SMALL_MAX_TOKENS",
@@ -227,6 +292,22 @@ export interface PromptSegment {
 }
 
 /**
+ * Provider-neutral attachment content for text-generation models.
+ *
+ * `data` is intentionally broad enough to cover:
+ * - raw base64 payloads (string)
+ * - inline bytes (Uint8Array)
+ * - remote URLs (URL)
+ *
+ * Providers decide whether to send these natively or ignore them.
+ */
+export interface GenerateTextAttachment {
+	mediaType: string;
+	data: string | Uint8Array | URL;
+	filename?: string;
+}
+
+/**
  * Parameters for generating text using a language model.
  * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
  * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, `ModelType.TEXT_REASONING_SMALL`,
@@ -247,6 +328,12 @@ export interface GenerateTextParams
 	stopSequences?: string[];
 	onStreamChunk?: StreamChunkCallback;
 	user?: string;
+	/**
+	 * Optional multimodal attachments for the current turn. Providers that
+	 * support native file/image inputs can send these directly alongside the
+	 * prompt; others may ignore them and rely on prompt-only fallbacks.
+	 */
+	attachments?: GenerateTextAttachment[];
 	/**
 	 * Optional ordered segments for prompt cache hints. When set, must satisfy:
 	 * prompt === promptSegments.map(s => s.content).join("")
@@ -686,8 +773,13 @@ export interface ObjectGenerationParams
  * Map of model types to their parameter types
  */
 export interface ModelParamsMap {
+	[ModelType.TEXT_NANO]: GenerateTextParams;
+	[ModelType.TEXT_MINI]: GenerateTextParams;
 	[ModelType.TEXT_SMALL]: GenerateTextParams;
 	[ModelType.TEXT_LARGE]: GenerateTextParams;
+	[ModelType.TEXT_MEGA]: GenerateTextParams;
+	[ModelType.RESPONSE_HANDLER]: GenerateTextParams;
+	[ModelType.ACTION_PLANNER]: GenerateTextParams;
 	[ModelType.TEXT_EMBEDDING]: TextEmbeddingParams | string | null;
 	[ModelType.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams;
 	[ModelType.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams;
@@ -717,8 +809,13 @@ export interface ModelParamsMap {
  * The overloads in IAgentRuntime.useModel() provide the correct type inference.
  */
 export interface ModelResultMap {
+	[ModelType.TEXT_NANO]: string;
+	[ModelType.TEXT_MINI]: string;
 	[ModelType.TEXT_SMALL]: string;
 	[ModelType.TEXT_LARGE]: string;
+	[ModelType.TEXT_MEGA]: string;
+	[ModelType.RESPONSE_HANDLER]: string;
+	[ModelType.ACTION_PLANNER]: string;
 	[ModelType.TEXT_EMBEDDING]: number[];
 	[ModelType.TEXT_TOKENIZER_ENCODE]: number[];
 	[ModelType.TEXT_TOKENIZER_DECODE]: string;
@@ -749,8 +846,13 @@ export interface ModelResultMap {
  * Models that support streaming - their handlers can return either string or TextStreamResult
  */
 export type StreamableModelType =
+	| typeof ModelType.TEXT_NANO
+	| typeof ModelType.TEXT_MINI
 	| typeof ModelType.TEXT_SMALL
 	| typeof ModelType.TEXT_LARGE
+	| typeof ModelType.TEXT_MEGA
+	| typeof ModelType.RESPONSE_HANDLER
+	| typeof ModelType.ACTION_PLANNER
 	| typeof ModelType.TEXT_REASONING_SMALL
 	| typeof ModelType.TEXT_REASONING_LARGE
 	| typeof ModelType.TEXT_COMPLETION;
@@ -767,12 +869,53 @@ export type PluginModelResult<K extends keyof ModelResultMap> =
  * Type guard to check if a model type supports streaming.
  */
 const STREAMABLE_MODEL_TYPES: ReadonlySet<string> = new Set([
+	ModelType.TEXT_NANO,
+	ModelType.TEXT_MINI,
 	ModelType.TEXT_SMALL,
 	ModelType.TEXT_LARGE,
+	ModelType.TEXT_MEGA,
+	ModelType.RESPONSE_HANDLER,
+	ModelType.ACTION_PLANNER,
 	ModelType.TEXT_REASONING_SMALL,
 	ModelType.TEXT_REASONING_LARGE,
 	ModelType.TEXT_COMPLETION,
 ]);
+
+const MODEL_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = {
+	[ModelType.TEXT_NANO]: [ModelType.TEXT_NANO, ModelType.TEXT_SMALL],
+	[ModelType.TEXT_MINI]: [ModelType.TEXT_MINI, ModelType.TEXT_SMALL],
+	[ModelType.TEXT_MEGA]: [ModelType.TEXT_MEGA, ModelType.TEXT_LARGE],
+	[ModelType.RESPONSE_HANDLER]: [
+		ModelType.RESPONSE_HANDLER,
+		ModelType.TEXT_MINI,
+		ModelType.TEXT_SMALL,
+	],
+	[ModelType.ACTION_PLANNER]: [
+		ModelType.ACTION_PLANNER,
+		ModelType.TEXT_SMALL,
+	],
+};
+
+export function getModelFallbackChain(modelType: ModelTypeName): string[] {
+	const modelKey = String(modelType);
+	const seen = new Set<string>();
+	const chain = MODEL_FALLBACK_CHAINS[modelKey] ?? [modelKey];
+	const resolved: string[] = [];
+
+	for (const candidate of chain) {
+		if (!candidate || seen.has(candidate)) {
+			continue;
+		}
+		seen.add(candidate);
+		resolved.push(candidate);
+	}
+
+	if (resolved.length === 0) {
+		resolved.push(modelKey);
+	}
+
+	return resolved;
+}
 
 export function isStreamableModelType(
 	modelType: ModelTypeName,

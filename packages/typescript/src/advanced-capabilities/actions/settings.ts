@@ -52,18 +52,16 @@ interface SettingUpdate {
 const messageCompletionFooter = `\n# Instructions: Write the next message for {{agentName}}. Include the appropriate action from the list: {{actionNames}}
 
 
-Response format should be formatted in XML like this:
-<response>
-  <name>{{agentName}}</name>
-  <text>Your message text here</text>
-  <thought>Your thought about the response</thought>
-  <actions>ACTION1,ACTION2</actions>
-</response>
+Response format should be TOON like this:
+name: {{agentName}}
+text: Your message text here
+thought: Your thought about the response
+actions[1]: ACTION_NAME
 
 Do not including any thinking or internal reflection in the "text" field.
 "thought" should be a short description of what the agent is thinking about before responding, including a brief justification for the response.
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
 
 // Template for success responses when settings are updated
 /**
@@ -239,7 +237,7 @@ export async function getWorldSettings(
 ): Promise<WorldSettings | null> {
 	const world = await runtime.getWorld(worldId);
 
-	if (!world || !world.metadata?.settings) {
+	if (!world?.metadata?.settings) {
 		return null;
 	}
 

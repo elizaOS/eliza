@@ -72,7 +72,7 @@ export const roleProvider: Provider = {
 		// Get world data
 		const world = await runtime.getWorld(worldId);
 
-		if (!world || !world.metadata?.ownership?.ownerId) {
+		if (!world?.metadata?.ownership?.ownerId) {
 			logger.info(
 				{
 					src: "plugin:advanced-capabilities:provider:roles",

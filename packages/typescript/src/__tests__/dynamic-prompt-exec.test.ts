@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { messageHandlerTemplate } from "../prompts";
 import { AgentRuntime } from "../runtime";
 import type { Character, IDatabaseAdapter, State, UUID } from "../types";
 import { ModelType } from "../types";
@@ -309,6 +310,25 @@ describe("dynamicPromptExecFromState", () => {
 			expect(result?.my_field).toBe("value");
 		});
 
+		it("uses explicit modelType when provided", async () => {
+			const miniHandler = vi.fn(async () => "<response><text>mini</text></response>");
+			runtime.registerModel(ModelType.TEXT_MINI, miniHandler, "mock");
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [{ field: "text", description: "Response text" }],
+				options: {
+					modelType: ModelType.TEXT_MINI,
+					contextCheckLevel: 0,
+				},
+			});
+
+			expect(miniHandler).toHaveBeenCalledTimes(1);
+			expect(result?.text).toBe("mini");
+		});
+
 		it("should warn on contradictory schema declarations", async () => {
 			const warnSpy = vi
 				.spyOn(runtime.logger, "warn")
@@ -399,6 +419,75 @@ describe("dynamicPromptExecFromState", () => {
 				(s) => s.stable === true,
 			);
 			expect(hasStable).toBe(true);
+		});
+
+		it("should preserve provider stability inside segmented prompts", async () => {
+			let capturedParams: {
+				promptSegments?: Array<{ content: string; stable: boolean }>;
+			} = {};
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async (_, params) => {
+					capturedParams = {
+						promptSegments: params.promptSegments as Array<{
+							content: string;
+							stable: boolean;
+						}>,
+					};
+					return "<response><thought>ok</thought><text>Hi</text></response>";
+				},
+				"mock",
+			);
+
+			await runtime.dynamicPromptExecFromState({
+				state: {
+					values: {
+						agentName: "Tester",
+						providers:
+							"# Available Actions\nACTIONS\n# Conversation Messages\nhi",
+					},
+					data: {
+						providerOrder: ["ACTIONS", "RECENT_MESSAGES"],
+						providers: {
+							ACTIONS: {
+								providerName: "ACTIONS",
+								text: "# Available Actions\nACTIONS",
+							},
+							RECENT_MESSAGES: {
+								providerName: "RECENT_MESSAGES",
+								text: "# Conversation Messages\nhi",
+							},
+						},
+					},
+					text: "",
+				} as State,
+				params: { prompt: messageHandlerTemplate },
+				schema: [
+					{ field: "thought", description: "Reasoning" },
+					{ field: "text", description: "Response" },
+				],
+				options: {
+					contextCheckLevel: 0,
+				},
+			});
+
+			expect(capturedParams.promptSegments).toBeDefined();
+			const stableSegments = (capturedParams.promptSegments ?? []).filter(
+				(segment) => segment.stable,
+			);
+			const unstableSegments = (capturedParams.promptSegments ?? []).filter(
+				(segment) => !segment.stable,
+			);
+			expect(
+				stableSegments.some((segment) =>
+					segment.content.includes("# Available Actions"),
+				),
+			).toBe(true);
+			expect(
+				unstableSegments.some((segment) =>
+					segment.content.includes("# Conversation Messages"),
+				),
+			).toBe(true);
 		});
 	});
 
@@ -524,7 +613,7 @@ describe("dynamicPromptExecFromState", () => {
 				},
 			});
 
-			expect(capturedPrompt).toContain("Respond using JSON format");
+			expect(capturedPrompt).toContain("Return only JSON.");
 			expect(result).not.toBeNull();
 			expect(result?.facts).toEqual([
 				{
@@ -580,7 +669,7 @@ describe("dynamicPromptExecFromState", () => {
 				},
 			});
 
-			expect(capturedPrompt).toContain("Respond using JSON format");
+			expect(capturedPrompt).toContain("Return only JSON.");
 			expect(result?.facts).toEqual([
 				{
 					claim: "Alice likes tea",
@@ -590,12 +679,42 @@ describe("dynamicPromptExecFromState", () => {
 	});
 
 	describe("validation code handling", () => {
-		it("should handle validation codes at level 2", async () => {
+		it("should omit checkpoint codes by default at level 2", async () => {
+			let capturedPrompt = "";
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_, params) => {
-					// Extract codes from the prompt
 					const prompt = params.prompt as string;
+					capturedPrompt = prompt;
+					return "<response><text>Response text</text></response>";
+				},
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [{ field: "text", description: "Response" }],
+				options: {
+					contextCheckLevel: 2,
+				},
+			});
+
+			expect(result).not.toBeNull();
+			expect(result?.text).toBe("Response text");
+			expect(capturedPrompt).not.toContain("initial code: ");
+			expect(capturedPrompt).not.toContain("middle code: ");
+			expect(capturedPrompt).not.toContain("end code: ");
+		});
+
+		it("should handle checkpoint codes when explicitly enabled", async () => {
+			let capturedPrompt = "";
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async (_, params) => {
+					const prompt = params.prompt as string;
+					capturedPrompt = prompt;
 					const initMatch = prompt.match(/initial code: ([a-f0-9-]+)/);
 					const midMatch = prompt.match(/middle code: ([a-f0-9-]+)/);
 					const endMatch = prompt.match(/end code: ([a-f0-9-]+)/);
@@ -617,13 +736,17 @@ describe("dynamicPromptExecFromState", () => {
 				schema: [{ field: "text", description: "Response" }],
 				options: {
 					contextCheckLevel: 2,
+					checkpointCodes: true,
 				},
 			});
 
 			expect(result).not.toBeNull();
 			expect(result?.text).toBe("Response text");
-			// Validation codes should be removed from result
 			expect(result?.one_initial_code).toBeUndefined();
+			expect(capturedPrompt).toMatch(/initial code: [a-f0-9]{8}\n/);
+			expect(capturedPrompt).toMatch(/\nmiddle code: [a-f0-9]{8}\n/);
+			expect(capturedPrompt).toMatch(/\nend code: [a-f0-9]{8}\n/);
+			expect(capturedPrompt).not.toContain("</output>middle code:");
 		});
 	});
 
