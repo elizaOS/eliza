@@ -78,6 +78,7 @@ export const replyAction = {
         actions: ["REPLY"] as string[],
       };
 
+      const wasDelivered = !!callback;
       if (callback) {
         await callback(responseContent, "REPLY");
       } else {
@@ -95,7 +96,7 @@ export const replyAction = {
         text: `Generated reply: ${responseContent.text}`,
         values: {
           success: true,
-          responded: true,
+          responded: wasDelivered,
           lastReply: responseContent.text,
           lastReplyTime: Date.now(),
           thoughtProcess: thought,
@@ -106,7 +107,7 @@ export const replyAction = {
           responseText: initialText,
           responseThought: thought,
           thought,
-          messageGenerated: true,
+          messageGenerated: wasDelivered,
         },
         success: true,
       };
@@ -153,6 +154,7 @@ export const replyAction = {
       actions: ["REPLY"] as string[],
     };
 
+    const wasDeliveredLlm = !!callback;
     if (callback) {
       await callback(responseContent, "REPLY");
     } else {
@@ -170,7 +172,7 @@ export const replyAction = {
       text: `Generated reply: ${responseContent.text}`,
       values: {
         success: true,
-        responded: true,
+        responded: wasDeliveredLlm,
         lastReply: responseContent.text,
         lastReplyTime: Date.now(),
         thoughtProcess: thought,
@@ -181,7 +183,7 @@ export const replyAction = {
         responseText: text,
         responseThought: thought,
         thought,
-        messageGenerated: true,
+        messageGenerated: wasDeliveredLlm,
       },
       success: true,
     };
