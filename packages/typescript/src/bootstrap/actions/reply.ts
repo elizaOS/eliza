@@ -77,6 +77,15 @@ export const replyAction = {
 
       if (callback) {
         await callback(responseContent, "REPLY");
+      } else {
+        // Note: No callback provided - response is returned in ActionResult but not delivered to user
+        logger.warn(
+          {
+            src: "plugin:bootstrap:action:reply",
+            agentId: runtime.agentId,
+          },
+          "REPLY action executed without callback - response not delivered to user",
+        );
       }
 
       return {
@@ -143,6 +152,15 @@ export const replyAction = {
 
     if (callback) {
       await callback(responseContent, "REPLY");
+    } else {
+      // Note: No callback provided - response is returned in ActionResult but not delivered to user
+      logger.warn(
+        {
+          src: "plugin:bootstrap:action:reply",
+          agentId: runtime.agentId,
+        },
+        "REPLY action executed without callback - response not delivered to user",
+      );
     }
 
     return {
