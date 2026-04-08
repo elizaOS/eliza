@@ -11,19 +11,8 @@ import {
   ACTION_RESULTS_TARGET_CHARS,
   ACTION_HISTORY_TARGET_CHARS,
   estimateActionRunChars,
+  estimateActionResultChars,
 } from "../../utils/slice-to-fit-budget.js";
-
-/**
- * Estimate the character count for an action result entry.
- * Used by sliceToFitBudget to determine how much of the results array to include.
- */
-function estimateActionResultChars(result: { data?: { actionName?: string }; text?: string; error?: string }): number {
-  const actionName = result.data?.actionName || "unknown";
-  const text = result.text || "";
-  const error = result.error || "";
-  // Account for formatting overhead (labels, newlines, index)
-  return actionName.length + text.length + error.length + 50;
-}
 
 /**
  * Provider for sharing action execution state and plan between actions
