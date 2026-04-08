@@ -12,6 +12,7 @@ import {
   ACTION_RESULTS_TARGET_CHARS,
   ACTION_HISTORY_TARGET_CHARS,
   estimateActionRunChars,
+  estimateActionResultChars,
 } from "../../utils/slice-to-fit-budget.js";
 
 // Get text content from centralized specs
@@ -90,18 +91,7 @@ export const actionStateProvider: Provider = {
     if (actionResults.length > 0) {
       const selectedResults = sliceToFitBudget(
         actionResults,
-        (result) => {
-          // Note: budgeting excludes `result.data` to prevent excess payload and serialization issues.
-          let size = String(result.text || "").length +
-            String(result.error || "").length;
-          try {
-            size += JSON.stringify(result.values || {}).length;
-          } catch {
-            // Ignore serialization errors from internal data payloads
-          }
-          // Note: size calculation includes only rendered fields to prevent unintentional budget overages.
-          return size + 80;
-        },
+        estimateActionResultChars,
         ACTION_RESULTS_TARGET_CHARS,
       );
 
