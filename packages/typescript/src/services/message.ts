@@ -105,8 +105,8 @@ function isMemoryCreationDisabled(runtime: IAgentRuntime): boolean {
  * Allowed memory source IDs from ALLOW_MEMORY_SOURCE_IDS (whitelist).
  * When set, only messages whose metadata.sourceId is in this list are persisted.
  * WHY: When DISABLE_MEMORY_CREATION is false but you want to restrict *which* sources
- * get persisted (e.g. only one channel), set this list. If DISABLE_MEMORY_CREATION is
- * true, all persistence is skipped regardless of this whitelist.
+ * get persisted (e.g. only one channel), set this list. When DISABLE_MEMORY_CREATION is
+ * true, persistence is skipped UNLESS the source matches this whitelist (allowlist override).
  */
 function getAllowedMemorySources(runtime: IAgentRuntime): string[] | null {
   const setting = runtime.getSetting("ALLOW_MEMORY_SOURCE_IDS");
@@ -501,11 +501,11 @@ export class DefaultMessageService implements IMessageService {
     // When allowedSources is set, messages must have a matching sourceId in the whitelist
     const memorySourceAllowed = allowedSources === null || sourceMatchesAllowlist;
     // Note: Memory persistence logic:
-    // - If DISABLE_MEMORY_CREATION is true, persistence is skipped UNLESS source is in ALLOW_MEMORY_SOURCE_IDS whitelist
+    // - If DISABLE_MEMORY_CREATION is true, persistence is skipped unconditionally (regardless of allowlist)
     // - If memory creation is enabled and no allowlist exists, persist all messages
     // - If memory creation is enabled and allowlist exists, only persist if source is in allowlist
     const canPersistMemory = disableMemoryCreation
-      ? sourceMatchesAllowlist
+      ? false
       : memorySourceAllowed;
 
     let memoryToQueue: Memory | null = null;
