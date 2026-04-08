@@ -11,6 +11,7 @@ import {
 	parseContextRoutingMetadata,
 	shouldIncludeByContext,
 } from "../../utils/context-routing.ts";
+import { resolveProviderContexts } from "../../utils/context-catalog";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("PROVIDERS");
@@ -43,7 +44,10 @@ export const providersProvider: Provider = {
 			parseContextRoutingMetadata(_state?.values?.[CONTEXT_ROUTING_STATE_KEY]),
 		);
 		const isInContext = (provider: Provider) =>
-			shouldIncludeByContext(provider.contexts, activeContexts);
+			shouldIncludeByContext(
+				resolveProviderContexts(provider),
+				activeContexts,
+			);
 		const contextFilteredProviders = allProviders.filter(isInContext);
 		const selectionHints = [
 			"images, attachments, or visual content -> ATTACHMENTS",

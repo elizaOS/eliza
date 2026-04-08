@@ -8,6 +8,10 @@ import type {
 } from "./types/plugin";
 import type { IAgentRuntime } from "./types/runtime";
 import type { Service, ServiceTypeName } from "./types/service";
+import {
+	resolveActionContexts,
+	resolveProviderContexts,
+} from "./utils/context-catalog";
 
 type RuntimeAction = NonNullable<Plugin["actions"]>[number];
 type RuntimeProvider = NonNullable<Plugin["providers"]>[number];
@@ -154,6 +158,36 @@ function inheritPluginContexts<
 	return {
 		...component,
 		contexts: [...pluginContexts],
+	};
+}
+
+function applyEffectiveActionContexts(
+	action: RuntimeAction,
+	pluginContexts: Plugin["contexts"] | undefined,
+): RuntimeAction {
+	const inherited = inheritPluginContexts(action, pluginContexts);
+	if ((inherited.contexts?.length ?? 0) > 0) {
+		return inherited;
+	}
+
+	return {
+		...inherited,
+		contexts: [...resolveActionContexts(inherited)],
+	};
+}
+
+function applyEffectiveProviderContexts(
+	provider: RuntimeProvider,
+	pluginContexts: Plugin["contexts"] | undefined,
+): RuntimeProvider {
+	const inherited = inheritPluginContexts(provider, pluginContexts);
+	if ((inherited.contexts?.length ?? 0) > 0) {
+		return inherited;
+	}
+
+	return {
+		...inherited,
+		contexts: [...resolveProviderContexts(inherited)],
 	};
 }
 
@@ -568,7 +602,10 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		const capture = pluginRegistrationContext.getStore();
 		const actionsBefore = runtimeWithLifecycle.actions.length;
 		originalRegisterAction(
-			inheritPluginContexts(action, capture?.ownership.plugin.contexts),
+			applyEffectiveActionContexts(
+				action,
+				capture?.ownership.plugin.contexts,
+			),
 		);
 		if (!capture || runtimeWithLifecycle.actions.length <= actionsBefore)
 			return;
@@ -583,7 +620,10 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		const capture = pluginRegistrationContext.getStore();
 		const providersBefore = runtimeWithLifecycle.providers.length;
 		originalRegisterProvider(
-			inheritPluginContexts(provider, capture?.ownership.plugin.contexts),
+			applyEffectiveProviderContexts(
+				provider,
+				capture?.ownership.plugin.contexts,
+			),
 		);
 		if (!capture || runtimeWithLifecycle.providers.length <= providersBefore)
 			return;
