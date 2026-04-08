@@ -17,16 +17,16 @@ async def get_contacts_context(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    from elizaos.advanced_capabilities.services.rolodex import RolodexService
+    from elizaos.advanced_capabilities.services.relationships import RelationshipsService
 
-    rolodex_service = runtime.get_service("rolodex")
-    if not rolodex_service or not isinstance(rolodex_service, RolodexService):
+    relationships_service = runtime.get_service("relationships")
+    if not relationships_service or not isinstance(relationships_service, RelationshipsService):
         return ProviderResult(text="", values={}, data={})
 
-    contacts = await rolodex_service.get_all_contacts()
+    contacts = await relationships_service.get_all_contacts()
 
     if not contacts:
-        return ProviderResult(text="No contacts in rolodex.", values={"contactCount": 0}, data={})
+        return ProviderResult(text="No contacts in relationships.", values={"contactCount": 0}, data={})
 
     contact_details: list[dict[str, str]] = []
     for contact in contacts:
@@ -48,7 +48,7 @@ async def get_contacts_context(
             if cat:
                 grouped.setdefault(cat, []).append(detail)
 
-    text_summary = f"You have {len(contacts)} contacts in your rolodex:\n"
+    text_summary = f"You have {len(contacts)} contacts in your relationships:\n"
 
     for category, items in grouped.items():
         text_summary += f"\n{category.capitalize()}s ({len(items)}):\n"

@@ -180,10 +180,7 @@ class AgentRuntime(IAgentRuntime):
         self._plugins: list[Plugin] = []
         self._plugin_components: dict[str, PluginRuntimeComponents] = {}
         self._services: dict[str, list[Service]] = {}
-        self._service_aliases = {
-            "rolodex": "relationships",
-            "trajectory_logger": "trajectories",
-        }
+        self._service_aliases: dict[str, str] = {}
         self._routes: list[Route] = []
         self._events: dict[str, list[Callable[[Any], Awaitable[None]]]] = {}
         self._models: dict[str, list[ModelHandler]] = {}
@@ -1258,7 +1255,7 @@ class AgentRuntime(IAgentRuntime):
                 query: dict[str, str | int | float | bool | None] | None = None,
             ) -> None: ...
 
-        traj_svc = self.get_service("trajectory_logger")
+        traj_svc = self.get_service("trajectories")
         traj_logger = traj_svc if isinstance(traj_svc, _TrajectoryLogger) else None
 
         def _as_json_scalar(value: object) -> str | int | float | bool | None:
@@ -1389,7 +1386,7 @@ class AgentRuntime(IAgentRuntime):
             from elizaos.trajectory_context import CURRENT_TRAJECTORY_STEP_ID
 
             step_id = CURRENT_TRAJECTORY_STEP_ID.get()
-            traj_svc = self.get_service("trajectory_logger")
+            traj_svc = self.get_service("trajectories")
             if step_id and traj_svc is not None and hasattr(traj_svc, "log_llm_call"):
                 prompt = str(params.get("prompt", "")) if isinstance(params, dict) else ""
                 system_prompt = str(params.get("system", "")) if isinstance(params, dict) else ""

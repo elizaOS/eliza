@@ -159,8 +159,8 @@ export function calculateRelationshipStrength({
 	return Math.max(0, Math.min(100, Math.round(totalStrength)));
 }
 
-export class RolodexService extends Service {
-	static serviceType = "rolodex" as const;
+export class RelationshipsService extends Service {
+	static serviceType = "relationships" as const;
 
 	capabilityDescription =
 		"Comprehensive contact and relationship management service";
@@ -193,16 +193,16 @@ export class RolodexService extends Service {
 	async initialize(runtime: IAgentRuntime): Promise<void> {
 		this.runtime = runtime;
 
-		// Ensure the synthetic rolodex world exists so component FK constraints pass
+		// Ensure the synthetic relationships world exists so component FK constraints pass
 		if (typeof this.runtime.ensureWorldExists === "function") {
 			try {
 				await this.runtime.ensureWorldExists({
-					id: stringToUuid(`rolodex-world-${this.runtime.agentId}`),
-					name: "Rolodex World",
+					id: stringToUuid(`relationships-world-${this.runtime.agentId}`),
+					name: "Relationships World",
 					agentId: this.runtime.agentId,
 				} as Parameters<typeof this.runtime.ensureWorldExists>[0]);
 			} catch (err) {
-				logger.warn(`[RolodexService] Failed to ensure rolodex world: ${err}`);
+				logger.warn(`[RelationshipsService] Failed to ensure relationships world: ${err}`);
 			}
 		}
 
@@ -220,7 +220,7 @@ export class RolodexService extends Service {
 		await this.loadContactInfoFromComponents();
 
 		// Service initialized
-		logger.info("[RolodexService] Initialized successfully");
+		logger.info("[RelationshipsService] Initialized successfully");
 	}
 
 	async stop(): Promise<void> {
@@ -229,11 +229,11 @@ export class RolodexService extends Service {
 		this.analyticsCache.clear();
 		this.categoriesCache = [];
 		// Service stopped
-		logger.info("[RolodexService] Stopped successfully");
+		logger.info("[RelationshipsService] Stopped successfully");
 	}
 
 	static async start(runtime: IAgentRuntime): Promise<Service> {
-		const service = new RolodexService();
+		const service = new RelationshipsService();
 		await service.initialize(runtime);
 		return service;
 	}
@@ -268,13 +268,13 @@ export class RolodexService extends Service {
 					this.contactInfoCache,
 					entityId,
 					contactInfo,
-					RolodexService.CONTACT_CACHE_LIMIT,
+					RelationshipsService.CONTACT_CACHE_LIMIT,
 				);
 			}
 		}
 
 		logger.info(
-			`[RolodexService] Loaded ${this.contactInfoCache.size} contacts from components`,
+			`[RelationshipsService] Loaded ${this.contactInfoCache.size} contacts from components`,
 		);
 	}
 
@@ -301,8 +301,8 @@ export class RolodexService extends Service {
 			type: "contact_info",
 			agentId: this.runtime.agentId,
 			entityId,
-			roomId: stringToUuid(`rolodex-${this.runtime.agentId}`),
-			worldId: stringToUuid(`rolodex-world-${this.runtime.agentId}`),
+			roomId: stringToUuid(`relationships-${this.runtime.agentId}`),
+			worldId: stringToUuid(`relationships-world-${this.runtime.agentId}`),
 			sourceEntityId: this.runtime.agentId,
 			data: contactInfoToMetadata(contactInfo),
 			createdAt: Date.now(),
@@ -312,7 +312,7 @@ export class RolodexService extends Service {
 			this.contactInfoCache,
 			entityId,
 			contactInfo,
-			RolodexService.CONTACT_CACHE_LIMIT,
+			RelationshipsService.CONTACT_CACHE_LIMIT,
 		);
 
 		// Emit entity lifecycle event
@@ -327,12 +327,12 @@ export class RolodexService extends Service {
 				}
 			).emitEvent(EntityLifecycleEvent.UPDATED, {
 				entityId: entity.id ?? "",
-				source: "rolodex",
+				source: "relationships",
 			});
 		}
 
 		logger.info(
-			`[RolodexService] Added contact ${entityId} with categories: ${categories.join(", ")}`,
+			`[RelationshipsService] Added contact ${entityId} with categories: ${categories.join(", ")}`,
 		);
 		return contactInfo;
 	}
@@ -343,7 +343,7 @@ export class RolodexService extends Service {
 	): Promise<ContactInfo | null> {
 		const existing = await this.getContact(entityId);
 		if (!existing) {
-			logger.warn(`[RolodexService] Contact ${entityId} not found`);
+			logger.warn(`[RelationshipsService] Contact ${entityId} not found`);
 			return null;
 		}
 
@@ -371,10 +371,10 @@ export class RolodexService extends Service {
 			this.contactInfoCache,
 			entityId,
 			updated,
-			RolodexService.CONTACT_CACHE_LIMIT,
+			RelationshipsService.CONTACT_CACHE_LIMIT,
 		);
 
-		logger.info(`[RolodexService] Updated contact ${entityId}`);
+		logger.info(`[RelationshipsService] Updated contact ${entityId}`);
 		return updated;
 	}
 
@@ -401,7 +401,7 @@ export class RolodexService extends Service {
 				this.contactInfoCache,
 				entityId,
 				contactInfo,
-				RolodexService.CONTACT_CACHE_LIMIT,
+				RelationshipsService.CONTACT_CACHE_LIMIT,
 			);
 			return contactInfo;
 		}
@@ -412,7 +412,7 @@ export class RolodexService extends Service {
 	async removeContact(entityId: UUID): Promise<boolean> {
 		const existing = await this.getContact(entityId);
 		if (!existing) {
-			logger.warn(`[RolodexService] Contact ${entityId} not found`);
+			logger.warn(`[RelationshipsService] Contact ${entityId} not found`);
 			return false;
 		}
 
@@ -429,7 +429,7 @@ export class RolodexService extends Service {
 		// Remove from cache
 		this.contactInfoCache.delete(entityId);
 
-		logger.info(`[RolodexService] Removed contact ${entityId}`);
+		logger.info(`[RelationshipsService] Removed contact ${entityId}`);
 		return true;
 	}
 
@@ -609,8 +609,8 @@ export class RolodexService extends Service {
 				type: "relationship_update",
 				agentId: this.runtime.agentId,
 				entityId: relationship.sourceEntityId,
-				roomId: stringToUuid(`rolodex-${this.runtime.agentId}`),
-				worldId: stringToUuid(`rolodex-world-${this.runtime.agentId}`),
+				roomId: stringToUuid(`relationships-${this.runtime.agentId}`),
+				worldId: stringToUuid(`relationships-world-${this.runtime.agentId}`),
 				sourceEntityId: relationship.sourceEntityId,
 				data: {
 					targetEntityId: relationship.targetEntityId,
@@ -628,7 +628,7 @@ export class RolodexService extends Service {
 			this.analyticsCache,
 			cacheKey,
 			analytics,
-			RolodexService.ANALYTICS_CACHE_LIMIT,
+			RelationshipsService.ANALYTICS_CACHE_LIMIT,
 		);
 
 		return analytics;
@@ -732,7 +732,7 @@ export class RolodexService extends Service {
 		}
 
 		this.categoriesCache.push(category);
-		logger.info(`[RolodexService] Added category: ${category.name}`);
+		logger.info(`[RelationshipsService] Added category: ${category.name}`);
 	}
 
 	// Privacy Management
@@ -747,7 +747,7 @@ export class RolodexService extends Service {
 		await this.updateContact(entityId, { privacyLevel });
 
 		logger.info(
-			`[RolodexService] Set privacy level for ${entityId} to ${privacyLevel}`,
+			`[RelationshipsService] Set privacy level for ${entityId} to ${privacyLevel}`,
 		);
 		return true;
 	}

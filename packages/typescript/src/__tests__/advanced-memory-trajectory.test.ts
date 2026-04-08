@@ -37,7 +37,7 @@ describe("advanced-memory trajectory logging", () => {
 						})),
 					};
 				}
-				if (serviceType === "trajectory_logger") {
+				if (serviceType === "trajectories") {
 					return { logProviderAccess };
 				}
 				return null;
@@ -85,7 +85,7 @@ describe("advanced-memory trajectory logging", () => {
 						),
 					};
 				}
-				if (serviceType === "trajectory_logger") {
+				if (serviceType === "trajectories") {
 					return { logProviderAccess };
 				}
 				return null;
@@ -126,7 +126,7 @@ describe("advanced-memory trajectory logging", () => {
 						storeSessionSummary: vi.fn(async () => null),
 					};
 				}
-				if (serviceType === "trajectory_logger") {
+				if (serviceType === "trajectories") {
 					return { logProviderAccess };
 				}
 				return null;
@@ -186,7 +186,7 @@ describe("advanced-memory trajectory logging", () => {
 						setLastExtractionCheckpoint: vi.fn(async () => undefined),
 					};
 				}
-				if (serviceType === "trajectory_logger") {
+				if (serviceType === "trajectories") {
 					return { logProviderAccess };
 				}
 				return null;

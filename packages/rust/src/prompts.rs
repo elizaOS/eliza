@@ -6,7 +6,7 @@
 //! - {{#each items}}...{{/each}} for iteration
 //! - {{#if condition}}...{{/if}} for conditionals
 
-pub const ADD_CONTACT_TEMPLATE: &str = r#"task: Extract contact information to add to the rolodex.
+pub const ADD_CONTACT_TEMPLATE: &str = r#"task: Extract contact information to add to the relationships.
 
 context:
 {{providers}}

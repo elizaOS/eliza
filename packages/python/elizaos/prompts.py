@@ -10,7 +10,7 @@ These prompts use Handlebars-style template syntax:
 
 from __future__ import annotations
 
-ADD_CONTACT_TEMPLATE = """task: Extract contact information to add to the rolodex.
+ADD_CONTACT_TEMPLATE = """task: Extract contact information to add to the relationships.
 
 context:
 {{providers}}

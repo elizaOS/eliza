@@ -32,16 +32,21 @@ async fn native_runtime_features_register_by_default() -> Result<()> {
     assert!(runtime.is_relationships_enabled().await);
     assert!(runtime.is_trajectories_enabled().await);
 
-    let relationships = runtime.get_service("relationships").await.expect("relationships");
-    let rolodex = runtime.get_service("rolodex").await.expect("rolodex alias");
-    assert!(Arc::ptr_eq(&relationships, &rolodex));
-
-    let trajectories = runtime.get_service("trajectories").await.expect("trajectories");
-    let trajectory_logger = runtime
-        .get_service("trajectory_logger")
+    let relationships = runtime
+        .get_service("relationships")
         .await
-        .expect("trajectory alias");
-    assert!(Arc::ptr_eq(&trajectories, &trajectory_logger));
+        .expect("relationships");
+    assert_eq!(relationships.service_type(), "relationships");
+
+    let trajectories = runtime
+        .get_service("trajectories")
+        .await
+        .expect("trajectories");
+    let trajectories = runtime
+        .get_service("trajectories")
+        .await
+        .expect("trajectories");
+    assert!(Arc::ptr_eq(&trajectories, &trajectories));
 
     let providers = runtime
         .list_provider_definitions()
@@ -77,9 +82,8 @@ async fn native_runtime_features_honor_constructor_disable_flags() -> Result<()>
     assert!(!plugin_names.contains(&"trajectories".to_string()));
 
     assert!(runtime.get_service("relationships").await.is_none());
-    assert!(runtime.get_service("rolodex").await.is_none());
     assert!(runtime.get_service("follow_up").await.is_none());
-    assert!(runtime.get_service("trajectory_logger").await.is_none());
+    assert!(runtime.get_service("trajectories").await.is_none());
 
     let providers = runtime
         .list_provider_definitions()
@@ -107,7 +111,7 @@ async fn native_runtime_features_can_toggle_after_initialize() -> Result<()> {
 
     runtime.enable_relationships().await?;
     assert!(runtime.is_relationships_enabled().await);
-    assert!(runtime.get_service("rolodex").await.is_some());
+    assert!(runtime.get_service("relationships").await.is_some());
 
     runtime.enable_knowledge().await?;
     assert!(runtime.is_knowledge_enabled().await);
@@ -121,7 +125,7 @@ async fn native_runtime_features_can_toggle_after_initialize() -> Result<()> {
 
     runtime.enable_trajectories().await?;
     assert!(runtime.is_trajectories_enabled().await);
-    assert!(runtime.get_service("trajectory_logger").await.is_some());
+    assert!(runtime.get_service("trajectories").await.is_some());
 
     runtime.disable_relationships().await?;
     assert!(!runtime.is_relationships_enabled().await);

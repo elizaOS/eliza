@@ -1,4 +1,4 @@
-//! Rolodex service implementation.
+//! Relationships service implementation.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -132,15 +132,15 @@ pub fn calculate_relationship_strength(
 }
 
 /// Service for managing contacts and relationships.
-pub struct RolodexService {
+pub struct RelationshipsService {
     contacts: HashMap<Uuid, ContactInfo>,
     analytics: HashMap<Uuid, RelationshipAnalytics>,
     categories: Vec<ContactCategory>,
     runtime: Option<Arc<dyn IAgentRuntime>>,
 }
 
-impl RolodexService {
-    /// Create a new rolodex service.
+impl RelationshipsService {
+    /// Create a new relationships service.
     pub fn new() -> Self {
         Self {
             contacts: HashMap::new(),
@@ -172,7 +172,7 @@ impl RolodexService {
         };
 
         if let Some(runtime) = &self.runtime {
-            runtime.log_info("service:rolodex", &format!("Added contact: {}", entity_id));
+            runtime.log_info("service:relationships", &format!("Added contact: {}", entity_id));
         }
 
         self.contacts.insert(entity_id, contact.clone());
@@ -420,7 +420,7 @@ impl RolodexService {
         }
         if let Some(runtime) = &self.runtime {
             runtime.log_info(
-                "service:rolodex",
+                "service:relationships",
                 &format!("Added category: {}", category.name),
             );
         }
@@ -439,7 +439,7 @@ impl RolodexService {
             contact.last_modified = Utc::now();
             if let Some(runtime) = &self.runtime {
                 runtime.log_info(
-                    "service:rolodex",
+                    "service:relationships",
                     &format!("Set privacy for {} to {}", entity_id, privacy_level),
                 );
             }
@@ -528,16 +528,16 @@ fn default_categories() -> Vec<ContactCategory> {
     ]
 }
 
-impl Default for RolodexService {
+impl Default for RelationshipsService {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait]
-impl Service for RolodexService {
+impl Service for RelationshipsService {
     fn name(&self) -> &'static str {
-        "rolodex"
+        "relationships"
     }
 
     fn service_type(&self) -> ServiceType {
@@ -545,14 +545,14 @@ impl Service for RolodexService {
     }
 
     async fn start(&mut self, runtime: Arc<dyn IAgentRuntime>) -> PluginResult<()> {
-        runtime.log_info("service:rolodex", "Rolodex service started");
+        runtime.log_info("service:relationships", "Relationships service started");
         self.runtime = Some(runtime);
         Ok(())
     }
 
     async fn stop(&mut self) -> PluginResult<()> {
         if let Some(runtime) = &self.runtime {
-            runtime.log_info("service:rolodex", "Rolodex service stopped");
+            runtime.log_info("service:relationships", "Relationships service stopped");
         }
         self.contacts.clear();
         self.analytics.clear();

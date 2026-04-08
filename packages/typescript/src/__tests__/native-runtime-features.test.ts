@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { nativeRuntimeFeatureLegacyPluginNames } from "../plugins/native-features";
 import { AgentRuntime } from "../runtime";
-import type { Plugin } from "../types";
 
 function createRuntime(
 	options: Partial<
@@ -38,8 +36,7 @@ describe("native runtime features", () => {
 		);
 		expect(runtime.hasService("knowledge")).toBe(true);
 		expect(runtime.hasService("relationships")).toBe(true);
-		expect(runtime.hasService("rolodex")).toBe(true);
-		expect(runtime.hasService("trajectory_logger")).toBe(true);
+		expect(runtime.hasService("trajectories")).toBe(true);
 	});
 
 	it("respects constructor feature disable flags", async () => {
@@ -62,11 +59,10 @@ describe("native runtime features", () => {
 		);
 		expect(runtime.hasService("knowledge")).toBe(false);
 		expect(runtime.hasService("relationships")).toBe(false);
-		expect(runtime.hasService("rolodex")).toBe(false);
-		expect(runtime.hasService("trajectory_logger")).toBe(false);
+		expect(runtime.hasService("trajectories")).toBe(false);
 	});
 
-	it("supports runtime toggling and service aliases", async () => {
+	it("supports runtime toggling", async () => {
 		const runtime = createRuntime({
 			enableKnowledge: false,
 			enableTrajectories: false,
@@ -80,41 +76,14 @@ describe("native runtime features", () => {
 		const relationshipsService = await runtime.getServiceLoadPromise(
 			"relationships",
 		);
-		expect(relationshipsService).toBe(runtime.getService("rolodex"));
 		expect(relationshipsService).toBe(runtime.getService("relationships"));
 
 		await runtime.disableRelationships();
 		expect(runtime.isRelationshipsEnabled()).toBe(false);
 		expect(runtime.hasService("relationships")).toBe(false);
-		expect(runtime.hasService("rolodex")).toBe(false);
 
 		await runtime.enableKnowledge();
 		expect(runtime.isKnowledgeEnabled()).toBe(true);
 		expect(runtime.hasService("knowledge")).toBe(true);
-	});
-
-	it("skips legacy wrapper plugins that are now native", async () => {
-		const legacyKnowledgePluginName =
-			nativeRuntimeFeatureLegacyPluginNames.knowledge[0];
-		const legacyKnowledgePlugin: Plugin = {
-			name: legacyKnowledgePluginName,
-			description: "legacy knowledge wrapper",
-		};
-
-		const runtime = createRuntime({
-			plugins: [legacyKnowledgePlugin],
-		});
-
-		await runtime.initialize({
-			allowNoDatabase: true,
-			skipMigrations: true,
-		});
-
-		expect(runtime.plugins.filter((plugin) => plugin.name === "knowledge")).toHaveLength(1);
-		expect(
-			runtime.plugins.some(
-				(plugin) => plugin.name === legacyKnowledgePluginName,
-			),
-		).toBe(false);
 	});
 });

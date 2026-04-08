@@ -29,11 +29,11 @@ async def test_native_runtime_features_register_by_default() -> None:
 
     relationships_service = runtime.get_service("relationships")
     assert relationships_service is not None
-    assert runtime.get_service("rolodex") is relationships_service
+    assert runtime.get_service("relationships") is relationships_service
 
     trajectories_service = runtime.get_service("trajectories")
     assert trajectories_service is not None
-    assert runtime.get_service("trajectory_logger") is trajectories_service
+    assert runtime.get_service("trajectories") is trajectories_service
 
     assert runtime.get_service("follow_up") is not None
 
@@ -60,9 +60,8 @@ async def test_native_runtime_features_honor_constructor_disable_flags() -> None
     assert runtime.is_trajectories_enabled() is False
 
     assert runtime.get_service("relationships") is None
-    assert runtime.get_service("rolodex") is None
     assert runtime.get_service("follow_up") is None
-    assert runtime.get_service("trajectory_logger") is None
+    assert runtime.get_service("trajectories") is None
 
 
 @pytest.mark.asyncio
@@ -99,12 +98,12 @@ async def test_native_runtime_features_can_toggle_after_initialize() -> None:
 
     await runtime.enable_relationships()
     assert runtime.is_relationships_enabled() is True
-    assert runtime.get_service("rolodex") is not None
+    assert runtime.get_service("relationships") is not None
     assert "relationships" in {plugin.name for plugin in runtime.plugins}
 
     await runtime.enable_trajectories()
     assert runtime.is_trajectories_enabled() is True
-    assert runtime.get_service("trajectory_logger") is not None
+    assert runtime.get_service("trajectories") is not None
 
     await runtime.disable_relationships()
     assert runtime.is_relationships_enabled() is False

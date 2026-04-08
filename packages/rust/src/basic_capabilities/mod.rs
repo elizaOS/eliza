@@ -37,7 +37,7 @@ pub use providers::{
 };
 pub use runtime::{ActionInfo, IAgentRuntime, ModelOutput, ModelParams};
 pub use services::{
-    EmbeddingService, FollowUpService, RolodexService, Service, ServiceType, TaskService,
+    EmbeddingService, FollowUpService, RelationshipsService, Service, ServiceType, TaskService,
 };
 
 /// Get all basic capabilities as vectors.

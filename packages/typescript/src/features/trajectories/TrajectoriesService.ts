@@ -2,7 +2,7 @@
  * Trajectory Logger Service
  *
  * A proper @elizaos/core Service that:
- * - Registers as "trajectory_logger" so the runtime can find it
+ * - Registers as "trajectories" so the runtime can find it
  * - Persists trajectories to the database
  * - Supports both runtime logging AND RL training data collection
  * - Provides API for UI viewing and export
@@ -220,23 +220,23 @@ interface StepIndexRow {
 }
 
 // ============================================================================
-// Trajectory Logger Service
+// Trajectories Service
 // ============================================================================
 
-export class TrajectoryLoggerService extends Service {
-	static serviceType = "trajectory_logger";
+export class TrajectoriesService extends Service {
+	static serviceType = "trajectories";
 	get serviceType() {
-		return TrajectoryLoggerService.serviceType;
+		return TrajectoriesService.serviceType;
 	}
 
 	capabilityDescription =
 		"Captures and persists LLM calls, provider accesses, and full trajectories for debugging, analysis, and RL training";
 
 	/**
-	 * Resolve the *real* SQL-backed TrajectoryLoggerService from the runtime.
+	 * Resolve the *real* SQL-backed TrajectoriesService from the runtime.
 	 *
 	 * The Eliza core registers a lightweight no-op stub under the same
-	 * "trajectory_logger" serviceType.  getService() returns whichever
+	 * "trajectories" serviceType.  getService() returns whichever
 	 * instance was started first (usually the stub).  This helper scans
 	 * all registered services of that type and returns the one that
 	 * actually exposes the full trajectory lifecycle API (startTrajectory).
@@ -246,30 +246,30 @@ export class TrajectoryLoggerService extends Service {
 	 */
 	static resolveFromRuntime(
 		runtime: IAgentRuntime,
-	): TrajectoryLoggerService | null {
+	): TrajectoriesService | null {
 		// Fast path — if getService already returns the real one, use it.
 		const first = runtime.getService(
-			TrajectoryLoggerService.serviceType,
+			TrajectoriesService.serviceType,
 		) as Service | null;
 		if (
 			first &&
 			typeof (first as unknown as Record<string, unknown>).startTrajectory ===
 				"function"
 		) {
-			return first as unknown as TrajectoryLoggerService;
+			return first as unknown as TrajectoriesService;
 		}
 
 		// Slow path — the core stub won, scan all services for the real one.
 		const all =
 			typeof runtime.getServicesByType === "function"
-				? runtime.getServicesByType(TrajectoryLoggerService.serviceType)
+				? runtime.getServicesByType(TrajectoriesService.serviceType)
 				: [];
 		for (const svc of all) {
 			if (
 				typeof (svc as unknown as Record<string, unknown>)
 					.startTrajectory === "function"
 			) {
-				return svc as unknown as TrajectoryLoggerService;
+				return svc as unknown as TrajectoriesService;
 			}
 		}
 		return null;
@@ -284,10 +284,10 @@ export class TrajectoryLoggerService extends Service {
 	static async waitForService(
 		runtime: IAgentRuntime,
 		timeoutMs = 10_000,
-	): Promise<TrajectoryLoggerService | null> {
+	): Promise<TrajectoriesService | null> {
 		const deadline = Date.now() + timeoutMs;
 		while (Date.now() < deadline) {
-			const svc = TrajectoryLoggerService.resolveFromRuntime(runtime);
+			const svc = TrajectoriesService.resolveFromRuntime(runtime);
 			if (svc) return svc;
 			await new Promise((r) => setTimeout(r, 50));
 		}
@@ -305,17 +305,17 @@ export class TrajectoryLoggerService extends Service {
 
 	private exposeBoundMethods(): void {
 		const service = this as this & {
-			startTrajectory: TrajectoryLoggerService["startTrajectory"];
-			endTrajectory: TrajectoryLoggerService["endTrajectory"];
-			startStep: TrajectoryLoggerService["startStep"];
-			getCurrentStepId: TrajectoryLoggerService["getCurrentStepId"];
-			completeStep: TrajectoryLoggerService["completeStep"];
-			logLLMCall: TrajectoryLoggerService["logLLMCall"];
-			logProviderAccess: TrajectoryLoggerService["logProviderAccess"];
-			logProviderAccessByTrajectoryId: TrajectoryLoggerService["logProviderAccessByTrajectoryId"];
-			isEnabled: TrajectoryLoggerService["isEnabled"];
-			listTrajectories: TrajectoryLoggerService["listTrajectories"];
-			getTrajectoryDetail: TrajectoryLoggerService["getTrajectoryDetail"];
+			startTrajectory: TrajectoriesService["startTrajectory"];
+			endTrajectory: TrajectoriesService["endTrajectory"];
+			startStep: TrajectoriesService["startStep"];
+			getCurrentStepId: TrajectoriesService["getCurrentStepId"];
+			completeStep: TrajectoriesService["completeStep"];
+			logLLMCall: TrajectoriesService["logLLMCall"];
+			logProviderAccess: TrajectoriesService["logProviderAccess"];
+			logProviderAccessByTrajectoryId: TrajectoriesService["logProviderAccessByTrajectoryId"];
+			isEnabled: TrajectoriesService["isEnabled"];
+			listTrajectories: TrajectoriesService["listTrajectories"];
+			getTrajectoryDetail: TrajectoriesService["getTrajectoryDetail"];
 		};
 
 		service.startTrajectory = this.startTrajectory.bind(this);
@@ -410,7 +410,7 @@ export class TrajectoryLoggerService extends Service {
 		// trajectory step is active.  No monkey-patching needed here.
 
 		this.initialized = true;
-		logger.info("[trajectory-logger] Trajectory logger service initialized");
+		logger.info("[trajectories] Trajectories service initialized");
 	}
 
 	private async getTableColumnNames(tableName: string): Promise<Set<string>> {

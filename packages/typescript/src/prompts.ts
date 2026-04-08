@@ -8,7 +8,7 @@
  * - {{#if condition}}...{{/if}} for conditionals
  */
 
-export const addContactTemplate = `task: Extract contact information to add to the rolodex.
+export const addContactTemplate = `task: Extract contact information to add to the relationships.
 
 context:
 {{providers}}

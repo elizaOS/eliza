@@ -26,10 +26,10 @@ import {
 	KnowledgeService,
 } from "../features/knowledge/index";
 import {
-	trajectoryLoggerPlugin,
+	trajectoriesPlugin,
 } from "../features/trajectories/index";
 import { FollowUpService } from "../services/followUp";
-import { RolodexService } from "../services/rolodex";
+import { RelationshipsService } from "../services/relationships";
 import type { Plugin } from "../types/plugin";
 
 export type NativeRuntimeFeature =
@@ -57,7 +57,7 @@ export const relationshipsPlugin: Plugin = {
 		relationshipsProvider,
 	],
 	evaluators: [reflectionEvaluator, relationshipExtractionEvaluator],
-	services: [RolodexService, FollowUpService],
+	services: [RelationshipsService, FollowUpService],
 };
 
 export const nativeRuntimeFeaturePlugins: Record<
@@ -66,7 +66,7 @@ export const nativeRuntimeFeaturePlugins: Record<
 > = {
 	knowledge: knowledgePlugin,
 	relationships: relationshipsPlugin,
-	trajectories: trajectoryLoggerPlugin,
+	trajectories: trajectoriesPlugin,
 };
 
 export function getNativeRuntimeFeaturePlugin(
@@ -81,7 +81,7 @@ export const nativeRuntimeFeaturePluginNames: Record<
 > = {
 	knowledge: knowledgePlugin.name,
 	relationships: relationshipsPlugin.name,
-	trajectories: trajectoryLoggerPlugin.name,
+	trajectories: trajectoriesPlugin.name,
 };
 
 export const nativeRuntimeFeatureDefaults: Record<
@@ -91,15 +91,6 @@ export const nativeRuntimeFeatureDefaults: Record<
 	knowledge: true,
 	relationships: true,
 	trajectories: true,
-};
-
-export const nativeRuntimeFeatureLegacyPluginNames: Record<
-	NativeRuntimeFeature,
-	string[]
-> = {
-	knowledge: ["@elizaos/plugin-knowledge"],
-	relationships: ["rolodex", "@elizaos/plugin-rolodex"],
-	trajectories: ["@elizaos/plugin-trajectory-logger"],
 };
 
 export function resolveNativeRuntimeFeatureFromPluginName(
@@ -115,10 +106,6 @@ export function resolveNativeRuntimeFeatureFromPluginName(
 		if (nativeRuntimeFeaturePluginNames[feature] === pluginName) {
 			return feature;
 		}
-
-		if (nativeRuntimeFeatureLegacyPluginNames[feature].includes(pluginName)) {
-			return feature;
-		}
 	}
 
 	return null;
@@ -129,8 +116,8 @@ export {
 	knowledgePlugin,
 	knowledgePluginCore,
 	knowledgePluginHeadless,
-	trajectoryLoggerPlugin,
+	trajectoriesPlugin,
 	KnowledgeService,
-	RolodexService,
+	RelationshipsService,
 	FollowUpService,
 };

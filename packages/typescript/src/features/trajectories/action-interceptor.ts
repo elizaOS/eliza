@@ -17,12 +17,12 @@ import type {
   State,
 } from "../../types";
 import { logger } from "../../logger";
-import type { TrajectoryLoggerService } from "./TrajectoryLoggerService";
+import type { TrajectoriesService } from "./TrajectoriesService";
 import type { JsonValue } from "./types";
 
 interface TrajectoryContext {
   trajectoryId: string;
-  logger: TrajectoryLoggerService;
+  logger: TrajectoriesService;
 }
 
 const trajectoryContexts = new WeakMap<IAgentRuntime, TrajectoryContext>();
@@ -30,7 +30,7 @@ const trajectoryContexts = new WeakMap<IAgentRuntime, TrajectoryContext>();
 export function setTrajectoryContext(
   runtime: IAgentRuntime,
   trajectoryId: string,
-  trajectoryLogger: TrajectoryLoggerService
+  trajectoryLogger: TrajectoriesService
 ): void {
   trajectoryContexts.set(runtime, { trajectoryId, logger: trajectoryLogger });
 }
@@ -47,7 +47,7 @@ type ErrorLike = { message?: string };
 
 export function wrapActionWithLogging(
   action: Action,
-  _trajectoryLogger: TrajectoryLoggerService
+  _trajectoryLogger: TrajectoriesService
 ): Action {
   const originalHandler = action.handler;
 
@@ -147,7 +147,7 @@ export function wrapActionWithLogging(
 
 export function wrapPluginActions(
   plugin: Plugin,
-  trajectoryLogger: TrajectoryLoggerService
+  trajectoryLogger: TrajectoriesService
 ): Plugin {
   if (!plugin.actions || plugin.actions.length === 0) {
     return plugin;
@@ -161,7 +161,7 @@ export function wrapPluginActions(
 
 export function logLLMCallFromAction(
   actionContext: Record<string, JsonValue | undefined>,
-  trajectoryLogger: TrajectoryLoggerService,
+  trajectoryLogger: TrajectoriesService,
   trajectoryId: string
 ): void {
   const stepId = trajectoryLogger.getCurrentStepId(trajectoryId);
@@ -190,7 +190,7 @@ export function logLLMCallFromAction(
 
 export function logProviderFromAction(
   actionContext: Record<string, JsonValue | undefined>,
-  trajectoryLogger: TrajectoryLoggerService,
+  trajectoryLogger: TrajectoriesService,
   trajectoryId: string
 ): void {
   const stepId = trajectoryLogger.getCurrentStepId(trajectoryId);
@@ -209,7 +209,7 @@ export function logProviderFromAction(
 
 export function wrapProviderWithLogging(
   provider: Provider,
-  _trajectoryLogger: TrajectoryLoggerService
+  _trajectoryLogger: TrajectoriesService
 ): Provider {
   const originalGet = provider.get;
 
@@ -256,7 +256,7 @@ export function wrapProviderWithLogging(
 
 export function wrapPluginProviders(
   plugin: Plugin,
-  trajectoryLogger: TrajectoryLoggerService
+  trajectoryLogger: TrajectoriesService
 ): Plugin {
   if (!plugin.providers || plugin.providers.length === 0) {
     return plugin;

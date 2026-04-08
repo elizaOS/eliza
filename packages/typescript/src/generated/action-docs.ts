@@ -455,7 +455,7 @@ export const coreActionsSpec = {
 		{
 			name: "ADD_CONTACT",
 			description:
-				"Add a new contact to the rolodex with categorization and preferences",
+				"Add a new contact to the relationships with categorization and preferences",
 			similes: [
 				"SAVE_CONTACT",
 				"REMEMBER_PERSON",
@@ -466,7 +466,7 @@ export const coreActionsSpec = {
 				"add contact",
 				"save contact",
 				"add to contacts",
-				"add to rolodex",
+				"add to relationships",
 				"remember this person",
 				"save their info",
 				"add them to my list",
@@ -514,13 +514,13 @@ export const coreActionsSpec = {
 					{
 						name: "{{name1}}",
 						content: {
-							text: "Save this person as a friend in my rolodex",
+							text: "Save this person as a friend in my relationships",
 						},
 					},
 					{
 						name: "{{name2}}",
 						content: {
-							text: "I've saved them as a friend in your rolodex.",
+							text: "I've saved them as a friend in your relationships.",
 						},
 					},
 				],
@@ -542,7 +542,7 @@ export const coreActionsSpec = {
 		},
 		{
 			name: "UPDATE_CONTACT",
-			description: "Update an existing contact's details in the rolodex.",
+			description: "Update an existing contact's details in the relationships.",
 			similes: ["EDIT_CONTACT", "MODIFY_CONTACT", "CHANGE_CONTACT_INFO"],
 			parameters: [
 				{
@@ -584,7 +584,7 @@ export const coreActionsSpec = {
 		},
 		{
 			name: "REMOVE_CONTACT",
-			description: "Remove a contact from the rolodex.",
+			description: "Remove a contact from the relationships.",
 			similes: [
 				"DELETE_CONTACT",
 				"REMOVE_FROM_ROLODEX",
@@ -634,7 +634,7 @@ export const coreActionsSpec = {
 		},
 		{
 			name: "SEARCH_CONTACTS",
-			description: "Search and list contacts in the rolodex by name or query.",
+			description: "Search and list contacts in the relationships by name or query.",
 			similes: [
 				"FIND_CONTACTS",
 				"LOOKUP_CONTACTS",
@@ -1577,7 +1577,7 @@ export const allActionsSpec = {
 		{
 			name: "ADD_CONTACT",
 			description:
-				"Add a new contact to the rolodex with categorization and preferences",
+				"Add a new contact to the relationships with categorization and preferences",
 			similes: [
 				"SAVE_CONTACT",
 				"REMEMBER_PERSON",
@@ -1588,7 +1588,7 @@ export const allActionsSpec = {
 				"add contact",
 				"save contact",
 				"add to contacts",
-				"add to rolodex",
+				"add to relationships",
 				"remember this person",
 				"save their info",
 				"add them to my list",
@@ -1636,13 +1636,13 @@ export const allActionsSpec = {
 					{
 						name: "{{name1}}",
 						content: {
-							text: "Save this person as a friend in my rolodex",
+							text: "Save this person as a friend in my relationships",
 						},
 					},
 					{
 						name: "{{name2}}",
 						content: {
-							text: "I've saved them as a friend in your rolodex.",
+							text: "I've saved them as a friend in your relationships.",
 						},
 					},
 				],
@@ -1664,7 +1664,7 @@ export const allActionsSpec = {
 		},
 		{
 			name: "UPDATE_CONTACT",
-			description: "Update an existing contact's details in the rolodex.",
+			description: "Update an existing contact's details in the relationships.",
 			similes: ["EDIT_CONTACT", "MODIFY_CONTACT", "CHANGE_CONTACT_INFO"],
 			parameters: [
 				{
@@ -1706,7 +1706,7 @@ export const allActionsSpec = {
 		},
 		{
 			name: "REMOVE_CONTACT",
-			description: "Remove a contact from the rolodex.",
+			description: "Remove a contact from the relationships.",
 			similes: [
 				"DELETE_CONTACT",
 				"REMOVE_FROM_ROLODEX",
@@ -1756,7 +1756,7 @@ export const allActionsSpec = {
 		},
 		{
 			name: "SEARCH_CONTACTS",
-			description: "Search and list contacts in the rolodex by name or query.",
+			description: "Search and list contacts in the relationships by name or query.",
 			similes: [
 				"FIND_CONTACTS",
 				"LOOKUP_CONTACTS",
@@ -2378,7 +2378,7 @@ export const coreProvidersSpec = {
 		{
 			name: "CONTACTS",
 			description:
-				"Provides contact information from the rolodex including categories and preferences",
+				"Provides contact information from the relationships including categories and preferences",
 			dynamic: true,
 		},
 		{
@@ -2527,7 +2527,7 @@ export const allProvidersSpec = {
 		{
 			name: "CONTACTS",
 			description:
-				"Provides contact information from the rolodex including categories and preferences",
+				"Provides contact information from the relationships including categories and preferences",
 			dynamic: true,
 		},
 		{

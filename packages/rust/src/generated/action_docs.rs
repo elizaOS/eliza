@@ -427,7 +427,7 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "ADD_CONTACT",
-      "description": "Add a new contact to the rolodex with categorization and preferences",
+      "description": "Add a new contact to the relationships with categorization and preferences",
       "similes": [
         "SAVE_CONTACT",
         "REMEMBER_PERSON",
@@ -438,7 +438,7 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
         "add contact",
         "save contact",
         "add to contacts",
-        "add to rolodex",
+        "add to relationships",
         "remember this person",
         "save their info",
         "add them to my list",
@@ -490,13 +490,13 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           {
             "name": "{{name1}}",
             "content": {
-              "text": "Save this person as a friend in my rolodex"
+              "text": "Save this person as a friend in my relationships"
             }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "I've saved them as a friend in your rolodex."
+              "text": "I've saved them as a friend in your relationships."
             }
           }
         ],
@@ -518,7 +518,7 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "UPDATE_CONTACT",
-      "description": "Update an existing contact's details in the rolodex.",
+      "description": "Update an existing contact's details in the relationships.",
       "similes": [
         "EDIT_CONTACT",
         "MODIFY_CONTACT",
@@ -567,7 +567,7 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "REMOVE_CONTACT",
-      "description": "Remove a contact from the rolodex.",
+      "description": "Remove a contact from the relationships.",
       "similes": [
         "DELETE_CONTACT",
         "REMOVE_FROM_ROLODEX",
@@ -619,7 +619,7 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "SEARCH_CONTACTS",
-      "description": "Search and list contacts in the rolodex by name or query.",
+      "description": "Search and list contacts in the relationships by name or query.",
       "similes": [
         "FIND_CONTACTS",
         "LOOKUP_CONTACTS",
@@ -1669,7 +1669,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "ADD_CONTACT",
-      "description": "Add a new contact to the rolodex with categorization and preferences",
+      "description": "Add a new contact to the relationships with categorization and preferences",
       "similes": [
         "SAVE_CONTACT",
         "REMEMBER_PERSON",
@@ -1680,7 +1680,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "add contact",
         "save contact",
         "add to contacts",
-        "add to rolodex",
+        "add to relationships",
         "remember this person",
         "save their info",
         "add them to my list",
@@ -1732,13 +1732,13 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           {
             "name": "{{name1}}",
             "content": {
-              "text": "Save this person as a friend in my rolodex"
+              "text": "Save this person as a friend in my relationships"
             }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "I've saved them as a friend in your rolodex."
+              "text": "I've saved them as a friend in your relationships."
             }
           }
         ],
@@ -1760,7 +1760,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "UPDATE_CONTACT",
-      "description": "Update an existing contact's details in the rolodex.",
+      "description": "Update an existing contact's details in the relationships.",
       "similes": [
         "EDIT_CONTACT",
         "MODIFY_CONTACT",
@@ -1809,7 +1809,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "REMOVE_CONTACT",
-      "description": "Remove a contact from the rolodex.",
+      "description": "Remove a contact from the relationships.",
       "similes": [
         "DELETE_CONTACT",
         "REMOVE_FROM_ROLODEX",
@@ -1861,7 +1861,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "SEARCH_CONTACTS",
-      "description": "Search and list contacts in the rolodex by name or query.",
+      "description": "Search and list contacts in the relationships by name or query.",
       "similes": [
         "FIND_CONTACTS",
         "LOOKUP_CONTACTS",
@@ -2527,7 +2527,7 @@ pub const CORE_PROVIDER_DOCS_JSON: &str = r#"{
     },
     {
       "name": "CONTACTS",
-      "description": "Provides contact information from the rolodex including categories and preferences",
+      "description": "Provides contact information from the relationships including categories and preferences",
       "dynamic": true
     },
     {
@@ -2657,7 +2657,7 @@ pub const ALL_PROVIDER_DOCS_JSON: &str = r#"{
     },
     {
       "name": "CONTACTS",
-      "description": "Provides contact information from the rolodex including categories and preferences",
+      "description": "Provides contact information from the relationships including categories and preferences",
       "dynamic": true
     },
     {

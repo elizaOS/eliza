@@ -51,16 +51,9 @@ pub fn resolve_native_runtime_feature_from_plugin_name(
     plugin_name: &str,
 ) -> Option<NativeRuntimeFeature> {
     match plugin_name {
-        "knowledge" | "plugin-knowledge" | "@elizaos/plugin-knowledge" => {
-            Some(NativeRuntimeFeature::Knowledge)
-        }
-        "relationships" | "rolodex" | "plugin-rolodex" | "@elizaos/plugin-rolodex" => {
-            Some(NativeRuntimeFeature::Relationships)
-        }
-        "trajectories"
-        | "trajectory_logger"
-        | "plugin-trajectory-logger"
-        | "@elizaos/plugin-trajectory-logger" => Some(NativeRuntimeFeature::Trajectories),
+        "knowledge" => Some(NativeRuntimeFeature::Knowledge),
+        "relationships" => Some(NativeRuntimeFeature::Relationships),
+        "trajectories" => Some(NativeRuntimeFeature::Trajectories),
         _ => None,
     }
 }
@@ -237,7 +230,6 @@ fn has_relationship_context(text: &str) -> bool {
             "contacts",
             "relationship",
             "relationships",
-            "rolodex",
             "friend",
             "friends",
             "family",
@@ -873,11 +865,11 @@ impl RuntimeService for FollowUpServiceAdapter {
 }
 
 /// Native trajectory logger service.
-pub struct TrajectoryLoggerService {
+pub struct TrajectoriesService {
     runtime: Weak<AgentRuntime>,
 }
 
-impl TrajectoryLoggerService {
+impl TrajectoriesService {
     /// Create a new trajectory logger service.
     pub fn new(runtime: Weak<AgentRuntime>) -> Self {
         Self { runtime }
@@ -890,7 +882,7 @@ impl TrajectoryLoggerService {
 }
 
 #[async_trait]
-impl RuntimeService for TrajectoryLoggerService {
+impl RuntimeService for TrajectoriesService {
     fn service_type(&self) -> &str {
         "trajectories"
     }
