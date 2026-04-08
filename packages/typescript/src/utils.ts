@@ -781,9 +781,14 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
-  // Note: extractAndParseJSONObjectFromText returns null on parse failure rather than throwing.
-  // This is intentional for LLM output which may contain malformed JSON that needs graceful handling.
-  const result = extractAndParseJSONObjectFromText(text);
+  // Note: extractAndParseJSONObjectFromText may throw on parse failure; we catch and return null
+  // for graceful handling of malformed LLM output.
+  let result: unknown;
+  try {
+    result = extractAndParseJSONObjectFromText(text);
+  } catch {
+    return null;
+  }
   if (!result) {
     return null;
   }
