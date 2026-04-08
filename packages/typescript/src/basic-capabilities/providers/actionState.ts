@@ -204,7 +204,7 @@ export const actionStateProvider: Provider = {
           Array.from(groupedByRun.entries()),
           estimateActionRunChars,
           ACTION_HISTORY_TARGET_CHARS,
-          // Note: groupedByRun is newest-first from getMemories(); default fromEnd:false keeps newest
+          // Note: getMemories() returns newest-first; default fromEnd:false iterates from start, keeping most recent runs
         );
 
       const formattedMemories = selectedRuns
