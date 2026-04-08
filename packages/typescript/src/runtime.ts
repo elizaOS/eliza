@@ -1517,16 +1517,21 @@ this.promptBatcher.dispose();
         // Merge fresh provider data with accumulated state, preserving action results and values
         // Ensure non-null base to prevent dereferencing undefined
         const baseState = accumulatedState || { values: {}, data: {}, text: "" };
-        // Replace text entirely with fresh provider text to prevent unbounded growth in action chains
-        // Note: Only RECENT_MESSAGES and ACTION_STATE are re-fetched; their fresh text reflects current state
-        // Note: baseState is spread to preserve custom state fields from earlier providers.
-        // Only values, data, and text are explicitly merged from freshProviderState.
+        // Preserve the original base state text (contains full provider context from initial composeState).
+        // Fresh provider text (RECENT_MESSAGES, ACTION_STATE) is appended to data for actions that need it,
+        // but we don't replace baseState.text to avoid losing character, capabilities, entities context.
+        // This prevents both unbounded growth (no concatenation) and context loss (no overwrite).
         accumulatedState = {
           ...baseState,
           values: { ...baseState.values, ...freshProviderState.values },
-          data: { ...baseState.data, ...freshProviderState.data },
-          // Use nullish coalescing to allow empty string as valid fresh text
-          text: freshProviderState.text ?? baseState.text,
+          data: {
+            ...baseState.data,
+            ...freshProviderState.data,
+            // Store fresh provider text separately for actions that need current state
+            freshProviderText: freshProviderState.text,
+          },
+          // Keep original text to preserve full provider context (character, capabilities, etc.)
+          text: baseState.text,
         };
 
         // Add action plan to state if it exists
