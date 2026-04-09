@@ -329,9 +329,9 @@ async function main(): Promise<void> {
 			};
 
 			if (!runtime.messageService) {
-			output.write("messageService not ready — skipping message\n");
-			continue;
-		}
+				output.write("messageService not ready — skipping message\n");
+				continue;
+			}
 
 			try {
 				await runtime.messageService.handleMessage(
