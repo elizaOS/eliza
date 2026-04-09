@@ -877,18 +877,35 @@ async function refreshElizaCloudSession(
   }
 
   const apiBase = elizaCloudApiBase();
-  const [primaryAgent, profile, credits, creditSummary] = await Promise.all([
-    fetchElizaCloudPrimaryAgentConfig(apiBase, session.apiKey),
-    fetchElizaCloudUser(apiBase, session.apiKey),
-    fetchElizaCloudCreditsBalance(apiBase, session.apiKey),
-    fetchElizaCloudCreditsSummary(apiBase, session.apiKey),
-  ]);
+  let primaryAgent = null;
+  let profile = null;
+  let credits: string | null = null;
+  let creditSummary: ElizaCloudSummaryFields | null = null;
+
+  try {
+    [primaryAgent, profile, credits, creditSummary] = await Promise.all([
+      fetchElizaCloudPrimaryAgentConfig(apiBase, session.apiKey),
+      fetchElizaCloudUser(apiBase, session.apiKey),
+      fetchElizaCloudCreditsBalance(apiBase, session.apiKey),
+      fetchElizaCloudCreditsSummary(apiBase, session.apiKey),
+    ]);
+  } catch {
+    // API unreachable — return stored session as-is so the UI keeps showing real data
+    return { session, summary: null };
+  }
+
+  // If ALL API calls failed (all null), preserve the stored session unchanged
+  // so the UI doesn't degrade to "ElizaCloud User" / "linked"
+  if (!profile && !credits && !creditSummary && !primaryAgent) {
+    return { session, summary: null };
+  }
 
   const refreshed = buildElizaCloudApiSession(
     session.apiKey,
     {
       ...creditSummary,
       ...profile,
+      // Always prefer live API data; fall back to stored session values (never "unknown" defaults)
       displayName:
         profile?.displayName ||
         creditSummary?.displayName ||
@@ -905,8 +922,9 @@ async function refreshElizaCloudSession(
         session.organizationName ||
         "ElizaCloud",
       organizationSlug:
-        profile?.organizationSlug || session.organizationSlug || "elizacloud",
-      // Same precedence as app-auth: real balance/summary beats profile "linked" and stale session.credits.
+        profile?.organizationSlug ||
+        session.organizationSlug ||
+        "elizacloud",
       credits:
         credits ||
         creditSummary?.credits ||
@@ -1133,8 +1151,15 @@ function renderFeatureDockCard(
   meta: string,
   pct: number,
   tone: "hot" | "warm" | "cool" = "cool",
+  yesLabel = "SIGNAL",
+  noLabel = "TOTAL",
+  yesValue = value,
+  noValue = meta,
 ): string {
   const safePct = clampPercent(pct);
+  const notes = ["♪", "♫", "♬", "♩", "★"].map(
+    (n) => `<span class="feature-dock-card__note">${n}</span>`,
+  ).join("");
   return `
     <button
       class="feature-dock-card feature-dock-card--${tone}"
@@ -1142,15 +1167,33 @@ function renderFeatureDockCard(
       data-modal-target="${escapeHtml(targetId)}"
       data-modal-title="${escapeHtml(label)}"
     >
-      <div class="feature-dock-card__top">
-        <span>${escapeHtml(label)}</span>
-        <em>${escapeHtml(pctLabel)}</em>
+      <div class="feature-dock-card__header">
+        <div class="feature-dock-card__label">${escapeHtml(label)}</div>
+        <div class="feature-dock-card__title">${escapeHtml(value)}</div>
+        <div class="feature-dock-card__sub">${escapeHtml(meta)}</div>
       </div>
-      <b class="feature-dock-card__value">${escapeHtml(value)}</b>
-      <small class="feature-dock-card__meta">${escapeHtml(meta)}</small>
-      <div class="feature-dock-card__track">
-        <div class="feature-dock-card__fill" style="width:${safePct}%"></div>
+      <div class="feature-dock-card__prices">
+        <div class="feature-dock-card__yes">
+          <div class="feature-dock-card__yes-label">▲ ${escapeHtml(yesLabel)}</div>
+          <div class="feature-dock-card__price-num">${escapeHtml(yesValue)}</div>
+          <div class="feature-dock-card__price-unit">${escapeHtml(pctLabel)}</div>
+        </div>
+        <div class="feature-dock-card__no">
+          <div class="feature-dock-card__no-label">▼ ${escapeHtml(noLabel)}</div>
+          <div class="feature-dock-card__price-num">${escapeHtml(noValue)}</div>
+          <div class="feature-dock-card__price-unit">CHAIN</div>
+        </div>
       </div>
+      <div class="feature-dock-card__bar-row">
+        <div class="feature-dock-card__bar-label">
+          <span>SIGNAL STRENGTH</span>
+          <span>${safePct}%</span>
+        </div>
+        <div class="feature-dock-card__bar-track">
+          <div class="feature-dock-card__fill" style="width:${safePct}%"></div>
+        </div>
+      </div>
+      <div class="feature-dock-card__notes">${notes}</div>
     </button>`;
 }
 
@@ -1900,7 +1943,7 @@ function renderDashboardCloudSidebar(
   const cloudModelLabel =
     cloudSession.model && cloudSession.model !== "n/a"
       ? cloudSession.model
-      : "Not exposed by ElizaCloud API";
+      : "—";
   const agentCount =
     cloudSummary?.agentsSummary?.total ?? cloudSummary?.agents?.length ?? 0;
   return `
@@ -1912,7 +1955,6 @@ function renderDashboardCloudSidebar(
         <div class="status-row"><span>Credits</span><strong>${escapeHtml(cloudSession.credits)}</strong></div>
         <div class="status-row"><span>Cloud agents</span><strong>${agentCount}</strong></div>
         <div class="status-row"><span>Agent</span><strong>${escapeHtml(cloudSession.agentName || "Eliza")}</strong></div>
-        <div class="status-row"><span>Model</span><strong>${escapeHtml(cloudModelLabel)}</strong></div>
         <div class="status-row"><span></span><strong><a class="watchlist-link" href="/auth/eliza-cloud/logout">Disconnect</a></strong></div>
       </div>`;
 }
@@ -1928,175 +1970,341 @@ function renderCloudPageShell(
   title: string,
   subtitle: string,
   body: string,
+  cloudSession: ElizaCloudSession | null = null,
 ): string {
+  const isConnected = !!cloudSession;
+  const cloudNav = isConnected ? `
+    <div class="miku-nav__cloud">
+      <div class="miku-nav__divider"></div>
+      <div class="miku-nav__cloud-profile">
+        <div class="miku-nav__cloud-avatar">${escapeHtml((cloudSession.displayName || "E").slice(0,1).toUpperCase())}</div>
+        <div class="miku-nav__cloud-info">
+          <strong>${escapeHtml(cloudSession.displayName)}</strong>
+          <small>${escapeHtml(cloudSession.credits)} credits</small>
+        </div>
+      </div>
+      <a class="miku-nav__link${title === "Cloud Agents" ? " is-active" : ""}" href="/cloud/agents">
+        <span class="miku-nav__icon">⬡</span><span>Agents</span>
+      </a>
+      <a class="miku-nav__link${title === "Cloud Credits" ? " is-active" : ""}" href="/cloud/credits">
+        <span class="miku-nav__icon">◈</span><span>Credits</span>
+      </a>
+      <a class="miku-nav__link miku-nav__link--muted" href="/auth/eliza-cloud/logout">
+        <span class="miku-nav__icon">↩</span><span>Disconnect</span>
+      </a>
+    </div>` : `
+    <div class="miku-nav__cloud">
+      <div class="miku-nav__divider"></div>
+      <div class="miku-nav__cloud-cta">
+        <div class="miku-nav__cloud-cta-label">ElizaCloud</div>
+        <a class="miku-nav__cloud-btn" href="/">← Connect from Home</a>
+      </div>
+    </div>`;
+
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  ${renderHeadBrandAssets(`${escapeHtml(title)} | ElizaOK`)}
+  ${renderHeadBrandAssets(`${escapeHtml(title)} | elizaOK`)}
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&display=swap" rel="stylesheet">
   <style>
+    /* ── Shared design system (same as main page) ── */
     :root {
       color-scheme: dark;
-      --bg: #030301;
-      --panel: rgba(8,8,7,0.94);
-      --panel-border: rgba(246,231,15,0.15);
-      --text: #ffffff;
-      --muted: rgba(255,255,255,0.66);
-      --accent: #f6e70f;
+      --clr-bg:        hsl(192,45%,9%);
+      --clr-card:      hsl(192,35%,12%);
+      --clr-primary:   hsl(174,54%,50%);
+      --clr-secondary: hsl(176,45%,34%);
+      --clr-accent:    hsl(330,100%,50%);
+      --clr-fg:        hsl(168,100%,95%);
+      --clr-muted:     hsl(168,40%,70%);
+      --clr-border:    hsl(176,45%,34%);
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0;
+      background: var(--clr-bg);
+      color: var(--clr-fg);
+      font-family: Inter, sans-serif;
       min-height: 100vh;
-      background:
-        radial-gradient(circle at top left, rgba(246,231,15,0.08), transparent 30%),
-        linear-gradient(180deg, #050504 0%, #020201 100%);
-      color: var(--text);
-      font-family: "Kode Mono", monospace;
+      display: flex;
     }
-    .wrap {
-      max-width: 1180px;
-      margin: 0 auto;
-      padding: 18px;
+    a { color: var(--clr-fg); text-decoration: none; }
+
+    /* ── Left nav (same structure as main page) ── */
+    .miku-nav {
+      position: fixed; left: 0; top: 0;
+      width: 192px; height: 100vh;
+      border-right: 3px solid var(--clr-secondary);
+      background: var(--clr-bg);
+      display: flex; flex-direction: column;
+      z-index: 50; overflow: hidden;
     }
-    .top {
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
+    .miku-nav::before {
+      content: ""; position: absolute; inset: 0;
+      opacity: 0.03;
+      background-image:
+        linear-gradient(to right, var(--clr-secondary) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--clr-secondary) 1px, transparent 1px);
+      background-size: 20px 20px; pointer-events: none;
+    }
+    .miku-nav__head {
+      padding: 12px; border-bottom: 3px solid var(--clr-secondary);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .miku-nav__logo {
+      width: 48px; height: 48px; border: 2px solid var(--clr-secondary);
+      border-radius: 8px; overflow: hidden; flex-shrink: 0;
+    }
+    .miku-nav__logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .miku-nav__brand strong { display: block; font-size: 13px; font-weight: 800; letter-spacing: -0.02em; }
+    .miku-nav__brand small  { display: block; font-size: 10px; color: var(--clr-muted); }
+    .miku-nav__links { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
+    .miku-nav__link {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 6px;
+      font-size: 13px; font-weight: 700; color: var(--clr-fg);
+      transition: background 120ms, color 120ms;
+      cursor: pointer;
+    }
+    .miku-nav__link:hover, .miku-nav__link.is-active {
+      background: var(--clr-secondary); color: var(--clr-bg);
+    }
+    .miku-nav__icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+    .miku-nav__cloud { padding: 0 12px 8px; }
+    .miku-nav__divider { height: 1px; background: var(--clr-secondary); opacity: 0.4; margin-bottom: 10px; }
+    .miku-nav__cloud-profile { display: flex; align-items: center; gap: 8px; padding: 8px 4px; margin-bottom: 4px; }
+    .miku-nav__cloud-avatar {
+      width: 32px; height: 32px; border: 2px solid var(--clr-primary);
+      background: hsla(174,54%,50%,0.15);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 900; color: var(--clr-primary); flex-shrink: 0;
+    }
+    .miku-nav__cloud-info strong { display: block; font-size: 12px; font-weight: 800; color: var(--clr-fg); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .miku-nav__cloud-info small { display: block; font-size: 10px; color: var(--clr-primary); }
+    .miku-nav__link--muted { opacity: 0.5; font-size: 11px; }
+    .miku-nav__link--muted:hover { opacity: 1; }
+    .miku-nav__cloud-cta { padding: 6px 4px; }
+    .miku-nav__cloud-cta-label { font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--clr-muted); font-weight: 700; margin-bottom: 6px; }
+    .miku-nav__cloud-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 12px; border: 2px solid var(--clr-primary);
+      background: hsla(174,54%,50%,0.1); color: var(--clr-primary);
+      font-size: 12px; font-weight: 800; font-family: Inter, sans-serif;
+      cursor: pointer; letter-spacing: 0.05em;
+    }
+    .miku-nav__cloud-btn:hover { background: var(--clr-primary); color: var(--clr-bg); }
+    .miku-nav__foot { padding: 12px; border-top: 3px solid var(--clr-secondary); }
+    .miku-nav__bars { display: flex; align-items: flex-end; gap: 3px; height: 14px; margin-bottom: 6px; }
+    .miku-nav__bar { flex: 1; background: var(--clr-secondary); border-radius: 1px; }
+    .miku-nav__foot-label { text-align: center; font-size: 10px; color: hsla(168,40%,70%,0.4); font-family: ui-monospace, monospace; }
+
+    /* ── Main workspace ── */
+    .cp-workspace {
+      margin-left: 192px; flex: 1; min-height: 100vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    /* Topbar */
+    .cp-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 20px;
+      border-bottom: 3px solid var(--clr-secondary);
+      background: var(--clr-card);
       gap: 12px;
-      margin-bottom: 16px;
-      padding: 12px 14px;
-      border: 1px solid rgba(246,231,15,0.12);
-      border-radius: 16px;
-      background: rgba(10,10,8,0.88);
-      box-shadow: 0 0 0 1px rgba(246,231,15,0.03), 0 18px 40px rgba(0,0,0,0.45);
     }
-    .title strong {
-      display:block;
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
+    .cp-topbar__left { display: flex; align-items: center; gap: 10px; }
+    .cp-topbar__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--clr-primary); box-shadow: 0 0 10px hsla(174,54%,50%,0.7); flex-shrink: 0; }
+    .cp-topbar__title strong { font-size: 14px; font-weight: 800; letter-spacing: -0.02em; }
+    .cp-topbar__title small { font-size: 10px; color: var(--clr-muted); display: block; }
+    .cp-topbar__actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .cp-btn {
+      display: inline-flex; align-items: center; height: 32px; padding: 0 12px;
+      border: 2px solid var(--clr-secondary); background: transparent;
+      color: var(--clr-fg); font-family: Inter, sans-serif;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; cursor: pointer; transition: 150ms;
     }
-    .title small {
-      color: var(--muted);
-      font-size: 11px;
+    .cp-btn:hover { border-color: var(--clr-primary); background: hsla(174,54%,50%,0.1); }
+    .cp-btn--accent { border-color: var(--clr-primary); color: var(--clr-primary); }
+    .cp-btn--accent:hover { background: var(--clr-primary); color: var(--clr-bg); }
+
+    /* ── Page body ── */
+    .cp-body { flex: 1; padding: 20px; overflow-y: auto; }
+
+    /* ── Saas-style card grid ── */
+    .cp-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
+    .cp-col-12 { grid-column: span 12; }
+    .cp-col-8  { grid-column: span 8; }
+    .cp-col-6  { grid-column: span 6; }
+    .cp-col-4  { grid-column: span 4; }
+
+    /* Flat retro cards */
+    .cp-card {
+      border: 3px solid var(--clr-secondary);
+      background: var(--clr-card);
+      padding: 0;
+      overflow: hidden;
     }
-    .actions {
-      display:flex;
-      align-items:center;
-      gap: 8px;
-      flex-wrap: wrap;
+    .cp-card__head {
+      padding: 12px 16px;
+      border-bottom: 2px solid var(--clr-secondary);
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
     }
-    .btn {
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      height: 34px;
-      padding: 0 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(246,231,15,0.16);
-      background: rgba(255,255,255,0.03);
-      color: var(--text);
-      text-decoration: none;
-      font-size: 11px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+    .cp-card__head h2 {
+      font-size: 11px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.12em;
+      color: var(--clr-muted);
     }
-    .btn--accent {
-      background: linear-gradient(135deg, rgba(246,231,15,0.18), rgba(246,231,15,0.06));
+    .cp-card__head-badge {
+      font-size: 10px; font-weight: 700;
+      background: hsla(174,54%,50%,0.15);
+      border: 1px solid var(--clr-primary);
+      color: var(--clr-primary);
+      padding: 2px 8px;
     }
-    .grid {
-      display:grid;
-      grid-template-columns: repeat(12, minmax(0, 1fr));
-      gap: 12px;
+    .cp-card__body { padding: 16px; }
+
+    /* KPI stat tiles (market card YES/NO style) */
+    .cp-stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0; border: 2px solid var(--clr-secondary); }
+    .cp-stat {
+      padding: 14px 12px; text-align: center;
+      border-right: 2px solid var(--clr-secondary);
     }
-    .card {
-      grid-column: span 12;
-      border-radius: 16px;
-      border: 1px solid var(--panel-border);
-      background: var(--panel);
-      padding: 14px;
-      box-shadow: 0 0 0 1px rgba(246,231,15,0.03), 0 16px 30px rgba(0,0,0,0.35);
+    .cp-stat:last-child { border-right: none; }
+    .cp-stat__label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; color: var(--clr-muted); margin-bottom: 6px; }
+    .cp-stat__value { font-size: 26px; font-weight: 900; color: var(--clr-fg); line-height: 1; }
+    .cp-stat__value--green { color: var(--clr-primary); }
+    .cp-stat__value--pink  { color: var(--clr-accent); }
+
+    /* Profile hero card */
+    .cp-profile {
+      display: flex; align-items: center; gap: 20px; padding: 20px;
     }
-    .card h2 {
-      margin: 0 0 10px;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
+    .cp-profile__avatar {
+      width: 56px; height: 56px;
+      border: 3px solid var(--clr-primary);
+      background: hsla(174,54%,50%,0.15);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; font-weight: 900; color: var(--clr-primary);
+      flex-shrink: 0;
     }
-    .stats {
-      display:grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
+    .cp-profile__name { font-size: 20px; font-weight: 900; letter-spacing: -0.03em; }
+    .cp-profile__org { font-size: 11px; color: var(--clr-muted); margin-top: 2px; }
+    .cp-profile__meta { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+    .cp-profile__chip {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+      padding: 3px 10px; border: 2px solid var(--clr-secondary); color: var(--clr-muted);
     }
-    .stat {
-      padding: 12px;
-      border-radius: 12px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
+    .cp-profile__chip--active { border-color: var(--clr-primary); color: var(--clr-primary); }
+
+    /* Row list */
+    .cp-rows { display: grid; gap: 0; }
+    .cp-row {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px; padding: 11px 16px;
+      border-bottom: 1px solid hsla(176,45%,34%,0.25);
     }
-    .stat span {
-      display:block;
-      color: var(--muted);
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      margin-bottom: 6px;
+    .cp-row:last-child { border-bottom: none; }
+    .cp-row span { font-size: 11px; color: var(--clr-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .cp-row strong { font-size: 12px; font-weight: 700; text-align: right; max-width: 260px; word-break: break-all; }
+
+    /* Agent cards */
+    .cp-agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding: 16px; }
+    .cp-agent {
+      border: 3px solid var(--clr-secondary);
+      background: hsla(192,35%,12%,0.8);
+      padding: 0; transition: border-color 150ms;
     }
-    .stat strong {
-      font-size: 20px;
-      color: var(--text);
+    .cp-agent:hover { border-color: var(--clr-primary); }
+    .cp-agent__head {
+      padding: 12px 14px; border-bottom: 2px solid var(--clr-secondary);
+      display: flex; align-items: center; justify-content: space-between;
     }
-    .rows {
-      display:grid;
-      gap: 8px;
+    .cp-agent__name { font-size: 13px; font-weight: 800; }
+    .cp-agent__status {
+      font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em;
+      padding: 3px 8px; border: 1px solid var(--clr-secondary); color: var(--clr-muted);
     }
-    .row {
-      display:flex;
-      justify-content:space-between;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-    }
-    .row span {
-      color: var(--muted);
-      font-size: 11px;
-    }
-    .row strong {
-      text-align: right;
-      font-size: 11px;
-    }
-    .subgrid-6 { grid-column: span 6; }
-    .subgrid-4 { grid-column: span 4; }
+    .cp-agent__status--active { border-color: var(--clr-primary); color: var(--clr-primary); }
+    .cp-agent__body { padding: 12px 14px; }
+    .cp-agent__row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 5px; }
+    .cp-agent__row span { color: var(--clr-muted); }
+    .cp-agent__row strong { font-weight: 700; }
+
+    /* Actions row */
+    .cp-actions { padding: 14px 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+
     @media (max-width: 960px) {
-      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .subgrid-6, .subgrid-4 { grid-column: span 12; }
-      .top { flex-direction: column; align-items: flex-start; }
+      .cp-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .cp-col-8, .cp-col-6, .cp-col-4 { grid-column: span 12; }
+      .miku-nav { display: none; }
+      .cp-workspace { margin-left: 0; }
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header class="top">
-      <div class="title">
-        <strong>${escapeHtml(title)}</strong>
-        <small>${escapeHtml(subtitle)}</small>
+  <!-- Left nav (same structure as main) -->
+  <nav class="miku-nav">
+    <a href="/" class="miku-nav__head" style="text-decoration:none;color:inherit;">
+      <div class="miku-nav__logo"><img src="/assets/elizaok-logo.png" alt="elizaOK" /></div>
+      <div class="miku-nav__brand"><strong>elizaOK</strong><small>V1.0 · BNB Chain</small></div>
+    </a>
+    <div class="miku-nav__links">
+      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">⌂</span><span>Home</span></a>
+      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">◎</span><span>Discovery</span></a>
+      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">▣</span><span>Portfolio</span></a>
+      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">◈</span><span>Execution</span></a>
+      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">◉</span><span>Distribution</span></a>
+      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">✦</span><span>Goo</span></a>
+    </div>
+    ${cloudNav}
+    <div class="miku-nav__foot">
+      <div class="miku-nav__bars">
+        <div class="miku-nav__bar" style="height:40%"></div>
+        <div class="miku-nav__bar" style="height:70%"></div>
+        <div class="miku-nav__bar" style="height:95%"></div>
+        <div class="miku-nav__bar" style="height:55%"></div>
+        <div class="miku-nav__bar" style="height:80%"></div>
+        <div class="miku-nav__bar" style="height:40%"></div>
+        <div class="miku-nav__bar" style="height:65%"></div>
+        <div class="miku-nav__bar" style="height:90%"></div>
       </div>
-      <div class="actions">
-        <a class="btn" href="/">Back</a>
-        <a class="btn" href="/cloud/agents">Agents</a>
-        <a class="btn" href="/cloud/credits">Credits</a>
-        <a class="btn" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Open Cloud</a>
+      <div class="miku-nav__foot-label">♪ elizaOK V1.0 ♪</div>
+    </div>
+  </nav>
+
+  <div class="cp-workspace">
+    <!-- Topbar -->
+    <header class="cp-topbar">
+      <div class="cp-topbar__left">
+        <div class="cp-topbar__dot"></div>
+        <div class="cp-topbar__title">
+          <strong>${escapeHtml(title)}</strong>
+          <small>${escapeHtml(subtitle)}</small>
+        </div>
+      </div>
+      <div class="cp-topbar__actions">
+        <a class="cp-btn" href="/">← Home</a>
+        <a class="cp-btn${title === "Cloud Agents" ? " cp-btn--accent" : ""}" href="/cloud/agents">Agents</a>
+        <a class="cp-btn${title === "Cloud Credits" ? " cp-btn--accent" : ""}" href="/cloud/credits">Credits</a>
+        <a class="cp-btn" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Open Cloud ↗</a>
       </div>
     </header>
-    ${body}
+
+    <!-- Page body -->
+    <main class="cp-body">
+      ${body}
+    </main>
   </div>
+
+  <script>
+  (function() {
+    var bars = document.querySelectorAll(".miku-nav__bar");
+    function anim() { bars.forEach(function(b){ b.style.height=(10+Math.random()*85)+"%"; }); }
+    setInterval(anim,350); anim();
+  })();
+  </script>
 </body>
 </html>`;
 }
@@ -2105,57 +2313,104 @@ function renderCloudCreditsPage(
   cloudSession: ElizaCloudSession | null,
   cloudSummary: ElizaCloudSummaryFields | null,
 ): string {
-  if (!cloudSession || !cloudSummary) {
+  if (!cloudSession) {
     return renderCloudPageShell(
       "Cloud Credits",
       "Connect ElizaCloud first",
-      `<div class="grid"><article class="card"><h2>Unavailable</h2><div class="rows"><div class="row"><span>Status</span><strong>Connect ElizaCloud from the main dashboard first.</strong></div></div></article></div>`,
+      `<div class="cp-grid">
+        <div class="cp-col-12 cp-card">
+          <div class="cp-card__head"><h2>Not Connected</h2></div>
+          <div class="cp-card__body">
+            <p style="color:var(--clr-muted);font-size:13px;">Connect ElizaCloud from the home dashboard to view your credits.</p>
+            <div class="cp-actions"><a class="cp-btn cp-btn--accent" href="/">← Go to Home</a></div>
+          </div>
+        </div>
+      </div>`,
+      null,
     );
   }
-  const agentsSummary = cloudSummary.agentsSummary;
-  const pricing = cloudSummary.pricing;
-  const autoTopUp = cloudSummary.autoTopUp;
+  const agentsSummary = cloudSummary?.agentsSummary;
+  const pricing = cloudSummary?.pricing;
+  const autoTopUp = cloudSummary?.autoTopUp;
   const body = `
-    <div class="grid">
-      <article class="card">
-        <h2>Credits</h2>
-        <div class="stats">
-          <div class="stat"><span>Current balance</span><strong>${escapeHtml(cloudSession.credits)}</strong></div>
-          <div class="stat"><span>Cloud agents</span><strong>${agentsSummary?.total ?? cloudSummary.agents?.length ?? 0}</strong></div>
-          <div class="stat"><span>Allocated</span><strong>${formatCompactNumber(agentsSummary?.totalAllocated ?? 0)}</strong></div>
-          <div class="stat"><span>Available</span><strong>${formatCompactNumber(agentsSummary?.totalAvailable ?? 0)}</strong></div>
+    <div class="cp-grid">
+      <!-- Profile hero -->
+      <div class="cp-col-12 cp-card">
+        <div class="cp-profile">
+          <div class="cp-profile__avatar">${escapeHtml((cloudSession.displayName || "E").slice(0,1).toUpperCase())}</div>
+          <div>
+            <div class="cp-profile__name">${escapeHtml(cloudSession.displayName)}</div>
+            <div class="cp-profile__org">${escapeHtml(cloudSession.organizationName)}</div>
+            <div class="cp-profile__meta">
+              <span class="cp-profile__chip cp-profile__chip--active">CONNECTED</span>
+              <span class="cp-profile__chip">${escapeHtml(cloudSession.credits)} CREDITS</span>
+              <span class="cp-profile__chip">${escapeHtml(cloudSession.email && cloudSession.email !== "connected-via-elizacloud" ? cloudSession.email : cloudSession.apiKey ? cloudSession.apiKey.slice(0, 10) + "..." : "elizacloud")}</span>
+            </div>
+          </div>
         </div>
-      </article>
-      <article class="card subgrid-6">
-        <h2>Billing</h2>
-        <div class="rows">
-          <div class="row"><span>Credits / USD</span><strong>${pricing?.creditsPerDollar === null || pricing?.creditsPerDollar === undefined ? "n/a" : formatCompactNumber(pricing.creditsPerDollar)}</strong></div>
-          <div class="row"><span>Minimum deposit</span><strong>${pricing?.minimumTopUp === null || pricing?.minimumTopUp === undefined ? "n/a" : `$${formatCompactNumber(pricing.minimumTopUp)}`}</strong></div>
-          <div class="row"><span>x402 top-up</span><strong>${pricing?.x402Enabled ? "enabled" : "disabled"}</strong></div>
-          <div class="row"><span>Spent</span><strong>${formatCompactNumber(agentsSummary?.totalSpent ?? 0)}</strong></div>
+      </div>
+
+      <!-- Credit KPI tiles (market card style) -->
+      <div class="cp-col-12">
+        <div class="cp-stats">
+          <div class="cp-stat">
+            <div class="cp-stat__label">Account Balance</div>
+            <div class="cp-stat__value cp-stat__value--green">${escapeHtml(cloudSession.credits)} cr</div>
+          </div>
+          <div class="cp-stat">
+            <div class="cp-stat__label">Agents</div>
+            <div class="cp-stat__value">${agentsSummary?.total ?? cloudSummary?.agents?.length ?? "—"}</div>
+          </div>
+          <div class="cp-stat">
+            <div class="cp-stat__label">Total Spent</div>
+            <div class="cp-stat__value cp-stat__value--pink">${agentsSummary ? formatCompactNumber(agentsSummary.totalSpent ?? 0) : "—"}</div>
+          </div>
+          <div class="cp-stat">
+            <div class="cp-stat__label">With Budget</div>
+            <div class="cp-stat__value">${agentsSummary?.withBudget ?? "—"}</div>
+          </div>
         </div>
-      </article>
-      <article class="card subgrid-6">
-        <h2>Auto Top-up</h2>
-        <div class="rows">
-          <div class="row"><span>Status</span><strong>${autoTopUp?.enabled ? "enabled" : "disabled"}</strong></div>
-          <div class="row"><span>Payment method</span><strong>${autoTopUp?.hasPaymentMethod ? "saved" : "none"}</strong></div>
-          <div class="row"><span>Threshold</span><strong>${autoTopUp?.threshold === null || autoTopUp?.threshold === undefined ? "n/a" : formatCompactNumber(autoTopUp.threshold)}</strong></div>
-          <div class="row"><span>Amount</span><strong>${autoTopUp?.amount === null || autoTopUp?.amount === undefined ? "n/a" : formatCompactNumber(autoTopUp.amount)}</strong></div>
+      </div>
+
+      <!-- Billing details -->
+      <div class="cp-col-6 cp-card">
+        <div class="cp-card__head"><h2>Billing</h2><span class="cp-card__head-badge">ELIZACLOUD</span></div>
+        <div class="cp-rows">
+          <div class="cp-row"><span>Credits / USD</span><strong>${pricing?.creditsPerDollar == null ? "—" : formatCompactNumber(pricing.creditsPerDollar)}</strong></div>
+          <div class="cp-row"><span>Minimum deposit</span><strong>${pricing?.minimumTopUp == null ? "—" : `$${formatCompactNumber(pricing.minimumTopUp)}`}</strong></div>
+          <div class="cp-row"><span>x402 top-up</span><strong>${pricing ? (pricing.x402Enabled ? "Enabled" : "Disabled") : "—"}</strong></div>
+          <div class="cp-row"><span>Agent budget used</span><strong>${agentsSummary ? `${formatCompactNumber(agentsSummary.totalSpent ?? 0)} / ${formatCompactNumber(agentsSummary.totalAllocated ?? 0)}` : "—"}</strong></div>
         </div>
-      </article>
-      <article class="card">
-        <h2>Actions</h2>
-        <div class="actions">
-          <a class="btn btn--accent" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Top up in ElizaCloud</a>
-          <a class="btn" href="/cloud/agents">Open Agents</a>
+      </div>
+
+      <!-- Auto top-up -->
+      <div class="cp-col-6 cp-card">
+        <div class="cp-card__head"><h2>Auto Top-up</h2><span class="cp-card__head-badge">${autoTopUp?.enabled ? "ACTIVE" : "OFF"}</span></div>
+        <div class="cp-rows">
+          <div class="cp-row"><span>Status</span><strong>${autoTopUp ? (autoTopUp.enabled ? "Enabled" : "Disabled") : "—"}</strong></div>
+          <div class="cp-row"><span>Payment method</span><strong>${autoTopUp ? (autoTopUp.hasPaymentMethod ? "Saved" : "None") : "—"}</strong></div>
+          <div class="cp-row"><span>Threshold</span><strong>${autoTopUp?.threshold == null ? "—" : formatCompactNumber(autoTopUp.threshold)}</strong></div>
+          <div class="cp-row"><span>Top-up amount</span><strong>${autoTopUp?.amount == null ? "—" : formatCompactNumber(autoTopUp.amount)}</strong></div>
         </div>
-      </article>
+        <div class="cp-actions">
+          <a class="cp-btn cp-btn--accent" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Top Up in Cloud ↗</a>
+          <a class="cp-btn" href="/cloud/agents">View Agents</a>
+        </div>
+      </div>
+
+      ${!cloudSummary ? `
+      <div class="cp-col-12 cp-card">
+        <div class="cp-card__head"><h2>Data Status</h2></div>
+        <div class="cp-card__body" style="padding:14px;">
+          <p style="color:var(--clr-muted);font-size:12px;">Connected — detailed billing data could not be fetched from ElizaCloud. Your session is valid. <a style="color:var(--clr-primary)" href="/cloud/credits">Refresh</a></p>
+        </div>
+      </div>` : ""}
     </div>`;
   return renderCloudPageShell(
     "Cloud Credits",
-    `${cloudSession.organizationName} billing`,
+    `${cloudSession.organizationName} · billing`,
     body,
+    cloudSession,
   );
 }
 
@@ -2163,52 +2418,112 @@ function renderCloudAgentsPage(
   cloudSession: ElizaCloudSession | null,
   cloudSummary: ElizaCloudSummaryFields | null,
 ): string {
-  if (!cloudSession || !cloudSummary) {
+  if (!cloudSession) {
     return renderCloudPageShell(
       "Cloud Agents",
       "Connect ElizaCloud first",
-      `<div class="grid"><article class="card"><h2>Unavailable</h2><div class="rows"><div class="row"><span>Status</span><strong>Connect ElizaCloud from the main dashboard first.</strong></div></div></article></div>`,
+      `<div class="cp-grid">
+        <div class="cp-col-12 cp-card">
+          <div class="cp-card__head"><h2>Not Connected</h2></div>
+          <div class="cp-card__body">
+            <p style="color:var(--clr-muted);font-size:13px;">Connect ElizaCloud from the home dashboard to manage your agents.</p>
+            <div class="cp-actions"><a class="cp-btn cp-btn--accent" href="/">← Go to Home</a></div>
+          </div>
+        </div>
+      </div>`,
+      null,
     );
   }
-  const agents = cloudSummary.agents || [];
-  const rows = agents.length
-    ? agents
-        .map(
-          (agent) => `
-          <div class="row">
-            <span>${escapeHtml(agent.name)}</span>
-            <strong>${agent.hasBudget ? `${formatCompactNumber(agent.available)} avail · ${formatCompactNumber(agent.allocated)} alloc` : "no budget"}${agent.isPaused ? " · paused" : ""}<br />requests ${agent.totalRequests}${agent.dailyLimit !== null ? ` · daily ${formatCompactNumber(agent.dailyLimit)}` : ""}</strong>
-          </div>`,
-        )
-        .join("")
-    : `<div class="row"><span>Agents</span><strong>No agents discovered. Create one in ElizaCloud or from this page.</strong></div>`;
+  const agents = cloudSummary?.agents || [];
+  const agentCards = agents.length
+    ? agents.map((agent) => `
+        <div class="cp-agent">
+          <div class="cp-agent__head">
+            <span class="cp-agent__name">${escapeHtml(agent.name)}</span>
+            <span class="cp-agent__status${agent.isPaused ? "" : " cp-agent__status--active"}">${agent.isPaused ? "PAUSED" : "ACTIVE"}</span>
+          </div>
+          <div class="cp-agent__body">
+            <div class="cp-agent__row"><span>Budget</span><strong>${agent.hasBudget ? `${formatCompactNumber(agent.available)} avail` : "No budget"}</strong></div>
+            <div class="cp-agent__row"><span>Allocated</span><strong>${agent.hasBudget ? formatCompactNumber(agent.allocated) : "—"}</strong></div>
+            <div class="cp-agent__row"><span>Requests</span><strong>${agent.totalRequests}</strong></div>
+            ${agent.dailyLimit !== null ? `<div class="cp-agent__row"><span>Daily limit</span><strong>${formatCompactNumber(agent.dailyLimit)}</strong></div>` : ""}
+          </div>
+        </div>`).join("")
+    : `<div style="padding:20px;color:var(--clr-muted);font-size:12px;grid-column:span 2">No agents found. Create one below or in ElizaCloud.</div>`;
+
   const body = `
-    <div class="grid">
-      <article class="card">
-        <h2>Agents</h2>
-        <div class="stats">
-          <div class="stat"><span>Total</span><strong>${cloudSummary.agentsSummary?.total ?? agents.length}</strong></div>
-          <div class="stat"><span>With budget</span><strong>${cloudSummary.agentsSummary?.withBudget ?? 0}</strong></div>
-          <div class="stat"><span>Paused</span><strong>${cloudSummary.agentsSummary?.paused ?? 0}</strong></div>
-          <div class="stat"><span>Selected agent</span><strong>${escapeHtml(cloudSession.agentName || "Eliza")}</strong></div>
+    <div class="cp-grid">
+      <!-- Profile hero -->
+      <div class="cp-col-12 cp-card">
+        <div class="cp-profile">
+          <div class="cp-profile__avatar">${escapeHtml((cloudSession.displayName || "E").slice(0,1).toUpperCase())}</div>
+          <div>
+            <div class="cp-profile__name">${escapeHtml(cloudSession.displayName)}</div>
+            <div class="cp-profile__org">${escapeHtml(cloudSession.organizationName)}</div>
+            <div class="cp-profile__meta">
+              <span class="cp-profile__chip cp-profile__chip--active">CONNECTED</span>
+              <span class="cp-profile__chip">${cloudSummary?.agentsSummary?.total ?? agents.length} AGENTS</span>
+              <span class="cp-profile__chip">${escapeHtml(cloudSession.credits)} CREDITS</span>
+            </div>
+          </div>
         </div>
-      </article>
-      <article class="card subgrid-6">
-        <h2>Cloud Agent List</h2>
-        <div class="rows">${rows}</div>
-      </article>
-      <article class="card subgrid-6">
-        <h2>Actions</h2>
-        <div class="rows">
-          <div class="row"><span>Current agent</span><strong>${escapeHtml(cloudSession.agentName || "Eliza")}</strong></div>
-          <div class="row"><span>Agent model</span><strong>${escapeHtml(cloudSession.model && cloudSession.model !== "n/a" ? cloudSession.model : "Not exposed by ElizaCloud API")}</strong></div>
-          <div class="row"><span>Org</span><strong>${escapeHtml(cloudSession.organizationName)}</strong></div>
+      </div>
+
+      <!-- KPI stats -->
+      <div class="cp-col-12">
+        <div class="cp-stats">
+          <div class="cp-stat">
+            <div class="cp-stat__label">Total Agents</div>
+            <div class="cp-stat__value">${cloudSummary?.agentsSummary?.total ?? agents.length}</div>
+          </div>
+          <div class="cp-stat">
+            <div class="cp-stat__label">With Budget</div>
+            <div class="cp-stat__value cp-stat__value--green">${cloudSummary?.agentsSummary?.withBudget ?? 0}</div>
+          </div>
+          <div class="cp-stat">
+            <div class="cp-stat__label">Paused</div>
+            <div class="cp-stat__value cp-stat__value--pink">${cloudSummary?.agentsSummary?.paused ?? 0}</div>
+          </div>
+          <div class="cp-stat">
+            <div class="cp-stat__label">Credits Left</div>
+            <div class="cp-stat__value">${escapeHtml(cloudSession.credits)}</div>
+          </div>
         </div>
-        <div class="actions" style="margin-top:12px">
-          <button type="button" class="btn btn--accent" data-cloud-create-agent>+ New Agent</button>
-          <a class="btn" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Manage in Cloud</a>
+      </div>
+
+      <!-- Agent cards grid -->
+      <div class="cp-col-8 cp-card">
+        <div class="cp-card__head">
+          <h2>Cloud Agents</h2>
+          <span class="cp-card__head-badge">${agents.length} TOTAL</span>
         </div>
-      </article>
+        <div class="cp-agents">${agentCards}</div>
+        <div class="cp-actions">
+          <button type="button" class="cp-btn cp-btn--accent" data-cloud-create-agent>+ New Agent</button>
+          <a class="cp-btn" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Manage in Cloud ↗</a>
+        </div>
+      </div>
+
+      <!-- Selected agent details -->
+      <div class="cp-col-4 cp-card">
+        <div class="cp-card__head"><h2>Selected Agent</h2><span class="cp-card__head-badge">ACTIVE</span></div>
+        <div class="cp-rows">
+          <div class="cp-row"><span>Agent</span><strong>${escapeHtml(cloudSession.agentName || "Eliza")}</strong></div>
+          <div class="cp-row"><span>Org</span><strong>${escapeHtml(cloudSession.organizationName)}</strong></div>
+          <div class="cp-row"><span>API Key</span><strong>${escapeHtml(cloudSession.apiKey ? cloudSession.apiKey.slice(0,12) + "..." : "n/a")}</strong></div>
+        </div>
+        <div class="cp-actions">
+          <a class="cp-btn" href="/cloud/credits">View Credits</a>
+        </div>
+      </div>
+
+      ${!cloudSummary ? `
+      <div class="cp-col-12 cp-card">
+        <div class="cp-card__head"><h2>Data Status</h2></div>
+        <div class="cp-card__body" style="padding:14px;">
+          <p style="color:var(--clr-muted);font-size:12px;">Connected — agent list could not be fetched from ElizaCloud API. Your session is valid. <a style="color:var(--clr-primary)" href="/cloud/agents">Refresh</a></p>
+        </div>
+      </div>` : ""}
     </div>
     <script>
       (function () {
@@ -2243,8 +2558,9 @@ function renderCloudAgentsPage(
     </script>`;
   return renderCloudPageShell(
     "Cloud Agents",
-    `${cloudSession.organizationName} agents`,
+    `${cloudSession.organizationName} · agents`,
     body,
+    cloudSession,
   );
 }
 
@@ -2700,9 +3016,13 @@ function renderHtml(
       "Discovery",
       `${clampPercent(discoveryPct)}%`,
       `${snapshot.summary.candidateCount}`,
-      `${snapshot.summary.topRecommendationCount} ready`,
+      `${snapshot.summary.topRecommendationCount} buy-ready`,
       discoveryPct,
       "hot",
+      "BUY-READY",
+      "SCANNED",
+      `${snapshot.summary.topRecommendationCount}`,
+      `${snapshot.summary.candidateCount}`,
     ),
     renderFeatureDockCard(
       "portfolio-section",
@@ -2712,15 +3032,23 @@ function renderHtml(
       `${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}`,
       portfolioPct,
       "cool",
+      "ACTIVE",
+      "VALUE",
+      `${portfolioLifecycle.activePositions.length}`,
+      formatUsd(portfolioLifecycle.grossPortfolioValueUsd),
     ),
     renderFeatureDockCard(
       "treasury-section",
       "Execution",
       `${clampPercent(executionPct)}%`,
       `${eligibleExecutionPlans}`,
-      `${executionState.mode}`,
+      executionState.mode,
       executionPct,
       executionState.dryRun ? "warm" : "hot",
+      "ELIGIBLE",
+      "MODE",
+      `${eligibleExecutionPlans}`,
+      executionState.dryRun ? "DRY-RUN" : "LIVE",
     ),
     renderFeatureDockCard(
       "distribution-section",
@@ -2730,6 +3058,10 @@ function renderHtml(
       `${distributionPlan.recipients.length} recipients`,
       distributionPct,
       distributionExecution.dryRun ? "warm" : "hot",
+      "HOLDERS",
+      "RECIPIENTS",
+      `${distributionPlan.eligibleHolderCount}`,
+      `${distributionPlan.recipients.length}`,
     ),
     renderFeatureDockCard(
       "goo-section",
@@ -2739,6 +3071,10 @@ function renderHtml(
       `${snapshot.summary.gooPriorityCount} priority`,
       gooPct,
       "cool",
+      "PRIORITY",
+      "REVIEWED",
+      `${snapshot.summary.gooPriorityCount}`,
+      `${snapshot.summary.gooAgentCount}`,
     ),
   ].join("");
   const discoveryFoldSummary = `${snapshot.summary.candidateCount} scanned · ${snapshot.summary.topRecommendationCount} buy-ready · avg ${snapshot.summary.averageScore}`;
@@ -3115,59 +3451,294 @@ function renderHtml(
   ${renderHeadBrandAssets("ElizaOK | elizaOK")}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    /* ── mikuelizaos.cloud exact palette ── */
     :root {
       color-scheme: dark;
-      --bg: #030301;
-      --bg-soft: #080805;
-      --panel: rgba(5, 5, 4, 0.9);
-      --panel-strong: rgba(8, 8, 6, 0.96);
-      --border: rgba(246, 231, 15, 0.14);
-      --border-strong: rgba(246, 231, 15, 0.34);
-      --text: #ffffff;
-      --muted: rgba(255, 255, 255, 0.62);
-      --accent: #F6E70F;
-      --shadow: rgba(0, 0, 0, 0.72);
-      --glow: 0 0 0 1px rgba(246, 231, 15, 0.06), 0 0 28px rgba(246, 231, 15, 0.08);
+      /* hsl values matching mikuelizaos.cloud dark mode */
+      --clr-bg:        hsl(192,45%,9%);
+      --clr-card:      hsl(192,35%,12%);
+      --clr-primary:   hsl(174,54%,50%);
+      --clr-secondary: hsl(176,45%,34%);
+      --clr-accent:    hsl(330,100%,50%);
+      --clr-fg:        hsl(168,100%,95%);
+      --clr-muted:     hsl(168,40%,70%);
+      --clr-border:    hsl(176,45%,34%);
+
+      /* Legacy vars (still used by some existing CSS) — remapped */
+      --bg: var(--clr-bg);
+      --bg-soft: hsl(192,40%,11%);
+      --panel: hsl(192,38%,11%);
+      --panel-strong: hsl(192,42%,10%);
+      --border: hsla(176,45%,34%,0.5);
+      --border-strong: hsl(176,45%,34%);
+      --text: var(--clr-fg);
+      --muted: var(--clr-muted);
+      --accent: var(--clr-primary);
+      --shadow: rgba(0,0,0,0.72);
+      --glow: 0 0 0 1px hsla(174,54%,50%,0.12), 0 0 28px hsla(174,54%,50%,0.10);
     }
+
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
-      height: 100vh;
-      background:
-        radial-gradient(circle at 18% 14%, rgba(246,231,15,0.07), transparent 18%),
-        radial-gradient(circle at 82% 22%, rgba(246,231,15,0.03), transparent 16%),
-        linear-gradient(180deg, #030301 0%, #030301 56%, #050503 100%);
-      color: var(--text);
-      font-family: "Kode Mono", monospace;
+      min-height: 100vh;
+      background: var(--clr-bg);
+      color: var(--clr-fg);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
       overflow-x: hidden;
-      overflow-y: hidden;
+      overflow-y: auto;
     }
+
+    /* Grid texture like mikuelizaos sidebar (applied subtly to body) */
     body::before {
       content: "";
       position: fixed;
       inset: 0;
       pointer-events: none;
       background-image:
-        linear-gradient(rgba(246,231,15,0.018) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(246,231,15,0.018) 1px, transparent 1px),
-        repeating-linear-gradient(180deg, rgba(255,255,255,0.018) 0 1px, transparent 1px 18px);
-      background-size: 34px 34px, 34px 34px, 100% 18px;
-      mask-image: linear-gradient(180deg, rgba(0,0,0,0.85), transparent);
+        linear-gradient(to right, hsla(176,45%,34%,0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, hsla(176,45%,34%,0.08) 1px, transparent 1px);
+      background-size: 20px 20px;
+      z-index: 0;
     }
     body::after {
       content: "";
       position: fixed;
       inset: 0;
       pointer-events: none;
-      background:
-        radial-gradient(circle at 18% 20%, rgba(255,255,255,0.03), transparent 14%),
-        radial-gradient(circle at 72% 24%, rgba(246,231,15,0.05), transparent 18%),
-        radial-gradient(circle at 60% 76%, rgba(246,231,15,0.035), transparent 18%);
-      animation: ambient 10s ease-in-out infinite alternate;
-      opacity: 0.7;
+      background: linear-gradient(to bottom, hsla(176,45%,34%,0.05) 0%, transparent 30%, hsla(176,45%,34%,0.08) 100%);
+      z-index: 0;
     }
+
+    /* ── Spotlights (matching mikuelizaos exactly) ── */
+    .spotlight-wrap {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+    }
+    .spotlight {
+      position: absolute;
+      top: 0;
+      height: 120%;
+      filter: blur(8px);
+      transform-origin: top center;
+    }
+    .spotlight--left {
+      left: 10%;
+      width: 200px;
+      background: linear-gradient(180deg, hsla(174,54%,50%,0.35) 0%, hsla(174,54%,50%,0.15) 40%, transparent 80%);
+      clip-path: polygon(40% 0%, 60% 0%, 100% 100%, 0% 100%);
+      animation: spotlight-sway 4s ease-in-out infinite;
+      opacity: 0.5;
+    }
+    .spotlight--center {
+      left: 50%;
+      transform: translateX(-50%);
+      width: 400px;
+      filter: blur(12px);
+      background: linear-gradient(180deg, hsla(330,100%,50%,0.4) 0%, hsla(330,100%,50%,0.18) 40%, transparent 80%);
+      clip-path: polygon(35% 0%, 65% 0%, 100% 100%, 0% 100%);
+      opacity: 0.4;
+      animation: spotlight-pulse 3s ease-in-out infinite;
+    }
+    .spotlight--right {
+      right: 10%;
+      width: 200px;
+      background: linear-gradient(180deg, hsla(174,54%,50%,0.35) 0%, hsla(174,54%,50%,0.15) 40%, transparent 80%);
+      clip-path: polygon(40% 0%, 60% 0%, 100% 100%, 0% 100%);
+      animation: spotlight-sway-reverse 4s ease-in-out infinite;
+      opacity: 0.5;
+    }
+    @keyframes spotlight-sway {
+      0%,100% { transform: rotate(-8deg); }
+      50%      { transform: rotate(8deg); }
+    }
+    @keyframes spotlight-sway-reverse {
+      0%,100% { transform: rotate(8deg); }
+      50%      { transform: rotate(-8deg); }
+    }
+    @keyframes spotlight-pulse {
+      0%,100% { opacity: 0.3; }
+      50%      { opacity: 0.55; }
+    }
+
+    /* ── Floating notes (matching mikuelizaos) ── */
+    .float-note {
+      position: fixed;
+      bottom: -10%;
+      font-size: clamp(18px, 3vw, 36px);
+      color: hsla(174,54%,50%,0.45);
+      pointer-events: none;
+      z-index: 1;
+      animation: float-up 4s ease-out infinite;
+    }
+    @keyframes float-up {
+      0%   { opacity: 0; transform: translateY(0) rotate(0deg); }
+      20%  { opacity: 1; }
+      80%  { opacity: 0.7; }
+      100% { opacity: 0; transform: translateY(-110vh) rotate(25deg); }
+    }
+
+    /* ── Intro overlay (3→2→1→SHOWTIME→loading) ── */
+    #intro-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: var(--clr-bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #intro-overlay.hidden { display: none; }
+
+    /* Miku-stage bg image during intro — replaced by ElizaOK logo */
+    .intro-stage-img {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .intro-stage-img img {
+      max-height: 80vh;
+      width: auto;
+      object-fit: contain;
+      mix-blend-mode: screen;
+      opacity: 0.12;
+      filter: drop-shadow(0 0 30px hsla(174,54%,50%,0.5)) drop-shadow(0 0 60px hsla(330,100%,50%,0.3));
+      transition: opacity 1s;
+    }
+    .intro-stage-img img.showtime { opacity: 0.28; }
+
+    .intro-count {
+      position: relative;
+      z-index: 2;
+      font-family: Inter, sans-serif;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+      line-height: 1;
+      font-size: clamp(100px, 20vw, 192px);
+      color: var(--clr-secondary);
+      text-shadow: 0 0 20px hsla(176,45%,34%,0.5);
+      transition: all 0.3s;
+    }
+    .intro-count.showtime {
+      font-size: clamp(60px, 9vw, 80px);
+      color: var(--clr-primary);
+      text-shadow: 0 0 40px var(--clr-primary), 0 0 80px hsla(174,54%,50%,0.5);
+      animation: pulse-glow 0.8s ease-in-out infinite alternate;
+    }
+    @keyframes pulse-glow {
+      from { text-shadow: 0 0 30px var(--clr-primary), 0 0 60px hsla(174,54%,50%,0.4); }
+      to   { text-shadow: 0 0 60px var(--clr-primary), 0 0 120px hsla(174,54%,50%,0.7); }
+    }
+
+    /* Ping ring around countdown number */
+    .intro-ping {
+      position: absolute;
+      inset: -32px;
+      border-radius: 50%;
+      border: 4px solid hsla(174,54%,50%,0.3);
+      animation: ping-ring 0.8s ease-out infinite;
+    }
+    @keyframes ping-ring {
+      0%   { transform: scale(1); opacity: 0.8; }
+      100% { transform: scale(1.4); opacity: 0; }
+    }
+
+    /* Loading state */
+    .intro-loading-title {
+      font-family: Inter, sans-serif;
+      font-size: clamp(36px, 6vw, 64px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--clr-secondary);
+      text-shadow: 0 0 20px hsla(174,54%,50%,0.5);
+      display: none;
+    }
+    .intro-loading-sub {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      color: var(--clr-primary);
+      margin-top: 6px;
+      display: none;
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .intro-bar-wrap {
+      width: min(384px, 80vw);
+      margin-top: 12px;
+      display: none;
+    }
+    .intro-bar-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--clr-muted);
+      margin-bottom: 4px;
+    }
+    .intro-bar-labels span:last-child { color: var(--clr-primary); }
+    .intro-bar-track {
+      height: 12px;
+      border-radius: 9999px;
+      background: hsla(176,45%,34%,0.3);
+      border: 2px solid var(--clr-secondary);
+      overflow: hidden;
+    }
+    .intro-bar-fill {
+      height: 100%;
+      background: linear-gradient(to right, var(--clr-primary), var(--clr-accent));
+      width: 0%;
+      transition: width 0.1s linear;
+      position: relative;
+    }
+    .intro-bar-fill::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.4), transparent);
+      animation: shimmer 1s linear infinite;
+    }
+    @keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+
+    .intro-notes-row {
+      display: flex;
+      gap: 4px;
+      justify-content: center;
+      margin-top: 6px;
+    }
+    .intro-note-dot {
+      font-size: 11px;
+      color: hsla(168,40%,70%,0.3);
+      transition: color 0.2s, transform 0.2s;
+    }
+    .intro-note-dot.lit {
+      color: var(--clr-primary);
+      transform: scale(1.2);
+    }
+
+    .intro-sys {
+      font-family: ui-monospace, monospace;
+      font-size: 10px;
+      color: var(--clr-muted);
+      text-align: center;
+      margin-top: 8px;
+      line-height: 1.6;
+      display: none;
+    }
+
     @keyframes ambient {
       from { transform: translate3d(0,0,0) scale(1); }
       to { transform: translate3d(0,-8px,0) scale(1.02); }
@@ -4840,39 +5411,225 @@ function renderHtml(
     }
 
     /* ============================================================
-       LANDING PAGE REDESIGN — matches mikuelizaos.cloud aesthetic
+       MIKUELIZAOS.CLOUD EXACT LAYOUT — left nav + retro card grid
        ============================================================ */
 
-    /* Reset layout to full-width, no sidebar */
-    .app-shell { display: block !important; }
+    .app-shell { display: flex !important; min-height: 100vh; }
     .sidebar { display: none !important; }
+    body { overflow-y: auto; height: auto; }
+
+    /* ── Left nav sidebar ── */
+    .miku-nav {
+      position: fixed;
+      left: 0; top: 0;
+      width: 192px;
+      height: 100vh;
+      border-right: 3px solid var(--clr-secondary);
+      background: var(--clr-bg);
+      display: flex;
+      flex-direction: column;
+      z-index: 50;
+      overflow: hidden;
+    }
+    .miku-nav::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0.03;
+      background-image:
+        linear-gradient(to right, var(--clr-secondary) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--clr-secondary) 1px, transparent 1px);
+      background-size: 20px 20px;
+      pointer-events: none;
+    }
+    .miku-nav__head {
+      padding: 12px;
+      border-bottom: 3px solid var(--clr-secondary);
+      background: hsla(192,45%,9%,0.5);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--clr-fg);
+    }
+    .miku-nav__logo {
+      width: 48px; height: 48px;
+      border: 2px solid var(--clr-secondary);
+      border-radius: 8px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .miku-nav__logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .miku-nav__brand strong { display: block; font-size: 13px; font-weight: 800; letter-spacing: -0.02em; }
+    .miku-nav__brand small  { display: block; font-size: 10px; color: var(--clr-muted); }
+    .miku-nav__links {
+      flex: 1;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .miku-nav__link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--clr-fg);
+      text-decoration: none;
+      transition: background 120ms, color 120ms;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      font-family: Inter, sans-serif;
+      width: 100%;
+      text-align: left;
+    }
+    .miku-nav__link:hover,
+    .miku-nav__link.is-active {
+      background: var(--clr-secondary);
+      color: var(--clr-bg);
+    }
+    .miku-nav__icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+    .miku-nav__foot {
+      padding: 12px;
+      border-top: 3px solid var(--clr-secondary);
+    }
+    .miku-nav__bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 14px;
+      margin-bottom: 6px;
+    }
+    .miku-nav__bar {
+      flex: 1;
+      background: var(--clr-secondary);
+      border-radius: 1px;
+    }
+    .miku-nav__foot-label {
+      text-align: center;
+      font-size: 10px;
+      color: hsla(168,40%,70%,0.4);
+      font-family: ui-monospace, monospace;
+    }
+
+    /* ── Cloud section in nav ── */
+    .miku-nav__cloud { padding: 0 12px 8px; }
+    .miku-nav__divider {
+      height: 1px;
+      background: var(--clr-secondary);
+      opacity: 0.4;
+      margin-bottom: 10px;
+    }
+    .miku-nav__cloud-profile {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 4px;
+      margin-bottom: 4px;
+    }
+    .miku-nav__cloud-avatar {
+      width: 32px; height: 32px;
+      border-radius: 0;
+      border: 2px solid var(--clr-primary);
+      background: hsla(174,54%,50%,0.15);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 900;
+      color: var(--clr-primary);
+      flex-shrink: 0;
+    }
+    .miku-nav__cloud-info strong {
+      display: block;
+      font-size: 12px; font-weight: 800;
+      color: var(--clr-fg);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 110px;
+    }
+    .miku-nav__cloud-info small {
+      display: block;
+      font-size: 10px;
+      color: var(--clr-primary);
+    }
+    .miku-nav__link--muted { opacity: 0.5; font-size: 11px !important; }
+    .miku-nav__link--muted:hover { opacity: 1; }
+    .miku-nav__cloud-cta { padding: 6px 4px; }
+    .miku-nav__cloud-cta-label {
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--clr-muted);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .miku-nav__cloud-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      border: 2px solid var(--clr-primary);
+      background: hsla(174,54%,50%,0.1);
+      color: var(--clr-primary);
+      font-size: 12px;
+      font-weight: 800;
+      font-family: Inter, sans-serif;
+      cursor: pointer;
+      border-radius: 0;
+      transition: background 150ms, color 150ms;
+      letter-spacing: 0.05em;
+    }
+    .miku-nav__cloud-btn:hover {
+      background: var(--clr-primary);
+      color: var(--clr-bg);
+    }
+
+    /* ── Workspace ── */
     .workspace {
+      margin-left: 192px;
+      flex: 1;
       min-width: 0;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      padding: 16px 20px 48px;
+      align-items: stretch;
+      padding: 16px;
       overflow-y: auto;
       overflow-x: hidden;
     }
-    body { overflow-y: auto; height: auto; }
 
     /* Topbar */
     .topbar {
-      width: min(100%, 1100px) !important;
-      border-radius: 18px !important;
+      width: 100% !important;
+      max-width: none !important;
+      border-radius: 0 !important;
       padding: 10px 16px !important;
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.04), rgba(246,231,15,0.01)),
-        rgba(4,4,3,0.72) !important;
-      border: 1px solid rgba(246,231,15,0.14) !important;
-      backdrop-filter: blur(14px) !important;
-      box-shadow: 0 4px 32px rgba(0,0,0,0.32) !important;
+      background: var(--clr-card) !important;
+      border: none !important;
+      border-bottom: 3px solid var(--clr-secondary) !important;
+      box-shadow: none !important;
     }
-    .topbar-title strong { font-size: 13px; color: var(--text); }
-    .topbar-title small { color: var(--muted); font-size: 10px; }
+    .topbar-title strong { font-size: 13px; font-weight: 800; color: var(--clr-fg); }
+    .topbar-title small { color: var(--clr-muted); font-size: 10px; }
     .meta-chip { display: none; }
+    .live-dot { background: var(--clr-primary) !important; box-shadow: 0 0 14px hsla(174,54%,50%,0.7) !important; }
+    .social-link {
+      border: 2px solid var(--clr-secondary) !important;
+      border-radius: 6px !important;
+      background: transparent !important;
+      color: var(--clr-fg) !important;
+    }
+    .social-link:hover { border-color: var(--clr-primary) !important; background: hsla(174,54%,50%,0.1) !important; }
+    .auth-link {
+      border: 2px solid var(--clr-secondary) !important;
+      border-radius: 6px !important;
+      background: hsla(174,54%,50%,0.12) !important;
+      color: var(--clr-fg) !important;
+      font-weight: 700 !important;
+    }
+    .auth-link:hover { border-color: var(--clr-primary) !important; }
 
     /* Content stack */
     .content-stack {
@@ -4884,201 +5641,80 @@ function renderHtml(
     }
 
     /* Hero landing card — centered, like mikuelizaos.cloud */
-    .lp-hero {
-      position: relative;
+    /* ── Status bar (replaces lp-hero, compact scan bar) ── */
+    .lp-status-bar {
       display: flex;
-      flex-direction: column;
       align-items: center;
-      text-align: center;
-      padding: 64px 32px 48px !important;
-      border-radius: 32px !important;
-      border: 1px solid rgba(246,231,15,0.16) !important;
-      background:
-        radial-gradient(circle at 50% 0%, rgba(246,231,15,0.12), transparent 36%),
-        radial-gradient(circle at 80% 80%, rgba(246,231,15,0.05), transparent 28%),
-        rgba(5,5,4,0.92) !important;
-      box-shadow: 0 0 0 1px rgba(246,231,15,0.06), 0 32px 80px rgba(0,0,0,0.5) !important;
-      overflow: hidden !important;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 16px;
+      border: 3px solid var(--clr-secondary);
+      background: var(--clr-card);
+      margin-bottom: 14px;
+      flex-wrap: wrap;
     }
-    .lp-hero::before {
-      content: "";
-      position: absolute;
-      inset: 0 0 auto 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(246,231,15,0.5), transparent);
-      opacity: 0.7;
-      pointer-events: none;
-    }
-    /* Scan animation */
-    .lp-hero::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(115deg, transparent 32%, rgba(246,231,15,0.06) 50%, transparent 68%);
-      transform: translateX(-120%);
-      animation: lp-scan 7s linear infinite;
-      pointer-events: none;
-    }
-    @keyframes lp-scan {
-      from { transform: translateX(-120%); }
-      to   { transform: translateX(120%); }
-    }
-
-    /* Large background number (like "3" on mikuelizaos) */
-    .lp-hero__count {
-      position: absolute;
-      top: 12px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: clamp(120px, 18vw, 220px);
-      font-weight: 700;
-      line-height: 1;
-      letter-spacing: -0.06em;
-      color: rgba(246,231,15,0.06);
-      pointer-events: none;
-      user-select: none;
-      white-space: nowrap;
-    }
-
-    /* Eyebrow tag */
-    .lp-hero__eyebrow {
-      display: inline-flex;
+    .lp-status-bar__left {
+      display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 10px;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      color: var(--muted);
-      position: relative;
-      z-index: 1;
-      margin-bottom: 8px;
-    }
-    .lp-hero__eyebrow .live-dot {
-      width: 8px;
-      height: 8px;
-      flex-shrink: 0;
-    }
-
-    /* Logo / image */
-    .lp-hero__logo-wrap {
-      position: relative;
-      z-index: 1;
-      width: 180px;
-      height: 180px;
-      border-radius: 50%;
-      border: 1px solid rgba(246,231,15,0.22);
-      background:
-        radial-gradient(circle, rgba(246,231,15,0.12), transparent 60%);
-      box-shadow: 0 0 60px rgba(246,231,15,0.18), inset 0 0 0 1px rgba(246,231,15,0.08);
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-      margin: 12px 0;
-      animation: lp-pulse 4s ease-in-out infinite alternate;
-    }
-    @keyframes lp-pulse {
-      from { box-shadow: 0 0 40px rgba(246,231,15,0.14), inset 0 0 0 1px rgba(246,231,15,0.08); }
-      to   { box-shadow: 0 0 80px rgba(246,231,15,0.24), inset 0 0 0 1px rgba(246,231,15,0.14); }
-    }
-    .lp-hero__logo-img {
-      width: 140px;
-      height: 140px;
-      object-fit: cover;
-      border-radius: 22px;
-      filter: drop-shadow(0 0 24px rgba(246,231,15,0.22));
-    }
-
-    /* Title */
-    .lp-hero__title {
-      position: relative;
-      z-index: 1;
-      margin: 8px 0 6px;
-      font-size: clamp(48px, 7vw, 80px);
-      line-height: 1;
-      letter-spacing: -0.04em;
-      color: var(--text);
-      text-shadow: 0 0 40px rgba(246,231,15,0.12);
-    }
-
-    /* Sub-headline */
-    .lp-hero__sub {
-      position: relative;
-      z-index: 1;
-      margin: 0 0 16px;
-      font-size: 12px;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    /* State chips row */
-    .lp-hero__chips {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      justify-content: center;
-      margin-bottom: 20px;
-    }
-
-    /* KPI tiles below logo */
-    .lp-hero__kpi {
-      position: relative;
-      z-index: 1;
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-      width: 100%;
-      max-width: 820px;
-      margin-bottom: 24px;
-    }
-
-    /* Action buttons */
-    .lp-hero__actions {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      justify-content: center;
-    }
-    .lp-btn {
-      padding: 11px 18px;
-      border-radius: 14px;
-      border: 1px solid rgba(246,231,15,0.26);
-      background: linear-gradient(135deg, rgba(246,231,15,0.14), rgba(246,231,15,0.04));
-      color: var(--text);
-      font-family: inherit;
       font-size: 11px;
-      letter-spacing: 0.12em;
+      font-weight: 700;
       text-transform: uppercase;
-      text-decoration: none;
-      cursor: pointer;
-      transition: 160ms ease;
-      display: inline-flex;
+      letter-spacing: 0.1em;
+    }
+    .lp-status-bar__label { color: var(--clr-primary); }
+    .lp-status-bar__sep   { color: var(--clr-muted); }
+    .lp-status-bar__val   { color: var(--clr-muted); }
+    .lp-status-bar__right {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
       align-items: center;
     }
-    .lp-btn:hover {
-      border-color: var(--accent);
-      transform: translateY(-2px);
-      box-shadow: 0 12px 28px rgba(0,0,0,0.28), 0 0 24px rgba(246,231,15,0.1);
-      color: var(--text);
+
+    /* KPI row */
+    .lp-kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
     }
-    .lp-btn--primary {
-      background: linear-gradient(135deg, rgba(246,231,15,0.32), rgba(246,231,15,0.12));
-      border-color: rgba(246,231,15,0.44);
-      color: #fff;
+    .lp-kpi-row .snapshot-tile {
+      border: 3px solid var(--clr-secondary) !important;
+      border-radius: 0 !important;
+      padding: 12px 14px !important;
+      background: var(--clr-card) !important;
+      box-shadow: none !important;
+      transition: border-color 150ms;
+    }
+    .lp-kpi-row .snapshot-tile:hover { border-color: var(--clr-primary) !important; }
+    .lp-kpi-row .snapshot-tile__label {
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--clr-muted);
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .lp-kpi-row .snapshot-tile__value {
+      font-size: 22px;
+      font-weight: 900;
+      color: var(--clr-fg);
+      line-height: 1;
+    }
+    .lp-kpi-row .snapshot-tile__sub {
+      font-size: 9px;
+      color: var(--clr-muted);
+      margin-top: 2px;
+      font-family: ui-monospace, monospace;
     }
 
-    /* Stat tiles inside lp-hero__kpi — restyle */
+    /* Stat tiles (old lp-hero__kpi class — keep for compat) */
     .lp-hero__kpi .snapshot-tile {
       padding: 14px;
-      border-radius: 16px;
-      border: 1px solid rgba(246,231,15,0.12);
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.01)),
-        rgba(7,7,6,0.9);
+      border-radius: 0;
+      border: 3px solid var(--clr-secondary);
+      background: var(--clr-card);
       box-shadow: inset 0 0 0 1px rgba(246,231,15,0.025);
       text-align: left;
     }
@@ -5100,107 +5736,346 @@ function renderHtml(
     .lp-ribbon {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
-      padding: 14px 18px;
-      border-radius: 18px;
-      border: 1px solid rgba(246,231,15,0.1);
-      background: linear-gradient(90deg, rgba(246,231,15,0.06), rgba(246,231,15,0.015));
-      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.03);
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 0;
+      border: 3px solid var(--clr-secondary);
+      background: hsla(176,45%,34%,0.08);
+      margin-top: 14px;
+    }
+    .lp-ribbon .summary-pill {
+      padding: 4px 10px;
+      border-radius: 0;
+      border: 2px solid var(--clr-secondary);
+      background: hsla(174,54%,50%,0.08);
+      color: var(--clr-fg);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
     }
 
-    /* Feature / market cards grid */
+    /* ── Retro market card grid (exact mikuelizaos.cloud style) ── */
     .lp-cards {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 14px;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+      width: 100%;
     }
 
-    /* Feature dock cards — restyle to match mikuelizaos market card feel */
+    /* ── Feature dock cards as retro market cards ── */
+    /* Remove all rounded corners, use 3px flat border like mikuelizaos */
     .feature-dock-card {
-      border-radius: 22px !important;
-      border: 1px solid rgba(246,231,15,0.14) !important;
-      background:
-        radial-gradient(circle at top right, rgba(246,231,15,0.10), transparent 40%),
-        linear-gradient(180deg, rgba(246,231,15,0.055), rgba(246,231,15,0.01)),
-        rgba(7,7,6,0.92) !important;
-      box-shadow: 0 0 0 1px rgba(246,231,15,0.03), 0 12px 28px rgba(0,0,0,0.22) !important;
-      padding: 16px !important;
+      border-radius: 0 !important;
+      border: 3px solid var(--clr-secondary) !important;
+      background: var(--clr-card) !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+      cursor: pointer !important;
+      transition: border-color 150ms !important;
+      display: flex !important;
+      flex-direction: column !important;
     }
-    .feature-dock-card::before {
+    .feature-dock-card::before { display: none !important; }
+    .feature-dock-card:hover { border-color: var(--clr-primary) !important; }
+
+    /* Card inner header area */
+    .feature-dock-card__header {
+      padding: 14px 16px 10px;
+      border-bottom: 2px solid var(--clr-secondary);
+    }
+    .feature-dock-card__label {
+      font-size: 11px !important;
+      font-weight: 800 !important;
+      letter-spacing: 0.1em !important;
+      color: var(--clr-muted) !important;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .feature-dock-card__title {
+      font-size: 15px !important;
+      font-weight: 800 !important;
+      color: var(--clr-fg) !important;
+      line-height: 1.25;
+    }
+    .feature-dock-card__sub {
+      font-size: 10px;
+      color: var(--clr-muted);
+      margin-top: 3px;
+    }
+
+    /* YES/NO price grid inside card — like mikuelizaos market prices */
+    .feature-dock-card__prices {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-top: 0;
+    }
+    .feature-dock-card__yes,
+    .feature-dock-card__no {
+      padding: 12px;
+      text-align: center;
+    }
+    .feature-dock-card__yes { border-right: 2px solid var(--clr-secondary); }
+    .feature-dock-card__yes-label {
+      display: flex; align-items: center; justify-content: center; gap: 4px;
+      font-size: 10px; font-weight: 800; color: var(--clr-primary);
+      text-transform: uppercase; margin-bottom: 4px;
+    }
+    .feature-dock-card__no-label {
+      display: flex; align-items: center; justify-content: center; gap: 4px;
+      font-size: 10px; font-weight: 800; color: var(--clr-accent);
+      text-transform: uppercase; margin-bottom: 4px;
+    }
+    .feature-dock-card__price-num {
+      font-size: 28px !important;
+      font-weight: 900 !important;
+      color: var(--clr-fg) !important;
+      line-height: 1;
+    }
+    .feature-dock-card__price-unit {
+      font-size: 9px;
+      color: var(--clr-muted);
+      margin-top: 2px;
+      font-family: ui-monospace, monospace;
+    }
+
+    /* Progress bar at bottom of card */
+    .feature-dock-card__bar-row {
+      padding: 10px 16px 12px;
+      border-top: 2px solid var(--clr-secondary);
+    }
+    .feature-dock-card__bar-label {
+      display: flex; justify-content: space-between;
+      font-size: 9px; color: var(--clr-muted);
+      font-family: ui-monospace, monospace;
+      margin-bottom: 4px;
+    }
+    .feature-dock-card__bar-track {
+      height: 6px;
+      background: hsla(176,45%,34%,0.25);
+      border-radius: 0;
+      overflow: hidden;
+    }
+    .feature-dock-card__fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--clr-primary), var(--clr-accent)) !important;
+      border-radius: 0;
+      position: relative;
+      transition: width 0.4s ease;
+    }
+    .feature-dock-card__fill::after {
       content: "";
       position: absolute;
-      inset: 0 0 auto 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(246,231,15,0.4), transparent);
-      opacity: 0.6;
-      pointer-events: none;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: shimmer 2s infinite;
     }
-    .feature-dock-card:hover {
-      border-color: rgba(246,231,15,0.24) !important;
-      transform: translateY(-3px) !important;
-      box-shadow: 0 0 0 1px rgba(246,231,15,0.08), 0 0 32px rgba(246,231,15,0.10), 0 20px 40px rgba(0,0,0,0.28) !important;
-    }
+    @keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
 
-    /* Fold sections (Discovery / Portfolio / Treasury / Distribution / Goo) */
+    /* Music note footer */
+    .feature-dock-card__notes {
+      display: flex; gap: 4px; justify-content: center;
+      padding: 6px 12px 8px;
+      border-top: 1px solid hsla(176,45%,34%,0.2);
+    }
+    .feature-dock-card__note {
+      font-size: 10px;
+      color: var(--clr-secondary);
+      transition: color 200ms, transform 200ms;
+    }
+    .feature-dock-card:hover .feature-dock-card__note { color: var(--clr-primary); transform: translateY(-2px); }
+
+    /* Fold sections */
     .fold-section {
-      border-radius: 22px;
-      border: 1px solid rgba(246,231,15,0.1);
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.04), rgba(246,231,15,0.01)),
-        rgba(6,6,5,0.92);
-      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.025);
+      border-radius: 0 !important;
+      border: 3px solid var(--clr-secondary) !important;
+      background: var(--clr-card);
+      box-shadow: none !important;
       overflow: hidden;
       display: block !important;
     }
     .fold-summary {
       padding: 14px 18px;
+      border-bottom: 2px solid hsla(176,45%,34%,0.4);
     }
-
-    /* Floating notes — make more visible */
-    .stage-decor span {
-      font-size: 22px !important;
-      opacity: 1 !important;
-    }
+    .fold-summary strong { color: var(--clr-fg); font-weight: 800; }
+    .fold-summary span { color: var(--clr-muted); }
+    .fold-summary::after { color: var(--clr-primary); }
 
     @media (max-width: 900px) {
       .lp-cards { grid-template-columns: repeat(2, 1fr); }
-      .lp-hero__kpi { grid-template-columns: repeat(2, 1fr); }
-      .lp-hero__title { font-size: 52px; }
+      .workspace { margin-left: 0; padding: 12px; }
+      .miku-nav { display: none; }
     }
     @media (max-width: 600px) {
       .lp-cards { grid-template-columns: 1fr; }
-      .lp-hero__kpi { grid-template-columns: 1fr 1fr; }
-      .lp-btn { font-size: 10px; padding: 9px 12px; }
     }
   </style>
 </head>
 <body>
-  <div class="stage-decor" aria-hidden="true">
-    <span>♩</span>
-    <span>♩</span>
-    <span>♬</span>
-    <span>♩</span>
-    <span>♩</span>
-    <span>♩</span>
-    <span>♩</span>
-    <span>✦</span>
-    <span>♩</span>
-    <span>★</span>
-    <span>♩</span>
-    <span>♪</span>
+  <!-- Spotlights (always visible, like mikuelizaos.cloud) -->
+  <div class="spotlight-wrap" aria-hidden="true">
+    <div class="spotlight spotlight--left"></div>
+    <div class="spotlight spotlight--center"></div>
+    <div class="spotlight spotlight--right"></div>
   </div>
+
+  <!-- Floating music notes (12, matching mikuelizaos exactly) -->
+  <div id="float-notes" aria-hidden="true"></div>
+
+  <!-- Intro overlay: 3 → 2 → 1 → SHOWTIME → loading -->
+  <div id="intro-overlay">
+    <div class="spotlight-wrap" aria-hidden="true">
+      <div class="spotlight spotlight--left"></div>
+      <div class="spotlight spotlight--center"></div>
+      <div class="spotlight spotlight--right"></div>
+    </div>
+    <!-- ElizaOK logo as bg (replacing Miku stage image) -->
+    <div class="intro-stage-img" id="intro-img">
+      <img src="/assets/elizaok-logo.png" alt="" />
+    </div>
+    <!-- Floating notes inside overlay too -->
+    <div id="intro-float-notes" aria-hidden="true"></div>
+    <!-- Countdown number -->
+    <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:24px;">
+      <div style="position:relative;" id="count-wrap">
+        <div class="intro-count" id="intro-count">3</div>
+        <div class="intro-ping" id="intro-ping"></div>
+      </div>
+      <div class="intro-loading-title" id="intro-loading-title">elizaOK</div>
+      <div class="intro-loading-sub" id="intro-loading-sub">♪ WELCOME TO THE STAGE ♪</div>
+      <div class="intro-bar-wrap" id="intro-bar-wrap">
+        <div class="intro-bar-labels">
+          <span>LOADING</span>
+          <span id="intro-pct">0%</span>
+        </div>
+        <div class="intro-bar-track">
+          <div class="intro-bar-fill" id="intro-bar-fill"></div>
+        </div>
+        <div class="intro-notes-row" id="intro-notes-row">
+          <span class="intro-note-dot">♪</span>
+          <span class="intro-note-dot">♪</span>
+          <span class="intro-note-dot">♪</span>
+          <span class="intro-note-dot">♪</span>
+          <span class="intro-note-dot">♪</span>
+          <span class="intro-note-dot">♪</span>
+          <span class="intro-note-dot">♪</span>
+          <span class="intro-note-dot">♪</span>
+          <span class="intro-note-dot">♪</span>
+          <span class="intro-note-dot">♪</span>
+        </div>
+      </div>
+      <div class="intro-sys" id="intro-sys">
+        <div>SYSTEM: elizaOK V1.0</div>
+        <div>★ BNB CHAIN INTELLIGENCE READY ★</div>
+      </div>
+    </div>
+  </div>
+
   <div class="app-shell">
     <aside class="sidebar">
       ${sidebarMasterCard}
     </aside>
+
+    <!-- mikuelizaos.cloud style left nav -->
+    <nav class="miku-nav" aria-label="Navigation">
+      <!-- Logo / brand head -->
+      <a href="/" class="miku-nav__head">
+        <div class="miku-nav__logo">
+          <img src="/assets/elizaok-logo.png" alt="elizaOK" />
+        </div>
+        <div class="miku-nav__brand">
+          <strong>elizaOK</strong>
+          <small>V1.0 · BNB Chain</small>
+        </div>
+      </a>
+      <!-- Nav links -->
+      <div class="miku-nav__links">
+        <button class="miku-nav__link is-active" data-nav="overview">
+          <span class="miku-nav__icon">⌂</span>
+          <span>Home</span>
+        </button>
+        <button class="miku-nav__link" data-nav="discovery">
+          <span class="miku-nav__icon">◎</span>
+          <span>Discovery</span>
+        </button>
+        <button class="miku-nav__link" data-nav="portfolio">
+          <span class="miku-nav__icon">▣</span>
+          <span>Portfolio</span>
+        </button>
+        <button class="miku-nav__link" data-nav="execution">
+          <span class="miku-nav__icon">◈</span>
+          <span>Execution</span>
+        </button>
+        <button class="miku-nav__link" data-nav="distribution">
+          <span class="miku-nav__icon">◉</span>
+          <span>Distribution</span>
+        </button>
+        <button class="miku-nav__link" data-nav="goo">
+          <span class="miku-nav__icon">✦</span>
+          <span>Goo</span>
+        </button>
+      </div>
+
+      <!-- ElizaCloud section -->
+      <div class="miku-nav__cloud">
+        <div class="miku-nav__divider"></div>
+        ${cloudSession ? `
+        <!-- Connected state: mini profile + Agents/Credits links -->
+        <div class="miku-nav__cloud-profile">
+          <div class="miku-nav__cloud-avatar">${escapeHtml((cloudSession.displayName || "E").slice(0,1).toUpperCase())}</div>
+          <div class="miku-nav__cloud-info">
+            <strong>${escapeHtml(cloudSession.displayName)}</strong>
+            <small>${escapeHtml(cloudSession.credits)} credits</small>
+          </div>
+        </div>
+        <a class="miku-nav__link" href="/cloud/agents">
+          <span class="miku-nav__icon">⬡</span>
+          <span>Agents</span>
+        </a>
+        <a class="miku-nav__link" href="/cloud/credits">
+          <span class="miku-nav__icon">◈</span>
+          <span>Credits</span>
+        </a>
+        <a class="miku-nav__link miku-nav__link--muted" href="/auth/eliza-cloud/logout">
+          <span class="miku-nav__icon">↩</span>
+          <span>Disconnect</span>
+        </a>
+        ` : `
+        <!-- Not connected: connect button -->
+        <div class="miku-nav__cloud-cta">
+          <div class="miku-nav__cloud-cta-label">ElizaCloud</div>
+          <button class="miku-nav__cloud-btn" type="button" data-cloud-hosted-auth>
+            <span class="miku-nav__icon">⊕</span>
+            Connect
+          </button>
+        </div>
+        `}
+      </div>
+
+      <!-- Footer equalizer bars -->
+      <div class="miku-nav__foot">
+        <div class="miku-nav__bars" id="nav-bars">
+          <div class="miku-nav__bar" style="height:40%"></div>
+          <div class="miku-nav__bar" style="height:60%"></div>
+          <div class="miku-nav__bar" style="height:90%"></div>
+          <div class="miku-nav__bar" style="height:50%"></div>
+          <div class="miku-nav__bar" style="height:75%"></div>
+          <div class="miku-nav__bar" style="height:35%"></div>
+          <div class="miku-nav__bar" style="height:65%"></div>
+          <div class="miku-nav__bar" style="height:85%"></div>
+        </div>
+        <div class="miku-nav__foot-label">♪ elizaOK V1.0 ♪</div>
+      </div>
+    </nav>
 
     <div class="workspace">
       <header class="topbar">
         <div class="topbar-meta">
           <div class="live-dot" aria-hidden="true"></div>
           <div class="topbar-title">
-            <strong id="view-title">Overview</strong>
-            <small id="view-subtitle"></small>
+            <strong id="view-title">Home</strong>
+            <small id="view-subtitle">BNB treasury intelligence</small>
           </div>
         </div>
         <div class="social-actions">
@@ -5220,28 +6095,24 @@ function renderHtml(
 
       <main class="content-stack">
         <section class="view-panel is-active" data-view-panel="overview" data-view-label="Signal Board" data-view-subtitle="BNB treasury intelligence">
-          <article class="glass-card lp-hero">
-            <div class="lp-hero__eyebrow">
+          <!-- System status ribbon (compact, like mikuelizaos scan bar) -->
+          <div class="lp-status-bar">
+            <div class="lp-status-bar__left">
               <span class="live-dot" aria-hidden="true"></span>
-              elizaok · bnb chain intelligence
+              <span class="lp-status-bar__label">SYSTEM ONLINE</span>
+              <span class="lp-status-bar__sep">·</span>
+              <span class="lp-status-bar__val">elizaOK BNB Chain Intelligence</span>
             </div>
-            <div class="lp-hero__count" aria-hidden="true">${snapshot.summary.topRecommendationCount}</div>
-            <div class="lp-hero__logo-wrap">
-              ${renderBrandLogoImage("lp-hero__logo-img")}
+            <div class="lp-status-bar__right">
+              ${overviewStateChips}
             </div>
-            <h1 class="lp-hero__title">elizaOK</h1>
-            <p class="lp-hero__sub">BNB Chain memecoin discovery · treasury execution · holder distribution</p>
-            <div class="lp-hero__chips">${overviewStateChips}</div>
-            <div class="lp-hero__kpi">${snapshotStatTiles}</div>
-            <div class="lp-hero__actions">
-              <a class="lp-btn lp-btn--primary" href="#discovery-section">Discovery Feed</a>
-              <a class="lp-btn" href="/cloud/agents">Cloud Agents</a>
-              <a class="lp-btn" href="/cloud/credits">Credits</a>
-              <a class="lp-btn" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Open Cloud ↗</a>
-            </div>
-          </article>
-          <div class="lp-ribbon">${summaryRibbon}</div>
+          </div>
+          <!-- Market-style KPI row -->
+          <div class="lp-kpi-row">${snapshotStatTiles}</div>
+          <!-- Market cards grid (main feature cards, mikuelizaos style) -->
           <section class="lp-cards">${featureDockCards}</section>
+          <!-- Summary ribbon -->
+          <div class="lp-ribbon">${summaryRibbon}</div>
         </section>
 
         <details class="fold-section" id="discovery-section">
@@ -6150,6 +7021,146 @@ function renderHtml(
           authButton.textContent = "Sign in / Sign up";
         });
     })();
+  </script>
+
+  <!-- ── Left nav: equalizer bars animation + active link ── -->
+  <script>
+  (function() {
+    // Animate equalizer bars in nav footer
+    var bars = document.querySelectorAll("#nav-bars .miku-nav__bar");
+    var barHeights = [40,60,90,50,75,35,65,85];
+    function animateBars() {
+      bars.forEach(function(bar, i) {
+        var base = barHeights[i];
+        var rand = base + (Math.random() - 0.5) * 40;
+        rand = Math.max(10, Math.min(100, rand));
+        bar.style.height = rand + "%";
+      });
+    }
+    setInterval(animateBars, 300);
+    animateBars();
+
+    // Nav link active state + view switching
+    var navLinks = document.querySelectorAll(".miku-nav__link[data-nav]");
+    navLinks.forEach(function(link) {
+      link.addEventListener("click", function() {
+        navLinks.forEach(function(l) { l.classList.remove("is-active"); });
+        link.classList.add("is-active");
+        var target = link.getAttribute("data-nav");
+        // Update topbar title
+        var titles = {
+          overview: "Home", discovery: "Discovery", portfolio: "Portfolio",
+          execution: "Execution", distribution: "Distribution", goo: "Goo"
+        };
+        var subs = {
+          overview: "BNB treasury intelligence", discovery: "memecoin signal scanner",
+          portfolio: "active positions", execution: "trade engine",
+          distribution: "airdrop planner", goo: "agent protocol"
+        };
+        var vt = document.getElementById("view-title");
+        var vs = document.getElementById("view-subtitle");
+        if (vt) vt.textContent = titles[target] || target;
+        if (vs) vs.textContent = subs[target] || "";
+        // Open the corresponding modal/section
+        var sectionMap = {
+          discovery: "discovery-section", portfolio: "portfolio-section",
+          execution: "treasury-section", distribution: "distribution-section",
+          goo: "goo-section"
+        };
+        var sectionId = sectionMap[target];
+        if (sectionId) {
+          var btn = document.querySelector('[data-modal-target="'+sectionId+'"]');
+          if (btn) btn.click();
+        }
+      });
+    });
+  })();
+  </script>
+
+  <!-- ── Intro countdown + floating notes (mikuelizaos.cloud exact replica) ── -->
+  <script>
+  (function() {
+    var NOTES = ["♪","♫","♬","♩","★","✦"];
+    var COUNTS = ["3","2","1","SHOWTIME!"];
+
+    function buildNotes(containerId, count) {
+      var wrap = document.getElementById(containerId);
+      if (!wrap) return;
+      for (var i = 0; i < count; i++) {
+        var el = document.createElement("div");
+        el.className = "float-note";
+        el.textContent = NOTES[Math.floor(Math.random() * NOTES.length)];
+        el.style.left = (Math.random() * 100) + "%";
+        el.style.animationDelay = (Math.random() * 2) + "s";
+        el.style.animationDuration = (3 + Math.random() * 1.5) + "s";
+        wrap.appendChild(el);
+      }
+    }
+    buildNotes("intro-float-notes", 12);
+    buildNotes("float-notes", 12);
+
+    var phase = "countdown";
+    var countIdx = 0;
+    var progress = 0;
+
+    var overlay   = document.getElementById("intro-overlay");
+    var countEl   = document.getElementById("intro-count");
+    var pingEl    = document.getElementById("intro-ping");
+    var imgEl     = document.querySelector("#intro-img img");
+    var loadTitle = document.getElementById("intro-loading-title");
+    var loadSub   = document.getElementById("intro-loading-sub");
+    var barWrap   = document.getElementById("intro-bar-wrap");
+    var barFill   = document.getElementById("intro-bar-fill");
+    var pctEl     = document.getElementById("intro-pct");
+    var notesRow  = document.getElementById("intro-notes-row");
+    var sysEl     = document.getElementById("intro-sys");
+
+    if (!overlay) return;
+
+    var tick = setInterval(function() {
+      countIdx++;
+      if (countIdx >= COUNTS.length - 1) {
+        clearInterval(tick);
+        enterShowtime();
+        return;
+      }
+      countEl.textContent = COUNTS[countIdx];
+    }, 800);
+
+    function enterShowtime() {
+      phase = "showtime";
+      countEl.textContent = "SHOWTIME!";
+      countEl.classList.add("showtime");
+      if (pingEl) pingEl.style.display = "none";
+      if (imgEl) imgEl.classList.add("showtime");
+      setTimeout(enterLoading, 1500);
+    }
+
+    function enterLoading() {
+      phase = "loading";
+      var countWrap = document.getElementById("count-wrap");
+      if (countWrap) countWrap.style.display = "none";
+      if (loadTitle) loadTitle.style.display = "block";
+      if (loadSub)   loadSub.style.display   = "block";
+      if (barWrap)   barWrap.style.display   = "block";
+      if (sysEl)     sysEl.style.display     = "block";
+
+      var noteDots = notesRow ? notesRow.querySelectorAll(".intro-note-dot") : [];
+
+      var loadInterval = setInterval(function() {
+        progress = Math.min(progress + Math.random() * 2 + 1, 100);
+        if (barFill) barFill.style.width = progress + "%";
+        if (pctEl)   pctEl.textContent   = Math.floor(progress) + "%";
+        for (var i = 0; i < noteDots.length; i++) {
+          if (progress >= (i + 1) * 10) noteDots[i].classList.add("lit");
+        }
+        if (progress >= 100) {
+          clearInterval(loadInterval);
+          setTimeout(function() { overlay.classList.add("hidden"); }, 300);
+        }
+      }, 60);
+    }
+  })();
   </script>
 </body>
 </html>`;
