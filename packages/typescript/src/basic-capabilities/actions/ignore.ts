@@ -31,7 +31,7 @@ export const ignoreAction: Action = {
 			await callback(responses[0].content);
 		}
 		return {
-			text: "Ignoring message",
+			text: "",
 			values: { success: true, ignored: true },
 			data: { actionName: "IGNORE" },
 			success: true,

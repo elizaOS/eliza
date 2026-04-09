@@ -107,6 +107,7 @@ import type {
 	RetryBackoffConfig,
 	SchemaRow,
 	SchemaValueSpec,
+	StructuredOutputFailure,
 	StreamEvent,
 } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
@@ -720,8 +721,24 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 		}
 		if (pluginToRegister.actions) {
+			const existingActionNames = new Set(
+				this.actions.map((action) => action.name),
+			);
 			for (const action of pluginToRegister.actions) {
+				if (existingActionNames.has(action.name)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							plugin: pluginToRegister.name,
+						},
+						"Skipping duplicate plugin action",
+					);
+					continue;
+				}
 				this.registerAction(action);
+				existingActionNames.add(action.name);
 			}
 		}
 		if (pluginToRegister.evaluators) {
@@ -1510,7 +1527,7 @@ export class AgentRuntime implements IAgentRuntime {
 	registerAction(action: Action) {
 		const canonical = withCanonicalActionDocs(action);
 		if (this.actions.find((a) => a.name === canonical.name)) {
-			this.logger.warn(
+			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, action: canonical.name },
 				"Action already registered, skipping",
 			);
@@ -3955,6 +3972,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private static readonly METRICS_MAX_ENTRIES = 100;
 	private static readonly METRICS_TTL_MS = 60 * 60 * 1000; // 1 hour
+	private static readonly STRUCTURED_FAILURE_PREVIEW_LIMIT = 4000;
 
 	/**
 	 * Get or create metrics entry with LRU eviction.
@@ -4004,6 +4022,48 @@ export class AgentRuntime implements IAgentRuntime {
 			AgentRuntime.dynamicPromptMetrics.set(key, metric);
 		}
 		return metric;
+	}
+
+	private setStructuredOutputFailureState(
+		state: State,
+		failure: StructuredOutputFailure,
+	): void {
+		const issues = Array.isArray(failure.issues)
+			? failure.issues.filter(
+					(issue): issue is string =>
+						typeof issue === "string" && issue.trim().length > 0,
+				)
+			: [];
+		const summaryParts = [
+			`Structured output ${failure.kind.replaceAll("_", " ")}`,
+			`model=${failure.model}`,
+			`format=${failure.format}`,
+			`attempt=${failure.attempts}/${failure.maxRetries + 1}`,
+			...(issues.length > 0 ? [`issue=${issues[0]}`] : []),
+			...(failure.parseError ? [`error=${failure.parseError}`] : []),
+		];
+
+		state.values = {
+			...state.values,
+			structuredOutputFailureSummary: summaryParts.join("; "),
+		};
+		state.data = {
+			...state.data,
+			structuredOutputFailure: failure,
+		};
+	}
+
+	private clearStructuredOutputFailureState(state: State): void {
+		if (state.values?.structuredOutputFailureSummary !== undefined) {
+			const { structuredOutputFailureSummary: _discard, ...restValues } =
+				state.values;
+			state.values = restValues;
+		}
+
+		if (state.data?.structuredOutputFailure !== undefined) {
+			const { structuredOutputFailure: _discard, ...restData } = state.data;
+			state.data = restData;
+		}
 	}
 
 	/**
@@ -4061,6 +4121,7 @@ export class AgentRuntime implements IAgentRuntime {
 			this.logger.error(
 				"dynamicPromptExecFromState: schema must have at least one entry",
 			);
+			this.clearStructuredOutputFailureState(state);
 			return null;
 		}
 
@@ -4081,6 +4142,7 @@ export class AgentRuntime implements IAgentRuntime {
 			this.logger.error(
 				`dynamicPromptExecFromState: invalid field names in schema: ${invalidFields.map((f) => f.field || "(empty)").join(", ")}`,
 			);
+			this.clearStructuredOutputFailureState(state);
 			return null;
 		}
 
@@ -4129,6 +4191,7 @@ export class AgentRuntime implements IAgentRuntime {
 			false;
 		let currentRetry = 0;
 		const promptCode = () => uuidv4().replaceAll("-", "").slice(0, 8);
+		let lastStructuredFailure: StructuredOutputFailure | null = null;
 
 		// Initialize metrics with LRU eviction
 		const metric = AgentRuntime.getOrCreateMetrics(modelSchemaKey);
@@ -4438,6 +4501,7 @@ ${section_end}`;
 			if (options.abortSignal?.aborted) {
 				extractor?.signalError("Cancelled by user");
 				delete (state as Record<string, unknown>)._smartRetryContext;
+				this.clearStructuredOutputFailureState(state);
 				return null;
 			}
 
@@ -4450,11 +4514,30 @@ ${section_end}`;
 				);
 			} catch (modelError) {
 				this.logger.error(`Model call failed: ${String(modelError)}`);
+				lastStructuredFailure = {
+					source: "dynamicPromptExecFromState",
+					kind: "model_error",
+					model: String(modelIdentifier),
+					format,
+					schemaFields: flattenedSchema.map((row) => row.field),
+					attempts: currentRetry + 1,
+					maxRetries,
+					timestamp: Date.now(),
+					key: options.key ?? modelSchemaKey,
+					parseError:
+						modelError instanceof Error
+							? modelError.message
+							: String(modelError),
+					issues: [
+						"Model call failed before a structured response could be validated.",
+					],
+				};
 				currentRetry++;
 
 				if (options.abortSignal?.aborted) {
 					extractor?.signalError("Cancelled by user");
 					delete (state as Record<string, unknown>)._smartRetryContext;
+					this.clearStructuredOutputFailureState(state);
 					return null;
 				}
 
@@ -4477,6 +4560,7 @@ ${section_end}`;
 						if (aborted) {
 							extractor?.signalError("Cancelled by user");
 							delete (state as Record<string, unknown>)._smartRetryContext;
+							this.clearStructuredOutputFailureState(state);
 							return null;
 						}
 					}
@@ -4494,6 +4578,8 @@ ${section_end}`;
 			const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>/g, "");
 
 			let responseContent: Record<string, unknown> | null = null;
+			let parseErrorMessage: string | undefined;
+			const validationIssues: string[] = [];
 			try {
 				responseContent = isXML
 					? parseKeyValueXml(cleanResponse)
@@ -4504,8 +4590,9 @@ ${section_end}`;
 					`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
 				);
 			} catch (e) {
+				parseErrorMessage = e instanceof Error ? e.message : String(e);
 				this.logger.error(
-					`dynamicPromptExecFromState parse error: ${String(e)}`,
+					`dynamicPromptExecFromState parse error: ${parseErrorMessage}`,
 				);
 			}
 
@@ -4514,6 +4601,9 @@ ${section_end}`;
 			// Validate response
 			let allGood = true;
 			if (!responseContent) {
+				validationIssues.push(
+					"No structured output could be parsed from the model response.",
+				);
 				this.logger.warn(
 					`dynamicPromptExecFromState parse problem: ${cleanResponse}`,
 				);
@@ -4529,6 +4619,9 @@ ${section_end}`;
 						const endCode = responseContent[endCodeField];
 
 						if (startCode !== expectedCode || endCode !== expectedCode) {
+							validationIssues.push(
+								`Per-field validation failed for ${field}.`,
+							);
 							this.logger.warn(
 								`Per-field validation failed for ${field}: expected=${expectedCode}, start=${startCode}, end=${endCode}`,
 							);
@@ -4559,6 +4652,9 @@ ${section_end}`;
 
 					for (const [field, expected] of validationCodes) {
 						if (responseContent[field] !== expected) {
+							validationIssues.push(
+								`Checkpoint validation failed for ${field}.`,
+							);
 							this.logger.warn(
 								`Checkpoint ${field} mismatch: expected ${expected}`,
 							);
@@ -4587,11 +4683,17 @@ ${section_end}`;
 					schemaValidation.invalidPaths.length > 0
 				) {
 					if (schemaValidation.missingPaths.length > 0) {
+						validationIssues.push(
+							`Missing required schema paths: ${schemaValidation.missingPaths.join(", ")}`,
+						);
 						this.logger.warn(
 							`Missing required schema paths: ${schemaValidation.missingPaths.join(", ")}`,
 						);
 					}
 					if (schemaValidation.invalidPaths.length > 0) {
+						validationIssues.push(
+							`Invalid schema paths: ${schemaValidation.invalidPaths.join(", ")}`,
+						);
 						this.logger.warn(
 							`Invalid schema paths: ${schemaValidation.invalidPaths.join(", ")}`,
 						);
@@ -4617,6 +4719,9 @@ ${section_end}`;
 							isMissingField(responseContent[field]),
 					);
 					if (missingFields.length > 0) {
+						validationIssues.push(
+							`Missing required fields: ${missingFields.join(", ")}`,
+						);
 						this.logger.warn(
 							`Missing required fields: ${missingFields.join(", ")}`,
 						);
@@ -4649,8 +4754,31 @@ ${section_end}`;
 
 				// Clean up smart retry context from state
 				delete (state as Record<string, unknown>)._smartRetryContext;
+				this.clearStructuredOutputFailureState(state);
 				return responseContent;
 			}
+
+			lastStructuredFailure = {
+				source: "dynamicPromptExecFromState",
+				kind: !responseContent
+					? parseErrorMessage
+						? "parse_error"
+						: "parse_problem"
+					: "validation_error",
+				model: String(modelIdentifier),
+				format,
+				schemaFields: flattenedSchema.map((row) => row.field),
+				attempts: currentRetry + 1,
+				maxRetries,
+				timestamp: Date.now(),
+				key: options.key ?? modelSchemaKey,
+				parseError: parseErrorMessage,
+				issues: validationIssues,
+				responsePreview: this.redactSecrets(cleanResponse).slice(
+					0,
+					AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
+				),
+			};
 
 			// Failure - update metrics
 			metric.failedAttempts++;
@@ -4666,6 +4794,7 @@ ${section_end}`;
 			if (options.abortSignal?.aborted) {
 				extractor?.signalError("Cancelled by user");
 				delete (state as Record<string, unknown>)._smartRetryContext;
+				this.clearStructuredOutputFailureState(state);
 				return null;
 			}
 
@@ -4688,6 +4817,7 @@ ${section_end}`;
 					if (aborted) {
 						extractor?.signalError("Cancelled by user");
 						delete (state as Record<string, unknown>)._smartRetryContext;
+						this.clearStructuredOutputFailureState(state);
 						return null;
 					}
 				}
@@ -4763,6 +4893,11 @@ ${section_end}`;
 
 		// Clean up smart retry context from state
 		delete (state as Record<string, unknown>)._smartRetryContext;
+		if (lastStructuredFailure) {
+			this.setStructuredOutputFailureState(state, lastStructuredFailure);
+		} else {
+			this.clearStructuredOutputFailureState(state);
+		}
 		return null;
 	}
 
@@ -5848,7 +5983,10 @@ ${section_end}`;
 		start?: number;
 		end?: number;
 	}): Promise<Memory[]> {
-		return await this.adapter.getMemories(params);
+		return await this.adapter.getMemories({
+			...params,
+			tableName: params.tableName ?? "messages",
+		});
 	}
 	async getAllMemories(): Promise<Memory[]> {
 		const tables = ["memories", "messages", "facts", "documents"];
@@ -5897,7 +6035,10 @@ ${section_end}`;
 		entityId?: UUID;
 		tableName: string;
 	}): Promise<Memory[]> {
-		const memories = await this.adapter.searchMemories(params);
+		const memories = await this.adapter.searchMemories({
+			...params,
+			tableName: params.tableName ?? "messages",
+		});
 		if (params.query) {
 			const rerankedMemories = await this.rerankMemories(
 				params.query,
@@ -5996,13 +6137,13 @@ ${section_end}`;
 			return await this.adapter.countMemories({
 				roomIds: [roomIdOrParams as UUID],
 				unique,
-				tableName,
+				tableName: tableName ?? "messages",
 			});
 		}
 		return await this.adapter.countMemories({
 			roomIds: roomIdOrParams.roomId ? [roomIdOrParams.roomId] : undefined,
 			unique: roomIdOrParams.unique,
-			tableName: roomIdOrParams.tableName,
+			tableName: roomIdOrParams.tableName ?? "messages",
 			entityId: roomIdOrParams.entityId,
 			agentId: roomIdOrParams.agentId,
 			metadata: roomIdOrParams.metadata,

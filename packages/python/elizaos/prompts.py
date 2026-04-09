@@ -168,7 +168,7 @@ rules[8]:
 - use IGNORE or STOP only by themselves
 - include providers only when needed
 - use provider_hints from context when present instead of restating the same rules
-- if an action needs inputs, include them under params keyed by action name
+- if an action needs inputs, include them inside that action's <params> block
 - if a required param is unknown, ask for clarification in text
 
 control_actions:
@@ -177,25 +177,30 @@ control_actions:
 
 fields[5]{name,meaning}:
 - thought | short plan
-- actions | ordered array of action names
+- actions | ordered <action> entries inside <actions>
 - providers | array of provider names, or empty
 - text | next message for {{agentName}}
 - simple | true or false
-- params | optional object keyed by action name containing required inputs
 
 formatting:
 - wrap multi-line code in fenced code blocks
 - use inline backticks for short code identifiers
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+XML only. Return exactly one <response>...</response> document. No prose before or after it. No <think>.
 
 Example:
-thought: Reply briefly. No extra providers needed.
-actions[1]: REPLY
-providers[0]:
-text: Your message here
-simple: true"""
+<response>
+  <thought>Reply briefly. No extra providers needed.</thought>
+  <actions>
+    <action>
+      <name>REPLY</name>
+    </action>
+  </actions>
+  <providers></providers>
+  <text>Your message here</text>
+  <simple>true</simple>
+</response>"""
 
 MESSAGE_CLASSIFIER_TEMPLATE = """Analyze this user request and classify it for planning purposes:
 
@@ -422,12 +427,16 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 
 # Instructions:
 1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
-2. Extract new facts from the conversation.
+2. Extract only durable new facts from the conversation.
+  - Prefer facts about the current user/sender that will still matter in a week: identity, stable preferences, recurring collaborators, durable setup, long-term projects, or ongoing constraints.
+  - Do NOT extract temporary status updates, current debugging/work items, one-off session metrics, isolated praise/complaints, or facts that are only true right now.
+  - If a fact would feel stale, irrelevant, or surprising to store a week from now, skip it.
+  - When in doubt, omit the fact.
 3. Identify and describe relationships between entities.
   - The sourceEntityId is the UUID of the entity initiating the interaction.
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
-
+4. It is normal to return no facts when nothing durable was learned.
 
 Generate a response in the following TOON format:
 thought: a self-reflective thought on the conversation

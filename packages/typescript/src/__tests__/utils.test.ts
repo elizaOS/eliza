@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import logger from "../logger";
 import type { Content, Entity, IAgentRuntime, Memory, State } from "../types";
 import * as utils from "../utils";
 import {
@@ -365,6 +366,20 @@ describe("Utils Comprehensive Tests", () => {
 			});
 		});
 
+		it("should parse TOON documents with a leading TOON label line", () => {
+			const toon = `TOON
+name: TestAgent
+reasoning: Test reasoning
+action: RESPOND`;
+
+			const result = parseKeyValueXml(toon);
+			expect(result).toEqual({
+				name: "TestAgent",
+				reasoning: "Test reasoning",
+				action: "RESPOND",
+			});
+		});
+
 		it("should parse boolean values", () => {
 			const xml =
 				"<response><simple>true</simple><complex>false</complex></response>";
@@ -390,6 +405,15 @@ describe("Utils Comprehensive Tests", () => {
 			expect(parseKeyValueXml("")).toBeNull();
 			expect(parseKeyValueXml("not xml")).toBeNull();
 			expect(parseKeyValueXml("<unclosed>")).toBeNull();
+		});
+
+		it("should not log an XML warning for malformed TOON text", () => {
+			const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+			expect(parseKeyValueXml("TOON")).toBeNull();
+			expect(warnSpy).not.toHaveBeenCalled();
+
+			warnSpy.mockRestore();
 		});
 
 		it("should handle any root tag name", () => {

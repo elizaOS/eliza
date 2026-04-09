@@ -35,11 +35,12 @@ describe("Prompts", () => {
 		it("messageHandlerTemplate should contain required placeholders and structure", () => {
 			expect(messageHandlerTemplate).toContain("{{agentName}}");
 			expect(messageHandlerTemplate).toContain("{{providers}}");
-			expect(messageHandlerTemplate).toContain("thought:");
-			expect(messageHandlerTemplate).toContain("actions[1]:");
-			expect(messageHandlerTemplate).toContain("providers[0]:");
-			expect(messageHandlerTemplate).toContain("text:");
-			expect(messageHandlerTemplate).toContain("simple: true");
+			expect(messageHandlerTemplate).toContain("<response>");
+			expect(messageHandlerTemplate).toContain("<thought>");
+			expect(messageHandlerTemplate).toContain("<actions>");
+			expect(messageHandlerTemplate).toContain("<name>REPLY</name>");
+			expect(messageHandlerTemplate).toContain("<text>Your message here</text>");
+			expect(messageHandlerTemplate).toContain("<simple>true</simple>");
 
 			expect(messageHandlerTemplate).toContain("rules[8]:");
 			expect(messageHandlerTemplate).toContain(
@@ -52,6 +53,7 @@ describe("Prompts", () => {
 			expect(messageHandlerTemplate).toContain("formatting:");
 			expect(messageHandlerTemplate).toContain("fenced code blocks");
 			expect(messageHandlerTemplate).toContain("inline backticks");
+			expect(messageHandlerTemplate).toContain("XML only.");
 		});
 
 		it("postCreationTemplate should contain required placeholders and examples", () => {
@@ -103,15 +105,17 @@ describe("Prompts", () => {
 				expect(template).toMatch(
 					/No <think>|Do NOT include any thinking|Do not include any text, thinking, or reasoning before or after it/,
 				);
-				expect(template.includes("TOON")).toBe(true);
+				expect(template).toMatch(/TOON|XML only\./);
 			});
 		});
 
 		it("all templates should avoid legacy XML response wrappers", () => {
-			templates.forEach((template) => {
+			[shouldRespondTemplate, postCreationTemplate, imageDescriptionTemplate].forEach(
+				(template) => {
 				expect(template).not.toContain("<response>");
 				expect(template).not.toContain("</response>");
-			});
+				},
+			);
 		});
 	});
 

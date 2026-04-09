@@ -375,8 +375,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}): Promise<Memory[]> {
 		const effectiveLimit = params.limit ?? params.count ?? Infinity;
 		const roomId = params.roomId ?? DEFAULT_UUID;
-		let all =
-			this.memoriesByRoom.get(roomTableKey(params.tableName, roomId)) ?? [];
+		const tableName = params.tableName ?? "messages";
+		let all = this.memoriesByRoom.get(roomTableKey(tableName, roomId)) ?? [];
 
 		// Filter by timestamp range (start/end are timestamps in milliseconds)
 		// This supports history compaction - only return messages after the compaction point

@@ -37,7 +37,7 @@ import { ModelType } from "../types/model";
 import type { Content, Media, MentionContext, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
-import type { State } from "../types/state";
+import type { State, StructuredOutputFailure } from "../types/state";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
@@ -399,6 +399,66 @@ function withActionResults(state: State, actionResults: ActionResult[]): State {
 			actionResults,
 		},
 	};
+}
+
+function getStructuredOutputFailure(
+	state: State,
+): StructuredOutputFailure | null {
+	const candidate = state.data?.structuredOutputFailure;
+	if (!candidate || typeof candidate !== "object") {
+		return null;
+	}
+
+	return candidate as StructuredOutputFailure;
+}
+
+function summarizeStructuredOutputFailure(
+	failure: StructuredOutputFailure | null,
+): string {
+	if (!failure) {
+		return "Structured output parsing failed, but no additional diagnostics were recorded.";
+	}
+
+	const parts = [
+		`Kind: ${failure.kind}`,
+		`Model: ${failure.model}`,
+		`Format: ${failure.format}`,
+		`Attempts: ${failure.attempts}/${failure.maxRetries + 1}`,
+	];
+
+	if (failure.key) {
+		parts.push(`Key: ${failure.key}`);
+	}
+	if (failure.parseError) {
+		parts.push(`Error: ${failure.parseError}`);
+	}
+	if (failure.issues && failure.issues.length > 0) {
+		parts.push(`Issues: ${failure.issues.join(" | ")}`);
+	}
+	if (failure.responsePreview) {
+		parts.push(`Response Preview:\n${failure.responsePreview}`);
+	}
+
+	return parts.join("\n");
+}
+
+function summarizeActionResultsForUser(actionResults: ActionResult[]): string {
+	if (actionResults.length === 0) {
+		return "";
+	}
+
+	const summary = actionResults
+		.slice(-3)
+		.map((result) => {
+			const actionName =
+				typeof result.data?.actionName === "string"
+					? result.data.actionName
+					: "unknown action";
+			return `${actionName} (${result.success === false ? "failed" : "succeeded"})`;
+		})
+		.join(", ");
+
+	return `Completed action state before the error: ${summary}.`;
 }
 
 type ContextRoutingStateValues = {
@@ -2027,6 +2087,7 @@ export class DefaultMessageService implements IMessageService {
 						runtime.character.templates?.postActionDecisionTemplate ||
 						postActionDecisionTemplate,
 					precomposedState: accumulatedState,
+					failureStage: "preparing the follow-up reply after actions",
 				},
 			);
 
@@ -2152,6 +2213,7 @@ export class DefaultMessageService implements IMessageService {
 		overrides?: {
 			prompt?: string;
 			precomposedState?: State;
+			failureStage?: string;
 		},
 	): Promise<StrategyResult> {
 		state =
@@ -2209,7 +2271,8 @@ export class DefaultMessageService implements IMessageService {
 				},
 				{
 					field: "actions",
-					description: "List of actions to take (comma-separated)",
+					description:
+						"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
 					required: true,
 					validateField: false,
 					streamField: false,
@@ -2230,7 +2293,7 @@ export class DefaultMessageService implements IMessageService {
 			],
 			options: {
 				modelType: ModelType.ACTION_PLANNER,
-				preferredEncapsulation: opts.onStreamChunk ? "xml" : "toon",
+				preferredEncapsulation: "xml",
 				requiredFields: ["thought", "actions"],
 				maxRetries: opts.maxRetries,
 				// Stream through the filtered context callback for real-time output
@@ -2400,9 +2463,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 					],
 					options: {
 						modelType: ModelType.ACTION_PLANNER,
-						preferredEncapsulation: streamingCtx?.onStreamChunk
-							? "xml"
-							: "toon",
+						preferredEncapsulation: "xml",
 						contextCheckLevel: 0, // Fast mode for continuations - we trust the model
 						onStreamChunk: streamingCtx?.onStreamChunk,
 					},
@@ -2422,6 +2483,13 @@ Output ONLY the continuation, starting immediately after the last character abov
 				runtime.logger.warn(
 					{ src: "service:message" },
 					"dynamicPromptExecFromState returned null",
+				);
+				return await this.buildStructuredFailureReply(
+					runtime,
+					message,
+					state,
+					responseId,
+					overrides?.failureStage ?? "preparing the reply",
 				);
 			}
 		}
@@ -2480,12 +2548,16 @@ Output ONLY the continuation, starting immediately after the last character abov
 				"",
 				"# Parameter Repair",
 				"You selected actions that require parameters but did not include a complete params object.",
-				"Return ONLY a TOON document with a top-level params field keyed by action name.",
+				"Return ONLY XML with a top-level <params> field.",
 				"Example:",
-				"params:",
-				"  SEND_MESSAGE:",
-				"    target: room-or-channel-id",
-				"    text: message body",
+				"<response>",
+				"  <params>",
+				"    <SEND_MESSAGE>",
+				"      <target>room-or-channel-id</target>",
+				"      <text>message body</text>",
+				"    </SEND_MESSAGE>",
+				"  </params>",
+				"</response>",
 				"",
 				"Required parameters by action:",
 				requirementLines,
@@ -2573,6 +2645,148 @@ Output ONLY the continuation, starting immediately after the last character abov
 				: isSimple && responseContent.text
 					? "simple"
 					: "actions",
+		};
+	}
+
+	private async buildStructuredFailureReply(
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+		responseId: UUID,
+		stage: string,
+	): Promise<StrategyResult> {
+		const failure = getStructuredOutputFailure(state);
+		const recentMessages =
+			typeof state.values?.recentMessages === "string" &&
+			state.values.recentMessages.trim().length > 0
+				? state.values.recentMessages
+				: typeof state.text === "string" && state.text.trim().length > 0
+					? state.text
+					: typeof message.content.text === "string"
+						? message.content.text
+						: "(unavailable)";
+		const actionResults = Array.isArray(state.data?.actionResults)
+			? state.data.actionResults
+			: [];
+		const failurePrompt = [
+			"You are recovering from an internal structured-output failure while responding to a user.",
+			"Write the next user-facing reply in plain language.",
+			"",
+			"Rules:",
+			"- Explain what failed and why using only the diagnostics below.",
+			"- Mention any completed or failed actions if action results are available.",
+			"- Be transparent, concise, and avoid inventing causes.",
+			"- If the model returned malformed XML, TOON, or JSON, say that clearly.",
+			"- Suggest the most useful next step for the user.",
+			"- Return only the reply text. No XML, JSON, TOON, bullet labels, or <think>.",
+			"",
+			`Failure Stage: ${stage}`,
+			"",
+			"Structured Failure Diagnostics:",
+			summarizeStructuredOutputFailure(failure),
+			"",
+			"Recent Conversation:",
+			recentMessages,
+			"",
+			"Action Results So Far:",
+			typeof state.values?.actionResults === "string" &&
+			state.values.actionResults.trim().length > 0
+				? state.values.actionResults
+				: "No action results available.",
+			"",
+			"Reply:",
+		].join("\n");
+
+		let replyText = "";
+		for (const modelType of [
+			ModelType.TEXT_LARGE,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
+			ModelType.TEXT_MINI,
+			ModelType.TEXT_NANO,
+		] as const) {
+			try {
+				const response = await runtime.useModel(modelType, {
+					prompt: failurePrompt,
+				});
+				if (typeof response !== "string") {
+					continue;
+				}
+
+				const cleaned = response
+					.replace(/<think>[\s\S]*?<\/think>/g, "")
+					.trim();
+				const looksStructuredReply =
+					cleaned.startsWith("<") ||
+					/^TOON\b/i.test(cleaned) ||
+					/^(thought|text)\s*:/i.test(cleaned);
+				const parsed = looksStructuredReply
+					? parseKeyValueXml<{ text?: string }>(cleaned)
+					: null;
+				replyText =
+					typeof parsed?.text === "string" && parsed.text.trim().length > 0
+						? parsed.text.trim()
+						: cleaned;
+				if (replyText) {
+					break;
+				}
+			} catch (error) {
+				runtime.logger.warn(
+					{
+						src: "service:message",
+						stage,
+						modelType,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Structured failure reply generation failed for model",
+				);
+			}
+		}
+
+		if (!replyText) {
+			const failureReason =
+				failure?.parseError ??
+				failure?.issues?.[0] ??
+				"the model returned output that did not match the required format";
+			replyText = [
+				`I hit an internal parsing error while ${stage}.`,
+				`Reason: ${failureReason}.`,
+				summarizeActionResultsForUser(actionResults),
+				"Please try again or ask me to retry the last step.",
+			]
+				.filter(Boolean)
+				.join(" ");
+		}
+
+		replyText = runtime.redactSecrets(
+			truncateToCompleteSentence(replyText.trim(), 2000),
+		);
+
+		const responseContent: Content = {
+			thought: `Explain the structured-output failure during ${stage}.`,
+			actions: ["REPLY"],
+			providers: [],
+			text: replyText,
+			simple: true,
+			responseId,
+		};
+
+		const responseMessages: Memory[] = [
+			{
+				id: responseId,
+				entityId: runtime.agentId,
+				agentId: runtime.agentId,
+				content: responseContent,
+				roomId: message.roomId,
+				createdAt: Date.now(),
+			},
+		];
+
+		return {
+			responseContent,
+			responseMessages,
+			state,
+			mode: "simple",
 		};
 	}
 
@@ -2690,7 +2904,13 @@ Output ONLY the continuation, starting immediately after the last character abov
 					success: false,
 					error: "Failed to parse step result",
 				});
-				break;
+				return await this.buildStructuredFailureReply(
+					runtime,
+					message,
+					withActionResults(accumulatedState, traceActionResult),
+					responseId,
+					"planning the next multi-step action",
+				);
 			}
 
 			const thought =
@@ -3034,6 +3254,14 @@ Output ONLY the continuation, starting immediately after the last character abov
 				simple: true,
 				responseId,
 			};
+		} else {
+			return await this.buildStructuredFailureReply(
+				runtime,
+				message,
+				withActionResults(accumulatedState, traceActionResult),
+				responseId,
+				"writing the final summary",
+			);
 		}
 
 		const responseMessages: Memory[] = responseContent
