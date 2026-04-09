@@ -890,10 +890,7 @@ const MODEL_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = {
 		ModelType.TEXT_MINI,
 		ModelType.TEXT_SMALL,
 	],
-	[ModelType.ACTION_PLANNER]: [
-		ModelType.ACTION_PLANNER,
-		ModelType.TEXT_SMALL,
-	],
+	[ModelType.ACTION_PLANNER]: [ModelType.ACTION_PLANNER, ModelType.TEXT_SMALL],
 };
 
 export function getModelFallbackChain(modelType: ModelTypeName): string[] {
