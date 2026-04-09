@@ -14,10 +14,12 @@ import { executeDistributionLane } from "./distribution-execution";
 // ElizaCloud v1 calls live in ./elizacloud-api.ts (auth header rules, parsers, 429 retry) — why: testability
 // and alignment with Cloud’s requireAuthOrApiKey order; see docs/elizacloud-integration.md.
 import {
+  elizaCloudAuthHeaders,
+  fetchElizaCloudPrimaryAgentConfig,
   fetchElizaCloudCreditsBalance,
   fetchElizaCloudCreditsSummary,
-  fetchElizaCloudModels,
   fetchElizaCloudUser,
+  type ElizaCloudSummaryFields,
 } from "./elizacloud-api";
 import { persistDistributionExecutionState } from "./persist";
 import { getLatestSnapshot } from "./store";
@@ -312,6 +314,15 @@ function formatBnb(value: number): string {
   return `${value.toFixed(4)} BNB`;
 }
 
+function formatCompactNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "n/a";
+  return value.toFixed(2);
+}
+
+function getElizaCloudDashboardUrl(): string {
+  return `${getElizaCloudBaseUrl().replace(/\/$/, "")}/dashboard`;
+}
+
 async function fetchWalletNativeBalanceLabel(
   rpcUrl: string | null,
   walletAddress: string,
@@ -337,6 +348,8 @@ interface ElizaCloudSession {
   email: string;
   credits: string;
   model: string;
+  agentId: string;
+  agentName: string;
   apiKey: string;
   apiKeyHint: string;
   plan: string;
@@ -510,7 +523,6 @@ function buildElizaCloudSessionFromQuery(
   const displayName = requestUrl.searchParams.get("name")?.trim() || "";
   const email = requestUrl.searchParams.get("email")?.trim() || "";
   const credits = requestUrl.searchParams.get("credits")?.trim() || "n/a";
-  const model = requestUrl.searchParams.get("model")?.trim() || "n/a";
   const apiKeyHint =
     requestUrl.searchParams.get("api_key")?.trim() ||
     requestUrl.searchParams.get("apiKey")?.trim() ||
@@ -535,7 +547,6 @@ function buildElizaCloudSessionFromQuery(
     !displayName &&
     !email &&
     credits === "n/a" &&
-    model === "n/a" &&
     apiKeyHint === "n/a"
   ) {
     return null;
@@ -548,7 +559,9 @@ function buildElizaCloudSessionFromQuery(
     displayName: displayName || email || "ElizaCloud User",
     email: email || "connected-via-elizacloud",
     credits,
-    model,
+    model: "n/a",
+    agentId: "",
+    agentName: "Eliza",
     apiKey,
     apiKeyHint,
     plan,
@@ -705,6 +718,21 @@ async function verifyElizaCloudSiwe(payload: {
   });
 }
 
+async function createElizaCloudAgent(
+  apiKey: string,
+  payload: { name: string; bio?: string },
+): Promise<Response> {
+  const url = `${elizaCloudApiBase()}/api/v1/app/agents`;
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      ...elizaCloudAuthHeaders(apiKey),
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 /** Trailing-slash-normalized `ELIZAOK_ELIZA_CLOUD_API_URL` — why: v1 paths must hit the API host, not SIWE host. */
 function elizaCloudApiBase(): string {
   return getElizaCloudApiBaseUrl().replace(/\/$/, "");
@@ -714,7 +742,6 @@ function elizaCloudApiBase(): string {
 function buildElizaCloudApiSession(
   apiKey: string,
   profile: Partial<ElizaCloudSession> | null,
-  models: string[],
   authMode: ElizaCloudSession["authMode"] = "siwe",
   appId = "",
 ): ElizaCloudSession {
@@ -725,7 +752,9 @@ function buildElizaCloudApiSession(
       profile?.displayName || profile?.organizationName || "ElizaCloud User",
     email: profile?.email || "connected-via-elizacloud",
     credits: profile?.credits || "linked",
-    model: models[0] || "n/a",
+    model: "n/a",
+    agentId: profile?.agentId || "",
+    agentName: profile?.agentName || "Eliza",
     apiKey,
     apiKeyHint:
       !apiKey || apiKey.length < 4
@@ -764,10 +793,10 @@ async function buildElizaCloudSessionFromAppAuth(
   }
 
   const apiBase = elizaCloudApiBase();
-  const [appSessionResponse, models, profile, credits, creditSummary] =
+  const [appSessionResponse, primaryAgent, profile, credits, creditSummary] =
     await Promise.all([
       fetchElizaCloudAppAuthSession(authToken, appId),
-      fetchElizaCloudModels(apiBase, authToken),
+      fetchElizaCloudPrimaryAgentConfig(apiBase, authToken),
       fetchElizaCloudUser(apiBase, authToken),
       fetchElizaCloudCreditsBalance(apiBase, authToken),
       fetchElizaCloudCreditsSummary(apiBase, authToken),
@@ -821,8 +850,14 @@ async function buildElizaCloudSessionFromAppAuth(
       // Balance first, then summary, then user placeholder "linked" — why: profile spread can carry credits: "linked".
       credits:
         credits || creditSummary?.credits || profile?.credits || "linked",
+      agentId: primaryAgent?.id || "",
+      agentName: primaryAgent?.name || "Eliza",
+      model: primaryAgent
+        ? primaryAgent.modelProvider
+          ? `${primaryAgent.modelProvider}/${primaryAgent.model}`
+          : primaryAgent.model
+        : "n/a",
     },
-    models,
     "app-auth",
     appId,
   );
@@ -833,20 +868,17 @@ async function buildElizaCloudSessionFromAppAuth(
 
 async function refreshElizaCloudSession(
   session: ElizaCloudSession | null,
-): Promise<{ session: ElizaCloudSession | null; models: string[] }> {
+): Promise<{ session: ElizaCloudSession | null; summary: ElizaCloudSummaryFields | null }> {
   if (!session) {
-    return { session: null, models: [] };
+    return { session: null, summary: null };
   }
   if (!session.apiKey) {
-    return {
-      session,
-      models: session.model && session.model !== "n/a" ? [session.model] : [],
-    };
+    return { session, summary: null };
   }
 
   const apiBase = elizaCloudApiBase();
-  const [models, profile, credits, creditSummary] = await Promise.all([
-    fetchElizaCloudModels(apiBase, session.apiKey),
+  const [primaryAgent, profile, credits, creditSummary] = await Promise.all([
+    fetchElizaCloudPrimaryAgentConfig(apiBase, session.apiKey),
     fetchElizaCloudUser(apiBase, session.apiKey),
     fetchElizaCloudCreditsBalance(apiBase, session.apiKey),
     fetchElizaCloudCreditsSummary(apiBase, session.apiKey),
@@ -882,13 +914,19 @@ async function refreshElizaCloudSession(
         session.credits ||
         "linked",
       plan: profile?.plan || session.plan || "ElizaCloud",
+      agentId: primaryAgent?.id || session.agentId || "",
+      agentName: primaryAgent?.name || session.agentName || "Eliza",
+      model: primaryAgent
+        ? primaryAgent.modelProvider
+          ? `${primaryAgent.modelProvider}/${primaryAgent.model}`
+          : primaryAgent.model
+        : session.model || "n/a",
     },
-    models,
     session.authMode,
     session.appId,
   );
   refreshed.apiKeyHint = session.apiKeyHint || refreshed.apiKeyHint;
-  return { session: refreshed, models };
+  return { session: refreshed, summary: creditSummary };
 }
 
 function shortAddress(value: string): string {
@@ -1106,8 +1144,8 @@ function renderFeatureDockCard(
     >
       <div class="feature-dock-card__top">
         <span>${escapeHtml(label)}</span>
+        <em>${escapeHtml(pctLabel)}</em>
       </div>
-      <strong class="feature-dock-card__pct">${escapeHtml(pctLabel)}</strong>
       <b class="feature-dock-card__value">${escapeHtml(value)}</b>
       <small class="feature-dock-card__meta">${escapeHtml(meta)}</small>
       <div class="feature-dock-card__track">
@@ -1844,7 +1882,7 @@ function pnlTone(value: number): string {
 
 function renderDashboardCloudSidebar(
   cloudSession: ElizaCloudSession | null,
-  cloudModels: string[],
+  cloudSummary: ElizaCloudSummaryFields | null,
 ): string {
   if (!cloudSession) {
     return `
@@ -1855,34 +1893,365 @@ function renderDashboardCloudSidebar(
         </button>
       </div>`;
   }
-  const modelChoices =
-    cloudModels.length > 0
-      ? cloudModels
-      : cloudSession.model && cloudSession.model !== "n/a"
-        ? [cloudSession.model]
-        : ["n/a"];
-  const modelOptions = modelChoices
-    .map(
-      (model) =>
-        `<option value="${escapeHtml(model)}"${model === cloudSession.model ? " selected" : ""}>${escapeHtml(model)}</option>`,
-    )
-    .join("");
+  const cloudSyncing =
+    cloudSession.displayName === "ElizaCloud User" ||
+    cloudSession.organizationName === "ElizaCloud" ||
+    cloudSession.credits === "linked";
+  const cloudModelLabel =
+    cloudSession.model && cloudSession.model !== "n/a"
+      ? cloudSession.model
+      : "Not exposed by ElizaCloud API";
+  const agentCount =
+    cloudSummary?.agentsSummary?.total ?? cloudSummary?.agents?.length ?? 0;
   return `
       <div class="sidebar-panel__title">ElizaCloud</div>
-      <div class="status-panel compact-status">
+      <div class="status-panel compact-status" data-cloud-syncing="${cloudSyncing ? "true" : "false"}">
+        <div class="status-row"><span>Status</span><strong>${cloudSyncing ? "Linked; profile and credits syncing" : "Connected"}</strong></div>
         <div class="status-row"><span>Account</span><strong>${escapeHtml(cloudSession.displayName)}</strong></div>
         <div class="status-row"><span>Org</span><strong>${escapeHtml(cloudSession.organizationName)}</strong></div>
         <div class="status-row"><span>Credits</span><strong>${escapeHtml(cloudSession.credits)}</strong></div>
-        <div class="status-row"><span>API</span><strong>${escapeHtml(cloudSession.apiKeyHint)}</strong></div>
-        <div class="status-row"><span>Model</span><strong><select class="auth-link" data-cloud-model-select aria-label="ElizaCloud model">${modelOptions}</select></strong></div>
+        <div class="status-row"><span>Cloud agents</span><strong>${agentCount}</strong></div>
+        <div class="status-row"><span>Agent</span><strong>${escapeHtml(cloudSession.agentName || "Eliza")}</strong></div>
+        <div class="status-row"><span>Model</span><strong>${escapeHtml(cloudModelLabel)}</strong></div>
         <div class="status-row"><span></span><strong><a class="watchlist-link" href="/auth/eliza-cloud/logout">Disconnect</a></strong></div>
       </div>`;
+}
+
+function renderCloudToolbarLinks(cloudSession: ElizaCloudSession | null): string {
+  if (!cloudSession) return "";
+  return `
+    <a class="auth-link" href="/cloud/agents">Agents</a>
+    <a class="auth-link" href="/cloud/credits">Credits</a>`;
+}
+
+function renderCloudPageShell(
+  title: string,
+  subtitle: string,
+  body: string,
+): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  ${renderHeadBrandAssets(`${escapeHtml(title)} | ElizaOK`)}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #030301;
+      --panel: rgba(8,8,7,0.94);
+      --panel-border: rgba(246,231,15,0.15);
+      --text: #ffffff;
+      --muted: rgba(255,255,255,0.66);
+      --accent: #f6e70f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(246,231,15,0.08), transparent 30%),
+        linear-gradient(180deg, #050504 0%, #020201 100%);
+      color: var(--text);
+      font-family: "Kode Mono", monospace;
+    }
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+    .top {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      border: 1px solid rgba(246,231,15,0.12);
+      border-radius: 16px;
+      background: rgba(10,10,8,0.88);
+      box-shadow: 0 0 0 1px rgba(246,231,15,0.03), 0 18px 40px rgba(0,0,0,0.45);
+    }
+    .title strong {
+      display:block;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .title small {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .actions {
+      display:flex;
+      align-items:center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(246,231,15,0.16);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .btn--accent {
+      background: linear-gradient(135deg, rgba(246,231,15,0.18), rgba(246,231,15,0.06));
+    }
+    .grid {
+      display:grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .card {
+      grid-column: span 12;
+      border-radius: 16px;
+      border: 1px solid var(--panel-border);
+      background: var(--panel);
+      padding: 14px;
+      box-shadow: 0 0 0 1px rgba(246,231,15,0.03), 0 16px 30px rgba(0,0,0,0.35);
+    }
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .stats {
+      display:grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .stat {
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .stat span {
+      display:block;
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+    }
+    .stat strong {
+      font-size: 20px;
+      color: var(--text);
+    }
+    .rows {
+      display:grid;
+      gap: 8px;
+    }
+    .row {
+      display:flex;
+      justify-content:space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .row span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .row strong {
+      text-align: right;
+      font-size: 11px;
+    }
+    .subgrid-6 { grid-column: span 6; }
+    .subgrid-4 { grid-column: span 4; }
+    @media (max-width: 960px) {
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .subgrid-6, .subgrid-4 { grid-column: span 12; }
+      .top { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="title">
+        <strong>${escapeHtml(title)}</strong>
+        <small>${escapeHtml(subtitle)}</small>
+      </div>
+      <div class="actions">
+        <a class="btn" href="/">Back</a>
+        <a class="btn" href="/cloud/agents">Agents</a>
+        <a class="btn" href="/cloud/credits">Credits</a>
+        <a class="btn" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Open Cloud</a>
+      </div>
+    </header>
+    ${body}
+  </div>
+</body>
+</html>`;
+}
+
+function renderCloudCreditsPage(
+  cloudSession: ElizaCloudSession | null,
+  cloudSummary: ElizaCloudSummaryFields | null,
+): string {
+  if (!cloudSession || !cloudSummary) {
+    return renderCloudPageShell(
+      "Cloud Credits",
+      "Connect ElizaCloud first",
+      `<div class="grid"><article class="card"><h2>Unavailable</h2><div class="rows"><div class="row"><span>Status</span><strong>Connect ElizaCloud from the main dashboard first.</strong></div></div></article></div>`,
+    );
+  }
+  const agentsSummary = cloudSummary.agentsSummary;
+  const pricing = cloudSummary.pricing;
+  const autoTopUp = cloudSummary.autoTopUp;
+  const body = `
+    <div class="grid">
+      <article class="card">
+        <h2>Credits</h2>
+        <div class="stats">
+          <div class="stat"><span>Current balance</span><strong>${escapeHtml(cloudSession.credits)}</strong></div>
+          <div class="stat"><span>Cloud agents</span><strong>${agentsSummary?.total ?? cloudSummary.agents?.length ?? 0}</strong></div>
+          <div class="stat"><span>Allocated</span><strong>${formatCompactNumber(agentsSummary?.totalAllocated ?? 0)}</strong></div>
+          <div class="stat"><span>Available</span><strong>${formatCompactNumber(agentsSummary?.totalAvailable ?? 0)}</strong></div>
+        </div>
+      </article>
+      <article class="card subgrid-6">
+        <h2>Billing</h2>
+        <div class="rows">
+          <div class="row"><span>Credits / USD</span><strong>${pricing?.creditsPerDollar === null || pricing?.creditsPerDollar === undefined ? "n/a" : formatCompactNumber(pricing.creditsPerDollar)}</strong></div>
+          <div class="row"><span>Minimum deposit</span><strong>${pricing?.minimumTopUp === null || pricing?.minimumTopUp === undefined ? "n/a" : `$${formatCompactNumber(pricing.minimumTopUp)}`}</strong></div>
+          <div class="row"><span>x402 top-up</span><strong>${pricing?.x402Enabled ? "enabled" : "disabled"}</strong></div>
+          <div class="row"><span>Spent</span><strong>${formatCompactNumber(agentsSummary?.totalSpent ?? 0)}</strong></div>
+        </div>
+      </article>
+      <article class="card subgrid-6">
+        <h2>Auto Top-up</h2>
+        <div class="rows">
+          <div class="row"><span>Status</span><strong>${autoTopUp?.enabled ? "enabled" : "disabled"}</strong></div>
+          <div class="row"><span>Payment method</span><strong>${autoTopUp?.hasPaymentMethod ? "saved" : "none"}</strong></div>
+          <div class="row"><span>Threshold</span><strong>${autoTopUp?.threshold === null || autoTopUp?.threshold === undefined ? "n/a" : formatCompactNumber(autoTopUp.threshold)}</strong></div>
+          <div class="row"><span>Amount</span><strong>${autoTopUp?.amount === null || autoTopUp?.amount === undefined ? "n/a" : formatCompactNumber(autoTopUp.amount)}</strong></div>
+        </div>
+      </article>
+      <article class="card">
+        <h2>Actions</h2>
+        <div class="actions">
+          <a class="btn btn--accent" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Top up in ElizaCloud</a>
+          <a class="btn" href="/cloud/agents">Open Agents</a>
+        </div>
+      </article>
+    </div>`;
+  return renderCloudPageShell(
+    "Cloud Credits",
+    `${cloudSession.organizationName} billing`,
+    body,
+  );
+}
+
+function renderCloudAgentsPage(
+  cloudSession: ElizaCloudSession | null,
+  cloudSummary: ElizaCloudSummaryFields | null,
+): string {
+  if (!cloudSession || !cloudSummary) {
+    return renderCloudPageShell(
+      "Cloud Agents",
+      "Connect ElizaCloud first",
+      `<div class="grid"><article class="card"><h2>Unavailable</h2><div class="rows"><div class="row"><span>Status</span><strong>Connect ElizaCloud from the main dashboard first.</strong></div></div></article></div>`,
+    );
+  }
+  const agents = cloudSummary.agents || [];
+  const rows = agents.length
+    ? agents
+        .map(
+          (agent) => `
+          <div class="row">
+            <span>${escapeHtml(agent.name)}</span>
+            <strong>${agent.hasBudget ? `${formatCompactNumber(agent.available)} avail · ${formatCompactNumber(agent.allocated)} alloc` : "no budget"}${agent.isPaused ? " · paused" : ""}<br />requests ${agent.totalRequests}${agent.dailyLimit !== null ? ` · daily ${formatCompactNumber(agent.dailyLimit)}` : ""}</strong>
+          </div>`,
+        )
+        .join("")
+    : `<div class="row"><span>Agents</span><strong>No agents discovered. Create one in ElizaCloud or from this page.</strong></div>`;
+  const body = `
+    <div class="grid">
+      <article class="card">
+        <h2>Agents</h2>
+        <div class="stats">
+          <div class="stat"><span>Total</span><strong>${cloudSummary.agentsSummary?.total ?? agents.length}</strong></div>
+          <div class="stat"><span>With budget</span><strong>${cloudSummary.agentsSummary?.withBudget ?? 0}</strong></div>
+          <div class="stat"><span>Paused</span><strong>${cloudSummary.agentsSummary?.paused ?? 0}</strong></div>
+          <div class="stat"><span>Selected agent</span><strong>${escapeHtml(cloudSession.agentName || "Eliza")}</strong></div>
+        </div>
+      </article>
+      <article class="card subgrid-6">
+        <h2>Cloud Agent List</h2>
+        <div class="rows">${rows}</div>
+      </article>
+      <article class="card subgrid-6">
+        <h2>Actions</h2>
+        <div class="rows">
+          <div class="row"><span>Current agent</span><strong>${escapeHtml(cloudSession.agentName || "Eliza")}</strong></div>
+          <div class="row"><span>Agent model</span><strong>${escapeHtml(cloudSession.model && cloudSession.model !== "n/a" ? cloudSession.model : "Not exposed by ElizaCloud API")}</strong></div>
+          <div class="row"><span>Org</span><strong>${escapeHtml(cloudSession.organizationName)}</strong></div>
+        </div>
+        <div class="actions" style="margin-top:12px">
+          <button type="button" class="btn btn--accent" data-cloud-create-agent>+ New Agent</button>
+          <a class="btn" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Manage in Cloud</a>
+        </div>
+      </article>
+    </div>
+    <script>
+      (function () {
+        var buttons = Array.prototype.slice.call(document.querySelectorAll("[data-cloud-create-agent]"));
+        buttons.forEach(function (button) {
+          button.addEventListener("click", function () {
+            var name = window.prompt("New ElizaCloud agent name", "elizaOK Agent");
+            if (!name) return;
+            var bio = window.prompt("Agent bio (optional)", "ElizaOK cloud agent") || "";
+            button.setAttribute("aria-disabled", "true");
+            fetch("/api/eliza-cloud/agents/create", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ name: name, bio: bio })
+            })
+              .then(function (response) {
+                return response.json().then(function (payload) {
+                  if (!response.ok) {
+                    throw new Error(payload && payload.error ? payload.error : "Failed to create ElizaCloud agent.");
+                  }
+                  return payload;
+                });
+              })
+              .then(function () { window.location.reload(); })
+              .catch(function (error) {
+                button.removeAttribute("aria-disabled");
+                window.alert(error && error.message ? error.message : String(error));
+              });
+          });
+        });
+      })();
+    </script>`;
+  return renderCloudPageShell(
+    "Cloud Agents",
+    `${cloudSession.organizationName} agents`,
+    body,
+  );
 }
 
 function renderHtml(
   snapshot: DashboardSnapshot | null,
   cloudSession: ElizaCloudSession | null,
-  cloudModels: string[],
+  cloudSummary: ElizaCloudSummaryFields | null,
   sidebarWalletBalanceLabel = "n/a",
 ): string {
   if (!snapshot) {
@@ -2240,10 +2609,7 @@ function renderHtml(
     process.env.MOLTBOOK_MODEL?.trim() ||
     "n/a";
   const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
-  const cloudAccountRows = renderDashboardCloudSidebar(
-    cloudSession,
-    cloudModels,
-  );
+  const cloudAccountRows = renderDashboardCloudSidebar(cloudSession, cloudSummary);
   const riskProfile =
     executionState.risk.maxBuyBnb <= 0.02 &&
     executionState.risk.maxDailyDeployBnb <= 0.05
@@ -2272,7 +2638,7 @@ function renderHtml(
       </div>
       <div class="sidebar-panel__title">LLM</div>
       <div class="llm-model-row">
-        <span>Model</span>
+        <span>Runtime model</span>
         <strong>${escapeHtml(currentModel)}</strong>
       </div>
       <div class="usage-stack">
@@ -2559,9 +2925,72 @@ function renderHtml(
   ]
     .map((item) => `<div class="state-chip">${item}</div>`)
     .join("");
-  const cloudTopAction = cloudSession
-    ? `<a class="social-link" href="/auth/eliza-cloud/logout" aria-label="Disconnect ElizaCloud" title="${escapeHtml(cloudSession.displayName)}">ElizaCloud</a>`
-    : `<a class="social-link" href="#" data-cloud-hosted-auth aria-label="Connect ElizaCloud">ElizaCloud</a>`;
+  const heroActionRow = `
+    <div class="action-row">
+      <a class="action-button" href="#discovery-section">Discovery Feed</a>
+      <a class="action-button" href="/cloud/agents">Cloud Agents</a>
+      <a class="action-button" href="/cloud/credits">Credits</a>
+      <a class="action-button" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Open Cloud</a>
+    </div>`;
+  const heroStageRows = [
+    {
+      label: "Discovery board",
+      value: `${snapshot.summary.candidateCount} scanned`,
+      meta: `${snapshot.summary.topRecommendationCount} ready · avg ${snapshot.summary.averageScore}`,
+    },
+    {
+      label: "Execution lane",
+      value: `${eligibleExecutionPlans} tradable`,
+      meta: `${executionState.mode} · ${executionState.dryRun ? "dry-run" : "live"}`,
+    },
+    {
+      label: "Distribution loop",
+      value: `${distributionPlan.recipients.length} recipients`,
+      meta: `${distributionPlan.eligibleHolderCount} holders · ${distributionExecution.dryRun ? "simulated" : "armed"}`,
+    },
+    {
+      label: "Goo operator",
+      value: `${snapshot.summary.gooPriorityCount} priority`,
+      meta: `${snapshot.summary.gooAgentCount} reviewed · ${getDiscoveryConfig().goo.enabled ? "enabled" : "standby"}`,
+    },
+  ]
+    .map(
+      (item) => `
+        <div class="hero-stage__row">
+          <span>${escapeHtml(item.label)}</span>
+          <strong>${escapeHtml(item.value)}</strong>
+          <small>${escapeHtml(item.meta)}</small>
+        </div>`,
+    )
+    .join("");
+  const heroStage = `
+    <div class="hero-stage">
+      <div class="hero-stage__glyphs">♬ ★ ♬ ★ ♪ ✦ ♪</div>
+      <div class="hero-stage__count">3</div>
+      <div class="hero-stage__screen">
+        ${renderBrandLogoImage("hero-stage__image")}
+      </div>
+      <div class="hero-stage__stack">
+        ${heroStageRows}
+      </div>
+    </div>`;
+  const summaryRibbon = [
+    `${snapshot.summary.strongestCandidate?.tokenSymbol || "n/a"} strongest signal`,
+    `${formatBnb(executionState.risk.maxBuyBnb)} max buy`,
+    `${tradeLedger.records.length} executions tracked`,
+    `${distributionPlan.selectedAsset.tokenSymbol || "distribution asset pending"}`,
+  ]
+    .map((item) => `<div class="summary-pill">${escapeHtml(item)}</div>`)
+    .join("");
+  const cloudTopSyncing = cloudSession
+    ? cloudSession.displayName === "ElizaCloud User" ||
+      cloudSession.organizationName === "ElizaCloud" ||
+      cloudSession.credits === "linked"
+    : false;
+  const cloudToolbarLinks = renderCloudToolbarLinks(cloudSession);
+  const cloudAuthButton = cloudSession
+    ? `<a class="auth-link auth-link--connected" href="/auth/eliza-cloud/logout" title="${escapeHtml(cloudSession.displayName)}">${cloudTopSyncing ? "ElizaCloud · syncing" : `ElizaCloud · ${escapeHtml(cloudSession.displayName)} · ${escapeHtml(cloudSession.credits)} credits`}</a>`
+    : `<button class="auth-link" type="button" data-cloud-hosted-auth>Sign in with ElizaCloud</button>`;
   const treasuryModelCards = [
     renderMetricCard(
       "Capital model",
@@ -2746,30 +3175,11 @@ function renderHtml(
     .app-shell {
       position: relative;
       z-index: 1;
-      display: grid;
-      grid-template-columns: 272px minmax(0, 1fr);
-      height: 100vh;
+      display: block;
+      min-height: 100vh;
       overflow: hidden;
     }
-    .sidebar {
-      position: sticky;
-      top: 0;
-      align-self: start;
-      min-height: 100vh;
-      padding: 12px 12px 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      justify-content: flex-start;
-      overflow: visible;
-      border-right: 1px solid rgba(246,231,15,0.09);
-      background:
-        radial-gradient(circle at top left, rgba(255,255,255,0.03), transparent 20%),
-        linear-gradient(180deg, rgba(246,231,15,0.06), transparent 18%),
-        rgba(3, 3, 1, 0.98);
-      backdrop-filter: blur(14px);
-      box-shadow: inset -1px 0 0 rgba(246,231,15,0.05);
-    }
+    .sidebar { display: none; }
     .app-shell::before {
       content: "// ELIZAOK :: SIGNAL_MESH :: 010110";
       position: fixed;
@@ -3080,13 +3490,13 @@ function renderHtml(
     }
     .workspace {
       min-width: 0;
-      height: 100vh;
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: flex-start;
-      padding: 10px 12px 14px;
-      overflow: hidden;
+      padding: 18px 18px 32px;
+      overflow: visible;
     }
     .topbar {
       position: static;
@@ -3095,15 +3505,16 @@ function renderHtml(
       justify-content: space-between;
       align-items: center;
       gap: 10px;
-      padding: 8px 10px;
-      border-radius: 16px;
-      border: 1px solid var(--border);
+      padding: 12px 14px;
+      border-radius: 22px;
+      border: 1px solid rgba(246,231,15,0.18);
       background:
-        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
-        rgba(6,6,5,0.9);
+        radial-gradient(circle at top left, rgba(246,231,15,0.09), transparent 22%),
+        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.01)),
+        rgba(5,5,4,0.74);
       backdrop-filter: blur(10px);
-      box-shadow: var(--glow), 0 22px 56px rgba(0,0,0,0.34);
-      width: min(100%, 1440px);
+      box-shadow: 0 18px 56px rgba(0,0,0,0.34), inset 0 0 0 1px rgba(246,231,15,0.04);
+      width: min(100%, 1220px);
     }
     .topbar::after {
       content: "";
@@ -3156,20 +3567,23 @@ function renderHtml(
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-wrap: wrap;
     }
     .auth-link {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 138px;
+      min-width: 110px;
       height: 34px;
       padding: 0 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,214,10,0.2);
-      background: linear-gradient(135deg, rgba(255,214,10,0.18), rgba(255,214,10,0.05));
+      border-radius: 12px;
+      border: 1px solid rgba(255,214,10,0.28);
+      background:
+        linear-gradient(135deg, rgba(255,214,10,0.2), rgba(255,214,10,0.05)),
+        rgba(255,255,255,0.02);
       color: var(--text);
       font-size: 10px;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       transition: 180ms ease;
       cursor: pointer;
@@ -3187,7 +3601,7 @@ function renderHtml(
       opacity: 0.72;
     }
     .auth-link--connected {
-      min-width: 320px;
+      min-width: 220px;
       max-width: 520px;
       justify-content: flex-start;
       gap: 8px;
@@ -3384,31 +3798,33 @@ function renderHtml(
       outline: none;
     }
     .social-link {
-      width: 34px;
+      width: 36px;
       height: 34px;
       display: grid;
       place-items: center;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.04);
+      border-radius: 12px;
+      border: 1px solid rgba(246,231,15,0.16);
+      background:
+        linear-gradient(180deg, rgba(246,231,15,0.06), rgba(246,231,15,0.02)),
+        rgba(255,255,255,0.03);
       color: var(--text);
       transition: 180ms ease;
     }
     .social-link:hover {
       color: var(--text);
-      border-color: rgba(255,255,255,0.18);
-      box-shadow: 0 0 24px rgba(255,255,255,0.1);
+      border-color: rgba(246,231,15,0.28);
+      box-shadow: 0 0 24px rgba(246,231,15,0.12);
       transform: translateY(-1px);
     }
     .social-link svg { width: 16px; height: 16px; }
     .content-stack {
-      width: min(100%, 1440px);
-      margin-top: 10px;
+      width: min(100%, 1220px);
+      margin-top: 14px;
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: 1fr;
       grid-auto-rows: min-content;
       align-content: start;
-      gap: 10px;
+      gap: 14px;
       flex: 1;
     }
     .view-panel { display: grid; gap: 10px; }
@@ -3438,7 +3854,7 @@ function renderHtml(
       pointer-events: none;
     }
     .hero-card {
-      padding: 14px;
+      padding: 18px;
       min-height: 0;
     }
     .hero-card::before {
@@ -3469,7 +3885,7 @@ function renderHtml(
       display: grid;
       gap: 10px;
     }
-    .hero-grid { grid-template-columns: 1.65fr 1fr; position: relative; z-index: 1; }
+    .hero-grid { grid-template-columns: 1.08fr 0.92fr; position: relative; z-index: 1; align-items: stretch; min-height: 520px; }
     .hero-side-stack {
       display: grid;
       gap: 14px;
@@ -3496,9 +3912,9 @@ function renderHtml(
       box-shadow: 0 0 14px rgba(255,214,10,0.7);
     }
     h1 {
-      margin: 8px 0 8px;
-      font-size: clamp(24px, 3.1vw, 36px);
-      line-height: 1;
+      margin: 8px 0 10px;
+      font-size: clamp(30px, 4vw, 52px);
+      line-height: 0.96;
       letter-spacing: -0.04em;
       max-width: none;
       text-wrap: auto;
@@ -3507,8 +3923,8 @@ function renderHtml(
     .section-title p,
     .candidate-thesis,
     .footer-note { color: var(--muted); }
-    .hero-copy { margin: 0; font-size: 12px; line-height: 1.55; max-width: 58ch; }
-    .hero-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .hero-copy { margin: 0; font-size: 13px; line-height: 1.7; max-width: 58ch; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
     .state-chip {
       padding: 6px 9px;
       border-radius: 999px;
@@ -3614,23 +4030,24 @@ function renderHtml(
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 14px;
-      margin-top: 10px;
+      margin-top: 16px;
     }
     .feature-dock-grid {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 10px;
+      gap: 12px;
     }
     .feature-dock-card {
       display: grid;
-      gap: 6px;
-      padding: 10px;
-      border-radius: 16px;
-      border: 1px solid rgba(246,231,15,0.1);
+      gap: 8px;
+      padding: 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(246,231,15,0.14);
       background:
-        linear-gradient(180deg, rgba(246,231,15,0.045), rgba(246,231,15,0.01)),
-        rgba(7,7,6,0.9);
-      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.025);
+        radial-gradient(circle at top right, rgba(246,231,15,0.12), transparent 42%),
+        linear-gradient(180deg, rgba(246,231,15,0.055), rgba(246,231,15,0.012)),
+        rgba(7,7,6,0.92);
+      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.03), 0 12px 28px rgba(0,0,0,0.2);
       transition: 180ms ease;
       width: 100%;
       text-align: left;
@@ -3675,39 +4092,34 @@ function renderHtml(
       display: block;
       color: var(--text);
     }
-    .feature-dock-card__pct {
-      font-size: 24px;
-      line-height: 1;
-      font-weight: 700;
-    }
     .feature-dock-card__value {
-      font-size: 24px;
-      line-height: 1;
+      font-size: 28px;
+      line-height: 1.02;
       font-weight: 700;
-      margin-top: 2px;
+      margin-top: 0;
     }
     .feature-dock-card small {
-      color: var(--text);
+      color: var(--muted);
       font-size: 11px;
-      line-height: 1.35;
+      line-height: 1.5;
     }
     .feature-dock-card em {
-      color: var(--text);
+      color: #151100;
       font-style: normal;
       font-size: 10px;
       letter-spacing: 0.12em;
       text-transform: uppercase;
-      padding: 3px 7px;
+      padding: 4px 8px;
       border-radius: 999px;
-      border: 1px solid rgba(255,214,10,0.14);
-      background: rgba(255,214,10,0.08);
+      border: 1px solid rgba(255,214,10,0.22);
+      background: var(--accent);
     }
     .feature-dock-card__track {
-      height: 5px;
+      height: 6px;
       border-radius: 999px;
       background: rgba(255,214,10,0.08);
       overflow: hidden;
-      margin-top: 2px;
+      margin-top: 4px;
     }
     .feature-dock-card__fill {
       height: 100%;
@@ -4126,8 +4538,123 @@ function renderHtml(
       grid-column: 1 / -1;
     }
     .view-panel[data-view-panel="overview"] {
-      grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+      grid-template-columns: 1fr;
       align-items: start;
+    }
+    .hero-stage {
+      height: 100%;
+      min-height: 420px;
+      border-radius: 28px;
+      border: 1px solid rgba(246,231,15,0.18);
+      background:
+        radial-gradient(circle at 50% 10%, rgba(246,231,15,0.16), transparent 24%),
+        radial-gradient(circle at 50% 84%, rgba(255,255,255,0.03), transparent 26%),
+        linear-gradient(180deg, rgba(246,231,15,0.08), rgba(246,231,15,0.02)),
+        rgba(10,10,8,0.92);
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 12px;
+      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.04), 0 16px 32px rgba(0,0,0,0.24);
+    }
+    .hero-stage__count {
+      position: absolute;
+      left: 20px;
+      top: 16px;
+      font-size: 32px;
+      line-height: 1;
+      font-weight: 700;
+      color: var(--text);
+      text-shadow: 0 0 18px rgba(246,231,15,0.18);
+    }
+    .hero-stage__glyphs {
+      color: rgba(246,231,15,0.82);
+      font-size: 11px;
+      letter-spacing: 0.3em;
+      text-align: center;
+    }
+    .hero-stage__screen {
+      position: relative;
+      min-height: 190px;
+      border-radius: 24px;
+      border: 1px solid rgba(246,231,15,0.14);
+      background:
+        radial-gradient(circle at center, rgba(246,231,15,0.16), transparent 34%),
+        linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)),
+        rgba(0,0,0,0.2);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    .hero-stage__screen::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent, rgba(246,231,15,0.08), transparent);
+      opacity: 0.8;
+    }
+    .hero-stage__image {
+      width: 190px;
+      height: 190px;
+      object-fit: cover;
+      border-radius: 28px;
+      filter: drop-shadow(0 0 32px rgba(246,231,15,0.2));
+      position: relative;
+      z-index: 1;
+    }
+    .stage-decor {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .stage-decor span {
+      position: absolute;
+      color: rgba(246,231,15,0.88);
+      text-shadow: 0 0 12px rgba(246,231,15,0.1);
+      animation: floatNote 9s ease-in-out infinite alternate;
+    }
+    .stage-decor span:nth-child(1)  { left:  2%; top: 8%;  font-size: 22px; animation-delay: 0s; }
+    .stage-decor span:nth-child(2)  { left:  8%; top: 22%; font-size: 13px; animation-delay: 1s; }
+    .stage-decor span:nth-child(3)  { left: 16%; top: 6%;  font-size: 17px; animation-delay: 2s; }
+    .stage-decor span:nth-child(4)  { left: 24%; top: 28%; font-size: 11px; animation-delay: 0.5s; }
+    .stage-decor span:nth-child(5)  { left: 40%; top: 4%;  font-size: 14px; animation-delay: 3s; }
+    .stage-decor span:nth-child(6)  { right: 2%; top: 9%;  font-size: 20px; animation-delay: 1.5s; }
+    .stage-decor span:nth-child(7)  { right: 8%; top: 22%; font-size: 12px; animation-delay: 2.5s; }
+    .stage-decor span:nth-child(8)  { right: 18%; top: 6%; font-size: 16px; animation-delay: 0.8s; }
+    .stage-decor span:nth-child(9)  { right: 30%; top: 30%; font-size: 11px; animation-delay: 3.5s; }
+    .stage-decor span:nth-child(10) { left: 5%;  bottom: 12%; font-size: 18px; animation-delay: 1.2s; }
+    .stage-decor span:nth-child(11) { right: 5%; bottom: 14%; font-size: 15px; animation-delay: 2.2s; }
+    .stage-decor span:nth-child(12) { left: 50%; bottom: 8%;  font-size: 12px; animation-delay: 0.3s; }
+    @keyframes floatNote {
+      from { transform: translateY(0px) rotate(-2deg); opacity: 0.55; }
+      to   { transform: translateY(-10px) rotate(3deg); opacity: 1; }
+    }
+    .hero-stage__stack {
+      display: grid;
+      gap: 8px;
+    }
+    .hero-stage__row {
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(246,231,15,0.08);
+    }
+    .hero-stage__row span,
+    .hero-stage__row small {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .hero-stage__row strong {
+      display: block;
+      margin: 6px 0 5px;
+      font-size: 16px;
+      color: var(--text);
     }
     .detail-modal {
       position: fixed;
@@ -4296,31 +4823,372 @@ function renderHtml(
       .signal-grid,
       .stats-grid,
       .hero-kpi-grid,
+      .snapshot-grid,
       .feature-dock-grid,
       .metric-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 980px) {
       body { height: auto; overflow-y: auto; }
-      .app-shell { grid-template-columns: 1fr; height: auto; overflow: visible; }
-      .sidebar {
-        position: static;
-        min-height: auto;
-        justify-content: flex-start;
-        border-right: 0;
-        border-bottom: 1px solid rgba(255,214,10,0.08);
-      }
-      .workspace { height: auto; overflow: visible; padding-top: 12px; }
+      .app-shell { height: auto; overflow: visible; }
+      .workspace { min-height: auto; overflow: visible; padding-top: 12px; }
       .topbar { position: static; }
     }
     @media (max-width: 720px) {
-      .workspace,
-      .sidebar { padding-left: 14px; padding-right: 14px; }
+      .workspace { padding-left: 14px; padding-right: 14px; }
       .topbar { flex-direction: column; align-items: flex-start; }
       .social-actions { width: 100%; justify-content: flex-end; }
+    }
+
+    /* ============================================================
+       LANDING PAGE REDESIGN — matches mikuelizaos.cloud aesthetic
+       ============================================================ */
+
+    /* Reset layout to full-width, no sidebar */
+    .app-shell { display: block !important; }
+    .sidebar { display: none !important; }
+    .workspace {
+      min-width: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 20px 48px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    body { overflow-y: auto; height: auto; }
+
+    /* Topbar */
+    .topbar {
+      width: min(100%, 1100px) !important;
+      border-radius: 18px !important;
+      padding: 10px 16px !important;
+      background:
+        linear-gradient(180deg, rgba(246,231,15,0.04), rgba(246,231,15,0.01)),
+        rgba(4,4,3,0.72) !important;
+      border: 1px solid rgba(246,231,15,0.14) !important;
+      backdrop-filter: blur(14px) !important;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.32) !important;
+    }
+    .topbar-title strong { font-size: 13px; color: var(--text); }
+    .topbar-title small { color: var(--muted); font-size: 10px; }
+    .meta-chip { display: none; }
+
+    /* Content stack */
+    .content-stack {
+      width: min(100%, 1100px) !important;
+      margin-top: 16px !important;
+      display: flex !important;
+      flex-direction: column;
+      gap: 16px !important;
+    }
+
+    /* Hero landing card — centered, like mikuelizaos.cloud */
+    .lp-hero {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 64px 32px 48px !important;
+      border-radius: 32px !important;
+      border: 1px solid rgba(246,231,15,0.16) !important;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(246,231,15,0.12), transparent 36%),
+        radial-gradient(circle at 80% 80%, rgba(246,231,15,0.05), transparent 28%),
+        rgba(5,5,4,0.92) !important;
+      box-shadow: 0 0 0 1px rgba(246,231,15,0.06), 0 32px 80px rgba(0,0,0,0.5) !important;
+      overflow: hidden !important;
+    }
+    .lp-hero::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(246,231,15,0.5), transparent);
+      opacity: 0.7;
+      pointer-events: none;
+    }
+    /* Scan animation */
+    .lp-hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(115deg, transparent 32%, rgba(246,231,15,0.06) 50%, transparent 68%);
+      transform: translateX(-120%);
+      animation: lp-scan 7s linear infinite;
+      pointer-events: none;
+    }
+    @keyframes lp-scan {
+      from { transform: translateX(-120%); }
+      to   { transform: translateX(120%); }
+    }
+
+    /* Large background number (like "3" on mikuelizaos) */
+    .lp-hero__count {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: clamp(120px, 18vw, 220px);
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.06em;
+      color: rgba(246,231,15,0.06);
+      pointer-events: none;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    /* Eyebrow tag */
+    .lp-hero__eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+      position: relative;
+      z-index: 1;
+      margin-bottom: 8px;
+    }
+    .lp-hero__eyebrow .live-dot {
+      width: 8px;
+      height: 8px;
+      flex-shrink: 0;
+    }
+
+    /* Logo / image */
+    .lp-hero__logo-wrap {
+      position: relative;
+      z-index: 1;
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      border: 1px solid rgba(246,231,15,0.22);
+      background:
+        radial-gradient(circle, rgba(246,231,15,0.12), transparent 60%);
+      box-shadow: 0 0 60px rgba(246,231,15,0.18), inset 0 0 0 1px rgba(246,231,15,0.08);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      margin: 12px 0;
+      animation: lp-pulse 4s ease-in-out infinite alternate;
+    }
+    @keyframes lp-pulse {
+      from { box-shadow: 0 0 40px rgba(246,231,15,0.14), inset 0 0 0 1px rgba(246,231,15,0.08); }
+      to   { box-shadow: 0 0 80px rgba(246,231,15,0.24), inset 0 0 0 1px rgba(246,231,15,0.14); }
+    }
+    .lp-hero__logo-img {
+      width: 140px;
+      height: 140px;
+      object-fit: cover;
+      border-radius: 22px;
+      filter: drop-shadow(0 0 24px rgba(246,231,15,0.22));
+    }
+
+    /* Title */
+    .lp-hero__title {
+      position: relative;
+      z-index: 1;
+      margin: 8px 0 6px;
+      font-size: clamp(48px, 7vw, 80px);
+      line-height: 1;
+      letter-spacing: -0.04em;
+      color: var(--text);
+      text-shadow: 0 0 40px rgba(246,231,15,0.12);
+    }
+
+    /* Sub-headline */
+    .lp-hero__sub {
+      position: relative;
+      z-index: 1;
+      margin: 0 0 16px;
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* State chips row */
+    .lp-hero__chips {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    /* KPI tiles below logo */
+    .lp-hero__kpi {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      width: 100%;
+      max-width: 820px;
+      margin-bottom: 24px;
+    }
+
+    /* Action buttons */
+    .lp-hero__actions {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+    .lp-btn {
+      padding: 11px 18px;
+      border-radius: 14px;
+      border: 1px solid rgba(246,231,15,0.26);
+      background: linear-gradient(135deg, rgba(246,231,15,0.14), rgba(246,231,15,0.04));
+      color: var(--text);
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      text-decoration: none;
+      cursor: pointer;
+      transition: 160ms ease;
+      display: inline-flex;
+      align-items: center;
+    }
+    .lp-btn:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px rgba(0,0,0,0.28), 0 0 24px rgba(246,231,15,0.1);
+      color: var(--text);
+    }
+    .lp-btn--primary {
+      background: linear-gradient(135deg, rgba(246,231,15,0.32), rgba(246,231,15,0.12));
+      border-color: rgba(246,231,15,0.44);
+      color: #fff;
+    }
+
+    /* Stat tiles inside lp-hero__kpi — restyle */
+    .lp-hero__kpi .snapshot-tile {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(246,231,15,0.12);
+      background:
+        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.01)),
+        rgba(7,7,6,0.9);
+      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.025);
+      text-align: left;
+    }
+    .lp-hero__kpi .snapshot-tile span {
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 6px;
+    }
+    .lp-hero__kpi .snapshot-tile strong {
+      font-size: 22px;
+      display: block;
+      color: var(--text);
+    }
+
+    /* Summary ribbon */
+    .lp-ribbon {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 14px 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(246,231,15,0.1);
+      background: linear-gradient(90deg, rgba(246,231,15,0.06), rgba(246,231,15,0.015));
+      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.03);
+    }
+
+    /* Feature / market cards grid */
+    .lp-cards {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    /* Feature dock cards — restyle to match mikuelizaos market card feel */
+    .feature-dock-card {
+      border-radius: 22px !important;
+      border: 1px solid rgba(246,231,15,0.14) !important;
+      background:
+        radial-gradient(circle at top right, rgba(246,231,15,0.10), transparent 40%),
+        linear-gradient(180deg, rgba(246,231,15,0.055), rgba(246,231,15,0.01)),
+        rgba(7,7,6,0.92) !important;
+      box-shadow: 0 0 0 1px rgba(246,231,15,0.03), 0 12px 28px rgba(0,0,0,0.22) !important;
+      padding: 16px !important;
+    }
+    .feature-dock-card::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(246,231,15,0.4), transparent);
+      opacity: 0.6;
+      pointer-events: none;
+    }
+    .feature-dock-card:hover {
+      border-color: rgba(246,231,15,0.24) !important;
+      transform: translateY(-3px) !important;
+      box-shadow: 0 0 0 1px rgba(246,231,15,0.08), 0 0 32px rgba(246,231,15,0.10), 0 20px 40px rgba(0,0,0,0.28) !important;
+    }
+
+    /* Fold sections (Discovery / Portfolio / Treasury / Distribution / Goo) */
+    .fold-section {
+      border-radius: 22px;
+      border: 1px solid rgba(246,231,15,0.1);
+      background:
+        linear-gradient(180deg, rgba(246,231,15,0.04), rgba(246,231,15,0.01)),
+        rgba(6,6,5,0.92);
+      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.025);
+      overflow: hidden;
+      display: block !important;
+    }
+    .fold-summary {
+      padding: 14px 18px;
+    }
+
+    /* Floating notes — make more visible */
+    .stage-decor span {
+      font-size: 22px !important;
+      opacity: 1 !important;
+    }
+
+    @media (max-width: 900px) {
+      .lp-cards { grid-template-columns: repeat(2, 1fr); }
+      .lp-hero__kpi { grid-template-columns: repeat(2, 1fr); }
+      .lp-hero__title { font-size: 52px; }
+    }
+    @media (max-width: 600px) {
+      .lp-cards { grid-template-columns: 1fr; }
+      .lp-hero__kpi { grid-template-columns: 1fr 1fr; }
+      .lp-btn { font-size: 10px; padding: 9px 12px; }
     }
   </style>
 </head>
 <body>
+  <div class="stage-decor" aria-hidden="true">
+    <span>♩</span>
+    <span>♩</span>
+    <span>♬</span>
+    <span>♩</span>
+    <span>♩</span>
+    <span>♩</span>
+    <span>♩</span>
+    <span>✦</span>
+    <span>♩</span>
+    <span>★</span>
+    <span>♩</span>
+    <span>♪</span>
+  </div>
   <div class="app-shell">
     <aside class="sidebar">
       ${sidebarMasterCard}
@@ -4336,38 +5204,44 @@ function renderHtml(
           </div>
         </div>
         <div class="social-actions">
+          ${cloudToolbarLinks}
           <a class="social-link" href="${escapeHtml(getElizaOkDocsUrl())}" target="_blank" rel="noreferrer" aria-label="Docs">
             ${renderDocsIconSvg()}
           </a>
-          ${cloudTopAction}
           <a class="social-link" href="https://github.com/elizaokbsc" target="_blank" rel="noreferrer" aria-label="GitHub">
             ${renderGithubIconSvg()}
           </a>
           <a class="social-link" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer" aria-label="X">
             ${renderXIconSvg()}
           </a>
-          <button class="auth-link" type="button" data-privy-auth-open>
-            Sign in / Sign up
-          </button>
+          ${cloudAuthButton}
         </div>
       </header>
 
       <main class="content-stack">
-        <section class="view-panel is-active" data-view-panel="overview" data-view-label="Overview" data-view-subtitle="">
-          <article class="glass-card hero-card">
-            <div class="eyebrow">dashboard</div>
-            <h1>elizaok agent</h1>
-            <div class="hero-meta">${overviewStateChips}</div>
-            <div class="snapshot-grid">${snapshotStatTiles}</div>
+        <section class="view-panel is-active" data-view-panel="overview" data-view-label="Signal Board" data-view-subtitle="BNB treasury intelligence">
+          <article class="glass-card lp-hero">
+            <div class="lp-hero__eyebrow">
+              <span class="live-dot" aria-hidden="true"></span>
+              elizaok · bnb chain intelligence
+            </div>
+            <div class="lp-hero__count" aria-hidden="true">${snapshot.summary.topRecommendationCount}</div>
+            <div class="lp-hero__logo-wrap">
+              ${renderBrandLogoImage("lp-hero__logo-img")}
+            </div>
+            <h1 class="lp-hero__title">elizaOK</h1>
+            <p class="lp-hero__sub">BNB Chain memecoin discovery · treasury execution · holder distribution</p>
+            <div class="lp-hero__chips">${overviewStateChips}</div>
+            <div class="lp-hero__kpi">${snapshotStatTiles}</div>
+            <div class="lp-hero__actions">
+              <a class="lp-btn lp-btn--primary" href="#discovery-section">Discovery Feed</a>
+              <a class="lp-btn" href="/cloud/agents">Cloud Agents</a>
+              <a class="lp-btn" href="/cloud/credits">Credits</a>
+              <a class="lp-btn" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Open Cloud ↗</a>
+            </div>
           </article>
-          <section class="feature-dock-grid">
-            ${featureDockCards}
-          </section>
-          <article class="glass-card section-card section-card--dense">
-            <div class="section-title"><div><h2>Live Signals</h2></div></div>
-            <div class="profile-label">${escapeHtml(riskProfile)}</div>
-            <div class="signal-grid">${overviewVisualBars}</div>
-          </article>
+          <div class="lp-ribbon">${summaryRibbon}</div>
+          <section class="lp-cards">${featureDockCards}</section>
         </section>
 
         <details class="fold-section" id="discovery-section">
@@ -4682,8 +5556,12 @@ function renderHtml(
       var cloudAuthButtons = Array.prototype.slice.call(
         document.querySelectorAll("[data-cloud-hosted-auth]")
       );
-      var cloudModelSelect = document.querySelector("[data-cloud-model-select]");
+      var cloudCreateAgentButtons = Array.prototype.slice.call(
+        document.querySelectorAll("[data-cloud-create-agent]")
+      );
       var cloudPollTimer = null;
+      var activeCloudFlowMode = null;
+      var cloudAuthPopup = null;
       var modal = document.getElementById("detail-modal");
       var modalBody = document.getElementById("detail-modal-body");
       var modalTitle = document.getElementById("detail-modal-title");
@@ -4764,6 +5642,9 @@ function renderHtml(
             if (payload.status === "authenticated") {
               clearCloudPoll();
               setCloudButtonsBusy(false);
+              if (cloudAuthPopup && !cloudAuthPopup.closed) {
+                try { cloudAuthPopup.close(); } catch {}
+              }
               window.location.reload();
               return;
             }
@@ -4804,6 +5685,8 @@ function renderHtml(
                   "elizaCloudLogin",
                   "popup=yes,width=540,height=760,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes"
                 );
+                activeCloudFlowMode = payload.mode || null;
+                cloudAuthPopup = popup;
                 if (!popup) {
                   window.location.href = payload.loginUrl;
                   return;
@@ -4825,23 +5708,59 @@ function renderHtml(
           if (!data || data.type !== "eliza-cloud-auth-complete") {
             return;
           }
+          if (activeCloudFlowMode === "cli-session") {
+            if (data.status === "success") {
+              setCloudButtonsBusy(false);
+              window.location.reload();
+            }
+            return;
+          }
           setCloudButtonsBusy(false);
           if (data.status === "success") {
             window.location.reload();
             return;
           }
-          window.alert(data && data.message ? data.message : "ElizaCloud sign-in failed.");
+          var message = data && data.message ? data.message : "";
+          var syncingState = document.querySelector('[data-cloud-syncing="true"]');
+          if (!message || message === "ElizaCloud sign-in failed.") {
+            window.alert(
+              syncingState
+                ? "ElizaCloud connected, but profile, organization, credits, or model data are still syncing."
+                : "ElizaCloud sign-in did not complete."
+            );
+            return;
+          }
+          window.alert(message);
         });
       }
 
-      if (cloudModelSelect) {
-        cloudModelSelect.addEventListener("change", function () {
-          fetch("/api/eliza-cloud/model", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ model: cloudModelSelect.value }),
-          }).catch(function () {
-            // Ignore UI-only model persistence failures for now.
+      if (cloudCreateAgentButtons.length > 0) {
+        cloudCreateAgentButtons.forEach(function (cloudCreateAgentButton) {
+          cloudCreateAgentButton.addEventListener("click", function () {
+            var name = window.prompt("New ElizaCloud agent name", "elizaOK Agent");
+            if (!name) return;
+            var bio = window.prompt("Agent bio (optional)", "ElizaOK cloud agent") || "";
+            cloudCreateAgentButton.setAttribute("aria-disabled", "true");
+            fetch("/api/eliza-cloud/agents/create", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ name: name, bio: bio })
+            })
+              .then(function (response) {
+                return response.json().then(function (payload) {
+                  if (!response.ok) {
+                    throw new Error(payload && payload.error ? payload.error : "Failed to create ElizaCloud agent.");
+                  }
+                  return payload;
+                });
+              })
+              .then(function () {
+                window.location.reload();
+              })
+              .catch(function (error) {
+                cloudCreateAgentButton.removeAttribute("aria-disabled");
+                window.alert(error && error.message ? error.message : String(error));
+              });
           });
         });
       }
@@ -5551,8 +6470,8 @@ async function handleRequest(
 
     if (statusPayload.status === "authenticated" && statusPayload.apiKey) {
       const apiBase = elizaCloudApiBase();
-      const [models, profile, credits, creditSummary] = await Promise.all([
-        fetchElizaCloudModels(apiBase, statusPayload.apiKey),
+      const [primaryAgent, profile, credits, creditSummary] = await Promise.all([
+        fetchElizaCloudPrimaryAgentConfig(apiBase, statusPayload.apiKey),
         fetchElizaCloudUser(apiBase, statusPayload.apiKey),
         fetchElizaCloudCreditsBalance(apiBase, statusPayload.apiKey),
         fetchElizaCloudCreditsSummary(apiBase, statusPayload.apiKey),
@@ -5573,8 +6492,14 @@ async function handleRequest(
             "ElizaCloud",
           credits:
             credits || creditSummary?.credits || profile?.credits || "linked",
+          agentId: primaryAgent?.id || "",
+          agentName: primaryAgent?.name || "Eliza",
+          model: primaryAgent
+            ? primaryAgent.modelProvider
+              ? `${primaryAgent.modelProvider}/${primaryAgent.model}`
+              : primaryAgent.model
+            : "n/a",
         },
-        models,
         "siwe",
       );
       res.writeHead(200, {
@@ -5640,8 +6565,8 @@ async function handleRequest(
     }
 
     const apiBase = elizaCloudApiBase();
-    const [models, profile, credits, creditSummary] = await Promise.all([
-      fetchElizaCloudModels(apiBase, data.apiKey),
+    const [primaryAgent, profile, credits, creditSummary] = await Promise.all([
+      fetchElizaCloudPrimaryAgentConfig(apiBase, data.apiKey),
       fetchElizaCloudUser(apiBase, data.apiKey),
       fetchElizaCloudCreditsBalance(apiBase, data.apiKey),
       fetchElizaCloudCreditsSummary(apiBase, data.apiKey),
@@ -5668,8 +6593,14 @@ async function handleRequest(
           profile?.organizationSlug || data.organization?.slug || "elizacloud",
         credits:
           credits || creditSummary?.credits || profile?.credits || "linked",
+        agentId: primaryAgent?.id || "",
+        agentName: primaryAgent?.name || "Eliza",
+        model: primaryAgent
+          ? primaryAgent.modelProvider
+            ? `${primaryAgent.modelProvider}/${primaryAgent.model}`
+            : primaryAgent.model
+          : "n/a",
       },
-      models,
       "siwe",
     );
 
@@ -5678,34 +6609,6 @@ async function handleRequest(
       "set-cookie": serializeElizaCloudSession(session),
     });
     res.end(JSON.stringify({ success: true, session }, null, 2));
-    return;
-  }
-
-  if (pathname === "/api/eliza-cloud/model") {
-    if (req.method !== "POST") {
-      sendJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    if (!cloudSession) {
-      sendJson(res, 401, { error: "Not connected to ElizaCloud" });
-      return;
-    }
-    const payload = await readRequestJson<{ model?: string }>(req);
-    if (!payload?.model?.trim()) {
-      sendJson(res, 400, { error: "model is required" });
-      return;
-    }
-    const updatedSession: ElizaCloudSession = {
-      ...cloudSession,
-      model: payload.model.trim(),
-    };
-    res.writeHead(200, {
-      "content-type": "application/json; charset=utf-8",
-      "set-cookie": serializeElizaCloudSession(updatedSession),
-    });
-    res.end(
-      JSON.stringify({ success: true, model: updatedSession.model }, null, 2),
-    );
     return;
   }
 
@@ -6285,6 +7188,65 @@ async function handleRequest(
     return;
   }
 
+  if (pathname === "/api/eliza-cloud/agents/create") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!cloudSession?.apiKey) {
+      sendJson(res, 401, { error: "ElizaCloud API key is required" });
+      return;
+    }
+    const payload = await readRequestJson<{ name?: string; bio?: string }>(req);
+    const name = payload?.name?.trim() || "";
+    const bio = payload?.bio?.trim() || "";
+    if (!name) {
+      sendJson(res, 400, { error: "name is required" });
+      return;
+    }
+    const response = await createElizaCloudAgent(cloudSession.apiKey, {
+      name,
+      bio,
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      sendJson(
+        res,
+        response.status || 500,
+        data || { error: "Failed to create ElizaCloud agent" },
+      );
+      return;
+    }
+    sendJson(res, 200, data || { success: true });
+    return;
+  }
+
+  if (pathname === "/cloud/credits") {
+    const refreshedCloud = await refreshElizaCloudSession(cloudSession);
+    cloudSession = refreshedCloud.session;
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      ...(cloudSession
+        ? { "set-cookie": serializeElizaCloudSession(cloudSession) }
+        : {}),
+    });
+    res.end(renderCloudCreditsPage(cloudSession, refreshedCloud.summary));
+    return;
+  }
+
+  if (pathname === "/cloud/agents") {
+    const refreshedCloud = await refreshElizaCloudSession(cloudSession);
+    cloudSession = refreshedCloud.session;
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      ...(cloudSession
+        ? { "set-cookie": serializeElizaCloudSession(cloudSession) }
+        : {}),
+    });
+    res.end(renderCloudAgentsPage(cloudSession, refreshedCloud.summary));
+    return;
+  }
+
   if (pathname === "/") {
     const refreshedCloud = await refreshElizaCloudSession(cloudSession);
     cloudSession = refreshedCloud.session;
@@ -6302,7 +7264,7 @@ async function handleRequest(
       renderHtml(
         snapshot,
         cloudSession,
-        refreshedCloud.models,
+        refreshedCloud.summary,
         sidebarWalletBalanceLabel,
       ),
     );
