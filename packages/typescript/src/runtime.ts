@@ -50,6 +50,7 @@ import {
 	type GenerateTextOptions,
 	type GenerateTextParams,
 	type GenerateTextResult,
+	getModelFallbackChain,
 	type HandlerCallback,
 	type HandlerOptions,
 	type IAgentRuntime,
@@ -65,7 +66,6 @@ import {
 	type ModelParamsMap,
 	type ModelResultMap,
 	ModelType,
-	getModelFallbackChain,
 	type ModelTypeName,
 	type PairingAllowlistEntry,
 	type PairingChannel,
@@ -92,6 +92,7 @@ import {
 	type TargetInfo,
 	type Task,
 	type TaskWorker,
+	type TextGenerationModelType,
 	type TextStreamResult,
 	type UUID,
 	type World,
@@ -154,9 +155,9 @@ const STABLE_PROMPT_PROVIDER_NAMES = new Set([
 ]);
 
 function resolveDynamicPromptModelType(
-	modelType?: ModelTypeName,
+	modelType?: TextGenerationModelType,
 	modelSize?: "nano" | "mini" | "small" | "large" | "mega",
-): ModelTypeName {
+): TextGenerationModelType {
 	if (modelType) {
 		return modelType;
 	}
@@ -170,7 +171,6 @@ function resolveDynamicPromptModelType(
 			return ModelType.TEXT_SMALL;
 		case "mega":
 			return ModelType.TEXT_MEGA;
-		case "large":
 		default:
 			return ModelType.TEXT_LARGE;
 	}
@@ -3996,7 +3996,8 @@ export class AgentRuntime implements IAgentRuntime {
 			options.modelType,
 			options.modelSize,
 		);
-		const modelIdentifier = options.modelType || options.model || resolvedModelType;
+		const modelIdentifier =
+			options.modelType || options.model || resolvedModelType;
 		const schemaKey = this.buildSchemaMetricKey(schema);
 		const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
 
@@ -4319,11 +4320,7 @@ ${section_end}`;
 					streamFields: finalStreamFields,
 					expectedCodes: perFieldCodes,
 					onChunk: (chunk, _field, accumulated) => {
-						return options.onStreamChunk?.(
-							chunk,
-							streamMessageId,
-							accumulated,
-						);
+						return options.onStreamChunk?.(chunk, streamMessageId, accumulated);
 					},
 					onEvent: options.onStreamEvent
 						? (event) => options.onStreamEvent?.(event, streamMessageId)
@@ -4361,7 +4358,7 @@ ${section_end}`;
 
 			let response: string;
 			try {
-				response = await this.useModel<typeof resolvedModelType, string>(
+				response = await this.useModel(
 					resolvedModelType,
 					modelParams,
 					options.model,
