@@ -264,7 +264,6 @@ export class AgentRuntime implements IAgentRuntime {
 	private readonly nativeFeatureOptions: Partial<
 		Record<NativeRuntimeFeature, boolean>
 	>;
-	private nativeFeatureStates = new Map<NativeRuntimeFeature, boolean>();
 	// Action planning option (undefined means use settings, true/false is explicit)
 	private actionPlanningOption?: boolean;
 	// LLM mode option for overriding model selection (undefined means use settings)
@@ -562,7 +561,7 @@ export class AgentRuntime implements IAgentRuntime {
 		if (!feature) {
 			return true;
 		}
-		return this.nativeFeatureStates.get(feature) ?? false;
+		return this.hasNativeRuntimeFeature(feature);
 	}
 
 	private isPluginManagedAsNativeFeature(
@@ -575,20 +574,17 @@ export class AgentRuntime implements IAgentRuntime {
 		feature: NativeRuntimeFeature,
 		enabled: boolean,
 	): Promise<void> {
-		const current = this.nativeFeatureStates.get(feature);
+		const current = this.hasNativeRuntimeFeature(feature);
 		if (current === enabled) {
 			return;
 		}
 
 		if (enabled) {
-			if (!this.hasNativeRuntimeFeature(feature)) {
-				await this.registerPlugin(getNativeRuntimeFeaturePlugin(feature));
-			}
-		} else if (this.hasNativeRuntimeFeature(feature)) {
+			await this.registerPlugin(getNativeRuntimeFeaturePlugin(feature));
+		} else {
 			await this.unloadPlugin(nativeRuntimeFeaturePluginNames[feature]);
 		}
 
-		this.nativeFeatureStates.set(feature, enabled);
 		this.setSetting(`ENABLE_${feature.toUpperCase()}`, enabled);
 	}
 
@@ -601,7 +597,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	isKnowledgeEnabled(): boolean {
-		return this.nativeFeatureStates.get("knowledge") ?? false;
+		return this.hasNativeRuntimeFeature("knowledge");
 	}
 
 	async enableRelationships(): Promise<void> {
@@ -613,7 +609,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	isRelationshipsEnabled(): boolean {
-		return this.nativeFeatureStates.get("relationships") ?? false;
+		return this.hasNativeRuntimeFeature("relationships");
 	}
 
 	async enableTrajectories(): Promise<void> {
@@ -625,7 +621,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	isTrajectoriesEnabled(): boolean {
-		return this.nativeFeatureStates.get("trajectories") ?? false;
+		return this.hasNativeRuntimeFeature("trajectories");
 	}
 
 	async registerPlugin(plugin: Plugin): Promise<void> {
@@ -964,7 +960,6 @@ export class AgentRuntime implements IAgentRuntime {
 			nativeRuntimeFeatureDefaults,
 		) as NativeRuntimeFeature[]) {
 			const enabled = this.resolveNativeFeatureEnabled(feature);
-			this.nativeFeatureStates.set(feature, enabled);
 			if (enabled) {
 				pluginRegistrationPromises.push(
 					this.registerPlugin(getNativeRuntimeFeaturePlugin(feature)),
