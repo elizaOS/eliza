@@ -146,7 +146,7 @@ function mergeHarnessSqlPlugins(character: Character): Character {
 		);
 	}
 	return { ...character, plugins: [...nonStringPlugins, ...list] };
-// Note: filters plugins to strings only to avoid complexity with non-string types
+// Note: Ensures SQL + inference plugins present; preserves non-string plugins (prepended).
 }
 
 function resolveLogLevel(cli?: HarnessLogLevel): HarnessLogLevel {
