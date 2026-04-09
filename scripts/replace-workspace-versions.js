@@ -9,6 +9,9 @@
  * 3. Lerna's `from-package` mode doesn't automatically handle this with Bun
  *
  * Usage: node scripts/replace-workspace-versions.js [--dry-run]
+ *
+ * For git submodule plugins (plugins/*), see plugin-submodules-dev.mjs and
+ * bun run dev (submodule link) / plugin-submodules:restore instead.
  */
 
 import { execSync } from "node:child_process";
