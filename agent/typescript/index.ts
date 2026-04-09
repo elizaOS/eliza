@@ -146,6 +146,7 @@ function mergeHarnessSqlPlugins(character: Character): Character {
 		);
 	}
 	return { ...character, plugins: [...nonStringPlugins, ...list] };
+// Note: filters plugins to strings only to avoid complexity with non-string types
 }
 
 function resolveLogLevel(cli?: HarnessLogLevel): HarnessLogLevel {
@@ -219,6 +220,7 @@ async function main(): Promise<void> {
 			charId,
 		);
 		adapters.set(i, adapter);
+	// Note: charId includes index to ensure unique identifiers for characters with duplicate names.
 	}
 
 	// Create runtimes individually with per-character adapters
@@ -278,6 +280,7 @@ async function main(): Promise<void> {
 			}
 		}
 		process.exit(code);
+	// Note: Shutdown is focused on the first runtime to simplify error handling in this context.
 	};
 
 	process.once("SIGINT", () => void shutdown(0));
