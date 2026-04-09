@@ -11,6 +11,20 @@ function stripFencedBlock(text: string): string {
 	return fenced?.[1]?.trim() ?? trimmed;
 }
 
+function stripOptionalToonLabel(text: string): string {
+	const lines = text.trim().split(/\r?\n/);
+	if (lines.length < 2) {
+		return text.trim();
+	}
+
+	const [firstLine, ...rest] = lines;
+	if (!/^TOON(?:\s+DOCUMENT)?[:\s-]*$/i.test(firstLine.trim())) {
+		return text.trim();
+	}
+
+	return rest.join("\n").trim();
+}
+
 function looksLikeToonDocument(text: string): boolean {
 	if (!text) return false;
 	if (text.includes("<response>") || text.includes("</response>")) return false;
@@ -20,7 +34,7 @@ function looksLikeToonDocument(text: string): boolean {
 }
 
 export function tryParseToonValue(text: string): unknown | null {
-	const trimmed = stripFencedBlock(text);
+	const trimmed = stripOptionalToonLabel(stripFencedBlock(text));
 	if (!looksLikeToonDocument(trimmed)) {
 		return null;
 	}

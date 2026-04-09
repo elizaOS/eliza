@@ -576,6 +576,31 @@ describe("DefaultMessageService", () => {
 			expect(runtime.createMemory).toHaveBeenCalled();
 		});
 
+		it("uses XML encapsulation for message handler responses", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			const dynamicPromptSpy = vi.spyOn(runtime, "dynamicPromptExecFromState");
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174034" as UUID,
+				content: {
+					text: "Hello, are you there?",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback);
+
+			expect(dynamicPromptSpy).toHaveBeenCalled();
+			expect(
+				dynamicPromptSpy.mock.calls[0]?.[0]?.options?.preferredEncapsulation,
+			).toBe("xml");
+		});
+
 		it("should emit RUN_STARTED event when handling message", async () => {
 			const message: Memory = {
 				id: "123e4567-e89b-12d3-a456-426614174021" as UUID,
@@ -1016,6 +1041,80 @@ describe("DefaultMessageService", () => {
 			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(1);
 		});
 
+		it("falls back to an error reply when structured output parsing fails", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {
+					recentMessages: "User: please summarize the repo status",
+				},
+				text: "",
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockImplementation(
+				async ({ state }) => {
+					state.values.structuredOutputFailureSummary =
+						"Structured output parse problem";
+					state.data.structuredOutputFailure = {
+						source: "dynamicPromptExecFromState",
+						kind: "parse_problem",
+						model: ModelType.ACTION_PLANNER,
+						format: "XML",
+						schemaFields: ["thought", "actions", "text", "simple"],
+						attempts: 2,
+						maxRetries: 1,
+						timestamp: Date.now(),
+						issues: [
+							"No structured output could be parsed from the model response.",
+						],
+						responsePreview:
+							"<response><actions><action><name>REPLY</name></action></actions><text>Hello without closing tags",
+					};
+					return null;
+				},
+			);
+			const useModelSpy = vi
+				.spyOn(runtime, "useModel")
+				.mockImplementation(async (modelType) => {
+					if (modelType === ModelType.TEXT_LARGE) {
+						return "I hit an internal parsing error while preparing the reply. The model returned malformed XML, so I could not safely finish the response. Please try again.";
+					}
+					return "";
+				});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174032" as UUID,
+				content: {
+					text: "please summarize the repo status",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(useModelSpy).toHaveBeenCalledWith(
+				ModelType.TEXT_LARGE,
+				expect.objectContaining({
+					prompt: expect.stringContaining("Structured Failure Diagnostics:"),
+				}),
+			);
+			expect(result.didRespond).toBe(true);
+			expect(result.responseContent?.text).toContain("internal parsing error");
+			expect(mockCallback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					text: expect.stringContaining("internal parsing error"),
+				}),
+			);
+		});
+
 		it("skips post-action continuation for actions that suppress it", async () => {
 			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
 			vi.spyOn(runtime, "composeState").mockResolvedValue({
@@ -1064,6 +1163,87 @@ describe("DefaultMessageService", () => {
 
 			expect(runtime.processActions).toHaveBeenCalledTimes(1);
 			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(1);
+		});
+
+		it("includes prior action state when follow-up parsing fails", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {
+					recentMessages: "User: run git status",
+				},
+				text: "",
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Run git status first",
+					actions: "SHELL",
+					text: "",
+					simple: false,
+				})
+				.mockImplementationOnce(async ({ state }) => {
+					state.values.structuredOutputFailureSummary =
+						"Structured output validation error";
+					state.data.structuredOutputFailure = {
+						source: "dynamicPromptExecFromState",
+						kind: "validation_error",
+						model: ModelType.ACTION_PLANNER,
+						format: "XML",
+						schemaFields: ["thought", "actions", "providers", "text", "simple"],
+						attempts: 1,
+						maxRetries: 0,
+						timestamp: Date.now(),
+						issues: ["Missing required fields: text"],
+						responsePreview:
+							"<response><thought>summarize the shell output</thought></response>",
+					};
+					return null;
+				});
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+			vi.spyOn(runtime, "getActionResults").mockReturnValue([
+				{
+					success: true,
+					text: "On branch main\nnothing to commit, working tree clean",
+					data: { actionName: "SHELL" },
+				},
+			]);
+			const useModelSpy = vi
+				.spyOn(runtime, "useModel")
+				.mockImplementation(async (modelType, params) => {
+					if (modelType === ModelType.TEXT_LARGE) {
+						expect((params as GenerateTextParams).prompt).toContain(
+							"On branch main",
+						);
+						return "I successfully ran SHELL, but I hit an internal parsing error while preparing the follow-up reply. The command succeeded, but the XML formatting step failed. Please ask me to retry.";
+					}
+					return "";
+				});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174033" as UUID,
+				content: {
+					text: "run git status",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(useModelSpy).toHaveBeenCalledWith(
+				ModelType.TEXT_LARGE,
+				expect.any(Object),
+			);
+			expect(result.responseContent?.text).toContain("successfully ran SHELL");
+			expect(result.responseContent?.text).toContain("parsing error");
 		});
 	});
 

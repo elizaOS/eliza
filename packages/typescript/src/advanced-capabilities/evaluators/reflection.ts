@@ -77,8 +77,167 @@ function normalizeRelationshipEntries(value: unknown): RelationshipXml[] {
 	return isRecord(value) ? [value as RelationshipXml] : [];
 }
 
+function isOmittedStructuredList(value: unknown, itemKey: string): boolean {
+	if (value == null) {
+		return true;
+	}
+
+	if (Array.isArray(value)) {
+		return value.length === 0;
+	}
+
+	if (typeof value === "string") {
+		const normalized = value.trim().toLowerCase();
+		return (
+			normalized.length === 0 ||
+			normalized === "[]" ||
+			normalized === "none" ||
+			normalized === "null"
+		);
+	}
+
+	if (isRecord(value)) {
+		const entries = Object.entries(value);
+		if (entries.length === 0) {
+			return true;
+		}
+
+		if (entries.length === 1 && entries[0]?.[0] === itemKey) {
+			return isOmittedStructuredList(entries[0][1], itemKey);
+		}
+	}
+
+	return false;
+}
+
+function hasValidStructuredList<T>(
+	value: unknown,
+	itemKey: string,
+	normalize: (input: unknown) => T[],
+): boolean {
+	return isOmittedStructuredList(value, itemKey) || normalize(value).length > 0;
+}
+
 function isFalseLike(value: unknown): boolean {
 	return value === false || value === "false";
+}
+
+// Best-effort guardrail for long-term memory: even if the model emits a fact,
+// do not store obviously transient session/debug/status chatter.
+const TEMPORARY_REFLECTION_FACT_PATTERNS = [
+	/\b(today|tonight|tomorrow|yesterday|just now|right now|at the moment|this (morning|afternoon|evening|week|month|session|conversation|run|turn))\b/,
+	/\b(currently|current|actively)\b.{0,24}\b(debugging|fixing|investigating|testing|triaging|iterating|working|trying)\b/,
+	/\b(debugging|fixing|investigating|testing|triaging|iterating|working on|trying out|switching)\b.{0,24}\b(issue|bug|glitch|reply|response|route|settings?|api|status)\b/,
+	/\b(stalled|blocked)\b.{0,24}\b(reply|response|chat|route|issue)\b/,
+	/\b(thinks?|thought)\b.{0,24}\b(fixed|solved|working)\b/,
+	/\bin one session\b/,
+	/\b(appreciates?|praised?|complimented?|thanked)\b.{0,32}\b(attitude|tone|energy|vibe|style)\b/,
+] as const;
+
+function isDurableReflectionFactClaim(claim: string): boolean {
+	const normalized = claim.trim().toLowerCase();
+	if (!normalized) {
+		return false;
+	}
+
+	return !TEMPORARY_REFLECTION_FACT_PATTERNS.some((pattern) =>
+		pattern.test(normalized),
+	);
+}
+
+const TOON_HEADER_PATTERN = /^TOON(?:\s+DOCUMENT)?[:\s-]*$/i;
+const TOON_FIELD_PATTERN =
+	/^[A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?:/;
+
+function extractEmbeddedToonDocument(text: string): string | null {
+	const lines = text.trim().split(/\r?\n/);
+	const startIndex = lines.findIndex((line) => {
+		const trimmed = line.trim();
+		return TOON_HEADER_PATTERN.test(trimmed) || TOON_FIELD_PATTERN.test(trimmed);
+	});
+
+	if (startIndex === -1) {
+		return null;
+	}
+
+	const collected: string[] = [];
+	let sawStructuredField = false;
+
+	for (let index = startIndex; index < lines.length; index++) {
+		const line = lines[index] ?? "";
+		const trimmed = line.trim();
+		const isStructuredField = TOON_FIELD_PATTERN.test(trimmed);
+		const isIndented = /^[\t ]+/.test(line);
+		const isHeader = TOON_HEADER_PATTERN.test(trimmed);
+
+		if (isHeader && !sawStructuredField) {
+			collected.push(line);
+			continue;
+		}
+
+		if (isStructuredField) {
+			sawStructuredField = true;
+			collected.push(line);
+			continue;
+		}
+
+		if (trimmed.length === 0 || isIndented) {
+			if (collected.length > 0) {
+				collected.push(line);
+				continue;
+			}
+		}
+
+		break;
+	}
+
+	if (!sawStructuredField) {
+		return null;
+	}
+
+	return collected.join("\n").trim();
+}
+
+function parseReflectionResponse(
+	response: string,
+): {
+	reflection: ReflectionXmlResult | null;
+	lookedStructured: boolean;
+} {
+	const trimmed = response.trim();
+	if (!trimmed) {
+		return { reflection: null, lookedStructured: false };
+	}
+
+	const candidates = new Set<string>([trimmed]);
+	const fencedBlocks = trimmed.matchAll(/```(?:toon|xml|json)?\s*([\s\S]*?)\s*```/gi);
+	for (const block of fencedBlocks) {
+		const candidate = block[1]?.trim();
+		if (candidate) {
+			candidates.add(candidate);
+		}
+	}
+
+	const embeddedToon = extractEmbeddedToonDocument(trimmed);
+	if (embeddedToon) {
+		candidates.add(embeddedToon);
+	}
+
+	for (const candidate of candidates) {
+		const parsed = parseKeyValueXml<ReflectionXmlResult>(candidate);
+		if (parsed) {
+			return { reflection: parsed, lookedStructured: true };
+		}
+	}
+
+	const lookedStructured =
+		candidates.size > 1 ||
+		trimmed.includes("<response>") ||
+		trimmed.includes("</response>") ||
+		TOON_FIELD_PATTERN.test(trimmed) ||
+		TOON_HEADER_PATTERN.test(trimmed);
+
+	return { reflection: null, lookedStructured };
 }
 
 // Schema definitions for the reflection output
@@ -235,22 +394,28 @@ async function handler(
 		return undefined;
 	}
 
-	// Parse XML response
-	const reflection = parseKeyValueXml<ReflectionXmlResult>(response);
+	const { reflection, lookedStructured } = parseReflectionResponse(response);
 
 	if (!reflection) {
-		runtime.logger.warn(
+		const log = lookedStructured
+			? runtime.logger.warn
+			: runtime.logger.debug;
+		log.call(
+			runtime.logger,
 			{
 				src: "plugin:advanced-capabilities:evaluator:reflection",
 				agentId: runtime.agentId,
 			},
-			"Getting reflection failed - failed to parse XML",
+			lookedStructured
+				? "Getting reflection failed - failed to parse structured response"
+				: "Skipping reflection - model returned unstructured output",
 		);
 		return undefined;
 	}
 
-	// Perform basic structure validation
-	if (!reflection.facts) {
+	// Allow omitted lists when the model has nothing new to add, but still warn
+	// on malformed non-empty structures that the normalizer cannot interpret.
+	if (!hasValidStructuredList(reflection.facts, "fact", normalizeFactEntries)) {
 		runtime.logger.warn(
 			{
 				src: "plugin:advanced-capabilities:evaluator:reflection",
@@ -261,7 +426,13 @@ async function handler(
 		return undefined;
 	}
 
-	if (!reflection.relationships) {
+	if (
+		!hasValidStructuredList(
+			reflection.relationships,
+			"relationship",
+			normalizeRelationshipEntries,
+		)
+	) {
 		runtime.logger.warn(
 			{
 				src: "plugin:advanced-capabilities:evaluator:reflection",
@@ -283,8 +454,20 @@ async function handler(
 			isFalseLike(fact.already_known) &&
 			isFalseLike(fact.in_bio) &&
 			typeof fact.claim === "string" &&
-			fact.claim.trim() !== "",
+			fact.claim.trim() !== "" &&
+			isDurableReflectionFactClaim(fact.claim),
 	);
+
+	if (factsArray.length > newFacts.length) {
+		runtime.logger.debug(
+			{
+				src: "plugin:advanced-capabilities:evaluator:reflection",
+				agentId: runtime.agentId,
+				discardedFacts: factsArray.length - newFacts.length,
+			},
+			"Skipping non-durable reflection facts",
+		);
+	}
 
 	await Promise.all(
 		newFacts.map(async (fact) => {
@@ -311,9 +494,7 @@ async function handler(
 	);
 
 	// Handle relationships - similar structure normalization
-	const relationshipsArray = normalizeRelationshipEntries(
-		reflection.relationships,
-	);
+	const relationshipsArray = normalizeRelationshipEntries(reflection.relationships);
 
 	const relationshipByPair = new Map<
 		string,

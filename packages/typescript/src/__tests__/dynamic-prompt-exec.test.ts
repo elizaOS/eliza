@@ -1001,6 +1001,42 @@ describe("dynamicPromptExecFromState", () => {
 		});
 	});
 
+	describe("memory table compatibility", () => {
+		it("defaults omitted memory table names to messages", async () => {
+			const roomId = stringToUuid(`room-${uuidv4()}`);
+
+			await runtime.getMemories({ roomId, count: 1 } as any);
+			expect(mockAdapter.getMemories).toHaveBeenCalledWith(
+				expect.objectContaining({
+					roomId,
+					count: 1,
+					tableName: "messages",
+				}),
+			);
+
+			await runtime.searchMemories({
+				embedding: [0.1, 0.2, 0.3],
+				roomId,
+				count: 2,
+			} as any);
+			expect(mockAdapter.searchMemories).toHaveBeenCalledWith(
+				expect.objectContaining({
+					roomId,
+					count: 2,
+					tableName: "messages",
+				}),
+			);
+
+			await runtime.countMemories({ roomId } as any);
+			expect(mockAdapter.countMemories).toHaveBeenCalledWith(
+				expect.objectContaining({
+					roomIds: [roomId],
+					tableName: "messages",
+				}),
+			);
+		});
+	});
+
 	describe("nested response unwrapping", () => {
 		it("should unwrap nested response objects", async () => {
 			runtime.registerModel(

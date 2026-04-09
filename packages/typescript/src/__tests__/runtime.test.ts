@@ -1210,6 +1210,21 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 				expect(runtime.actions).toContain(action1);
 				expect(runtime.actions).toContain(action2);
 			});
+
+			it("should skip duplicate plugin actions before registerAction", async () => {
+				runtime.registerAction(createMockAction("duplicateAction"));
+				const registerActionSpy = vi.spyOn(runtime, "registerAction");
+
+				await runtime.registerPlugin({
+					name: "duplicate-plugin",
+					actions: [createMockAction("duplicateAction")],
+				});
+
+				expect(
+					runtime.actions.filter((action) => action.name === "duplicateAction"),
+				).toHaveLength(1);
+				expect(registerActionSpy).not.toHaveBeenCalled();
+			});
 		});
 
 		describe("model settings from character configuration", () => {

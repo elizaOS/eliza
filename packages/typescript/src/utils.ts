@@ -618,6 +618,11 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	}
 
 	if (!xmlContent) {
+		const looksLikeXml = /<[/!?A-Za-z_][^>\n]*>/.test(text);
+		if (!looksLikeXml) {
+			return null;
+		}
+
 		// Fall back: perform a linear scan to find the first simple XML element and its matching close tag
 		// This avoids potentially expensive backtracking on crafted inputs
 		const findFirstXmlBlock = (
