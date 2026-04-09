@@ -348,6 +348,7 @@ async function main(): Promise<void> {
 		}
 	} finally {
 		if (!shuttingDown) {
+			shuttingDown = true;
 			rl.close();
 			// Stop all runtimes to avoid leaking resources
 			for (const rt of runtimes) {
