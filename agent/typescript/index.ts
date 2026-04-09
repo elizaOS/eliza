@@ -304,6 +304,7 @@ async function main(): Promise<void> {
 			try {
 				line = await rl.question("> ");
 			} catch {
+				// Note: breaks loop on input error to prevent infinite prompts on failure
 				break;
 			}
 
