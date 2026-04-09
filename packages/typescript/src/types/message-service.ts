@@ -1,7 +1,11 @@
-import type { AgentContext, HandlerCallback } from "./components";
+import type {
+	AgentContext,
+	HandlerCallback,
+	StreamChunkCallback,
+} from "./components";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";
-import { ModelType } from "./model";
+import type { ModelType } from "./model";
 import type { Content, Media, MentionContext, UUID } from "./primitives";
 import type {
 	MessageProcessingMode as ProtoMessageProcessingMode,
@@ -30,7 +34,7 @@ export interface MessageProcessingOptions
 	useMultiStep?: boolean;
 	maxMultiStepIterations?: number;
 	shouldRespondModel?: ShouldRespondModelType;
-	onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+	onStreamChunk?: StreamChunkCallback;
 	/**
 	 * When true, run a follow-up reasoning pass after actions complete so the
 	 * agent can decide whether to share results, run another action, or stop.
