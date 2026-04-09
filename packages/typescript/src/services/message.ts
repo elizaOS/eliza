@@ -10,6 +10,7 @@ import {
 	postActionDecisionTemplate,
 	shouldRespondTemplate,
 } from "../prompts";
+import { runWithStreamingContext } from "../streaming-context.ts";
 import { runWithTrajectoryContext } from "../trajectory-context";
 import type {
 	Action,
@@ -27,6 +28,7 @@ import type {
 	MessageProcessingOptions,
 	MessageProcessingResult,
 	ShouldRespondModelType,
+	ShouldRespondOptions,
 } from "../types/message-service";
 import type {
 	GenerateTextAttachment,
@@ -38,6 +40,11 @@ import type { Content, Media, MentionContext, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import {
+	evaluateGroupAddresseeOverride,
+	fetchParentMessageAuthorEntityId,
+	isPrivateChannelRoom,
+} from "../utils/addressee-resolution.ts";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
@@ -207,7 +214,7 @@ type ResolvedMessageOptions = {
 	useMultiStep: boolean;
 	maxMultiStepIterations: number;
 	continueAfterActions: boolean;
-	onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+	onStreamChunk?: StreamChunkCallback;
 	shouldRespondModel: ShouldRespondModelType;
 };
 
@@ -1036,7 +1043,7 @@ export class DefaultMessageService implements IMessageService {
 		// Compose initial state
 		let state = await runtime.composeState(
 			message,
-			["ANXIETY", "ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
+			["ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
 			true,
 			false,
 		);
@@ -1091,13 +1098,42 @@ export class DefaultMessageService implements IMessageService {
 			// Check if shouldRespond evaluation is enabled
 			const checkShouldRespondEnabled = runtime.isCheckShouldRespondEnabled();
 
-			// Determine if we should respond
-			const responseDecision = this.shouldRespond(
+			let shouldRespondOptions: ShouldRespondOptions | undefined;
+			if (
+				room &&
+				!isPrivateChannelRoom(room) &&
+				mentionContext?.isReply
+			) {
+				shouldRespondOptions = {
+					parentMessageAuthorEntityId: message.content.inReplyTo
+						? await fetchParentMessageAuthorEntityId(
+								runtime,
+								message.content.inReplyTo,
+							)
+						: null,
+				};
+			}
+
+			let responseDecision = this.shouldRespond(
 				runtime,
 				message,
 				room ?? undefined,
 				mentionContext,
+				shouldRespondOptions,
 			);
+
+			if (room && !isPrivateChannelRoom(room)) {
+				const addresseeOverride = await evaluateGroupAddresseeOverride(
+					runtime,
+					message,
+					room,
+					mentionContext,
+					shouldRespondOptions?.parentMessageAuthorEntityId,
+				);
+				if (addresseeOverride) {
+					responseDecision = addresseeOverride;
+				}
+			}
 
 			runtime.logger.debug(
 				{ src: "service:message", responseDecision, checkShouldRespondEnabled },
@@ -1633,6 +1669,7 @@ export class DefaultMessageService implements IMessageService {
 		message: Memory,
 		room?: Room,
 		mentionContext?: MentionContext,
+		options?: ShouldRespondOptions,
 	): ContextRoutedResponseDecision {
 		if (!room) {
 			return {
@@ -1707,21 +1744,44 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
-		// 3. Platform mentions and replies: always respond
-		const hasPlatformMention = !!(
-			mentionContext?.isMention || mentionContext?.isReply
-		);
-		if (hasPlatformMention) {
-			const mentionType = mentionContext?.isMention ? "mention" : "reply";
+		// 3. Platform mention: always respond
+		if (mentionContext?.isMention) {
 			return {
 				shouldRespond: true,
 				skipEvaluation: true,
-				reason: `platform ${mentionType}`,
+				reason: "platform mention",
 				primaryContext: "general",
 			};
 		}
 
-		// 4. All other cases: let the LLM decide
+		// 4. Platform reply: disambiguate in group rooms when parent author is known
+		if (mentionContext?.isReply) {
+			const parentAuthor = options?.parentMessageAuthorEntityId;
+			if (parentAuthor === runtime.agentId) {
+				return {
+					shouldRespond: true,
+					skipEvaluation: true,
+					reason: "reply to this agent's message",
+					primaryContext: "general",
+				};
+			}
+			if (options && "parentMessageAuthorEntityId" in options) {
+				return {
+					shouldRespond: false,
+					skipEvaluation: false,
+					reason: "reply thread; needs classifier or addressee check",
+					primaryContext: "general",
+				};
+			}
+			return {
+				shouldRespond: true,
+				skipEvaluation: true,
+				reason: "platform reply",
+				primaryContext: "general",
+			};
+		}
+
+		// 5. All other cases: let the LLM decide
 		return {
 			shouldRespond: false,
 			skipEvaluation: false,

@@ -152,6 +152,11 @@ Core prompt templates live in `packages/prompts/prompts/` and are used by the ru
 
 In TypeScript, prompt assembly is typically done by `composePromptFromState(...)` (used in `packages/typescript/src/services/message.ts`).
 
+### Reply and addressee metadata
+
+- **`Content.inReplyTo`** is the UUID of the **parent message** in the thread, not an entity or agent id.
+- **Optional (platform adapters):** `replyToEntityId` or `inReplyToEntityId` on message `Content` or `MessageMetadata` can carry the UUID of the **entity** the user is replying to. Core uses this together with room participant names for non-LLM addressee checks in group channels (`NameVariationRegistry` / `evaluateGroupAddresseeOverride` in `packages/typescript/src/utils/`).
+
 ## Multi-language runtimes
 
 This repo contains:

@@ -51,6 +51,7 @@ import type {
 } from "../types/index.ts";
 import { MemoryType } from "../types/memory.ts";
 import { ModelType } from "../types/model.ts";
+import type { ShouldRespondOptions } from "../types/message-service.ts";
 import type { ServiceClass } from "../types/plugin.ts";
 import { ChannelType, ContentType } from "../types/primitives.ts";
 import {
@@ -358,6 +359,7 @@ export function shouldRespond(
 	message: Memory,
 	room?: Room,
 	mentionContext?: MentionContext,
+	options?: ShouldRespondOptions,
 ): { shouldRespond: boolean; skipEvaluation: boolean; reason: string } {
 	if (!room) {
 		return {
@@ -388,10 +390,12 @@ export function shouldRespond(
 	const alwaysRespondSources = ["client_chat"];
 
 	const customChannels = normalizeEnvList(
-		runtime.getSetting("ALWAYS_RESPOND_CHANNELS"),
+		runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ||
+			runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
 	);
 	const customSources = normalizeEnvList(
-		runtime.getSetting("ALWAYS_RESPOND_SOURCES"),
+		runtime.getSetting("ALWAYS_RESPOND_SOURCES") ||
+			runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
 	);
 
 	const respondChannels = new Set(
@@ -426,23 +430,40 @@ export function shouldRespond(
 		};
 	}
 
-	// 3. Platform mentions and replies: always respond
-	// This is the key feature from mentionContext - platform-detected mentions/replies
-	const mentionContextIsMention = mentionContext?.isMention;
-	const mentionContextIsReply = mentionContext?.isReply;
-	const hasPlatformMention = !!(
-		mentionContextIsMention || mentionContextIsReply
-	);
-	if (hasPlatformMention) {
-		const mentionType = mentionContextIsMention ? "mention" : "reply";
+	// 3. Platform mention: always respond
+	if (mentionContext?.isMention) {
 		return {
 			shouldRespond: true,
 			skipEvaluation: true,
-			reason: `platform ${mentionType}`,
+			reason: "platform mention",
 		};
 	}
 
-	// 4. All other cases: let the LLM decide
+	// 4. Platform reply: match MessageService (group disambiguation when options passed)
+	if (mentionContext?.isReply) {
+		const parentAuthor = options?.parentMessageAuthorEntityId;
+		if (parentAuthor === runtime.agentId) {
+			return {
+				shouldRespond: true,
+				skipEvaluation: true,
+				reason: "reply to this agent's message",
+			};
+		}
+		if (options && "parentMessageAuthorEntityId" in options) {
+			return {
+				shouldRespond: false,
+				skipEvaluation: false,
+				reason: "reply thread; needs classifier or addressee check",
+			};
+		}
+		return {
+			shouldRespond: true,
+			skipEvaluation: true,
+			reason: "platform reply",
+		};
+	}
+
+	// 5. All other cases: let the LLM decide
 	// The LLM will handle: text-based name detection, indirect questions, conversation context, etc.
 	return {
 		shouldRespond: false,

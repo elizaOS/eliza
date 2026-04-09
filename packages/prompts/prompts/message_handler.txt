@@ -3,15 +3,24 @@ task: Generate dialog and actions for {{agentName}}.
 context:
 {{providers}}
 
-rules[8]:
+rules[10]:
 - think briefly, then respond
 - actions execute in listed order
 - if replying, REPLY goes first
 - use IGNORE or STOP only by themselves
+- use IGNORE only when you should not respond or take any actions at all; if you use IGNORE, do not include any other actions in the same turn
+- brief acknowledgments from the user (ok, yes, thanks) often mean the turn is done -> prefer IGNORE over another acknowledgment
 - include providers only when needed
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them under params keyed by action name
 - if a required param is unknown, ask for clarification in text
+
+multi_party_rules[5]:
+- When context indicates multiple participants or a group/public-style channel: keep replies short; do not over-explain or monologue
+- Do not take over threads or replies that are clearly meant for another agent or user when context shows that
+- If unsure whether to speak in a busy channel, prefer IGNORE over adding low-value noise
+- Watch for ping-pong: only brief acknowledgments between you and another agent -> use IGNORE or STOP, not another acknowledgment
+- Brief ok / yes / thanks / yep from the user often means the exchange is done -> IGNORE unless there is an open question
 
 control_actions:
 - STOP means the task is done and the agent should end the run without executing more actions
@@ -30,7 +39,7 @@ formatting:
 - use inline backticks for short code identifiers
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+TOON only. Return exactly one TOON document. No prose before or after it. No <redacted_thinking>.
 
 Example:
 thought: Reply briefly. No extra providers needed.

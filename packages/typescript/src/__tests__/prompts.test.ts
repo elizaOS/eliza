@@ -24,7 +24,10 @@ describe("Prompts", () => {
 				"request to stop or be quiet -> STOP",
 			);
 
-			expect(shouldRespondTemplate).toContain("rules[6]:");
+			expect(shouldRespondTemplate).toContain("closure_rules[6]:");
+			expect(shouldRespondTemplate).toContain("routing_rules[6]:");
+			expect(shouldRespondTemplate).toContain("addressee_alignment[3]:");
+			expect(shouldRespondTemplate).toContain("multi_party_behavior[4]:");
 			expect(shouldRespondTemplate).toContain(
 				"direct mention of {{agentName}}",
 			);
@@ -41,7 +44,11 @@ describe("Prompts", () => {
 			expect(messageHandlerTemplate).toContain("text:");
 			expect(messageHandlerTemplate).toContain("simple: true");
 
-			expect(messageHandlerTemplate).toContain("rules[8]:");
+			expect(messageHandlerTemplate).toContain("rules[10]:");
+			expect(messageHandlerTemplate).toContain(
+				"use IGNORE only when you should not respond",
+			);
+			expect(messageHandlerTemplate).toContain("multi_party_rules[5]:");
 			expect(messageHandlerTemplate).toContain(
 				"actions execute in listed order",
 			);
@@ -101,7 +108,7 @@ describe("Prompts", () => {
 		it("all templates should have concise output-only instructions", () => {
 			templates.forEach((template) => {
 				expect(template).toMatch(
-					/No <think>|Do NOT include any thinking|Do not include any text, thinking, or reasoning before or after it/,
+					/No <redacted_thinking>|Do NOT include any thinking|Do not include any text, thinking, or reasoning before or after it/,
 				);
 				expect(template.includes("TOON")).toBe(true);
 			});

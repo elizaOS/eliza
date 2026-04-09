@@ -128,13 +128,9 @@ The runtime is the only place that knows which action produced the content. Pass
 
 ## Basic-capabilities and plugins
 
-### Why an ANXIETY provider?
+### Multi-party / “social” guidance without a separate provider
 
-The message service already requested `ANXIETY` in the initial state composition. Without a provider registered under that name, the request was a no-op. Adding the provider makes that intent effective: we can give the model channel-specific guidance (e.g. be brief in groups, more natural in DMs) to reduce verbosity and over-eagerness. **Why channel-specific?** Group channels benefit from “don’t over-explain; use IGNORE when unsure”; DMs can be more conversational; voice channels need very short replies.
-
-### Why randomize anxiety examples?
-
-So the model sees variety across turns and doesn’t overfit to a single phrasing. We pick three per run to keep the prompt size small while still varying the guidance.
+Group-style behavior (brevity, don’t hijack threads, closure and anti–ping-pong, prefer IGNORE when unsure in busy channels) lives in **shared prompt templates** under `packages/prompts/prompts/` — notably `multi_party_behavior` / `multi_party_rules` blocks in `should_respond`, `message_handler`, and `post_action_decision`. That keeps one source of truth and avoids a dedicated `ANXIETY` provider slot in initial state.
 
 ---
 

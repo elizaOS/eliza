@@ -249,6 +249,83 @@ describe("DefaultMessageService", () => {
 			expect(result.reason).toContain("platform reply");
 		});
 
+		it("group reply to this agent's message skips LLM when parent author matches", () => {
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174012" as UUID,
+				content: { text: "Thanks!", channelType: ChannelType.GROUP } as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const room = {
+				id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				type: ChannelType.GROUP,
+				name: "Group",
+				worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
+				source: "test",
+			};
+
+			const mentionContext = {
+				isMention: false,
+				isReply: true,
+				isThread: false,
+				mentionedUserIds: [],
+			};
+
+			const result = messageService.shouldRespond(
+				runtime,
+				message,
+				room,
+				mentionContext,
+				{ parentMessageAuthorEntityId: runtime.agentId },
+			);
+
+			expect(result.shouldRespond).toBe(true);
+			expect(result.skipEvaluation).toBe(true);
+			expect(result.reason).toContain("reply to this agent");
+		});
+
+		it("group reply to another user's message defers to LLM when options passed", () => {
+			const other =
+				"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" as UUID;
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174012" as UUID,
+				content: { text: "Thanks!", channelType: ChannelType.GROUP } as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const room = {
+				id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				type: ChannelType.GROUP,
+				name: "Group",
+				worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
+				source: "test",
+			};
+
+			const mentionContext = {
+				isMention: false,
+				isReply: true,
+				isThread: false,
+				mentionedUserIds: [],
+			};
+
+			const result = messageService.shouldRespond(
+				runtime,
+				message,
+				room,
+				mentionContext,
+				{ parentMessageAuthorEntityId: other },
+			);
+
+			expect(result.shouldRespond).toBe(false);
+			expect(result.skipEvaluation).toBe(false);
+		});
+
 		it("should always respond in VOICE_DM channels", () => {
 			const message: Memory = {
 				id: "123e4567-e89b-12d3-a456-426614174013" as UUID,

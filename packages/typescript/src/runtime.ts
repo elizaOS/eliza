@@ -4361,9 +4361,9 @@ ${section_end}`;
 
 			let response: string;
 			try {
-				response = await this.useModel<typeof resolvedModelType, string>(
-					resolvedModelType,
-					modelParams,
+				response = await this.useModel(
+					resolvedModelType as keyof ModelParamsMap,
+					modelParams as ModelParamsMap[keyof ModelParamsMap],
 					options.model,
 				);
 			} catch (modelError) {

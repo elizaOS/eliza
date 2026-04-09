@@ -161,15 +161,24 @@ MESSAGE_HANDLER_TEMPLATE = """task: Generate dialog and actions for {{agentName}
 context:
 {{providers}}
 
-rules[8]:
+rules[10]:
 - think briefly, then respond
 - actions execute in listed order
 - if replying, REPLY goes first
 - use IGNORE or STOP only by themselves
+- use IGNORE only when you should not respond or take any actions at all; if you use IGNORE, do not include any other actions in the same turn
+- brief acknowledgments from the user (ok, yes, thanks) often mean the turn is done -> prefer IGNORE over another acknowledgment
 - include providers only when needed
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them under params keyed by action name
 - if a required param is unknown, ask for clarification in text
+
+multi_party_rules[5]:
+- When context indicates multiple participants or a group/public-style channel: keep replies short; do not over-explain or monologue
+- Do not take over threads or replies that are clearly meant for another agent or user when context shows that
+- If unsure whether to speak in a busy channel, prefer IGNORE over adding low-value noise
+- Watch for ping-pong: only brief acknowledgments between you and another agent -> use IGNORE or STOP, not another acknowledgment
+- Brief ok / yes / thanks / yep from the user often means the exchange is done -> IGNORE unless there is an open question
 
 control_actions:
 - STOP means the task is done and the agent should end the run without executing more actions
@@ -188,7 +197,7 @@ formatting:
 - use inline backticks for short code identifiers
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+TOON only. Return exactly one TOON document. No prose before or after it. No <redacted_thinking>.
 
 Example:
 thought: Reply briefly. No extra providers needed.
@@ -302,11 +311,13 @@ recent conversation:
 recent action results:
 {{actionResults}}
 
-rules[9]:
+rules[11]:
 - think briefly, then continue the task from the latest action results
 - actions execute in listed order
 - if replying, REPLY goes first
 - use IGNORE or STOP only by themselves
+- use IGNORE only when you should not respond or take any actions at all; if you use IGNORE, do not include any other actions in the same turn
+- brief acknowledgments often mean closure -> prefer IGNORE over ping-pong acknowledgments
 - include providers only when needed
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them under params keyed by action name
@@ -314,8 +325,15 @@ rules[9]:
 - if the task is complete, either reply to the user or use STOP to end the run
 - STOP is a terminal control action even if it is not listed in available actions
 
+multi_party_rules[5]:
+- When context indicates multiple participants or a group/public-style channel: keep follow-up replies short
+- Do not hijack threads clearly addressed to someone else when context indicates that
+- If unsure whether to speak in a busy channel, prefer IGNORE
+- Ping-pong acknowledgments with another agent -> IGNORE or STOP, not another hollow reply
+- Brief closure signals from the user -> prefer IGNORE unless something is still open
+
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+TOON only. Return exactly one TOON document. No prose before or after it. No <redacted_thinking>.
 
 thought: Your thought here
 actions[1]: ACTION
@@ -563,7 +581,29 @@ SHOULD_RESPOND_TEMPLATE = """task: Decide whether {{agentName}} should respond, 
 context:
 {{providers}}
 
-rules[6]:
+available_contexts:
+{{availableContexts}}
+
+closure_rules[6]:
+- If the message is only a brief acknowledgment (ok, yes, good, right, yep, sure, got it, makes sense, etc.) with NO question or request -> IGNORE (natural closure)
+- If you notice short back-and-forth exchanges with another bot/agent that are only brief acknowledgments -> STOP (anti ping-pong)
+- If the last few messages are only acknowledgments going back and forth -> IGNORE
+- If the last 2-3 messages are farewells, exits (I'm out), acknowledgments, or meta (we're going in circles) -> IGNORE
+- Conversational closure (affirmations, no new content, no ask) -> IGNORE
+- Explicit request to stop or be quiet -> STOP
+
+addressee_alignment[3]:
+- If context or providers show the user addressed a different named agent (not {{agentName}}) and not a general room message -> IGNORE
+- Align with any deterministic addressee or mention signals already reflected in context; do not contradict them
+- When unclear who the message is for in a multi-party setting, prefer IGNORE
+
+multi_party_behavior[4]:
+- In rooms with multiple participants (or when context reads like a public/group channel), if you RESPOND, be concise; avoid long monologues and over-explaining
+- Do not hijack threads or replies that are clearly addressed to another participant when context indicates that
+- If you are uncertain whether speaking adds value in a busy multi-party channel, prefer IGNORE over noise
+- When someone only says ok, yes, good, yep, etc. with no new ask, that is closure — do not answer with another empty acknowledgment (IGNORE)
+
+routing_rules[6]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name -> IGNORE
 - continuing an active thread with {{agentName}} -> RESPOND
@@ -571,17 +611,89 @@ rules[6]:
 - talking to someone else -> IGNORE
 - if unsure, prefer IGNORE over hallucinating relevance
 
+context_routing:
+- primaryContext: choose one context from available_contexts, or "general" if none apply
+- secondaryContexts: optional comma-separated list of additional relevant contexts
+- evidenceTurnIds: optional comma-separated list of memory or message IDs supporting the decision
+
 decision_note:
 - talking TO {{agentName}} means name mention, reply chain, or direct continuation
 - talking ABOUT {{agentName}} is not enough
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+TOON only. Return exactly one TOON document. No prose before or after it. No <redacted_thinking>.
 
 Example:
 name: {{agentName}}
 reasoning: Direct mention and clear follow-up.
-action: RESPOND"""
+action: RESPOND
+primaryContext: wallet
+secondaryContexts:
+evidenceTurnIds:
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention but no relevant action.
+action: IGNORE
+primaryContext: general
+secondaryContexts:
+evidenceTurnIds:"""
+
+SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE = """task: Decide whether {{agentName}} should respond and which domain context applies.
+
+context:
+{{providers}}
+
+available_contexts:
+{{availableContexts}}
+
+closure_rules[6]:
+- If the message is only a brief acknowledgment (ok, yes, good, right, yep, sure, got it, makes sense, etc.) with NO question or request -> IGNORE (natural closure)
+- If you notice short back-and-forth exchanges with another bot/agent that are only brief acknowledgments -> STOP (anti ping-pong)
+- If the last few messages are only acknowledgments going back and forth -> IGNORE
+- If the last 2-3 messages are farewells, exits (I'm out), acknowledgments, or meta (we're going in circles) -> IGNORE
+- Conversational closure (affirmations, no new content, no ask) -> IGNORE
+- Explicit request to stop or be quiet -> STOP
+
+addressee_alignment[3]:
+- If context or providers show the user addressed a different named agent (not {{agentName}}) and not a general room message -> IGNORE
+- Align with any deterministic addressee or mention signals already reflected in context; do not contradict them
+- When unclear who the message is for in a multi-party setting, prefer IGNORE
+
+multi_party_behavior[4]:
+- In rooms with multiple participants (or when context reads like a public/group channel), if you RESPOND, be concise; avoid long monologues and over-explaining
+- Do not hijack threads or replies that are clearly addressed to another participant when context indicates that
+- If you are uncertain whether speaking adds value in a busy multi-party channel, prefer IGNORE over noise
+- When someone only says ok, yes, good, yep, etc. with no new ask, that is closure — do not answer with another empty acknowledgment (IGNORE)
+
+routing_rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name -> IGNORE
+- continuing an active thread with {{agentName}} -> RESPOND
+- request to stop or be quiet -> STOP
+- talking to someone else -> IGNORE
+- if unsure, prefer IGNORE over hallucinating relevance
+
+context_routing:
+- primaryContext: the single best-matching domain from available_contexts
+- secondaryContexts: zero or more additional domains that are relevant
+- action intent does not only come from the last message; consider the full recent conversation
+- if no specific domain applies, use "general"
+
+decision_note:
+- talking TO {{agentName}} means name mention, reply chain, or direct continuation
+- talking ABOUT {{agentName}} is not enough
+- context routing always applies, even for IGNORE/STOP decisions
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <redacted_thinking>.
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention asking about token balance.
+action: RESPOND
+primaryContext: wallet
+secondaryContexts: []"""
 
 SHOULD_UNFOLLOW_ROOM_TEMPLATE = """task: Decide whether {{agentName}} should unfollow this room.
 
@@ -712,6 +824,7 @@ __all__ = [
     "SHOULD_FOLLOW_ROOM_TEMPLATE",
     "SHOULD_MUTE_ROOM_TEMPLATE",
     "SHOULD_RESPOND_TEMPLATE",
+    "SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE",
     "SHOULD_UNFOLLOW_ROOM_TEMPLATE",
     "SHOULD_UNMUTE_ROOM_TEMPLATE",
     "UPDATE_CONTACT_TEMPLATE",

@@ -1,4 +1,4 @@
-import type { AgentContext, HandlerCallback } from "./components";
+import type { AgentContext, HandlerCallback, StreamChunkCallback } from "./components";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";
 import { ModelType } from "./model";
@@ -30,7 +30,7 @@ export interface MessageProcessingOptions
 	useMultiStep?: boolean;
 	maxMultiStepIterations?: number;
 	shouldRespondModel?: ShouldRespondModelType;
-	onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+	onStreamChunk?: StreamChunkCallback;
 	/**
 	 * When true, run a follow-up reasoning pass after actions complete so the
 	 * agent can decide whether to share results, run another action, or stop.
@@ -81,6 +81,12 @@ export interface ContextRoutedResponseDecision extends ResponseDecision {
 	secondaryContexts?: AgentContext[];
 	/** Turn IDs that contributed to the intent (for multi-turn extraction) */
 	evidenceTurnIds?: string[];
+}
+
+/** Optional inputs for {@link IMessageService.shouldRespond} (group reply-thread disambiguation). */
+export interface ShouldRespondOptions {
+	/** Author entity id of the message referenced by `Content.inReplyTo`, when resolved. */
+	parentMessageAuthorEntityId?: UUID | null;
 }
 
 export type ShouldRespondModelType =
@@ -173,6 +179,7 @@ export interface IMessageService {
 		message: Memory,
 		room?: Room,
 		mentionContext?: MentionContext,
+		options?: ShouldRespondOptions,
 	): ResponseDecision;
 
 	/**

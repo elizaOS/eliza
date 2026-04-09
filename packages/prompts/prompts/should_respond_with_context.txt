@@ -6,7 +6,26 @@ context:
 available_contexts:
 {{availableContexts}}
 
-rules[6]:
+closure_rules[6]:
+- If the message is only a brief acknowledgment (ok, yes, good, right, yep, sure, got it, makes sense, etc.) with NO question or request -> IGNORE (natural closure)
+- If you notice short back-and-forth exchanges with another bot/agent that are only brief acknowledgments -> STOP (anti ping-pong)
+- If the last few messages are only acknowledgments going back and forth -> IGNORE
+- If the last 2-3 messages are farewells, exits (I'm out), acknowledgments, or meta (we're going in circles) -> IGNORE
+- Conversational closure (affirmations, no new content, no ask) -> IGNORE
+- Explicit request to stop or be quiet -> STOP
+
+addressee_alignment[3]:
+- If context or providers show the user addressed a different named agent (not {{agentName}}) and not a general room message -> IGNORE
+- Align with any deterministic addressee or mention signals already reflected in context; do not contradict them
+- When unclear who the message is for in a multi-party setting, prefer IGNORE
+
+multi_party_behavior[4]:
+- In rooms with multiple participants (or when context reads like a public/group channel), if you RESPOND, be concise; avoid long monologues and over-explaining
+- Do not hijack threads or replies that are clearly addressed to another participant when context indicates that
+- If you are uncertain whether speaking adds value in a busy multi-party channel, prefer IGNORE over noise
+- When someone only says ok, yes, good, yep, etc. with no new ask, that is closure — do not answer with another empty acknowledgment (IGNORE)
+
+routing_rules[6]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name -> IGNORE
 - continuing an active thread with {{agentName}} -> RESPOND
@@ -26,7 +45,7 @@ decision_note:
 - context routing always applies, even for IGNORE/STOP decisions
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+TOON only. Return exactly one TOON document. No prose before or after it. No <redacted_thinking>.
 
 Example:
 name: {{agentName}}
