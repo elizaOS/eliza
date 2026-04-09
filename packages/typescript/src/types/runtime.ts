@@ -252,6 +252,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	ensureConnection({
 		entityId,
 		roomId,
+		roomName,
 		metadata,
 		userName,
 		worldName,
@@ -265,6 +266,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	}: {
 		entityId: UUID;
 		roomId: UUID;
+		roomName?: string;
 		userName?: string;
 		name?: string;
 		worldName?: string;

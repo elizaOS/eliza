@@ -2485,6 +2485,7 @@ export class AgentRuntime implements IAgentRuntime {
 	async ensureConnection(params: {
 		entityId: UUID;
 		roomId: UUID;
+		roomName?: string;
 		worldId?: UUID;
 		worldName?: string;
 		userName?: string;
