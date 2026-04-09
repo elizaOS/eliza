@@ -106,12 +106,7 @@ describe("context-routing utilities", () => {
 			] as Provider[],
 		);
 
-		expect(contexts).toEqual([
-			"automation",
-			"general",
-			"knowledge",
-			"wallet",
-		]);
+		expect(contexts).toEqual(["automation", "general", "knowledge", "wallet"]);
 	});
 
 	it("classifies inclusion by context", () => {

@@ -172,7 +172,10 @@ impl RelationshipsService {
         };
 
         if let Some(runtime) = &self.runtime {
-            runtime.log_info("service:relationships", &format!("Added contact: {}", entity_id));
+            runtime.log_info(
+                "service:relationships",
+                &format!("Added contact: {}", entity_id),
+            );
         }
 
         self.contacts.insert(entity_id, contact.clone());
@@ -357,7 +360,11 @@ impl RelationshipsService {
 
         // Strongest (top 10 by strength, descending).
         let mut by_strength = entries.clone();
-        by_strength.sort_by(|a, b| b.1.strength.partial_cmp(&a.1.strength).unwrap_or(std::cmp::Ordering::Equal));
+        by_strength.sort_by(|a, b| {
+            b.1.strength
+                .partial_cmp(&a.1.strength)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let strongest_relationships: Vec<RelationshipInsightEntry> = by_strength
             .iter()
             .take(10)
@@ -451,11 +458,7 @@ impl RelationshipsService {
 
     /// Check whether `requesting_entity_id` can access the contact record of
     /// `target_entity_id`. The owning agent always has access.
-    pub fn can_access_contact(
-        &self,
-        requesting_entity_id: &Uuid,
-        target_entity_id: &Uuid,
-    ) -> bool {
+    pub fn can_access_contact(&self, requesting_entity_id: &Uuid, target_entity_id: &Uuid) -> bool {
         let contact = match self.contacts.get(target_entity_id) {
             Some(c) => c,
             None => return false,

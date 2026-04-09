@@ -479,13 +479,15 @@ function withContextRoutingValues(
 	};
 
 	if (contextRoutingStateValues[AVAILABLE_CONTEXTS_STATE_KEY] !== undefined) {
-		mergedStateValues[AVAILABLE_CONTEXTS_STATE_KEY] =
-			contextRoutingStateValues[AVAILABLE_CONTEXTS_STATE_KEY] as State["values"][string];
+		mergedStateValues[AVAILABLE_CONTEXTS_STATE_KEY] = contextRoutingStateValues[
+			AVAILABLE_CONTEXTS_STATE_KEY
+		] as State["values"][string];
 	}
 
 	if (contextRoutingStateValues[CONTEXT_ROUTING_STATE_KEY] !== undefined) {
-		mergedStateValues[CONTEXT_ROUTING_STATE_KEY] =
-			contextRoutingStateValues[CONTEXT_ROUTING_STATE_KEY] as State["values"][string];
+		mergedStateValues[CONTEXT_ROUTING_STATE_KEY] = contextRoutingStateValues[
+			CONTEXT_ROUTING_STATE_KEY
+		] as State["values"][string];
 	}
 
 	return {

@@ -52,7 +52,9 @@ export const addContactAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 		if (!relationshipsService) {
 			logger.warn("[AddContact] RelationshipsService not available");
 			return false;
@@ -70,7 +72,9 @@ export const addContactAction: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
-		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 
 		if (!relationshipsService) {
 			throw new Error("RelationshipsService not available");

@@ -332,10 +332,7 @@ pub trait UnifiedDatabaseAdapter: Send + Sync {
     }
 
     /// Get relationships for an entity (simple, unfiltered).
-    async fn get_relationships(
-        &self,
-        entity_id: &UUID,
-    ) -> Result<Vec<Relationship>> {
+    async fn get_relationships(&self, entity_id: &UUID) -> Result<Vec<Relationship>> {
         let _ = entity_id;
         Ok(Vec::new())
     }
@@ -371,13 +368,9 @@ pub trait UnifiedDatabaseAdapter: Send + Sync {
         let mut ids = Vec::with_capacity(relationships.len());
         for rel in relationships {
             // Delegate to the existing single-create (uses empty type string).
-            self.create_relationship(
-                &rel.source_entity_id,
-                &rel.target_entity_id,
-                "",
-            )
-            .await?;
-            ids.push(string_to_uuid(&uuid::Uuid::new_v4().to_string()));
+            self.create_relationship(&rel.source_entity_id, &rel.target_entity_id, "")
+                .await?;
+            ids.push(string_to_uuid(uuid::Uuid::new_v4().to_string()));
         }
         Ok(ids)
     }

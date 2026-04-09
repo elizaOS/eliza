@@ -1,4 +1,7 @@
-import { getTrajectoryContext, runWithTrajectoryContext } from "./trajectory-context";
+import {
+	getTrajectoryContext,
+	runWithTrajectoryContext,
+} from "./trajectory-context";
 import type { IAgentRuntime } from "./types/runtime";
 
 export type TrajectoryFinalStatus =
@@ -42,10 +45,7 @@ type TrajectoryLoggerLike = {
 		agentId: string,
 		options?: TrajectoryStartOptions,
 	) => Promise<string> | string;
-	startStep?: (
-		trajectoryId: string,
-		state: TrajectoryStepState,
-	) => string;
+	startStep?: (trajectoryId: string, state: TrajectoryStepState) => string;
 	endTrajectory?: (
 		stepIdOrTrajectoryId: string,
 		status?: TrajectoryFinalStatus,
@@ -110,7 +110,10 @@ export async function withStandaloneTrajectory<T>(
 	callback: () => Promise<T> | T,
 ): Promise<T> {
 	const activeStepId = getTrajectoryContext()?.trajectoryStepId;
-	if (!runtime || (typeof activeStepId === "string" && activeStepId.trim() !== "")) {
+	if (
+		!runtime ||
+		(typeof activeStepId === "string" && activeStepId.trim() !== "")
+	) {
 		return await callback();
 	}
 

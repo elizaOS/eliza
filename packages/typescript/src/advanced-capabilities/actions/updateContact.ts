@@ -1,7 +1,10 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
 import { logger } from "../../logger.ts";
 import { updateContactTemplate } from "../../prompts.ts";
-import type { ContactInfo, RelationshipsService } from "../../services/relationships.ts";
+import type {
+	ContactInfo,
+	RelationshipsService,
+} from "../../services/relationships.ts";
 import type {
 	Action,
 	ActionExample,
@@ -68,7 +71,9 @@ export const updateContactAction: Action = {
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		try {
-			const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+			const relationshipsService = runtime.getService(
+				"relationships",
+			) as RelationshipsService;
 			if (!relationshipsService) {
 				throw new Error("RelationshipsService not available");
 			}

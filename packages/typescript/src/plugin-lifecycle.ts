@@ -612,10 +612,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		const capture = pluginRegistrationContext.getStore();
 		const actionsBefore = runtimeWithLifecycle.actions.length;
 		originalRegisterAction(
-			applyEffectiveActionContexts(
-				action,
-				capture?.ownership.plugin.contexts,
-			),
+			applyEffectiveActionContexts(action, capture?.ownership.plugin.contexts),
 		);
 		if (!capture || runtimeWithLifecycle.actions.length <= actionsBefore)
 			return;

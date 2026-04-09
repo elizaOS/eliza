@@ -323,7 +323,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Save this person as a friend in my relationships" }
+            "content": {
+              "text": "Save this person as a friend in my relationships"
+            }
           },
           {
             "name": "{{name2}}",

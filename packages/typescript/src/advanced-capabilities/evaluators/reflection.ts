@@ -53,6 +53,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function parseXmlItems<T>(xml: string, tag: string): T[] {
+	const results: T[] = [];
+	const openTag = `<${tag}`;
+	const closeTag = `</${tag}>`;
+	let pos = 0;
+	while (pos < xml.length) {
+		const start = xml.indexOf(openTag, pos);
+		if (start === -1) break;
+		const end = xml.indexOf(closeTag, start);
+		if (end === -1) break;
+		const block = xml.slice(start, end + closeTag.length);
+		const parsed = parseKeyValueXml<T>(block);
+		if (parsed && isRecord(parsed)) results.push(parsed);
+		pos = end + closeTag.length;
+	}
+	return results;
+}
+
 function normalizeFactEntries(value: unknown): FactXml[] {
 	if (Array.isArray(value)) {
 		return value.filter(isRecord) as FactXml[];
@@ -60,6 +78,10 @@ function normalizeFactEntries(value: unknown): FactXml[] {
 
 	if (isRecord(value) && "fact" in value) {
 		return normalizeFactEntries(value.fact);
+	}
+
+	if (typeof value === "string" && value.includes("<fact")) {
+		return parseXmlItems<FactXml>(value, "fact");
 	}
 
 	return isRecord(value) ? [value as FactXml] : [];
@@ -72,6 +94,10 @@ function normalizeRelationshipEntries(value: unknown): RelationshipXml[] {
 
 	if (isRecord(value) && "relationship" in value) {
 		return normalizeRelationshipEntries(value.relationship);
+	}
+
+	if (typeof value === "string" && value.includes("<relationship")) {
+		return parseXmlItems<RelationshipXml>(value, "relationship");
 	}
 
 	return isRecord(value) ? [value as RelationshipXml] : [];
@@ -153,7 +179,9 @@ function extractEmbeddedToonDocument(text: string): string | null {
 	const lines = text.trim().split(/\r?\n/);
 	const startIndex = lines.findIndex((line) => {
 		const trimmed = line.trim();
-		return TOON_HEADER_PATTERN.test(trimmed) || TOON_FIELD_PATTERN.test(trimmed);
+		return (
+			TOON_HEADER_PATTERN.test(trimmed) || TOON_FIELD_PATTERN.test(trimmed)
+		);
 	});
 
 	if (startIndex === -1) {
@@ -198,9 +226,7 @@ function extractEmbeddedToonDocument(text: string): string | null {
 	return collected.join("\n").trim();
 }
 
-function parseReflectionResponse(
-	response: string,
-): {
+function parseReflectionResponse(response: string): {
 	reflection: ReflectionXmlResult | null;
 	lookedStructured: boolean;
 } {
@@ -210,7 +236,9 @@ function parseReflectionResponse(
 	}
 
 	const candidates = new Set<string>([trimmed]);
-	const fencedBlocks = trimmed.matchAll(/```(?:toon|xml|json)?\s*([\s\S]*?)\s*```/gi);
+	const fencedBlocks = trimmed.matchAll(
+		/```(?:toon|xml|json)?\s*([\s\S]*?)\s*```/gi,
+	);
 	for (const block of fencedBlocks) {
 		const candidate = block[1]?.trim();
 		if (candidate) {
@@ -397,9 +425,7 @@ async function handler(
 	const { reflection, lookedStructured } = parseReflectionResponse(response);
 
 	if (!reflection) {
-		const log = lookedStructured
-			? runtime.logger.warn
-			: runtime.logger.debug;
+		const log = lookedStructured ? runtime.logger.warn : runtime.logger.debug;
 		log.call(
 			runtime.logger,
 			{
@@ -494,7 +520,9 @@ async function handler(
 	);
 
 	// Handle relationships - similar structure normalization
-	const relationshipsArray = normalizeRelationshipEntries(reflection.relationships);
+	const relationshipsArray = normalizeRelationshipEntries(
+		reflection.relationships,
+	);
 
 	const relationshipByPair = new Map<
 		string,

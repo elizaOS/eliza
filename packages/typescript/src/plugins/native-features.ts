@@ -20,14 +20,12 @@ import {
 } from "../advanced-capabilities/providers/index";
 import {
 	createKnowledgePlugin,
+	KnowledgeService,
 	knowledgePlugin,
 	knowledgePluginCore,
 	knowledgePluginHeadless,
-	KnowledgeService,
 } from "../features/knowledge/index";
-import {
-	trajectoriesPlugin,
-} from "../features/trajectories/index";
+import { trajectoriesPlugin } from "../features/trajectories/index";
 import { FollowUpService } from "../services/followUp";
 import { RelationshipsService } from "../services/relationships";
 import type { Plugin } from "../types/plugin";
@@ -60,14 +58,12 @@ export const relationshipsPlugin: Plugin = {
 	services: [RelationshipsService, FollowUpService],
 };
 
-export const nativeRuntimeFeaturePlugins: Record<
-	NativeRuntimeFeature,
-	Plugin
-> = {
-	knowledge: knowledgePlugin,
-	relationships: relationshipsPlugin,
-	trajectories: trajectoriesPlugin,
-};
+export const nativeRuntimeFeaturePlugins: Record<NativeRuntimeFeature, Plugin> =
+	{
+		knowledge: knowledgePlugin,
+		relationships: relationshipsPlugin,
+		trajectories: trajectoriesPlugin,
+	};
 
 export function getNativeRuntimeFeaturePlugin(
 	feature: NativeRuntimeFeature,
@@ -113,11 +109,11 @@ export function resolveNativeRuntimeFeatureFromPluginName(
 
 export {
 	createKnowledgePlugin,
+	FollowUpService,
+	KnowledgeService,
 	knowledgePlugin,
 	knowledgePluginCore,
 	knowledgePluginHeadless,
-	trajectoriesPlugin,
-	KnowledgeService,
 	RelationshipsService,
-	FollowUpService,
+	trajectoriesPlugin,
 };

@@ -4,9 +4,10 @@ import type { Entity, IAgentRuntime, Memory, UUID } from "../../types/index.ts";
 import { reflectionEvaluator } from "./reflection.ts";
 
 vi.mock("../../entities.ts", async () => {
-	const actual = await vi.importActual<typeof import("../../entities.ts")>(
-		"../../entities.ts",
-	);
+	const actual =
+		await vi.importActual<typeof import("../../entities.ts")>(
+			"../../entities.ts",
+		);
 
 	return {
 		...actual,
@@ -194,11 +195,9 @@ Thanks.`);
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
 
 		useModel.mockResolvedValue(`thought: "All good"
-facts[0]{claim,type,in_bio,already_known}:
+facts[3]{claim,type,in_bio,already_known}:
   "Shaw prefers concise status updates",fact,false,false
-facts[1]{claim,type,in_bio,already_known}:
   "shaw thinks he fixed a bug in Eliza's simple-response handling",fact,false,false
-facts[2]{claim,type,in_bio,already_known}:
   "abaeze and others are actively debugging stalled chat replies on both Discord and OpenAI-compat routes",fact,false,false`);
 
 		await reflectionEvaluator.handler(runtime, message);

@@ -3,9 +3,7 @@ import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 
 function createRuntime(
-	options: Partial<
-		ConstructorParameters<typeof AgentRuntime>[0]
-	> = {},
+	options: Partial<ConstructorParameters<typeof AgentRuntime>[0]> = {},
 ): AgentRuntime {
 	return new AgentRuntime({
 		character: {
@@ -73,9 +71,8 @@ describe("native runtime features", () => {
 			skipMigrations: true,
 		});
 
-		const relationshipsService = await runtime.getServiceLoadPromise(
-			"relationships",
-		);
+		const relationshipsService =
+			await runtime.getServiceLoadPromise("relationships");
 		expect(relationshipsService).toBe(runtime.getService("relationships"));
 
 		await runtime.disableRelationships();

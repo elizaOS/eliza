@@ -202,7 +202,9 @@ export class RelationshipsService extends Service {
 					agentId: this.runtime.agentId,
 				} as Parameters<typeof this.runtime.ensureWorldExists>[0]);
 			} catch (err) {
-				logger.warn(`[RelationshipsService] Failed to ensure relationships world: ${err}`);
+				logger.warn(
+					`[RelationshipsService] Failed to ensure relationships world: ${err}`,
+				);
 			}
 		}
 

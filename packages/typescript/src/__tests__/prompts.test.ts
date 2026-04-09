@@ -39,7 +39,9 @@ describe("Prompts", () => {
 			expect(messageHandlerTemplate).toContain("<thought>");
 			expect(messageHandlerTemplate).toContain("<actions>");
 			expect(messageHandlerTemplate).toContain("<name>REPLY</name>");
-			expect(messageHandlerTemplate).toContain("<text>Your message here</text>");
+			expect(messageHandlerTemplate).toContain(
+				"<text>Your message here</text>",
+			);
 			expect(messageHandlerTemplate).toContain("<simple>true</simple>");
 
 			expect(messageHandlerTemplate).toContain("rules[8]:");
@@ -110,12 +112,14 @@ describe("Prompts", () => {
 		});
 
 		it("all templates should avoid legacy XML response wrappers", () => {
-			[shouldRespondTemplate, postCreationTemplate, imageDescriptionTemplate].forEach(
-				(template) => {
+			[
+				shouldRespondTemplate,
+				postCreationTemplate,
+				imageDescriptionTemplate,
+			].forEach((template) => {
 				expect(template).not.toContain("<response>");
 				expect(template).not.toContain("</response>");
-				},
-			);
+			});
 		});
 	});
 

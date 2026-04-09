@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { getTrajectoryContext, runWithTrajectoryContext } from "../trajectory-context";
+import {
+	getTrajectoryContext,
+	runWithTrajectoryContext,
+} from "../trajectory-context";
 import {
 	logActiveTrajectoryLlmCall,
 	resolveTrajectoryLogger,

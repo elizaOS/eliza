@@ -49,7 +49,7 @@ impl Provider for ProvidersListProvider {
         if providers.is_empty() {
             return Ok(
                 ProviderResult::new("# Available Providers\nproviders[0]:\n- none")
-                    .with_value("providerCount", 0i64)
+                    .with_value("providerCount", 0i64),
             );
         }
 

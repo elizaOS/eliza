@@ -155,14 +155,15 @@ async fn trajectories_do_not_log_when_disabled() -> Result<()> {
     .await?;
     runtime.initialize().await?;
 
-    let handler: RuntimeModelHandler =
-        Box::new(|_params| Box::pin(async { Ok("ok".to_string()) }));
+    let handler: RuntimeModelHandler = Box::new(|_params| Box::pin(async { Ok("ok".to_string()) }));
     runtime.register_model("TEXT_LARGE", handler).await;
     runtime.set_trajectory_step_id(Some("disabled-step".to_string()));
 
     let mut params = serde_json::Map::new();
     params.insert("prompt".to_string(), Value::String("hello".to_string()));
-    let _ = runtime.use_model("TEXT_LARGE", Value::Object(params)).await?;
+    let _ = runtime
+        .use_model("TEXT_LARGE", Value::Object(params))
+        .await?;
 
     let logs = runtime.get_trajectory_logs();
     assert!(logs.llm_calls.is_empty());
@@ -172,7 +173,9 @@ async fn trajectories_do_not_log_when_disabled() -> Result<()> {
 
     let mut params = serde_json::Map::new();
     params.insert("prompt".to_string(), Value::String("hello".to_string()));
-    let _ = runtime.use_model("TEXT_LARGE", Value::Object(params)).await?;
+    let _ = runtime
+        .use_model("TEXT_LARGE", Value::Object(params))
+        .await?;
 
     let logs = runtime.get_trajectory_logs();
     assert_eq!(logs.llm_calls.len(), 1);
