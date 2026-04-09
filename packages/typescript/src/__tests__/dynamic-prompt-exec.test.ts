@@ -311,7 +311,9 @@ describe("dynamicPromptExecFromState", () => {
 		});
 
 		it("uses explicit modelType when provided", async () => {
-			const miniHandler = vi.fn(async () => "<response><text>mini</text></response>");
+			const miniHandler = vi.fn(
+				async () => "<response><text>mini</text></response>",
+			);
 			runtime.registerModel(ModelType.TEXT_MINI, miniHandler, "mock");
 
 			const state = createMockState();

@@ -48,7 +48,9 @@ export const searchContactsAction: Action = {
 		_state?: State,
 	): Promise<boolean> => {
 		// Check if RelationshipsService is available
-		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 		if (!relationshipsService) {
 			logger.warn("[SearchContacts] RelationshipsService not available");
 			return false;
@@ -67,7 +69,9 @@ export const searchContactsAction: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
-		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 
 		if (!relationshipsService) {
 			throw new Error("RelationshipsService not available");

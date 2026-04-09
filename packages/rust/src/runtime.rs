@@ -6,9 +6,8 @@ use crate::advanced_memory;
 use crate::advanced_planning;
 use crate::native_features::{
     create_knowledge_plugin, create_relationships_plugin, create_trajectories_plugin,
-    resolve_native_runtime_feature_from_plugin_name, FollowUpServiceAdapter,
-    NativeRuntimeFeature, RelationshipsService, TrajectoriesService,
-    NATIVE_RUNTIME_FEATURE_DEFAULTS,
+    resolve_native_runtime_feature_from_plugin_name, FollowUpServiceAdapter, NativeRuntimeFeature,
+    RelationshipsService, TrajectoriesService, NATIVE_RUNTIME_FEATURE_DEFAULTS,
 };
 use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
 use crate::types::components::{
@@ -913,7 +912,11 @@ impl AgentRuntime {
         feature: NativeRuntimeFeature,
         enabled: bool,
     ) -> Result<()> {
-        if self.is_native_feature_service_enabled(feature.as_str()).await == enabled {
+        if self
+            .is_native_feature_service_enabled(feature.as_str())
+            .await
+            == enabled
+        {
             return Ok(());
         }
 
@@ -967,7 +970,8 @@ impl AgentRuntime {
     }
 
     pub async fn is_relationships_enabled(&self) -> bool {
-        self.is_native_feature_service_enabled("relationships").await
+        self.is_native_feature_service_enabled("relationships")
+            .await
     }
 
     pub async fn enable_trajectories(self: &Arc<Self>) -> Result<()> {
@@ -1209,7 +1213,10 @@ impl AgentRuntime {
     /// Register a plugin
     pub async fn register_plugin(self: &Arc<Self>, mut plugin: Plugin) -> Result<()> {
         if let Some(feature) = resolve_native_runtime_feature_from_plugin_name(plugin.name()) {
-            if !self.is_native_feature_service_enabled(feature.as_str()).await {
+            if !self
+                .is_native_feature_service_enabled(feature.as_str())
+                .await
+            {
                 return Ok(());
             }
             plugin = match feature {
@@ -1766,9 +1773,21 @@ impl AgentRuntime {
     /// List registered plugin names.
     pub async fn list_plugin_names(&self) -> Vec<String> {
         #[cfg(not(feature = "wasm"))]
-        let plugins: Vec<_> = self.plugins.read().await.iter().map(|plugin| plugin.name().to_string()).collect();
+        let plugins: Vec<_> = self
+            .plugins
+            .read()
+            .await
+            .iter()
+            .map(|plugin| plugin.name().to_string())
+            .collect();
         #[cfg(feature = "wasm")]
-        let plugins: Vec<_> = self.plugins.read().unwrap().iter().map(|plugin| plugin.name().to_string()).collect();
+        let plugins: Vec<_> = self
+            .plugins
+            .read()
+            .unwrap()
+            .iter()
+            .map(|plugin| plugin.name().to_string())
+            .collect();
 
         plugins
     }
@@ -2257,52 +2276,52 @@ impl AgentRuntime {
         if let Ok(ref response_text) = result {
             if self.is_native_feature_service_enabled("trajectories").await {
                 if let Some(step_id) = self.get_trajectory_step_id() {
-                let end_ms = chrono_timestamp();
-                let prompt = params
-                    .get("prompt")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .chars()
-                    .take(2000)
-                    .collect::<String>();
-                let system_prompt = params
-                    .get("system")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .chars()
-                    .take(2000)
-                    .collect::<String>();
-                let temperature = params
-                    .get("temperature")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.0);
-                let max_tokens = params
-                    .get("maxTokens")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                    let end_ms = chrono_timestamp();
+                    let prompt = params
+                        .get("prompt")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .chars()
+                        .take(2000)
+                        .collect::<String>();
+                    let system_prompt = params
+                        .get("system")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .chars()
+                        .take(2000)
+                        .collect::<String>();
+                    let temperature = params
+                        .get("temperature")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    let max_tokens = params
+                        .get("maxTokens")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
 
-                let response_for_log = if effective_model_type.contains("EMBEDDING") {
-                    "[embedding vector]".to_string()
-                } else {
-                    response_text.chars().take(2000).collect::<String>()
-                };
+                    let response_for_log = if effective_model_type.contains("EMBEDDING") {
+                        "[embedding vector]".to_string()
+                    } else {
+                        response_text.chars().take(2000).collect::<String>()
+                    };
 
-                let mut logs = self.trajectory_logs.lock().expect("lock poisoned");
-                logs.llm_calls.push(TrajectoryLlmCall {
-                    step_id,
-                    model: effective_model_type.to_string(),
-                    system_prompt,
-                    user_prompt: prompt,
-                    response: response_for_log,
-                    temperature,
-                    max_tokens,
-                    purpose: "action".to_string(),
-                    action_type: "runtime.use_model".to_string(),
-                    latency_ms: (end_ms - start_ms).max(0),
-                    timestamp_ms: end_ms,
-                });
+                    let mut logs = self.trajectory_logs.lock().expect("lock poisoned");
+                    logs.llm_calls.push(TrajectoryLlmCall {
+                        step_id,
+                        model: effective_model_type.to_string(),
+                        system_prompt,
+                        user_prompt: prompt,
+                        response: response_for_log,
+                        temperature,
+                        max_tokens,
+                        purpose: "action".to_string(),
+                        action_type: "runtime.use_model".to_string(),
+                        latency_ms: (end_ms - start_ms).max(0),
+                        timestamp_ms: end_ms,
+                    });
+                }
             }
-        }
         }
 
         result

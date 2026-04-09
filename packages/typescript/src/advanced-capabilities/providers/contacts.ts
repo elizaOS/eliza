@@ -19,9 +19,13 @@ export const contactsProvider: Provider = {
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 		if (!relationshipsService) {
-			runtime.logger.warn("[ContactsProvider] RelationshipsService not available");
+			runtime.logger.warn(
+				"[ContactsProvider] RelationshipsService not available",
+			);
 			return { text: "", values: {}, data: {} };
 		}
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -41,14 +42,42 @@ _DISPUTE_PATTERNS: list[re.Pattern[str]] = [
 # Sentiment word lists
 # ---------------------------------------------------------------------------
 _POSITIVE_WORDS = [
-    "thanks", "great", "good", "appreciate", "love", "helpful", "awesome",
-    "wonderful", "excellent", "amazing", "fantastic", "brilliant", "kind",
-    "generous", "happy", "glad", "pleased", "grateful",
+    "thanks",
+    "great",
+    "good",
+    "appreciate",
+    "love",
+    "helpful",
+    "awesome",
+    "wonderful",
+    "excellent",
+    "amazing",
+    "fantastic",
+    "brilliant",
+    "kind",
+    "generous",
+    "happy",
+    "glad",
+    "pleased",
+    "grateful",
 ]
 _NEGATIVE_WORDS = [
-    "harsh", "wrong", "bad", "terrible", "hate", "angry", "upset",
-    "awful", "horrible", "annoying", "frustrating", "rude", "mean",
-    "disgusting", "disappointed", "furious",
+    "harsh",
+    "wrong",
+    "bad",
+    "terrible",
+    "hate",
+    "angry",
+    "upset",
+    "awful",
+    "horrible",
+    "annoying",
+    "frustrating",
+    "rude",
+    "mean",
+    "disgusting",
+    "disappointed",
+    "furious",
 ]
 
 # ---------------------------------------------------------------------------
@@ -248,7 +277,8 @@ def detect_relationship_indicators(text: str) -> list[dict[str, str | float]]:
 # 1. Dispute detection
 # ---------------------------------------------------------------------------
 def detect_disputes(
-    text: str, recent_messages: list[Any] | None = None,
+    text: str,
+    recent_messages: list[Any] | None = None,
 ) -> list[dict[str, str | float]]:
     """Detect corrections or disputes in *text*.
 
@@ -388,6 +418,7 @@ def extract_mentioned_people(text: str) -> list[dict[str, str]]:
 # ---------------------------------------------------------------------------
 # Runtime helpers (entity / component persistence)
 # ---------------------------------------------------------------------------
+
 
 async def _store_platform_identities(
     runtime: IAgentRuntime,
@@ -556,12 +587,15 @@ async def _assess_trust_indicators(
         return None
 
     metadata = entity.metadata or {}
-    trust: dict[str, Any] = metadata.get("trustMetrics", {
-        "helpfulness": 0.0,
-        "consistency": 0.0,
-        "engagement": 0.0,
-        "suspicionLevel": 0.0,
-    })
+    trust: dict[str, Any] = metadata.get(
+        "trustMetrics",
+        {
+            "helpfulness": 0.0,
+            "consistency": 0.0,
+            "engagement": 0.0,
+            "suspicionLevel": 0.0,
+        },
+    )
 
     helpful_count = 0
     suspicious_count = 0
@@ -642,6 +676,7 @@ async def _handle_admin_updates(
 # Main evaluator entry point
 # ---------------------------------------------------------------------------
 
+
 async def evaluate_relationship_extraction(
     runtime: IAgentRuntime,
     message: Memory,
@@ -665,12 +700,10 @@ async def evaluate_relationship_extraction(
 
     # --- new: dispute detection ---
     recent_messages: list[Any] = []
-    try:
+    with contextlib.suppress(Exception):
         recent_messages = await runtime.get_memories(
             {"roomId": message.room_id, "tableName": "messages", "count": 10, "unique": False}
         )
-    except Exception:
-        pass
     disputes = detect_disputes(text, recent_messages)
 
     # --- new: sentiment analysis ---

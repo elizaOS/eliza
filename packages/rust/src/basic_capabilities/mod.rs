@@ -46,9 +46,5 @@ pub fn get_basic_capabilities() -> (
     Vec<Box<dyn Provider>>,
     Vec<Box<dyn Evaluator>>,
 ) {
-    (
-        basic_actions(),
-        basic_providers(),
-        basic_evaluators(),
-    )
+    (basic_actions(), basic_providers(), basic_evaluators())
 }

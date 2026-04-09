@@ -53,8 +53,7 @@ static RE_PRIVACY_DONT_TELL: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)don'?t tell anyone").unwrap());
 static RE_PRIVACY_CONFIDENTIAL: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)keep.{0,20}confidential").unwrap());
-static RE_PRIVACY_SECRET: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)keep.{0,20}secret").unwrap());
+static RE_PRIVACY_SECRET: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)keep.{0,20}secret").unwrap());
 static RE_PRIVACY_DONT_MENTION: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)don'?t mention").unwrap());
 static RE_PRIVACY_BETWEEN_US: Lazy<Regex> =
@@ -62,14 +61,14 @@ static RE_PRIVACY_BETWEEN_US: Lazy<Regex> =
 static RE_PRIVACY_OFF_RECORD: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)off the record").unwrap());
 static RE_PRIVACY_PRIVATE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\bprivate\b").unwrap());
-static RE_PRIVACY_DONT_SHARE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)don'?t share").unwrap());
+static RE_PRIVACY_DONT_SHARE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)don'?t share").unwrap());
 static RE_PRIVACY_THIS_IS_CONF: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)this is confidential").unwrap());
 
 // Trust / helpfulness patterns
-static RE_TRUST_HELPFUL: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)here'?s|let me help|i can help|try this|solution|answer").unwrap());
+static RE_TRUST_HELPFUL: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)here'?s|let me help|i can help|try this|solution|answer").unwrap()
+});
 // Trust / suspicious patterns (security-sensitive, double-weighted)
 static RE_TRUST_SUSPICIOUS: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
@@ -85,16 +84,18 @@ static RE_ADMIN_UPDATE: Lazy<Regex> = Lazy::new(|| {
 });
 
 // Mentioned people patterns
-static RE_MENTIONED_IS: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)(\w+ \w+) (?:is|was|works) (?:a|an|the|at|in) ([^.!?]+)").unwrap());
+static RE_MENTIONED_IS: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(\w+ \w+) (?:is|was|works) (?:a|an|the|at|in) ([^.!?]+)").unwrap()
+});
 static RE_MENTIONED_KNOW: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)(?:met|know|talked to) (\w+ \w+)").unwrap());
 static RE_MENTIONED_POSSESSION: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)(\w+)'s (birthday|email|phone|address) is ([^.!?]+)").unwrap());
 
 // Community indicators (extends the existing colleague / friend / family)
-static RE_COMMUNITY: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)\b(community|group|event|meetup|member|contribute|volunteer|help with|count me in|together we can)\b").unwrap());
+static RE_COMMUNITY: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)\b(community|group|event|meetup|member|contribute|volunteer|help with|count me in|together we can)\b").unwrap()
+});
 
 // Stopwords for mentioned-name filtering
 static STOPWORDS: &[&str] = &["the", "and", "but", "for", "with", "this", "that", "from"];
@@ -288,12 +289,30 @@ impl RelationshipExtractionEvaluator {
     /// Returns "positive", "negative", or "neutral".
     fn determine_sentiment(text: &str) -> &'static str {
         static POSITIVE_WORDS: &[&str] = &[
-            "thanks", "great", "good", "appreciate", "love", "helpful", "awesome",
-            "wonderful", "fantastic", "excellent", "amazing",
+            "thanks",
+            "great",
+            "good",
+            "appreciate",
+            "love",
+            "helpful",
+            "awesome",
+            "wonderful",
+            "fantastic",
+            "excellent",
+            "amazing",
         ];
         static NEGATIVE_WORDS: &[&str] = &[
-            "harsh", "wrong", "bad", "terrible", "hate", "angry", "upset",
-            "horrible", "awful", "annoying", "disappointed",
+            "harsh",
+            "wrong",
+            "bad",
+            "terrible",
+            "hate",
+            "angry",
+            "upset",
+            "horrible",
+            "awful",
+            "annoying",
+            "disappointed",
         ];
 
         let lower = text.to_lowercase();
@@ -358,15 +377,47 @@ impl RelationshipExtractionEvaluator {
     /// Detect privacy / confidentiality boundaries in text.
     fn detect_privacy_boundaries(text: &str) -> Option<PrivacyInfo> {
         let checks: &[(&Lazy<Regex>, &str, &str)] = &[
-            (&RE_PRIVACY_DONT_TELL, "confidential", "Privacy boundary detected"),
-            (&RE_PRIVACY_CONFIDENTIAL, "confidential", "Privacy boundary detected"),
-            (&RE_PRIVACY_SECRET, "confidential", "Privacy boundary detected"),
-            (&RE_PRIVACY_DONT_MENTION, "doNotShare", "Privacy boundary detected"),
-            (&RE_PRIVACY_BETWEEN_US, "confidential", "Privacy boundary detected"),
-            (&RE_PRIVACY_OFF_RECORD, "confidential", "Privacy boundary detected"),
+            (
+                &RE_PRIVACY_DONT_TELL,
+                "confidential",
+                "Privacy boundary detected",
+            ),
+            (
+                &RE_PRIVACY_CONFIDENTIAL,
+                "confidential",
+                "Privacy boundary detected",
+            ),
+            (
+                &RE_PRIVACY_SECRET,
+                "confidential",
+                "Privacy boundary detected",
+            ),
+            (
+                &RE_PRIVACY_DONT_MENTION,
+                "doNotShare",
+                "Privacy boundary detected",
+            ),
+            (
+                &RE_PRIVACY_BETWEEN_US,
+                "confidential",
+                "Privacy boundary detected",
+            ),
+            (
+                &RE_PRIVACY_OFF_RECORD,
+                "confidential",
+                "Privacy boundary detected",
+            ),
             (&RE_PRIVACY_PRIVATE, "private", "Privacy boundary detected"),
-            (&RE_PRIVACY_DONT_SHARE, "doNotShare", "Privacy boundary detected"),
-            (&RE_PRIVACY_THIS_IS_CONF, "confidential", "Privacy boundary detected"),
+            (
+                &RE_PRIVACY_DONT_SHARE,
+                "doNotShare",
+                "Privacy boundary detected",
+            ),
+            (
+                &RE_PRIVACY_THIS_IS_CONF,
+                "confidential",
+                "Privacy boundary detected",
+            ),
         ];
 
         for (pattern, ptype, ctx) in checks {
@@ -390,9 +441,18 @@ impl RelationshipExtractionEvaluator {
     /// Pattern: "update/set/change <name>'s <field> to/is/= <value>"
     fn detect_admin_update(text: &str) -> Option<AdminUpdate> {
         RE_ADMIN_UPDATE.captures(text).map(|cap| AdminUpdate {
-            target_name: cap.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
-            field: cap.get(2).map(|m| m.as_str().to_lowercase()).unwrap_or_default(),
-            value: cap.get(3).map(|m| m.as_str().trim().to_string()).unwrap_or_default(),
+            target_name: cap
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default(),
+            field: cap
+                .get(2)
+                .map(|m| m.as_str().to_lowercase())
+                .unwrap_or_default(),
+            value: cap
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .unwrap_or_default(),
         })
     }
 
@@ -412,7 +472,10 @@ impl RelationshipExtractionEvaluator {
                 if Self::is_valid_person_name(name) {
                     people.push(MentionedPerson {
                         name: name.to_string(),
-                        context: cap.get(0).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                        context: cap
+                            .get(0)
+                            .map(|m| m.as_str().to_string())
+                            .unwrap_or_default(),
                     });
                 }
             }
@@ -425,7 +488,10 @@ impl RelationshipExtractionEvaluator {
                 if Self::is_valid_person_name(name) {
                     people.push(MentionedPerson {
                         name: name.to_string(),
-                        context: cap.get(0).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                        context: cap
+                            .get(0)
+                            .map(|m| m.as_str().to_string())
+                            .unwrap_or_default(),
                     });
                 }
             }
@@ -438,7 +504,10 @@ impl RelationshipExtractionEvaluator {
                 if name.len() > 1 && !STOPWORDS.contains(&name.to_lowercase().as_str()) {
                     people.push(MentionedPerson {
                         name: name.to_string(),
-                        context: cap.get(0).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                        context: cap
+                            .get(0)
+                            .map(|m| m.as_str().to_string())
+                            .unwrap_or_default(),
                     });
                 }
             }
@@ -486,8 +555,7 @@ impl Evaluator for RelationshipExtractionEvaluator {
             Some(t) if !t.is_empty() => t.as_str(),
             _ => {
                 return Ok(
-                    EvaluatorResult::pass(50, "No text to analyze")
-                        .with_detail("noText", true)
+                    EvaluatorResult::pass(50, "No text to analyze").with_detail("noText", true)
                 );
             }
         };

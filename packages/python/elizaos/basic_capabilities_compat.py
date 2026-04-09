@@ -73,7 +73,9 @@ NATIVE_FEATURE_PROVIDER_NAMES = {
     "RELATIONSHIPS",
 }
 EXTENDED_PROVIDERS = [
-    provider for provider in advanced_providers if provider.name not in NATIVE_FEATURE_PROVIDER_NAMES
+    provider
+    for provider in advanced_providers
+    if provider.name not in NATIVE_FEATURE_PROVIDER_NAMES
 ]
 BASIC_EVALUATORS: list = []
 NATIVE_RELATIONSHIPS_EVALUATOR_NAMES = {

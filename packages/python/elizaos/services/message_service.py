@@ -702,19 +702,21 @@ class DefaultMessageService(IMessageService):
                     and self._continue_after_actions_enabled(runtime)
                     and self._should_continue_after_actions(actions)
                 ):
-                    continuation_content, continuation_messages, state = (
-                        await self._run_post_action_continuation(
-                            runtime=runtime,
-                            message=message,
-                            state=state,
-                            callback=callback,
-                            template=runtime.character.templates.get(
-                                "postActionDecisionTemplate", POST_ACTION_DECISION_TEMPLATE
-                            )
-                            if runtime.character.templates
-                            else POST_ACTION_DECISION_TEMPLATE,
-                            initial_action_results=runtime.get_action_results(message.id),
+                    (
+                        continuation_content,
+                        continuation_messages,
+                        state,
+                    ) = await self._run_post_action_continuation(
+                        runtime=runtime,
+                        message=message,
+                        state=state,
+                        callback=callback,
+                        template=runtime.character.templates.get(
+                            "postActionDecisionTemplate", POST_ACTION_DECISION_TEMPLATE
                         )
+                        if runtime.character.templates
+                        else POST_ACTION_DECISION_TEMPLATE,
+                        initial_action_results=runtime.get_action_results(message.id),
                     )
                     if continuation_messages:
                         responses.extend(continuation_messages)

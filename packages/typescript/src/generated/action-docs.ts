@@ -634,7 +634,8 @@ export const coreActionsSpec = {
 		},
 		{
 			name: "SEARCH_CONTACTS",
-			description: "Search and list contacts in the relationships by name or query.",
+			description:
+				"Search and list contacts in the relationships by name or query.",
 			similes: [
 				"FIND_CONTACTS",
 				"LOOKUP_CONTACTS",
@@ -1756,7 +1757,8 @@ export const allActionsSpec = {
 		},
 		{
 			name: "SEARCH_CONTACTS",
-			description: "Search and list contacts in the relationships by name or query.",
+			description:
+				"Search and list contacts in the relationships by name or query.",
 			similes: [
 				"FIND_CONTACTS",
 				"LOOKUP_CONTACTS",

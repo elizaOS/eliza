@@ -19,9 +19,7 @@ export function createKnowledgePlugin(
 		description:
 			"Native Retrieval Augmented Generation capabilities, including knowledge ingestion and retrieval.",
 		services: [KnowledgeService],
-		providers: enableProviders
-			? [knowledgeProvider, documentsProvider]
-			: [],
+		providers: enableProviders ? [knowledgeProvider, documentsProvider] : [],
 		actions: enableActions ? knowledgeActions : [],
 	};
 }

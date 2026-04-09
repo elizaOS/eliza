@@ -1,7 +1,7 @@
 import type { AgentContext, HandlerCallback } from "./components";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";
-import { ModelType } from "./model";
+import type { ModelType } from "./model";
 import type { Content, Media, MentionContext, UUID } from "./primitives";
 import type {
 	MessageProcessingMode as ProtoMessageProcessingMode,

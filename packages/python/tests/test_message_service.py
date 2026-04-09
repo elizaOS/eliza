@@ -79,9 +79,7 @@ async def test_continues_after_action_results(character: Character) -> None:
             "</response>"
         )
 
-    async def validate(
-        _runtime: AgentRuntime, _message: Memory, _state: State | None
-    ) -> bool:
+    async def validate(_runtime: AgentRuntime, _message: Memory, _state: State | None) -> bool:
         return True
 
     async def handler(

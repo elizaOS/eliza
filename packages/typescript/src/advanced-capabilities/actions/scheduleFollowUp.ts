@@ -49,7 +49,9 @@ export const scheduleFollowUpAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 		const followUpService = runtime.getService("follow_up") as FollowUpService;
 
 		if (!relationshipsService || !followUpService) {
@@ -69,7 +71,9 @@ export const scheduleFollowUpAction: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
-		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 		const followUpService = runtime.getService("follow_up") as FollowUpService;
 
 		if (!relationshipsService || !followUpService) {
@@ -132,7 +136,9 @@ export const scheduleFollowUpAction: Action = {
 
 		const contact = await relationshipsService.getContact(entityId);
 		if (!contact) {
-			throw new Error("Contact not found in relationships. Please add them first.");
+			throw new Error(
+				"Contact not found in relationships. Please add them first.",
+			);
 		}
 
 		const scheduledAt = new Date(parsedResponse.scheduledAt || "");

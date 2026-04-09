@@ -109,7 +109,9 @@ export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	pluginList: ["system"],
 };
 
-function normalizeContexts(contexts: AgentContext[] | undefined): AgentContext[] {
+function normalizeContexts(
+	contexts: AgentContext[] | undefined,
+): AgentContext[] {
 	return Array.isArray(contexts)
 		? contexts.filter((context): context is AgentContext => Boolean(context))
 		: [];

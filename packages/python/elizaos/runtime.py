@@ -279,7 +279,6 @@ class AgentRuntime(IAgentRuntime):
             return setting_value
 
         from elizaos.native_features import (
-            get_native_runtime_feature_plugin,
             native_runtime_feature_defaults,
         )
 
@@ -310,7 +309,10 @@ class AgentRuntime(IAgentRuntime):
     def _is_plugin_managed_as_native_feature(self, plugin: Plugin | None) -> bool:
         from elizaos.native_features import resolve_native_runtime_feature_from_plugin_name
 
-        return resolve_native_runtime_feature_from_plugin_name(plugin.name if plugin else None) is not None
+        return (
+            resolve_native_runtime_feature_from_plugin_name(plugin.name if plugin else None)
+            is not None
+        )
 
     async def _unregister_plugin(self, plugin_name: str) -> None:
         components = self._plugin_components.pop(plugin_name, None)
@@ -409,7 +411,9 @@ class AgentRuntime(IAgentRuntime):
             None,
         )
         if basic_capabilities_plugin is None:
-            from elizaos.basic_capabilities_compat import basic_capabilities_plugin as default_basic_capabilities_plugin
+            from elizaos.basic_capabilities_compat import (
+                basic_capabilities_plugin as default_basic_capabilities_plugin,
+            )
 
             basic_capabilities_plugin = default_basic_capabilities_plugin
 
@@ -450,11 +454,11 @@ class AgentRuntime(IAgentRuntime):
         self.logger.info("AgentRuntime initialized successfully")
 
     async def register_plugin(self, plugin: Plugin) -> None:
-        from elizaos.plugin import register_plugin
         from elizaos.native_features import (
             get_native_runtime_feature_plugin,
             resolve_native_runtime_feature_from_plugin_name,
         )
+        from elizaos.plugin import register_plugin
 
         plugin_to_register = plugin
         native_feature = resolve_native_runtime_feature_from_plugin_name(plugin.name)
@@ -463,7 +467,9 @@ class AgentRuntime(IAgentRuntime):
                 return
             plugin_to_register = get_native_runtime_feature_plugin(native_feature)
 
-        if any(existing_plugin.name == plugin_to_register.name for existing_plugin in self._plugins):
+        if any(
+            existing_plugin.name == plugin_to_register.name for existing_plugin in self._plugins
+        ):
             return
 
         if plugin.name == "basic_capabilities":
@@ -571,7 +577,10 @@ class AgentRuntime(IAgentRuntime):
         resolved_service_type = self._resolve_service_type_alias(service_type)
         if not self._is_native_feature_service_enabled(resolved_service_type):
             return False
-        return resolved_service_type in self._services and len(self._services[resolved_service_type]) > 0
+        return (
+            resolved_service_type in self._services
+            and len(self._services[resolved_service_type]) > 0
+        )
 
     def set_setting(self, key: str, value: object | None, secret: bool = False) -> None:
         if value is None:
@@ -2018,9 +2027,7 @@ class AgentRuntime(IAgentRuntime):
             return []
         return await self._adapter.get_relationships(params)
 
-    async def get_relationships_by_pairs(
-        self, pairs: list[dict[str, str]]
-    ) -> list[Any | None]:
+    async def get_relationships_by_pairs(self, pairs: list[dict[str, str]]) -> list[Any | None]:
         if not self._adapter:
             return [None] * len(pairs)
         if hasattr(self._adapter, "get_relationships_by_pairs"):
@@ -2072,9 +2079,7 @@ class AgentRuntime(IAgentRuntime):
             await self._adapter.delete_relationships(relationship_ids)
             return
         # No single-item delete available on the adapter; skip silently
-        self.logger.warn(
-            "delete_relationships called but adapter has no delete support"
-        )
+        self.logger.warn("delete_relationships called but adapter has no delete support")
 
     async def get_cache(self, key: str) -> Any | None:
         if not self._adapter:
@@ -2344,14 +2349,14 @@ class AgentRuntime(IAgentRuntime):
 
             # Build example
             example_lines = [container_start]
-            for i, (field, desc) in enumerate(ext_schema):
+            for i, (fname, desc) in enumerate(ext_schema):
                 is_last = i == len(ext_schema) - 1
                 if is_xml:
-                    example_lines.append(f"  <{field}>{desc}</{field}>")
+                    example_lines.append(f"  <{fname}>{desc}</{fname}>")
                 else:
                     # No trailing comma on last field for valid JSON
                     comma = "" if is_last else ","
-                    example_lines.append(f'  "{field}": "{desc}"{comma}')
+                    example_lines.append(f'  "{fname}": "{desc}"{comma}')
             example_lines.append(container_end)
             example = "\n".join(example_lines)
 
@@ -2424,14 +2429,18 @@ Return exactly one {"<response>...</response>" if is_xml else "JSON object"}.
                         expected_codes=per_field_codes,
                         on_chunk=lambda chunk,  # type: ignore[misc]
                         _field,
-                        msg_id=stream_message_id: options.on_stream_chunk(chunk, msg_id)
-                        if options.on_stream_chunk is not None  # type: ignore[truthy-function]
-                        else None,
-                        on_event=lambda event, msg_id=stream_message_id: options.on_stream_event(  # type: ignore[misc]
-                            event, msg_id
-                        )
-                        if options.on_stream_event is not None
-                        else None,
+                        msg_id=stream_message_id: (
+                            options.on_stream_chunk(chunk, msg_id)
+                            if options.on_stream_chunk is not None  # type: ignore[truthy-function]
+                            else None
+                        ),
+                        on_event=lambda event, msg_id=stream_message_id: (
+                            options.on_stream_event(  # type: ignore[misc]
+                                event, msg_id
+                            )
+                            if options.on_stream_event is not None
+                            else None
+                        ),
                         abort_signal=options.abort_signal,
                         has_rich_consumer=has_rich_consumer,
                     )

@@ -23,7 +23,9 @@ async def get_contacts_context(
     contacts = await relationships_service.get_all_contacts()
 
     if not contacts:
-        return ProviderResult(text="No contacts in relationships.", values={"contactCount": 0}, data={})
+        return ProviderResult(
+            text="No contacts in relationships.", values={"contactCount": 0}, data={}
+        )
 
     entities = await asyncio.gather(
         *(runtime.get_entity(str(contact.entity_id)) for contact in contacts)

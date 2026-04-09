@@ -88,9 +88,9 @@ function initContextManagerSync(): ITrajectoryContextManager {
 
 function getOrCreateContextManager(): ITrajectoryContextManager {
 	if (!globalContextManager) {
-		const globalManager = (
-			globalThis as GlobalWithTrajectoryContextManager
-		)[TRAJECTORY_CONTEXT_MANAGER_KEY];
+		const globalManager = (globalThis as GlobalWithTrajectoryContextManager)[
+			TRAJECTORY_CONTEXT_MANAGER_KEY
+		];
 		if (globalManager) {
 			globalContextManager = globalManager;
 		} else {

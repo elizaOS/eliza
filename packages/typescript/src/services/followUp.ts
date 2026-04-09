@@ -160,7 +160,8 @@ export class FollowUpService extends Service {
 			// Get contact info
 			const targetEntityId = task.metadata?.targetEntityId as UUID;
 			if (targetEntityId) {
-				const contact = await this.relationshipsService.getContact(targetEntityId);
+				const contact =
+					await this.relationshipsService.getContact(targetEntityId);
 				if (contact) {
 					upcomingFollowUps.push({ task, contact });
 				}
@@ -201,7 +202,8 @@ export class FollowUpService extends Service {
 			// Clear next follow-up from contact
 			const targetEntityId = task.metadata?.targetEntityId as UUID;
 			if (targetEntityId) {
-				const contact = await this.relationshipsService.getContact(targetEntityId);
+				const contact =
+					await this.relationshipsService.getContact(targetEntityId);
 				if (contact) {
 					const customFields = { ...contact.customFields };
 					delete customFields.nextFollowUpAt;
@@ -244,7 +246,8 @@ export class FollowUpService extends Service {
 			// Update contact
 			const targetEntityId = task.metadata?.targetEntityId as UUID;
 			if (targetEntityId) {
-				const contact = await this.relationshipsService.getContact(targetEntityId);
+				const contact =
+					await this.relationshipsService.getContact(targetEntityId);
 				if (contact) {
 					await this.relationshipsService.updateContact(targetEntityId, {
 						customFields: {

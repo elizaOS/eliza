@@ -22,9 +22,9 @@ import { createLogger } from "./logger";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import {
 	getNativeRuntimeFeaturePlugin,
+	type NativeRuntimeFeature,
 	nativeRuntimeFeatureDefaults,
 	nativeRuntimeFeaturePluginNames,
-	type NativeRuntimeFeature,
 	resolveNativeRuntimeFeatureFromPluginName,
 } from "./plugins/native-features";
 import { BM25 } from "./search";
@@ -56,6 +56,7 @@ import {
 	type GenerateTextOptions,
 	type GenerateTextParams,
 	type GenerateTextResult,
+	getModelFallbackChain,
 	type HandlerCallback,
 	type HandlerOptions,
 	type IAgentRuntime,
@@ -71,9 +72,7 @@ import {
 	type ModelParamsMap,
 	type ModelResultMap,
 	ModelType,
-	getModelFallbackChain,
 	type ModelTypeName,
-	type TextGenerationModelType,
 	type PairingAllowlistEntry,
 	type PairingChannel,
 	type PairingRequest,
@@ -98,6 +97,7 @@ import {
 	type TargetInfo,
 	type Task,
 	type TaskWorker,
+	type TextGenerationModelType,
 	type TextStreamResult,
 	type UUID,
 	type World,
@@ -107,8 +107,8 @@ import type {
 	RetryBackoffConfig,
 	SchemaRow,
 	SchemaValueSpec,
-	StructuredOutputFailure,
 	StreamEvent,
+	StructuredOutputFailure,
 } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import {
@@ -118,9 +118,7 @@ import {
 } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
-import {
-	buildDeterministicSeed,
-} from "./utils/deterministic";
+import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import {
 	ActionStreamFilter,
@@ -516,7 +514,9 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.currentRunId;
 	}
 
-	private resolveServiceTypeAlias(serviceType: ServiceTypeName | string): string {
+	private resolveServiceTypeAlias(
+		serviceType: ServiceTypeName | string,
+	): string {
 		return serviceType;
 	}
 
@@ -3210,7 +3210,9 @@ export class AgentRuntime implements IAgentRuntime {
 		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		return this._ensureServiceStarted(key).then((s) => {
 			if (!s)
-				throw new Error(`Service ${String(serviceType)} not found or failed to start`);
+				throw new Error(
+					`Service ${String(serviceType)} not found or failed to start`,
+				);
 			return s;
 		});
 	}
@@ -3648,7 +3650,6 @@ export class AgentRuntime implements IAgentRuntime {
 					modelParamsRecord.user = this.character.name;
 				}
 			}
-
 		}
 		const startTime =
 			typeof performance !== "undefined" &&
@@ -4151,7 +4152,8 @@ export class AgentRuntime implements IAgentRuntime {
 			options.modelType,
 			options.modelSize,
 		);
-		const modelIdentifier = options.modelType || options.model || resolvedModelType;
+		const modelIdentifier =
+			options.modelType || options.model || resolvedModelType;
 		const schemaKey = this.buildSchemaMetricKey(schema);
 		const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
 

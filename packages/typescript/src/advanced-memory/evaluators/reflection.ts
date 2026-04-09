@@ -148,7 +148,9 @@ function extractEmbeddedToonDocument(text: string): string | null {
 	const lines = text.trim().split(/\r?\n/);
 	const startIndex = lines.findIndex((line) => {
 		const trimmed = line.trim();
-		return TOON_HEADER_PATTERN.test(trimmed) || TOON_FIELD_PATTERN.test(trimmed);
+		return (
+			TOON_HEADER_PATTERN.test(trimmed) || TOON_FIELD_PATTERN.test(trimmed)
+		);
 	});
 
 	if (startIndex === -1) {
@@ -193,9 +195,7 @@ function extractEmbeddedToonDocument(text: string): string | null {
 	return collected.join("\n").trim();
 }
 
-function parseReflectionResponse(
-	response: string,
-): {
+function parseReflectionResponse(response: string): {
 	reflection: ReflectionXmlResult | null;
 	lookedStructured: boolean;
 } {
@@ -205,7 +205,9 @@ function parseReflectionResponse(
 	}
 
 	const candidates = new Set<string>([trimmed]);
-	const fencedBlocks = trimmed.matchAll(/```(?:toon|xml|json)?\s*([\s\S]*?)\s*```/gi);
+	const fencedBlocks = trimmed.matchAll(
+		/```(?:toon|xml|json)?\s*([\s\S]*?)\s*```/gi,
+	);
 	for (const block of fencedBlocks) {
 		const candidate = block[1]?.trim();
 		if (candidate) {
@@ -392,9 +394,7 @@ async function handler(
 	const { reflection, lookedStructured } = parseReflectionResponse(response);
 
 	if (!reflection) {
-		const log = lookedStructured
-			? runtime.logger.warn
-			: runtime.logger.debug;
+		const log = lookedStructured ? runtime.logger.warn : runtime.logger.debug;
 		log.call(
 			runtime.logger,
 			{
@@ -489,7 +489,9 @@ async function handler(
 	);
 
 	// Handle relationships - similar structure normalization
-	const relationshipsArray = normalizeRelationshipEntries(reflection.relationships);
+	const relationshipsArray = normalizeRelationshipEntries(
+		reflection.relationships,
+	);
 
 	// Update or create relationships
 	for (const relationship of relationshipsArray) {

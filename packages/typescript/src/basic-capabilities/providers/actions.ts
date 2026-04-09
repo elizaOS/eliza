@@ -7,13 +7,13 @@ import type {
 	Provider,
 	State,
 } from "../../types/index.ts";
+import { resolveActionContexts } from "../../utils/context-catalog";
 import {
 	CONTEXT_ROUTING_STATE_KEY,
 	getActiveRoutingContexts,
 	parseContextRoutingMetadata,
 	shouldIncludeByContext,
 } from "../../utils/context-routing.ts";
-import { resolveActionContexts } from "../../utils/context-catalog";
 import { buildDeterministicSeed } from "../../utils/deterministic";
 import { addHeader } from "../../utils.ts";
 
@@ -64,10 +64,7 @@ export const actionsProvider: Provider = {
 		// Get actions that validate for this message
 		const actionPromises = runtime.actions.map(async (action: Action) => {
 			if (
-				!shouldIncludeByContext(
-					resolveActionContexts(action),
-					activeContexts,
-				)
+				!shouldIncludeByContext(resolveActionContexts(action), activeContexts)
 			) {
 				return null;
 			}

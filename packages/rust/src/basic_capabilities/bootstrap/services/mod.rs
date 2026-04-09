@@ -11,8 +11,8 @@ pub use embedding::EmbeddingService;
 pub use follow_up::{FollowUpService, FollowUpSuggestion, FollowUpTask};
 pub use relationships::{
     calculate_relationship_strength, ContactCategory, ContactInfo, ContactPreferences,
-    NeedsAttentionEntry, RecentInteractionEntry, RelationshipAnalytics,
-    RelationshipInsightEntry, RelationshipInsights, RelationshipsService,
+    NeedsAttentionEntry, RecentInteractionEntry, RelationshipAnalytics, RelationshipInsightEntry,
+    RelationshipInsights, RelationshipsService,
 };
 pub use task::{Task, TaskPriority, TaskService, TaskStatus};
 

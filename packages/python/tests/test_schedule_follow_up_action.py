@@ -96,7 +96,9 @@ class FakeRelationshipsService(RelationshipsService):
 
 
 class FakeRuntime:
-    def __init__(self, relationships: RelationshipsLike, follow_up: FakeFollowUpService, response: str) -> None:
+    def __init__(
+        self, relationships: RelationshipsLike, follow_up: FakeFollowUpService, response: str
+    ) -> None:
         self._relationships = relationships
         self._follow_up = follow_up
         self._response = response

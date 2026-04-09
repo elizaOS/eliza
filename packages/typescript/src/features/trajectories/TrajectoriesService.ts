@@ -8,12 +8,12 @@
  * - Provides API for UI viewing and export
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../logger";
 import { setTrajectoryContextManager } from "../../trajectory-context";
 import type { IAgentRuntime } from "../../types";
 import { Service } from "../../types/service";
-import { v4 as uuidv4 } from "uuid";
-import { AsyncLocalStorage } from "node:async_hooks";
 
 const trajectoryStorage = new AsyncLocalStorage<
 	{ trajectoryStepId?: string } | undefined
@@ -30,6 +30,7 @@ setTrajectoryContextManager({
 		return trajectoryStorage.getStore();
 	},
 });
+
 import type {
 	ActionAttempt,
 	EnvironmentState,
@@ -266,8 +267,8 @@ export class TrajectoriesService extends Service {
 				: [];
 		for (const svc of all) {
 			if (
-				typeof (svc as unknown as Record<string, unknown>)
-					.startTrajectory === "function"
+				typeof (svc as unknown as Record<string, unknown>).startTrajectory ===
+				"function"
 			) {
 				return svc as unknown as TrajectoriesService;
 			}
@@ -325,7 +326,8 @@ export class TrajectoriesService extends Service {
 		service.completeStep = this.completeStep.bind(this);
 		service.logLLMCall = this.logLLMCall.bind(this);
 		service.logProviderAccess = this.logProviderAccess.bind(this);
-		service.logProviderAccessByTrajectoryId = this.logProviderAccessByTrajectoryId.bind(this);
+		service.logProviderAccessByTrajectoryId =
+			this.logProviderAccessByTrajectoryId.bind(this);
 		service.isEnabled = this.isEnabled.bind(this);
 		service.listTrajectories = this.listTrajectories.bind(this);
 		service.getTrajectoryDetail = this.getTrajectoryDetail.bind(this);
@@ -334,7 +336,7 @@ export class TrajectoriesService extends Service {
 	}
 
 	static async start(runtime: IAgentRuntime): Promise<Service> {
-		const service = new (this as any)(runtime);
+		const service = new (TrajectoriesService as any)(runtime);
 		await service.initialize();
 		return service;
 	}

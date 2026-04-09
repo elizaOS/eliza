@@ -73,9 +73,13 @@ export const relationshipExtractionEvaluator: Evaluator = {
 		message: Memory,
 		_state?: State,
 	): Promise<ActionResult | undefined> => {
-		const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 		if (!relationshipsService) {
-			logger.warn("[RelationshipExtraction] RelationshipsService not available");
+			logger.warn(
+				"[RelationshipExtraction] RelationshipsService not available",
+			);
 			return;
 		}
 

@@ -255,9 +255,7 @@ fn summarize_contact(contact: &ContactInfo) -> String {
     )
 }
 
-fn downcast_service<'a, T: 'static>(
-    service: &'a Arc<dyn RuntimeService>,
-) -> Option<&'a T> {
+fn downcast_service<T: 'static>(service: &Arc<dyn RuntimeService>) -> Option<&T> {
     service.as_any().downcast_ref::<T>()
 }
 
@@ -369,9 +367,12 @@ impl RelationshipsService {
             .filter(|contact| {
                 categories
                     .map(|required| {
-                        required
-                            .iter()
-                            .all(|category| contact.categories.iter().any(|existing| existing == category))
+                        required.iter().all(|category| {
+                            contact
+                                .categories
+                                .iter()
+                                .any(|existing| existing == category)
+                        })
                     })
                     .unwrap_or(true)
             })
@@ -414,9 +415,7 @@ impl RelationshipsService {
             .analytics
             .lock()
             .expect("relationships analytics lock poisoned");
-        let entry = analytics
-            .entry(entity_id.as_str().to_string())
-            .or_default();
+        let entry = analytics.entry(entity_id.as_str().to_string()).or_default();
         if let Some(interaction_count) = interaction_count {
             entry.interaction_count = interaction_count;
         }
@@ -482,7 +481,13 @@ impl RelationshipsService {
                         topics.push(topic.clone());
                     }
                 }
-                Some((interaction_count, last_interaction_at, sentiment_score, average_response_time, topics))
+                Some((
+                    interaction_count,
+                    last_interaction_at,
+                    sentiment_score,
+                    average_response_time,
+                    topics,
+                ))
             }
             (Some(a), None) | (None, Some(a)) => {
                 let result = a.clone();
@@ -496,8 +501,13 @@ impl RelationshipsService {
 
         drop(analytics); // release lock before calling get_contact
 
-        let (interaction_count, last_interaction_at, sentiment_score, average_response_time, topics) =
-            merged.expect("already handled None cases above");
+        let (
+            interaction_count,
+            last_interaction_at,
+            sentiment_score,
+            average_response_time,
+            topics,
+        ) = merged.expect("already handled None cases above");
 
         let relationship_type = self
             .get_contact(source_entity_id)
@@ -642,11 +652,7 @@ impl RelationshipsService {
     /// * `"private"` -- only the target entity itself.
     /// * `"restricted"` -- nobody (except the owning agent, which is checked
     ///   at a higher layer).
-    pub fn can_access_contact(
-        &self,
-        requesting_entity_id: &UUID,
-        target_entity_id: &UUID,
-    ) -> bool {
+    pub fn can_access_contact(&self, requesting_entity_id: &UUID, target_entity_id: &UUID) -> bool {
         let contacts = self.contacts.lock().expect("relationships lock poisoned");
         let contact = match contacts.get(target_entity_id) {
             Some(c) => c,
@@ -877,7 +883,9 @@ impl TrajectoriesService {
 
     /// Get a snapshot of collected logs.
     pub fn get_logs(&self) -> Option<TrajectoryLogs> {
-        self.runtime.upgrade().map(|runtime| runtime.get_trajectory_logs())
+        self.runtime
+            .upgrade()
+            .map(|runtime| runtime.get_trajectory_logs())
     }
 }
 
@@ -905,7 +913,9 @@ impl ProviderHandler for KnowledgeProviderHandler {
     fn definition(&self) -> ProviderDefinition {
         ProviderDefinition {
             name: "KNOWLEDGE".to_string(),
-            description: Some("Retrieves relevant knowledge snippets for the current message".to_string()),
+            description: Some(
+                "Retrieves relevant knowledge snippets for the current message".to_string(),
+            ),
             dynamic: Some(true),
             position: Some(50),
             private: Some(false),
@@ -952,10 +962,8 @@ impl ProviderHandler for KnowledgeProviderHandler {
             return Ok(ProviderResult::default());
         }
 
-        Ok(ProviderResult::with_text(snippets.join("\n\n")).with_value(
-            "knowledgeMatches",
-            json!(snippets.len()),
-        ))
+        Ok(ProviderResult::with_text(snippets.join("\n\n"))
+            .with_value("knowledgeMatches", json!(snippets.len())))
     }
 }
 
@@ -999,10 +1007,8 @@ impl ProviderHandler for ContactsProviderHandler {
         }
 
         let summaries = contacts.iter().map(summarize_contact).collect::<Vec<_>>();
-        Ok(ProviderResult::with_text(summaries.join("\n")).with_value(
-            "contactCount",
-            json!(summaries.len()),
-        ))
+        Ok(ProviderResult::with_text(summaries.join("\n"))
+            .with_value("contactCount", json!(summaries.len())))
     }
 }
 
@@ -1015,7 +1021,9 @@ impl ProviderHandler for FactsProviderHandler {
     fn definition(&self) -> ProviderDefinition {
         ProviderDefinition {
             name: "FACTS".to_string(),
-            description: Some("Summarizes stored relationship facts for the current entity".to_string()),
+            description: Some(
+                "Summarizes stored relationship facts for the current entity".to_string(),
+            ),
             dynamic: Some(true),
             position: Some(61),
             private: Some(false),
@@ -1085,7 +1093,12 @@ impl ProviderHandler for FollowUpsProviderHandler {
 
         let text = tasks
             .iter()
-            .map(|task| format!("{} at {} ({})", task.entity_id, task.scheduled_at, task.reason))
+            .map(|task| {
+                format!(
+                    "{} at {} ({})",
+                    task.entity_id, task.scheduled_at, task.reason
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
         Ok(ProviderResult::with_text(text).with_value("followUpCount", json!(tasks.len())))
@@ -1158,7 +1171,12 @@ impl ActionHandler for AddContactActionHandler {
     }
 
     async fn validate(&self, message: &Memory, _state: Option<&State>) -> bool {
-        let text = message.content.text.clone().unwrap_or_default().to_lowercase();
+        let text = message
+            .content
+            .text
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
         entity_id_from_message(message).is_some()
             && has_relationship_context(&text)
             && text_contains_any(&text, &["add", "save", "remember", "track"])
@@ -1214,7 +1232,12 @@ impl ActionHandler for RemoveContactActionHandler {
     }
 
     async fn validate(&self, message: &Memory, _state: Option<&State>) -> bool {
-        let text = message.content.text.clone().unwrap_or_default().to_lowercase();
+        let text = message
+            .content
+            .text
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
         entity_id_from_message(message).is_some()
             && has_relationship_context(&text)
             && text_contains_any(&text, &["remove", "delete", "forget", "drop"])
@@ -1266,7 +1289,12 @@ impl ActionHandler for SearchContactsActionHandler {
     }
 
     async fn validate(&self, message: &Memory, _state: Option<&State>) -> bool {
-        let text = message.content.text.clone().unwrap_or_default().to_lowercase();
+        let text = message
+            .content
+            .text
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
         has_relationship_context(&text)
             && text_contains_any(&text, &["search", "find", "lookup", "list", "show"])
     }
@@ -1290,14 +1318,16 @@ impl ActionHandler for SearchContactsActionHandler {
         let text = message.content.text.clone().unwrap_or_default();
         let categories = extract_categories(&text);
         let tags = extract_tags(&text);
-        let results = relationships.search_contacts(Some(&categories), (!tags.is_empty()).then_some(tags.as_slice()));
+        let results = relationships.search_contacts(
+            Some(&categories),
+            (!tags.is_empty()).then_some(tags.as_slice()),
+        );
 
         Ok(Some(
-            ActionResult::success(format!("Found {} matching contacts.", results.len()))
-                .with_data(
-                    "contacts",
-                    json!(results.iter().map(summarize_contact).collect::<Vec<_>>()),
-                ),
+            ActionResult::success(format!("Found {} matching contacts.", results.len())).with_data(
+                "contacts",
+                json!(results.iter().map(summarize_contact).collect::<Vec<_>>()),
+            ),
         ))
     }
 }
@@ -1317,7 +1347,12 @@ impl ActionHandler for ScheduleFollowUpActionHandler {
     }
 
     async fn validate(&self, message: &Memory, _state: Option<&State>) -> bool {
-        let text = message.content.text.clone().unwrap_or_default().to_lowercase();
+        let text = message
+            .content
+            .text
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
         entity_id_from_message(message).is_some()
             && has_relationship_context(&text)
             && text_contains_any(&text, &["follow up", "check in", "remind", "schedule"])
@@ -1379,7 +1414,12 @@ impl ActionHandler for SendMessageActionHandler {
     }
 
     async fn validate(&self, message: &Memory, _state: Option<&State>) -> bool {
-        let text = message.content.text.clone().unwrap_or_default().to_lowercase();
+        let text = message
+            .content
+            .text
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
         entity_id_from_message(message).is_some()
             && has_relationship_context(&text)
             && text_contains_any(&text, &["send", "message", "reach out", "contact"])
@@ -1428,7 +1468,12 @@ impl ActionHandler for UpdateContactActionHandler {
     }
 
     async fn validate(&self, message: &Memory, _state: Option<&State>) -> bool {
-        let text = message.content.text.clone().unwrap_or_default().to_lowercase();
+        let text = message
+            .content
+            .text
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
         entity_id_from_message(message).is_some()
             && has_relationship_context(&text)
             && text_contains_any(&text, &["update", "edit", "change", "tag", "category"])
@@ -1484,7 +1529,12 @@ impl ActionHandler for UpdateEntityActionHandler {
     }
 
     async fn validate(&self, message: &Memory, _state: Option<&State>) -> bool {
-        let text = message.content.text.clone().unwrap_or_default().to_lowercase();
+        let text = message
+            .content
+            .text
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
         entity_id_from_message(message).is_some()
             && has_relationship_context(&text)
             && text_contains_any(&text, &["update", "record", "note", "remember", "profile"])
@@ -1531,7 +1581,8 @@ impl EvaluatorHandler for ReflectionEvaluatorHandler {
     fn definition(&self) -> EvaluatorDefinition {
         EvaluatorDefinition {
             name: "REFLECTION".to_string(),
-            description: "Identify relationship-management intent in the current message".to_string(),
+            description: "Identify relationship-management intent in the current message"
+                .to_string(),
             always_run: Some(false),
             similes: Some(vec!["RELATIONSHIP_REFLECTION".to_string()]),
             examples: Vec::new(),
@@ -1539,7 +1590,12 @@ impl EvaluatorHandler for ReflectionEvaluatorHandler {
     }
 
     async fn validate(&self, message: &Memory, _state: Option<&State>) -> bool {
-        let text = message.content.text.clone().unwrap_or_default().to_lowercase();
+        let text = message
+            .content
+            .text
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
         ["contact", "follow up", "relationship", "friend", "family"]
             .iter()
             .any(|needle| text.contains(needle))

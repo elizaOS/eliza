@@ -51,7 +51,9 @@ export const removeContactAction: Action = {
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		try {
-			const relationshipsService = runtime.getService("relationships") as RelationshipsService;
+			const relationshipsService = runtime.getService(
+				"relationships",
+			) as RelationshipsService;
 			if (!relationshipsService) {
 				throw new Error("RelationshipsService not available");
 			}
@@ -108,7 +110,9 @@ export const removeContactAction: Action = {
 
 			const contact = contacts[0];
 
-			const removed = await relationshipsService.removeContact(contact.entityId);
+			const removed = await relationshipsService.removeContact(
+				contact.entityId,
+			);
 
 			if (removed) {
 				const responseText = `I've removed ${parsed.contactName} from your contacts.`;

@@ -1,12 +1,12 @@
-import {
-	type IAgentRuntime,
-	type JsonValue,
-	type MessagePayload,
-	type Plugin,
-	type RunEventPayload,
-} from "../../types";
 import crypto from "node:crypto";
 import { createUniqueUuid } from "../../entities";
+import type {
+	IAgentRuntime,
+	JsonValue,
+	MessagePayload,
+	Plugin,
+	RunEventPayload,
+} from "../../types";
 import { TrajectoriesService } from "./TrajectoriesService";
 
 const pendingTrajectoryStepByReplyId = new Map<string, string>();
@@ -14,17 +14,14 @@ const pendingTrajectoryStepByMessageId = new Map<string, string>();
 const pendingTrajectoryMessageIdByStepId = new Map<string, string>();
 const pendingTrajectoryEndTargetByStepId = new Map<string, string>();
 
-type TrajectoryFinalStatus =
-	| "completed"
-	| "error"
-	| "timeout"
-	| "terminated";
+type TrajectoryFinalStatus = "completed" | "error" | "timeout" | "terminated";
 
 function cleanupPendingTrajectory(
 	runtime: IAgentRuntime,
 	trajectoryStepId: string,
 ): void {
-	const sourceMessageId = pendingTrajectoryMessageIdByStepId.get(trajectoryStepId);
+	const sourceMessageId =
+		pendingTrajectoryMessageIdByStepId.get(trajectoryStepId);
 	if (sourceMessageId) {
 		pendingTrajectoryStepByMessageId.delete(sourceMessageId);
 		pendingTrajectoryStepByReplyId.delete(
@@ -57,9 +54,7 @@ async function endPendingTrajectory(
 	}
 }
 
-function getFinalStatusForRun(
-	payload: RunEventPayload,
-): TrajectoryFinalStatus {
+function getFinalStatusForRun(payload: RunEventPayload): TrajectoryFinalStatus {
 	if (payload.status === "timeout") {
 		return "timeout";
 	}
@@ -84,7 +79,7 @@ function buildTrajectoryMetadata(
 		typeof meta.channelType === "string" && meta.channelType.length > 0
 			? meta.channelType
 			: typeof message.content?.channelType === "string" &&
-				  message.content.channelType.length > 0
+					message.content.channelType.length > 0
 				? message.content.channelType
 				: null;
 	if (channelType) {
@@ -130,8 +125,7 @@ export const trajectoriesPlugin: Plugin = {
 				}
 				const meta = message.metadata as Record<string, unknown>;
 
-				const logger =
-					TrajectoriesService.resolveFromRuntime(runtime);
+				const logger = TrajectoriesService.resolveFromRuntime(runtime);
 				if (!logger) return;
 
 				// Start trajectory
@@ -234,7 +228,6 @@ export const trajectoriesPlugin: Plugin = {
 						"Failed to end trajectory logging",
 					);
 				}
-
 			},
 		],
 		RUN_ENDED: [
@@ -242,7 +235,8 @@ export const trajectoriesPlugin: Plugin = {
 				const { runtime, messageId } = payload;
 				if (!runtime || !messageId) return;
 
-				const trajectoryStepId = pendingTrajectoryStepByMessageId.get(messageId);
+				const trajectoryStepId =
+					pendingTrajectoryStepByMessageId.get(messageId);
 				if (!trajectoryStepId) return;
 
 				try {
@@ -269,7 +263,8 @@ export const trajectoriesPlugin: Plugin = {
 				const { runtime, messageId } = payload;
 				if (!runtime || !messageId) return;
 
-				const trajectoryStepId = pendingTrajectoryStepByMessageId.get(messageId);
+				const trajectoryStepId =
+					pendingTrajectoryStepByMessageId.get(messageId);
 				if (!trajectoryStepId) return;
 
 				try {
@@ -293,52 +288,45 @@ export const trajectoriesPlugin: Plugin = {
 export default trajectoriesPlugin;
 
 // ==========================================
-// SERVICE (Core trajectory logging)
-// ==========================================
-export { TrajectoriesService } from "./TrajectoriesService";
-export type {
-	TrajectoryListOptions,
-	TrajectoryListResult,
-	TrajectoryListItem,
-	TrajectoryStats,
-	TrajectoryExportOptions,
-	TrajectoryZipExportOptions,
-	TrajectoryZipEntry,
-	TrajectoryZipExportResult,
-} from "./TrajectoriesService";
-
-// ==========================================
-// CORE TYPES
-// ==========================================
-export * from "./types";
-
-// ==========================================
 // ACTION-LEVEL INSTRUMENTATION
 // For manual trajectory collection in actions
 // ==========================================
 export * from "./action-interceptor";
-
 // ==========================================
 // TRAJECTORY FORMAT CONVERSION
 // ==========================================
 export * from "./art-format";
-
 // ==========================================
 // DATA EXPORT
 // ==========================================
 export * from "./export";
-
 // ==========================================
 // GAME-KNOWLEDGE REWARDS
 // ==========================================
 export * from "./game-rewards";
-
 // ==========================================
 // ADVANCED: Manual Instrumentation
 // ==========================================
 export * from "./integration";
-
 // ==========================================
 // OPTIONAL: Heuristic Rewards
 // ==========================================
 export * from "./reward-service";
+export type {
+	TrajectoryExportOptions,
+	TrajectoryListItem,
+	TrajectoryListOptions,
+	TrajectoryListResult,
+	TrajectoryStats,
+	TrajectoryZipEntry,
+	TrajectoryZipExportOptions,
+	TrajectoryZipExportResult,
+} from "./TrajectoriesService";
+// ==========================================
+// SERVICE (Core trajectory logging)
+// ==========================================
+export { TrajectoriesService } from "./TrajectoriesService";
+// ==========================================
+// CORE TYPES
+// ==========================================
+export * from "./types";
