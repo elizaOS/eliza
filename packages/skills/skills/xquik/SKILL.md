@@ -7,7 +7,7 @@ metadata:
     "otto":
       {
         "emoji": "𝕏",
-        "requires": { "bins": ["curl", "jq"] },
+        "requires": { "bins": ["curl", "jq"], "env": ["XQUIK_API_KEY"] },
       },
   }
 ---
