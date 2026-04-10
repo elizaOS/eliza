@@ -202,7 +202,7 @@ traffic evenly.
 
 ## Optimizer Pipeline: Three Stages
 
-```
+```text
 AxBootstrapFewShot → AxGEPA → AxACE
 ```
 
@@ -271,7 +271,7 @@ weight-independent — they store and retrieve data without scoring it.
 
 ## Merge Format: Bracket Markers
 
-```
+```text
 [OPTIMIZED PLAYBOOK]
 ...content...
 [/OPTIMIZED PLAYBOOK]
