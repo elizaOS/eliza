@@ -1363,18 +1363,32 @@ export class DefaultMessageService implements IMessageService {
 
 				// A classifier output can either continue the turn or terminate it.
 				const nonResponseActions = ["IGNORE", "NONE", "STOP"];
-				const rawAction =
-					typeof responseObject?.action === "string"
-						? responseObject.action
-						: "";
+				const hasValidClassifierAction =
+					typeof responseObject?.action === "string" &&
+					responseObject.action.trim().length > 0;
+				const rawAction = hasValidClassifierAction ? responseObject.action : "";
 				const dual = applyDualPressureToClassifierAction(
 					runtime,
 					responseObject as Record<string, unknown> | null,
 					rawAction,
 				);
 				dualPressureLog = dual.pressure;
-				const actionUpper = dual.finalActionUpper;
-				shouldRespondClassifierAction = actionUpper.length > 0 ? actionUpper : null;
+				const actionUpper = hasValidClassifierAction
+					? dual.finalActionUpper
+					: "IGNORE";
+				shouldRespondClassifierAction = hasValidClassifierAction
+					? actionUpper
+					: null;
+
+				if (!hasValidClassifierAction) {
+					runtime.logger.warn(
+						{
+							src: "service:message",
+							action: responseObject?.action,
+						},
+						"Classifier response missing valid action; treating as IGNORE",
+					);
+				}
 
 				runtime.logger.debug(
 					{
