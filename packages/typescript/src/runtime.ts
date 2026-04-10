@@ -5384,48 +5384,38 @@ ${section_end}`;
 					kind: "retriesUsed",
 					value: 0.0,
 					reason: "All retry attempts exhausted",
-				});
+// Compute template hash using the imported simpleHash function
+		const failureTemplateHashInput =
+			typeof params.prompt === "string" ? params.prompt : tracePromptKey;
+		const failureTemplateHash = simpleHash(failureTemplateHashInput);
 
-				const simpleHash = (s: string) =>
-					s
-						.split("")
-						.reduce((h, c) => ((h * 31) ^ c.charCodeAt(0)) >>> 0, 5381)
-						.toString(16)
-						.slice(0, 8);
+		const trace: ExecutionTrace = {
+			id: uuidv4(),
+			traceVersion: 1,
+			type: "trace",
+			promptKey: tracePromptKey,
+			modelSlot: resolvedModelType,
+			modelId: traceModelId,
+			runId: this.getCurrentRunId?.() ?? undefined,
+			templateHash: failureTemplateHash,
+			schemaFingerprint: schemaKey,
+			artifactVersion: traceArtifactVersion,
+			variant: traceVariant,
+			parseSuccess: false,
+			schemaValid: false,
+			validationCodesMatched: false,
+			retriesUsed: maxRetries,
+			tokenEstimate: 0,
+			latencyMs: Date.now() - traceStartTime,
+			scoreCard: scoreCard.toJSON(),
+			createdAt: Date.now(),
+		};
 
-				const trace: ExecutionTrace = {
-					id: uuidv4(),
-					traceVersion: 1,
-					type: "trace",
-					promptKey: tracePromptKey,
-					modelSlot: resolvedModelType,
-					modelId: traceModelId,
-					runId: this.getCurrentRunId?.() ?? undefined,
-					templateHash: simpleHash(
-						typeof params.prompt === "string" ? params.prompt : tracePromptKey,
-					),
-					schemaFingerprint: schemaKey,
-					artifactVersion: traceArtifactVersion,
-					variant: traceVariant,
-					parseSuccess: false,
-					schemaValid: false,
-					validationCodesMatched: false,
-					retriesUsed: maxRetries,
-					tokenEstimate: 0,
-					latencyMs: Date.now() - traceStartTime,
-					scoreCard: scoreCard.toJSON(),
-					createdAt: Date.now(),
-				};
-
-				const optDir = this.getOptimizationDir();
-				void writePromptRegistryEntry(optDir, {
-					promptKey: tracePromptKey,
-					schemaFingerprint: schemaKey,
-					templateHash: simpleHash(
-						typeof params.prompt === "string" ? params.prompt : tracePromptKey,
-					),
-					promptTemplate:
-						typeof params.prompt === "string" ? params.prompt : "",
+		const optDir = this.getOptimizationDir();
+		void writePromptRegistryEntry(optDir, {
+			promptKey: tracePromptKey,
+			schemaFingerprint: schemaKey,
+			templateHash: failureTemplateHash,
 					schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
 				}).catch((err) => {
 					this.logger.warn(
