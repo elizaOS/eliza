@@ -36,6 +36,7 @@ describe("Prompts", () => {
 			expect(shouldRespondTemplate).toContain("anti_gaming:");
 			expect(shouldRespondTemplate).toContain("action_space:");
 			const actionSpaceIndex = shouldRespondTemplate.indexOf("action_space:");
+			expect(actionSpaceIndex).toBeGreaterThanOrEqual(0);
 			const outputIndex = shouldRespondTemplate.indexOf("output:");
 			expect(actionSpaceIndex).toBeLessThan(outputIndex);
 		});
