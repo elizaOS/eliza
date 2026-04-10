@@ -835,7 +835,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			expect(params.stream).toBe(true);
 		});
 
-		it("falls back from TEXT_MINI to TEXT_SMALL when no mini handler is registered", async () => {
+		it("falls back from TEXT_NANO to TEXT_SMALL when no nano handler is registered", async () => {
 			const smallHandler = vi.fn().mockResolvedValue("small-response");
 			runtime.registerModel(
 				ModelType.TEXT_SMALL,
@@ -844,21 +844,21 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			);
 
 			const result = await runtime.useModel(ModelType.TEXT_NANO, {
-				prompt: "mini request",
+				prompt: "nano request",
 			});
 
 			expect(smallHandler).toHaveBeenCalledTimes(1);
 			expect(result).toBe("small-response");
 		});
 
-		it("prefers TEXT_MINI over TEXT_SMALL when RESPONSE_HANDLER falls back", async () => {
-			const miniHandler = vi.fn().mockResolvedValue("mini-response");
+		it("prefers TEXT_NANO over TEXT_SMALL when RESPONSE_HANDLER falls back", async () => {
+			const nanoHandler = vi.fn().mockResolvedValue("nano-response");
 			const smallHandler = vi.fn().mockResolvedValue("small-response");
 
 			runtime.registerModel(
 				ModelType.TEXT_NANO,
-				miniHandler as ModelHandlerFunction,
-				"mini-provider",
+				nanoHandler as ModelHandlerFunction,
+				"nano-provider",
 			);
 			runtime.registerModel(
 				ModelType.TEXT_SMALL,
@@ -870,9 +870,9 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 				prompt: "should respond?",
 			});
 
-			expect(miniHandler).toHaveBeenCalledTimes(1);
+			expect(nanoHandler).toHaveBeenCalledTimes(1);
 			expect(smallHandler).not.toHaveBeenCalled();
-			expect(result).toBe("mini-response");
+			expect(result).toBe("nano-response");
 		});
 	});
 
