@@ -1545,6 +1545,10 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Order: explicit `options.model` → for each fallback slot, try
 	 * `OLLAMA_*`, `OPENAI_*`, `ANTHROPIC_*`, then unprefixed `*_MODEL` → else
 	 * return `resolvedModelType` (last resort).
+	 *
+	 * Note: This heuristic may not match the actual provider used when LLM_MODE
+	 * overrides or runtime fallbacks are in play. Consider passing effective
+	 * provider info from useModel() for more accurate trace attribution.
 	 */
 	resolveProviderModelString(
 		resolvedModelType: string,
@@ -1587,11 +1591,22 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Called by evaluators, action handlers, and plugin-neuro after the
 	 * initial DPE call returns. The enriched trace is persisted when
 	 * RUN_ENDED fires.
+	 *
+	 * If the signal includes a traceId, only that specific trace is enriched.
+	 * Otherwise, all traces for the run are enriched (legacy behavior for
+	 * run-level signals like continuation/correction).
 	 */
 	enrichTrace(runId: string, signal: ScoreSignal): void {
 		const traceIds = this.runToTraces.get(runId);
 		if (!traceIds) return;
+
+		// If signal targets a specific trace, only enrich that one
+		const targetTraceId = (signal as { traceId?: string }).traceId;
+
 		for (const tid of traceIds) {
+			// Skip if signal targets a specific trace and this isn't it
+			if (targetTraceId && tid !== targetTraceId) continue;
+
 			const trace = this.activeTraces.get(tid);
 			if (!trace) continue;
 			trace.scoreCard.signals.push(signal);
@@ -4514,13 +4529,13 @@ export class AgentRuntime implements IAgentRuntime {
 				typeof template === "function" ? template({ state }) : template;
 
 			// --- Optimization: resolve artifact and merge into template ---
+			// Per-attempt variant tracking: reset on each retry to ensure the
+			// terminal trace records the variant actually used for that attempt.
 			let finalTemplateStr = templateStr;
-			if (
-				optimizationEnabled &&
-				traceModelId &&
-				tracePromptKey &&
-				currentRetry === 0
-			) {
+			let attemptVariant: string = "baseline";
+			let attemptArtifactVersion: number | undefined;
+
+			if (optimizationEnabled && traceModelId && tracePromptKey) {
 				try {
 					const optDir = this.getOptimizationDir();
 					const resolver = getResolver(optDir);
@@ -4529,10 +4544,10 @@ export class AgentRuntime implements IAgentRuntime {
 						resolvedModelType,
 						tracePromptKey,
 					);
-					traceVariant = selectedVariant;
+					attemptVariant = selectedVariant;
 					if (artifact && selectedVariant === "optimized") {
 						finalTemplateStr = mergeArtifactIntoPrompt(templateStr, artifact);
-						traceArtifactVersion = artifact.version;
+						attemptArtifactVersion = artifact.version;
 					}
 				} catch (optErr) {
 					this.logger.warn(
@@ -4541,6 +4556,9 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 				}
 			}
+			// Update outer trace tracking to reflect this attempt's variant
+			traceVariant = attemptVariant;
+			traceArtifactVersion = attemptArtifactVersion;
 
 			// Get keys from state (excluding text, values, data)
 			const stateKeys = Object.keys(state);
