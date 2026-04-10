@@ -1374,7 +1374,7 @@ export class DefaultMessageService implements IMessageService {
 				);
 				dualPressureLog = dual.pressure;
 				const actionUpper = dual.finalActionUpper;
-				shouldRespondClassifierAction = actionUpper;
+				shouldRespondClassifierAction = actionUpper.length > 0 ? actionUpper : null;
 
 				runtime.logger.debug(
 					{
