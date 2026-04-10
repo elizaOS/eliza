@@ -1266,6 +1266,15 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespondToMessage = responseDecision.shouldRespond;
 			} else {
 				// Need LLM evaluation for ambiguous case
+				// Inject dualPressureThreshold into state so the prompt template can reference it
+				const dualPressureThreshold = resolveDualPressureThreshold(runtime);
+				state = {
+					...state,
+					values: {
+						...state.values,
+						dualPressureThreshold,
+					},
+				};
 				const _shouldRespondPrompt = composePromptFromState({
 					state,
 					template:
@@ -1809,8 +1818,10 @@ export class DefaultMessageService implements IMessageService {
 			responseMessages,
 			state,
 			mode,
-			// Expose classifier outcome only when the LLM path ran (null sentinel set in that branch).
-			...(shouldRespondClassifierAction !== null
+			// Expose classifier outcome only when the LLM path ran and returned a valid action.
+			// Gate excludes empty-string or null actions so callers don't need to handle sentinel values.
+			...(shouldRespondClassifierAction != null &&
+			shouldRespondClassifierAction !== ""
 				? {
 						dualPressure: dualPressureLog,
 						shouldRespondClassifierAction,
