@@ -5180,9 +5180,14 @@ ${section_end}`;
 						};
 
 						// Store in activeTraces for downstream enrichment.
-						// Prune stale entries periodically (every 100 calls) to prevent memory leaks
-						// when plugin-neuro is not active or RUN_ENDED never fires.
-						this.maybeRunActiveTraceTTLPurge();
+				// Prune stale entries on a low-frequency interval (every 100 calls) to prevent
+				// memory leaks when plugin-neuro is not active or RUN_ENDED never fires,
+				// while avoiding O(n) TTL scan overhead on every DPE call.
+				this.dpePurgeCounter = (this.dpePurgeCounter ?? 0) + 1;
+				if (this.dpePurgeCounter >= 100) {
+					this.dpePurgeCounter = 0;
+					this.maybeRunActiveTraceTTLPurge();
+				}
 						const runId = trace.runId;
 						if (runId) {
 							this.activeTraces.set(trace.id, trace);
