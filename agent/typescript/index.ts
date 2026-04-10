@@ -476,9 +476,7 @@ async function main(): Promise<void> {
 	const callback: HandlerCallback = async (response: Content) => {
 		const text = response?.text;
 		if (text) {
-			console.log('==============================================');
 			output.write(`${text}\n`);
-			console.log('==============================================');
 		}
 		return [];
 	};
