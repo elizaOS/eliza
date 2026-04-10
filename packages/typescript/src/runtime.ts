@@ -4645,10 +4645,7 @@ ${section_end}`;
 			let parseErrorMessage: string | undefined;
 			const validationIssues: string[] = [];
 			try {
-				responseContent = this.parseStructuredResponse(
-					cleanResponse,
-					format,
-				);
+				responseContent = this.parseStructuredResponse(cleanResponse, format);
 				this.logger.debug(
 					`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
 				);
@@ -5674,10 +5671,7 @@ ${section_end}`;
 
 					const parsed = parseJSONObjectFromText(candidate.text);
 					if (parsed) {
-						if (
-							candidate.source !== "raw" ||
-							expectedFormat !== "JSON"
-						) {
+						if (candidate.source !== "raw" || expectedFormat !== "JSON") {
 							this.logger.debug(
 								`dynamicPromptExecFromState recovered JSON from ${candidate.source}`,
 							);
@@ -5696,10 +5690,7 @@ ${section_end}`;
 
 				const parsed = parseKeyValueXml(candidate.text);
 				if (parsed) {
-					if (
-						candidate.source !== "raw" ||
-						expectedFormat === "JSON"
-					) {
+					if (candidate.source !== "raw" || expectedFormat === "JSON") {
 						this.logger.debug(
 							`dynamicPromptExecFromState recovered ${candidate.formats.includes("TOON") ? "TOON/XML" : "XML"} from ${candidate.source}`,
 						);
@@ -5729,10 +5720,7 @@ ${section_end}`;
 			}
 
 			const formats = Array.from(
-				new Set([
-					...hints,
-					...this.detectStructuredResponseFormats(trimmed),
-				]),
+				new Set([...hints, ...this.detectStructuredResponseFormats(trimmed)]),
 			);
 			if (formats.length === 0) {
 				return;
@@ -5894,7 +5882,11 @@ ${section_end}`;
 			return trimmed;
 		}
 
-		for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
+		for (
+			let start = text.indexOf("{");
+			start !== -1;
+			start = text.indexOf("{", start + 1)
+		) {
 			const candidate = this.extractBalancedJsonObject(text, start);
 			if (candidate && this.looksLikeJsonObject(candidate)) {
 				return candidate.trim();
