@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getEntityDetails } from "../../entities.ts";
 import { requireEvaluatorSpec } from "../../generated/spec-helpers.ts";
 import { reflectionEvaluatorTemplate } from "../../prompts.ts";
+import { MemoryType } from "../../types/memory.ts";
 import type {
 	ActionResult,
 	Entity,
@@ -19,6 +20,11 @@ import {
 	parseJSONObjectFromText,
 	parseKeyValueXml,
 } from "../../utils.ts";
+import {
+	formatTaskCompletionStatus,
+	getTaskCompletionCacheKey,
+	type TaskCompletionAssessment,
+} from "./task-completion.ts";
 
 // Get text content from centralized specs
 const spec = requireEvaluatorSpec("REFLECTION");
@@ -40,7 +46,13 @@ interface RelationshipXml {
 }
 
 /** Shape of the reflection XML response */
+interface TaskCompletionXml {
+	completed?: string | boolean;
+	reason?: string;
+}
+
 interface ReflectionXmlResult {
+	thought?: string;
 	facts?:
 		| {
 				fact?: FactXml | FactXml[];
@@ -51,6 +63,12 @@ interface ReflectionXmlResult {
 				relationship?: RelationshipXml | RelationshipXml[];
 		  }
 		| RelationshipXml[];
+	task?: TaskCompletionXml;
+	taskCompletion?: TaskCompletionXml;
+	task_completed?: string | boolean;
+	taskCompleted?: string | boolean;
+	task_completion_reason?: string;
+	taskCompletionReason?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -152,6 +170,30 @@ function isFalseLike(value: unknown): boolean {
 	return value === false || value === "false";
 }
 
+function parseBooleanLike(value: unknown): boolean | null {
+	if (typeof value === "boolean") {
+		return value;
+	}
+
+	if (typeof value === "number") {
+		if (value === 1) return true;
+		if (value === 0) return false;
+		return null;
+	}
+
+	if (typeof value === "string") {
+		const normalized = value.trim().toLowerCase();
+		if (normalized === "true" || normalized === "yes" || normalized === "1") {
+			return true;
+		}
+		if (normalized === "false" || normalized === "no" || normalized === "0") {
+			return false;
+		}
+	}
+
+	return null;
+}
+
 // Best-effort guardrail for long-term memory: even if the model emits a fact,
 // do not store obviously transient session/debug/status chatter.
 const TEMPORARY_REFLECTION_FACT_PATTERNS = [
@@ -242,17 +284,52 @@ function extractJsonReflectionRecord(
 	);
 
 	for (const candidate of candidates) {
-		if (!("facts" in candidate) && !("relationships" in candidate)) {
+		if (
+			!("facts" in candidate) &&
+			!("relationships" in candidate) &&
+			!("thought" in candidate) &&
+			!("task" in candidate) &&
+			!("taskCompletion" in candidate) &&
+			!("task_completed" in candidate) &&
+			!("taskCompleted" in candidate) &&
+			!("task_completion_reason" in candidate) &&
+			!("taskCompletionReason" in candidate)
+		) {
 			continue;
 		}
 
 		const reflection: ReflectionXmlResult = {};
+		if ("thought" in candidate && typeof candidate.thought === "string") {
+			reflection.thought = candidate.thought;
+		}
 		if ("facts" in candidate) {
 			reflection.facts = candidate.facts as ReflectionXmlResult["facts"];
 		}
 		if ("relationships" in candidate) {
 			reflection.relationships =
 				candidate.relationships as ReflectionXmlResult["relationships"];
+		}
+		if ("task" in candidate && isRecord(candidate.task)) {
+			reflection.task = candidate.task as TaskCompletionXml;
+		}
+		if ("taskCompletion" in candidate && isRecord(candidate.taskCompletion)) {
+			reflection.taskCompletion = candidate.taskCompletion as TaskCompletionXml;
+		}
+		if ("task_completed" in candidate) {
+			reflection.task_completed =
+				candidate.task_completed as ReflectionXmlResult["task_completed"];
+		}
+		if ("taskCompleted" in candidate) {
+			reflection.taskCompleted =
+				candidate.taskCompleted as ReflectionXmlResult["taskCompleted"];
+		}
+		if ("task_completion_reason" in candidate) {
+			reflection.task_completion_reason =
+				candidate.task_completion_reason as string;
+		}
+		if ("taskCompletionReason" in candidate) {
+			reflection.taskCompletionReason =
+				candidate.taskCompletionReason as string;
 		}
 
 		return reflection;
@@ -404,6 +481,130 @@ function resolveEntity(entityId: string, entities: Entity[]): UUID {
 
 	throw new Error(`Could not resolve entityId "${entityId}" to a valid UUID`);
 }
+
+function formatActionResults(actionResults: ActionResult[]): string {
+	if (actionResults.length === 0) {
+		return "No action results available.";
+	}
+
+	return actionResults
+		.map((result, index) => {
+			const actionName =
+				typeof result.data?.actionName === "string"
+					? result.data.actionName
+					: "unknown action";
+			const lines = [
+				`${index + 1}. ${actionName} - ${result.success === false ? "failed" : "succeeded"}`,
+			];
+			if (typeof result.text === "string" && result.text.trim()) {
+				lines.push(`output: ${result.text.trim().slice(0, 500)}`);
+			}
+			if (result.error) {
+				lines.push(
+					`error: ${
+						result.error instanceof Error
+							? result.error.message.slice(0, 300)
+							: String(result.error).slice(0, 300)
+					}`,
+				);
+			}
+			return lines.join("\n");
+		})
+		.join("\n\n");
+}
+
+function normalizeTaskCompletion(
+	reflection: ReflectionXmlResult,
+	messageId?: UUID,
+): TaskCompletionAssessment {
+	const nestedTask = isRecord(reflection.task)
+		? reflection.task
+		: isRecord(reflection.taskCompletion)
+			? reflection.taskCompletion
+			: null;
+	const completed =
+		parseBooleanLike(reflection.task_completed) ??
+		parseBooleanLike(reflection.taskCompleted) ??
+		parseBooleanLike(nestedTask?.completed) ??
+		false;
+	const reasonCandidate =
+		typeof reflection.task_completion_reason === "string"
+			? reflection.task_completion_reason
+			: typeof reflection.taskCompletionReason === "string"
+				? reflection.taskCompletionReason
+				: typeof nestedTask?.reason === "string"
+					? nestedTask.reason
+					: "";
+	const reason = reasonCandidate.trim();
+	const assessed =
+		parseBooleanLike(reflection.task_completed) !== null ||
+		parseBooleanLike(reflection.taskCompleted) !== null ||
+		parseBooleanLike(nestedTask?.completed) !== null ||
+		reason.length > 0;
+
+	return {
+		assessed,
+		completed,
+		reason:
+			reason ||
+			(assessed
+				? completed
+					? "The task is complete."
+					: "The task is not complete yet."
+				: "The reflection model did not return a task completion assessment."),
+		source: "reflection",
+		evaluatedAt: Date.now(),
+		messageId,
+	};
+}
+
+async function storeTaskCompletionReflection(
+	runtime: IAgentRuntime,
+	message: Memory,
+	reflection: ReflectionXmlResult,
+	taskCompletion: TaskCompletionAssessment,
+): Promise<void> {
+	const summaryText = taskCompletion.assessed
+		? `Task completion reflection: ${
+				taskCompletion.completed ? "completed" : "incomplete"
+			}. ${taskCompletion.reason}`
+		: `Task completion reflection unavailable. ${taskCompletion.reason}`;
+
+	await runtime.createMemory(
+		{
+			id: asUUID(v4()),
+			entityId: runtime.agentId,
+			agentId: runtime.agentId,
+			roomId: message.roomId,
+			content: {
+				text: summaryText,
+				type: "task_completion_reflection",
+			},
+			metadata: {
+				type: MemoryType.CUSTOM,
+				source: "reflection",
+				messageId: message.id,
+				taskCompleted: taskCompletion.completed,
+				taskAssessed: taskCompletion.assessed,
+				taskCompletionReason: taskCompletion.reason,
+				reflectionThought:
+					typeof reflection.thought === "string" ? reflection.thought : "",
+				tags: ["reflection", "task_completion"],
+				evaluatedAt: taskCompletion.evaluatedAt,
+			},
+			createdAt: Date.now(),
+		},
+		"memories",
+	);
+
+	if (message.id) {
+		await runtime.setCache<TaskCompletionAssessment>(
+			getTaskCompletionCacheKey(message.id),
+			taskCompletion,
+		);
+	}
+}
+
 async function handler(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -423,6 +624,8 @@ async function handler(
 		return undefined;
 	}
 
+	const actionResults = message.id ? runtime.getActionResults(message.id) : [];
+
 	// Run all queries in parallel
 	const [existingRelationships, entities, knownFacts] = await Promise.all([
 		runtime.getRelationships({
@@ -441,6 +644,7 @@ async function handler(
 		state: {
 			...(state?.values || {}),
 			knownFacts: formatFacts(knownFacts),
+			actionResults: formatActionResults(actionResults),
 			roomType: message.content.channelType as string,
 			entitiesInRoom: JSON.stringify(entities),
 			existingRelationships: JSON.stringify(existingRelationships),
@@ -482,6 +686,12 @@ async function handler(
 		);
 		return undefined;
 	}
+
+	const taskCompletion = normalizeTaskCompletion(
+		reflection,
+		message.id as UUID | undefined,
+	);
+	await storeTaskCompletionReflection(runtime, message, reflection, taskCompletion);
 
 	// Allow omitted lists when the model has nothing new to add, but still warn
 	// on malformed non-empty structures that the normalizer cannot interpret.
@@ -647,40 +857,41 @@ async function handler(
 		`${message.roomId}-reflection-last-processed`,
 		message?.id || "",
 	);
+
+	return {
+		success: true,
+		text: formatTaskCompletionStatus(taskCompletion),
+		values: {
+			taskCompleted: taskCompletion.completed,
+			taskCompletionAssessed: taskCompletion.assessed,
+			taskCompletionReason: taskCompletion.reason,
+		},
+		data: {
+			taskCompletion,
+			factCount: newFacts.length,
+			relationshipCount: relationshipsArray.length,
+		},
+	};
 }
 
 export const reflectionEvaluator: Evaluator = {
 	name: spec.name,
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
-	alwaysRun: spec.alwaysRun ?? false,
+	alwaysRun: spec.alwaysRun ?? true,
 	examples: (spec.examples ?? []) as EvaluationExample[],
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
 	): Promise<boolean> => {
+		if (!message.content?.text?.trim()) {
+			return false;
+		}
+
 		const lastMessageId = await runtime.getCache<string>(
 			`${message.roomId}-reflection-last-processed`,
 		);
-		const messages = await runtime.getMemories({
-			tableName: "messages",
-			roomId: message.roomId,
-			count: runtime.getConversationLength(),
-		});
-
-		let remainingCount = messages.length;
-		if (lastMessageId) {
-			const lastMessageIndex = messages.findIndex(
-				(msg) => msg.id === lastMessageId,
-			);
-			if (lastMessageIndex !== -1) {
-				remainingCount = messages.length - (lastMessageIndex + 1);
-			}
-		}
-
-		const reflectionInterval = Math.ceil(runtime.getConversationLength() / 4);
-
-		return remainingCount > reflectionInterval;
+		return lastMessageId !== (message.id ?? "");
 	},
 	handler,
 };

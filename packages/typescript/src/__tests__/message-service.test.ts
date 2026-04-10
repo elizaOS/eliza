@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelType, ContentType, EventType, ModelType } from "../index";
+import { getTaskCompletionCacheKey } from "../advanced-capabilities/evaluators/task-completion";
 import { DefaultMessageService } from "../services/message";
 import type { Content, HandlerCallback, Memory, State, UUID } from "../types";
 import type { IMessageService } from "../types/message-service";
@@ -516,6 +517,34 @@ describe("DefaultMessageService", () => {
 			expect(result.shouldRespond).toBe(false);
 			expect(result.skipEvaluation).toBe(false);
 			expect(result.reason).toContain("needs LLM evaluation");
+		});
+
+		it("should auto-respond to explicit self-modification requests in group chat", () => {
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174018" as UUID,
+				content: {
+					text: "Update its personality to be warmer and less verbose",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const room = {
+				id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				type: ChannelType.GROUP,
+				name: "Group",
+				worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
+				source: "test",
+			};
+
+			const result = messageService.shouldRespond(runtime, message, room);
+
+			expect(result.shouldRespond).toBe(true);
+			expect(result.skipEvaluation).toBe(true);
+			expect(result.reason).toContain("self-modification");
 		});
 
 		it("should return false if no room context provided", () => {
@@ -1604,6 +1633,99 @@ describe("DefaultMessageService", () => {
 
 			expect(runtime.processActions).toHaveBeenCalledTimes(1);
 			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(1);
+		});
+
+		it("continues the turn when reflection marks the task incomplete", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+
+			const cache = new Map<string, unknown>();
+			vi.spyOn(runtime, "setCache").mockImplementation(async (key, value) => {
+				cache.set(key, value);
+				return true;
+			});
+			vi.spyOn(runtime, "getCache").mockImplementation(
+				async (key) => cache.get(key) as never,
+			);
+			vi.spyOn(runtime, "deleteCache").mockImplementation(async (key) => {
+				cache.delete(key);
+				return true;
+			});
+
+			const dynamicPromptSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Acknowledge first",
+					actions: "REPLY",
+					text: "Working on it.",
+					simple: true,
+				})
+				.mockResolvedValueOnce({
+					thought: "Need to actually run the command",
+					actions: "SHELL",
+					text: "",
+					simple: false,
+				})
+				.mockResolvedValueOnce({
+					thought: "Share the grounded result",
+					actions: "REPLY",
+					text: "It's clean.",
+					simple: true,
+				});
+
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+			vi.spyOn(runtime, "getActionResults")
+				.mockReturnValueOnce([])
+				.mockReturnValueOnce([
+					{
+						success: true,
+						text: "On branch main\nnothing to commit, working tree clean",
+						data: { actionName: "SHELL" },
+					},
+				]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026a" as UUID,
+				content: {
+					text: "run git status",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			vi.spyOn(runtime, "evaluate").mockImplementation(async () => {
+				await runtime.setCache(getTaskCompletionCacheKey(message.id), {
+					assessed: true,
+					completed: false,
+					reason: "The lookup has not run yet.",
+					source: "reflection",
+					evaluatedAt: Date.now(),
+					messageId: message.id,
+				});
+				return [];
+			});
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).toHaveBeenCalledTimes(1);
+			expect(dynamicPromptSpy).toHaveBeenCalledTimes(3);
+			const continuationState = dynamicPromptSpy.mock.calls[1]?.[0]
+				?.state as State;
+			expect(continuationState.values.taskCompletionStatus).toContain(
+				"The lookup has not run yet.",
+			);
+			expect(result.didRespond).toBe(true);
+			expect(result.responseContent?.text).toBe("It's clean.");
+			expect(mockCallback).toHaveBeenCalledWith(
+				expect.objectContaining({ text: "It's clean." }),
+			);
 		});
 
 		it("falls back to an error reply when structured output parsing fails", async () => {

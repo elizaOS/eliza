@@ -2643,7 +2643,7 @@ export const coreEvaluatorsSpec = {
 				"EVALUATE_INTERACTION",
 				"ASSESS_SITUATION",
 			],
-			alwaysRun: false,
+			alwaysRun: true,
 			examples: [
 				{
 					prompt:
@@ -2752,7 +2752,7 @@ export const coreEvaluatorsSpec = {
 				"SOCIAL_GRAPH_BUILDER",
 				"CONTACT_EXTRACTOR",
 			],
-			alwaysRun: false,
+			alwaysRun: true,
 			examples: [
 				{
 					prompt: "User introduces themselves with social media",
@@ -2808,7 +2808,7 @@ export const allEvaluatorsSpec = {
 				"EVALUATE_INTERACTION",
 				"ASSESS_SITUATION",
 			],
-			alwaysRun: false,
+			alwaysRun: true,
 			examples: [
 				{
 					prompt:
@@ -2917,7 +2917,7 @@ export const allEvaluatorsSpec = {
 				"SOCIAL_GRAPH_BUILDER",
 				"CONTACT_EXTRACTOR",
 			],
-			alwaysRun: false,
+			alwaysRun: true,
 			examples: [
 				{
 					prompt: "User introduces themselves with social media",

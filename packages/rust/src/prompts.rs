@@ -5,7 +5,6 @@
 //! - {{variableName}} for simple substitution
 //! - {{#each items}}...{{/each}} for iteration
 //! - {{#if condition}}...{{/if}} for conditionals
-#![allow(missing_docs)]
 
 pub const ADD_CONTACT_TEMPLATE: &str = r#"task: Extract contact information to add to the relationships.
 
@@ -153,13 +152,52 @@ prompt: Detailed image generation prompt
 
 IMPORTANT: Your response must ONLY contain the TOON document above."#;
 
+pub const MESSAGE_CLASSIFIER_TEMPLATE: &str = r#"Analyze this user request and classify it for planning purposes:
+
+"{{text}}"
+
+Classify the request across these dimensions:
+
+1. COMPLEXITY LEVEL:
+- simple: Direct actions that don't require planning
+- medium: Multi-step tasks requiring coordination
+- complex: Strategic initiatives with multiple stakeholders
+- enterprise: Large-scale transformations with full complexity
+
+2. PLANNING TYPE:
+- direct_action: Single action, no planning needed
+- sequential_planning: Multiple steps in sequence
+- strategic_planning: Complex coordination with stakeholders
+
+3. REQUIRED CAPABILITIES:
+- List specific capabilities needed (analysis, communication, project_management, etc.)
+
+4. STAKEHOLDERS:
+- List types of people/groups involved
+
+5. CONSTRAINTS:
+- List limitations or requirements mentioned
+
+6. DEPENDENCIES:
+- List dependencies between tasks or external factors
+
+Respond in this exact format:
+COMPLEXITY: [simple|medium|complex|enterprise]
+PLANNING: [direct_action|sequential_planning|strategic_planning]
+CAPABILITIES: [comma-separated list]
+STAKEHOLDERS: [comma-separated list]
+CONSTRAINTS: [comma-separated list]
+DEPENDENCIES: [comma-separated list]
+CONFIDENCE: [0.0-1.0]"#;
+
 pub const MESSAGE_HANDLER_TEMPLATE: &str = r#"task: Generate dialog and actions for {{agentName}}.
 
 context:
 {{providers}}
 
-rules[8]:
+rules[9]:
 - think briefly, then respond
+- always include a <thought> field, even for direct replies
 - actions execute in listed order
 - if replying, REPLY goes first
 - use IGNORE or STOP only by themselves
@@ -198,44 +236,6 @@ Example:
   <text>Your message here</text>
   <simple>true</simple>
 </response>"#;
-
-pub const MESSAGE_CLASSIFIER_TEMPLATE: &str = r#"Analyze this user request and classify it for planning purposes:
-
-"{{text}}"
-
-Classify the request across these dimensions:
-
-1. COMPLEXITY LEVEL:
-- simple: Direct actions that don't require planning
-- medium: Multi-step tasks requiring coordination
-- complex: Strategic initiatives with multiple stakeholders
-- enterprise: Large-scale transformations with full complexity
-
-2. PLANNING TYPE:
-- direct_action: Single action, no planning needed
-- sequential_planning: Multiple steps in sequence
-- strategic_planning: Complex coordination with stakeholders
-
-3. REQUIRED CAPABILITIES:
-- List specific capabilities needed (analysis, communication, project_management, etc.)
-
-4. STAKEHOLDERS:
-- List types of people/groups involved
-
-5. CONSTRAINTS:
-- List limitations or requirements mentioned
-
-6. DEPENDENCIES:
-- List dependencies between tasks or external factors
-
-Respond in this exact format:
-COMPLEXITY: [simple|medium|complex|enterprise]
-PLANNING: [direct_action|sequential_planning|strategic_planning]
-CAPABILITIES: [comma-separated list]
-STAKEHOLDERS: [comma-separated list]
-CONSTRAINTS: [comma-separated list]
-DEPENDENCIES: [comma-separated list]
-CONFIDENCE: [0.0-1.0]"#;
 
 pub const MULTI_STEP_DECISION_TEMPLATE: &str = r#"Determine the next step the assistant should take in this conversation to help the user reach their goal.
 
@@ -342,7 +342,10 @@ recent conversation:
 recent action results:
 {{actionResults}}
 
-rules[9]:
+latest reflection task status:
+{{taskCompletionStatus}}
+
+rules[10]:
 - think briefly, then continue the task from the latest action results
 - actions execute in listed order
 - if replying, REPLY goes first
@@ -351,6 +354,7 @@ rules[9]:
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them under params keyed by action name
 - if a required param is unknown, ask for clarification in text
+- if reflection says the task is incomplete, keep working or explain the concrete follow-up you still need
 - if the task is complete, either reply to the user or use STOP to end the run
 - STOP is a terminal control action even if it is not listed in available actions
 
@@ -422,6 +426,9 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 # Known Facts:
 {{knownFacts}}
 
+# Latest Action Results:
+{{actionResults}}
+
 # Instructions:
 1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
 2. Extract only durable new facts from the conversation.
@@ -434,12 +441,18 @@ Message Sender: {{senderName}} (ID: {{senderId}})
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
 4. It is normal to return no facts when nothing durable was learned.
+5. Always decide whether the user's task or request is actually complete right now.
+  - Set `task_completed: true` only if the user no longer needs additional action or follow-up from you in this turn.
+  - If you asked a clarifying question, an action failed, work is still pending, or you only partially completed the request, set `task_completed: false`.
+6. Always include a short `task_completion_reason` grounded in the conversation and action results.
 
 Output:
 TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
 Do not output JSON, XML, Markdown fences, or commentary.
 Use indexed TOON fields exactly like this:
 thought: "a self-reflective thought on the conversation"
+task_completed: false
+task_completion_reason: "The request is still incomplete because the needed action has not happened yet."
 facts[0]:
   claim: durable factual statement
   type: fact
@@ -451,6 +464,7 @@ relationships[0]:
   tags[0]: dm_interaction
 
 For additional entries, increment the index: facts[1], relationships[1], tags[1], etc.
+Always include `task_completed` and `task_completion_reason`.
 If there are no durable new facts, omit all facts[...] entries.
 If there are no relationships, omit all relationships[...] entries.
 
@@ -627,6 +641,14 @@ rules[6]:
 - if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
 - if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
 
+available_contexts:
+{{availableContexts}}
+
+context_routing:
+- primaryContext: choose one context from available_contexts, or "general" if none apply
+- secondaryContexts: optional comma-separated list of additional relevant contexts
+- evidenceTurnIds: optional comma-separated list of message IDs supporting the decision
+
 decision_note:
 - respond only when the latest message is talking TO {{agentName}}
 - talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
@@ -642,7 +664,52 @@ TOON only. Return exactly one TOON document. No prose before or after it. No <th
 Example:
 name: {{agentName}}
 reasoning: Direct mention and clear follow-up.
-action: RESPOND"#;
+action: RESPOND
+primaryContext: general
+secondaryContexts:
+evidenceTurnIds:"#;
+
+pub const SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE: &str = r#"task: Decide whether {{agentName}} should respond and which domain context applies.
+
+context:
+{{providers}}
+
+available_contexts:
+{{availableContexts}}
+
+rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
+
+context_routing:
+- primaryContext: the single best-matching domain from available_contexts
+- secondaryContexts: zero or more additional domains that are relevant
+- action intent does not only come from the last message; consider the full recent conversation
+- if no specific domain applies, use "general"
+
+decision_note:
+- respond only when the latest message is talking TO {{agentName}}
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
+- mentions of other people do not cancel a direct address to {{agentName}}
+- casual conversation between other users is not enough
+- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
+- context routing always applies, even for IGNORE/STOP decisions
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention asking about token balance.
+action: RESPOND
+primaryContext: wallet
+secondaryContexts: []"#;
 
 pub const SHOULD_UNFOLLOW_ROOM_TEMPLATE: &str = r#"task: Decide whether {{agentName}} should unfollow this room.
 

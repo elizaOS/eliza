@@ -51,6 +51,7 @@ export const relationshipExtractionEvaluator: Evaluator = {
 	name: "RELATIONSHIP_EXTRACTION",
 	description:
 		"Passively extracts and updates relationship information from conversations",
+	alwaysRun: true,
 	similes: [
 		"RELATIONSHIP_ANALYZER",
 		"SOCIAL_GRAPH_BUILDER",
