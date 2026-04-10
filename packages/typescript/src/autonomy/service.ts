@@ -737,6 +737,13 @@ export class AutonomyService extends Service {
 	 * pipeline so the execution facade consumes batcher output without a separate contract.
 	 */
 	private registerAutonomyBatcherSection(): void {
+		if (!this.runtime.promptBatcher) {
+			this.runtime.logger.warn(
+				{ src: "autonomy", agentId: this.runtime.agentId },
+				"promptBatcher not available, cannot register autonomy section",
+			);
+			return;
+		}
 		this.runtime.promptBatcher.think("autonomy", {
 			contextBuilder: async (_runtime, _messages) => {
 				return await this.buildAutonomyContextForBatcher();
@@ -934,7 +941,7 @@ export class AutonomyService extends Service {
 
 		// WHY: Section is immutable once added; to change minCycleMs we remove and re-register with the new interval.
 		if (this.isRunning) {
-			this.runtime.promptBatcher.removeSection("autonomy");
+			this.runtime.promptBatcher?.removeSection("autonomy");
 			this.registerAutonomyBatcherSection();
 		}
 	}
@@ -965,7 +972,7 @@ export class AutonomyService extends Service {
 	async disableAutonomy(): Promise<void> {
 		this.runtime.enableAutonomy = false;
 		if (this.isRunning) {
-			this.runtime.promptBatcher.removeSection("autonomy");
+			this.runtime.promptBatcher?.removeSection("autonomy");
 			this.isRunning = false;
 		}
 	}
@@ -1033,7 +1040,7 @@ export class AutonomyService extends Service {
 	 * Stop the service
 	 */
 	async stop(): Promise<void> {
-		this.runtime.promptBatcher.removeSection("autonomy");
+		this.runtime.promptBatcher?.removeSection("autonomy");
 		this.isRunning = false;
 		this.runtime.logger.info(
 			{ src: "autonomy", agentId: this.runtime.agentId },
