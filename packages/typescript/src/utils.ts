@@ -511,14 +511,24 @@ export const formatMessages = ({
 				? ` (Attachments: ${attachments
 						.map((media) => {
 							const lines = [`[${media.id} - ${media.title} (${media.url})]`];
-							if (media.text) lines.push(`Text: ${media.text}`);
-							if (media.description)
-								lines.push(`Description: ${media.description}`);
+							if (media.contentType) {
+								lines.push(`Type: ${media.contentType}`);
+							}
+							if (media.text || media.description) {
+								lines.push(
+									"Stored content available via READ_ATTACHMENT",
+								);
+							}
 							return lines.join("\n");
 						})
 						.join(
 							// Use comma separator only if all attachments are single-line (no text/description)
-							attachments.every((media) => !media.text && !media.description)
+							attachments.every(
+								(media) =>
+									!media.text &&
+									!media.description &&
+									!media.contentType,
+							)
 								? ", "
 								: "\n",
 						)})`
