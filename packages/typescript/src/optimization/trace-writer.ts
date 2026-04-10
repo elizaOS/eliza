@@ -1,4 +1,4 @@
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sanitizeModelId } from "./resolver.ts";
 import type {
@@ -118,7 +118,6 @@ export class TraceWriter {
 		slotKey: SlotKey,
 	): Promise<ExecutionTrace[]> {
 		const path = this.getHistoryPath(modelId, slotKey);
-		const { readFile } = await import("node:fs/promises");
 		let content: string;
 		try {
 			content = await readFile(path, "utf-8");
