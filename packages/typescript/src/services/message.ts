@@ -1385,9 +1385,10 @@ export class DefaultMessageService implements IMessageService {
 				const actionUpper = hasValidClassifierAction
 					? dual.finalActionUpper
 					: "IGNORE";
-				shouldRespondClassifierAction = hasValidClassifierAction
-					? actionUpper
-					: null;
+				// Ensure shouldRespondClassifierAction is null for invalid/empty actions
+				// to maintain clean sentinel semantics for callers
+				shouldRespondClassifierAction =
+					hasValidClassifierAction && actionUpper.length > 0 ? actionUpper : null;
 
 				if (!hasValidClassifierAction) {
 					runtime.logger.warn(
