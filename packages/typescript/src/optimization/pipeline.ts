@@ -37,6 +37,8 @@ export class DefaultOptimizerPipeline implements OptimizerPipeline {
 			config.traces,
 			config.signalWeights,
 		);
+		// Use the same merged weights for metricFn as computeBaselineScore uses
+		const effectiveWeights = { ...DEFAULT_SIGNAL_WEIGHTS, ...config.signalWeights };
 
 		let currentInstructions = "";
 		let currentDemos = "";
@@ -59,9 +61,9 @@ export class DefaultOptimizerPipeline implements OptimizerPipeline {
 					existingInstructions: currentInstructions || undefined,
 					existingPlaybook: currentPlaybook || undefined,
 					metricFn: (trace) => {
-						const card = ScoreCard.fromJSON(trace.scoreCard);
-						return card.composite(config.signalWeights);
-					},
+					const card = ScoreCard.fromJSON(trace.scoreCard);
+					return card.composite(effectiveWeights);
+				},
 					multiMetricFn: (trace) => {
 						const card = ScoreCard.fromJSON(trace.scoreCard);
 						return Object.fromEntries(
