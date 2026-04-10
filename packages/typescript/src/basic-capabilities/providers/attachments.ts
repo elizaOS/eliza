@@ -95,8 +95,10 @@ export const attachmentsProvider: Provider = {
     Name: ${attachment.title}
     URL: ${attachment.url}
     Type: ${attachment.source}
-    Description: ${attachment.description}
-    Text: ${attachment.text}
+    Content Type: ${attachment.contentType ?? "unknown"}
+    Stored Content: ${
+			attachment.text || attachment.description ? "available via READ_ATTACHMENT" : "none"
+		}
     `,
 			)
 			.join("\n");

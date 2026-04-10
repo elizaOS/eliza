@@ -26,11 +26,17 @@ export const TOOL_NAME_ALIASES: Record<string, string> = {
  */
 export const TOOL_GROUPS: Record<string, string[]> = {
 	// Memory tools (provided by plugin-scratchpad)
-	"group:memory": ["scratchpad_search", "scratchpad_read"],
+	"group:memory": [
+		"scratchpad_search",
+		"scratchpad_read",
+		"read_attachment",
+		"add_to_scratchpad",
+		"remove_from_scratchpad",
+	],
 	// Web tools
 	"group:web": ["web_search", "web_fetch"],
 	// Basic workspace/file tools
-	"group:fs": ["read", "write", "edit", "apply_patch"],
+	"group:fs": ["read", "read_file", "write", "edit", "apply_patch"],
 	// Host/runtime execution tools
 	"group:runtime": ["exec", "process"],
 	// Session management tools
@@ -65,6 +71,10 @@ export const TOOL_GROUPS: Record<string, string[]> = {
 		"session_status",
 		"scratchpad_search",
 		"scratchpad_read",
+		"read_attachment",
+		"read_file",
+		"add_to_scratchpad",
+		"remove_from_scratchpad",
 		"web_search",
 		"web_fetch",
 		"image",
