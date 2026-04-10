@@ -388,6 +388,10 @@ export function shouldRespond(
 
 	const alwaysRespondSources = ["client_chat"];
 
+	// Env alias fallbacks for backward compatibility:
+	// - ALWAYS_RESPOND_CHANNELS is the canonical setting; SHOULD_RESPOND_BYPASS_TYPES is deprecated.
+	// - ALWAYS_RESPOND_SOURCES is the canonical setting; SHOULD_RESPOND_BYPASS_SOURCES is deprecated.
+	// Operators should migrate to ALWAYS_RESPOND_* settings; the deprecated aliases will be removed in a future release.
 	const customChannels = normalizeEnvList(
 		runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ||
 			runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
