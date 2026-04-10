@@ -31,6 +31,12 @@ class ModelType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     MODEL_TYPE_VIDEO: _ClassVar[ModelType]
     MODEL_TYPE_OBJECT_SMALL: _ClassVar[ModelType]
     MODEL_TYPE_OBJECT_LARGE: _ClassVar[ModelType]
+    MODEL_TYPE_TEXT_NANO: _ClassVar[ModelType]
+    MODEL_TYPE_TEXT_MEDIUM: _ClassVar[ModelType]
+    MODEL_TYPE_TEXT_MEGA: _ClassVar[ModelType]
+    MODEL_TYPE_RESPONSE_HANDLER: _ClassVar[ModelType]
+    MODEL_TYPE_ACTION_PLANNER: _ClassVar[ModelType]
+    MODEL_TYPE_RESEARCH: _ClassVar[ModelType]
 LLM_MODE_UNSPECIFIED: LLMMode
 LLM_MODE_DEFAULT: LLMMode
 LLM_MODE_SMALL: LLMMode
@@ -50,6 +56,12 @@ MODEL_TYPE_AUDIO: ModelType
 MODEL_TYPE_VIDEO: ModelType
 MODEL_TYPE_OBJECT_SMALL: ModelType
 MODEL_TYPE_OBJECT_LARGE: ModelType
+MODEL_TYPE_TEXT_NANO: ModelType
+MODEL_TYPE_TEXT_MEDIUM: ModelType
+MODEL_TYPE_TEXT_MEGA: ModelType
+MODEL_TYPE_RESPONSE_HANDLER: ModelType
+MODEL_TYPE_ACTION_PLANNER: ModelType
+MODEL_TYPE_RESEARCH: ModelType
 
 class ResponseFormat(_message.Message):
     __slots__ = ("type",)
