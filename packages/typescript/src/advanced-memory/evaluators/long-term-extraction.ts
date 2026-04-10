@@ -193,7 +193,7 @@ export const longTermExtractionEvaluator: Evaluator = {
 			});
 
 			const modelType = (config.summaryModelType ??
-				ModelType.TINY) as TextGenerationModelType;
+				ModelType.TEXT_NANO) as TextGenerationModelType;
 			const response = await runtime.useModel(modelType, { prompt });
 			const extractions = parseMemoryExtractionResponse(response);
 

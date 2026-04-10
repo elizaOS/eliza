@@ -93,8 +93,8 @@ describe("expandToolGroups()", () => {
 		expect(expanded).toContain("scratchpad_search");
 		expect(expanded).toContain("scratchpad_read");
 		expect(expanded).toContain("read_attachment");
-		expect(expanded).toContain("add_to_scratchpad");
 		expect(expanded).toContain("remove_from_scratchpad");
+		expect(expanded).not.toContain("add_to_scratchpad");
 	});
 
 	it("should expand group:web to web tools", () => {

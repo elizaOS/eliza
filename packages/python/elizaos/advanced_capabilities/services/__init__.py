@@ -9,7 +9,6 @@ from .relationships import RelationshipsService
 __all__ = [
     "FollowUpService",
     "RelationshipsService",
-    "RelationshipsService",
     "advanced_services",
 ]
 

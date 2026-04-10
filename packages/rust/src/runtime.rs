@@ -633,6 +633,7 @@ impl AgentRuntime {
             .unwrap_or(true)
     }
 
+    #[allow(dead_code)]
     async fn has_native_runtime_feature(&self, feature: NativeRuntimeFeature) -> bool {
         let plugin_name = feature.as_str();
         #[cfg(not(feature = "wasm"))]
@@ -704,6 +705,7 @@ impl AgentRuntime {
         }
     }
 
+    #[allow(dead_code)]
     fn is_native_feature_service_enabled_sync(&self, service_type: &str) -> bool {
         let Some(feature) = self.resolve_native_feature_for_service_type(service_type) else {
             return true;
@@ -945,45 +947,54 @@ impl AgentRuntime {
         Ok(())
     }
 
+    /// Enable the native knowledge feature and persist the updated setting.
     pub async fn enable_knowledge(self: &Arc<Self>) -> Result<()> {
         self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Knowledge, true)
             .await
     }
 
+    /// Disable the native knowledge feature and persist the updated setting.
     pub async fn disable_knowledge(self: &Arc<Self>) -> Result<()> {
         self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Knowledge, false)
             .await
     }
 
+    /// Return whether the native knowledge feature is currently enabled.
     pub async fn is_knowledge_enabled(&self) -> bool {
         self.is_native_feature_service_enabled("knowledge").await
     }
 
+    /// Enable the native relationships feature and persist the updated setting.
     pub async fn enable_relationships(self: &Arc<Self>) -> Result<()> {
         self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Relationships, true)
             .await
     }
 
+    /// Disable the native relationships feature and persist the updated setting.
     pub async fn disable_relationships(self: &Arc<Self>) -> Result<()> {
         self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Relationships, false)
             .await
     }
 
+    /// Return whether the native relationships feature is currently enabled.
     pub async fn is_relationships_enabled(&self) -> bool {
         self.is_native_feature_service_enabled("relationships")
             .await
     }
 
+    /// Enable the native trajectories feature and persist the updated setting.
     pub async fn enable_trajectories(self: &Arc<Self>) -> Result<()> {
         self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Trajectories, true)
             .await
     }
 
+    /// Disable the native trajectories feature and persist the updated setting.
     pub async fn disable_trajectories(self: &Arc<Self>) -> Result<()> {
         self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Trajectories, false)
             .await
     }
 
+    /// Return whether the native trajectories feature is currently enabled.
     pub async fn is_trajectories_enabled(&self) -> bool {
         self.is_native_feature_service_enabled("trajectories").await
     }
@@ -2149,12 +2160,7 @@ impl AgentRuntime {
         let llm_mode = self.get_llm_mode().await;
         let effective_model_type = if llm_mode != LLMMode::Default {
             // Streaming model types that can be overridden
-            let text_generation_models = [
-                "TEXT_SMALL_STREAM",
-                "TEXT_LARGE_STREAM",
-                "TEXT_REASONING_SMALL_STREAM",
-                "TEXT_REASONING_LARGE_STREAM",
-            ];
+            let text_generation_models = ["TEXT_SMALL_STREAM", "TEXT_LARGE_STREAM"];
 
             if text_generation_models.contains(&model_type) {
                 let override_model = match llm_mode {
@@ -2220,8 +2226,6 @@ impl AgentRuntime {
             let text_generation_models = [
                 model_type::TEXT_SMALL,
                 model_type::TEXT_LARGE,
-                model_type::TEXT_REASONING_SMALL,
-                model_type::TEXT_REASONING_LARGE,
                 model_type::TEXT_COMPLETION,
             ];
 
@@ -3114,6 +3118,7 @@ fn parse_optional_bool_setting(v: Option<SettingValue>) -> Option<bool> {
     }
 }
 
+#[allow(dead_code)]
 fn parse_optional_env_bool(key: &str) -> Option<bool> {
     std::env::var(key)
         .ok()

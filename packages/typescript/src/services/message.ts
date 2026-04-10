@@ -23,6 +23,7 @@ import { EventType } from "../types/events";
 import type { Memory } from "../types/memory";
 import type {
 	ContextRoutedResponseDecision,
+	DualPressureScores,
 	IMessageService,
 	MessageProcessingOptions,
 	MessageProcessingResult,
@@ -113,6 +114,100 @@ function textContainsUserTag(text: string | undefined): boolean {
 	}
 
 	return /<@!?[^>]+>|@\w+/u.test(text);
+}
+
+const DEFAULT_DUAL_PRESSURE_THRESHOLD = 20;
+const ALLOWED_CLASSIFIER_ACTIONS = new Set([
+	"REPLY",
+	"RESPOND",
+	"IGNORE",
+	"STOP",
+]);
+
+function resolveDualPressureThreshold(runtime: IAgentRuntime): number {
+	const raw = runtime.getSetting("DUAL_PRESSURE_THRESHOLD");
+	const value = Number.parseInt(String(raw ?? ""), 10);
+	if (Number.isFinite(value) && value >= 1 && value <= 100) {
+		return value;
+	}
+	return DEFAULT_DUAL_PRESSURE_THRESHOLD;
+}
+
+function parseOptionalPressureInt(value: unknown): number | null {
+	if (typeof value === "number" && Number.isInteger(value)) {
+		return value >= 0 && value <= 100 ? value : null;
+	}
+	if (typeof value === "string" && value.trim() !== "") {
+		const parsed = Number.parseInt(value, 10);
+		return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100
+			? parsed
+			: null;
+	}
+	return null;
+}
+
+function applyDualPressureToClassifierAction(
+	runtime: IAgentRuntime,
+	responseObject: Record<string, unknown> | null,
+	rawAction: string,
+): { pressure: DualPressureScores | null; finalActionUpper: string } {
+	const threshold = resolveDualPressureThreshold(runtime);
+	const actionUpper = rawAction.trim().toUpperCase();
+	const speakRaw = responseObject?.speak_up ?? responseObject?.speakUp;
+	const holdRaw = responseObject?.hold_back ?? responseObject?.holdBack;
+	const speakUp = parseOptionalPressureInt(speakRaw);
+	const holdBack = parseOptionalPressureInt(holdRaw);
+
+	if (speakUp === null || holdBack === null) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				action: actionUpper,
+				speakUp: speakRaw,
+				holdBack: holdRaw,
+			},
+			"Classifier response missing valid dual-pressure scores; treating as IGNORE",
+		);
+		return { pressure: null, finalActionUpper: "IGNORE" };
+	}
+
+	const net = speakUp - holdBack;
+	const pressure: DualPressureScores = { speakUp, holdBack, net };
+
+	if (actionUpper === "STOP") {
+		return { pressure, finalActionUpper: "STOP" };
+	}
+
+	const isEngage = actionUpper === "REPLY" || actionUpper === "RESPOND";
+	if (net <= -threshold && isEngage) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				net,
+				threshold,
+				originalAction: actionUpper,
+				speakUp,
+				holdBack,
+			},
+			"Dual pressure: net below threshold but model chose engage; clamping to IGNORE",
+		);
+		return { pressure, finalActionUpper: "IGNORE" };
+	}
+
+	if (net >= threshold && actionUpper === "IGNORE") {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				net,
+				threshold,
+				speakUp,
+				holdBack,
+			},
+			"Dual pressure: high net but IGNORE chosen; allowing model decision",
+		);
+	}
+
+	return { pressure, finalActionUpper: actionUpper };
 }
 
 /**
@@ -375,15 +470,12 @@ function resolveShouldRespondModelType(
 	switch (normalizeShouldRespondModelType(model)) {
 		case "nano":
 			return ModelType.TEXT_NANO;
-		case "mini":
-			return ModelType.TEXT_MINI;
 		case "small":
 			return ModelType.TEXT_SMALL;
 		case "large":
 			return ModelType.TEXT_LARGE;
 		case "mega":
 			return ModelType.TEXT_MEGA;
-		case "response-handler":
 		default:
 			return ModelType.RESPONSE_HANDLER;
 	}
@@ -521,6 +613,19 @@ function stripPlannerReplyForSuppressiveActions(
 	if (typeof responseContent.text === "string" && responseContent.text.trim()) {
 		responseContent.text = "";
 	}
+}
+
+function callbackTextPreview(content: Content | null | undefined): string {
+	if (!content || typeof content !== "object") {
+		return "";
+	}
+
+	const text = typeof content.text === "string" ? content.text.trim() : "";
+	if (!text) {
+		return "";
+	}
+
+	return text.replace(/\s+/g, " ").slice(0, 200);
 }
 
 function formatActionResultsForPrompt(actionResults: ActionResult[]): string {
@@ -892,6 +997,46 @@ export class DefaultMessageService implements IMessageService {
 					shouldRespondModel: resolvedShouldRespondModel,
 				};
 
+				let visibleCallbackCount = 0;
+				let firstVisibleCallbackPreview = "";
+				const instrumentedCallback: HandlerCallback | undefined = callback
+					? async (content, actionName) => {
+							const preview = callbackTextPreview(content);
+							if (preview) {
+								visibleCallbackCount += 1;
+								if (visibleCallbackCount === 1) {
+									firstVisibleCallbackPreview = preview;
+								} else {
+									runtime.logger.warn(
+										{
+											src: "service:message",
+											agentId: runtime.agentId,
+											messageId: message.id,
+											roomId: message.roomId,
+											callbackCount: visibleCallbackCount,
+											action:
+												typeof (content as Record<string, unknown>)?.action ===
+												"string"
+													? String((content as Record<string, unknown>).action)
+													: actionName,
+											source:
+												typeof content.source === "string"
+													? content.source
+													: undefined,
+											firstPreview: firstVisibleCallbackPreview,
+											currentPreview: preview,
+										},
+										"Multiple visible callback replies emitted for a single turn",
+									);
+								}
+							}
+
+							return actionName === undefined
+								? callback(content)
+								: callback(content, actionName);
+						}
+					: undefined;
+
 				// Set up timeout monitoring
 				let timeoutId: NodeJS.Timeout | undefined;
 				// Single ID used for tracking, streaming, and the final message
@@ -1058,9 +1203,9 @@ export class DefaultMessageService implements IMessageService {
 														audioBuffer = Buffer.from(result);
 													}
 
-													if (audioBuffer && callback) {
+													if (audioBuffer && instrumentedCallback) {
 														const audioBase64 = audioBuffer.toString("base64");
-														await callback({
+														await instrumentedCallback({
 															text: "",
 															attachments: [
 																{
@@ -1100,7 +1245,7 @@ export class DefaultMessageService implements IMessageService {
 							this.processMessage(
 								runtime,
 								message,
-								callback,
+								instrumentedCallback,
 								responseId,
 								runId,
 								startTime,
@@ -1159,9 +1304,9 @@ export class DefaultMessageService implements IMessageService {
 										audioBuffer = Buffer.from(result);
 									}
 
-									if (audioBuffer && callback) {
+									if (audioBuffer && instrumentedCallback) {
 										const audioBase64 = audioBuffer.toString("base64");
-										await callback({
+										await instrumentedCallback({
 											text: "",
 											attachments: [
 												{
@@ -1363,6 +1508,8 @@ export class DefaultMessageService implements IMessageService {
 		let shouldRespondToMessage = true;
 		let terminalDecision: "IGNORE" | "STOP" | null = null;
 		let routedDecision: ContextRoutingDecision | null = null;
+		let dualPressureLog: DualPressureScores | null = null;
+		let shouldRespondClassifierAction: string | null = null;
 		const metadata =
 			typeof message.content.metadata === "object" &&
 			message.content.metadata !== null
@@ -1414,6 +1561,13 @@ export class DefaultMessageService implements IMessageService {
 				);
 				shouldRespondToMessage = responseDecision.shouldRespond;
 			} else {
+				state = {
+					...state,
+					values: {
+						...state.values,
+						dualPressureThreshold: resolveDualPressureThreshold(runtime),
+					},
+				};
 				const shouldRespondState = prepareShouldRespondState(state);
 
 				// Need LLM evaluation for ambiguous case
@@ -1459,8 +1613,21 @@ export class DefaultMessageService implements IMessageService {
 							streamField: false,
 						},
 						{
+							field: "speak_up",
+							description: "Integer 0-100 pressure TO engage",
+							validateField: false,
+							streamField: false,
+						},
+						{
+							field: "hold_back",
+							description: "Integer 0-100 pressure to STAY QUIET",
+							validateField: false,
+							streamField: false,
+						},
+						{
 							field: "action",
-							description: "RESPOND | IGNORE | STOP",
+							description:
+								"REPLY | RESPOND | IGNORE | STOP (REPLY and RESPOND both mean engage)",
 							validateField: false,
 							streamField: false,
 						},
@@ -1506,22 +1673,43 @@ export class DefaultMessageService implements IMessageService {
 					"Parsed evaluation result",
 				);
 
-				// A classifier output can either continue the turn or terminate it.
-				const nonResponseActions = ["IGNORE", "NONE", "STOP"];
-				const actionValue = responseObject?.action;
+				const rawAction =
+					typeof responseObject?.action === "string"
+						? responseObject.action
+						: "";
+				const actionUpper = rawAction.trim().toUpperCase();
+				const hasValidClassifierAction =
+					actionUpper.length > 0 && ALLOWED_CLASSIFIER_ACTIONS.has(actionUpper);
 				routedDecision = parseContextRoutingMetadata(responseObject);
 				setContextRoutingMetadata(message, routedDecision);
-
-				if (
-					typeof actionValue === "string" &&
-					(actionValue.toUpperCase() === "IGNORE" ||
-						actionValue.toUpperCase() === "STOP")
-				) {
-					terminalDecision = actionValue.toUpperCase() as "IGNORE" | "STOP";
+				if (!hasValidClassifierAction) {
+					runtime.logger.warn(
+						{
+							src: "service:message",
+							action: responseObject?.action,
+						},
+						"Classifier response missing valid action; treating as IGNORE",
+					);
+					terminalDecision = "IGNORE";
+					shouldRespondToMessage = false;
+				} else {
+					const dual = applyDualPressureToClassifierAction(
+						runtime,
+						responseObject as Record<string, unknown> | null,
+						rawAction,
+					);
+					dualPressureLog = dual.pressure;
+					shouldRespondClassifierAction = dual.finalActionUpper;
+					if (
+						dual.finalActionUpper === "IGNORE" ||
+						dual.finalActionUpper === "STOP"
+					) {
+						terminalDecision = dual.finalActionUpper as "IGNORE" | "STOP";
+					}
+					shouldRespondToMessage =
+						dual.finalActionUpper === "REPLY" ||
+						dual.finalActionUpper === "RESPOND";
 				}
-				shouldRespondToMessage =
-					typeof actionValue === "string" &&
-					!nonResponseActions.includes(actionValue.toUpperCase());
 			}
 		}
 
@@ -1919,6 +2107,12 @@ export class DefaultMessageService implements IMessageService {
 			responseMessages,
 			state,
 			mode,
+			...(dualPressureLog !== null || shouldRespondClassifierAction !== null
+				? {
+						dualPressure: dualPressureLog,
+						shouldRespondClassifierAction,
+					}
+				: {}),
 		};
 	}
 
@@ -1963,11 +2157,11 @@ export class DefaultMessageService implements IMessageService {
 
 		// Support runtime-configurable overrides via env settings
 		const customChannels = normalizeEnvList(
-			runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ||
+			runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ??
 				runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
 		);
 		const customSources = normalizeEnvList(
-			runtime.getSetting("ALWAYS_RESPOND_SOURCES") ||
+			runtime.getSetting("ALWAYS_RESPOND_SOURCES") ??
 				runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
 		);
 
@@ -2942,7 +3136,6 @@ Output ONLY the continuation, starting immediately after the last character abov
 			ModelType.TEXT_LARGE,
 			ModelType.RESPONSE_HANDLER,
 			ModelType.TEXT_SMALL,
-			ModelType.TEXT_MINI,
 			ModelType.TEXT_NANO,
 		] as const) {
 			try {

@@ -1373,8 +1373,6 @@ class AgentRuntime(IAgentRuntime):
             text_generation_models = [
                 ModelType.TEXT_SMALL,
                 ModelType.TEXT_LARGE,
-                ModelType.TEXT_REASONING_SMALL,
-                ModelType.TEXT_REASONING_LARGE,
                 ModelType.TEXT_COMPLETION,
             ]
             if effective_model_type in text_generation_models:
@@ -2436,27 +2434,30 @@ Return exactly one {"<response>...</response>" if is_xml else "JSON object"}.
 
                 stream_message_id = f"stream-{uuid.uuid4().hex[:12]}"
 
-                # Capture stream_message_id in default parameter to avoid late binding
+                def emit_stream_chunk(
+                    chunk: str,
+                    _field: str | None,
+                    _stream_message_id: str = stream_message_id,
+                ) -> None:
+                    if options.on_stream_chunk is not None:
+                        options.on_stream_chunk(chunk, _stream_message_id)
+
+                def emit_stream_event(
+                    event: StreamEvent,
+                    _stream_message_id: str = stream_message_id,
+                ) -> None:
+                    if options.on_stream_event is not None:
+                        options.on_stream_event(event, _stream_message_id)
+
+                # Capture stream_message_id in dedicated helpers to avoid late binding
                 extractor = ValidationStreamExtractor(
                     ValidationStreamExtractorConfig(
                         level=validation_level,
                         schema=schema,
                         stream_fields=stream_fields,
                         expected_codes=per_field_codes,
-                        on_chunk=lambda chunk,  # type: ignore[misc]
-                        _field,
-                        msg_id=stream_message_id: (
-                            options.on_stream_chunk(chunk, msg_id)
-                            if options.on_stream_chunk is not None  # type: ignore[truthy-function]
-                            else None
-                        ),
-                        on_event=lambda event, msg_id=stream_message_id: (
-                            options.on_stream_event(  # type: ignore[misc]
-                                event, msg_id
-                            )
-                            if options.on_stream_event is not None
-                            else None
-                        ),
+                        on_chunk=emit_stream_chunk,
+                        on_event=emit_stream_event,
                         abort_signal=options.abort_signal,
                         has_rich_consumer=has_rich_consumer,
                     )

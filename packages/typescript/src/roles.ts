@@ -480,10 +480,7 @@ export function setConnectorAdminWhitelist(
 		return;
 	}
 
-	runtime.setSetting(
-		CONNECTOR_ADMINS_SETTING_KEY,
-		JSON.stringify(normalized),
-	);
+	runtime.setSetting(CONNECTOR_ADMINS_SETTING_KEY, JSON.stringify(normalized));
 }
 
 export function getConnectorAdminWhitelist(

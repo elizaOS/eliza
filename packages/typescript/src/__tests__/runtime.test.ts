@@ -843,7 +843,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 				"test-provider",
 			);
 
-			const result = await runtime.useModel(ModelType.TEXT_MINI, {
+			const result = await runtime.useModel(ModelType.TEXT_NANO, {
 				prompt: "mini request",
 			});
 
@@ -856,7 +856,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			const smallHandler = vi.fn().mockResolvedValue("small-response");
 
 			runtime.registerModel(
-				ModelType.TEXT_MINI,
+				ModelType.TEXT_NANO,
 				miniHandler as ModelHandlerFunction,
 				"mini-provider",
 			);
@@ -1677,7 +1677,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 					settings: {
 						DEFAULT_TEMPERATURE: 0.7,
 						TEXT_SMALL_TEMPERATURE: 0.5,
-						// No specific settings for TEXT_REASONING_SMALL
+						// No specific settings for TEXT_COMPLETION
 					},
 				};
 
@@ -1698,13 +1698,13 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
 				// Register a model type that doesn't have specific configuration support
 				runtime.registerModel(
-					ModelType.TEXT_REASONING_SMALL,
+					ModelType.TEXT_COMPLETION,
 					mockHandler as ModelHandlerFunction,
 					"test-provider",
 				);
 
-				await runtime.useModel(ModelType.TEXT_REASONING_SMALL, {
-					prompt: "test reasoning",
+				await runtime.useModel(ModelType.TEXT_COMPLETION, {
+					prompt: "test completion",
 				});
 
 				// Should fall back to default settings

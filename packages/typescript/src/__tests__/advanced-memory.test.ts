@@ -45,7 +45,7 @@ describe("advanced memory (built-in)", () => {
 		const config = svc.getConfig();
 		expect(config.shortTermSummarizationThreshold).toBeGreaterThan(0);
 		expect(config.longTermExtractionThreshold).toBeGreaterThan(0);
-		expect(config.summaryModelType).toBe(ModelType.TINY);
+		expect(config.summaryModelType).toBe(ModelType.TEXT_NANO);
 
 		const entityId = "12345678-1234-1234-1234-123456789123" as UUID;
 		const roomId = "12345678-1234-1234-1234-123456789124" as UUID;

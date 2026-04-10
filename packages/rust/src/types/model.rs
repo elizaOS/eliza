@@ -64,26 +64,36 @@ impl LLMMode {
 
 /// Model type names
 pub mod model_type {
+    /// Nano text model (kept for backwards compatibility)
+    pub const NANO: &str = "TEXT_NANO";
     /// Small text model (kept for backwards compatibility)
     pub const SMALL: &str = "TEXT_SMALL";
     /// Medium text model (kept for backwards compatibility)
-    pub const MEDIUM: &str = "TEXT_LARGE";
+    pub const MEDIUM: &str = "TEXT_MEDIUM";
     /// Large text model (kept for backwards compatibility)
     pub const LARGE: &str = "TEXT_LARGE";
+    /// Mega text model (kept for backwards compatibility)
+    pub const MEGA: &str = "TEXT_MEGA";
+    /// Nano text model
+    pub const TEXT_NANO: &str = "TEXT_NANO";
     /// Small text model
     pub const TEXT_SMALL: &str = "TEXT_SMALL";
+    /// Medium text model
+    pub const TEXT_MEDIUM: &str = "TEXT_MEDIUM";
     /// Large text model
     pub const TEXT_LARGE: &str = "TEXT_LARGE";
+    /// Mega text model
+    pub const TEXT_MEGA: &str = "TEXT_MEGA";
+    /// Response handler model
+    pub const RESPONSE_HANDLER: &str = "RESPONSE_HANDLER";
+    /// Action planner model
+    pub const ACTION_PLANNER: &str = "ACTION_PLANNER";
     /// Text embedding model
     pub const TEXT_EMBEDDING: &str = "TEXT_EMBEDDING";
     /// Text tokenizer encode
     pub const TEXT_TOKENIZER_ENCODE: &str = "TEXT_TOKENIZER_ENCODE";
     /// Text tokenizer decode
     pub const TEXT_TOKENIZER_DECODE: &str = "TEXT_TOKENIZER_DECODE";
-    /// Small reasoning model
-    pub const TEXT_REASONING_SMALL: &str = "REASONING_SMALL";
-    /// Large reasoning model
-    pub const TEXT_REASONING_LARGE: &str = "REASONING_LARGE";
     /// Text completion model
     pub const TEXT_COMPLETION: &str = "TEXT_COMPLETION";
     /// Image generation model

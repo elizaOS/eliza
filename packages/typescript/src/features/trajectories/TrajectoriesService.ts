@@ -336,7 +336,7 @@ export class TrajectoriesService extends Service {
 	}
 
 	static async start(runtime: IAgentRuntime): Promise<Service> {
-		const service = new (TrajectoriesService as any)(runtime);
+		const service = new TrajectoriesService(runtime);
 		await service.initialize();
 		return service;
 	}
@@ -606,19 +606,6 @@ export class TrajectoriesService extends Service {
 		await this.executeRawSql(
 			`CREATE INDEX IF NOT EXISTS idx_trajectory_step_index_is_active ON trajectory_step_index(is_active)`,
 		);
-	}
-
-	private normalizeTrajectoryStatus(value: string | null): TrajectoryStatus {
-		switch (value) {
-			case "active":
-			case "completed":
-			case "error":
-			case "timeout":
-			case "terminated":
-				return value;
-			default:
-				return "completed";
-		}
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -1271,7 +1258,7 @@ export class TrajectoriesService extends Service {
         )
       `);
 			persistedStart = true;
-		} catch (err) {
+		} catch (_err) {
 			try {
 				// Compatibility fallback for legacy Milady schema that stores metadata
 				// in `metadata` instead of `metadata_json`.

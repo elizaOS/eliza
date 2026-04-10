@@ -323,7 +323,7 @@ describe("dynamicPromptExecFromState", () => {
 			const miniHandler = vi.fn(
 				async () => "<response><text>mini</text></response>",
 			);
-			runtime.registerModel(ModelType.TEXT_MINI, miniHandler, "mock");
+			runtime.registerModel(ModelType.TEXT_NANO, miniHandler, "mock");
 
 			const state = createMockState();
 			const result = await runtime.dynamicPromptExecFromState({
@@ -331,7 +331,7 @@ describe("dynamicPromptExecFromState", () => {
 				params: { prompt: "Test prompt" },
 				schema: [{ field: "text", description: "Response text" }],
 				options: {
-					modelType: ModelType.TEXT_MINI,
+					modelType: ModelType.TEXT_NANO,
 					contextCheckLevel: 0,
 				},
 			});
@@ -1288,8 +1288,25 @@ Done.`,
 	describe("memory table compatibility", () => {
 		it("defaults omitted memory table names to messages", async () => {
 			const roomId = stringToUuid(`room-${uuidv4()}`);
+			const getMemoriesParams = {
+				roomId,
+				count: 1,
+			} satisfies Omit<Parameters<AgentRuntime["getMemories"]>[0], "tableName">;
+			const searchMemoriesParams = {
+				embedding: [0.1, 0.2, 0.3],
+				roomId,
+				count: 2,
+			} satisfies Omit<
+				Parameters<AgentRuntime["searchMemories"]>[0],
+				"tableName"
+			>;
+			const countMemoriesParams = {
+				roomId,
+			} satisfies Extract<Parameters<AgentRuntime["countMemories"]>[0], object>;
 
-			await runtime.getMemories({ roomId, count: 1 } as any);
+			await runtime.getMemories(
+				getMemoriesParams as Parameters<AgentRuntime["getMemories"]>[0],
+			);
 			expect(mockAdapter.getMemories).toHaveBeenCalledWith(
 				expect.objectContaining({
 					roomId,
@@ -1298,11 +1315,9 @@ Done.`,
 				}),
 			);
 
-			await runtime.searchMemories({
-				embedding: [0.1, 0.2, 0.3],
-				roomId,
-				count: 2,
-			} as any);
+			await runtime.searchMemories(
+				searchMemoriesParams as Parameters<AgentRuntime["searchMemories"]>[0],
+			);
 			expect(mockAdapter.searchMemories).toHaveBeenCalledWith(
 				expect.objectContaining({
 					roomId,
@@ -1311,7 +1326,9 @@ Done.`,
 				}),
 			);
 
-			await runtime.countMemories({ roomId } as any);
+			await runtime.countMemories(
+				countMemoriesParams as Parameters<AgentRuntime["countMemories"]>[0],
+			);
 			expect(mockAdapter.countMemories).toHaveBeenCalledWith(
 				expect.objectContaining({
 					roomIds: [roomId],

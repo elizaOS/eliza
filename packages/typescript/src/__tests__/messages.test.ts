@@ -78,7 +78,9 @@ describe("Messages Library", () => {
 		// Assertions
 		expect(formattedMessages).toContain("Check this attachment");
 		expect(formattedMessages).toContain("Attachments: [");
-		expect(formattedMessages).toContain("Stored content available via READ_ATTACHMENT");
+		expect(formattedMessages).toContain(
+			"Stored content available via READ_ATTACHMENT",
+		);
 		expect(formattedMessages).not.toContain("A bright red square");
 	});
 

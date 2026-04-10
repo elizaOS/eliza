@@ -30,7 +30,6 @@ export const TOOL_GROUPS: Record<string, string[]> = {
 		"scratchpad_search",
 		"scratchpad_read",
 		"read_attachment",
-		"add_to_scratchpad",
 		"remove_from_scratchpad",
 	],
 	// Web tools
@@ -73,7 +72,6 @@ export const TOOL_GROUPS: Record<string, string[]> = {
 		"scratchpad_read",
 		"read_attachment",
 		"read_file",
-		"add_to_scratchpad",
 		"remove_from_scratchpad",
 		"web_search",
 		"web_fetch",

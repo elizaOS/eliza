@@ -239,6 +239,10 @@ test-output.txt
 # Vitest type compatibility shims
 packages/typescript/src/types/vitest-*.d.ts
 
+# Accidental tsc --declaration output next to .ts sources (declarations ship from dist/)
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+
 # Migration scripts (temporary)
 scripts/migrate-tests-to-vitest.ts
 scripts/migrate-all-tests.sh

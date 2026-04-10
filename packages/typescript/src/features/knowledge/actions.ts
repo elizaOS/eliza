@@ -14,6 +14,13 @@ import { stringToUuid } from "../../utils";
 import { KnowledgeService } from "./service.ts";
 import type { AddKnowledgeOptions } from "./types.ts";
 
+type ExtendedValidator = (
+	runtime: IAgentRuntime,
+	message: Memory,
+	state?: State,
+	options?: unknown,
+) => Promise<boolean>;
+
 export const processKnowledgeAction: Action = {
 	name: "PROCESS_KNOWLEDGE",
 	description:
@@ -55,10 +62,10 @@ export const processKnowledgeAction: Action = {
 	],
 
 	validate: async (
-		runtime: any,
-		message: any,
-		state?: any,
-		options?: any,
+		runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+		options?: unknown,
 	): Promise<boolean> => {
 		const __avTextRaw =
 			typeof message?.content?.text === "string" ? message.content.text : "";
@@ -68,9 +75,7 @@ export const processKnowledgeAction: Action = {
 			__avKeywords.length > 0 &&
 			__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
 		const __avRegexOk = /\b(?:process|knowledge)\b/i.test(__avText);
-		const __avSource = String(
-			message?.content?.source ?? message?.source ?? "",
-		);
+		const __avSource = String(message?.content?.source ?? "");
 		const __avExpectedSource = "";
 		const __avSourceOk = __avExpectedSource
 			? __avSource === __avExpectedSource
@@ -85,10 +90,11 @@ export const processKnowledgeAction: Action = {
 			return false;
 		}
 
-		const __avLegacyValidate = async (
+		const __avLegacyValidate: ExtendedValidator = async (
 			runtime: IAgentRuntime,
 			message: Memory,
 			_state?: State,
+			_options?: unknown,
 		) => {
 			const text = message.content.text?.toLowerCase() || "";
 
@@ -125,7 +131,7 @@ export const processKnowledgeAction: Action = {
 		};
 		try {
 			return Boolean(
-				await (__avLegacyValidate as any)(runtime, message, state, options),
+				await __avLegacyValidate(runtime, message, state, options),
 			);
 		} catch {
 			return false;
@@ -291,10 +297,10 @@ export const searchKnowledgeAction: Action = {
 	],
 
 	validate: async (
-		runtime: any,
-		message: any,
-		state?: any,
-		options?: any,
+		runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+		options?: unknown,
 	): Promise<boolean> => {
 		const __avTextRaw =
 			typeof message?.content?.text === "string" ? message.content.text : "";
@@ -304,9 +310,7 @@ export const searchKnowledgeAction: Action = {
 			__avKeywords.length > 0 &&
 			__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
 		const __avRegexOk = /\b(?:search|knowledge)\b/i.test(__avText);
-		const __avSource = String(
-			message?.content?.source ?? message?.source ?? "",
-		);
+		const __avSource = String(message?.content?.source ?? "");
 		const __avExpectedSource = "";
 		const __avSourceOk = __avExpectedSource
 			? __avSource === __avExpectedSource
@@ -321,10 +325,11 @@ export const searchKnowledgeAction: Action = {
 			return false;
 		}
 
-		const __avLegacyValidate = async (
+		const __avLegacyValidate: ExtendedValidator = async (
 			runtime: IAgentRuntime,
 			message: Memory,
 			_state?: State,
+			_options?: unknown,
 		) => {
 			const text = message.content.text?.toLowerCase() || "";
 
@@ -358,7 +363,7 @@ export const searchKnowledgeAction: Action = {
 		};
 		try {
 			return Boolean(
-				await (__avLegacyValidate as any)(runtime, message, state, options),
+				await __avLegacyValidate(runtime, message, state, options),
 			);
 		} catch {
 			return false;
