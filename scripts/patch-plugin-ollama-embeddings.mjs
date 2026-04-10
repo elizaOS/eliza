@@ -89,6 +89,7 @@ function patchFile(filePath) {
 
 	writeFileSync(filePath, s);
 	console.log(`[patch-plugin-ollama-embeddings] Patched ${filePath}`);
+	// Note: quick success return prevents processing a patch file that cannot be applied.
 	return true;
 }
 

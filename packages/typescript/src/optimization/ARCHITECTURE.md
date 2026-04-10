@@ -35,6 +35,7 @@ agents and even projects. Coupling to the DB would make sharing impossible and
 tie optimization to the DB adapter's lifecycle.
 
 **Why (simplicity):** JSONL append is atomic on POSIX, needs no schema
+// Note: JSONL allows simple, atomic appends without complex migrations or dependencies.
 migrations, and can be processed with standard Unix tools (`jq`, `grep`, `wc`).
 
 **Alternative considered:** SQLite database per model/slot. Rejected because it

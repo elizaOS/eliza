@@ -79,6 +79,7 @@ export class PriorityQueue<T> {
 		} else {
 			this.lowItems.push(item);
 		}
+	// Note: separates items by priority for efficient batch processing and avoids linear scans.
 	}
 
 	/** Remove up to `n` items from the front (highest priority first). */
