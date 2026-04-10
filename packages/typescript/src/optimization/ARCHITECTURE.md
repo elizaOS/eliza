@@ -43,7 +43,7 @@ query performance for the append-heavy, read-rarely access pattern.
 
 ## Directory Hierarchy: Model-First
 
-```
+```text
 <root>/<model_id>/<slot>/
 ```
 
