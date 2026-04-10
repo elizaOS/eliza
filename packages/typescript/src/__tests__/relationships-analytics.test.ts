@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { relationshipsProvider } from "../advanced-capabilities/providers/relationships.ts";
 import {
-	RelationshipsService,
 	calculateRelationshipStrength,
 	countSharedConversationWindows,
+	RelationshipsService,
 } from "../services/relationships.ts";
 import type { Entity, Relationship } from "../types/environment.ts";
 import type { Memory } from "../types/memory.ts";
