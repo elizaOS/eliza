@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelType, ContentType, EventType, ModelType } from "../index";
 import { getTaskCompletionCacheKey } from "../advanced-capabilities/evaluators/task-completion";
 import { DefaultMessageService } from "../services/message";
-import type { Content, HandlerCallback, Memory, State, UUID } from "../types";
+import type {
+	Content,
+	Evaluator,
+	HandlerCallback,
+	Memory,
+	State,
+	UUID,
+} from "../types";
 import type { IMessageService } from "../types/message-service";
 import type { GenerateTextParams } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
@@ -1726,6 +1733,203 @@ describe("DefaultMessageService", () => {
 			expect(mockCallback).toHaveBeenCalledWith(
 				expect.objectContaining({ text: "It's clean." }),
 			);
+		});
+
+		it("only runs alwaysRun evaluators on ignored turns, then runs rich evaluators after a reply", async () => {
+			runtime.evaluate = Object.getPrototypeOf(runtime).evaluate.bind(runtime);
+			(runtime as unknown as { evaluators: Evaluator[] }).evaluators = [];
+
+			const richReflectionValidate = vi.fn(async () => true);
+			const richReflectionHandler = vi.fn(async () => undefined);
+			const relationshipValidate = vi.fn(async () => true);
+			const relationshipHandler = vi.fn(async () => undefined);
+			const heuristicValidate = vi.fn(async () => true);
+			const heuristicHandler = vi.fn(async () => undefined);
+
+			runtime.registerEvaluator({
+				name: "REFLECTION",
+				description: "Post-response reflection",
+				similes: [],
+				alwaysRun: false,
+				validate: richReflectionValidate,
+				handler: richReflectionHandler,
+			});
+			runtime.registerEvaluator({
+				name: "RELATIONSHIP_EXTRACTION",
+				description: "Post-response relationship extraction",
+				similes: [],
+				alwaysRun: false,
+				validate: relationshipValidate,
+				handler: relationshipHandler,
+			});
+			runtime.registerEvaluator({
+				name: "CONVERSATION_PROXIMITY",
+				description: "Lightweight heuristic relationship strengthening",
+				similes: [],
+				alwaysRun: true,
+				validate: heuristicValidate,
+				handler: heuristicHandler,
+			});
+
+			vi.spyOn(messageService, "shouldRespond")
+				.mockReturnValueOnce({
+					shouldRespond: false,
+					skipEvaluation: true,
+					reason: "test ignored turn",
+				})
+				.mockReturnValueOnce({
+					shouldRespond: true,
+					skipEvaluation: true,
+					reason: "test replied turn",
+				});
+
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				thought: "Respond directly",
+				actions: "REPLY",
+				text: "Handled.",
+				simple: true,
+			});
+
+			const ignoredMessage: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026b" as UUID,
+				content: {
+					text: "ambient chatter",
+					source: "client_chat",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const ignoredResult = await messageService.handleMessage(
+				runtime,
+				ignoredMessage,
+				mockCallback,
+			);
+
+			expect(ignoredResult.didRespond).toBe(false);
+			expect(richReflectionValidate).not.toHaveBeenCalled();
+			expect(richReflectionHandler).not.toHaveBeenCalled();
+			expect(relationshipValidate).not.toHaveBeenCalled();
+			expect(relationshipHandler).not.toHaveBeenCalled();
+			expect(heuristicValidate).toHaveBeenCalledTimes(1);
+			expect(heuristicHandler).toHaveBeenCalledTimes(1);
+			expect(mockCallback).toHaveBeenCalledWith(
+				expect.objectContaining({ actions: ["IGNORE"] }),
+			);
+
+			const repliedMessage: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026c" as UUID,
+				content: {
+					text: "please help",
+					source: "client_chat",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const repliedResult = await messageService.handleMessage(
+				runtime,
+				repliedMessage,
+				mockCallback,
+			);
+
+			expect(repliedResult.didRespond).toBe(true);
+			expect(repliedResult.responseContent?.text).toBe("Handled.");
+			expect(richReflectionValidate).toHaveBeenCalledTimes(1);
+			expect(richReflectionHandler).toHaveBeenCalledTimes(1);
+			expect(relationshipValidate).toHaveBeenCalledTimes(1);
+			expect(relationshipHandler).toHaveBeenCalledTimes(1);
+			expect(heuristicValidate).toHaveBeenCalledTimes(2);
+			expect(heuristicHandler).toHaveBeenCalledTimes(2);
+		});
+
+		it("runs responded-turn evaluators sequentially to avoid shared-state races", async () => {
+			runtime.evaluate = Object.getPrototypeOf(runtime).evaluate.bind(runtime);
+			(runtime as unknown as { evaluators: Evaluator[] }).evaluators = [];
+
+			let releaseReflection: (() => void) | undefined;
+			let markReflectionStarted: (() => void) | undefined;
+			const reflectionStarted = new Promise<void>((resolve) => {
+				markReflectionStarted = resolve;
+			});
+			const sequence: string[] = [];
+
+			runtime.registerEvaluator({
+				name: "REFLECTION",
+				description: "Post-response reflection",
+				similes: [],
+				alwaysRun: false,
+				validate: vi.fn(async () => true),
+				handler: vi.fn(async () => {
+					sequence.push("reflection:start");
+					markReflectionStarted?.();
+					await new Promise<void>((resolve) => {
+						releaseReflection = resolve;
+					});
+					sequence.push("reflection:end");
+				}),
+			});
+			runtime.registerEvaluator({
+				name: "RELATIONSHIP_EXTRACTION",
+				description: "Post-response relationship extraction",
+				similes: [],
+				alwaysRun: false,
+				validate: vi.fn(async () => true),
+				handler: vi.fn(async () => {
+					sequence.push("relationship");
+				}),
+			});
+
+			vi.spyOn(messageService, "shouldRespond").mockReturnValue({
+				shouldRespond: true,
+				skipEvaluation: true,
+				reason: "test replied turn",
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				thought: "Respond directly",
+				actions: "REPLY",
+				text: "Handled.",
+				simple: true,
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026d" as UUID,
+				content: {
+					text: "please help",
+					source: "client_chat",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const resultPromise = messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			await reflectionStarted;
+			await Promise.resolve();
+			expect(sequence).toEqual(["reflection:start"]);
+
+			releaseReflection?.();
+
+			const result = await resultPromise;
+			expect(result.didRespond).toBe(true);
+			expect(sequence).toEqual([
+				"reflection:start",
+				"reflection:end",
+				"relationship",
+			]);
 		});
 
 		it("falls back to an error reply when structured output parsing fails", async () => {

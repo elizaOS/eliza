@@ -878,7 +878,7 @@ export const reflectionEvaluator: Evaluator = {
 	name: spec.name,
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
-	alwaysRun: spec.alwaysRun ?? true,
+	alwaysRun: spec.alwaysRun ?? false,
 	examples: (spec.examples ?? []) as EvaluationExample[],
 	validate: async (
 		runtime: IAgentRuntime,

@@ -2848,7 +2848,7 @@ _CORE_EVALUATOR_DOCS_JSON = """{
         "EVALUATE_INTERACTION",
         "ASSESS_SITUATION"
       ],
-      "alwaysRun": true,
+      "alwaysRun": false,
       "examples": [
         {
           "prompt": "Agent Name: Sarah\\nAgent Role: Community Manager\\nRoom Type: group\\nCurrent Room: general-chat\\nMessage Sender: John (user-123)",
@@ -2950,7 +2950,7 @@ _CORE_EVALUATOR_DOCS_JSON = """{
         "SOCIAL_GRAPH_BUILDER",
         "CONTACT_EXTRACTOR"
       ],
-      "alwaysRun": true,
+      "alwaysRun": false,
       "examples": [
         {
           "prompt": "User introduces themselves with social media",
@@ -3003,7 +3003,7 @@ _ALL_EVALUATOR_DOCS_JSON = """{
         "EVALUATE_INTERACTION",
         "ASSESS_SITUATION"
       ],
-      "alwaysRun": true,
+      "alwaysRun": false,
       "examples": [
         {
           "prompt": "Agent Name: Sarah\\nAgent Role: Community Manager\\nRoom Type: group\\nCurrent Room: general-chat\\nMessage Sender: John (user-123)",
@@ -3105,7 +3105,7 @@ _ALL_EVALUATOR_DOCS_JSON = """{
         "SOCIAL_GRAPH_BUILDER",
         "CONTACT_EXTRACTOR"
       ],
-      "alwaysRun": true,
+      "alwaysRun": false,
       "examples": [
         {
           "prompt": "User introduces themselves with social media",
