@@ -8,10 +8,10 @@
  */
 
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = join(fileURLToPath(import.meta.url), "..", "..");
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const NEEDLE =
 	'"Ollama functionality will be limited until a valid endpoint is provided - Make sure Ollama is running at ${baseURL}"';
