@@ -622,7 +622,7 @@ dual_pressure[2]:
 
 net: speak_up minus hold_back (range -100 to +100).
 
-consistency (T_hi = 20 unless you state otherwise in reasoning):
+consistency (T_hi = {{dualPressureThreshold}} unless you state otherwise in reasoning):
 - net >= +T_hi -> prefer REPLY over IGNORE unless you document an exception in reasoning
 - net <= -T_hi -> prefer IGNORE over REPLY (or STOP if the user asked to stop)
 - between -T_hi and +T_hi -> judgment; explain tradeoffs in reasoning
@@ -682,8 +682,8 @@ evidenceTurnIds:
 
 Example:
 name: {{agentName}}
-speak_up: 40
-hold_back: 35
+speak_up: 5
+hold_back: 90
 reasoning: User explicitly asked me to stop talking.
 action: STOP
 primaryContext: general
