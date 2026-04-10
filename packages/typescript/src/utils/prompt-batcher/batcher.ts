@@ -114,7 +114,10 @@ export class PromptBatcher {
 			resolved: false,
 		});
 
-		void this._ensureAffinityDrain(normalized.affinityKey ?? "default");
+		const affinityKey = normalized.affinityKey ?? "default";
+		void this._ensureAffinityDrain(affinityKey).then(() =>
+			this._syncAffinityTask(affinityKey),
+		);
 
 		const shouldDrainNow =
 			normalized.priority === "immediate" ||
