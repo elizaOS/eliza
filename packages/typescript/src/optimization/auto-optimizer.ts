@@ -26,6 +26,9 @@ const failureCooldownUntil = new Map<string, number>();
 /** Skip re-attempts for this long after a failed auto run (ms). */
 const FAILURE_COOLDOWN_MS = 10 * 60 * 1000;
 
+/** Maximum entries in failureCooldownUntil before pruning expired ones. */
+const MAX_COOLDOWN_ENTRIES = 1000;
+
 function lockKey(
 	modelId: string,
 	slotKey: string,
@@ -89,9 +92,19 @@ async function doAutoRun(
 	const { modelId, modelSlot, promptKey, schemaFingerprint } = trace;
 	const key = lockKey(modelId, modelSlot, promptKey, schemaFingerprint);
 
+	const now = Date.now();
 	const until = failureCooldownUntil.get(key);
-	if (until !== undefined && Date.now() < until) {
+	if (until !== undefined && now < until) {
 		return;
+	}
+
+	// Prune expired cooldown entries to prevent unbounded map growth
+	if (failureCooldownUntil.size > MAX_COOLDOWN_ENTRIES) {
+		for (const [k, expiry] of failureCooldownUntil) {
+			if (expiry <= now) {
+				failureCooldownUntil.delete(k);
+			}
+		}
 	}
 
 	const profileManager = getSlotProfileManager(optDir);
