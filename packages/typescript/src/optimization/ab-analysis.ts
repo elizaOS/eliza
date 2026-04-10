@@ -20,6 +20,7 @@ export interface ABAnalysisResult {
 /**
  * Simple djb2 hash function for deterministic variant selection.
  * Canonical implementation for all optimization modules to ensure consistent A/B bucketing.
+ * Returns a number for consistent type usage across the codebase.
  */
 export function simpleHash(str: string): number {
 	let hash = 5381;
