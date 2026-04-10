@@ -39,9 +39,7 @@ function looksLikeToonDocument(text: string): boolean {
 
 	const firstLine = lines[0]?.trim() ?? "";
 	if (/^TOON(?:\s+DOCUMENT)?[:\s-]*$/i.test(firstLine)) {
-		return lines
-			.slice(1)
-			.some((line) => SIMPLE_TOON_KEY_RE.test(line.trim()));
+		return lines.slice(1).some((line) => SIMPLE_TOON_KEY_RE.test(line.trim()));
 	}
 
 	if (!SIMPLE_TOON_KEY_RE.test(firstLine)) {

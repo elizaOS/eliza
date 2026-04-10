@@ -41,20 +41,16 @@ export interface ServerOwnershipState {
 	};
 }
 
-const CONNECTOR_ADMIN_WHITELIST_KEY = Symbol.for(
-	"@elizaos/core.roles.connectorAdmins",
-);
-const CONNECTOR_ADMIN_CACHE_KEY = Symbol.for(
-	"@elizaos/core.roles.connectorAdmins.cache",
-);
+const CONNECTOR_ADMINS_SETTING_KEY = "ELIZA_ROLES_CONNECTOR_ADMINS_JSON";
 const CANONICAL_OWNER_SETTING_KEY = "ELIZA_ADMIN_ENTITY_ID";
 const OWNER_CONTACTS_SETTING_KEY = "ELIZA_OWNER_CONTACTS_JSON";
 const CONNECTOR_ID_FIELDS = ["userId", "id", "username", "userName"] as const;
 const CONNECTOR_STABLE_ID_FIELDS = ["userId", "id"] as const;
-
-type RuntimeWithConnectorAdmins = IAgentRuntime & {
-	[CONNECTOR_ADMIN_WHITELIST_KEY]?: ConnectorAdminWhitelist;
-	[CONNECTOR_ADMIN_CACHE_KEY]?: Set<string>;
+type ConnectorIdField = (typeof CONNECTOR_ID_FIELDS)[number];
+type ConnectorAdminMatch = {
+	connector: string;
+	matchedValue: string;
+	matchedField: ConnectorIdField;
 };
 
 type ResolveEntityRoleOptions = {
@@ -474,30 +470,45 @@ export function setConnectorAdminWhitelist(
 	runtime: IAgentRuntime,
 	whitelist: ConnectorAdminWhitelist | Record<string, unknown> | undefined,
 ): void {
-	const runtimeWithConnectorAdmins = runtime as RuntimeWithConnectorAdmins;
-	runtimeWithConnectorAdmins[CONNECTOR_ADMIN_WHITELIST_KEY] =
-		normalizeConnectorAdminWhitelist(whitelist);
-	runtimeWithConnectorAdmins[CONNECTOR_ADMIN_CACHE_KEY]?.clear();
+	if (typeof runtime.setSetting !== "function") {
+		return;
+	}
+
+	const normalized = normalizeConnectorAdminWhitelist(whitelist);
+	if (Object.keys(normalized).length === 0) {
+		runtime.setSetting(CONNECTOR_ADMINS_SETTING_KEY, null);
+		return;
+	}
+
+	runtime.setSetting(
+		CONNECTOR_ADMINS_SETTING_KEY,
+		JSON.stringify(normalized),
+	);
 }
 
 export function getConnectorAdminWhitelist(
 	runtime: IAgentRuntime,
 ): ConnectorAdminWhitelist {
-	return (
-		(runtime as RuntimeWithConnectorAdmins)[CONNECTOR_ADMIN_WHITELIST_KEY] ?? {}
-	);
-}
+	const raw = getRuntimeSettingString(runtime, CONNECTOR_ADMINS_SETTING_KEY);
+	if (!raw) {
+		return {};
+	}
 
-function getConnectorAdminCache(runtime: IAgentRuntime): Set<string> {
-	const runtimeWithConnectorAdmins = runtime as RuntimeWithConnectorAdmins;
-	runtimeWithConnectorAdmins[CONNECTOR_ADMIN_CACHE_KEY] ??= new Set<string>();
-	return runtimeWithConnectorAdmins[CONNECTOR_ADMIN_CACHE_KEY];
+	try {
+		const parsed = JSON.parse(raw) as Record<string, unknown>;
+		return normalizeConnectorAdminWhitelist(parsed);
+	} catch (error) {
+		logger.warn(
+			`[roles] Failed to parse ${CONNECTOR_ADMINS_SETTING_KEY}: ${formatError(error)}`,
+		);
+		return {};
+	}
 }
 
 export function matchEntityToConnectorAdminWhitelist(
 	entityMetadata: Record<string, unknown> | null | undefined,
 	whitelist: ConnectorAdminWhitelist | Record<string, unknown> | undefined,
-): { connector: string; matchedValue: string } | null {
+): ConnectorAdminMatch | null {
 	if (!entityMetadata || typeof entityMetadata !== "object") return null;
 
 	const normalizedWhitelist = normalizeConnectorAdminWhitelist(whitelist);
@@ -510,7 +521,7 @@ export function matchEntityToConnectorAdminWhitelist(
 		for (const field of CONNECTOR_ID_FIELDS) {
 			const value = connectorMeta[field];
 			if (typeof value === "string" && platformIds.includes(value)) {
-				return { connector, matchedValue: value };
+				return { connector, matchedValue: value, matchedField: field };
 			}
 		}
 	}
@@ -621,13 +632,9 @@ async function resolveExplicitGrantedRole(
 export function getLiveEntityMetadataFromMessage(
 	message: Memory,
 ): Record<string, unknown> | undefined {
-	const messageMetadata = asRecord(message.content.metadata);
-	const bridgeSender = asRecord(messageMetadata?.bridgeSender);
-	const bridgedMetadata = asRecord(bridgeSender?.metadata);
-	if (bridgedMetadata) {
-		return bridgedMetadata;
-	}
-
+	// Only trust connector identity stamped into the Memory itself.
+	// content.metadata can come from untrusted chat clients, so it must not
+	// participate in role resolution.
 	return getConnectorMetadataFromMemory(message);
 }
 
@@ -639,6 +646,12 @@ export async function resolveEntityRole(
 	options?: ResolveEntityRoleOptions,
 ): Promise<RoleName> {
 	const explicitRole = getEntityRole(metadata, entityId);
+	const explicitSource = await resolveStoredRoleSource(
+		runtime,
+		metadata,
+		entityId,
+		options,
+	);
 	const ownershipRole = await resolveOwnershipRole(
 		runtime,
 		metadata,
@@ -650,30 +663,46 @@ export async function resolveEntityRole(
 		return "OWNER";
 	}
 
-	if (explicitRole !== "GUEST") {
-		if (explicitRole !== "OWNER") {
-			return explicitRole;
-		}
-
-		return hasConfiguredCanonicalOwner(runtime) ? "GUEST" : "OWNER";
-	}
-
 	const whitelist = getConnectorAdminWhitelist(runtime);
-	if (Object.keys(whitelist).length === 0) {
-		return explicitRole;
-	}
-
-	const connectorAdminCache = getConnectorAdminCache(runtime);
 	const liveMatched = matchEntityToConnectorAdminWhitelist(
 		options?.liveEntityMetadata ?? undefined,
 		whitelist,
 	);
-	if (liveMatched) {
-		connectorAdminCache.add(entityId);
-		return "ADMIN";
+
+	if (explicitRole !== "GUEST") {
+		if (explicitRole === "OWNER") {
+			return hasConfiguredCanonicalOwner(runtime) ? "GUEST" : "OWNER";
+		}
+
+		if (explicitSource === "connector_admin") {
+			if (Object.keys(whitelist).length === 0) {
+				return "GUEST";
+			}
+
+			if (liveMatched) {
+				return "ADMIN";
+			}
+
+			const entityMetadata = await getEntityMetadata(runtime, entityId);
+			const matched = matchEntityToConnectorAdminWhitelist(
+				entityMetadata,
+				whitelist,
+			);
+			if (matched) {
+				return "ADMIN";
+			}
+
+			return "GUEST";
+		}
+
+		return explicitRole;
 	}
 
-	if (connectorAdminCache.has(entityId)) {
+	if (Object.keys(whitelist).length === 0) {
+		return explicitRole;
+	}
+
+	if (liveMatched) {
 		return "ADMIN";
 	}
 
@@ -686,7 +715,6 @@ export async function resolveEntityRole(
 		return explicitRole;
 	}
 
-	connectorAdminCache.add(entityId);
 	return "ADMIN";
 }
 
