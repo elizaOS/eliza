@@ -9,6 +9,11 @@ const entityId = "90000000-0000-0000-0000-000000000002" as UUID;
 const otherEntityId = "90000000-0000-0000-0000-000000000005" as UUID;
 const roomId = "90000000-0000-0000-0000-000000000003" as UUID;
 
+it("only the active relationship extractor waits for a response", () => {
+	expect(advancedCapabilitiesEvaluator.alwaysRun).toBe(false);
+	expect(advancedMemoryEvaluator.alwaysRun).toBe(true);
+});
+
 function createRuntime(options?: { relationships?: Relationship[] }) {
 	const entities = new Map<UUID, Entity>([
 		[

@@ -2329,33 +2329,34 @@ export class AgentRuntime implements IAgentRuntime {
 			return [];
 		}
 		state = await this.composeState(message, ["RECENT_MESSAGES", "EVALUATORS"]);
-		await Promise.all(
-			evaluators.map(async (evaluator) => {
-				if (evaluator.handler) {
-					await evaluator.handler(
-						this as unknown as IAgentRuntime,
-						message,
-						state,
-						{},
-						callback,
-						responses,
-					);
-					this.adapter.createLogs([
-						{
-							entityId: message.entityId,
-							roomId: message.roomId,
-							type: "evaluator",
-							body: {
-								evaluator: evaluator.name,
-								messageId: message.id,
-								message: message.content.text,
-								runId: this.getCurrentRunId(),
-							},
-						},
-					]);
-				}
-			}),
-		);
+		// Run evaluator handlers sequentially because multiple evaluators can
+		// mutate shared memories/relationships for the same turn.
+		for (const evaluator of evaluators) {
+			if (!evaluator.handler) {
+				continue;
+			}
+			await evaluator.handler(
+				this as unknown as IAgentRuntime,
+				message,
+				state,
+				{},
+				callback,
+				responses,
+			);
+			this.adapter.createLogs([
+				{
+					entityId: message.entityId,
+					roomId: message.roomId,
+					type: "evaluator",
+					body: {
+						evaluator: evaluator.name,
+						messageId: message.id,
+						message: message.content.text,
+						runId: this.getCurrentRunId(),
+					},
+				},
+			]);
+		}
 		return evaluators;
 	}
 

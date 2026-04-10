@@ -90,6 +90,10 @@ describe("advanced capabilities reflectionEvaluator", () => {
 		getEntityDetailsMock.mockResolvedValue(mockEntities);
 	});
 
+	it("only auto-runs after the agent responds", () => {
+		expect(reflectionEvaluator.alwaysRun).toBe(false);
+	});
+
 	it("stores facts even when the relationships block is omitted", async () => {
 		const message = createMessage(getMockEntityId(0));
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
