@@ -1557,6 +1557,9 @@ export class DefaultMessageService implements IMessageService {
 
 		// Run evaluators — awaited so enrichment signals are attached to the
 		// active trace before RUN_ENDED fires and the finalizer persists it.
+		// Note: Consider adding a timeout or background execution mode for
+		// non-critical evaluators to avoid blocking the message response path.
+		const EVALUATOR_TIMEOUT_MS = 30000; // 30 second timeout for evaluators
 		const runEvaluate = () =>
 			runtime.evaluate(
 				message,
@@ -1581,7 +1584,23 @@ export class DefaultMessageService implements IMessageService {
 				responseMessages,
 			);
 
-		await runEvaluate();
+		// Run evaluators with timeout to prevent slow evaluators from blocking
+		try {
+			await Promise.race([
+				runEvaluate(),
+				new Promise<void>((_, reject) =>
+					setTimeout(
+						() => reject(new Error("Evaluator timeout")),
+						EVALUATOR_TIMEOUT_MS,
+					),
+				),
+			]);
+		} catch (evalError) {
+			runtime.logger.warn(
+				{ src: "service:message", error: evalError },
+				"Evaluator execution failed or timed out",
+			);
+		}
 
 		// Collect metadata for logging
 		let entityName = "noname";
