@@ -681,13 +681,12 @@ export const shouldRespondTemplate = `task: Decide whether {{agentName}} should 
 context:
 {{providers}}
 
-rules[7]:
+rules[6]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
 - prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
 - request to stop or be quiet directed at {{agentName}} -> STOP
 - if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
-- clear request to update {{agentName}}'s personality, tone, style, voice, or behavior -> RESPOND
 - if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
 
 available_contexts:
@@ -705,7 +704,7 @@ decision_note:
 - casual conversation between other users is not enough
 - if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
 - if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
-- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough unless the message is clearly asking to change {{agentName}}'s personality, tone, style, voice, or behavior
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
 
 output:
 TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
@@ -728,13 +727,12 @@ context:
 available_contexts:
 {{availableContexts}}
 
-rules[7]:
+rules[6]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
 - prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
 - request to stop or be quiet directed at {{agentName}} -> STOP
 - if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
-- clear request to update {{agentName}}'s personality, tone, style, voice, or behavior -> RESPOND
 - if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
 
 context_routing:
@@ -750,7 +748,7 @@ decision_note:
 - casual conversation between other users is not enough
 - if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
 - if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
-- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough unless the message is clearly asking to change {{agentName}}'s personality, tone, style, voice, or behavior
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
 - context routing always applies, even for IGNORE/STOP decisions
 
 output:
@@ -806,6 +804,34 @@ Example:
 decision: true`;
 
 export const SHOULD_UNMUTE_ROOM_TEMPLATE = shouldUnmuteRoomTemplate;
+
+export const thinkTemplate = `# Task: Think deeply and reason carefully for {{agentName}}.
+
+{{providers}}
+
+# Context
+The initial planning phase identified this question as requiring deeper analysis.
+The following is the conversation so far and all available context.
+
+# Instructions
+You are {{agentName}}. A question or request has been identified as complex, ambiguous, or requiring careful reasoning. Your job is to think through this thoroughly before responding.
+
+Approach this systematically:
+1. Identify the core question or problem being asked
+2. Consider multiple angles, approaches, or interpretations
+3. Evaluate trade-offs, risks, and constraints
+4. Draw on relevant knowledge and context from the conversation
+5. Arrive at a well-reasoned conclusion or recommendation
+
+Be thorough but concise. Prioritize depth of reasoning over length. If there are genuine unknowns, acknowledge them rather than guessing.
+
+Respond using TOON:
+thought: Your detailed internal reasoning — the full chain of thought, alternatives considered, and why you reached your conclusion
+text: Your response to the user — clear, structured, and well-reasoned. Use headings, lists, or code blocks as appropriate for the content.
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any preamble or explanation outside of it.`;
+
+export const THINK_TEMPLATE = thinkTemplate;
 
 export const updateContactTemplate = `task: Extract contact updates from the request.
 

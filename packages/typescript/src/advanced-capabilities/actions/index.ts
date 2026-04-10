@@ -7,6 +7,7 @@
 export { addContactAction } from "./addContact.ts";
 export { followRoomAction } from "./followRoom.ts";
 export { generateImageAction } from "./imageGeneration.ts";
+export { thinkAction } from "./think.ts";
 export { muteRoomAction } from "./muteRoom.ts";
 export { removeContactAction } from "./removeContact.ts";
 export { updateRoleAction } from "./roles.ts";

@@ -13,7 +13,7 @@
 pub use crate::basic_capabilities::actions::{
     extended_actions as advanced_actions, AddContactAction, FollowRoomAction, GenerateImageAction,
     MuteRoomAction, RemoveContactAction, ScheduleFollowUpAction, SearchContactsAction,
-    SendMessageAction, UnfollowRoomAction, UnmuteRoomAction, UpdateContactAction,
+    SendMessageAction, ThinkAction, UnfollowRoomAction, UnmuteRoomAction, UpdateContactAction,
     UpdateEntityAction, UpdateRoleAction, UpdateSettingsAction,
 };
 pub use crate::basic_capabilities::evaluators::{

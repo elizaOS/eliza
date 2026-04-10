@@ -37,6 +37,7 @@ export const advancedProviders = [
 export const advancedActions = [
 	withCanonicalActionDocs(actions.followRoomAction),
 	withCanonicalActionDocs(actions.generateImageAction),
+	withCanonicalActionDocs(actions.thinkAction),
 	withCanonicalActionDocs(actions.muteRoomAction),
 	withCanonicalActionDocs(actions.unfollowRoomAction),
 	withCanonicalActionDocs(actions.unmuteRoomAction),
