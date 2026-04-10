@@ -1534,28 +1534,33 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Resolve the **actual** checkpoint name for optimization paths and traces
 	 * (e.g. `lfm2:24b`), not only the logical DPE slot (e.g. `ACTION_PLANNER`).
 	 *
-	 * **Why walk `getModelFallbackChain`?** Many agents register `ACTION_PLANNER`
-	 * but fall back to `TEXT_SMALL` at inference. Keying disk by the logical slot
-	 * would split artifacts from the model that really ran and would not match
-	 * provider env resolution (`OLLAMA_SMALL_MODEL` vs `SMALL_MODEL`).
+	 * This method now uses the same resolution logic as useModel() by consulting
+	 * resolveModelRegistration() to get the effective model that will actually
+	 * serve the request. This ensures trace attribution matches the real provider.
 	 *
-	 * **Why provider prefixes first?** Mirrors plugin-ollama (and similar) at
-	 * generation time so trace `modelId` matches the served model.
-	 *
-	 * Order: explicit `options.model` → for each fallback slot, try
-	 * `OLLAMA_*`, `OPENAI_*`, `ANTHROPIC_*`, then unprefixed `*_MODEL` → else
-	 * return `resolvedModelType` (last resort).
-	 *
-	 * Note: This heuristic may not match the actual provider used when LLM_MODE
-	 * overrides or runtime fallbacks are in play. Consider passing effective
-	 * provider info from useModel() for more accurate trace attribution.
+	 * @param resolvedModelType - The logical slot name (e.g. 'ACTION_PLANNER')
+	 * @param optionsModel - Explicit model override from options
+	 * @param effectiveModelId - The actual model ID returned by useModel() after resolution
 	 */
 	resolveProviderModelString(
 		resolvedModelType: string,
 		optionsModel?: string,
+		effectiveModelId?: string,
 	): string {
+		// If the caller (useModel) already resolved the effective model, use it directly
+		if (effectiveModelId) return effectiveModelId;
+
 		if (optionsModel) return optionsModel;
 
+		// Use resolveModelRegistration to get the same effective model that useModel() would use
+		// This accounts for LLM_MODE overrides and the full fallback chain
+		const registration = this.resolveModelRegistration(resolvedModelType);
+		if (registration?.model) {
+			return registration.model;
+		}
+
+		// Fallback: walk the fallback chain with provider prefixes
+		// (kept for cases where no model is registered but env vars are set)
 		const slotToSetting: Record<string, string> = {
 			TEXT_NANO: "NANO_MODEL",
 			TEXT_MINI: "MINI_MODEL",
@@ -1569,9 +1574,6 @@ export class AgentRuntime implements IAgentRuntime {
 			TEXT_COMPLETION: "COMPLETION_MODEL",
 		};
 
-		// Walk the same fallback chain that resolveModelRegistration uses
-		// (e.g. ACTION_PLANNER → TEXT_SMALL) so we find the slot that
-		// actually has a model registered.
 		const providerPrefixes = ["OLLAMA_", "OPENAI_", "ANTHROPIC_", ""];
 		for (const candidate of getModelFallbackChain(resolvedModelType)) {
 			const settingKey = slotToSetting[candidate];
