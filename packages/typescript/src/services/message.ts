@@ -16,6 +16,7 @@ import type {
 	Action,
 	ActionResult,
 	HandlerCallback,
+	StreamChunkCallback,
 } from "../types/components";
 import type { Room } from "../types/environment";
 import type { RunEventPayload } from "../types/events";
@@ -425,7 +426,7 @@ type ResolvedMessageOptions = {
 	maxMultiStepIterations: number;
 	continueAfterActions: boolean;
 	keepExistingResponses: boolean;
-	onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+	onStreamChunk?: StreamChunkCallback;
 	shouldRespondModel: ShouldRespondModelType;
 };
 
@@ -556,12 +557,21 @@ function isStopResponse(
 function shouldContinueAfterActions(
 	responseContent: Content | null | undefined,
 ): boolean {
+	// Async background/task actions handle their own follow-up and should not
+	// trigger an immediate continuation loop from the main message service.
+	const terminalActions = new Set([
+		"REPLY",
+		"IGNORE",
+		"STOP",
+		"CREATE_TASK",
+		"START_CODING_TASK",
+		"CODE_TASK",
+		"SPAWN_AGENT",
+		"SPAWN_CODING_AGENT",
+	]);
 	return !!responseContent?.actions?.some((action) => {
 		if (typeof action !== "string") return false;
-		const normalized = action.trim().toUpperCase();
-		return (
-			normalized !== "REPLY" && normalized !== "IGNORE" && normalized !== "STOP"
-		);
+		return !terminalActions.has(action.trim().toUpperCase());
 	});
 }
 
@@ -966,6 +976,134 @@ export class DefaultMessageService implements IMessageService {
 					options?.shouldRespondModel ?? shouldRespondModelSetting,
 				);
 
+				// WHY voice detection wraps onStreamChunk here instead of using a
+				// separate ResponseStreamExtractor + AsyncLocalStorage context:
+				//
+				// Previously handleMessage created a second XML extractor
+				// (ResponseStreamExtractor) and injected it via runWithStreamingContext.
+				// Both extractors received the same raw LLM tokens in useModel and
+				// emitted independently, causing the dual-extractor garbling bug —
+				// consumers saw overlapping deltas that produced unintelligible TTS.
+				//
+				// The fix: a single extractor (ValidationStreamExtractor in
+				// dynamicPromptExecFromState) now provides `accumulated` — the full
+				// extracted text — via the third StreamChunkCallback argument. Voice
+				// detection wraps the caller's callback to intercept accumulated text
+				// for first-sentence detection, then forwards to the original. This
+				// keeps voice logic in handleMessage (encapsulation) without adding a
+				// second extraction pipeline.
+				//
+				// The `streamTextFallback` path exists for action handlers or other
+				// call sites that don't provide `accumulated` (raw token streams).
+				let firstSentenceSent = false;
+				let streamTextFallback = "";
+				const userOnStreamChunk = options?.onStreamChunk;
+				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
+					userOnStreamChunk
+						? async (chunk, messageId, accumulated) => {
+								let streamText: string;
+								// If we have accumulated text, also sync streamTextFallback so the
+								// fallback path has accurate state if the stream source later changes.
+								if (accumulated !== undefined) {
+									streamTextFallback = accumulated;
+									streamText = accumulated;
+								} else {
+									streamTextFallback += chunk;
+									streamText = streamTextFallback;
+								}
+
+								// Only run first-sentence TTS detection when `accumulated` is present.
+								// Raw-token streams (no accumulated) may contain XML markup or partial
+								// structured output that would garble hasFirstSentence() and TTS.
+								if (
+									!firstSentenceSent &&
+									accumulated !== undefined &&
+									hasFirstSentence(streamText)
+								) {
+									const { first } = extractFirstSentence(streamText);
+									if (first.length > 5) {
+										firstSentenceSent = true;
+
+										(async () => {
+											try {
+												const voiceSettings = runtime.character.settings
+													?.voice as
+													| {
+															model?: string;
+															url?: string;
+															voiceId?: string;
+													  }
+													| undefined;
+
+												const model =
+													voiceSettings?.model || "en_US-male-medium";
+												const voiceId =
+													voiceSettings?.url ||
+													voiceSettings?.voiceId ||
+													"nova";
+
+												let audioBuffer: Buffer | null = null;
+												const params: TextToSpeechParams & {
+													model?: string;
+												} = {
+													text: first,
+													voice: voiceId,
+													model: model,
+												};
+												const result = runtime.getModel(
+													ModelType.TEXT_TO_SPEECH,
+												)
+													? await runtime.useModel(
+															ModelType.TEXT_TO_SPEECH,
+															params,
+														)
+													: undefined;
+
+												if (
+													result instanceof ArrayBuffer ||
+													Object.prototype.toString.call(result) ===
+														"[object ArrayBuffer]"
+												) {
+													audioBuffer = Buffer.from(result as ArrayBuffer);
+												} else if (Buffer.isBuffer(result)) {
+													audioBuffer = result;
+												} else if (result instanceof Uint8Array) {
+													audioBuffer = Buffer.from(result);
+												}
+
+												if (audioBuffer && callback) {
+													const audioBase64 = audioBuffer.toString("base64");
+													await callback({
+														text: "",
+														attachments: [
+															{
+																id: v4(),
+																url: `data:audio/wav;base64,${audioBase64}`,
+																title: "Voice Response",
+																source: "voice-cache",
+																description:
+																	"Voice response for first sentence",
+																text: first,
+																contentType: ContentType.AUDIO,
+															},
+														],
+														source: "voice",
+													});
+												}
+											} catch (error) {
+												runtime.logger.error(
+													{ error },
+													"Error generating voice for first sentence",
+												);
+											}
+										})();
+									}
+								}
+
+								await userOnStreamChunk(chunk, messageId, accumulated);
+							}
+						: undefined;
+
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
 					timeoutDuration: options?.timeoutDuration ?? 60 * 60 * 1000, // 1 hour
@@ -985,12 +1123,12 @@ export class DefaultMessageService implements IMessageService {
 						parseBooleanFromText(
 							String(runtime.getSetting("CONTINUE_AFTER_ACTIONS") ?? "true"),
 						),
+					onStreamChunk: wrappedOnStreamChunk,
 					keepExistingResponses:
 						options?.keepExistingResponses ??
 						parseBooleanFromText(
 							String(runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") ?? ""),
 						),
-					onStreamChunk: options?.onStreamChunk,
 					shouldRespondModel: resolvedShouldRespondModel,
 				};
 

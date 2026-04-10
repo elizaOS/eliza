@@ -35,6 +35,7 @@ import { decryptSecret, getSalt } from "./settings";
 import {
 	getStreamingContext,
 	runWithStreamingContext,
+	type StreamingContext,
 } from "./streaming-context";
 import { getTrajectoryContext } from "./trajectory-context";
 import {
@@ -95,6 +96,7 @@ import {
 	type ServiceTypeName,
 	type State,
 	type StateValue,
+	type StreamChunkCallback,
 	type TargetInfo,
 	type Task,
 	type TaskWorker,
@@ -1652,7 +1654,7 @@ export class AgentRuntime implements IAgentRuntime {
 		state?: State,
 		callback?: HandlerCallback,
 		processOptions?: {
-			onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+			onStreamChunk?: StreamChunkCallback;
 		},
 	): Promise<void> {
 		// Check if action planning is enabled
@@ -2018,33 +2020,37 @@ export class AgentRuntime implements IAgentRuntime {
 				// onStreamEnd is called after each useModel stream completes, allowing us to reset
 				// the filter so content type detection from one call doesn't affect the next.
 				let actionStreamingContext:
-					| {
-							messageId: string;
-							onStreamChunk: (
-								chunk: string,
-								messageId?: string,
-							) => Promise<void>;
-							onStreamEnd: () => void;
-					  }
+					| (StreamingContext & { onStreamEnd: () => void })
 					| undefined;
 				if (processOptions?.onStreamChunk) {
 					let currentFilter: ActionStreamFilter | null = null;
 					const onStreamChunk = processOptions.onStreamChunk;
+					// Track locally accumulated filtered text for this action stream.
+					// Note: upstream `accumulated` is discarded because ActionStreamFilter may
+					// transform/drop content, making upstream accumulated inconsistent with
+					// the actual deltas the consumer receives.
+					let filteredAccumulated = "";
 
 					actionStreamingContext = {
 						messageId: responseMessageId,
-						onStreamChunk: async (chunk: string, msgId?: string) => {
+						onStreamChunk: async (
+							chunk: string,
+							msgId?: string,
+							_accumulated?: string,
+						) => {
 							if (!currentFilter) {
 								currentFilter = new ActionStreamFilter();
 							}
 							const textToStream = currentFilter.push(chunk);
 							if (textToStream && onStreamChunk) {
-								await onStreamChunk(textToStream, msgId);
+								filteredAccumulated += textToStream;
+								await onStreamChunk(textToStream, msgId, filteredAccumulated);
 							}
 						},
 						onStreamEnd: () => {
-							// Reset filter for next useModel call
+							// Reset filter and local accumulator for next useModel call
 							currentFilter = null;
+							filteredAccumulated = "";
 						},
 					};
 				}
@@ -3708,10 +3714,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// Define interface for params that may have streaming properties
 		interface StreamingParams {
 			stream?: boolean;
-			onStreamChunk?: (
-				chunk: string,
-				messageId?: string,
-			) => void | Promise<void>;
+			onStreamChunk?: StreamChunkCallback;
 		}
 		const streamingCtx = getStreamingContext();
 		const paramsAsStreaming = isPlainObject(modelParams)
@@ -3745,12 +3748,18 @@ export class AgentRuntime implements IAgentRuntime {
 			(paramsChunk || ctxChunk) &&
 			isTextStreamResult(response)
 		) {
+			// WHY undefined for accumulated: raw LLM tokens have no field-level
+			// extraction — accumulated text is only meaningful after an XML
+			// extractor (ValidationStreamExtractor) has parsed and isolated a
+			// field. Passing undefined is honest; consumers that need
+			// accumulated data get it from the extractor's onChunk bridge in
+			// dynamicPromptExecFromState, not from the raw token loop.
 			let fullText = "";
 			for await (const chunk of response.textStream) {
 				if (abortSignal?.aborted) break;
 				fullText += chunk;
-				if (paramsChunk) await paramsChunk(chunk, msgId);
-				if (ctxChunk) await ctxChunk(chunk, msgId);
+				if (paramsChunk) await paramsChunk(chunk, msgId, undefined);
+				if (ctxChunk) await ctxChunk(chunk, msgId, undefined);
 			}
 
 			// Signal stream end to allow context to reset state between useModel calls
@@ -4153,10 +4162,7 @@ export class AgentRuntime implements IAgentRuntime {
 			retryBackoff?: number | RetryBackoffConfig;
 			disableCache?: boolean;
 			cacheTTL?: number;
-			onStreamChunk?: (
-				chunk: string,
-				messageId?: string,
-			) => void | Promise<void>;
+			onStreamChunk?: StreamChunkCallback;
 			onStreamEvent?: (
 				event: StreamEvent,
 				messageId?: string,
@@ -4511,13 +4517,20 @@ ${section_end}`;
 
 				const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+				// WHY accumulated is forwarded: the VSE tracks the full extracted text
+				// per field internally (`content` in emitFieldContent). Surfacing it
+				// here means consumers like first-sentence voice detection or Milady's
+				// streaming-text resolver can use the authoritative value instead of
+				// Note: this design prevents dual extractor conflicts by providing authoritative accumulated data
+				// re-accumulating from deltas — which broke when two extractors ran
+				// concurrently (the dual-extractor garbling bug).
 				extractor = new ValidationStreamExtractor({
 					level: contextLevel,
 					schema,
 					streamFields: finalStreamFields,
 					expectedCodes: perFieldCodes,
-					onChunk: (chunk) => {
-						options.onStreamChunk?.(chunk, streamMessageId);
+					onChunk: (chunk, _field, accumulated) => {
+						return options.onStreamChunk?.(chunk, streamMessageId, accumulated);
 					},
 					onEvent: options.onStreamEvent
 						? (event) => options.onStreamEvent?.(event, streamMessageId)
@@ -4556,7 +4569,7 @@ ${section_end}`;
 
 			let response: string;
 			try {
-				response = await this.useModel<typeof resolvedModelType, string>(
+				response = await this.useModel(
 					resolvedModelType,
 					modelParams,
 					options.model,

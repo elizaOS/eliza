@@ -1,3 +1,4 @@
+import type { StreamChunkCallback } from "./components";
 import type {
 	JsonValue,
 	AudioProcessingParams as ProtoAudioProcessingParams,
@@ -298,7 +299,7 @@ export interface GenerateTextParams
 	> {
 	responseFormat?: { type: "json_object" | "text" } | string;
 	stopSequences?: string[];
-	onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
+	onStreamChunk?: StreamChunkCallback;
 	user?: string;
 	/**
 	 * Optional multimodal attachments for the current turn. Providers that

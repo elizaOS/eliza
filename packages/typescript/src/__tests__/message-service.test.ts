@@ -1769,6 +1769,42 @@ describe("DefaultMessageService", () => {
 			);
 		});
 
+		it("does not continue after async task actions", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				thought: "Launch a background task",
+				actions: "CREATE_TASK",
+				text: "",
+				simple: false,
+			});
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+			vi.spyOn(runtime, "getActionResults").mockReturnValue([
+				{
+					success: true,
+					text: "Started a task agent",
+					data: { actionName: "CREATE_TASK" },
+				},
+			]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174027" as UUID,
+				content: {
+					text: "Start a background coding task",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback);
+
+			expect(runtime.processActions).toHaveBeenCalledTimes(1);
+			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(1);
+		});
+
 		it("skips post-action continuation for actions that suppress it", async () => {
 			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
 			vi.spyOn(runtime, "composeState").mockResolvedValue({
