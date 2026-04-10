@@ -608,7 +608,7 @@ export const SHOULD_MUTE_ROOM_TEMPLATE = shouldMuteRoomTemplate;
  * clamp/warn enforces consistency with `DUAL_PRESSURE_THRESHOLD`. `action_space` precedes `output:` so
  * labels are defined before the format constraint. See `docs/SHOULD_RESPOND_DUAL_PRESSURE.md`.
  */
-export const shouldRespondTemplate = `task: Decide whether {{agentName}} should REPLY, IGNORE, or STOP, using dual-pressure scoring.
+export const shouldRespondTemplate = `task: Decide whether {{agentName}} should REPLY (RESPOND is an alias of REPLY), IGNORE, or STOP, using dual-pressure scoring.
 
 context:
 {{providers}}
@@ -654,6 +654,7 @@ decision_note:
 
 action_space:
 - REPLY: full conversational response is warranted
+- RESPOND: full conversational response is warranted (alias of REPLY)
 - IGNORE: stay quiet
 - STOP: user asked to stop or end the conversation
 
