@@ -1370,20 +1370,35 @@ export class DefaultMessageService implements IMessageService {
 					"Parsed evaluation result",
 				);
 
-				// A classifier output can either continue the turn or terminate it.
-				const nonResponseActions = ["IGNORE", "NONE", "STOP"];
-				const hasValidClassifierAction =
-					typeof responseObject?.action === "string" &&
-					responseObject.action.trim().length > 0;
-				const rawAction = hasValidClassifierAction ? responseObject.action : "";
-				const dual = applyDualPressureToClassifierAction(
-					runtime,
-					responseObject as Record<string, unknown> | null,
-					rawAction,
-				);
-				dualPressureLog = dual.pressure;
-				const actionUpper = hasValidClassifierAction
-					? dual.finalActionUpper
+// A classifier output can either continue the turn or terminate it.
+		const nonResponseActions = ["IGNORE", "NONE", "STOP"];
+		const hasValidClassifierAction =
+			typeof responseObject?.action === "string" &&
+			responseObject.action.trim().length > 0;
+		const rawAction = hasValidClassifierAction ? responseObject.action : "";
+		const dual = applyDualPressureToClassifierAction(
+			runtime,
+			responseObject as Record<string, unknown> | null,
+			rawAction,
+		);
+		dualPressureLog = dual.pressure;
+		const actionUpper = hasValidClassifierAction
+			? dual.finalActionUpper
+			: "IGNORE";
+		// Ensure shouldRespondClassifierAction is null for invalid/empty actions
+		// to maintain clean sentinel semantics for callers
+		shouldRespondClassifierAction =
+			hasValidClassifierAction && actionUpper.length > 0 ? actionUpper : null;
+
+		if (!hasValidClassifierAction) {
+			runtime.logger.warn(
+			{
+				src: "service:message",
+				action: responseObject?.action,
+			},
+			"Classifier response missing valid action; treating as IGNORE",
+			);
+		}
 					: "IGNORE";
 				// Ensure shouldRespondClassifierAction is null for invalid/empty actions
 				// to maintain clean sentinel semantics for callers
