@@ -40,7 +40,12 @@ export class ABAnalyzer {
 		fn: () => Promise<void>,
 	): Promise<void> {
 		const prev = this.analyzeLocks.get(key) ?? Promise.resolve();
-		const next = prev.then(fn, fn);
+		const next = prev.then(fn, fn).finally(() => {
+			// Clean up the lock entry if it's still pointing to this promise
+			if (this.analyzeLocks.get(key) === next) {
+				this.analyzeLocks.delete(key);
+			}
+		});
 		this.analyzeLocks.set(key, next);
 		await next;
 	}
