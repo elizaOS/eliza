@@ -310,6 +310,15 @@ const NEW_OBJECT_LARGE = `    [ModelType.OBJECT_LARGE]: async (runtime, params) 
       }
     },`;
 
+function replaceRequired(source, from, to, filePath) {
+	if (!source.includes(from)) {
+		throw new Error(
+			`[patch-plugin-ollama-chat] Expected block not found in ${filePath}:\n${from.slice(0, 100)}...`,
+		);
+	}
+	return source.replace(from, to);
+}
+
 function patchFile(filePath) {
 	if (!existsSync(filePath)) return false;
 	let s = readFileSync(filePath, "utf8");
@@ -317,18 +326,19 @@ function patchFile(filePath) {
 		s.includes("generateOllamaText(runtime, baseURL") &&
 		!s.includes("await generateText(")
 	) {
+		// Already patched
 		return false;
 	}
 	if (!s.includes("async function generateOllamaText(ollama, model, params)")) {
 		console.warn(`[patch-plugin-ollama-chat] Unrecognized format at ${filePath} — skipping`);
 		return false;
 	}
-	s = s.replace(OLD_IMPORTS, NEW_IMPORTS);
-	s = s.replace(OLD_GENERATORS, NEW_GENERATORS);
-	s = s.replace(OLD_TEXT_SMALL, NEW_TEXT_SMALL);
-	s = s.replace(OLD_TEXT_LARGE, NEW_TEXT_LARGE);
-	s = s.replace(OLD_OBJECT_SMALL, NEW_OBJECT_SMALL);
-	s = s.replace(OLD_OBJECT_LARGE, NEW_OBJECT_LARGE);
+	s = replaceRequired(s, OLD_IMPORTS, NEW_IMPORTS, filePath);
+	s = replaceRequired(s, OLD_GENERATORS, NEW_GENERATORS, filePath);
+	s = replaceRequired(s, OLD_TEXT_SMALL, NEW_TEXT_SMALL, filePath);
+	s = replaceRequired(s, OLD_TEXT_LARGE, NEW_TEXT_LARGE, filePath);
+	s = replaceRequired(s, OLD_OBJECT_SMALL, NEW_OBJECT_SMALL, filePath);
+	s = replaceRequired(s, OLD_OBJECT_LARGE, NEW_OBJECT_LARGE, filePath);
 	writeFileSync(filePath, s);
 	console.log(`[patch-plugin-ollama-chat] Patched ${filePath}`);
 	return true;
@@ -352,6 +362,12 @@ function walkBunPluginOllama() {
 	}
 }
 
-patchFile(join(repoRoot, "agent", "node_modules", "@elizaos", "plugin-ollama", "dist", "index.js"));
-patchFile(join(repoRoot, "node_modules", "@elizaos", "plugin-ollama", "dist", "index.js"));
+let patchedCount = 0;
+if (patchFile(join(repoRoot, "agent", "node_modules", "@elizaos", "plugin-ollama", "dist", "index.js"))) {
+	patchedCount++;
+}
+if (patchFile(join(repoRoot, "node_modules", "@elizaos", "plugin-ollama", "dist", "index.js"))) {
+	patchedCount++;
+}
 walkBunPluginOllama();
+// Note: walkBunPluginOllama patches are optional (bun hoisting), main paths above are required
