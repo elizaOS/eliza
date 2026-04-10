@@ -61,9 +61,9 @@ export class DefaultOptimizerPipeline implements OptimizerPipeline {
 					existingInstructions: currentInstructions || undefined,
 					existingPlaybook: currentPlaybook || undefined,
 					metricFn: (trace) => {
-					const card = ScoreCard.fromJSON(trace.scoreCard);
-					return card.composite(effectiveWeights);
-				},
+						const card = ScoreCard.fromJSON(trace.scoreCard);
+						return card.composite(effectiveWeights);
+					},
 					multiMetricFn: (trace) => {
 						const card = ScoreCard.fromJSON(trace.scoreCard);
 						return Object.fromEntries(
