@@ -32,7 +32,10 @@ export interface PriorityQueueOptions<T> {
 }
 
 export class PriorityQueue<T> {
-	private readonly items: T[] = [];
+	// Note: Three separate arrays avoid O(n) linear scan per insertion; enqueue is O(1).
+	private readonly highItems: T[] = [];
+	private readonly normalItems: T[] = [];
+	private readonly lowItems: T[] = [];
 	private readonly getPriority: (item: T) => QueuePriority;
 	private readonly maxSize?: number;
 	private readonly onPressure?: (queue: PriorityQueue<T>, item: T) => boolean;
@@ -53,13 +56,13 @@ export class PriorityQueue<T> {
 	 */
 	enqueue(item: T): boolean {
 		const max = this.maxSize;
-		if (max !== undefined && this.items.length >= max) {
+		if (max !== undefined && this.size >= max) {
 			if (this.onPressure) {
 				if (!this.onPressure(this, item)) {
 					return false;
 				}
 			} else {
-				this.onOverflowWarning?.(this.items.length + 1, max);
+				this.onOverflowWarning?.(this.size + 1, max);
 			}
 		}
 
@@ -69,75 +72,94 @@ export class PriorityQueue<T> {
 
 	private insertByPriority(item: T): void {
 		const p = this.getPriority(item);
-		if (p === "low" || this.items.length === 0) {
-			this.items.push(item);
-			return;
+		if (p === "high") {
+			this.highItems.push(item);
+		} else if (p === "normal") {
+			this.normalItems.push(item);
+		} else {
+			this.lowItems.push(item);
 		}
-
-		let insertIndex = this.items.length;
-		for (let i = 0; i < this.items.length; i++) {
-			const cur = this.getPriority(this.items[i]);
-			if (p === "high") {
-				if (cur !== "high") {
-					insertIndex = i;
-					break;
-				}
-			} else if (cur === "low") {
-				insertIndex = i;
-				break;
-			}
-		}
-		this.items.splice(insertIndex, 0, item);
 	}
 
 	/** Remove up to `n` items from the front (highest priority first). */
 	dequeueBatch(n: number): T[] {
-		if (n <= 0 || this.items.length === 0) {
+		if (n <= 0 || this.size === 0) {
 			return [];
 		}
-		const take = Math.min(n, this.items.length);
-		return this.items.splice(0, take);
+		const result: T[] = [];
+		let remaining = n;
+
+		// Drain from high priority first
+		if (remaining > 0 && this.highItems.length > 0) {
+			const take = Math.min(remaining, this.highItems.length);
+			result.push(...this.highItems.splice(0, take));
+			remaining -= take;
+		}
+
+		// Then normal priority
+		if (remaining > 0 && this.normalItems.length > 0) {
+			const take = Math.min(remaining, this.normalItems.length);
+			result.push(...this.normalItems.splice(0, take));
+			remaining -= take;
+		}
+
+		// Then low priority
+		if (remaining > 0 && this.lowItems.length > 0) {
+			const take = Math.min(remaining, this.lowItems.length);
+			result.push(...this.lowItems.splice(0, take));
+		}
+
+		return result;
 	}
 
 	/** Remove and return all items matching `filter`. */
 	drain(filter?: (item: T) => boolean): T[] {
 		if (!filter) {
-			const all = this.items.slice();
-			this.items.length = 0;
+			const all = [...this.highItems, ...this.normalItems, ...this.lowItems];
+			this.highItems.length = 0;
+			this.normalItems.length = 0;
+			this.lowItems.length = 0;
 			return all;
 		}
-		const kept: T[] = [];
-		const out: T[] = [];
-		for (const item of this.items) {
-			if (filter(item)) {
-				out.push(item);
-			} else {
-				kept.push(item);
+
+		const drainArray = (arr: T[]): T[] => {
+			const kept: T[] = [];
+			const out: T[] = [];
+			for (const item of arr) {
+				if (filter(item)) {
+					out.push(item);
+				} else {
+					kept.push(item);
+				}
 			}
-		}
-		this.items.length = 0;
-		this.items.push(...kept);
-		return out;
+			arr.length = 0;
+			arr.push(...kept);
+			return out;
+		};
+
+		return [
+			...drainArray(this.highItems),
+			...drainArray(this.normalItems),
+			...drainArray(this.lowItems),
+		];
 	}
 
 	get size(): number {
-		return this.items.length;
+		return this.highItems.length + this.normalItems.length + this.lowItems.length;
 	}
 
 	clear(): void {
-		this.items.length = 0;
+		this.highItems.length = 0;
+		this.normalItems.length = 0;
+		this.lowItems.length = 0;
 	}
 
 	stats(): PriorityQueueStats {
-		const stats: PriorityQueueStats = {
-			high: 0,
-			normal: 0,
-			low: 0,
-			total: this.items.length,
+		return {
+			high: this.highItems.length,
+			normal: this.normalItems.length,
+			low: this.lowItems.length,
+			total: this.size,
 		};
-		for (const item of this.items) {
-			stats[this.getPriority(item)]++;
-		}
-		return stats;
 	}
 }
