@@ -11,6 +11,20 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SchemaRow } from "../types/state.ts";
 
+/** Per-path write locks to prevent concurrent writes from interleaving */
+const writeLocks = new Map<string, Promise<void>>();
+
+async function withWriteLock(path: string, fn: () => Promise<void>): Promise<void> {
+	const prev = writeLocks.get(path) ?? Promise.resolve();
+	const next = prev.then(fn, fn).finally(() => {
+		if (writeLocks.get(path) === next) {
+			writeLocks.delete(path);
+		}
+	});
+	writeLocks.set(path, next);
+	await next;
+}
+
 export interface PromptRegistryEntry {
 	promptKey: string;
 	schemaFingerprint: string;
@@ -44,14 +58,19 @@ export async function writePromptRegistryEntry(
 	rootDir: string,
 	entry: Omit<PromptRegistryEntry, "updatedAt">,
 ): Promise<void> {
-	const dir = registryDir(rootDir);
-	await mkdir(dir, { recursive: true });
+	// Compute path and payload synchronously before any await
 	const full: PromptRegistryEntry = {
 		...entry,
 		updatedAt: Date.now(),
 	};
 	const path = registryPath(rootDir, entry.promptKey, entry.schemaFingerprint);
-	await writeFile(path, JSON.stringify(full, null, 2), "utf-8");
+	const payload = JSON.stringify(full, null, 2);
+
+	// Serialize writes to the same path to prevent interleaving
+	await withWriteLock(path, async () => {
+		await mkdir(registryDir(rootDir), { recursive: true });
+		await writeFile(path, payload, "utf-8");
+	});
 }
 
 export async function readPromptRegistryEntry(
