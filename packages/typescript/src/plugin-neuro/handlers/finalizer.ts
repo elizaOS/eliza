@@ -93,9 +93,7 @@ export async function handleRunEnded(
 			// Why gated: enriched ExecutionTrace line already holds final scores;
 			// see TRAJECTORY_SIGNAL_CONTEXT_JSONL in docs/PROMPT_OPTIMIZATION.md.
 			if (
-				isTrajectorySignalContextJsonlEnabled((k) =>
-					runtime.getSetting?.(k),
-				)
+				isTrajectorySignalContextJsonlEnabled((k) => runtime.getSetting?.(k))
 			) {
 				try {
 					await tw.appendSignalContext(trace.modelId, trace.modelSlot, {

@@ -97,7 +97,8 @@ export function enrichContinuationSignals(
 			source: NEURO_SOURCE,
 			kind: SIGNALS.USER_CORRECTION,
 			value: 0.0,
-			reason: "Heuristic detected correction phrasing in follow-up user message",
+			reason:
+				"Heuristic detected correction phrasing in follow-up user message",
 			metadata: {
 				detectedIn: userMessageText.slice(0, 100),
 				roomId,

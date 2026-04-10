@@ -1,5 +1,3 @@
-import type { IAgentRuntime } from "../types/runtime";
-import { Service } from "../types/service";
 import type {
 	LlmObservationRecord,
 	ProviderObservationRecord,
@@ -9,6 +7,8 @@ import {
 	isTrajectoryCaptureEnabled,
 	isTrajectoryHistoryJsonlEnabled,
 } from "../trajectory-settings.ts";
+import type { IAgentRuntime } from "../types/runtime";
+import { Service } from "../types/service";
 
 export type TrajectoryScalar = string | number | boolean | null;
 export type TrajectoryData = Record<string, TrajectoryScalar>;
