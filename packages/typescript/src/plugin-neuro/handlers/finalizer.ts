@@ -168,17 +168,19 @@ export async function handleRunEnded(
 				);
 			}
 		} catch {
-			// This trace failed to persist — it remains in activeTraces
-			// (with a baseline copy on disk from the DPE write).
-			runtime.logger.warn(
-				{
-					src: "plugin-neuro",
-					runId,
-					reason: "trace_persist_failed",
-				},
-				"RUN_ENDED finalizer: trace append failed",
-			);
-		}
+		// This trace failed to persist — it remains in activeTraces
+		// (with a baseline copy on disk from the DPE write).
+		runtime.logger.warn(
+			{
+				src: "plugin-neuro",
+				runId,
+				traceId: trace.id,
+				promptKey: trace.promptKey,
+				reason: "trace_persist_failed",
+			},
+			"RUN_ENDED finalizer: trace append failed",
+		);
+	}
 	}
 
 	if (persistedTraces.length > 0) {
