@@ -610,13 +610,17 @@ context:
 available_contexts:
 {{availableContexts}}
 
-rules[6]:
+rules[10]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name -> IGNORE
 - continuing an active thread with {{agentName}} -> RESPOND
 - request to stop or be quiet -> STOP
 - talking to someone else -> IGNORE
 - if unsure, prefer IGNORE over hallucinating relevance
+- do NOT respond to casual conversation between other users
+- if another bot or assistant already answered, stay quiet -> IGNORE
+- if {{agentName}} responded to the last 2+ messages in a row, stop and let others talk -> IGNORE
+- if nobody mentioned {{agentName}} or asked a direct question, IGNORE
 
 context_routing:
 - primaryContext: choose one context from available_contexts, or "general" if none apply

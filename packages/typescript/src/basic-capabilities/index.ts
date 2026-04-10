@@ -367,6 +367,15 @@ export function shouldRespond(
 		};
 	}
 
+	// Hard skip: messages from self
+	if (message.entityId === runtime.agentId) {
+		return {
+			shouldRespond: false,
+			skipEvaluation: true,
+			reason: "self message",
+		};
+	}
+
 	function normalizeEnvList(value: unknown): string[] {
 		if (!value || typeof value !== "string") {
 			return [];
