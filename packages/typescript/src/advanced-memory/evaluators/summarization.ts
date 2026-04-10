@@ -253,7 +253,7 @@ export const summarizationEvaluator: Evaluator = {
 			}
 
 			const modelType = (config.summaryModelType ??
-				ModelType.TINY) as TextGenerationModelType;
+				ModelType.TEXT_NANO) as TextGenerationModelType;
 			const response = await runtime.useModel(modelType, {
 				prompt,
 				maxTokens: config.summaryMaxTokens || 2500,

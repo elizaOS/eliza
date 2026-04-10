@@ -120,8 +120,7 @@ export async function runAutonomyPostResponse(
 	// WHY: Mirror message pipeline logic so we take the same branch (simple = callback only, actions = processActions).
 	const isSimple =
 		responseContent.actions?.length === 1 &&
-		String(responseContent.actions[0]).toUpperCase() === "REPLY" &&
-		(!responseContent.providers || responseContent.providers.length === 0);
+		String(responseContent.actions[0]).toUpperCase() === "REPLY";
 	const isStop =
 		responseContent.actions?.length === 1 &&
 		String(responseContent.actions[0]).toUpperCase() === "STOP";

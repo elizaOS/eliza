@@ -251,7 +251,7 @@ class RelationshipsService(Service):
 
                 entity = None
                 if self._runtime is not None:
-                    entity = await self._runtime.get_entity(contact.entity_id)
+                    entity = await self._runtime.get_entity(str(contact.entity_id))
 
                 entity_name = getattr(entity, "name", None)
                 if isinstance(entity_name, str) and normalized_search in entity_name.lower():

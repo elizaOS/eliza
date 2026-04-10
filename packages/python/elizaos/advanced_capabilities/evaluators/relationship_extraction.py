@@ -7,7 +7,14 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from elizaos.generated.spec_helpers import require_evaluator_spec
-from elizaos.types import ActionResult, Evaluator, EvaluatorResult, HandlerOptions
+from elizaos.types import (
+    ActionResult,
+    Component,
+    Entity,
+    Evaluator,
+    EvaluatorResult,
+    HandlerOptions,
+)
 from elizaos.types.primitives import string_to_uuid
 
 if TYPE_CHECKING:
@@ -458,21 +465,21 @@ async def _handle_disputes(
     """Persist each dispute as a ``dispute_record`` component."""
     for dispute in disputes:
         await runtime.create_component(
-            {
-                "id": string_to_uuid(f"dispute-{time.time()}-{message.entity_id}"),
-                "type": "dispute_record",
-                "agentId": runtime.agent_id,
-                "entityId": message.entity_id,
-                "roomId": message.room_id,
-                "sourceEntityId": message.entity_id,
-                "data": {
+            Component(
+                id=str(string_to_uuid(f"dispute-{time.time()}-{message.entity_id}")),
+                type="dispute_record",
+                agent_id=str(runtime.agent_id),
+                entity_id=str(message.entity_id),
+                room_id=str(message.room_id),
+                source_entity_id=str(message.entity_id),
+                data={
                     "disputedField": dispute.get("disputed_field", "unknown"),
                     "correction": dispute.get("correction", "unknown"),
                     "confidence": dispute.get("confidence", 0.7),
-                    "disputer": message.entity_id,
+                    "disputer": str(message.entity_id),
                 },
-                "createdAt": int(time.time() * 1000),
-            }
+                created_at=int(time.time() * 1000),
+            )
         )
     runtime.logger.info(
         f"Disputes recorded: src=evaluator:relationship_extraction "
@@ -496,21 +503,21 @@ async def _handle_privacy_boundaries(
 
     for boundary in boundaries:
         await runtime.create_component(
-            {
-                "id": string_to_uuid(f"privacy-{time.time()}-{message.entity_id}"),
-                "type": "privacy_marker",
-                "agentId": runtime.agent_id,
-                "entityId": message.entity_id,
-                "roomId": message.room_id,
-                "sourceEntityId": message.entity_id,
-                "data": {
+            Component(
+                id=str(string_to_uuid(f"privacy-{time.time()}-{message.entity_id}")),
+                type="privacy_marker",
+                agent_id=str(runtime.agent_id),
+                entity_id=str(message.entity_id),
+                room_id=str(message.room_id),
+                source_entity_id=str(message.entity_id),
+                data={
                     "privacyType": boundary.get("type", "private"),
                     "privacyContent": boundary.get("content", ""),
                     "privacyContext": "Privacy boundary detected",
                     "timestamp": int(time.time() * 1000),
                 },
-                "createdAt": int(time.time() * 1000),
-            }
+                created_at=int(time.time() * 1000),
+            )
         )
     runtime.logger.info(
         f"Privacy boundaries recorded: src=evaluator:relationship_extraction "
@@ -544,16 +551,16 @@ async def _create_or_update_mentioned_entity(
 
     if existing is None:
         await runtime.create_entity(
-            {
-                "id": string_to_uuid(f"mentioned-{person['name']}-{time.time()}"),
-                "agentId": runtime.agent_id,
-                "names": [person["name"]],
-                "metadata": {
+            Entity(
+                id=str(string_to_uuid(f"mentioned-{person['name']}-{time.time()}")),
+                agent_id=str(runtime.agent_id),
+                names=[person["name"]],
+                metadata={
                     "mentionedBy": mentioned_by,
                     "mentionContext": person.get("context", ""),
                     "createdFrom": "mention",
                 },
-            }
+            )
         )
     else:
         metadata = existing.metadata or {}
@@ -646,6 +653,27 @@ async def _handle_admin_updates(
         return
 
     target_name, field, value = m.group(1), m.group(2), m.group(3)
+    field_lower = field.lower()
+
+    allowed_admin_fields = frozenset(
+        {
+            "department",
+            "language",
+            "nickname",
+            "notes",
+            "role",
+            "status",
+            "timezone",
+            "title",
+        }
+    )
+    if field_lower not in allowed_admin_fields:
+        runtime.logger.warning(
+            f"Admin update rejected: src=evaluator:relationship_extraction "
+            f"agentId={runtime.agent_id} admin={message.entity_id} "
+            f"field={field} reason=field_not_allowed"
+        )
+        return
 
     # Find target entity in the same room
     try:
@@ -662,7 +690,7 @@ async def _handle_admin_updates(
 
     if target:
         target_metadata = target.metadata or {}
-        target_metadata[field.lower()] = value
+        target_metadata[field_lower] = value
         target.metadata = target_metadata
         await runtime.update_entity(target)
         runtime.logger.info(

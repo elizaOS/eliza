@@ -82,12 +82,16 @@ export const generateImageAction = {
 		const imageResponse = await runtime.useModel(ModelType.IMAGE, {
 			prompt: imagePrompt,
 		});
+		const imageResults = Array.isArray(imageResponse)
+			? imageResponse
+			: typeof imageResponse === "string"
+				? [imageResponse]
+				: [];
+		const firstImage = imageResults[0];
+		const firstImageUrl =
+			typeof firstImage === "string" ? firstImage : firstImage?.url;
 
-		if (
-			!imageResponse ||
-			imageResponse.length === 0 ||
-			!imageResponse[0]?.url
-		) {
+		if (imageResults.length === 0 || !firstImageUrl) {
 			logger.error(
 				{
 					src: "plugin:advanced-capabilities:action:image_generation",
@@ -106,13 +110,15 @@ export const generateImageAction = {
 				data: {
 					actionName: "GENERATE_IMAGE",
 					prompt: imagePrompt,
-					rawResponse: imageResponse.map((image) => ({ url: image.url })),
+					rawResponse: imageResults.map((image) => ({
+						url: typeof image === "string" ? image : image.url,
+					})),
 				},
 				success: false,
 			};
 		}
 
-		const imageUrl = imageResponse[0].url;
+		const imageUrl = firstImageUrl;
 
 		logger.info(
 			{

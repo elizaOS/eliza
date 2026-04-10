@@ -14,33 +14,30 @@ describe("Prompts", () => {
 			expect(shouldRespondTemplate).toContain("{{agentName}}");
 			expect(shouldRespondTemplate).toContain("{{providers}}");
 			expect(shouldRespondTemplate).toContain("available_contexts:");
+			expect(shouldRespondTemplate).toContain("dual_pressure[2]:");
+			expect(shouldRespondTemplate).toContain("speak_up:");
+			expect(shouldRespondTemplate).toContain("hold_back:");
+			expect(shouldRespondTemplate).toContain("{{dualPressureThreshold}}");
 			expect(shouldRespondTemplate).toContain("context_routing:");
+			expect(shouldRespondTemplate).toContain("action_space:");
 			expect(shouldRespondTemplate).toContain("output:");
 			expect(shouldRespondTemplate).toContain("name: {{agentName}}");
 			expect(shouldRespondTemplate).toContain("reasoning:");
-			expect(shouldRespondTemplate).toContain("action: RESPOND");
+			expect(shouldRespondTemplate).toContain("action: REPLY");
 			expect(shouldRespondTemplate).toContain("primaryContext:");
 			expect(shouldRespondTemplate).toContain("secondaryContexts:");
-			expect(shouldRespondTemplate).toContain(
-				"request to stop or be quiet directed at {{agentName}} -> STOP",
-			);
-			expect(shouldRespondTemplate).toContain(
-				"if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND",
-			);
+			expect(shouldRespondTemplate).toContain("evidenceTurnIds:");
 
-			expect(shouldRespondTemplate).toContain("rules[6]:");
+			expect(shouldRespondTemplate).toContain("rules[7]:");
 			expect(shouldRespondTemplate).toContain(
 				"direct mention of {{agentName}}",
 			);
+			expect(shouldRespondTemplate).toContain(
+				"request to stop or be quiet -> STOP",
+			);
 			expect(shouldRespondTemplate).toContain("decision_note:");
 			expect(shouldRespondTemplate).toContain(
-				"respond only when the latest message is talking TO {{agentName}}",
-			);
-			expect(shouldRespondTemplate).toContain(
-				"the newest message must still clearly expect {{agentName}}",
-			);
-			expect(shouldRespondTemplate).toContain(
-				"mentions of other people do not cancel a direct address to {{agentName}}",
+				"talking ABOUT {{agentName}} is not enough",
 			);
 		});
 

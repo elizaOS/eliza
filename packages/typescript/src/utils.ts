@@ -490,6 +490,8 @@ export const formatMessages = ({
 }) => {
 	const entityById = new Map(entities.map((entity) => [entity.id, entity]));
 	const messageStrings: string[] = [];
+	let remainingAttachmentContext = 3;
+	let omittedAttachmentCount = 0;
 
 	for (let i = messages.length - 1; i >= 0; i -= 1) {
 		const message = messages[i];
@@ -505,29 +507,36 @@ export const formatMessages = ({
 		const formattedName = foundEntityNames?.[0] || "Unknown User";
 
 		const attachments = (message.content as Content).attachments;
+		const visibleAttachments =
+			attachments && attachments.length > 0
+				? attachments.slice(0, Math.max(0, remainingAttachmentContext))
+				: [];
+		if (attachments && attachments.length > 0) {
+			remainingAttachmentContext = Math.max(
+				0,
+				remainingAttachmentContext - visibleAttachments.length,
+			);
+			omittedAttachmentCount += attachments.length - visibleAttachments.length;
+		}
 
 		const attachmentString =
-			attachments && attachments.length > 0
-				? ` (Attachments: ${attachments
+			visibleAttachments.length > 0
+				? ` (Attachments: ${visibleAttachments
 						.map((media) => {
 							const lines = [`[${media.id} - ${media.title} (${media.url})]`];
 							if (media.contentType) {
 								lines.push(`Type: ${media.contentType}`);
 							}
 							if (media.text || media.description) {
-								lines.push(
-									"Stored content available via READ_ATTACHMENT",
-								);
+								lines.push("Stored content available via READ_ATTACHMENT");
 							}
 							return lines.join("\n");
 						})
 						.join(
 							// Use comma separator only if all attachments are single-line (no text/description)
-							attachments.every(
+							visibleAttachments.every(
 								(media) =>
-									!media.text &&
-									!media.description &&
-									!media.contentType,
+									!media.text && !media.description && !media.contentType,
 							)
 								? ", "
 								: "\n",
@@ -568,7 +577,17 @@ export const formatMessages = ({
 		messageStrings.push(messageString);
 	}
 
-	return messageStrings.join("\n");
+	const formattedMessages = messageStrings.join("\n");
+	if (omittedAttachmentCount === 0) {
+		return formattedMessages;
+	}
+
+	return [
+		formattedMessages,
+		`Note: ${omittedAttachmentCount} older attachment${omittedAttachmentCount === 1 ? "" : "s"} omitted from context. Use READ_ATTACHMENT to inspect additional attachments.`,
+	]
+		.filter(Boolean)
+		.join("\n");
 };
 
 export const formatTimestamp = (messageDate: number) => {

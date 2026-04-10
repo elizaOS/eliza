@@ -452,6 +452,9 @@ class IAgentRuntime(ABC):
     async def create_entity(self, entity: Entity) -> bool: ...
 
     @abstractmethod
+    async def create_component(self, component: Any) -> bool: ...
+
+    @abstractmethod
     async def create_room(self, room: Room) -> UUID: ...
 
     @abstractmethod

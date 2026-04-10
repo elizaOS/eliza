@@ -21,7 +21,6 @@ export * from "./providers/index.ts";
 
 // Import for local use
 import * as actions from "./actions/index.ts";
-import * as evaluators from "./evaluators/index.ts";
 import * as providers from "./providers/index.ts";
 
 /**

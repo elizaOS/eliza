@@ -1,4 +1,5 @@
 //! Native runtime features for knowledge, relationships, and trajectories.
+#![allow(missing_docs)]
 
 use crate::runtime::{AgentRuntime, Service as RuntimeService, TrajectoryLogs};
 use crate::types::components::{

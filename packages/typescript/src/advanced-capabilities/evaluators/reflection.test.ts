@@ -68,6 +68,16 @@ function createMessage(entityId: UUID): Memory {
 	} as Memory;
 }
 
+function getMockEntityId(index: number): UUID {
+	const entityId = mockEntities.at(index)?.id;
+
+	if (!entityId) {
+		throw new Error(`Missing mock entity id at index ${index}`);
+	}
+
+	return entityId as UUID;
+}
+
 describe("advanced capabilities reflectionEvaluator", () => {
 	let runtime: IAgentRuntime;
 
@@ -78,7 +88,7 @@ describe("advanced capabilities reflectionEvaluator", () => {
 	});
 
 	it("stores facts even when the relationships block is omitted", async () => {
-		const message = createMessage(mockEntities[0]!.id!);
+		const message = createMessage(getMockEntityId(0));
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
 		const warn = runtime.logger.warn as unknown as ReturnType<typeof vi.fn>;
 
@@ -108,7 +118,7 @@ describe("advanced capabilities reflectionEvaluator", () => {
 	});
 
 	it("creates relationships even when the facts block is omitted", async () => {
-		const message = createMessage(mockEntities[0]!.id!);
+		const message = createMessage(getMockEntityId(0));
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
 		const warn = runtime.logger.warn as unknown as ReturnType<typeof vi.fn>;
 
@@ -129,8 +139,8 @@ describe("advanced capabilities reflectionEvaluator", () => {
 		expect(runtime.createRelationship).toHaveBeenCalledOnce();
 		expect(runtime.createRelationship).toHaveBeenCalledWith(
 			expect.objectContaining({
-				sourceEntityId: mockEntities[0]!.id,
-				targetEntityId: mockEntities[1]!.id,
+				sourceEntityId: getMockEntityId(0),
+				targetEntityId: getMockEntityId(1),
 				tags: ["dm_interaction"],
 			}),
 		);
@@ -144,7 +154,7 @@ describe("advanced capabilities reflectionEvaluator", () => {
 	});
 
 	it("parses a fenced TOON reflection even when the model adds extra prose", async () => {
-		const message = createMessage(mockEntities[0]!.id!);
+		const message = createMessage(getMockEntityId(0));
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
 		const warn = runtime.logger.warn as unknown as ReturnType<typeof vi.fn>;
 
@@ -171,7 +181,7 @@ Thanks.`);
 	});
 
 	it("parses a fenced JSON reflection without warning", async () => {
-		const message = createMessage(mockEntities[0]!.id!);
+		const message = createMessage(getMockEntityId(0));
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
 		const warn = runtime.logger.warn as unknown as ReturnType<typeof vi.fn>;
 
@@ -204,8 +214,8 @@ Thanks.`);
 		expect(runtime.createRelationship).toHaveBeenCalledOnce();
 		expect(runtime.createRelationship).toHaveBeenCalledWith(
 			expect.objectContaining({
-				sourceEntityId: mockEntities[0]!.id,
-				targetEntityId: mockEntities[1]!.id,
+				sourceEntityId: getMockEntityId(0),
+				targetEntityId: getMockEntityId(1),
 				tags: ["dm_interaction"],
 			}),
 		);
@@ -219,7 +229,7 @@ Thanks.`);
 	});
 
 	it("parses a wrapped JSON reflection object", async () => {
-		const message = createMessage(mockEntities[0]!.id!);
+		const message = createMessage(getMockEntityId(0));
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
 
 		useModel.mockResolvedValue(`{
@@ -243,7 +253,7 @@ Thanks.`);
 	});
 
 	it("skips unstructured reflection output without warning", async () => {
-		const message = createMessage(mockEntities[0]!.id!);
+		const message = createMessage(getMockEntityId(0));
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
 		const warn = runtime.logger.warn as unknown as ReturnType<typeof vi.fn>;
 
@@ -263,7 +273,7 @@ Thanks.`);
 	});
 
 	it("filters out temporary status facts before storing them", async () => {
-		const message = createMessage(mockEntities[0]!.id!);
+		const message = createMessage(getMockEntityId(0));
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
 
 		useModel.mockResolvedValue(`thought: "All good"

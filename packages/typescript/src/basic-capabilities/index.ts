@@ -421,10 +421,12 @@ export function shouldRespond(
 	const alwaysRespondSources = ["client_chat"];
 
 	const customChannels = normalizeEnvList(
-		runtime.getSetting("ALWAYS_RESPOND_CHANNELS"),
+		runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ??
+			runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
 	);
 	const customSources = normalizeEnvList(
-		runtime.getSetting("ALWAYS_RESPOND_SOURCES"),
+		runtime.getSetting("ALWAYS_RESPOND_SOURCES") ??
+			runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
 	);
 
 	const respondChannels = new Set(

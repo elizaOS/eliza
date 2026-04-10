@@ -40,7 +40,7 @@ export class MemoryService extends Service {
 			longTermConfidenceThreshold: 0.85,
 			longTermExtractionThreshold: 30,
 			longTermExtractionInterval: 10,
-			summaryModelType: ModelType.TINY,
+			summaryModelType: ModelType.TEXT_NANO,
 			summaryMaxTokens: 2500,
 			summaryMaxNewMessages: 20,
 		};

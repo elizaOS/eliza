@@ -83,6 +83,7 @@ function metadataToContactInfo(data: Metadata): ContactInfo {
 export interface RelationshipAnalytics {
 	strength: number;
 	interactionCount: number;
+	sharedConversationWindows?: number;
 	lastInteractionAt?: string;
 	averageResponseTime?: number;
 	sentimentScore?: number;
@@ -122,14 +123,21 @@ export function calculateRelationshipStrength({
 	lastInteractionAt,
 	messageQuality = 5,
 	relationshipType = "acquaintance",
+	sharedConversationWindows = 0,
 }: {
 	interactionCount: number;
 	lastInteractionAt?: string;
 	messageQuality?: number;
 	relationshipType?: string;
+	sharedConversationWindows?: number;
 }): number {
 	// Base score from interaction count (max 40 points)
 	const interactionScore = Math.min(interactionCount * 2, 40);
+
+	// Shared conversation windows in the same room within an hour are a
+	// stronger social signal than isolated messages. Cap to avoid swamping
+	// explicit relationship/context signals.
+	const sharedConversationScore = Math.min(sharedConversationWindows * 4, 16);
 
 	// Recency score (max 30 points)
 	let recencyScore = 0;
@@ -161,10 +169,111 @@ export function calculateRelationshipStrength({
 		interactionScore +
 		recencyScore +
 		qualityScore +
+		sharedConversationScore +
 		(relationshipBonus[relationshipType] ?? 0);
 
 	// Return clamped value between 0 and 100
 	return Math.max(0, Math.min(100, Math.round(totalStrength)));
+}
+
+type RelationshipMessageLike = {
+	entityId?: UUID;
+	roomId?: UUID;
+	createdAt?: number | string | null;
+};
+
+function toMessageTimestamp(
+	value: RelationshipMessageLike["createdAt"],
+): number | null {
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return value;
+	}
+	if (typeof value === "string" && value.trim().length > 0) {
+		const parsed = Number(value);
+		if (Number.isFinite(parsed)) {
+			return parsed;
+		}
+	}
+	return null;
+}
+
+export function countSharedConversationWindows(
+	messages: RelationshipMessageLike[],
+	leftEntityId: UUID,
+	rightEntityId: UUID,
+	windowMs = 1000 * 60 * 60,
+): number {
+	const relevantMessages = messages
+		.filter(
+			(message) =>
+				(message.entityId === leftEntityId ||
+					message.entityId === rightEntityId) &&
+				toMessageTimestamp(message.createdAt) !== null,
+		)
+		.sort(
+			(left, right) =>
+				(toMessageTimestamp(left.createdAt) ?? 0) -
+				(toMessageTimestamp(right.createdAt) ?? 0),
+		);
+
+	if (relevantMessages.length < 2) {
+		return 0;
+	}
+
+	const rooms = new Map<string, RelationshipMessageLike[]>();
+	for (const message of relevantMessages) {
+		const roomKey =
+			typeof message.roomId === "string" ? message.roomId : "__shared__";
+		if (!rooms.has(roomKey)) {
+			rooms.set(roomKey, []);
+		}
+		rooms.get(roomKey)?.push(message);
+	}
+
+	let windowCount = 0;
+	for (const roomMessages of rooms.values()) {
+		let currentWindowStart: number | null = null;
+		let seenLeft = false;
+		let seenRight = false;
+
+		const flushWindow = () => {
+			if (seenLeft && seenRight) {
+				windowCount += 1;
+			}
+			currentWindowStart = null;
+			seenLeft = false;
+			seenRight = false;
+		};
+
+		for (const message of roomMessages) {
+			const createdAt = toMessageTimestamp(message.createdAt);
+			if (createdAt === null) {
+				continue;
+			}
+			if (
+				currentWindowStart === null ||
+				createdAt - currentWindowStart > windowMs
+			) {
+				if (currentWindowStart !== null) {
+					flushWindow();
+				}
+				currentWindowStart = createdAt;
+			}
+
+			if (message.entityId === leftEntityId) {
+				seenLeft = true;
+			}
+			if (message.entityId === rightEntityId) {
+				seenRight = true;
+			}
+		}
+
+		if (currentWindowStart !== null) {
+			flushWindow();
+		}
+	}
+
+	return windowCount;
 }
 
 export class RelationshipsService extends Service {
@@ -632,10 +741,6 @@ export class RelationshipsService extends Service {
 				r.sourceEntityId === targetEntityId,
 		) as ExtendedRelationship | undefined;
 
-		if (!relationship) {
-			return null;
-		}
-
 		// Get recent messages from rooms both entities share. `inReplyTo` stores a
 		// parent message id, not an entity id, so direct reply matching here is incorrect.
 		const [sourceRoomIds, targetRoomIds] = await Promise.all([
@@ -665,12 +770,21 @@ export class RelationshipsService extends Service {
 			)
 			.sort((a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0));
 
+		if (!relationship && interactions.length === 0) {
+			return null;
+		}
+
 		// Calculate metrics
 		const interactionCount = interactions.length;
+		const sharedConversationWindows = countSharedConversationWindows(
+			interactions,
+			sourceEntityId,
+			targetEntityId,
+		);
 		const lastInteraction = interactions[interactions.length - 1];
 		const lastInteractionAt = lastInteraction?.createdAt
 			? new Date(Number(lastInteraction.createdAt)).toISOString()
-			: relationship.lastInteractionAt;
+			: relationship?.lastInteractionAt;
 
 		// Calculate average response time
 		let totalResponseTime = 0;
@@ -709,12 +823,14 @@ export class RelationshipsService extends Service {
 		const strength = calculateRelationshipStrength({
 			interactionCount,
 			lastInteractionAt,
-			relationshipType: relationship.relationshipType,
+			relationshipType: relationship?.relationshipType,
+			sharedConversationWindows,
 		});
 
 		const analytics: RelationshipAnalytics = {
 			strength,
 			interactionCount,
+			sharedConversationWindows,
 			lastInteractionAt,
 			averageResponseTime,
 			sentimentScore: 0.7, // Placeholder - could integrate sentiment analysis
@@ -723,8 +839,9 @@ export class RelationshipsService extends Service {
 
 		// Update relationship with calculated strength
 		if (
-			relationship.strength !== strength ||
-			relationship.lastInteractionAt !== lastInteractionAt
+			relationship &&
+			(relationship.strength !== strength ||
+				relationship.lastInteractionAt !== lastInteractionAt)
 		) {
 			// Update relationship using components
 			const relationshipComponent = {

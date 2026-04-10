@@ -54,7 +54,7 @@ export type LLMModeType = (typeof LLMMode)[keyof typeof LLMMode];
 
 /**
  * Defines the recognized types of models that the agent runtime can use.
- * These include models for text generation (small, large, reasoning, completion),
+ * These include models for text generation (small, large, completion),
  * text embedding, tokenization (encode/decode), image generation and description,
  * audio transcription, text-to-speech, and generic object generation.
  * This constant is used throughout the system, particularly in `AgentRuntime.useModel`,
@@ -63,16 +63,16 @@ export type LLMModeType = (typeof LLMMode)[keyof typeof LLMMode];
  * String values are used for extensibility with custom model types.
  */
 export const ModelType = {
-	TINY: "TEXT_SMALL", // semantic alias for the lowest-latency general text tier
-	SMALL: "TEXT_SMALL", // kept for backwards compatibility
-	MEDIUM: "TEXT_LARGE", // kept for backwards compatibility
-	LARGE: "TEXT_LARGE", // kept for backwards compatibility
-	TEXT_NANO: "TEXT_NANO",
-	TEXT_MINI: "TEXT_MINI",
-	TEXT_TINY: "TEXT_SMALL", // semantic alias for provider fast/cheap chat models
-	TEXT_SMALL: "TEXT_SMALL",
-	TEXT_LARGE: "TEXT_LARGE",
-	TEXT_MEGA: "TEXT_MEGA",
+	NANO: "TEXT_NANO", // gpt-5.4-nano
+	SMALL: "TEXT_SMALL", // haiku or gpt-5.4-mini
+	MEDIUM: "TEXT_MEDIUM", // sonnet or gpt-5.4
+	LARGE: "TEXT_LARGE", // opus or gpt-5.4
+	MEGA: "TEXT_MEGA", // mythos or gpt-5.4 (5.5 when it comes out)
+	TEXT_NANO: "TEXT_NANO", // gpt-5.4-nano
+	TEXT_SMALL: "TEXT_SMALL", // haiku or gpt-5.4-mini
+	TEXT_MEDIUM: "TEXT_MEDIUM", // sonnet or gpt-5.4
+	TEXT_LARGE: "TEXT_LARGE", // opus or gpt-5.4
+	TEXT_MEGA: "TEXT_MEGA", // mythos or gpt-5.4 (5.5 when it comes out)
 	RESPONSE_HANDLER: "RESPONSE_HANDLER",
 	ACTION_PLANNER: "ACTION_PLANNER",
 	TEXT_EMBEDDING: "TEXT_EMBEDDING",
@@ -98,8 +98,8 @@ export const ModelType = {
  */
 export type TextGenerationModelType =
 	| typeof ModelType.TEXT_NANO
-	| typeof ModelType.TEXT_MINI
 	| typeof ModelType.TEXT_SMALL
+	| typeof ModelType.TEXT_MEDIUM
 	| typeof ModelType.TEXT_LARGE
 	| typeof ModelType.TEXT_MEGA
 	| typeof ModelType.RESPONSE_HANDLER
@@ -162,16 +162,16 @@ export const MODEL_SETTINGS = {
 	TEXT_NANO_FREQUENCY_PENALTY: "TEXT_NANO_FREQUENCY_PENALTY",
 	TEXT_NANO_PRESENCE_PENALTY: "TEXT_NANO_PRESENCE_PENALTY",
 
-	// TEXT_MINI specific settings
-	TEXT_MINI_MAX_TOKENS: "TEXT_MINI_MAX_TOKENS",
-	TEXT_MINI_TEMPERATURE: "TEXT_MINI_TEMPERATURE",
-	TEXT_MINI_TOP_P: "TEXT_MINI_TOP_P",
-	TEXT_MINI_TOP_K: "TEXT_MINI_TOP_K",
-	TEXT_MINI_MIN_P: "TEXT_MINI_MIN_P",
-	TEXT_MINI_SEED: "TEXT_MINI_SEED",
-	TEXT_MINI_REPETITION_PENALTY: "TEXT_MINI_REPETITION_PENALTY",
-	TEXT_MINI_FREQUENCY_PENALTY: "TEXT_MINI_FREQUENCY_PENALTY",
-	TEXT_MINI_PRESENCE_PENALTY: "TEXT_MINI_PRESENCE_PENALTY",
+	// TEXT_MEDIUM specific settings
+	TEXT_MEDIUM_MAX_TOKENS: "TEXT_MEDIUM_MAX_TOKENS",
+	TEXT_MEDIUM_TEMPERATURE: "TEXT_MEDIUM_TEMPERATURE",
+	TEXT_MEDIUM_TOP_P: "TEXT_MEDIUM_TOP_P",
+	TEXT_MEDIUM_TOP_K: "TEXT_MEDIUM_TOP_K",
+	TEXT_MEDIUM_MIN_P: "TEXT_MEDIUM_MIN_P",
+	TEXT_MEDIUM_SEED: "TEXT_MEDIUM_SEED",
+	TEXT_MEDIUM_REPETITION_PENALTY: "TEXT_MEDIUM_REPETITION_PENALTY",
+	TEXT_MEDIUM_FREQUENCY_PENALTY: "TEXT_MEDIUM_FREQUENCY_PENALTY",
+	TEXT_MEDIUM_PRESENCE_PENALTY: "TEXT_MEDIUM_PRESENCE_PENALTY",
 
 	// TEXT_LARGE specific settings
 	TEXT_LARGE_MAX_TOKENS: "TEXT_LARGE_MAX_TOKENS",
@@ -239,34 +239,6 @@ export const MODEL_SETTINGS = {
 	OBJECT_LARGE_FREQUENCY_PENALTY: "OBJECT_LARGE_FREQUENCY_PENALTY",
 	OBJECT_LARGE_PRESENCE_PENALTY: "OBJECT_LARGE_PRESENCE_PENALTY",
 
-	// TEXT_REASONING_SMALL specific settings
-	TEXT_REASONING_SMALL_MAX_TOKENS: "TEXT_REASONING_SMALL_MAX_TOKENS",
-	TEXT_REASONING_SMALL_TEMPERATURE: "TEXT_REASONING_SMALL_TEMPERATURE",
-	TEXT_REASONING_SMALL_TOP_P: "TEXT_REASONING_SMALL_TOP_P",
-	TEXT_REASONING_SMALL_TOP_K: "TEXT_REASONING_SMALL_TOP_K",
-	TEXT_REASONING_SMALL_MIN_P: "TEXT_REASONING_SMALL_MIN_P",
-	TEXT_REASONING_SMALL_SEED: "TEXT_REASONING_SMALL_SEED",
-	TEXT_REASONING_SMALL_REPETITION_PENALTY:
-		"TEXT_REASONING_SMALL_REPETITION_PENALTY",
-	TEXT_REASONING_SMALL_FREQUENCY_PENALTY:
-		"TEXT_REASONING_SMALL_FREQUENCY_PENALTY",
-	TEXT_REASONING_SMALL_PRESENCE_PENALTY:
-		"TEXT_REASONING_SMALL_PRESENCE_PENALTY",
-
-	// TEXT_REASONING_LARGE specific settings
-	TEXT_REASONING_LARGE_MAX_TOKENS: "TEXT_REASONING_LARGE_MAX_TOKENS",
-	TEXT_REASONING_LARGE_TEMPERATURE: "TEXT_REASONING_LARGE_TEMPERATURE",
-	TEXT_REASONING_LARGE_TOP_P: "TEXT_REASONING_LARGE_TOP_P",
-	TEXT_REASONING_LARGE_TOP_K: "TEXT_REASONING_LARGE_TOP_K",
-	TEXT_REASONING_LARGE_MIN_P: "TEXT_REASONING_LARGE_MIN_P",
-	TEXT_REASONING_LARGE_SEED: "TEXT_REASONING_LARGE_SEED",
-	TEXT_REASONING_LARGE_REPETITION_PENALTY:
-		"TEXT_REASONING_LARGE_REPETITION_PENALTY",
-	TEXT_REASONING_LARGE_FREQUENCY_PENALTY:
-		"TEXT_REASONING_LARGE_FREQUENCY_PENALTY",
-	TEXT_REASONING_LARGE_PRESENCE_PENALTY:
-		"TEXT_REASONING_LARGE_PRESENCE_PENALTY",
-
 	// TEXT_COMPLETION specific settings
 	TEXT_COMPLETION_MAX_TOKENS: "TEXT_COMPLETION_MAX_TOKENS",
 	TEXT_COMPLETION_TEMPERATURE: "TEXT_COMPLETION_TEMPERATURE",
@@ -311,8 +283,7 @@ export interface GenerateTextAttachment {
 /**
  * Parameters for generating text using a language model.
  * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
- * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, `ModelType.TEXT_REASONING_SMALL`,
- * `ModelType.TEXT_REASONING_LARGE`, or `ModelType.TEXT_COMPLETION`.
+ * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, or `ModelType.TEXT_COMPLETION`.
  * It includes essential information like the prompt and various generation controls.
  *
  * **Note for Plugin Implementers**: Different LLM providers have varying support for these parameters.
@@ -775,17 +746,17 @@ export interface ObjectGenerationParams
  */
 export interface ModelParamsMap {
 	[ModelType.TEXT_NANO]: GenerateTextParams;
-	[ModelType.TEXT_MINI]: GenerateTextParams;
 	[ModelType.TEXT_SMALL]: GenerateTextParams;
+	[ModelType.TEXT_MEDIUM]: GenerateTextParams;
 	[ModelType.TEXT_LARGE]: GenerateTextParams;
 	[ModelType.TEXT_MEGA]: GenerateTextParams;
 	[ModelType.RESPONSE_HANDLER]: GenerateTextParams;
 	[ModelType.ACTION_PLANNER]: GenerateTextParams;
+	[ModelType.TEXT_REASONING_SMALL]: GenerateTextParams;
+	[ModelType.TEXT_REASONING_LARGE]: GenerateTextParams;
 	[ModelType.TEXT_EMBEDDING]: TextEmbeddingParams | string | null;
 	[ModelType.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams;
 	[ModelType.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams;
-	[ModelType.TEXT_REASONING_SMALL]: GenerateTextParams;
-	[ModelType.TEXT_REASONING_LARGE]: GenerateTextParams;
 	[ModelType.IMAGE]: ImageGenerationParams;
 	[ModelType.IMAGE_DESCRIPTION]: ImageDescriptionParams | string;
 	[ModelType.TRANSCRIPTION]: TranscriptionParams | Buffer | string;
@@ -802,7 +773,7 @@ export interface ModelParamsMap {
 /**
  * Map of model types to their DEFAULT return value types.
  *
- * For text generation models (TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*),
+ * For text generation models (TEXT_SMALL, TEXT_LARGE, etc.),
  * the actual return type depends on the parameters and is handled by overloads:
  * - `{ prompt }`: Returns `string` (this default)
  * - `{ prompt, stream: true }`: Returns `TextStreamResult` (via overload)
@@ -811,17 +782,17 @@ export interface ModelParamsMap {
  */
 export interface ModelResultMap {
 	[ModelType.TEXT_NANO]: string;
-	[ModelType.TEXT_MINI]: string;
 	[ModelType.TEXT_SMALL]: string;
+	[ModelType.TEXT_MEDIUM]: string;
 	[ModelType.TEXT_LARGE]: string;
 	[ModelType.TEXT_MEGA]: string;
 	[ModelType.RESPONSE_HANDLER]: string;
 	[ModelType.ACTION_PLANNER]: string;
+	[ModelType.TEXT_REASONING_SMALL]: string;
+	[ModelType.TEXT_REASONING_LARGE]: string;
 	[ModelType.TEXT_EMBEDDING]: number[];
 	[ModelType.TEXT_TOKENIZER_ENCODE]: number[];
 	[ModelType.TEXT_TOKENIZER_DECODE]: string;
-	[ModelType.TEXT_REASONING_SMALL]: string;
-	[ModelType.TEXT_REASONING_LARGE]: string;
 	[ModelType.IMAGE]: ImageGenerationResult[];
 	[ModelType.IMAGE_DESCRIPTION]: ImageDescriptionResult;
 	[ModelType.TRANSCRIPTION]: string;
@@ -848,8 +819,8 @@ export interface ModelResultMap {
  */
 export type StreamableModelType =
 	| typeof ModelType.TEXT_NANO
-	| typeof ModelType.TEXT_MINI
 	| typeof ModelType.TEXT_SMALL
+	| typeof ModelType.TEXT_MEDIUM
 	| typeof ModelType.TEXT_LARGE
 	| typeof ModelType.TEXT_MEGA
 	| typeof ModelType.RESPONSE_HANDLER
@@ -871,8 +842,8 @@ export type PluginModelResult<K extends keyof ModelResultMap> =
  */
 const STREAMABLE_MODEL_TYPES: ReadonlySet<string> = new Set([
 	ModelType.TEXT_NANO,
-	ModelType.TEXT_MINI,
 	ModelType.TEXT_SMALL,
+	ModelType.TEXT_MEDIUM,
 	ModelType.TEXT_LARGE,
 	ModelType.TEXT_MEGA,
 	ModelType.RESPONSE_HANDLER,
@@ -884,14 +855,18 @@ const STREAMABLE_MODEL_TYPES: ReadonlySet<string> = new Set([
 
 const MODEL_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = {
 	[ModelType.TEXT_NANO]: [ModelType.TEXT_NANO, ModelType.TEXT_SMALL],
-	[ModelType.TEXT_MINI]: [ModelType.TEXT_MINI, ModelType.TEXT_SMALL],
+	[ModelType.TEXT_MEDIUM]: [ModelType.TEXT_MEDIUM, ModelType.TEXT_SMALL],
 	[ModelType.TEXT_MEGA]: [ModelType.TEXT_MEGA, ModelType.TEXT_LARGE],
 	[ModelType.RESPONSE_HANDLER]: [
 		ModelType.RESPONSE_HANDLER,
-		ModelType.TEXT_MINI,
+		ModelType.TEXT_NANO,
 		ModelType.TEXT_SMALL,
 	],
-	[ModelType.ACTION_PLANNER]: [ModelType.ACTION_PLANNER, ModelType.TEXT_SMALL],
+	[ModelType.ACTION_PLANNER]: [
+		ModelType.ACTION_PLANNER,
+		ModelType.TEXT_MEDIUM,
+		ModelType.TEXT_SMALL,
+	],
 };
 
 export function getModelFallbackChain(modelType: ModelTypeName): string[] {

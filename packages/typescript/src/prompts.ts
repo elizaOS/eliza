@@ -664,7 +664,7 @@ decision: true`;
 
 export const SHOULD_MUTE_ROOM_TEMPLATE = shouldMuteRoomTemplate;
 
-export const shouldRespondTemplate = `task: Decide whether {{agentName}} should respond, ignore, or stop.
+export const shouldRespondTemplate = `task: Decide whether {{agentName}} should REPLY (RESPOND is an alias of REPLY), IGNORE, or STOP, using dual-pressure scoring.
 
 context:
 {{providers}}
@@ -672,13 +672,32 @@ context:
 available_contexts:
 {{availableContexts}}
 
-rules[6]:
-- direct mention of {{agentName}} -> RESPOND
-- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
-- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
-- request to stop or be quiet directed at {{agentName}} -> STOP
-- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
-- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
+dual_pressure[2]:
+- speak_up: integer 0-100 - pressure TO engage (direct address, question in domain, obligation, unique value, user need, topic fit)
+- hold_back: integer 0-100 - pressure to STAY QUIET (wrong audience, already answered, redundancy, noisy channel, better-qualified others, low unique value)
+
+net: speak_up minus hold_back (range -100 to +100).
+
+consistency (T_hi = {{dualPressureThreshold}}):
+- net >= +T_hi -> prefer REPLY over IGNORE unless you document an exception in reasoning
+- net <= -T_hi -> prefer IGNORE over REPLY (or STOP if the user asked to stop)
+- |net| < T_hi -> borderline; choose the least disruptive action
+
+anti_gaming:
+- Do not output high hold_back and then choose REPLY without reconciling in reasoning. Prefer adjusting scores until they match the action.
+
+rubric_hints (guidance, not arithmetic):
+- speak_up boosts: strong direct mention of {{agentName}}, clear question in domain, group-wide address, problem/help language you can answer, topic match to role
+- hold_back boosts: another participant clearly addressed instead, outside expertise, someone else is a better fit, busy context and not addressed, repeating recent answers
+
+rules[7]:
+- direct mention of {{agentName}} -> raise speak_up; usually REPLY when net supports it
+- different assistant name -> raise hold_back; usually IGNORE
+- continuing an active thread with {{agentName}} -> raise speak_up; usually REPLY when net supports it
+- request to stop or be quiet -> STOP
+- talking to someone else -> raise hold_back; IGNORE
+- if unsure, prefer IGNORE over hallucinating relevance
+- action must align with net per consistency rules above
 
 context_routing:
 - primaryContext: choose one context from available_contexts, or "general" if none apply
@@ -686,29 +705,44 @@ context_routing:
 - evidenceTurnIds: optional comma-separated list of memory IDs supporting the decision
 
 decision_note:
-- respond only when the latest message is talking TO {{agentName}}
-- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
-- mentions of other people do not cancel a direct address to {{agentName}}
-- casual conversation between other users is not enough
-- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
-- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
-- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}}
+- talking ABOUT {{agentName}} is not enough
+
+action_space:
+- REPLY: full conversational response is warranted
+- RESPOND: full conversational response is warranted (alias of REPLY)
+- IGNORE: stay silent
+- STOP: user explicitly asked {{agentName}} to stop/end
 
 output:
 TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
 
 Example:
 name: {{agentName}}
+speak_up: 72
+hold_back: 18
 reasoning: Direct mention and clear follow-up.
-action: RESPOND
+action: REPLY
 primaryContext: wallet
 secondaryContexts:
 evidenceTurnIds:
 
 Example:
 name: {{agentName}}
-reasoning: Direct mention but no relevant action.
+speak_up: 22
+hold_back: 61
+reasoning: Side thread; not addressed to {{agentName}}; low unique value.
 action: IGNORE
+primaryContext: general
+secondaryContexts:
+evidenceTurnIds:
+
+Example:
+name: {{agentName}}
+speak_up: 5
+hold_back: 90
+reasoning: User explicitly asked me to stop talking.
+action: STOP
 primaryContext: general
 secondaryContexts:
 evidenceTurnIds:`;

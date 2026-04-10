@@ -177,7 +177,7 @@ type StructuredResponseCandidate = {
 
 function resolveDynamicPromptModelType(
 	modelType?: TextGenerationModelType,
-	modelSize?: "nano" | "mini" | "small" | "large" | "mega",
+	modelSize?: "nano" | "small" | "medium" | "large" | "mega",
 ): TextGenerationModelType {
 	if (modelType) {
 		return modelType;
@@ -186,13 +186,12 @@ function resolveDynamicPromptModelType(
 	switch (modelSize) {
 		case "nano":
 			return ModelType.TEXT_NANO;
-		case "mini":
-			return ModelType.TEXT_MINI;
 		case "small":
 			return ModelType.TEXT_SMALL;
+		case "medium":
+			return ModelType.TEXT_MEDIUM;
 		case "mega":
 			return ModelType.TEXT_MEGA;
-		case "large":
 		default:
 			return ModelType.TEXT_LARGE;
 	}
@@ -3281,8 +3280,7 @@ export class AgentRuntime implements IAgentRuntime {
 		provider: string,
 		priority?: number,
 	): void {
-		const modelKey =
-			typeof modelType === "string" ? modelType : ModelType[modelType];
+		const modelKey = String(modelType);
 		if (!this.models.has(modelKey)) {
 			this.models.set(modelKey, []);
 		}
@@ -3318,8 +3316,7 @@ export class AgentRuntime implements IAgentRuntime {
 				provider: string;
 		  }
 		| undefined {
-		const requestedModelKey =
-			typeof modelType === "string" ? modelType : ModelType[modelType];
+		const requestedModelKey = String(modelType);
 
 		for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
 			const models = this.models.get(candidateKey);
@@ -3532,8 +3529,7 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
-		let requestedModelKey =
-			typeof modelType === "string" ? modelType : ModelType[modelType];
+		let requestedModelKey = String(modelType);
 
 		// Apply LLM mode override for text generation models
 		const llmMode = this.getLLMMode();
@@ -3541,14 +3537,12 @@ export class AgentRuntime implements IAgentRuntime {
 			// List of text generation model types that can be overridden
 			const textGenerationModels = [
 				ModelType.TEXT_NANO,
-				ModelType.TEXT_MINI,
 				ModelType.TEXT_SMALL,
+				ModelType.TEXT_MEDIUM,
 				ModelType.TEXT_LARGE,
 				ModelType.TEXT_MEGA,
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
-				ModelType.TEXT_REASONING_SMALL,
-				ModelType.TEXT_REASONING_LARGE,
 				ModelType.TEXT_COMPLETION,
 			];
 
@@ -3683,14 +3677,12 @@ export class AgentRuntime implements IAgentRuntime {
 			// to allow users to intentionally set an empty identifier if needed.
 			const shouldAttachUser =
 				requestedModelKey === ModelType.TEXT_NANO ||
-				requestedModelKey === ModelType.TEXT_MINI ||
 				requestedModelKey === ModelType.TEXT_SMALL ||
+				requestedModelKey === ModelType.TEXT_MEDIUM ||
 				requestedModelKey === ModelType.TEXT_LARGE ||
 				requestedModelKey === ModelType.TEXT_MEGA ||
 				requestedModelKey === ModelType.RESPONSE_HANDLER ||
 				requestedModelKey === ModelType.ACTION_PLANNER ||
-				requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
-				requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
 				requestedModelKey === ModelType.TEXT_COMPLETION;
 			if (
 				shouldAttachUser &&
@@ -3784,7 +3776,7 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 
 			this.logModelCall(
-				modelType,
+				String(modelType),
 				resolvedModelKey,
 				params,
 				promptContent,
@@ -3864,7 +3856,7 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		this.logModelCall(
-			modelType,
+			String(modelType),
 			resolvedModelKey,
 			params,
 			promptContent,
@@ -4149,7 +4141,7 @@ export class AgentRuntime implements IAgentRuntime {
 		schema: SchemaRow[];
 		options?: {
 			key?: string;
-			modelSize?: "nano" | "mini" | "small" | "large" | "mega";
+			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
 			preferredEncapsulation?: "json" | "xml" | "toon";

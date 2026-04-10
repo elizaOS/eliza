@@ -60,7 +60,7 @@ describe("DefaultMessageService", () => {
 			) => {
 				if (
 					modelType === ModelType.TEXT_SMALL ||
-					modelType === ModelType.TEXT_MINI ||
+					modelType === ModelType.TEXT_NANO ||
 					modelType === ModelType.TEXT_NANO ||
 					modelType === ModelType.RESPONSE_HANDLER
 				) {
@@ -362,6 +362,104 @@ describe("DefaultMessageService", () => {
 			expect(result.shouldRespond).toBe(true);
 			expect(result.skipEvaluation).toBe(true);
 			expect(result.reason).toContain("whitelisted source");
+		});
+
+		it("uses legacy bypass settings when ALWAYS_RESPOND settings are unset", () => {
+			vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+				const settings: Record<string, string | null> = {
+					ALWAYS_RESPOND_CHANNELS: null,
+					ALWAYS_RESPOND_SOURCES: null,
+					SHOULD_RESPOND_BYPASS_TYPES: ChannelType.GROUP,
+					SHOULD_RESPOND_BYPASS_SOURCES: "legacy_source",
+				};
+				return settings[key] ?? null;
+			});
+
+			const channelMessage: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174014a" as UUID,
+				content: {
+					text: "legacy channel bypass",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const sourceMessage: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174014b" as UUID,
+				content: {
+					text: "legacy source bypass",
+					source: "legacy_source",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const room = {
+				id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				type: ChannelType.GROUP,
+				name: "Group",
+				worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
+				source: "test",
+			};
+
+			expect(
+				messageService.shouldRespond(runtime, channelMessage, room),
+			).toMatchObject({
+				shouldRespond: true,
+				skipEvaluation: true,
+			});
+			expect(
+				messageService.shouldRespond(runtime, sourceMessage, room),
+			).toMatchObject({
+				shouldRespond: true,
+				skipEvaluation: true,
+			});
+		});
+
+		it("treats an explicit empty ALWAYS_RESPOND setting as overriding the legacy alias", () => {
+			vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+				const settings: Record<string, string> = {
+					ALWAYS_RESPOND_CHANNELS: "",
+					ALWAYS_RESPOND_SOURCES: "",
+					SHOULD_RESPOND_BYPASS_TYPES: ChannelType.GROUP,
+					SHOULD_RESPOND_BYPASS_SOURCES: "legacy_source",
+				};
+				return settings[key] ?? null;
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174014c" as UUID,
+				content: {
+					text: "legacy alias should be ignored",
+					source: "legacy_source",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const room = {
+				id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				type: ChannelType.GROUP,
+				name: "Group",
+				worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
+				source: "test",
+			};
+
+			expect(
+				messageService.shouldRespond(runtime, message, room),
+			).toMatchObject({
+				shouldRespond: false,
+				skipEvaluation: false,
+			});
 		});
 
 		it("should always respond in API channels", () => {
@@ -883,6 +981,222 @@ describe("DefaultMessageService", () => {
 			expect(result.responseContent?.actions).toEqual(["STOP"]);
 		});
 
+		it("clamps REPLY to IGNORE when dual-pressure net is below threshold", async () => {
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValueOnce({
+				name: "TestAgent",
+				speak_up: 10,
+				hold_back: 85,
+				reasoning: "Not actually addressed to the agent",
+				action: "REPLY",
+				primaryContext: "general",
+				secondaryContexts: "",
+				evidenceTurnIds: "",
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174028a" as UUID,
+				content: {
+					text: "alex can you take this one?",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).not.toHaveBeenCalled();
+			expect(result.didRespond).toBe(false);
+			expect(result.responseContent).toBeNull();
+			expect(result.dualPressure).toEqual({
+				speakUp: 10,
+				holdBack: 85,
+				net: -75,
+			});
+			expect(result.shouldRespondClassifierAction).toBe("IGNORE");
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({
+						actions: ["IGNORE"],
+					}),
+				}),
+				"messages",
+			);
+			expect(runtime.logger.warn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					src: "service:message",
+					net: -75,
+				}),
+				expect.stringContaining("clamping to IGNORE"),
+			);
+		});
+
+		it("logs a warning when dual-pressure net is high but action is IGNORE", async () => {
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValueOnce({
+				name: "TestAgent",
+				speak_up: 80,
+				hold_back: 15,
+				reasoning: "Choosing silence despite strong speak signal",
+				action: "IGNORE",
+				primaryContext: "general",
+				secondaryContexts: "",
+				evidenceTurnIds: "",
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174028b" as UUID,
+				content: {
+					text: "TestAgent, do you know the answer?",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(result.didRespond).toBe(false);
+			expect(result.responseContent).toBeNull();
+			expect(result.dualPressure).toEqual({
+				speakUp: 80,
+				holdBack: 15,
+				net: 65,
+			});
+			expect(result.shouldRespondClassifierAction).toBe("IGNORE");
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({
+						actions: ["IGNORE"],
+					}),
+				}),
+				"messages",
+			);
+			expect(runtime.logger.warn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					src: "service:message",
+					net: 65,
+				}),
+				expect.stringContaining("high net but IGNORE"),
+			);
+		});
+
+		it("fails closed when classifier omits a dual-pressure score", async () => {
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValueOnce({
+				name: "TestAgent",
+				speak_up: 55,
+				reasoning: "Looks relevant but scores are incomplete",
+				action: "REPLY",
+				primaryContext: "general",
+				secondaryContexts: "",
+				evidenceTurnIds: "",
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174028c" as UUID,
+				content: {
+					text: "TestAgent maybe reply here",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(result.didRespond).toBe(false);
+			expect(result.responseContent).toBeNull();
+			expect(result.dualPressure).toBeNull();
+			expect(result.shouldRespondClassifierAction).toBe("IGNORE");
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({
+						actions: ["IGNORE"],
+					}),
+				}),
+				"messages",
+			);
+			expect(runtime.logger.warn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					src: "service:message",
+					action: "REPLY",
+				}),
+				expect.stringContaining("missing valid dual-pressure scores"),
+			);
+		});
+
+		it("fails closed when classifier returns an unsupported action", async () => {
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValueOnce({
+				name: "TestAgent",
+				speak_up: 60,
+				hold_back: 20,
+				reasoning: "Malformed action label",
+				action: "MAYBE",
+				primaryContext: "general",
+				secondaryContexts: "",
+				evidenceTurnIds: "",
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174028d" as UUID,
+				content: {
+					text: "TestAgent should you jump in?",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).not.toHaveBeenCalled();
+			expect(result.didRespond).toBe(false);
+			expect(result.responseContent).toBeNull();
+			expect(result.shouldRespondClassifierAction).toBeUndefined();
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({
+						actions: ["IGNORE"],
+					}),
+				}),
+				"messages",
+			);
+			expect(runtime.logger.warn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					src: "service:message",
+					action: "MAYBE",
+				}),
+				expect.stringContaining("missing valid action"),
+			);
+		});
+
 		it("should allow continuation to issue another multi-action response", async () => {
 			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
 			vi.spyOn(runtime, "composeState").mockResolvedValue({
@@ -957,6 +1271,8 @@ describe("DefaultMessageService", () => {
 		it("should honor STOP from shouldRespond without generating a reply", async () => {
 			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
 				name: "TestAgent",
+				speak_up: 5,
+				hold_back: 95,
 				reasoning: "The user asked the agent to stop",
 				action: "STOP",
 			});
@@ -996,6 +1312,8 @@ describe("DefaultMessageService", () => {
 		it("emits MESSAGE_SENT for terminal STOP decisions", async () => {
 			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
 				name: "TestAgent",
+				speak_up: 5,
+				hold_back: 95,
 				reasoning: "The user asked the agent to stop",
 				action: "STOP",
 			});
@@ -1033,6 +1351,8 @@ describe("DefaultMessageService", () => {
 				.spyOn(runtime, "dynamicPromptExecFromState")
 				.mockResolvedValueOnce({
 					name: "TestAgent",
+					speak_up: 70,
+					hold_back: 10,
 					reasoning: "Directly addressed",
 					action: "RESPOND",
 					primaryContext: "general",
@@ -1080,6 +1400,8 @@ describe("DefaultMessageService", () => {
 				.spyOn(runtime, "dynamicPromptExecFromState")
 				.mockResolvedValueOnce({
 					name: "TestAgent",
+					speak_up: 10,
+					hold_back: 80,
 					reasoning: "Not actually directed at the agent",
 					action: "IGNORE",
 					primaryContext: "general",
@@ -1173,6 +1495,8 @@ describe("DefaultMessageService", () => {
 				.spyOn(runtime, "dynamicPromptExecFromState")
 				.mockResolvedValueOnce({
 					name: "TestAgent",
+					speak_up: 72,
+					hold_back: 18,
 					reasoning: "Directly addressed",
 					action: "RESPOND",
 					primaryContext: "general",
@@ -1493,6 +1817,76 @@ describe("DefaultMessageService", () => {
 
 			expect(runtime.processActions).toHaveBeenCalledTimes(1);
 			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(1);
+		});
+
+		it("warns when multiple visible callback replies are emitted for one turn", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			runtime.actions = [
+				{
+					name: "GMAIL_ACTION",
+					description: "Grounded Gmail lookup",
+					handler: vi.fn(),
+					validate: vi.fn(async () => true),
+					suppressPostActionContinuation: true,
+				},
+			];
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				thought: "Use Gmail for the grounded answer",
+				actions: "GMAIL_ACTION",
+				text: "",
+				simple: false,
+			});
+			vi.spyOn(runtime, "processActions").mockImplementation(
+				async (_message, _responses, _state, actionCallback) => {
+					await actionCallback({
+						text: "I found the email from Suran.",
+						source: "action",
+						action: "GMAIL_ACTION",
+					} as Content);
+					await actionCallback({
+						text: "I also remember we hit a limit last time.",
+						source: "action",
+						action: "GMAIL_ACTION",
+					} as Content);
+				},
+			);
+			vi.spyOn(runtime, "getActionResults").mockReturnValue([
+				{
+					success: true,
+					text: "I found the email from Suran.",
+					data: { actionName: "GMAIL_ACTION" },
+				},
+			]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174031b" as UUID,
+				content: {
+					text: "check my emails from suran again",
+					source: "discord",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback);
+
+			expect(mockCallback).toHaveBeenCalledTimes(2);
+			expect(runtime.logger.warn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					callbackCount: 2,
+					action: "GMAIL_ACTION",
+					messageId: message.id,
+				}),
+				"Multiple visible callback replies emitted for a single turn",
+			);
 		});
 
 		it("drops planner REPLY text when a suppressive action is present", async () => {

@@ -161,8 +161,9 @@ MESSAGE_HANDLER_TEMPLATE = """task: Generate dialog and actions for {{agentName}
 context:
 {{providers}}
 
-rules[8]:
+rules[9]:
 - think briefly, then respond
+- always include a <thought> field, even for direct replies
 - actions execute in listed order
 - if replying, REPLY goes first
 - use IGNORE or STOP only by themselves

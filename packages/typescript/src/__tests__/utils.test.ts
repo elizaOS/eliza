@@ -716,6 +716,39 @@ action: RESPOND
 			);
 		});
 
+		it("caps attachment context to the 3 most recent attachments", () => {
+			const baseTime = Date.now();
+			const messages: Memory[] = Array.from({ length: 4 }, (_, index) => ({
+				id: stringToUuid(`msg-cap-${index}`),
+				entityId: stringToUuid("entity-1"),
+				roomId: stringToUuid("room-1"),
+				createdAt: baseTime + index,
+				content: {
+					text: `Attachment message ${index + 1}`,
+					attachments: [
+						{
+							id: `att-cap-${index + 1}`,
+							title: `Attachment ${index + 1}`,
+							url: `http://example.com/${index + 1}.png`,
+							contentType: "image",
+							description: `Description ${index + 1}`,
+						},
+					],
+					source: "chat",
+				} as Content,
+			}));
+
+			const result = formatMessages({ messages, entities: mockEntities });
+
+			expect(result).toContain("att-cap-4");
+			expect(result).toContain("att-cap-3");
+			expect(result).toContain("att-cap-2");
+			expect(result).not.toContain("att-cap-1");
+			expect(result).toContain("omitted from context");
+			expect(result).toContain("READ_ATTACHMENT");
+			expect(result).not.toContain("Description 1");
+		});
+
 		it("should filter out messages without entityId", () => {
 			// Testing edge case: malformed memory with null entityId
 			interface MalformedMemory extends Omit<Memory, "entityId"> {

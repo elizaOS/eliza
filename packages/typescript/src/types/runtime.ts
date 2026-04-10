@@ -295,7 +295,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	/**
 	 * Use a model for inference with proper type inference based on parameters.
 	 *
-	 * For text generation models (nano/mini/small/large/mega, handler/planner,
+	 * For text generation models (nano/small/medium/large/mega, handler/planner,
 	 * TEXT_REASONING_*, and TEXT_COMPLETION):
 	 * - Always returns `string`
 	 * - If streaming context is active, chunks are sent to callback automatically
@@ -419,7 +419,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		schema: import("./state").SchemaRow[];
 		options?: {
 			key?: string;
-			modelSize?: "nano" | "mini" | "small" | "large" | "mega";
+			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: TextGenerationModelType;
 			model?: string;
 			preferredEncapsulation?: "json" | "xml" | "toon";
