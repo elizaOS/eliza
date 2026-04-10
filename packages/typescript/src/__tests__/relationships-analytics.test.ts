@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { relationshipsProvider } from "../advanced-capabilities/providers/relationships.ts";
-import { RelationshipsService } from "../services/relationships.ts";
+import {
+	RelationshipsService,
+	calculateRelationshipStrength,
+	countSharedConversationWindows,
+} from "../services/relationships.ts";
 import type { Entity, Relationship } from "../types/environment.ts";
 import type { Memory } from "../types/memory.ts";
 import type { IAgentRuntime, UUID } from "../types/runtime.ts";
@@ -28,6 +32,10 @@ const adaId = stringToUuid("relationships-analytics-ada");
 const miraId = stringToUuid("relationships-analytics-mira");
 const sharedRoomId = stringToUuid("relationships-analytics-shared-room");
 const otherRoomId = stringToUuid("relationships-analytics-other-room");
+const leftEntityId = "91000000-0000-0000-0000-000000000101" as UUID;
+const rightEntityId = "91000000-0000-0000-0000-000000000102" as UUID;
+const analyticsRoomId = "91000000-0000-0000-0000-000000000103" as UUID;
+const analyticsAgentId = "91000000-0000-0000-0000-000000000104" as UUID;
 
 function createRuntime(overrides: Partial<MockRuntime> = {}): MockRuntime {
 	return {
@@ -188,5 +196,120 @@ describe("relationships analytics and provider", () => {
 		expect(result.text).toContain("Ada");
 		expect(result.text).toContain("Mira");
 		expect(result.text).not.toContain("Owner aka");
+	});
+});
+
+describe("shared conversation heuristics", () => {
+	it("counts shared conversation windows per room within one hour", () => {
+		const baseTime = Date.now();
+		const windows = countSharedConversationWindows(
+			[
+				{
+					roomId: analyticsRoomId,
+					entityId: leftEntityId,
+					createdAt: baseTime,
+				},
+				{
+					roomId: analyticsRoomId,
+					entityId: rightEntityId,
+					createdAt: baseTime + 30 * 60 * 1000,
+				},
+				{
+					roomId: analyticsRoomId,
+					entityId: leftEntityId,
+					createdAt: baseTime + 50 * 60 * 1000,
+				},
+				{
+					roomId: analyticsRoomId,
+					entityId: rightEntityId,
+					createdAt: baseTime + 75 * 60 * 1000,
+				},
+				{
+					roomId: analyticsRoomId,
+					entityId: leftEntityId,
+					createdAt: baseTime + 120 * 60 * 1000,
+				},
+				{
+					roomId: analyticsRoomId,
+					entityId: rightEntityId,
+					createdAt: baseTime + 130 * 60 * 1000,
+				},
+			],
+			leftEntityId,
+			rightEntityId,
+		);
+
+		expect(windows).toBe(2);
+	});
+
+	it("uses shared conversation windows as a relationship-strength bonus", () => {
+		const baseline = calculateRelationshipStrength({
+			interactionCount: 4,
+			lastInteractionAt: new Date().toISOString(),
+			relationshipType: "acquaintance",
+		});
+		const strengthened = calculateRelationshipStrength({
+			interactionCount: 4,
+			lastInteractionAt: new Date().toISOString(),
+			relationshipType: "acquaintance",
+			sharedConversationWindows: 3,
+		});
+
+		expect(strengthened).toBeGreaterThan(baseline);
+	});
+
+	it("analyzes shared chat even when no explicit relationship edge exists", async () => {
+		const baseTime = Date.now();
+		const runtime = {
+			agentId: analyticsAgentId,
+			getRelationships: vi.fn().mockResolvedValue([]),
+			getRoomsForParticipant: vi.fn().mockResolvedValue([analyticsRoomId]),
+			getMemoriesByRoomIds: vi.fn().mockResolvedValue([
+				{
+					id: "msg-1",
+					roomId: analyticsRoomId,
+					entityId: leftEntityId,
+					createdAt: baseTime,
+					content: { text: "hey" },
+				},
+				{
+					id: "msg-2",
+					roomId: analyticsRoomId,
+					entityId: rightEntityId,
+					createdAt: baseTime + 20 * 60 * 1000,
+					content: { text: "hi" },
+				},
+				{
+					id: "msg-3",
+					roomId: analyticsRoomId,
+					entityId: leftEntityId,
+					createdAt: baseTime + 35 * 60 * 1000,
+					content: { text: "sync later?" },
+				},
+				{
+					id: "msg-4",
+					roomId: analyticsRoomId,
+					entityId: rightEntityId,
+					createdAt: baseTime + 50 * 60 * 1000,
+					content: { text: "yes" },
+				},
+			]),
+			createComponent: vi.fn(),
+		} as unknown as IAgentRuntime;
+
+		const service = new RelationshipsService();
+		service.runtime = runtime;
+
+		const analytics = await service.analyzeRelationship(
+			leftEntityId,
+			rightEntityId,
+		);
+
+		expect(analytics).toMatchObject({
+			interactionCount: 4,
+			sharedConversationWindows: 1,
+		});
+		expect(analytics?.strength ?? 0).toBeGreaterThan(0);
+		expect(runtime.createComponent).not.toHaveBeenCalled();
 	});
 });

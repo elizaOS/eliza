@@ -441,9 +441,6 @@ function normalizeShouldRespondModelType(
 		case "nano":
 		case "text_nano":
 			return "nano";
-		case "mini":
-		case "text_mini":
-			return "mini";
 		case "small":
 		case "text_small":
 			return "small";

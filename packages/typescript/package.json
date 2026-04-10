@@ -5,56 +5,56 @@
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
-  "types": "dist/node/index.d.ts",
+  "types": "dist/index.d.ts",
   "browser": "dist/browser/index.browser.js",
   "sideEffects": false,
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/node/index.d.ts",
+      "types": "./dist/index.d.ts",
       "browser": {
-        "types": "./dist/browser/index.d.ts",
+        "types": "./dist/index.browser.d.ts",
         "import": "./dist/browser/index.browser.js",
         "default": "./dist/browser/index.browser.js"
       },
       "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.node.js",
-        "default": "./dist/node/index.node.js"
+        "types": "./dist/index.node.d.ts",
+        "import": "./dist/index.node.js",
+        "default": "./dist/index.node.js"
       },
       "bun": {
-        "types": "./dist/node/index.d.ts",
-        "default": "./dist/node/index.node.js"
+        "types": "./dist/index.node.d.ts",
+        "default": "./dist/index.node.js"
       },
-      "default": "./dist/node/index.node.js"
+      "default": "./dist/index.node.js"
     },
     "./node": {
-      "types": "./dist/node/index.d.ts",
-      "import": "./dist/node/index.node.js",
-      "default": "./dist/node/index.node.js"
+      "types": "./dist/index.node.d.ts",
+      "import": "./dist/index.node.js",
+      "default": "./dist/index.node.js"
     },
     "./browser": {
-      "types": "./dist/browser/index.d.ts",
+      "types": "./dist/index.browser.d.ts",
       "import": "./dist/browser/index.browser.js",
       "default": "./dist/browser/index.browser.js"
     },
     "./roles": {
-      "types": "./dist/node/roles.d.ts",
+      "types": "./dist/roles.d.ts",
       "browser": {
-        "types": "./dist/browser/roles.d.ts",
+        "types": "./dist/roles.d.ts",
         "import": "./dist/browser/roles.js",
         "default": "./dist/browser/roles.js"
       },
       "node": {
-        "types": "./dist/node/roles.d.ts",
-        "import": "./dist/node/roles.js",
-        "default": "./dist/node/roles.js"
+        "types": "./dist/roles.d.ts",
+        "import": "./dist/browser/roles.js",
+        "default": "./dist/browser/roles.js"
       },
       "bun": {
-        "types": "./dist/node/roles.d.ts",
-        "default": "./dist/node/roles.js"
+        "types": "./dist/roles.d.ts",
+        "default": "./dist/browser/roles.js"
       },
-      "default": "./dist/node/roles.js"
+      "default": "./dist/browser/roles.js"
     },
     "./testing": {
       "import": "./dist/testing/index.js",
