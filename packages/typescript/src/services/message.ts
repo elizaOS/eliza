@@ -24,6 +24,7 @@ import { EventType } from "../types/events";
 import type { Memory } from "../types/memory";
 import type {
 	ContextRoutedResponseDecision,
+	DualPressureScores,
 	IMessageService,
 	MessageProcessingOptions,
 	MessageProcessingResult,
@@ -196,6 +197,133 @@ function resolvePromptAttachments(
 	});
 
 	return resolved.length > 0 ? resolved : undefined;
+}
+
+/** Default half-width T for “strong” net vs action mismatch (must stay aligned with prompt’s T_hi unless character overrides). */
+const DEFAULT_DUAL_PRESSURE_THRESHOLD = 20;
+
+/**
+ * Runtime threshold for dual-pressure clamp/warn. **Why** a setting: operators tune how aggressive the
+ * guardrail is without forking `shouldRespondTemplate`; bounds 1–100 reject nonsense values.
+ */
+function resolveDualPressureThreshold(runtime: IAgentRuntime): number {
+	const raw = runtime.getSetting("DUAL_PRESSURE_THRESHOLD");
+	const n = Number.parseInt(String(raw ?? ""), 10);
+	if (Number.isFinite(n) && n >= 1 && n <= 100) {
+		return n;
+	}
+	return DEFAULT_DUAL_PRESSURE_THRESHOLD;
+}
+
+function clampPressureInt(n: number): number {
+	return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function parseOptionalPressureInt(value: unknown): number | null {
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return clampPressureInt(value);
+	}
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		if (trimmed === "") {
+			return null;
+		}
+		const parsed = Number.parseInt(trimmed, 10);
+		if (!Number.isNaN(parsed)) {
+			return clampPressureInt(parsed);
+		}
+	}
+	return null;
+}
+
+/**
+ * Parse dual-pressure scores and enforce net/action consistency (“gaslighting” clamp).
+ *
+ * - **Why clamp REPLY/RESPOND → IGNORE** when net is very negative: blocks the failure mode where scores
+ *   say “stay quiet” but the action still engages.
+ * - **Why never clamp STOP:** explicit user stop beats numeric scores.
+ * - **Why warn-only on high net + IGNORE:** silence may still be correct (safety, norms); operators need signal, not a forced reply.
+ * - **Why skip when either score is missing:** backward compatibility and partial-parse survival; we do not invent scores.
+ *
+ * Returns the canonical upper-case action for routing (REPLY, RESPOND, IGNORE, STOP, etc.).
+ */
+function applyDualPressureToClassifierAction(
+	runtime: IAgentRuntime,
+	responseObject: Record<string, unknown> | null,
+	rawAction: string,
+): { pressure: DualPressureScores | null; finalActionUpper: string } {
+	const threshold = resolveDualPressureThreshold(runtime);
+	const trimmedAction = rawAction.trim();
+	const upper = trimmedAction.toUpperCase();
+
+	const speakRaw =
+		responseObject && "speak_up" in responseObject
+			? responseObject.speak_up
+			: responseObject && "speakUp" in responseObject
+				? responseObject.speakUp
+				: undefined;
+	const holdRaw =
+		responseObject && "hold_back" in responseObject
+			? responseObject.hold_back
+			: responseObject && "holdBack" in responseObject
+				? responseObject.holdBack
+				: undefined;
+
+	const speakUp = parseOptionalPressureInt(speakRaw);
+	const holdBack = parseOptionalPressureInt(holdRaw);
+
+	const isEngage = upper === "RESPOND" || upper === "REPLY";
+
+	if (speakUp === null || holdBack === null) {
+		if (speakUp !== null || holdBack !== null) {
+			runtime.logger.debug(
+				{
+					src: "service:message",
+					speakUp,
+					holdBack,
+				},
+				"Dual pressure: incomplete scores; skipping consistency checks",
+			);
+		}
+		return { pressure: null, finalActionUpper: upper };
+	}
+
+	const net = speakUp - holdBack;
+	const pressure: DualPressureScores = { speakUp, holdBack, net };
+
+	if (upper === "STOP") {
+		return { pressure, finalActionUpper: "STOP" };
+	}
+
+	if (net <= -threshold && isEngage) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				net,
+				threshold,
+				originalAction: upper,
+				speakUp,
+				holdBack,
+			},
+			"Dual pressure: net below threshold but model chose engage; clamping to IGNORE",
+		);
+		return { pressure, finalActionUpper: "IGNORE" };
+	}
+
+	if (net >= threshold && upper === "IGNORE") {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				net,
+				threshold,
+				speakUp,
+				holdBack,
+			},
+			"Dual pressure: high net but IGNORE chosen; allowing model decision",
+		);
+	}
+
+	return { pressure, finalActionUpper: upper };
 }
 
 /**
@@ -1047,7 +1175,7 @@ export class DefaultMessageService implements IMessageService {
 		// Compose initial state
 		let state = await runtime.composeState(
 			message,
-			["ANXIETY", "ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
+			["ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
 			true,
 			false,
 		);
@@ -1083,6 +1211,9 @@ export class DefaultMessageService implements IMessageService {
 		let shouldRespondToMessage = true;
 		let terminalDecision: "IGNORE" | "STOP" | null = null;
 		let routedDecision: ContextRoutingDecision | null = null;
+		// LLM classifier observability: mirrored on MessageProcessingResult when the classifier ran (WHY: logs alone are hard to consume in tests/dashboards).
+		let dualPressureLog: DualPressureScores | null = null;
+		let shouldRespondClassifierAction: string | null = null;
 		const metadata =
 			typeof message.content.metadata === "object" &&
 			message.content.metadata !== null
@@ -1171,6 +1302,19 @@ export class DefaultMessageService implements IMessageService {
 							streamField: false,
 						},
 						{
+							field: "speak_up",
+							description:
+								"Integer 0-100: pressure to engage (reply). Required.",
+							validateField: false,
+							streamField: false,
+						},
+						{
+							field: "hold_back",
+							description: "Integer 0-100: pressure to stay quiet. Required.",
+							validateField: false,
+							streamField: false,
+						},
+						{
 							field: "reasoning",
 							description: "Your reasoning for this decision",
 							validateField: false,
@@ -1178,7 +1322,8 @@ export class DefaultMessageService implements IMessageService {
 						},
 						{
 							field: "action",
-							description: "RESPOND | IGNORE | STOP",
+							description:
+								"REPLY | RESPOND | IGNORE | STOP (REPLY and RESPOND both mean engage)",
 							validateField: false,
 							streamField: false,
 						},
@@ -1218,20 +1363,38 @@ export class DefaultMessageService implements IMessageService {
 
 				// A classifier output can either continue the turn or terminate it.
 				const nonResponseActions = ["IGNORE", "NONE", "STOP"];
-				const actionValue = responseObject?.action;
+				const rawAction =
+					typeof responseObject?.action === "string"
+						? responseObject.action
+						: "";
+				const dual = applyDualPressureToClassifierAction(
+					runtime,
+					responseObject as Record<string, unknown> | null,
+					rawAction,
+				);
+				dualPressureLog = dual.pressure;
+				const actionUpper = dual.finalActionUpper;
+				shouldRespondClassifierAction = actionUpper;
+
+				runtime.logger.debug(
+					{
+						src: "service:message",
+						speakUp: dual.pressure?.speakUp,
+						holdBack: dual.pressure?.holdBack,
+						net: dual.pressure?.net,
+						action: actionUpper,
+					},
+					"Dual pressure evaluation",
+				);
+
 				routedDecision = parseContextRoutingMetadata(responseObject);
 				setContextRoutingMetadata(message, routedDecision);
 
-				if (
-					typeof actionValue === "string" &&
-					(actionValue.toUpperCase() === "IGNORE" ||
-						actionValue.toUpperCase() === "STOP")
-				) {
-					terminalDecision = actionValue.toUpperCase() as "IGNORE" | "STOP";
+				if (actionUpper === "IGNORE" || actionUpper === "STOP") {
+					terminalDecision = actionUpper;
 				}
 				shouldRespondToMessage =
-					typeof actionValue === "string" &&
-					!nonResponseActions.includes(actionValue.toUpperCase());
+					actionUpper.length > 0 && !nonResponseActions.includes(actionUpper);
 			}
 		}
 
@@ -1608,6 +1771,8 @@ export class DefaultMessageService implements IMessageService {
 			source: message.content.source,
 			channelType: message.content.channelType,
 			roomName,
+			dualPressure: dualPressureLog,
+			shouldRespondClassifierAction,
 		};
 
 		// Emit run ended event
@@ -1630,6 +1795,13 @@ export class DefaultMessageService implements IMessageService {
 			responseMessages,
 			state,
 			mode,
+			// Expose classifier outcome only when the LLM path ran (null sentinel set in that branch).
+			...(shouldRespondClassifierAction !== null
+				? {
+						dualPressure: dualPressureLog,
+						shouldRespondClassifierAction,
+					}
+				: {}),
 		};
 	}
 

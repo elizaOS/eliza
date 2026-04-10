@@ -138,6 +138,17 @@ describe("DefaultMessageService", () => {
 		vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
 		vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
 
+		vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+			name: runtime.character.name ?? "TestAgent",
+			speak_up: 72,
+			hold_back: 18,
+			reasoning: "Default test dual-pressure decision",
+			action: "RESPOND",
+			primaryContext: "general",
+			secondaryContexts: "",
+			evidenceTurnIds: "",
+		});
+
 		messageService = new DefaultMessageService();
 	});
 
@@ -751,8 +762,13 @@ describe("DefaultMessageService", () => {
 		it("should honor STOP from shouldRespond without generating a reply", async () => {
 			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
 				name: "TestAgent",
+				speak_up: 20,
+				hold_back: 25,
 				reasoning: "The user asked the agent to stop",
 				action: "STOP",
+				primaryContext: "general",
+				secondaryContexts: "",
+				evidenceTurnIds: "",
 			});
 
 			const message: Memory = {
@@ -787,14 +803,113 @@ describe("DefaultMessageService", () => {
 			);
 		});
 
+		it("clamps REPLY to IGNORE when dual-pressure net is below threshold", async () => {
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValueOnce({
+				name: "TestAgent",
+				speak_up: 10,
+				hold_back: 85,
+				reasoning: "Inconsistent: low net but model said reply",
+				action: "REPLY",
+				primaryContext: "general",
+				secondaryContexts: "",
+				evidenceTurnIds: "",
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174029b" as UUID,
+				content: {
+					text: "random group chatter",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(runtime.processActions).not.toHaveBeenCalled();
+			expect(result.didRespond).toBe(false);
+			expect(result.dualPressure).toEqual({
+				speakUp: 10,
+				holdBack: 85,
+				net: -75,
+			});
+			expect(result.shouldRespondClassifierAction).toBe("IGNORE");
+			expect(runtime.logger.warn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					src: "service:message",
+					net: -75,
+				}),
+				expect.stringContaining("clamping to IGNORE"),
+			);
+		});
+
+		it("logs a warning when dual-pressure net is high but action is IGNORE", async () => {
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValueOnce({
+				name: "TestAgent",
+				speak_up: 80,
+				hold_back: 15,
+				reasoning: "Choosing silence despite strong speak signal",
+				action: "IGNORE",
+				primaryContext: "general",
+				secondaryContexts: "",
+				evidenceTurnIds: "",
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174029c" as UUID,
+				content: {
+					text: "hey everyone",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(result.didRespond).toBe(false);
+			expect(result.dualPressure).toEqual({
+				speakUp: 80,
+				holdBack: 15,
+				net: 65,
+			});
+			expect(result.shouldRespondClassifierAction).toBe("IGNORE");
+			expect(runtime.logger.warn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					src: "service:message",
+					net: 65,
+				}),
+				expect.stringContaining("high net but IGNORE"),
+			);
+		});
+
 		it("uses RESPONSE_HANDLER as the default shouldRespond model route", async () => {
 			const dynamicPromptSpy = vi
 				.spyOn(runtime, "dynamicPromptExecFromState")
 				.mockResolvedValueOnce({
 					name: "TestAgent",
+					speak_up: 75,
+					hold_back: 15,
 					reasoning: "Directly addressed",
 					action: "RESPOND",
 					primaryContext: "general",
+					secondaryContexts: "",
+					evidenceTurnIds: "",
 				})
 				.mockResolvedValueOnce({
 					thought: "Reply directly",

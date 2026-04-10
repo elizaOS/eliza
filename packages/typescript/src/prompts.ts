@@ -602,7 +602,13 @@ decision: true`;
 
 export const SHOULD_MUTE_ROOM_TEMPLATE = shouldMuteRoomTemplate;
 
-export const shouldRespondTemplate = `task: Decide whether {{agentName}} should respond, ignore, or stop.
+/**
+ * Default should-respond classifier prompt (TOON). Uses dual scores (`speak_up`, `hold_back`) so the model
+ * must argue both sides before `action`. **Why:** reduces over-reply and action/score mismatch; runtime
+ * clamp/warn enforces consistency with `DUAL_PRESSURE_THRESHOLD`. `action_space` precedes `output:` so
+ * labels are defined before the format constraint. See `docs/SHOULD_RESPOND_DUAL_PRESSURE.md`.
+ */
+export const shouldRespondTemplate = `task: Decide whether {{agentName}} should REPLY, IGNORE, or STOP, using dual-pressure scoring.
 
 context:
 {{providers}}
@@ -610,13 +616,32 @@ context:
 available_contexts:
 {{availableContexts}}
 
-rules[6]:
-- direct mention of {{agentName}} -> RESPOND
-- different assistant name -> IGNORE
-- continuing an active thread with {{agentName}} -> RESPOND
+dual_pressure[2]:
+- speak_up: integer 0-100 — pressure TO engage (direct address, question in domain, obligation, unique value, user need; group-wide address; topic fit)
+- hold_back: integer 0-100 — pressure to STAY QUIET (wrong audience, already answered, redundancy, noisy channel, better-qualified others, low unique value, social norms)
+
+net: speak_up minus hold_back (range -100 to +100).
+
+consistency (T_hi = 20 unless you state otherwise in reasoning):
+- net >= +T_hi -> prefer REPLY over IGNORE unless you document an exception in reasoning
+- net <= -T_hi -> prefer IGNORE over REPLY (or STOP if the user asked to stop)
+- between -T_hi and +T_hi -> judgment; explain tradeoffs in reasoning
+
+anti_gaming:
+- Do not output high hold_back and then choose REPLY without reconciling in reasoning. Prefer adjusting scores until they match the action.
+
+rubric_hints (guidance, not arithmetic):
+- speak_up boosts: strong direct mention of {{agentName}}; clear question in domain; group-wide address; problem/help language you can answer; topic match to role
+- hold_back boosts: another participant clearly addressed instead; outside expertise; someone else is a better fit; busy context and not addressed; would repeat recent answers
+
+rules[7]:
+- direct mention of {{agentName}} -> raise speak_up; usually REPLY when net supports it
+- different assistant name -> raise hold_back; usually IGNORE
+- continuing an active thread with {{agentName}} -> raise speak_up; usually REPLY when net supports it
 - request to stop or be quiet -> STOP
-- talking to someone else -> IGNORE
+- talking to someone else -> raise hold_back; IGNORE
 - if unsure, prefer IGNORE over hallucinating relevance
+- action must align with net per consistency rules above
 
 context_routing:
 - primaryContext: choose one context from available_contexts, or "general" if none apply
@@ -627,21 +652,40 @@ decision_note:
 - talking TO {{agentName}} means name mention, reply chain, or direct continuation
 - talking ABOUT {{agentName}} is not enough
 
+action_space:
+- REPLY: full conversational response is warranted
+- IGNORE: stay quiet
+- STOP: user asked to stop or end the conversation
+
 output:
 TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
 
 Example:
 name: {{agentName}}
-reasoning: Direct mention and clear follow-up.
-action: RESPOND
+speak_up: 72
+hold_back: 18
+reasoning: Direct mention and clear follow-up question.
+action: REPLY
 primaryContext: wallet
 secondaryContexts:
 evidenceTurnIds:
 
 Example:
 name: {{agentName}}
-reasoning: Direct mention but no relevant action.
+speak_up: 22
+hold_back: 61
+reasoning: Side thread; not addressed to {{agentName}}; low unique value.
 action: IGNORE
+primaryContext: general
+secondaryContexts:
+evidenceTurnIds:
+
+Example:
+name: {{agentName}}
+speak_up: 40
+hold_back: 35
+reasoning: User explicitly asked me to stop talking.
+action: STOP
 primaryContext: general
 secondaryContexts:
 evidenceTurnIds:`;

@@ -201,7 +201,7 @@ Eliza is a monorepo that contains all the packages needed to run the entire plat
 - **`@elizaos/server`**: The Express.js backend that runs your agents and exposes the API.
 - **`@elizaos/client`**: The React-based web UI for managing and interacting with your agents.
 - **`@elizaos/cli`**: The central tool for scaffolding, running, and managing your projects.
-- **`@elizaos/core`**: The core package that includes the basic-capabilities plugin which handles message processing and basic agent actions.
+- **`@elizaos/core`**: The core package that includes the basic-capabilities plugin which handles message processing and basic agent actions. In-repo design notes for the **should-respond gate** (dual-pressure scoring, clamp, `DUAL_PRESSURE_THRESHOLD`): [packages/typescript/docs/SHOULD_RESPOND_DUAL_PRESSURE.md](packages/typescript/docs/SHOULD_RESPOND_DUAL_PRESSURE.md).
 
 ## 🤝 How to Contribute
 

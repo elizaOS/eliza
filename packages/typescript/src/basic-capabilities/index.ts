@@ -50,6 +50,7 @@ import type {
 	WorldPayload,
 } from "../types/index.ts";
 import { MemoryType } from "../types/memory.ts";
+import type { ResponseDecision } from "../types/message-service.ts";
 import { ModelType } from "../types/model.ts";
 import type { ServiceClass } from "../types/plugin.ts";
 import { ChannelType, ContentType } from "../types/primitives.ts";
@@ -358,7 +359,7 @@ export function shouldRespond(
 	message: Memory,
 	room?: Room,
 	mentionContext?: MentionContext,
-): { shouldRespond: boolean; skipEvaluation: boolean; reason: string } {
+): ResponseDecision {
 	if (!room) {
 		return {
 			shouldRespond: false,
@@ -388,10 +389,12 @@ export function shouldRespond(
 	const alwaysRespondSources = ["client_chat"];
 
 	const customChannels = normalizeEnvList(
-		runtime.getSetting("ALWAYS_RESPOND_CHANNELS"),
+		runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ||
+			runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
 	);
 	const customSources = normalizeEnvList(
-		runtime.getSetting("ALWAYS_RESPOND_SOURCES"),
+		runtime.getSetting("ALWAYS_RESPOND_SOURCES") ||
+			runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
 	);
 
 	const respondChannels = new Set(

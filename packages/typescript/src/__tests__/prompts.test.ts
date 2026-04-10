@@ -17,19 +17,26 @@ describe("Prompts", () => {
 			expect(shouldRespondTemplate).toContain("output:");
 			expect(shouldRespondTemplate).toContain("name: {{agentName}}");
 			expect(shouldRespondTemplate).toContain("reasoning:");
-			expect(shouldRespondTemplate).toContain("action: RESPOND");
+			expect(shouldRespondTemplate).toContain("speak_up:");
+			expect(shouldRespondTemplate).toContain("hold_back:");
+			expect(shouldRespondTemplate).toContain("action: REPLY");
 			expect(shouldRespondTemplate).toContain("primaryContext:");
 			expect(shouldRespondTemplate).toContain("secondaryContexts:");
 			expect(shouldRespondTemplate).toContain(
 				"request to stop or be quiet -> STOP",
 			);
 
-			expect(shouldRespondTemplate).toContain("rules[6]:");
+			expect(shouldRespondTemplate).toContain("rules[7]:");
 			expect(shouldRespondTemplate).toContain(
 				"direct mention of {{agentName}}",
 			);
 			expect(shouldRespondTemplate).toContain("decision_note:");
 			expect(shouldRespondTemplate).toContain("talking TO {{agentName}}");
+			expect(shouldRespondTemplate).toContain("dual_pressure[2]:");
+			expect(shouldRespondTemplate).toContain("anti_gaming:");
+			expect(shouldRespondTemplate.indexOf("action_space:")).toBeLessThan(
+				shouldRespondTemplate.indexOf("output:"),
+			);
 		});
 
 		it("messageHandlerTemplate should contain required placeholders and structure", () => {

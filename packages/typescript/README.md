@@ -70,6 +70,7 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
 - `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`). Defaults from runtime settings if not set in options.
+- `DUAL_PRESSURE_THRESHOLD`: Band for dual-pressure consistency (integer 1–100, default **20**). If `speak_up - hold_back <= -threshold` and the model chose REPLY/RESPOND, the runtime clamps to **IGNORE**; **STOP** is never clamped. **Why:** One env-tunable guardrail against contradictory “high hold_back but still reply” outputs without editing the prompt. See [docs/SHOULD_RESPOND_DUAL_PRESSURE.md](docs/SHOULD_RESPOND_DUAL_PRESSURE.md).
 - `DISABLE_MEMORY_CREATION` / `ALLOW_MEMORY_SOURCE_IDS`: Basic-capabilities-related; see plugin docs. Shown in the basic-capabilities banner when set.
 
 **Example `.env`:**
@@ -95,7 +96,8 @@ SENTRY_SEND_DEFAULT_PII=true
 
 Key behaviors and APIs are documented with their **reasons** so future changes stay consistent with intent:
 
-- **[docs/DESIGN.md](docs/DESIGN.md)** — Design decisions: message races, provider timeout, keepExistingResponses, JSON5, formatPosts fallbacks, HandlerCallback actionName, anxiety provider, file logging, and what we don’t do.
+- **[docs/DESIGN.md](docs/DESIGN.md)** — Design decisions: message races, provider timeout, keepExistingResponses, JSON5, formatPosts fallbacks, HandlerCallback actionName, anxiety provider, dual-pressure shouldRespond, file logging, and what we don’t do.
+- **[docs/SHOULD_RESPOND_DUAL_PRESSURE.md](docs/SHOULD_RESPOND_DUAL_PRESSURE.md)** — Why dual-pressure scoring, clamp vs warn, STOP semantics, env knobs, and API fields on `MessageProcessingResult`.
 - **[CHANGELOG.md](CHANGELOG.md)** — Per-change notes with WHY for each addition or fix.
 - **[ROADMAP.md](ROADMAP.md)** — Planned work and rationale (observability, robustness, API consistency, performance).
 

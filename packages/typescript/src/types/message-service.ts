@@ -52,6 +52,19 @@ export interface MessageProcessingOptions
 }
 
 /**
+ * Dual-pressure scores from the shouldRespond LLM classifier (`speak_up` / `hold_back` in the prompt).
+ *
+ * `net = speakUp - holdBack` (−100…+100). **Why:** Two explicit pressures beat a single “confidence” for
+ * group settings—they force the model to articulate pull vs push, which makes contradictions with `action`
+ * detectable and correctable by the message service clamp (see core docs).
+ */
+export interface DualPressureScores {
+	speakUp: number;
+	holdBack: number;
+	net: number;
+}
+
+/**
  * Result of message processing
  */
 export interface MessageProcessingResult {
@@ -62,6 +75,17 @@ export interface MessageProcessingResult {
 	mode?: MessageProcessingMode;
 	skipEvaluation?: boolean;
 	reason?: string;
+	/**
+	 * Populated when the shouldRespond **LLM** classifier ran (ambiguous channel).
+	 * May be `null` if scores were missing or only partially parseable—**why:** backward compatibility
+	 * and resilience; we still surface the final `shouldRespondClassifierAction` when set.
+	 */
+	dualPressure?: DualPressureScores | null;
+	/**
+	 * Upper-case action after dual-pressure consistency rules (e.g. REPLY, IGNORE, STOP).
+	 * Only when the LLM classifier path ran. **Why:** Mirrors structured logs so hosts/tests do not parse log text.
+	 */
+	shouldRespondClassifierAction?: string | null;
 }
 
 /**
@@ -71,6 +95,13 @@ export interface ResponseDecision {
 	shouldRespond: boolean;
 	skipEvaluation: boolean;
 	reason: string;
+	/**
+	 * Optional scores when a **custom** `shouldRespond` surfaces LLM output through this type.
+	 * The built-in rule-based `shouldRespond()` leaves this unset. **Why:** Shared contract for plugins without widening required fields.
+	 */
+	pressure?: DualPressureScores | null;
+	/** Optional final action aligned with `pressure` for the same custom path. */
+	classifierAction?: string | null;
 }
 
 /**

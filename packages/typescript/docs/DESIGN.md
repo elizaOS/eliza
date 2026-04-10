@@ -43,6 +43,14 @@ When **DISABLE_MEMORY_CREATION** is true, the message service does **not** call 
 
 One check runs after we have a response but before sending (so we don’t send an outdated reply). The other runs when the agent decided *not* to respond (so we don’t treat “no response” as final if a newer message is already being processed). Same flag (`keepExistingResponses`) controls both so behavior is consistent.
 
+### Dual-pressure shouldRespond (LLM gate)
+
+In **ambiguous** channels (e.g. group chat without a platform mention), the message service may call an LLM classifier before the main reply. That classifier uses **two scores** — `speak_up` and `hold_back` (0–100) — plus an **action** (REPLY / RESPOND / IGNORE / STOP). The runtime then enforces **consistency**: strongly negative net with an “engage” action is **clamped to IGNORE**; **STOP** is never overridden by net; high net with **IGNORE** only **warns**. **Why:** Reduces gaming and over-replying while preserving explicit user stop intent and legitimate “stay quiet” exceptions.
+
+The **initial** `composeState` for this pipeline does **not** include the **ANXIETY** provider key; restraint guidance lives in the should-respond **prompt rubric** instead. **Why:** Avoids coupling gate quality to a separate provider for this path and keeps the classifier context focused; characters can still register ANXIETY for other compose paths if desired.
+
+Full detail: [SHOULD_RESPOND_DUAL_PRESSURE.md](./SHOULD_RESPOND_DUAL_PRESSURE.md).
+
 ---
 
 ## Providers and composeState
@@ -130,7 +138,9 @@ The runtime is the only place that knows which action produced the content. Pass
 
 ### Why an ANXIETY provider?
 
-The message service already requested `ANXIETY` in the initial state composition. Without a provider registered under that name, the request was a no-op. Adding the provider makes that intent effective: we can give the model channel-specific guidance (e.g. be brief in groups, more natural in DMs) to reduce verbosity and over-eagerness. **Why channel-specific?** Group channels benefit from “don’t over-explain; use IGNORE when unsure”; DMs can be more conversational; voice channels need very short replies.
+When the runtime **requests** `ANXIETY` in a `composeState` call, the request is a no-op unless a provider registers under that name. The provider gives channel-specific guidance (e.g. be brief in groups, more natural in DMs) to reduce verbosity and over-eagerness. **Why channel-specific?** Group channels benefit from “don’t over-explain; use IGNORE when unsure”; DMs can be more conversational; voice channels need very short replies.
+
+**Note:** The **should-respond LLM gate** no longer pulls `ANXIETY` in the default message service’s initial compose list; that gate uses the **dual-pressure** template and post-processing instead (see [SHOULD_RESPOND_DUAL_PRESSURE.md](./SHOULD_RESPOND_DUAL_PRESSURE.md)). ANXIETY remains useful wherever other code paths compose it explicitly.
 
 ### Why randomize anxiety examples?
 
