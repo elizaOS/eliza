@@ -6,6 +6,7 @@ import type {
 	PromptKey,
 	SlotKey,
 } from "./types.ts";
+import { simpleHash } from "./ab-analysis.ts";
 
 /**
  * Sanitize a model ID string for safe use as a filesystem directory name.
@@ -237,13 +238,4 @@ export class PromptArtifactResolver {
 	invalidateAll(): void {
 		this.cache.clear();
 	}
-}
-
-/** Simple djb2-style hash for deterministic A/B split */
-function simpleHash(str: string): number {
-	let hash = 5381;
-	for (let i = 0; i < str.length; i++) {
-		hash = (hash * 33) ^ str.charCodeAt(i);
-	}
-	return Math.abs(hash);
 }
