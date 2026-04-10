@@ -11,6 +11,7 @@ describe("DefaultMessageService", () => {
 	let messageService: IMessageService;
 	let runtime: IAgentRuntime;
 	let mockCallback: HandlerCallback;
+	let dynamicPromptExecSpy: ReturnType<typeof vi.spyOn>;
 
 	beforeEach(async () => {
 		// Create REAL runtime
@@ -138,7 +139,7 @@ describe("DefaultMessageService", () => {
 		vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
 		vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
 
-		vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+		dynamicPromptExecSpy = vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
 			name: runtime.character.name ?? "TestAgent",
 			speak_up: 72,
 			hold_back: 18,
@@ -595,7 +596,7 @@ describe("DefaultMessageService", () => {
 				values: {},
 				text: "",
 			});
-			vi.spyOn(runtime, "dynamicPromptExecFromState")
+			dynamicPromptExecSpy
 				.mockResolvedValueOnce({
 					thought: "Run git status first",
 					actions: "SHELL",
