@@ -75,12 +75,20 @@ export async function maybeRunAutoPromptOptimization(
 	const key = lockKey(modelId, modelSlot, promptKey, schemaFingerprint);
 
 	const prev = runLocks.get(key) ?? Promise.resolve();
-	const next = prev.then(() => doAutoRun(runtime, optDir, trace));
+	// Use .then(fn, fn) to handle both resolve and reject paths, preventing
+	// a rejected promise from permanently blocking future auto-optimization
+	const next = prev.then(
+		() => doAutoRun(runtime, optDir, trace),
+		() => doAutoRun(runtime, optDir, trace),
+	);
 	runLocks.set(key, next);
-	await next;
-	// Clean up resolved lock to prevent unbounded memory growth
-	if (runLocks.get(key) === next) {
-		runLocks.delete(key);
+	try {
+		await next;
+	} finally {
+		// Clean up resolved lock to prevent unbounded memory growth
+		if (runLocks.get(key) === next) {
+			runLocks.delete(key);
+		}
 	}
 }
 
