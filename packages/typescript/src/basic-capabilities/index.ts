@@ -392,13 +392,18 @@ export function shouldRespond(
 	// - ALWAYS_RESPOND_CHANNELS is the canonical setting; SHOULD_RESPOND_BYPASS_TYPES is deprecated.
 	// - ALWAYS_RESPOND_SOURCES is the canonical setting; SHOULD_RESPOND_BYPASS_SOURCES is deprecated.
 	// Operators should migrate to ALWAYS_RESPOND_* settings; the deprecated aliases will be removed in a future release.
+	// Use explicit undefined check so empty string is honored as "disable bypass list".
+	const rawChannels = runtime.getSetting("ALWAYS_RESPOND_CHANNELS");
 	const customChannels = normalizeEnvList(
-		runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ??
-			runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
+		rawChannels !== undefined && rawChannels !== null
+			? rawChannels
+			: runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
 	);
+	const rawSources = runtime.getSetting("ALWAYS_RESPOND_SOURCES");
 	const customSources = normalizeEnvList(
-		runtime.getSetting("ALWAYS_RESPOND_SOURCES") ??
-			runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
+		rawSources !== undefined && rawSources !== null
+			? rawSources
+			: runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
 	);
 
 	const respondChannels = new Set(
