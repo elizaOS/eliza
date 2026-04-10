@@ -34,9 +34,10 @@ describe("Prompts", () => {
 			expect(shouldRespondTemplate).toContain("talking TO {{agentName}}");
 			expect(shouldRespondTemplate).toContain("dual_pressure[2]:");
 			expect(shouldRespondTemplate).toContain("anti_gaming:");
-			expect(shouldRespondTemplate.indexOf("action_space:")).toBeLessThan(
-				shouldRespondTemplate.indexOf("output:"),
-			);
+			expect(shouldRespondTemplate).toContain("action_space:");
+			const actionSpaceIndex = shouldRespondTemplate.indexOf("action_space:");
+			const outputIndex = shouldRespondTemplate.indexOf("output:");
+			expect(actionSpaceIndex).toBeLessThan(outputIndex);
 		});
 
 		it("messageHandlerTemplate should contain required placeholders and structure", () => {
