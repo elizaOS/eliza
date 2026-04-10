@@ -56,16 +56,13 @@ export class AxBootstrapFewShotAdapter implements OptimizerAdapter {
 		const ax = await import("@ax-llm/ax").catch(() => null);
 		if (!ax) throw new Error("@ax-llm/ax not available");
 
-		// Build training examples from traces
-		const examples = buildTrainingExamples(config.traces).slice(
-			0,
-			this.maxExamples,
-		);
+		// Build training examples from traces (score all before truncating)
+		const examples = buildTrainingExamples(config.traces);
 		if (examples.length === 0) {
 			throw new Error("No successful traces available for BootstrapFewShot");
 		}
 
-		// Score successful examples using the metric function
+		// Score all examples using the metric function
 		const scoredExamples = await Promise.all(
 			examples.map(async (ex) => {
 				// Find the matching trace to compute score
@@ -76,10 +73,14 @@ export class AxBootstrapFewShotAdapter implements OptimizerAdapter {
 			}),
 		);
 
-		// Select top demos by score
-		const topDemos = scoredExamples
+		// Rank by score first, then truncate to maxExamples for evaluation
+		const rankedCandidates = scoredExamples
 			.filter((e) => e.score >= 0.5)
 			.sort((a, b) => b.score - a.score)
+			.slice(0, this.maxExamples);
+
+		// Select top demos from the ranked candidates
+		const topDemos = rankedCandidates
 			.slice(0, this.maxDemos)
 			.map((e) => e.example);
 
@@ -90,7 +91,9 @@ export class AxBootstrapFewShotAdapter implements OptimizerAdapter {
 		// Serialize demos as formatted string
 		const demoStr = formatDemos(topDemos, config.schema);
 		const avgScore =
-			scoredExamples.reduce((s, e) => s + e.score, 0) / scoredExamples.length;
+			rankedCandidates.length > 0
+				? rankedCandidates.reduce((s, e) => s + e.score, 0) / rankedCandidates.length
+				: 0;
 
 		return {
 			demos: demoStr,
@@ -98,6 +101,7 @@ export class AxBootstrapFewShotAdapter implements OptimizerAdapter {
 			stats: {
 				demoCount: topDemos.length,
 				examplesEvaluated: examples.length,
+				candidatesRanked: rankedCandidates.length,
 				avgScore,
 			},
 		};
