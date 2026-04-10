@@ -14,6 +14,8 @@ The `@elizaos/core` package provides a robust foundation for building AI agents 
 - **Entity and Memory Management:** Core support for tracking entities and their associated information.
 - **Shared Config Helpers:** Common utilities for runtime-first setting resolution, typed coercion, and schema-based config validation.
 
+**Operator docs:** [Prompt optimization, trajectories, and on-disk layout](docs/PROMPT_OPTIMIZATION.md) — `OPTIMIZATION_DIR`, union `history.jsonl`, toggles, and **why** facts/judgments/policy are split.
+
 ## Installation
 
 1.  Add `@elizaos/core` to your `agent/package.json` dependencies:
@@ -176,11 +178,32 @@ const config = loadPluginConfig({
 
 **Why the API is split into `collectSettings()` and `loadPluginConfig()`:** callers can still override or derive a few fields locally before validation, while the shared precedence and error formatting stay centralized.
 
-### Benchmark & Trajectory Tracing
+### Benchmark & trajectory tracing
 
-Benchmarks and harnesses can attach metadata to inbound messages:
+**Why this exists:** Some tests need a **deterministic, inspectable** record of which providers ran and what the model was called with, without turning on the full **prompt optimization** pipeline (`PROMPT_OPTIMIZATION_ENABLED`). Trajectory capture answers that. **Why not reuse DPE traces only?** Many `useModel` calls are not DPE-scored; benchmarks still need raw call logs.
 
-- `message.metadata.trajectoryStepId`: when present, provider access + model calls are captured for that step.
+**Activation**
+
+- `message.metadata.trajectoryStepId` — when set, the message service wraps handling in **async trajectory context** so `composeState` and `useModel` can log. **Why metadata:** harnesses choose the step id; production chat usually omits it so no overhead.
+- **`TrajectoryLoggerService`** (from basic capabilities) receives `logProviderAccess` / `logLlmCall`. **Why a service:** swappable / mockable in tests; default implementation is in-memory + optional disk.
+
+**Correlation (join keys)**
+
+- Context carries **`runId`**, **`messageId`**, **`roomId`** when a step id is present. **Why:** stitch logs to a conversation turn without new IDs.
+- Disk rows may include **`executionTraceId`** when an in-flight **`ExecutionTrace`** exists for `getCurrentRunId()` (prompt optimization on). **Why:** link raw `useModel` lines to scored DPE traces. **Caveat:** multiple DPE calls in one run → “latest registered trace” heuristic; see [PROMPT_OPTIMIZATION.md](docs/PROMPT_OPTIMIZATION.md).
+
+**Settings** (see [`src/trajectory-settings.ts`](src/trajectory-settings.ts), exported from the node entry)
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `TRAJECTORY_CAPTURE_ENABLED` | on | Master off switch for in-memory + disk trajectory logging. **Why default on:** backward compatible with harnesses that only set `trajectoryStepId`. |
+| `TRAJECTORY_HISTORY_JSONL` | off | Append `llm_observation` / `provider_observation` under `OPTIMIZATION_DIR`. **Why default off:** full prompts/responses are PII; must be explicit. **Why same dir as optimizer:** one portable tree, one `TraceWriter` lock pattern — not because telemetry is “training data” semantically. |
+| `TRAJECTORY_SIGNAL_CONTEXT_JSONL` | off | After RUN_ENDED enrichment, append `signal_context` (duplicate of scores vs enriched `trace`). **Why optional:** join-friendly for tools that start from observations; avoid duplication otherwise. |
+
+**Further reading:** [docs/PROMPT_OPTIMIZATION.md](docs/PROMPT_OPTIMIZATION.md) — union row types, facts vs judgments vs policy, parsing edge cases for bool settings.
+
+**Benchmark context (separate concern)**
+
 - `message.metadata.benchmarkContext`: when present, the `CONTEXT_BENCH` provider sets `state.values.benchmark_has_context=true`, and the message loop forces action-based execution (so the full Provider → Model → Action → Evaluator loop is exercised).
 
 ### Model output contract (XML preferred, plain text tolerated)

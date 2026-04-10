@@ -46,6 +46,7 @@ export async function handleReaction(
 			source: NEURO_SOURCE,
 			kind: SIGNALS.REACTION_POSITIVE,
 			value: sentiment,
+			reason: `User reaction ${emojiStr} mapped to positive sentiment`,
 			metadata: { emoji: emojiStr, messageId: message.id },
 		});
 	} else if (sentiment <= 0.3) {
@@ -53,6 +54,7 @@ export async function handleReaction(
 			source: NEURO_SOURCE,
 			kind: SIGNALS.REACTION_NEGATIVE,
 			value: sentiment,
+			reason: `User reaction ${emojiStr} mapped to negative sentiment`,
 			metadata: { emoji: emojiStr, messageId: message.id },
 		});
 	} else {
@@ -60,6 +62,7 @@ export async function handleReaction(
 			source: NEURO_SOURCE,
 			kind: SIGNALS.REACTION_NEUTRAL,
 			value: sentiment,
+			reason: `User reaction ${emojiStr} mapped to neutral sentiment`,
 			metadata: { emoji: emojiStr, messageId: message.id },
 		});
 	}

@@ -4,8 +4,27 @@
 
 ### Added
 
-- **Documentation: [docs/PROMPT_OPTIMIZATION.md](docs/PROMPT_OPTIMIZATION.md)** — on-disk layout (`modelId` / `slotKey`), registry, DPE → RUN_ENDED → auto-optimizer → A/B, and **why** TOON vs XML parsing logs look confusing (`parseKeyValueXml` order, streaming XML, trailing garbage).
-  - **Why:** Operators hit `no_artifact`, wrong paths, and parse warnings without a single narrative; this doc records intent next to the code.
+- **Trajectory observability (union `history.jsonl`).** Optional row types **`llm_observation`**, **`provider_observation`**, and **`signal_context`** append to the same per-`modelId`/`slotKey` file as optimizer traces, without changing **`loadTraces`** (still `type === "trace"` only).
+  - **Why:** One durable append path and one lock; operators can record raw `useModel` / provider facts for replay while keeping the optimizer contract frozen. **Why not a separate product DB?** Same portability story as `OPTIMIZATION_DIR` (copy directory, `jq`, git).
+- **Settings:** `TRAJECTORY_CAPTURE_ENABLED` (master, default on), `TRAJECTORY_HISTORY_JSONL` (disk facts, default off — PII), `TRAJECTORY_SIGNAL_CONTEXT_JSONL` (post-enrichment score snapshot, default off — duplicates enriched `trace`).
+  - **Why orthogonal to `PROMPT_OPTIMIZATION_ENABLED`:** benchmarks need facts without DPE; production may optimize without writing full prompts to disk.
+- **Correlation:** `runId` / `roomId` / `messageId` on trajectory context; **`executionTraceId`** on observations when an in-flight DPE trace exists (`getActiveTrace(getCurrentRunId())`).
+  - **Why:** Join observations to `ExecutionTrace` and `signal_context` without a second telemetry system. **Limitation:** “Latest trace per run” is heuristic when multiple DPE calls exist in one turn.
+- **`ScoreSignal.reason`** (optional) on DPE and neuro signals for auditable JSONL.
+  - **Why:** `value` + `kind` alone are hard to interpret in logs and UIs.
+- **Documentation: [docs/PROMPT_OPTIMIZATION.md](docs/PROMPT_OPTIMIZATION.md)** — extended with **observability architecture** (facts vs judgments vs policy), union `history.jsonl` row types, trajectory settings and parsing WHYs, correlation (`executionTraceId` heuristic), plus existing operator narrative (paths, DPE → RUN_ENDED → auto-opt → A/B, TOON vs XML parsing pitfalls).
+
+### Changed
+
+- **Trajectory settings parsing:** trim strings; numeric **`0`/`1`**; empty string → per-flag default (capture remains on; history remains off).
+  - **Why:** Real env/config sources emit inconsistent types; empty string should not flip defaults unexpectedly.
+- **Trajectory JSONL append failures** log at **debug** (`src: trajectory_logger`).
+  - **Why:** Must not break the message loop; operators still need a breadcrumb when disk is full or permissions are wrong.
+- **DPE success/failure traces:** baseline `ScoreCard` signals include **`reason`** where it clarifies schema/retries/tokens.
+  - **Why:** Aligns DPE with neuro’s documented “why this score” story.
+
+### Added
+
 - **Package [ROADMAP.md](ROADMAP.md)** — near/medium/long-term core items with WHYs; points to `src/optimization/ROADMAP.md` for optimizer-specific phases.
   - **Why:** README already linked `ROADMAP.md` from DESIGN; the file now exists and scopes “core vs optimization” cleanly.
 

@@ -2947,7 +2947,7 @@ export class AgentRuntime implements IAgentRuntime {
 				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
 		);
 
-		// Optional trajectory logging service (no-op by default).
+		// trajectory_logger: benchmarks only when trajectoryStepId is set; see README + PROMPT_OPTIMIZATION.md.
 		type TrajectoryLogger = Service & {
 			logProviderAccess: (params: {
 				stepId: string;
@@ -2955,6 +2955,10 @@ export class AgentRuntime implements IAgentRuntime {
 				data: Record<string, string | number | boolean | null>;
 				purpose: string;
 				query?: Record<string, string | number | boolean | null>;
+				runId?: string;
+				roomId?: string;
+				messageId?: string;
+				executionTraceId?: string;
 			}) => void;
 		};
 		const trajLogger = (await this._ensureServiceStarted(
@@ -2992,6 +2996,10 @@ export class AgentRuntime implements IAgentRuntime {
 		if (trajectoryStepId && trajLogger) {
 			const userText =
 				typeof message.content?.text === "string" ? message.content.text : "";
+			const trajCtx = getTrajectoryContext();
+			// Best-effort link to in-flight DPE trace (latest registered for this run).
+			// Why getActiveTrace: compose may run before/after DPE; id is omitted when optimization off.
+			const providerTraceId = this.getActiveTrace(this.getCurrentRunId())?.id;
 			for (const r of providerData) {
 				try {
 					const textLen = typeof r.text === "string" ? r.text.length : 0;
@@ -3001,6 +3009,10 @@ export class AgentRuntime implements IAgentRuntime {
 						data: { textLength: textLen },
 						purpose: "compose_state",
 						query: { message: userText.slice(0, 2000) },
+						runId: trajCtx?.runId,
+						roomId: trajCtx?.roomId,
+						messageId: trajCtx?.messageId,
+						executionTraceId: providerTraceId,
 					});
 				} catch {
 					// Trajectory logging must never break core message flow.
@@ -3995,8 +4007,9 @@ export class AgentRuntime implements IAgentRuntime {
 				fullText,
 			);
 
-			// Optional trajectory logging: associate model calls with current trajectory step
-			// Skip during initialization to avoid deadlock (_ensureServiceStarted awaits initPromise)
+			// Trajectory: log raw useModel when trajectoryStepId is active (harness/benchmark).
+			// Why not always on: PII + volume; why require step id: keeps production chat off by default.
+			// Skip during initialization to avoid deadlock (_ensureServiceStarted awaits initPromise).
 			if (!this.initResolver) {
 				try {
 					type TrajectoryLogger = Service & {
@@ -4011,9 +4024,15 @@ export class AgentRuntime implements IAgentRuntime {
 							purpose: string;
 							actionType: string;
 							latencyMs: number;
+							modelSlot?: string;
+							runId?: string;
+							roomId?: string;
+							messageId?: string;
+							executionTraceId?: string;
 						}) => void;
 					};
-					const stepId = getTrajectoryContext()?.trajectoryStepId;
+					const trajCtx = getTrajectoryContext();
+					const stepId = trajCtx?.trajectoryStepId;
 					const trajLogger = (await this._ensureServiceStarted(
 						"trajectory_logger",
 					)) as TrajectoryLogger | null;
@@ -4024,6 +4043,8 @@ export class AgentRuntime implements IAgentRuntime {
 						const maxTokensRaw = isPlainObject(modelParams)
 							? (modelParams as { maxTokens?: number }).maxTokens
 							: undefined;
+						// Latest in-flight DPE trace for this run — heuristic if multiple DPE calls exist.
+						const activeTrace = this.getActiveTrace(this.getCurrentRunId());
 						trajLogger.logLlmCall({
 							stepId,
 							model: String(resolvedModelKey),
@@ -4038,6 +4059,11 @@ export class AgentRuntime implements IAgentRuntime {
 							purpose: "action",
 							actionType: "runtime.useModel",
 							latencyMs: Math.max(0, Math.round(elapsedTime)),
+							modelSlot: modelType,
+							runId: trajCtx?.runId,
+							roomId: trajCtx?.roomId,
+							messageId: trajCtx?.messageId,
+							executionTraceId: activeTrace?.id,
 						});
 					}
 				} catch {
@@ -4075,8 +4101,8 @@ export class AgentRuntime implements IAgentRuntime {
 			response,
 		);
 
-		// Optional trajectory logging: associate model calls with current trajectory step
-		// Skip during initialization to avoid deadlock (_ensureServiceStarted awaits initPromise)
+		// Same trajectory logging as streaming path above (non-streaming useModel return).
+		// Skip during initialization to avoid deadlock (_ensureServiceStarted awaits initPromise).
 		if (!this.initResolver) {
 			try {
 				type TrajectoryLogger = Service & {
@@ -4091,9 +4117,15 @@ export class AgentRuntime implements IAgentRuntime {
 						purpose: string;
 						actionType: string;
 						latencyMs: number;
+						modelSlot?: string;
+						runId?: string;
+						roomId?: string;
+						messageId?: string;
+						executionTraceId?: string;
 					}) => void;
 				};
-				const stepId = getTrajectoryContext()?.trajectoryStepId;
+				const trajCtx = getTrajectoryContext();
+				const stepId = trajCtx?.trajectoryStepId;
 				const trajLogger = (await this._ensureServiceStarted(
 					"trajectory_logger",
 				)) as TrajectoryLogger | null;
@@ -4104,6 +4136,7 @@ export class AgentRuntime implements IAgentRuntime {
 					const maxTokensRaw = isPlainObject(modelParams)
 						? (modelParams as { maxTokens?: number }).maxTokens
 						: undefined;
+					const activeTrace = this.getActiveTrace(this.getCurrentRunId());
 					trajLogger.logLlmCall({
 						stepId,
 						model: String(resolvedModelKey),
@@ -4121,6 +4154,11 @@ export class AgentRuntime implements IAgentRuntime {
 						purpose: "action",
 						actionType: "runtime.useModel",
 						latencyMs: Math.max(0, Math.round(elapsedTime)),
+						modelSlot: modelType,
+						runId: trajCtx?.runId,
+						roomId: trajCtx?.roomId,
+						messageId: trajCtx?.messageId,
+						executionTraceId: activeTrace?.id,
 					});
 				}
 			} catch {
@@ -5059,25 +5097,35 @@ ${section_end}`;
 				if (optimizationEnabled && traceModelId && tracePromptKey) {
 					try {
 						const scoreCard = new ScoreCard();
-						scoreCard.add({ source: "dpe", kind: "parseSuccess", value: 1.0 });
+						// Each signal may include `reason` for auditable JSONL / UIs (see ScoreSignal in types).
+						scoreCard.add({
+							source: "dpe",
+							kind: "parseSuccess",
+							value: 1.0,
+							reason: "Structured output parsed successfully",
+						});
+						const schemaOk =
+							schemaValidation.missingPaths.length === 0 &&
+							schemaValidation.invalidPaths.length === 0;
 						scoreCard.add({
 							source: "dpe",
 							kind: "schemaValid",
-							value:
-								schemaValidation.missingPaths.length === 0 &&
-								schemaValidation.invalidPaths.length === 0
-									? 1.0
-									: 0.0,
+							value: schemaOk ? 1.0 : 0.0,
+							reason: schemaOk
+								? "Response matched schema paths"
+								: `Schema issues: missing [${schemaValidation.missingPaths.join(", ")}]; invalid [${schemaValidation.invalidPaths.join(", ")}]`,
 						});
 						scoreCard.add({
 							source: "dpe",
 							kind: "retriesUsed",
 							value: Math.max(0, 1.0 - currentRetry / Math.max(maxRetries, 1)),
+							reason: `Succeeded on attempt ${currentRetry + 1} of ${maxRetries + 1}`,
 						});
 						scoreCard.add({
 							source: "dpe",
 							kind: "tokenEfficiency",
 							value: Math.min(1.0, 500 / Math.max(outputTokenEst, 1)),
+							reason: `Estimated output tokens ${outputTokenEst} vs reference 500`,
 						});
 
 						const simpleHash = (s: string) =>
@@ -5313,9 +5361,24 @@ ${section_end}`;
 				}
 
 				const scoreCard = new ScoreCard();
-				scoreCard.add({ source: "dpe", kind: "parseSuccess", value: 0.0 });
-				scoreCard.add({ source: "dpe", kind: "schemaValid", value: 0.0 });
-				scoreCard.add({ source: "dpe", kind: "retriesUsed", value: 0.0 });
+				scoreCard.add({
+					source: "dpe",
+					kind: "parseSuccess",
+					value: 0.0,
+					reason: `No valid parse after ${maxRetries} retries`,
+				});
+				scoreCard.add({
+					source: "dpe",
+					kind: "schemaValid",
+					value: 0.0,
+					reason: "Parse or validation never succeeded",
+				});
+				scoreCard.add({
+					source: "dpe",
+					kind: "retriesUsed",
+					value: 0.0,
+					reason: "All retry attempts exhausted",
+				});
 
 				const simpleHash = (s: string) =>
 					s

@@ -11,6 +11,15 @@ For **prompt optimization** phases (GEPA/ACE, signals, retention), see also:
 
 ## Near term — robustness and observability
 
+### Trajectory union log (`history.jsonl`)
+
+- **Optional split file:** If `jq 'select(.type=="trace")'` becomes too noisy in shared directories, add `observations.jsonl` next to `history.jsonl` for `llm_observation` / `provider_observation` / `signal_context` only.
+  - **Why:** Keeps optimizer one-liners pristine while preserving a single writer implementation internally (see [`docs/PROMPT_OPTIMIZATION.md`](docs/PROMPT_OPTIMIZATION.md) architecture section).
+- **Per-call `executionTraceId`:** Thread trace UUID through `useModel` / action paths when a call is unambiguously tied to one DPE invocation.
+  - **Why:** Today’s “latest active trace for `runId`” is correct for many turns but ambiguous when planner + reply both register traces in one run.
+- **Redaction hooks** for `llm_observation` (system prompt, user text, response) per deployment policy.
+  - **Why:** `TRAJECTORY_HISTORY_JSONL` is intentionally off by default; some orgs need on with masking, not off.
+
 ### Structured output parsing
 
 - **Tolerant recovery:** When TOON decode fails, try stripping trailing non-TOON lines or isolating the first TOON document before XML fallback.

@@ -15,6 +15,10 @@ import type {
 	ExecutionTrace,
 	OptimizedPromptArtifact,
 } from "../optimization/types.ts";
+import {
+	isTrajectoryCaptureEnabled,
+	isTrajectoryHistoryJsonlEnabled,
+} from "../trajectory-settings.ts";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -383,6 +387,45 @@ describe("TraceWriter", () => {
 		await expect(
 			writer.appendTrace("new-model", "TEXT_MEGA", trace),
 		).resolves.not.toThrow();
+	});
+
+	it("loadTraces ignores llm_observation union rows", async () => {
+		const t1 = makeTrace({ id: "trace-only" });
+		await writer.appendTrace("gpt-4o-mini", "TEXT_SMALL", t1);
+		await writer.appendLlmObservation("gpt-4o-mini", "TEXT_SMALL", {
+			type: "llm_observation",
+			observationVersion: 1,
+			createdAt: Date.now(),
+			stepId: "step-1",
+			model: "m",
+			systemPrompt: "",
+			userPrompt: "",
+			response: "",
+			temperature: 0,
+			maxTokens: 0,
+			purpose: "test",
+			actionType: "test",
+			latencyMs: 0,
+		});
+		const loaded = await writer.loadTraces("gpt-4o-mini", "TEXT_SMALL");
+		expect(loaded).toHaveLength(1);
+		expect(loaded[0].id).toBe("trace-only");
+		expect(loaded[0].type).toBe("trace");
+	});
+});
+
+describe("trajectory-settings", () => {
+	it("parses numeric 1 as true for TRAJECTORY_HISTORY_JSONL", () => {
+		expect(isTrajectoryHistoryJsonlEnabled(() => 1)).toBe(true);
+	});
+	it("parses numeric 0 as false for TRAJECTORY_HISTORY_JSONL", () => {
+		expect(isTrajectoryHistoryJsonlEnabled(() => 0)).toBe(false);
+	});
+	it("treats empty string as default-off for history JSONL", () => {
+		expect(isTrajectoryHistoryJsonlEnabled(() => "")).toBe(false);
+	});
+	it("treats empty string as default-on for capture", () => {
+		expect(isTrajectoryCaptureEnabled(() => "")).toBe(true);
 	});
 });
 

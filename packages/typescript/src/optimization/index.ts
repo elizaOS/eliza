@@ -37,6 +37,7 @@ export type {
 	ArtifactFile,
 	ExecutionTrace,
 	HistoryRecord,
+	LlmObservationRecord,
 	OptimizationRun,
 	OptimizedPromptArtifact,
 	OptimizerAdapter,
@@ -45,13 +46,19 @@ export type {
 	OptimizerPipeline,
 	OptimizerPipelineConfig,
 	OptimizerStage,
+	ProviderObservationRecord,
 	PromptKey,
 	ScoreCardData,
 	ScoreSignal,
+	SignalContextRecord,
 	SlotKey,
 	SlotProfile,
 } from "./types.ts";
-export { DEFAULT_SIGNAL_WEIGHTS, SLOT_PROFILE_DEFAULTS } from "./types.ts";
+export {
+	DEFAULT_SIGNAL_WEIGHTS,
+	SLOT_PROFILE_DEFAULTS,
+	TRAJECTORY_PROVIDER_SLOT,
+} from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Singleton instances (shared across the process)

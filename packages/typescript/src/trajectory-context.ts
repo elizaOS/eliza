@@ -7,6 +7,10 @@
  */
 export interface TrajectoryContext {
 	trajectoryStepId?: string;
+	/** Correlation ids for JSONL / joins (set by message handler when step id is active) */
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
 }
 
 export interface ITrajectoryContextManager {

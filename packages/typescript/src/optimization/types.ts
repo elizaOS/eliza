@@ -32,6 +32,8 @@ export interface ScoreSignal {
 	value: number;
 	/** Override the default weight for this specific signal instance */
 	weight?: number;
+	/** Human-readable context for JSONL / dashboards (why this score) */
+	reason?: string;
 	/** Optional extra data for debugging */
 	metadata?: Record<string, unknown>;
 }
@@ -137,10 +139,88 @@ export interface ABDecision {
 	createdAt: number;
 }
 
-// WHY a single union type: all three record kinds share one JSONL file per
-// model/slot. A union discriminated by `type` keeps the I/O layer simple
-// (one append path, one load path) while allowing structured queries.
-export type HistoryRecord = ExecutionTrace | OptimizationRun | ABDecision;
+/**
+ * Logical slot folder for provider observations when persisting to disk.
+ * **Why not the real model slot:** Compose runs many providers under one reply;
+ * there is no single handler slot. Using a dedicated folder name avoids faking
+ * `TEXT_LARGE` per provider row while still partitioning under `modelId`.
+ */
+export const TRAJECTORY_PROVIDER_SLOT = "PROVIDER_TRACE" as const;
+
+/**
+ * Raw `useModel` fact row (`history.jsonl` union). **Ignored by `loadTraces`.**
+ *
+ * **Why a separate type from `ExecutionTrace`:** DPE traces are scored, structured,
+ * and tied to `promptKey` / schema; raw calls carry prompts and free-text responses
+ * for replay — different consumers and retention expectations.
+ */
+export interface LlmObservationRecord {
+	type: "llm_observation";
+	observationVersion: number;
+	createdAt: number;
+	stepId: string;
+	model: string;
+	systemPrompt: string;
+	userPrompt: string;
+	response: string;
+	temperature: number;
+	maxTokens: number;
+	purpose: string;
+	actionType: string;
+	latencyMs: number;
+	/** Logical model slot (e.g. TEXT_LARGE) for partition path */
+	modelSlot?: SlotKey;
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	/** In-flight DPE trace for this run, when optimization registered one before this call */
+	executionTraceId?: string;
+}
+
+/** Provider access during `composeState` (union log). **Ignored by `loadTraces`.** */
+export interface ProviderObservationRecord {
+	type: "provider_observation";
+	observationVersion: number;
+	createdAt: number;
+	stepId: string;
+	providerName: string;
+	purpose: string;
+	data: Record<string, string | number | boolean | null>;
+	query?: Record<string, string | number | boolean | null>;
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
+}
+
+/**
+ * Post-enrichment `scoreCard` snapshot keyed by `executionTraceId`.
+ *
+ * **Why it exists:** Enriched `ExecutionTrace` lines already contain scores; this
+ * row lets pipelines that start from `llm_observation` join to final signals without
+ * parsing the full trace. **Why default off:** Duplication and larger files.
+ */
+export interface SignalContextRecord {
+	type: "signal_context";
+	observationVersion: number;
+	createdAt: number;
+	executionTraceId: string;
+	scoreCard: ScoreCardData;
+	runId?: string;
+	trajectoryStepId?: string;
+	promptKey?: PromptKey;
+	modelSlot?: SlotKey;
+}
+
+// WHY a single union type: record kinds share one JSONL file per model/slot.
+// loadTraces filters to type === "trace" only; other types are observability.
+export type HistoryRecord =
+	| ExecutionTrace
+	| OptimizationRun
+	| ABDecision
+	| LlmObservationRecord
+	| ProviderObservationRecord
+	| SignalContextRecord;
 
 // ---------------------------------------------------------------------------
 // ABConfig

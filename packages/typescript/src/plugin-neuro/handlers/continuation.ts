@@ -84,6 +84,7 @@ export function enrichContinuationSignals(
 		source: NEURO_SOURCE,
 		kind: SIGNALS.CONVERSATION_CONTINUED,
 		value: 1.0,
+		reason: `User messaged again within ${CONTINUATION_WINDOW_MS}ms of last agent reply`,
 		metadata: {
 			timeSinceResponseMs: timeSinceResponse,
 			roomId,
@@ -96,6 +97,7 @@ export function enrichContinuationSignals(
 			source: NEURO_SOURCE,
 			kind: SIGNALS.USER_CORRECTION,
 			value: 0.0,
+			reason: "Heuristic detected correction phrasing in follow-up user message",
 			metadata: {
 				detectedIn: userMessageText.slice(0, 100),
 				roomId,
@@ -106,6 +108,7 @@ export function enrichContinuationSignals(
 			source: NEURO_SOURCE,
 			kind: SIGNALS.USER_CORRECTION,
 			value: 1.0,
+			reason: "No correction phrasing detected in follow-up user message",
 			metadata: { roomId },
 		});
 	}

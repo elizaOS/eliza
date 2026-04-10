@@ -95,6 +95,11 @@ export * from "./sessions";
 export * from "./settings";
 export * from "./settings";
 export * from "./trajectory-context";
+export {
+	isTrajectoryCaptureEnabled,
+	isTrajectoryHistoryJsonlEnabled,
+	isTrajectorySignalContextJsonlEnabled,
+} from "./trajectory-settings";
 // Export everything from types
 export * from "./types";
 export * from "./types/agentEvent";

@@ -481,9 +481,16 @@ export class DefaultMessageService implements IMessageService {
 				? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
 				: undefined;
 
+		// Trajectory context: propagates via AsyncLocalStorage for composeState / useModel logging.
+		// Why runId/messageId/roomId: correlate benchmark rows to a turn without new infrastructure.
 		return await runWithTrajectoryContext<MessageProcessingResult>(
 			typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
-				? { trajectoryStepId: trajectoryStepId.trim() }
+				? {
+						trajectoryStepId: trajectoryStepId.trim(),
+						runId: runtime.getCurrentRunId?.(),
+						roomId: message.roomId,
+						messageId: message.id,
+					}
 				: undefined,
 			async (): Promise<MessageProcessingResult> => {
 				// Determine shouldRespondModel from options or runtime settings

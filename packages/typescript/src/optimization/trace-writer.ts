@@ -5,7 +5,10 @@ import type {
 	ABDecision,
 	ExecutionTrace,
 	HistoryRecord,
+	LlmObservationRecord,
 	OptimizationRun,
+	ProviderObservationRecord,
+	SignalContextRecord,
 	SlotKey,
 } from "./types.ts";
 
@@ -107,6 +110,33 @@ export class TraceWriter {
 		decision: ABDecision,
 	): Promise<void> {
 		await this.append(modelId, slotKey, decision);
+	}
+
+	// --- Observability union rows (same file + lock as optimizer traces) ---
+	// loadTraces() ignores these types; see docs/PROMPT_OPTIMIZATION.md.
+
+	async appendLlmObservation(
+		modelId: string,
+		slotKey: SlotKey,
+		row: LlmObservationRecord,
+	): Promise<void> {
+		await this.append(modelId, slotKey, row);
+	}
+
+	async appendProviderObservation(
+		modelId: string,
+		slotKey: SlotKey,
+		row: ProviderObservationRecord,
+	): Promise<void> {
+		await this.append(modelId, slotKey, row);
+	}
+
+	async appendSignalContext(
+		modelId: string,
+		slotKey: SlotKey,
+		row: SignalContextRecord,
+	): Promise<void> {
+		await this.append(modelId, slotKey, row);
 	}
 
 	/**

@@ -92,6 +92,13 @@ quality — "did the agent actually help?" — requires task-specific signals.
 The `ScoreCard` architecture already supports arbitrary signal kinds with
 custom weights.
 
+### Trajectory union log vs optimizer training
+
+- **`llm_observation` / `provider_observation`** share `history.jsonl` with `ExecutionTrace` but are **ignored** by `loadTraces` and `OptimizationRunner`.
+  - **Why:** Same append-only transport and directory layout; training still sees only scored DPE rows so pipeline semantics stay stable.
+- **Future:** Optional trainer that ingests observations (needs rendered prompt materialization — today `traceToAxExample` still uses `templateHash` placeholder; see `adapters/bridge.ts`).
+  - **Why:** Raw calls carry different fields than `ExecutionTrace.response`; bridging is a deliberate second phase.
+
 ## Phase 8 — Multi-Model Optimization
 
 ### Transfer Learning

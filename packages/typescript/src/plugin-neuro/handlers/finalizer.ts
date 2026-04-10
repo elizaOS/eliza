@@ -24,6 +24,8 @@ import {
 	getTraceWriter,
 	ScoreCard,
 } from "../../optimization/index.ts";
+import type { ScoreCardData } from "../../optimization/types.ts";
+import { isTrajectorySignalContextJsonlEnabled } from "../../trajectory-settings.ts";
 import type { RunEventPayload } from "../../types/events.ts";
 import { EventType } from "../../types/events.ts";
 import type { IAgentRuntime } from "../../types/runtime.ts";
@@ -87,6 +89,31 @@ export async function handleRunEnded(
 				type: "trace" as const,
 				seq: tw.nextSeq(),
 			});
+			// Optional duplicate of scoreCard for join-from-llm_observation tooling.
+			// Why gated: enriched ExecutionTrace line already holds final scores;
+			// see TRAJECTORY_SIGNAL_CONTEXT_JSONL in docs/PROMPT_OPTIMIZATION.md.
+			if (
+				isTrajectorySignalContextJsonlEnabled((k) =>
+					runtime.getSetting?.(k),
+				)
+			) {
+				try {
+					await tw.appendSignalContext(trace.modelId, trace.modelSlot, {
+						type: "signal_context",
+						observationVersion: 1,
+						createdAt: Date.now(),
+						executionTraceId: trace.id,
+						scoreCard: JSON.parse(
+							JSON.stringify(trace.scoreCard),
+						) as ScoreCardData,
+						runId: trace.runId,
+						promptKey: trace.promptKey,
+						modelSlot: trace.modelSlot,
+					});
+				} catch {
+					/* best-effort */
+				}
+			}
 			persistedTraces.push(trace);
 
 			try {

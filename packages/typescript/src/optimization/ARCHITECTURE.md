@@ -89,6 +89,27 @@ persisted, making the optimization system inert.
 Rejected because JSONL is append-only by design — random access updates are
 fragile and require file locking beyond what `appendFile` provides.
 
+## history.jsonl union (optimizer vs observability rows)
+
+**Decision:** The same append-only file may contain additional discriminators
+besides `trace`, `optimization_run`, and `ab_decision` — for example
+`llm_observation`, `provider_observation`, and optional `signal_context` when
+trajectory JSONL settings are enabled.
+
+**Why:** `TraceWriter.loadTraces` **only** returns rows with `type === "trace"`.
+The optimizer and A/B pipeline are unchanged; extra lines are forward-compatible
+and can be filtered with `jq 'select(.type=="trace")'` if desired.
+
+**Correlation:** Observability rows reuse `runId`, `messageId`, `roomId`, and
+`trajectoryStepId` (when present). `llm_observation` / `provider_observation` may
+set `executionTraceId` to the latest in-flight DPE trace for the current run;
+`signal_context` keys the final `scoreCard` by `executionTraceId` after
+RUN_ENDED. **Why three keys:** run/message anchor the turn; execution id links
+to scored traces when optimization is active (see `docs/PROMPT_OPTIMIZATION.md`
+architecture section for limitations when multiple DPE calls share one run).
+
+**Longer rationale (product + layering):** [`docs/PROMPT_OPTIMIZATION.md`](../../docs/PROMPT_OPTIMIZATION.md) — facts vs judgments vs policy.
+
 ## Eager JSON Serialization
 
 **Decision:** `TraceWriter.append()` calls `JSON.stringify(record)` *before*

@@ -140,6 +140,7 @@ export const neuroEvaluator: Evaluator = {
 			source: NEURO_SOURCE,
 			kind: SIGNALS.LENGTH_APPROPRIATENESS,
 			value: Math.min(1.0, Math.max(0.0, lengthScore)),
+			reason: `Reply length ${responseLength} vs rolling median ${medianLen.toFixed(0)} (ratio ${lengthRatio.toFixed(2)})`,
 			metadata: {
 				responseLength,
 				medianLength: medianLen,
@@ -184,6 +185,7 @@ export const neuroEvaluator: Evaluator = {
 				source: NEURO_SOURCE,
 				kind: SIGNALS.RESPONSE_LATENCY,
 				value: latencyScore,
+				reason: `DPE latency ${latencyMs}ms vs rolling median ${medianLatency.toFixed(0)}ms`,
 				metadata: {
 					latencyMs,
 					medianLatencyMs: medianLatency,
