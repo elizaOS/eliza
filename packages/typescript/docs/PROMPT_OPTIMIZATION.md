@@ -18,7 +18,7 @@ This document explains **how** on-disk prompt optimization works in `@elizaos/co
 
 Default: `~/.eliza/optimization/` if `OPTIMIZATION_DIR` is unset.
 
-```
+```text
 <OPTIMIZATION_DIR>/
   _prompt_registry/
     <promptKey>__<schemaFingerprint>.json   # template + schema for runner
