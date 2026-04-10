@@ -108,8 +108,11 @@ export async function handleRunEnded(
 						promptKey: trace.promptKey,
 						modelSlot: trace.modelSlot,
 					});
-				} catch {
-					/* best-effort */
+				} catch (signalCtxErr) {
+					runtime.logger.debug(
+						{ src: "plugin-neuro", error: signalCtxErr instanceof Error ? signalCtxErr.message : String(signalCtxErr) },
+						"appendSignalContext failed (best-effort)"
+					);
 				}
 			}
 			persistedTraces.push(trace);
