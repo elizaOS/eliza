@@ -5,9 +5,9 @@
  * See `docs/BATCH_QUEUE.md` in this package for architecture, consumers, and WHYs.
  */
 export {
+	type BatchItemOutcome,
 	BatchProcessor,
 	BatchQueue,
-	type BatchItemOutcome,
 	type BatchQueueOptions,
 	type DrainStats,
 	PriorityQueue,

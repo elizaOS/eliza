@@ -2,7 +2,6 @@ import type { EmbeddingGenerationPayload } from "../types/events";
 import { EventType } from "../types/events";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
-import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import { BatchQueue } from "../utils/batch-queue";

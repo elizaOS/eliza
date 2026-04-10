@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
 	ArtifactFile,
@@ -15,7 +15,7 @@ export function sanitizeModelId(modelId: string): string {
 	return modelId
 		.replace(/:/g, "__")
 		.replace(/\//g, "_")
-		.replace(/[^a-zA-Z0-9._\-]/g, "_");
+		.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 /**
@@ -53,7 +53,10 @@ export class PromptArtifactResolver {
 	private readonly writeLocks = new Map<string, Promise<void>>();
 
 	/** Run fn under a per-key serial lock so concurrent writes don't interleave */
-	private async withWriteLock(key: string, fn: () => Promise<void>): Promise<void> {
+	private async withWriteLock(
+		key: string,
+		fn: () => Promise<void>,
+	): Promise<void> {
 		const prev = this.writeLocks.get(key) ?? Promise.resolve();
 		const next = prev.then(fn, fn);
 		this.writeLocks.set(key, next);
@@ -173,7 +176,9 @@ export class PromptArtifactResolver {
 		const seed = abSeed ?? this.abCounter++;
 		const hash = simpleHash(`${promptKey}:${seed}`);
 		const selectedVariant =
-			hash % 10000 < Math.round(trafficSplit * 10000) ? "optimized" : "baseline";
+			hash % 10000 < Math.round(trafficSplit * 10000)
+				? "optimized"
+				: "baseline";
 
 		return { artifact, selectedVariant };
 	}

@@ -9,8 +9,8 @@
  * the rest of the runtime.
  */
 import {
-	computeBackoff,
 	type BackoffPolicy,
+	computeBackoff,
 	type RetryConfig,
 	resolveRetryConfig,
 	sleep,
@@ -38,11 +38,17 @@ export interface BatchProcessorOptions<T> {
 	shouldRetry?: (item: T, error: Error, attempt: number) => boolean;
 }
 
-function defaultShouldRetry(_item: unknown, _err: Error, _attempt: number): boolean {
+function defaultShouldRetry(
+	_item: unknown,
+	_err: Error,
+	_attempt: number,
+): boolean {
 	return true;
 }
 
-function toBackoffPolicy(resolved: ReturnType<typeof resolveRetryConfig>): BackoffPolicy {
+function toBackoffPolicy(
+	resolved: ReturnType<typeof resolveRetryConfig>,
+): BackoffPolicy {
 	return {
 		initialMs: resolved.minDelayMs,
 		maxMs: resolved.maxDelayMs,
@@ -75,8 +81,15 @@ export class BatchProcessor<T> {
 	private readonly defaultMaxAttempts: number;
 	private readonly policy: BackoffPolicy;
 	private readonly process: (item: T) => Promise<void>;
-	private readonly onExhausted?: (item: T, error: Error) => void | Promise<void>;
-	private readonly shouldRetry: (item: T, error: Error, attempt: number) => boolean;
+	private readonly onExhausted?: (
+		item: T,
+		error: Error,
+	) => void | Promise<void>;
+	private readonly shouldRetry: (
+		item: T,
+		error: Error,
+		attempt: number,
+	) => boolean;
 	private readonly semaphore: Semaphore;
 
 	constructor(options: BatchProcessorOptions<T>) {

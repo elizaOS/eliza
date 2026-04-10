@@ -22,15 +22,19 @@ export class AxACEAdapter implements OptimizerAdapter {
 	private readonly maxEpochs: number;
 	private readonly maxReflectorRounds: number;
 
-	constructor(options: {
-		maxEpochs?: number;
-		maxReflectorRounds?: number;
-	} = {}) {
+	constructor(
+		options: {
+			maxEpochs?: number;
+			maxReflectorRounds?: number;
+		} = {},
+	) {
 		this.maxEpochs = options.maxEpochs ?? 1;
 		this.maxReflectorRounds = options.maxReflectorRounds ?? 2;
 	}
 
-	async compile(config: OptimizerAdapterConfig): Promise<OptimizerAdapterResult> {
+	async compile(
+		config: OptimizerAdapterConfig,
+	): Promise<OptimizerAdapterResult> {
 		try {
 			return await this.compileWithAx(config);
 		} catch {

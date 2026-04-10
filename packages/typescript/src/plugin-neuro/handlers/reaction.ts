@@ -16,11 +16,7 @@
 
 import type { MessagePayload } from "../../types/events.ts";
 import type { IAgentRuntime } from "../../types/runtime.ts";
-import {
-	EMOJI_SENTIMENT,
-	NEURO_SOURCE,
-	SIGNALS,
-} from "../signals.ts";
+import { EMOJI_SENTIMENT, NEURO_SOURCE, SIGNALS } from "../signals.ts";
 
 export async function handleReaction(
 	payload: MessagePayload,
@@ -33,14 +29,16 @@ export async function handleReaction(
 	const emoji =
 		typeof message.content === "string"
 			? message.content
-			: (message.content as Record<string, unknown>).text ?? "";
+			: ((message.content as Record<string, unknown>).text ?? "");
 	const emojiStr = String(emoji).trim();
 
 	const sentiment = EMOJI_SENTIMENT[emojiStr];
 	if (sentiment === undefined) return;
 
 	// Determine runId to attach signal to
-	const runId = (message as unknown as Record<string, unknown>).runId as string | undefined;
+	const runId = (message as unknown as Record<string, unknown>).runId as
+		| string
+		| undefined;
 	if (!runId) return;
 
 	if (sentiment >= 0.7) {

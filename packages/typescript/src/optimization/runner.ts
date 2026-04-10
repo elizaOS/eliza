@@ -20,6 +20,15 @@
 
 import { v4 as uuidv4 } from "uuid";
 import type { SchemaRow } from "../types/state.ts";
+import { AxACEAdapter } from "./adapters/ax-ace.ts";
+import { AxBootstrapFewShotAdapter } from "./adapters/ax-bootstrap.ts";
+import { AxGEPAAdapter } from "./adapters/ax-gepa.ts";
+import { DefaultOptimizerPipeline } from "./pipeline.ts";
+import { PromptArtifactResolver } from "./resolver.ts";
+import { ScoreCard } from "./score-card.ts";
+import { invalidateSlotProfileProcessCache } from "./singleton-sync.ts";
+import { SlotProfileManager } from "./slot-profile.ts";
+import { TraceWriter } from "./trace-writer.ts";
 import type {
 	ExecutionTrace,
 	OptimizationRun,
@@ -28,15 +37,6 @@ import type {
 	SlotKey,
 } from "./types.ts";
 import { DEFAULT_SIGNAL_WEIGHTS } from "./types.ts";
-import { PromptArtifactResolver } from "./resolver.ts";
-import { TraceWriter } from "./trace-writer.ts";
-import { SlotProfileManager } from "./slot-profile.ts";
-import { DefaultOptimizerPipeline } from "./pipeline.ts";
-import { AxBootstrapFewShotAdapter } from "./adapters/ax-bootstrap.ts";
-import { AxGEPAAdapter } from "./adapters/ax-gepa.ts";
-import { AxACEAdapter } from "./adapters/ax-ace.ts";
-import { ScoreCard } from "./score-card.ts";
-import { invalidateSlotProfileProcessCache } from "./singleton-sync.ts";
 
 export interface OptimizationRunnerOptions {
 	rootDir: string;
@@ -72,7 +72,10 @@ export class OptimizationRunner {
 		const signalWeights = { ...DEFAULT_SIGNAL_WEIGHTS, ...opts.signalWeights };
 		const resolver = new PromptArtifactResolver(opts.rootDir);
 		const traceWriter = new TraceWriter(opts.rootDir);
-		const slotProfileManager = new SlotProfileManager(opts.rootDir, signalWeights);
+		const slotProfileManager = new SlotProfileManager(
+			opts.rootDir,
+			signalWeights,
+		);
 
 		// Load traces for this prompt key
 		const allTraces = await traceWriter.loadTracesForPrompt(
@@ -84,7 +87,8 @@ export class OptimizationRunner {
 		if (allTraces.length === 0) {
 			return {
 				success: false,
-				error: "No traces available for optimization. Run the agent to collect traces first.",
+				error:
+					"No traces available for optimization. Run the agent to collect traces first.",
 				tracesUsed: 0,
 				baselineScore: 0,
 				finalScore: 0,
@@ -105,36 +109,41 @@ export class OptimizationRunner {
 		if (trainingTraces.length === 0) {
 			return {
 				success: false,
-				error: "No non-optimized traces available for training. Need baseline traces to optimize against.",
+				error:
+					"No non-optimized traces available for training. Need baseline traces to optimize against.",
 				tracesUsed: 0,
 				baselineScore: 0,
 				finalScore: 0,
 			};
 		}
 
-		opts.onProgress?.("setup", 0, `Using ${trainingTraces.length} traces for optimization`);
+		opts.onProgress?.(
+			"setup",
+			0,
+			`Using ${trainingTraces.length} traces for optimization`,
+		);
 
 		// Build pipeline stages
 		const stages: OptimizerStage[] = [
 			{
 				name: "AxBootstrapFewShot",
 				adapter: new AxBootstrapFewShotAdapter(
-					opts.stageConfigs?.["AxBootstrapFewShot"] ?? {},
+					opts.stageConfigs?.AxBootstrapFewShot ?? {},
 				),
 				enabled: !opts.disabledStages?.includes("AxBootstrapFewShot"),
-				config: opts.stageConfigs?.["AxBootstrapFewShot"] ?? {},
+				config: opts.stageConfigs?.AxBootstrapFewShot ?? {},
 			},
 			{
 				name: "AxGEPA",
-				adapter: new AxGEPAAdapter(opts.stageConfigs?.["AxGEPA"] ?? {}),
+				adapter: new AxGEPAAdapter(opts.stageConfigs?.AxGEPA ?? {}),
 				enabled: !opts.disabledStages?.includes("AxGEPA"),
-				config: opts.stageConfigs?.["AxGEPA"] ?? {},
+				config: opts.stageConfigs?.AxGEPA ?? {},
 			},
 			{
 				name: "AxACE",
-				adapter: new AxACEAdapter(opts.stageConfigs?.["AxACE"] ?? {}),
+				adapter: new AxACEAdapter(opts.stageConfigs?.AxACE ?? {}),
 				enabled: !opts.disabledStages?.includes("AxACE"),
-				config: opts.stageConfigs?.["AxACE"] ?? {},
+				config: opts.stageConfigs?.AxACE ?? {},
 			},
 		];
 
@@ -244,7 +253,11 @@ export class OptimizationRunner {
 		const { readdir } = await import("node:fs/promises");
 		const { join } = await import("node:path");
 
-		const pending: Array<{ modelId: string; slotKey: SlotKey; promptKey: PromptKey }> = [];
+		const pending: Array<{
+			modelId: string;
+			slotKey: SlotKey;
+			promptKey: PromptKey;
+		}> = [];
 
 		try {
 			const modelDirs = await readdir(rootDir, { withFileTypes: true });
@@ -259,7 +272,8 @@ export class OptimizationRunner {
 
 					const files = await readdir(slotPath);
 					for (const file of files) {
-						if (!file.startsWith("profile_") || !file.endsWith(".json")) continue;
+						if (!file.startsWith("profile_") || !file.endsWith(".json"))
+							continue;
 
 						const { readFile } = await import("node:fs/promises");
 						try {

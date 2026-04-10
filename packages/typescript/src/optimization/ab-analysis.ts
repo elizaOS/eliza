@@ -1,3 +1,5 @@
+import { v4 as uuidv4 } from "uuid";
+import { ScoreCard } from "./score-card.ts";
 import type {
 	ABDecision,
 	ArtifactFile,
@@ -5,8 +7,6 @@ import type {
 	PromptKey,
 	SlotKey,
 } from "./types.ts";
-import { ScoreCard } from "./score-card.ts";
-import { v4 as uuidv4 } from "uuid";
 
 export interface ABAnalysisResult {
 	action: "promote" | "rollback" | "inconclusive";
@@ -29,7 +29,9 @@ export function selectVariant(
 	if (trafficSplit >= 1.0) return "optimized";
 	if (trafficSplit <= 0.0) return "baseline";
 	const hash = simpleHash(`${promptKey}:${seed}`);
-	return hash % 10000 < Math.round(trafficSplit * 10000) ? "optimized" : "baseline";
+	return hash % 10000 < Math.round(trafficSplit * 10000)
+		? "optimized"
+		: "baseline";
 }
 
 /**
@@ -264,14 +266,14 @@ function regularizedIncompleteBeta(x: number, a: number, b: number): number {
 	const MAX_ITER = 200;
 	let frac = TINY;
 	let c = 1;
-	let d = 1 - (a + b) * x / (a + 1);
+	let d = 1 - ((a + b) * x) / (a + 1);
 	if (Math.abs(d) < TINY) d = TINY;
 	d = 1 / d;
 	frac = d;
 
 	for (let m = 1; m <= MAX_ITER; m++) {
 		// Even step
-		let num = m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m));
+		let num = (m * (b - m) * x) / ((a + 2 * m - 1) * (a + 2 * m));
 		d = 1 + num * d;
 		if (Math.abs(d) < TINY) d = TINY;
 		c = 1 + num / c;
@@ -280,7 +282,7 @@ function regularizedIncompleteBeta(x: number, a: number, b: number): number {
 		frac *= d * c;
 
 		// Odd step
-		num = -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1));
+		num = (-(a + m) * (a + b + m) * x) / ((a + 2 * m) * (a + 2 * m + 1));
 		d = 1 + num * d;
 		if (Math.abs(d) < TINY) d = TINY;
 		c = 1 + num / c;
@@ -302,15 +304,9 @@ function regularizedIncompleteBeta(x: number, a: number, b: number): number {
 function lgamma(z: number): number {
 	const g = 7;
 	const c = [
-		0.99999999999980993,
-		676.5203681218851,
-		-1259.1392167224028,
-		771.32342877765313,
-		-176.61502916214059,
-		12.507343278686905,
-		-0.13857109526572012,
-		9.9843695780195716e-6,
-		1.5056327351493116e-7,
+		0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+		771.32342877765313, -176.61502916214059, 12.507343278686905,
+		-0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
 	];
 	if (z < 0.5) {
 		return Math.log(Math.PI / Math.sin(Math.PI * z)) - lgamma(1 - z);
@@ -321,7 +317,9 @@ function lgamma(z: number): number {
 		x += c[i] / (z + i);
 	}
 	const t = z + g + 0.5;
-	return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+	return (
+		0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x)
+	);
 }
 
 /** Standard normal CDF via rational approximation (Abramowitz & Stegun 26.2.17) */
@@ -329,12 +327,10 @@ function normalCDF(z: number): number {
 	const t = 1 / (1 + 0.2316419 * Math.abs(z));
 	const poly =
 		t *
-		(0.319381530 +
+		(0.31938153 +
 			t *
 				(-0.356563782 +
-					t *
-						(1.781477937 +
-							t * (-1.821255978 + t * 1.330274429))));
+					t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
 	const p = 1 - (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * z * z) * poly;
 	return z >= 0 ? p : 1 - p;
 }

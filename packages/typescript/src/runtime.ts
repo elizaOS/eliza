@@ -2039,6 +2039,16 @@ export class AgentRuntime implements IAgentRuntime {
 						"Action not found",
 					);
 
+					this.enrichTrace(parentRunId, {
+						source: "action",
+						kind: "actionFailure",
+						value: 0,
+						metadata: {
+							reason: "not_found",
+							requested: String(responseAction),
+						},
+					} satisfies ScoreSignal);
+
 					if (actionPlan?.steps?.[actionIndex]) {
 						actionPlan = this.updateActionStep(actionPlan, actionIndex, {
 							status: "failed",
@@ -2069,6 +2079,16 @@ export class AgentRuntime implements IAgentRuntime {
 						{ src: "agent", agentId: this.agentId, action: action.name },
 						"Action has no handler",
 					);
+
+					this.enrichTrace(parentRunId, {
+						source: "action",
+						kind: "actionFailure",
+						value: 0,
+						metadata: {
+							reason: "no_handler",
+							action: action.name,
+						},
+					} satisfies ScoreSignal);
 
 					// Update plan with error immutably
 					if (actionPlan?.steps?.[actionIndex]) {
@@ -2345,6 +2365,19 @@ export class AgentRuntime implements IAgentRuntime {
 
 				const isSuccess = actionResult?.success !== false;
 				const statusText = isSuccess ? "completed" : "failed";
+
+				if (!isSuccess && actionResult) {
+					this.enrichTrace(parentRunId, {
+						source: "action",
+						kind: "actionFailure",
+						value: 0,
+						metadata: {
+							reason: "handler_reported_failure",
+							action: action.name,
+							error: actionResult.error,
+						},
+					} satisfies ScoreSignal);
+				}
 
 				await this.emitEvent(EventType.ACTION_COMPLETED, {
 					messageId: actionId,
@@ -5103,7 +5136,7 @@ ${section_end}`;
 							if (!this.runToTraces.has(runId)) {
 								this.runToTraces.set(runId, new Set());
 							}
-							this.runToTraces.get(runId)!.add(trace.id);
+							this.runToTraces.get(runId)?.add(trace.id);
 						}
 
 						// Write the pre-enrichment trace to disk as a baseline.

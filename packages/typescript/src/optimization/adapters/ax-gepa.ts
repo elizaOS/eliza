@@ -24,18 +24,22 @@ export class AxGEPAAdapter implements OptimizerAdapter {
 	private readonly minibatchSize: number;
 	private readonly maxMetricCalls: number;
 
-	constructor(options: {
-		numTrials?: number;
-		minibatchSize?: number;
-		maxMetricCalls?: number;
-	} = {}) {
+	constructor(
+		options: {
+			numTrials?: number;
+			minibatchSize?: number;
+			maxMetricCalls?: number;
+		} = {},
+	) {
 		this.numTrials = options.numTrials ?? 30;
 		this.minibatchSize = options.minibatchSize ?? 20;
 		// GEPA requires maxMetricCalls as a positive number
 		this.maxMetricCalls = options.maxMetricCalls ?? 200;
 	}
 
-	async compile(config: OptimizerAdapterConfig): Promise<OptimizerAdapterResult> {
+	async compile(
+		config: OptimizerAdapterConfig,
+	): Promise<OptimizerAdapterResult> {
 		try {
 			return await this.compileWithAx(config);
 		} catch {
@@ -53,8 +57,6 @@ export class AxGEPAAdapter implements OptimizerAdapter {
 	): Promise<OptimizerAdapterResult> {
 		const ax = await import("@ax-llm/ax").catch(() => null);
 		if (!ax) throw new Error("@ax-llm/ax not available");
-
-		const { AxGEPA } = ax;
 
 		const examples = buildTrainingExamples(config.traces).slice(0, 50);
 		if (examples.length < 2) {

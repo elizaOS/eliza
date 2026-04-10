@@ -8,9 +8,9 @@
  * replaced, only this file changes.
  */
 
-import type { ExecutionTrace } from "../types.ts";
 import type { SchemaRow } from "../../types/state.ts";
 import { ScoreCard } from "../score-card.ts";
+import type { ExecutionTrace } from "../types.ts";
 
 /**
  * Convert Eliza SchemaRow[] to a string-form Ax signature.
@@ -74,7 +74,15 @@ export function elizaMetricFn(
 		"signals" in (example._scoreCard as object)
 	) {
 		return ScoreCard.fromJSON(
-			example._scoreCard as { signals: Array<{ source: string; kind: string; value: number; weight?: number }>; compositeScore: number },
+			example._scoreCard as {
+				signals: Array<{
+					source: string;
+					kind: string;
+					value: number;
+					weight?: number;
+				}>;
+				compositeScore: number;
+			},
 		).composite();
 	}
 

@@ -1,16 +1,21 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ExecutionTrace, PromptKey, SlotKey, SlotProfile } from "./types.ts";
-import { SLOT_PROFILE_DEFAULTS } from "./types.ts";
-import { ScoreCard } from "./score-card.ts";
 import { sanitizeModelId } from "./resolver.ts";
+import { ScoreCard } from "./score-card.ts";
+import type {
+	ExecutionTrace,
+	PromptKey,
+	SlotKey,
+	SlotProfile,
+} from "./types.ts";
+import { SLOT_PROFILE_DEFAULTS } from "./types.ts";
 
 /** Sanitize a prompt key for safe use in filenames */
 function sanitizePromptKey(key: string): string {
 	return key
 		.replace(/\//g, "_")
 		.replace(/\.\./g, "__")
-		.replace(/[^a-zA-Z0-9._\-]/g, "_");
+		.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 /**
@@ -40,7 +45,10 @@ export class SlotProfileManager {
 		this.signalWeights = signalWeights;
 	}
 
-	private async withWriteLock(key: string, fn: () => Promise<void>): Promise<void> {
+	private async withWriteLock(
+		key: string,
+		fn: () => Promise<void>,
+	): Promise<void> {
 		const prev = this.writeLocks.get(key) ?? Promise.resolve();
 		const next = prev.then(fn, fn);
 		this.writeLocks.set(key, next);
@@ -162,7 +170,9 @@ export class SlotProfileManager {
 			const profile = await this.get(modelId, slotKey, promptKey);
 
 			const n = profile.stats.totalTraces;
-			const compositeScore = ScoreCard.fromJSON(trace.scoreCard).composite(this.signalWeights);
+			const compositeScore = ScoreCard.fromJSON(trace.scoreCard).composite(
+				this.signalWeights,
+			);
 
 			profile.stats.totalTraces = n + 1;
 			profile.stats.successRate = lerp(

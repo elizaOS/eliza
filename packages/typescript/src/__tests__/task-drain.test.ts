@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime } from "../types/runtime";
 import type { UUID } from "../types/primitives";
+import type { IAgentRuntime } from "../types/runtime";
 import { TaskDrain } from "../utils/batch-queue/task-drain";
 
 describe("TaskDrain", () => {

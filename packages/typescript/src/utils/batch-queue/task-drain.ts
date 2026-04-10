@@ -10,10 +10,11 @@
  * **Why `maxFailures: -1`:** `JSON.stringify(Infinity)` is `null`; `-1` round-trips through JSON
  * and is interpreted by TaskService as “do not auto-pause this drain” (see CHANGELOG).
  */
-import type { JsonValue } from "../../types/proto";
-import type { Task } from "../../types/task.js";
-import type { IAgentRuntime } from "../../types/runtime.js";
+
 import type { UUID } from "../../types/primitives.js";
+import type { JsonValue } from "../../types/proto";
+import type { IAgentRuntime } from "../../types/runtime.js";
+import type { Task } from "../../types/task.js";
 
 export interface TaskDrainOptions {
 	taskName: string;
@@ -44,10 +45,7 @@ export class TaskDrain {
 
 	private readonly description: string;
 
-	constructor(
-		private readonly options: TaskDrainOptions,
-		initialIntervalMs?: number,
-	) {
+	constructor(options: TaskDrainOptions, initialIntervalMs?: number) {
 		this.taskName = options.taskName;
 		this.description =
 			options.description ?? `Repeat drain: ${options.taskName}`;
@@ -69,8 +67,11 @@ export class TaskDrain {
 			return;
 		}
 		if (!this.skipRegisterWorker) {
-			if (!this.onDrain) {
-				throw new Error("TaskDrain: onDrain is required when registerWorker is enabled");
+			const onDrain = this.onDrain;
+			if (!onDrain) {
+				throw new Error(
+					"TaskDrain: onDrain is required when registerWorker is enabled",
+				);
 			}
 			runtime.registerTaskWorker({
 				name: this.taskName,
@@ -79,7 +80,7 @@ export class TaskDrain {
 					_options: Record<string, JsonValue | object>,
 					_task: Task,
 				) => {
-					await this.onDrain!(rt);
+					await onDrain(rt);
 					return undefined;
 				},
 			});
@@ -135,7 +136,10 @@ export class TaskDrain {
 	/**
 	 * Update repeat interval in DB when scheduling changes (e.g. batcher ideal tick).
 	 */
-	async updateInterval(runtime: IAgentRuntime, newIntervalMs: number): Promise<void> {
+	async updateInterval(
+		runtime: IAgentRuntime,
+		newIntervalMs: number,
+	): Promise<void> {
 		this.intervalMs = newIntervalMs;
 		const taskId = this.taskId;
 		if (
@@ -150,9 +154,8 @@ export class TaskDrain {
 			this.taskId = null;
 			return;
 		}
-		const current = (task.metadata as Record<string, unknown>)?.updateInterval as
-			| number
-			| undefined;
+		const current = (task.metadata as Record<string, unknown>)
+			?.updateInterval as number | undefined;
 		if (current === newIntervalMs) {
 			return;
 		}

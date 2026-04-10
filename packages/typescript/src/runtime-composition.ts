@@ -246,15 +246,16 @@ export async function loadCharacters(
 				? source
 				: path.resolve(baseCwd, source);
 			if (!existsSync(resolved)) {
-				throw new Error(`loadCharacters: character file not found: ${resolved}`);
+				throw new Error(
+					`loadCharacters: character file not found: ${resolved}`,
+				);
 			}
 			try {
 				const raw = await readFile(resolved, "utf8");
 				const json = JSON.parse(raw) as CharacterInput;
 				results.push(loadOneCharacterFromObject(json));
 			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : String(error);
+				const message = error instanceof Error ? error.message : String(error);
 				throw new Error(
 					`loadCharacters: failed to load ${resolved}: ${message}`,
 				);
@@ -389,11 +390,7 @@ export async function createRuntimes(
 		for (const adapter of adapters) {
 			if (seenForMigrations.has(adapter)) continue;
 			seenForMigrations.add(adapter);
-			await runPluginMigrationsForAdapter(
-				adapter,
-				resolvedPlugins,
-				logAgentId,
-			);
+			await runPluginMigrationsForAdapter(adapter, resolvedPlugins, logAgentId);
 		}
 	}
 

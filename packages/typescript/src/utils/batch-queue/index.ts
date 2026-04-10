@@ -5,8 +5,9 @@
  * all three; use layers alone when you only need ordering, or only batch execution, or only
  * repeat-task CRUD — see `docs/BATCH_QUEUE.md`.
  */
-import type { RetryConfig } from "../retry.js";
+
 import type { IAgentRuntime } from "../../types/runtime.js";
+import type { RetryConfig } from "../retry.js";
 import { BatchProcessor } from "./batch-processor.js";
 import {
 	PriorityQueue,
@@ -15,15 +16,15 @@ import {
 } from "./priority-queue.js";
 import { TaskDrain } from "./task-drain.js";
 
-export { BatchProcessor, type BatchItemOutcome } from "./batch-processor.js";
+export { type BatchItemOutcome, BatchProcessor } from "./batch-processor.js";
 export {
 	PriorityQueue,
 	type PriorityQueueOptions,
 	type PriorityQueueStats,
 	type QueuePriority,
 } from "./priority-queue.js";
-export { TaskDrain, type TaskDrainOptions } from "./task-drain.js";
 export { Semaphore } from "./semaphore.js";
+export { TaskDrain, type TaskDrainOptions } from "./task-drain.js";
 
 export interface DrainStats {
 	batchSize: number;
@@ -161,8 +162,7 @@ export class BatchQueue<T> {
 	): Promise<void> {
 		this.disposed = true;
 		const flush =
-			opts?.flushHighPriority ??
-			(this.options.drainHighPriorityOnStop !== false);
+			opts?.flushHighPriority ?? this.options.drainHighPriorityOnStop !== false;
 		if (flush) {
 			const high = this.priorityQueue.drain(
 				(item) => this.options.getPriority(item) === "high",

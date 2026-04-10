@@ -44,7 +44,7 @@ describe("BatchProcessor", () => {
 		const processor = new BatchProcessor<number>({
 			maxParallel: 2,
 			maxRetriesAfterFailure: 0,
-			process: async (n) => {
+			process: async (_n) => {
 				concurrent++;
 				maxConcurrent = Math.max(maxConcurrent, concurrent);
 				await new Promise((r) => setTimeout(r, 5));
@@ -60,7 +60,7 @@ describe("BatchProcessor", () => {
 		const processor = new BatchProcessor<number>({
 			maxParallel: 1,
 			maxRetriesAfterFailure: 2,
-			process: async (n) => {
+			process: async (_n) => {
 				calls++;
 				if (calls < 2) {
 					throw new Error("fail");

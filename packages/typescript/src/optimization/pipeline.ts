@@ -1,3 +1,4 @@
+import { ScoreCard } from "./score-card.ts";
 import type {
 	OptimizedPromptArtifact,
 	OptimizerPipeline,
@@ -5,7 +6,6 @@ import type {
 	OptimizerStage,
 } from "./types.ts";
 import { DEFAULT_SIGNAL_WEIGHTS } from "./types.ts";
-import { ScoreCard } from "./score-card.ts";
 
 /**
  * DefaultOptimizerPipeline chains multiple optimizer adapters sequentially.
@@ -27,7 +27,9 @@ export class DefaultOptimizerPipeline implements OptimizerPipeline {
 		this.stages = stages;
 	}
 
-	async compile(config: OptimizerPipelineConfig): Promise<OptimizedPromptArtifact> {
+	async compile(
+		config: OptimizerPipelineConfig,
+	): Promise<OptimizedPromptArtifact> {
 		const startTime = Date.now();
 
 		// Compute baseline score from traces
@@ -63,10 +65,7 @@ export class DefaultOptimizerPipeline implements OptimizerPipeline {
 					multiMetricFn: (trace) => {
 						const card = ScoreCard.fromJSON(trace.scoreCard);
 						return Object.fromEntries(
-							card.signals.map((s) => [
-								`${s.source}:${s.kind}`,
-								s.value,
-							]),
+							card.signals.map((s) => [`${s.source}:${s.kind}`, s.value]),
 						);
 					},
 					options: stage.config,
@@ -95,10 +94,7 @@ export class DefaultOptimizerPipeline implements OptimizerPipeline {
 
 				config.onProgress?.(stage.name, 1.0);
 			} catch (err) {
-				console.warn(
-					`[OptimizerPipeline] Stage "${stage.name}" failed:`,
-					err,
-				);
+				console.warn(`[OptimizerPipeline] Stage "${stage.name}" failed:`, err);
 				stageResults.push({
 					optimizerName: stage.adapter.name,
 					completedAt: Date.now(),
@@ -122,11 +118,11 @@ export class DefaultOptimizerPipeline implements OptimizerPipeline {
 				baselineScore,
 				finalScore: currentScore,
 			},
-		abConfig: {
-			trafficSplit: 0.5, // WHY 50/50: maximizes statistical power for fastest convergence
-			minSamples: 30,    // WHY 30: standard minimum for t-test validity
-			significanceThreshold: 0.05, // WHY 0.05: conventional p-value threshold
-		},
+			abConfig: {
+				trafficSplit: 0.5, // WHY 50/50: maximizes statistical power for fastest convergence
+				minSamples: 30, // WHY 30: standard minimum for t-test validity
+				significanceThreshold: 0.05, // WHY 0.05: conventional p-value threshold
+			},
 			promotionHistory: [
 				{
 					action: "created",
@@ -142,11 +138,23 @@ export class DefaultOptimizerPipeline implements OptimizerPipeline {
 }
 
 function computeBaselineScore(
-	traces: Array<{ scoreCard: { signals: Array<{ source: string; kind: string; value: number; weight?: number }>; compositeScore: number } }>,
+	traces: Array<{
+		scoreCard: {
+			signals: Array<{
+				source: string;
+				kind: string;
+				value: number;
+				weight?: number;
+			}>;
+			compositeScore: number;
+		};
+	}>,
 	signalWeights: Record<string, number>,
 ): number {
 	if (traces.length === 0) return 0;
 	const weights = { ...DEFAULT_SIGNAL_WEIGHTS, ...signalWeights };
-	const scores = traces.map((t) => ScoreCard.fromJSON(t.scoreCard).composite(weights));
+	const scores = traces.map((t) =>
+		ScoreCard.fromJSON(t.scoreCard).composite(weights),
+	);
 	return scores.reduce((s, v) => s + v, 0) / scores.length;
 }

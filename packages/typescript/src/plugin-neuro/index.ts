@@ -17,12 +17,12 @@
  * Signal weights can be customized via character.settings.PROMPT_OPT_SIGNAL_WEIGHTS.
  */
 
-import type { Plugin } from "../types/index.ts";
-import { EventType } from "../types/events.ts";
 import type { MessagePayload, RunEventPayload } from "../types/events.ts";
+import { EventType } from "../types/events.ts";
+import type { Plugin } from "../types/index.ts";
 import { neuroEvaluator } from "./evaluator.ts";
-import { handleReaction } from "./handlers/reaction.ts";
 import { handleRunEnded } from "./handlers/finalizer.ts";
+import { handleReaction } from "./handlers/reaction.ts";
 
 const neuroPlugin: Plugin = {
 	name: "plugin-neuro",
@@ -52,9 +52,12 @@ const neuroPlugin: Plugin = {
 };
 
 export default neuroPlugin;
-export { neuroPlugin };
 export { neuroEvaluator } from "./evaluator.ts";
-export { handleReaction } from "./handlers/reaction.ts";
-export { trackAgentResponse, enrichContinuationSignals } from "./handlers/continuation.ts";
+export {
+	enrichContinuationSignals,
+	trackAgentResponse,
+} from "./handlers/continuation.ts";
 export { handleRunEnded } from "./handlers/finalizer.ts";
+export { handleReaction } from "./handlers/reaction.ts";
 export * from "./signals.ts";
+export { neuroPlugin };

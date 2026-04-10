@@ -18,12 +18,8 @@
  * is the one whose quality we're measuring.
  */
 
-import {
-	CONTINUATION_WINDOW_MS,
-	NEURO_SOURCE,
-	SIGNALS,
-} from "../signals.ts";
 import type { IAgentRuntime } from "../../types/runtime.ts";
+import { CONTINUATION_WINDOW_MS, NEURO_SOURCE, SIGNALS } from "../signals.ts";
 
 /** Per agent+room tracking: when did the agent last respond */
 const lastAgentResponseByKey = new Map<

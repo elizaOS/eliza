@@ -36,7 +36,10 @@ export class PriorityQueue<T> {
 	private readonly getPriority: (item: T) => QueuePriority;
 	private readonly maxSize?: number;
 	private readonly onPressure?: (queue: PriorityQueue<T>, item: T) => boolean;
-	private readonly onOverflowWarning?: (sizeAfter: number, maxSize: number) => void;
+	private readonly onOverflowWarning?: (
+		sizeAfter: number,
+		maxSize: number,
+	) => void;
 
 	constructor(options: PriorityQueueOptions<T>) {
 		this.getPriority = options.getPriority;
@@ -126,7 +129,12 @@ export class PriorityQueue<T> {
 	}
 
 	stats(): PriorityQueueStats {
-		const stats: PriorityQueueStats = { high: 0, normal: 0, low: 0, total: this.items.length };
+		const stats: PriorityQueueStats = {
+			high: 0,
+			normal: 0,
+			low: 0,
+			total: this.items.length,
+		};
 		for (const item of this.items) {
 			stats[this.getPriority(item)]++;
 		}

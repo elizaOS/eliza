@@ -13,10 +13,10 @@
  */
 
 import { logger } from "../logger.ts";
-import type { ArtifactFile, PromptKey, SlotKey } from "./types.ts";
 import { analyzeAB, applyABDecision } from "./ab-analysis.ts";
 import type { PromptArtifactResolver } from "./resolver.ts";
 import type { TraceWriter } from "./trace-writer.ts";
+import type { ArtifactFile, PromptKey, SlotKey } from "./types.ts";
 
 export class ABAnalyzer {
 	private readonly resolver: PromptArtifactResolver;
@@ -35,7 +35,10 @@ export class ABAnalyzer {
 		this.signalWeights = signalWeights;
 	}
 
-	private async withAnalyzeLock(key: string, fn: () => Promise<void>): Promise<void> {
+	private async withAnalyzeLock(
+		key: string,
+		fn: () => Promise<void>,
+	): Promise<void> {
 		const prev = this.analyzeLocks.get(key) ?? Promise.resolve();
 		const next = prev.then(fn, fn);
 		this.analyzeLocks.set(key, next);
@@ -68,7 +71,8 @@ export class ABAnalyzer {
 		}
 
 		// If already fully promoted or rolled back, nothing to do
-		const { trafficSplit, minSamples, significanceThreshold } = artifact.abConfig;
+		const { trafficSplit, minSamples, significanceThreshold } =
+			artifact.abConfig;
 		if (trafficSplit >= 1.0 || trafficSplit <= 0.0) {
 			return;
 		}
@@ -84,7 +88,10 @@ export class ABAnalyzer {
 		const optimizedTraces = allTraces.filter((t) => t.variant === "optimized");
 
 		// Not enough samples yet
-		if (baselineTraces.length < minSamples || optimizedTraces.length < minSamples) {
+		if (
+			baselineTraces.length < minSamples ||
+			optimizedTraces.length < minSamples
+		) {
 			return;
 		}
 
@@ -102,7 +109,13 @@ export class ABAnalyzer {
 
 		// Apply the decision to the artifact
 		const artifactFile: ArtifactFile = { [promptKey]: artifact };
-		const decision = applyABDecision(artifactFile, promptKey, result, slotKey, modelId);
+		const decision = applyABDecision(
+			artifactFile,
+			promptKey,
+			result,
+			slotKey,
+			modelId,
+		);
 
 		if (!decision) {
 			return;

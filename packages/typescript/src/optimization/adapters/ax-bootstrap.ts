@@ -11,13 +11,12 @@
  * by score, pick top N) captures 80% of the value without the dependency.
  */
 
-import { flattenSchemaFields } from "./bridge.ts";
 import type {
 	OptimizerAdapter,
 	OptimizerAdapterConfig,
 	OptimizerAdapterResult,
 } from "../types.ts";
-import { buildTrainingExamples } from "./bridge.ts";
+import { buildTrainingExamples, flattenSchemaFields } from "./bridge.ts";
 
 export class AxBootstrapFewShotAdapter implements OptimizerAdapter {
 	readonly name = "AxBootstrapFewShot";
@@ -26,17 +25,21 @@ export class AxBootstrapFewShotAdapter implements OptimizerAdapter {
 	private readonly maxDemos: number;
 	private readonly maxExamples: number;
 
-	constructor(options: {
-		maxRounds?: number;
-		maxDemos?: number;
-		maxExamples?: number;
-	} = {}) {
+	constructor(
+		options: {
+			maxRounds?: number;
+			maxDemos?: number;
+			maxExamples?: number;
+		} = {},
+	) {
 		this.maxRounds = options.maxRounds ?? 3;
 		this.maxDemos = options.maxDemos ?? 4;
 		this.maxExamples = options.maxExamples ?? 16;
 	}
 
-	async compile(config: OptimizerAdapterConfig): Promise<OptimizerAdapterResult> {
+	async compile(
+		config: OptimizerAdapterConfig,
+	): Promise<OptimizerAdapterResult> {
 		// Try to use real Ax implementation
 		try {
 			return await this.compileWithAx(config);
@@ -87,8 +90,7 @@ export class AxBootstrapFewShotAdapter implements OptimizerAdapter {
 		// Serialize demos as formatted string
 		const demoStr = formatDemos(topDemos, config.schema);
 		const avgScore =
-			scoredExamples.reduce((s, e) => s + e.score, 0) /
-			scoredExamples.length;
+			scoredExamples.reduce((s, e) => s + e.score, 0) / scoredExamples.length;
 
 		return {
 			demos: demoStr,
@@ -107,7 +109,11 @@ export class AxBootstrapFewShotAdapter implements OptimizerAdapter {
 		// Select top traces by composite score and format as demos
 		const examples = buildTrainingExamples(config.traces);
 		if (examples.length === 0) {
-			return { score: 0, adopted: false, stats: { demoCount: 0, fallback: true } };
+			return {
+				score: 0,
+				adopted: false,
+				stats: { demoCount: 0, fallback: true },
+			};
 		}
 
 		const scored = examples
@@ -121,7 +127,11 @@ export class AxBootstrapFewShotAdapter implements OptimizerAdapter {
 			.slice(0, this.maxDemos);
 
 		if (scored.length === 0) {
-			return { score: 0, adopted: false, stats: { demoCount: 0, fallback: true } };
+			return {
+				score: 0,
+				adopted: false,
+				stats: { demoCount: 0, fallback: true },
+			};
 		}
 
 		const demoStr = formatDemos(
@@ -160,7 +170,10 @@ function formatDemos(
 		.join("\n\n");
 }
 
-function resolveNestedValue(obj: Record<string, unknown>, path: string): unknown {
+function resolveNestedValue(
+	obj: Record<string, unknown>,
+	path: string,
+): unknown {
 	const parts = path.split(".");
 	let current: unknown = obj;
 	for (let i = 0; i < parts.length; i++) {

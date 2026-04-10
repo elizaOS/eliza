@@ -45,7 +45,7 @@ export function mergeArtifactIntoPrompt(
 		return baseTemplate;
 	}
 
-	return sections.join("\n\n") + "\n\n" + baseTemplate;
+	return `${sections.join("\n\n")}\n\n${baseTemplate}`;
 }
 
 /**

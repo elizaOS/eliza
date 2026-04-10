@@ -6,45 +6,52 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { PromptArtifactResolver } from "./resolver.ts";
-import { TraceWriter } from "./trace-writer.ts";
-import { SlotProfileManager } from "./slot-profile.ts";
 import { ABAnalyzer } from "./ab-analyzer.ts";
+import { PromptArtifactResolver } from "./resolver.ts";
 import { registerSlotProfileCacheInvalidator } from "./singleton-sync.ts";
+import { SlotProfileManager } from "./slot-profile.ts";
+import { TraceWriter } from "./trace-writer.ts";
 import type { PromptKey, SlotKey } from "./types.ts";
 
-export type { ScoreSignal, ScoreCardData } from "./types.ts";
+export { analyzeAB, applyABDecision, selectVariant } from "./ab-analysis.ts";
+export { ABAnalyzer } from "./ab-analyzer.ts";
+export * from "./adapters/index.ts";
+export {
+	isMergedTemplate,
+	mergeArtifactIntoPrompt,
+	stripMergedContent,
+} from "./merge.ts";
+export { DefaultOptimizerPipeline } from "./pipeline.ts";
+export { PromptArtifactResolver, sanitizeModelId } from "./resolver.ts";
 export type {
-	ExecutionTrace,
-	OptimizedPromptArtifact,
-	ArtifactFile,
+	OptimizationRunnerOptions,
+	OptimizationRunResult,
+} from "./runner.ts";
+export { OptimizationRunner } from "./runner.ts";
+export { ScoreCard } from "./score-card.ts";
+export { SlotProfileManager } from "./slot-profile.ts";
+export { TraceWriter } from "./trace-writer.ts";
+export type {
 	ABConfig,
 	ABDecision,
-	OptimizationRun,
+	ArtifactFile,
+	ExecutionTrace,
 	HistoryRecord,
-	SlotProfile,
-	SlotKey,
-	PromptKey,
+	OptimizationRun,
+	OptimizedPromptArtifact,
 	OptimizerAdapter,
 	OptimizerAdapterConfig,
 	OptimizerAdapterResult,
 	OptimizerPipeline,
 	OptimizerPipelineConfig,
 	OptimizerStage,
+	PromptKey,
+	ScoreCardData,
+	ScoreSignal,
+	SlotKey,
+	SlotProfile,
 } from "./types.ts";
 export { DEFAULT_SIGNAL_WEIGHTS, SLOT_PROFILE_DEFAULTS } from "./types.ts";
-export { ScoreCard } from "./score-card.ts";
-export { mergeArtifactIntoPrompt, isMergedTemplate, stripMergedContent } from "./merge.ts";
-export { sanitizeModelId } from "./resolver.ts";
-export { PromptArtifactResolver } from "./resolver.ts";
-export { TraceWriter } from "./trace-writer.ts";
-export { SlotProfileManager } from "./slot-profile.ts";
-export { analyzeAB, applyABDecision, selectVariant } from "./ab-analysis.ts";
-export { DefaultOptimizerPipeline } from "./pipeline.ts";
-export { OptimizationRunner } from "./runner.ts";
-export type { OptimizationRunnerOptions, OptimizationRunResult } from "./runner.ts";
-export { ABAnalyzer } from "./ab-analyzer.ts";
-export * from "./adapters/index.ts";
 
 // ---------------------------------------------------------------------------
 // Singleton instances (shared across the process)
@@ -60,22 +67,23 @@ let _traceWriter: TraceWriter | null = null;
 let _slotProfileManager: SlotProfileManager | null = null;
 let _abAnalyzer: ABAnalyzer | null = null;
 let _rootDir: string | null = null;
-let _signalWeights: Record<string, number> | undefined = undefined;
+let _signalWeights: Record<string, number> | undefined;
 
 /**
  * Get the configured optimization root directory.
  * Falls back to ~/.eliza/optimization if not configured.
  */
-export function getOptimizationRootDir(
-	settingValue?: string | null,
-): string {
+export function getOptimizationRootDir(settingValue?: string | null): string {
 	if (settingValue && typeof settingValue === "string") {
 		return settingValue;
 	}
 	return join(homedir(), ".eliza", "optimization");
 }
 
-function ensureInitialized(rootDir: string, signalWeights?: Record<string, number>): void {
+function ensureInitialized(
+	rootDir: string,
+	signalWeights?: Record<string, number>,
+): void {
 	if (_rootDir !== rootDir) {
 		_resolver = null;
 		_traceWriter = null;
@@ -93,8 +101,10 @@ function ensureInitialized(rootDir: string, signalWeights?: Record<string, numbe
 	}
 	if (!_resolver) _resolver = new PromptArtifactResolver(rootDir);
 	if (!_traceWriter) _traceWriter = new TraceWriter(rootDir);
-	if (!_slotProfileManager) _slotProfileManager = new SlotProfileManager(rootDir, _signalWeights);
-	if (!_abAnalyzer) _abAnalyzer = new ABAnalyzer(_resolver, _traceWriter, _signalWeights);
+	if (!_slotProfileManager)
+		_slotProfileManager = new SlotProfileManager(rootDir, _signalWeights);
+	if (!_abAnalyzer)
+		_abAnalyzer = new ABAnalyzer(_resolver, _traceWriter, _signalWeights);
 
 	registerSlotProfileCacheInvalidator(
 		(rootDir, modelId, slotKey, promptKey) => {
@@ -118,12 +128,18 @@ export function getTraceWriter(rootDir: string): TraceWriter {
 	return _traceWriter!;
 }
 
-export function getSlotProfileManager(rootDir: string, signalWeights?: Record<string, number>): SlotProfileManager {
+export function getSlotProfileManager(
+	rootDir: string,
+	signalWeights?: Record<string, number>,
+): SlotProfileManager {
 	ensureInitialized(rootDir, signalWeights);
 	return _slotProfileManager!;
 }
 
-export function getABAnalyzer(rootDir: string, signalWeights?: Record<string, number>): ABAnalyzer {
+export function getABAnalyzer(
+	rootDir: string,
+	signalWeights?: Record<string, number>,
+): ABAnalyzer {
 	ensureInitialized(rootDir, signalWeights);
 	return _abAnalyzer!;
 }

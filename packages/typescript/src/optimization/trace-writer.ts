@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { sanitizeModelId } from "./resolver.ts";
 import type {
 	ABDecision,
 	ExecutionTrace,
@@ -7,7 +8,6 @@ import type {
 	OptimizationRun,
 	SlotKey,
 } from "./types.ts";
-import { sanitizeModelId } from "./resolver.ts";
 
 /**
  * TraceWriter appends records to history.jsonl on disk.
@@ -61,7 +61,10 @@ export class TraceWriter {
 		return dir;
 	}
 
-	private async withWriteLock(path: string, fn: () => Promise<void>): Promise<void> {
+	private async withWriteLock(
+		path: string,
+		fn: () => Promise<void>,
+	): Promise<void> {
 		const prev = this.writeLocks.get(path) ?? Promise.resolve();
 		const next = prev.then(fn, fn);
 		this.writeLocks.set(path, next);
@@ -76,7 +79,7 @@ export class TraceWriter {
 		// WHY eager stringify: the DPE calls appendTrace fire-and-forget, then
 		// evaluators mutate the same trace object (pushing signals). Serializing
 		// before the first await captures the trace state at call time.
-		const line = JSON.stringify(record) + "\n";
+		const line = `${JSON.stringify(record)}\n`;
 		await this.ensureDir(modelId, slotKey);
 		const path = this.getHistoryPath(modelId, slotKey);
 		await this.withWriteLock(path, () => appendFile(path, line, "utf-8"));

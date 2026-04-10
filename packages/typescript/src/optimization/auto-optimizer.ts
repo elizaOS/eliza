@@ -14,11 +14,11 @@
 
 import { logger } from "../logger.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
-import type { ExecutionTrace } from "./types.ts";
-import { DEFAULT_SIGNAL_WEIGHTS } from "./types.ts";
-import { OptimizationRunner } from "./runner.ts";
 import { getSlotProfileManager } from "./index.ts";
 import { readPromptRegistryEntry } from "./prompt-registry.ts";
+import { OptimizationRunner } from "./runner.ts";
+import type { ExecutionTrace } from "./types.ts";
+import { DEFAULT_SIGNAL_WEIGHTS } from "./types.ts";
 
 const runLocks = new Map<string, Promise<void>>();
 const failureCooldownUntil = new Map<string, number>();

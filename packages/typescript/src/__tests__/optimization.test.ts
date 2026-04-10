@@ -1,14 +1,20 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mkdtemp, rm } from "node:fs/promises";
-
-import { ScoreCard } from "../optimization/score-card.ts";
-import { mergeArtifactIntoPrompt, isMergedTemplate, stripMergedContent } from "../optimization/merge.ts";
-import { PromptArtifactResolver } from "../optimization/resolver.ts";
-import { TraceWriter } from "../optimization/trace-writer.ts";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { analyzeAB, selectVariant } from "../optimization/ab-analysis.ts";
-import type { ExecutionTrace, OptimizedPromptArtifact } from "../optimization/types.ts";
+import {
+	isMergedTemplate,
+	mergeArtifactIntoPrompt,
+	stripMergedContent,
+} from "../optimization/merge.ts";
+import { PromptArtifactResolver } from "../optimization/resolver.ts";
+import { ScoreCard } from "../optimization/score-card.ts";
+import { TraceWriter } from "../optimization/trace-writer.ts";
+import type {
+	ExecutionTrace,
+	OptimizedPromptArtifact,
+} from "../optimization/types.ts";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -39,7 +45,9 @@ function makeTrace(overrides: Partial<ExecutionTrace> = {}): ExecutionTrace {
 	};
 }
 
-function makeArtifact(overrides: Partial<OptimizedPromptArtifact> = {}): OptimizedPromptArtifact {
+function makeArtifact(
+	overrides: Partial<OptimizedPromptArtifact> = {},
+): OptimizedPromptArtifact {
 	return {
 		version: Date.now(),
 		instructions: "Be concise and accurate.",
@@ -56,7 +64,9 @@ function makeArtifact(overrides: Partial<OptimizedPromptArtifact> = {}): Optimiz
 			minSamples: 3,
 			significanceThreshold: 0.05,
 		},
-		promotionHistory: [{ action: "created", timestamp: Date.now(), compositeScore: 0.85 }],
+		promotionHistory: [
+			{ action: "created", timestamp: Date.now(), compositeScore: 0.85 },
+		],
 		updatedAt: new Date().toISOString(),
 		...overrides,
 	};
@@ -93,7 +103,10 @@ describe("ScoreCard", () => {
 		card.add({ source: "dpe", kind: "schemaValid", value: 0.0 });
 
 		// Override both to weight 1 -> (1.0 + 0.0) / 2 = 0.5
-		const score = card.composite({ "dpe:parseSuccess": 1.0, "dpe:schemaValid": 1.0 });
+		const score = card.composite({
+			"dpe:parseSuccess": 1.0,
+			"dpe:schemaValid": 1.0,
+		});
 		expect(score).toBeCloseTo(0.5, 5);
 	});
 
@@ -129,7 +142,8 @@ describe("ScoreCard", () => {
 // ---------------------------------------------------------------------------
 
 describe("mergeArtifactIntoPrompt", () => {
-	const baseTemplate = "You are a helpful assistant.\n\nAnswer: {{userMessage}}";
+	const baseTemplate =
+		"You are a helpful assistant.\n\nAnswer: {{userMessage}}";
 
 	it("prepends all three sections when populated", () => {
 		const artifact = makeArtifact();
@@ -150,7 +164,11 @@ describe("mergeArtifactIntoPrompt", () => {
 	});
 
 	it("returns original template unchanged when artifact has no content", () => {
-		const artifact = makeArtifact({ instructions: "", demos: "", playbook: "" });
+		const artifact = makeArtifact({
+			instructions: "",
+			demos: "",
+			playbook: "",
+		});
 		const merged = mergeArtifactIntoPrompt(baseTemplate, artifact);
 		expect(merged).toBe(baseTemplate);
 	});
@@ -196,14 +214,27 @@ describe("PromptArtifactResolver", () => {
 	});
 
 	it("returns null for non-existent artifact", async () => {
-		const result = await resolver.resolve("gpt-4o-mini", "TEXT_SMALL", "testPrompt");
+		const result = await resolver.resolve(
+			"gpt-4o-mini",
+			"TEXT_SMALL",
+			"testPrompt",
+		);
 		expect(result).toBeNull();
 	});
 
 	it("writes and reads artifact round-trip", async () => {
 		const artifact = makeArtifact();
-		await resolver.writeArtifact("gpt-4o-mini", "TEXT_SMALL", "testPrompt", artifact);
-		const result = await resolver.resolve("gpt-4o-mini", "TEXT_SMALL", "testPrompt");
+		await resolver.writeArtifact(
+			"gpt-4o-mini",
+			"TEXT_SMALL",
+			"testPrompt",
+			artifact,
+		);
+		const result = await resolver.resolve(
+			"gpt-4o-mini",
+			"TEXT_SMALL",
+			"testPrompt",
+		);
 
 		expect(result).not.toBeNull();
 		expect(result?.instructions).toBe(artifact.instructions);
@@ -255,21 +286,43 @@ describe("PromptArtifactResolver", () => {
 	});
 
 	it("resolveWithAB returns baseline when trafficSplit=0", async () => {
-		const artifact = makeArtifact({ abConfig: { trafficSplit: 0.0, minSamples: 3, significanceThreshold: 0.05 } });
+		const artifact = makeArtifact({
+			abConfig: {
+				trafficSplit: 0.0,
+				minSamples: 3,
+				significanceThreshold: 0.05,
+			},
+		});
 		await resolver.writeArtifact("gpt-4o-mini", "TEXT_SMALL", "p", artifact);
 
 		for (let i = 0; i < 10; i++) {
-			const result = await resolver.resolveWithAB("gpt-4o-mini", "TEXT_SMALL", "p", i);
+			const result = await resolver.resolveWithAB(
+				"gpt-4o-mini",
+				"TEXT_SMALL",
+				"p",
+				i,
+			);
 			expect(result.selectedVariant).toBe("baseline");
 		}
 	});
 
 	it("resolveWithAB returns optimized when trafficSplit=1", async () => {
-		const artifact = makeArtifact({ abConfig: { trafficSplit: 1.0, minSamples: 3, significanceThreshold: 0.05 } });
+		const artifact = makeArtifact({
+			abConfig: {
+				trafficSplit: 1.0,
+				minSamples: 3,
+				significanceThreshold: 0.05,
+			},
+		});
 		await resolver.writeArtifact("gpt-4o-mini", "TEXT_SMALL", "p", artifact);
 
 		for (let i = 0; i < 10; i++) {
-			const result = await resolver.resolveWithAB("gpt-4o-mini", "TEXT_SMALL", "p", i);
+			const result = await resolver.resolveWithAB(
+				"gpt-4o-mini",
+				"TEXT_SMALL",
+				"p",
+				i,
+			);
 			expect(result.selectedVariant).toBe("optimized");
 		}
 	});
@@ -310,7 +363,11 @@ describe("TraceWriter", () => {
 		await writer.appendTrace("gpt-4o-mini", "TEXT_SMALL", t1);
 		await writer.appendTrace("gpt-4o-mini", "TEXT_SMALL", t2);
 
-		const filtered = await writer.loadTracesForPrompt("gpt-4o-mini", "TEXT_SMALL", "promptA");
+		const filtered = await writer.loadTracesForPrompt(
+			"gpt-4o-mini",
+			"TEXT_SMALL",
+			"promptA",
+		);
 		expect(filtered).toHaveLength(1);
 		expect(filtered[0].id).toBe("t1");
 	});
@@ -323,7 +380,9 @@ describe("TraceWriter", () => {
 	it("creates directories automatically", async () => {
 		const trace = makeTrace();
 		// Should not throw even though directories don't exist
-		await expect(writer.appendTrace("new-model", "TEXT_MEGA", trace)).resolves.not.toThrow();
+		await expect(
+			writer.appendTrace("new-model", "TEXT_MEGA", trace),
+		).resolves.not.toThrow();
 	});
 });
 
@@ -334,7 +393,11 @@ describe("TraceWriter", () => {
 describe("analyzeAB", () => {
 	const minSamples = 3;
 
-	function makeTraces(count: number, scoreValue: number, variant: string): ExecutionTrace[] {
+	function makeTraces(
+		count: number,
+		scoreValue: number,
+		variant: string,
+	): ExecutionTrace[] {
 		return Array.from({ length: count }, (_, i) => {
 			const card = new ScoreCard();
 			card.add({ source: "dpe", kind: "parseSuccess", value: scoreValue });
@@ -436,7 +499,11 @@ describe("Optimization integration", () => {
 
 		// Write some traces
 		for (let i = 0; i < 5; i++) {
-			await writer.appendTrace(modelId, slotKey, makeTrace({ id: `t${i}`, promptKey }));
+			await writer.appendTrace(
+				modelId,
+				slotKey,
+				makeTrace({ id: `t${i}`, promptKey }),
+			);
 		}
 
 		// Simulate optimization output
@@ -444,17 +511,24 @@ describe("Optimization integration", () => {
 			instructions: "Be very precise and cite sources.",
 			demos: "Example 1:\n  answer: Paris",
 			playbook: "- Never guess\n- Always verify",
-			abConfig: { trafficSplit: 1.0, minSamples: 3, significanceThreshold: 0.05 },
+			abConfig: {
+				trafficSplit: 1.0,
+				minSamples: 3,
+				significanceThreshold: 0.05,
+			},
 		});
 		await resolver.writeArtifact(modelId, slotKey, promptKey, artifact);
 
 		// Resolve should return the artifact
 		const resolved = await resolver.resolve(modelId, slotKey, promptKey);
 		expect(resolved).not.toBeNull();
+		if (resolved === null) {
+			throw new Error("expected artifact");
+		}
 
 		// Merge should produce an optimized template
 		const baseTemplate = "Answer: {{question}}";
-		const merged = mergeArtifactIntoPrompt(baseTemplate, resolved!);
+		const merged = mergeArtifactIntoPrompt(baseTemplate, resolved);
 
 		expect(isMergedTemplate(merged)).toBe(true);
 		expect(merged).toContain("Be very precise");
@@ -462,11 +536,19 @@ describe("Optimization integration", () => {
 		expect(merged).toContain("Answer: {{question}}");
 
 		// A/B with trafficSplit=1 should always return optimized
-		const { selectedVariant } = await resolver.resolveWithAB(modelId, slotKey, promptKey);
+		const { selectedVariant } = await resolver.resolveWithAB(
+			modelId,
+			slotKey,
+			promptKey,
+		);
 		expect(selectedVariant).toBe("optimized");
 
 		// Load traces from disk
-		const loaded = await writer.loadTracesForPrompt(modelId, slotKey, promptKey);
+		const loaded = await writer.loadTracesForPrompt(
+			modelId,
+			slotKey,
+			promptKey,
+		);
 		expect(loaded).toHaveLength(5);
 	});
 });

@@ -65,9 +65,10 @@ export class ScoreCard {
 
 		// Merge instance-level overrides with call-level overrides (call wins).
 		// Passing {} no longer drops constructor defaults.
-		const overrides = this._weightOverrides || weightOverrides
-			? { ...this._weightOverrides, ...weightOverrides }
-			: undefined;
+		const overrides =
+			this._weightOverrides || weightOverrides
+				? { ...this._weightOverrides, ...weightOverrides }
+				: undefined;
 
 		let weightedSum = 0;
 		let totalWeight = 0;
@@ -101,7 +102,10 @@ export class ScoreCard {
 	}
 
 	/** Restore a ScoreCard from its serialized form */
-	static fromJSON(data: ScoreCardData, weightOverrides?: Record<string, number>): ScoreCard {
+	static fromJSON(
+		data: ScoreCardData,
+		weightOverrides?: Record<string, number>,
+	): ScoreCard {
 		const card = new ScoreCard(weightOverrides);
 		if (data && Array.isArray(data.signals)) {
 			card.addAll(data.signals);
