@@ -5080,12 +5080,11 @@ ${section_end}`;
 							value: Math.min(1.0, 500 / Math.max(outputTokenEst, 1)),
 						});
 
-						const simpleHash = (s: string) =>
-							s
-								.split("")
-								.reduce((h, c) => ((h * 31) ^ c.charCodeAt(0)) >>> 0, 5381)
-								.toString(16)
-								.slice(0, 8);
+						const templateHashInput =
+							typeof params.prompt === "string"
+								? params.prompt
+								: tracePromptKey;
+						const computedTemplateHash = simpleHash(templateHashInput);
 
 						const trace: ExecutionTrace = {
 							id: uuidv4(),
@@ -5095,11 +5094,7 @@ ${section_end}`;
 							modelSlot: resolvedModelType,
 							modelId: traceModelId,
 							runId: this.getCurrentRunId?.() ?? undefined,
-							templateHash: simpleHash(
-								typeof params.prompt === "string"
-									? params.prompt
-									: tracePromptKey,
-							),
+							templateHash: computedTemplateHash,
 							schemaFingerprint: schemaKey,
 							artifactVersion: traceArtifactVersion,
 							variant: traceVariant,
@@ -5117,19 +5112,9 @@ ${section_end}`;
 						};
 
 						// Store in activeTraces for downstream enrichment.
-						// Prune stale entries (> 5 minutes old) to prevent memory leaks
+						// Prune stale entries periodically (every 100 calls) to prevent memory leaks
 						// when plugin-neuro is not active or RUN_ENDED never fires.
-						const ACTIVE_TRACE_TTL_MS = 5 * 60 * 1000;
-						const now = Date.now();
-						for (const [id, t] of this.activeTraces) {
-							if (now - t.createdAt > ACTIVE_TRACE_TTL_MS) {
-								this.activeTraces.delete(id);
-								for (const [rid, tids] of this.runToTraces) {
-									tids.delete(id);
-									if (tids.size === 0) this.runToTraces.delete(rid);
-								}
-							}
-						}
+						this.maybeRunActiveTraceTTLPurge();
 						const runId = trace.runId;
 						if (runId) {
 							this.activeTraces.set(trace.id, trace);
@@ -5148,11 +5133,7 @@ ${section_end}`;
 						void writePromptRegistryEntry(optDir, {
 							promptKey: tracePromptKey,
 							schemaFingerprint: schemaKey,
-							templateHash: simpleHash(
-								typeof params.prompt === "string"
-									? params.prompt
-									: tracePromptKey,
-							),
+							templateHash: computedTemplateHash,
 							promptTemplate:
 								typeof params.prompt === "string" ? params.prompt : "",
 							schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
