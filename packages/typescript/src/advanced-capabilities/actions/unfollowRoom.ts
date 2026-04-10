@@ -61,10 +61,7 @@ export const unfollowRoomAction: Action = {
 				},
 			});
 
-			const decisionValue = parsed?.decision as
-				| string
-				| boolean
-				| undefined;
+			const decisionValue = parsed?.decision as string | boolean | undefined;
 
 			if (typeof decisionValue === "boolean") {
 				return decisionValue;
