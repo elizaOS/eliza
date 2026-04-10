@@ -241,6 +241,32 @@ class RelationshipsService(Service):
         if tags:
             results = [c for c in results if any(tag in c.tags for tag in tags)]
 
+        normalized_search = (search_term or "").strip().lower()
+        if normalized_search:
+            filtered: list[ContactInfo] = []
+            for contact in results:
+                if normalized_search in str(contact.entity_id).lower():
+                    filtered.append(contact)
+                    continue
+
+                entity = None
+                if self._runtime is not None:
+                    entity = await self._runtime.get_entity(contact.entity_id)
+
+                entity_name = getattr(entity, "name", None)
+                if isinstance(entity_name, str) and normalized_search in entity_name.lower():
+                    filtered.append(contact)
+                    continue
+
+                entity_names = getattr(entity, "names", None)
+                if isinstance(entity_names, list) and any(
+                    isinstance(name, str) and normalized_search in name.lower()
+                    for name in entity_names
+                ):
+                    filtered.append(contact)
+
+            results = filtered
+
         return results
 
     async def get_all_contacts(self) -> list[ContactInfo]:

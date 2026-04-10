@@ -11,14 +11,20 @@ use crate::runtime::AgentRuntime;
 use crate::template::render_template;
 use crate::types::events::{EventPayload, EventType};
 use crate::types::memory::Memory;
-use crate::types::primitives::{Content, UUID};
+use crate::types::primitives::{ChannelType, Content, UUID};
+use crate::types::settings::SettingValue;
 use crate::types::state::{SchemaRow, State};
 use crate::types::HandlerCallback;
 use anyhow::Result;
 use async_trait::async_trait;
+use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use tracing::{debug, info};
+
+static LATEST_RESPONSE_IDS: LazyLock<Mutex<HashMap<String, HashMap<String, String>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Options for message processing
 #[derive(Default, Clone)]
@@ -29,6 +35,8 @@ pub struct MessageProcessingOptions {
     pub timeout_duration: Option<u64>,
     /// Whether to run a continuation planner after actions complete
     pub continue_after_actions: Option<bool>,
+    /// Whether to keep responses when a newer message is being processed
+    pub keep_existing_responses: Option<bool>,
 }
 
 /// Result of message processing
@@ -72,6 +80,29 @@ pub trait IMessageService: Send + Sync {
 /// Default implementation of the message service
 pub struct DefaultMessageService;
 
+struct LatestResponseGuard {
+    agent_id: String,
+    room_id: String,
+    response_id: String,
+}
+
+impl LatestResponseGuard {
+    fn new(agent_id: &UUID, room_id: &UUID, response_id: &UUID) -> Self {
+        set_latest_response_id(agent_id, room_id, response_id);
+        Self {
+            agent_id: agent_id.to_string(),
+            room_id: room_id.to_string(),
+            response_id: response_id.to_string(),
+        }
+    }
+}
+
+impl Drop for LatestResponseGuard {
+    fn drop(&mut self) {
+        clear_latest_response_id_str(&self.agent_id, &self.room_id, &self.response_id);
+    }
+}
+
 impl DefaultMessageService {
     /// Create a new DefaultMessageService
     pub fn new() -> Self {
@@ -83,6 +114,73 @@ impl Default for DefaultMessageService {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn normalize_env_list(value: Option<String>) -> Vec<String> {
+    value
+        .unwrap_or_default()
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn setting_value_to_string(value: Option<SettingValue>) -> Option<String> {
+    match value {
+        Some(SettingValue::String(value)) => Some(value),
+        Some(SettingValue::Bool(value)) => Some(value.to_string()),
+        Some(SettingValue::Number(value)) => Some(value.to_string()),
+        Some(SettingValue::Null) | None => None,
+    }
+}
+
+fn text_contains_agent_name(text: Option<&str>, names: &[Option<&str>]) -> bool {
+    let Some(text) = text else {
+        return false;
+    };
+
+    names.iter().any(|name| {
+        let Some(candidate) = name.and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        }) else {
+            return false;
+        };
+
+        let pattern = format!(
+            r"(?iu)(^|[^\p{{L}}\p{{N}}]){}($|[^\p{{L}}\p{{N}}])",
+            regex::escape(candidate)
+        );
+        Regex::new(&pattern)
+            .map(|regex| regex.is_match(text))
+            .unwrap_or(false)
+    })
+}
+
+fn text_contains_user_tag(text: Option<&str>) -> bool {
+    let Some(text) = text else {
+        return false;
+    };
+
+    Regex::new(r"<@!?[^>]+>|@\w+")
+        .map(|regex| regex.is_match(text))
+        .unwrap_or(false)
+}
+
+fn mention_context_flag(context: Option<&serde_json::Value>, key: &str) -> bool {
+    context
+        .and_then(|value| value.as_object())
+        .and_then(|value| value.get(key))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 #[cfg_attr(not(feature = "wasm"), async_trait)]
@@ -105,6 +203,18 @@ impl IMessageService for DefaultMessageService {
                 .filter(|s| !s.is_empty())
         });
         runtime.set_trajectory_step_id(trajectory_step_id);
+
+        let response_id = UUID::new_v4();
+        let _latest_response_guard =
+            LatestResponseGuard::new(&runtime.agent_id, &message.room_id, &response_id);
+        let keep_existing_responses = if let Some(value) = options
+            .as_ref()
+            .and_then(|opts| opts.keep_existing_responses)
+        {
+            value
+        } else {
+            parse_bool_setting(runtime.get_setting("BASIC_CAPABILITIES_KEEP_RESP").await)
+        };
 
         // Start run tracking
         let _run_id = runtime.start_run(Some(&message.room_id));
@@ -149,21 +259,91 @@ impl IMessageService for DefaultMessageService {
         let state = runtime.compose_state(message).await?;
 
         // Read character once (avoid block_on deadlocks)
-        let (character_name, system_prompt) = {
+        let (character_name, character_username, system_prompt) = {
             #[cfg(not(feature = "wasm"))]
             {
                 let c = runtime.character.read().await;
-                (c.name.clone(), c.system.clone())
+                (c.name.clone(), c.username.clone(), c.system.clone())
             }
             #[cfg(feature = "wasm")]
             {
                 let c = runtime.character.read().unwrap();
-                (c.name.clone(), c.system.clone())
+                (c.name.clone(), c.username.clone(), c.system.clone())
             }
         };
 
         // shouldRespond gate (parity with TS/Python) - use dynamicPromptExecFromState
         if check_should_respond {
+            let always_respond_channels =
+                setting_value_to_string(runtime.get_setting("ALWAYS_RESPOND_CHANNELS").await);
+            let should_respond_bypass_types =
+                setting_value_to_string(runtime.get_setting("SHOULD_RESPOND_BYPASS_TYPES").await);
+            let always_respond_sources =
+                setting_value_to_string(runtime.get_setting("ALWAYS_RESPOND_SOURCES").await);
+            let should_respond_bypass_sources =
+                setting_value_to_string(runtime.get_setting("SHOULD_RESPOND_BYPASS_SOURCES").await);
+
+            let custom_channels =
+                normalize_env_list(always_respond_channels.or(should_respond_bypass_types));
+            let custom_sources =
+                normalize_env_list(always_respond_sources.or(should_respond_bypass_sources));
+
+            let room_type = message
+                .content
+                .channel_type
+                .as_deref()
+                .unwrap_or_default()
+                .trim()
+                .to_lowercase();
+            let source_str = message
+                .content
+                .source
+                .as_deref()
+                .unwrap_or_default()
+                .trim()
+                .to_lowercase();
+            let text_mentions_agent_by_name = text_contains_agent_name(
+                message.content.text.as_deref(),
+                &[Some(character_name.as_str()), character_username.as_deref()],
+            );
+            let text_mentions_tagged_participants =
+                text_contains_user_tag(message.content.text.as_deref());
+            let has_platform_mention = message
+                .content
+                .mention_context
+                .as_ref()
+                .map(|context| {
+                    mention_context_flag(Some(context), "isMention")
+                        || mention_context_flag(Some(context), "is_mention")
+                        || mention_context_flag(Some(context), "isReply")
+                        || mention_context_flag(Some(context), "is_reply")
+                })
+                .unwrap_or(false);
+
+            let mut respond_channels = vec![
+                ChannelType::DM.to_string().to_lowercase(),
+                ChannelType::VoiceDm.to_string().to_lowercase(),
+                ChannelType::SELF.to_string().to_lowercase(),
+                ChannelType::API.to_string().to_lowercase(),
+            ];
+            respond_channels.extend(custom_channels.iter().map(|value| value.to_lowercase()));
+
+            let mut respond_sources = vec!["client_chat".to_string()];
+            respond_sources.extend(custom_sources.iter().map(|value| value.to_lowercase()));
+
+            if respond_channels.iter().any(|channel| channel == &room_type) {
+                debug!("shouldRespond bypass: private channel");
+            } else if respond_sources
+                .iter()
+                .any(|pattern| !pattern.is_empty() && source_str.contains(pattern))
+            {
+                debug!("shouldRespond bypass: whitelisted source");
+            } else if has_platform_mention {
+                debug!("shouldRespond bypass: platform mention or reply");
+            } else if text_mentions_tagged_participants && text_mentions_agent_by_name {
+                debug!("shouldRespond bypass: tagged participants with agent name");
+            }
+
             // Use dynamicPromptExecFromState for structured decision output
             let schema = vec![
                 SchemaRow::new("name", "The name of the agent responding")
@@ -202,6 +382,8 @@ impl IMessageService for DefaultMessageService {
                     &state,
                     callback.as_ref(),
                     &decision_upper,
+                    keep_existing_responses,
+                    &response_id,
                 )
                 .await;
             }
@@ -212,7 +394,16 @@ impl IMessageService for DefaultMessageService {
         if use_multi_step {
             let max_iters =
                 parse_int_setting(runtime.get_setting("MAX_MULTISTEP_ITERATIONS").await, 6);
-            return run_multi_step(runtime, message, &state, callback, max_iters).await;
+            return run_multi_step(
+                runtime,
+                message,
+                &state,
+                callback,
+                max_iters,
+                keep_existing_responses,
+                &response_id,
+            )
+            .await;
         }
 
         let continue_after_actions = if let Some(value) = options
@@ -422,6 +613,8 @@ impl IMessageService for DefaultMessageService {
                 &state,
                 callback.as_ref(),
                 &actions[0],
+                keep_existing_responses,
+                &response_id,
             )
             .await;
         }
@@ -438,8 +631,21 @@ impl IMessageService for DefaultMessageService {
             ..Default::default()
         };
 
+        if !keep_existing_responses
+            && !is_latest_response_id(&runtime.agent_id, &message.room_id, &response_id)
+        {
+            info!("Response discarded - newer message being processed");
+            runtime.end_run();
+            runtime.set_trajectory_step_id(None);
+            return Ok(MessageProcessingResult {
+                did_respond: false,
+                response_content: None,
+                response_messages: Vec::new(),
+                state: state.clone(),
+            });
+        }
+
         // Create response memory
-        let response_id = UUID::new_v4();
         let response_memory = Memory {
             id: Some(response_id.clone()),
             entity_id: runtime.agent_id.clone(),
@@ -649,7 +855,23 @@ async fn handle_terminal_decision(
     state: &State,
     callback: Option<&HandlerCallback>,
     terminal_action: &str,
+    keep_existing_responses: bool,
+    response_id: &UUID,
 ) -> Result<MessageProcessingResult> {
+    if !keep_existing_responses
+        && !is_latest_response_id(&runtime.agent_id, &message.room_id, response_id)
+    {
+        info!("Ignore response discarded - newer message being processed");
+        runtime.end_run();
+        runtime.set_trajectory_step_id(None);
+        return Ok(MessageProcessingResult {
+            did_respond: false,
+            response_content: None,
+            response_messages: Vec::new(),
+            state: state.clone(),
+        });
+    }
+
     let terminal_action = terminal_action.trim().to_uppercase();
     let terminal_content = Content {
         thought: Some(if terminal_action == "STOP" {
@@ -1042,6 +1264,8 @@ async fn run_multi_step(
     state: &State,
     callback: Option<HandlerCallback>,
     max_iters: i64,
+    keep_existing_responses: bool,
+    response_id: &UUID,
 ) -> Result<MessageProcessingResult> {
     let mut trace_results: Vec<crate::types::ActionResult> = Vec::new();
     let mut last_thought = String::new();
@@ -1215,6 +1439,20 @@ async fn run_multi_step(
         ..Default::default()
     };
 
+    if !keep_existing_responses
+        && !is_latest_response_id(&runtime.agent_id, &message.room_id, response_id)
+    {
+        info!("Response discarded - newer message being processed");
+        runtime.end_run();
+        runtime.set_trajectory_step_id(None);
+        return Ok(MessageProcessingResult {
+            did_respond: false,
+            response_content: None,
+            response_messages: Vec::new(),
+            state: state.clone(),
+        });
+    }
+
     if let Some(cb) = callback {
         let _ = cb(response_content.clone()).await;
     }
@@ -1238,6 +1476,46 @@ fn chrono_timestamp() -> i64 {
         .as_millis() as i64
 }
 
+fn set_latest_response_id(agent_id: &UUID, room_id: &UUID, response_id: &UUID) {
+    let mut latest = LATEST_RESPONSE_IDS
+        .lock()
+        .expect("latest response lock poisoned");
+    latest
+        .entry(agent_id.to_string())
+        .or_default()
+        .insert(room_id.to_string(), response_id.to_string());
+}
+
+fn is_latest_response_id(agent_id: &UUID, room_id: &UUID, response_id: &UUID) -> bool {
+    let latest = LATEST_RESPONSE_IDS
+        .lock()
+        .expect("latest response lock poisoned");
+    latest
+        .get(agent_id.as_str())
+        .and_then(|agent_map| agent_map.get(room_id.as_str()))
+        .map(|current| current == response_id.as_str())
+        .unwrap_or(false)
+}
+
+fn clear_latest_response_id_str(agent_id: &str, room_id: &str, response_id: &str) {
+    let mut latest = LATEST_RESPONSE_IDS
+        .lock()
+        .expect("latest response lock poisoned");
+    let should_remove_agent = if let Some(agent_map) = latest.get_mut(agent_id) {
+        if agent_map.get(room_id).map(String::as_str) != Some(response_id) {
+            return;
+        }
+        agent_map.remove(room_id);
+        agent_map.is_empty()
+    } else {
+        false
+    };
+
+    if should_remove_agent {
+        latest.remove(agent_id);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1256,6 +1534,7 @@ mod tests {
         let options = MessageProcessingOptions::default();
         assert!(options.max_retries.is_none());
         assert!(options.timeout_duration.is_none());
+        assert!(options.keep_existing_responses.is_none());
     }
 
     #[tokio::test]
@@ -1315,6 +1594,130 @@ mod tests {
         assert!(!result.did_respond);
         assert!(result.response_content.is_none());
         assert!(result.response_messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_group_chatter_still_uses_should_respond_classifier() {
+        use crate::runtime::RuntimeOptions;
+        use crate::types::agent::Character;
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(Character {
+                name: "TestAgent".to_string(),
+                system: Some("system".to_string()),
+                ..Default::default()
+            }),
+            check_should_respond: Some(true),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let small_calls = Arc::new(AtomicUsize::new(0));
+        let small_calls_clone = Arc::clone(&small_calls);
+        runtime
+            .register_model(
+                "TEXT_SMALL",
+                Box::new(move |_params| {
+                    let small_calls = Arc::clone(&small_calls_clone);
+                    Box::pin(async move {
+                        small_calls.fetch_add(1, Ordering::SeqCst);
+                        Ok("<response><action>IGNORE</action></response>".to_string())
+                    })
+                }),
+            )
+            .await;
+
+        runtime
+            .register_model(
+                "TEXT_LARGE",
+                Box::new(|_params| {
+                    Box::pin(async move {
+                        Err(anyhow::anyhow!(
+                            "TEXT_LARGE should not run for unaddressed group chatter"
+                        ))
+                    })
+                }),
+            )
+            .await;
+
+        let service = DefaultMessageService::new();
+        let mut msg = Memory::message(UUID::new_v4(), UUID::new_v4(), "you gotta shut up");
+        msg.content.channel_type = Some(ChannelType::GROUP.to_string());
+        let result = service
+            .handle_message(&runtime, &mut msg, None, None)
+            .await
+            .unwrap();
+
+        assert!(!result.did_respond);
+        assert_eq!(small_calls.load(Ordering::SeqCst), 1);
+        assert!(result.response_content.is_none());
+        assert!(result.response_messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_plain_name_mention_still_uses_should_respond_classifier() {
+        use crate::runtime::RuntimeOptions;
+        use crate::types::agent::Character;
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(Character {
+                name: "TestAgent".to_string(),
+                system: Some("system".to_string()),
+                ..Default::default()
+            }),
+            check_should_respond: Some(true),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let small_calls = Arc::new(AtomicUsize::new(0));
+        let small_calls_clone = Arc::clone(&small_calls);
+        runtime
+            .register_model(
+                "TEXT_SMALL",
+                Box::new(move |_params| {
+                    let small_calls = Arc::clone(&small_calls_clone);
+                    Box::pin(async move {
+                        small_calls.fetch_add(1, Ordering::SeqCst);
+                        Ok("<response><action>IGNORE</action></response>".to_string())
+                    })
+                }),
+            )
+            .await;
+
+        runtime
+            .register_model(
+                "TEXT_LARGE",
+                Box::new(|_params| {
+                    Box::pin(async move {
+                        Err(anyhow::anyhow!(
+                            "TEXT_LARGE should not run after shouldRespond IGNORE"
+                        ))
+                    })
+                }),
+            )
+            .await;
+
+        let service = DefaultMessageService::new();
+        let mut msg = Memory::message(UUID::new_v4(), UUID::new_v4(), "hey TestAgent");
+        msg.content.channel_type = Some(ChannelType::GROUP.to_string());
+        let result = service
+            .handle_message(&runtime, &mut msg, None, None)
+            .await
+            .unwrap();
+
+        assert!(!result.did_respond);
+        assert_eq!(small_calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -1577,6 +1980,247 @@ mod tests {
                 .last()
                 .cloned(),
             Some("Final answer from continuation.".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_keep_existing_responses_keeps_both_replies() {
+        use crate::runtime::RuntimeOptions;
+        use crate::types::agent::Character;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+        use tokio::time::{sleep, Duration};
+
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(Character {
+                name: "TestAgent".to_string(),
+                system: Some("system".to_string()),
+                ..Default::default()
+            }),
+            check_should_respond: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let model_calls = Arc::new(AtomicUsize::new(0));
+        let model_calls_clone = Arc::clone(&model_calls);
+        runtime
+            .register_model(
+                "TEXT_LARGE",
+                Box::new(move |_params| {
+                    let model_calls = Arc::clone(&model_calls_clone);
+                    Box::pin(async move {
+                        let call_number = model_calls.fetch_add(1, Ordering::SeqCst) + 1;
+                        sleep(Duration::from_millis(if call_number == 1 { 10 } else { 25 }))
+                            .await;
+                        Ok(format!(
+                            "<response><thought>reply-{call_number}</thought><actions>REPLY</actions><providers></providers><text>{}</text></response>",
+                            if call_number == 1 {
+                                "First reply"
+                            } else {
+                                "Second reply"
+                            }
+                        ))
+                    })
+                }),
+            )
+            .await;
+
+        let first_callback_texts: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let second_callback_texts: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let first_callback: HandlerCallback = {
+            let texts = Arc::clone(&first_callback_texts);
+            Box::new(move |content| {
+                let texts = Arc::clone(&texts);
+                Box::pin(async move {
+                    if let Some(text) = content.text {
+                        texts.lock().expect("lock poisoned").push(text);
+                    }
+                    Vec::new()
+                })
+            })
+        };
+
+        let second_callback: HandlerCallback = {
+            let texts = Arc::clone(&second_callback_texts);
+            Box::new(move |content| {
+                let texts = Arc::clone(&texts);
+                Box::pin(async move {
+                    if let Some(text) = content.text {
+                        texts.lock().expect("lock poisoned").push(text);
+                    }
+                    Vec::new()
+                })
+            })
+        };
+
+        let service = DefaultMessageService::new();
+        let mut first_message = Memory::message(UUID::new_v4(), UUID::new_v4(), "first question");
+        let mut second_message = Memory::message(
+            UUID::new_v4(),
+            first_message.room_id.clone(),
+            "second question",
+        );
+
+        let options = Some(MessageProcessingOptions {
+            keep_existing_responses: Some(true),
+            ..Default::default()
+        });
+        let first_future = service.handle_message(
+            &runtime,
+            &mut first_message,
+            Some(first_callback),
+            options.clone(),
+        );
+        let second_future = service.handle_message(
+            &runtime,
+            &mut second_message,
+            Some(second_callback),
+            options,
+        );
+        let (first_result, second_result) = tokio::join!(first_future, second_future);
+        let first_result = first_result.unwrap();
+        let second_result = second_result.unwrap();
+
+        assert!(first_result.did_respond);
+        assert_eq!(
+            first_result
+                .response_content
+                .as_ref()
+                .and_then(|content| content.text.clone()),
+            Some("First reply".to_string())
+        );
+        assert!(second_result.did_respond);
+        assert_eq!(
+            second_result
+                .response_content
+                .as_ref()
+                .and_then(|content| content.text.clone()),
+            Some("Second reply".to_string())
+        );
+        assert_eq!(
+            first_callback_texts
+                .lock()
+                .expect("lock poisoned")
+                .as_slice(),
+            &["First reply".to_string()]
+        );
+        assert_eq!(
+            second_callback_texts
+                .lock()
+                .expect("lock poisoned")
+                .as_slice(),
+            &["Second reply".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_superseded_reply_is_discarded_by_default() {
+        use crate::runtime::RuntimeOptions;
+        use crate::types::agent::Character;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+        use tokio::time::{sleep, Duration};
+
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(Character {
+                name: "TestAgent".to_string(),
+                system: Some("system".to_string()),
+                ..Default::default()
+            }),
+            check_should_respond: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let model_calls = Arc::new(AtomicUsize::new(0));
+        let model_calls_clone = Arc::clone(&model_calls);
+        runtime
+            .register_model(
+                "TEXT_LARGE",
+                Box::new(move |_params| {
+                    let model_calls = Arc::clone(&model_calls_clone);
+                    Box::pin(async move {
+                        let call_number = model_calls.fetch_add(1, Ordering::SeqCst) + 1;
+                        sleep(Duration::from_millis(if call_number == 1 { 10 } else { 25 }))
+                            .await;
+                        Ok(format!(
+                            "<response><thought>reply-{call_number}</thought><actions>REPLY</actions><providers></providers><text>{}</text></response>",
+                            if call_number == 1 { "Discard me" } else { "Keep me" }
+                        ))
+                    })
+                }),
+            )
+            .await;
+
+        let first_callback_texts: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let second_callback_texts: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let first_callback: HandlerCallback = {
+            let texts = Arc::clone(&first_callback_texts);
+            Box::new(move |content| {
+                let texts = Arc::clone(&texts);
+                Box::pin(async move {
+                    if let Some(text) = content.text {
+                        texts.lock().expect("lock poisoned").push(text);
+                    }
+                    Vec::new()
+                })
+            })
+        };
+
+        let second_callback: HandlerCallback = {
+            let texts = Arc::clone(&second_callback_texts);
+            Box::new(move |content| {
+                let texts = Arc::clone(&texts);
+                Box::pin(async move {
+                    if let Some(text) = content.text {
+                        texts.lock().expect("lock poisoned").push(text);
+                    }
+                    Vec::new()
+                })
+            })
+        };
+
+        let service = DefaultMessageService::new();
+        let mut first_message = Memory::message(UUID::new_v4(), UUID::new_v4(), "older question");
+        let mut second_message = Memory::message(
+            UUID::new_v4(),
+            first_message.room_id.clone(),
+            "newer question",
+        );
+
+        let first_future =
+            service.handle_message(&runtime, &mut first_message, Some(first_callback), None);
+        let second_future =
+            service.handle_message(&runtime, &mut second_message, Some(second_callback), None);
+        let (first_result, second_result) = tokio::join!(first_future, second_future);
+        let first_result = first_result.unwrap();
+        let second_result = second_result.unwrap();
+
+        assert!(!first_result.did_respond);
+        assert!(first_result.response_content.is_none());
+        assert!(second_result.did_respond);
+        assert_eq!(
+            second_result
+                .response_content
+                .as_ref()
+                .and_then(|content| content.text.clone()),
+            Some("Keep me".to_string())
+        );
+        assert!(first_callback_texts
+            .lock()
+            .expect("lock poisoned")
+            .is_empty());
+        assert_eq!(
+            second_callback_texts
+                .lock()
+                .expect("lock poisoned")
+                .as_slice(),
+            &["Keep me".to_string()]
         );
     }
 }

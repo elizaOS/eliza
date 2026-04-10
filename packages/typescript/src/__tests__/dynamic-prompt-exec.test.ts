@@ -265,7 +265,10 @@ describe("dynamicPromptExecFromState", () => {
 
 	describe("schema validation", () => {
 		it("should reject empty schema", async () => {
-			const state = createMockState();
+			const state = {
+				...createMockState(),
+				data: {},
+			} as State;
 			const result = await runtime.dynamicPromptExecFromState({
 				state,
 				params: { prompt: "Test prompt" },
@@ -276,7 +279,10 @@ describe("dynamicPromptExecFromState", () => {
 		});
 
 		it("should reject invalid field names", async () => {
-			const state = createMockState();
+			const state = {
+				...createMockState(),
+				data: {},
+			} as State;
 			const result = await runtime.dynamicPromptExecFromState({
 				state,
 				params: { prompt: "Test prompt" },
@@ -294,7 +300,10 @@ describe("dynamicPromptExecFromState", () => {
 				"mock",
 			);
 
-			const state = createMockState();
+			const state = {
+				...createMockState(),
+				data: {},
+			} as State;
 			const result = await runtime.dynamicPromptExecFromState({
 				state,
 				params: { prompt: "Test prompt" },
@@ -548,6 +557,182 @@ describe("dynamicPromptExecFromState", () => {
 			expect(result?.text).toBe("Hello!");
 		});
 
+		it("should parse relaxed TOON classifier output with blank optional fields", async () => {
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () => `name: Eliza
+reasoning: "lool" from im_zo_sol is just a reaction laugh, not directed at me and carries no follow-up question or task. No one is waiting on me here.
+action: IGNORE
+primaryContext: social
+secondaryContexts: 
+evidenceTurnIds: 1491725198326501518`,
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [
+					{ field: "name", description: "Agent name" },
+					{ field: "reasoning", description: "Reasoning" },
+					{ field: "action", description: "Decision" },
+					{ field: "primaryContext", description: "Primary context" },
+					{ field: "secondaryContexts", description: "Secondary contexts" },
+					{ field: "evidenceTurnIds", description: "Evidence turn ids" },
+				],
+				options: {
+					contextCheckLevel: 0,
+					preferredEncapsulation: "toon",
+				},
+			});
+
+			expect(result).not.toBeNull();
+			expect(result?.action).toBe("IGNORE");
+			expect(result?.primaryContext).toBe("social");
+			expect(result?.secondaryContexts).toBe("");
+			expect(result?.evidenceTurnIds).toBe("1491725198326501518");
+		});
+
+		it("recovers fenced JSON wrapped in prose when TOON is preferred", async () => {
+			const warnSpy = vi
+				.spyOn(runtime.logger, "warn")
+				.mockImplementation(() => {});
+
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () => `Here is the structured result:
+
+\`\`\`json
+{
+  "name": "Eliza",
+  "action": "RESPOND",
+  "primaryContext": "automation"
+}
+\`\`\`
+
+Use that object.`,
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [
+					{ field: "name", description: "Agent name" },
+					{ field: "action", description: "Decision" },
+					{ field: "primaryContext", description: "Primary context" },
+				],
+				options: {
+					contextCheckLevel: 0,
+					preferredEncapsulation: "toon",
+				},
+			});
+
+			expect(result).toEqual({
+				name: "Eliza",
+				action: "RESPOND",
+				primaryContext: "automation",
+			});
+			expect(
+				warnSpy.mock.calls.some((call) =>
+					call.some((entry) =>
+						String(entry).includes("dynamicPromptExecFromState parse problem"),
+					),
+				),
+			).toBe(false);
+		});
+
+		it("recovers fenced TOON wrapped in prose when JSON is forced", async () => {
+			const warnSpy = vi
+				.spyOn(runtime.logger, "warn")
+				.mockImplementation(() => {});
+
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () => `Sure:
+
+\`\`\`toon
+name: Eliza
+action: RESPOND
+primaryContext: automation
+\`\`\`
+
+Done.`,
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [
+					{ field: "name", description: "Agent name" },
+					{ field: "action", description: "Decision" },
+					{ field: "primaryContext", description: "Primary context" },
+				],
+				options: {
+					contextCheckLevel: 0,
+					forceFormat: "json",
+				},
+			});
+
+			expect(result).toEqual({
+				name: "Eliza",
+				action: "RESPOND",
+				primaryContext: "automation",
+			});
+			expect(
+				warnSpy.mock.calls.some((call) =>
+					call.some((entry) =>
+						String(entry).includes("dynamicPromptExecFromState parse problem"),
+					),
+				),
+			).toBe(false);
+		});
+
+		it("recovers inline JSON objects surrounded by prose", async () => {
+			const warnSpy = vi
+				.spyOn(runtime.logger, "warn")
+				.mockImplementation(() => {});
+
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () =>
+					'Result: {"name":"Eliza","action":"RESPOND","primaryContext":"automation"}',
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [
+					{ field: "name", description: "Agent name" },
+					{ field: "action", description: "Decision" },
+					{ field: "primaryContext", description: "Primary context" },
+				],
+				options: {
+					contextCheckLevel: 0,
+					forceFormat: "json",
+				},
+			});
+
+			expect(result).toEqual({
+				name: "Eliza",
+				action: "RESPOND",
+				primaryContext: "automation",
+			});
+			expect(
+				warnSpy.mock.calls.some((call) =>
+					call.some((entry) =>
+						String(entry).includes("dynamicPromptExecFromState parse problem"),
+					),
+				),
+			).toBe(false);
+		});
+
 		it("should automatically use JSON for nested schemas", async () => {
 			let capturedPrompt = "";
 			runtime.registerModel(
@@ -797,6 +982,59 @@ describe("dynamicPromptExecFromState", () => {
 			expect(result?.text).toBe("Valid response");
 		});
 
+		it("accepts planner-style responses without thought when text is present", async () => {
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () =>
+					"<response><actions>REPLY</actions><text>Calendar is available.</text><simple>true</simple></response>",
+				"mock",
+			);
+
+			const state = {
+				...createMockState(),
+				data: {},
+			} as State;
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: messageHandlerTemplate },
+				schema: [
+					{
+						field: "thought",
+						description: "Optional planner reasoning",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "actions",
+						description: "Ordered action entries",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "text",
+						description: "The text response to send to the user",
+						streamField: true,
+					},
+					{
+						field: "simple",
+						description: "Whether this is a simple response (true/false)",
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					contextCheckLevel: 0,
+					preferredEncapsulation: "xml",
+					maxRetries: 0,
+				},
+			});
+
+			expect(result).not.toBeNull();
+			expect(result?.thought).toBeUndefined();
+			expect(result?.actions).toEqual(["REPLY"]);
+			expect(result?.text).toBe("Calendar is available.");
+		});
+
 		it("should fail when nested required fields are missing", async () => {
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
@@ -879,6 +1117,50 @@ describe("dynamicPromptExecFromState", () => {
 			expect(result).not.toBeNull();
 			expect(result?.text).toBe("Valid on retry");
 			expect(callCount).toBe(2);
+		});
+
+		it("logs transient model failures as warnings while retrying", async () => {
+			let callCount = 0;
+			const warnSpy = vi
+				.spyOn(runtime.logger, "warn")
+				.mockImplementation(() => {});
+			const errorSpy = vi
+				.spyOn(runtime.logger, "error")
+				.mockImplementation(() => {});
+
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () => {
+					callCount++;
+					if (callCount === 1) {
+						throw new Error(
+							"Service temporarily unavailable. Please try again shortly.",
+						);
+					}
+					return "<response><text>Valid on retry</text></response>";
+				},
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [{ field: "text", description: "Response" }],
+				options: {
+					contextCheckLevel: 0,
+					maxRetries: 2,
+				},
+			});
+
+			expect(result?.text).toBe("Valid on retry");
+			expect(callCount).toBe(2);
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining("Model call failed transiently, retrying"),
+			);
+			expect(errorSpy).not.toHaveBeenCalledWith(
+				expect.stringContaining("Service temporarily unavailable"),
+			);
 		});
 	});
 

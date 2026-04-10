@@ -8,6 +8,7 @@
 
 // Export all core modules
 export * from "./actions";
+export * from "./advanced-memory";
 // Export capabilities and plugin creation
 export * from "./basic-capabilities/index";
 // Export configuration and plugin modules - will be removed once cli cleanup

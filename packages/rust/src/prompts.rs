@@ -434,12 +434,24 @@ Message Sender: {{senderName}} (ID: {{senderId}})
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
 4. It is normal to return no facts when nothing durable was learned.
 
-Generate a response in the following TOON format:
-thought: a self-reflective thought on the conversation
-facts[1]{claim,type,in_bio,already_known}:
-  "factual statement",fact,false,false
-relationships[1]{sourceEntityId,targetEntityId,tags}:
-  entity_initiating_interaction,entity_being_interacted_with,"group_interaction,voice_interaction,dm_interaction,additional_tag1,additional_tag2"
+Output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+Do not output JSON, XML, Markdown fences, or commentary.
+Use indexed TOON fields exactly like this:
+thought: "a self-reflective thought on the conversation"
+facts[0]:
+  claim: durable factual statement
+  type: fact
+  in_bio: false
+  already_known: false
+relationships[0]:
+  sourceEntityId: entity_initiating_interaction
+  targetEntityId: entity_being_interacted_with
+  tags[0]: dm_interaction
+
+For additional entries, increment the index: facts[1], relationships[1], tags[1], etc.
+If there are no durable new facts, omit all facts[...] entries.
+If there are no relationships, omit all relationships[...] entries.
 
 IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it."#;
 
@@ -608,15 +620,20 @@ context:
 
 rules[6]:
 - direct mention of {{agentName}} -> RESPOND
-- different assistant name -> IGNORE
-- continuing an active thread with {{agentName}} -> RESPOND
-- request to stop or be quiet -> STOP
-- talking to someone else -> IGNORE
-- if unsure, prefer IGNORE over hallucinating relevance
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
 
 decision_note:
-- talking TO {{agentName}} means name mention, reply chain, or direct continuation
-- talking ABOUT {{agentName}} is not enough
+- respond only when the latest message is talking TO {{agentName}}
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
+- mentions of other people do not cancel a direct address to {{agentName}}
+- casual conversation between other users is not enough
+- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
 
 output:
 TOON only. Return exactly one TOON document. No prose before or after it. No <think>.

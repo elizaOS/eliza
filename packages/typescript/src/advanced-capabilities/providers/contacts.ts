@@ -44,9 +44,13 @@ export const contactsProvider: Provider = {
 		const contactDetails = await Promise.all(
 			contacts.map(async (contact) => {
 				const entity = await runtime.getEntityById(contact.entityId);
+				const displayName =
+					typeof contact.customFields.displayName === "string"
+						? contact.customFields.displayName
+						: null;
 				return {
 					id: contact.entityId,
-					name: entity?.names[0] || "Unknown",
+					name: entity?.names[0] || displayName || "Unknown",
 					categories: contact.categories,
 					tags: contact.tags,
 					preferences: contact.preferences,

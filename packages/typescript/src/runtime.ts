@@ -82,6 +82,7 @@ import {
 	type PluginOwnership,
 	type PromptSegment,
 	type Provider,
+	type ProviderResult,
 	type ProviderValue,
 	type Relationship,
 	type Room,
@@ -120,6 +121,7 @@ import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
 import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
+import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
 import {
 	ActionStreamFilter,
 	ValidationStreamExtractor,
@@ -134,6 +136,7 @@ const RUNTIME_TEMPLATE_CACHE = new Map<
 >();
 const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
+const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = 30_000;
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
 	"agentName",
 	"bio",
@@ -156,6 +159,21 @@ const STABLE_PROMPT_PROVIDER_NAMES = new Set([
 	"CHARACTER",
 	"PROVIDERS",
 ]);
+const STRUCTURED_CODE_FENCE_PATTERN = /```([^\n`]*)\r?\n?([\s\S]*?)```/g;
+const TOON_HEADER_PATTERN = /^TOON(?:\s+DOCUMENT)?[:\s-]*$/i;
+const TOON_FIELD_PATTERN =
+	/^[A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?:/m;
+const XML_LIKE_PATTERN = /<[/!?A-Za-z_][^>\n]*>/;
+const JSON_OBJECT_KEY_PATTERN =
+	/(?:["'][^"'\n]+["']|[A-Za-z_][A-Za-z0-9_-]*)\s*:/;
+
+type StructuredResponseFormat = "XML" | "JSON" | "TOON";
+
+type StructuredResponseCandidate = {
+	text: string;
+	formats: StructuredResponseFormat[];
+	source: string;
+};
 
 function resolveDynamicPromptModelType(
 	modelType?: TextGenerationModelType,
@@ -413,7 +431,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		// Create the logger with namespace and log level (defaults to "error")
 		this.logger = createLogger({
-			namespace: character.name,
+			namespace: `agent:${character.name ?? "unknown"}`,
 			level: opts.logLevel ?? "error",
 		});
 
@@ -2755,29 +2773,70 @@ export class AgentRuntime implements IAgentRuntime {
 		const providerData = await Promise.all(
 			providersToGet.map(async (provider) => {
 				const start = Date.now();
-				const result = await provider.get(
-					this as unknown as IAgentRuntime,
-					message,
-					cachedState,
-				);
-				const duration = Date.now() - start;
+				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+				let timedOut = false;
+				try {
+					const result = await Promise.race([
+						provider.get(
+							this as unknown as IAgentRuntime,
+							message,
+							cachedState,
+						),
+						new Promise<ProviderResult>((resolve) => {
+							timeoutHandle = setTimeout(() => {
+								timedOut = true;
+								this.logger.error(
+									{
+										src: "agent",
+										agentId: this.agentId,
+										provider: provider.name,
+										timeoutMs: COMPOSE_STATE_PROVIDER_TIMEOUT_MS,
+									},
+									"Provider timed out during state composition",
+								);
+								resolve({ text: "", values: {}, data: {} });
+							}, COMPOSE_STATE_PROVIDER_TIMEOUT_MS);
+						}),
+					]);
+					const duration = Date.now() - start;
 
-				// only need to inform if it's taking a long time
-				if (duration > 100) {
-					this.logger.debug(
+					// Only log slow successful providers. Timed-out providers already logged above.
+					if (!timedOut && duration > 100) {
+						this.logger.debug(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								provider: provider.name,
+								duration,
+							},
+							"Slow provider",
+						);
+					}
+					return {
+						...result,
+						providerName: provider.name,
+					};
+				} catch (error) {
+					this.logger.error(
 						{
 							src: "agent",
 							agentId: this.agentId,
 							provider: provider.name,
-							duration,
+							error: error instanceof Error ? error.message : String(error),
 						},
-						"Slow provider",
+						"Provider failed during state composition",
 					);
+					return {
+						text: "",
+						values: {},
+						data: {},
+						providerName: provider.name,
+					};
+				} finally {
+					if (timeoutHandle !== undefined) {
+						clearTimeout(timeoutHandle);
+					}
 				}
-				return {
-					...result,
-					providerName: provider.name,
-				};
 			}),
 		);
 
@@ -4511,7 +4570,17 @@ ${section_end}`;
 					options.model,
 				);
 			} catch (modelError) {
-				this.logger.error(`Model call failed: ${String(modelError)}`);
+				const modelErrorMessage = getErrorMessage(modelError);
+				const isTransientFailure = isTransientModelError(modelError);
+				const willRetry = currentRetry + 1 <= maxRetries;
+				const failureMessage = isTransientFailure
+					? `Model call failed transiently${willRetry ? ", retrying" : ""}: ${modelErrorMessage}`
+					: `Model call failed: ${modelErrorMessage}`;
+				if (isTransientFailure) {
+					this.logger.warn(failureMessage);
+				} else {
+					this.logger.error(failureMessage);
+				}
 				lastStructuredFailure = {
 					source: "dynamicPromptExecFromState",
 					kind: "model_error",
@@ -4522,10 +4591,7 @@ ${section_end}`;
 					maxRetries,
 					timestamp: Date.now(),
 					key: options.key ?? modelSchemaKey,
-					parseError:
-						modelError instanceof Error
-							? modelError.message
-							: String(modelError),
+					parseError: modelErrorMessage,
 					issues: [
 						"Model call failed before a structured response could be validated.",
 					],
@@ -4579,11 +4645,10 @@ ${section_end}`;
 			let parseErrorMessage: string | undefined;
 			const validationIssues: string[] = [];
 			try {
-				responseContent = isXML
-					? parseKeyValueXml(cleanResponse)
-					: isJSON
-						? parseJSONObjectFromText(cleanResponse)
-						: parseKeyValueXml(cleanResponse);
+				responseContent = this.parseStructuredResponse(
+					cleanResponse,
+					format,
+				);
 				this.logger.debug(
 					`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
 				);
@@ -4884,10 +4949,16 @@ ${section_end}`;
 			);
 		}
 
-		this.logger.error(
-			`dynamicPromptExecFromState failed after ${maxRetries} retries [${modelSchemaKey}]`,
-			`${metric.successfulAttempts}/${metric.totalAttempts} successful`,
-		);
+		const finalFailureMessage = `dynamicPromptExecFromState failed after ${maxRetries} retries [${modelSchemaKey}]`;
+		const finalFailureSummary = `${metric.successfulAttempts}/${metric.totalAttempts} successful`;
+		if (
+			lastStructuredFailure?.kind === "model_error" &&
+			isTransientModelError(lastStructuredFailure.parseError)
+		) {
+			this.logger.warn(finalFailureMessage, finalFailureSummary);
+		} else {
+			this.logger.error(finalFailureMessage, finalFailureSummary);
+		}
 
 		// Clean up smart retry context from state
 		delete (state as Record<string, unknown>)._smartRetryContext;
@@ -5582,6 +5653,310 @@ ${section_end}`;
 			}
 		}
 		return responseContent;
+	}
+
+	private parseStructuredResponse(
+		response: string,
+		expectedFormat: StructuredResponseFormat,
+	): Record<string, unknown> | null {
+		const parserOrder =
+			expectedFormat === "JSON"
+				? (["JSON", "XML_OR_TOON"] as const)
+				: (["XML_OR_TOON", "JSON"] as const);
+		const candidates = this.extractStructuredResponseCandidates(response);
+
+		for (const candidate of candidates) {
+			for (const parser of parserOrder) {
+				if (parser === "JSON") {
+					if (!candidate.formats.includes("JSON")) {
+						continue;
+					}
+
+					const parsed = parseJSONObjectFromText(candidate.text);
+					if (parsed) {
+						if (
+							candidate.source !== "raw" ||
+							expectedFormat !== "JSON"
+						) {
+							this.logger.debug(
+								`dynamicPromptExecFromState recovered JSON from ${candidate.source}`,
+							);
+						}
+						return parsed;
+					}
+					continue;
+				}
+
+				if (
+					!candidate.formats.includes("TOON") &&
+					!candidate.formats.includes("XML")
+				) {
+					continue;
+				}
+
+				const parsed = parseKeyValueXml(candidate.text);
+				if (parsed) {
+					if (
+						candidate.source !== "raw" ||
+						expectedFormat === "JSON"
+					) {
+						this.logger.debug(
+							`dynamicPromptExecFromState recovered ${candidate.formats.includes("TOON") ? "TOON/XML" : "XML"} from ${candidate.source}`,
+						);
+					}
+					return parsed;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	private extractStructuredResponseCandidates(
+		response: string,
+	): StructuredResponseCandidate[] {
+		const seen = new Set<string>();
+		const candidates: StructuredResponseCandidate[] = [];
+
+		const addCandidate = (
+			text: string,
+			source: string,
+			hints: StructuredResponseFormat[] = [],
+		): void => {
+			const trimmed = text.trim();
+			if (!trimmed || seen.has(trimmed)) {
+				return;
+			}
+
+			const formats = Array.from(
+				new Set([
+					...hints,
+					...this.detectStructuredResponseFormats(trimmed),
+				]),
+			);
+			if (formats.length === 0) {
+				return;
+			}
+
+			seen.add(trimmed);
+			candidates.push({ text: trimmed, formats, source });
+		};
+
+		addCandidate(response, "raw");
+
+		for (const match of response.matchAll(STRUCTURED_CODE_FENCE_PATTERN)) {
+			const label = match[1]?.trim().toLowerCase() ?? "";
+			const content = match[2]?.trim() ?? "";
+			const hints: StructuredResponseFormat[] =
+				label === "json" || label === "json5"
+					? ["JSON"]
+					: label === "xml"
+						? ["XML"]
+						: label === "toon"
+							? ["TOON"]
+							: [];
+			addCandidate(content, label ? `fence:${label}` : "fence", hints);
+		}
+
+		const embeddedJson = this.extractEmbeddedJsonObject(response);
+		if (embeddedJson) {
+			addCandidate(embeddedJson, "embedded-json", ["JSON"]);
+		}
+
+		const embeddedToon = this.extractEmbeddedToonDocument(response);
+		if (embeddedToon) {
+			addCandidate(embeddedToon, "embedded-toon", ["TOON"]);
+		}
+
+		return candidates;
+	}
+
+	private detectStructuredResponseFormats(
+		text: string,
+	): StructuredResponseFormat[] {
+		const trimmed = text.trim();
+		const formats: StructuredResponseFormat[] = [];
+
+		if (this.looksLikeJsonObject(trimmed)) {
+			formats.push("JSON");
+		}
+		if (this.looksLikeToonDocument(trimmed)) {
+			formats.push("TOON");
+		}
+		if (XML_LIKE_PATTERN.test(trimmed)) {
+			formats.push("XML");
+		}
+
+		return formats;
+	}
+
+	private looksLikeJsonObject(text: string): boolean {
+		const trimmed = text.trim();
+		return (
+			trimmed.startsWith("{") &&
+			trimmed.includes("}") &&
+			JSON_OBJECT_KEY_PATTERN.test(trimmed)
+		);
+	}
+
+	private looksLikeToonDocument(text: string): boolean {
+		const lines = text
+			.trim()
+			.split(/\r?\n/)
+			.filter((line) => line.trim().length > 0);
+		if (lines.length === 0) {
+			return false;
+		}
+
+		const firstLine = lines[0]?.trim() ?? "";
+		if (TOON_HEADER_PATTERN.test(firstLine)) {
+			return lines
+				.slice(1)
+				.some((line) => TOON_FIELD_PATTERN.test(line.trim()));
+		}
+
+		if (!TOON_FIELD_PATTERN.test(firstLine)) {
+			return false;
+		}
+
+		if (lines.length === 1) {
+			const [, value = ""] = firstLine.split(/:(.*)/s);
+			const trimmedValue = value.trim();
+			return !(trimmedValue.startsWith("{") && trimmedValue.endsWith("}"));
+		}
+
+		let structuredFieldCount = 0;
+		for (const line of lines) {
+			const trimmed = line.trim();
+			if (TOON_FIELD_PATTERN.test(trimmed)) {
+				structuredFieldCount += 1;
+				continue;
+			}
+			if (/^[\t ]+/.test(line)) {
+				continue;
+			}
+			return false;
+		}
+
+		return structuredFieldCount > 0;
+	}
+
+	private extractEmbeddedToonDocument(text: string): string | null {
+		const lines = text.trim().split(/\r?\n/);
+		const startIndex = lines.findIndex((line) => {
+			const trimmed = line.trim();
+			return (
+				TOON_HEADER_PATTERN.test(trimmed) || TOON_FIELD_PATTERN.test(trimmed)
+			);
+		});
+
+		if (startIndex === -1) {
+			return null;
+		}
+
+		const collected: string[] = [];
+		let sawStructuredField = false;
+
+		for (let index = startIndex; index < lines.length; index++) {
+			const line = lines[index] ?? "";
+			const trimmed = line.trim();
+			const isStructuredField = TOON_FIELD_PATTERN.test(trimmed);
+			const isIndented = /^[\t ]+/.test(line);
+			const isHeader = TOON_HEADER_PATTERN.test(trimmed);
+
+			if (isHeader && !sawStructuredField) {
+				collected.push(line);
+				continue;
+			}
+
+			if (isStructuredField) {
+				sawStructuredField = true;
+				collected.push(line);
+				continue;
+			}
+
+			if (trimmed.length === 0 || isIndented) {
+				if (collected.length > 0) {
+					collected.push(line);
+					continue;
+				}
+			}
+
+			break;
+		}
+
+		return sawStructuredField ? collected.join("\n").trim() : null;
+	}
+
+	private extractEmbeddedJsonObject(text: string): string | null {
+		const trimmed = text.trim();
+		if (this.looksLikeJsonObject(trimmed)) {
+			return trimmed;
+		}
+
+		for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
+			const candidate = this.extractBalancedJsonObject(text, start);
+			if (candidate && this.looksLikeJsonObject(candidate)) {
+				return candidate.trim();
+			}
+		}
+
+		return null;
+	}
+
+	private extractBalancedJsonObject(
+		text: string,
+		startIndex: number,
+	): string | null {
+		let depth = 0;
+		let inString = false;
+		let stringQuote = "";
+		let escaped = false;
+
+		for (let index = startIndex; index < text.length; index++) {
+			const char = text[index] ?? "";
+
+			if (inString) {
+				if (escaped) {
+					escaped = false;
+					continue;
+				}
+				if (char === "\\") {
+					escaped = true;
+					continue;
+				}
+				if (char === stringQuote) {
+					inString = false;
+					stringQuote = "";
+				}
+				continue;
+			}
+
+			if (char === '"' || char === "'") {
+				inString = true;
+				stringQuote = char;
+				continue;
+			}
+
+			if (char === "{") {
+				depth += 1;
+				continue;
+			}
+
+			if (char !== "}") {
+				continue;
+			}
+
+			depth -= 1;
+			if (depth === 0) {
+				return text.slice(startIndex, index + 1);
+			}
+			if (depth < 0) {
+				return null;
+			}
+		}
+
+		return null;
 	}
 
 	registerEvent<T extends keyof EventPayloadMap>(

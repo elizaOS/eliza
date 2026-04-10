@@ -715,6 +715,41 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			expect(state.text).toBe("p1_text");
 		});
 
+		it("should continue composing state when a provider throws", async () => {
+			const provider1Get = vi
+				.fn()
+				.mockRejectedValue(new Error("rolodex provider exploded"));
+			const provider2Get = vi.fn().mockResolvedValue({
+				text: "p2_text",
+				values: { p2_val: 2 },
+			});
+			const provider1: Provider = { name: "P1", get: provider1Get };
+			const provider2: Provider = { name: "P2", get: provider2Get };
+
+			runtime.registerProvider(provider1);
+			runtime.registerProvider(provider2);
+
+			const message = createMockMemory(
+				"test message",
+				undefined,
+				undefined,
+				undefined,
+				agentId,
+			);
+			const state = await runtime.composeState(message);
+
+			expect(provider1Get).toHaveBeenCalledTimes(1);
+			expect(provider2Get).toHaveBeenCalledTimes(1);
+			expect(state.text).toBe("p2_text");
+			expect(state.values).toHaveProperty("p2_val", 2);
+			expect(state.text).not.toContain("rolodex provider exploded");
+
+			const providerResults = state.data?.providers as
+				| Record<string, { text?: string }>
+				| undefined;
+			expect(providerResults?.P1?.text ?? "").toBe("");
+		});
+
 		// Add tests for includeList, caching behavior
 	});
 

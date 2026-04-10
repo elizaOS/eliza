@@ -8,6 +8,10 @@ import {
 	ModelType,
 	type TextGenerationModelType,
 } from "../../types/index.ts";
+import {
+	getErrorMessage,
+	isTransientModelError,
+} from "../../utils/model-errors.ts";
 import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 import { longTermExtractionTemplate } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
@@ -263,11 +267,18 @@ export const longTermExtractionEvaluator: Evaluator = {
 				`Updated checkpoint to ${currentMessageCount} for entity ${entityId}`,
 			);
 		} catch (error) {
-			const err = error instanceof Error ? error.message : String(error);
-			logger.error(
-				{ src: "evaluator:memory", err },
-				"Error during long-term memory extraction",
-			);
+			const err = getErrorMessage(error);
+			if (isTransientModelError(error)) {
+				logger.warn(
+					{ src: "evaluator:memory", err },
+					"Skipped long-term memory extraction due to transient model availability issue",
+				);
+			} else {
+				logger.error(
+					{ src: "evaluator:memory", err },
+					"Error during long-term memory extraction",
+				);
+			}
 		}
 		return undefined;
 	},

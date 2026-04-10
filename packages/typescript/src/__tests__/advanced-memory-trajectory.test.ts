@@ -3,6 +3,7 @@ import { longTermExtractionEvaluator } from "../advanced-memory/evaluators/long-
 import { summarizationEvaluator } from "../advanced-memory/evaluators/summarization.ts";
 import { contextSummaryProvider } from "../advanced-memory/providers/context-summary.ts";
 import { longTermMemoryProvider } from "../advanced-memory/providers/long-term-memory.ts";
+import { logger } from "../logger.ts";
 import type { Memory, UUID } from "../types/index.ts";
 
 const message = {
@@ -216,6 +217,52 @@ describe("advanced-memory trajectory logging", () => {
 				providerName: "LONG_TERM_MEMORY_EXTRACTION",
 				purpose: "evaluate",
 			}),
+		);
+	});
+
+	it("downgrades transient long-term extraction model outages to warnings", async () => {
+		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+
+		const runtime = {
+			agentId: message.agentId,
+			character: { name: "Milady" },
+			getService(serviceType: string) {
+				if (serviceType === "memory") {
+					return {
+						getConfig: () => ({
+							summaryModelType: "TEXT_SMALL",
+							longTermConfidenceThreshold: 0.85,
+						}),
+						getLongTermMemories: vi.fn(async () => []),
+						storeLongTermMemory: vi.fn(async () => null),
+						setLastExtractionCheckpoint: vi.fn(async () => undefined),
+					};
+				}
+				return null;
+			},
+			countMemories: vi.fn(async () => 40),
+			getMemories: vi.fn(async () => [message]),
+			composeState: vi.fn(async () => ({})),
+			useModel: vi.fn(async () => {
+				throw new Error(
+					"Service temporarily unavailable. Please try again shortly.",
+				);
+			}),
+		};
+
+		await longTermExtractionEvaluator.handler(runtime as never, message);
+
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				src: "evaluator:memory",
+				err: "Service temporarily unavailable. Please try again shortly.",
+			}),
+			"Skipped long-term memory extraction due to transient model availability issue",
+		);
+		expect(errorSpy).not.toHaveBeenCalledWith(
+			expect.objectContaining({ src: "evaluator:memory" }),
+			"Error during long-term memory extraction",
 		);
 	});
 });

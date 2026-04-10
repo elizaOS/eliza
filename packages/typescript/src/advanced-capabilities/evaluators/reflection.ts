@@ -14,7 +14,11 @@ import type {
 	UUID,
 } from "../../types/index.ts";
 import { asUUID, ModelType } from "../../types/index.ts";
-import { composePrompt, parseKeyValueXml } from "../../utils.ts";
+import {
+	composePrompt,
+	parseJSONObjectFromText,
+	parseKeyValueXml,
+} from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireEvaluatorSpec("REFLECTION");
@@ -226,6 +230,37 @@ function extractEmbeddedToonDocument(text: string): string | null {
 	return collected.join("\n").trim();
 }
 
+function extractJsonReflectionRecord(
+	value: Record<string, unknown>,
+): ReflectionXmlResult | null {
+	const candidates = [
+		value,
+		isRecord(value.response) ? value.response : null,
+		isRecord(value.reflection) ? value.reflection : null,
+	].filter(
+		(candidate): candidate is Record<string, unknown> => candidate != null,
+	);
+
+	for (const candidate of candidates) {
+		if (!("facts" in candidate) && !("relationships" in candidate)) {
+			continue;
+		}
+
+		const reflection: ReflectionXmlResult = {};
+		if ("facts" in candidate) {
+			reflection.facts = candidate.facts as ReflectionXmlResult["facts"];
+		}
+		if ("relationships" in candidate) {
+			reflection.relationships =
+				candidate.relationships as ReflectionXmlResult["relationships"];
+		}
+
+		return reflection;
+	}
+
+	return null;
+}
+
 function parseReflectionResponse(response: string): {
 	reflection: ReflectionXmlResult | null;
 	lookedStructured: boolean;
@@ -256,12 +291,21 @@ function parseReflectionResponse(response: string): {
 		if (parsed) {
 			return { reflection: parsed, lookedStructured: true };
 		}
+
+		const parsedJson = parseJSONObjectFromText(candidate);
+		if (parsedJson) {
+			const reflection = extractJsonReflectionRecord(parsedJson);
+			if (reflection) {
+				return { reflection, lookedStructured: true };
+			}
+		}
 	}
 
 	const lookedStructured =
 		candidates.size > 1 ||
 		trimmed.includes("<response>") ||
 		trimmed.includes("</response>") ||
+		trimmed.startsWith("{") ||
 		TOON_FIELD_PATTERN.test(trimmed) ||
 		TOON_HEADER_PATTERN.test(trimmed);
 

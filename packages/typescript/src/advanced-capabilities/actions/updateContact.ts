@@ -146,6 +146,10 @@ export const updateContactAction: Action = {
 					updateData.categories = [
 						...new Set([...contact.categories, ...newCategories]),
 					];
+				} else if (operation === "remove_from" && contact.categories) {
+					updateData.categories = contact.categories.filter(
+						(category) => !newCategories.includes(category),
+					);
 				} else {
 					updateData.categories = newCategories;
 				}
@@ -159,6 +163,10 @@ export const updateContactAction: Action = {
 					.filter(Boolean);
 				if (operation === "add_to" && contact.tags) {
 					updateData.tags = [...new Set([...contact.tags, ...newTags])];
+				} else if (operation === "remove_from" && contact.tags) {
+					updateData.tags = contact.tags.filter(
+						(tag) => !newTags.includes(tag),
+					);
 				} else {
 					updateData.tags = newTags;
 				}
@@ -169,6 +177,12 @@ export const updateContactAction: Action = {
 				const newPrefs = parseKeyValueList(parsed.preferences);
 				if (operation === "add_to" && contact.preferences) {
 					updateData.preferences = { ...contact.preferences, ...newPrefs };
+				} else if (operation === "remove_from" && contact.preferences) {
+					const remainingPreferences = { ...contact.preferences };
+					for (const key of Object.keys(newPrefs)) {
+						delete remainingPreferences[key];
+					}
+					updateData.preferences = remainingPreferences;
 				} else {
 					updateData.preferences = newPrefs;
 				}
@@ -179,6 +193,12 @@ export const updateContactAction: Action = {
 				const newFields = parseKeyValueList(parsed.customFields);
 				if (operation === "add_to" && contact.customFields) {
 					updateData.customFields = { ...contact.customFields, ...newFields };
+				} else if (operation === "remove_from" && contact.customFields) {
+					const remainingCustomFields = { ...contact.customFields };
+					for (const key of Object.keys(newFields)) {
+						delete remainingCustomFields[key];
+					}
+					updateData.customFields = remainingCustomFields;
 				} else {
 					updateData.customFields = newFields;
 				}

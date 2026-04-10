@@ -46,7 +46,6 @@ PACKAGES=(
   "@elizaos/plugin-sql-root"
   "@elizaos/plugin-tee-root"
   "@elizaos/plugin-telegram-root"
-  "@elizaos/plugin-todo-root"
   "@elizaos/plugin-vercel-ai-gateway-root"
   "@elizaos/plugin-vision-root"
   "@elizaos/plugin-xai-root"

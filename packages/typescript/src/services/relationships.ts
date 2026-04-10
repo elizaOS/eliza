@@ -1,6 +1,7 @@
 import { logger } from "../logger";
-import type { Entity, Relationship } from "../types/environment";
+import type { Component, Entity, Relationship } from "../types/environment";
 import type {
+	ChannelType,
 	JsonValue,
 	Metadata,
 	MetadataValue,
@@ -44,6 +45,13 @@ export interface ContactInfo {
 	customFields: Record<string, JsonValue>;
 	privacyLevel: "public" | "private" | "restricted";
 	lastModified: string;
+}
+
+function getContactDisplayName(contactInfo: ContactInfo): string | null {
+	const displayName = contactInfo.customFields.displayName;
+	return typeof displayName === "string" && displayName.trim().length > 0
+		? displayName.trim()
+		: null;
 }
 
 /** Helper to convert ContactInfo to Metadata for storage */
@@ -190,20 +198,103 @@ export class RelationshipsService extends Service {
 		}
 	}
 
+	private getRelationshipsWorldId(): UUID {
+		return stringToUuid(`relationships-world-${this.runtime.agentId}`);
+	}
+
+	private getRelationshipsRoomId(): UUID {
+		return stringToUuid(`relationships-${this.runtime.agentId}`);
+	}
+
+	private isRelationshipsContactComponent(component: Component): boolean {
+		return (
+			component.type === "contact_info" &&
+			component.agentId === this.runtime.agentId &&
+			component.worldId === this.getRelationshipsWorldId() &&
+			component.sourceEntityId === this.runtime.agentId
+		);
+	}
+
+	private async getStoredContactComponent(
+		entityId: UUID,
+	): Promise<Component | null> {
+		if (typeof this.runtime.getComponent === "function") {
+			return await this.runtime.getComponent(
+				entityId,
+				"contact_info",
+				this.getRelationshipsWorldId(),
+				this.runtime.agentId,
+			);
+		}
+
+		const components = await this.runtime.getComponents(entityId);
+		return (
+			components.find((component) =>
+				this.isRelationshipsContactComponent(component),
+			) ?? null
+		);
+	}
+
+	private cacheContactInfoFromEntities(entities: Entity[]): void {
+		for (const entity of entities) {
+			if (!entity.id || !entity.components) {
+				continue;
+			}
+
+			const contactComponent = entity.components.find((component) =>
+				this.isRelationshipsContactComponent(component),
+			);
+
+			if (!contactComponent?.data) {
+				continue;
+			}
+
+			const contactInfo = metadataToContactInfo(
+				contactComponent.data as Metadata,
+			);
+			this.setCacheWithLimit(
+				this.contactInfoCache,
+				entity.id as UUID,
+				contactInfo,
+				RelationshipsService.CONTACT_CACHE_LIMIT,
+			);
+		}
+	}
+
 	async initialize(runtime: IAgentRuntime): Promise<void> {
 		this.runtime = runtime;
+		const relationshipsWorldId = this.getRelationshipsWorldId();
+		const relationshipsRoomId = this.getRelationshipsRoomId();
 
 		// Ensure the synthetic relationships world exists so component FK constraints pass
 		if (typeof this.runtime.ensureWorldExists === "function") {
 			try {
 				await this.runtime.ensureWorldExists({
-					id: stringToUuid(`relationships-world-${this.runtime.agentId}`),
+					id: relationshipsWorldId,
 					name: "Relationships World",
 					agentId: this.runtime.agentId,
 				} as Parameters<typeof this.runtime.ensureWorldExists>[0]);
 			} catch (err) {
 				logger.warn(
 					`[RelationshipsService] Failed to ensure relationships world: ${err}`,
+				);
+			}
+		}
+
+		// Components are stored in a synthetic room inside the relationships world.
+		if (typeof this.runtime.ensureRoomExists === "function") {
+			try {
+				await this.runtime.ensureRoomExists({
+					id: relationshipsRoomId,
+					name: "Relationships",
+					source: "relationships",
+					type: "API" as ChannelType,
+					channelId: `relationships-${this.runtime.agentId}`,
+					worldId: relationshipsWorldId,
+				} as Parameters<typeof this.runtime.ensureRoomExists>[0]);
+			} catch (err) {
+				logger.warn(
+					`[RelationshipsService] Failed to ensure relationships room: ${err}`,
 				);
 			}
 		}
@@ -241,6 +332,37 @@ export class RelationshipsService extends Service {
 	}
 
 	private async loadContactInfoFromComponents(): Promise<void> {
+		this.contactInfoCache.clear();
+		const relationshipsWorldId = this.getRelationshipsWorldId();
+		let loadedFromRelationshipsWorld = false;
+
+		// First load directly from the synthetic relationships world where contacts are stored.
+		if (typeof this.runtime.queryEntities === "function") {
+			try {
+				const entities = await this.runtime.queryEntities({
+					componentType: "contact_info",
+					worldId: relationshipsWorldId,
+					includeAllComponents: true,
+				});
+				if (entities.length > 0) {
+					this.cacheContactInfoFromEntities(entities);
+					loadedFromRelationshipsWorld = true;
+				}
+			} catch (err) {
+				logger.warn(
+					`[RelationshipsService] Failed to query contact components directly: ${err}`,
+				);
+			}
+		}
+
+		if (loadedFromRelationshipsWorld) {
+			logger.info(
+				`[RelationshipsService] Loaded ${this.contactInfoCache.size} contacts from components`,
+			);
+			return;
+		}
+
+		// Fall back to the legacy room scan for adapters that do not support queryEntities yet.
 		// Get all rooms for the agent to find entities
 		const rooms = await this.runtime.getRooms(
 			stringToUuid(`world-${this.runtime.agentId}`),
@@ -258,21 +380,12 @@ export class RelationshipsService extends Service {
 		// Load contact info from components for each entity
 		for (const entityId of entityIds) {
 			const components = await this.runtime.getComponents(entityId);
-			const contactComponent = components.find(
-				(c) => c.type === "contact_info" && c.agentId === this.runtime.agentId,
-			);
-
-			if (contactComponent?.data) {
-				const contactInfo = metadataToContactInfo(
-					contactComponent.data as Metadata,
-				);
-				this.setCacheWithLimit(
-					this.contactInfoCache,
-					entityId,
-					contactInfo,
-					RelationshipsService.CONTACT_CACHE_LIMIT,
-				);
-			}
+			this.cacheContactInfoFromEntities([
+				{
+					id: entityId,
+					components,
+				} as Entity,
+			]);
 		}
 
 		logger.info(
@@ -303,8 +416,8 @@ export class RelationshipsService extends Service {
 			type: "contact_info",
 			agentId: this.runtime.agentId,
 			entityId,
-			roomId: stringToUuid(`relationships-${this.runtime.agentId}`),
-			worldId: stringToUuid(`relationships-world-${this.runtime.agentId}`),
+			roomId: this.getRelationshipsRoomId(),
+			worldId: this.getRelationshipsWorldId(),
 			sourceEntityId: this.runtime.agentId,
 			data: contactInfoToMetadata(contactInfo),
 			createdAt: Date.now(),
@@ -357,10 +470,7 @@ export class RelationshipsService extends Service {
 		};
 
 		// Update component
-		const components = await this.runtime.getComponents(entityId);
-		const contactComponent = components.find(
-			(c) => c.type === "contact_info" && c.agentId === this.runtime.agentId,
-		);
+		const contactComponent = await this.getStoredContactComponent(entityId);
 
 		if (contactComponent) {
 			await this.runtime.updateComponent({
@@ -390,10 +500,7 @@ export class RelationshipsService extends Service {
 		}
 
 		// Load from component if not in cache
-		const components = await this.runtime.getComponents(entityId);
-		const contactComponent = components.find(
-			(c) => c.type === "contact_info" && c.agentId === this.runtime.agentId,
-		);
+		const contactComponent = await this.getStoredContactComponent(entityId);
 
 		if (contactComponent?.data) {
 			const contactInfo = metadataToContactInfo(
@@ -419,10 +526,7 @@ export class RelationshipsService extends Service {
 		}
 
 		// Remove component
-		const components = await this.runtime.getComponents(entityId);
-		const contactComponent = components.find(
-			(c) => c.type === "contact_info" && c.agentId === this.runtime.agentId,
-		);
+		const contactComponent = await this.getStoredContactComponent(entityId);
 
 		if (contactComponent) {
 			await this.runtime.deleteComponent(contactComponent.id);
@@ -478,10 +582,14 @@ export class RelationshipsService extends Service {
 			const filteredResults: ContactInfo[] = [];
 			for (let i = 0; i < results.length; i++) {
 				const entity = entities[i];
+				const entityNames = entity?.names ?? [];
+				const displayName = getContactDisplayName(results[i])?.toLowerCase();
 				if (
-					entity?.names.some((name) =>
+					entityNames.some((name) =>
 						name.toLowerCase().includes(searchTermLower),
-					)
+					) ||
+					displayName?.includes(searchTermLower) ||
+					String(results[i].entityId).toLowerCase().includes(searchTermLower)
 				) {
 					filteredResults.push(results[i]);
 				}
@@ -528,26 +636,41 @@ export class RelationshipsService extends Service {
 			return null;
 		}
 
-		// Get recent messages between entities
-		const messages = await this.runtime.getMemories({
-			tableName: "messages",
-			entityId: sourceEntityId,
-			count: 100,
-		});
-
-		const interactions = messages.filter(
-			(m) =>
-				m.content.inReplyTo === targetEntityId ||
-				(m.entityId === targetEntityId &&
-					m.content.inReplyTo === sourceEntityId),
+		// Get recent messages from rooms both entities share. `inReplyTo` stores a
+		// parent message id, not an entity id, so direct reply matching here is incorrect.
+		const [sourceRoomIds, targetRoomIds] = await Promise.all([
+			this.runtime.getRoomsForParticipant(sourceEntityId),
+			this.runtime.getRoomsForParticipant(targetEntityId),
+		]);
+		const targetRoomIdSet = new Set(
+			targetRoomIds.map((roomId) => String(roomId)),
 		);
+		const sharedRoomIds = sourceRoomIds.filter((roomId) =>
+			targetRoomIdSet.has(String(roomId)),
+		);
+		const sharedMessages =
+			sharedRoomIds.length > 0
+				? await this.runtime.getMemoriesByRoomIds({
+						tableName: "messages",
+						roomIds: sharedRoomIds,
+						limit: 200,
+					})
+				: [];
+
+		const interactions = sharedMessages
+			.filter(
+				(message) =>
+					message.entityId === sourceEntityId ||
+					message.entityId === targetEntityId,
+			)
+			.sort((a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0));
 
 		// Calculate metrics
 		const interactionCount = interactions.length;
-		const lastInteraction = interactions[0];
+		const lastInteraction = interactions[interactions.length - 1];
 		const lastInteractionAt = lastInteraction?.createdAt
-			? new Date(lastInteraction.createdAt).toISOString()
-			: undefined;
+			? new Date(Number(lastInteraction.createdAt)).toISOString()
+			: relationship.lastInteractionAt;
 
 		// Calculate average response time
 		let totalResponseTime = 0;
@@ -562,9 +685,7 @@ export class RelationshipsService extends Service {
 				current.createdAt &&
 				next.createdAt
 			) {
-				const timeDiff =
-					new Date(next.createdAt).getTime() -
-					new Date(current.createdAt).getTime();
+				const timeDiff = Number(next.createdAt) - Number(current.createdAt);
 				totalResponseTime += timeDiff;
 				responseCount++;
 			}
@@ -611,8 +732,8 @@ export class RelationshipsService extends Service {
 				type: "relationship_update",
 				agentId: this.runtime.agentId,
 				entityId: relationship.sourceEntityId,
-				roomId: stringToUuid(`relationships-${this.runtime.agentId}`),
-				worldId: stringToUuid(`relationships-world-${this.runtime.agentId}`),
+				roomId: this.getRelationshipsRoomId(),
+				worldId: this.getRelationshipsWorldId(),
 				sourceEntityId: relationship.sourceEntityId,
 				data: {
 					targetEntityId: relationship.targetEntityId,

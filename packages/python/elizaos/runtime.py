@@ -19,6 +19,7 @@ from elizaos.types.components import (
     HandlerCallback,
     HandlerOptions,
     Provider,
+    ProviderResult,
 )
 from elizaos.types.database import AgentRunSummaryResult, IDatabaseAdapter, Log
 from elizaos.types.environment import Entity, Room, World
@@ -42,6 +43,7 @@ from elizaos.utils import get_current_time_ms as _get_current_time_ms
 from elizaos.utils.streaming import ValidationStreamExtractor, ValidationStreamExtractorConfig
 
 _message_service_class: type | None = None
+_COMPOSE_STATE_PROVIDER_TIMEOUT_SECONDS = 30
 
 
 def _get_message_service_class() -> type:
@@ -1290,7 +1292,21 @@ class AgentRuntime(IAgentRuntime):
             if provider.private:
                 continue
 
-            result = await provider.get(self, message, state)
+            try:
+                result = await asyncio.wait_for(
+                    provider.get(self, message, state),
+                    timeout=_COMPOSE_STATE_PROVIDER_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                self.logger.warning(
+                    f"Provider {provider.name} timed out after "
+                    f"{_COMPOSE_STATE_PROVIDER_TIMEOUT_SECONDS}s during compose_state"
+                )
+                result = ProviderResult(text="", values={}, data={})
+            except Exception as e:
+                self.logger.warning(f"Provider {provider.name} failed during compose_state: {e}")
+                result = ProviderResult(text="", values={}, data={})
+
             if result.text:
                 text_parts.append(result.text)
             if result.values:
