@@ -112,10 +112,10 @@ export const messageClassifierProvider: Provider = {
 				Math.max(0.0, Number.parseFloat(confidenceStr) || 0.5),
 			);
 
-			const capabilities = parseField("CAPABILITIES:");
-			const stakeholders = parseField("STAKEHOLDERS:");
-			const constraints = parseField("CONSTRAINTS:");
-			const dependencies = parseField("DEPENDENCIES:");
+			const capabilities = parseField("CAPABILITIES");
+			const stakeholders = parseField("STAKEHOLDERS");
+			const constraints = parseField("CONSTRAINTS");
+			const dependencies = parseField("DEPENDENCIES");
 
 			const planningRequired =
 				planningType !== "direct_action" && complexity !== "simple";

@@ -121,8 +121,11 @@ export async function handleRunEnded(
 					trace.promptKey,
 					trace,
 				);
-			} catch {
-				/* profile is best-effort */
+			} catch (err) {
+				runtime.logger.debug(
+					{ src: "plugin-neuro", error: err instanceof Error ? err.message : String(err) },
+					"SlotProfile recordTrace failed (best-effort)"
+				);
 			}
 
 			// Run A/B analysis if we have enough samples (fire-and-forget)

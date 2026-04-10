@@ -75,6 +75,10 @@ export async function maybeRunAutoPromptOptimization(
 	const next = prev.then(() => doAutoRun(runtime, optDir, trace));
 	runLocks.set(key, next);
 	await next;
+	// Clean up resolved lock to prevent unbounded memory growth
+	if (runLocks.get(key) === next) {
+		runLocks.delete(key);
+	}
 }
 
 async function doAutoRun(

@@ -27,6 +27,9 @@ const lastAgentResponseByKey = new Map<
 	{ at: number; responseLength: number }
 >();
 
+/** Track pending cleanup timeouts for graceful shutdown */
+const pendingCleanupTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
 /** Register an agent response for continuation tracking */
 export function trackAgentResponse(
 	roomId: string,
@@ -40,13 +43,30 @@ export function trackAgentResponse(
 		responseLength,
 	});
 
+	// Clear any existing timeout for this key
+	const existingTimeout = pendingCleanupTimeouts.get(key);
+	if (existingTimeout) {
+		clearTimeout(existingTimeout);
+	}
+
 	// Auto-cleanup after 2x continuation window
-	setTimeout(() => {
+	const timeoutId = setTimeout(() => {
 		const entry = lastAgentResponseByKey.get(key);
 		if (entry && Date.now() - entry.at > CONTINUATION_WINDOW_MS * 2) {
 			lastAgentResponseByKey.delete(key);
 		}
+		pendingCleanupTimeouts.delete(key);
 	}, CONTINUATION_WINDOW_MS * 2);
+	pendingCleanupTimeouts.set(key, timeoutId);
+}
+
+/** Clear all pending timeouts and tracking state (for graceful shutdown) */
+export function clearContinuationTracking(): void {
+	for (const timeoutId of pendingCleanupTimeouts.values()) {
+		clearTimeout(timeoutId);
+	}
+	pendingCleanupTimeouts.clear();
+	lastAgentResponseByKey.clear();
 }
 
 /** Patterns that indicate a user is correcting the agent */

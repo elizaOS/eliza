@@ -320,6 +320,7 @@ function patchFile(filePath) {
 		return false;
 	}
 	if (!s.includes("async function generateOllamaText(ollama, model, params)")) {
+		console.warn(`[patch-plugin-ollama-chat] Unrecognized format at ${filePath} — skipping`);
 		return false;
 	}
 	s = s.replace(OLD_IMPORTS, NEW_IMPORTS);

@@ -122,6 +122,7 @@ export class TaskDrain {
 			name: this.taskName,
 			description: this.description,
 			tags: ["queue", "repeat"],
+			agentId: agentId as UUID,
 			worldId: agentId as UUID,
 			metadata: {
 				...this.taskMetadata,
