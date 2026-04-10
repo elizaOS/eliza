@@ -160,55 +160,65 @@ export const relationshipExtractionEvaluator: Evaluator = {
 };
 
 function extractPlatformIdentities(text: string): PlatformIdentity[] {
-	const identities: PlatformIdentity[] = [];
 	const now = Date.now();
-
-	// X handles
-	const xMatches = text.match(/@[\w]+/g);
-	if (xMatches) {
-		for (const handle of xMatches) {
-			if (!handle.match(/@(here|everyone|channel)/)) {
-				// Skip Discord mentions
-				identities.push({
-					platform: "x",
-					handle: handle,
-					verified: false,
-					confidence: 0.7,
-					timestamp: now,
-				});
-			}
+	const identities = new Map<string, PlatformIdentity>();
+	const addIdentity = (
+		platform: string,
+		handle: string | undefined,
+		confidence: number,
+	) => {
+		const normalizedHandle = handle?.trim();
+		if (!normalizedHandle) {
+			return;
 		}
-	}
-
-	// GitHub usernames
-	const githubPattern = /github\.com\/(\w+)|@(\w+) on github/gi;
-	let githubMatch = githubPattern.exec(text);
-	while (githubMatch !== null) {
-		identities.push({
-			platform: "github",
-			handle: githubMatch[1] || githubMatch[2],
+		const key = `${platform}:${normalizedHandle.toLowerCase()}`;
+		const existing = identities.get(key);
+		if (existing && existing.confidence >= confidence) {
+			return;
+		}
+		identities.set(key, {
+			platform,
+			handle: normalizedHandle,
 			verified: false,
-			confidence: 0.8,
+			confidence,
 			timestamp: now,
 		});
-		githubMatch = githubPattern.exec(text);
-	}
+	};
 
-	// Discord usernames
-	const discordPattern = /discord:?\s*(\w+#\d{4})|my discord is (\w+#\d{4})/gi;
-	let discordMatch = discordPattern.exec(text);
-	while (discordMatch !== null) {
-		identities.push({
-			platform: "discord",
-			handle: discordMatch[1] || discordMatch[2],
-			verified: false,
-			confidence: 0.8,
-			timestamp: now,
-		});
-		discordMatch = discordPattern.exec(text);
-	}
+	const collectMatches = (
+		pattern: RegExp,
+		platform: string,
+		confidence: number,
+	) => {
+		let match = pattern.exec(text);
+		while (match !== null) {
+			addIdentity(platform, match[1] ?? match[2], confidence);
+			match = pattern.exec(text);
+		}
+	};
 
-	return identities;
+	collectMatches(
+		/(?:https?:\/\/)?(?:www\.)?(?:x|twitter)\.com\/@?([A-Za-z0-9_]{1,15})|(?:\bon\s+(?:x|twitter)\b|\bmy\s+(?:x|twitter)\s+is\b|\b(?:x|twitter)(?:\s+(?:username|handle))?\s*(?:[:=-]|is)\b)\s*@?([A-Za-z0-9_]{1,15})/gi,
+		"twitter",
+		0.8,
+	);
+	collectMatches(
+		/(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)|(?:\bmy\s+github\s+is\b|\bgithub(?:\s+(?:username|handle))?\s*(?:[:=-]|is)\b)\s*@?([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)/gi,
+		"github",
+		0.85,
+	);
+	collectMatches(
+		/(?:\bmy\s+telegram\s+is\b|\btelegram(?:\s+(?:username|handle))?\s*(?:[:=-]|is)\b)\s*(@[A-Za-z][A-Za-z0-9_]{3,31})/gi,
+		"telegram",
+		0.8,
+	);
+	collectMatches(
+		/(?:\bmy\s+discord\s+is\b|\bdiscord(?:\s+(?:username|handle|tag))?\s*(?:[:=-]|is)\b)\s*([A-Za-z0-9_.]{2,32}(?:#\d{4})?)/gi,
+		"discord",
+		0.8,
+	);
+
+	return Array.from(identities.values());
 }
 
 async function storePlatformIdentities(
@@ -551,7 +561,7 @@ async function updateRelationship(
 		});
 	} else {
 		// Update existing relationship
-		const metadata = relationship.metadata || {};
+		const metadata = { ...(relationship.metadata || {}) };
 		metadata.sentiment = sentiment;
 		const existingIndicators = Array.isArray(metadata.indicators)
 			? (metadata.indicators as MetadataCompatibleArray)
@@ -563,11 +573,16 @@ async function updateRelationship(
 		metadata.indicators = newIndicators;
 		metadata.lastAnalyzed = Date.now();
 
-		// Recreate relationship with updated data
-		await runtime.createRelationship({
-			sourceEntityId: relationship.sourceEntityId,
-			targetEntityId: relationship.targetEntityId,
-			tags: [...(relationship.tags || []), "updated"],
+		await runtime.updateRelationship({
+			...relationship,
+			tags: [
+				...new Set([
+					...(relationship.tags || []),
+					"relationships",
+					primaryType,
+					"updated",
+				]),
+			],
 			metadata: {
 				...metadata,
 				relationshipType: primaryType,

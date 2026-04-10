@@ -17,6 +17,79 @@ import { addHeader, formatMessages, formatPosts } from "../../utils.ts";
 const spec = requireProviderSpec("RECENT_MESSAGES");
 const RECENT_ACTION_RUNS_TARGET_CHARS = 2200;
 
+function buildFormattingFallbackEntity(memory: Memory): Entity | null {
+	const metadata = memory.metadata as CustomMetadata | undefined;
+	const entityName =
+		typeof metadata?.entityName === "string" ? metadata.entityName.trim() : "";
+
+	if (!memory.entityId || entityName.length === 0) {
+		return null;
+	}
+
+	return {
+		id: memory.entityId,
+		agentId: memory.agentId,
+		names: [entityName],
+		metadata: {
+			name: entityName,
+			userName: entityName,
+			username: entityName,
+		},
+	} as Entity;
+}
+
+async function ensureFormattingEntities(
+	runtime: IAgentRuntime,
+	entities: Entity[],
+	messages: Memory[],
+): Promise<Entity[]> {
+	const entitiesById = new Map<UUID, Entity>();
+	for (const entity of entities) {
+		if (entity.id) {
+			entitiesById.set(entity.id, entity);
+		}
+	}
+
+	const missingMessageByEntityId = new Map<UUID, Memory>();
+	for (const memory of messages) {
+		if (!memory.entityId || entitiesById.has(memory.entityId)) {
+			continue;
+		}
+
+		if (!missingMessageByEntityId.has(memory.entityId)) {
+			missingMessageByEntityId.set(memory.entityId, memory);
+		}
+	}
+
+	const missingEntityIds = Array.from(missingMessageByEntityId.keys());
+	if (missingEntityIds.length === 0) {
+		return Array.from(entitiesById.values());
+	}
+
+	const resolvedEntities = await Promise.all(
+		missingEntityIds.map((entityId) => runtime.getEntityById(entityId)),
+	);
+
+	for (let i = 0; i < missingEntityIds.length; i += 1) {
+		const entityId = missingEntityIds[i];
+		const resolvedEntity = resolvedEntities[i];
+
+		if (resolvedEntity) {
+			entitiesById.set(entityId, resolvedEntity);
+			continue;
+		}
+
+		const fallbackMemory = missingMessageByEntityId.get(entityId);
+		const fallbackEntity =
+			fallbackMemory && buildFormattingFallbackEntity(fallbackMemory);
+		if (fallbackEntity) {
+			entitiesById.set(entityId, fallbackEntity);
+		}
+	}
+
+	return Array.from(entitiesById.values());
+}
+
 // Move getRecentInteractions outside the provider
 /**
  * Retrieves the recent interactions between two entities in a specific context.
@@ -114,6 +187,16 @@ export const recentMessagesProvider: Provider = {
 			(msg) => !(msg.content && msg.content.type === "action_result"),
 		);
 
+		// Room entity lookups only include current participants. Historical room
+		// context can still contain messages from senders who left the room or
+		// whose entity row is temporarily unavailable, so backfill those before
+		// formatting to avoid noisy "No entity found for message" warnings.
+		const entitiesForFormatting = await ensureFormattingEntities(
+			runtime,
+			entitiesData,
+			[message, ...dialogueMessages],
+		);
+
 		// Default to message format if room is not found or type is undefined
 		const isPostFormat = room?.type
 			? room.type === ChannelType.FEED || room.type === ChannelType.THREAD
@@ -123,11 +206,11 @@ export const recentMessagesProvider: Provider = {
 		const [formattedRecentMessages, formattedRecentPosts] = await Promise.all([
 			formatMessages({
 				messages: dialogueMessages,
-				entities: entitiesData,
+				entities: entitiesForFormatting,
 			}),
 			formatPosts({
 				messages: dialogueMessages,
-				entities: entitiesData,
+				entities: entitiesForFormatting,
 				conversationHeader: false,
 			}),
 		]);
@@ -257,7 +340,7 @@ export const recentMessagesProvider: Provider = {
 			// Format just this single message to get the internal thought
 			const formattedSingleMessage = formatMessages({
 				messages: [mostRecentMessage],
-				entities: entitiesData,
+				entities: entitiesForFormatting,
 			});
 
 			if (formattedSingleMessage) {
@@ -266,7 +349,7 @@ export const recentMessagesProvider: Provider = {
 		}
 
 		const metaData = message.metadata as CustomMetadata;
-		const foundEntity = entitiesData.find(
+		const foundEntity = entitiesForFormatting.find(
 			(entity: Entity) => entity.id === message.entityId,
 		);
 		const senderName =
@@ -308,7 +391,7 @@ export const recentMessagesProvider: Provider = {
 
 			// Add entities already fetched in entitiesData to the map
 			const entitiesDataIdSet = new Set<UUID>();
-			entitiesData.forEach((entity: Entity) => {
+			entitiesForFormatting.forEach((entity: Entity) => {
 				const entityId = entity.id;
 				if (entityId && uniqueEntityIdSet.has(entityId)) {
 					interactionEntityMap.set(entityId, entity);
@@ -390,7 +473,10 @@ export const recentMessagesProvider: Provider = {
 		const [recentMessageInteractions, recentPostInteractions] =
 			await Promise.all([
 				getRecentMessageInteractions(recentInteractionsData),
-				getRecentPostInteractions(recentInteractionsData, entitiesData),
+				getRecentPostInteractions(
+					recentInteractionsData,
+					entitiesForFormatting,
+				),
 			]);
 
 		const data = {

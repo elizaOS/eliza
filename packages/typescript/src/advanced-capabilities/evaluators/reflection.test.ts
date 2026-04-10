@@ -170,6 +170,78 @@ Thanks.`);
 		);
 	});
 
+	it("parses a fenced JSON reflection without warning", async () => {
+		const message = createMessage(mockEntities[0]!.id!);
+		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
+		const warn = runtime.logger.warn as unknown as ReturnType<typeof vi.fn>;
+
+		useModel.mockResolvedValue(`Here is the reflection:
+
+\`\`\`json
+{
+  "thought": "All good",
+  "facts": [
+    {
+      "claim": "Bob is a builder",
+      "type": "fact",
+      "in_bio": false,
+      "already_known": false
+    }
+  ],
+  "relationships": [
+    {
+      "sourceEntityId": "Alice",
+      "targetEntityId": "Bob",
+      "tags": ["dm_interaction"]
+    }
+  ]
+}
+\`\`\``);
+
+		await reflectionEvaluator.handler(runtime, message);
+
+		expect(runtime.createMemory).toHaveBeenCalledOnce();
+		expect(runtime.createRelationship).toHaveBeenCalledOnce();
+		expect(runtime.createRelationship).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sourceEntityId: mockEntities[0]!.id,
+				targetEntityId: mockEntities[1]!.id,
+				tags: ["dm_interaction"],
+			}),
+		);
+
+		const warnedMessages = warn.mock.calls.map((call) =>
+			String(call[1] ?? call[0] ?? ""),
+		);
+		expect(warnedMessages).not.toContain(
+			"Getting reflection failed - failed to parse structured response",
+		);
+	});
+
+	it("parses a wrapped JSON reflection object", async () => {
+		const message = createMessage(mockEntities[0]!.id!);
+		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
+
+		useModel.mockResolvedValue(`{
+  "response": {
+    "facts": [
+      {
+        "claim": "Bob is a builder",
+        "type": "fact",
+        "in_bio": false,
+        "already_known": false
+      }
+    ],
+    "relationships": []
+  }
+}`);
+
+		await reflectionEvaluator.handler(runtime, message);
+
+		expect(runtime.createMemory).toHaveBeenCalledOnce();
+		expect(runtime.createRelationship).not.toHaveBeenCalled();
+	});
+
 	it("skips unstructured reflection output without warning", async () => {
 		const message = createMessage(mockEntities[0]!.id!);
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;

@@ -194,6 +194,25 @@ fn extract_categories(text: &str) -> Vec<String> {
     categories
 }
 
+fn extract_explicit_categories(text: &str) -> Vec<String> {
+    let lower = text.to_lowercase();
+    let mut categories = Vec::new();
+    for (needle, category) in [
+        ("friend", "friend"),
+        ("family", "family"),
+        ("colleague", "colleague"),
+        ("coworker", "colleague"),
+        ("business", "business"),
+        ("vip", "vip"),
+        ("acquaintance", "acquaintance"),
+    ] {
+        if lower.contains(needle) && !categories.iter().any(|existing| existing == category) {
+            categories.push(category.to_string());
+        }
+    }
+    categories
+}
+
 fn extract_tags(text: &str) -> Vec<String> {
     text.split_whitespace()
         .filter_map(|word| word.strip_prefix('#'))
@@ -203,6 +222,73 @@ fn extract_tags(text: &str) -> Vec<String> {
         })
         .filter(|tag| !tag.is_empty())
         .collect()
+}
+
+fn extract_search_term(text: &str, categories: &[String], tags: &[String]) -> Option<String> {
+    let stopwords = [
+        "search",
+        "find",
+        "lookup",
+        "list",
+        "show",
+        "contact",
+        "contacts",
+        "relationship",
+        "relationships",
+        "people",
+        "person",
+        "my",
+        "all",
+        "for",
+        "in",
+        "with",
+        "please",
+        "known",
+        "saved",
+        "stored",
+        "named",
+        "called",
+    ];
+
+    let tokens = text
+        .split_whitespace()
+        .filter_map(|word| {
+            let cleaned = word
+                .trim_matches(|ch: char| !ch.is_alphanumeric() && ch != '-' && ch != '_')
+                .to_lowercase();
+            if cleaned.is_empty()
+                || stopwords.contains(&cleaned.as_str())
+                || categories.iter().any(|category| category == &cleaned)
+                || tags.iter().any(|tag| tag == &cleaned)
+            {
+                None
+            } else {
+                Some(cleaned)
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if tokens.is_empty() {
+        None
+    } else {
+        Some(tokens.join(" "))
+    }
+}
+
+fn json_value_matches_search_term(value: &Value, search_term: &str) -> bool {
+    match value {
+        Value::String(text) => {
+            let normalized = text.to_lowercase();
+            normalized.contains(search_term) || search_term.contains(&normalized)
+        }
+        Value::Array(values) => values
+            .iter()
+            .any(|item| json_value_matches_search_term(item, search_term)),
+        Value::Object(values) => values
+            .values()
+            .any(|item| json_value_matches_search_term(item, search_term)),
+        _ => false,
+    }
 }
 
 fn determine_follow_up_time(text: &str) -> DateTime<Utc> {
@@ -359,7 +445,13 @@ impl RelationshipsService {
         &self,
         categories: Option<&[String]>,
         tags: Option<&[String]>,
+        search_term: Option<&str>,
     ) -> Vec<ContactInfo> {
+        let normalized_search = search_term
+            .map(str::trim)
+            .filter(|term| !term.is_empty())
+            .map(str::to_lowercase);
+
         self.contacts
             .lock()
             .expect("relationships lock poisoned")
@@ -367,7 +459,7 @@ impl RelationshipsService {
             .filter(|contact| {
                 categories
                     .map(|required| {
-                        required.iter().all(|category| {
+                        required.iter().any(|category| {
                             contact
                                 .categories
                                 .iter()
@@ -380,9 +472,30 @@ impl RelationshipsService {
                 tags.map(|required| {
                     required
                         .iter()
-                        .all(|tag| contact.tags.iter().any(|existing| existing == tag))
+                        .any(|tag| contact.tags.iter().any(|existing| existing == tag))
                 })
                 .unwrap_or(true)
+            })
+            .filter(|contact| {
+                normalized_search
+                    .as_ref()
+                    .map(|search_term| {
+                        contact
+                            .entity_id
+                            .as_str()
+                            .to_lowercase()
+                            .contains(search_term)
+                            || contact
+                                .categories
+                                .iter()
+                                .any(|category| category.contains(search_term))
+                            || contact.tags.iter().any(|tag| tag.contains(search_term))
+                            || contact
+                                .custom_fields
+                                .values()
+                                .any(|value| json_value_matches_search_term(value, search_term))
+                    })
+                    .unwrap_or(true)
             })
             .cloned()
             .collect()
@@ -1202,6 +1315,17 @@ impl ActionHandler for AddContactActionHandler {
         };
         let text = message.content.text.clone().unwrap_or_default();
         let contact = relationships.add_contact(entity_id.clone(), extract_categories(&text), None);
+        if let Some(adapter) = runtime.get_adapter() {
+            if let Ok(Some(entity)) = adapter.get_entity(&entity_id).await {
+                if let Some(display_name) = entity.names.and_then(|names| names.into_iter().next())
+                {
+                    let mut custom_fields = HashMap::new();
+                    custom_fields.insert("display_name".to_string(), json!(display_name));
+                    let _ =
+                        relationships.update_contact(&entity_id, None, None, Some(custom_fields));
+                }
+            }
+        }
         relationships.update_relationship_analytics(
             &entity_id,
             Some(1),
@@ -1283,7 +1407,8 @@ impl ActionHandler for SearchContactsActionHandler {
     fn definition(&self) -> ActionDefinition {
         ActionDefinition {
             name: "SEARCH_CONTACTS".to_string(),
-            description: "Search stored contacts by inferred categories or tags".to_string(),
+            description: "Search stored contacts by inferred names, categories, or tags"
+                .to_string(),
             ..Default::default()
         }
     }
@@ -1316,11 +1441,13 @@ impl ActionHandler for SearchContactsActionHandler {
         };
 
         let text = message.content.text.clone().unwrap_or_default();
-        let categories = extract_categories(&text);
+        let categories = extract_explicit_categories(&text);
         let tags = extract_tags(&text);
+        let search_term = extract_search_term(&text, &categories, &tags);
         let results = relationships.search_contacts(
-            Some(&categories),
+            (!categories.is_empty()).then_some(categories.as_slice()),
             (!tags.is_empty()).then_some(tags.as_slice()),
+            search_term.as_deref(),
         );
 
         Ok(Some(

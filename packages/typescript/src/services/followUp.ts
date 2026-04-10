@@ -92,6 +92,7 @@ export class FollowUpService extends Service {
 			name: "follow_up",
 			description: `Follow-up with contact: ${reason}`,
 			entityId: this.runtime.agentId,
+			agentId: this.runtime.agentId,
 			roomId: stringToUuid(`relationships-${this.runtime.agentId}`),
 			worldId: stringToUuid(`relationships-world-${this.runtime.agentId}`),
 			tags: ["follow-up", priority, "relationships", "queue"],
@@ -234,6 +235,7 @@ export class FollowUpService extends Service {
 
 			// Update task metadata
 			await this.runtime.updateTask(taskId, {
+				dueAt: newDate.getTime(),
 				metadata: {
 					...task.metadata,
 					scheduledAt: newDate.toISOString(),

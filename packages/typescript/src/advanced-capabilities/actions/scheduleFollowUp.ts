@@ -121,12 +121,20 @@ export const scheduleFollowUpAction: Action = {
 			: null;
 
 		if (!entityId && contactName) {
-			const entity = await findEntityByName(runtime, message, state);
-
-			if (entity?.id) {
-				entityId = entity.id;
+			const contacts = await relationshipsService.searchContacts({
+				searchTerm: contactName,
+			});
+			if (contacts.length > 0) {
+				entityId = contacts[0]?.entityId ?? null;
 			} else {
-				throw new Error(`Contact "${contactName}" not found in relationships`);
+				const entity = await findEntityByName(runtime, message, state);
+				if (entity?.id) {
+					entityId = entity.id;
+				} else {
+					throw new Error(
+						`Contact "${contactName}" not found in relationships`,
+					);
+				}
 			}
 		}
 

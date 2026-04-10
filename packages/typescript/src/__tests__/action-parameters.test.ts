@@ -339,4 +339,61 @@ describe("Action parameters (optional)", () => {
 			"Required parameter 'direction'",
 		);
 	});
+
+	it("drops malformed optional object params instead of surfacing validation errors", async () => {
+		let receivedDetails: unknown = "unset";
+		let receivedErrors: string[] | undefined;
+
+		const runtime = new AgentRuntime({
+			character: createTestCharacter(),
+			adapter: mockDatabaseAdapter,
+			actionPlanning: false,
+		});
+
+		runtime.registerAction({
+			name: "LOOKUP",
+			description: "Look something up.",
+			similes: [],
+			examples: [],
+			parameters: [
+				{
+					name: "details",
+					description: "Optional structured lookup details.",
+					required: false,
+					schema: { type: "object" },
+				},
+			],
+			validate: async () => true,
+			handler: async (_runtime, _message, _state, options) => {
+				const handlerOptions = options as HandlerOptions | undefined;
+				const params = handlerOptions?.parameters as
+					| ActionParameters
+					| undefined;
+				receivedDetails = params?.details;
+				receivedErrors = handlerOptions?.parameterErrors;
+				return {
+					success: true,
+					data: { actionName: "LOOKUP" },
+				};
+			},
+		});
+
+		const message = makeMemory({ content: { text: "tick" } });
+		const responses: Memory[] = [
+			makeMemory({
+				roomId: message.roomId,
+				content: {
+					text: "lookup",
+					actions: ["LOOKUP"],
+					params:
+						"<action><name>LOOKUP</name><params><details>not-an-object</details></params></action>",
+				},
+			}),
+		];
+
+		await runtime.processActions(message, responses);
+
+		expect(receivedDetails).toBeUndefined();
+		expect(receivedErrors).toBeUndefined();
+	});
 });

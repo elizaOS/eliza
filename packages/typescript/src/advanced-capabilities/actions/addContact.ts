@@ -7,6 +7,7 @@ import type {
 	Action,
 	ActionExample,
 	ActionResult,
+	Entity,
 	HandlerCallback,
 	HandlerOptions,
 	IAgentRuntime,
@@ -131,11 +132,26 @@ export const addContactAction: Action = {
 			} else {
 				// Create a new entity ID based on the name
 				entityId = stringToUuid(`contact-${contactName}-${runtime.agentId}`);
+				const entityToCreate: Entity = {
+					id: entityId,
+					names: [contactName],
+					agentId: runtime.agentId,
+				};
+				await runtime.createEntity(entityToCreate);
 			}
 		}
 
 		if (!entityId) {
 			throw new Error("Could not determine entity ID for contact");
+		}
+
+		const existingEntity = await runtime.getEntityById(entityId);
+		if (!existingEntity) {
+			await runtime.createEntity({
+				id: entityId,
+				names: [contactName],
+				agentId: runtime.agentId,
+			});
 		}
 
 		// Parse categories
@@ -156,6 +172,9 @@ export const addContactAction: Action = {
 			entityId,
 			categories,
 			preferences,
+			{
+				displayName: contactName,
+			},
 		);
 
 		logger.info(`[AddContact] Added contact ${contactName} (${entityId})`);

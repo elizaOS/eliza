@@ -37,7 +37,12 @@ import { ModelType } from "../types/model";
 import type { Content, Media, MentionContext, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
-import type { State, StructuredOutputFailure } from "../types/state";
+import type {
+	ProviderCacheEntry,
+	State,
+	StateValue,
+	StructuredOutputFailure,
+} from "../types/state";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
@@ -76,6 +81,40 @@ export const RESERVED_XML_KEYS = new Set([
 	"providers",
 ]);
 
+function escapeRegex(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function textContainsAgentName(
+	text: string | undefined,
+	names: Array<string | null | undefined>,
+): boolean {
+	if (!text) {
+		return false;
+	}
+
+	return names.some((name) => {
+		const candidate = name?.trim();
+		if (!candidate) {
+			return false;
+		}
+
+		const pattern = new RegExp(
+			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
+			"iu",
+		);
+		return pattern.test(text);
+	});
+}
+
+function textContainsUserTag(text: string | undefined): boolean {
+	if (!text) {
+		return false;
+	}
+
+	return /<@!?[^>]+>|@\w+/u.test(text);
+}
+
 /**
  * Extract action params from standalone XML blocks in a parsedXml object.
  *
@@ -107,6 +146,89 @@ export function extractStandaloneActionParams(
 		}
 	}
 	return fragments.join("\n");
+}
+
+function normalizePlannerActions(
+	parsedXml: Record<string, unknown>,
+	runtime: IAgentRuntime,
+): string[] {
+	const normalizedActions = (() => {
+		if (typeof parsedXml.actions === "string") {
+			const actionsXml = parsedXml.actions;
+			if (actionsXml.includes("<action>") || actionsXml.includes("<action ")) {
+				const actionEntries: Array<{
+					name: string;
+					paramsXml?: string;
+				}> = [];
+				for (const match of actionsXml.matchAll(
+					/<action>([\s\S]*?)<\/action>/g,
+				)) {
+					const inner = match[1];
+					const nameMatch = inner.match(/<name>([\s\S]*?)<\/name>/);
+					const paramsMatch = inner.match(/<params>([\s\S]*?)<\/params>/);
+					if (nameMatch) {
+						const name = nameMatch[1].trim();
+						const paramsXml = paramsMatch ? paramsMatch[1].trim() : undefined;
+						if (name) actionEntries.push({ name, paramsXml });
+					}
+				}
+
+				if (actionEntries.length > 0) {
+					const inlineParamsXml = actionEntries
+						.filter((entry) => entry.paramsXml)
+						.map(
+							(entry) =>
+								`<${entry.name.toUpperCase()}>${entry.paramsXml}</${entry.name.toUpperCase()}>`,
+						)
+						.join("\n");
+					if (
+						inlineParamsXml &&
+						(!parsedXml.params || parsedXml.params === "")
+					) {
+						parsedXml.params = inlineParamsXml;
+					}
+
+					return actionEntries.map((entry) => entry.name);
+				}
+			}
+
+			const commaSplitActions = actionsXml
+				.split(",")
+				.map((action) => String(action).trim())
+				.filter((action) => action.length > 0);
+
+			if (!parsedXml.params || parsedXml.params === "") {
+				const assembled = extractStandaloneActionParams(
+					commaSplitActions,
+					parsedXml,
+				);
+				if (assembled) {
+					parsedXml.params = assembled;
+				}
+			}
+
+			return commaSplitActions;
+		}
+		if (Array.isArray(parsedXml.actions)) {
+			return parsedXml.actions
+				.map((action) => String(action).trim())
+				.filter((action) => action.length > 0);
+		}
+		return [];
+	})();
+
+	const finalActions =
+		!runtime.isActionPlanningEnabled() && normalizedActions.length > 1
+			? [normalizedActions[0]]
+			: normalizedActions;
+
+	if (finalActions.length > 0) {
+		return finalActions;
+	}
+
+	const replyText =
+		typeof parsedXml.text === "string" ? parsedXml.text.trim() : "";
+	return replyText.length > 0 ? ["REPLY"] : ["IGNORE"];
 }
 
 /**
@@ -207,6 +329,7 @@ type ResolvedMessageOptions = {
 	useMultiStep: boolean;
 	maxMultiStepIterations: number;
 	continueAfterActions: boolean;
+	keepExistingResponses: boolean;
 	onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
 	shouldRespondModel: ShouldRespondModelType;
 };
@@ -299,6 +422,26 @@ interface StrategyResult {
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
 
+function clearLatestResponseId(
+	agentId: UUID,
+	roomId: UUID,
+	responseId: UUID,
+): void {
+	const agentMap = latestResponseIds.get(agentId);
+	if (!agentMap) {
+		return;
+	}
+
+	if (agentMap.get(roomId) !== responseId) {
+		return;
+	}
+
+	agentMap.delete(roomId);
+	if (agentMap.size === 0) {
+		latestResponseIds.delete(agentId);
+	}
+}
+
 export function isSimpleReplyResponse(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): boolean {
@@ -354,6 +497,30 @@ function suppressesPostActionContinuation(
 		if (!normalized) return false;
 		return actionMap.get(normalized)?.suppressPostActionContinuation === true;
 	});
+}
+
+function stripPlannerReplyForSuppressiveActions(
+	runtime: IAgentRuntime,
+	responseContent: Content | null | undefined,
+): void {
+	if (!responseContent?.actions?.length) {
+		return;
+	}
+	if (!suppressesPostActionContinuation(runtime, responseContent)) {
+		return;
+	}
+
+	const filteredActions = responseContent.actions.filter((action) => {
+		if (typeof action !== "string") return true;
+		return action.trim().toUpperCase() !== "REPLY";
+	});
+	if (filteredActions.length > 0) {
+		responseContent.actions = filteredActions;
+	}
+
+	if (typeof responseContent.text === "string" && responseContent.text.trim()) {
+		responseContent.text = "";
+	}
 }
 
 function formatActionResultsForPrompt(actionResults: ActionResult[]): string {
@@ -496,6 +663,127 @@ function withContextRoutingValues(
 	};
 }
 
+function withoutProviders(state: State, providerNamesToOmit: string[]): State {
+	if (providerNamesToOmit.length === 0) {
+		return state;
+	}
+
+	const omittedProviderNames = new Set(
+		providerNamesToOmit.map((providerName) =>
+			providerName.trim().toUpperCase(),
+		),
+	);
+	const providerResults =
+		typeof state.data?.providers === "object" && state.data?.providers !== null
+			? (state.data.providers as Record<string, ProviderCacheEntry>)
+			: {};
+	const providerOrder = Array.isArray(state.data?.providerOrder)
+		? (state.data.providerOrder as string[])
+		: Object.keys(providerResults);
+	const filteredProviderOrder = providerOrder.filter(
+		(providerName) => !omittedProviderNames.has(providerName.toUpperCase()),
+	);
+	const filteredProviderResults = Object.fromEntries(
+		Object.entries(providerResults).filter(
+			([providerName]) =>
+				!omittedProviderNames.has(providerName.trim().toUpperCase()),
+		),
+	);
+	const filteredProvidersText = filteredProviderOrder
+		.map((providerName) => filteredProviderResults[providerName]?.text)
+		.filter(
+			(text): text is string => typeof text === "string" && text.trim() !== "",
+		)
+		.join("\n");
+
+	return {
+		...state,
+		values: {
+			...state.values,
+			providers: filteredProvidersText,
+		},
+		data: {
+			...state.data,
+			providerOrder: filteredProviderOrder,
+			providers: filteredProviderResults,
+		},
+		text: filteredProvidersText,
+	};
+}
+
+function buildShouldRespondCharacterText(
+	providerResult:
+		| {
+				text?: string;
+				values?: Record<string, StateValue>;
+		  }
+		| undefined,
+): string {
+	if (!providerResult) {
+		return "";
+	}
+
+	const values =
+		typeof providerResult.values === "object" && providerResult.values !== null
+			? providerResult.values
+			: {};
+	const bio = typeof values.bio === "string" ? values.bio : "";
+	const directions =
+		typeof values.directions === "string" ? values.directions : "";
+	const system = typeof values.system === "string" ? values.system : "";
+	const classifierText = [bio, directions, system]
+		.filter((section) => section.trim().length > 0)
+		.join("\n\n");
+
+	return (
+		classifierText ||
+		(typeof providerResult.text === "string" ? providerResult.text : "")
+	);
+}
+
+function prepareShouldRespondState(state: State): State {
+	const stateWithoutActions = withoutProviders(state, ["ACTIONS"]);
+	const providerResults =
+		typeof stateWithoutActions.data?.providers === "object" &&
+		stateWithoutActions.data?.providers !== null
+			? ({
+					...stateWithoutActions.data.providers,
+				} as Record<string, ProviderCacheEntry>)
+			: null;
+
+	if (!providerResults?.CHARACTER) {
+		return stateWithoutActions;
+	}
+
+	providerResults.CHARACTER = {
+		...providerResults.CHARACTER,
+		text: buildShouldRespondCharacterText(providerResults.CHARACTER),
+	};
+
+	const providerOrder = Array.isArray(stateWithoutActions.data?.providerOrder)
+		? (stateWithoutActions.data.providerOrder as string[])
+		: Object.keys(providerResults);
+	const providersText = providerOrder
+		.map((providerName) => providerResults[providerName]?.text)
+		.filter(
+			(text): text is string => typeof text === "string" && text.trim() !== "",
+		)
+		.join("\n");
+
+	return {
+		...stateWithoutActions,
+		values: {
+			...stateWithoutActions.values,
+			providers: providersText,
+		},
+		data: {
+			...stateWithoutActions.data,
+			providers: providerResults,
+		},
+		text: providersText,
+	};
+}
+
 /**
  * Default implementation of the MessageService interface.
  * This service handles the complete message processing pipeline including:
@@ -594,6 +882,11 @@ export class DefaultMessageService implements IMessageService {
 						options?.continueAfterActions ??
 						parseBooleanFromText(
 							String(runtime.getSetting("CONTINUE_AFTER_ACTIONS") ?? "true"),
+						),
+					keepExistingResponses:
+						options?.keepExistingResponses ??
+						parseBooleanFromText(
+							String(runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") ?? ""),
 						),
 					onStreamChunk: options?.onStreamChunk,
 					shouldRespondModel: resolvedShouldRespondModel,
@@ -900,13 +1193,7 @@ export class DefaultMessageService implements IMessageService {
 
 					// Ensure latestResponseIds is cleaned up even if processMessage
 					// threw before reaching its own cleanup at the end of the method.
-					const agentMap = latestResponseIds.get(runtime.agentId);
-					if (agentMap) {
-						agentMap.delete(message.roomId);
-						if (agentMap.size === 0) {
-							latestResponseIds.delete(runtime.agentId);
-						}
-					}
+					clearLatestResponseId(runtime.agentId, message.roomId, responseId);
 				}
 			},
 		);
@@ -1010,9 +1297,18 @@ export class DefaultMessageService implements IMessageService {
 
 		// Check if room is muted
 		const agentName = runtime.character.name ?? "agent";
+		const mentionContext = message.content.mentionContext;
+		const explicitlyAddressesAgent =
+			mentionContext?.isMention === true ||
+			mentionContext?.isReply === true ||
+			textContainsAgentName(message.content.text, [
+				runtime.character.name,
+				runtime.character.username,
+			]);
 		if (
 			agentUserState === "MUTED" &&
 			message.content.text &&
+			!explicitlyAddressesAgent &&
 			!message.content.text.toLowerCase().includes(agentName.toLowerCase())
 		) {
 			runtime.logger.debug(
@@ -1032,14 +1328,13 @@ export class DefaultMessageService implements IMessageService {
 		// Compose initial state
 		let state = await runtime.composeState(
 			message,
-			["ANXIETY", "ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
+			["ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
 			true,
 			false,
 		);
 		state = attachAvailableContexts(state, runtime);
 
 		// Get room and mention context
-		const mentionContext = message.content.mentionContext;
 		const room = await runtime.getRoom(message.roomId);
 
 		// Process attachments before deciding to respond
@@ -1119,9 +1414,11 @@ export class DefaultMessageService implements IMessageService {
 				);
 				shouldRespondToMessage = responseDecision.shouldRespond;
 			} else {
+				const shouldRespondState = prepareShouldRespondState(state);
+
 				// Need LLM evaluation for ambiguous case
 				const _shouldRespondPrompt = composePromptFromState({
-					state,
+					state: shouldRespondState,
 					template:
 						runtime.character.templates?.shouldRespondTemplate ||
 						shouldRespondTemplate,
@@ -1139,7 +1436,7 @@ export class DefaultMessageService implements IMessageService {
 
 				// Use dynamicPromptExecFromState for structured output with validation
 				const responseObject = await runtime.dynamicPromptExecFromState({
-					state,
+					state: shouldRespondState,
 					params: {
 						prompt:
 							runtime.character.templates?.shouldRespondTemplate ||
@@ -1283,7 +1580,7 @@ export class DefaultMessageService implements IMessageService {
 
 			// Race check before we send anything
 			const currentResponseId = agentResponses.get(message.roomId);
-			if (currentResponseId !== responseId) {
+			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 				runtime.logger.info(
 					{
 						src: "service:message",
@@ -1418,11 +1715,8 @@ export class DefaultMessageService implements IMessageService {
 
 			// Check if we still have the latest response ID
 			const currentResponseId = agentResponses.get(message.roomId);
-			const keepResp = parseBooleanFromText(
-				String(runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") || ""),
-			);
 
-			if (currentResponseId !== responseId && !keepResp) {
+			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 				runtime.logger.info(
 					{
 						src: "service:message",
@@ -1501,10 +1795,7 @@ export class DefaultMessageService implements IMessageService {
 		}
 
 		// Clean up the response ID
-		agentResponses.delete(message.roomId);
-		if (agentResponses.size === 0) {
-			latestResponseIds.delete(runtime.agentId);
-		}
+		clearLatestResponseId(runtime.agentId, message.roomId, responseId);
 
 		const didRespond =
 			shouldRespondToMessage && !isStopResponse(responseContent);
@@ -1693,6 +1984,13 @@ export class DefaultMessageService implements IMessageService {
 
 		const roomType = room.type?.toString().toLowerCase();
 		const sourceStr = message.content.source?.toLowerCase() || "";
+		const textMentionsAgentByName = textContainsAgentName(
+			message.content.text,
+			[runtime.character.name, runtime.character.username],
+		);
+		const textMentionsTaggedParticipants = textContainsUserTag(
+			message.content.text,
+		);
 
 		// 1. DM/VOICE_DM/API channels: always respond (private channels)
 		if (respondChannels.has(roomType)) {
@@ -1728,11 +2026,26 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
-		// 4. All other cases: let the LLM decide
+		// 4. Mixed-address messages should still reach the agent when the text
+		// explicitly names it alongside other tagged participants.
+		if (textMentionsTaggedParticipants && textMentionsAgentByName) {
+			return {
+				shouldRespond: true,
+				skipEvaluation: true,
+				reason: "text address with tagged participants",
+				primaryContext: "general",
+			};
+		}
+
+		// 5. All other cases are ambiguous enough to need the classifier.
+		// Lack of a platform mention is not proof the message isn't directed
+		// at the agent in a fast-moving group conversation.
 		return {
 			shouldRespond: false,
 			skipEvaluation: false,
-			reason: "needs LLM evaluation",
+			reason: textMentionsAgentByName
+				? "agent named in text requires LLM evaluation"
+				: "needs LLM evaluation",
 			primaryContext: "general",
 		};
 	}
@@ -2267,7 +2580,6 @@ export class DefaultMessageService implements IMessageService {
 					field: "thought",
 					description:
 						"Your internal reasoning about the message and what to do",
-					required: true,
 					validateField: false,
 					streamField: false,
 				},
@@ -2275,7 +2587,7 @@ export class DefaultMessageService implements IMessageService {
 					field: "actions",
 					description:
 						"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
-					required: true,
+					required: false,
 					validateField: false,
 					streamField: false,
 				},
@@ -2296,7 +2608,6 @@ export class DefaultMessageService implements IMessageService {
 			options: {
 				modelType: ModelType.ACTION_PLANNER,
 				preferredEncapsulation: "xml",
-				requiredFields: ["thought", "actions"],
 				maxRetries: opts.maxRetries,
 				// Stream through the filtered context callback for real-time output
 				onStreamChunk: streamingCtx?.onStreamChunk,
@@ -2311,93 +2622,15 @@ export class DefaultMessageService implements IMessageService {
 		if (parsedXml) {
 			// Mark streaming as complete now that we have a valid response
 			streamingExtractor?.markComplete();
-
-			const normalizedActions = (() => {
-				// New nested format: actions is a string containing <action> XML children
-				if (typeof parsedXml.actions === "string") {
-					const actionsXml = parsedXml.actions;
-					// Check if it contains <action> elements (new format)
-					if (
-						actionsXml.includes("<action>") ||
-						actionsXml.includes("<action ")
-					) {
-						const actionEntries: Array<{
-							name: string;
-							paramsXml?: string;
-						}> = [];
-						// Use matchAll to avoid assignment-in-expression lint warning
-						// We just need names here; params are extracted separately below
-						for (const match of actionsXml.matchAll(
-							/<action>([\s\S]*?)<\/action>/g,
-						)) {
-							const inner = match[1];
-							const nameMatch = inner.match(/<name>([\s\S]*?)<\/name>/);
-							const paramsMatch = inner.match(/<params>([\s\S]*?)<\/params>/);
-							if (nameMatch) {
-								const name = nameMatch[1].trim();
-								const paramsXml = paramsMatch
-									? paramsMatch[1].trim()
-									: undefined;
-								if (name) actionEntries.push({ name, paramsXml });
-							}
-						}
-
-						if (actionEntries.length > 0) {
-							// Merge inline params back into responseContent.params
-							// Build a legacy flat params string so parseActionParams can consume it
-							const inlineParamsXml = actionEntries
-								.filter((e) => e.paramsXml)
-								.map(
-									(e) =>
-										`<${e.name.toUpperCase()}>${e.paramsXml}</${e.name.toUpperCase()}>`,
-								)
-								.join("\n");
-							if (
-								inlineParamsXml &&
-								(!parsedXml.params || parsedXml.params === "")
-							) {
-								parsedXml.params = inlineParamsXml;
-							}
-
-							return actionEntries.map((e) => e.name);
-						}
-					}
-					// Legacy comma-separated format
-					const commaSplitActions = actionsXml
-						.split(",")
-						.map((action) => String(action).trim())
-						.filter((action) => action.length > 0);
-
-					// Extract params from standalone action blocks in parsedXml
-					// (e.g. <START_CODING_TASK><repo>...</repo></START_CODING_TASK>).
-					if (!parsedXml.params || parsedXml.params === "") {
-						const assembled = extractStandaloneActionParams(
-							commaSplitActions,
-							parsedXml as Record<string, unknown>,
-						);
-						if (assembled) {
-							parsedXml.params = assembled;
-						}
-					}
-
-					return commaSplitActions;
-				}
-				if (Array.isArray(parsedXml.actions)) {
-					return parsedXml.actions as string[];
-				}
-				return [];
-			})();
-
-			// Limit to single action if action planning is disabled
-			const finalActions =
-				!runtime.isActionPlanningEnabled() && normalizedActions.length > 1
-					? [normalizedActions[0]]
-					: normalizedActions;
+			const finalActions = normalizePlannerActions(
+				parsedXml as Record<string, unknown>,
+				runtime,
+			);
 
 			responseContent = {
 				...parsedXml,
 				thought: String(parsedXml.thought || ""),
-				actions: finalActions.length > 0 ? finalActions : ["IGNORE"],
+				actions: finalActions,
 				providers: [],
 				text: String(parsedXml.text || ""),
 				simple: parsedXml.simple === true || parsedXml.simple === "true",
@@ -2618,6 +2851,11 @@ Output ONLY the continuation, starting immediately after the last character abov
 				responseContent.actions = filtered.length ? filtered : ["STOP"];
 			}
 		}
+
+		// Some actions are intended to provide the only grounded user-facing answer.
+		// If the planner emits both REPLY/text and one of those actions, drop the
+		// speculative planner text before persisting/sending the initial assistant turn.
+		stripPlannerReplyForSuppressiveActions(runtime, responseContent);
 
 		// Automatically determine if response is simple
 		const isSimple = isSimpleReplyResponse(responseContent);

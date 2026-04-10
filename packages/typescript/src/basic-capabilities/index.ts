@@ -115,6 +115,40 @@ interface PostCreationXml {
 	thought?: string;
 }
 
+function escapeRegex(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function textContainsAgentName(
+	text: string | undefined,
+	names: Array<string | null | undefined>,
+): boolean {
+	if (!text) {
+		return false;
+	}
+
+	return names.some((name) => {
+		const candidate = name?.trim();
+		if (!candidate) {
+			return false;
+		}
+
+		const pattern = new RegExp(
+			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
+			"iu",
+		);
+		return pattern.test(text);
+	});
+}
+
+function textContainsUserTag(text: string | undefined): boolean {
+	if (!text) {
+		return false;
+	}
+
+	return /<@!?[^>]+>|@\w+/u.test(text);
+}
+
 // ============================================================================
 // Utility Functions
 // ============================================================================
@@ -406,6 +440,12 @@ export function shouldRespond(
 	const roomType = room.type?.toString().toLowerCase() || undefined;
 	const messageContentSource = message.content.source;
 	const sourceStr = messageContentSource?.toLowerCase() || "";
+	const textMentionsAgentByName =
+		textContainsUserTag(message.content.text) &&
+		textContainsAgentName(message.content.text, [
+			runtime.character.name,
+			runtime.character.username,
+		]);
 
 	// 1. DM/VOICE_DM/API channels: always respond (private channels)
 	if (roomType && respondChannels.has(roomType)) {
@@ -441,8 +481,18 @@ export function shouldRespond(
 		};
 	}
 
-	// 4. All other cases: let the LLM decide
-	// The LLM will handle: text-based name detection, indirect questions, conversation context, etc.
+	// 4. Mixed-address messages should still reach the agent when the text
+	// explicitly names it alongside other user tags.
+	if (textMentionsAgentByName) {
+		return {
+			shouldRespond: true,
+			skipEvaluation: true,
+			reason: "text address with tagged participants",
+		};
+	}
+
+	// 5. All other cases: let the LLM decide
+	// The LLM will handle: indirect questions, conversation context, etc.
 	return {
 		shouldRespond: false,
 		skipEvaluation: false,

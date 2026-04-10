@@ -173,13 +173,51 @@ export class MemoryService extends Service {
 
 	// ── Helpers ──────────────────────────────────────────────────────────
 
-	private requireStorage(): MemoryStorageProvider {
+	private async getStorage(): Promise<MemoryStorageProvider> {
+		if (!this.storage && this.runtime.hasService("memoryStorage")) {
+			try {
+				this.storage = (await this.runtime.getServiceLoadPromise(
+					"memoryStorage",
+				)) as unknown as MemoryStorageProvider | null;
+			} catch (error) {
+				const err = error instanceof Error ? error.message : String(error);
+				logger.warn(
+					{ src: "service:memory", agentId: this.runtime.agentId, err },
+					"MemoryStorageProvider lookup failed during lazy resolution",
+				);
+			}
+		}
 		if (!this.storage) {
 			throw new Error(
 				"MemoryStorageProvider not available. Register a memoryStorage service from your database plugin.",
 			);
 		}
 		return this.storage;
+	}
+
+	private async countRoomMemories(roomId: UUID): Promise<number> {
+		type ModernCounter = (params: {
+			roomIds: UUID[];
+			unique: boolean;
+			tableName: string;
+		}) => Promise<number>;
+		type LegacyCounter = (
+			roomId: UUID,
+			unique?: boolean,
+			tableName?: string,
+		) => Promise<number>;
+
+		const counter = this.runtime.countMemories as unknown as
+			| ModernCounter
+			| LegacyCounter;
+		if (counter.length >= 2) {
+			return (counter as LegacyCounter)(roomId, false, "messages");
+		}
+		return (counter as ModernCounter)({
+			roomIds: [roomId],
+			unique: false,
+			tableName: "messages",
+		});
 	}
 
 	getConfig(): MemoryConfig {
@@ -202,11 +240,7 @@ export class MemoryService extends Service {
 	}
 
 	async shouldSummarize(roomId: UUID): Promise<boolean> {
-		const count = await this.runtime.countMemories({
-			roomIds: [roomId],
-			unique: false,
-			tableName: "messages",
-		});
+		const count = await this.countRoomMemories(roomId);
 		return count >= this.memoryConfig.shortTermSummarizationThreshold;
 	}
 
@@ -310,7 +344,7 @@ export class MemoryService extends Service {
 			"id" | "createdAt" | "updatedAt" | "accessCount"
 		>,
 	): Promise<LongTermMemory> {
-		const stored = await this.requireStorage().storeLongTermMemory(memory);
+		const stored = await (await this.getStorage()).storeLongTermMemory(memory);
 		logger.info(
 			{ src: "service:memory" },
 			`Stored long-term memory: ${stored.category} for entity ${stored.entityId}`,
@@ -324,7 +358,7 @@ export class MemoryService extends Service {
 		limit = 10,
 	): Promise<LongTermMemory[]> {
 		if (limit <= 0) return [];
-		return this.requireStorage().getLongTermMemories(
+		return (await this.getStorage()).getLongTermMemories(
 			this.runtime.agentId,
 			entityId,
 			{ category, limit },
@@ -338,7 +372,7 @@ export class MemoryService extends Service {
 			Omit<LongTermMemory, "id" | "agentId" | "entityId" | "createdAt">
 		>,
 	): Promise<void> {
-		await this.requireStorage().updateLongTermMemory(
+		await (await this.getStorage()).updateLongTermMemory(
 			id,
 			this.runtime.agentId,
 			entityId,
@@ -351,7 +385,7 @@ export class MemoryService extends Service {
 	}
 
 	async deleteLongTermMemory(id: UUID, entityId: UUID): Promise<void> {
-		await this.requireStorage().deleteLongTermMemory(
+		await (await this.getStorage()).deleteLongTermMemory(
 			id,
 			this.runtime.agentId,
 			entityId,
@@ -363,7 +397,7 @@ export class MemoryService extends Service {
 	}
 
 	async getCurrentSessionSummary(roomId: UUID): Promise<SessionSummary | null> {
-		return this.requireStorage().getCurrentSessionSummary(
+		return (await this.getStorage()).getCurrentSessionSummary(
 			this.runtime.agentId,
 			roomId,
 		);
@@ -372,7 +406,7 @@ export class MemoryService extends Service {
 	async storeSessionSummary(
 		summary: Omit<SessionSummary, "id" | "createdAt" | "updatedAt">,
 	): Promise<SessionSummary> {
-		const stored = await this.requireStorage().storeSessionSummary(summary);
+		const stored = await (await this.getStorage()).storeSessionSummary(summary);
 		logger.info(
 			{ src: "service:memory" },
 			`Stored session summary for room ${stored.roomId}`,
@@ -390,7 +424,7 @@ export class MemoryService extends Service {
 			>
 		>,
 	): Promise<void> {
-		await this.requireStorage().updateSessionSummary(
+		await (await this.getStorage()).updateSessionSummary(
 			id,
 			this.runtime.agentId,
 			roomId,
@@ -406,7 +440,7 @@ export class MemoryService extends Service {
 		roomId: UUID,
 		limit = 5,
 	): Promise<SessionSummary[]> {
-		return this.requireStorage().getSessionSummaries(
+		return (await this.getStorage()).getSessionSummaries(
 			this.runtime.agentId,
 			roomId,
 			limit,

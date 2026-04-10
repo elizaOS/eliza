@@ -166,18 +166,27 @@ async function getRecentInteractions(
 		roomId,
 		count: 20,
 	});
+	const messageEntityById = new Map<UUID, UUID>();
+	for (const recentMessage of recentMessages) {
+		if (recentMessage.id && recentMessage.entityId) {
+			messageEntityById.set(recentMessage.id, recentMessage.entityId);
+		}
+	}
 
 	for (const entity of candidateEntities) {
 		const interactions: Memory[] = [];
 		let interactionScore = 0;
 
-		const directReplies = recentMessages.filter(
-			(msg) =>
-				(msg.entityId === sourceEntityId &&
-					msg.content.inReplyTo === entity.id) ||
-				(msg.entityId === entity.id &&
-					msg.content.inReplyTo === sourceEntityId),
-		);
+		const directReplies = recentMessages.filter((msg) => {
+			if (!msg.entityId || !msg.content.inReplyTo) {
+				return false;
+			}
+			const repliedToEntityId = messageEntityById.get(msg.content.inReplyTo);
+			return (
+				(msg.entityId === sourceEntityId && repliedToEntityId === entity.id) ||
+				(msg.entityId === entity.id && repliedToEntityId === sourceEntityId)
+			);
+		});
 
 		interactions.push(...directReplies);
 

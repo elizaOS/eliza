@@ -140,10 +140,14 @@ export const searchContactsAction: Action = {
 		const contactDetails = await Promise.all(
 			contacts.map(async (contact) => {
 				const entity = await runtime.getEntityById(contact.entityId);
+				const displayName =
+					typeof contact.customFields.displayName === "string"
+						? contact.customFields.displayName
+						: null;
 				return {
 					contact,
 					entity,
-					name: entity?.names[0] || "Unknown",
+					name: entity?.names[0] || displayName || "Unknown",
 				};
 			}),
 		);

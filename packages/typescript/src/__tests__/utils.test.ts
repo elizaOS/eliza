@@ -380,6 +380,40 @@ action: RESPOND`;
 			});
 		});
 
+		it("should salvage relaxed TOON key-value output with quotes and blank optional fields", () => {
+			const toon = `name: Eliza
+reasoning: "oh shit" is just a quick reaction to the chat chaos; it's not directed at me and doesn't need a response
+action: IGNORE
+primaryContext: social
+secondaryContexts: 
+evidenceTurnIds: 1491725198326501518`;
+
+			const result = parseKeyValueXml(toon);
+			expect(result).toEqual({
+				name: "Eliza",
+				reasoning:
+					"\"oh shit\" is just a quick reaction to the chat chaos; it's not directed at me and doesn't need a response",
+				action: "IGNORE",
+				primaryContext: "social",
+				secondaryContexts: "",
+				evidenceTurnIds: "1491725198326501518",
+			});
+		});
+
+		it("should reject prose wrapper labels as standalone TOON", () => {
+			expect(
+				parseKeyValueXml('Result: {"name":"Eliza","action":"RESPOND"}'),
+			).toBeNull();
+			expect(
+				parseKeyValueXml(`Sure:
+
+\`\`\`toon
+name: Eliza
+action: RESPOND
+\`\`\``),
+			).toBeNull();
+		});
+
 		it("should parse boolean values", () => {
 			const xml =
 				"<response><simple>true</simple><complex>false</complex></response>";

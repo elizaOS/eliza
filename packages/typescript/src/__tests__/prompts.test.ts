@@ -4,6 +4,7 @@ import {
 	imageDescriptionTemplate,
 	messageHandlerTemplate,
 	postCreationTemplate,
+	reflectionEvaluatorTemplate,
 	shouldRespondTemplate,
 } from "../prompts";
 
@@ -21,7 +22,10 @@ describe("Prompts", () => {
 			expect(shouldRespondTemplate).toContain("primaryContext:");
 			expect(shouldRespondTemplate).toContain("secondaryContexts:");
 			expect(shouldRespondTemplate).toContain(
-				"request to stop or be quiet -> STOP",
+				"request to stop or be quiet directed at {{agentName}} -> STOP",
+			);
+			expect(shouldRespondTemplate).toContain(
+				"if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND",
 			);
 
 			expect(shouldRespondTemplate).toContain("rules[6]:");
@@ -29,7 +33,15 @@ describe("Prompts", () => {
 				"direct mention of {{agentName}}",
 			);
 			expect(shouldRespondTemplate).toContain("decision_note:");
-			expect(shouldRespondTemplate).toContain("talking TO {{agentName}}");
+			expect(shouldRespondTemplate).toContain(
+				"respond only when the latest message is talking TO {{agentName}}",
+			);
+			expect(shouldRespondTemplate).toContain(
+				"the newest message must still clearly expect {{agentName}}",
+			);
+			expect(shouldRespondTemplate).toContain(
+				"mentions of other people do not cancel a direct address to {{agentName}}",
+			);
 		});
 
 		it("messageHandlerTemplate should contain required placeholders and structure", () => {
@@ -44,7 +56,7 @@ describe("Prompts", () => {
 			);
 			expect(messageHandlerTemplate).toContain("<simple>true</simple>");
 
-			expect(messageHandlerTemplate).toContain("rules[8]:");
+			expect(messageHandlerTemplate).toContain("rules[9]:");
 			expect(messageHandlerTemplate).toContain(
 				"actions execute in listed order",
 			);
@@ -90,6 +102,28 @@ describe("Prompts", () => {
 			expect(imageDescriptionTemplate).toContain("Analyze the provided image");
 			expect(imageDescriptionTemplate).toContain(
 				"Be objective and descriptive",
+			);
+		});
+
+		it("reflectionEvaluatorTemplate should require canonical TOON output", () => {
+			expect(reflectionEvaluatorTemplate).toContain("Output:");
+			expect(reflectionEvaluatorTemplate).toContain(
+				"TOON only. Return exactly one TOON document.",
+			);
+			expect(reflectionEvaluatorTemplate).toContain(
+				"Do not output JSON, XML, Markdown fences, or commentary.",
+			);
+			expect(reflectionEvaluatorTemplate).toContain(
+				'thought: "a self-reflective thought on the conversation"',
+			);
+			expect(reflectionEvaluatorTemplate).toContain("facts[0]:");
+			expect(reflectionEvaluatorTemplate).toContain("relationships[0]:");
+			expect(reflectionEvaluatorTemplate).toContain("tags[0]: dm_interaction");
+			expect(reflectionEvaluatorTemplate).toContain(
+				"omit all facts[...] entries",
+			);
+			expect(reflectionEvaluatorTemplate).toContain(
+				"omit all relationships[...] entries",
 			);
 		});
 	});

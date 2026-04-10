@@ -28,10 +28,50 @@ function stripOptionalToonLabel(text: string): string {
 function looksLikeToonDocument(text: string): boolean {
 	if (!text) return false;
 	if (text.includes("<response>") || text.includes("</response>")) return false;
-	return /^[A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?:/m.test(
-		text,
-	);
+
+	const lines = text
+		.trim()
+		.split(/\r?\n/)
+		.filter((line) => line.trim().length > 0);
+	if (lines.length === 0) {
+		return false;
+	}
+
+	const firstLine = lines[0]?.trim() ?? "";
+	if (/^TOON(?:\s+DOCUMENT)?[:\s-]*$/i.test(firstLine)) {
+		return lines
+			.slice(1)
+			.some((line) => SIMPLE_TOON_KEY_RE.test(line.trim()));
+	}
+
+	if (!SIMPLE_TOON_KEY_RE.test(firstLine)) {
+		return false;
+	}
+
+	if (lines.length === 1) {
+		const [, value = ""] = firstLine.split(/:(.*)/s);
+		const trimmedValue = value.trim();
+		return !(trimmedValue.startsWith("{") && trimmedValue.endsWith("}"));
+	}
+
+	let structuredFieldCount = 0;
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (SIMPLE_TOON_KEY_RE.test(trimmed)) {
+			structuredFieldCount += 1;
+			continue;
+		}
+		if (/^[\t ]+/.test(line)) {
+			continue;
+		}
+		return false;
+	}
+
+	return structuredFieldCount > 0;
 }
+
+const SIMPLE_TOON_KEY_RE =
+	/^([A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?):(?:\s?(.*))?$/;
 
 export function tryParseToonValue(text: string): unknown | null {
 	const trimmed = stripOptionalToonLabel(stripFencedBlock(text));
@@ -44,6 +84,49 @@ export function tryParseToonValue(text: string): unknown | null {
 	} catch {
 		return null;
 	}
+}
+
+export function tryParseLooseToonRecord(
+	text: string,
+): Record<string, unknown> | null {
+	const trimmed = stripOptionalToonLabel(stripFencedBlock(text));
+	if (!looksLikeToonDocument(trimmed)) {
+		return null;
+	}
+
+	const result: Record<string, unknown> = {};
+	let currentKey: string | null = null;
+	let parsedAnyField = false;
+
+	for (const line of trimmed.split(/\r?\n/)) {
+		const match = line.match(SIMPLE_TOON_KEY_RE);
+		if (match) {
+			const [, key, value = ""] = match;
+			currentKey = key.trim();
+			result[currentKey] = value.trim();
+			parsedAnyField = true;
+			continue;
+		}
+
+		if (!currentKey) {
+			if (!line.trim()) {
+				continue;
+			}
+			return null;
+		}
+
+		const previousValue =
+			typeof result[currentKey] === "string"
+				? (result[currentKey] as string)
+				: "";
+		const continuation = line.trimEnd();
+		result[currentKey] =
+			previousValue.length > 0
+				? `${previousValue}\n${continuation}`
+				: continuation;
+	}
+
+	return parsedAnyField ? result : null;
 }
 
 export function encodeToonValue(value: unknown): string {

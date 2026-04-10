@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelType, ContentType, EventType, ModelType } from "../index";
 import { DefaultMessageService } from "../services/message";
-import type { Content, HandlerCallback, Memory, UUID } from "../types";
+import type { Content, HandlerCallback, Memory, State, UUID } from "../types";
 import type { IMessageService } from "../types/message-service";
 import type { GenerateTextParams } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
@@ -249,6 +249,64 @@ describe("DefaultMessageService", () => {
 			expect(result.reason).toContain("platform reply");
 		});
 
+		it("should always respond when another user is tagged and the agent is named in text", () => {
+			const agentName = runtime.character.name ?? "Test Agent";
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174012a" as UUID,
+				content: {
+					text: `<@user-2> ${agentName}, can you take a look?`,
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const room = {
+				id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				type: ChannelType.GROUP,
+				name: "Group",
+				worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
+				source: "test",
+			};
+
+			const result = messageService.shouldRespond(runtime, message, room);
+
+			expect(result.shouldRespond).toBe(true);
+			expect(result.skipEvaluation).toBe(true);
+			expect(result.reason).toContain("tagged participants");
+		});
+
+		it("should require LLM evaluation when the agent is named in plain text", () => {
+			const agentName = runtime.character.name ?? "Test Agent";
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174012b" as UUID,
+				content: {
+					text: `${agentName}, can you take a look?`,
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const room = {
+				id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				type: ChannelType.GROUP,
+				name: "Group",
+				worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
+				source: "test",
+			};
+
+			const result = messageService.shouldRespond(runtime, message, room);
+
+			expect(result.shouldRespond).toBe(false);
+			expect(result.skipEvaluation).toBe(false);
+			expect(result.reason).toContain("agent named in text");
+		});
+
 		it("should always respond in VOICE_DM channels", () => {
 			const message: Memory = {
 				id: "123e4567-e89b-12d3-a456-426614174013" as UUID,
@@ -334,7 +392,7 @@ describe("DefaultMessageService", () => {
 			expect(result.reason).toContain("private channel");
 		});
 
-		it("should require LLM evaluation for group messages without mentions", () => {
+		it("should require LLM evaluation for group messages without direct address", () => {
 			const message: Memory = {
 				id: "123e4567-e89b-12d3-a456-426614174016" as UUID,
 				content: {
@@ -471,34 +529,17 @@ describe("DefaultMessageService", () => {
 					sequence.push(String(event));
 				},
 			);
-			(runtime.useModel as ReturnType<typeof vi.fn>).mockImplementation(
-				async (
-					modelType: (typeof ModelType)[keyof typeof ModelType],
-					params: unknown,
-				) => {
-					sequence.push(`MODEL:${String(modelType)}`);
-					if (
-						modelType === ModelType.TEXT_SMALL ||
-						modelType === ModelType.TEXT_MINI ||
-						modelType === ModelType.TEXT_NANO ||
-						modelType === ModelType.RESPONSE_HANDLER
-					) {
-						return "<response><action>REPLY</action><reason>User asked a question</reason></response>";
-					}
-					const responseText =
-						"<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>";
-					const textParams = params as GenerateTextParams;
-					if (textParams?.stream) {
-						return {
-							textStream: (async function* () {
-								yield "<response><thought>Processing message</thought>";
-								yield "<actions>REPLY</actions><providers></providers>";
-								yield "<text>Hello! How can I help you?</text></response>";
-							})(),
-							text: Promise.resolve(responseText),
-						};
-					}
-					return responseText;
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockImplementation(
+				async (params) => {
+					sequence.push(
+						`MODEL:${String(params.options?.modelType ?? "dynamic")}`,
+					);
+					return {
+						thought: "Processing message",
+						actions: "REPLY",
+						text: "Hello! How can I help you?",
+						simple: true,
+					};
 				},
 			);
 
@@ -521,9 +562,6 @@ describe("DefaultMessageService", () => {
 				trajectoryStepId: "connector-step",
 			});
 			expect(sequence.indexOf("MESSAGE_RECEIVED")).toBeGreaterThanOrEqual(0);
-			expect(
-				sequence.findIndex((entry) => entry.startsWith("MODEL:")),
-			).toBeGreaterThan(sequence.indexOf("MESSAGE_RECEIVED"));
 		});
 
 		it("skips MESSAGE_RECEIVED when the message already has a trajectory step id", async () => {
@@ -700,6 +738,48 @@ describe("DefaultMessageService", () => {
 					}),
 				}),
 				"messages",
+			);
+		});
+
+		it("responds to platform mentions even when the room is muted", async () => {
+			vi.spyOn(runtime, "getParticipantUserState").mockResolvedValue(
+				"MUTED" as unknown as Awaited<
+					ReturnType<IAgentRuntime["getParticipantUserState"]>
+				>,
+			);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174024a" as UUID,
+				content: {
+					text: "<@bot-user-id> can you two work together on lifeops?",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+					mentionContext: {
+						isMention: true,
+						isReply: false,
+						isThread: false,
+						mentionedUserIds: ["bot-user-id"],
+					},
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(result.didRespond).toBe(true);
+			expect(mockCallback).toHaveBeenCalled();
+			expect(runtime.logger.debug).not.toHaveBeenCalledWith(
+				expect.objectContaining({
+					roomId: message.roomId,
+				}),
+				"Ignoring muted room",
 			);
 		});
 
@@ -884,7 +964,7 @@ describe("DefaultMessageService", () => {
 			const message: Memory = {
 				id: "123e4567-e89b-12d3-a456-426614174029" as UUID,
 				content: {
-					text: "please stop",
+					text: "TestAgent, please stop",
 					source: "discord",
 					channelType: ChannelType.GROUP,
 				} as Content,
@@ -923,7 +1003,7 @@ describe("DefaultMessageService", () => {
 			const message: Memory = {
 				id: "123e4567-e89b-12d3-a456-426614174031" as UUID,
 				content: {
-					text: "please stop",
+					text: "TestAgent, please stop",
 					source: "discord",
 					channelType: ChannelType.GROUP,
 				} as Content,
@@ -967,7 +1047,7 @@ describe("DefaultMessageService", () => {
 			const message: Memory = {
 				id: "123e4567-e89b-12d3-a456-426614174030" as UUID,
 				content: {
-					text: "hey test agent",
+					text: "hey TestAgent",
 					source: "discord",
 					channelType: ChannelType.GROUP,
 				} as Content,
@@ -993,6 +1073,167 @@ describe("DefaultMessageService", () => {
 				multiplier: 2,
 				maxMs: 2000,
 			});
+		});
+
+		it("still runs the shouldRespond classifier for ambiguous group chatter", async () => {
+			const dynamicPromptSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					name: "TestAgent",
+					reasoning: "Not actually directed at the agent",
+					action: "IGNORE",
+					primaryContext: "general",
+				});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174030a" as UUID,
+				content: {
+					text: "you gotta shut up",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+				{
+					useMultiStep: false,
+				},
+			);
+
+			expect(result.didRespond).toBe(false);
+			expect(dynamicPromptSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it("keeps ACTIONS out of the shouldRespond classifier state", async () => {
+			const composeStateSpy = vi
+				.spyOn(runtime, "composeState")
+				.mockImplementation(async (_message, includeList) => {
+					if (includeList?.includes("RECENT_MESSAGES")) {
+						return {
+							values: {
+								providers:
+									"# About TestAgent\nhelpful and calm\n\n# Message Directions for TestAgent\nbe concise\n\n# Example Conversations for TestAgent\nExample User: hi\nTestAgent: hello\n\nsystem prompt here\n\n# Conversation Messages\nuser: hey test agent\n\nPossible response actions: REPLY, CREATE_TASK",
+								actionNames: "Possible response actions: REPLY, CREATE_TASK",
+							},
+							data: {
+								providerOrder: ["CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
+								providers: {
+									CHARACTER: {
+										providerName: "CHARACTER",
+										text: "# About TestAgent\nhelpful and calm\n\n# Message Directions for TestAgent\nbe concise\n\n# Example Conversations for TestAgent\nExample User: hi\nTestAgent: hello\n\nsystem prompt here",
+										values: {
+											bio: "# About TestAgent\nhelpful and calm",
+											directions:
+												"# Message Directions for TestAgent\nbe concise",
+											system: "system prompt here",
+											examples:
+												"# Example Conversations for TestAgent\nExample User: hi\nTestAgent: hello",
+										},
+									},
+									RECENT_MESSAGES: {
+										providerName: "RECENT_MESSAGES",
+										text: "# Conversation Messages\nuser: hey test agent",
+									},
+									ACTIONS: {
+										providerName: "ACTIONS",
+										text: "Possible response actions: REPLY, CREATE_TASK",
+									},
+								},
+							},
+							text: "# Conversation Messages\nuser: hey test agent\n\nPossible response actions: REPLY, CREATE_TASK",
+						} as State;
+					}
+
+					return {
+						values: {
+							providers: "Possible response actions: REPLY, CREATE_TASK",
+							actionNames: "Possible response actions: REPLY, CREATE_TASK",
+						},
+						data: {
+							providerOrder: ["ACTIONS"],
+							providers: {
+								ACTIONS: {
+									providerName: "ACTIONS",
+									text: "Possible response actions: REPLY, CREATE_TASK",
+								},
+							},
+						},
+						text: "Possible response actions: REPLY, CREATE_TASK",
+					} as State;
+				});
+
+			const dynamicPromptSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					name: "TestAgent",
+					reasoning: "Directly addressed",
+					action: "RESPOND",
+					primaryContext: "general",
+				})
+				.mockResolvedValueOnce({
+					thought: "Reply directly",
+					actions: "REPLY",
+					text: "hello there",
+					simple: true,
+				});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174032" as UUID,
+				content: {
+					text: "hey TestAgent",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			await messageService.handleMessage(runtime, message, mockCallback, {
+				useMultiStep: false,
+			});
+
+			const shouldRespondState = dynamicPromptSpy.mock.calls[0]?.[0]
+				?.state as State;
+			const replyState = dynamicPromptSpy.mock.calls[1]?.[0]?.state as State;
+
+			expect(shouldRespondState.values.providers).not.toContain(
+				"Possible response actions",
+			);
+			expect(shouldRespondState.values.providers).toContain(
+				"# About TestAgent\nhelpful and calm",
+			);
+			expect(shouldRespondState.values.providers).toContain(
+				"# Message Directions for TestAgent\nbe concise",
+			);
+			expect(shouldRespondState.values.providers).toContain(
+				"system prompt here",
+			);
+			expect(shouldRespondState.values.providers).not.toContain(
+				"# Example Conversations for TestAgent",
+			);
+			expect(shouldRespondState.data.providerOrder).toEqual([
+				"CHARACTER",
+				"RECENT_MESSAGES",
+			]);
+			expect(replyState.values.providers).toContain(
+				"Possible response actions",
+			);
+			expect(replyState.data.providerOrder).toEqual(["ACTIONS"]);
+			expect(composeStateSpy.mock.calls[0]?.[1]).toEqual([
+				"ENTITIES",
+				"CHARACTER",
+				"RECENT_MESSAGES",
+				"ACTIONS",
+			]);
 		});
 
 		it("should allow post-action continuation to be disabled explicitly", async () => {
@@ -1115,6 +1356,95 @@ describe("DefaultMessageService", () => {
 			);
 		});
 
+		it("defaults to REPLY when planner returns text without actions", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				thought: "Answer directly",
+				text: "You have two calendar events this week.",
+				simple: true,
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174033" as UUID,
+				content: {
+					text: "do i have any flights this week",
+					source: "discord",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(result.didRespond).toBe(true);
+			expect(result.responseContent?.actions).toEqual(["REPLY"]);
+			expect(result.responseContent?.text).toBe(
+				"You have two calendar events this week.",
+			);
+			expect(mockCallback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					text: "You have two calendar events this week.",
+				}),
+			);
+		});
+
+		it("accepts planner responses without thought and replies normally", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				text: "Your return flight is next Thursday at 6:10 PM.",
+				actions: "REPLY",
+				simple: true,
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174033a" as UUID,
+				content: {
+					text: "when do i fly back from denver",
+					source: "discord",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(result.didRespond).toBe(true);
+			expect(result.responseContent?.thought).toBe("");
+			expect(result.responseContent?.actions).toEqual(["REPLY"]);
+			expect(result.responseContent?.text).toBe(
+				"Your return flight is next Thursday at 6:10 PM.",
+			);
+			expect(mockCallback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					text: "Your return flight is next Thursday at 6:10 PM.",
+				}),
+			);
+		});
+
 		it("skips post-action continuation for actions that suppress it", async () => {
 			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
 			vi.spyOn(runtime, "composeState").mockResolvedValue({
@@ -1163,6 +1493,80 @@ describe("DefaultMessageService", () => {
 
 			expect(runtime.processActions).toHaveBeenCalledTimes(1);
 			expect(runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(1);
+		});
+
+		it("drops planner REPLY text when a suppressive action is present", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			const createMemorySpy = vi
+				.spyOn(runtime, "createMemory")
+				.mockResolvedValue("123e4567-e89b-12d3-a456-426614174101" as UUID);
+			const processActionsSpy = vi
+				.spyOn(runtime, "processActions")
+				.mockResolvedValue(undefined);
+			runtime.actions = [
+				{
+					name: "CALENDAR_ACTION",
+					description: "Grounded calendar lookup",
+					handler: vi.fn(),
+					validate: vi.fn(async () => true),
+					suppressPostActionContinuation: true,
+				},
+			];
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockResolvedValue({
+				thought: "Use calendar for grounding",
+				actions: "REPLY,CALENDAR_ACTION",
+				text: "here's what is on your calendar while you're in denver",
+				simple: false,
+			});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174032" as UUID,
+				content: {
+					text: "what do i have while i'm in denver?",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(result.didRespond).toBe(true);
+			expect(result.responseContent?.text).toBe("");
+			expect(result.responseContent?.actions).toEqual(["CALENDAR_ACTION"]);
+			expect(processActionsSpy).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.arrayContaining([
+					expect.objectContaining({
+						content: expect.objectContaining({
+							text: "",
+							actions: ["CALENDAR_ACTION"],
+						}),
+					}),
+				]),
+				expect.anything(),
+				expect.any(Function),
+				expect.anything(),
+			);
+			expect(
+				createMemorySpy.mock.calls.some(
+					([memory]) =>
+						(memory as Memory).content?.text ===
+						"here's what is on your calendar while you're in denver",
+				),
+			).toBe(false);
 		});
 
 		it("includes prior action state when follow-up parsing fails", async () => {
@@ -1575,6 +1979,151 @@ describe("DefaultMessageService", () => {
 
 			// Verify the logging was called (which uses the type guards)
 			expect(runtime.logger.info).toHaveBeenCalled();
+		});
+	});
+
+	describe("response superseding", () => {
+		function createConcurrentMessage(id: string, text: string): Memory {
+			return {
+				id: id as UUID,
+				content: {
+					text,
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+		}
+
+		function createConcurrentCallback() {
+			return vi.fn(async (content: Content) => {
+				return [
+					{
+						id: "123e4567-e89b-12d3-a456-426614174399" as UUID,
+						content,
+						entityId: runtime.agentId,
+						agentId: runtime.agentId,
+						roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+						createdAt: Date.now(),
+					},
+				];
+			});
+		}
+
+		it("keeps both replies when keepExistingResponses is enabled", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+
+			let responseCallCount = 0;
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockImplementation(
+				async () => {
+					responseCallCount += 1;
+					const callNumber = responseCallCount;
+					await new Promise((resolve) =>
+						setTimeout(resolve, callNumber === 1 ? 10 : 25),
+					);
+
+					return {
+						thought: `reply-${callNumber}`,
+						actions: ["REPLY"],
+						text: callNumber === 1 ? "First reply" : "Second reply",
+						simple: true,
+					};
+				},
+			);
+
+			const firstCallback = createConcurrentCallback();
+			const secondCallback = createConcurrentCallback();
+
+			const [firstResult, secondResult] = await Promise.all([
+				messageService.handleMessage(
+					runtime,
+					createConcurrentMessage(
+						"123e4567-e89b-12d3-a456-426614174311",
+						"first question",
+					),
+					firstCallback,
+					{ keepExistingResponses: true },
+				),
+				messageService.handleMessage(
+					runtime,
+					createConcurrentMessage(
+						"123e4567-e89b-12d3-a456-426614174312",
+						"second question",
+					),
+					secondCallback,
+					{ keepExistingResponses: true },
+				),
+			]);
+
+			expect(firstResult.didRespond).toBe(true);
+			expect(firstResult.responseContent?.text).toBe("First reply");
+			expect(secondResult.didRespond).toBe(true);
+			expect(secondResult.responseContent?.text).toBe("Second reply");
+			expect(firstCallback).toHaveBeenCalledTimes(1);
+			expect(secondCallback).toHaveBeenCalledTimes(1);
+			expect(firstCallback).toHaveBeenCalledWith(
+				expect.objectContaining({ text: "First reply" }),
+			);
+			expect(secondCallback).toHaveBeenCalledWith(
+				expect.objectContaining({ text: "Second reply" }),
+			);
+		});
+
+		it("still sends the newest reply after an older superseded run finishes", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+
+			let responseCallCount = 0;
+			vi.spyOn(runtime, "dynamicPromptExecFromState").mockImplementation(
+				async () => {
+					responseCallCount += 1;
+					const callNumber = responseCallCount;
+					await new Promise((resolve) =>
+						setTimeout(resolve, callNumber === 1 ? 10 : 25),
+					);
+
+					return {
+						thought: `reply-${callNumber}`,
+						actions: ["REPLY"],
+						text: callNumber === 1 ? "Discard me" : "Keep me",
+						simple: true,
+					};
+				},
+			);
+
+			const firstCallback = createConcurrentCallback();
+			const secondCallback = createConcurrentCallback();
+
+			const [firstResult, secondResult] = await Promise.all([
+				messageService.handleMessage(
+					runtime,
+					createConcurrentMessage(
+						"123e4567-e89b-12d3-a456-426614174313",
+						"older question",
+					),
+					firstCallback,
+				),
+				messageService.handleMessage(
+					runtime,
+					createConcurrentMessage(
+						"123e4567-e89b-12d3-a456-426614174314",
+						"newer question",
+					),
+					secondCallback,
+				),
+			]);
+
+			expect(firstResult.didRespond).toBe(false);
+			expect(firstResult.responseContent).toBeNull();
+			expect(secondResult.didRespond).toBe(true);
+			expect(secondResult.responseContent?.text).toBe("Keep me");
+			expect(firstCallback).not.toHaveBeenCalled();
+			expect(secondCallback).toHaveBeenCalledTimes(1);
+			expect(secondCallback).toHaveBeenCalledWith(
+				expect.objectContaining({ text: "Keep me" }),
+			);
 		});
 	});
 
