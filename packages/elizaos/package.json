@@ -1,6 +1,6 @@
 {
   "name": "elizaos",
-  "version": "2.0.0-alpha.122",
+  "version": "2.0.0-alpha.123",
   "description": "elizaOS CLI - Create and manage elizaOS examples",
   "type": "module",
   "bin": {
