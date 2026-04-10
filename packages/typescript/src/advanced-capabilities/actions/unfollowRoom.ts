@@ -1,4 +1,5 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import { logger } from "../../logger.ts";
 import { shouldUnfollowRoomTemplate } from "../../prompts.ts";
 import type {
 	Action,
@@ -60,9 +61,28 @@ export const unfollowRoomAction: Action = {
 				},
 			});
 
-			return parseBooleanFromText(
+			const result = parseBooleanFromText(
 				parsed?.decision as string | boolean | undefined,
 			);
+			if (result !== null) {
+				return result;
+			}
+
+			// Fallback: check raw response for common affirmative patterns
+			const cleanedResponse = String(parsed?.decision ?? "").toLowerCase().trim();
+			if (cleanedResponse.includes("true") || cleanedResponse.includes("yes")) {
+				return true;
+			}
+			if (cleanedResponse.includes("false") || cleanedResponse.includes("no")) {
+				return false;
+			}
+
+			// Ambiguous response - log warning and default to false
+			logger.warn(
+				{ src: "unfollowRoom", response: parsed?.decision },
+				"Ambiguous decision response, defaulting to false",
+			);
+			return false;
 		}
 
 		if (state && (await _shouldUnfollow(state))) {
