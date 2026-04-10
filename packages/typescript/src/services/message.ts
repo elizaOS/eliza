@@ -1,5 +1,10 @@
 import { v4 } from "uuid";
 import { parseActionParams } from "../actions";
+import {
+	formatTaskCompletionStatus,
+	getTaskCompletionCacheKey,
+	type TaskCompletionAssessment,
+} from "../advanced-capabilities/evaluators/task-completion";
 import { createUniqueUuid } from "../entities";
 import { logger } from "../logger";
 import {
@@ -10,6 +15,7 @@ import {
 	postActionDecisionTemplate,
 	shouldRespondTemplate,
 } from "../prompts";
+import { isExplicitSelfModificationRequest } from "../should-respond";
 import { runWithStreamingContext } from "../streaming-context";
 import { runWithTrajectoryContext } from "../trajectory-context";
 import type {
@@ -676,6 +682,30 @@ function withActionResults(state: State, actionResults: ActionResult[]): State {
 		data: {
 			...state.data,
 			actionResults,
+		},
+	};
+}
+
+function withTaskCompletion(
+	state: State,
+	taskCompletion: TaskCompletionAssessment | null | undefined,
+): State {
+	if (!taskCompletion) {
+		return state;
+	}
+
+	return {
+		...state,
+		values: {
+			...state.values,
+			taskCompletionStatus: formatTaskCompletionStatus(taskCompletion),
+			taskCompleted: taskCompletion.completed,
+			taskCompletionAssessed: taskCompletion.assessed,
+			taskCompletionReason: taskCompletion.reason,
+		},
+		data: {
+			...state.data,
+			taskCompletion,
 		},
 	};
 }
@@ -1694,6 +1724,10 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"Skipping LLM evaluation",
 				);
+				routedDecision = parseContextRoutingMetadata(
+					responseDecision as unknown as Record<string, unknown>,
+				);
+				setContextRoutingMetadata(message, routedDecision);
 				shouldRespondToMessage = responseDecision.shouldRespond;
 			} else {
 				state = {
@@ -2120,16 +2154,13 @@ export class DefaultMessageService implements IMessageService {
 		// Clean up the response ID
 		clearLatestResponseId(runtime.agentId, message.roomId, responseId);
 
-		const didRespond =
-			shouldRespondToMessage && !isStopResponse(responseContent);
-
-		// Run evaluators — fire-and-forget for streaming HTTP sources so the SSE
-		// response can close even if evaluators stall (e.g. auth error on TEXT_LARGE).
+		// Run evaluators before ending the turn because reflection can now mark
+		// the task incomplete and trigger another continuation/action pass.
 		const runEvaluate = () =>
 			runtime.evaluate(
 				message,
 				state,
-				didRespond,
+				shouldRespondToMessage && !isStopResponse(responseContent),
 				async (content) => {
 					runtime.logger.debug(
 						{ src: "service:message", content },
@@ -2149,17 +2180,39 @@ export class DefaultMessageService implements IMessageService {
 				responseMessages,
 			);
 
-		const source = message.content?.source;
-		if (source === "client_chat" || source === "client_direct") {
-			void runEvaluate().catch((err) => {
-				runtime.logger.warn(
-					{ err, src: "service:message" },
-					"Deferred evaluate failed",
+		await runEvaluate();
+
+		if (opts.continueAfterActions && message.id) {
+			const taskCompletion = await runtime.getCache<TaskCompletionAssessment>(
+				getTaskCompletionCacheKey(message.id),
+			);
+			await runtime.deleteCache(getTaskCompletionCacheKey(message.id));
+
+			if (taskCompletion?.assessed && !taskCompletion.completed) {
+				const continuation = await this.runReflectionTaskContinuation(
+					runtime,
+					message,
+					state,
+					callback,
+					opts,
+					taskCompletion,
 				);
-			});
-		} else {
-			await runEvaluate();
+				if (continuation.responseMessages.length > 0) {
+					responseMessages = [
+						...responseMessages,
+						...continuation.responseMessages,
+					];
+				}
+				if (continuation.responseContent) {
+					responseContent = continuation.responseContent;
+					mode = continuation.mode;
+				}
+				state = continuation.state;
+			}
 		}
+
+		const didRespond =
+			responseMessages.length > 0 && !isStopResponse(responseContent);
 
 		// Collect metadata for logging
 		let entityName = "noname";
@@ -2366,7 +2419,20 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
-		// 5. All other cases are ambiguous enough to need the classifier.
+		// 5. Clear self-modification requests should bypass the ignore-biased
+		// classifier even in group chat, but only for narrow personality/style
+		// update phrasing to avoid broad false positives.
+		if (isExplicitSelfModificationRequest(message.content.text || "")) {
+			return {
+				shouldRespond: true,
+				skipEvaluation: true,
+				reason: "explicit self-modification request",
+				primaryContext: "social",
+				secondaryContexts: ["system"],
+			};
+		}
+
+		// 6. All other cases are ambiguous enough to need the classifier.
 		// Lack of a platform mention is not proof the message isn't directed
 		// at the agent in a fast-moving group conversation.
 		return {
@@ -2691,6 +2757,9 @@ export class DefaultMessageService implements IMessageService {
 				state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
 			[CONTEXT_ROUTING_STATE_KEY]: state.values?.[CONTEXT_ROUTING_STATE_KEY],
 		};
+		const taskCompletion = state.data?.taskCompletion as
+			| TaskCompletionAssessment
+			| undefined;
 
 		if (!message.id || initialActionResults.length === 0) {
 			return {
@@ -2711,12 +2780,15 @@ export class DefaultMessageService implements IMessageService {
 			iterationCount < opts.maxMultiStepIterations;
 			iterationCount++
 		) {
-			accumulatedState = withActionResults(
-				withContextRoutingValues(
-					await runtime.composeState(message, ["ACTIONS"], false, false),
-					contextRoutingStateValues,
+			accumulatedState = withTaskCompletion(
+				withActionResults(
+					withContextRoutingValues(
+						await runtime.composeState(message, ["ACTIONS"], false, false),
+						contextRoutingStateValues,
+					),
+					traceActionResults,
 				),
-				traceActionResults,
+				taskCompletion,
 			);
 
 			const continuation = await this.runSingleShotCore(
@@ -2767,6 +2839,7 @@ export class DefaultMessageService implements IMessageService {
 					traceActionResults,
 				);
 			}
+			accumulatedState = withTaskCompletion(accumulatedState, taskCompletion);
 
 			if (continuation.responseMessages.length > 0) {
 				for (const responseMemory of continuation.responseMessages) {
@@ -2833,13 +2906,189 @@ export class DefaultMessageService implements IMessageService {
 			traceActionResults.push(...latestActionResults);
 		}
 
-		accumulatedState = withActionResults(accumulatedState, traceActionResults);
+		accumulatedState = withTaskCompletion(
+			withActionResults(accumulatedState, traceActionResults),
+			taskCompletion,
+		);
 
 		return {
 			responseContent,
 			responseMessages,
 			state: accumulatedState,
 			mode: responseContent ? "simple" : "none",
+		};
+	}
+
+	private async runReflectionTaskContinuation(
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+		callback: HandlerCallback | undefined,
+		opts: ResolvedMessageOptions,
+		taskCompletion: TaskCompletionAssessment,
+	): Promise<StrategyResult> {
+		const contextRoutingStateValues = {
+			[AVAILABLE_CONTEXTS_STATE_KEY]:
+				state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
+			[CONTEXT_ROUTING_STATE_KEY]: state.values?.[CONTEXT_ROUTING_STATE_KEY],
+		};
+		const initialActionResults = message.id
+			? runtime.getActionResults(message.id)
+			: [];
+		let accumulatedState = withTaskCompletion(
+			withActionResults(
+				withContextRoutingValues(
+					await runtime.composeState(message, ["ACTIONS"], false, false),
+					contextRoutingStateValues,
+				),
+				initialActionResults,
+			),
+			taskCompletion,
+		);
+		const continuation = await this.runSingleShotCore(
+			runtime,
+			message,
+			accumulatedState,
+			opts,
+			asUUID(v4()),
+			resolvePromptAttachments(message.content.attachments),
+			{
+				prompt:
+					runtime.character.templates?.postActionDecisionTemplate ||
+					postActionDecisionTemplate,
+				precomposedState: accumulatedState,
+				failureStage:
+					"continuing after reflection marked the task incomplete",
+			},
+		);
+
+		if (!continuation.responseContent) {
+			return {
+				responseContent: null,
+				responseMessages: [],
+				state: accumulatedState,
+				mode: "none",
+			};
+		}
+
+		const responseMessages: Memory[] = [];
+		let responseContent = continuation.responseContent;
+		if (message.id) {
+			responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
+		}
+
+		if (responseContent.providers && responseContent.providers.length > 0) {
+			accumulatedState = withTaskCompletion(
+				withActionResults(
+					withContextRoutingValues(
+						await runtime.composeState(
+							message,
+							responseContent.providers,
+							false,
+							false,
+						),
+						contextRoutingStateValues,
+					),
+					initialActionResults,
+				),
+				taskCompletion,
+			);
+		} else {
+			accumulatedState = withTaskCompletion(
+				withActionResults(continuation.state, initialActionResults),
+				taskCompletion,
+			);
+		}
+
+		if (continuation.responseMessages.length > 0) {
+			for (const responseMemory of continuation.responseMessages) {
+				responseMemory.content = responseContent;
+				await runtime.createMemory(responseMemory, "messages");
+				await this.emitMessageSent(
+					runtime,
+					responseMemory,
+					message.content.source ?? "messageHandler",
+				);
+			}
+			responseMessages.push(...continuation.responseMessages);
+		}
+
+		if (continuation.mode === "simple") {
+			if (callback) {
+				if (responseContent.text) {
+					responseContent.text = runtime.redactSecrets(responseContent.text);
+				}
+				await callback(responseContent);
+			}
+
+			return {
+				responseContent,
+				responseMessages,
+				state: accumulatedState,
+				mode: "simple",
+			};
+		}
+
+		if (continuation.mode !== "actions") {
+			return {
+				responseContent,
+				responseMessages,
+				state: accumulatedState,
+				mode: continuation.mode,
+			};
+		}
+
+		await runtime.processActions(
+			message,
+			continuation.responseMessages,
+			accumulatedState,
+			async (content) => {
+				runtime.logger.debug(
+					{ src: "service:message", content },
+					"Reflection continuation callback",
+				);
+				responseContent.actionCallbacks = content;
+				if (callback) {
+					return callback(content);
+				}
+				return [];
+			},
+			{ onStreamChunk: opts.onStreamChunk },
+		);
+
+		const latestActionResults = message.id
+			? runtime.getActionResults(message.id)
+			: [];
+		accumulatedState = withTaskCompletion(
+			withActionResults(
+				accumulatedState,
+				latestActionResults.length > 0
+					? latestActionResults
+					: initialActionResults,
+			),
+			taskCompletion,
+		);
+
+		if (
+			latestActionResults.length > 0 &&
+			shouldContinueAfterActions(responseContent) &&
+			!suppressesPostActionContinuation(runtime, responseContent)
+		) {
+			return await this.runPostActionContinuation(
+				runtime,
+				message,
+				accumulatedState,
+				callback,
+				opts,
+				latestActionResults,
+			);
+		}
+
+		return {
+			responseContent,
+			responseMessages,
+			state: accumulatedState,
+			mode: "actions",
 		};
 	}
 

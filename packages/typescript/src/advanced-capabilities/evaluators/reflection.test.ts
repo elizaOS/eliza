@@ -42,6 +42,9 @@ function createMockRuntime(): IAgentRuntime {
 		createMemory: vi.fn().mockResolvedValue("fact-memory-id" as UUID),
 		queueEmbeddingGeneration: vi.fn().mockResolvedValue(undefined),
 		updateRelationship: vi.fn().mockResolvedValue(true),
+		getActionResults: vi.fn().mockReturnValue([]),
+		getCache: vi.fn().mockResolvedValue(undefined),
+		deleteCache: vi.fn().mockResolvedValue(true),
 		createRelationship: vi.fn().mockResolvedValue(true),
 		setCache: vi.fn().mockResolvedValue(undefined),
 		useModel: vi.fn(),
@@ -94,6 +97,8 @@ describe("advanced capabilities reflectionEvaluator", () => {
 
 		useModel.mockResolvedValue(`<response>
 			<thought>All good</thought>
+			<task_completed>true</task_completed>
+			<task_completion_reason>The greeting exchange is complete.</task_completion_reason>
 			<facts>
 				<fact>
 					<claim>Bob is a builder</claim>
@@ -106,7 +111,13 @@ describe("advanced capabilities reflectionEvaluator", () => {
 
 		await reflectionEvaluator.handler(runtime, message);
 
-		expect(runtime.createMemory).toHaveBeenCalledOnce();
+		const createMemoryCalls = vi.mocked(runtime.createMemory).mock.calls;
+		expect(
+			createMemoryCalls.filter(([, tableName]) => tableName === "facts"),
+		).toHaveLength(1);
+		expect(
+			createMemoryCalls.filter(([, tableName]) => tableName === "memories"),
+		).toHaveLength(1);
 		expect(runtime.createRelationship).not.toHaveBeenCalled();
 
 		const warnedMessages = warn.mock.calls.map((call) =>
@@ -124,6 +135,8 @@ describe("advanced capabilities reflectionEvaluator", () => {
 
 		useModel.mockResolvedValue(`<response>
 			<thought>All good</thought>
+			<task_completed>true</task_completed>
+			<task_completion_reason>The interaction is complete.</task_completion_reason>
 			<relationships>
 				<relationship>
 					<sourceEntityId>Alice</sourceEntityId>
@@ -135,7 +148,16 @@ describe("advanced capabilities reflectionEvaluator", () => {
 
 		await reflectionEvaluator.handler(runtime, message);
 
-		expect(runtime.createMemory).not.toHaveBeenCalled();
+		expect(
+			vi
+				.mocked(runtime.createMemory)
+				.mock.calls.filter(([, tableName]) => tableName === "facts"),
+		).toHaveLength(0);
+		expect(
+			vi
+				.mocked(runtime.createMemory)
+				.mock.calls.filter(([, tableName]) => tableName === "memories"),
+		).toHaveLength(1);
 		expect(runtime.createRelationship).toHaveBeenCalledOnce();
 		expect(runtime.createRelationship).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -162,6 +184,8 @@ describe("advanced capabilities reflectionEvaluator", () => {
 
 \`\`\`toon
 thought: All good
+task_completed: true
+task_completion_reason: The user got what they needed.
 facts[1]{claim,type,in_bio,already_known}:
   "Bob is a builder",fact,false,false
 \`\`\`
@@ -170,7 +194,11 @@ Thanks.`);
 
 		await reflectionEvaluator.handler(runtime, message);
 
-		expect(runtime.createMemory).toHaveBeenCalledOnce();
+		expect(
+			vi
+				.mocked(runtime.createMemory)
+				.mock.calls.filter(([, tableName]) => tableName === "facts"),
+		).toHaveLength(1);
 
 		const warnedMessages = warn.mock.calls.map((call) =>
 			String(call[1] ?? call[0] ?? ""),
@@ -190,6 +218,8 @@ Thanks.`);
 \`\`\`json
 {
   "thought": "All good",
+  "task_completed": true,
+  "task_completion_reason": "The user got a complete answer.",
   "facts": [
     {
       "claim": "Bob is a builder",
@@ -210,7 +240,11 @@ Thanks.`);
 
 		await reflectionEvaluator.handler(runtime, message);
 
-		expect(runtime.createMemory).toHaveBeenCalledOnce();
+		expect(
+			vi
+				.mocked(runtime.createMemory)
+				.mock.calls.filter(([, tableName]) => tableName === "facts"),
+		).toHaveLength(1);
 		expect(runtime.createRelationship).toHaveBeenCalledOnce();
 		expect(runtime.createRelationship).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -234,6 +268,8 @@ Thanks.`);
 
 		useModel.mockResolvedValue(`{
   "response": {
+    "task_completed": true,
+    "task_completion_reason": "The response wrapped up the task.",
     "facts": [
       {
         "claim": "Bob is a builder",
@@ -248,7 +284,11 @@ Thanks.`);
 
 		await reflectionEvaluator.handler(runtime, message);
 
-		expect(runtime.createMemory).toHaveBeenCalledOnce();
+		expect(
+			vi
+				.mocked(runtime.createMemory)
+				.mock.calls.filter(([, tableName]) => tableName === "facts"),
+		).toHaveLength(1);
 		expect(runtime.createRelationship).not.toHaveBeenCalled();
 	});
 
@@ -277,6 +317,8 @@ Thanks.`);
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
 
 		useModel.mockResolvedValue(`thought: "All good"
+task_completed: true
+task_completion_reason: The preference was captured successfully.
 facts[3]{claim,type,in_bio,already_known}:
   "Shaw prefers concise status updates",fact,false,false
   "shaw thinks he fixed a bug in Eliza's simple-response handling",fact,false,false
@@ -284,13 +326,72 @@ facts[3]{claim,type,in_bio,already_known}:
 
 		await reflectionEvaluator.handler(runtime, message);
 
-		expect(runtime.createMemory).toHaveBeenCalledOnce();
-		expect(runtime.createMemory).toHaveBeenCalledWith(
+		expect(
+			vi
+				.mocked(runtime.createMemory)
+				.mock.calls.filter(([, tableName]) => tableName === "facts"),
+		).toHaveLength(1);
+		expect(vi.mocked(runtime.createMemory)).toHaveBeenCalledWith(
 			expect.objectContaining({
 				content: { text: "Shaw prefers concise status updates" },
 			}),
 			"facts",
 			true,
+		);
+	});
+
+	it("stores task completion assessments in memories and cache", async () => {
+		const message = createMessage(getMockEntityId(0));
+		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
+
+		useModel.mockResolvedValue(`thought: "Need one more step"
+task_completed: false
+task_completion_reason: The user asked for a follow-up action that has not run yet.`);
+
+		const result = await reflectionEvaluator.handler(runtime, message);
+
+		expect(result?.values).toMatchObject({
+			taskCompleted: false,
+			taskCompletionAssessed: true,
+			taskCompletionReason:
+				"The user asked for a follow-up action that has not run yet.",
+		});
+		expect(vi.mocked(runtime.createMemory)).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({
+					type: "task_completion_reflection",
+					text: expect.stringContaining("incomplete"),
+				}),
+				metadata: expect.objectContaining({
+					taskCompleted: false,
+					taskAssessed: true,
+					taskCompletionReason:
+						"The user asked for a follow-up action that has not run yet.",
+				}),
+			}),
+			"memories",
+		);
+		expect(vi.mocked(runtime.setCache)).toHaveBeenCalledWith(
+			expect.stringContaining("reflection-task-completion"),
+			expect.objectContaining({
+				assessed: true,
+				completed: false,
+			}),
+		);
+	});
+
+	it("validates once per message instead of waiting for a conversation interval", async () => {
+		const message = createMessage(getMockEntityId(0));
+		const getCacheMock = runtime.getCache as unknown as ReturnType<typeof vi.fn>;
+
+		getCacheMock.mockResolvedValueOnce(undefined);
+		await expect(reflectionEvaluator.validate(runtime, message)).resolves.toBe(
+			true,
+		);
+
+		getCacheMock.mockResolvedValueOnce(message.id);
+		await expect(reflectionEvaluator.validate(runtime, message)).resolves.toBe(
+			false,
 		);
 	});
 });

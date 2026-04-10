@@ -14,16 +14,14 @@ describe("Prompts", () => {
 			expect(shouldRespondTemplate).toContain("{{agentName}}");
 			expect(shouldRespondTemplate).toContain("{{providers}}");
 			expect(shouldRespondTemplate).toContain("available_contexts:");
-			expect(shouldRespondTemplate).toContain("dual_pressure[2]:");
-			expect(shouldRespondTemplate).toContain("speak_up:");
-			expect(shouldRespondTemplate).toContain("hold_back:");
-			expect(shouldRespondTemplate).toContain("{{dualPressureThreshold}}");
 			expect(shouldRespondTemplate).toContain("context_routing:");
-			expect(shouldRespondTemplate).toContain("action_space:");
 			expect(shouldRespondTemplate).toContain("output:");
+			expect(shouldRespondTemplate).toContain(
+				"task: Decide whether {{agentName}} should respond, ignore, or stop.",
+			);
 			expect(shouldRespondTemplate).toContain("name: {{agentName}}");
 			expect(shouldRespondTemplate).toContain("reasoning:");
-			expect(shouldRespondTemplate).toContain("action: REPLY");
+			expect(shouldRespondTemplate).toContain("action: RESPOND");
 			expect(shouldRespondTemplate).toContain("primaryContext:");
 			expect(shouldRespondTemplate).toContain("secondaryContexts:");
 			expect(shouldRespondTemplate).toContain("evidenceTurnIds:");
@@ -33,11 +31,14 @@ describe("Prompts", () => {
 				"direct mention of {{agentName}}",
 			);
 			expect(shouldRespondTemplate).toContain(
-				"request to stop or be quiet -> STOP",
+				"request to stop or be quiet directed at {{agentName}} -> STOP",
+			);
+			expect(shouldRespondTemplate).toContain(
+				"clear request to update {{agentName}}'s personality, tone, style, voice, or behavior -> RESPOND",
 			);
 			expect(shouldRespondTemplate).toContain("decision_note:");
 			expect(shouldRespondTemplate).toContain(
-				"talking ABOUT {{agentName}} is not enough",
+				"talking ABOUT {{agentName}} or continuing a room conversation around them is not enough unless the message is clearly asking to change {{agentName}}'s personality, tone, style, voice, or behavior",
 			);
 		});
 
@@ -113,9 +114,16 @@ describe("Prompts", () => {
 			expect(reflectionEvaluatorTemplate).toContain(
 				'thought: "a self-reflective thought on the conversation"',
 			);
+			expect(reflectionEvaluatorTemplate).toContain("task_completed: false");
+			expect(reflectionEvaluatorTemplate).toContain(
+				'task_completion_reason: "The request is still incomplete because the needed action has not happened yet."',
+			);
 			expect(reflectionEvaluatorTemplate).toContain("facts[0]:");
 			expect(reflectionEvaluatorTemplate).toContain("relationships[0]:");
 			expect(reflectionEvaluatorTemplate).toContain("tags[0]: dm_interaction");
+			expect(reflectionEvaluatorTemplate).toContain(
+				"Always include `task_completed` and `task_completion_reason`.",
+			);
 			expect(reflectionEvaluatorTemplate).toContain(
 				"omit all facts[...] entries",
 			);

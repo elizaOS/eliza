@@ -10,7 +10,7 @@
         "EVALUATE_INTERACTION",
         "ASSESS_SITUATION"
       ],
-      "alwaysRun": false,
+      "alwaysRun": true,
       "examples": [
         {
           "prompt": "Agent Name: Sarah\nAgent Role: Community Manager\nRoom Type: group\nCurrent Room: general-chat\nMessage Sender: John (user-123)",
@@ -102,7 +102,7 @@
         "SOCIAL_GRAPH_BUILDER",
         "CONTACT_EXTRACTOR"
       ],
-      "alwaysRun": false,
+      "alwaysRun": true,
       "examples": [
         {
           "prompt": "User introduces themselves with social media",
