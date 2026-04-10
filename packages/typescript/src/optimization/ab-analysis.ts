@@ -18,6 +18,18 @@ export interface ABAnalysisResult {
 }
 
 /**
+ * Simple djb2 hash function for deterministic variant selection.
+ * Canonical implementation for all optimization modules to ensure consistent A/B bucketing.
+ */
+export function simpleHash(str: string): number {
+	let hash = 5381;
+	for (let i = 0; i < str.length; i++) {
+		hash = (hash * 33) ^ str.charCodeAt(i);
+	}
+	return Math.abs(hash);
+}
+
+/**
  * Deterministic variant selection based on hash of promptKey + seed.
  * Returns "optimized" for fraction of traffic = trafficSplit.
  */
@@ -333,12 +345,4 @@ function normalCDF(z: number): number {
 					t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
 	const p = 1 - (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * z * z) * poly;
 	return z >= 0 ? p : 1 - p;
-}
-
-function simpleHash(str: string): number {
-	let hash = 5381;
-	for (let i = 0; i < str.length; i++) {
-		hash = (hash * 33) ^ str.charCodeAt(i);
-	}
-	return Math.abs(hash);
 }
