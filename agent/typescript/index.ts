@@ -224,7 +224,7 @@ function isTruthySetting(v: unknown): boolean {
 	if (typeof v === "boolean") return v;
 	if (typeof v === "string") {
 		const t = v.trim().toLowerCase();
-		return t === "true" || v.trim() === "1";
+		return t === "true" || t === "1";
 	}
 	return false;
 }
