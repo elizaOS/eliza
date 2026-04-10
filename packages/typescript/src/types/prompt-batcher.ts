@@ -101,6 +101,8 @@ export interface PromptSection {
 	maxRetries?: number;
 	minCycleMs?: number;
 	affinityKey?: string;
+	/** When true, skip automatic context injection (character bio, providers). The preamble is the complete prompt. */
+	selfContained?: boolean;
 }
 
 export interface ResolvedSection {

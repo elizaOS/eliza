@@ -9,6 +9,7 @@
  * settings. Characters without explicit settings fall back to the harness default.
  *
  * Prerequisite: built core (`bun run build:core` from repo root) so workspace `@elizaos/core` resolves to `dist/`.
+ * `createRuntimes` uses `provision: true` so plugin-sql migrations run before the first DB read (fresh PGLite dirs get schema).
  *
  * Usage:
  *   bun run harness
@@ -16,12 +17,16 @@
  *   bun run harness -- --log-level info
  *
  * Inference: set OPENAI_API_KEY for OpenAI, or run Ollama locally. Override with HARNESS_PROVIDER=openai|ollama.
+ * Ollama: set `OLLAMA_*` in repo `.env` (or `agent/.env`). `getSetting()` falls back to `process.env` for those keys so the endpoint is visible even when plugins init before DB merge; the harness also copies them into `character.settings` when present.
+ *
+ * Env files: with `--cwd agent`, Bun loads `agent/.env` only. This harness also loads `../.env` and `../.env.local` (repo root) so keys like `PROMPT_OPTIMIZATION_ENABLED` in the root file apply. Existing `process.env` wins (no override).
  *
  * Database: PGLite via @elizaos/plugin-sql (default). Data dir: PGLITE_DATA_DIR, HARNESS_PGLITE_DIR, or `.eliza/harness-pglite`.
  * For in-memory DB instead, use `InMemoryDatabaseAdapter` from `@elizaos/core`, drop plugin-sql from the character, and pass that adapter to `createRuntimes`.
  */
 
 import { createInterface } from "node:readline/promises";
+import { existsSync, readFileSync } from "node:fs";
 import { stdin as input, stdout as output } from "node:process";
 import path from "node:path";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
@@ -30,16 +35,111 @@ import {
 	createRuntimes,
 	getBasicCapabilitiesSettings,
 	loadCharacters,
+	logger,
 	MemoryType,
+	neuroPlugin,
 	stringToUuid,
 	type Character,
 	type Content,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
+	type Plugin,
 	type UUID,
 } from "@elizaos/core";
 import { defaultCharacter } from "./defaultCharacter";
+
+/**
+ * Parse a minimal dotenv file (KEY=value, optional quotes, optional `export `).
+ * Does not support multiline values.
+ */
+function parseDotEnvFile(content: string): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (let line of content.split("\n")) {
+		line = line.replace(/^\uFEFF/, "").trim();
+		if (!line || line.startsWith("#")) continue;
+		if (line.startsWith("export ")) line = line.slice(7).trim();
+		const eq = line.indexOf("=");
+		if (eq <= 0) continue;
+		const key = line.slice(0, eq).trim();
+		if (!/^[\w.-]+$/.test(key)) continue;
+		let val = line.slice(eq + 1).trim();
+		if (
+			(val.startsWith('"') && val.endsWith('"')) ||
+			(val.startsWith("'") && val.endsWith("'"))
+		) {
+			val = val.slice(1, -1);
+		}
+		out[key] = val;
+	}
+	return out;
+}
+
+/**
+ * Merge repo-root + cwd dotenv into `process.env` for keys that are still unset.
+ * Order: `../.env` → `../.env.local` → `./.env` → `./.env.local` (later files win in the merge, shell/Bun still wins over files).
+ */
+function loadHarnessDotEnvFiles(): void {
+	const cwd = process.cwd();
+	const files = [
+		path.join(cwd, "..", ".env"),
+		path.join(cwd, "..", ".env.local"),
+		path.join(cwd, ".env"),
+		path.join(cwd, ".env.local"),
+	];
+	const merged: Record<string, string> = {};
+	for (const file of files) {
+		if (!existsSync(file)) continue;
+		try {
+			const raw = readFileSync(file, "utf8");
+			Object.assign(merged, parseDotEnvFile(raw));
+		} catch {
+			/* unreadable file */
+		}
+	}
+	for (const [k, v] of Object.entries(merged)) {
+		if (process.env[k] === undefined) {
+			process.env[k] = v;
+		}
+	}
+}
+
+/** Ollama plugin reads these via `runtime.getSetting`; env must be mirrored here (see file header). */
+const OLLAMA_ENV_SETTING_KEYS = [
+	"OLLAMA_API_ENDPOINT",
+	"OLLAMA_API_URL",
+	"OLLAMA_SMALL_MODEL",
+	"OLLAMA_MEDIUM_MODEL",
+	"OLLAMA_LARGE_MODEL",
+	"OLLAMA_EMBEDDING_MODEL",
+	"SMALL_MODEL",
+	"LARGE_MODEL",
+] as const;
+
+function ollamaSettingsFromEnv(): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const key of OLLAMA_ENV_SETTING_KEYS) {
+		const v = process.env[key];
+		if (v !== undefined && v !== "") {
+			out[key] = v;
+		}
+	}
+	return out;
+}
+
+/** Mirror .env into settings so harness + runtime agree (same pattern as Ollama keys). */
+function promptOptimizationSettingsFromEnv(): Record<string, string> {
+	const out: Record<string, string> = {};
+	const po = process.env.PROMPT_OPTIMIZATION_ENABLED;
+	if (po !== undefined && po !== "") {
+		out.PROMPT_OPTIMIZATION_ENABLED = po;
+	}
+	const dir = process.env.OPTIMIZATION_DIR;
+	if (dir !== undefined && dir !== "") {
+		out.OPTIMIZATION_DIR = dir;
+	}
+	return out;
+}
 
 const LOG_LEVELS = [
 	"trace",
@@ -108,6 +208,7 @@ Options:
 
 Environment:
   LOG_LEVEL, OPENAI_API_KEY, HARNESS_PROVIDER=openai|ollama, PGLITE_DATA_DIR, HARNESS_PGLITE_DIR
+  PROMPT_OPTIMIZATION_ENABLED=true — enables DPE traces and injects plugin-neuro (text quality signals + RUN_ENDED finalizer; emoji reactions optional)
 `);
 }
 
@@ -119,6 +220,53 @@ function preferOpenAiPlugin(): boolean {
 	);
 }
 
+function isTruthySetting(v: unknown): boolean {
+	if (typeof v === "boolean") return v;
+	if (typeof v === "string") {
+		const t = v.trim().toLowerCase();
+		return t === "true" || v.trim() === "1";
+	}
+	return false;
+}
+
+/**
+ * When prompt optimization is on, enriched traces and A/B analysis expect plugin-neuro
+ * (evaluator signals + RUN_ENDED finalizer). Reactions are optional; text-only harnesses
+ * still get length, latency, and continuation signals.
+ */
+function isPromptOptimizationEnabledForHarness(character: Character): boolean {
+	const fromChar = (character.settings as Record<string, unknown> | undefined)
+		?.PROMPT_OPTIMIZATION_ENABLED;
+	if (fromChar !== undefined && fromChar !== null && fromChar !== "") {
+		return isTruthySetting(fromChar);
+	}
+	return isTruthySetting(process.env.PROMPT_OPTIMIZATION_ENABLED);
+}
+
+function hasNeuroPlugin(plugins: Character["plugins"]): boolean {
+	if (!plugins) return false;
+	for (const p of plugins) {
+		if (typeof p === "string") {
+			const s = p.toLowerCase();
+			if (
+				s === "plugin-neuro" ||
+				s.endsWith("plugin-neuro") ||
+				s.includes("@elizaos/plugin-neuro")
+			) {
+				return true;
+			}
+		} else if (
+			p &&
+			typeof p === "object" &&
+			"name" in p &&
+			(p as Plugin).name === "plugin-neuro"
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
 /** Ensure string plugin names for SQL + inference are present; preserves existing non-string Plugin objects. */
 function mergeHarnessSqlPlugins(character: Character): Character {
 	const existingPlugins = character.plugins ?? [];
@@ -126,8 +274,8 @@ function mergeHarnessSqlPlugins(character: Character): Character {
 		(p: unknown): p is string => typeof p === "string",
 	);
 	const nonStringPlugins = existingPlugins.filter(
-		(p: unknown) => typeof p !== "string",
-	);
+		(p) => typeof p !== "string",
+	) as Plugin[];
 	const list = [...stringPlugins];
 	if (!list.some((s) => s.includes("plugin-sql"))) {
 		list.unshift("@elizaos/plugin-sql");
@@ -145,7 +293,20 @@ function mergeHarnessSqlPlugins(character: Character): Character {
 				: "@elizaos/plugin-ollama",
 		);
 	}
-	return { ...character, plugins: [...nonStringPlugins, ...list] };
+
+	let mergedNonString = nonStringPlugins;
+	if (
+		isPromptOptimizationEnabledForHarness(character) &&
+		!hasNeuroPlugin(existingPlugins)
+	) {
+		mergedNonString = [...nonStringPlugins, neuroPlugin];
+	}
+
+	const combinedPlugins: (string | Plugin)[] = [...mergedNonString, ...list];
+	return {
+		...character,
+		plugins: combinedPlugins as Character["plugins"],
+	};
 // Note: Ensures SQL + inference plugins present; preserves non-string plugins (prepended).
 }
 
@@ -161,6 +322,8 @@ function resolveLogLevel(cli?: HarnessLogLevel): HarnessLogLevel {
 }
 
 async function main(): Promise<void> {
+	loadHarnessDotEnvFiles();
+
 	const { characterPath, logLevel: cliLogLevel, help, unknownFlags } =
 		parseHarnessArgs();
 
@@ -190,6 +353,8 @@ async function main(): Promise<void> {
 		...c,
 		settings: {
 			...c.settings,
+			...ollamaSettingsFromEnv(),
+			...promptOptimizationSettingsFromEnv(),
 			PGLITE_DATA_DIR:
 				(c.settings as Record<string, unknown> | undefined)?.PGLITE_DATA_DIR ??
 				process.env.PGLITE_DATA_DIR ??
@@ -201,6 +366,23 @@ async function main(): Promise<void> {
 	}));
 
 	characters = characters.map(mergeHarnessSqlPlugins);
+
+	const firstChar = characters[0];
+	if (firstChar) {
+		const optOn = isPromptOptimizationEnabledForHarness(firstChar);
+		const neuroPresent = hasNeuroPlugin(firstChar.plugins ?? []);
+		if (optOn && neuroPresent) {
+			logger.info(
+				{ src: "harness", pluginNeuro: true },
+				"Prompt optimization: plugin-neuro merged; DPE traces + RUN_ENDED finalizer active",
+			);
+		} else if (optOn && !neuroPresent) {
+			logger.warn(
+				{ src: "harness", pluginNeuro: false },
+				"PROMPT_OPTIMIZATION_ENABLED is true but plugin-neuro was not added (check plugins list for a false-positive /neuro/ string match)",
+			);
+		}
+	}
 
 	const logLevel = resolveLogLevel(cliLogLevel);
 
@@ -231,6 +413,7 @@ async function main(): Promise<void> {
 		const [runtime] = await createRuntimes([char], {
 			adapter,
 			logLevel,
+			provision: true,
 		});
 		if (runtime) {
 			runtimes.push(runtime);
@@ -293,7 +476,9 @@ async function main(): Promise<void> {
 	const callback: HandlerCallback = async (response: Content) => {
 		const text = response?.text;
 		if (text) {
+			console.log('==============================================');
 			output.write(`${text}\n`);
+			console.log('==============================================');
 		}
 		return [];
 	};

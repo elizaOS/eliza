@@ -13,6 +13,7 @@ import { createLogger } from "./logger";
 import type { Agent, Character, JsonValue, UUID } from "./types";
 import { ChannelType } from "./types";
 import type { IDatabaseAdapter } from "./types/database";
+import type { Plugin } from "./types/plugin";
 import type { IAgentRuntime } from "./types/runtime";
 
 const logger = createLogger({ namespace: "provisioning", level: "info" });
@@ -23,30 +24,31 @@ export interface ProvisionAgentOptions {
 }
 
 /**
- * Run plugin migrations (DDL) using the runtime's adapter and registered plugins.
- * WHY standalone: Migrations are a one-time basic-capabilities step; not part of initialize()
- * so ephemeral/edge runtimes never run them. process.env guards allow safe use in Node only.
+ * Run plugin migrations (DDL) for an adapter and resolved plugin list.
+ * WHY: {@link createRuntimes} must apply schema before `getAgentsByIds` (merge DB settings);
+ * at that point no `AgentRuntime` exists yet, so callers pass adapter + plugins directly.
  */
-export async function runPluginMigrations(
-	runtime: IAgentRuntime,
+export async function runPluginMigrationsForAdapter(
+	adapter: IDatabaseAdapter | null | undefined,
+	plugins: Plugin[],
+	agentIdForLog?: UUID,
 ): Promise<void> {
-	const adapter = runtime.adapter;
 	if (!adapter) {
 		logger.warn(
-			{ src: "provisioning", agentId: runtime.agentId },
+			{ src: "provisioning", agentId: agentIdForLog },
 			"Database adapter not found, skipping plugin migrations",
 		);
 		return;
 	}
 	if (typeof adapter.runPluginMigrations !== "function") {
 		logger.warn(
-			{ src: "provisioning", agentId: runtime.agentId },
+			{ src: "provisioning", agentId: agentIdForLog },
 			"Database adapter does not support plugin migrations",
 		);
 		return;
 	}
 
-	const pluginsWithSchemas = runtime.plugins
+	const pluginsWithSchemas = plugins
 		.filter((p) => p.schema)
 		.map((p) => {
 			const schema = p.schema || {};
@@ -67,7 +69,7 @@ export async function runPluginMigrations(
 
 	if (pluginsWithSchemas.length === 0) {
 		logger.debug(
-			{ src: "provisioning", agentId: runtime.agentId },
+			{ src: "provisioning", agentId: agentIdForLog },
 			"No plugins with schemas, skipping migrations",
 		);
 		return;
@@ -85,8 +87,23 @@ export async function runPluginMigrations(
 		dryRun: false,
 	});
 	logger.debug(
-		{ src: "provisioning", agentId: runtime.agentId },
+		{ src: "provisioning", agentId: agentIdForLog },
 		"Plugin migrations completed",
+	);
+}
+
+/**
+ * Run plugin migrations (DDL) using the runtime's adapter and registered plugins.
+ * WHY standalone: Migrations are a one-time basic-capabilities step; not part of initialize()
+ * so ephemeral/edge runtimes never run them. process.env guards allow safe use in Node only.
+ */
+export async function runPluginMigrations(
+	runtime: IAgentRuntime,
+): Promise<void> {
+	await runPluginMigrationsForAdapter(
+		runtime.adapter,
+		runtime.plugins,
+		runtime.agentId,
 	);
 }
 

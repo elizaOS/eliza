@@ -11,11 +11,7 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import {
-	composePromptFromState,
-	parseBooleanFromText,
-	parseKeyValueXml,
-} from "../../utils.ts";
+import { composePromptFromState, parseBooleanFromText } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UNFOLLOW_ROOM");
@@ -47,18 +43,26 @@ export const unfollowRoomAction: Action = {
 				template: shouldUnfollowRoomTemplate,
 			});
 
-			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-				prompt: shouldUnfollowPrompt,
+			const parsed = await runtime.dynamicPromptExecFromState({
+				params: { prompt: shouldUnfollowPrompt },
+				schema: [
+					{
+						field: "decision",
+						description:
+							"true if the agent should unfollow this room, false otherwise",
+						type: "boolean",
+						required: true,
+					},
+				],
+				options: {
+					modelType: ModelType.TEXT_SMALL,
+					promptName: "shouldUnfollowRoom",
+				},
 			});
 
-			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(
-				response,
+			return parseBooleanFromText(
+				parsed?.decision as string | boolean | undefined,
 			);
-			const parsedResponse = parseBooleanFromText(
-				parsed?.decision ?? response.trim(),
-			);
-
-			return parsedResponse as boolean;
 		}
 
 		if (state && (await _shouldUnfollow(state))) {

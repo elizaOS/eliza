@@ -365,3 +365,6 @@ skills/.cache/
 /benchmarks/terminal-bench/python/test_output/terminal-bench-*.md
 # prr state file (auto-generated)
 .pr-resolver-state.json
+
+# Local prompt optimization traces/artifacts when OPTIMIZATION_DIR points at repo
+/opt/

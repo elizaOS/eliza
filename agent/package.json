@@ -16,7 +16,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-local-ai": "alpha",
-    "@elizaos/plugin-ollama": "alpha",
+    "@elizaos/plugin-ollama": "^1.2.4",
     "@elizaos/plugin-openai": "alpha",
     "@elizaos/plugin-sql": "alpha"
   }

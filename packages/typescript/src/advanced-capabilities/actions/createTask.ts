@@ -20,14 +20,14 @@ import type {
 	State,
 	UUID,
 } from "../../types/index";
-import { ModelType } from "../../types/index";
+import type { SchemaRow } from "../../types/state";
 import {
 	TRIGGER_SCHEMA_VERSION,
 	type TriggerConfig,
 	type TriggerType,
 	type TriggerWakeMode,
 } from "../../types/trigger";
-import { parseKeyValueXml, stringToUuid } from "../../utils";
+import { stringToUuid } from "../../utils";
 
 const CREATE_TASK_KEYWORDS = [
 	"create task",
@@ -53,6 +53,67 @@ interface TriggerExtraction {
 	scheduledAtIso?: string;
 	cronExpression?: string;
 	maxRuns?: string;
+}
+
+const CREATE_TASK_TRIGGER_SCHEMA: SchemaRow[] = [
+	{
+		field: "triggerType",
+		description: "interval, once, or cron",
+		required: false,
+	},
+	{
+		field: "displayName",
+		description: "Short human-readable name for the trigger",
+		required: false,
+	},
+	{
+		field: "instructions",
+		description: "What the trigger should do when it runs",
+		required: false,
+	},
+	{
+		field: "wakeMode",
+		description: "inject_now or next_autonomy_cycle",
+		required: false,
+	},
+	{
+		field: "intervalMs",
+		description: "Interval in milliseconds for interval triggers",
+		required: false,
+	},
+	{
+		field: "scheduledAtIso",
+		description: "ISO timestamp for once triggers",
+		required: false,
+	},
+	{
+		field: "cronExpression",
+		description: "5-field cron expression for cron triggers",
+		required: false,
+	},
+	{
+		field: "maxRuns",
+		description: "Maximum number of runs if applicable",
+		required: false,
+	},
+];
+
+function recordToTriggerExtraction(
+	r: Record<string, unknown> | null,
+): TriggerExtraction {
+	if (!r) return {};
+	const str = (key: string) =>
+		typeof r[key] === "string" ? (r[key] as string) : undefined;
+	return {
+		triggerType: str("triggerType"),
+		displayName: str("displayName"),
+		instructions: str("instructions"),
+		wakeMode: str("wakeMode"),
+		intervalMs: str("intervalMs"),
+		scheduledAtIso: str("scheduledAtIso"),
+		cronExpression: str("cronExpression"),
+		maxRuns: str("maxRuns"),
+	};
 }
 
 function deriveTriggerType(e: TriggerExtraction): TriggerType {
@@ -148,13 +209,20 @@ export const createTaskAction: Action = {
 			return { success: false, text: "Triggers are disabled." };
 
 		try {
-			const extracted =
-				parseKeyValueXml<TriggerExtraction>(
-					await runtime.useModel(ModelType.TEXT_SMALL, {
-						prompt: `${EXTRACTION_PROMPT_PREFIX}Request: ${text}`,
-						stopSequences: [],
-					}),
-				) ?? {};
+			const extracted = recordToTriggerExtraction(
+				await runtime.promptBatcher.askNow(
+					`create-task-trigger-extraction:${uuidv4()}`,
+					{
+						preamble: `${EXTRACTION_PROMPT_PREFIX}Request: ${text}`,
+						schema: CREATE_TASK_TRIGGER_SCHEMA,
+						fallback: {},
+						model: "small",
+						execOptions: {
+							stopSequences: [],
+						},
+					},
+				),
+			);
 
 			const triggerType = deriveTriggerType(extracted);
 			const displayName =

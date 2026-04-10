@@ -106,18 +106,11 @@ describe("entities", () => {
 			vi.spyOn(runtime, "getEntitiesForRoom").mockResolvedValue([mockEntity]);
 			vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
 			vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
-			vi.spyOn(runtime, "useModel").mockResolvedValue(
-				`<response>
-  <entityId>entity-123</entityId>
-  <type>EXACT_MATCH</type>
-  <matches>
-    <match>
-      <name>Alice</name>
-      <reason>Exact match found</reason>
-    </match>
-  </matches>
-</response>`,
-			);
+			vi.spyOn(runtime.promptBatcher, "askNow").mockResolvedValue({
+				entityId: "entity-123",
+				type: "EXACT_MATCH",
+				matches: [{ name: "Alice", reason: "Exact match found" }],
+			});
 			vi.spyOn(runtime, "getEntityById").mockResolvedValue(mockEntity);
 
 			const result = await findEntityByName(runtime, mockMemory, mockState);
@@ -205,12 +198,10 @@ describe("entities", () => {
 			vi.spyOn(runtime, "getEntitiesForRoom").mockResolvedValue([mockEntity]);
 			vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
 			vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
-			vi.spyOn(runtime, "useModel").mockResolvedValue(
-				JSON.stringify({
-					type: "EXACT_MATCH",
-					entityId: "entity-123",
-				}),
-			);
+			vi.spyOn(runtime.promptBatcher, "askNow").mockResolvedValue({
+				type: "EXACT_MATCH",
+				entityId: "entity-123",
+			});
 			vi.spyOn(runtime, "getEntityById").mockResolvedValue(mockEntity);
 
 			await findEntityByName(runtime, mockMemory, mockState);
@@ -231,7 +222,7 @@ describe("entities", () => {
 			vi.spyOn(runtime, "getEntitiesForRoom").mockResolvedValue([]);
 			vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
 			vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
-			vi.spyOn(runtime, "useModel").mockResolvedValue("invalid json");
+			vi.spyOn(runtime.promptBatcher, "askNow").mockResolvedValue({});
 
 			const result = await findEntityByName(runtime, mockMemory, mockState);
 
@@ -310,18 +301,11 @@ describe("entities", () => {
 			]);
 			vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
 			vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
-			vi.spyOn(runtime, "useModel").mockResolvedValue(
-				`<response>
-  <entityId>entity-exact</entityId>
-  <type>EXACT_MATCH</type>
-  <matches>
-    <match>
-      <name>ExactMatch</name>
-      <reason>Exact ID match</reason>
-    </match>
-  </matches>
-</response>`,
-			);
+			vi.spyOn(runtime.promptBatcher, "askNow").mockResolvedValue({
+				entityId: "entity-exact",
+				type: "EXACT_MATCH",
+				matches: [{ name: "ExactMatch", reason: "Exact ID match" }],
+			});
 			vi.spyOn(runtime, "getEntityById").mockResolvedValue(
 				mockEntityWithComponents,
 			);
@@ -366,12 +350,10 @@ describe("entities", () => {
 			vi.spyOn(runtime, "getEntitiesForRoom").mockResolvedValue([mockEntity]);
 			vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
 			vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
-			vi.spyOn(runtime, "useModel").mockResolvedValue(
-				`<response>
-  <entityId>entity-user</entityId>
-  <type>EXACT_MATCH</type>
-</response>`,
-			);
+			vi.spyOn(runtime.promptBatcher, "askNow").mockResolvedValue({
+				entityId: "entity-user",
+				type: "EXACT_MATCH",
+			});
 			vi.spyOn(runtime, "getEntityById").mockResolvedValue(mockEntity);
 
 			const result = await findEntityByName(runtime, mockMemory, mockState);
@@ -412,12 +394,10 @@ describe("entities", () => {
 			vi.spyOn(runtime, "getEntitiesForRoom").mockResolvedValue([mockEntity]);
 			vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
 			vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
-			vi.spyOn(runtime, "useModel").mockResolvedValue(
-				`<response>
-  <entityId>entity-handle</entityId>
-  <type>EXACT_MATCH</type>
-</response>`,
-			);
+			vi.spyOn(runtime.promptBatcher, "askNow").mockResolvedValue({
+				entityId: "entity-handle",
+				type: "EXACT_MATCH",
+			});
 			vi.spyOn(runtime, "getEntityById").mockResolvedValue(mockEntity);
 
 			const result = await findEntityByName(runtime, mockMemory, mockState);

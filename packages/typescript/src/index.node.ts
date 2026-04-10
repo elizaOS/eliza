@@ -41,6 +41,8 @@ export * from "./markdown";
 // Export media utilities
 export * from "./media";
 export * from "./memory";
+// Prompt-quality signals + RUN_ENDED trace finalization (pairs with PROMPT_OPTIMIZATION_ENABLED)
+export { neuroEvaluator, neuroPlugin } from "./plugin-neuro/index.ts";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
 export * from "./plugin";

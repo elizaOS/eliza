@@ -1,8 +1,47 @@
+import { v4 as uuidv4 } from "uuid";
 import type { Provider } from "../../types/index.ts";
-import { ModelType } from "../../types/index.ts";
+import type { SchemaRow } from "../../types/state.ts";
 import { composePrompt } from "../../utils.ts";
 import { messageClassifierTemplate } from "../prompts.ts";
 import type { JsonValue } from "../types.ts";
+
+const MESSAGE_CLASSIFIER_SCHEMA: SchemaRow[] = [
+	{
+		field: "COMPLEXITY",
+		description: "simple, medium, complex, or enterprise",
+		required: true,
+	},
+	{
+		field: "PLANNING",
+		description: "direct_action, sequential_planning, or strategic_planning",
+		required: true,
+	},
+	{
+		field: "CAPABILITIES",
+		description: "Comma-separated capability names, or empty",
+		required: false,
+	},
+	{
+		field: "STAKEHOLDERS",
+		description: "Comma-separated stakeholder types, or empty",
+		required: false,
+	},
+	{
+		field: "CONSTRAINTS",
+		description: "Comma-separated constraints, or empty",
+		required: false,
+	},
+	{
+		field: "DEPENDENCIES",
+		description: "Comma-separated dependencies, or empty",
+		required: false,
+	},
+	{
+		field: "CONFIDENCE",
+		description: "A number from 0.0 to 1.0 as a string or number",
+		required: false,
+	},
+];
 
 export const messageClassifierProvider: Provider = {
 	name: "messageClassifier",
@@ -34,27 +73,28 @@ export const messageClassifierProvider: Provider = {
 				template: messageClassifierTemplate,
 			});
 
-			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-				prompt: classificationPrompt,
-				temperature: 0.3,
-				maxTokens: 300,
-			});
+			const fieldsRaw = await runtime.promptBatcher.askNow(
+				`message-classifier:${message.id ?? uuidv4()}`,
+				{
+					preamble: classificationPrompt,
+					schema: MESSAGE_CLASSIFIER_SCHEMA,
+					fallback: {},
+					model: "small",
+					execOptions: {
+						temperature: 0.3,
+						maxTokens: 300,
+					},
+				},
+			);
 
-			const responseText = String(response);
-			const lines = responseText.split("\n");
-			const fields: Record<string, string> = {};
-			for (const line of lines) {
-				const separatorIndex = line.indexOf(":");
-				if (separatorIndex === -1) continue;
-				const key = line.slice(0, separatorIndex).trim();
-				const value = line.slice(separatorIndex + 1).trim();
-				if (key) {
-					fields[key] = value;
-				}
-			}
+			const fieldStr = (key: string): string => {
+				const v = fieldsRaw?.[key];
+				if (v === undefined || v === null) return "";
+				return String(v).trim();
+			};
 
 			const parseField = (key: string): string[] => {
-				const value = fields[key];
+				const value = fieldStr(key);
 				if (!value) {
 					return [];
 				}
@@ -64,9 +104,9 @@ export const messageClassifierProvider: Provider = {
 					.filter((s) => s.length > 0);
 			};
 
-			const complexity = fields.COMPLEXITY || "simple";
-			const planningType = fields.PLANNING || "direct_action";
-			const confidenceStr = fields.CONFIDENCE || "0.5";
+			const complexity = fieldStr("COMPLEXITY") || "simple";
+			const planningType = fieldStr("PLANNING") || "direct_action";
+			const confidenceStr = fieldStr("CONFIDENCE") || "0.5";
 			const confidence = Math.min(
 				1.0,
 				Math.max(0.0, Number.parseFloat(confidenceStr) || 0.5),

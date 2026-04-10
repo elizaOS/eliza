@@ -79,7 +79,7 @@ describe("PromptBatcher", () => {
 			createRuntime();
 
 		dynamicPromptExecFromState.mockResolvedValue({
-			init_intro__instructions: "Introduce yourself briefly.",
+			instructions: "Introduce yourself briefly.",
 		});
 
 		const batcher = createBatcher(runtime);
@@ -115,7 +115,7 @@ describe("PromptBatcher", () => {
 		const batcher = createBatcher(runtime);
 
 		dynamicPromptExecFromState.mockResolvedValue({
-			room_test__summary: "short summary",
+			summary: "short summary",
 		});
 
 		batcher.onDrain("room-test", {
@@ -205,7 +205,7 @@ describe("PromptBatcher", () => {
 		const batcher = createBatcher(runtime);
 
 		dynamicPromptExecFromState.mockResolvedValue({
-			room_test__summary: "short summary",
+			summary: "short summary",
 		});
 
 		const onDrainPromise = batcher.onDrain("room-test", {

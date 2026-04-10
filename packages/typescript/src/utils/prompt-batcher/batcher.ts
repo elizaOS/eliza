@@ -1,6 +1,5 @@
 import type { Memory } from "../../types/memory";
 import type { GenerateTextParams } from "../../types/model";
-import type { UUID } from "../../types/primitives";
 import {
 	BatcherDisposedError,
 	type BatcherResult,
@@ -14,7 +13,7 @@ import {
 } from "../../types/prompt-batcher";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { SchemaRow } from "../../types/state";
-import type { Task } from "../../types/task";
+import { TaskDrain } from "../batch-queue";
 import type { PromptDispatcher } from "./dispatcher";
 import {
 	buildCharacterContext,
@@ -53,7 +52,7 @@ export class PromptBatcher {
 
 	private enabled = false;
 	private disposed = false;
-	private readonly affinityTaskIds = new Map<string, UUID>();
+	private readonly affinityDrains = new Map<string, TaskDrain>();
 
 	constructor(
 		private readonly runtime: IAgentRuntime,
@@ -115,15 +114,29 @@ export class PromptBatcher {
 			resolved: false,
 		});
 
-		void this._ensureAffinityTask(normalized.affinityKey ?? "default");
+		void this._ensureAffinityDrain(normalized.affinityKey ?? "default");
 
-		if (
-			this.enabled &&
-			(normalized.priority === "immediate" ||
-				normalized.frequency === "once" ||
-				normalized.frequency === "per-drain")
-		) {
-			void this.drainAffinityGroup(normalized.affinityKey ?? "default");
+		const shouldDrainNow =
+			normalized.priority === "immediate" ||
+			normalized.frequency === "once" ||
+			normalized.frequency === "per-drain";
+
+		if (shouldDrainNow) {
+			if (this.enabled) {
+				void this.drainAffinityGroup(normalized.affinityKey ?? "default");
+			} else if (
+				normalized.priority === "immediate" ||
+				normalized.frequency === "once"
+			) {
+				// WHY: `enabled` flips true only after initPromise; without this, askNow
+				// registered during early startup would never drain until a later global drain.
+				// Per-drain sections intentionally skip this path so they are not double-drained.
+				void this.runtime.initPromise.then(() => {
+					if (!this.disposed) {
+						void this.drainAffinityGroup(normalized.affinityKey ?? "default");
+					}
+				});
+			}
 		}
 
 		return promise;
@@ -239,14 +252,12 @@ export class PromptBatcher {
 	dispose(): void {
 		this.disposed = true;
 
-		if (typeof this.runtime.deleteTask === "function") {
-			for (const [, taskId] of this.affinityTaskIds) {
-				void this.runtime.deleteTask(taskId).catch(() => {
-					/* task may already be gone */
-				});
-			}
+		for (const [, drain] of this.affinityDrains) {
+			void drain.dispose(this.runtime).catch(() => {
+				/* task may already be gone */
+			});
 		}
-		this.affinityTaskIds.clear();
+		this.affinityDrains.clear();
 
 		for (const pending of this.pendingResults.values()) {
 			if (!pending.resolved) {
@@ -437,6 +448,8 @@ export class PromptBatcher {
 			};
 		},
 	): Promise<Record<string, unknown>> {
+		const hasProviders =
+			opts.providers !== undefined && opts.providers.length > 0;
 		return this.addSection({
 			id,
 			frequency: "once",
@@ -450,7 +463,8 @@ export class PromptBatcher {
 			validate: opts.validate,
 			maxRetries: opts.maxRetries,
 			execOptions: opts.execOptions,
-		}).then((result) => result?.fields ?? opts.fallback); // WHY: Unwrap so callers get Record, not BatcherResult; fallback required by signature.
+			selfContained: !hasProviders,
+		}).then((result) => result?.fields ?? opts.fallback);
 	}
 
 	private _pushMessage(key: string, message: Memory): void {
@@ -499,9 +513,12 @@ export class PromptBatcher {
 		).length;
 	}
 
-	/** WHY create a task per affinity: task system owns WHEN (interval, pause/resume); batcher owns WHAT runs during drain. One BATCHER_DRAIN task per affinity so each group has its own schedule. */
-	private async _ensureAffinityTask(affinityKey: string): Promise<void> {
-		if (this.affinityTaskIds.has(affinityKey)) {
+	/**
+	 * One repeat task per affinity — TaskDrain with `skipRegisterWorker`: TaskService already
+	 * registers `BATCHER_DRAIN`; we only ensure the DB row + interval updates.
+	 */
+	private async _ensureAffinityDrain(affinityKey: string): Promise<void> {
+		if (this.affinityDrains.has(affinityKey)) {
 			return;
 		}
 		if (
@@ -510,73 +527,40 @@ export class PromptBatcher {
 		) {
 			return;
 		}
-		const existing = await this.runtime.getTasksByName("BATCHER_DRAIN");
-		const match = existing.find(
-			(t) =>
-				(t.metadata as Record<string, unknown>)?.affinityKey === affinityKey,
-		);
-		if (match?.id) {
-			this.affinityTaskIds.set(affinityKey, match.id);
-			return;
-		}
 		const interval = this.getIdealTickInterval(affinityKey);
-		// WHY queue+repeat: TaskService only runs tasks with tag "queue"; repeat uses updateInterval/updatedAt for scheduling.
-		// WHY maxFailures -1: JSON.stringify(Infinity) is null; -1 survives DB round-trip and means "never auto-pause" for drain tasks.
-		const task: Task = {
-			name: "BATCHER_DRAIN",
-			description: `Drain affinity group: ${affinityKey}`,
-			tags: ["queue", "repeat"],
-			metadata: {
-				affinityKey,
-				updateInterval: interval,
-				baseInterval: interval,
-				updatedAt: Date.now(),
-				maxFailures: -1,
+		const drain = new TaskDrain(
+			{
+				taskName: "BATCHER_DRAIN",
+				description: `Drain affinity group: ${affinityKey}`,
+				intervalMs: interval,
+				taskMetadata: { affinityKey },
+				skipRegisterWorker: true,
 			},
-		};
-		const id = await this.runtime.createTask(task);
-		this.affinityTaskIds.set(affinityKey, id);
+			interval,
+		);
+		await drain.start(this.runtime);
+		this.affinityDrains.set(affinityKey, drain);
 	}
 
 	private async _syncAffinityTask(affinityKey: string): Promise<void> {
-		const taskId = this.affinityTaskIds.get(affinityKey);
-		if (!taskId) return;
-		if (
-			typeof this.runtime.getTask !== "function" ||
-			typeof this.runtime.updateTask !== "function"
-		)
-			return;
+		const drain = this.affinityDrains.get(affinityKey);
+		if (!drain) return;
 		const count = this.getSectionCountForAffinity(affinityKey);
 		if (count === 0) {
 			await this._removeAffinityTask(affinityKey);
 			return;
 		}
-		const task = await this.runtime.getTask(taskId);
-		if (!task) {
-			this.affinityTaskIds.delete(affinityKey);
-			return;
-		}
 		const newInterval = this.getIdealTickInterval(affinityKey);
-		const current = (task.metadata as Record<string, unknown>)
-			?.updateInterval as number | undefined;
-		if (current !== newInterval) {
-			await this.runtime.updateTask(taskId, {
-				metadata: { ...task.metadata, updateInterval: newInterval },
-			});
-		}
+		await drain.updateInterval(this.runtime, newInterval);
 	}
 
 	private async _removeAffinityTask(affinityKey: string): Promise<void> {
-		const taskId = this.affinityTaskIds.get(affinityKey);
-		if (!taskId) return;
-		if (typeof this.runtime.deleteTask !== "function") {
-			this.affinityTaskIds.delete(affinityKey);
-			return;
-		}
+		const drain = this.affinityDrains.get(affinityKey);
+		if (!drain) return;
 		try {
-			await this.runtime.deleteTask(taskId);
+			await drain.dispose(this.runtime);
 		} finally {
-			this.affinityTaskIds.delete(affinityKey);
+			this.affinityDrains.delete(affinityKey);
 		}
 	}
 
@@ -895,7 +879,9 @@ export class PromptBatcher {
 		const providers = section.providers ?? [];
 		const anchorMessage = messages[messages.length - 1];
 
-		if (providers.length === 0) {
+		if (section.selfContained) {
+			// Preamble is the complete prompt; skip all context injection.
+		} else if (providers.length === 0) {
 			pieces.push(buildCharacterContext(this.runtime));
 		} else if (providers.length === 1 && providers[0] === "*") {
 			if (!anchorMessage) {
@@ -1211,6 +1197,7 @@ export class PromptBatcher {
 			},
 			schema: resolvedSection.section.schema,
 			options: {
+				promptName: `retrySection:${resolvedSection.section.id}`,
 				modelSize: resolvedSection.preferredModel,
 			},
 		});

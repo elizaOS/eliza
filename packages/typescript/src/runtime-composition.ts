@@ -35,7 +35,7 @@ import { resolvePlugins } from "./plugin";
 import {
 	ensureAgentInfrastructure,
 	ensureEmbeddingDimension,
-	runPluginMigrations,
+	runPluginMigrationsForAdapter,
 } from "./provisioning";
 import { AgentRuntime } from "./runtime";
 import type { Character, IAgentRuntime, IDatabaseAdapter } from "./types";
@@ -273,7 +273,7 @@ export interface CreateRuntimesOptions {
 	adapter?: IDatabaseAdapter;
 	/** Extra plugins to include for all characters (merged with character.plugins). WHY: Hosts like milaidy add their own plugin without putting it in every character file. */
 	sharedPlugins?: Plugin[];
-	/** Run provisioning after init: migrations once per unique adapter, then ensureAgentInfrastructure + ensureEmbeddingDimension per runtime. Default false. WHY: Daemons need it once at boot; serverless/ephemeral usually skip. */
+	/** When true: run plugin DDL once per unique adapter before merging DB settings, then after `initialize()` run ensureAgentInfrastructure + ensureEmbeddingDimension per runtime. Default false. WHY: Long-lived hosts need a migrated schema before `getAgentsByIds`; serverless/ephemeral often skip (pre-migrated DB or in-memory). */
 	provision?: boolean;
 	/** Log level for created runtimes. */
 	logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
@@ -313,12 +313,29 @@ export async function createRuntimes(
 	}
 
 	const pluginNames = new Set<string>();
+	/** Inline Plugin objects from character.plugins (e.g. harness-injected neuroPlugin). */
+	const characterPluginObjects = new Map<string, Plugin>();
 	for (const c of characters) {
 		for (const p of c.plugins ?? []) {
-			if (typeof p === "string") pluginNames.add(p);
+			if (typeof p === "string") {
+				pluginNames.add(p);
+			} else if (
+				p &&
+				typeof p === "object" &&
+				typeof (p as Plugin).name === "string" &&
+				(p as Plugin).name.length > 0
+			) {
+				const pl = p as Plugin;
+				if (!characterPluginObjects.has(pl.name)) {
+					characterPluginObjects.set(pl.name, pl);
+				}
+			}
 		}
 	}
-	const pluginInput: (string | Plugin)[] = [...pluginNames];
+	const pluginInput: (string | Plugin)[] = [
+		...characterPluginObjects.values(),
+		...pluginNames,
+	];
 	if (options?.sharedPlugins?.length) {
 		pluginInput.push(...options.sharedPlugins);
 	}
@@ -362,6 +379,21 @@ export async function createRuntimes(
 		seenAdapters.add(adapter);
 		if (!(await adapter.isReady())) {
 			await adapter.initialize();
+		}
+	}
+
+	// DDL must run before any query that touches plugin tables (e.g. getAgentsByIds below).
+	if (options?.provision) {
+		const seenForMigrations = new Set<IDatabaseAdapter>();
+		const logAgentId = agentIds[0];
+		for (const adapter of adapters) {
+			if (seenForMigrations.has(adapter)) continue;
+			seenForMigrations.add(adapter);
+			await runPluginMigrationsForAdapter(
+				adapter,
+				resolvedPlugins,
+				logAgentId,
+			);
 		}
 	}
 
@@ -416,17 +448,7 @@ export async function createRuntimes(
 
 	await Promise.all(runtimes.map((r) => r.initialize()));
 
-	// WHY migrations once per unique adapter: Multiple runtimes can share one adapter.
-	// Running migrations per runtime would repeat DDL; running once per adapter is correct.
 	if (options?.provision) {
-		const seenAdaptersForMigrations = new Set<IDatabaseAdapter>();
-		for (const r of runtimes) {
-			const adapter = r.adapter;
-			if (adapter && !seenAdaptersForMigrations.has(adapter)) {
-				seenAdaptersForMigrations.add(adapter);
-				await runPluginMigrations(r as unknown as IAgentRuntime);
-			}
-		}
 		for (const r of runtimes) {
 			await ensureAgentInfrastructure(r as unknown as IAgentRuntime);
 			await ensureEmbeddingDimension(r as unknown as IAgentRuntime);

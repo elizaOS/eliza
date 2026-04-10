@@ -12,11 +12,7 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import {
-	composePromptFromState,
-	parseBooleanFromText,
-	parseKeyValueXml,
-} from "../../utils.ts";
+import { composePromptFromState, parseBooleanFromText } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("FOLLOW_ROOM");
@@ -86,19 +82,33 @@ export const followRoomAction: Action = {
 				template: shouldFollowRoomTemplate,
 			});
 
-			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-				prompt: shouldFollowPrompt,
-				stopSequences: [],
+			const parsed = await runtime.dynamicPromptExecFromState({
+				params: {
+					prompt: shouldFollowPrompt,
+					stopSequences: [],
+				},
+				schema: [
+					{
+						field: "decision",
+						description:
+							"true if the agent should follow this room, false otherwise",
+						type: "boolean",
+						required: true,
+					},
+				],
+				options: {
+					modelType: ModelType.TEXT_SMALL,
+					promptName: "shouldFollowRoom",
+				},
 			});
 
-			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(
-				response,
-			);
-			const decisionValue = parsed?.decision ?? response.trim();
+			const decisionValue = parsed?.decision ?? null;
 			const cleanedResponse = String(decisionValue).trim().toLowerCase();
 
 			if (
-				parseBooleanFromText(decisionValue) ||
+				parseBooleanFromText(
+					decisionValue as string | boolean | null | undefined,
+				) ||
 				cleanedResponse.includes("true") ||
 				cleanedResponse.includes("yes")
 			) {
@@ -146,7 +156,7 @@ export const followRoomAction: Action = {
 				{
 					src: "plugin:advanced-capabilities:action:follow_room",
 					agentId: runtime.agentId,
-					response,
+					decisionValue,
 				},
 				"Unclear boolean response, defaulting to false",
 			);

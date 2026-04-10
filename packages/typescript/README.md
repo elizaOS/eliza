@@ -69,6 +69,9 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `SENTRY_SEND_DEFAULT_PII`: Send Personally Identifiable Information to Sentry (`true`/`false`).
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
+- `BATCHER_MAX_PARALLEL`: Positive integer; caps concurrent prompt-batcher dispatches (default `2` if unset). **Why:** Prevents too many simultaneous structured LLM calls when many sections drain together—see [docs/LLM_ROUTING.md](docs/LLM_ROUTING.md).
+- `PROMPT_OPTIMIZATION_ENABLED`: When truthy, DPE emits optimization traces, writes the prompt registry, and (with `plugin-neuro`) runs the RUN_ENDED finalizer path that updates slot profiles and may start background `OptimizationRunner`. **Why:** Single master switch for the whole on-disk optimization pipeline—see [docs/PROMPT_OPTIMIZATION.md](docs/PROMPT_OPTIMIZATION.md).
+- `OPTIMIZATION_DIR`: Optional root directory for traces, profiles, `artifact.json`, and `_prompt_registry` (defaults under `~/.eliza/optimization` when unset). **Why:** Lets you colocate artifacts with a repo or mount a volume without changing code.
 - `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`). Defaults from runtime settings if not set in options.
 - `DISABLE_MEMORY_CREATION` / `ALLOW_MEMORY_SOURCE_IDS`: Basic-capabilities-related; see plugin docs. Shown in the basic-capabilities banner when set.
 
@@ -96,8 +99,11 @@ SENTRY_SEND_DEFAULT_PII=true
 Key behaviors and APIs are documented with their **reasons** so future changes stay consistent with intent:
 
 - **[docs/DESIGN.md](docs/DESIGN.md)** — Design decisions: message races, provider timeout, keepExistingResponses, JSON5, formatPosts fallbacks, HandlerCallback actionName, anxiety provider, file logging, and what we don’t do.
+- **[docs/LLM_ROUTING.md](docs/LLM_ROUTING.md)** — **Which LLM API to use:** `useModel` vs `dynamicPromptExecFromState` vs `PromptBatcher` / `askNow`; message service mapping; batcher WHYs (`selfContained`, single-section dispatch, init timing). Use this before migrating call sites.
+- **[docs/BATCH_QUEUE.md](docs/BATCH_QUEUE.md)** — **Composable batch processing:** `PriorityQueue`, `BatchProcessor`, `TaskDrain`, `BatchQueue`; why layers are split; unbounded-by-default queues; `skipRegisterWorker` for `BATCHER_DRAIN`; how embedding and action-filter use the toolkit.
+- **[docs/PROMPT_OPTIMIZATION.md](docs/PROMPT_OPTIMIZATION.md)** — **Traces, `OPTIMIZATION_DIR` layout, registry, auto artifacts, A/B, and parsing (TOON vs XML).** Use when debugging `no_artifact`, path layout, or `Could not find XML block` after TOON-looking model output.
 - **[CHANGELOG.md](CHANGELOG.md)** — Per-change notes with WHY for each addition or fix.
-- **[ROADMAP.md](ROADMAP.md)** — Planned work and rationale (observability, robustness, API consistency, performance).
+- **[ROADMAP.md](ROADMAP.md)** — Planned work and rationale (observability, robustness, API consistency, performance, prompt optimization pointers).
 
 When adding or changing behavior, update these docs so the WHY stays accurate.
 

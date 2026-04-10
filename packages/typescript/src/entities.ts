@@ -1,14 +1,15 @@
+import { v4 as uuidv4 } from "uuid";
 import { logger } from "./logger";
-import {
-	type Entity,
-	type IAgentRuntime,
-	type Memory,
-	ModelType,
-	type Relationship,
-	type State,
-	type UUID,
-	type World,
+import type {
+	Entity,
+	IAgentRuntime,
+	Memory,
+	Relationship,
+	State,
+	UUID,
+	World,
 } from "./types";
+import type { SchemaRow } from "./types/state";
 import * as utils from "./utils";
 import { stableStringify } from "./utils/deterministic";
 
@@ -65,60 +66,63 @@ function normalizeEntityMatches(value: unknown): EntityMatch[] {
 	return directMatch ? [directMatch] : [];
 }
 
-function parseEntityResolutionResponse(
-	text: string,
+function parsedResolutionFromRecord(
+	parsed: Record<string, unknown>,
 ): (ParsedResolution & { type?: string; entityId?: string }) | null {
-	if (!text) return null;
+	const type = typeof parsed.type === "string" ? parsed.type : undefined;
+	const entityId =
+		typeof parsed.entityId === "string"
+			? parsed.entityId
+			: typeof parsed.resolvedId === "string"
+				? parsed.resolvedId
+				: undefined;
+	const matches = normalizeEntityMatches(parsed.matches);
 
-	const parsed = utils.parseKeyValueXml<Record<string, unknown>>(text);
-	const trimmed = text.trim();
-
-	if (parsed) {
-		const type = typeof parsed.type === "string" ? parsed.type : undefined;
-		const entityId =
-			typeof parsed.entityId === "string"
-				? parsed.entityId
-				: typeof parsed.resolvedId === "string"
-					? parsed.resolvedId
-					: undefined;
-		const matches = normalizeEntityMatches(parsed.matches);
-
-		if (type || entityId || matches.length > 0) {
-			return {
-				type,
-				entityId: entityId && entityId !== "null" ? entityId : undefined,
-				matches: matches.length > 0 ? { match: matches } : undefined,
-			};
-		}
+	if (type || entityId || matches.length > 0) {
+		return {
+			type,
+			entityId: entityId && entityId !== "null" ? entityId : undefined,
+			matches: matches.length > 0 ? { match: matches } : undefined,
+		};
 	}
-
-	try {
-		const parsedJson = JSON.parse(trimmed) as unknown;
-		if (parsedJson && typeof parsedJson === "object") {
-			const obj = parsedJson as Record<string, unknown>;
-			const type = typeof obj.type === "string" ? obj.type : undefined;
-			const entityId =
-				typeof obj.entityId === "string"
-					? obj.entityId
-					: typeof obj.resolvedId === "string"
-						? obj.resolvedId
-						: undefined;
-			const matches = normalizeEntityMatches(obj.matches);
-
-			if (type || entityId || matches.length > 0) {
-				return {
-					type,
-					entityId: entityId && entityId !== "null" ? entityId : undefined,
-					matches: matches.length > 0 ? { match: matches } : undefined,
-				};
-			}
-		}
-	} catch {
-		// ignore
-	}
-
 	return null;
 }
+
+const entityResolutionSchema: SchemaRow[] = [
+	{
+		field: "entityId",
+		description: "Exact entity UUID if known, or the literal null if unknown",
+		required: false,
+	},
+	{
+		field: "type",
+		description:
+			"One of: EXACT_MATCH, USERNAME_MATCH, NAME_MATCH, RELATIONSHIP_MATCH, AMBIGUOUS, UNKNOWN",
+		required: false,
+	},
+	{
+		field: "matches",
+		description: "Candidate entities when ambiguous or for context",
+		type: "array",
+		required: false,
+		items: {
+			type: "object",
+			description: "One candidate match",
+			properties: [
+				{
+					field: "name",
+					description: "Display name or handle of the candidate entity",
+					required: true,
+				},
+				{
+					field: "reason",
+					description: "Why this entity might match the reference",
+					required: false,
+				},
+			],
+		},
+	},
+];
 
 const entityResolutionTemplate = `# Task: Resolve Entity Name
 Message Sender: {{senderName}} (ID: {{senderId}})
@@ -289,12 +293,20 @@ export async function findEntityByName(
 		template: entityResolutionTemplate,
 	});
 
-	const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt,
-		stopSequences: [],
-	});
+	const askResult = await runtime.promptBatcher.askNow(
+		`entity-resolution:${uuidv4()}`,
+		{
+			preamble: prompt,
+			schema: entityResolutionSchema,
+			fallback: {},
+			model: "small",
+			execOptions: {
+				stopSequences: [],
+			},
+		},
+	);
 
-	const resolution = parseEntityResolutionResponse(result);
+	const resolution = askResult ? parsedResolutionFromRecord(askResult) : null;
 	if (!resolution) {
 		// If the model output is malformed, fall back to a conservative heuristic:
 		// when there's only one candidate entity in context, return it.
@@ -424,8 +436,10 @@ export async function findEntityByName(
 	}
 
 	// Fallback: if parsing failed to produce a usable match list, try to detect
-	// usernames/handles mentioned in the raw model output.
-	const resultLower = result.toLowerCase();
+	// usernames/handles mentioned in the structured model output.
+	const resultLower = (
+		askResult ? JSON.stringify(askResult) : ""
+	).toLowerCase();
 	const fallbackEntity = indexedEntities.find((entry) =>
 		entry.fallbackTokens.some((token) => resultLower.includes(token)),
 	)?.entity;

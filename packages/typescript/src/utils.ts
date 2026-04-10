@@ -583,6 +583,10 @@ export const formatTimestamp = (messageDate: number) => {
  * Parses structured LLM output from TOON first, then falls back to the legacy
  * XML response format.
  *
+ * **Why the name `parseKeyValueXml`?** Historical: XML was primary first; TOON
+ * is now attempted first inside this function. Call sites use one entry for
+ * “structured DPE output,” regardless of wire format.
+ *
  * TOON is the preferred format in elizaOS because it is materially more token
  * efficient than XML while preserving JSON-compatible structure. XML fallback
  * remains here for backwards compatibility with older prompts and models.

@@ -74,7 +74,7 @@ export class TaskService extends Service {
 			name: "BATCHER_DRAIN",
 			execute: async (rt, options) => {
 				const affinityKey = options.affinityKey as string;
-				if (!rt.promptBatcher || !affinityKey) return undefined;
+				if (!affinityKey) return undefined;
 				await rt.promptBatcher.drainAffinityGroup(affinityKey);
 				return undefined;
 			},

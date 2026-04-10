@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelType, ContentType, EventType, ModelType } from "../index";
 import { DefaultMessageService } from "../services/message";
 import type { Content, HandlerCallback, Memory, UUID } from "../types";
+import type { Action } from "../types/components";
 import type { IMessageService } from "../types/message-service";
 import type { GenerateTextParams } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
@@ -575,6 +576,93 @@ describe("DefaultMessageService", () => {
 				}),
 				"messages",
 			);
+		});
+
+		it("repairs missing required action params via dynamicPromptExecFromState (parameterRepair)", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+
+			const dpeSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Will send a message",
+					actions: "SEND_MESSAGE",
+					text: "",
+					simple: false,
+				})
+				.mockResolvedValueOnce({
+					params: {
+						SEND_MESSAGE: {
+							target: "room-abc",
+							text: "Hello from repair",
+						},
+					},
+				});
+
+			const sendMessageAction = {
+				name: "SEND_MESSAGE",
+				description: "Send a message to a target",
+				handler: async () => ({ success: true }),
+				validate: async () => true,
+				parameters: [
+					{
+						name: "target",
+						description: "Target room or channel id",
+						required: true,
+						schema: { type: "string" },
+					},
+					{
+						name: "text",
+						description: "Message body",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			} as Action;
+			runtime.actions = [sendMessageAction];
+
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026" as UUID,
+				content: {
+					text: "Send a DM to the team room",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(dpeSpy).toHaveBeenCalledTimes(2);
+			const repairCall = dpeSpy.mock.calls.find(
+				(call) =>
+					(call[0] as { options?: { promptName?: string } })?.options
+						?.promptName === "parameterRepair",
+			);
+			expect(repairCall).toBeDefined();
+
+			expect(result.responseContent?.params).toEqual(
+				expect.objectContaining({
+					SEND_MESSAGE: expect.objectContaining({
+						target: "room-abc",
+						text: "Hello from repair",
+					}),
+				}),
+			);
+			expect(runtime.processActions).toHaveBeenCalled();
 		});
 
 		it("should continue after an action and emit a follow-up reply", async () => {

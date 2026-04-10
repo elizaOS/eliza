@@ -128,6 +128,37 @@ function escapeHandlebars(text: string): string {
 }
 
 /**
+ * Normalize `params` from parameter-repair structured output for `Content.params`.
+ * Handles TOON-parsed objects, JSON strings, or legacy plain strings.
+ *
+ * **Why:** DPE may return a nested object, a JSON string, or (legacy) an XML-ish fragment
+ * string depending on model output; downstream `parseActionParams` / TOON helpers expect
+ * `Content.params` in a shape they can consume without a second manual parse path here.
+ */
+function normalizeRepairParamsForContent(
+	raw: unknown,
+): Content["params"] | undefined {
+	if (raw === undefined || raw === null) return undefined;
+	if (typeof raw === "string") {
+		const trimmed = raw.trim();
+		if (!trimmed) return undefined;
+		try {
+			const parsed = JSON.parse(trimmed) as unknown;
+			if (parsed !== null && typeof parsed === "object") {
+				return parsed as Content["params"];
+			}
+		} catch {
+			// Not JSON — treat as legacy params string (e.g. XML fragment).
+		}
+		return trimmed as Content["params"];
+	}
+	if (typeof raw === "object") {
+		return raw as Content["params"];
+	}
+	return undefined;
+}
+
+/**
  * Image description response from the model
  */
 interface ImageDescriptionResponse {
@@ -537,6 +568,9 @@ export class DefaultMessageService implements IMessageService {
 													voice: voiceId,
 													model: model,
 												};
+												// WHY useModel: TTS returns binary audio (ArrayBuffer/Buffer), not
+												// structured text — PromptBatcher/dynamicPromptExecFromState only
+												// drive text-generation paths.
 												const result = runtime.getModel(
 													ModelType.TEXT_TO_SPEECH,
 												)
@@ -759,6 +793,7 @@ export class DefaultMessageService implements IMessageService {
 														voice: voiceId,
 														model: model,
 													};
+													// WHY useModel: TTS — binary audio output; not DPE/batcher.
 													const result = runtime.getModel(
 														ModelType.TEXT_TO_SPEECH,
 													)
@@ -866,6 +901,7 @@ export class DefaultMessageService implements IMessageService {
 										voice: voiceId,
 										model: model,
 									};
+									// WHY useModel: TTS — binary audio output; not DPE/batcher.
 									const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
 										? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
 										: undefined;
@@ -1205,6 +1241,7 @@ export class DefaultMessageService implements IMessageService {
 						},
 					],
 					options: {
+						promptName: "shouldRespond",
 						contextCheckLevel: 0, // Set to 0 for now
 						modelType: resolveShouldRespondModelType(opts.shouldRespondModel),
 						preferredEncapsulation: "toon",
@@ -1511,8 +1548,8 @@ export class DefaultMessageService implements IMessageService {
 		const didRespond =
 			shouldRespondToMessage && !isStopResponse(responseContent);
 
-		// Run evaluators — fire-and-forget for streaming HTTP sources so the SSE
-		// response can close even if evaluators stall (e.g. auth error on TEXT_LARGE).
+		// Run evaluators — awaited so enrichment signals are attached to the
+		// active trace before RUN_ENDED fires and the finalizer persists it.
 		const runEvaluate = () =>
 			runtime.evaluate(
 				message,
@@ -1537,17 +1574,7 @@ export class DefaultMessageService implements IMessageService {
 				responseMessages,
 			);
 
-		const source = message.content?.source;
-		if (source === "client_chat" || source === "client_direct") {
-			void runEvaluate().catch((err) => {
-				runtime.logger.warn(
-					{ err, src: "service:message" },
-					"Deferred evaluate failed",
-				);
-			});
-		} else {
-			await runEvaluate();
-		}
+		await runEvaluate();
 
 		// Collect metadata for logging
 		let entityName = "noname";
@@ -1806,6 +1833,8 @@ export class DefaultMessageService implements IMessageService {
 						imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 					}
 
+					// WHY useModel: vision model (IMAGE_DESCRIPTION + imageUrl), not TEXT_* /
+					// GenerateTextParams — dynamicPromptExecFromState does not invoke this model type.
 					const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
 						prompt: imageDescriptionTemplate,
 						imageUrl,
@@ -1953,6 +1982,7 @@ export class DefaultMessageService implements IMessageService {
 							transcriptionInput = Buffer.from(arrayBuffer);
 						}
 
+						// WHY useModel: TRANSCRIPTION takes URL/buffer input; not a text prompt schema.
 						const transcript = await runtime.useModel(
 							ModelType.TRANSCRIPTION,
 							transcriptionInput,
@@ -2002,6 +2032,7 @@ export class DefaultMessageService implements IMessageService {
 							transcriptionInput = Buffer.from(arrayBuffer);
 						}
 
+						// WHY useModel: TRANSCRIPTION — same as audio path above.
 						const transcript = await runtime.useModel(
 							ModelType.TRANSCRIPTION,
 							transcriptionInput,
@@ -2290,6 +2321,7 @@ export class DefaultMessageService implements IMessageService {
 				},
 			],
 			options: {
+				promptName: "singleShotReply",
 				modelType: ModelType.ACTION_PLANNER,
 				preferredEncapsulation: opts.onStreamChunk ? "xml" : "toon",
 				requiredFields: ["thought", "actions"],
@@ -2460,6 +2492,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 						},
 					],
 					options: {
+						promptName: "singleShotContinuation",
 						modelType: ModelType.ACTION_PLANNER,
 						preferredEncapsulation: streamingCtx?.onStreamChunk
 							? "xml"
@@ -2497,8 +2530,9 @@ Output ONLY the continuation, starting immediately after the last character abov
 		}
 
 		// Action parameter repair (Python parity):
-		// If the model selected actions with required parameters but omitted <params>,
-		// do a second pass asking for ONLY a <params> block.
+		// If the model selected actions with required parameters but omitted complete params,
+		// run a second pass via dynamicPromptExecFromState (promptName: parameterRepair) that
+		// returns a TOON document with a top-level `params` map keyed by action name.
 		const requiredByAction = new Map<string, string[]>();
 		const actionByName = new Map<string, Action>();
 		for (const action of runtime.actions) {
@@ -2554,13 +2588,40 @@ Output ONLY the continuation, starting immediately after the last character abov
 				"Do not include thought, actions, providers, text, or any other fields.",
 			].join("\n");
 
-			const repairResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-				prompt: repairPrompt,
+			// WHY DPE (not useModel + parseKeyValueXml): same validation/retry stack as the
+			// primary reply; repair is rare but should not bypass structured output guarantees.
+			// WHY TEXT_LARGE: stronger model for nested params; use TEXT_SMALL here if cost wins.
+			// WHY contextCheckLevel 0: speed; repair prompt is short and self-contained.
+			const repairResult = await runtime.dynamicPromptExecFromState({
+				state,
+				params: {
+					prompt: repairPrompt,
+					...(promptAttachments ? { attachments: promptAttachments } : {}),
+				},
+				schema: [
+					{
+						field: "params",
+						description:
+							"Parameters keyed by uppercase action name; each value is an object with the required keys for that action (TOON-nested or JSON-compatible).",
+						required: true,
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					promptName: "parameterRepair",
+					modelType: ModelType.TEXT_LARGE,
+					preferredEncapsulation: "toon",
+					contextCheckLevel: 0,
+					maxRetries: opts.maxRetries ?? 2,
+				},
 			});
-			const repairParsed =
-				parseKeyValueXml<Record<string, unknown>>(repairResponse);
-			if (repairParsed?.params) {
-				responseContent.params = repairParsed.params as Content["params"];
+
+			const mergedParams = normalizeRepairParamsForContent(
+				repairResult?.params,
+			);
+			if (mergedParams !== undefined) {
+				responseContent.params = mergedParams;
 			}
 		}
 
@@ -2736,6 +2797,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 					},
 				],
 				options: {
+					promptName: "multiStepDecision",
 					modelType: ModelType.ACTION_PLANNER,
 					preferredEncapsulation: "toon",
 				},
@@ -3073,6 +3135,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				},
 			],
 			options: {
+				promptName: "multiStepSummary",
 				modelSize: "large",
 				preferredEncapsulation: opts.onStreamChunk ? "xml" : "toon",
 				requiredFields: ["text"],

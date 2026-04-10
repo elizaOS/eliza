@@ -4,6 +4,23 @@
 
 ### Added
 
+- **Documentation: [docs/PROMPT_OPTIMIZATION.md](docs/PROMPT_OPTIMIZATION.md)** — on-disk layout (`modelId` / `slotKey`), registry, DPE → RUN_ENDED → auto-optimizer → A/B, and **why** TOON vs XML parsing logs look confusing (`parseKeyValueXml` order, streaming XML, trailing garbage).
+  - **Why:** Operators hit `no_artifact`, wrong paths, and parse warnings without a single narrative; this doc records intent next to the code.
+- **Package [ROADMAP.md](ROADMAP.md)** — near/medium/long-term core items with WHYs; points to `src/optimization/ROADMAP.md` for optimizer-specific phases.
+  - **Why:** README already linked `ROADMAP.md` from DESIGN; the file now exists and scopes “core vs optimization” cleanly.
+
+- **Batch queue toolkit** (`src/utils/batch-queue/`): `PriorityQueue`, `BatchProcessor`, `TaskDrain`, `Semaphore`, composed `BatchQueue`. Priority ordering (high → normal → low), optional `maxSize` with `onPressure` / `onOverflowWarning` (no silent eviction by default), concurrency-limited batch execution with retries via `utils/retry.ts`, find-or-create `queue`+`repeat` tasks with `maxFailures: -1`, optional `skipRegisterWorker` when TaskService already registers the worker (e.g. `BATCHER_DRAIN`). Barrel export: `src/utils/batch-queue.ts`.
+  - **Why:** Several services duplicated queue + repeat-task + retry patterns; I/O is the real bottleneck, not in-memory queue size. Splitting layers keeps `BatchProcessor` usable without tasks (action-filter) and `TaskDrain` usable without registering a second worker for batcher affinities.
+- **Documentation: [docs/BATCH_QUEUE.md](docs/BATCH_QUEUE.md)** — rationale, consumer table, imports, relationship to `PromptBatcher` vs embeddings.
+  - **Why:** Same “which abstraction?” problem as LLM routing; contributors need one place for WHYs without reading four services.
+- **DESIGN.md** — short section “Batch queue toolkit” linking to `BATCH_QUEUE.md`.
+  - **Why:** DESIGN.md is the first stop for architecture; batch processing deserves visibility next to LLM routing.
+
+- **Documentation: [docs/LLM_ROUTING.md](docs/LLM_ROUTING.md).** Explains when to use `useModel`, `dynamicPromptExecFromState`, and `PromptBatcher` / `askNow`; maps the message service to each API; documents batcher behaviors (`selfContained`, single-section dispatch, pre-init drain for `once`/`immediate`), and `BATCHER_MAX_PARALLEL`.
+  - **Why:** Contributors repeatedly needed a single place to answer “which API?” and “why is TTS still useModel?” without spelunking `runtime.ts` and `message.ts`.
+- **DESIGN.md section** “LLM calls: useModel vs dynamicPromptExecFromState vs PromptBatcher” with a pointer to `LLM_ROUTING.md`.
+  - **Why:** DESIGN.md is the first stop for behavior rationale; LLM routing deserves the same visibility as message races and provider timeouts.
+
 - **Prompt cache hints (PromptSegment, promptSegments).** The core can pass ordered segments with stability metadata so providers can use prompt-caching APIs. `GenerateTextParams` now has optional `promptSegments?: PromptSegment[]` where each segment is `{ content: string; stable: boolean }`. When set, `prompt` must equal `promptSegments.map(s => s.content).join("")`.
   - **Why:** Repeated calls often share the same instructions/format while only context changes; provider caches (Anthropic ephemeral, OpenAI/Gemini prefix) can reuse tokens for the stable part, reducing cost and latency. A single invariant lets providers opt in or ignore segments without breaking behavior.
 - **Runtime segment building in dynamicPromptExecFromState.** The runtime builds `promptSegments` from the dynamic prompt: variable block (unstable), format prefix (stable), validation/middle block (unstable), format suffix (stable), end block (unstable). Only content that is identical for the same schema/character is marked stable; validation instructions that contain per-call UUIDs are kept in an unstable segment.
@@ -42,6 +59,17 @@
 
 ### Changed
 
+- **Message service (`services/message.ts`) — parameter repair.** When actions require parameters but the first structured reply omitted them, the second pass now uses `dynamicPromptExecFromState` (`promptName: parameterRepair`, TOON field `params`) instead of `useModel(ModelType.TEXT_LARGE)` plus raw XML parsing. TTS, image description, and transcription remain on `useModel` with comments explaining modality.
+  - **Why:** Same validation/retry behavior as the rest of the reply pipeline; avoids treating repair as a special-case raw string. Vision/speech/transcription are not text-schema calls and must stay on the correct `ModelType`.
+- **README** — “Design and rationale” links `docs/LLM_ROUTING.md` and `docs/BATCH_QUEUE.md`; documents `BATCHER_MAX_PARALLEL`.
+  - **Why:** Discoverability for operators and contributors (LLM routing + batch queue toolkit).
+- **`EmbeddingGenerationService`** — Uses `BatchQueue` for priority queue + drain + retries; no fixed max queue size (optional pressure hooks live on `PriorityQueue` if we add them later). `Semaphore` moved to `utils/batch-queue/semaphore.ts` and re-exported from `prompt-batcher/shared.ts`.
+  - **Why:** Same behavior with less duplicated code; dropping a silent 1000-cap eviction avoids losing embedding work under load.
+- **`PromptBatcher`** — Per-affinity repeat tasks managed by `TaskDrain` with `skipRegisterWorker: true` (worker remains in TaskService). Section resolution, dispatcher, caches unchanged.
+  - **Why:** DRY task create/update/delete without registering a second `BATCHER_DRAIN` worker per affinity.
+- **`ActionFilterService.buildIndex`** — Embedding loop uses `BatchProcessor` (batch size 10, retries on transient failures).
+  - **Why:** Shared concurrency + retry policy instead of hand-rolled `Promise.all` only.
+
 - **Prompt batcher section resolution.** Section promises now resolve with `{ fields, meta }` instead of raw `fields`. askOnce and askNow unwrap to `result?.fields ?? fallback` so their return type remains `Promise<Record<string, unknown>>`. Runtime pre-callback audit uses `addSectionResult?.fields` for audited fields.
   - **Why:** Consistent result shape across the batcher; consumers that only need fields (askOnce, askNow, audit) keep the same API.
 - **Reflection evaluator** now uses the thenable style: `const result = await onDrain<ReflectionFields>(...); if (result) { ... }` and no `onResult` callback. Processing logic is unchanged; it runs inside the `if (result)` block.
@@ -49,6 +77,16 @@
 
 ### Fixed
 
+- **Prompt optimization `modelId` in trace paths.** `resolveProviderModelString` now walks `getModelFallbackChain` (same as model registration) and checks provider-prefixed settings (`OLLAMA_SMALL_MODEL`, etc.) before generic `SMALL_MODEL`.
+  - **Why:** Logical slots like `ACTION_PLANNER` often resolve to `TEXT_SMALL` at runtime; keying dirs by the slot name split artifacts from the real checkpoint (e.g. `lfm2:24b`).
+- **`SlotProfileManager.recordTrace` awaited write lock.** The lock body is now `await`ed so the RUN_ENDED finalizer does not run auto-optimization against a profile that has not finished updating.
+  - **Why:** Fire-and-forget `withWriteLock` caused a race: `needsReoptimization` stayed false when the auto runner read immediately after `recordTrace` returned.
+- **Auto-optimizer readiness.** `maybeRunAutoPromptOptimization` treats the slot as ready when `needsReoptimization || shouldReoptimize(profile)` so old profiles written under a higher first-run trace threshold do not block forever.
+  - **Why:** Changing `MIN_TRACES_FIRST_ARTIFACT` must not require manually deleting `profile_*.json`.
+- **First artifact threshold.** `SLOT_PROFILE_DEFAULTS.MIN_TRACES_FIRST_ARTIFACT` (default `3`) gates the initial `OptimizationRunner` run instead of requiring 50 traces for cold start.
+  - **Why:** Unlock `artifact.json` and A/B for local harness and small deployments without flooding traces.
+- **Auto-optimization repeat runs.** After `markOptimized`, `invalidateSlotProfileProcessCache` syncs the process `getSlotProfileManager` cache with disk; RUN_ENDED schedules at most one `maybeRunAutoPromptOptimization` per `(modelId, slot, promptKey, schemaFingerprint)` per batch.
+  - **Why:** `OptimizationRunner` used a separate `SlotProfileManager` instance, so the singleton kept stale `needsReoptimization` and the finalizer fired auto-opt once per trace in the run.
 - **Backoff base.** On recurring task failure, backoff now uses `baseInterval ?? updateInterval ?? 1000` instead of only `updateInterval`. **Why:** After multiple failures, interval had grown; using the original base prevents exponential-of-exponential growth.
 - **Non-repeat task on failure.** One-shot (non-repeat) tasks are now deleted after execution failure. **Why:** Otherwise they stay in the DB and are re-run every tick with no backoff, causing an infinite retry loop.
 - **BATCHER_DRAIN never auto-pause.** Batcher creates affinity tasks with `maxFailures: -1` instead of `Infinity`. **Why:** `JSON.stringify(Infinity)` is `null`; after DB round-trip the default would apply and drain tasks could auto-pause. `-1` survives JSON and is documented as "never pause."

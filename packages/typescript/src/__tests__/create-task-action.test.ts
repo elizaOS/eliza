@@ -17,30 +17,28 @@ describe("createTaskAction", () => {
 	let runtime: IAgentRuntime;
 	let createTaskMock: ReturnType<typeof vi.fn>;
 	let getTasksMock: ReturnType<typeof vi.fn>;
-	let useModelMock: ReturnType<typeof vi.fn>;
+	let askNowMock: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
+		askNowMock = vi.fn(async () => ({
+			triggerType: "interval",
+			displayName: "PR Summary",
+			instructions: "Summarize open pull requests.",
+			intervalMs: "3600000",
+			wakeMode: "inject_now",
+		}));
 		createTaskMock = vi.fn(async (task) => ({
 			...task,
 			id: "00000000-0000-0000-0000-000000000777" as UUID,
 		}));
 		getTasksMock = vi.fn(async () => []);
-		useModelMock = vi.fn(async () =>
-			[
-				"<response>",
-				"<triggerType>interval</triggerType>",
-				"<displayName>PR Summary</displayName>",
-				"<instructions>Summarize open pull requests.</instructions>",
-				"<intervalMs>3600000</intervalMs>",
-				"<wakeMode>inject_now</wakeMode>",
-				"</response>",
-			].join("\n"),
-		);
 
 		const runtimePartial: Partial<IAgentRuntime> = {
 			agentId: "00000000-0000-0000-0000-000000000401" as UUID,
 			enableAutonomy: true,
-			useModel: useModelMock,
+			promptBatcher: {
+				askNow: askNowMock,
+			} as IAgentRuntime["promptBatcher"],
 			getTasks: getTasksMock,
 			createTask: createTaskMock,
 			getSetting: () => undefined,

@@ -98,6 +98,9 @@ export enum EventType {
 
 	// Hook system events - message lifecycle (supplements MESSAGE_*)
 	HOOK_MESSAGE_SENDING = "HOOK_MESSAGE_SENDING",
+
+	// Prompt optimization events
+	OPTIMIZATION_TRACE = "OPTIMIZATION_TRACE",
 }
 
 /**
@@ -401,6 +404,20 @@ export interface HookMessageSendingPayload extends HookEventPayload {
 }
 
 /**
+ * Payload for OPTIMIZATION_TRACE events emitted after a trace is finalized.
+ * Allows plugin-neuro and other plugins to react to completed traces.
+ */
+export interface OptimizationTracePayload extends EventPayload {
+	runId: string;
+	promptKey: string;
+	modelSlot: string;
+	modelId: string;
+	variant: "baseline" | "optimized" | string;
+	parseSuccess: boolean;
+	compositeScore: number;
+}
+
+/**
  * Maps event types to their corresponding payload types
  */
 export interface EventPayloadMap {
@@ -450,6 +467,7 @@ export interface EventPayloadMap {
 	[EventType.HOOK_TOOL_AFTER]: HookToolPayload;
 	[EventType.HOOK_TOOL_PERSIST]: HookToolPayload;
 	[EventType.HOOK_MESSAGE_SENDING]: HookMessageSendingPayload;
+	[EventType.OPTIMIZATION_TRACE]: OptimizationTracePayload;
 }
 
 /**

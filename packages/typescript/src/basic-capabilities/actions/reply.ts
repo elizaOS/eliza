@@ -12,7 +12,7 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
+import { composePromptFromState } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("REPLY");
@@ -67,11 +67,26 @@ export const replyAction = {
 			template: runtime.character.templates?.replyTemplate || replyTemplate,
 		});
 
-		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
+		const parsedXml = await runtime.dynamicPromptExecFromState({
+			params: { prompt },
+			schema: [
+				{
+					field: "thought",
+					description: "Brief internal reasoning before replying",
+					required: false,
+				},
+				{
+					field: "text",
+					description: "The reply text to send to the user",
+					required: true,
+				},
+			],
+			options: {
+				modelType: ModelType.TEXT_LARGE,
+				promptName: "replyAction",
+			},
 		});
 
-		const parsedXml = parseKeyValueXml(response);
 		const thoughtValue = parsedXml?.thought;
 		const textValue = parsedXml?.text;
 		const thought: string =

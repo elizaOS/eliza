@@ -19,6 +19,16 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createLogger } from "./logger";
+import {
+	type ExecutionTrace,
+	getOptimizationRootDir,
+	getResolver,
+	getTraceWriter,
+	mergeArtifactIntoPrompt,
+	ScoreCard,
+	type ScoreSignal,
+} from "./optimization/index.ts";
+import { writePromptRegistryEntry } from "./optimization/prompt-registry.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
@@ -117,6 +127,8 @@ import {
 	hashStringToUint32,
 } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
+import { PromptBatcher } from "./utils/prompt-batcher/batcher.js";
+import { PromptDispatcher } from "./utils/prompt-batcher/dispatcher.js";
 import {
 	ActionStreamFilter,
 	ValidationStreamExtractor,
@@ -174,6 +186,104 @@ function resolveDynamicPromptModelType(
 		default:
 			return ModelType.TEXT_LARGE;
 	}
+}
+
+/**
+ * Keys that may exist only in `process.env` (e.g. from `.env`) before DB-backed settings
+ * are merged into the character. `getSetting` consults this when the key is absent from
+ * character settings/secrets.
+ *
+ * Includes Ollama slot resolution (`@elizaos/plugin-ollama` init) and prompt optimization
+ * (`PROMPT_OPTIMIZATION_ENABLED`, `OPTIMIZATION_DIR`) so `.env` matches harness behavior.
+ */
+function processEnvFallbackSetting(key: string): string | undefined {
+	if (typeof process === "undefined" || !process.env) return undefined;
+	const env = process.env;
+	if (
+		key.startsWith("OLLAMA_") ||
+		key === "SMALL_MODEL" ||
+		key === "LARGE_MODEL" ||
+		key === "PROMPT_OPTIMIZATION_ENABLED" ||
+		key === "OPTIMIZATION_DIR"
+	) {
+		const v = env[key];
+		if (v !== undefined && v !== "") return v;
+	}
+	return undefined;
+}
+
+/**
+ * Levenshtein edit distance between two strings.
+ * Used as a last-resort fuzzy matcher when the LLM misspells an action name
+ * (insertion, deletion, substitution) and substring matching fails.
+ */
+function editDistance(a: string, b: string): number {
+	const m = a.length;
+	const n = b.length;
+	let prev = new Uint16Array(n + 1);
+	let curr = new Uint16Array(n + 1);
+	for (let j = 0; j <= n; j++) prev[j] = j;
+	for (let i = 1; i <= m; i++) {
+		curr[0] = i;
+		for (let j = 1; j <= n; j++) {
+			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+			curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+		}
+		[prev, curr] = [curr, prev];
+	}
+	return prev[n];
+}
+
+/**
+ * Find the closest action by edit distance. Returns the match only when the
+ * distance is within a conservative threshold (≤ 2 edits AND ≤ 30% of the
+ * shorter string's length) to avoid false positives on short names.
+ */
+function findClosestActionByEditDistance(
+	normalized: string,
+	candidates: Array<{
+		action: Action;
+		normalizedName: string;
+		normalizedSimiles: string[];
+	}>,
+): {
+	action: Action;
+	matchType: "edit-distance-name" | "edit-distance-simile";
+} | null {
+	const MAX_DISTANCE = 2;
+	let bestAction: Action | null = null;
+	let bestDist = MAX_DISTANCE + 1;
+	let bestMatchType: "edit-distance-name" | "edit-distance-simile" =
+		"edit-distance-name";
+
+	for (const entry of candidates) {
+		const d = editDistance(normalized, entry.normalizedName);
+		const threshold = Math.min(
+			MAX_DISTANCE,
+			Math.floor(
+				Math.min(normalized.length, entry.normalizedName.length) * 0.3,
+			),
+		);
+		if (d <= threshold && d < bestDist) {
+			bestDist = d;
+			bestAction = entry.action;
+			bestMatchType = "edit-distance-name";
+		}
+		for (const simile of entry.normalizedSimiles) {
+			const sd = editDistance(normalized, simile);
+			const sThreshold = Math.min(
+				MAX_DISTANCE,
+				Math.floor(Math.min(normalized.length, simile.length) * 0.3),
+			);
+			if (sd <= sThreshold && sd < bestDist) {
+				bestDist = sd;
+				bestAction = entry.action;
+				bestMatchType = "edit-distance-simile";
+			}
+		}
+	}
+
+	return bestAction ? { action: bestAction, matchType: bestMatchType } : null;
 }
 
 export class Semaphore {
@@ -251,6 +361,14 @@ export class AgentRuntime implements IAgentRuntime {
 	private eventHandlers: Map<string, Array<(data: EventPayload) => void>> =
 		new Map();
 
+	/**
+	 * In-flight execution traces keyed by trace.id (unique uuid).
+	 * A single run can produce multiple DPE calls; each gets its own trace.
+	 * `runToTraces` maps runId -> set of trace ids for enrichment lookup.
+	 */
+	private activeTraces = new Map<string, ExecutionTrace>();
+	private runToTraces = new Map<string, Set<string>>();
+
 	// A map of all plugins available to the runtime, keyed by name, for dependency resolution.
 	private allAvailablePlugins = new Map<string, Plugin>();
 	// The initial list of plugins specified by the character configuration.
@@ -298,6 +416,8 @@ export class AgentRuntime implements IAgentRuntime {
 	public companionUrl?: string;
 	/** Set when stop() has been called; prevents new service starts and use-after-stop. */
 	private stopped = false;
+
+	private _promptBatcher?: PromptBatcher;
 
 	constructor(opts: {
 		conversationLength?: number;
@@ -486,6 +606,54 @@ export class AgentRuntime implements IAgentRuntime {
 	endRun(): void {
 		this.currentRunId = undefined;
 		this.currentRoomId = undefined;
+	}
+
+	/**
+	 * Lazy-initialized prompt orchestration layer (packing, affinity drains, parallelism).
+	 * **Why lazy:** Most tests and minimal agents never touch the batcher; constructing it
+	 * eagerly would wire task drains and dispatcher state for no benefit.
+	 * **Why always present on `IAgentRuntime`:** Call sites can use `runtime.promptBatcher`
+	 * without optional chaining; feature code and autonomy share one subsystem.
+	 * See `docs/LLM_ROUTING.md` for when to use the batcher vs `dynamicPromptExecFromState` vs `useModel`.
+	 */
+	get promptBatcher(): PromptBatcher {
+		if (!this._promptBatcher) {
+			const maxParallelCalls = this.resolveBatcherMaxParallelCalls();
+			this._promptBatcher = new PromptBatcher(
+				this,
+				new PromptDispatcher({
+					packingDensity: 0.5,
+					maxTokensPerCall: 4096,
+					maxParallelCalls,
+					modelSeparation: 0.7,
+					maxSectionsPerCall: 30,
+				}),
+				{
+					batchSize: 10,
+					maxDrainIntervalMs: 300_000,
+					maxSectionsPerCall: 30,
+					packingDensity: 0.5,
+					maxTokensPerCall: 4096,
+					maxParallelCalls,
+					modelSeparation: 0.7,
+				},
+			);
+		}
+		return this._promptBatcher;
+	}
+
+	private resolveBatcherMaxParallelCalls(): number {
+		const raw = this.getSetting("BATCHER_MAX_PARALLEL");
+		if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+			return Math.max(1, Math.floor(raw));
+		}
+		if (typeof raw === "string") {
+			const n = Number.parseInt(raw.trim(), 10);
+			if (Number.isFinite(n) && n > 0) {
+				return n;
+			}
+		}
+		return 2;
 	}
 
 	/**
@@ -1211,29 +1379,36 @@ export class AgentRuntime implements IAgentRuntime {
 				? (settings.secrets as Record<string, string | undefined>)
 				: undefined;
 
-		const value =
+		let raw: unknown =
 			secrets?.[key] ??
 			settings?.[key] ??
 			extraSettings?.[key] ??
 			nestedSecrets?.[key] ??
 			this.settings[key];
 
+		if (raw === undefined || raw === null) {
+			const envFb = processEnvFallbackSetting(key);
+			if (envFb !== undefined) {
+				raw = envFb;
+			}
+		}
+
 		// Handle each type appropriately
-		if (value === undefined || value === null) {
+		if (raw === undefined || raw === null) {
 			return null;
 		}
 
-		if (typeof value === "number") {
-			return value;
+		if (typeof raw === "number") {
+			return raw;
 		}
 
-		if (typeof value === "boolean") {
-			return value;
+		if (typeof raw === "boolean") {
+			return raw;
 		}
 
-		if (typeof value === "string") {
+		if (typeof raw === "string") {
 			// Only decrypt string values
-			const decrypted = decryptSecret(value, getSalt());
+			const decrypted = decryptSecret(raw, getSalt());
 			if (decrypted === "true") return true;
 			if (decrypted === "false") return false;
 			return decrypted;
@@ -1331,6 +1506,141 @@ export class AgentRuntime implements IAgentRuntime {
 
 		// Default to true (check should respond is enabled)
 		return true;
+	}
+
+	/**
+	 * Check if prompt optimization is enabled.
+	 * Controlled by the PROMPT_OPTIMIZATION_ENABLED setting.
+	 */
+	isPromptOptimizationEnabled(): boolean {
+		const setting = this.getSetting("PROMPT_OPTIMIZATION_ENABLED");
+		if (typeof setting === "boolean") return setting;
+		if (typeof setting === "string") {
+			return setting.toLowerCase() === "true" || setting === "1";
+		}
+		return false;
+	}
+
+	/**
+	 * Get the configured optimization root directory.
+	 * Falls back to ~/.eliza/optimization/ if not configured.
+	 */
+	getOptimizationDir(): string {
+		const setting = this.getSetting("OPTIMIZATION_DIR");
+		return getOptimizationRootDir(typeof setting === "string" ? setting : null);
+	}
+
+	/**
+	 * Resolve the **actual** checkpoint name for optimization paths and traces
+	 * (e.g. `lfm2:24b`), not only the logical DPE slot (e.g. `ACTION_PLANNER`).
+	 *
+	 * **Why walk `getModelFallbackChain`?** Many agents register `ACTION_PLANNER`
+	 * but fall back to `TEXT_SMALL` at inference. Keying disk by the logical slot
+	 * would split artifacts from the model that really ran and would not match
+	 * provider env resolution (`OLLAMA_SMALL_MODEL` vs `SMALL_MODEL`).
+	 *
+	 * **Why provider prefixes first?** Mirrors plugin-ollama (and similar) at
+	 * generation time so trace `modelId` matches the served model.
+	 *
+	 * Order: explicit `options.model` → for each fallback slot, try
+	 * `OLLAMA_*`, `OPENAI_*`, `ANTHROPIC_*`, then unprefixed `*_MODEL` → else
+	 * return `resolvedModelType` (last resort).
+	 */
+	resolveProviderModelString(
+		resolvedModelType: string,
+		optionsModel?: string,
+	): string {
+		if (optionsModel) return optionsModel;
+
+		const slotToSetting: Record<string, string> = {
+			TEXT_NANO: "NANO_MODEL",
+			TEXT_MINI: "MINI_MODEL",
+			TEXT_SMALL: "SMALL_MODEL",
+			TEXT_LARGE: "LARGE_MODEL",
+			TEXT_MEGA: "MEGA_MODEL",
+			RESPONSE_HANDLER: "RESPONSE_HANDLER_MODEL",
+			ACTION_PLANNER: "ACTION_PLANNER_MODEL",
+			REASONING_SMALL: "REASONING_SMALL_MODEL",
+			REASONING_LARGE: "REASONING_LARGE_MODEL",
+			TEXT_COMPLETION: "COMPLETION_MODEL",
+		};
+
+		// Walk the same fallback chain that resolveModelRegistration uses
+		// (e.g. ACTION_PLANNER → TEXT_SMALL) so we find the slot that
+		// actually has a model registered.
+		const providerPrefixes = ["OLLAMA_", "OPENAI_", "ANTHROPIC_", ""];
+		for (const candidate of getModelFallbackChain(resolvedModelType)) {
+			const settingKey = slotToSetting[candidate];
+			if (!settingKey) continue;
+			for (const prefix of providerPrefixes) {
+				const val = this.getSetting(`${prefix}${settingKey}`);
+				if (typeof val === "string" && val) return val;
+			}
+		}
+
+		return resolvedModelType;
+	}
+
+	/**
+	 * Enrich an in-flight execution trace with an additional score signal.
+	 *
+	 * Called by evaluators, action handlers, and plugin-neuro after the
+	 * initial DPE call returns. The enriched trace is persisted when
+	 * RUN_ENDED fires.
+	 */
+	enrichTrace(runId: string, signal: ScoreSignal): void {
+		const traceIds = this.runToTraces.get(runId);
+		if (!traceIds) return;
+		for (const tid of traceIds) {
+			const trace = this.activeTraces.get(tid);
+			if (!trace) continue;
+			trace.scoreCard.signals.push(signal);
+			const card = ScoreCard.fromJSON(trace.scoreCard);
+			trace.scoreCard.compositeScore = card.composite();
+			trace.enrichedAt = Date.now();
+		}
+	}
+
+	getActiveTrace(runId: string): ExecutionTrace | undefined {
+		const traceIds = this.runToTraces.get(runId);
+		if (!traceIds) return undefined;
+		// Return the most recent trace for this run (last inserted)
+		let latest: ExecutionTrace | undefined;
+		for (const tid of traceIds) {
+			const t = this.activeTraces.get(tid);
+			if (t) latest = t;
+		}
+		return latest;
+	}
+
+	getActiveTracesForRun(runId: string): ExecutionTrace[] {
+		const traceIds = this.runToTraces.get(runId);
+		if (!traceIds) return [];
+		const traces: ExecutionTrace[] = [];
+		for (const tid of traceIds) {
+			const t = this.activeTraces.get(tid);
+			if (t) traces.push(t);
+		}
+		return traces;
+	}
+
+	deleteActiveTrace(runId: string): void {
+		const traceIds = this.runToTraces.get(runId);
+		if (traceIds) {
+			for (const tid of traceIds) {
+				this.activeTraces.delete(tid);
+			}
+			this.runToTraces.delete(runId);
+		}
+	}
+
+	deleteActiveTraceById(traceId: string): void {
+		this.activeTraces.delete(traceId);
+		for (const [rid, tids] of this.runToTraces) {
+			if (tids.delete(traceId) && tids.size === 0) {
+				this.runToTraces.delete(rid);
+			}
+		}
 	}
 
 	/**
@@ -1642,11 +1952,11 @@ export class AgentRuntime implements IAgentRuntime {
 				);
 				const normalizedResponseAction = normalizeAction(responseAction);
 
-				// First try exact match
+				// 1. Exact match on normalized name
 				let action = actionByName.get(normalizedResponseAction);
 
+				// 2. Substring inclusion (catches truncations / prefixes)
 				if (!action) {
-					// Then try fuzzy matching
 					for (const entry of normalizedActions) {
 						if (
 							entry.normalizedName.includes(normalizedResponseAction) ||
@@ -1658,8 +1968,8 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 				}
 
+				// 3. Exact simile match, then substring simile match
 				if (!action) {
-					// Try similes
 					for (const entry of normalizedActions) {
 						const exactSimileMatch = entry.normalizedSimiles.find(
 							(simile) => simile === normalizedResponseAction,
@@ -1700,6 +2010,28 @@ export class AgentRuntime implements IAgentRuntime {
 						}
 					}
 				}
+
+				// 4. Edit-distance fallback for single-char typos (e.g. REPLLY → REPLY)
+				if (!action) {
+					const editMatch = findClosestActionByEditDistance(
+						normalizedResponseAction,
+						normalizedActions,
+					);
+					if (editMatch) {
+						action = editMatch.action;
+						this.logger.debug(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								action: action.name,
+								requested: responseAction,
+								match: editMatch.matchType,
+							},
+							"Action resolved via edit-distance",
+						);
+					}
+				}
+
 				if (!action) {
 					const errorMsg = `Action not found: ${responseAction}`;
 					this.logger.error(
@@ -3931,18 +4263,19 @@ export class AgentRuntime implements IAgentRuntime {
 	 * 3. Performance tracking: Tracks success/failure rates per model+schema
 	 */
 	async dynamicPromptExecFromState({
-		state,
+		state: stateArg,
 		params,
 		schema,
 		options = {},
 	}: {
-		state: State;
+		state?: State;
 		params: Omit<GenerateTextParams, "prompt"> & {
 			prompt: string | ((ctx: { state: State }) => string);
 		};
 		schema: SchemaRow[];
 		options?: {
 			key?: string;
+			promptName?: string;
 			modelSize?: "nano" | "mini" | "small" | "large" | "mega";
 			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
@@ -3963,6 +4296,9 @@ export class AgentRuntime implements IAgentRuntime {
 			abortSignal?: AbortSignal;
 		};
 	}): Promise<Record<string, unknown> | null> {
+		const state: State =
+			stateArg ?? ({ values: {}, data: {}, text: "" } as State);
+
 		// Validate schema input
 		if (!schema || schema.length === 0) {
 			this.logger.error(
@@ -4000,6 +4336,9 @@ export class AgentRuntime implements IAgentRuntime {
 			options.modelType || options.model || resolvedModelType;
 		const schemaKey = this.buildSchemaMetricKey(schema);
 		const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
+		/** Human-readable id for logs (call sites should pass `options.promptName` or `options.key`). */
+		const promptDisplayName =
+			options.promptName ?? options.key ?? `schema:${schemaKey}`;
 
 		// Get validation level from settings or options
 		const validationLevelRaw = this.getSetting("VALIDATION_LEVEL");
@@ -4046,10 +4385,91 @@ export class AgentRuntime implements IAgentRuntime {
 		let contextLevel: 0 | 1 | 2 | 3 = defaultContextCheckLevel;
 		const perFieldCodes = new Map<string, string>();
 
+		// --- Optimization state (set before the retry loop, used at success/failure) ---
+		let traceModelId: string | undefined;
+		let tracePromptKey: string | undefined;
+		let traceVariant: string = "baseline";
+		let traceArtifactVersion: number | undefined;
+		const traceStartTime = Date.now();
+		const optimizationEnabled = this.isPromptOptimizationEnabled();
+
+		if (optimizationEnabled) {
+			traceModelId = this.resolveProviderModelString(
+				resolvedModelType,
+				options.model,
+			);
+			const schemaHash = this.buildSchemaMetricKey(schema)
+				.split("")
+				.reduce((h, c) => ((h * 31) ^ c.charCodeAt(0)) >>> 0, 5381)
+				.toString(16)
+				.slice(0, 8);
+			tracePromptKey = options.promptName ?? schemaHash;
+		}
+
 		while (currentRetry <= maxRetries) {
+			const attemptNum = currentRetry + 1;
+			const attemptMax = maxRetries + 1;
+			this.logger.debug(
+				{
+					src: "dpe",
+					promptName: options.promptName,
+					promptKey: options.key,
+					promptDisplayName,
+					modelSchemaKey,
+					resolvedModelType,
+					attempt: attemptNum,
+					maxAttempts: attemptMax,
+					isRetry: currentRetry > 0,
+				},
+				`DPE ── "${promptDisplayName}" · ${resolvedModelType} · attempt ${attemptNum}/${attemptMax}${currentRetry > 0 ? " (retry)" : " (new call)"} ──`,
+			);
+			// Raw stdout so the prompt id is impossible to miss next to structured logs (debug/trace only).
+			if (
+				typeof process !== "undefined" &&
+				process.env &&
+				/^(debug|trace)$/i.test(process.env.LOG_LEVEL ?? "")
+			) {
+				/* eslint-disable no-console -- intentional DPE prompt banner for terminal visibility */
+				console.log("");
+				console.log(
+					`[DPE PROMPT] ${promptDisplayName} · ${resolvedModelType} · attempt ${attemptNum}/${attemptMax}${currentRetry > 0 ? " (retry)" : " (new call)"}`,
+				);
+				console.log("");
+				/* eslint-enable no-console */
+			}
+
 			const template = params.prompt;
 			const templateStr =
 				typeof template === "function" ? template({ state }) : template;
+
+			// --- Optimization: resolve artifact and merge into template ---
+			let finalTemplateStr = templateStr;
+			if (
+				optimizationEnabled &&
+				traceModelId &&
+				tracePromptKey &&
+				currentRetry === 0
+			) {
+				try {
+					const optDir = this.getOptimizationDir();
+					const resolver = getResolver(optDir);
+					const { artifact, selectedVariant } = await resolver.resolveWithAB(
+						traceModelId,
+						resolvedModelType,
+						tracePromptKey,
+					);
+					traceVariant = selectedVariant;
+					if (artifact && selectedVariant === "optimized") {
+						finalTemplateStr = mergeArtifactIntoPrompt(templateStr, artifact);
+						traceArtifactVersion = artifact.version;
+					}
+				} catch (optErr) {
+					this.logger.warn(
+						{ error: optErr },
+						"Optimization artifact lookup failed",
+					);
+				}
+			}
 
 			// Get keys from state (excluding text, values, data)
 			const stateKeys = Object.keys(state);
@@ -4066,7 +4486,7 @@ export class AgentRuntime implements IAgentRuntime {
 			const templateContext = { ...filteredState, ...state.values };
 
 			const outputSegments = this.renderPromptTemplateSegments(
-				templateStr,
+				finalTemplateStr,
 				templateContext,
 				state,
 			);
@@ -4114,7 +4534,12 @@ export class AgentRuntime implements IAgentRuntime {
 			};
 
 			this.logger.debug(
-				`dynamicPromptExecFromState: using format ${format}, ~${estToken(output).toLocaleString()} tokens`,
+				{
+					src: "dpe",
+					promptDisplayName,
+					attempt: attemptNum,
+				},
+				`dynamicPromptExecFromState: "${promptDisplayName}" using format ${format}, ~${estToken(output).toLocaleString()} tokens`,
 			);
 
 			// Set context level on first iteration
@@ -4276,7 +4701,12 @@ ${section_end}`;
 			//    (useful for identifying token-count-related failure patterns)
 			const outputTokenEst = estToken(prompt);
 			this.logger.debug(
-				`dynamicPromptExecFromState prompt ~${outputTokenEst.toLocaleString()} tokens`,
+				{
+					src: "dpe",
+					promptDisplayName,
+					attempt: attemptNum,
+				},
+				`dynamicPromptExecFromState: "${promptDisplayName}" full prompt ~${outputTokenEst.toLocaleString()} tokens (rendered)`,
 			);
 
 			// Create ValidationStreamExtractor on first iteration if streaming
@@ -4416,11 +4846,22 @@ ${section_end}`;
 						? parseJSONObjectFromText(cleanResponse)
 						: parseKeyValueXml(cleanResponse);
 				this.logger.debug(
-					`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
+					{
+						src: "dpe",
+						promptDisplayName,
+						attempt: attemptNum,
+					},
+					`dynamicPromptExecFromState: "${promptDisplayName}" parsed: ${JSON.stringify(responseContent)}`,
 				);
 			} catch (e) {
 				this.logger.error(
-					`dynamicPromptExecFromState parse error: ${String(e)}`,
+					{
+						src: "dpe",
+						promptDisplayName,
+						attempt: attemptNum,
+						err: String(e),
+					},
+					`dynamicPromptExecFromState: "${promptDisplayName}" parse error`,
 				);
 			}
 
@@ -4428,9 +4869,19 @@ ${section_end}`;
 
 			// Validate response
 			let allGood = true;
+			let schemaValidation: { missingPaths: string[]; invalidPaths: string[] } =
+				{
+					missingPaths: [],
+					invalidPaths: [],
+				};
 			if (!responseContent) {
 				this.logger.warn(
-					`dynamicPromptExecFromState parse problem: ${cleanResponse}`,
+					{
+						src: "dpe",
+						promptDisplayName,
+						attempt: attemptNum,
+					},
+					`dynamicPromptExecFromState: "${promptDisplayName}" parse problem: ${cleanResponse}`,
 				);
 				allGood = false;
 			} else {
@@ -4493,7 +4944,7 @@ ${section_end}`;
 					}
 				}
 
-				const schemaValidation = this.validateResponseAgainstSchema(
+				schemaValidation = this.validateResponseAgainstSchema(
 					responseContent,
 					schema,
 				);
@@ -4559,11 +5010,140 @@ ${section_end}`;
 				metric.lastUpdated = Date.now();
 
 				this.logger.debug(
-					`dynamicPromptExecFromState success [${modelSchemaKey}]: ${outputTokenEst} tokens`,
+					{
+						src: "dpe",
+						promptDisplayName,
+						modelSchemaKey,
+						attempt: attemptNum,
+					},
+					`dynamicPromptExecFromState: "${promptDisplayName}" success [${modelSchemaKey}]: ${outputTokenEst} tokens`,
 				);
 
 				// Clean up smart retry context from state
 				delete (state as Record<string, unknown>)._smartRetryContext;
+
+				// --- Optimization: emit success trace ---
+				if (optimizationEnabled && traceModelId && tracePromptKey) {
+					try {
+						const scoreCard = new ScoreCard();
+						scoreCard.add({ source: "dpe", kind: "parseSuccess", value: 1.0 });
+						scoreCard.add({
+							source: "dpe",
+							kind: "schemaValid",
+							value:
+								schemaValidation.missingPaths.length === 0 &&
+								schemaValidation.invalidPaths.length === 0
+									? 1.0
+									: 0.0,
+						});
+						scoreCard.add({
+							source: "dpe",
+							kind: "retriesUsed",
+							value: Math.max(0, 1.0 - currentRetry / Math.max(maxRetries, 1)),
+						});
+						scoreCard.add({
+							source: "dpe",
+							kind: "tokenEfficiency",
+							value: Math.min(1.0, 500 / Math.max(outputTokenEst, 1)),
+						});
+
+						const simpleHash = (s: string) =>
+							s
+								.split("")
+								.reduce((h, c) => ((h * 31) ^ c.charCodeAt(0)) >>> 0, 5381)
+								.toString(16)
+								.slice(0, 8);
+
+						const trace: ExecutionTrace = {
+							id: uuidv4(),
+							traceVersion: 1,
+							type: "trace",
+							promptKey: tracePromptKey,
+							modelSlot: resolvedModelType,
+							modelId: traceModelId,
+							runId: this.getCurrentRunId?.() ?? undefined,
+							templateHash: simpleHash(
+								typeof params.prompt === "string"
+									? params.prompt
+									: tracePromptKey,
+							),
+							schemaFingerprint: schemaKey,
+							artifactVersion: traceArtifactVersion,
+							variant: traceVariant,
+							parseSuccess: true,
+							schemaValid:
+								schemaValidation.missingPaths.length === 0 &&
+								schemaValidation.invalidPaths.length === 0,
+							validationCodesMatched: true,
+							retriesUsed: currentRetry,
+							tokenEstimate: outputTokenEst,
+							latencyMs: Date.now() - traceStartTime,
+							response: responseContent,
+							scoreCard: scoreCard.toJSON(),
+							createdAt: Date.now(),
+						};
+
+						// Store in activeTraces for downstream enrichment.
+						// Prune stale entries (> 5 minutes old) to prevent memory leaks
+						// when plugin-neuro is not active or RUN_ENDED never fires.
+						const ACTIVE_TRACE_TTL_MS = 5 * 60 * 1000;
+						const now = Date.now();
+						for (const [id, t] of this.activeTraces) {
+							if (now - t.createdAt > ACTIVE_TRACE_TTL_MS) {
+								this.activeTraces.delete(id);
+								for (const [rid, tids] of this.runToTraces) {
+									tids.delete(id);
+									if (tids.size === 0) this.runToTraces.delete(rid);
+								}
+							}
+						}
+						const runId = trace.runId;
+						if (runId) {
+							this.activeTraces.set(trace.id, trace);
+							if (!this.runToTraces.has(runId)) {
+								this.runToTraces.set(runId, new Set());
+							}
+							this.runToTraces.get(runId)!.add(trace.id);
+						}
+
+						// Write the pre-enrichment trace to disk as a baseline.
+						// If plugin-neuro is active, its finalizer writes the
+						// enriched version with a higher seq; dedup keeps the
+						// enriched copy regardless of I/O ordering.
+						// Without plugin-neuro, this guarantees traces still persist.
+						const optDir = this.getOptimizationDir();
+						void writePromptRegistryEntry(optDir, {
+							promptKey: tracePromptKey,
+							schemaFingerprint: schemaKey,
+							templateHash: simpleHash(
+								typeof params.prompt === "string"
+									? params.prompt
+									: tracePromptKey,
+							),
+							promptTemplate:
+								typeof params.prompt === "string" ? params.prompt : "",
+							schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
+						}).catch((err) => {
+							this.logger.warn(
+								{ error: err, src: "dpe" },
+								"Failed to write prompt optimization registry",
+							);
+						});
+						const tw = getTraceWriter(optDir);
+						trace.seq = tw.nextSeq();
+						tw.appendTrace(traceModelId, resolvedModelType, trace).catch(
+							(err) => {
+								this.logger.warn("Failed to write optimization trace", err);
+							},
+						);
+					} catch (traceErr) {
+						this.logger.warn(
+							{ error: traceErr },
+							"Failed to build optimization trace",
+						);
+					}
+				}
+
 				return responseContent;
 			}
 
@@ -4614,9 +5194,12 @@ ${section_end}`;
 					const diagnosis = extractor.diagnose();
 
 					this.logger.warn(
-						`dynamicPromptExecFromState retry ${currentRetry}/${maxRetries}`,
-						`validated=${validatedFields.join(",") || "none"}`,
-						`missing=${diagnosis.missingFields.join(",") || "none"}`,
+						{
+							src: "dpe",
+							promptDisplayName,
+							attempt: attemptNum,
+						},
+						`dynamicPromptExecFromState: "${promptDisplayName}" retry ${currentRetry}/${maxRetries} validated=${validatedFields.join(",") || "none"} missing=${diagnosis.missingFields.join(",") || "none"}`,
 					);
 
 					// For level 1, build smart retry context
@@ -4672,9 +5255,93 @@ ${section_end}`;
 		}
 
 		this.logger.error(
-			`dynamicPromptExecFromState failed after ${maxRetries} retries [${modelSchemaKey}]`,
-			`${metric.successfulAttempts}/${metric.totalAttempts} successful`,
+			{
+				src: "dpe",
+				promptDisplayName,
+				modelSchemaKey,
+			},
+			`dynamicPromptExecFromState: "${promptDisplayName}" failed after ${maxRetries} retries [${modelSchemaKey}] ${metric.successfulAttempts}/${metric.totalAttempts} successful`,
 		);
+
+		// --- Optimization: emit failure trace ---
+		if (optimizationEnabled && traceModelId && tracePromptKey) {
+			try {
+				// Prune stale activeTraces entries on failure path too
+				const ACTIVE_TRACE_TTL_MS = 5 * 60 * 1000;
+				const nowFail = Date.now();
+				for (const [id, t] of this.activeTraces) {
+					if (nowFail - t.createdAt > ACTIVE_TRACE_TTL_MS) {
+						this.activeTraces.delete(id);
+						for (const [rid, tids] of this.runToTraces) {
+							tids.delete(id);
+							if (tids.size === 0) this.runToTraces.delete(rid);
+						}
+					}
+				}
+
+				const scoreCard = new ScoreCard();
+				scoreCard.add({ source: "dpe", kind: "parseSuccess", value: 0.0 });
+				scoreCard.add({ source: "dpe", kind: "schemaValid", value: 0.0 });
+				scoreCard.add({ source: "dpe", kind: "retriesUsed", value: 0.0 });
+
+				const simpleHash = (s: string) =>
+					s
+						.split("")
+						.reduce((h, c) => ((h * 31) ^ c.charCodeAt(0)) >>> 0, 5381)
+						.toString(16)
+						.slice(0, 8);
+
+				const trace: ExecutionTrace = {
+					id: uuidv4(),
+					traceVersion: 1,
+					type: "trace",
+					promptKey: tracePromptKey,
+					modelSlot: resolvedModelType,
+					modelId: traceModelId,
+					runId: this.getCurrentRunId?.() ?? undefined,
+					templateHash: simpleHash(
+						typeof params.prompt === "string" ? params.prompt : tracePromptKey,
+					),
+					schemaFingerprint: schemaKey,
+					artifactVersion: traceArtifactVersion,
+					variant: traceVariant,
+					parseSuccess: false,
+					schemaValid: false,
+					validationCodesMatched: false,
+					retriesUsed: maxRetries,
+					tokenEstimate: 0,
+					latencyMs: Date.now() - traceStartTime,
+					scoreCard: scoreCard.toJSON(),
+					createdAt: Date.now(),
+				};
+
+				const optDir = this.getOptimizationDir();
+				void writePromptRegistryEntry(optDir, {
+					promptKey: tracePromptKey,
+					schemaFingerprint: schemaKey,
+					templateHash: simpleHash(
+						typeof params.prompt === "string" ? params.prompt : tracePromptKey,
+					),
+					promptTemplate:
+						typeof params.prompt === "string" ? params.prompt : "",
+					schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
+				}).catch((err) => {
+					this.logger.warn(
+						{ error: err, src: "dpe" },
+						"Failed to write prompt optimization registry",
+					);
+				});
+				const failTw = getTraceWriter(optDir);
+				trace.seq = failTw.nextSeq();
+				failTw
+					.appendTrace(traceModelId, resolvedModelType, trace)
+					.catch((err) => {
+						this.logger.warn("Failed to write failure trace", err);
+					});
+			} catch (traceErr) {
+				this.logger.warn({ error: traceErr }, "Failed to build failure trace");
+			}
+		}
 
 		// Clean up smart retry context from state
 		delete (state as Record<string, unknown>)._smartRetryContext;

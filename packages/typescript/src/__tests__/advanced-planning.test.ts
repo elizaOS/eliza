@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { PlanningService } from "../advanced-planning";
 import { AgentRuntime } from "../runtime";
 import type { Character, Memory, State, UUID } from "../types";
@@ -79,6 +79,16 @@ describe("advanced planning (built-in)", () => {
 		);
 
 		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+
+		vi.spyOn(runtime.promptBatcher, "askNow").mockResolvedValue({
+			COMPLEXITY: "medium",
+			PLANNING: "sequential_planning",
+			CAPABILITIES: "analysis",
+			STAKEHOLDERS: "engineering",
+			CONSTRAINTS: "time",
+			DEPENDENCIES: "none",
+			CONFIDENCE: "0.9",
+		});
 
 		// Provider registered
 		expect(runtime.providers.some((p) => p.name === "messageClassifier")).toBe(

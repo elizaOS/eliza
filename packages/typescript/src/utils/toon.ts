@@ -11,6 +11,16 @@ function stripFencedBlock(text: string): string {
 	return fenced?.[1]?.trim() ?? trimmed;
 }
 
+/**
+ * Cheap gate before `@toon-format/toon` decode.
+ *
+ * **Why reject `<response>` substrings?** DPE often asks for XML when streaming;
+ * if the model mixes XML markers with TOON-like lines, we skip TOON and let
+ * `parseKeyValueXml` try XML extraction—avoids mis-parsing hybrid output.
+ *
+ * **Why a line-based `key:` regex?** Avoids running the decoder on prose-only
+ * replies (saves work and noisy decode errors).
+ */
 function looksLikeToonDocument(text: string): boolean {
 	if (!text) return false;
 	if (text.includes("<response>") || text.includes("</response>")) return false;
@@ -19,6 +29,12 @@ function looksLikeToonDocument(text: string): boolean {
 	);
 }
 
+/**
+ * Parse a TOON document via strict `decode`. Returns null on any failure.
+ *
+ * **Why catch decode errors?** Trailing non-TOON lines (model meta) or partial
+ * documents throw; callers fall back to XML in `parseKeyValueXml`.
+ */
 export function tryParseToonValue(text: string): unknown | null {
 	const trimmed = stripFencedBlock(text);
 	if (!looksLikeToonDocument(trimmed)) {

@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from "uuid";
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
 import { logger } from "../../logger.ts";
 import { optionExtractionTemplate } from "../../prompts.ts";
@@ -12,8 +13,7 @@ import type {
 	Memory,
 	State,
 } from "../../types/index.ts";
-import { ModelType } from "../../types/index.ts";
-import { composePrompt, parseKeyValueXml } from "../../utils.ts";
+import { composePrompt } from "../../utils.ts";
 
 const spec = requireActionSpec("CHOOSE_OPTION");
 
@@ -158,17 +158,38 @@ export const choiceAction: Action = {
 			template: optionExtractionTemplate,
 		});
 
-		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-			stopSequences: [],
-		});
+		const parsed = await runtime.promptBatcher.askNow(
+			`choice-option-extraction:${uuidv4()}`,
+			{
+				preamble: prompt,
+				schema: [
+					{
+						field: "taskId",
+						description:
+							"The 8-character task ID from Available Tasks, or null if unclear",
+						required: false,
+					},
+					{
+						field: "selectedOption",
+						description:
+							"The selected option name exactly as listed, or ABORT, or null if unclear",
+						required: false,
+					},
+				],
+				fallback: { taskId: "", selectedOption: "" },
+				model: "small",
+				execOptions: {
+					stopSequences: [],
+				},
+			},
+		);
 
-		const parsed = parseKeyValueXml(result);
-		interface ParsedChoice {
-			taskId?: string;
-			selectedOption?: string;
-		}
-		const { taskId, selectedOption } = (parsed as ParsedChoice) || {};
+		const taskId =
+			typeof parsed?.taskId === "string" ? parsed.taskId : undefined;
+		const selectedOption =
+			typeof parsed?.selectedOption === "string"
+				? parsed.selectedOption
+				: undefined;
 
 		if (taskId && selectedOption) {
 			const taskMap = new Map(

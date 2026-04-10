@@ -151,6 +151,42 @@ Console logs use colors (ANSI codes). Writing them raw to a file makes the file 
 
 ---
 
+## LLM calls: `useModel` vs `dynamicPromptExecFromState` vs `PromptBatcher`
+
+Core code uses **three** related entry points; picking the wrong one causes confusion (“why isn’t this structured?” / “why is vision going through text?”).
+
+- **`useModel`** — plugin bridge for **all model types** (embeddings, vision, speech, transcription, text). **Why separate:** modalities are not all “prompt + schema text.”
+- **`dynamicPromptExecFromState` (DPE)** — **structured text** generation with schema, validation, and optional streaming. **Why:** one path for reply-like outputs that must parse reliably.
+- **`PromptBatcher`** — schedules and packs **sections**; each packed call still uses **DPE** under the hood. **Why:** parallelism limits, coalescing, and affinity without a second parsing implementation.
+
+The message service uses **DPE** for should-respond, main reply, continuation, multi-step flows, and **parameter repair**; it keeps **`useModel`** only for TTS, image description, and transcription—because those are not DPE-shaped calls.
+
+**Full rationale, tables, and settings:** [LLM_ROUTING.md](./LLM_ROUTING.md).
+
+---
+
+## Batch queue toolkit (`PriorityQueue`, `BatchProcessor`, `TaskDrain`, `BatchQueue`)
+
+Background work (embeddings, batched I/O, repeat drains) shares **priority ordering**, **concurrency limits**, **retries**, and **task-system scheduling**. Those concerns are split into composable utilities under `src/utils/batch-queue/` so we do not duplicate queue logic or repeat-task boilerplate in every service.
+
+**Why not one mega-class?** A pure `PriorityQueue` is testable without `IAgentRuntime`. `BatchProcessor` is stateless and usable without tasks (e.g. action-filter index build). `TaskDrain` isolates DB task shape (`queue` + `repeat`, `maxFailures: -1`) from business logic.
+
+**Why unbounded queues by default for embeddings?** Items are small; the bottleneck is the embedding API, not RAM. Optional `maxSize` + `onPressure` let callers opt into backpressure without silent eviction.
+
+**Full API, consumer table, and `skipRegisterWorker` rationale:** [BATCH_QUEUE.md](./BATCH_QUEUE.md).
+
+---
+
+## Prompt optimization (traces, artifacts, A/B)
+
+DPE can emit **execution traces** and a **prompt registry**; `plugin-neuro` finalizes traces on `RUN_ENDED` and may run **background optimization** when slot profiles say enough data exists. Artifacts and history live under **`OPTIMIZATION_DIR`**, keyed by **sanitized provider model id** and **slot key**—not only by logical slot names like `ACTION_PLANNER`, because the same logical slot may fallback to `TEXT_SMALL` and must share the real checkpoint’s folder.
+
+**Why document separately?** Parsing order (`parseKeyValueXml` tries TOON then XML), streaming format (`xml` when chunking), and A/B `no_artifact` confuse operators unless the **WHYs** sit in one place.
+
+**Full layout, data flow, and parsing notes:** [PROMPT_OPTIMIZATION.md](./PROMPT_OPTIMIZATION.md). **Optimizer pipeline phases:** [../src/optimization/ROADMAP.md](../src/optimization/ROADMAP.md).
+
+---
+
 ## What we don’t do (and why)
 
 - **No legacy generateObject API:** Structured generation is handled by the dynamic execution path and related evolution. We don’t re-add the old generateObject surface.

@@ -77,7 +77,12 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	routes: Route[];
 	logger: Logger;
 	stateCache: Map<string, State>;
-	promptBatcher?: PromptBatcher;
+	/**
+	 * Lazy-initialized on first access; coordinates drains, parallelism, and section packing.
+	 * Prefer `dynamicPromptExecFromState` for direct structured text; use the batcher when
+	 * scheduling/packing matters — see package `docs/LLM_ROUTING.md`.
+	 */
+	readonly promptBatcher: PromptBatcher;
 	/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. */
 	companionUrl?: string;
 
@@ -393,20 +398,29 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 * - Level 2: Buffered validation. Optional checkpoint codes can validate the prompt envelope.
 	 * - Level 3: Strict buffered validation. Optional checkpoint codes validate both ends.
 	 *
-	 * @param state - State object to inject into the prompt template
+	 * @param state - State object to inject into the prompt template. If omitted, an empty state is used (fixed prompts with no message context).
 	 * @param params - LLM parameters with a prompt template
 	 * @param schema - Array of field definitions for structured output
 	 * @param options - Configuration (modelSize/modelType, validation level, streaming callbacks, etc.)
 	 * @returns Parsed structured response object, or null on failure
 	 */
 	dynamicPromptExecFromState(args: {
-		state: State;
+		state?: State;
 		params: Omit<GenerateTextParams, "prompt"> & {
 			prompt: string | ((ctx: { state: State }) => string);
 		};
 		schema: import("./state").SchemaRow[];
 		options?: {
 			key?: string;
+			/**
+			 * Human-readable name for this prompt task, used as the optimization
+			 * artifact lookup key. When provided, artifacts are stored/retrieved
+			 * under this name (e.g. "shouldRespond"). When absent, the system
+			 * uses an MD5 hash of the serialized schema instead.
+			 *
+			 * This is separate from `key` (which is used for response caching).
+			 */
+			promptName?: string;
 			modelSize?: "nano" | "mini" | "small" | "large" | "mega";
 			modelType?: TextGenerationModelType;
 			model?: string;
@@ -427,6 +441,41 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 			abortSignal?: AbortSignal;
 		};
 	}): Promise<Record<string, unknown> | null>;
+
+	/**
+	 * Enrich an in-flight execution trace with an additional score signal.
+	 *
+	 * Traces are keyed by runId and held in memory until RUN_ENDED, at which
+	 * point they are finalized and persisted to disk. This allows evaluators,
+	 * action handlers, and plugin-neuro to contribute signals to a trace after
+	 * the initial LLM call completes.
+	 *
+	 * @param runId - The current run ID (from runtime.getCurrentRunId())
+	 * @param signal - The score signal to attach
+	 */
+	enrichTrace(
+		runId: string,
+		signal: import("../optimization/types").ScoreSignal,
+	): void;
+
+	/** Retrieve the most recent in-flight optimization trace for a runId. */
+	getActiveTrace(
+		runId: string,
+	): import("../optimization/types").ExecutionTrace | undefined;
+
+	/** Retrieve all in-flight optimization traces for a runId (multiple DPE calls per run). */
+	getActiveTracesForRun?(
+		runId: string,
+	): import("../optimization/types").ExecutionTrace[];
+
+	/** Remove all in-flight optimization traces for a runId after finalization. */
+	deleteActiveTrace(runId: string): void;
+
+	/** Remove a single in-flight trace by its unique trace id. */
+	deleteActiveTraceById?(traceId: string): void;
+
+	/** Whether prompt optimization (traces, plugin-neuro, auto artifact runs) is enabled. */
+	isPromptOptimizationEnabled(): boolean;
 
 	stop(): Promise<void>;
 

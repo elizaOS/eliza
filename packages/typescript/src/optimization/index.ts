@@ -1,0 +1,129 @@
+/**
+ * Prompt Optimization System for dynamicPromptExecFromState
+ *
+ * Public API surface for use inside runtime.ts and plugin-neuro.
+ */
+
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { PromptArtifactResolver } from "./resolver.ts";
+import { TraceWriter } from "./trace-writer.ts";
+import { SlotProfileManager } from "./slot-profile.ts";
+import { ABAnalyzer } from "./ab-analyzer.ts";
+import { registerSlotProfileCacheInvalidator } from "./singleton-sync.ts";
+import type { PromptKey, SlotKey } from "./types.ts";
+
+export type { ScoreSignal, ScoreCardData } from "./types.ts";
+export type {
+	ExecutionTrace,
+	OptimizedPromptArtifact,
+	ArtifactFile,
+	ABConfig,
+	ABDecision,
+	OptimizationRun,
+	HistoryRecord,
+	SlotProfile,
+	SlotKey,
+	PromptKey,
+	OptimizerAdapter,
+	OptimizerAdapterConfig,
+	OptimizerAdapterResult,
+	OptimizerPipeline,
+	OptimizerPipelineConfig,
+	OptimizerStage,
+} from "./types.ts";
+export { DEFAULT_SIGNAL_WEIGHTS, SLOT_PROFILE_DEFAULTS } from "./types.ts";
+export { ScoreCard } from "./score-card.ts";
+export { mergeArtifactIntoPrompt, isMergedTemplate, stripMergedContent } from "./merge.ts";
+export { sanitizeModelId } from "./resolver.ts";
+export { PromptArtifactResolver } from "./resolver.ts";
+export { TraceWriter } from "./trace-writer.ts";
+export { SlotProfileManager } from "./slot-profile.ts";
+export { analyzeAB, applyABDecision, selectVariant } from "./ab-analysis.ts";
+export { DefaultOptimizerPipeline } from "./pipeline.ts";
+export { OptimizationRunner } from "./runner.ts";
+export type { OptimizationRunnerOptions, OptimizationRunResult } from "./runner.ts";
+export { ABAnalyzer } from "./ab-analyzer.ts";
+export * from "./adapters/index.ts";
+
+// ---------------------------------------------------------------------------
+// Singleton instances (shared across the process)
+//
+// WHY singletons: these objects hold in-memory state (LRU cache, write locks,
+// analysis locks). Creating fresh instances per call would bypass the cache,
+// create duplicate locks that don't serialize against each other, and allow
+// concurrent A/B analysis for the same prompt key.
+// ---------------------------------------------------------------------------
+
+let _resolver: PromptArtifactResolver | null = null;
+let _traceWriter: TraceWriter | null = null;
+let _slotProfileManager: SlotProfileManager | null = null;
+let _abAnalyzer: ABAnalyzer | null = null;
+let _rootDir: string | null = null;
+let _signalWeights: Record<string, number> | undefined = undefined;
+
+/**
+ * Get the configured optimization root directory.
+ * Falls back to ~/.eliza/optimization if not configured.
+ */
+export function getOptimizationRootDir(
+	settingValue?: string | null,
+): string {
+	if (settingValue && typeof settingValue === "string") {
+		return settingValue;
+	}
+	return join(homedir(), ".eliza", "optimization");
+}
+
+function ensureInitialized(rootDir: string, signalWeights?: Record<string, number>): void {
+	if (_rootDir !== rootDir) {
+		_resolver = null;
+		_traceWriter = null;
+		_slotProfileManager = null;
+		_abAnalyzer = null;
+		_rootDir = rootDir;
+		_signalWeights = signalWeights;
+	}
+	// When signalWeights are provided for the first time (or changed),
+	// invalidate the weight-dependent singletons so they get recreated.
+	if (signalWeights && signalWeights !== _signalWeights) {
+		_signalWeights = signalWeights;
+		_slotProfileManager = null;
+		_abAnalyzer = null;
+	}
+	if (!_resolver) _resolver = new PromptArtifactResolver(rootDir);
+	if (!_traceWriter) _traceWriter = new TraceWriter(rootDir);
+	if (!_slotProfileManager) _slotProfileManager = new SlotProfileManager(rootDir, _signalWeights);
+	if (!_abAnalyzer) _abAnalyzer = new ABAnalyzer(_resolver, _traceWriter, _signalWeights);
+
+	registerSlotProfileCacheInvalidator(
+		(rootDir, modelId, slotKey, promptKey) => {
+			if (_rootDir !== rootDir || !_slotProfileManager) return;
+			_slotProfileManager.invalidateCachedProfile(
+				modelId,
+				slotKey as SlotKey,
+				promptKey as PromptKey,
+			);
+		},
+	);
+}
+
+export function getResolver(rootDir: string): PromptArtifactResolver {
+	ensureInitialized(rootDir);
+	return _resolver!;
+}
+
+export function getTraceWriter(rootDir: string): TraceWriter {
+	ensureInitialized(rootDir);
+	return _traceWriter!;
+}
+
+export function getSlotProfileManager(rootDir: string, signalWeights?: Record<string, number>): SlotProfileManager {
+	ensureInitialized(rootDir, signalWeights);
+	return _slotProfileManager!;
+}
+
+export function getABAnalyzer(rootDir: string, signalWeights?: Record<string, number>): ABAnalyzer {
+	ensureInitialized(rootDir, signalWeights);
+	return _abAnalyzer!;
+}

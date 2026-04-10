@@ -11,6 +11,12 @@ import {
 	sanitizeIdentifier,
 } from "./shared";
 
+/**
+ * Builds packed LLM calls from resolved batcher sections. **Why a separate class:** packing
+ * and token limits are testable without the full batcher; runtime always uses DPE for text.
+ * Single-section call plans use a slimmer prompt and no field-prefix namespacing — see
+ * `_buildSingleSectionPrompt` / `isSingleSection` in `dispatch`.
+ */
 export class PromptDispatcher {
 	constructor(private readonly settings: PromptDispatcherSettings) {}
 
@@ -28,14 +34,21 @@ export class PromptDispatcher {
 				await semaphore.acquire();
 				const startedAt = Date.now();
 				try {
-					const prompt = this._buildPrompt(callPlan);
-					const schema = callPlan.sections.flatMap((resolvedSection) => {
-						const prefix = sanitizeIdentifier(resolvedSection.section.id);
-						return resolvedSection.section.schema.map((row) => ({
-							...row,
-							field: `${prefix}__${row.field}`,
-						}));
-					});
+					const isSingleSection = callPlan.sections.length === 1;
+
+					const prompt = isSingleSection
+						? this._buildSingleSectionPrompt(callPlan.sections[0])
+						: this._buildPrompt(callPlan);
+
+					const schema = isSingleSection
+						? callPlan.sections[0].section.schema
+						: callPlan.sections.flatMap((resolvedSection) => {
+								const prefix = sanitizeIdentifier(resolvedSection.section.id);
+								return resolvedSection.section.schema.map((row) => ({
+									...row,
+									field: `${prefix}__${row.field}`,
+								}));
+							});
 
 					const mergedExecOptions = this._mergeExecOptions(
 						callPlan.sections.map((item) => item.execOptions),
@@ -59,6 +72,7 @@ export class PromptDispatcher {
 						},
 						schema,
 						options: {
+							promptName: `batcher:${callPlan.sections.map((item) => item.section.id).join(",")}`,
 							modelSize,
 							key: `prompt-batcher:${callPlan.sections.map((item) => item.section.id).join(",")}`,
 						},
@@ -78,15 +92,19 @@ export class PromptDispatcher {
 						return;
 					}
 
-					for (const section of callPlan.sections) {
-						const prefix = `${sanitizeIdentifier(section.section.id)}__`;
-						const stripped: Record<string, unknown> = {};
-						for (const [key, value] of Object.entries(response)) {
-							if (key.startsWith(prefix)) {
-								stripped[key.slice(prefix.length)] = value;
+					if (isSingleSection) {
+						results.set(callPlan.sections[0].section.id, response);
+					} else {
+						for (const section of callPlan.sections) {
+							const prefix = `${sanitizeIdentifier(section.section.id)}__`;
+							const stripped: Record<string, unknown> = {};
+							for (const [key, value] of Object.entries(response)) {
+								if (key.startsWith(prefix)) {
+									stripped[key.slice(prefix.length)] = value;
+								}
 							}
+							results.set(section.section.id, stripped);
 						}
-						results.set(section.section.id, stripped);
 					}
 
 					calls.push({
@@ -249,6 +267,18 @@ export class PromptDispatcher {
 		priority: "background" | "normal" | "immediate",
 	): number {
 		return priority === "immediate" ? 0 : priority === "normal" ? 1 : 2;
+	}
+
+	/** Concatenate preamble + resolved context without multi-section framing. **Why:** `askNow` and other single-section calls avoid extra “SECTION 1 / do not mix sections” tokens and keep schema field names unprefixed. */
+	private _buildSingleSectionPrompt(section: ResolvedSection): string {
+		const pieces: string[] = [];
+		if (section.section.preamble) {
+			pieces.push(section.section.preamble);
+		}
+		if (section.resolvedContext) {
+			pieces.push(section.resolvedContext);
+		}
+		return pieces.filter(Boolean).join("\n\n");
 	}
 
 	private _buildPrompt(callPlan: { sections: ResolvedSection[] }): string {
