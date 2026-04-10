@@ -11,6 +11,8 @@ describe("DefaultMessageService", () => {
 	let messageService: IMessageService;
 	let runtime: IAgentRuntime;
 	let mockCallback: HandlerCallback;
+	// Capture the spy once in beforeEach; tests should use mockResolvedValueOnce/mockImplementationOnce
+	// to adjust behavior instead of re-spying (avoids brittle mock ordering and Vitest config issues).
 	let dynamicPromptExecSpy: ReturnType<typeof vi.spyOn>;
 
 	beforeEach(async () => {
