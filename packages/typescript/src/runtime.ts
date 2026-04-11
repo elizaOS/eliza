@@ -1744,6 +1744,15 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		let actionIndex = 0;
+		// Track which action names have already been executed in this
+		// processActions invocation. The LLM sometimes emits the same action
+		// twice in `actions` (e.g. ["GMAIL_ACTION", "CALENDAR_ACTION",
+		// "CALENDAR_ACTION"] when the user has multiple sub-intents the LLM
+		// can't split into per-action params). Without dedupe the second run
+		// uses the same params as the first → identical output → discord
+		// dedup layer rejects it as a duplicate callback. Two identical
+		// action+params runs in one turn is never useful, so collapse them.
+		const executedActionKeys = new Set<string>();
 
 		for (const response of responsesToProcess) {
 			if (!response.content?.actions || response.content.actions.length === 0) {
@@ -1950,6 +1959,31 @@ export class AgentRuntime implements IAgentRuntime {
 
 					if (validation.params) options.parameters = validation.params;
 				}
+
+				// Dedupe: same action name + identical params bucket means
+				// repeating the run would emit identical output. Skip the
+				// repeat instead of letting the discord callback layer reject
+				// it as a duplicate. Key includes the JSON of params so that
+				// distinct invocations with different params still go through.
+				const actionDedupeKey = `${action.name.trim().toUpperCase()}::${
+					options.parameters
+						? JSON.stringify(options.parameters)
+						: "<no-params>"
+				}`;
+				if (executedActionKeys.has(actionDedupeKey)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							dedupeKey: actionDedupeKey,
+						},
+						"Skipping duplicate action invocation in same turn",
+					);
+					actionIndex++;
+					continue;
+				}
+				executedActionKeys.add(actionDedupeKey);
 
 				const actionId = uuidv4() as UUID;
 				// Separate ID for streamed response message (independent from action badge)

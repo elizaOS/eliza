@@ -1885,6 +1885,11 @@ export class DefaultMessageService implements IMessageService {
 		let responseContent: Content | null = null;
 		let responseMessages: Memory[] = [];
 		let mode: StrategyMode = "none";
+		// Holds a deferred simple-mode reply that will be flushed after
+		// evaluators + reflection have had a chance to override it. Declared
+		// out here so the post-evaluation flush at the bottom of handleMessage
+		// can see the same variable that the simple-mode branch sets.
+		let pendingSimpleEmit: Content | null = null;
 
 		if (shouldRespondToMessage) {
 			const resolvedRouting = mergeContextRouting(state, message);
@@ -2011,7 +2016,7 @@ export class DefaultMessageService implements IMessageService {
 								responseContent.text,
 							);
 						}
-						await callback(responseContent);
+						pendingSimpleEmit = responseContent;
 					}
 				} else if (mode === "actions") {
 					// Pass onStreamChunk to processActions so each action can manage its own streaming context
@@ -2188,7 +2193,18 @@ export class DefaultMessageService implements IMessageService {
 			);
 			await runtime.deleteCache(getTaskCompletionCacheKey(message.id));
 
-			if (taskCompletion?.assessed && !taskCompletion.completed) {
+			if (
+				taskCompletion?.assessed &&
+				!taskCompletion.completed &&
+				// Honor `suppressPostActionContinuation` here too. The flag's
+				// contract per Action.suppressPostActionContinuation is "stop after
+				// this action — don't run any continuation LLM turn." Without this
+				// guard, an action that already emitted a complete user-facing
+				// reply (e.g. CALENDAR_ACTION) will get a second visible callback
+				// when the reflection evaluator marks the task as incomplete and
+				// triggers another LLM/processActions pass.
+				!suppressesPostActionContinuation(runtime, responseContent)
+			) {
 				const continuation = await this.runReflectionTaskContinuation(
 					runtime,
 					message,
@@ -2206,9 +2222,22 @@ export class DefaultMessageService implements IMessageService {
 				if (continuation.responseContent) {
 					responseContent = continuation.responseContent;
 					mode = continuation.mode;
+					// Reflection produced a real follow-up response (likely an
+					// action result). Drop the deferred chatty REPLY that
+					// preceded it — emitting both would show two contradictory
+					// messages to the user (the original "i can delete and
+					// recreate" plus the action's "updated X").
+					pendingSimpleEmit = null;
 				}
 				state = continuation.state;
 			}
+		}
+
+		// Flush the deferred simple-mode reply now that reflection has had its
+		// chance to override. If reflection produced its own response, this is
+		// already null and the original chatty REPLY is dropped.
+		if (pendingSimpleEmit && callback) {
+			await callback(pendingSimpleEmit);
 		}
 
 		const didRespond =
