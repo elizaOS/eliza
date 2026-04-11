@@ -1119,14 +1119,10 @@ function renderProgress(
 ): string {
   const pct = max > 0 ? clampPercent((current / max) * 100) : 0;
   return `
-    <div class="progress-card">
-      <div class="progress-head">
-        <span>${escapeHtml(label)}</span>
-        <strong>${escapeHtml(meta)}</strong>
-      </div>
-      <div class="progress-track">
-        <div class="progress-fill" style="width:${pct}%"></div>
-      </div>
+    <div class="progress-row">
+      <span>${escapeHtml(label)}</span>
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <span class="progress-val">${escapeHtml(meta)}</span>
     </div>`;
 }
 
@@ -1136,11 +1132,11 @@ function renderMetricCard(
   detail: string,
 ): string {
   return `
-    <article class="metric-card">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <p>${escapeHtml(detail)}</p>
-    </article>`;
+    <div class="metric-card">
+      <div class="metric-card__label">${escapeHtml(label)}</div>
+      <div class="metric-card__val">${escapeHtml(value)}</div>
+      <div class="metric-card__desc">${escapeHtml(detail)}</div>
+    </div>`;
 }
 
 function renderFeatureDockCard(
@@ -1157,44 +1153,24 @@ function renderFeatureDockCard(
   noValue = meta,
 ): string {
   const safePct = clampPercent(pct);
-  const notes = ["♪", "♫", "♬", "♩", "★"].map(
-    (n) => `<span class="feature-dock-card__note">${n}</span>`,
-  ).join("");
+  // hermes-agent style card with data-modal for click-to-detail
   return `
-    <button
-      class="feature-dock-card feature-dock-card--${tone}"
-      type="button"
-      data-modal-target="${escapeHtml(targetId)}"
-      data-modal-title="${escapeHtml(label)}"
+    <div
+      class="feature-card"
+      data-modal="${escapeHtml(targetId)}"
+      data-label="${escapeHtml(label)}"
+      role="button"
+      tabindex="0"
     >
-      <div class="feature-dock-card__header">
-        <div class="feature-dock-card__label">${escapeHtml(label)}</div>
-        <div class="feature-dock-card__title">${escapeHtml(value)}</div>
-        <div class="feature-dock-card__sub">${escapeHtml(meta)}</div>
+      <div class="feature-card__hover-bg"></div>
+      <div class="feature-card__label">${escapeHtml(label)}</div>
+      <div class="feature-card__pct">${escapeHtml(pctLabel)}</div>
+      <div class="feature-card__val">${escapeHtml(value)}</div>
+      <div class="feature-card__meta">${escapeHtml(yesLabel)} ${escapeHtml(yesValue)} · ${escapeHtml(noLabel)} ${escapeHtml(noValue)}</div>
+      <div class="feature-card__bar">
+        <div class="feature-card__bar-fill" style="width:${safePct}%"></div>
       </div>
-      <div class="feature-dock-card__prices">
-        <div class="feature-dock-card__yes">
-          <div class="feature-dock-card__yes-label">▲ ${escapeHtml(yesLabel)}</div>
-          <div class="feature-dock-card__price-num">${escapeHtml(yesValue)}</div>
-          <div class="feature-dock-card__price-unit">${escapeHtml(pctLabel)}</div>
-        </div>
-        <div class="feature-dock-card__no">
-          <div class="feature-dock-card__no-label">▼ ${escapeHtml(noLabel)}</div>
-          <div class="feature-dock-card__price-num">${escapeHtml(noValue)}</div>
-          <div class="feature-dock-card__price-unit">CHAIN</div>
-        </div>
-      </div>
-      <div class="feature-dock-card__bar-row">
-        <div class="feature-dock-card__bar-label">
-          <span>SIGNAL STRENGTH</span>
-          <span>${safePct}%</span>
-        </div>
-        <div class="feature-dock-card__bar-track">
-          <div class="feature-dock-card__fill" style="width:${safePct}%"></div>
-        </div>
-      </div>
-      <div class="feature-dock-card__notes">${notes}</div>
-    </button>`;
+    </div>`;
 }
 
 function formatPct(value: number | null): string {
@@ -1227,18 +1203,12 @@ function average(values: number[]): number | null {
 }
 
 function renderUsageRow(label: string, pct: number, value: string): string {
-  const blockCount = 10;
-  const activeBlocks = Math.max(
-    0,
-    Math.min(blockCount, Math.round((pct / 100) * blockCount)),
-  );
+  const safePct = clampPercent(pct);
   return `
     <div class="usage-row">
-      <span>${escapeHtml(label)}</span>
-      <div class="usage-meter">
-        ${Array.from({ length: blockCount }, (_, index) => `<i class="${index < activeBlocks ? "is-on" : ""}"></i>`).join("")}
-      </div>
-      <strong>${escapeHtml(value)}</strong>
+      <span class="usage-label">${escapeHtml(label)}</span>
+      <div class="usage-bar"><div class="usage-fill" style="width:${safePct}%"></div></div>
+      <span class="usage-val">${escapeHtml(value)}</span>
     </div>`;
 }
 
@@ -1973,338 +1943,627 @@ function renderCloudPageShell(
   cloudSession: ElizaCloudSession | null = null,
 ): string {
   const isConnected = !!cloudSession;
-  const cloudNav = isConnected ? `
-    <div class="miku-nav__cloud">
-      <div class="miku-nav__divider"></div>
-      <div class="miku-nav__cloud-profile">
-        <div class="miku-nav__cloud-avatar">${escapeHtml((cloudSession.displayName || "E").slice(0,1).toUpperCase())}</div>
-        <div class="miku-nav__cloud-info">
-          <strong>${escapeHtml(cloudSession.displayName)}</strong>
-          <small>${escapeHtml(cloudSession.credits)} credits</small>
-        </div>
-      </div>
-      <a class="miku-nav__link${title === "Cloud Agents" ? " is-active" : ""}" href="/cloud/agents">
-        <span class="miku-nav__icon">⬡</span><span>Agents</span>
-      </a>
-      <a class="miku-nav__link${title === "Cloud Credits" ? " is-active" : ""}" href="/cloud/credits">
-        <span class="miku-nav__icon">◈</span><span>Credits</span>
-      </a>
-      <a class="miku-nav__link miku-nav__link--muted" href="/auth/eliza-cloud/logout">
-        <span class="miku-nav__icon">↩</span><span>Disconnect</span>
-      </a>
-    </div>` : `
-    <div class="miku-nav__cloud">
-      <div class="miku-nav__divider"></div>
-      <div class="miku-nav__cloud-cta">
-        <div class="miku-nav__cloud-cta-label">ElizaCloud</div>
-        <a class="miku-nav__cloud-btn" href="/">← Connect from Home</a>
-      </div>
-    </div>`;
+  const cloudUser = cloudSession?.displayName ?? null;
+  const cloudCredits = cloudSession?.credits ?? null;
 
-  return `<!doctype html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  ${renderHeadBrandAssets(`${escapeHtml(title)} | elizaOK`)}
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&display=swap" rel="stylesheet">
-  <style>
-    /* ── Shared design system (same as main page) ── */
-    :root {
-      color-scheme: dark;
-      --clr-bg:        hsl(192,45%,9%);
-      --clr-card:      hsl(192,35%,12%);
-      --clr-primary:   hsl(174,54%,50%);
-      --clr-secondary: hsl(176,45%,34%);
-      --clr-accent:    hsl(330,100%,50%);
-      --clr-fg:        hsl(168,100%,95%);
-      --clr-muted:     hsl(168,40%,70%);
-      --clr-border:    hsl(176,45%,34%);
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: var(--clr-bg);
-      color: var(--clr-fg);
-      font-family: Inter, sans-serif;
-      min-height: 100vh;
-      display: flex;
-    }
-    a { color: var(--clr-fg); text-decoration: none; }
-
-    /* ── Left nav (same structure as main page) ── */
-    .miku-nav {
-      position: fixed; left: 0; top: 0;
-      width: 192px; height: 100vh;
-      border-right: 3px solid var(--clr-secondary);
-      background: var(--clr-bg);
-      display: flex; flex-direction: column;
-      z-index: 50; overflow: hidden;
-    }
-    .miku-nav::before {
-      content: ""; position: absolute; inset: 0;
-      opacity: 0.03;
-      background-image:
-        linear-gradient(to right, var(--clr-secondary) 1px, transparent 1px),
-        linear-gradient(to bottom, var(--clr-secondary) 1px, transparent 1px);
-      background-size: 20px 20px; pointer-events: none;
-    }
-    .miku-nav__head {
-      padding: 12px; border-bottom: 3px solid var(--clr-secondary);
-      display: flex; align-items: center; gap: 10px;
-    }
-    .miku-nav__logo {
-      width: 48px; height: 48px; border: 2px solid var(--clr-secondary);
-      border-radius: 8px; overflow: hidden; flex-shrink: 0;
-    }
-    .miku-nav__logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .miku-nav__brand strong { display: block; font-size: 13px; font-weight: 800; letter-spacing: -0.02em; }
-    .miku-nav__brand small  { display: block; font-size: 10px; color: var(--clr-muted); }
-    .miku-nav__links { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
-    .miku-nav__link {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 12px; border-radius: 6px;
-      font-size: 13px; font-weight: 700; color: var(--clr-fg);
-      transition: background 120ms, color 120ms;
-      cursor: pointer;
-    }
-    .miku-nav__link:hover, .miku-nav__link.is-active {
-      background: var(--clr-secondary); color: var(--clr-bg);
-    }
-    .miku-nav__icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
-    .miku-nav__cloud { padding: 0 12px 8px; }
-    .miku-nav__divider { height: 1px; background: var(--clr-secondary); opacity: 0.4; margin-bottom: 10px; }
-    .miku-nav__cloud-profile { display: flex; align-items: center; gap: 8px; padding: 8px 4px; margin-bottom: 4px; }
-    .miku-nav__cloud-avatar {
-      width: 32px; height: 32px; border: 2px solid var(--clr-primary);
-      background: hsla(174,54%,50%,0.15);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 900; color: var(--clr-primary); flex-shrink: 0;
-    }
-    .miku-nav__cloud-info strong { display: block; font-size: 12px; font-weight: 800; color: var(--clr-fg); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .miku-nav__cloud-info small { display: block; font-size: 10px; color: var(--clr-primary); }
-    .miku-nav__link--muted { opacity: 0.5; font-size: 11px; }
-    .miku-nav__link--muted:hover { opacity: 1; }
-    .miku-nav__cloud-cta { padding: 6px 4px; }
-    .miku-nav__cloud-cta-label { font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--clr-muted); font-weight: 700; margin-bottom: 6px; }
-    .miku-nav__cloud-btn {
-      display: flex; align-items: center; gap: 8px;
-      padding: 9px 12px; border: 2px solid var(--clr-primary);
-      background: hsla(174,54%,50%,0.1); color: var(--clr-primary);
-      font-size: 12px; font-weight: 800; font-family: Inter, sans-serif;
-      cursor: pointer; letter-spacing: 0.05em;
-    }
-    .miku-nav__cloud-btn:hover { background: var(--clr-primary); color: var(--clr-bg); }
-    .miku-nav__foot { padding: 12px; border-top: 3px solid var(--clr-secondary); }
-    .miku-nav__bars { display: flex; align-items: flex-end; gap: 3px; height: 14px; margin-bottom: 6px; }
-    .miku-nav__bar { flex: 1; background: var(--clr-secondary); border-radius: 1px; }
-    .miku-nav__foot-label { text-align: center; font-size: 10px; color: hsla(168,40%,70%,0.4); font-family: ui-monospace, monospace; }
-
-    /* ── Main workspace ── */
-    .cp-workspace {
-      margin-left: 192px; flex: 1; min-height: 100vh;
-      display: flex; flex-direction: column; overflow: hidden;
-    }
-    /* Topbar */
-    .cp-topbar {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 20px;
-      border-bottom: 3px solid var(--clr-secondary);
-      background: var(--clr-card);
-      gap: 12px;
-    }
-    .cp-topbar__left { display: flex; align-items: center; gap: 10px; }
-    .cp-topbar__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--clr-primary); box-shadow: 0 0 10px hsla(174,54%,50%,0.7); flex-shrink: 0; }
-    .cp-topbar__title strong { font-size: 14px; font-weight: 800; letter-spacing: -0.02em; }
-    .cp-topbar__title small { font-size: 10px; color: var(--clr-muted); display: block; }
-    .cp-topbar__actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .cp-btn {
-      display: inline-flex; align-items: center; height: 32px; padding: 0 12px;
-      border: 2px solid var(--clr-secondary); background: transparent;
-      color: var(--clr-fg); font-family: Inter, sans-serif;
-      font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
-      text-transform: uppercase; cursor: pointer; transition: 150ms;
-    }
-    .cp-btn:hover { border-color: var(--clr-primary); background: hsla(174,54%,50%,0.1); }
-    .cp-btn--accent { border-color: var(--clr-primary); color: var(--clr-primary); }
-    .cp-btn--accent:hover { background: var(--clr-primary); color: var(--clr-bg); }
-
-    /* ── Page body ── */
-    .cp-body { flex: 1; padding: 20px; overflow-y: auto; }
-
-    /* ── Saas-style card grid ── */
-    .cp-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
-    .cp-col-12 { grid-column: span 12; }
-    .cp-col-8  { grid-column: span 8; }
-    .cp-col-6  { grid-column: span 6; }
-    .cp-col-4  { grid-column: span 4; }
-
-    /* Flat retro cards */
-    .cp-card {
-      border: 3px solid var(--clr-secondary);
-      background: var(--clr-card);
-      padding: 0;
-      overflow: hidden;
-    }
-    .cp-card__head {
-      padding: 12px 16px;
-      border-bottom: 2px solid var(--clr-secondary);
-      display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    }
-    .cp-card__head h2 {
-      font-size: 11px; font-weight: 800;
-      text-transform: uppercase; letter-spacing: 0.12em;
-      color: var(--clr-muted);
-    }
-    .cp-card__head-badge {
-      font-size: 10px; font-weight: 700;
-      background: hsla(174,54%,50%,0.15);
-      border: 1px solid var(--clr-primary);
-      color: var(--clr-primary);
-      padding: 2px 8px;
-    }
-    .cp-card__body { padding: 16px; }
-
-    /* KPI stat tiles (market card YES/NO style) */
-    .cp-stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0; border: 2px solid var(--clr-secondary); }
-    .cp-stat {
-      padding: 14px 12px; text-align: center;
-      border-right: 2px solid var(--clr-secondary);
-    }
-    .cp-stat:last-child { border-right: none; }
-    .cp-stat__label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; color: var(--clr-muted); margin-bottom: 6px; }
-    .cp-stat__value { font-size: 26px; font-weight: 900; color: var(--clr-fg); line-height: 1; }
-    .cp-stat__value--green { color: var(--clr-primary); }
-    .cp-stat__value--pink  { color: var(--clr-accent); }
-
-    /* Profile hero card */
-    .cp-profile {
-      display: flex; align-items: center; gap: 20px; padding: 20px;
-    }
-    .cp-profile__avatar {
-      width: 56px; height: 56px;
-      border: 3px solid var(--clr-primary);
-      background: hsla(174,54%,50%,0.15);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 24px; font-weight: 900; color: var(--clr-primary);
-      flex-shrink: 0;
-    }
-    .cp-profile__name { font-size: 20px; font-weight: 900; letter-spacing: -0.03em; }
-    .cp-profile__org { font-size: 11px; color: var(--clr-muted); margin-top: 2px; }
-    .cp-profile__meta { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
-    .cp-profile__chip {
-      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
-      padding: 3px 10px; border: 2px solid var(--clr-secondary); color: var(--clr-muted);
-    }
-    .cp-profile__chip--active { border-color: var(--clr-primary); color: var(--clr-primary); }
-
-    /* Row list */
-    .cp-rows { display: grid; gap: 0; }
-    .cp-row {
-      display: flex; justify-content: space-between; align-items: center;
-      gap: 12px; padding: 11px 16px;
-      border-bottom: 1px solid hsla(176,45%,34%,0.25);
-    }
-    .cp-row:last-child { border-bottom: none; }
-    .cp-row span { font-size: 11px; color: var(--clr-muted); text-transform: uppercase; letter-spacing: 0.06em; }
-    .cp-row strong { font-size: 12px; font-weight: 700; text-align: right; max-width: 260px; word-break: break-all; }
-
-    /* Agent cards */
-    .cp-agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding: 16px; }
-    .cp-agent {
-      border: 3px solid var(--clr-secondary);
-      background: hsla(192,35%,12%,0.8);
-      padding: 0; transition: border-color 150ms;
-    }
-    .cp-agent:hover { border-color: var(--clr-primary); }
-    .cp-agent__head {
-      padding: 12px 14px; border-bottom: 2px solid var(--clr-secondary);
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .cp-agent__name { font-size: 13px; font-weight: 800; }
-    .cp-agent__status {
-      font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em;
-      padding: 3px 8px; border: 1px solid var(--clr-secondary); color: var(--clr-muted);
-    }
-    .cp-agent__status--active { border-color: var(--clr-primary); color: var(--clr-primary); }
-    .cp-agent__body { padding: 12px 14px; }
-    .cp-agent__row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 5px; }
-    .cp-agent__row span { color: var(--clr-muted); }
-    .cp-agent__row strong { font-weight: 700; }
-
-    /* Actions row */
-    .cp-actions { padding: 14px 16px; display: flex; gap: 8px; flex-wrap: wrap; }
-
-    @media (max-width: 960px) {
-      .cp-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
-      .cp-col-8, .cp-col-6, .cp-col-4 { grid-column: span 12; }
-      .miku-nav { display: none; }
-      .cp-workspace { margin-left: 0; }
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${escapeHtml(title)} | elizaOK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#080808;--panel:#0f0f0f;--border:#1c1c1c;--border2:#252525;
+  --yellow:#F6E70F;--yr:246,231,15;--green:#39FF14;--red:#FF4040;
+  --white:rgba(255,255,255,0.88);--muted:rgba(255,255,255,0.38);
+  --clr-muted:rgba(255,255,255,0.38);--clr-primary:#F6E70F;--clr-bg:#080808;
+  --dot-color:255,255,255;
+  --r:10px;--r-sm:6px;
+  font-family:'JetBrains Mono',monospace;
+}
+[data-theme="light"]{
+  --bg:#f4f4f0;--panel:#ffffff;--border:#e0dfd8;--border2:#d0cfca;
+  --yellow:#b8a800;--yr:184,168,0;--green:#1a8f00;--red:#d43030;
+  --white:rgba(20,20,18,0.88);--muted:rgba(20,20,18,0.42);
+  --clr-muted:rgba(20,20,18,0.42);--clr-primary:#b8a800;--clr-bg:#f4f4f0;
+  --dot-color:20,20,18;
+}
+html,body{min-height:100%;background:var(--bg);color:var(--white);transition:background .3s,color .3s;}
+canvas#cp-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.09;}
+[data-theme="light"] canvas#cp-canvas{opacity:.05;}
+[data-theme="light"] .cp-card{background:#ffffff;border-color:var(--border);}
+[data-theme="light"] .cp-row{border-bottom-color:rgba(20,20,18,.06);}
+[data-theme="light"] .cp-agent{background:rgba(20,20,18,.03);border-color:var(--border);}
+[data-theme="light"] .cp-connect-hero{background:#ffffff;border-color:var(--border);}
+[data-theme="light"] .a-nav a{border-color:var(--border);}
+[data-theme="light"] .a-logo{color:var(--yellow);}
+[data-theme="light"] .cp-stats{border-color:var(--border);}
+[data-theme="light"] .cp-stat{border-right-color:var(--border);}
+[data-theme="light"] .cp-profile__avatar{background:rgba(var(--yr),.08);}
+[data-theme="light"] #cp-theme-toggle{border-color:var(--border);}
+.a-wrap{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:32px 24px 64px;}
+.a-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:12px;}
+.a-logo{font-size:18px;font-weight:700;color:var(--yellow);letter-spacing:.08em;text-decoration:none;}
+.a-nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.a-nav a{color:var(--muted);font-size:11px;text-decoration:none;padding:5px 12px;border:1px solid var(--border);border-radius:var(--r-sm);transition:all .2s;}
+.a-nav a:hover{color:var(--yellow);border-color:var(--yellow);box-shadow:0 0 8px rgba(246,231,15,.25);}
+.a-nav a.active{color:var(--yellow);border-color:var(--yellow);}
+/* ── Card grid (reuse cp- prefix so existing body HTML still works) ── */
+.cp-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;}
+.cp-col-12{grid-column:span 12;}
+.cp-col-8{grid-column:span 8;}
+.cp-col-6{grid-column:span 6;}
+.cp-col-4{grid-column:span 4;}
+.cp-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:border-color .2s;}
+.cp-card:hover{border-color:rgba(246,231,15,.25);}
+.cp-card__head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.cp-card__head h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
+.cp-card__head-badge{font-size:10px;font-weight:600;background:rgba(246,231,15,.08);border:1px solid rgba(246,231,15,.3);color:var(--yellow);padding:2px 8px;border-radius:20px;}
+.cp-card__body{padding:16px;}
+.cp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;}
+.cp-stat{padding:16px 14px;text-align:center;border-right:1px solid var(--border);}
+.cp-stat:last-child{border-right:none;}
+.cp-stat__label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px;}
+.cp-stat__value{font-size:24px;font-weight:700;color:var(--white);line-height:1;}
+.cp-stat__value--green{color:var(--yellow);}
+.cp-stat__value--pink{color:var(--red);}
+.cp-profile{display:flex;align-items:center;gap:20px;padding:20px;}
+.cp-profile__avatar{width:52px;height:52px;border:1px solid var(--yellow);background:rgba(246,231,15,.08);border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--yellow);flex-shrink:0;}
+.cp-profile__name{font-size:18px;font-weight:700;}
+.cp-profile__org{font-size:11px;color:var(--muted);margin-top:2px;}
+.cp-profile__meta{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+.cp-profile__chip{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;padding:3px 10px;border:1px solid var(--border);color:var(--muted);border-radius:20px;}
+.cp-profile__chip--active{border-color:var(--yellow);color:var(--yellow);}
+.cp-rows{display:grid;gap:0;}
+.cp-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.04);}
+.cp-row:last-child{border-bottom:none;}
+.cp-row span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+.cp-row strong{font-size:12px;font-weight:600;text-align:right;max-width:260px;word-break:break-all;}
+.cp-agents{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;padding:16px;}
+.cp-agent{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;transition:border-color .2s;}
+.cp-agent:hover{border-color:var(--yellow);}
+.cp-agent__head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.cp-agent__name{font-size:13px;font-weight:600;}
+.cp-agent__status{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:2px 8px;border:1px solid var(--border);color:var(--muted);border-radius:20px;}
+.cp-agent__status--active{border-color:var(--yellow);color:var(--yellow);}
+.cp-agent__body{padding:10px 14px;}
+.cp-agent__row{display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px;}
+.cp-agent__row span{color:var(--muted);}
+.cp-agent__row strong{font-weight:600;}
+.cp-actions{padding:14px 16px;display:flex;gap:8px;flex-wrap:wrap;}
+.cp-btn{display:inline-flex;align-items:center;height:32px;padding:0 14px;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;color:var(--muted);font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;transition:all .2s;text-decoration:none;}
+.cp-btn:hover{border-color:var(--yellow);color:var(--yellow);box-shadow:0 0 10px rgba(246,231,15,.2);}
+.cp-btn--accent{border-color:var(--yellow);color:var(--yellow);}
+.cp-btn--accent:hover{background:var(--yellow);color:#000;}
+@media(max-width:960px){.cp-stats{grid-template-columns:repeat(2,minmax(0,1fr));}.cp-col-8,.cp-col-6,.cp-col-4{grid-column:span 12;}}
+@media(max-width:600px){.cp-col-12{grid-column:span 12;}}
+.a-footer{text-align:center;font-size:10px;color:var(--muted);margin-top:40px;letter-spacing:.06em;}
+.cp-connect-hero{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:64px 24px;background:var(--panel);border:1px solid var(--border);border-radius:var(--r);margin-bottom:24px;}
+.cp-connect-icon{font-size:40px;color:var(--yellow);margin-bottom:16px;opacity:.6;}
+.cp-connect-title{font-size:20px;font-weight:700;color:var(--white);margin-bottom:10px;}
+.cp-connect-desc{font-size:13px;color:var(--muted);max-width:400px;line-height:1.7;margin-bottom:20px;}
+</style>
 </head>
 <body>
-  <!-- Left nav (same structure as main) -->
-  <nav class="miku-nav">
-    <a href="/" class="miku-nav__head" style="text-decoration:none;color:inherit;">
-      <div class="miku-nav__logo"><img src="/assets/elizaok-logo.png" alt="elizaOK" /></div>
-      <div class="miku-nav__brand"><strong>elizaOK</strong><small>V1.0 · BNB Chain</small></div>
-    </a>
-    <div class="miku-nav__links">
-      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">⌂</span><span>Home</span></a>
-      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">◎</span><span>Discovery</span></a>
-      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">▣</span><span>Portfolio</span></a>
-      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">◈</span><span>Execution</span></a>
-      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">◉</span><span>Distribution</span></a>
-      <a class="miku-nav__link" href="/"><span class="miku-nav__icon">✦</span><span>Goo</span></a>
-    </div>
-    ${cloudNav}
-    <div class="miku-nav__foot">
-      <div class="miku-nav__bars">
-        <div class="miku-nav__bar" style="height:40%"></div>
-        <div class="miku-nav__bar" style="height:70%"></div>
-        <div class="miku-nav__bar" style="height:95%"></div>
-        <div class="miku-nav__bar" style="height:55%"></div>
-        <div class="miku-nav__bar" style="height:80%"></div>
-        <div class="miku-nav__bar" style="height:40%"></div>
-        <div class="miku-nav__bar" style="height:65%"></div>
-        <div class="miku-nav__bar" style="height:90%"></div>
-      </div>
-      <div class="miku-nav__foot-label">♪ elizaOK V1.0 ♪</div>
-    </div>
-  </nav>
+<canvas id="cp-canvas"></canvas>
+<div class="a-wrap">
+  <div class="a-topbar">
+    <a class="a-logo" href="/">elizaOK</a>
+    <nav class="a-nav">
+      <a href="/">Dashboard</a>
+      <a href="/cloud/agents"${title === "Cloud Agents" ? ' class="active"' : ""}>Agents</a>
+      <a href="/cloud/credits"${title === "Cloud Credits" ? ' class="active"' : ""}>Credits</a>
+      <a href="/airdrop">Airdrop</a>
+      ${isConnected
+        ? `<a href="/auth/eliza-cloud/logout" style="color:var(--yellow);border-color:var(--yellow);">${escapeHtml(cloudUser ?? "")} &middot; Logout</a>`
+        : `<a href="#" id="cp-cloud-btn" style="cursor:pointer;color:var(--yellow);border-color:rgba(246,231,15,.4);">+ Connect Cloud</a>`}
+      <button id="cp-theme-toggle" onclick="cpToggleTheme()" style="background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--muted);font-family:inherit;font-size:11px;padding:4px 10px;cursor:pointer;transition:all .2s;">☀</button>
+    </nav>
+  </div>
+  ${body}
+  <div class="a-footer">elizaOK · Powered by elizaOS · BNB Chain</div>
+</div>
+<script>
+(function(){
+  /* ── Theme ── */
+  window.cpToggleTheme = function() {
+    var root = document.documentElement;
+    var isLight = root.getAttribute('data-theme') === 'light';
+    var next = isLight ? 'dark' : 'light';
+    root.setAttribute('data-theme', next);
+    var btn = document.getElementById('cp-theme-toggle');
+    if (btn) btn.textContent = next === 'light' ? '🌙' : '☀';
+    try { localStorage.setItem('elizaok-theme', next); } catch(e) {}
+  };
+  (function(){
+    var saved;
+    try { saved = localStorage.getItem('elizaok-theme'); } catch(e) {}
+    if (saved === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      var btn = document.getElementById('cp-theme-toggle');
+      if (btn) btn.textContent = '🌙';
+    }
+  })();
 
-  <div class="cp-workspace">
-    <!-- Topbar -->
-    <header class="cp-topbar">
-      <div class="cp-topbar__left">
-        <div class="cp-topbar__dot"></div>
-        <div class="cp-topbar__title">
-          <strong>${escapeHtml(title)}</strong>
-          <small>${escapeHtml(subtitle)}</small>
-        </div>
-      </div>
-      <div class="cp-topbar__actions">
-        <a class="cp-btn" href="/">← Home</a>
-        <a class="cp-btn${title === "Cloud Agents" ? " cp-btn--accent" : ""}" href="/cloud/agents">Agents</a>
-        <a class="cp-btn${title === "Cloud Credits" ? " cp-btn--accent" : ""}" href="/cloud/credits">Credits</a>
-        <a class="cp-btn" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Open Cloud ↗</a>
-      </div>
-    </header>
+  /* ── Canvas ── */
+  const canvas=document.getElementById('cp-canvas');
+  const ctx=canvas.getContext('2d');
+  let W,H,dots=[];
+  function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;dots=[];const spacing=22;for(let x=0;x<W;x+=spacing)for(let y=0;y<H;y+=spacing)dots.push({x,y});}
+  window.addEventListener('resize',resize);resize();
+  let t=0;
+  function getDotColor(){return document.documentElement.getAttribute('data-theme')==='light'?'20,20,18':'255,255,255';}
+  function draw(){ctx.clearRect(0,0,W,H);t+=0.012;const dc=getDotColor();for(const d of dots){const wave=Math.sin(d.x/90+t)*Math.sin(d.y/90+t*0.7);const r=1+wave*1.1;const a=0.35+wave*0.35;ctx.beginPath();ctx.arc(d.x,d.y,Math.max(0.3,r),0,Math.PI*2);ctx.fillStyle='rgba('+dc+','+a+')';ctx.fill();}requestAnimationFrame(draw);}
+  draw();
 
-    <!-- Page body -->
-    <main class="cp-body">
-      ${body}
-    </main>
+  function doFinalPollThenReload(sessionId) {
+    fetch('/api/eliza-cloud/hosted/poll?session=' + encodeURIComponent(sessionId), { credentials: 'same-origin' })
+      .then(function(r){ return r.json(); })
+      .catch(function(){ return {}; })
+      .then(function(){ window.location.reload(); });
+  }
+  function openCloudAuth(btn) {
+    if (btn) btn.style.opacity = '0.5';
+    fetch('/api/eliza-cloud/hosted/start', { method: 'POST', headers: {'content-type':'application/json'}, credentials: 'same-origin' })
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if (!data.loginUrl) { window.location.href = '/auth/eliza-cloud?popup=1'; return; }
+        var p = window.open(data.loginUrl, 'elizacloud-auth', 'width=500,height=640,scrollbars=yes');
+        if (!p) { window.location.href = data.loginUrl; return; }
+        if (data.mode === 'cli-session') {
+          var count = 0;
+          var popupWasClosed = false;
+          var ti = setInterval(function() {
+            count++;
+            var closed = (function(){ try{return p.closed;}catch(e){return true;} }());
+            if (closed && !popupWasClosed) {
+              popupWasClosed = true;
+              clearInterval(ti);
+              if (btn) btn.style.opacity = '';
+              doFinalPollThenReload(data.sessionId);
+              return;
+            }
+            if (count > 90) {
+              clearInterval(ti);
+              if (btn) btn.style.opacity = '';
+              doFinalPollThenReload(data.sessionId);
+              return;
+            }
+            fetch('/api/eliza-cloud/hosted/poll?session=' + encodeURIComponent(data.sessionId), { credentials: 'same-origin' })
+              .then(function(r){ return r.json(); })
+              .then(function(pd) {
+                if (pd.status === 'authenticated') {
+                  clearInterval(ti);
+                  try { p.close(); } catch(e) {}
+                  window.location.reload();
+                }
+              }).catch(function(){});
+          }, 1500);
+        } else {
+          var closeTi = setInterval(function() {
+            try { if (p.closed) { clearInterval(closeTi); window.location.reload(); } } catch(e) {}
+          }, 800);
+        }
+      })
+      .catch(function() { window.location.href = '/auth/eliza-cloud?popup=1'; });
+  }
+
+  var cpCloudBtn = document.getElementById('cp-cloud-btn');
+  if (cpCloudBtn) {
+    cpCloudBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      openCloudAuth(this);
+    });
+  }
+})();
+</script>
+</body>
+</html>`;
+}
+
+function renderAirdropPage(
+  snapshot: DashboardSnapshot | null,
+  cloudSession: ElizaCloudSession | null,
+  distributionPlan: any,
+  distributionExecution: any,
+  distributionLedger: any,
+): string {
+  const pool = (distributionPlan as any)?.distributionPoolUsd ?? 0;
+  const eligible = (distributionPlan as any)?.eligibleHolderCount ?? 0;
+  const recipients: any[] = (distributionPlan as any)?.recipients ?? [];
+  const totalExecuted = (distributionLedger as any)?.totalRecipientsExecuted ?? 0;
+  const totalDryRun = (distributionLedger as any)?.totalRecipientsDryRun ?? 0;
+  const ledgerRecords: any[] = (distributionLedger as any)?.records ?? [];
+  const selectedAsset = (distributionPlan as any)?.selectedAsset ?? {};
+  const distNote = (distributionPlan as any)?.note ?? "";
+  const snapshotTime = snapshot?.generatedAt ? new Date(snapshot.generatedAt).toLocaleString() : "—";
+  const portfolioValue = snapshot?.portfolioLifecycle?.grossPortfolioValueUsd ?? 0;
+  const execEnabled = (distributionExecution as any)?.enabled ?? false;
+  const execDryRun = (distributionExecution as any)?.dryRun ?? true;
+  const nextAction = (distributionExecution as any)?.nextAction ?? "—";
+  const publication = (distributionPlan as any)?.publication ?? null;
+
+  const recipientRows = recipients.slice(0, 20).map((r: any) => `
+    <tr class="a-tr">
+      <td class="a-td mono">${escapeHtml(r.address ?? "")}</td>
+      <td class="a-td">${escapeHtml(String(r.qualifiedBalance ?? "—"))}</td>
+      <td class="a-td yellow">${escapeHtml(String(r.estimatedShare ?? "—"))}</td>
+      <td class="a-td">${escapeHtml(r.label ?? "holder")}</td>
+    </tr>`).join("");
+
+  const ledgerRows = ledgerRecords.slice(0, 15).map((rec: any) => `
+    <tr class="a-tr">
+      <td class="a-td mono">${escapeHtml((rec.recipientAddress ?? "").slice(0, 12))}…</td>
+      <td class="a-td">${escapeHtml(String(rec.amount ?? "—"))}</td>
+      <td class="a-td ${rec.disposition === "executed" ? "green" : "yellow"}">${escapeHtml(rec.disposition ?? "—")}</td>
+      <td class="a-td">${rec.timestamp ? new Date(rec.timestamp).toLocaleTimeString() : "—"}</td>
+    </tr>`).join("");
+
+  const cloudUser = cloudSession?.displayName ?? null;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>elizaOK · Airdrop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#080808;--panel:#0f0f0f;--border:#1c1c1c;--border2:#252525;
+  --yellow:#F6E70F;--yr:246,231,15;--green:#39FF14;--red:#FF4040;
+  --white:rgba(255,255,255,0.88);--muted:rgba(255,255,255,0.38);
+  --dot-color:255,255,255;
+  --r:10px;--r-sm:6px;
+  font-family:'JetBrains Mono',monospace;
+}
+[data-theme="light"]{
+  --bg:#f4f4f0;--panel:#ffffff;--border:#e0dfd8;--border2:#d0cfca;
+  --yellow:#b8a800;--yr:184,168,0;--green:#1a8f00;--red:#d43030;
+  --white:rgba(20,20,18,0.88);--muted:rgba(20,20,18,0.42);
+  --dot-color:20,20,18;
+}
+html,body{min-height:100%;background:var(--bg);color:var(--white);transition:background .3s,color .3s;}
+canvas#airdrop-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.09;}
+[data-theme="light"] canvas#airdrop-canvas{opacity:.05;}
+[data-theme="light"] .a-hero{background:#fff;border-color:var(--border);}
+[data-theme="light"] .a-stat{background:#fff;border-color:var(--border);}
+[data-theme="light"] .a-checker{background:#fff;border-color:var(--border);}
+[data-theme="light"] .a-card{background:#fff;border-color:var(--border);}
+[data-theme="light"] .a-kv{border-bottom-color:rgba(20,20,18,.06);}
+[data-theme="light"] .a-table-wrap{background:#fff;border-color:var(--border);}
+[data-theme="light"] .a-tr:nth-child(odd){background:rgba(20,20,18,.02);}
+[data-theme="light"] .a-pub{background:#fff;border-color:var(--border);}
+[data-theme="light"] .a-pub pre{background:#f0f0ec;color:#1a6600;}
+[data-theme="light"] .a-input{background:#f8f8f5;border-color:var(--border);color:var(--white);}
+[data-theme="light"] .a-nav a{border-color:var(--border);}
+[data-theme="light"] #airdrop-theme-toggle{border-color:var(--border);}
+.a-wrap{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:32px 24px 64px;}
+.a-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:12px;}
+.a-logo{font-size:18px;font-weight:700;color:var(--yellow);letter-spacing:.08em;text-decoration:none;}
+.a-nav{display:flex;gap:10px;align-items:center;}
+.a-nav a{color:var(--muted);font-size:11px;text-decoration:none;padding:5px 12px;border:1px solid var(--border);border-radius:var(--r-sm);transition:all .2s;}
+.a-nav a:hover{color:var(--yellow);border-color:var(--yellow);box-shadow:0 0 8px rgba(246,231,15,.25);}
+.a-nav a.active{color:var(--yellow);border-color:var(--yellow);}
+.a-hero{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:32px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;}
+.a-hero h1{font-size:24px;font-weight:700;letter-spacing:.04em;margin-bottom:8px;}
+.a-hero h1 span{color:var(--yellow);}
+.a-hero p{color:var(--muted);font-size:13px;line-height:1.6;max-width:480px;}
+.a-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;border:1px solid;font-size:11px;font-weight:500;letter-spacing:.04em;}
+.a-badge--live{border-color:var(--green);color:var(--green);background:rgba(57,255,20,.07);}
+.a-badge--live::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);animation:live-pulse 1.2s infinite;}
+.a-badge--standby{border-color:var(--yellow);color:var(--yellow);background:rgba(246,231,15,.07);}
+.a-badge--standby::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--yellow);}
+@keyframes live-pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.a-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;}
+.a-stat{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;transition:border-color .2s,box-shadow .2s;}
+.a-stat:hover{border-color:var(--yellow);box-shadow:0 0 16px rgba(246,231,15,.12);}
+.a-stat__label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;}
+.a-stat__val{font-size:22px;font-weight:700;color:var(--yellow);}
+.a-stat__sub{font-size:10px;color:var(--muted);margin-top:3px;}
+.a-checker{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:24px;margin-bottom:24px;}
+.a-checker h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--yellow);margin-bottom:16px;}
+.a-input-row{display:flex;gap:10px;flex-wrap:wrap;}
+.a-input{flex:1;min-width:260px;background:#151515;border:1px solid var(--border);border-radius:var(--r-sm);color:var(--white);font-family:inherit;font-size:13px;padding:10px 14px;outline:none;transition:border-color .2s;}
+.a-input:focus{border-color:var(--yellow);}
+.a-btn{padding:10px 20px;border:1px solid var(--yellow);border-radius:var(--r-sm);background:transparent;color:var(--yellow);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;letter-spacing:.04em;}
+.a-btn:hover{background:var(--yellow);color:#000;box-shadow:0 0 16px rgba(246,231,15,.35);}
+.a-result{margin-top:14px;padding:14px 16px;border-radius:var(--r-sm);font-size:13px;display:none;}
+.a-result--eligible{background:rgba(57,255,20,.08);border:1px solid var(--green);color:var(--green);}
+.a-result--not{background:rgba(255,64,64,.08);border:1px solid var(--red);color:var(--red);}
+.a-result--nodata{background:rgba(246,231,15,.06);border:1px solid var(--yellow);color:var(--yellow);}
+.a-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;}
+@media(max-width:700px){.a-grid{grid-template-columns:1fr;}}
+.a-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:20px;overflow:hidden;}
+.a-card h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+.a-kv{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;min-width:0;}
+.a-kv:last-child{border-bottom:none;}
+.a-kv span{color:var(--muted);flex-shrink:0;}
+.a-kv strong{color:var(--white);text-align:right;min-width:0;overflow-wrap:break-word;word-break:break-word;}
+.a-kv strong.yellow{color:var(--yellow);}
+.a-kv strong.green{color:var(--green);}
+.a-table-wrap{overflow-x:auto;border-radius:var(--r);background:var(--panel);border:1px solid var(--border);margin-bottom:24px;}
+.a-table-wrap h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:14px 18px;border-bottom:1px solid var(--border);}
+table.a-table{width:100%;border-collapse:collapse;}
+.a-tr:nth-child(odd){background:rgba(255,255,255,.02);}
+.a-tr:hover{background:rgba(246,231,15,.04);}
+.a-td{padding:8px 18px;font-size:11px;color:var(--white);white-space:nowrap;}
+.a-td.mono{font-family:'JetBrains Mono',monospace;color:var(--muted);font-size:10px;}
+.a-td.yellow{color:var(--yellow);}
+.a-td.green{color:var(--green);}
+th.a-th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:8px 18px;text-align:left;border-bottom:1px solid var(--border);}
+.a-note{background:rgba(246,231,15,.05);border:1px solid rgba(246,231,15,.15);border-radius:var(--r-sm);padding:12px 16px;font-size:12px;color:var(--muted);margin-bottom:24px;line-height:1.6;}
+.a-pub{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:24px;}
+.a-pub h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px;}
+.a-pub pre{font-size:11px;color:var(--green);background:#030303;border-radius:var(--r-sm);padding:14px;overflow-x:auto;line-height:1.6;}
+.a-empty{color:var(--muted);font-size:12px;padding:24px 18px;text-align:center;}
+.a-footer{text-align:center;font-size:10px;color:var(--muted);margin-top:40px;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<canvas id="airdrop-canvas"></canvas>
+<div class="a-wrap">
+
+  <div class="a-topbar">
+    <a class="a-logo" href="/">elizaOK</a>
+    <nav class="a-nav">
+      <a href="/">Dashboard</a>
+      <a href="/cloud/agents">Agents</a>
+      <a href="/cloud/credits">Credits</a>
+      <a href="/airdrop" class="active">Airdrop</a>
+      ${cloudUser
+        ? `<a href="/auth/eliza-cloud/logout" style="color:var(--yellow);border-color:var(--yellow);">${escapeHtml(cloudUser)} &middot; Logout</a>`
+        : `<a href="#" id="airdrop-cloud-btn" style="cursor:pointer;color:var(--yellow);border-color:rgba(246,231,15,.4);">+ Connect Cloud</a>`}
+      <button id="airdrop-theme-toggle" onclick="airToggleTheme()" style="background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--muted);font-family:inherit;font-size:11px;padding:4px 10px;cursor:pointer;transition:all .2s;">☀</button>
+    </nav>
   </div>
 
-  <script>
-  (function() {
-    var bars = document.querySelectorAll(".miku-nav__bar");
-    function anim() { bars.forEach(function(b){ b.style.height=(10+Math.random()*85)+"%"; }); }
-    setInterval(anim,350); anim();
-  })();
-  </script>
+  <div class="a-hero">
+    <div>
+      <h1><span>elizaOK</span> · Airdrop Eligibility</h1>
+      <p>The treasury flywheel distributes gains back to qualified $GOO holders. Check if your wallet qualifies for the current airdrop cycle and view the distribution plan.</p>
+    </div>
+    <div>
+      <div class="a-badge ${execEnabled ? "a-badge--live" : "a-badge--standby"}">${execEnabled ? (execDryRun ? "DRY RUN" : "LIVE") : "STANDBY"}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:8px;">Last scan: ${snapshotTime}</div>
+    </div>
+  </div>
+
+  <div class="a-stats">
+    <div class="a-stat">
+      <div class="a-stat__label">Distribution Pool</div>
+      <div class="a-stat__val">$${escapeHtml(pool.toFixed ? pool.toFixed(2) : String(pool))}</div>
+      <div class="a-stat__sub">treasury allocation</div>
+    </div>
+    <div class="a-stat">
+      <div class="a-stat__label">Eligible Holders</div>
+      <div class="a-stat__val">${eligible}</div>
+      <div class="a-stat__sub">qualified $GOO wallets</div>
+    </div>
+    <div class="a-stat">
+      <div class="a-stat__label">Executed Sends</div>
+      <div class="a-stat__val">${totalExecuted}</div>
+      <div class="a-stat__sub">this cycle</div>
+    </div>
+    <div class="a-stat">
+      <div class="a-stat__label">Dry Run Count</div>
+      <div class="a-stat__val">${totalDryRun}</div>
+      <div class="a-stat__sub">simulated sends</div>
+    </div>
+    <div class="a-stat">
+      <div class="a-stat__label">Portfolio Value</div>
+      <div class="a-stat__val">$${escapeHtml(portfolioValue.toFixed ? portfolioValue.toFixed(2) : String(portfolioValue))}</div>
+      <div class="a-stat__sub">gross treasury</div>
+    </div>
+    <div class="a-stat">
+      <div class="a-stat__label">Recipients in Plan</div>
+      <div class="a-stat__val">${recipients.length}</div>
+      <div class="a-stat__sub">snapshot recipients</div>
+    </div>
+  </div>
+
+  ${distNote ? `<div class="a-note">${escapeHtml(distNote)}</div>` : ""}
+
+  <div class="a-checker">
+    <h2>Check Wallet Eligibility</h2>
+    <div class="a-input-row">
+      <input id="wallet-input" class="a-input" type="text" placeholder="Enter wallet address (0x…)" autocomplete="off" spellcheck="false" />
+      <button class="a-btn" onclick="checkWallet()">Check</button>
+    </div>
+    <div id="wallet-result" class="a-result"></div>
+  </div>
+
+  <div class="a-grid">
+    <div class="a-card">
+      <h2>Airdrop Asset</h2>
+      <div class="a-kv"><span>Mode</span><strong class="yellow">${escapeHtml(selectedAsset.mode ?? "—")}</strong></div>
+      <div class="a-kv"><span>Token</span><strong>${escapeHtml(selectedAsset.tokenSymbol ?? "—")}</strong></div>
+      <div class="a-kv"><span>Total Amount</span><strong>${escapeHtml(String(selectedAsset.totalAmount ?? "—"))}</strong></div>
+      <div class="a-kv"><span>Wallet Balance</span><strong>${escapeHtml(String(selectedAsset.walletBalance ?? "—"))}</strong></div>
+      <div class="a-kv"><span>Quote USD</span><strong>$${escapeHtml(String(selectedAsset.walletQuoteUsd ?? "—"))}</strong></div>
+      ${selectedAsset.reason ? `<div class="a-kv"><span>Reason</span><strong style="font-size:10px;color:var(--muted);max-width:160px;white-space:normal;">${escapeHtml(selectedAsset.reason)}</strong></div>` : ""}
+    </div>
+    <div class="a-card">
+      <h2>Execution State</h2>
+      <div class="a-kv"><span>Enabled</span><strong class="${execEnabled ? "green" : ""}">${execEnabled ? "YES" : "NO"}</strong></div>
+      <div class="a-kv"><span>Mode</span><strong class="yellow">${execDryRun ? "Dry Run" : "LIVE"}</strong></div>
+      <div class="a-kv"><span>Max/Run</span><strong>${escapeHtml(String((distributionExecution as any)?.maxRecipientsPerRun ?? "—"))}</strong></div>
+      <div class="a-kv"><span>Wallet</span><strong style="font-size:10px;color:var(--muted);">${escapeHtml(((distributionExecution as any)?.walletAddress ?? "—").slice(0,16))}…</strong></div>
+      <div class="a-kv"><span>Next Action</span><strong style="font-size:10px;">${escapeHtml(nextAction)}</strong></div>
+    </div>
+  </div>
+
+  ${publication ? `<div class="a-pub">
+    <h2>Latest Publication</h2>
+    <pre>${escapeHtml(typeof publication === "string" ? publication : JSON.stringify(publication, null, 2))}</pre>
+  </div>` : ""}
+
+  <div class="a-table-wrap">
+    <h2>Recipient List (top ${Math.min(20, recipients.length)} of ${recipients.length})</h2>
+    ${recipients.length === 0
+      ? `<div class="a-empty">No recipients in current distribution plan.</div>`
+      : `<table class="a-table">
+          <thead><tr>
+            <th class="a-th">Address</th>
+            <th class="a-th">Qualified Balance</th>
+            <th class="a-th">Est. Share</th>
+            <th class="a-th">Label</th>
+          </tr></thead>
+          <tbody>${recipientRows}</tbody>
+        </table>`}
+  </div>
+
+  <div class="a-table-wrap">
+    <h2>Distribution Ledger (last ${Math.min(15, ledgerRecords.length)} records)</h2>
+    ${ledgerRecords.length === 0
+      ? `<div class="a-empty">No ledger records yet.</div>`
+      : `<table class="a-table">
+          <thead><tr>
+            <th class="a-th">Recipient</th>
+            <th class="a-th">Amount</th>
+            <th class="a-th">Status</th>
+            <th class="a-th">Time</th>
+          </tr></thead>
+          <tbody>${ledgerRows}</tbody>
+        </table>`}
+  </div>
+
+  <div class="a-footer">elizaOK · Powered by elizaOS · Airdrop flywheel on BNB Chain</div>
+</div>
+
+<script>
+/* ── Airdrop theme toggle ── */
+window.airToggleTheme = function() {
+  var root = document.documentElement;
+  var isLight = root.getAttribute('data-theme') === 'light';
+  var next = isLight ? 'dark' : 'light';
+  root.setAttribute('data-theme', next);
+  var btn = document.getElementById('airdrop-theme-toggle');
+  if (btn) btn.textContent = next === 'light' ? '🌙' : '☀';
+  try { localStorage.setItem('elizaok-theme', next); } catch(e) {}
+};
+(function(){
+  var saved; try { saved = localStorage.getItem('elizaok-theme'); } catch(e) {}
+  if (saved === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    var btn = document.getElementById('airdrop-theme-toggle');
+    if (btn) btn.textContent = '🌙';
+  }
+})();
+
+(function(){
+  const canvas=document.getElementById('airdrop-canvas');
+  const ctx=canvas.getContext('2d');
+  let W,H,dots=[];
+  function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;dots=[];const spacing=22;for(let x=0;x<W;x+=spacing)for(let y=0;y<H;y+=spacing)dots.push({x,y,r:0,phase:Math.random()*Math.PI*2});}
+  window.addEventListener('resize',resize);resize();
+  let t=0;
+  function getDotColor(){return document.documentElement.getAttribute('data-theme')==='light'?'20,20,18':'255,255,255';}
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    t+=0.012;
+    const dc=getDotColor();
+    for(const d of dots){
+      const wave=Math.sin(d.x/90+t)*Math.sin(d.y/90+t*0.7);
+      const r=1+wave*1.1;
+      const a=0.35+wave*0.35;
+      ctx.beginPath();ctx.arc(d.x,d.y,Math.max(0.3,r),0,Math.PI*2);
+      ctx.fillStyle='rgba('+dc+','+a+')';ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+const RECIPIENTS=${JSON.stringify(recipients.map((r: any)=>r.address?.toLowerCase()))};
+function checkWallet(){
+  const val=document.getElementById('wallet-input').value.trim().toLowerCase();
+  const el=document.getElementById('wallet-result');
+  if(!val){el.style.display='none';return;}
+  if(RECIPIENTS.length===0){
+    el.className='a-result a-result--nodata';
+    el.innerHTML='No distribution plan loaded yet. The agent has not run a distribution scan.';
+    el.style.display='block';return;
+  }
+  if(RECIPIENTS.includes(val)){
+    el.className='a-result a-result--eligible';
+    el.innerHTML='✓ This wallet is in the current airdrop recipient list.';
+  }else{
+    el.className='a-result a-result--not';
+    el.innerHTML='✗ This wallet is not in the current airdrop plan. Eligibility is based on $GOO holding thresholds at snapshot time.';
+  }
+  el.style.display='block';
+}
+document.getElementById('wallet-input').addEventListener('keydown',function(e){if(e.key==='Enter')checkWallet();});
+
+(function(){
+  function doFinalPollThenReload(sessionId) {
+    fetch('/api/eliza-cloud/hosted/poll?session=' + encodeURIComponent(sessionId), { credentials: 'same-origin' })
+      .then(function(r){ return r.json(); })
+      .catch(function(){ return {}; })
+      .then(function(){ window.location.reload(); });
+  }
+  function openCloudAuth(btn) {
+    if (btn) btn.style.opacity = '0.5';
+    fetch('/api/eliza-cloud/hosted/start', { method: 'POST', headers: {'content-type':'application/json'}, credentials: 'same-origin' })
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if (!data.loginUrl) { window.location.href = '/auth/eliza-cloud?popup=1'; return; }
+        var p = window.open(data.loginUrl, 'elizacloud-auth', 'width=500,height=640,scrollbars=yes');
+        if (!p) { window.location.href = data.loginUrl; return; }
+        if (data.mode === 'cli-session') {
+          var count = 0;
+          var popupWasClosed = false;
+          var ti = setInterval(function() {
+            count++;
+            var closed = (function(){ try{return p.closed;}catch(e){return true;} }());
+            if (closed && !popupWasClosed) {
+              popupWasClosed = true;
+              clearInterval(ti);
+              if (btn) btn.style.opacity = '';
+              doFinalPollThenReload(data.sessionId);
+              return;
+            }
+            if (count > 90) {
+              clearInterval(ti);
+              if (btn) btn.style.opacity = '';
+              doFinalPollThenReload(data.sessionId);
+              return;
+            }
+            fetch('/api/eliza-cloud/hosted/poll?session=' + encodeURIComponent(data.sessionId), { credentials: 'same-origin' })
+              .then(function(r){ return r.json(); })
+              .then(function(pd) {
+                if (pd.status === 'authenticated') {
+                  clearInterval(ti);
+                  try { p.close(); } catch(e) {}
+                  window.location.reload();
+                }
+              }).catch(function(){});
+          }, 1500);
+        } else {
+          var closeTi = setInterval(function() {
+            try { if (p.closed) { clearInterval(closeTi); window.location.reload(); } } catch(e) {}
+          }, 800);
+        }
+      })
+      .catch(function() { window.location.href = '/auth/eliza-cloud?popup=1'; });
+  }
+
+  var btn = document.getElementById('airdrop-cloud-btn');
+  if (btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      openCloudAuth(this);
+    });
+  }
+})();
+</script>
 </body>
 </html>`;
 }
@@ -2317,14 +2576,11 @@ function renderCloudCreditsPage(
     return renderCloudPageShell(
       "Cloud Credits",
       "Connect ElizaCloud first",
-      `<div class="cp-grid">
-        <div class="cp-col-12 cp-card">
-          <div class="cp-card__head"><h2>Not Connected</h2></div>
-          <div class="cp-card__body">
-            <p style="color:var(--clr-muted);font-size:13px;">Connect ElizaCloud from the home dashboard to view your credits.</p>
-            <div class="cp-actions"><a class="cp-btn cp-btn--accent" href="/">← Go to Home</a></div>
-          </div>
-        </div>
+      `<div class="cp-connect-hero">
+        <div class="cp-connect-icon">◈</div>
+        <div class="cp-connect-title">Credits &amp; Billing</div>
+        <p class="cp-connect-desc">Connect your ElizaCloud account to view credit balance, billing details, and auto top-up settings.</p>
+        <a class="cp-btn cp-btn--accent" href="#" id="cp-cloud-btn" style="cursor:pointer;margin-top:4px;">+ Connect ElizaCloud</a>
       </div>`,
       null,
     );
@@ -2355,7 +2611,7 @@ function renderCloudCreditsPage(
         <div class="cp-stats">
           <div class="cp-stat">
             <div class="cp-stat__label">Account Balance</div>
-            <div class="cp-stat__value cp-stat__value--green">${escapeHtml(cloudSession.credits)} cr</div>
+            <div class="cp-stat__value cp-stat__value--green" style="font-size:16px;word-break:break-all;">${escapeHtml(cloudSession.credits)} credits</div>
           </div>
           <div class="cp-stat">
             <div class="cp-stat__label">Agents</div>
@@ -2422,14 +2678,11 @@ function renderCloudAgentsPage(
     return renderCloudPageShell(
       "Cloud Agents",
       "Connect ElizaCloud first",
-      `<div class="cp-grid">
-        <div class="cp-col-12 cp-card">
-          <div class="cp-card__head"><h2>Not Connected</h2></div>
-          <div class="cp-card__body">
-            <p style="color:var(--clr-muted);font-size:13px;">Connect ElizaCloud from the home dashboard to manage your agents.</p>
-            <div class="cp-actions"><a class="cp-btn cp-btn--accent" href="/">← Go to Home</a></div>
-          </div>
-        </div>
+      `<div class="cp-connect-hero">
+        <div class="cp-connect-icon">⬡</div>
+        <div class="cp-connect-title">Cloud Agents</div>
+        <p class="cp-connect-desc">Connect your ElizaCloud account to view and manage AI agents, budgets, and request usage.</p>
+        <a class="cp-btn cp-btn--accent" href="#" id="cp-cloud-btn" style="cursor:pointer;margin-top:4px;">+ Connect ElizaCloud</a>
       </div>`,
       null,
     );
@@ -3164,6 +3417,9 @@ function renderHtml(
     )
     .join("");
 
+  // alias for new body template
+  const distributionRecipientRows = distributionPendingRows;
+
   const distributionExecutionRows = distributionExecution.readinessChecks
     .map(
       (check) => `
@@ -3453,3713 +3709,999 @@ function renderHtml(
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    /* ── mikuelizaos.cloud exact palette ── */
+    /* ════════════════════════════════════════════════════════
+       elizaOK Control Interface
+       Inspired by: Hermes Control Interface layout
+       Left sidebar · Center grid panels · Right stats
+       JetBrains Mono · Black + Yellow + Green
+    ════════════════════════════════════════════════════════ */
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+
     :root {
-      color-scheme: dark;
-      /* hsl values matching mikuelizaos.cloud dark mode */
-      --clr-bg:        hsl(192,45%,9%);
-      --clr-card:      hsl(192,35%,12%);
-      --clr-primary:   hsl(174,54%,50%);
-      --clr-secondary: hsl(176,45%,34%);
-      --clr-accent:    hsl(330,100%,50%);
-      --clr-fg:        hsl(168,100%,95%);
-      --clr-muted:     hsl(168,40%,70%);
-      --clr-border:    hsl(176,45%,34%);
-
-      /* Legacy vars (still used by some existing CSS) — remapped */
-      --bg: var(--clr-bg);
-      --bg-soft: hsl(192,40%,11%);
-      --panel: hsl(192,38%,11%);
-      --panel-strong: hsl(192,42%,10%);
-      --border: hsla(176,45%,34%,0.5);
-      --border-strong: hsl(176,45%,34%);
-      --text: var(--clr-fg);
-      --muted: var(--clr-muted);
-      --accent: var(--clr-primary);
-      --shadow: rgba(0,0,0,0.72);
-      --glow: 0 0 0 1px hsla(174,54%,50%,0.12), 0 0 28px hsla(174,54%,50%,0.10);
+      --bg:       #080808;
+      --panel:    #0f0f0f;
+      --panel2:   #111111;
+      --border:   #1c1c1c;
+      --border2:  #252525;
+      --yellow:   #F6E70F;
+      --yr:       246,231,15;
+      --green:    #39FF14;
+      --gr:       57,255,20;
+      --red:      #FF4444;
+      --white:    rgba(255,255,255,0.88);
+      --dim:      rgba(255,255,255,0.40);
+      --mute:     rgba(255,255,255,0.18);
+      --r:        7px;
+      --r-sm:     5px;
+      --dot-color: 255,255,255;
+    }
+    [data-theme="light"] {
+      --bg:       #f4f4f0;
+      --panel:    #ffffff;
+      --panel2:   #f8f8f5;
+      --border:   #e0dfd8;
+      --border2:  #d0cfca;
+      --yellow:   #b8a800;
+      --yr:       184,168,0;
+      --green:    #1a8f00;
+      --gr:       26,143,0;
+      --red:      #d43030;
+      --white:    rgba(20,20,18,0.88);
+      --dim:      rgba(20,20,18,0.50);
+      --mute:     rgba(20,20,18,0.22);
+      --dot-color: 20,20,18;
     }
 
-    * { box-sizing: border-box; }
-
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); }
     body {
-      margin: 0;
-      min-height: 100vh;
-      background: var(--clr-bg);
-      color: var(--clr-fg);
-      font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      font-size: 11.5px; line-height: 1.5; color: var(--white);
       -webkit-font-smoothing: antialiased;
-      overflow-x: hidden;
-      overflow-y: auto;
+      transition: background .3s, color .3s;
+    }
+    ::-webkit-scrollbar { width: 3px; height: 3px; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+    a { color: inherit; text-decoration: none; }
+
+    /* Canvas */
+    #dot-canvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+    /* ─── LAYOUT ─────────────────────────────── */
+    .layout {
+      position: relative; z-index: 1;
+      display: flex; flex-direction: column; height: 100vh;
     }
 
-    /* Grid texture like mikuelizaos sidebar (applied subtly to body) */
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background-image:
-        linear-gradient(to right, hsla(176,45%,34%,0.08) 1px, transparent 1px),
-        linear-gradient(to bottom, hsla(176,45%,34%,0.08) 1px, transparent 1px);
-      background-size: 20px 20px;
-      z-index: 0;
-    }
-    body::after {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background: linear-gradient(to bottom, hsla(176,45%,34%,0.05) 0%, transparent 30%, hsla(176,45%,34%,0.08) 100%);
-      z-index: 0;
-    }
-
-    /* ── Spotlights (matching mikuelizaos exactly) ── */
-    .spotlight-wrap {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 1;
-      overflow: hidden;
-    }
-    .spotlight {
-      position: absolute;
-      top: 0;
-      height: 120%;
-      filter: blur(8px);
-      transform-origin: top center;
-    }
-    .spotlight--left {
-      left: 10%;
-      width: 200px;
-      background: linear-gradient(180deg, hsla(174,54%,50%,0.35) 0%, hsla(174,54%,50%,0.15) 40%, transparent 80%);
-      clip-path: polygon(40% 0%, 60% 0%, 100% 100%, 0% 100%);
-      animation: spotlight-sway 4s ease-in-out infinite;
-      opacity: 0.5;
-    }
-    .spotlight--center {
-      left: 50%;
-      transform: translateX(-50%);
-      width: 400px;
-      filter: blur(12px);
-      background: linear-gradient(180deg, hsla(330,100%,50%,0.4) 0%, hsla(330,100%,50%,0.18) 40%, transparent 80%);
-      clip-path: polygon(35% 0%, 65% 0%, 100% 100%, 0% 100%);
-      opacity: 0.4;
-      animation: spotlight-pulse 3s ease-in-out infinite;
-    }
-    .spotlight--right {
-      right: 10%;
-      width: 200px;
-      background: linear-gradient(180deg, hsla(174,54%,50%,0.35) 0%, hsla(174,54%,50%,0.15) 40%, transparent 80%);
-      clip-path: polygon(40% 0%, 60% 0%, 100% 100%, 0% 100%);
-      animation: spotlight-sway-reverse 4s ease-in-out infinite;
-      opacity: 0.5;
-    }
-    @keyframes spotlight-sway {
-      0%,100% { transform: rotate(-8deg); }
-      50%      { transform: rotate(8deg); }
-    }
-    @keyframes spotlight-sway-reverse {
-      0%,100% { transform: rotate(8deg); }
-      50%      { transform: rotate(-8deg); }
-    }
-    @keyframes spotlight-pulse {
-      0%,100% { opacity: 0.3; }
-      50%      { opacity: 0.55; }
-    }
-
-    /* ── Floating notes (matching mikuelizaos) ── */
-    .float-note {
-      position: fixed;
-      bottom: -10%;
-      font-size: clamp(18px, 3vw, 36px);
-      color: hsla(174,54%,50%,0.45);
-      pointer-events: none;
-      z-index: 1;
-      animation: float-up 4s ease-out infinite;
-    }
-    @keyframes float-up {
-      0%   { opacity: 0; transform: translateY(0) rotate(0deg); }
-      20%  { opacity: 1; }
-      80%  { opacity: 0.7; }
-      100% { opacity: 0; transform: translateY(-110vh) rotate(25deg); }
-    }
-
-    /* ── Intro overlay (3→2→1→SHOWTIME→loading) ── */
-    #intro-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 9999;
-      background: var(--clr-bg);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
-    #intro-overlay.hidden { display: none; }
-
-    /* Miku-stage bg image during intro — replaced by ElizaOK logo */
-    .intro-stage-img {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-    }
-    .intro-stage-img img {
-      max-height: 80vh;
-      width: auto;
-      object-fit: contain;
-      mix-blend-mode: screen;
-      opacity: 0.12;
-      filter: drop-shadow(0 0 30px hsla(174,54%,50%,0.5)) drop-shadow(0 0 60px hsla(330,100%,50%,0.3));
-      transition: opacity 1s;
-    }
-    .intro-stage-img img.showtime { opacity: 0.28; }
-
-    .intro-count {
-      position: relative;
-      z-index: 2;
-      font-family: Inter, sans-serif;
-      font-weight: 800;
-      letter-spacing: -0.05em;
-      line-height: 1;
-      font-size: clamp(100px, 20vw, 192px);
-      color: var(--clr-secondary);
-      text-shadow: 0 0 20px hsla(176,45%,34%,0.5);
-      transition: all 0.3s;
-    }
-    .intro-count.showtime {
-      font-size: clamp(60px, 9vw, 80px);
-      color: var(--clr-primary);
-      text-shadow: 0 0 40px var(--clr-primary), 0 0 80px hsla(174,54%,50%,0.5);
-      animation: pulse-glow 0.8s ease-in-out infinite alternate;
-    }
-    @keyframes pulse-glow {
-      from { text-shadow: 0 0 30px var(--clr-primary), 0 0 60px hsla(174,54%,50%,0.4); }
-      to   { text-shadow: 0 0 60px var(--clr-primary), 0 0 120px hsla(174,54%,50%,0.7); }
-    }
-
-    /* Ping ring around countdown number */
-    .intro-ping {
-      position: absolute;
-      inset: -32px;
-      border-radius: 50%;
-      border: 4px solid hsla(174,54%,50%,0.3);
-      animation: ping-ring 0.8s ease-out infinite;
-    }
-    @keyframes ping-ring {
-      0%   { transform: scale(1); opacity: 0.8; }
-      100% { transform: scale(1.4); opacity: 0; }
-    }
-
-    /* Loading state */
-    .intro-loading-title {
-      font-family: Inter, sans-serif;
-      font-size: clamp(36px, 6vw, 64px);
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      color: var(--clr-secondary);
-      text-shadow: 0 0 20px hsla(174,54%,50%,0.5);
-      display: none;
-    }
-    .intro-loading-sub {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.2em;
-      color: var(--clr-primary);
-      margin-top: 6px;
-      display: none;
-      animation: blink 1s step-end infinite;
-    }
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-
-    .intro-bar-wrap {
-      width: min(384px, 80vw);
-      margin-top: 12px;
-      display: none;
-    }
-    .intro-bar-labels {
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--clr-muted);
-      margin-bottom: 4px;
-    }
-    .intro-bar-labels span:last-child { color: var(--clr-primary); }
-    .intro-bar-track {
-      height: 12px;
-      border-radius: 9999px;
-      background: hsla(176,45%,34%,0.3);
-      border: 2px solid var(--clr-secondary);
-      overflow: hidden;
-    }
-    .intro-bar-fill {
-      height: 100%;
-      background: linear-gradient(to right, var(--clr-primary), var(--clr-accent));
-      width: 0%;
-      transition: width 0.1s linear;
-      position: relative;
-    }
-    .intro-bar-fill::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(to right, transparent, rgba(255,255,255,0.4), transparent);
-      animation: shimmer 1s linear infinite;
-    }
-    @keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
-
-    .intro-notes-row {
-      display: flex;
-      gap: 4px;
-      justify-content: center;
-      margin-top: 6px;
-    }
-    .intro-note-dot {
-      font-size: 11px;
-      color: hsla(168,40%,70%,0.3);
-      transition: color 0.2s, transform 0.2s;
-    }
-    .intro-note-dot.lit {
-      color: var(--clr-primary);
-      transform: scale(1.2);
-    }
-
-    .intro-sys {
-      font-family: ui-monospace, monospace;
-      font-size: 10px;
-      color: var(--clr-muted);
-      text-align: center;
-      margin-top: 8px;
-      line-height: 1.6;
-      display: none;
-    }
-
-    @keyframes ambient {
-      from { transform: translate3d(0,0,0) scale(1); }
-      to { transform: translate3d(0,-8px,0) scale(1.02); }
-    }
-    .app-shell {
-      position: relative;
-      z-index: 1;
-      display: block;
-      min-height: 100vh;
-      overflow: hidden;
-    }
-    .sidebar { display: none; }
-    .app-shell::before {
-      content: "// ELIZAOK :: SIGNAL_MESH :: 010110";
-      position: fixed;
-      right: 18px;
-      bottom: 14px;
-      color: rgba(255,255,255,0.12);
-      font-size: 10px;
-      letter-spacing: 0.18em;
-      pointer-events: none;
-      z-index: 0;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 4px 4px 10px;
-      border-bottom: 1px solid rgba(255,214,10,0.1);
-      position: relative;
-    }
-    .brand::after {
-      content: "";
-      position: absolute;
-      left: 4px;
-      right: 4px;
-      bottom: -1px;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255,214,10,0.42), transparent);
-      opacity: 0.85;
-    }
-    .brand-mark {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      display: grid;
-      place-items: center;
-      background:
-        radial-gradient(circle at 30% 30%, rgba(255,214,10,0.85), transparent 38%),
-        linear-gradient(135deg, rgba(255,214,10,0.28), rgba(255,214,10,0.05));
-      border: 1px solid rgba(255,214,10,0.24);
-      box-shadow: 0 0 28px rgba(255,214,10,0.16), inset 0 0 0 1px rgba(255,214,10,0.08);
-      overflow: hidden;
-    }
-    .brand-mark::after {
-      content: "";
-      position: absolute;
-      inset: auto -12px -12px auto;
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(255,214,10,0.22), transparent 72%);
-      pointer-events: none;
-    }
-    .brand-image {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .brand-copy strong {
-      display: block;
-      font-size: 15px;
-      letter-spacing: 0.08em;
-      text-transform: lowercase;
-      text-shadow: 0 0 18px rgba(255,214,10,0.14);
-    }
-    .brand-copy small {
-      display: block;
-      color: var(--muted);
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.15em;
-      margin-top: 4px;
-      opacity: 0.92;
-    }
-    .nav { display: none; }
-    .nav-button {
-      width: 100%;
-      border: 1px solid transparent;
-      background: rgba(255,214,10,0.02);
-      color: var(--text);
-      border-radius: 18px;
-      padding: 14px 14px 14px 12px;
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      text-align: left;
-      cursor: pointer;
-      transition: 180ms ease;
-      position: relative;
-      overflow: hidden;
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.02);
-    }
-    .nav-button::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(110deg, transparent 28%, rgba(255,214,10,0.08) 50%, transparent 72%);
-      transform: translateX(-120%);
-      transition: transform 320ms ease;
-      pointer-events: none;
-    }
-    .nav-button:hover,
-    .nav-button.is-active {
-      background: linear-gradient(90deg, rgba(255,214,10,0.14), rgba(255,214,10,0.03));
-      border-color: var(--border-strong);
-      transform: translateX(2px);
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.08), 0 14px 30px rgba(0,0,0,0.3);
-    }
-    .nav-button:hover::after,
-    .nav-button.is-active::after { transform: translateX(120%); }
-    .action-row {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-top: 12px;
-    }
-    .action-button {
-      border: 1px solid rgba(255,214,10,0.38);
-      background: linear-gradient(135deg, rgba(255,214,10,0.18), rgba(255,214,10,0.05));
-      color: var(--text);
-      border-radius: 14px;
-      padding: 12px 16px;
-      font-family: inherit;
-      font-size: 12px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      cursor: pointer;
-      transition: 160ms ease;
-    }
-    .action-button:hover {
-      transform: translateY(-1px);
-      border-color: var(--accent);
-      box-shadow: 0 12px 24px rgba(0,0,0,0.28);
-    }
-    .action-button:disabled {
-      opacity: 0.55;
-      cursor: progress;
-      transform: none;
-    }
-    .nav-index {
-      color: var(--accent);
-      font-size: 11px;
-      letter-spacing: 0.18em;
-      min-width: 26px;
-    }
-    .nav-glyph {
-      width: 30px;
-      height: 30px;
-      border-radius: 10px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      color: var(--accent);
-      background: rgba(255,214,10,0.06);
-      border: 1px solid rgba(255,214,10,0.1);
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.04);
-    }
-    .nav-copy strong {
-      display: block;
-      font-size: 14px;
-      margin-bottom: 4px;
-    }
-    .nav-copy small {
-      display: block;
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.45;
-    }
-    .sidebar-panels {
-      display: grid;
-      gap: 12px;
-      margin: 18px 0 16px;
-    }
-    .dashboard-top-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 16px;
-    }
-    .sidebar-panel {
-      padding: 11px;
-      border-radius: 16px;
-      border: 1px solid rgba(246,231,15,0.12);
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
-        rgba(6,6,5,0.92);
-      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.035);
-      display: grid;
-      gap: 8px;
-    }
-    .sidebar-panel__head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .sidebar-panel--master .sidebar-panel__head {
-      justify-items: center;
-      justify-content: center;
-      text-align: center;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .sidebar-panel__head strong,
-    .sidebar-panel__title {
-      display: block;
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .sidebar-panel__head small { display: none; }
-    .sidebar-avatar {
-      width: 84px;
-      height: 84px;
-      border-radius: 50%;
-      overflow: hidden;
-      border: 1px solid rgba(255,214,10,0.18);
-      background: rgba(246,231,15,0.05);
-      box-shadow: 0 0 24px rgba(246,231,15,0.16);
-      flex: 0 0 auto;
-      margin: 0 auto;
-    }
-    .sidebar-avatar__image {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .sidebar-action-row { display: none; }
-    .sidebar-action {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 34px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,214,10,0.16);
-      background: rgba(246,231,15,0.035);
-      font-size: 10px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      transition: 180ms ease;
-    }
-    .sidebar-action:hover {
-      border-color: var(--border-strong);
-      color: var(--accent);
-      transform: translateY(-1px);
-    }
-    .sidebar-action.is-busy,
-    .sidebar-action[aria-disabled="true"] {
-      pointer-events: none;
-      opacity: 0.72;
-    }
-    .sidebar-action--primary {
-      border-color: rgba(255,214,10,0.22);
-      background: linear-gradient(135deg, rgba(255,214,10,0.18), rgba(255,214,10,0.05));
-    }
-    .compact-status {
-      gap: 8px;
-    }
-    .llm-model-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      color: var(--muted);
-      font-size: 11px;
-    }
-    .llm-model-row strong {
-      color: var(--text);
-      font-size: 11px;
-      line-height: 1.35;
-      text-align: right;
-    }
-    .usage-stack {
-      display: grid;
-      gap: 7px;
-    }
-    .usage-row {
-      display: grid;
-      grid-template-columns: minmax(0, 56px) 1fr auto;
-      align-items: center;
-      gap: 7px;
-      font-size: 10px;
-      color: var(--muted);
-    }
-    .usage-row strong {
-      color: var(--text);
-      font-size: 11px;
-      min-width: 34px;
-      text-align: right;
-    }
-    .usage-meter {
-      display: grid;
-      grid-template-columns: repeat(10, minmax(0, 1fr));
-      gap: 3px;
-    }
-    .usage-meter i {
-      display: block;
-      height: 6px;
-      border-radius: 999px;
-      background: rgba(255,214,10,0.08);
-      border: 1px solid rgba(255,214,10,0.06);
-    }
-    .usage-meter i.is-on {
-      background: linear-gradient(90deg, #745519, #d7a428, #f1df9a);
-      border-color: rgba(255,214,10,0.18);
-      box-shadow: 0 0 14px rgba(255,214,10,0.08);
-    }
-    .workspace {
-      min-width: 0;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      padding: 18px 18px 32px;
-      overflow: visible;
-    }
+    /* ─── TOP BAR ────────────────────────────── */
     .topbar {
-      position: static;
-      z-index: 4;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 14px;
-      border-radius: 22px;
-      border: 1px solid rgba(246,231,15,0.18);
-      background:
-        radial-gradient(circle at top left, rgba(246,231,15,0.09), transparent 22%),
-        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.01)),
-        rgba(5,5,4,0.74);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 18px 56px rgba(0,0,0,0.34), inset 0 0 0 1px rgba(246,231,15,0.04);
-      width: min(100%, 1220px);
-    }
-    .topbar::after {
-      content: "";
-      position: absolute;
-      inset: auto 18px 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255,214,10,0.45), transparent);
-      opacity: 0.9;
-    }
-    .topbar-meta {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-    .live-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 999px;
-      background: var(--accent);
-      box-shadow: 0 0 18px rgba(255,214,10,0.72);
-      animation: beat 1.6s ease-in-out infinite;
-    }
-    @keyframes beat {
-      0%,100% { transform: scale(1); opacity: 0.7; }
-      50% { transform: scale(1.35); opacity: 1; }
-    }
-    .topbar-title strong {
-      display: block;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-    .topbar-title small {
-      color: var(--muted);
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-    }
-    .meta-chip {
-      padding: 6px 9px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.12);
-      color: var(--text);
-      font-size: 10px;
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.025);
-    }
-    .social-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .auth-link {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 110px;
-      height: 34px;
-      padding: 0 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,214,10,0.28);
-      background:
-        linear-gradient(135deg, rgba(255,214,10,0.2), rgba(255,214,10,0.05)),
-        rgba(255,255,255,0.02);
-      color: var(--text);
-      font-size: 10px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      transition: 180ms ease;
-      cursor: pointer;
-      appearance: none;
-      font-family: inherit;
-    }
-    .auth-link:hover {
-      border-color: var(--border-strong);
-      color: var(--text);
-      transform: translateY(-1px);
-    }
-    .auth-link.is-busy,
-    .auth-link[aria-disabled="true"] {
-      pointer-events: none;
-      opacity: 0.72;
-    }
-    .auth-link--connected {
-      min-width: 220px;
-      max-width: 520px;
-      justify-content: flex-start;
-      gap: 8px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      background: rgba(255,214,10,0.08);
-    }
-    .auth-sheet {
-      position: fixed;
-      inset: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      background: rgba(0,0,0,0.78);
-      backdrop-filter: blur(18px);
-      z-index: 50;
-    }
-    .auth-sheet.is-open {
-      display: flex;
-    }
-    .auth-sheet__dialog {
-      width: min(440px, 100%);
-      border-radius: 22px;
-      border: 1px solid rgba(246,231,15,0.18);
-      background: linear-gradient(180deg, rgba(9,9,7,0.98), rgba(4,4,3,0.98));
-      box-shadow: 0 28px 90px rgba(0,0,0,0.62), 0 0 0 1px rgba(246,231,15,0.06);
-      padding: 18px;
-      display: grid;
-      gap: 14px;
-    }
-    .auth-sheet__header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    .auth-sheet__title {
-      display: grid;
-      gap: 4px;
-    }
-    .auth-sheet__title strong {
-      font-size: 15px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--text);
-    }
-    .auth-sheet__title span {
-      font-size: 11px;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-    .auth-sheet__close {
-      width: 34px;
-      height: 34px;
-      border-radius: 11px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.04);
-      color: var(--text);
-      font: inherit;
-      cursor: pointer;
-    }
-    .auth-sheet__provider,
-    .auth-sheet__submit,
-    .auth-sheet__secondary {
-      width: 100%;
-      min-height: 42px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.04);
-      color: var(--text);
-      font: inherit;
-      cursor: pointer;
-      transition: 160ms ease;
-    }
-    .auth-sheet__provider:hover,
-    .auth-sheet__submit:hover,
-    .auth-sheet__secondary:hover {
-      border-color: rgba(246,231,15,0.28);
-      transform: translateY(-1px);
-    }
-    .auth-sheet__provider {
-      background: linear-gradient(135deg, rgba(246,231,15,0.14), rgba(255,255,255,0.02));
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-size: 11px;
-    }
-    .auth-sheet__secondary {
-      background: rgba(255,255,255,0.02);
-      font-size: 11px;
-      color: var(--muted);
-    }
-    .auth-sheet__divider {
-      position: relative;
-      text-align: center;
-      font-size: 10px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: rgba(255,255,255,0.4);
-    }
-    .auth-sheet__divider::before {
-      content: "";
-      position: absolute;
-      inset: 50% 0 auto;
-      border-top: 1px solid rgba(255,255,255,0.08);
-    }
-    .auth-sheet__divider span {
-      position: relative;
-      padding: 0 10px;
-      background: rgba(7,7,5,0.98);
-    }
-    .auth-sheet__stack {
-      display: grid;
-      gap: 10px;
-    }
-    .auth-sheet__field {
-      display: grid;
-      gap: 6px;
-    }
-    .auth-sheet__field label {
-      font-size: 10px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: rgba(255,255,255,0.58);
-    }
-    .auth-sheet__field input {
-      width: 100%;
-      min-height: 42px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.1);
-      background: rgba(255,255,255,0.03);
-      color: var(--text);
-      padding: 0 12px;
-      font: inherit;
-      outline: none;
-    }
-    .auth-sheet__field input:focus {
-      border-color: rgba(246,231,15,0.32);
-      box-shadow: 0 0 0 1px rgba(246,231,15,0.08);
-    }
-    .auth-sheet__status {
-      min-height: 18px;
-      font-size: 11px;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-    .auth-sheet__status.is-error {
-      color: #ff8c7a;
-    }
-    .auth-sheet__status.is-success {
-      color: #d8ff88;
-    }
-    .auth-sheet__account {
-      display: grid;
-      gap: 6px;
-      padding: 12px;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(255,255,255,0.03);
-    }
-    .auth-sheet__account strong {
-      font-size: 12px;
-      color: var(--text);
-    }
-    .auth-sheet__account span {
-      font-size: 10px;
-      color: var(--muted);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .auth-sheet__logout[hidden],
-    .auth-sheet__otp[hidden] {
-      display: none;
-    }
-    .cloud-model-picker {
-      display: grid;
-      gap: 6px;
-      color: var(--muted);
-      font-size: 10px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-    .cloud-model-picker select {
-      width: 100%;
-      min-height: 34px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,214,10,0.16);
-      background: rgba(255,214,10,0.04);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 11px;
-      padding: 0 10px;
-      outline: none;
-    }
-    .social-link {
-      width: 36px;
-      height: 34px;
-      display: grid;
-      place-items: center;
-      border-radius: 12px;
-      border: 1px solid rgba(246,231,15,0.16);
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.06), rgba(246,231,15,0.02)),
-        rgba(255,255,255,0.03);
-      color: var(--text);
-      transition: 180ms ease;
-    }
-    .social-link:hover {
-      color: var(--text);
-      border-color: rgba(246,231,15,0.28);
-      box-shadow: 0 0 24px rgba(246,231,15,0.12);
-      transform: translateY(-1px);
-    }
-    .social-link svg { width: 16px; height: 16px; }
-    .content-stack {
-      width: min(100%, 1220px);
-      margin-top: 14px;
-      display: grid;
-      grid-template-columns: 1fr;
-      grid-auto-rows: min-content;
-      align-content: start;
-      gap: 14px;
-      flex: 1;
-    }
-    .view-panel { display: grid; gap: 10px; }
-    .view-panel.is-active { display: grid; animation: fade 180ms ease; }
-    @keyframes fade {
-      from { opacity: 0; transform: translate3d(0,8px,0); }
-      to { opacity: 1; transform: translate3d(0,0,0); }
-    }
-    .glass-card {
-      border-radius: 28px;
-      border: 1px solid var(--border);
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
-        rgba(5,5,4,0.92);
-      box-shadow: var(--glow), 0 24px 72px var(--shadow);
-      overflow: hidden;
-      position: relative;
-      backdrop-filter: blur(10px);
-    }
-    .glass-card::before {
-      content: "";
-      position: absolute;
-      inset: 0 0 auto 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255,214,10,0.4), transparent);
-      opacity: 0.8;
-      pointer-events: none;
-    }
-    .hero-card {
-      padding: 18px;
-      min-height: 0;
-    }
-    .hero-card::before {
-      content: "";
-      position: absolute;
-      inset: -24% auto auto 64%;
-      width: 180px;
-      height: 180px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(255,214,10,0.18), transparent 68%);
-      animation: orb 9s ease-in-out infinite alternate;
-    }
-    .hero-card::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(115deg, transparent 35%, rgba(255,214,10,0.08) 50%, transparent 62%);
-      transform: translateX(-100%);
-      animation: scan 6s linear infinite;
-      opacity: 0.28;
-    }
-    @keyframes orb { from { transform: translate3d(0,0,0); } to { transform: translate3d(-24px,24px,0); } }
-    @keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(120%); } }
-    .hero-grid,
-    .split-grid,
-    .stats-grid,
-    .signal-grid {
-      display: grid;
-      gap: 10px;
-    }
-    .hero-grid { grid-template-columns: 1.08fr 0.92fr; position: relative; z-index: 1; align-items: stretch; min-height: 520px; }
-    .hero-side-stack {
-      display: grid;
-      gap: 14px;
-      margin-top: 16px;
-    }
-    .signal-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 0; }
-    .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .split-grid { grid-template-columns: 1.4fr 1fr; }
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      color: var(--text);
-      font-size: 10px;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-    }
-    .eyebrow::before {
-      content: "";
-      width: 6px;
-      height: 6px;
-      border-radius: 999px;
-      background: var(--accent);
-      box-shadow: 0 0 14px rgba(255,214,10,0.7);
-    }
-    h1 {
-      margin: 8px 0 10px;
-      font-size: clamp(30px, 4vw, 52px);
-      line-height: 0.96;
-      letter-spacing: -0.04em;
-      max-width: none;
-      text-wrap: auto;
-    }
-    .hero-copy,
-    .section-title p,
-    .candidate-thesis,
-    .footer-note { color: var(--muted); }
-    .hero-copy { margin: 0; font-size: 13px; line-height: 1.7; max-width: 58ch; }
-    .hero-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-    .state-chip {
-      padding: 6px 9px;
-      border-radius: 999px;
-      background: rgba(255,214,10,0.09);
-      border: 1px solid rgba(255,214,10,0.14);
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--text);
-    }
-    .hero-kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 16px;
-      margin-top: 20px;
-    }
-    .hero-kpi-card {
-      padding: 18px 20px;
-      border-radius: 20px;
-      border: 1px solid rgba(246,231,15,0.12);
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
-        rgba(7,7,6,0.92);
-      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.03);
-      position: relative;
-      overflow: hidden;
-    }
-    .hero-kpi-card::after {
-      content: "";
-      position: absolute;
-      inset: auto -20px -20px auto;
-      width: 84px;
-      height: 84px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(255,214,10,0.12), transparent 72%);
-      pointer-events: none;
-    }
-    .hero-kpi-card:first-child {
-      background:
-        radial-gradient(circle at top right, rgba(255,214,10,0.16), transparent 42%),
-        linear-gradient(180deg, rgba(255,214,10,0.1), rgba(255,214,10,0.03));
-      border-color: rgba(255,214,10,0.2);
-    }
-    .hero-kpi-card span,
-    .hero-kpi-card small {
-      display: block;
-      color: var(--muted);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-    }
-    .hero-kpi-card strong {
-      display: block;
-      margin: 10px 0 8px;
-      font-size: 24px;
-      line-height: 1.1;
-      color: var(--text);
-    }
-    .hero-kpi-card small {
-      text-transform: none;
-      letter-spacing: 0.04em;
-      font-size: 12px;
-      line-height: 1.6;
-    }
-    .summary-ribbon {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: -4px;
-      padding: 16px 18px;
-      border-radius: 20px;
-      border: 1px solid rgba(246,231,15,0.12);
-      background: linear-gradient(90deg, rgba(246,231,15,0.07), rgba(246,231,15,0.018));
-      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.03);
-    }
-    .summary-pill {
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.12);
-      color: var(--text);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-    }
-    .section-card--accent {
-      background:
-        radial-gradient(circle at top right, rgba(255,214,10,0.12), transparent 32%),
-        linear-gradient(180deg, rgba(255,214,10,0.08), rgba(255,214,10,0.02)),
-        rgba(11,11,11,0.9);
-    }
-    .section-card--dense .status-panel,
-    .section-card--dense .section-stack {
-      gap: 10px;
-    }
-    .section-card--spotlight {
-      background:
-        radial-gradient(circle at 12% 14%, rgba(255,214,10,0.11), transparent 24%),
-        linear-gradient(180deg, rgba(255,214,10,0.07), rgba(255,214,10,0.018)),
-        rgba(11,11,11,0.88);
-    }
-    .snapshot-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-      margin-top: 16px;
-    }
-    .feature-dock-grid {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 12px;
-    }
-    .feature-dock-card {
-      display: grid;
-      gap: 8px;
-      padding: 14px;
-      border-radius: 20px;
-      border: 1px solid rgba(246,231,15,0.14);
-      background:
-        radial-gradient(circle at top right, rgba(246,231,15,0.12), transparent 42%),
-        linear-gradient(180deg, rgba(246,231,15,0.055), rgba(246,231,15,0.012)),
-        rgba(7,7,6,0.92);
-      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.03), 0 12px 28px rgba(0,0,0,0.2);
-      transition: 180ms ease;
-      width: 100%;
-      text-align: left;
-      cursor: pointer;
-      font-family: inherit;
-    }
-    .feature-dock-card:hover {
-      transform: translateY(-2px);
-      border-color: rgba(255,214,10,0.18);
-      box-shadow: 0 16px 36px rgba(0,0,0,0.22);
-    }
-    .feature-dock-card--hot {
-      background:
-        radial-gradient(circle at top right, rgba(255,214,10,0.14), transparent 42%),
-        rgba(255,214,10,0.04);
-    }
-    .feature-dock-card--warm {
-      background:
-        radial-gradient(circle at top right, rgba(255,214,10,0.08), transparent 38%),
-        rgba(255,214,10,0.03);
-    }
-    .feature-dock-card__top,
-    .feature-dock-card span,
-    .feature-dock-card small,
-    .feature-dock-card em {
-      display: block;
-    }
-    .feature-dock-card__top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-    }
-    .feature-dock-card span {
-      color: var(--text);
-      font-size: 11px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-    .feature-dock-card strong,
-    .feature-dock-card b {
-      display: block;
-      color: var(--text);
-    }
-    .feature-dock-card__value {
-      font-size: 28px;
-      line-height: 1.02;
-      font-weight: 700;
-      margin-top: 0;
-    }
-    .feature-dock-card small {
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.5;
-    }
-    .feature-dock-card em {
-      color: #151100;
-      font-style: normal;
-      font-size: 10px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      padding: 4px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,214,10,0.22);
-      background: var(--accent);
-    }
-    .feature-dock-card__track {
-      height: 6px;
-      border-radius: 999px;
-      background: rgba(255,214,10,0.08);
-      overflow: hidden;
-      margin-top: 4px;
-    }
-    .feature-dock-card__fill {
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, #745519, #d7a428, #f1df9a);
-      box-shadow: 0 0 14px rgba(255,214,10,0.28);
-    }
-    .fold-section { display: none; }
-    .fold-summary {
-      list-style: none;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 10px 12px;
-      cursor: pointer;
-    }
-    .fold-summary::-webkit-details-marker {
-      display: none;
-    }
-    .fold-summary strong {
-      font-size: 13px;
-      letter-spacing: 0.04em;
-    }
-    .fold-summary span {
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.35;
-      flex: 1;
-      text-align: right;
-    }
-    .fold-summary::after {
-      content: "+";
-      color: var(--text);
-      font-size: 15px;
-      line-height: 1;
-    }
-    .fold-section[open] .fold-summary::after {
-      content: "−";
-    }
-    .fold-body {
-      padding: 0 12px 12px;
-      border-top: 1px solid rgba(255,214,10,0.08);
-    }
-    .snapshot-tile {
-      padding: 10px 12px;
-      border-radius: 14px;
-      border: 1px solid rgba(246,231,15,0.1);
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.045), rgba(246,231,15,0.012)),
-        rgba(7,7,6,0.9);
-      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.025);
-    }
-    .snapshot-tile span {
-      display: block;
-      color: var(--muted);
-      font-size: 11px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-    .snapshot-tile strong {
-      display: block;
-      margin-top: 8px;
-      font-size: 17px;
-      line-height: 1.1;
-    }
-    .profile-label {
-      display: inline-flex;
-      align-items: center;
-      padding: 8px 12px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.05);
-      color: var(--text);
-      font-size: 12px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      margin-bottom: 16px;
-    }
-    .radar-box {
-      min-height: 100%;
-      display: grid;
-      place-items: center;
-      padding: 24px;
-    }
-    .radar {
-      width: min(240px, 100%);
-      aspect-ratio: 1;
-      position: relative;
-      border-radius: 50%;
-      border: 1px solid rgba(255,214,10,0.18);
-      background:
-        radial-gradient(circle, rgba(255,214,10,0.12), transparent 52%),
-        repeating-radial-gradient(circle, rgba(255,214,10,0.08) 0 1px, transparent 1px 34px);
-      box-shadow: inset 0 0 42px rgba(255,214,10,0.08);
-    }
-    .radar::before,
-    .radar::after {
-      content: "";
-      position: absolute;
-      inset: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(255,214,10,0.12);
-    }
-    .radar::before { width: 1px; height: 100%; }
-    .radar::after { width: 100%; height: 1px; }
-    .radar-sweep {
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      background: conic-gradient(from 0deg, rgba(255,214,10,0), rgba(255,214,10,0.2), rgba(255,214,10,0));
-      animation: spin 4.8s linear infinite;
-      mask-image: radial-gradient(circle at center, transparent 18%, black 64%);
-    }
-    .radar-core {
-      position: absolute;
-      inset: 50%;
-      width: 18px;
-      height: 18px;
-      transform: translate(-50%, -50%);
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 22px rgba(255,214,10,0.75);
-    }
-    .radar-label {
-      position: absolute;
-      left: 50%;
-      bottom: 18px;
-      transform: translateX(-50%);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      color: var(--muted);
-    }
-    @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
-    .progress-card,
-    .section-card,
-    .stat-card,
-    .candidate-card,
-    .goo-card {
-      position: relative;
-      overflow: hidden;
-      transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
-    }
-    .progress-card,
-    .candidate-card,
-    .goo-card {
-      border-radius: 18px;
-      border: 1px solid rgba(246,231,15,0.12);
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
-        rgba(7,7,6,0.92);
-      box-shadow: var(--glow);
-    }
-    .progress-card { padding: 12px 14px; }
-    .progress-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 8px;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      color: var(--muted);
-    }
-    .progress-head strong { color: var(--text); font-size: 11px; }
-    .progress-track {
-      height: 8px;
-      border-radius: 999px;
-      background: rgba(255,214,10,0.08);
-      overflow: hidden;
-    }
-    .progress-fill {
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, #745519, #d7a428, #f1df9a);
-      box-shadow: 0 0 18px rgba(255,214,10,0.42);
-    }
-    .progress-card { padding: 8px 10px; }
-    .stat-card { padding: 14px; min-height: 122px; }
-    .stat-card:hover,
-    .candidate-card:hover,
-    .goo-card:hover,
-    .section-card:hover {
-      transform: translateY(-3px);
-      border-color: var(--border-strong);
-      box-shadow: 0 0 0 1px rgba(246,231,15,0.08), 0 0 28px rgba(246,231,15,0.12), 0 30px 84px rgba(0,0,0,0.42);
-    }
-    .stat-card span,
-    .candidate-stats span,
-    .status-row span {
-      display: block;
-      color: var(--muted);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      margin-bottom: 6px;
-    }
-    .stat-card strong {
-      display: block;
-      font-size: 24px;
-      line-height: 1;
-      margin: 10px 0 12px;
-    }
-    .stat-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
-    .section-card { padding: 12px; }
-    .section-title {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 12px;
-      position: relative;
-    }
-    .section-title::after {
-      content: "";
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: -6px;
-      height: 1px;
-      background: linear-gradient(90deg, rgba(255,214,10,0.22), transparent 72%);
-      opacity: 0.75;
-    }
-    .section-heading {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .section-icon {
-      width: 26px;
-      height: 26px;
-      border-radius: 9px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--text);
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.12);
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.025);
-      font-size: 11px;
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
-    .section-title h2 { margin: 0; font-size: 16px; letter-spacing: -0.02em; }
-    .section-title p { margin: 4px 0 0; font-size: 11px; line-height: 1.45; max-width: 68ch; }
-    .section-stack { display: grid; gap: 10px; }
-    .metric-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .metric-card {
-      padding: 10px;
-      border-radius: 14px;
-      border: 1px solid rgba(246,231,15,0.1);
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.012)),
-        rgba(7,7,6,0.9);
-      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.03);
-      transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-    }
-    .metric-card:hover {
-      transform: translateY(-2px);
-      border-color: rgba(255,214,10,0.18);
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.05), 0 18px 44px rgba(0,0,0,0.22);
-    }
-    .metric-card span {
-      display: block;
-      color: var(--muted);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      margin-bottom: 7px;
-    }
-    .metric-card strong {
-      display: block;
-      font-size: 15px;
-      line-height: 1.1;
-      margin-bottom: 6px;
-      color: var(--text);
-    }
-    .metric-card p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 10px;
-      line-height: 1.4;
-    }
-    .mini-panel {
-      padding: 14px 16px;
-      border-radius: 18px;
-      border: 1px solid rgba(246,231,15,0.1);
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.05), rgba(246,231,15,0.014)),
-        rgba(7,7,6,0.92);
-      box-shadow: var(--glow), inset 0 0 0 1px rgba(246,231,15,0.03);
-    }
-    .mini-panel span {
-      display: block;
-      color: var(--muted);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      margin-bottom: 8px;
-    }
-    .mini-panel strong {
-      display: block;
-      font-size: 16px;
-      line-height: 1.45;
-      margin-bottom: 8px;
-    }
-    .mini-panel p {
-      margin: 0;
-      font-size: 12px;
-      line-height: 1.75;
-    }
-    .candidate-card,
-    .goo-card { padding: 10px; }
-    .candidate-card::after,
-    .goo-card::after {
-      content: "";
-      position: absolute;
-      inset: auto -40px -40px auto;
-      width: 120px;
-      height: 120px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(255,214,10,0.12), transparent 72%);
-    }
-    .candidate-card::before,
-    .goo-card::before,
-    .stat-card::before {
-      content: "";
-      position: absolute;
-      left: 18px;
-      right: 18px;
-      top: 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255,214,10,0.5), transparent);
-      opacity: 0.85;
-    }
-    .candidate-card,
-    .goo-card {
-      box-shadow: inset 0 0 0 1px rgba(255,214,10,0.03);
-    }
-    .candidate-card__meta {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-    .candidate-rank {
-      color: var(--text);
-      font-size: 11px;
-      letter-spacing: 0.18em;
-    }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      padding: 5px 8px;
-      border-radius: 999px;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.16em;
-      border: 1px solid transparent;
-    }
-    .tone-hot { color: #171100; background: var(--accent); }
-    .tone-warm { color: #1a1200; background: rgba(255,214,10,0.72); }
-    .tone-cool {
-      color: var(--text);
-      background: rgba(255,214,10,0.08);
-      border-color: rgba(255,214,10,0.16);
-    }
-    .candidate-card h3,
-    .goo-card h3 { margin: 0 0 6px; font-size: 15px; letter-spacing: -0.02em; }
-    .candidate-link,
-    .watchlist-link { color: inherit; }
-    .candidate-link:hover,
-    .watchlist-link:hover { color: var(--accent); }
-    .candidate-subtitle { margin: 0 0 10px; color: var(--muted); font-size: 10px; line-height: 1.45; }
-    .candidate-stats {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-    .candidate-stats div {
-      padding: 7px 8px;
-      border-radius: 10px;
-      background: rgba(246,231,15,0.04);
-      border: 1px solid rgba(246,231,15,0.08);
-    }
-    .candidate-stats strong { font-size: 12px; line-height: 1.35; }
-    .candidate-thesis { margin: 0; font-size: 11px; line-height: 1.5; }
-    .status-panel { display: grid; gap: 8px; }
-    .status-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 7px 9px;
-      border-radius: 10px;
-      background: rgba(246,231,15,0.04);
-      border: 1px solid rgba(246,231,15,0.1);
-      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
-      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.025);
-    }
-    .status-row:hover {
-      transform: translateX(2px);
-      border-color: rgba(246,231,15,0.18);
-      background: rgba(246,231,15,0.06);
-    }
-    .status-row strong { text-align: right; font-size: 11px; line-height: 1.35; }
-    .footer-note { margin-top: 10px; font-size: 10px; line-height: 1.45; }
-    .footer-note code { color: var(--text); word-break: break-all; }
-    .content-stack > .view-panel[data-view-panel="overview"] {
-      grid-column: 1 / -1;
-    }
-    .view-panel[data-view-panel="overview"] {
-      grid-template-columns: 1fr;
-      align-items: start;
-    }
-    .hero-stage {
-      height: 100%;
-      min-height: 420px;
-      border-radius: 28px;
-      border: 1px solid rgba(246,231,15,0.18);
-      background:
-        radial-gradient(circle at 50% 10%, rgba(246,231,15,0.16), transparent 24%),
-        radial-gradient(circle at 50% 84%, rgba(255,255,255,0.03), transparent 26%),
-        linear-gradient(180deg, rgba(246,231,15,0.08), rgba(246,231,15,0.02)),
-        rgba(10,10,8,0.92);
-      padding: 16px;
-      position: relative;
-      overflow: hidden;
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      gap: 12px;
-      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.04), 0 16px 32px rgba(0,0,0,0.24);
-    }
-    .hero-stage__count {
-      position: absolute;
-      left: 20px;
-      top: 16px;
-      font-size: 32px;
-      line-height: 1;
-      font-weight: 700;
-      color: var(--text);
-      text-shadow: 0 0 18px rgba(246,231,15,0.18);
-    }
-    .hero-stage__glyphs {
-      color: rgba(246,231,15,0.82);
-      font-size: 11px;
-      letter-spacing: 0.3em;
-      text-align: center;
-    }
-    .hero-stage__screen {
-      position: relative;
-      min-height: 190px;
-      border-radius: 24px;
-      border: 1px solid rgba(246,231,15,0.14);
-      background:
-        radial-gradient(circle at center, rgba(246,231,15,0.16), transparent 34%),
-        linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)),
-        rgba(0,0,0,0.2);
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-    }
-    .hero-stage__screen::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(180deg, transparent, rgba(246,231,15,0.08), transparent);
-      opacity: 0.8;
-    }
-    .hero-stage__image {
-      width: 190px;
-      height: 190px;
-      object-fit: cover;
-      border-radius: 28px;
-      filter: drop-shadow(0 0 32px rgba(246,231,15,0.2));
-      position: relative;
-      z-index: 1;
-    }
-    .stage-decor {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 0;
-    }
-    .stage-decor span {
-      position: absolute;
-      color: rgba(246,231,15,0.88);
-      text-shadow: 0 0 12px rgba(246,231,15,0.1);
-      animation: floatNote 9s ease-in-out infinite alternate;
-    }
-    .stage-decor span:nth-child(1)  { left:  2%; top: 8%;  font-size: 22px; animation-delay: 0s; }
-    .stage-decor span:nth-child(2)  { left:  8%; top: 22%; font-size: 13px; animation-delay: 1s; }
-    .stage-decor span:nth-child(3)  { left: 16%; top: 6%;  font-size: 17px; animation-delay: 2s; }
-    .stage-decor span:nth-child(4)  { left: 24%; top: 28%; font-size: 11px; animation-delay: 0.5s; }
-    .stage-decor span:nth-child(5)  { left: 40%; top: 4%;  font-size: 14px; animation-delay: 3s; }
-    .stage-decor span:nth-child(6)  { right: 2%; top: 9%;  font-size: 20px; animation-delay: 1.5s; }
-    .stage-decor span:nth-child(7)  { right: 8%; top: 22%; font-size: 12px; animation-delay: 2.5s; }
-    .stage-decor span:nth-child(8)  { right: 18%; top: 6%; font-size: 16px; animation-delay: 0.8s; }
-    .stage-decor span:nth-child(9)  { right: 30%; top: 30%; font-size: 11px; animation-delay: 3.5s; }
-    .stage-decor span:nth-child(10) { left: 5%;  bottom: 12%; font-size: 18px; animation-delay: 1.2s; }
-    .stage-decor span:nth-child(11) { right: 5%; bottom: 14%; font-size: 15px; animation-delay: 2.2s; }
-    .stage-decor span:nth-child(12) { left: 50%; bottom: 8%;  font-size: 12px; animation-delay: 0.3s; }
-    @keyframes floatNote {
-      from { transform: translateY(0px) rotate(-2deg); opacity: 0.55; }
-      to   { transform: translateY(-10px) rotate(3deg); opacity: 1; }
-    }
-    .hero-stage__stack {
-      display: grid;
-      gap: 8px;
-    }
-    .hero-stage__row {
-      padding: 10px 12px;
-      border-radius: 14px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(246,231,15,0.08);
-    }
-    .hero-stage__row span,
-    .hero-stage__row small {
-      display: block;
-      color: var(--muted);
-      font-size: 10px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .hero-stage__row strong {
-      display: block;
-      margin: 6px 0 5px;
-      font-size: 16px;
-      color: var(--text);
-    }
-    .detail-modal {
-      position: fixed;
-      inset: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 28px;
-      background: rgba(0,0,0,0.66);
-      backdrop-filter: blur(10px);
-      z-index: 20;
-    }
-    .detail-modal.is-open { display: flex; }
-    .detail-modal__dialog {
-      width: min(1500px, 95vw);
-      max-height: 92vh;
-      border-radius: 22px;
-      border: 1px solid rgba(246,231,15,0.14);
-      background:
-        linear-gradient(180deg, rgba(246,231,15,0.045), rgba(246,231,15,0.012)),
-        rgba(5,5,4,0.96);
-      box-shadow: var(--glow), 0 28px 80px rgba(0,0,0,0.5);
-      overflow: hidden;
-      display: grid;
-      grid-template-rows: auto 1fr;
-    }
-    .detail-modal__header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 14px 16px;
-      border-bottom: 1px solid rgba(246,231,15,0.08);
-      background: rgba(255,255,255,0.03);
-    }
-    .detail-modal__title {
-      margin: 0;
-      font-size: 17px;
-      letter-spacing: 0.02em;
-      color: var(--text);
-    }
-    .detail-modal__close {
-      width: 34px;
-      height: 34px;
-      border-radius: 11px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.04);
-      color: var(--text);
-      font: inherit;
-      cursor: pointer;
-    }
-    .detail-modal__body {
-      overflow: auto;
-      padding: 14px;
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-    }
-    .detail-modal__body::-webkit-scrollbar {
-      width: 0;
-      height: 0;
-      display: none;
-    }
-    .detail-modal__body .view-panel {
-      display: grid;
-      gap: 10px;
-    }
-    .detail-modal__body .glass-card {
-      border-radius: 18px;
-    }
-    .detail-modal__body .section-card,
-    .detail-modal__body .hero-card,
-    .detail-modal__body .metric-card,
-    .detail-modal__body .mini-panel,
-    .detail-modal__body .candidate-card,
-    .detail-modal__body .goo-card,
-    .detail-modal__body .progress-card {
-      padding: 10px;
-    }
-    .detail-modal__body .section-title {
-      margin-bottom: 10px;
-    }
-    .detail-modal__body .section-title h2 {
-      font-size: 15px;
-    }
-    .detail-modal__body .section-title p,
-    .detail-modal__body .candidate-subtitle,
-    .detail-modal__body .footer-note,
-    .detail-modal__body .metric-card p,
-    .detail-modal__body .mini-panel p {
-      font-size: 10px;
-      line-height: 1.45;
-    }
-    .detail-modal__body .status-panel,
-    .detail-modal__body .section-stack,
-    .detail-modal__body .split-grid,
-    .detail-modal__body .metric-grid {
-      gap: 10px;
-    }
-    .detail-modal__body .status-row {
-      padding: 7px 9px;
-    }
-    .detail-modal__body .status-row span,
-    .detail-modal__body .status-row strong,
-    .detail-modal__body .metric-card span,
-    .detail-modal__body .metric-card strong,
-    .detail-modal__body .candidate-stats span,
-    .detail-modal__body .candidate-stats strong,
-    .detail-modal__body .candidate-card h3,
-    .detail-modal__body .goo-card h3 {
-      font-size: 11px;
-      line-height: 1.3;
-    }
-    .detail-modal__body .action-row {
-      margin-top: 8px;
-      gap: 8px;
-    }
-    .detail-modal__body .action-button {
-      padding: 9px 12px;
-      font-size: 10px;
-    }
-    .detail-modal__body .summary-ribbon {
-      padding: 10px 12px;
-      gap: 8px;
-    }
-    .detail-modal__body .summary-pill {
-      padding: 6px 9px;
-      font-size: 10px;
-    }
-    body.is-modal-open { overflow: hidden; }
-    body.is-auth-open { overflow: hidden; }
-    .view-panel[data-view-panel="overview"] > .hero-card {
-      grid-column: 1;
-      grid-row: 1;
-    }
-    .view-panel[data-view-panel="overview"] > .feature-dock-grid {
-      grid-column: 1 / span 2;
-      grid-row: 2;
-    }
-    .view-panel[data-view-panel="overview"] > .section-card {
-      grid-column: 2;
-      grid-row: 1;
-    }
-    code {
-      transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
-    }
-    code:hover {
-      border-color: rgba(255,214,10,0.18);
-      box-shadow: 0 0 18px rgba(255,214,10,0.08);
-      background: rgba(255,214,10,0.06);
-    }
-    @media (max-width: 1200px) {
-      .content-stack {
-        grid-template-columns: 1fr;
-      }
-      .view-panel[data-view-panel="overview"] {
-        grid-template-columns: 1fr;
-      }
-      .view-panel[data-view-panel="overview"] > .hero-card,
-      .view-panel[data-view-panel="overview"] > .feature-dock-grid,
-      .view-panel[data-view-panel="overview"] > .section-card {
-        grid-column: auto;
-        grid-row: auto;
-      }
-      .hero-grid,
-      .split-grid,
-      .signal-grid,
-      .stats-grid,
-      .hero-kpi-grid,
-      .snapshot-grid,
-      .feature-dock-grid,
-      .metric-grid { grid-template-columns: 1fr; }
-    }
-    @media (max-width: 980px) {
-      body { height: auto; overflow-y: auto; }
-      .app-shell { height: auto; overflow: visible; }
-      .workspace { min-height: auto; overflow: visible; padding-top: 12px; }
-      .topbar { position: static; }
-    }
-    @media (max-width: 720px) {
-      .workspace { padding-left: 14px; padding-right: 14px; }
-      .topbar { flex-direction: column; align-items: flex-start; }
-      .social-actions { width: 100%; justify-content: flex-end; }
-    }
+      flex-shrink: 0; height: 38px;
+      display: flex; align-items: center;
+      background: var(--panel); border-bottom: 1px solid var(--border);
+      padding: 0 14px; gap: 10px; z-index: 100;
+      transition: background .3s, border-color .3s;
+    }
+    .topbar__nav { display: flex; gap: 4px; align-items: center; }
+    .tb-nav-btn {
+      font-family: inherit; font-size: 0.55rem; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 3px 10px; border-radius: var(--r-sm);
+      border: 1px solid var(--border2); background: transparent;
+      color: var(--dim); text-decoration: none; cursor: pointer; transition: all .18s;
+    }
+    .tb-nav-btn:hover { border-color: rgba(var(--yr),.6); color: var(--yellow); }
+    .tb-nav-btn--user { border-color: rgba(var(--yr),.5); color: var(--yellow); font-weight: 700; }
+    .tb-nav-btn--user:hover { background: rgba(var(--yr),.1); }
+    .tb-nav-btn--connect { border-color: rgba(var(--yr),.35); color: var(--yellow); }
+    .topbar__right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    .topbar__time { font-size: 0.62rem; color: var(--dim); }
+    .tb-btn {
+      font-family: inherit; font-size: 0.55rem; font-weight: 600;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      padding: 3px 9px; border-radius: var(--r-sm);
+      border: 1px solid var(--border2); background: var(--panel2);
+      color: var(--dim); cursor: pointer; transition: all .18s; text-decoration: none; display: inline-flex; align-items: center;
+    }
+    .tb-btn svg { width: 13px; height: 13px; }
+    .tb-btn:hover { border-color: var(--border2); color: var(--white); background: var(--border); }
+    .tb-btn.live { border-color: rgba(var(--gr),.4); color: var(--green); background: rgba(var(--gr),.06); }
+    .tb-btn.primary { border-color: rgba(var(--yr),.4); color: var(--yellow); background: rgba(var(--yr),.06); }
+    .tb-btn.primary:hover { background: rgba(var(--yr),.14); box-shadow: 0 0 14px rgba(var(--yr),.18); }
+    #theme-toggle { font-size: 0.75rem; padding: 2px 8px; letter-spacing: 0; }
 
-    /* ============================================================
-       MIKUELIZAOS.CLOUD EXACT LAYOUT — left nav + retro card grid
-       ============================================================ */
+    /* ─── CONTENT AREA ───────────────────────── */
+    .content-area { flex: 1; display: flex; overflow: hidden; }
 
-    .app-shell { display: flex !important; min-height: 100vh; }
-    .sidebar { display: none !important; }
-    body { overflow-y: auto; height: auto; }
-
-    /* ── Left nav sidebar ── */
-    .miku-nav {
-      position: fixed;
-      left: 0; top: 0;
-      width: 192px;
-      height: 100vh;
-      border-right: 3px solid var(--clr-secondary);
-      background: var(--clr-bg);
-      display: flex;
-      flex-direction: column;
-      z-index: 50;
-      overflow: hidden;
-    }
-    .miku-nav::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      opacity: 0.03;
-      background-image:
-        linear-gradient(to right, var(--clr-secondary) 1px, transparent 1px),
-        linear-gradient(to bottom, var(--clr-secondary) 1px, transparent 1px);
-      background-size: 20px 20px;
-      pointer-events: none;
-    }
-    .miku-nav__head {
-      padding: 12px;
-      border-bottom: 3px solid var(--clr-secondary);
-      background: hsla(192,45%,9%,0.5);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      text-decoration: none;
-      color: var(--clr-fg);
-    }
-    .miku-nav__logo {
-      width: 48px; height: 48px;
-      border: 2px solid var(--clr-secondary);
-      border-radius: 8px;
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-    .miku-nav__logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .miku-nav__brand strong { display: block; font-size: 13px; font-weight: 800; letter-spacing: -0.02em; }
-    .miku-nav__brand small  { display: block; font-size: 10px; color: var(--clr-muted); }
-    .miku-nav__links {
-      flex: 1;
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .miku-nav__link {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--clr-fg);
-      text-decoration: none;
-      transition: background 120ms, color 120ms;
-      cursor: pointer;
-      border: none;
-      background: transparent;
-      font-family: Inter, sans-serif;
-      width: 100%;
-      text-align: left;
-    }
-    .miku-nav__link:hover,
-    .miku-nav__link.is-active {
-      background: var(--clr-secondary);
-      color: var(--clr-bg);
-    }
-    .miku-nav__icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
-    .miku-nav__foot {
-      padding: 12px;
-      border-top: 3px solid var(--clr-secondary);
-    }
-    .miku-nav__bars {
-      display: flex;
-      align-items: flex-end;
-      gap: 3px;
-      height: 14px;
-      margin-bottom: 6px;
-    }
-    .miku-nav__bar {
-      flex: 1;
-      background: var(--clr-secondary);
-      border-radius: 1px;
-    }
-    .miku-nav__foot-label {
-      text-align: center;
-      font-size: 10px;
-      color: hsla(168,40%,70%,0.4);
-      font-family: ui-monospace, monospace;
-    }
-
-    /* ── Cloud section in nav ── */
-    .miku-nav__cloud { padding: 0 12px 8px; }
-    .miku-nav__divider {
-      height: 1px;
-      background: var(--clr-secondary);
-      opacity: 0.4;
-      margin-bottom: 10px;
-    }
-    .miku-nav__cloud-profile {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 4px;
-      margin-bottom: 4px;
-    }
-    .miku-nav__cloud-avatar {
-      width: 32px; height: 32px;
-      border-radius: 0;
-      border: 2px solid var(--clr-primary);
-      background: hsla(174,54%,50%,0.15);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 900;
-      color: var(--clr-primary);
-      flex-shrink: 0;
-    }
-    .miku-nav__cloud-info strong {
-      display: block;
-      font-size: 12px; font-weight: 800;
-      color: var(--clr-fg);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      max-width: 110px;
-    }
-    .miku-nav__cloud-info small {
-      display: block;
-      font-size: 10px;
-      color: var(--clr-primary);
-    }
-    .miku-nav__link--muted { opacity: 0.5; font-size: 11px !important; }
-    .miku-nav__link--muted:hover { opacity: 1; }
-    .miku-nav__cloud-cta { padding: 6px 4px; }
-    .miku-nav__cloud-cta-label {
-      font-size: 9px;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: var(--clr-muted);
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-    .miku-nav__cloud-btn {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 9px 12px;
-      border: 2px solid var(--clr-primary);
-      background: hsla(174,54%,50%,0.1);
-      color: var(--clr-primary);
-      font-size: 12px;
-      font-weight: 800;
-      font-family: Inter, sans-serif;
-      cursor: pointer;
-      border-radius: 0;
-      transition: background 150ms, color 150ms;
-      letter-spacing: 0.05em;
-    }
-    .miku-nav__cloud-btn:hover {
-      background: var(--clr-primary);
-      color: var(--clr-bg);
-    }
-
-    /* ── Workspace ── */
-    .workspace {
-      margin-left: 192px;
-      flex: 1;
-      min-width: 0;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      padding: 16px;
+    /* ─── LEFT SIDEBAR ───────────────────────── */
+    .sidebar {
+      width: 210px; flex-shrink: 0;
+      background: rgba(8,8,8,0.97); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
       overflow-y: auto;
-      overflow-x: hidden;
+      transition: background .3s, border-color .3s;
     }
 
-    /* Topbar */
-    .topbar {
-      width: 100% !important;
-      max-width: none !important;
-      border-radius: 0 !important;
-      padding: 10px 16px !important;
-      background: var(--clr-card) !important;
-      border: none !important;
-      border-bottom: 3px solid var(--clr-secondary) !important;
-      box-shadow: none !important;
-    }
-    .topbar-title strong { font-size: 13px; font-weight: 800; color: var(--clr-fg); }
-    .topbar-title small { color: var(--clr-muted); font-size: 10px; }
-    .meta-chip { display: none; }
-    .live-dot { background: var(--clr-primary) !important; box-shadow: 0 0 14px hsla(174,54%,50%,0.7) !important; }
-    .social-link {
-      border: 2px solid var(--clr-secondary) !important;
-      border-radius: 6px !important;
-      background: transparent !important;
-      color: var(--clr-fg) !important;
-    }
-    .social-link:hover { border-color: var(--clr-primary) !important; background: hsla(174,54%,50%,0.1) !important; }
-    .auth-link {
-      border: 2px solid var(--clr-secondary) !important;
-      border-radius: 6px !important;
-      background: hsla(174,54%,50%,0.12) !important;
-      color: var(--clr-fg) !important;
-      font-weight: 700 !important;
-    }
-    .auth-link:hover { border-color: var(--clr-primary) !important; }
-
-    /* Content stack */
-    .content-stack {
-      width: min(100%, 1100px) !important;
-      margin-top: 16px !important;
-      display: flex !important;
-      flex-direction: column;
-      gap: 16px !important;
-    }
-
-    /* Hero landing card — centered, like mikuelizaos.cloud */
-    /* ── Status bar (replaces lp-hero, compact scan bar) ── */
-    .lp-status-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 10px 16px;
-      border: 3px solid var(--clr-secondary);
-      background: var(--clr-card);
-      margin-bottom: 14px;
-      flex-wrap: wrap;
-    }
-    .lp-status-bar__left {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
-    .lp-status-bar__label { color: var(--clr-primary); }
-    .lp-status-bar__sep   { color: var(--clr-muted); }
-    .lp-status-bar__val   { color: var(--clr-muted); }
-    .lp-status-bar__right {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-    }
-
-    /* KPI row */
-    .lp-kpi-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-      gap: 12px;
-      margin-bottom: 14px;
-    }
-    .lp-kpi-row .snapshot-tile {
-      border: 3px solid var(--clr-secondary) !important;
-      border-radius: 0 !important;
-      padding: 12px 14px !important;
-      background: var(--clr-card) !important;
-      box-shadow: none !important;
-      transition: border-color 150ms;
-    }
-    .lp-kpi-row .snapshot-tile:hover { border-color: var(--clr-primary) !important; }
-    .lp-kpi-row .snapshot-tile__label {
-      font-size: 9px;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: var(--clr-muted);
-      font-weight: 700;
-      margin-bottom: 4px;
-    }
-    .lp-kpi-row .snapshot-tile__value {
-      font-size: 22px;
-      font-weight: 900;
-      color: var(--clr-fg);
-      line-height: 1;
-    }
-    .lp-kpi-row .snapshot-tile__sub {
-      font-size: 9px;
-      color: var(--clr-muted);
-      margin-top: 2px;
-      font-family: ui-monospace, monospace;
-    }
-
-    /* Stat tiles (old lp-hero__kpi class — keep for compat) */
-    .lp-hero__kpi .snapshot-tile {
-      padding: 14px;
-      border-radius: 0;
-      border: 3px solid var(--clr-secondary);
-      background: var(--clr-card);
-      box-shadow: inset 0 0 0 1px rgba(246,231,15,0.025);
-      text-align: left;
-    }
-    .lp-hero__kpi .snapshot-tile span {
-      font-size: 10px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--muted);
-      display: block;
-      margin-bottom: 6px;
-    }
-    .lp-hero__kpi .snapshot-tile strong {
-      font-size: 22px;
-      display: block;
-      color: var(--text);
-    }
-
-    /* Summary ribbon */
-    .lp-ribbon {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding: 10px 14px;
-      border-radius: 0;
-      border: 3px solid var(--clr-secondary);
-      background: hsla(176,45%,34%,0.08);
-      margin-top: 14px;
-    }
-    .lp-ribbon .summary-pill {
-      padding: 4px 10px;
-      border-radius: 0;
-      border: 2px solid var(--clr-secondary);
-      background: hsla(174,54%,50%,0.08);
-      color: var(--clr-fg);
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-
-    /* ── Retro market card grid (exact mikuelizaos.cloud style) ── */
-    .lp-cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 16px;
-      width: 100%;
-    }
-
-    /* ── Feature dock cards as retro market cards ── */
-    /* Remove all rounded corners, use 3px flat border like mikuelizaos */
-    .feature-dock-card {
-      border-radius: 0 !important;
-      border: 3px solid var(--clr-secondary) !important;
-      background: var(--clr-card) !important;
-      box-shadow: none !important;
-      padding: 0 !important;
-      cursor: pointer !important;
-      transition: border-color 150ms !important;
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .feature-dock-card::before { display: none !important; }
-    .feature-dock-card:hover { border-color: var(--clr-primary) !important; }
-
-    /* Card inner header area */
-    .feature-dock-card__header {
-      padding: 14px 16px 10px;
-      border-bottom: 2px solid var(--clr-secondary);
-    }
-    .feature-dock-card__label {
-      font-size: 11px !important;
-      font-weight: 800 !important;
-      letter-spacing: 0.1em !important;
-      color: var(--clr-muted) !important;
-      text-transform: uppercase;
-      margin-bottom: 6px;
-    }
-    .feature-dock-card__title {
-      font-size: 15px !important;
-      font-weight: 800 !important;
-      color: var(--clr-fg) !important;
-      line-height: 1.25;
-    }
-    .feature-dock-card__sub {
-      font-size: 10px;
-      color: var(--clr-muted);
-      margin-top: 3px;
-    }
-
-    /* YES/NO price grid inside card — like mikuelizaos market prices */
-    .feature-dock-card__prices {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      border-top: 0;
-    }
-    .feature-dock-card__yes,
-    .feature-dock-card__no {
-      padding: 12px;
+    .sb-agent {
+      padding: 16px 14px 12px; border-bottom: 1px solid var(--border);
       text-align: center;
     }
-    .feature-dock-card__yes { border-right: 2px solid var(--clr-secondary); }
-    .feature-dock-card__yes-label {
-      display: flex; align-items: center; justify-content: center; gap: 4px;
-      font-size: 10px; font-weight: 800; color: var(--clr-primary);
-      text-transform: uppercase; margin-bottom: 4px;
+    .sb-agent__avatar {
+      width: 52px; height: 52px; border-radius: 50%;
+      border: 1.5px solid rgba(var(--yr),.35); margin: 0 auto 8px;
+      display: block; background: #111;
     }
-    .feature-dock-card__no-label {
-      display: flex; align-items: center; justify-content: center; gap: 4px;
-      font-size: 10px; font-weight: 800; color: var(--clr-accent);
-      text-transform: uppercase; margin-bottom: 4px;
+    .sb-agent__status {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 0.5rem; letter-spacing: 0.14em; text-transform: uppercase;
+      padding: 2px 7px; border-radius: 999px;
+      border: 1px solid rgba(var(--gr),.35); color: var(--green);
+      margin-bottom: 5px;
     }
-    .feature-dock-card__price-num {
-      font-size: 28px !important;
-      font-weight: 900 !important;
-      color: var(--clr-fg) !important;
-      line-height: 1;
+    .sb-agent__status-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--green); animation: live-pulse 2s ease-in-out infinite; }
+    @keyframes live-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .sb-agent__name { font-size: 0.78rem; font-weight: 700; color: var(--yellow); }
+    .sb-agent__role { font-size: 0.5rem; color: var(--dim); letter-spacing: 0.08em; margin-top: 2px; }
+    .sb-agent__addr { font-size: 0.48rem; color: var(--mute); margin-top: 4px; }
+    .sb-agent__bal  { font-size: 0.58rem; color: var(--white); margin-top: 3px; font-weight: 600; }
+
+    .sb-btns { padding: 10px 10px 8px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; }
+    .sb-action-btn {
+      flex: 1; font-family: inherit; font-size: 0.5rem; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 5px 4px; border-radius: var(--r-sm);
+      border: 1px solid var(--border2); background: var(--panel2);
+      color: var(--dim); cursor: pointer; transition: all .18s;
     }
-    .feature-dock-card__price-unit {
-      font-size: 9px;
-      color: var(--clr-muted);
-      margin-top: 2px;
-      font-family: ui-monospace, monospace;
+    .sb-action-btn:hover { border-color: rgba(var(--yr),.35); color: var(--yellow); background: rgba(var(--yr),.05); }
+
+    .sb-section { padding: 10px 10px 8px; border-bottom: 1px solid var(--border); }
+    .sb-section__title { font-size: 0.5rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--mute); margin-bottom: 7px; }
+
+    .qa-btn {
+      display: flex; align-items: center; gap: 6px;
+      width: 100%; font-family: inherit; font-size: 0.58rem; font-weight: 500;
+      padding: 5px 8px; border-radius: var(--r-sm); border: 1px solid transparent;
+      background: none; color: var(--dim); cursor: pointer; transition: all .18s;
+      text-align: left; margin-bottom: 3px; letter-spacing: 0.04em;
+    }
+    .qa-btn:hover { background: var(--panel2); border-color: var(--border); color: var(--white); }
+    .qa-btn:last-child { margin-bottom: 0; }
+    .qa-btn__icon { font-size: 0.7rem; flex-shrink: 0; }
+
+    .sb-stat-row { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; font-size: 0.6rem; }
+    .sb-stat-row span { color: var(--dim); }
+    .sb-stat-row strong { color: var(--white); }
+    .sb-stat-row strong.y { color: var(--yellow); }
+    .sb-stat-row strong.g { color: var(--green); }
+
+    .recent-item {
+      padding: 6px 8px; border-radius: var(--r-sm); margin-bottom: 4px;
+      border: 1px solid transparent; cursor: pointer; transition: all .18s;
+    }
+    .recent-item:hover { background: var(--panel2); border-color: var(--border); }
+    .recent-item__sym { font-size: 0.65rem; font-weight: 700; color: var(--yellow); }
+    .recent-item__meta { font-size: 0.5rem; color: var(--dim); margin-top: 1px; }
+
+    /* ─── MAIN CONTENT ───────────────────────── */
+    .main {
+      flex: 1; overflow-y: auto; overflow-x: hidden;
+      display: flex; flex-direction: column; gap: 0;
+      padding: 10px; background: var(--bg);
     }
 
-    /* Progress bar at bottom of card */
-    .feature-dock-card__bar-row {
-      padding: 10px 16px 12px;
-      border-top: 2px solid var(--clr-secondary);
-    }
-    .feature-dock-card__bar-label {
-      display: flex; justify-content: space-between;
-      font-size: 9px; color: var(--clr-muted);
-      font-family: ui-monospace, monospace;
-      margin-bottom: 4px;
-    }
-    .feature-dock-card__bar-track {
-      height: 6px;
-      background: hsla(176,45%,34%,0.25);
-      border-radius: 0;
-      overflow: hidden;
-    }
-    .feature-dock-card__fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--clr-primary), var(--clr-accent)) !important;
-      border-radius: 0;
-      position: relative;
-      transition: width 0.4s ease;
-    }
-    .feature-dock-card__fill::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-      animation: shimmer 2s infinite;
-    }
-    @keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+    /* Grid rows */
+    .panel-row { display: grid; gap: 8px; margin-bottom: 8px; }
+    .panel-row--3 { grid-template-columns: 1fr 1fr 1fr; }
+    .panel-row--2 { grid-template-columns: 1.4fr 1fr; }
+    .panel-row--1 { grid-template-columns: 1fr; }
+    .panel-row--2-3 { grid-template-columns: 2fr 1fr; }
 
-    /* Music note footer */
-    .feature-dock-card__notes {
-      display: flex; gap: 4px; justify-content: center;
-      padding: 6px 12px 8px;
-      border-top: 1px solid hsla(176,45%,34%,0.2);
+    /* Panel */
+    .panel {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: var(--r); overflow: hidden;
+      display: flex; flex-direction: column;
+      transition: background .3s, border-color .3s;
     }
-    .feature-dock-card__note {
-      font-size: 10px;
-      color: var(--clr-secondary);
-      transition: color 200ms, transform 200ms;
+    .panel__head {
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 10px; border-bottom: 1px solid var(--border);
+      background: var(--panel2); flex-shrink: 0;
     }
-    .feature-dock-card:hover .feature-dock-card__note { color: var(--clr-primary); transform: translateY(-2px); }
+    .panel__title { font-size: 0.58rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+    .panel__badge {
+      font-size: 0.46rem; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 1px 6px; border-radius: 999px; border: 1px solid; margin-left: auto;
+    }
+    .pb-green  { color: var(--green); border-color: rgba(var(--gr),.35); }
+    .pb-yellow { color: var(--yellow); border-color: rgba(var(--yr),.35); }
+    .pb-dim    { color: var(--mute); border-color: var(--border2); }
+    .pb-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+    .pb-dot.g { background: var(--green); animation: live-pulse 2.5s infinite; }
+    .pb-dot.y { background: var(--yellow); }
+    .pb-dot.d { background: #333; }
+    .panel__body { padding: 10px; flex: 1; overflow: hidden; }
+    .panel__body--p0 { padding: 0; }
 
-    /* Fold sections */
-    .fold-section {
-      border-radius: 0 !important;
-      border: 3px solid var(--clr-secondary) !important;
-      background: var(--clr-card);
-      box-shadow: none !important;
-      overflow: hidden;
-      display: block !important;
-    }
-    .fold-summary {
-      padding: 14px 18px;
-      border-bottom: 2px solid hsla(176,45%,34%,0.4);
-    }
-    .fold-summary strong { color: var(--clr-fg); font-weight: 800; }
-    .fold-summary span { color: var(--clr-muted); }
-    .fold-summary::after { color: var(--clr-primary); }
+    /* Monitor rows (like CPU/storage in Hermes) */
+    .mon-row { margin-bottom: 10px; }
+    .mon-row:last-child { margin-bottom: 0; }
+    .mon-label { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 0.6rem; }
+    .mon-label span { color: var(--dim); }
+    .mon-label strong { color: var(--white); }
+    .mon-label strong.y { color: var(--yellow); }
+    .mon-bar { height: 3px; background: #1a1a1a; border-radius: 2px; }
+    .mon-fill { height: 100%; border-radius: 2px; transition: width .8s cubic-bezier(.4,0,.2,1); }
+    .mon-fill.y { background: linear-gradient(90deg, rgba(var(--yr),.4), var(--yellow)); }
+    .mon-fill.g { background: linear-gradient(90deg, rgba(var(--gr),.4), var(--green)); }
+    .mon-big { font-size: 1.3rem; font-weight: 800; color: var(--yellow); line-height: 1; margin-bottom: 2px; }
+    .mon-sub { font-size: 0.55rem; color: var(--dim); }
 
-    @media (max-width: 900px) {
-      .lp-cards { grid-template-columns: repeat(2, 1fr); }
-      .workspace { margin-left: 0; padding: 12px; }
-      .miku-nav { display: none; }
+    /* Scheduler-style rows */
+    .sched-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 0.65rem; }
+    .sched-row:last-child { border-bottom: none; }
+    .sched-row span { color: var(--dim); }
+    .sched-row strong { font-weight: 600; }
+    .sched-row strong.y { color: var(--yellow); }
+    .sched-row strong.g { color: var(--green); }
+    .sched-row strong.r { color: var(--red); }
+    .sched-row strong.w { color: var(--white); }
+
+    /* File explorer / token list */
+    .file-tree { font-size: 0.62rem; padding: 6px 0; }
+    .file-dir { color: var(--yellow); padding: 3px 0; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+    .file-dir::before { content: '▸'; font-size: 0.5rem; color: var(--dim); }
+    .file-item { padding: 3px 0 3px 14px; color: var(--dim); display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 3px; transition: all .15s; }
+    .file-item:hover { background: var(--panel2); color: var(--white); }
+    .file-item__sym { color: var(--yellow); font-weight: 700; width: 60px; flex-shrink: 0; }
+    .file-item__score { color: var(--white); width: 40px; flex-shrink: 0; }
+    .file-item__rec { font-size: 0.52rem; color: var(--dim); }
+
+    /* Terminal / live feed */
+    .term-body { font-size: 0.62rem; padding: 8px; overflow-y: auto; max-height: 200px; }
+    .term-line { display: flex; gap: 7px; padding: 1.5px 0; }
+    .term-line .ts  { color: var(--mute); flex-shrink: 0; font-size: 0.55rem; }
+    .term-line .tag { font-size: 0.48rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 0 5px; border-radius: 2px; flex-shrink: 0; }
+    .tag-info { background: rgba(0,229,255,.15); color: #00E5FF; }
+    .tag-ok   { background: rgba(var(--gr),.15); color: var(--green); }
+    .tag-warn { background: rgba(255,152,0,.15); color: #FF9800; }
+    .tag-err  { background: rgba(255,68,68,.15); color: var(--red); }
+    .term-line .msg { color: var(--dim); }
+    .term-line .msg .hi { color: var(--yellow); }
+    .term-line .msg .ok { color: var(--green); }
+    .prompt-line { display: flex; gap: 7px; align-items: center; padding: 3px 0; }
+    .prompt-line .pr { color: var(--yellow); }
+    .prompt-line .cmd { color: var(--white); }
+    .cursor { display: inline-block; width: 7px; height: 12px; background: var(--yellow); animation: blink-cur .8s step-end infinite; }
+    @keyframes blink-cur { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* Candidates inside panel */
+    .cand-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.04);
+      font-size: 0.62rem; cursor: pointer; transition: background .15s;
+      border-radius: 3px;
     }
-    @media (max-width: 600px) {
-      .lp-cards { grid-template-columns: 1fr; }
+    .cand-row:last-child { border-bottom: none; }
+    .cand-row:hover { background: var(--panel2); padding-left: 4px; }
+    .cand-row__rank { color: var(--mute); width: 14px; flex-shrink: 0; font-size: 0.52rem; }
+    .cand-row__sym { color: var(--yellow); font-weight: 700; width: 56px; flex-shrink: 0; }
+    .cand-row__score { color: var(--white); width: 42px; flex-shrink: 0; }
+    .cand-row__pill {
+      font-size: 0.44rem; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 1px 5px; border: 1px solid; border-radius: 999px;
     }
+    .tone-hot  { color:#F6E70F; border-color:rgba(246,231,15,.4); }
+    .tone-warm { color:#FFB700; border-color:rgba(255,183,0,.35); }
+    .tone-cool { color:rgba(255,255,255,.55); border-color:rgba(255,255,255,.18); }
+    .tone-cold { color:rgba(255,255,255,.28); border-color:rgba(255,255,255,.12); }
+    .cand-row__meta { color: var(--mute); font-size: 0.55rem; margin-left: auto; }
+    .cand-link { color: var(--yellow); }
+    .cand-link:hover { text-decoration: underline; }
+
+    /* Score bar inline */
+    .mini-bar { width: 48px; height: 2px; background: #1a1a1a; border-radius: 1px; flex-shrink: 0; }
+    .mini-fill { height: 100%; background: var(--yellow); border-radius: 1px; }
+
+    /* ─── RIGHT ASIDE ────────────────────────── */
+    .aside {
+      width: 200px; flex-shrink: 0;
+      background: rgba(8,8,8,0.97); border-left: 1px solid var(--border);
+      overflow-y: auto; overflow-x: hidden;
+      padding: 10px 8px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .aside-block {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 10px;
+    }
+    .aside-title {
+      font-size: 0.5rem; letter-spacing: 0.16em; text-transform: uppercase;
+      color: var(--yellow); opacity: 0.7;
+      padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px;
+    }
+    .aside-stat {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 3px 0; font-size: 0.6rem; gap: 4px;
+      border-bottom: 1px solid rgba(255,255,255,.03);
+    }
+    .aside-stat:last-child { border-bottom: none; }
+    .aside-stat span { color: var(--dim); flex-shrink: 0; white-space: nowrap; }
+    .aside-stat strong { font-weight: 600; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
+    .aside-stat strong.y { color: var(--yellow); }
+    .aside-stat strong.g { color: var(--green); }
+    .aside-stat strong.w { color: var(--white); }
+    .aside-big { font-size: 1.6rem; font-weight: 800; color: var(--yellow); line-height: 1; margin-bottom: 2px; }
+    .aside-sub { font-size: 0.5rem; color: var(--dim); margin-bottom: 8px; }
+
+    /* Aside token entry */
+    .aside-token { padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 0.6rem; }
+    .aside-token:last-child { border-bottom: none; }
+    .aside-token__sym { color: var(--yellow); font-weight: 700; font-size: 0.72rem; }
+    .aside-token__row { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
+    .aside-token__score { color: var(--white); font-size: 0.58rem; }
+    .aside-token__rec { color: var(--dim); font-size: 0.52rem; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Progress rows (for detail accordions) */
+    .progress-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+    .progress-row span { width: 80px; flex-shrink: 0; color: var(--dim); font-size: 0.6rem; }
+    .progress-bar { flex: 1; height: 2px; background: #1a1a1a; border-radius: 1px; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, rgba(var(--yr),.4), var(--yellow)); border-radius: 1px; transition: width .8s; }
+    .progress-val { width: 38px; text-align: right; color: var(--dim); font-size: 0.58rem; flex-shrink: 0; }
+
+    /* Accordion (within panel or standalone) */
+    .accord-panel { margin-top: 8px; }
+    details.panel-accord { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 6px; overflow: hidden; }
+    summary.panel-accord__sum {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 10px; cursor: pointer; list-style: none;
+      background: var(--panel2); transition: background .15s;
+    }
+    summary.panel-accord__sum:hover { background: #161616; }
+    .panel-accord__sum::-webkit-details-marker { display: none; }
+    .panel-accord__title { font-size: 0.62rem; font-weight: 700; color: var(--white); }
+    .panel-accord__meta  { font-size: 0.55rem; color: var(--dim); margin-left: auto; }
+    .panel-accord__arr   { font-size: 0.55rem; color: var(--mute); transition: transform .2s; }
+    details.panel-accord[open] .panel-accord__arr { transform: rotate(180deg); }
+    .panel-accord__body  { padding: 10px; border-top: 1px solid var(--border); }
+
+    /* Metric grid */
+    .metric-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
+    .metric-card { padding: 8px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-sm); }
+    .metric-card__label { font-size: 0.46rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mute); margin-bottom: 3px; }
+    .metric-card__val { font-size: 0.92rem; font-weight: 700; color: var(--yellow); }
+    .metric-card__desc { font-size: 0.48rem; color: var(--dim); line-height: 1.3; margin-top: 1px; }
+
+    .status-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 0.65rem; }
+    .status-row:last-child { border-bottom: none; }
+    .status-row span { color: var(--dim); }
+    .status-row strong { color: var(--white); }
+    .watchlist-link { color: var(--yellow); }
+
+    .candidate-card { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .candidate-card:last-child { border-bottom: none; }
+    .candidate-card__meta { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+    .candidate-rank { font-size: 0.48rem; color: var(--dim); }
+    .candidate-link { font-size: 0.82rem; font-weight: 700; color: var(--yellow); }
+    .candidate-subtitle { font-size: 0.58rem; color: var(--dim); margin: 1px 0 5px; }
+    .candidate-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; font-size: 0.58rem; }
+    .candidate-stats div { display: flex; justify-content: space-between; }
+    .candidate-stats span { color: var(--dim); }
+    .candidate-thesis { font-size: 0.65rem; color: var(--dim); padding: 5px 0; }
+    .goo-card { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .goo-card:last-child { border-bottom: none; }
+    .pill { font-size: 0.44rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 1px 5px; border: 1px solid; border-radius: 999px; }
+
+    .usage-stack { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+    .usage-row { display: flex; align-items: center; gap: 6px; }
+    .usage-label { width: 48px; color: var(--dim); font-size: 0.58rem; }
+    .usage-bar { flex: 1; height: 2px; background: #1a1a1a; border-radius: 1px; }
+    .usage-fill { height: 100%; background: var(--yellow); border-radius: 1px; }
+    .usage-val { width: 22px; text-align: right; color: var(--dim); font-size: 0.55rem; }
+
+    /* Modal */
+    .h-modal-backdrop { position: fixed; inset: 0; z-index: 500; background: rgba(0,0,0,0.94); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .h-modal-backdrop.hidden { display: none; }
+    .h-modal { background: var(--panel); border: 1px solid var(--border2); border-radius: var(--r); width: 100%; max-width: 960px; max-height: 88vh; overflow-y: auto; scrollbar-width: thin; }
+    .h-modal__header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel2); z-index: 1; }
+    .h-modal__title { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--yellow); }
+    .h-modal__close { background: none; border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--dim); font-family: inherit; font-size: 0.58rem; padding: 3px 9px; cursor: pointer; transition: all .18s; }
+    .h-modal__close:hover { border-color: #333; color: var(--white); }
+
+    /* Cloud popup */
+    .h-cloud-popup { position: fixed; inset: 0; z-index: 600; background: rgba(0,0,0,0.95); display: flex; align-items: center; justify-content: center; }
+    .h-cloud-popup.hidden { display: none; }
+    .h-cloud-popup__inner { background: var(--panel); border: 1px solid var(--border2); border-radius: var(--r); padding: 28px; width: 380px; max-width: 95vw; }
+    .h-cloud-popup__title { font-size: 1rem; font-weight: 700; color: var(--yellow); margin-bottom: 10px; }
+    .h-cloud-popup p { font-size: 0.75rem; color: var(--dim); line-height: 1.7; }
+    .h-cloud-popup__close { float: right; background: none; border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--dim); font-family: inherit; font-size: 0.58rem; padding: 3px 8px; cursor: pointer; margin-bottom: 10px; }
+
+    .split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .split-h { font-size: 0.5rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--mute); padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+
+    .np-footer { padding: 10px 14px; font-size: 0.48rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); border-top: 1px solid var(--border); display: flex; justify-content: space-between; }
+
+    .status-panel { display: flex; flex-direction: column; }
+
+    @media (max-width: 1400px) {
+      .aside { width: 185px; }
+    }
+    @media (max-width: 1100px) {
+      .panel-row--3 { grid-template-columns: 1fr 1fr; }
+      .aside { width: 175px; padding: 8px 6px; }
+    }
+    @media (max-width: 960px) {
+      .aside { display: none; }
+    }
+    @media (max-width: 860px) {
+      .sidebar { display: none; }
+      .panel-row--3 { grid-template-columns: 1fr; }
+      .panel-row--2 { grid-template-columns: 1fr; }
+      .panel-row--2-3 { grid-template-columns: 1fr; }
+    }
+
+    /* ─── LIGHT MODE OVERRIDES ───────────────── */
+    [data-theme="light"] .sidebar { background: #fafaf7; border-right-color: var(--border); }
+    [data-theme="light"] .aside { background: #fafaf7; border-left-color: var(--border); }
+    [data-theme="light"] .panel { background: #ffffff; border-color: var(--border); }
+    [data-theme="light"] .panel:hover { border-color: rgba(var(--yr),.35); }
+    [data-theme="light"] .terminal { background: #f0f0ec; border-color: var(--border); }
+    [data-theme="light"] .terminal__line { color: rgba(20,20,18,0.7); }
+    [data-theme="light"] .terminal__cursor { background: rgba(var(--yr),1); }
+    [data-theme="light"] .progress-bg { background: #e8e8e4; }
+    [data-theme="light"] .ticker { background: #f0f0ec; border-color: var(--border); }
+    [data-theme="light"] .ticker__item { color: rgba(20,20,18,0.75); }
+    [data-theme="light"] .feat-row { background: #ffffff; border-color: var(--border); }
+    [data-theme="light"] .feat-row:hover { border-color: rgba(var(--yr),.4); box-shadow: 0 0 12px rgba(var(--yr),.1); }
+    [data-theme="light"] .cand-item { background: #ffffff; border-color: var(--border); }
+    [data-theme="light"] .cand-item:hover { border-color: rgba(var(--yr),.4); }
+    [data-theme="light"] .aside-block { background: #ffffff; border-color: var(--border); }
+    [data-theme="light"] .accord { background: #ffffff; border-color: var(--border); }
+    [data-theme="light"] .accord summary { border-color: var(--border); }
+    [data-theme="light"] .mon-bg { background: #e8e8e4; }
+    [data-theme="light"] .mon-fill { filter: none; }
+    [data-theme="light"] .sb-agent { background: linear-gradient(160deg,rgba(var(--yr),.06),transparent 70%); border-color: var(--border); }
+    [data-theme="light"] .sb-section__title { color: rgba(20,20,18,0.4); }
+    [data-theme="light"] .qa-btn { background: #f0f0ec; border-color: var(--border); color: rgba(20,20,18,0.7); }
+    [data-theme="light"] .qa-btn:hover { border-color: rgba(var(--yr),.5); color: var(--yellow); background: rgba(var(--yr),.07); }
+    [data-theme="light"] .sb-action-btn { background: #f0f0ec; border-color: var(--border); color: rgba(20,20,18,0.6); }
+    [data-theme="light"] #dot-canvas { opacity: 0.06; }
   </style>
 </head>
 <body>
-  <!-- Spotlights (always visible, like mikuelizaos.cloud) -->
-  <div class="spotlight-wrap" aria-hidden="true">
-    <div class="spotlight spotlight--left"></div>
-    <div class="spotlight spotlight--center"></div>
-    <div class="spotlight spotlight--right"></div>
+  <canvas id="dot-canvas"></canvas>
+
+  <div class="h-modal-backdrop hidden" id="feature-modal">
+    <div class="h-modal">
+      <div class="h-modal__header">
+        <div class="h-modal__title" id="feature-modal-title">Detail</div>
+        <button class="h-modal__close" id="feature-modal-close">&#x2715; Close</button>
+      </div>
+      <div id="feature-modal-body"></div>
+    </div>
   </div>
-
-  <!-- Floating music notes (12, matching mikuelizaos exactly) -->
-  <div id="float-notes" aria-hidden="true"></div>
-
-  <!-- Intro overlay: 3 → 2 → 1 → SHOWTIME → loading -->
-  <div id="intro-overlay">
-    <div class="spotlight-wrap" aria-hidden="true">
-      <div class="spotlight spotlight--left"></div>
-      <div class="spotlight spotlight--center"></div>
-      <div class="spotlight spotlight--right"></div>
-    </div>
-    <!-- ElizaOK logo as bg (replacing Miku stage image) -->
-    <div class="intro-stage-img" id="intro-img">
-      <img src="/assets/elizaok-logo.png" alt="" />
-    </div>
-    <!-- Floating notes inside overlay too -->
-    <div id="intro-float-notes" aria-hidden="true"></div>
-    <!-- Countdown number -->
-    <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:24px;">
-      <div style="position:relative;" id="count-wrap">
-        <div class="intro-count" id="intro-count">3</div>
-        <div class="intro-ping" id="intro-ping"></div>
-      </div>
-      <div class="intro-loading-title" id="intro-loading-title">elizaOK</div>
-      <div class="intro-loading-sub" id="intro-loading-sub">♪ WELCOME TO THE STAGE ♪</div>
-      <div class="intro-bar-wrap" id="intro-bar-wrap">
-        <div class="intro-bar-labels">
-          <span>LOADING</span>
-          <span id="intro-pct">0%</span>
-        </div>
-        <div class="intro-bar-track">
-          <div class="intro-bar-fill" id="intro-bar-fill"></div>
-        </div>
-        <div class="intro-notes-row" id="intro-notes-row">
-          <span class="intro-note-dot">♪</span>
-          <span class="intro-note-dot">♪</span>
-          <span class="intro-note-dot">♪</span>
-          <span class="intro-note-dot">♪</span>
-          <span class="intro-note-dot">♪</span>
-          <span class="intro-note-dot">♪</span>
-          <span class="intro-note-dot">♪</span>
-          <span class="intro-note-dot">♪</span>
-          <span class="intro-note-dot">♪</span>
-          <span class="intro-note-dot">♪</span>
-        </div>
-      </div>
-      <div class="intro-sys" id="intro-sys">
-        <div>SYSTEM: elizaOK V1.0</div>
-        <div>★ BNB CHAIN INTELLIGENCE READY ★</div>
-      </div>
+  <div class="h-cloud-popup hidden" id="cloud-auth-popup">
+    <div class="h-cloud-popup__inner">
+      <button class="h-cloud-popup__close" id="cloud-popup-close">&#x2715;</button>
+      <div class="h-cloud-popup__title">Connect ElizaCloud</div>
+      <p>Sign in to manage agents and credits.</p>
     </div>
   </div>
 
-  <div class="app-shell">
-    <aside class="sidebar">
-      ${sidebarMasterCard}
-    </aside>
+  <div class="layout">
 
-    <!-- mikuelizaos.cloud style left nav -->
-    <nav class="miku-nav" aria-label="Navigation">
-      <!-- Logo / brand head -->
-      <a href="/" class="miku-nav__head">
-        <div class="miku-nav__logo">
-          <img src="/assets/elizaok-logo.png" alt="elizaOK" />
-        </div>
-        <div class="miku-nav__brand">
-          <strong>elizaOK</strong>
-          <small>V1.0 · BNB Chain</small>
-        </div>
-      </a>
-      <!-- Nav links -->
-      <div class="miku-nav__links">
-        <button class="miku-nav__link is-active" data-nav="overview">
-          <span class="miku-nav__icon">⌂</span>
-          <span>Home</span>
-        </button>
-        <button class="miku-nav__link" data-nav="discovery">
-          <span class="miku-nav__icon">◎</span>
-          <span>Discovery</span>
-        </button>
-        <button class="miku-nav__link" data-nav="portfolio">
-          <span class="miku-nav__icon">▣</span>
-          <span>Portfolio</span>
-        </button>
-        <button class="miku-nav__link" data-nav="execution">
-          <span class="miku-nav__icon">◈</span>
-          <span>Execution</span>
-        </button>
-        <button class="miku-nav__link" data-nav="distribution">
-          <span class="miku-nav__icon">◉</span>
-          <span>Distribution</span>
-        </button>
-        <button class="miku-nav__link" data-nav="goo">
-          <span class="miku-nav__icon">✦</span>
-          <span>Goo</span>
-        </button>
+    <!-- ══ TOP BAR ══════════════════════════════════ -->
+    <div class="topbar">
+      <nav class="topbar__nav">
+        <a class="tb-nav-btn" href="/cloud/agents">Agents</a>
+        <a class="tb-nav-btn" href="/cloud/credits">Credits</a>
+        <a class="tb-nav-btn" href="/airdrop">Airdrop</a>
+        ${cloudSession
+          ? `<a class="tb-nav-btn tb-nav-btn--user" href="/cloud/agents">${escapeHtml(cloudSession.displayName)}</a>`
+          : `<button class="tb-nav-btn tb-nav-btn--connect" type="button" data-cloud-hosted-auth>&#x26A1; Cloud</button>`
+        }
+      </nav>
+      <div class="topbar__right">
+        <span class="topbar__time" id="tb-time"></span>
+        <button class="tb-btn live"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--green);animation:live-pulse 2s infinite;vertical-align:middle;margin-right:4px"></span>LIVE</button>
+        <a class="tb-btn" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer">${renderXIconSvg()}</a>
+        <a class="tb-btn" href="https://github.com/elizaokbsc" target="_blank" rel="noreferrer">${renderGithubIconSvg()}</a>
+        <a class="tb-btn" href="${escapeHtml(getElizaOkDocsUrl())}" target="_blank" rel="noreferrer">DOCS</a>
+        <button class="tb-btn" id="theme-toggle" title="Toggle light/dark mode" onclick="toggleTheme()">☀</button>
       </div>
+    </div>
 
-      <!-- ElizaCloud section -->
-      <div class="miku-nav__cloud">
-        <div class="miku-nav__divider"></div>
-        ${cloudSession ? `
-        <!-- Connected state: mini profile + Agents/Credits links -->
-        <div class="miku-nav__cloud-profile">
-          <div class="miku-nav__cloud-avatar">${escapeHtml((cloudSession.displayName || "E").slice(0,1).toUpperCase())}</div>
-          <div class="miku-nav__cloud-info">
-            <strong>${escapeHtml(cloudSession.displayName)}</strong>
-            <small>${escapeHtml(cloudSession.credits)} credits</small>
+    <div class="content-area">
+
+      <!-- ══ LEFT SIDEBAR ═══════════════════════════ -->
+      <div class="sidebar">
+
+        <!-- Agent identity -->
+        <div class="sb-agent">
+          <img class="sb-agent__avatar" src="/assets/elizaok-logo.png" alt="elizaOK" />
+          <div class="sb-agent__status"><span class="sb-agent__status-dot"></span>LIVE</div>
+          <div class="sb-agent__name">elizaOK</div>
+          <div class="sb-agent__role">AI Degen Agent &middot; elizaOS</div>
+          <div class="sb-agent__addr">${escapeHtml(shortAddress("0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F"))}</div>
+          <div class="sb-agent__bal">${escapeHtml(sidebarWalletBalanceLabel)} BNB</div>
+        </div>
+
+        <!-- Agent info -->
+        <div class="sb-section">
+          <div class="sb-section__title">Agent Status</div>
+          <div class="sb-stat-row"><span>Model</span><strong class="y">${escapeHtml(currentModel)}</strong></div>
+          <div class="sb-stat-row"><span>Scan every</span><strong>${Math.round(getDiscoveryConfig().intervalMs / 60_000)}m</strong></div>
+          <div class="sb-stat-row"><span>Mode</span><strong class="${executionState.dryRun ? '' : 'g'}">${executionState.dryRun ? "DRY-RUN" : "LIVE"}</strong></div>
+          <div class="sb-stat-row"><span>Execution</span><strong>${escapeHtml(executionState.mode)}</strong></div>
+          <div class="sb-stat-row"><span>Distribution</span><strong class="${distributionExecution.enabled ? 'g' : ''}">${distributionExecution.enabled ? "ARMED" : "STANDBY"}</strong></div>
+          <div class="sb-stat-row"><span>Goo scan</span><strong class="${getDiscoveryConfig().goo.enabled ? 'g' : ''}">${getDiscoveryConfig().goo.enabled ? "ACTIVE" : "OFF"}</strong></div>
+          <div class="sb-stat-row"><span>Readiness</span><strong class="y">${executionState.readinessScore}/${executionState.readinessTotal}</strong></div>
+          <div class="usage-stack" style="margin-top:8px">
+            ${renderUsageRow("API key", hasOpenAiKey ? 100 : 0, hasOpenAiKey ? "ok" : "x")}
+            ${renderUsageRow("Model", currentModel === "n/a" ? 0 : 100, currentModel === "n/a" ? "--" : "ok")}
           </div>
+          ${cloudSession ? `
+          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+            <div class="sb-stat-row"><span>Cloud</span><strong class="y">${escapeHtml(cloudSession.displayName)}</strong></div>
+            <div class="sb-stat-row"><span>Credits</span><strong>${escapeHtml(cloudSession.credits)}</strong></div>
+          </div>` : ''}
         </div>
-        <a class="miku-nav__link" href="/cloud/agents">
-          <span class="miku-nav__icon">⬡</span>
-          <span>Agents</span>
-        </a>
-        <a class="miku-nav__link" href="/cloud/credits">
-          <span class="miku-nav__icon">◈</span>
-          <span>Credits</span>
-        </a>
-        <a class="miku-nav__link miku-nav__link--muted" href="/auth/eliza-cloud/logout">
-          <span class="miku-nav__icon">↩</span>
-          <span>Disconnect</span>
-        </a>
-        ` : `
-        <!-- Not connected: connect button -->
-        <div class="miku-nav__cloud-cta">
-          <div class="miku-nav__cloud-cta-label">ElizaCloud</div>
-          <button class="miku-nav__cloud-btn" type="button" data-cloud-hosted-auth>
-            <span class="miku-nav__icon">⊕</span>
-            Connect
-          </button>
-        </div>
-        `}
-      </div>
 
-      <!-- Footer equalizer bars -->
-      <div class="miku-nav__foot">
-        <div class="miku-nav__bars" id="nav-bars">
-          <div class="miku-nav__bar" style="height:40%"></div>
-          <div class="miku-nav__bar" style="height:60%"></div>
-          <div class="miku-nav__bar" style="height:90%"></div>
-          <div class="miku-nav__bar" style="height:50%"></div>
-          <div class="miku-nav__bar" style="height:75%"></div>
-          <div class="miku-nav__bar" style="height:35%"></div>
-          <div class="miku-nav__bar" style="height:65%"></div>
-          <div class="miku-nav__bar" style="height:85%"></div>
+        <!-- Quick actions -->
+        <div class="sb-section">
+          <div class="sb-section__title">Quick Actions</div>
+          <button class="qa-btn" data-nav="overview" onclick="window.scrollTo(0,0)"><span class="qa-btn__icon">&#x1F4CA;</span>AGENT STATUS</button>
+          <button class="qa-btn" data-nav="discovery"><span class="qa-btn__icon">&#x1F50D;</span>DISCOVERY</button>
+          <button class="qa-btn" data-nav="portfolio"><span class="qa-btn__icon">&#x1F4BC;</span>PORTFOLIO</button>
+          <button class="qa-btn" data-nav="execution"><span class="qa-btn__icon">&#x26A1;</span>EXECUTION</button>
+          <button class="qa-btn" data-nav="distribution"><span class="qa-btn__icon">&#x1FA82;</span>DISTRIBUTION</button>
+          <button class="qa-btn" data-nav="goo"><span class="qa-btn__icon">&#x1F9EC;</span>GOO INTEL</button>
         </div>
-        <div class="miku-nav__foot-label">♪ elizaOK V1.0 ♪</div>
-      </div>
-    </nav>
 
-    <div class="workspace">
-      <header class="topbar">
-        <div class="topbar-meta">
-          <div class="live-dot" aria-hidden="true"></div>
-          <div class="topbar-title">
-            <strong id="view-title">Home</strong>
-            <small id="view-subtitle">BNB treasury intelligence</small>
-          </div>
+        <!-- Recent candidates -->
+        <div class="sb-section">
+          <div class="sb-section__title">Recent Signals</div>
+          ${snapshot.topCandidates.slice(0,4).map(c => `
+          <div class="recent-item">
+            <div class="recent-item__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress)}">${escapeHtml(c.tokenSymbol)}</a></div>
+            <div class="recent-item__meta">${c.score}/100 &middot; ${escapeHtml(c.recommendation).slice(0,18)}</div>
+          </div>`).join('') || '<div class="recent-item__meta">No signals yet</div>'}
         </div>
-        <div class="social-actions">
-          ${cloudToolbarLinks}
-          <a class="social-link" href="${escapeHtml(getElizaOkDocsUrl())}" target="_blank" rel="noreferrer" aria-label="Docs">
-            ${renderDocsIconSvg()}
-          </a>
-          <a class="social-link" href="https://github.com/elizaokbsc" target="_blank" rel="noreferrer" aria-label="GitHub">
-            ${renderGithubIconSvg()}
-          </a>
-          <a class="social-link" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer" aria-label="X">
-            ${renderXIconSvg()}
-          </a>
-          ${cloudAuthButton}
-        </div>
-      </header>
 
-      <main class="content-stack">
-        <section class="view-panel is-active" data-view-panel="overview" data-view-label="Signal Board" data-view-subtitle="BNB treasury intelligence">
-          <!-- System status ribbon (compact, like mikuelizaos scan bar) -->
-          <div class="lp-status-bar">
-            <div class="lp-status-bar__left">
-              <span class="live-dot" aria-hidden="true"></span>
-              <span class="lp-status-bar__label">SYSTEM ONLINE</span>
-              <span class="lp-status-bar__sep">·</span>
-              <span class="lp-status-bar__val">elizaOK BNB Chain Intelligence</span>
+        <!-- Footer -->
+        <div class="np-footer">
+          <span>elizaOS</span>
+          <a href="https://github.com/elizaokbsc" target="_blank" rel="noreferrer">GitHub &#x2197;</a>
+        </div>
+
+      </div><!-- /sidebar -->
+
+      <!-- ══ MAIN CONTENT ══════════════════════════ -->
+      <div class="main">
+
+        <!-- ROW 1: System Monitor | Scheduler | Token Explorer -->
+        <div class="panel-row panel-row--3">
+
+          <!-- System Monitor (like Hermes) -->
+          <div class="panel">
+            <div class="panel__head">
+              <span class="pb-dot g"></span>
+              <span class="panel__title">System Monitor</span>
+              <span class="panel__badge pb-green">&#x1F4A5; ${snapshot.summary.candidateCount} pools</span>
             </div>
-            <div class="lp-status-bar__right">
-              ${overviewStateChips}
+            <div class="panel__body">
+              <div class="mon-row">
+                <div class="mon-label"><span>SIGNAL SCORE</span><strong class="y">${snapshot.summary.averageScore}/100</strong></div>
+                <div class="mon-bar"><div class="mon-fill y" style="width:${snapshot.summary.averageScore}%"></div></div>
+              </div>
+              <div class="mon-row">
+                <div class="mon-label"><span>WIN RATE</span><strong>${formatPct(winRatePct)}</strong></div>
+                <div class="mon-bar"><div class="mon-fill g" style="width:${clampPercent(winRatePct ?? 0)}%"></div></div>
+              </div>
+              <div class="mon-row">
+                <div class="mon-label"><span>EXEC READINESS</span><strong>${clampPercent(executionPct)}%</strong></div>
+                <div class="mon-bar"><div class="mon-fill y" style="width:${clampPercent(executionPct)}%"></div></div>
+              </div>
+              <div class="mon-row">
+                <div class="mon-label"><span>DISTRIBUTION</span><strong>${clampPercent(distributionPct)}%</strong></div>
+                <div class="mon-bar"><div class="mon-fill g" style="width:${clampPercent(distributionPct)}%"></div></div>
+              </div>
+              <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div>
+                  <div class="mon-big">${snapshot.summary.candidateCount}</div>
+                  <div class="mon-sub">Candidates</div>
+                </div>
+                <div>
+                  <div class="mon-big" style="color:var(--green)">${snapshot.summary.topRecommendationCount}</div>
+                  <div class="mon-sub">Buy-Ready</div>
+                </div>
+              </div>
             </div>
           </div>
-          <!-- Market-style KPI row -->
-          <div class="lp-kpi-row">${snapshotStatTiles}</div>
-          <!-- Market cards grid (main feature cards, mikuelizaos style) -->
-          <section class="lp-cards">${featureDockCards}</section>
-          <!-- Summary ribbon -->
-          <div class="lp-ribbon">${summaryRibbon}</div>
-        </section>
 
-        <details class="fold-section" id="discovery-section">
-          <summary class="fold-summary"><strong>Discovery</strong><span>${escapeHtml(discoveryFoldSummary)}</span></summary>
-          <div class="fold-body">
-            <section class="view-panel" data-view-panel="discovery" data-view-label="Discovery" data-view-subtitle="">
-              <section class="split-grid">
-                <article class="glass-card section-card">
-                  <div class="section-title"><div><h2>Discovery Feed</h2></div></div>
-                  <div class="section-stack">${topCandidates || '<p class="candidate-thesis">No data.</p>'}</div>
-                </article>
-                ${systemPulse}
-              </section>
-              <article class="glass-card section-card">
-                <div class="section-title"><div><h2>Recent Runs</h2></div></div>
-                <div class="status-panel">${recentRuns || '<p class="candidate-thesis">No data.</p>'}</div>
-              </article>
-            </section>
+          <!-- Scheduler / Cron -->
+          <div class="panel">
+            <div class="panel__head">
+              <span class="pb-dot y"></span>
+              <span class="panel__title">Scheduler / Execution</span>
+              <span class="panel__badge ${executionState.dryRun ? 'pb-dim' : 'pb-green'}">${executionState.dryRun ? "DRY-RUN" : "&#x26A1; LIVE"}</span>
+            </div>
+            <div class="panel__body">
+              <div class="sched-row"><span>Last scan</span><strong class="w">${escapeHtml(formatRelativeTime(snapshot.generatedAt))}</strong></div>
+              <div class="sched-row"><span>Next scan</span><strong class="y">~${Math.round(getDiscoveryConfig().intervalMs / 60_000)}m</strong></div>
+              <div class="sched-row"><span>Max buy</span><strong class="y">${formatBnb(executionState.risk.maxBuyBnb)} BNB</strong></div>
+              <div class="sched-row"><span>Daily cap</span><strong class="w">${formatBnb(executionState.risk.maxDailyDeployBnb)} BNB</strong></div>
+              <div class="sched-row"><span>Eligible plans</span><strong class="w">${eligibleExecutionPlans}</strong></div>
+              <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+                <div class="sched-row"><span>Executed</span><strong class="g">${executionState.cycleSummary.executedCount}</strong></div>
+                <div class="sched-row"><span>Dry-run</span><strong class="w">${executionState.cycleSummary.dryRunCount}</strong></div>
+                <div class="sched-row"><span>Skipped</span><strong class="w">${executionState.cycleSummary.skippedCount}</strong></div>
+                <div class="sched-row"><span>Failed</span><strong class="${executionState.cycleSummary.failedCount > 0 ? 'r' : 'w'}">${executionState.cycleSummary.failedCount}</strong></div>
+              </div>
+              <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+                <div class="sched-row"><span>Active positions</span><strong class="y">${portfolioLifecycle.activePositions.length}</strong></div>
+                <div class="sched-row"><span>Portfolio value</span><strong class="w">${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}</strong></div>
+                <div class="sched-row"><span>Win rate</span><strong class="${(winRatePct ?? 0) > 50 ? 'g' : 'w'}">${formatPct(winRatePct)}</strong></div>
+                <div class="sched-row"><span>Total trades</span><strong class="w">${tradeRecords.length}</strong></div>
+              </div>
+            </div>
           </div>
-        </details>
 
-        <details class="fold-section" id="portfolio-section">
-          <summary class="fold-summary"><strong>Portfolio</strong><span>${escapeHtml(portfolioFoldSummary)}</span></summary>
-          <div class="fold-body">
-        <section class="view-panel" data-view-panel="portfolio" data-view-label="Portfolio" data-view-subtitle="">
-          <section class="split-grid">
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">▣</span><div><h2>Lifecycle</h2></div></div></div>
-              <div class="status-panel">
-                <div class="status-row"><span>Active positions</span><strong>${portfolioLifecycle.activePositions.length}</strong></div>
-                <div class="status-row"><span>Watch positions</span><strong>${portfolioLifecycle.watchPositions.length}</strong></div>
-                <div class="status-row"><span>Exited positions</span><strong>${portfolioLifecycle.exitedPositions.length}</strong></div>
-                <div class="status-row"><span>Treasury cash</span><strong>${formatUsd(portfolioLifecycle.cashBalanceUsd)}</strong></div>
-                <div class="status-row"><span>Reserved</span><strong>${formatUsd(portfolioLifecycle.reservedUsd)}</strong></div>
-                <div class="status-row"><span>Gross treasury</span><strong>${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}</strong></div>
-                <div class="status-row"><span>Current value</span><strong>${formatUsd(portfolioLifecycle.totalCurrentValueUsd)}</strong></div>
-                <div class="status-row"><span>Realized PnL</span><strong>${portfolioLifecycle.totalRealizedPnlUsd >= 0 ? "+" : ""}${formatUsd(portfolioLifecycle.totalRealizedPnlUsd)}</strong></div>
+          <!-- Token Explorer (like File Explorer) -->
+          <div class="panel">
+            <div class="panel__head">
+              <span class="pb-dot g"></span>
+              <span class="panel__title">Token Explorer</span>
+              <span class="panel__badge pb-yellow">${snapshot.summary.candidateCount} found</span>
+            </div>
+            <div class="panel__body panel__body--p0">
+              <div class="file-tree" style="padding:8px">
+                <div class="file-dir">candidates/</div>
+                ${snapshot.topCandidates.slice(0,8).map((c, i) => `
+                <div class="file-item">
+                  <span class="file-item__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress)}">${escapeHtml(c.tokenSymbol)}</a></span>
+                  <span class="file-item__score">${c.score}/100</span>
+                  <span class="file-item__rec">${escapeHtml(c.recommendation).slice(0,16)}</span>
+                </div>`).join('') || '<div class="file-item" style="padding-left:8px">scanning...</div>'}
+                <div class="file-dir" style="margin-top:8px">portfolio/</div>
+                ${portfolioLifecycle.activePositions.slice(0,4).map(p => `
+                <div class="file-item">
+                  <span class="file-item__sym"><a class="cand-link" href="${candidateHref(p.tokenAddress)}">${escapeHtml(p.tokenSymbol)}</a></span>
+                  <span class="file-item__rec">${escapeHtml(p.stage)}</span>
+                </div>`).join('') || '<div class="file-item" style="padding-left:8px">no positions</div>'}
               </div>
-            </article>
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">≋</span><div><h2>Timeline</h2></div></div></div>
-              <div class="status-panel">${timelineRows || '<p class="candidate-thesis">No data.</p>'}</div>
-            </article>
-          </section>
-          <section class="split-grid">
-            <article class="glass-card section-card">
-              <div class="section-title"><div><h2>Active Positions</h2></div></div>
-              <div class="section-stack">${activePortfolioCards || '<p class="candidate-thesis">No data.</p>'}</div>
-            </article>
-            <article class="glass-card section-card">
-              <div class="section-title"><div><h2>Watchlist</h2></div></div>
-              <div class="status-panel">${watchlistRows || '<p class="candidate-thesis">No data.</p>'}</div>
-            </article>
-          </section>
-        </section>
+            </div>
           </div>
-        </details>
 
-        <details class="fold-section" id="treasury-section">
-          <summary class="fold-summary"><strong>Treasury</strong><span>${escapeHtml(treasuryFoldSummary)}</span></summary>
-          <div class="fold-body">
-        <section class="view-panel" data-view-panel="treasury" data-view-label="Treasury" data-view-subtitle="">
-          <section class="split-grid">
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">◌</span><div><h2>Treasury</h2></div></div></div>
-              <div class="metric-grid">${treasuryModelCards}</div>
-            </article>
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">✦</span><div><h2>Rules</h2></div></div></div>
-              <div class="status-panel">
-                <div class="status-row"><span>Take-profit rule set</span><strong>${escapeHtml(takeProfitSummary)}</strong></div>
-                <div class="status-row"><span>Stop loss</span><strong>${treasuryRules.stopLossPct}%</strong></div>
-                <div class="status-row"><span>Force-exit score</span><strong>${treasuryRules.exitScoreThreshold}</strong></div>
-                <div class="status-row"><span>Max active positions</span><strong>${treasuryRules.maxActivePositions}</strong></div>
+        </div><!-- /panel-row--3 -->
+
+        <!-- ROW 2: Embedded Terminal + Signal Detail -->
+        <div class="panel-row panel-row--2-3">
+
+          <!-- Embedded Agent Terminal (like Hermes CLI) -->
+          <div class="panel">
+            <div class="panel__head">
+              <span class="pb-dot g"></span>
+              <span class="panel__title">elizaOK Agent Terminal</span>
+              <div style="display:flex;gap:4px;margin-left:auto">
+                <span class="panel__badge pb-dim">elizaOS</span>
+                <span class="panel__badge pb-green">ONLINE</span>
               </div>
-            </article>
-          </section>
-          <section class="split-grid">
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">⌁</span><div><h2>Execution</h2></div></div></div>
-              <div class="metric-grid">${executionControlCards}</div>
-            </article>
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">⊛</span><div><h2>Execution Gates</h2></div></div></div>
-              <div class="status-panel">${executionPlanRows || '<p class="candidate-thesis">No data.</p>'}</div>
-            </article>
-          </section>
-          <section class="split-grid">
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">⋄</span><div><h2>Trade Ledger</h2></div></div></div>
-              <div class="status-panel">
-                <div class="status-row"><span>Total executed</span><strong>${formatBnb(tradeLedger.totalExecutedBnb)}</strong></div>
-                <div class="status-row"><span>Total dry-run</span><strong>${formatBnb(tradeLedger.totalDryRunBnb)}</strong></div>
-                <div class="status-row"><span>Ledger entries</span><strong>${tradeLedger.records.length}</strong></div>
-                <div class="status-row"><span>Last updated</span><strong>${escapeHtml(tradeLedger.lastUpdatedAt || "n/a")}</strong></div>
+            </div>
+            <div class="panel__body panel__body--p0">
+              <div class="term-body">
+                <div class="prompt-line"><span class="pr">root@elizaok:~$</span><span class="cmd">elizaok scan --chain bsc</span></div>
+                <div class="term-line"><span class="ts">${escapeHtml(new Date().toTimeString().slice(0,8))}</span><span class="tag tag-info">INFO</span><span class="msg">Initializing BSC mempool scan&hellip;</span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">INFO</span><span class="msg">Fetching DexScreener pools &mdash; found <span class="hi">${snapshot.summary.candidateCount}</span> candidates</span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-ok">SCAN</span><span class="msg">Avg signal score: <span class="hi">${snapshot.summary.averageScore}/100</span></span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-${snapshot.summary.topRecommendationCount > 0 ? 'ok' : 'warn'}">TARGET</span><span class="msg">Buy-ready signals: <span class="hi">${snapshot.summary.topRecommendationCount}</span></span></div>
+                ${snapshot.summary.strongestCandidate ? `<div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-ok">BEST</span><span class="msg"><span class="hi">${escapeHtml(snapshot.summary.strongestCandidate.tokenSymbol)}</span> &mdash; score <span class="ok">${snapshot.summary.strongestCandidate.score}/100</span></span></div>` : ''}
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-${executionState.dryRun ? 'warn' : 'ok'}">${executionState.dryRun ? "DRY" : "LIVE"}</span><span class="msg">Execution mode: <span class="hi">${executionState.dryRun ? "DRY-RUN (simulation)" : "LIVE TRADING"}</span></span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">WALL</span><span class="msg">Balance: <span class="hi">${escapeHtml(sidebarWalletBalanceLabel)} BNB</span> &middot; ${escapeHtml(shortAddress("0x2D6C3358A3acFe3be42b2Bdf7419e87091270c5F"))}</span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">DIST</span><span class="msg">Distribution: <span class="hi">${distributionExecution.enabled ? "ARMED" : "STANDBY"}</span> &middot; ${distributionPlan.eligibleHolderCount} holders</span></div>
+                <div class="term-line"><span class="ts">&nbsp;</span><span class="tag tag-info">GOO</span><span class="msg">Goo scan: <span class="hi">${getDiscoveryConfig().goo.enabled ? "ACTIVE" : "DISABLED"}</span> &middot; ${snapshot.summary.gooAgentCount} agents reviewed</span></div>
+                <div class="prompt-line" style="margin-top:6px"><span class="pr">&gt;_</span><span class="cursor"></span></div>
               </div>
-            </article>
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">≣</span><div><h2>Recent Trades</h2></div></div></div>
-              <div class="status-panel">${recentTradeRows || '<p class="candidate-thesis">No data.</p>'}</div>
-            </article>
-          </section>
-          <article class="glass-card section-card">
-            <div class="section-title"><div><h2>Allocations</h2></div></div>
-            <div class="section-stack">${treasuryAllocationCards || '<p class="candidate-thesis">No data.</p>'}</div>
-          </article>
-        </section>
+            </div>
           </div>
-        </details>
 
-        <details class="fold-section" id="distribution-section">
-          <summary class="fold-summary"><strong>Distribution</strong><span>${escapeHtml(distributionFoldSummary)}</span></summary>
-          <div class="fold-body">
-        <section class="view-panel" data-view-panel="distribution" data-view-label="Distribution" data-view-subtitle="">
-          <div class="summary-ribbon">${distributionRibbon}</div>
-          <section class="split-grid">
-            <article class="glass-card section-card section-card--accent">
-              <div class="section-title"><div><h2>State</h2></div></div>
-              <div class="metric-grid">${distributionStateCards}</div>
-            </article>
-            <article class="glass-card section-card section-card--spotlight">
-              <div class="section-title"><div><h2>Recipients</h2></div></div>
-              <div class="section-stack">${distributionRecipients || '<p class="candidate-thesis">No data.</p>'}</div>
-            </article>
-          </section>
-          <section class="split-grid">
-            <article class="glass-card section-card section-card--dense">
-              <div class="section-title"><div><h2>Manual Run</h2></div></div>
-              <div class="status-panel">
-                <div class="status-row"><span>Endpoint</span><strong>/api/elizaok/distribution/run</strong></div>
-                <div class="status-row"><span>Method</span><strong>POST</strong></div>
-                <div class="status-row"><span>Mode</span><strong>${distributionExecution.dryRun ? "Dry-run safe" : "Live sender armed"}</strong></div>
-              </div>
-              <div class="action-row">
-                <button class="action-button" type="button" data-distribution-run>Run Distribution Now</button>
-                <span class="footer-note" data-distribution-run-status>Idle.</span>
-              </div>
-            </article>
-            <article class="glass-card section-card section-card--dense">
-              <div class="section-title"><div><h2>Manual Trigger</h2></div></div>
-              <div class="status-panel">
-                <div class="status-row"><span>Rebuilds plan</span><strong>Yes</strong></div>
-                <div class="status-row"><span>Writes snapshot</span><strong>Yes</strong></div>
-                <div class="status-row"><span>Uses current env</span><strong>Yes</strong></div>
-                <div class="status-row"><span>Skips prior live recipients</span><strong>Yes, by campaign fingerprint</strong></div>
-              </div>
-            </article>
-          </section>
-          <section class="split-grid">
-            <article class="glass-card section-card section-card--spotlight">
-              <div class="section-title"><div><h2>Execution</h2></div></div>
-              <div class="status-panel">
-                <div class="status-row"><span>Enabled</span><strong>${distributionExecution.enabled ? "Yes" : "No"}</strong></div>
-                <div class="status-row"><span>Mode</span><strong>${distributionExecution.dryRun ? "dry_run" : "live"}</strong></div>
-                <div class="status-row"><span>Readiness</span><strong>${distributionExecution.readinessScore}/${distributionExecution.readinessTotal}</strong></div>
-                <div class="status-row"><span>Asset token</span><strong>${escapeHtml(shortAddress(distributionExecution.assetTokenAddress || "n/a"))}</strong></div>
-                <div class="status-row"><span>Total amount</span><strong>${escapeHtml(distributionExecution.assetTotalAmount || "n/a")}</strong></div>
-                <div class="status-row"><span>Batch size</span><strong>${distributionExecution.maxRecipientsPerRun}</strong></div>
-                <div class="status-row"><span>Verified wallet</span><strong>${getDiscoveryConfig().distribution.execution.requireVerifiedWallet ? "required" : "optional"}</strong></div>
-                <div class="status-row"><span>Positive PnL</span><strong>${getDiscoveryConfig().distribution.execution.requirePositivePnl ? "required" : "optional"}</strong></div>
-                <div class="status-row"><span>Min wallet quote</span><strong>${formatUsd(getDiscoveryConfig().distribution.execution.minWalletQuoteUsd)}</strong></div>
-                <div class="status-row"><span>Min portfolio share</span><strong>${getDiscoveryConfig().distribution.execution.minPortfolioSharePct}%</strong></div>
-                <div class="status-row"><span>Manifest fingerprint</span><strong>${escapeHtml(shortAddress(distributionExecution.manifestFingerprint || "n/a"))}</strong></div>
-                <div class="status-row"><span>Next action</span><strong>${escapeHtml(distributionExecution.nextAction)}</strong></div>
-              </div>
-            </article>
-            <article class="glass-card section-card section-card--dense">
-              <div class="section-title"><div><h2>Checklist</h2></div></div>
-              <div class="status-panel">${distributionExecutionRows || '<p class="candidate-thesis">No data.</p>'}</div>
-            </article>
-          </section>
-          <section class="split-grid">
-            <article class="glass-card section-card section-card--accent">
-              <div class="section-title"><div><h2>Ledger</h2></div></div>
-              <div class="status-panel">
-                <div class="status-row"><span>Total live sent</span><strong>${distributionLedger.totalRecipientsExecuted}</strong></div>
-                <div class="status-row"><span>Total dry-run</span><strong>${distributionLedger.totalRecipientsDryRun}</strong></div>
-                <div class="status-row"><span>Last updated</span><strong>${escapeHtml(distributionLedger.lastUpdatedAt || "n/a")}</strong></div>
-                <div class="status-row"><span>Cycle summary</span><strong>${distributionExecution.cycleSummary.executedCount} executed / ${distributionExecution.cycleSummary.dryRunCount} dry-run / ${distributionExecution.cycleSummary.failedCount} failed</strong></div>
-              </div>
-            </article>
-            <article class="glass-card section-card section-card--dense">
-              <div class="section-title"><div><h2>Recent Events</h2></div></div>
-              <div class="status-panel">${distributionLedgerRows || '<p class="candidate-thesis">No data.</p>'}</div>
-            </article>
-          </section>
-          <section class="split-grid">
-            <article class="glass-card section-card section-card--spotlight">
-              <div class="section-title"><div><h2>Next Batch</h2></div></div>
-              <div class="status-panel">${distributionPendingRows || '<p class="candidate-thesis">No data.</p>'}</div>
-            </article>
-            <article class="glass-card section-card section-card--dense">
-              <div class="section-title"><div><h2>Resume</h2></div></div>
-              <div class="status-panel">
-                <div class="status-row"><span>Current fingerprint</span><strong>${escapeHtml(shortAddress(distributionExecution.manifestFingerprint || "n/a"))}</strong></div>
-                <div class="status-row"><span>Executed recipients</span><strong>${distributionExecutedRecipients.size}</strong></div>
-                <div class="status-row"><span>Pending recipients</span><strong>${Math.max(0, distributionPlan.recipients.length - distributionExecutedRecipients.size)}</strong></div>
-                <div class="status-row"><span>Resume rule</span><strong>Executed recipients for the current fingerprint are skipped automatically.</strong></div>
-              </div>
-            </article>
-          </section>
-        </section>
+          <!-- Signal detail (like the right panel in Hermes) -->
+          <div class="panel">
+            <div class="panel__head">
+              <span class="pb-dot y"></span>
+              <span class="panel__title">Top Candidates</span>
+              <span class="panel__badge pb-yellow">Live Signals</span>
+            </div>
+            <div class="panel__body panel__body--p0" style="padding:8px">
+              ${snapshot.topCandidates.slice(0,6).map((c,i) => `
+              <div class="cand-row">
+                <span class="cand-row__rank">${i+1}</span>
+                <span class="cand-row__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress)}">${escapeHtml(c.tokenSymbol)}</a></span>
+                <span class="cand-row__score">${c.score}/100</span>
+                <span class="cand-row__pill ${recommendationTone(c.recommendation)}">${escapeHtml(c.recommendation).slice(0,10)}</span>
+                <div class="mini-bar"><div class="mini-fill" style="width:${c.score}%"></div></div>
+                <span class="cand-row__meta">${c.poolAgeMinutes}m</span>
+              </div>`).join('') || '<div style="padding:16px;color:var(--dim);font-style:italic;text-align:center">Scanning BSC pools&hellip;</div>'}
+            </div>
           </div>
-        </details>
 
-        <details class="fold-section" id="goo-section">
-          <summary class="fold-summary"><strong>Goo</strong><span>${escapeHtml(gooFoldSummary)}</span></summary>
-          <div class="fold-body">
-        <section class="view-panel" data-view-panel="goo" data-view-label="Goo Operator" data-view-subtitle="">
-          <section class="split-grid">
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">◎</span><div><h2>Goo Status</h2></div></div></div>
-              <div class="status-panel">
-                <div class="status-row"><span>Enabled</span><strong>${getDiscoveryConfig().goo.enabled ? "Yes" : "No"}</strong></div>
-                <div class="status-row"><span>Configured</span><strong>${gooConfigReadiness === 3 ? "Ready for live scan" : "Awaiting RPC + registry"}</strong></div>
-                <div class="status-row"><span>Readiness</span><strong>${gooConfigReadiness}/3 checks complete</strong></div>
-                <div class="status-row"><span>Next action</span><strong>${escapeHtml(gooReadiness.nextAction)}</strong></div>
-                <div class="status-row"><span>Reviewed</span><strong>${snapshot.summary.gooAgentCount}</strong></div>
-                <div class="status-row"><span>Priority targets</span><strong>${snapshot.summary.gooPriorityCount}</strong></div>
-                <div class="status-row"><span>Best candidate</span><strong>${escapeHtml(snapshot.summary.strongestGooCandidate?.agentId || "n/a")}</strong></div>
-              </div>
-            </article>
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">◍</span><div><h2>Readiness</h2></div></div></div>
-              <div class="status-panel">
-                ${gooReadiness.checklist
-                  .map(
-                    (item) => `
-                      <div class="status-row">
-                        <span>${escapeHtml(item.label)}</span>
-                        <strong>${item.done ? "READY" : "TODO"}<br />${escapeHtml(item.detail)}</strong>
-                      </div>`,
-                  )
-                  .join("")}
-              </div>
-            </article>
-          </section>
-          <section class="split-grid">
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">◈</span><div><h2>Queue</h2></div></div></div>
-              <div class="status-panel">${gooQueueRows || '<p class="candidate-thesis">No data.</p>'}</div>
-            </article>
-            <article class="glass-card section-card">
-              <div class="section-title"><div class="section-heading"><span class="section-icon">◔</span><div><h2>Candidates</h2></div></div></div>
-              <div class="section-stack">${gooCandidates || '<p class="candidate-thesis">No data.</p>'}</div>
-            </article>
-          </section>
-        </section>
-          </div>
-        </details>
+        </div><!-- /panel-row--2-3 -->
 
-      </main>
-    </div>
-  </div>
-  <div class="detail-modal" id="detail-modal" aria-hidden="true">
-    <div class="detail-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
-      <div class="detail-modal__header">
-        <h2 class="detail-modal__title" id="detail-modal-title">Details</h2>
-        <button class="detail-modal__close" type="button" data-modal-close aria-label="Close">×</button>
-      </div>
-      <div class="detail-modal__body" id="detail-modal-body"></div>
-    </div>
-  </div>
-  <div class="auth-sheet" id="privy-auth-modal" aria-hidden="true">
-    <div class="auth-sheet__dialog" role="dialog" aria-modal="true" aria-labelledby="privy-auth-title">
-      <div class="auth-sheet__header">
-        <div class="auth-sheet__title">
-          <strong id="privy-auth-title">Privy Access</strong>
-          <span>Use X, Google, or Email to open your ElizaOK personal view.</span>
+        <!-- ROW 3: Accordion detail sections -->
+        <div class="accord-panel">
+          <details class="panel-accord" id="discovery-section">
+            <summary class="panel-accord__sum">
+              <span class="panel-accord__title">&#x1F50D; Full Discovery Report</span>
+              <span class="panel-accord__meta">${escapeHtml(discoveryFoldSummary)}</span>
+              <span class="panel-accord__arr">&#x25BE;</span>
+            </summary>
+            <div class="panel-accord__body">
+              <div class="split-grid">
+                <div><div class="split-h">All Candidates</div>${topCandidates || '<p class="candidate-thesis">No data.</p>'}</div>
+                <div>
+                  <div class="split-h">Recent Runs</div>${recentRuns || '<p class="candidate-thesis">No data.</p>'}
+                  <div class="split-h" style="margin-top:12px">Watchlist</div>${watchlistRows || '<p class="candidate-thesis">Empty.</p>'}
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details class="panel-accord" id="portfolio-section">
+            <summary class="panel-accord__sum">
+              <span class="panel-accord__title">&#x1F4BC; Portfolio Ledger</span>
+              <span class="panel-accord__meta">${escapeHtml(portfolioFoldSummary)}</span>
+              <span class="panel-accord__arr">&#x25BE;</span>
+            </summary>
+            <div class="panel-accord__body">
+              <div class="split-grid">
+                <div><div class="split-h">Active Positions</div>${activePortfolioCards || '<p class="candidate-thesis">No positions.</p>'}</div>
+                <div><div class="split-h">Timeline</div>${timelineRows || '<p class="candidate-thesis">No events.</p>'}</div>
+              </div>
+            </div>
+          </details>
+
+          <details class="panel-accord" id="treasury-section">
+            <summary class="panel-accord__sum">
+              <span class="panel-accord__title">&#x26A1; Execution Desk</span>
+              <span class="panel-accord__meta">${escapeHtml(treasuryFoldSummary)}</span>
+              <span class="panel-accord__arr">&#x25BE;</span>
+            </summary>
+            <div class="panel-accord__body">
+              <div class="split-h">Controls</div><div class="metric-grid">${executionControlCards}</div>
+              <div class="split-h" style="margin-top:12px">Treasury Model</div><div class="metric-grid">${treasuryModelCards}</div>
+              <div class="split-h" style="margin-top:12px">Trade Ledger</div>${recentTradeRows || '<p class="candidate-thesis">No trades.</p>'}
+            </div>
+          </details>
+
+          <details class="panel-accord" id="distribution-section">
+            <summary class="panel-accord__sum">
+              <span class="panel-accord__title">&#x1FA82; Airdrop Distribution</span>
+              <span class="panel-accord__meta">${escapeHtml(distributionFoldSummary)}</span>
+              <span class="panel-accord__arr">&#x25BE;</span>
+            </summary>
+            <div class="panel-accord__body"><div class="metric-grid">${distributionStateCards}</div></div>
+          </details>
+
+          <details class="panel-accord" id="goo-section">
+            <summary class="panel-accord__sum">
+              <span class="panel-accord__title">&#x1F9EC; Goo Intelligence</span>
+              <span class="panel-accord__meta">${escapeHtml(gooFoldSummary)}</span>
+              <span class="panel-accord__arr">&#x25BE;</span>
+            </summary>
+            <div class="panel-accord__body">
+              <div class="split-grid">
+                <div>${gooCandidates || '<p class="candidate-thesis">No Goo agents. Enable scanning.</p>'}</div>
+                <div>${gooQueueRows || '<p class="candidate-thesis">No queue.</p>'}</div>
+              </div>
+            </div>
+          </details>
         </div>
-        <button class="auth-sheet__close" type="button" data-privy-auth-close aria-label="Close">×</button>
-      </div>
-      <div class="auth-sheet__account" data-privy-account-card hidden>
-        <span>Connected Account</span>
-        <strong data-privy-account-label>Not connected</strong>
-      </div>
-      <button class="auth-sheet__provider" type="button" data-privy-google>
-        Continue with Google
-      </button>
-      <button class="auth-sheet__provider" type="button" data-privy-twitter>
-        Continue with X
-      </button>
-      <div class="auth-sheet__divider"><span>or</span></div>
-      <div class="auth-sheet__stack">
-        <div class="auth-sheet__field">
-          <label for="privy-email-input">Email</label>
-          <input id="privy-email-input" type="email" autocomplete="email" placeholder="you@example.com" />
+
+      </div><!-- /main -->
+
+      <!-- ══ RIGHT ASIDE ═══════════════════════════ -->
+      <div class="aside">
+
+        <!-- Signal Stats -->
+        <div class="aside-block">
+          <div class="aside-title">&#x1F4E1; Signal Stats</div>
+          <div class="aside-big">${snapshot.summary.candidateCount}</div>
+          <div class="aside-sub">candidates scanned</div>
+          <div class="aside-stat"><span>Buy-ready</span><strong class="g">${snapshot.summary.topRecommendationCount}</strong></div>
+          <div class="aside-stat"><span>Avg score</span><strong class="y">${snapshot.summary.averageScore}/100</strong></div>
+          <div class="aside-stat"><span>Best token</span><strong class="y">${escapeHtml(snapshot.summary.strongestCandidate?.tokenSymbol || "—")}</strong></div>
+          <div class="aside-stat"><span>Top score</span><strong class="w">${snapshot.summary.strongestCandidate?.score ?? "—"}/100</strong></div>
         </div>
-        <button class="auth-sheet__submit" type="button" data-privy-send-email-code>
-          Send Email Code
-        </button>
-        <div class="auth-sheet__otp" data-privy-email-otp hidden>
-          <div class="auth-sheet__field">
-            <label for="privy-email-code-input">Verification Code</label>
-            <input id="privy-email-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" />
+
+        <!-- Portfolio -->
+        <div class="aside-block">
+          <div class="aside-title">&#x1F4BC; Portfolio</div>
+          <div class="aside-big" style="color:var(--white)">${portfolioLifecycle.activePositions.length}</div>
+          <div class="aside-sub">active positions</div>
+          <div class="aside-stat"><span>Watching</span><strong class="w">${portfolioLifecycle.watchPositions.length}</strong></div>
+          <div class="aside-stat"><span>Exited</span><strong class="w">${portfolioLifecycle.exitedPositions.length}</strong></div>
+          <div class="aside-stat"><span>Win rate</span><strong class="${(winRatePct ?? 0) > 50 ? 'g' : 'w'}">${formatPct(winRatePct)}</strong></div>
+          <div class="aside-stat"><span>Realized</span><strong class="w">${formatUsd(portfolioLifecycle.totalRealizedPnlUsd)}</strong></div>
+          <div class="aside-stat"><span>Gross</span><strong class="y">${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}</strong></div>
+        </div>
+
+        <!-- Execution -->
+        <div class="aside-block">
+          <div class="aside-title">&#x26A1; Execution</div>
+          <div class="aside-big" style="color:${executionState.dryRun ? 'rgba(255,255,255,0.5)' : 'var(--green)'}; font-size:0.9rem; margin-bottom:6px">${executionState.dryRun ? "DRY-RUN" : "&#x26A1; LIVE"}</div>
+          <div class="aside-stat"><span>Mode</span><strong class="w">${escapeHtml(executionState.mode)}</strong></div>
+          <div class="aside-stat"><span>Executed</span><strong class="g">${executionState.cycleSummary.executedCount}</strong></div>
+          <div class="aside-stat"><span>Max buy</span><strong class="y">${formatBnb(executionState.risk.maxBuyBnb)} BNB</strong></div>
+          <div class="aside-stat"><span>Daily cap</span><strong class="w">${formatBnb(executionState.risk.maxDailyDeployBnb)} BNB</strong></div>
+          <div class="aside-stat"><span>Trades</span><strong class="w">${tradeRecords.length}</strong></div>
+        </div>
+
+        <!-- Distribution + Goo -->
+        <div class="aside-block">
+          <div class="aside-title">&#x1FA82; Distribution</div>
+          <div class="aside-stat"><span>Holders</span><strong class="w">${distributionPlan.eligibleHolderCount}</strong></div>
+          <div class="aside-stat"><span>Recipients</span><strong class="y">${distributionPlan.recipients.length}</strong></div>
+          <div class="aside-stat"><span>Pool</span><strong class="y">${formatUsd(distributionPlan.distributionPoolUsd)}</strong></div>
+          <div class="aside-stat"><span>Status</span><strong class="${distributionExecution.enabled ? 'g' : 'w'}">${distributionExecution.enabled ? "ARMED" : "STBY"}</strong></div>
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+            <div class="aside-title" style="margin-top:0">&#x1F9EC; Goo Intel</div>
+            <div class="aside-stat"><span>Reviewed</span><strong class="w">${snapshot.summary.gooAgentCount}</strong></div>
+            <div class="aside-stat"><span>Priority</span><strong class="y">${snapshot.summary.gooPriorityCount}</strong></div>
+            <div class="aside-stat"><span>Scan</span><strong class="${getDiscoveryConfig().goo.enabled ? 'g' : 'w'}">${getDiscoveryConfig().goo.enabled ? "ON" : "OFF"}</strong></div>
           </div>
-          <button class="auth-sheet__submit" type="button" data-privy-verify-email-code>
-            Verify Code
-          </button>
         </div>
-      </div>
-      <div class="auth-sheet__status" data-privy-status></div>
-      <div class="auth-sheet__logout" data-privy-logout-wrap hidden>
-        <button class="auth-sheet__secondary" type="button" data-privy-logout>
-          Sign Out
-        </button>
-      </div>
-    </div>
-  </div>
-  <script>
-    (function () {
-      var cloudAuthButtons = Array.prototype.slice.call(
-        document.querySelectorAll("[data-cloud-hosted-auth]")
-      );
-      var cloudCreateAgentButtons = Array.prototype.slice.call(
-        document.querySelectorAll("[data-cloud-create-agent]")
-      );
-      var cloudPollTimer = null;
-      var activeCloudFlowMode = null;
-      var cloudAuthPopup = null;
-      var modal = document.getElementById("detail-modal");
-      var modalBody = document.getElementById("detail-modal-body");
-      var modalTitle = document.getElementById("detail-modal-title");
-      var modalOpenButtons = Array.prototype.slice.call(document.querySelectorAll("[data-modal-target]"));
 
-      function openModal(title, sourceId) {
-        var source = document.querySelector("#" + sourceId + " .fold-body");
-        if (!modal || !modalBody || !modalTitle || !source) return;
-        modalTitle.textContent = title || "Details";
-        modalBody.innerHTML = source.innerHTML;
-        modal.classList.add("is-open");
-        modal.setAttribute("aria-hidden", "false");
-        document.body.classList.add("is-modal-open");
-      }
+        <!-- Top Picks -->
+        <div class="aside-block">
+          <div class="aside-title">&#x1F4A5; Top Picks</div>
+          ${snapshot.topCandidates.slice(0,5).map(c => `
+          <div class="aside-token">
+            <div class="aside-token__row">
+              <span class="aside-token__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress)}">${escapeHtml(c.tokenSymbol)}</a></span>
+              <span class="aside-token__score">${c.score}/100</span>
+            </div>
+            <div class="aside-token__rec">${escapeHtml(c.recommendation).slice(0,20)}</div>
+          </div>`).join('') || '<div style="color:var(--dim);font-size:0.62rem;padding:4px 0">Scanning&hellip;</div>'}
+        </div>
 
-      function closeModal() {
-        if (!modal || !modalBody) return;
-        modal.classList.remove("is-open");
-        modal.setAttribute("aria-hidden", "true");
-        modalBody.innerHTML = "";
-        document.body.classList.remove("is-modal-open");
-      }
+      </div><!-- /aside -->
 
-      function runDistribution(button) {
-        if (!button) return;
-        var host = button.parentNode;
-        var status = host ? host.querySelector("[data-distribution-run-status]") : null;
-        button.disabled = true;
-        if (status) status.textContent = "Running manual distribution...";
-        fetch("/api/elizaok/distribution/run", { method: "POST" })
-          .then(function (response) { return response.json(); })
-          .then(function (payload) {
-            if (status) {
-              status.textContent = payload && payload.message
-                ? payload.message
-                : "Manual distribution run completed.";
-            }
-            window.setTimeout(function () { window.location.reload(); }, 800);
-          })
-          .catch(function (error) {
-            if (status) status.textContent = "Manual run failed: " + error;
-            button.disabled = false;
-          });
-      }
+    </div><!-- /content-area -->
+  </div><!-- /layout -->
 
-      function setCloudButtonsBusy(isBusy) {
-        cloudAuthButtons.forEach(function (button) {
-          if (isBusy) {
-            button.setAttribute("aria-disabled", "true");
-            button.classList.add("is-busy");
-          } else {
-            button.removeAttribute("aria-disabled");
-            button.classList.remove("is-busy");
-          }
-        });
-      }
-
-      function clearCloudPoll() {
-        if (cloudPollTimer) {
-          window.clearTimeout(cloudPollTimer);
-          cloudPollTimer = null;
-        }
-      }
-
-      function pollCloudHostedSession(sessionId, attempt) {
-        return fetch("/api/eliza-cloud/hosted/poll?session=" + encodeURIComponent(sessionId))
-          .then(function (response) {
-            return response.json().then(function (payload) {
-              if (!response.ok) {
-                throw new Error(
-                  payload && payload.error ? payload.error : "Failed to read ElizaCloud session."
-                );
-              }
-              return payload;
-            });
-          })
-          .then(function (payload) {
-            if (payload.status === "authenticated") {
-              clearCloudPoll();
-              setCloudButtonsBusy(false);
-              if (cloudAuthPopup && !cloudAuthPopup.closed) {
-                try { cloudAuthPopup.close(); } catch {}
-              }
-              window.location.reload();
-              return;
-            }
-            if (attempt >= 180) {
-              throw new Error("ElizaCloud sign-in timed out. Please try again.");
-            }
-            cloudPollTimer = window.setTimeout(function () {
-              pollCloudHostedSession(sessionId, attempt + 1).catch(function (error) {
-                clearCloudPoll();
-                setCloudButtonsBusy(false);
-                window.alert(error && error.message ? error.message : String(error));
-              });
-            }, 2000);
-          });
-      }
-
-      if (cloudAuthButtons.length > 0) {
-        cloudAuthButtons.forEach(function (cloudAuthButton) {
-          cloudAuthButton.addEventListener("click", function (event) {
-            event.preventDefault();
-            setCloudButtonsBusy(true);
-            fetch("/api/eliza-cloud/hosted/start", { method: "POST" })
-              .then(function (response) {
-                return response.json().then(function (payload) {
-                  if (!response.ok) {
-                    throw new Error(
-                      payload && payload.error
-                        ? payload.error
-                        : "Failed to start hosted ElizaCloud sign-in."
-                    );
-                  }
-                  return payload;
-                });
-              })
-              .then(function (payload) {
-                var popup = window.open(
-                  payload.loginUrl,
-                  "elizaCloudLogin",
-                  "popup=yes,width=540,height=760,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes"
-                );
-                activeCloudFlowMode = payload.mode || null;
-                cloudAuthPopup = popup;
-                if (!popup) {
-                  window.location.href = payload.loginUrl;
-                  return;
-                }
-                if (payload.mode === "cli-session" && payload.sessionId) {
-                  return pollCloudHostedSession(payload.sessionId, 0);
-                }
-              })
-              .catch(function (error) {
-                clearCloudPoll();
-                setCloudButtonsBusy(false);
-                window.alert(error && error.message ? error.message : String(error));
-              });
-          });
-        });
-
-        window.addEventListener("message", function (event) {
-          var data = event && event.data;
-          if (!data || data.type !== "eliza-cloud-auth-complete") {
-            return;
-          }
-          if (activeCloudFlowMode === "cli-session") {
-            if (data.status === "success") {
-              setCloudButtonsBusy(false);
-              window.location.reload();
-            }
-            return;
-          }
-          setCloudButtonsBusy(false);
-          if (data.status === "success") {
-            window.location.reload();
-            return;
-          }
-          var message = data && data.message ? data.message : "";
-          var syncingState = document.querySelector('[data-cloud-syncing="true"]');
-          if (!message || message === "ElizaCloud sign-in failed.") {
-            window.alert(
-              syncingState
-                ? "ElizaCloud connected, but profile, organization, credits, or model data are still syncing."
-                : "ElizaCloud sign-in did not complete."
-            );
-            return;
-          }
-          window.alert(message);
-        });
-      }
-
-      if (cloudCreateAgentButtons.length > 0) {
-        cloudCreateAgentButtons.forEach(function (cloudCreateAgentButton) {
-          cloudCreateAgentButton.addEventListener("click", function () {
-            var name = window.prompt("New ElizaCloud agent name", "elizaOK Agent");
-            if (!name) return;
-            var bio = window.prompt("Agent bio (optional)", "ElizaOK cloud agent") || "";
-            cloudCreateAgentButton.setAttribute("aria-disabled", "true");
-            fetch("/api/eliza-cloud/agents/create", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ name: name, bio: bio })
-            })
-              .then(function (response) {
-                return response.json().then(function (payload) {
-                  if (!response.ok) {
-                    throw new Error(payload && payload.error ? payload.error : "Failed to create ElizaCloud agent.");
-                  }
-                  return payload;
-                });
-              })
-              .then(function () {
-                window.location.reload();
-              })
-              .catch(function (error) {
-                cloudCreateAgentButton.removeAttribute("aria-disabled");
-                window.alert(error && error.message ? error.message : String(error));
-              });
-          });
-        });
-      }
-
-      modalOpenButtons.forEach(function (button) {
-        button.addEventListener("click", function () {
-          openModal(button.getAttribute("data-modal-title"), button.getAttribute("data-modal-target"));
-        });
-      });
-
-      document.addEventListener("click", function (event) {
-        var target = event.target;
-        if (!(target instanceof Element)) return;
-
-        if (target.closest("[data-modal-close]")) {
-          closeModal();
-          return;
-        }
-
-        if (modal && target === modal) {
-          closeModal();
-          return;
-        }
-
-        var runButton = target.closest("[data-distribution-run]");
-        if (runButton) {
-          runDistribution(runButton);
-        }
-      });
-
-      document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape") {
-          closeModal();
-        }
-      });
-    })();
-  </script>
-  <script type="module">
-    import Privy, { LocalStorage } from "https://esm.sh/@privy-io/js-sdk-core@0.60.7?bundle";
-
-    (function () {
-      var appId = ${JSON.stringify(getElizaOkPrivyAppId())};
-      var clientId = ${JSON.stringify(getElizaOkPrivyClientId())};
-      var fallbackUrl = ${JSON.stringify(getElizaOkPrivyUrl())};
-      var authButton = document.querySelector("[data-privy-auth-open]");
-      var authModal = document.getElementById("privy-auth-modal");
-      var authCloseButtons = Array.prototype.slice.call(document.querySelectorAll("[data-privy-auth-close]"));
-      var googleButton = document.querySelector("[data-privy-google]");
-      var twitterButton = document.querySelector("[data-privy-twitter]");
-      var emailInput = document.getElementById("privy-email-input");
-      var codeInput = document.getElementById("privy-email-code-input");
-      var sendCodeButton = document.querySelector("[data-privy-send-email-code]");
-      var verifyCodeButton = document.querySelector("[data-privy-verify-email-code]");
-      var otpWrap = document.querySelector("[data-privy-email-otp]");
-      var statusNode = document.querySelector("[data-privy-status]");
-      var accountCard = document.querySelector("[data-privy-account-card]");
-      var accountLabel = document.querySelector("[data-privy-account-label]");
-      var logoutWrap = document.querySelector("[data-privy-logout-wrap]");
-      var logoutButton = document.querySelector("[data-privy-logout]");
-
-      if (!authButton || !authModal) return;
-
-      function setStatus(message, tone) {
-        if (!statusNode) return;
-        statusNode.textContent = message || "";
-        statusNode.classList.remove("is-error", "is-success");
-        if (tone === "error") statusNode.classList.add("is-error");
-        if (tone === "success") statusNode.classList.add("is-success");
-      }
-
-      function setOtpVisible(isVisible) {
-        if (!otpWrap) return;
-        otpWrap.hidden = !isVisible;
-      }
-
-      function openAuthModal() {
-        authModal.classList.add("is-open");
-        authModal.setAttribute("aria-hidden", "false");
-        document.body.classList.add("is-auth-open");
-      }
-
-      function closeAuthModal() {
-        var activeElement = document.activeElement;
-        if (activeElement && typeof activeElement.blur === "function") {
-          activeElement.blur();
-        }
-        authModal.classList.remove("is-open");
-        authModal.setAttribute("aria-hidden", "true");
-        document.body.classList.remove("is-auth-open");
-        if (authButton && typeof authButton.focus === "function") {
-          authButton.focus();
-        }
-      }
-
-      function setBusy(isBusy) {
-        [authButton, googleButton, twitterButton, sendCodeButton, verifyCodeButton, logoutButton].forEach(function (node) {
-          if (!node) return;
-          if (isBusy) {
-            node.setAttribute("aria-disabled", "true");
-            node.disabled = true;
-          } else {
-            node.removeAttribute("aria-disabled");
-            node.disabled = false;
-          }
-        });
-      }
-
-      if (!appId || !clientId) {
-        authButton.addEventListener("click", function () {
-          if (fallbackUrl && fallbackUrl !== "#") {
-            window.open(fallbackUrl, "_blank", "noopener,noreferrer");
-            return;
-          }
-          window.alert("Privy is not configured yet.");
-        });
-        return;
-      }
-
-      var privy = new Privy({
-        appId: appId,
-        clientId: clientId,
-        supportedChains: [],
-        storage: new LocalStorage(),
-      });
-
-      function firstAccount(user, predicate) {
-        var accounts = user && Array.isArray(user.linkedAccounts) ? user.linkedAccounts : [];
-        for (var index = 0; index < accounts.length; index += 1) {
-          if (predicate(accounts[index])) return accounts[index];
-        }
-        return null;
-      }
-
-      function readAccountValue(account) {
-        if (!account || typeof account !== "object") return "";
-        return account.email || account.address || account.subject || account.username || "";
-      }
-
-      function formatConnectedIdentity(account) {
-        if (!account || typeof account !== "object") return "";
-        var name = typeof account.name === "string" ? account.name.trim() : "";
-        var email = typeof account.email === "string"
-          ? account.email.trim()
-          : typeof account.address === "string"
-            ? account.address.trim()
-            : "";
-        var username = typeof account.username === "string" ? account.username.trim() : "";
-
-        if (name && email) return name + " · " + email;
-        if (name && username) return name + " · @" + username;
-        if (email) return email;
-        if (username) return "@" + username;
-        if (name) return name;
-        return readAccountValue(account);
-      }
-
-      function getPrimaryLinkedAccount(user) {
-        if (!user) return null;
-        var twitterAccount = firstAccount(user, function (account) {
-          return String((account && account.type) || "") === "twitter_oauth";
-        });
-        if (twitterAccount) return twitterAccount;
-
-        var googleAccount = firstAccount(user, function (account) {
-          return String((account && account.type) || "") === "google_oauth";
-        });
-        if (googleAccount) return googleAccount;
-
-        var emailAccount = firstAccount(user, function (account) {
-          return String((account && account.type) || "") === "email";
-        });
-        if (emailAccount) return emailAccount;
-
-        return firstAccount(user, function () { return true; });
-      }
-
-      function getUserDisplay(user) {
-        if (!user) return "Sign in / Sign up";
-        var primaryAccount = getPrimaryLinkedAccount(user);
-        var value = formatConnectedIdentity(primaryAccount);
-        if (value) return value;
-        if (user.id && String(user.id).indexOf("did:priv") === 0) return "Privy connected";
-        if (user.id) return "Privy " + String(user.id).slice(0, 8);
-        return "Privy connected";
-      }
-
-      function getUserProvider(user) {
-        if (!user) return "";
-        var twitterAccount = firstAccount(user, function (account) {
-          return String((account && account.type) || "").indexOf("twitter") !== -1;
-        });
-        if (twitterAccount) return "X";
-        var googleAccount = firstAccount(user, function (account) {
-          return String((account && account.type) || "").indexOf("google") !== -1;
-        });
-        if (googleAccount) return "Google";
-        var emailAccount = firstAccount(user, function (account) {
-          return String((account && account.type) || "") === "email";
-        });
-        if (emailAccount) return "Email";
-        return "Privy";
-      }
-
-      async function fetchCurrentUser() {
-        try {
-          var result = await privy.user.get();
-          return result && result.user ? result.user : null;
-        } catch (_error) {
-          return null;
-        }
-      }
-
-      async function refreshAuthState(statusMessage, tone) {
-        var user = await fetchCurrentUser();
-        authButton.textContent = user ? getUserDisplay(user) : "Sign in / Sign up";
-        authButton.classList.toggle("auth-link--connected", Boolean(user));
-        if (accountCard) accountCard.hidden = !user;
-        if (accountLabel) {
-          accountLabel.textContent = user
-            ? getUserProvider(user) + " · " + getUserDisplay(user)
-            : "Not connected";
-        }
-        if (logoutWrap) logoutWrap.hidden = !user;
-        if (statusMessage) setStatus(statusMessage, tone || "success");
-        return user;
-      }
-
-      async function handleOAuthCallback() {
-        var params = new URLSearchParams(window.location.search);
-        var oauthCode = params.get("privy_oauth_code");
-        var oauthState = params.get("privy_oauth_state");
-        var oauthProvider = params.get("privy_oauth_provider");
-        if (!oauthCode || !oauthState) return;
-
-        var provider = oauthProvider === "twitter" ? "twitter" : "google";
-        var providerLabel = provider === "twitter" ? "X" : "Google";
-
-        openAuthModal();
-        setBusy(true);
-        setStatus("Completing " + providerLabel + " sign-in...", "");
-
-        try {
-          await privy.auth.oauth.loginWithCode(oauthCode, oauthState, provider);
-          params.delete("privy_oauth_code");
-          params.delete("privy_oauth_state");
-          params.delete("privy_oauth_provider");
-          var nextQuery = params.toString();
-          var nextUrl = window.location.pathname + (nextQuery ? "?" + nextQuery : "") + window.location.hash;
-          window.history.replaceState({}, "", nextUrl);
-          await refreshAuthState(providerLabel + " connected.", "success");
-          window.setTimeout(closeAuthModal, 500);
-        } catch (error) {
-          setStatus(error && error.message ? error.message : providerLabel + " sign-in failed.", "error");
-        } finally {
-          setBusy(false);
-        }
-      }
-
-      authButton.addEventListener("click", function () {
-        setStatus("", "");
-        openAuthModal();
-      });
-
-      authCloseButtons.forEach(function (button) {
-        button.addEventListener("click", function () {
-          closeAuthModal();
-        });
-      });
-
-      authModal.addEventListener("click", function (event) {
-        if (event.target === authModal) {
-          closeAuthModal();
-        }
-      });
-
-      document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape") {
-          closeAuthModal();
-        }
-      });
-
-      async function startOAuthLogin(provider, providerLabel) {
-        setBusy(true);
-        setStatus("Redirecting to " + providerLabel + "...", "");
-        try {
-          var redirectUrl = window.location.origin + window.location.pathname;
-          var oauthInit = await privy.auth.oauth.generateURL(provider, redirectUrl);
-          var oauthUrl =
-            typeof oauthInit === "string"
-              ? oauthInit
-              : oauthInit && typeof oauthInit.url === "string"
-                ? oauthInit.url
-                : "";
-          if (!oauthUrl) {
-            throw new Error("Privy did not return a valid " + providerLabel + " login URL.");
-          }
-          window.location.assign(oauthUrl);
-        } catch (error) {
-          setStatus(
-            error && error.message ? error.message : "Unable to start " + providerLabel + " sign-in.",
-            "error"
-          );
-          setBusy(false);
-        }
-      }
-
-      if (googleButton) {
-        googleButton.addEventListener("click", async function () {
-          await startOAuthLogin("google", "Google");
-        });
-      }
-
-      if (twitterButton) {
-        twitterButton.addEventListener("click", async function () {
-          await startOAuthLogin("twitter", "X");
-        });
-      }
-
-      if (sendCodeButton) {
-        sendCodeButton.addEventListener("click", async function () {
-          var email = emailInput && emailInput.value ? emailInput.value.trim() : "";
-          if (!email) {
-            setStatus("Enter your email first.", "error");
-            return;
-          }
-          setBusy(true);
-          setStatus("Sending code...", "");
-          try {
-            await privy.auth.email.sendCode(email);
-            setOtpVisible(true);
-            setStatus("Code sent. Check your inbox for the OTP.", "success");
-            if (codeInput) codeInput.focus();
-          } catch (error) {
-            setStatus(error && error.message ? error.message : "Unable to send email code.", "error");
-          } finally {
-            setBusy(false);
-          }
-        });
-      }
-
-      if (verifyCodeButton) {
-        verifyCodeButton.addEventListener("click", async function () {
-          var email = emailInput && emailInput.value ? emailInput.value.trim() : "";
-          var code = codeInput && codeInput.value ? codeInput.value.trim() : "";
-          if (!email || !code) {
-            setStatus("Enter both email and verification code.", "error");
-            return;
-          }
-          setBusy(true);
-          setStatus("Verifying code...", "");
-          try {
-            await privy.auth.email.loginWithCode(email, code);
-            await refreshAuthState("Email connected.", "success");
-            window.setTimeout(closeAuthModal, 500);
-          } catch (error) {
-            setStatus(error && error.message ? error.message : "Email verification failed.", "error");
-          } finally {
-            setBusy(false);
-          }
-        });
-      }
-
-      if (logoutButton) {
-        logoutButton.addEventListener("click", async function () {
-          setBusy(true);
-          try {
-            await privy.auth.logout();
-            if (emailInput) emailInput.value = "";
-            if (codeInput) codeInput.value = "";
-            setOtpVisible(false);
-            await refreshAuthState("Signed out.", "success");
-            window.setTimeout(closeAuthModal, 250);
-          } catch (error) {
-            setStatus(error && error.message ? error.message : "Unable to sign out.", "error");
-          } finally {
-            setBusy(false);
-          }
-        });
-      }
-
-      Promise.resolve()
-        .then(handleOAuthCallback)
-        .then(function () {
-          return refreshAuthState();
-        })
-        .catch(function () {
-          authButton.textContent = "Sign in / Sign up";
-        });
-    })();
-  </script>
-
-  <!-- ── Left nav: equalizer bars animation + active link ── -->
   <script>
   (function() {
-    // Animate equalizer bars in nav footer
-    var bars = document.querySelectorAll("#nav-bars .miku-nav__bar");
-    var barHeights = [40,60,90,50,75,35,65,85];
-    function animateBars() {
-      bars.forEach(function(bar, i) {
-        var base = barHeights[i];
-        var rand = base + (Math.random() - 0.5) * 40;
-        rand = Math.max(10, Math.min(100, rand));
-        bar.style.height = rand + "%";
-      });
-    }
-    setInterval(animateBars, 300);
-    animateBars();
+    "use strict";
 
-    // Nav link active state + view switching
-    var navLinks = document.querySelectorAll(".miku-nav__link[data-nav]");
-    navLinks.forEach(function(link) {
-      link.addEventListener("click", function() {
-        navLinks.forEach(function(l) { l.classList.remove("is-active"); });
-        link.classList.add("is-active");
-        var target = link.getAttribute("data-nav");
-        // Update topbar title
-        var titles = {
-          overview: "Home", discovery: "Discovery", portfolio: "Portfolio",
-          execution: "Execution", distribution: "Distribution", goo: "Goo"
-        };
-        var subs = {
-          overview: "BNB treasury intelligence", discovery: "memecoin signal scanner",
-          portfolio: "active positions", execution: "trade engine",
-          distribution: "airdrop planner", goo: "agent protocol"
-        };
-        var vt = document.getElementById("view-title");
-        var vs = document.getElementById("view-subtitle");
-        if (vt) vt.textContent = titles[target] || target;
-        if (vs) vs.textContent = subs[target] || "";
-        // Open the corresponding modal/section
-        var sectionMap = {
-          discovery: "discovery-section", portfolio: "portfolio-section",
-          execution: "treasury-section", distribution: "distribution-section",
-          goo: "goo-section"
-        };
-        var sectionId = sectionMap[target];
-        if (sectionId) {
-          var btn = document.querySelector('[data-modal-target="'+sectionId+'"]');
-          if (btn) btn.click();
+    /* ── Clock ── */
+    function updateTime() {
+      var el = document.getElementById('tb-time');
+      if (el) el.textContent = new Date().toLocaleTimeString('en-US', {hour12: false});
+    }
+    updateTime(); setInterval(updateTime, 1000);
+
+    /* ── Theme toggle ── */
+    window.toggleTheme = function() {
+      var root = document.documentElement;
+      var isLight = root.getAttribute('data-theme') === 'light';
+      var next = isLight ? 'dark' : 'light';
+      root.setAttribute('data-theme', next);
+      var btn = document.getElementById('theme-toggle');
+      if (btn) btn.textContent = next === 'light' ? '🌙' : '☀';
+      try { localStorage.setItem('elizaok-theme', next); } catch(e){}
+    };
+    (function(){
+      var saved = (function(){ try { return localStorage.getItem('elizaok-theme'); } catch(e){ return null; } }());
+      if (saved === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        var btn = document.getElementById('theme-toggle');
+        if (btn) btn.textContent = '🌙';
+      }
+    })();
+
+    /* ── Dot canvas ── */
+    var canvas = document.getElementById('dot-canvas');
+    var ctx = canvas.getContext('2d');
+    var t = 0;
+    function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    function getDotColor() {
+      var light = document.documentElement.getAttribute('data-theme') === 'light';
+      return light ? '20,20,18' : '255,255,255';
+    }
+    function drawDots() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      var sp = 20, cols = Math.ceil(canvas.width/sp)+1, rows = Math.ceil(canvas.height/sp)+1;
+      var cx = canvas.width/2, cy = canvas.height/2;
+      var dc = getDotColor();
+      for (var i = 0; i < cols; i++) {
+        for (var j = 0; j < rows; j++) {
+          var x = i*sp, y = j*sp;
+          var dx = x-cx, dy = y-cy, dist = Math.sqrt(dx*dx+dy*dy);
+          var w1 = Math.sin(dist*0.012-t*2.0), w2 = Math.sin(x*0.01)*Math.cos(y*0.01), w3 = Math.sin((x+y)*0.008-t*1.5);
+          var c = (w1+w2+w3)/3;
+          var sz = Math.max(0.2, 0.3+(c+1)*0.95), al = Math.max(0.012, 0.018+(c+1)*0.1);
+          ctx.beginPath(); ctx.arc(x,y,sz,0,Math.PI*2);
+          ctx.fillStyle='rgba('+dc+','+al+')'; ctx.fill();
         }
+      }
+      t += 0.016; requestAnimationFrame(drawDots);
+    }
+    window.addEventListener('resize', resizeCanvas); resizeCanvas(); drawDots();
+
+    /* ── Nav / sidebar quick actions ── */
+    document.querySelectorAll('[data-nav]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var tgt = this.getAttribute('data-nav');
+        if(tgt === 'overview') return;
+        var el = document.getElementById(tgt+'-section');
+        if (el) { el.open = true; setTimeout(function(){ el.scrollIntoView({behavior:'smooth',block:'start'}); }, 60); }
       });
     });
-  })();
-  </script>
 
-  <!-- ── Intro countdown + floating notes (mikuelizaos.cloud exact replica) ── -->
-  <script>
-  (function() {
-    var NOTES = ["♪","♫","♬","♩","★","✦"];
-    var COUNTS = ["3","2","1","SHOWTIME!"];
-
-    function buildNotes(containerId, count) {
-      var wrap = document.getElementById(containerId);
-      if (!wrap) return;
-      for (var i = 0; i < count; i++) {
-        var el = document.createElement("div");
-        el.className = "float-note";
-        el.textContent = NOTES[Math.floor(Math.random() * NOTES.length)];
-        el.style.left = (Math.random() * 100) + "%";
-        el.style.animationDelay = (Math.random() * 2) + "s";
-        el.style.animationDuration = (3 + Math.random() * 1.5) + "s";
-        wrap.appendChild(el);
-      }
+    /* ── Cloud auth ── */
+    function doFinalPollThenReload(sessionId) {
+      fetch('/api/eliza-cloud/hosted/poll?session=' + encodeURIComponent(sessionId), { credentials: 'same-origin' })
+        .then(function(r){ return r.json(); })
+        .catch(function(){ return {}; })
+        .then(function(){ window.location.reload(); });
     }
-    buildNotes("intro-float-notes", 12);
-    buildNotes("float-notes", 12);
-
-    var phase = "countdown";
-    var countIdx = 0;
-    var progress = 0;
-
-    var overlay   = document.getElementById("intro-overlay");
-    var countEl   = document.getElementById("intro-count");
-    var pingEl    = document.getElementById("intro-ping");
-    var imgEl     = document.querySelector("#intro-img img");
-    var loadTitle = document.getElementById("intro-loading-title");
-    var loadSub   = document.getElementById("intro-loading-sub");
-    var barWrap   = document.getElementById("intro-bar-wrap");
-    var barFill   = document.getElementById("intro-bar-fill");
-    var pctEl     = document.getElementById("intro-pct");
-    var notesRow  = document.getElementById("intro-notes-row");
-    var sysEl     = document.getElementById("intro-sys");
-
-    if (!overlay) return;
-
-    var tick = setInterval(function() {
-      countIdx++;
-      if (countIdx >= COUNTS.length - 1) {
-        clearInterval(tick);
-        enterShowtime();
-        return;
-      }
-      countEl.textContent = COUNTS[countIdx];
-    }, 800);
-
-    function enterShowtime() {
-      phase = "showtime";
-      countEl.textContent = "SHOWTIME!";
-      countEl.classList.add("showtime");
-      if (pingEl) pingEl.style.display = "none";
-      if (imgEl) imgEl.classList.add("showtime");
-      setTimeout(enterLoading, 1500);
+    function openCloudAuth(btn) {
+      if (btn) btn.style.opacity = '0.5';
+      fetch('/api/eliza-cloud/hosted/start', { method: 'POST', headers: {'content-type':'application/json'}, credentials: 'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(data) {
+          if (!data.loginUrl) { window.location.href = '/auth/eliza-cloud?popup=1'; return; }
+          var p = window.open(data.loginUrl, 'elizacloud-auth', 'width=500,height=640,scrollbars=yes');
+          if (!p) { window.location.href = data.loginUrl; return; }
+          if (data.mode === 'cli-session') {
+            var count = 0;
+            var popupWasClosed = false;
+            var ti = setInterval(function() {
+              count++;
+              var closed = (function(){ try{return p.closed;}catch(e){return true;} }());
+              if (closed && !popupWasClosed) {
+                popupWasClosed = true;
+                clearInterval(ti);
+                if (btn) btn.style.opacity = '';
+                doFinalPollThenReload(data.sessionId);
+                return;
+              }
+              if (count > 90) {
+                clearInterval(ti);
+                if (btn) btn.style.opacity = '';
+                doFinalPollThenReload(data.sessionId);
+                return;
+              }
+              fetch('/api/eliza-cloud/hosted/poll?session=' + encodeURIComponent(data.sessionId), { credentials: 'same-origin' })
+                .then(function(r){ return r.json(); })
+                .then(function(pd) {
+                  if (pd.status === 'authenticated') {
+                    clearInterval(ti);
+                    try { p.close(); } catch(e) {}
+                    window.location.reload();
+                  }
+                }).catch(function(){});
+            }, 1500);
+          } else {
+            var closeTi = setInterval(function() {
+              try { if (p.closed) { clearInterval(closeTi); window.location.reload(); } } catch(e) {}
+            }, 800);
+          }
+        })
+        .catch(function() { window.location.href = '/auth/eliza-cloud?popup=1'; });
     }
+    document.querySelectorAll('[data-cloud-hosted-auth]').forEach(function(btn) {
+      btn.addEventListener('click', function() { openCloudAuth(this); });
+    });
 
-    function enterLoading() {
-      phase = "loading";
-      var countWrap = document.getElementById("count-wrap");
-      if (countWrap) countWrap.style.display = "none";
-      if (loadTitle) loadTitle.style.display = "block";
-      if (loadSub)   loadSub.style.display   = "block";
-      if (barWrap)   barWrap.style.display   = "block";
-      if (sysEl)     sysEl.style.display     = "block";
+    /* ── Animate bars ── */
+    setTimeout(function() {
+      document.querySelectorAll('.mon-fill,.progress-fill,.mini-fill').forEach(function(el) {
+        var w = el.style.width; el.style.width = '0%';
+        setTimeout(function(){ el.style.width = w; }, 100+Math.random()*400);
+      });
+    }, 200);
 
-      var noteDots = notesRow ? notesRow.querySelectorAll(".intro-note-dot") : [];
-
-      var loadInterval = setInterval(function() {
-        progress = Math.min(progress + Math.random() * 2 + 1, 100);
-        if (barFill) barFill.style.width = progress + "%";
-        if (pctEl)   pctEl.textContent   = Math.floor(progress) + "%";
-        for (var i = 0; i < noteDots.length; i++) {
-          if (progress >= (i + 1) * 10) noteDots[i].classList.add("lit");
-        }
-        if (progress >= 100) {
-          clearInterval(loadInterval);
-          setTimeout(function() { overlay.classList.add("hidden"); }, 300);
-        }
-      }, 60);
-    }
   })();
   </script>
 </body>
@@ -7378,6 +4920,7 @@ async function handleRequest(
   }
 
   if (pathname === "/auth/eliza-cloud") {
+    const popupParam = requestUrl.searchParams.get("popup") === "1";
     const state =
       globalThis.crypto && typeof globalThis.crypto.randomUUID === "function"
         ? globalThis.crypto.randomUUID()
@@ -7398,7 +4941,7 @@ async function handleRequest(
       return;
     }
 
-    const loginUrl = buildElizaCloudLoginUrl(req, state, false);
+    const loginUrl = buildElizaCloudLoginUrl(req, state, popupParam);
     if (!loginUrl) {
       sendRedirect(res, "/?cloud_error=missing_elizacloud_app_auth_config");
       return;
@@ -8255,6 +5798,17 @@ async function handleRequest(
         : {}),
     });
     res.end(renderCloudAgentsPage(cloudSession, refreshedCloud.summary));
+    return;
+  }
+
+  if (pathname === "/airdrop") {
+    const refreshedCloud = await refreshElizaCloudSession(cloudSession);
+    cloudSession = refreshedCloud.session;
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      ...(cloudSession ? { "set-cookie": serializeElizaCloudSession(cloudSession) } : {}),
+    });
+    res.end(renderAirdropPage(snapshot, cloudSession, distributionPlan, distributionExecution, distributionLedger));
     return;
   }
 
