@@ -28,9 +28,12 @@ const IMAGE_STRONG_TERMS = getValidationKeywordTerms(
 		includeAllLocales: true,
 	},
 );
-const IMAGE_WEAK_TERMS = getValidationKeywordTerms("action.generateImage.weak", {
-	includeAllLocales: true,
-});
+const IMAGE_WEAK_TERMS = getValidationKeywordTerms(
+	"action.generateImage.weak",
+	{
+		includeAllLocales: true,
+	},
+);
 
 const getFileExtension = (url: string): string => {
 	const urlPath = new URL(url).pathname;
@@ -47,11 +50,10 @@ export const generateImageAction = {
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	validate: async (_runtime: IAgentRuntime, message: Memory) => {
-		const text = (
+		const text =
 			typeof message?.content === "string"
 				? message.content
-				: (message?.content?.text ?? "")
-		);
+				: (message?.content?.text ?? "");
 		if (!text) return false;
 		if (collectKeywordTermMatches([text], IMAGE_STRONG_TERMS).size > 0) {
 			return true;
