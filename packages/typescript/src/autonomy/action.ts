@@ -15,22 +15,16 @@ import type {
 	State,
 	UUID,
 } from "../types";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../i18n/validation-keywords.ts";
 import { stringToUuid } from "../utils";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
 
-const ADMIN_KEYWORDS = [
-	"admin",
-	"user",
-	"tell",
-	"notify",
-	"inform",
-	"update",
-	"message",
-	"send",
-	"communicate",
-	"report",
-	"alert",
-];
+const ADMIN_KEYWORDS = getValidationKeywordTerms("action.sendToAdmin.request", {
+	includeAllLocales: true,
+});
 
 /**
  * Send to Admin Action
@@ -100,11 +94,11 @@ export const sendToAdminAction: Action = {
 		}
 
 		// Check if message contains intention to communicate with admin
-		const text = message.content.text?.toLowerCase() || "";
+		const text = message.content.text ?? "";
 		if (text.length === 0) {
 			return false;
 		}
-		return ADMIN_KEYWORDS.some((keyword) => text.includes(keyword));
+		return findKeywordTermMatch(text, ADMIN_KEYWORDS) !== undefined;
 	},
 
 	handler: async (

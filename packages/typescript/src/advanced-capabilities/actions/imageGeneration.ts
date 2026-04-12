@@ -1,5 +1,9 @@
 import { v4 } from "uuid";
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	collectKeywordTermMatches,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { imageGenerationTemplate } from "../../prompts.ts";
 import type {
@@ -18,6 +22,15 @@ import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 // Get text content from centralized specs
 const spec = requireActionSpec("GENERATE_IMAGE");
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"]);
+const IMAGE_STRONG_TERMS = getValidationKeywordTerms(
+	"action.generateImage.strong",
+	{
+		includeAllLocales: true,
+	},
+);
+const IMAGE_WEAK_TERMS = getValidationKeywordTerms("action.generateImage.weak", {
+	includeAllLocales: true,
+});
 
 const getFileExtension = (url: string): string => {
 	const urlPath = new URL(url).pathname;
@@ -38,45 +51,12 @@ export const generateImageAction = {
 			typeof message?.content === "string"
 				? message.content
 				: (message?.content?.text ?? "")
-		).toLowerCase();
+		);
 		if (!text) return false;
-		const IMAGE_STRONG_TERMS = [
-			"generate image",
-			"create image",
-			"make image",
-			"draw",
-			"paint",
-			"illustration",
-			"generate picture",
-			"create picture",
-			"make picture",
-			"generate art",
-			"create art",
-			"image of",
-			"picture of",
-			"photo of",
-		];
-		const IMAGE_WEAK_TERMS = [
-			"image",
-			"picture",
-			"visual",
-			"art",
-			"graphic",
-			"render",
-			"generate",
-			"create",
-			"design",
-			"sketch",
-			"portrait",
-		];
-		for (const term of IMAGE_STRONG_TERMS) {
-			if (text.includes(term)) return true;
+		if (collectKeywordTermMatches([text], IMAGE_STRONG_TERMS).size > 0) {
+			return true;
 		}
-		let weakCount = 0;
-		for (const term of IMAGE_WEAK_TERMS) {
-			if (text.includes(term) && ++weakCount >= 2) return true;
-		}
-		return false;
+		return collectKeywordTermMatches([text], IMAGE_WEAK_TERMS).size >= 2;
 	},
 	handler: async (
 		runtime: IAgentRuntime,
