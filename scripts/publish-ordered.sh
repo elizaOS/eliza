@@ -2,7 +2,7 @@
 set -eo pipefail
 
 # This script has moved to the eliza-workspace directory.
-# Run from: /Users/shawwalters/eliza-workspace/publish-ordered.sh
+# Run from the eliza-workspace root: ./publish-ordered.sh
 #
 # The publish script handles both repos:
 #   1) Plugins from eliza-workspace/plugins/

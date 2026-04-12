@@ -1039,6 +1039,71 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			);
 		});
 
+		it("synthesizes an action callback when the handler returns text without emitting one", async () => {
+			const callback = vi.fn().mockResolvedValue([]);
+
+			mockActionHandler.mockResolvedValueOnce({
+				success: true,
+				text: 'Saved "Brush teeth" as 2 times per day.',
+				data: { actionName: "TestAction" },
+			});
+
+			await runtime.processActions(
+				message,
+				[responseMemory],
+				undefined,
+				callback,
+			);
+
+			expect(callback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					text: 'Saved "Brush teeth" as 2 times per day.',
+					source: "action",
+					action: "TestAction",
+				}),
+			);
+		});
+
+		it("persists successful action-result metadata so later turns can recover structured state", async () => {
+			const createMemorySpy = vi
+				.spyOn(runtime, "createMemory")
+				.mockResolvedValue(stringToUuid(uuidv4()));
+
+			mockActionHandler.mockResolvedValueOnce({
+				success: true,
+				text: 'I can save "Brush teeth". Confirm and I will save it.',
+				data: {
+					actionName: "TestAction",
+					lifeDraft: {
+						operation: "create_definition",
+						request: {
+							title: "Brush teeth",
+						},
+					},
+				},
+			});
+
+			await runtime.processActions(message, [responseMemory]);
+
+			expect(createMemorySpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({
+						text: 'I can save "Brush teeth". Confirm and I will save it.',
+						source: "action",
+						type: "action_result",
+						actionName: "TestAction",
+						actionStatus: "completed",
+						data: expect.objectContaining({
+							lifeDraft: expect.objectContaining({
+								operation: "create_definition",
+							}),
+						}),
+					}),
+				}),
+				"messages",
+			);
+		});
+
 		// "should evict oldest working memory entries when limit exceeded" test removed —
 		// Working memory eviction is not yet implemented. Re-add when the feature is added.
 	});

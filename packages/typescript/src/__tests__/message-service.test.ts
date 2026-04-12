@@ -1861,6 +1861,117 @@ expect(dpeSpy).toHaveBeenCalledTimes(2);
 			);
 		});
 
+		it("refreshes recentMessages before reflection continuation planning", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+
+			const cache = new Map<string, unknown>();
+			vi.spyOn(runtime, "setCache").mockImplementation(async (key, value) => {
+				cache.set(key, value);
+				return true;
+			});
+			vi.spyOn(runtime, "getCache").mockImplementation(
+				async (key) => cache.get(key) as never,
+			);
+			vi.spyOn(runtime, "deleteCache").mockImplementation(async (key) => {
+				cache.delete(key);
+				return true;
+			});
+
+			let initialReplyPersisted = false;
+			vi.spyOn(runtime, "createMemory").mockImplementation(
+				async (memory: Memory) => {
+					if (memory.content?.text === "Working on it.") {
+						initialReplyPersisted = true;
+					}
+					return memory;
+				},
+			);
+
+			vi.spyOn(runtime, "composeState").mockImplementation(
+				async (_message, includeList) => {
+					const includeNames = Array.isArray(includeList) ? includeList : [];
+					const includesRecentMessages =
+						includeNames.includes("RECENT_MESSAGES");
+
+					return {
+						data: {},
+						values: {
+							recentMessages:
+								initialReplyPersisted && includesRecentMessages
+									? "User: run git status\nAgent: Working on it."
+									: "User: run git status",
+						},
+						text: "",
+					};
+				},
+			);
+
+			const dynamicPromptSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Acknowledge first",
+					actions: "REPLY",
+					text: "Working on it.",
+					simple: true,
+				})
+				.mockResolvedValueOnce({
+					thought: "Need to actually run the command",
+					actions: "SHELL",
+					text: "",
+					simple: false,
+				})
+				.mockResolvedValueOnce({
+					thought: "Share the grounded result",
+					actions: "REPLY",
+					text: "It's clean.",
+					simple: true,
+				});
+
+			vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+			vi.spyOn(runtime, "getActionResults")
+				.mockReturnValueOnce([])
+				.mockReturnValueOnce([
+					{
+						success: true,
+						text: "On branch main\nnothing to commit, working tree clean",
+						data: { actionName: "SHELL" },
+					},
+				]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026aa" as UUID,
+				content: {
+					text: "run git status",
+					source: "client_chat",
+					channelType: ChannelType.DM,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			vi.spyOn(runtime, "evaluate").mockImplementation(async () => {
+				await runtime.setCache(getTaskCompletionCacheKey(message.id), {
+					assessed: true,
+					completed: false,
+					reason: "The lookup has not run yet.",
+					source: "reflection",
+					evaluatedAt: Date.now(),
+					messageId: message.id,
+				});
+				return [];
+			});
+
+			await messageService.handleMessage(runtime, message, mockCallback);
+
+			const reflectionContinuationState = dynamicPromptSpy.mock.calls[1]?.[0]
+				?.state as State;
+			expect(reflectionContinuationState.values.recentMessages).toContain(
+				"Agent: Working on it.",
+			);
+		});
+
 		it("does not continue a simple clarifying reply when reflection marks the task incomplete", async () => {
 			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
 
@@ -1903,7 +2014,8 @@ expect(dpeSpy).toHaveBeenCalledTimes(2);
 				await runtime.setCache(getTaskCompletionCacheKey(message.id), {
 					assessed: true,
 					completed: false,
-					reason: "The agent asked a clarifying question and is waiting on the user.",
+					reason:
+						"The agent asked a clarifying question and is waiting on the user.",
 					source: "reflection",
 					evaluatedAt: Date.now(),
 					messageId: message.id,
@@ -1927,6 +2039,84 @@ expect(dpeSpy).toHaveBeenCalledTimes(2);
 			);
 			expect(result.responseContent?.text).toBe(
 				"What did you have in mind for Monday?",
+			);
+		});
+
+		it("defers simple reply and drops it when reflection continuation overrides", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+
+			const cache = new Map<string, unknown>();
+			vi.spyOn(runtime, "setCache").mockImplementation(async (key, value) => {
+				cache.set(key, value);
+				return true;
+			});
+			vi.spyOn(runtime, "getCache").mockImplementation(
+				async (key) => cache.get(key) as never,
+			);
+			vi.spyOn(runtime, "deleteCache").mockImplementation(async (key) => {
+				cache.delete(key);
+				return true;
+			});
+
+			const dynamicPromptSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Acknowledge the report",
+					actions: "REPLY",
+					text: "I'm glad to hear that. Sometimes just clarifying things can make a difference.",
+					simple: true,
+				})
+				.mockResolvedValueOnce({
+					thought: "Repeat the same acknowledgement",
+					actions: "REPLY",
+					text: "I'm glad to hear that. Sometimes just clarifying things can make a difference.",
+					simple: true,
+				});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026bb" as UUID,
+				content: {
+					text: "this feels so much better ngl",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			vi.spyOn(runtime, "evaluate").mockImplementation(async () => {
+				await runtime.setCache(getTaskCompletionCacheKey(message.id), {
+					assessed: true,
+					completed: false,
+					reason: "The task was not actually completed.",
+					source: "reflection",
+					evaluatedAt: Date.now(),
+					messageId: message.id,
+				});
+				return [];
+			});
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			// The first simple REPLY is deferred via pendingSimpleEmit.
+			// Reflection fires (task incomplete) → continuation produces the
+			// same simple text → its callback delivers the text to the user.
+			// The deferred emit is then dropped so only one callback fires.
+			expect(dynamicPromptSpy).toHaveBeenCalledTimes(2);
+			expect(mockCallback).toHaveBeenCalledTimes(1);
+			expect(mockCallback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					text: "I'm glad to hear that. Sometimes just clarifying things can make a difference.",
+				}),
+			);
+			expect(result.responseContent?.text).toBe(
+				"I'm glad to hear that. Sometimes just clarifying things can make a difference.",
 			);
 		});
 
@@ -1988,7 +2178,8 @@ expect(dpeSpy).toHaveBeenCalledTimes(2);
 				await runtime.setCache(getTaskCompletionCacheKey(message.id), {
 					assessed: true,
 					completed: false,
-					reason: "The agent asked a clarifying question and is waiting on the user.",
+					reason:
+						"The agent asked a clarifying question and is waiting on the user.",
 					source: "reflection",
 					evaluatedAt: Date.now(),
 					messageId: message.id,

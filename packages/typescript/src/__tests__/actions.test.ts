@@ -3,6 +3,7 @@ import {
 	composeActionExamples,
 	formatActionNames,
 	formatActions,
+	parseActionParams,
 } from "../actions";
 import type { Action } from "../types";
 
@@ -225,6 +226,43 @@ describe("Actions", () => {
 			expect(formatted).toContain('examples="north"|"south"');
 		});
 
+		it("includes action-tagged example hints when available", () => {
+			const formatted = formatActions([
+				{
+					name: "LIFE",
+					description: "Manage habits.",
+					examples: [
+						[
+							{
+								name: "name1",
+								content: {
+									text: "help me brush my teeth at 8 am and 9 pm every day",
+								},
+							},
+							{
+								name: "name2",
+								content: {
+									text: 'I can set up a habit named "Brush teeth".',
+									actions: ["LIFE"],
+								},
+							},
+						],
+					],
+					similes: [],
+					handler: async () => {
+						throw new Error("Not implemented");
+					},
+					validate: async () => {
+						throw new Error("Not implemented");
+					},
+				},
+			]);
+
+			expect(formatted).toContain(
+				'example: User: "help me brush my teeth at 8 am and 9 pm every day" -> actions: LIFE',
+			);
+		});
+
 		it("should include commas and newlines between multiple actions", () => {
 			const formatted = formatActions([mockActions[0], mockActions[1]]);
 			expect(formatted).toContain("actions[2]:");
@@ -235,6 +273,20 @@ describe("Actions", () => {
 		it("should handle empty actions array", () => {
 			const formatted = formatActions([]);
 			expect(formatted).toBe("");
+		});
+	});
+
+	describe("parseActionParams", () => {
+		it("parses JSON payloads inside legacy flat action wrappers", () => {
+			const params = parseActionParams(
+				'<LIFE>{"action":"create","intent":"create a habit to brush teeth at 8am and 9pm daily","title":"Brush Teeth"}</LIFE>',
+			);
+
+			expect(params.get("LIFE")).toEqual({
+				action: "create",
+				intent: "create a habit to brush teeth at 8am and 9pm daily",
+				title: "Brush Teeth",
+			});
 		});
 	});
 

@@ -3,7 +3,6 @@ import { z } from "zod";
 import { getEntityDetails } from "../../entities.ts";
 import { requireEvaluatorSpec } from "../../generated/spec-helpers.ts";
 import { reflectionEvaluatorTemplate } from "../../prompts.ts";
-import { MemoryType } from "../../types/memory.ts";
 import type {
 	ActionResult,
 	Entity,
@@ -15,6 +14,7 @@ import type {
 	UUID,
 } from "../../types/index.ts";
 import { asUUID, ModelType } from "../../types/index.ts";
+import { MemoryType } from "../../types/memory.ts";
 import {
 	composePrompt,
 	parseJSONObjectFromText,
@@ -613,7 +613,8 @@ async function handler(
 	message: Memory,
 	state?: State,
 ): Promise<ActionResult | undefined> {
-	const { agentId, roomId } = message;
+	const agentId = message.agentId ?? runtime.agentId;
+	const { roomId } = message;
 
 	if (!agentId || !roomId) {
 		runtime.logger.warn(
@@ -694,7 +695,12 @@ async function handler(
 		reflection,
 		message.id as UUID | undefined,
 	);
-	await storeTaskCompletionReflection(runtime, message, reflection, taskCompletion);
+	await storeTaskCompletionReflection(
+		runtime,
+		message,
+		reflection,
+		taskCompletion,
+	);
 
 	// Allow omitted lists when the model has nothing new to add, but still warn
 	// on malformed non-empty structures that the normalizer cannot interpret.

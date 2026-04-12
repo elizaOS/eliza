@@ -4,6 +4,7 @@ import {
 	ModelType,
 	Service,
 	type ServiceTypeName,
+	type TextGenerationModelType,
 	type UUID,
 } from "../../types/index.ts";
 import type { MemoryStorageProvider } from "../../types/memory-storage.ts";
@@ -13,6 +14,30 @@ import type {
 	MemoryConfig,
 	SessionSummary,
 } from "../types.ts";
+
+const TEXT_GENERATION_MODEL_TYPES = new Set<TextGenerationModelType>([
+	ModelType.TEXT_NANO,
+	ModelType.TEXT_SMALL,
+	ModelType.TEXT_MEDIUM,
+	ModelType.TEXT_LARGE,
+	ModelType.TEXT_MEGA,
+	ModelType.RESPONSE_HANDLER,
+	ModelType.ACTION_PLANNER,
+	ModelType.TEXT_REASONING_SMALL,
+	ModelType.TEXT_REASONING_LARGE,
+	ModelType.TEXT_COMPLETION,
+]);
+
+function resolveConfiguredTextGenerationModelType(
+	value: string | boolean | number | null,
+): TextGenerationModelType | null {
+	if (typeof value !== "string") {
+		return null;
+	}
+
+	const normalized = value.trim() as TextGenerationModelType;
+	return TEXT_GENERATION_MODEL_TYPES.has(normalized) ? normalized : null;
+}
 
 export class MemoryService extends Service {
 	static serviceType: ServiceTypeName = "memory" as ServiceTypeName;
@@ -151,6 +176,14 @@ export class MemoryService extends Service {
 				String(extractionInterval),
 				10,
 			);
+		}
+
+		const configuredModelType = resolveConfiguredTextGenerationModelType(
+			runtime.getSetting("MEMORY_SUMMARY_MODEL_TYPE") ??
+				runtime.getSetting("MEMORY_MODEL_TYPE"),
+		);
+		if (configuredModelType) {
+			this.memoryConfig.summaryModelType = configuredModelType;
 		}
 
 		logger.debug(

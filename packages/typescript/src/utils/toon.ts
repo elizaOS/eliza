@@ -5,6 +5,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const INDEXED_TOON_KEY_RE =
+	/^([A-Za-z_][A-Za-z0-9_.-]*)(?:\[(\d+)\])(?:\{([^}]*)\})?$/;
+
 function stripFencedBlock(text: string): string {
 	const trimmed = text.trim();
 	const fenced = trimmed.match(/^```(?:toon|json)?\s*([\s\S]*?)\s*```$/i);
@@ -156,7 +159,135 @@ export function normalizeStructuredRecord(
 
 	const result: Record<string, unknown> = {};
 
+	const trimOuterQuotes = (input: string): string => {
+		const trimmed = input.trim();
+		if (
+			(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+			(trimmed.startsWith("'") && trimmed.endsWith("'"))
+		) {
+			return trimmed.slice(1, -1);
+		}
+		return trimmed;
+	};
+
+	const dedentStructuredBlock = (input: string): string => {
+		const lines = input.split(/\r?\n/);
+		const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
+		if (nonEmptyLines.length === 0) {
+			return input.trim();
+		}
+
+		const minIndent = nonEmptyLines.reduce((smallest, line) => {
+			const indent = line.match(/^\s*/)?.[0].length ?? 0;
+			return Math.min(smallest, indent);
+		}, Number.POSITIVE_INFINITY);
+
+		return lines
+			.map((line) =>
+				line.trim().length === 0
+					? ""
+					: line.slice(Math.min(minIndent, line.length)),
+			)
+			.join("\n")
+			.trim();
+	};
+
+	const splitCsvFields = (input: string): string[] => {
+		const fields: string[] = [];
+		let current = "";
+		let quote: '"' | "'" | null = null;
+
+		for (let index = 0; index < input.length; index++) {
+			const char = input[index] ?? "";
+			if (quote) {
+				if (char === "\\" && index + 1 < input.length) {
+					current += input[index + 1] ?? "";
+					index += 1;
+					continue;
+				}
+				if (char === quote) {
+					quote = null;
+					continue;
+				}
+				current += char;
+				continue;
+			}
+
+			if (char === '"' || char === "'") {
+				quote = char;
+				continue;
+			}
+
+			if (char === ",") {
+				fields.push(current.trim());
+				current = "";
+				continue;
+			}
+
+			current += char;
+		}
+
+		fields.push(current.trim());
+		return fields;
+	};
+
+	const normalizeIndexedValue = (
+		rawValue: unknown,
+		fieldSpec?: string,
+	): unknown => {
+		if (fieldSpec) {
+			const fieldNames = fieldSpec
+				.split(",")
+				.map((field) => field.trim())
+				.filter(Boolean);
+			const rawFields =
+				typeof rawValue === "string" ? splitCsvFields(rawValue) : [];
+			return Object.fromEntries(
+				fieldNames.map((fieldName, index) => [
+					fieldName,
+					trimOuterQuotes(rawFields[index] ?? ""),
+				]),
+			);
+		}
+
+		if (typeof rawValue === "string") {
+			const normalizedBlock = dedentStructuredBlock(rawValue);
+			const nestedRecord = tryParseLooseToonRecord(normalizedBlock);
+			if (nestedRecord) {
+				return (
+					normalizeStructuredRecord(nestedRecord) ??
+					trimOuterQuotes(normalizedBlock)
+				);
+			}
+			return trimOuterQuotes(normalizedBlock);
+		}
+
+		if (Array.isArray(rawValue)) {
+			return rawValue.map((entry) =>
+				isRecord(entry) ? (normalizeStructuredRecord(entry) ?? entry) : entry,
+			);
+		}
+
+		if (isRecord(rawValue)) {
+			return normalizeStructuredRecord(rawValue) ?? rawValue;
+		}
+
+		return rawValue;
+	};
+
 	for (const [key, rawValue] of Object.entries(value)) {
+		const indexedMatch = key.match(INDEXED_TOON_KEY_RE);
+		if (indexedMatch) {
+			const [, baseKey, indexText, fieldSpec] = indexedMatch;
+			const index = Number.parseInt(indexText, 10);
+			const existingValues = Array.isArray(result[baseKey])
+				? [...(result[baseKey] as unknown[])]
+				: [];
+			existingValues[index] = normalizeIndexedValue(rawValue, fieldSpec);
+			result[baseKey] = existingValues;
+			continue;
+		}
+
 		if (key === "actions" || key === "providers" || key === "evaluators") {
 			if (Array.isArray(rawValue)) {
 				result[key] = rawValue.map((entry) =>
@@ -188,6 +319,78 @@ export function normalizeStructuredRecord(
 	}
 
 	return Object.keys(result).length > 0 ? result : null;
+}
+
+function isEmptyStructuredValue(value: unknown): boolean {
+	if (value == null) {
+		return true;
+	}
+
+	if (Array.isArray(value)) {
+		return (
+			value.length === 0 ||
+			value.every((entry) => isEmptyStructuredValue(entry))
+		);
+	}
+
+	if (isRecord(value)) {
+		const entries = Object.values(value);
+		return (
+			entries.length === 0 ||
+			entries.every((entry) => isEmptyStructuredValue(entry))
+		);
+	}
+
+	if (typeof value === "string") {
+		return value.trim().length === 0;
+	}
+
+	return false;
+}
+
+function mergeStructuredValues(primary: unknown, secondary: unknown): unknown {
+	if (isEmptyStructuredValue(primary)) {
+		return secondary;
+	}
+
+	if (isEmptyStructuredValue(secondary)) {
+		return primary;
+	}
+
+	if (Array.isArray(primary) && Array.isArray(secondary)) {
+		const merged = Array.from(
+			{ length: Math.max(primary.length, secondary.length) },
+			(_, index) => mergeStructuredValues(primary[index], secondary[index]),
+		).filter((entry) => entry !== undefined);
+		return merged;
+	}
+
+	if (isRecord(primary) && isRecord(secondary)) {
+		const keys = new Set([...Object.keys(primary), ...Object.keys(secondary)]);
+		return Object.fromEntries(
+			Array.from(keys).map((key) => [
+				key,
+				mergeStructuredValues(primary[key], secondary[key]),
+			]),
+		);
+	}
+
+	return primary;
+}
+
+export function mergeStructuredRecords(
+	primary: Record<string, unknown> | null,
+	secondary: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+	if (!primary) {
+		return secondary;
+	}
+
+	if (!secondary) {
+		return primary;
+	}
+
+	return mergeStructuredValues(primary, secondary) as Record<string, unknown>;
 }
 
 function toActionParameterValue(value: unknown): ActionParameters[string] {

@@ -17,7 +17,10 @@ import {
 } from "../prompts";
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import { runWithStreamingContext } from "../streaming-context";
-import { runWithTrajectoryContext } from "../trajectory-context";
+import {
+	runWithTrajectoryContext,
+	setTrajectoryPurpose,
+} from "../trajectory-context";
 import type {
 	Action,
 	ActionResult,
@@ -1023,6 +1026,62 @@ function callbackTextPreview(content: Content | null | undefined): string {
 	return text.replace(/\s+/g, " ").slice(0, 200);
 }
 
+function summarizeAttachmentKeyPart(url: string): string {
+	const trimmed = url.trim();
+	if (trimmed.length <= 256) {
+		return trimmed;
+	}
+
+	return `${trimmed.slice(0, 128)}...(${trimmed.length})`;
+}
+
+function callbackDeliveryKey(content: Content | null | undefined): string {
+	if (!content || typeof content !== "object") {
+		return "";
+	}
+
+	const text =
+		typeof content.text === "string"
+			? content.text.replace(/\s+/g, " ").trim()
+			: "";
+	const attachmentKeys = Array.isArray(content.attachments)
+		? content.attachments
+				.map((attachment) => {
+					if (!attachment || typeof attachment !== "object") {
+						return "";
+					}
+
+					const url =
+						typeof attachment.url === "string"
+							? summarizeAttachmentKeyPart(attachment.url)
+							: "";
+					const title =
+						typeof attachment.title === "string" ? attachment.title.trim() : "";
+					const contentType =
+						typeof attachment.contentType === "string"
+							? attachment.contentType
+							: "";
+
+					if (!url && !title && !contentType) {
+						return "";
+					}
+
+					return `${contentType}:${title}:${url}`;
+				})
+				.filter((key) => key.length > 0)
+				.sort()
+		: [];
+
+	if (!text && attachmentKeys.length === 0) {
+		return "";
+	}
+
+	return JSON.stringify({
+		text,
+		attachments: attachmentKeys,
+	});
+}
+
 function getLatestVisibleReplyText(
 	responseContent: Content | null | undefined,
 	actionResults: ActionResult[],
@@ -1043,7 +1102,9 @@ function getLatestVisibleReplyText(
 	}
 
 	const responseText =
-		typeof responseContent?.text === "string" ? responseContent.text.trim() : "";
+		typeof responseContent?.text === "string"
+			? responseContent.text.trim()
+			: "";
 	return responseText;
 }
 
@@ -1057,7 +1118,9 @@ function isLikelyClarifyingQuestion(text: string): boolean {
 		return true;
 	}
 
-	const firstSentence = extractFirstSentence(normalized).trim().toLowerCase();
+	const firstSentence = extractFirstSentence(normalized)
+		.first.trim()
+		.toLowerCase();
 	return /^(what|which|when|where|who|whom|whose|why|how|can you|could you|would you|will you|do you|did you|are you|is it|should i|should we)\b/.test(
 		firstSentence,
 	);
@@ -1250,6 +1313,26 @@ function withContextRoutingValues(
 		...state,
 		values: mergedStateValues,
 	};
+}
+
+async function composeContinuationDecisionState(
+	runtime: IAgentRuntime,
+	message: Memory,
+	contextRoutingStateValues?: ContextRoutingStateValues,
+): Promise<State> {
+	// Continuation prompts run after the runtime has already persisted an
+	// assistant reply and/or action_result memories. Refresh RECENT_MESSAGES so
+	// the follow-up planner does not reuse stale conversation history cached on
+	// the original user turn.
+	return withContextRoutingValues(
+		await runtime.composeState(
+			message,
+			["RECENT_MESSAGES", "ACTIONS"],
+			false,
+			false,
+		),
+		contextRoutingStateValues,
+	);
 }
 
 function withoutProviders(state: State, providerNamesToOmit: string[]): State {
@@ -1626,9 +1709,41 @@ if (
 				// reflects the last pipeline phase (replyEmitTrace).
 				let visibleCallbackCount = 0;
 				let firstVisibleCallbackPreview = "";
+				const deliveredCallbackKeys = new Set<string>();
 				const instrumentedCallback: HandlerCallback | undefined = callback
 					? async (content, actionName) => {
+							const deliveryKey = callbackDeliveryKey(content);
 							const preview = callbackTextPreview(content);
+							if (deliveryKey && deliveredCallbackKeys.has(deliveryKey)) {
+								runtime.logger.warn(
+									{
+										src: "service:message",
+										agentId: runtime.agentId,
+										messageId: message.id,
+										roomId: message.roomId,
+										action:
+											typeof (content as Record<string, unknown>)?.action ===
+											"string"
+												? String((content as Record<string, unknown>).action)
+												: actionName,
+										source:
+											typeof content.source === "string"
+												? content.source
+												: undefined,
+										preview:
+											preview ||
+											(Array.isArray(content.attachments) &&
+											content.attachments.length > 0
+												? `[attachments:${content.attachments.length}]`
+												: ""),
+									},
+									"Suppressing duplicate visible callback reply emitted for a single turn",
+								);
+								return [];
+							}
+							if (deliveryKey) {
+								deliveredCallbackKeys.add(deliveryKey);
+							}
 							if (preview) {
 								visibleCallbackCount += 1;
 								const actionLabel =
@@ -2249,6 +2364,7 @@ if (
 				);
 
 				// Use dynamicPromptExecFromState for structured output with validation
+				setTrajectoryPurpose("should_respond");
 				const responseObject = await runtime.dynamicPromptExecFromState({
 					state: shouldRespondState,
 					params: {
@@ -2377,6 +2493,14 @@ if (
 		let responseContent: Content | null = null;
 		let responseMessages: Memory[] = [];
 		let mode: StrategyMode = "none";
+		// Holds a deferred simple-mode reply that will be flushed after
+		// evaluators + reflection have had a chance to override it. Declared
+		// out here so the post-evaluation flush at the bottom of handleMessage
+		// can see the same variable that the simple-mode branch sets.
+		let pendingSimpleEmit: Content | null = null;
+		// Track memory IDs created for the simple-mode reply so we can clean
+		// them up if reflection overrides the deferred emit (Greptile P1 fix).
+		let pendingSimpleMemoryIds: string[] = [];
 
 		if (shouldRespondToMessage) {
 			const resolvedRouting = mergeContextRouting(state, message);
@@ -2483,6 +2607,12 @@ if (
 						responseMemory,
 						message.content.source ?? "messageHandler",
 					);
+
+					// Track IDs for simple-mode so we can delete orphaned
+					// memories if reflection overrides the deferred emit.
+					if (mode === "simple" && responseMemory.id) {
+						pendingSimpleMemoryIds.push(responseMemory.id);
+					}
 				}
 			}
 
@@ -2499,18 +2629,15 @@ if (
 								providers: responseContent.providers,
 							},
 							"Simple response used providers",
-						);
-					}
-					if (callback) {
-						replyEmitTrace.phase = "primary:simple-direct-callback";
-						// Redact any secrets from response content before sending
-						if (responseContent.text) {
-							responseContent.text = runtime.redactSecrets(
-								responseContent.text,
-							);
-						}
-						await callback(responseContent);
-					}
+				);
+			}
+			// Defer the callback until after reflection has had a
+			// chance to override. Redact secrets now so the content
+			// is ready to flush at the bottom of handleMessage.
+			if (responseContent.text) {
+				responseContent.text = runtime.redactSecrets(responseContent.text);
+			}
+			pendingSimpleEmit = responseContent;
 				} else if (mode === "actions") {
 					replyEmitTrace.phase = "primary:processActions";
 					// Pass onStreamChunk to processActions so each action can manage its own streaming context
@@ -2727,16 +2854,26 @@ if (
 			);
 			await runtime.deleteCache(getTaskCompletionCacheKey(message.id));
 
-			if (taskCompletion?.assessed && !taskCompletion.completed) {
+			if (
+				taskCompletion?.assessed &&
+				!taskCompletion.completed &&
+				// Honor `suppressPostActionContinuation` here too. The flag's
+				// contract per Action.suppressPostActionContinuation is "stop after
+				// this action — don't run any continuation LLM turn." Without this
+				// guard, an action that already emitted a complete user-facing
+				// reply (e.g. CALENDAR_ACTION) will get a second visible callback
+				// when the reflection evaluator marks the task as incomplete and
+				// triggers another LLM/processActions pass.
+				!suppressesPostActionContinuation(runtime, responseContent)
+			) {
 				const directReplyText =
 					typeof responseContent?.text === "string"
 						? responseContent.text.trim()
 						: "";
 				let latestActionResults: ActionResult[] = [];
 				const shouldWaitForUser =
-					isSimpleReplyResponse(responseContent) &&
-					isLikelyClarifyingQuestion(directReplyText)
-						? true
+					isSimpleReplyResponse(responseContent) && directReplyText.length > 0
+						? isLikelyClarifyingQuestion(directReplyText)
 						: (() => {
 								latestActionResults = runtime.getActionResults(message.id);
 								return shouldWaitForUserAfterIncompleteReflection(
@@ -2779,9 +2916,35 @@ if (
 						responseContent = continuation.responseContent;
 						mode = continuation.mode;
 					}
+					// Reflection produced a continuation (may or may not have
+					// responseContent — e.g. actions that set results but the
+					// helper returned early). Drop the deferred chatty REPLY
+					// either way: emitting both would show two contradictory
+					// messages, and even when responseContent is null the
+					// continuation's action callbacks already went to the user.
+					if (
+						pendingSimpleEmit &&
+						(continuation.responseContent ||
+							continuation.responseMessages.length > 0)
+					) {
+						// Clean up orphaned memories that were persisted before
+						// we knew reflection would override (Greptile P1 fix).
+						for (const memId of pendingSimpleMemoryIds) {
+							await runtime.deleteMemory(memId as UUID);
+						}
+						pendingSimpleMemoryIds = [];
+						pendingSimpleEmit = null;
+					}
 					state = continuation.state;
 				}
 			}
+		}
+
+		// Flush the deferred simple-mode reply now that reflection has had its
+		// chance to override. If reflection produced its own response, this is
+		// already null and the original chatty REPLY is dropped.
+		if (pendingSimpleEmit && callback) {
+			await callback(pendingSimpleEmit);
 		}
 
 		const didRespond =
@@ -3363,8 +3526,9 @@ if (
 
 			accumulatedState = withTaskCompletion(
 				withActionResults(
-					withContextRoutingValues(
-						await runtime.composeState(message, ["ACTIONS"], false, false),
+					await composeContinuationDecisionState(
+						runtime,
+						message,
 						contextRoutingStateValues,
 					),
 					traceActionResults,
@@ -3522,8 +3686,9 @@ if (
 		replyEmitTrace.phase = "reflection:before-llm";
 		let accumulatedState = withTaskCompletion(
 			withActionResults(
-				withContextRoutingValues(
-					await runtime.composeState(message, ["ACTIONS"], false, false),
+				await composeContinuationDecisionState(
+					runtime,
+					message,
 					contextRoutingStateValues,
 				),
 				initialActionResults,
@@ -3730,6 +3895,7 @@ if (
 			messageHandlerTemplate;
 
 		// Use dynamicPromptExecFromState for structured output with validation
+		setTrajectoryPurpose("response");
 		const parsedXml = await runtime.dynamicPromptExecFromState({
 			state,
 			params: {

@@ -18,6 +18,7 @@ import {
 } from "./utils/deterministic";
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import {
+	mergeStructuredRecords,
 	normalizeStructuredRecord,
 	tryParseLooseToonRecord,
 	tryParseToonValue,
@@ -639,17 +640,15 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	if (!text) return null;
 
 	const parsedToon = normalizeStructuredRecord(tryParseToonValue(text));
-	if (parsedToon) {
-		return parsedToon as T;
-	}
-
-	// Some providers emit relaxed TOON-like key/value lines with unescaped quotes
-	// or blank optional fields. Salvage those before falling back to XML parsing.
 	const parsedLooseToon = normalizeStructuredRecord(
 		tryParseLooseToonRecord(text),
 	);
-	if (parsedLooseToon) {
-		return parsedLooseToon as T;
+	const mergedStructuredToon = mergeStructuredRecords(
+		parsedToon,
+		parsedLooseToon,
+	);
+	if (mergedStructuredToon) {
+		return mergedStructuredToon as T;
 	}
 
 	// First, try to find a specific <response> block using linear search (avoids regex ReDoS)

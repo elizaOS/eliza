@@ -45,7 +45,10 @@ import {
 	runWithStreamingContext,
 	type StreamingContext,
 } from "./streaming-context";
-import { getTrajectoryContext } from "./trajectory-context";
+import {
+	getTrajectoryContext,
+	setTrajectoryPurpose,
+} from "./trajectory-context";
 import {
 	type Action,
 	type ActionContext,
@@ -2015,6 +2018,7 @@ export class AgentRuntime implements IAgentRuntime {
 			onStreamChunk?: StreamChunkCallback;
 		},
 	): Promise<void> {
+		setTrajectoryPurpose("action");
 		// Check if action planning is enabled
 		const actionPlanningEnabled = this.isActionPlanningEnabled();
 
@@ -2102,6 +2106,15 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		let actionIndex = 0;
+		// Track which action names have already been executed in this
+		// processActions invocation. The LLM sometimes emits the same action
+		// twice in `actions` (e.g. ["GMAIL_ACTION", "CALENDAR_ACTION",
+		// "CALENDAR_ACTION"] when the user has multiple sub-intents the LLM
+		// can't split into per-action params). Without dedupe the second run
+		// uses the same params as the first → identical output → discord
+		// dedup layer rejects it as a duplicate callback. Two identical
+		// action+params runs in one turn is never useful, so collapse them.
+		const executedActionKeys = new Set<string>();
 
 		for (const response of responsesToProcess) {
 			if (!response.content?.actions || response.content.actions.length === 0) {
@@ -2362,6 +2375,31 @@ export class AgentRuntime implements IAgentRuntime {
 					if (validation.params) options.parameters = validation.params;
 				}
 
+				// Dedupe: same action name + identical params bucket means
+				// repeating the run would emit identical output. Skip the
+				// repeat instead of letting the discord callback layer reject
+				// it as a duplicate. Key includes the JSON of params so that
+				// distinct invocations with different params still go through.
+				const actionDedupeKey = `${action.name.trim().toUpperCase()}::${
+					options.parameters
+						? JSON.stringify(options.parameters)
+						: "<no-params>"
+				}`;
+				if (executedActionKeys.has(actionDedupeKey)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							dedupeKey: actionDedupeKey,
+						},
+						"Skipping duplicate action invocation in same turn",
+					);
+					actionIndex++;
+					continue;
+				}
+				executedActionKeys.add(actionDedupeKey);
+
 				const actionId = uuidv4() as UUID;
 				// Separate ID for streamed response message (independent from action badge)
 				const responseMessageId = uuidv4() as UUID;
@@ -2596,6 +2634,10 @@ export class AgentRuntime implements IAgentRuntime {
 
 				const isSuccess = actionResult?.success !== false;
 				const statusText = isSuccess ? "completed" : "failed";
+				const actionText =
+					typeof actionResult?.text === "string"
+						? actionResult.text.trim()
+						: "";
 
 				if (!isSuccess && actionResult) {
 					this.enrichTrace(parentRunId, {
@@ -2627,6 +2669,22 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 				});
 
+				if (
+					callback &&
+					actionText &&
+					!storedCallbackData.some(
+						(content) =>
+							typeof content?.text === "string" &&
+							content.text.trim().length > 0,
+					)
+				) {
+					storedCallbackData.push({
+						text: actionText,
+						source: "action",
+						action: action.name,
+					});
+				}
+
 				if (callback) {
 					for (const content of storedCallbackData) {
 						// Redact any secrets from callback content before sending
@@ -2639,10 +2697,6 @@ export class AgentRuntime implements IAgentRuntime {
 
 				// Only persist action memories when the handler returned a real user-facing
 				// message. Placeholder bookkeeping text is internal runtime state, not chat.
-				const actionText =
-					typeof actionResult?.text === "string"
-						? actionResult.text.trim()
-						: "";
 				if (actionText) {
 					const actionMemory: Memory = {
 						id: actionId,
@@ -2652,6 +2706,21 @@ export class AgentRuntime implements IAgentRuntime {
 						content: {
 							text: actionText,
 							source: "action",
+							type: "action_result",
+							actionName: action.name,
+							actionStatus: statusText,
+							runId,
+							...(actionPlan
+								? {
+										planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
+										planThought: actionPlan.thought,
+									}
+								: {}),
+							...(actionResult?.data
+								? {
+										data: actionResult.data as import("./types/proto.js").JsonObject,
+									}
+								: {}),
 						},
 					};
 					await this.createMemory(actionMemory, "messages");
@@ -2727,6 +2796,7 @@ export class AgentRuntime implements IAgentRuntime {
 		callback?: HandlerCallback,
 		responses?: Memory[],
 	) {
+		setTrajectoryPurpose("evaluation");
 		const evaluatorPromises = this.evaluators.map(
 			async (evaluator: Evaluator) => {
 				if (!evaluator.handler) {
@@ -4280,7 +4350,7 @@ export class AgentRuntime implements IAgentRuntime {
 							response: fullText,
 							temperature: typeof tempRaw === "number" ? tempRaw : 0,
 							maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
-							purpose: "action",
+							purpose: trajCtx?.purpose ?? "action",
 							actionType: "runtime.useModel",
 							latencyMs: Math.max(0, Math.round(elapsedTime)),
 							modelSlot: modelType,
@@ -4348,9 +4418,9 @@ export class AgentRuntime implements IAgentRuntime {
 						executionTraceId?: string;
 					}) => void;
 				};
-				const trajCtx = getTrajectoryContext();
-				const stepId = trajCtx?.trajectoryStepId;
-				const trajLogger = (await this._ensureServiceStarted(
+			const trajCtx2 = getTrajectoryContext();
+			const stepId = trajCtx2?.trajectoryStepId;
+			const trajLogger = (await this._ensureServiceStarted(
 					"trajectories",
 				)) as TrajectoryLogger | null;
 				if (stepId && trajLogger) {
@@ -4375,7 +4445,7 @@ export class AgentRuntime implements IAgentRuntime {
 								: JSON.stringify(response),
 						temperature: typeof tempRaw === "number" ? tempRaw : 0,
 						maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
-						purpose: "action",
+						purpose: trajCtx2?.purpose ?? "action",
 						actionType: "runtime.useModel",
 						latencyMs: Math.max(0, Math.round(elapsedTime)),
 						modelSlot: modelType,

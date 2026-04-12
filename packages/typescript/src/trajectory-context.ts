@@ -11,6 +11,8 @@ export interface TrajectoryContext {
 	runId?: string;
 	roomId?: string;
 	messageId?: string;
+	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
+	purpose?: string;
 }
 
 export interface ITrajectoryContextManager {
@@ -129,4 +131,13 @@ export function runWithTrajectoryContext<T>(
 
 export function getTrajectoryContext(): TrajectoryContext | undefined {
 	return getOrCreateContextManager().active();
+}
+
+/**
+ * Set the pipeline purpose on the current trajectory context.
+ * Mutates in place so nested useModel calls pick up the correct stage.
+ */
+export function setTrajectoryPurpose(purpose: string): void {
+	const ctx = getOrCreateContextManager().active();
+	if (ctx) ctx.purpose = purpose;
 }

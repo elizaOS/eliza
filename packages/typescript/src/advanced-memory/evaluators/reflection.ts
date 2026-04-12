@@ -1,4 +1,5 @@
 import { v4 } from "uuid";
+import YAML from "yaml";
 import { z } from "zod";
 import { getEntityDetails } from "../../entities.ts";
 import { reflectionEvaluatorTemplate } from "../../prompts.ts";
@@ -9,6 +10,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	State,
+	TextGenerationModelType,
 	UUID,
 } from "../../types/index.ts";
 import { asUUID, ModelType } from "../../types/index.ts";
@@ -48,32 +50,133 @@ interface ReflectionXmlResult {
 		| RelationshipXml[];
 }
 
+const TEXT_GENERATION_MODEL_TYPES = new Set<TextGenerationModelType>([
+	ModelType.TEXT_NANO,
+	ModelType.TEXT_SMALL,
+	ModelType.TEXT_MEDIUM,
+	ModelType.TEXT_LARGE,
+	ModelType.TEXT_MEGA,
+	ModelType.RESPONSE_HANDLER,
+	ModelType.ACTION_PLANNER,
+	ModelType.TEXT_REASONING_SMALL,
+	ModelType.TEXT_REASONING_LARGE,
+	ModelType.TEXT_COMPLETION,
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function resolveConfiguredTextGenerationModelType(
+	value: string | boolean | number | null,
+): TextGenerationModelType | null {
+	if (typeof value !== "string") {
+		return null;
+	}
+
+	const normalized = value.trim() as TextGenerationModelType;
+	return TEXT_GENERATION_MODEL_TYPES.has(normalized) ? normalized : null;
+}
+
+export function resolveReflectionModelType(
+	runtime: IAgentRuntime,
+): TextGenerationModelType {
+	return (
+		resolveConfiguredTextGenerationModelType(
+			runtime.getSetting("MEMORY_REFLECTION_MODEL_TYPE") ??
+				runtime.getSetting("REFLECTION_MODEL_TYPE") ??
+				runtime.getSetting("MEMORY_MODEL_TYPE"),
+		) ?? ModelType.TEXT_SMALL
+	);
+}
+
+function normalizeStructuredScalarList(value: unknown): string[] {
+	if (Array.isArray(value)) {
+		return value.flatMap((entry) => normalizeStructuredScalarList(entry));
+	}
+
+	if (typeof value === "string") {
+		const normalized = value.trim();
+		return normalized ? [normalized] : [];
+	}
+
+	if (!isRecord(value)) {
+		return [];
+	}
+
+	const dashEntries = Object.entries(value).filter(([key]) =>
+		/^\s*-\s*/.test(key),
+	);
+	if (dashEntries.length > 0) {
+		return dashEntries.flatMap(([, entryValue]) =>
+			normalizeStructuredScalarList(entryValue),
+		);
+	}
+
+	return Object.values(value).flatMap((entryValue) =>
+		normalizeStructuredScalarList(entryValue),
+	);
+}
+
+function sanitizeStructuredRecord(
+	value: Record<string, unknown>,
+): Record<string, unknown> {
+	const sanitized: Record<string, unknown> = {};
+
+	for (const [rawKey, rawValue] of Object.entries(value)) {
+		const key = rawKey.replace(/^\s*-\s*/, "").trim();
+		if (!key) {
+			continue;
+		}
+
+		let nextValue: unknown = rawValue;
+		if (Array.isArray(rawValue)) {
+			nextValue = rawValue.map((entry) =>
+				isRecord(entry) ? sanitizeStructuredRecord(entry) : entry,
+			);
+		} else if (isRecord(rawValue)) {
+			nextValue = sanitizeStructuredRecord(rawValue);
+		}
+
+		if (key === "tags") {
+			sanitized[key] = normalizeStructuredScalarList(rawValue);
+			continue;
+		}
+
+		sanitized[key] = nextValue;
+	}
+
+	return sanitized;
+}
+
 function normalizeFactEntries(value: unknown): FactXml[] {
 	if (Array.isArray(value)) {
-		return value.filter(isRecord) as FactXml[];
+		return value
+			.filter(isRecord)
+			.map((entry) => sanitizeStructuredRecord(entry) as FactXml);
 	}
 
 	if (isRecord(value) && "fact" in value) {
 		return normalizeFactEntries(value.fact);
 	}
 
-	return isRecord(value) ? [value as FactXml] : [];
+	return isRecord(value) ? [sanitizeStructuredRecord(value) as FactXml] : [];
 }
 
 function normalizeRelationshipEntries(value: unknown): RelationshipXml[] {
 	if (Array.isArray(value)) {
-		return value.filter(isRecord) as RelationshipXml[];
+		return value
+			.filter(isRecord)
+			.map((entry) => sanitizeStructuredRecord(entry) as RelationshipXml);
 	}
 
 	if (isRecord(value) && "relationship" in value) {
 		return normalizeRelationshipEntries(value.relationship);
 	}
 
-	return isRecord(value) ? [value as RelationshipXml] : [];
+	return isRecord(value)
+		? [sanitizeStructuredRecord(value) as RelationshipXml]
+		: [];
 }
 
 function isOmittedStructuredList(value: unknown, itemKey: string): boolean {
@@ -115,6 +218,32 @@ function hasValidStructuredList<T>(
 	normalize: (input: unknown) => T[],
 ): boolean {
 	return isOmittedStructuredList(value, itemKey) || normalize(value).length > 0;
+}
+
+function hasValidReflectionStructure(reflection: ReflectionXmlResult): boolean {
+	return (
+		hasValidStructuredList(reflection.facts, "fact", normalizeFactEntries) &&
+		hasValidStructuredList(
+			reflection.relationships,
+			"relationship",
+			normalizeRelationshipEntries,
+		)
+	);
+}
+
+function normalizeReflectionStructure(
+	reflection: ReflectionXmlResult,
+): ReflectionXmlResult {
+	const normalized: ReflectionXmlResult = {};
+	if (reflection.facts !== undefined) {
+		normalized.facts = normalizeFactEntries(reflection.facts);
+	}
+	if (reflection.relationships !== undefined) {
+		normalized.relationships = normalizeRelationshipEntries(
+			reflection.relationships,
+		);
+	}
+	return normalized;
 }
 
 function isFalseLike(value: unknown): boolean {
@@ -230,7 +359,8 @@ function extractJsonReflectionRecord(
 	return null;
 }
 
-function parseReflectionResponse(response: string): {
+/** @internal Exported for tests. */
+export function parseReflectionResponse(response: string): {
 	reflection: ReflectionXmlResult | null;
 	lookedStructured: boolean;
 } {
@@ -241,7 +371,7 @@ function parseReflectionResponse(response: string): {
 
 	const candidates = new Set<string>([trimmed]);
 	const fencedBlocks = trimmed.matchAll(
-		/```(?:toon|xml|json)?\s*([\s\S]*?)\s*```/gi,
+		/```(?:toon|xml|json|yaml|yml)?\s*([\s\S]*?)\s*```/gi,
 	);
 	for (const block of fencedBlocks) {
 		const candidate = block[1]?.trim();
@@ -256,16 +386,37 @@ function parseReflectionResponse(response: string): {
 	}
 
 	for (const candidate of candidates) {
-		const parsed = parseKeyValueXml<ReflectionXmlResult>(candidate);
-		if (parsed) {
-			return { reflection: parsed, lookedStructured: true };
-		}
-
 		const parsedJson = parseJSONObjectFromText(candidate);
 		if (parsedJson) {
 			const reflection = extractJsonReflectionRecord(parsedJson);
 			if (reflection) {
-				return { reflection, lookedStructured: true };
+				return {
+					reflection: normalizeReflectionStructure(reflection),
+					lookedStructured: true,
+				};
+			}
+		}
+
+		try {
+			const parsedYaml = YAML.parse(candidate) as unknown;
+			if (isRecord(parsedYaml)) {
+				const reflection = extractJsonReflectionRecord(parsedYaml);
+				if (reflection) {
+					return {
+						reflection: normalizeReflectionStructure(reflection),
+						lookedStructured: true,
+					};
+				}
+			}
+		} catch {
+			// Ignore invalid YAML and continue scanning other structured candidates.
+		}
+
+		const parsed = parseKeyValueXml<ReflectionXmlResult>(candidate);
+		if (parsed) {
+			const normalized = normalizeReflectionStructure(parsed);
+			if (hasValidReflectionStructure(normalized)) {
+				return { reflection: normalized, lookedStructured: true };
 			}
 		}
 	}
@@ -378,7 +529,8 @@ async function handler(
 	message: Memory,
 	state?: State,
 ): Promise<ActionResult | undefined> {
-	const { agentId, roomId } = message;
+	const agentId = message.agentId ?? runtime.agentId;
+	const { roomId } = message;
 
 	if (!agentId || !roomId) {
 		runtime.logger.warn(
@@ -420,7 +572,7 @@ async function handler(
 	});
 
 	// Use the model without schema validation
-	const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+	const response = await runtime.useModel(resolveReflectionModelType(runtime), {
 		prompt,
 	});
 
