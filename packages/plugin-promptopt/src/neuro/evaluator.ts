@@ -192,31 +192,37 @@ export const neuroEvaluator: Evaluator = {
 		// WHY per-trace latency: unlike length (which is a property of the final
 		// response), latency is meaningful per-DPE-call. A slow should-respond
 		// check matters independently of a slow reply generation.
-		// Compute median BEFORE the loop to avoid cross-contamination between traces
-		// in the same run (e.g., should-respond + reply both updating stats mid-loop).
+		// Compute median BEFORE the loop and any pushRolling calls to avoid
+		// cross-contamination between traces in the same run.
 		const medianLatency = median(stats.latencies);
+		// Collect all latencies first, then push after loop to prevent mid-loop pollution
+		const latenciesToPush: number[] = [];
 		for (const trace of allTraces) {
 			const latencyMs = trace.latencyMs;
 			if (typeof latencyMs !== "number" || latencyMs <= 0) continue;
 
-			pushRolling(stats.latencies, latencyMs);
-			const currentMedian = medianLatency > 0 ? medianLatency : median(stats.latencies);
+			latenciesToPush.push(latencyMs);
+			// Use only the pre-loop median for scoring; fallback to 0.5 if no history
 			const latencyScore =
-				currentMedian > 0
-					? Math.min(1.0, currentMedian / Math.max(latencyMs, currentMedian))
+				medianLatency > 0
+					? Math.min(1.0, medianLatency / Math.max(latencyMs, medianLatency))
 					: 0.5;
 
 			trace.scoreCard.signals.push({
 				source: NEURO_SOURCE,
 				kind: SIGNALS.RESPONSE_LATENCY,
 				value: latencyScore,
-				reason: `DPE latency ${latencyMs}ms vs rolling median ${currentMedian.toFixed(0)}ms`,
+				reason: `DPE latency ${latencyMs}ms vs rolling median ${medianLatency.toFixed(0)}ms`,
 				metadata: {
 					latencyMs,
-					medianLatencyMs: currentMedian,
+					medianLatencyMs: medianLatency,
 				},
 			});
 			trace.enrichedAt = Date.now();
+		}
+		// Push all latencies after the loop to prevent cross-contamination
+		for (const lat of latenciesToPush) {
+			pushRolling(stats.latencies, lat);
 		}
 
 		logger.debug(
