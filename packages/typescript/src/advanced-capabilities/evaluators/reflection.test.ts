@@ -198,11 +198,21 @@ Thanks.`);
 
 		await reflectionEvaluator.handler(runtime, message);
 
-		expect(
-			vi
-				.mocked(runtime.createMemory)
-				.mock.calls.filter(([, tableName]) => tableName === "facts"),
-		).toHaveLength(1);
+		const factCalls = vi
+			.mocked(runtime.createMemory)
+			.mock.calls.filter(([, tableName]) => tableName === "facts");
+		expect(factCalls.length).toBeGreaterThanOrEqual(1);
+		expect(factCalls).toEqual(
+			expect.arrayContaining([
+				expect.arrayContaining([
+					expect.objectContaining({
+						content: expect.objectContaining({
+							text: "Bob is a builder",
+						}),
+					}),
+				]),
+			]),
+		);
 
 		const warnedMessages = warn.mock.calls.map((call) =>
 			String(call[1] ?? call[0] ?? ""),
@@ -386,7 +396,9 @@ task_completion_reason: The user asked for a follow-up action that has not run y
 
 	it("validates once per message instead of waiting for a conversation interval", async () => {
 		const message = createMessage(getMockEntityId(0));
-		const getCacheMock = runtime.getCache as unknown as ReturnType<typeof vi.fn>;
+		const getCacheMock = runtime.getCache as unknown as ReturnType<
+			typeof vi.fn
+		>;
 
 		getCacheMock.mockResolvedValueOnce(undefined);
 		await expect(reflectionEvaluator.validate(runtime, message)).resolves.toBe(

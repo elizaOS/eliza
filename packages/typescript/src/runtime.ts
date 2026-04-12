@@ -37,7 +37,10 @@ import {
 	runWithStreamingContext,
 	type StreamingContext,
 } from "./streaming-context";
-import { getTrajectoryContext } from "./trajectory-context";
+import {
+	getTrajectoryContext,
+	setTrajectoryPurpose,
+} from "./trajectory-context";
 import {
 	type Action,
 	type ActionContext,
@@ -1657,6 +1660,7 @@ export class AgentRuntime implements IAgentRuntime {
 			onStreamChunk?: StreamChunkCallback;
 		},
 	): Promise<void> {
+		setTrajectoryPurpose("action");
 		// Check if action planning is enabled
 		const actionPlanningEnabled = this.isActionPlanningEnabled();
 
@@ -2368,6 +2372,7 @@ export class AgentRuntime implements IAgentRuntime {
 		callback?: HandlerCallback,
 		responses?: Memory[],
 	) {
+		setTrajectoryPurpose("evaluation");
 		const evaluatorPromises = this.evaluators.map(
 			async (evaluator: Evaluator) => {
 				if (!evaluator.handler) {
@@ -3878,7 +3883,8 @@ export class AgentRuntime implements IAgentRuntime {
 							latencyMs: number;
 						}) => void;
 					};
-					const stepId = getTrajectoryContext()?.trajectoryStepId;
+					const trajCtx = getTrajectoryContext();
+					const stepId = trajCtx?.trajectoryStepId;
 					const trajLogger = (await this._ensureServiceStarted(
 						"trajectories",
 					)) as TrajectoryLogger | null;
@@ -3900,7 +3906,7 @@ export class AgentRuntime implements IAgentRuntime {
 							response: fullText,
 							temperature: typeof tempRaw === "number" ? tempRaw : 0,
 							maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
-							purpose: "action",
+							purpose: trajCtx?.purpose ?? "action",
 							actionType: "runtime.useModel",
 							latencyMs: Math.max(0, Math.round(elapsedTime)),
 						});
@@ -3958,7 +3964,8 @@ export class AgentRuntime implements IAgentRuntime {
 						latencyMs: number;
 					}) => void;
 				};
-				const stepId = getTrajectoryContext()?.trajectoryStepId;
+				const trajCtx2 = getTrajectoryContext();
+				const stepId = trajCtx2?.trajectoryStepId;
 				const trajLogger = (await this._ensureServiceStarted(
 					"trajectories",
 				)) as TrajectoryLogger | null;
@@ -3983,7 +3990,7 @@ export class AgentRuntime implements IAgentRuntime {
 								: JSON.stringify(response),
 						temperature: typeof tempRaw === "number" ? tempRaw : 0,
 						maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
-						purpose: "action",
+						purpose: trajCtx2?.purpose ?? "action",
 						actionType: "runtime.useModel",
 						latencyMs: Math.max(0, Math.round(elapsedTime)),
 					});

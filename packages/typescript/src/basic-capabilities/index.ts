@@ -20,9 +20,9 @@ import {
 	messageHandlerTemplate,
 	postCreationTemplate,
 } from "../prompts.ts";
-import { isExplicitSelfModificationRequest } from "../should-respond.ts";
 import { EmbeddingGenerationService } from "../services/embedding.ts";
 import { TaskService } from "../services/task.ts";
+import { isExplicitSelfModificationRequest } from "../should-respond.ts";
 import type { Role } from "../types/environment.ts";
 import { EventType } from "../types/events.ts";
 import type {

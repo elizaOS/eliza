@@ -17,7 +17,10 @@ import {
 } from "../prompts";
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import { runWithStreamingContext } from "../streaming-context";
-import { runWithTrajectoryContext } from "../trajectory-context";
+import {
+	runWithTrajectoryContext,
+	setTrajectoryPurpose,
+} from "../trajectory-context";
 import type {
 	Action,
 	ActionResult,
@@ -1983,6 +1986,7 @@ export class DefaultMessageService implements IMessageService {
 				);
 
 				// Use dynamicPromptExecFromState for structured output with validation
+				setTrajectoryPurpose("should_respond");
 				const responseObject = await runtime.dynamicPromptExecFromState({
 					state: shouldRespondState,
 					params: {
@@ -3449,6 +3453,7 @@ export class DefaultMessageService implements IMessageService {
 			messageHandlerTemplate;
 
 		// Use dynamicPromptExecFromState for structured output with validation
+		setTrajectoryPurpose("response");
 		const parsedXml = await runtime.dynamicPromptExecFromState({
 			state,
 			params: {

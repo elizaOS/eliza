@@ -37,7 +37,7 @@ export const generateImageAction = {
 		const text = (
 			typeof message?.content === "string"
 				? message.content
-				: message?.content?.text ?? ""
+				: (message?.content?.text ?? "")
 		).toLowerCase();
 		if (!text) return false;
 		const IMAGE_STRONG_TERMS = [

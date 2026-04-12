@@ -1098,9 +1098,7 @@ class AgentRuntime(IAgentRuntime):
                 import json as _json
 
                 _params_for_key = (
-                    getattr(options_obj, "parameters", None)
-                    if validated_params
-                    else None
+                    getattr(options_obj, "parameters", None) if validated_params else None
                 )
                 _dedupe_key = (
                     f"{action.name.strip().upper()}::"
