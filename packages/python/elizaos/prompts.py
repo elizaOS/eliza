@@ -110,7 +110,7 @@ CHOOSE_OPTION_TEMPLATE = """# Task: Choose an option from the available choices.
 # Available Options:
 {{options}}
 
-# Instructions: 
+# Instructions:
 Analyze the options and select the most appropriate one based on the current context.
 Provide your reasoning and the selected option ID.
 

@@ -1048,7 +1048,12 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 				data: { actionName: "TestAction" },
 			});
 
-			await runtime.processActions(message, [responseMemory], undefined, callback);
+			await runtime.processActions(
+				message,
+				[responseMemory],
+				undefined,
+				callback,
+			);
 
 			expect(callback).toHaveBeenCalledWith(
 				expect.objectContaining({

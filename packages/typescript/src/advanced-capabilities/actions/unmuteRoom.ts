@@ -30,7 +30,7 @@ export const unmuteRoomAction: Action = {
 		const text = (
 			typeof message?.content === "string"
 				? message.content
-				: message?.content?.text ?? ""
+				: (message?.content?.text ?? "")
 		).toLowerCase();
 		const UNMUTE_TERMS = [
 			"unmute",

@@ -1955,10 +1955,7 @@ impl AgentRuntime {
                 .unwrap_or_else(|| "<no-params>".to_string());
             let dedupe_key = format!("{}::{}", key, params_str);
             if !executed_action_keys.insert(dedupe_key.clone()) {
-                debug!(
-                    "Skipping duplicate action invocation in same turn: {}",
-                    key
-                );
+                debug!("Skipping duplicate action invocation in same turn: {}", key);
                 continue;
             }
 

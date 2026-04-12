@@ -91,17 +91,15 @@ impl Action for ThinkAction {
 
         // The result flows to subsequent actions via previousResults.
         // Downstream actions see this as the first link in the chain.
-        Ok(
-            ActionResult::success(text.clone())
-                .with_value("success", true)
-                .with_value("responded", true)
-                .with_value("lastReply", text.clone())
-                .with_value("thoughtProcess", thought.clone())
-                .with_data("actionName", "THINK")
-                .with_data("responseThought", thought.clone())
-                .with_data("responseText", text)
-                .with_data("thought", thought)
-                .with_data("messageGenerated", true),
-        )
+        Ok(ActionResult::success(text.clone())
+            .with_value("success", true)
+            .with_value("responded", true)
+            .with_value("lastReply", text.clone())
+            .with_value("thoughtProcess", thought.clone())
+            .with_data("actionName", "THINK")
+            .with_data("responseThought", thought.clone())
+            .with_data("responseText", text)
+            .with_data("thought", thought)
+            .with_data("messageGenerated", true))
     }
 }

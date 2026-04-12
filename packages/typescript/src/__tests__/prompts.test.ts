@@ -26,19 +26,16 @@ describe("Prompts", () => {
 			expect(shouldRespondTemplate).toContain("secondaryContexts:");
 			expect(shouldRespondTemplate).toContain("evidenceTurnIds:");
 
-			expect(shouldRespondTemplate).toContain("rules[7]:");
+			expect(shouldRespondTemplate).toContain("rules[6]:");
 			expect(shouldRespondTemplate).toContain(
 				"direct mention of {{agentName}}",
 			);
 			expect(shouldRespondTemplate).toContain(
 				"request to stop or be quiet directed at {{agentName}} -> STOP",
 			);
-			expect(shouldRespondTemplate).toContain(
-				"clear request to update {{agentName}}'s personality, tone, style, voice, or behavior -> RESPOND",
-			);
 			expect(shouldRespondTemplate).toContain("decision_note:");
 			expect(shouldRespondTemplate).toContain(
-				"talking ABOUT {{agentName}} or continuing a room conversation around them is not enough unless the message is clearly asking to change {{agentName}}'s personality, tone, style, voice, or behavior",
+				"talking ABOUT {{agentName}} or continuing a room conversation around them is not enough",
 			);
 		});
 
@@ -54,7 +51,7 @@ describe("Prompts", () => {
 			);
 			expect(messageHandlerTemplate).toContain("<simple>true</simple>");
 
-			expect(messageHandlerTemplate).toContain("rules[9]:");
+			expect(messageHandlerTemplate).toContain("rules[10]:");
 			expect(messageHandlerTemplate).toContain(
 				"actions execute in listed order",
 			);
