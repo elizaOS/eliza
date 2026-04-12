@@ -713,33 +713,10 @@ Focus on:
 					tags: ["comprehensive"],
 				},
 			};
-		} catch {
-			const planId = asUUID(uuidv4());
-			return {
-				id: planId,
-				goal: context.goal,
-				thought: "Fallback plan created due to parsing error",
-				totalSteps: 1,
-				currentStep: 0,
-				steps: [
-					{
-						id: asUUID(uuidv4()),
-						actionName: "REPLY",
-						parameters: {
-							text: "I will help you with this request step by step.",
-						},
-						dependencies: [],
-					},
-				],
-				executionModel: "sequential",
-				state: { status: "pending" },
-				metadata: {
-					createdAt: Date.now(),
-					estimatedDuration: 10000,
-					priority: 1,
-					tags: ["fallback"],
-				},
-			};
+		} catch (error) {
+			throw new Error(
+				`Failed to build action plan: ${error instanceof Error ? error.message : String(error)}`,
+			);
 		}
 	}
 

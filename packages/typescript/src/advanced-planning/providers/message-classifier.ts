@@ -115,53 +115,9 @@ export const messageClassifierProvider: Provider = {
 				data,
 			};
 		} catch (error) {
-			const textLower = text.toLowerCase();
-			let classification = "general";
-			let confidence = 0.5;
-
-			if (
-				textLower.includes("strategy") ||
-				textLower.includes("plan") ||
-				textLower.includes("strategic")
-			) {
-				classification = "strategic";
-				confidence = 0.7;
-			} else if (
-				textLower.includes("analyze") ||
-				textLower.includes("analysis")
-			) {
-				classification = "analysis";
-				confidence = 0.8;
-			} else if (
-				textLower.includes("process") ||
-				textLower.includes("processing")
-			) {
-				classification = "processing";
-				confidence = 0.8;
-			} else if (textLower.includes("execute") || textLower.includes("final")) {
-				classification = "execution";
-				confidence = 0.8;
-			}
-
-			const data: Record<string, JsonValue> = {
-				classification,
-				confidence,
-				originalText: text,
-				complexity: "simple",
-				planningRequired: false,
-				planningType: "direct_action",
-				capabilities: [],
-				stakeholders: [],
-				constraints: [],
-				dependencies: [],
-				error: error instanceof Error ? error.message : String(error),
-				fallback: true,
-			};
-
-			return {
-				text: `Message classified as: ${classification} with confidence: ${confidence} (fallback)`,
-				data,
-			};
+			throw new Error(
+				`Failed to classify message: ${error instanceof Error ? error.message : String(error)}`,
+			);
 		}
 	},
 };

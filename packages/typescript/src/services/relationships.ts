@@ -471,34 +471,8 @@ export class RelationshipsService extends Service {
 			return;
 		}
 
-		// Fall back to the legacy room scan for adapters that do not support queryEntities yet.
-		// Get all rooms for the agent to find entities
-		const rooms = await this.runtime.getRooms(
-			stringToUuid(`world-${this.runtime.agentId}`),
-		);
-		const entityIds = new Set<UUID>();
-
-		// Collect unique entity IDs from all rooms
-		for (const room of rooms) {
-			const entities = await this.runtime.getEntitiesForRoom(room.id, true);
-			for (const entity of entities) {
-				entityIds.add(entity.id as UUID);
-			}
-		}
-
-		// Load contact info from components for each entity
-		for (const entityId of entityIds) {
-			const components = await this.runtime.getComponents(entityId);
-			this.cacheContactInfoFromEntities([
-				{
-					id: entityId,
-					components,
-				} as Entity,
-			]);
-		}
-
-		logger.info(
-			`[RelationshipsService] Loaded ${this.contactInfoCache.size} contacts from components`,
+		throw new Error(
+			"[RelationshipsService] Failed to load contacts from the relationships world; legacy room-scan fallback has been removed",
 		);
 	}
 
