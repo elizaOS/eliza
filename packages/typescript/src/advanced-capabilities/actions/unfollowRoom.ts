@@ -72,9 +72,6 @@ export const unfollowRoomAction: Action = {
 			if (cleanedResponse.includes("true") || cleanedResponse.includes("yes")) {
 				return true;
 			}
-			if (cleanedResponse.includes("false") || cleanedResponse.includes("no")) {
-				return false;
-			}
 
 			// Ambiguous response - log warning and default to false
 			logger.warn(
