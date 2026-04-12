@@ -23,9 +23,21 @@ import neuroPluginInner, {
 
 export * from "./optimization/index.ts";
 
-/** Single instance so `dispose` can safely unregister what `init` registered. */
-const defaultDiskPromptOptimizationHooks =
-	createDiskBackedPromptOptimizationHooks();
+/**
+ * Per-runtime hooks instances to avoid cross-runtime interference.
+ * Each runtime gets its own hooks object so dispose() on one runtime
+ * doesn't affect hooks registered by other runtimes in the same process.
+ */
+const perRuntimeHooks = new WeakMap<IAgentRuntime, ReturnType<typeof createDiskBackedPromptOptimizationHooks>>();
+
+function getOrCreateHooksForRuntime(runtime: IAgentRuntime): ReturnType<typeof createDiskBackedPromptOptimizationHooks> {
+	let hooks = perRuntimeHooks.get(runtime);
+	if (!hooks) {
+		hooks = createDiskBackedPromptOptimizationHooks();
+		perRuntimeHooks.set(runtime, hooks);
+	}
+	return hooks;
+}
 
 function isPromptOptimizationSettingOn(runtime: IAgentRuntime): boolean {
 	const setting = runtime.getSetting("PROMPT_OPTIMIZATION_ENABLED");
@@ -48,20 +60,18 @@ const promptOptPlugin: Plugin = {
 			isPromptOptimizationSettingOn(runtime) &&
 			!runtime.getPromptOptimizationHooks()
 		) {
-			runtime.registerPromptOptimizationHooks(
-				defaultDiskPromptOptimizationHooks,
-			);
+			const hooks = getOrCreateHooksForRuntime(runtime);
+			runtime.registerPromptOptimizationHooks(hooks);
 		}
 		if (neuroPluginInner.init) {
 			await neuroPluginInner.init(config, runtime);
 		}
 	},
 	dispose: async (runtime) => {
-		if (
-			runtime.getPromptOptimizationHooks() ===
-			defaultDiskPromptOptimizationHooks
-		) {
+		const hooks = perRuntimeHooks.get(runtime);
+		if (hooks && runtime.getPromptOptimizationHooks() === hooks) {
 			runtime.registerPromptOptimizationHooks(null);
+			perRuntimeHooks.delete(runtime);
 		}
 		await neuroPluginInner.dispose?.(runtime);
 	},
