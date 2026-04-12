@@ -140,6 +140,13 @@ export type PluginAppSessionFeature =
 	| "resume"
 	| "suggestions";
 
+export type PluginAppControlAction = "pause" | "resume";
+
+export type PluginAppTelemetryValue =
+	| JsonValue
+	| PluginAppTelemetryValue[]
+	| { [key: string]: PluginAppTelemetryValue };
+
 export interface PluginAppViewer {
 	url: string;
 	embedParams?: Record<string, string>;
@@ -147,9 +154,104 @@ export interface PluginAppViewer {
 	sandbox?: string;
 }
 
+export interface PluginAppViewerAuthMessage {
+	type: string;
+	authToken?: string;
+	characterId?: string;
+	sessionToken?: string;
+	agentId?: string;
+	followEntity?: string;
+}
+
 export interface PluginAppSession {
 	mode: PluginAppSessionMode;
 	features?: PluginAppSessionFeature[];
+}
+
+export interface PluginAppRecommendation {
+	id: string;
+	label: string;
+	type?: string;
+	reason?: string | null;
+	priority?: number | null;
+	command?: string | null;
+}
+
+export interface PluginAppActivityItem {
+	id: string;
+	type: string;
+	message: string;
+	timestamp?: number | null;
+	severity?: "info" | "warning" | "error";
+}
+
+export interface PluginAppSessionState {
+	sessionId: string;
+	appName: string;
+	mode: PluginAppSessionMode;
+	status: string;
+	displayName?: string;
+	agentId?: string;
+	characterId?: string;
+	followEntity?: string;
+	canSendCommands?: boolean;
+	controls?: PluginAppControlAction[];
+	summary?: string | null;
+	goalLabel?: string | null;
+	suggestedPrompts?: string[];
+	recommendations?: PluginAppRecommendation[];
+	activity?: PluginAppActivityItem[];
+	telemetry?: Record<string, PluginAppTelemetryValue> | null;
+}
+
+export interface PluginAppLaunchDiagnostic {
+	code: string;
+	severity: "info" | "warning" | "error";
+	message: string;
+}
+
+export interface PluginAppBridgeLaunchContext {
+	appName?: string;
+	launchUrl?: string | null;
+	runtime?: IAgentRuntime | null;
+	app?: PluginApp | null;
+	viewer?:
+		| (PluginAppViewer & {
+				authMessage?: PluginAppViewerAuthMessage;
+		  })
+		| null;
+}
+
+export interface PluginAppBridgeRunContext
+	extends PluginAppBridgeLaunchContext {
+	runId?: string;
+	session?: PluginAppSessionState | null;
+}
+
+export interface PluginAppLaunchPreparation {
+	diagnostics?: PluginAppLaunchDiagnostic[];
+	launchUrl?: string | null;
+	viewer?: PluginAppViewer | null;
+}
+
+export interface PluginAppBridge {
+	handleAppRoutes?: (ctx: unknown) => Promise<boolean>;
+	prepareLaunch?: (
+		ctx: PluginAppBridgeLaunchContext,
+	) => Promise<PluginAppLaunchPreparation | null>;
+	resolveViewerAuthMessage?: (
+		ctx: PluginAppBridgeLaunchContext,
+	) => Promise<PluginAppViewerAuthMessage | null>;
+	ensureRuntimeReady?: (ctx: PluginAppBridgeLaunchContext) => Promise<void>;
+	collectLaunchDiagnostics?: (
+		ctx: PluginAppBridgeRunContext,
+	) => Promise<PluginAppLaunchDiagnostic[]>;
+	resolveLaunchSession?: (
+		ctx: PluginAppBridgeLaunchContext,
+	) => Promise<PluginAppSessionState | null>;
+	refreshRunSession?: (
+		ctx: PluginAppBridgeRunContext,
+	) => Promise<PluginAppSessionState | null>;
 }
 
 export interface PluginApp {
@@ -164,6 +266,7 @@ export interface PluginApp {
 	runtimePlugin?: string;
 	viewer?: PluginAppViewer;
 	session?: PluginAppSession;
+	bridgeExport?: string;
 }
 
 export interface PluginEventRegistration {
@@ -272,6 +375,7 @@ export interface Plugin {
 	schema?: Record<string, JsonValue | object>;
 
 	app?: PluginApp;
+	appBridge?: PluginAppBridge;
 
 	/**
 	 * Domain contexts this plugin's components belong to.

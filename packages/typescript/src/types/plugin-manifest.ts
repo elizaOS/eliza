@@ -121,6 +121,7 @@ export interface PluginManifestApp {
 	runtimePlugin?: string;
 	viewer?: PluginManifestAppViewer;
 	session?: PluginManifestAppSession;
+	bridgeExport?: string;
 }
 
 /**

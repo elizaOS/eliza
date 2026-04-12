@@ -4,6 +4,7 @@ import {
 	imageDescriptionTemplate,
 	messageHandlerTemplate,
 	postCreationTemplate,
+	reflectionEvaluatorTemplate,
 	shouldRespondTemplate,
 } from "../prompts";
 
@@ -15,33 +16,45 @@ describe("Prompts", () => {
 			expect(shouldRespondTemplate).toContain("available_contexts:");
 			expect(shouldRespondTemplate).toContain("context_routing:");
 			expect(shouldRespondTemplate).toContain("output:");
+			expect(shouldRespondTemplate).toContain(
+				"task: Decide whether {{agentName}} should respond, ignore, or stop.",
+			);
 			expect(shouldRespondTemplate).toContain("name: {{agentName}}");
 			expect(shouldRespondTemplate).toContain("reasoning:");
 			expect(shouldRespondTemplate).toContain("action: RESPOND");
 			expect(shouldRespondTemplate).toContain("primaryContext:");
 			expect(shouldRespondTemplate).toContain("secondaryContexts:");
-			expect(shouldRespondTemplate).toContain(
-				"request to stop or be quiet -> STOP",
-			);
+			expect(shouldRespondTemplate).toContain("evidenceTurnIds:");
 
-			expect(shouldRespondTemplate).toContain("rules[6]:");
+			expect(shouldRespondTemplate).toContain("rules[7]:");
 			expect(shouldRespondTemplate).toContain(
 				"direct mention of {{agentName}}",
 			);
+			expect(shouldRespondTemplate).toContain(
+				"request to stop or be quiet directed at {{agentName}} -> STOP",
+			);
+			expect(shouldRespondTemplate).toContain(
+				"clear request to update {{agentName}}'s personality, tone, style, voice, or behavior -> RESPOND",
+			);
 			expect(shouldRespondTemplate).toContain("decision_note:");
-			expect(shouldRespondTemplate).toContain("talking TO {{agentName}}");
+			expect(shouldRespondTemplate).toContain(
+				"talking ABOUT {{agentName}} or continuing a room conversation around them is not enough unless the message is clearly asking to change {{agentName}}'s personality, tone, style, voice, or behavior",
+			);
 		});
 
 		it("messageHandlerTemplate should contain required placeholders and structure", () => {
 			expect(messageHandlerTemplate).toContain("{{agentName}}");
 			expect(messageHandlerTemplate).toContain("{{providers}}");
-			expect(messageHandlerTemplate).toContain("thought:");
-			expect(messageHandlerTemplate).toContain("actions[1]:");
-			expect(messageHandlerTemplate).toContain("providers[0]:");
-			expect(messageHandlerTemplate).toContain("text:");
-			expect(messageHandlerTemplate).toContain("simple: true");
+			expect(messageHandlerTemplate).toContain("<response>");
+			expect(messageHandlerTemplate).toContain("<thought>");
+			expect(messageHandlerTemplate).toContain("<actions>");
+			expect(messageHandlerTemplate).toContain("<name>REPLY</name>");
+			expect(messageHandlerTemplate).toContain(
+				"<text>Your message here</text>",
+			);
+			expect(messageHandlerTemplate).toContain("<simple>true</simple>");
 
-			expect(messageHandlerTemplate).toContain("rules[8]:");
+			expect(messageHandlerTemplate).toContain("rules[9]:");
 			expect(messageHandlerTemplate).toContain(
 				"actions execute in listed order",
 			);
@@ -52,6 +65,7 @@ describe("Prompts", () => {
 			expect(messageHandlerTemplate).toContain("formatting:");
 			expect(messageHandlerTemplate).toContain("fenced code blocks");
 			expect(messageHandlerTemplate).toContain("inline backticks");
+			expect(messageHandlerTemplate).toContain("XML only.");
 		});
 
 		it("postCreationTemplate should contain required placeholders and examples", () => {
@@ -88,6 +102,35 @@ describe("Prompts", () => {
 				"Be objective and descriptive",
 			);
 		});
+
+		it("reflectionEvaluatorTemplate should require canonical TOON output", () => {
+			expect(reflectionEvaluatorTemplate).toContain("Output:");
+			expect(reflectionEvaluatorTemplate).toContain(
+				"TOON only. Return exactly one TOON document.",
+			);
+			expect(reflectionEvaluatorTemplate).toContain(
+				"Do not output JSON, XML, Markdown fences, or commentary.",
+			);
+			expect(reflectionEvaluatorTemplate).toContain(
+				'thought: "a self-reflective thought on the conversation"',
+			);
+			expect(reflectionEvaluatorTemplate).toContain("task_completed: false");
+			expect(reflectionEvaluatorTemplate).toContain(
+				'task_completion_reason: "The request is still incomplete because the needed action has not happened yet."',
+			);
+			expect(reflectionEvaluatorTemplate).toContain("facts[0]:");
+			expect(reflectionEvaluatorTemplate).toContain("relationships[0]:");
+			expect(reflectionEvaluatorTemplate).toContain("tags[0]: dm_interaction");
+			expect(reflectionEvaluatorTemplate).toContain(
+				"Always include `task_completed` and `task_completion_reason`.",
+			);
+			expect(reflectionEvaluatorTemplate).toContain(
+				"omit all facts[...] entries",
+			);
+			expect(reflectionEvaluatorTemplate).toContain(
+				"omit all relationships[...] entries",
+			);
+		});
 	});
 
 	describe("Template Consistency", () => {
@@ -103,12 +146,16 @@ describe("Prompts", () => {
 				expect(template).toMatch(
 					/No <think>|Do NOT include any thinking|Do not include any text, thinking, or reasoning before or after it/,
 				);
-				expect(template.includes("TOON")).toBe(true);
+				expect(template).toMatch(/TOON|XML only\./);
 			});
 		});
 
 		it("all templates should avoid legacy XML response wrappers", () => {
-			templates.forEach((template) => {
+			[
+				shouldRespondTemplate,
+				postCreationTemplate,
+				imageDescriptionTemplate,
+			].forEach((template) => {
 				expect(template).not.toContain("<response>");
 				expect(template).not.toContain("</response>");
 			});

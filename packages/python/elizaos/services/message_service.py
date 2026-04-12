@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
+from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 from google.protobuf.struct_pb2 import Struct
 
 from elizaos.types.memory import Memory
 from elizaos.types.model import ModelType
-from elizaos.types.primitives import Content, as_uuid
+from elizaos.types.primitives import ChannelType, Content, as_uuid
 from elizaos.types.state import SchemaRow, State
 
 if TYPE_CHECKING:
@@ -19,6 +21,15 @@ if TYPE_CHECKING:
 
 HandlerCallback = Callable[[Content], Coroutine[Any, Any, list[Memory]]]
 StreamChunkCallback = Callable[[str], Coroutine[Any, Any, None]]
+
+_latest_response_ids: dict[str, dict[str, str]] = {}
+_latest_response_ids_lock = Lock()
+
+
+@dataclass
+class MessageProcessingOptions:
+    continue_after_actions: bool | None = None
+    keep_existing_responses: bool | None = None
 
 
 @dataclass
@@ -44,6 +55,7 @@ class IMessageService(ABC):
         runtime: IAgentRuntime,
         message: Memory,
         callback: HandlerCallback | None = None,
+        options: MessageProcessingOptions | None = None,
     ) -> MessageProcessingResult: ...
 
     @abstractmethod
@@ -120,6 +132,128 @@ def _parse_int(value: object, *, default: int) -> int:
         except Exception:
             return default
     return default
+
+
+def _normalize_env_list(value: object) -> list[str]:
+    if not isinstance(value, str):
+        return []
+    cleaned = value.strip().removeprefix("[").removesuffix("]")
+    return [item.strip() for item in cleaned.split(",") if item.strip()]
+
+
+def _text_contains_agent_name(
+    text: str | None,
+    names: list[str | None],
+) -> bool:
+    if not text:
+        return False
+
+    for name in names:
+        candidate = (name or "").strip()
+        if not candidate:
+            continue
+        pattern = re.compile(
+            rf"(^|[^\w]){re.escape(candidate)}(?=$|[^\w])",
+            re.IGNORECASE,
+        )
+        if pattern.search(text):
+            return True
+    return False
+
+
+def _text_contains_user_tag(text: str | None) -> bool:
+    if not text:
+        return False
+    return re.search(r"<@!?[^>]+>|@\w+", text) is not None
+
+
+def _should_respond_prefilter(
+    runtime: IAgentRuntime,
+    message: Memory,
+) -> tuple[bool, bool, str]:
+    content = message.content
+    channel_type = str(getattr(content, "channel_type", "") or "").strip().lower()
+    source = str(getattr(content, "source", "") or "").strip().lower()
+    mention_context = getattr(content, "mention_context", None)
+    text = str(getattr(content, "text", "") or "")
+
+    custom_channels = _normalize_env_list(
+        runtime.get_setting("ALWAYS_RESPOND_CHANNELS")
+        or runtime.get_setting("SHOULD_RESPOND_BYPASS_TYPES")
+    )
+    custom_sources = _normalize_env_list(
+        runtime.get_setting("ALWAYS_RESPOND_SOURCES")
+        or runtime.get_setting("SHOULD_RESPOND_BYPASS_SOURCES")
+    )
+
+    respond_channels = {
+        ChannelType.DM.value.lower(),
+        ChannelType.VOICE_DM.value.lower(),
+        ChannelType.SELF.value.lower(),
+        ChannelType.API.value.lower(),
+        *[value.lower() for value in custom_channels],
+    }
+    respond_sources = [
+        "client_chat",
+        *[value.lower() for value in custom_sources],
+    ]
+
+    text_mentions_agent_by_name = _text_contains_agent_name(
+        text,
+        [
+            getattr(runtime.character, "name", None),
+            getattr(runtime.character, "username", None),
+        ],
+    )
+    text_mentions_tagged_participants = _text_contains_user_tag(text)
+    has_platform_mention = bool(
+        mention_context
+        and (
+            getattr(mention_context, "is_mention", False)
+            or getattr(mention_context, "is_reply", False)
+        )
+    )
+
+    if channel_type in respond_channels:
+        return True, True, f"private channel: {channel_type}"
+
+    if any(pattern and pattern in source for pattern in respond_sources):
+        return True, True, f"whitelisted source: {source}"
+
+    if has_platform_mention:
+        mention_type = "mention" if getattr(mention_context, "is_mention", False) else "reply"
+        return True, True, f"platform {mention_type}"
+
+    if text_mentions_tagged_participants and text_mentions_agent_by_name:
+        return True, True, "text address with tagged participants"
+
+    if text_mentions_agent_by_name:
+        return False, False, "agent named in text requires LLM evaluation"
+
+    return False, False, "needs LLM evaluation"
+
+
+def _set_latest_response_id(agent_id: str, room_id: str, response_id: str) -> None:
+    with _latest_response_ids_lock:
+        agent_map = _latest_response_ids.setdefault(agent_id, {})
+        agent_map[room_id] = response_id
+
+
+def _get_latest_response_id(agent_id: str, room_id: str) -> str | None:
+    with _latest_response_ids_lock:
+        return _latest_response_ids.get(agent_id, {}).get(room_id)
+
+
+def _clear_latest_response_id(agent_id: str, room_id: str, response_id: str) -> None:
+    with _latest_response_ids_lock:
+        agent_map = _latest_response_ids.get(agent_id)
+        if not agent_map:
+            return
+        if agent_map.get(room_id) != response_id:
+            return
+        agent_map.pop(room_id, None)
+        if not agent_map:
+            _latest_response_ids.pop(agent_id, None)
 
 
 def _format_action_results(results: list[object]) -> str:
@@ -335,6 +469,7 @@ class DefaultMessageService(IMessageService):
         runtime: IAgentRuntime,
         message: Memory,
         callback: HandlerCallback | None = None,
+        options: MessageProcessingOptions | None = None,
     ) -> MessageProcessingResult:
         """Handle an incoming message through the full agent loop.
 
@@ -358,6 +493,15 @@ class DefaultMessageService(IMessageService):
         from elizaos.utils import compose_prompt_from_state
 
         _ = runtime.start_run(message.room_id)
+        response_id = str(uuid.uuid4())
+        agent_id = str(runtime.agent_id)
+        room_id = str(message.room_id)
+        keep_existing_responses = (
+            options.keep_existing_responses
+            if options and options.keep_existing_responses is not None
+            else _parse_bool(runtime.get_setting("BASIC_CAPABILITIES_KEEP_RESP"))
+        )
+        _set_latest_response_id(agent_id, room_id, response_id)
 
         # Check for custom message handler template from character
         template = MESSAGE_HANDLER_TEMPLATE
@@ -406,7 +550,7 @@ class DefaultMessageService(IMessageService):
                 query: dict[str, str | int | float | bool | None] | None = None,
             ) -> None: ...
 
-        traj_svc = runtime.get_service("trajectory_logger")
+        traj_svc = runtime.get_service("trajectories")
         traj_logger = traj_svc if isinstance(traj_svc, _TrajectoryLogger) else None
 
         def _as_json_scalar(value: object) -> str | int | float | bool | None:
@@ -439,56 +583,81 @@ class DefaultMessageService(IMessageService):
                 # No database adapter - skip persistence (benchmark mode)
                 runtime.logger.debug("No database adapter, skipping message persistence")
 
-            # Step 2: Compose state from providers
-            state = await runtime.compose_state(message)
+            if check_should_respond:
+                should_respond, skip_evaluation, _reason = _should_respond_prefilter(
+                    runtime, message
+                )
+
+                # Compose state only once we know the message will either go
+                # through the classifier or continue into response generation.
+                state = await runtime.compose_state(message)
+
+                if skip_evaluation:
+                    if not should_respond:
+                        return await self._handle_terminal_decision(
+                            runtime=runtime,
+                            message=message,
+                            state=state,
+                            callback=callback,
+                            terminal_action="IGNORE",
+                            keep_existing_responses=keep_existing_responses,
+                            response_id=response_id,
+                        )
+                else:
+                    decision_schema = [
+                        SchemaRow(
+                            field="name",
+                            description="The name of the agent responding",
+                            validate_field=False,
+                            stream_field=False,
+                        ),
+                        SchemaRow(
+                            field="reasoning",
+                            description="Your reasoning for this decision",
+                            validate_field=False,
+                            stream_field=False,
+                        ),
+                        SchemaRow(
+                            field="action",
+                            description="RESPOND | IGNORE | STOP",
+                            validate_field=False,
+                            stream_field=False,
+                        ),
+                    ]
+                    decision_result = await runtime.dynamic_prompt_exec_from_state(
+                        state=state,
+                        prompt=runtime.character.templates.get(
+                            "shouldRespondTemplate", SHOULD_RESPOND_TEMPLATE
+                        )
+                        if runtime.character.templates
+                        else SHOULD_RESPOND_TEMPLATE,
+                        schema=decision_schema,
+                        options=DynamicPromptOptions(
+                            model_size="small",
+                            force_format="xml",
+                        ),
+                    )
+                    decision_action = (
+                        str(decision_result.get("action", "RESPOND")).strip().upper()
+                        if decision_result
+                        else "RESPOND"
+                    )
+                    if decision_action in {"IGNORE", "STOP"}:
+                        return await self._handle_terminal_decision(
+                            runtime=runtime,
+                            message=message,
+                            state=state,
+                            callback=callback,
+                            terminal_action=decision_action,
+                            keep_existing_responses=keep_existing_responses,
+                            response_id=response_id,
+                        )
+            else:
+                # Step 2: Compose state from providers
+                state = await runtime.compose_state(message)
 
             if check_should_respond:
-                decision_schema = [
-                    SchemaRow(
-                        field="name",
-                        description="The name of the agent responding",
-                        validate_field=False,
-                        stream_field=False,
-                    ),
-                    SchemaRow(
-                        field="reasoning",
-                        description="Your reasoning for this decision",
-                        validate_field=False,
-                        stream_field=False,
-                    ),
-                    SchemaRow(
-                        field="action",
-                        description="RESPOND | IGNORE | STOP",
-                        validate_field=False,
-                        stream_field=False,
-                    ),
-                ]
-                decision_result = await runtime.dynamic_prompt_exec_from_state(
-                    state=state,
-                    prompt=runtime.character.templates.get(
-                        "shouldRespondTemplate", SHOULD_RESPOND_TEMPLATE
-                    )
-                    if runtime.character.templates
-                    else SHOULD_RESPOND_TEMPLATE,
-                    schema=decision_schema,
-                    options=DynamicPromptOptions(
-                        model_size="small",
-                        force_format="xml",
-                    ),
-                )
-                decision_action = (
-                    str(decision_result.get("action", "RESPOND")).strip().upper()
-                    if decision_result
-                    else "RESPOND"
-                )
-                if decision_action in {"IGNORE", "STOP"}:
-                    return await self._handle_terminal_decision(
-                        runtime=runtime,
-                        message=message,
-                        state=state,
-                        callback=callback,
-                        terminal_action=decision_action,
-                    )
+                runtime.logger.debug("shouldRespond prefilter passed")
 
             # Optional: multi-step strategy (TypeScript parity)
             use_multi_step = _parse_bool(runtime.get_setting("USE_MULTI_STEP"))
@@ -501,6 +670,8 @@ class DefaultMessageService(IMessageService):
                     message=message,
                     state=state,
                     callback=callback,
+                    keep_existing_responses=keep_existing_responses,
+                    response_id=response_id,
                     max_iterations=max_multi_step_iterations,
                     decision_template=runtime.character.templates.get(
                         "multiStepDecisionTemplate", MULTI_STEP_DECISION_TEMPLATE
@@ -592,6 +763,8 @@ class DefaultMessageService(IMessageService):
                     state=state,
                     callback=callback,
                     terminal_action=actions[0],
+                    keep_existing_responses=keep_existing_responses,
+                    response_id=response_id,
                 )
 
             # Step 5b: If actions require params but none were provided, run a parameter-repair pass
@@ -668,6 +841,18 @@ class DefaultMessageService(IMessageService):
                 params=params,
             )
 
+            if (
+                not keep_existing_responses
+                and _get_latest_response_id(agent_id, room_id) != response_id
+            ):
+                runtime.logger.info("Response discarded - newer message being processed")
+                return MessageProcessingResult(
+                    did_respond=False,
+                    response_content=None,
+                    response_messages=[],
+                    state=state,
+                )
+
             response_memory = self._build_response_memory(runtime, message, response_content)
 
             # Save response memory (if adapter available)
@@ -702,19 +887,21 @@ class DefaultMessageService(IMessageService):
                     and self._continue_after_actions_enabled(runtime)
                     and self._should_continue_after_actions(actions)
                 ):
-                    continuation_content, continuation_messages, state = (
-                        await self._run_post_action_continuation(
-                            runtime=runtime,
-                            message=message,
-                            state=state,
-                            callback=callback,
-                            template=runtime.character.templates.get(
-                                "postActionDecisionTemplate", POST_ACTION_DECISION_TEMPLATE
-                            )
-                            if runtime.character.templates
-                            else POST_ACTION_DECISION_TEMPLATE,
-                            initial_action_results=runtime.get_action_results(message.id),
+                    (
+                        continuation_content,
+                        continuation_messages,
+                        state,
+                    ) = await self._run_post_action_continuation(
+                        runtime=runtime,
+                        message=message,
+                        state=state,
+                        callback=callback,
+                        template=runtime.character.templates.get(
+                            "postActionDecisionTemplate", POST_ACTION_DECISION_TEMPLATE
                         )
+                        if runtime.character.templates
+                        else POST_ACTION_DECISION_TEMPLATE,
+                        initial_action_results=runtime.get_action_results(message.id),
                     )
                     if continuation_messages:
                         responses.extend(continuation_messages)
@@ -754,6 +941,7 @@ class DefaultMessageService(IMessageService):
             )
             raise
         finally:
+            _clear_latest_response_id(agent_id, room_id, response_id)
             CURRENT_TRAJECTORY_STEP_ID.reset(token)
             runtime.end_run()
 
@@ -872,7 +1060,28 @@ class DefaultMessageService(IMessageService):
         state: State,
         callback: HandlerCallback | None,
         terminal_action: str,
+        keep_existing_responses: bool,
+        response_id: str,
     ) -> MessageProcessingResult:
+        if (
+            not keep_existing_responses
+            and _get_latest_response_id(str(runtime.agent_id), str(message.room_id)) != response_id
+        ):
+            runtime.logger.info("Ignore response discarded - newer message being processed")
+            await runtime.evaluate(
+                message,
+                state,
+                did_respond=False,
+                callback=callback,
+                responses=[],
+            )
+            return MessageProcessingResult(
+                did_respond=False,
+                response_content=None,
+                response_messages=[],
+                state=state,
+            )
+
         terminal_action = terminal_action.upper()
         terminal_content = Content(
             thought=(
@@ -1141,6 +1350,8 @@ class DefaultMessageService(IMessageService):
         message: Memory,
         state: State,
         callback: HandlerCallback | None,
+        keep_existing_responses: bool,
+        response_id: str,
         max_iterations: int,
         decision_template: str,
         summary_template: str,
@@ -1353,6 +1564,18 @@ class DefaultMessageService(IMessageService):
             runtime.logger.error(
                 "Multi-step summary returned empty text - returning did_respond=False"
             )
+            return MessageProcessingResult(
+                did_respond=False,
+                response_content=None,
+                response_messages=[],
+                state=state,
+            )
+
+        if (
+            not keep_existing_responses
+            and _get_latest_response_id(str(runtime.agent_id), str(message.room_id)) != response_id
+        ):
+            runtime.logger.info("Response discarded - newer message being processed")
             return MessageProcessingResult(
                 did_respond=False,
                 response_content=None,

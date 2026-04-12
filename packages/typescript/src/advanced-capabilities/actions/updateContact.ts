@@ -1,7 +1,10 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
 import { logger } from "../../logger.ts";
 import { updateContactTemplate } from "../../prompts.ts";
-import type { ContactInfo, RolodexService } from "../../services/rolodex.ts";
+import type {
+	ContactInfo,
+	RelationshipsService,
+} from "../../services/relationships.ts";
 import type {
 	Action,
 	ActionExample,
@@ -53,7 +56,7 @@ export const updateContactAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		const hasService = !!runtime.getService("rolodex");
+		const hasService = !!runtime.getService("relationships");
 		const text = message.content.text;
 		if (!text) return false;
 		const hasIntent = UPDATE_CONTACT_INTENT.test(text);
@@ -68,9 +71,11 @@ export const updateContactAction: Action = {
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		try {
-			const rolodexService = runtime.getService("rolodex") as RolodexService;
-			if (!rolodexService) {
-				throw new Error("RolodexService not available");
+			const relationshipsService = runtime.getService(
+				"relationships",
+			) as RelationshipsService;
+			if (!relationshipsService) {
+				throw new Error("RelationshipsService not available");
 			}
 
 			// Build state for prompt composition
@@ -114,13 +119,13 @@ export const updateContactAction: Action = {
 			}
 
 			// Find the contact entity
-			const contacts = await rolodexService.searchContacts({
+			const contacts = await relationshipsService.searchContacts({
 				searchTerm: contactName,
 			});
 
 			if (contacts.length === 0) {
 				await callback?.({
-					text: `I couldn't find a contact named "${contactName}" in the rolodex.`,
+					text: `I couldn't find a contact named "${contactName}" in the relationships.`,
 				});
 				return;
 			}
@@ -141,6 +146,10 @@ export const updateContactAction: Action = {
 					updateData.categories = [
 						...new Set([...contact.categories, ...newCategories]),
 					];
+				} else if (operation === "remove_from" && contact.categories) {
+					updateData.categories = contact.categories.filter(
+						(category) => !newCategories.includes(category),
+					);
 				} else {
 					updateData.categories = newCategories;
 				}
@@ -154,6 +163,10 @@ export const updateContactAction: Action = {
 					.filter(Boolean);
 				if (operation === "add_to" && contact.tags) {
 					updateData.tags = [...new Set([...contact.tags, ...newTags])];
+				} else if (operation === "remove_from" && contact.tags) {
+					updateData.tags = contact.tags.filter(
+						(tag) => !newTags.includes(tag),
+					);
 				} else {
 					updateData.tags = newTags;
 				}
@@ -164,6 +177,12 @@ export const updateContactAction: Action = {
 				const newPrefs = parseKeyValueList(parsed.preferences);
 				if (operation === "add_to" && contact.preferences) {
 					updateData.preferences = { ...contact.preferences, ...newPrefs };
+				} else if (operation === "remove_from" && contact.preferences) {
+					const remainingPreferences = { ...contact.preferences };
+					for (const key of Object.keys(newPrefs)) {
+						delete remainingPreferences[key];
+					}
+					updateData.preferences = remainingPreferences;
 				} else {
 					updateData.preferences = newPrefs;
 				}
@@ -174,13 +193,19 @@ export const updateContactAction: Action = {
 				const newFields = parseKeyValueList(parsed.customFields);
 				if (operation === "add_to" && contact.customFields) {
 					updateData.customFields = { ...contact.customFields, ...newFields };
+				} else if (operation === "remove_from" && contact.customFields) {
+					const remainingCustomFields = { ...contact.customFields };
+					for (const key of Object.keys(newFields)) {
+						delete remainingCustomFields[key];
+					}
+					updateData.customFields = remainingCustomFields;
 				} else {
 					updateData.customFields = newFields;
 				}
 			}
 
 			// Update the contact
-			const updated = await rolodexService.updateContact(
+			const updated = await relationshipsService.updateContact(
 				contact.entityId,
 				updateData,
 			);

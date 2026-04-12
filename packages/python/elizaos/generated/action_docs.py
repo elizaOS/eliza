@@ -518,7 +518,7 @@ _CORE_ACTION_DOCS_JSON = """{
     },
     {
       "name": "ADD_CONTACT",
-      "description": "Add a new contact to the rolodex with categorization and preferences",
+      "description": "Add a new contact to the relationships with categorization and preferences",
       "similes": [
         "SAVE_CONTACT",
         "REMEMBER_PERSON",
@@ -529,7 +529,7 @@ _CORE_ACTION_DOCS_JSON = """{
         "add contact",
         "save contact",
         "add to contacts",
-        "add to rolodex",
+        "add to relationships",
         "remember this person",
         "save their info",
         "add them to my list",
@@ -581,13 +581,13 @@ _CORE_ACTION_DOCS_JSON = """{
           {
             "name": "{{name1}}",
             "content": {
-              "text": "Save this person as a friend in my rolodex"
+              "text": "Save this person as a friend in my relationships"
             }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "I've saved them as a friend in your rolodex."
+              "text": "I've saved them as a friend in your relationships."
             }
           }
         ],
@@ -609,7 +609,7 @@ _CORE_ACTION_DOCS_JSON = """{
     },
     {
       "name": "UPDATE_CONTACT",
-      "description": "Update an existing contact's details in the rolodex.",
+      "description": "Update an existing contact's details in the relationships.",
       "similes": [
         "EDIT_CONTACT",
         "MODIFY_CONTACT",
@@ -658,7 +658,7 @@ _CORE_ACTION_DOCS_JSON = """{
     },
     {
       "name": "REMOVE_CONTACT",
-      "description": "Remove a contact from the rolodex.",
+      "description": "Remove a contact from the relationships.",
       "similes": [
         "DELETE_CONTACT",
         "REMOVE_FROM_ROLODEX",
@@ -710,7 +710,7 @@ _CORE_ACTION_DOCS_JSON = """{
     },
     {
       "name": "SEARCH_CONTACTS",
-      "description": "Search and list contacts in the rolodex by name or query.",
+      "description": "Search and list contacts in the relationships by name or query.",
       "similes": [
         "FIND_CONTACTS",
         "LOOKUP_CONTACTS",
@@ -1247,6 +1247,91 @@ _CORE_ACTION_DOCS_JSON = """{
               "text": "I've updated your profile bio.",
               "actions": [
                 "UPDATE_ENTITY"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "THINK",
+      "description": "Pause and think deeply about a complex question, ambiguous request, or multi-faceted problem before responding. Use THINK when the question requires careful reasoning, when you are not confident in your initial assessment, when the user asks something nuanced that benefits from structured analysis, or when multiple valid approaches exist and you need to evaluate trade-offs. Do NOT use THINK for simple greetings, factual lookups, or straightforward requests where the answer is obvious. THINK re-processes the full conversation context through a larger, more capable model to produce a thorough, well-reasoned response.",
+      "similes": [
+        "PLAN",
+        "REASON",
+        "ANALYZE",
+        "REFLECT",
+        "CONSIDER",
+        "DELIBERATE",
+        "DEEP_THINK",
+        "PONDER"
+      ],
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "What's the best architecture for a real-time multiplayer game with 10k concurrent users?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "That's a great question with several important trade-offs to consider. Let me think through this carefully...",
+              "actions": [
+                "THINK"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Should I use a monorepo or polyrepo for my team of 15 engineers working on 3 microservices?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Let me think about the trade-offs for your specific situation...",
+              "actions": [
+                "THINK"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "We're seeing intermittent 502 errors in production but only during peak hours. Our setup is nginx -> node -> postgres. What could cause this?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "There are several possible causes here. Let me reason through the full request path systematically...",
+              "actions": [
+                "THINK"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "How should we handle authentication across our mobile app, web app, and API given we need SSO with both Google and enterprise SAML providers?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Cross-platform auth with multiple identity providers has some nuance. Let me plan this out...",
+              "actions": [
+                "THINK"
               ]
             }
           }
@@ -1760,7 +1845,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "ADD_CONTACT",
-      "description": "Add a new contact to the rolodex with categorization and preferences",
+      "description": "Add a new contact to the relationships with categorization and preferences",
       "similes": [
         "SAVE_CONTACT",
         "REMEMBER_PERSON",
@@ -1771,7 +1856,7 @@ _ALL_ACTION_DOCS_JSON = """{
         "add contact",
         "save contact",
         "add to contacts",
-        "add to rolodex",
+        "add to relationships",
         "remember this person",
         "save their info",
         "add them to my list",
@@ -1823,13 +1908,13 @@ _ALL_ACTION_DOCS_JSON = """{
           {
             "name": "{{name1}}",
             "content": {
-              "text": "Save this person as a friend in my rolodex"
+              "text": "Save this person as a friend in my relationships"
             }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "I've saved them as a friend in your rolodex."
+              "text": "I've saved them as a friend in your relationships."
             }
           }
         ],
@@ -1851,7 +1936,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "UPDATE_CONTACT",
-      "description": "Update an existing contact's details in the rolodex.",
+      "description": "Update an existing contact's details in the relationships.",
       "similes": [
         "EDIT_CONTACT",
         "MODIFY_CONTACT",
@@ -1900,7 +1985,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "REMOVE_CONTACT",
-      "description": "Remove a contact from the rolodex.",
+      "description": "Remove a contact from the relationships.",
       "similes": [
         "DELETE_CONTACT",
         "REMOVE_FROM_ROLODEX",
@@ -1952,7 +2037,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "SEARCH_CONTACTS",
-      "description": "Search and list contacts in the rolodex by name or query.",
+      "description": "Search and list contacts in the relationships by name or query.",
       "similes": [
         "FIND_CONTACTS",
         "LOOKUP_CONTACTS",
@@ -2496,6 +2581,91 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
+      "name": "THINK",
+      "description": "Pause and think deeply about a complex question, ambiguous request, or multi-faceted problem before responding. Use THINK when the question requires careful reasoning, when you are not confident in your initial assessment, when the user asks something nuanced that benefits from structured analysis, or when multiple valid approaches exist and you need to evaluate trade-offs. Do NOT use THINK for simple greetings, factual lookups, or straightforward requests where the answer is obvious. THINK re-processes the full conversation context through a larger, more capable model to produce a thorough, well-reasoned response.",
+      "similes": [
+        "PLAN",
+        "REASON",
+        "ANALYZE",
+        "REFLECT",
+        "CONSIDER",
+        "DELIBERATE",
+        "DEEP_THINK",
+        "PONDER"
+      ],
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "What's the best architecture for a real-time multiplayer game with 10k concurrent users?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "That's a great question with several important trade-offs to consider. Let me think through this carefully...",
+              "actions": [
+                "THINK"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Should I use a monorepo or polyrepo for my team of 15 engineers working on 3 microservices?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Let me think about the trade-offs for your specific situation...",
+              "actions": [
+                "THINK"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "We're seeing intermittent 502 errors in production but only during peak hours. Our setup is nginx -> node -> postgres. What could cause this?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "There are several possible causes here. Let me reason through the full request path systematically...",
+              "actions": [
+                "THINK"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "How should we handle authentication across our mobile app, web app, and API given we need SSO with both Google and enterprise SAML providers?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Cross-platform auth with multiple identity providers has some nuance. Let me plan this out...",
+              "actions": [
+                "THINK"
+              ]
+            }
+          }
+        ]
+      ]
+    },
+    {
       "name": "GENERATE_IMAGE",
       "description": "Generates an image based on a generated prompt reflecting the current conversation. Use GENERATE_IMAGE when the agent needs to visualize, illustrate, or demonstrate something visually for the user.",
       "similes": [
@@ -2618,7 +2788,7 @@ _CORE_PROVIDER_DOCS_JSON = """{
     },
     {
       "name": "CONTACTS",
-      "description": "Provides contact information from the rolodex including categories and preferences",
+      "description": "Provides contact information from the relationships including categories and preferences",
       "dynamic": true
     },
     {
@@ -2748,7 +2918,7 @@ _ALL_PROVIDER_DOCS_JSON = """{
     },
     {
       "name": "CONTACTS",
-      "description": "Provides contact information from the rolodex including categories and preferences",
+      "description": "Provides contact information from the relationships including categories and preferences",
       "dynamic": true
     },
     {

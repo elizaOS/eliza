@@ -438,7 +438,11 @@ export function validateActionParams(
 		} else {
 			const typeError = validateParamType(paramDef, extractedValue);
 			if (typeError) {
-				errors.push(typeError);
+				if (paramDef.required) {
+					errors.push(typeError);
+				} else if (paramDef.schema.default !== undefined) {
+					params[paramDef.name] = paramDef.schema.default;
+				}
 			} else {
 				params[paramDef.name] = extractedValue;
 			}

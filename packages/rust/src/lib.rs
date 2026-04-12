@@ -47,12 +47,6 @@ pub mod autonomy;
     not(feature = "wasm")
 ))]
 pub mod basic_capabilities;
-#[cfg(all(
-    feature = "basic_capabilities-internal",
-    feature = "native",
-    not(feature = "wasm")
-))]
-pub mod basic_capabilities;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod basic_capabilities_core;
 pub mod character;
@@ -62,6 +56,8 @@ pub mod character;
     not(feature = "wasm")
 ))]
 pub mod error;
+#[cfg(all(feature = "native", not(feature = "wasm")))]
+pub mod native_features;
 pub mod platform;
 pub mod plugin;
 pub mod prompts;

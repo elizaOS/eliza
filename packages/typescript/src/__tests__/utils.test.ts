@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import logger from "../logger";
 import type { Content, Entity, IAgentRuntime, Memory, State } from "../types";
 import * as utils from "../utils";
 import {
@@ -365,6 +366,54 @@ describe("Utils Comprehensive Tests", () => {
 			});
 		});
 
+		it("should parse TOON documents with a leading TOON label line", () => {
+			const toon = `TOON
+name: TestAgent
+reasoning: Test reasoning
+action: RESPOND`;
+
+			const result = parseKeyValueXml(toon);
+			expect(result).toEqual({
+				name: "TestAgent",
+				reasoning: "Test reasoning",
+				action: "RESPOND",
+			});
+		});
+
+		it("should salvage relaxed TOON key-value output with quotes and blank optional fields", () => {
+			const toon = `name: Eliza
+reasoning: "oh shit" is just a quick reaction to the chat chaos; it's not directed at me and doesn't need a response
+action: IGNORE
+primaryContext: social
+secondaryContexts: 
+evidenceTurnIds: 1491725198326501518`;
+
+			const result = parseKeyValueXml(toon);
+			expect(result).toEqual({
+				name: "Eliza",
+				reasoning:
+					"\"oh shit\" is just a quick reaction to the chat chaos; it's not directed at me and doesn't need a response",
+				action: "IGNORE",
+				primaryContext: "social",
+				secondaryContexts: "",
+				evidenceTurnIds: "1491725198326501518",
+			});
+		});
+
+		it("should reject prose wrapper labels as standalone TOON", () => {
+			expect(
+				parseKeyValueXml('Result: {"name":"Eliza","action":"RESPOND"}'),
+			).toBeNull();
+			expect(
+				parseKeyValueXml(`Sure:
+
+\`\`\`toon
+name: Eliza
+action: RESPOND
+\`\`\``),
+			).toBeNull();
+		});
+
 		it("should parse boolean values", () => {
 			const xml =
 				"<response><simple>true</simple><complex>false</complex></response>";
@@ -390,6 +439,15 @@ describe("Utils Comprehensive Tests", () => {
 			expect(parseKeyValueXml("")).toBeNull();
 			expect(parseKeyValueXml("not xml")).toBeNull();
 			expect(parseKeyValueXml("<unclosed>")).toBeNull();
+		});
+
+		it("should not log an XML warning for malformed TOON text", () => {
+			const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+			expect(parseKeyValueXml("TOON")).toBeNull();
+			expect(warnSpy).not.toHaveBeenCalled();
+
+			warnSpy.mockRestore();
 		});
 
 		it("should handle any root tag name", () => {
@@ -656,6 +714,39 @@ describe("Utils Comprehensive Tests", () => {
 			expect(result).toContain(
 				"(Attachments: [att-1 - Image (http://example.com/img.jpg)], [att-2 - Document (http://example.com/doc.pdf)])",
 			);
+		});
+
+		it("caps attachment context to the 3 most recent attachments", () => {
+			const baseTime = Date.now();
+			const messages: Memory[] = Array.from({ length: 4 }, (_, index) => ({
+				id: stringToUuid(`msg-cap-${index}`),
+				entityId: stringToUuid("entity-1"),
+				roomId: stringToUuid("room-1"),
+				createdAt: baseTime + index,
+				content: {
+					text: `Attachment message ${index + 1}`,
+					attachments: [
+						{
+							id: `att-cap-${index + 1}`,
+							title: `Attachment ${index + 1}`,
+							url: `http://example.com/${index + 1}.png`,
+							contentType: "image",
+							description: `Description ${index + 1}`,
+						},
+					],
+					source: "chat",
+				} as Content,
+			}));
+
+			const result = formatMessages({ messages, entities: mockEntities });
+
+			expect(result).toContain("att-cap-4");
+			expect(result).toContain("att-cap-3");
+			expect(result).toContain("att-cap-2");
+			expect(result).not.toContain("att-cap-1");
+			expect(result).toContain("omitted from context");
+			expect(result).toContain("READ_ATTACHMENT");
+			expect(result).not.toContain("Description 1");
 		});
 
 		it("should filter out messages without entityId", () => {

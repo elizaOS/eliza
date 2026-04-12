@@ -1,7 +1,7 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
 import { logger } from "../../logger.ts";
 import { removeContactTemplate } from "../../prompts.ts";
-import type { RolodexService } from "../../services/rolodex.ts";
+import type { RelationshipsService } from "../../services/relationships.ts";
 import type {
 	Action,
 	ActionExample,
@@ -18,7 +18,7 @@ import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 // Get text content from centralized specs
 const spec = requireActionSpec("REMOVE_CONTACT");
 const REMOVE_CONTACT_INTENT =
-	/remove|delete|drop.*contact|remove.*from.*rolodex/i;
+	/remove|delete|drop.*contact|remove.*from.*relationships/i;
 
 interface RemoveContactXmlResult {
 	contactName?: string;
@@ -36,7 +36,7 @@ export const removeContactAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		const hasService = !!runtime.getService("rolodex");
+		const hasService = !!runtime.getService("relationships");
 		const text = message.content.text;
 		if (!text) return false;
 		const hasIntent = REMOVE_CONTACT_INTENT.test(text);
@@ -51,9 +51,11 @@ export const removeContactAction: Action = {
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		try {
-			const rolodexService = runtime.getService("rolodex") as RolodexService;
-			if (!rolodexService) {
-				throw new Error("RolodexService not available");
+			const relationshipsService = runtime.getService(
+				"relationships",
+			) as RelationshipsService;
+			if (!relationshipsService) {
+				throw new Error("RelationshipsService not available");
 			}
 
 			// Build state for prompt composition
@@ -95,20 +97,22 @@ export const removeContactAction: Action = {
 				return;
 			}
 
-			const contacts = await rolodexService.searchContacts({
+			const contacts = await relationshipsService.searchContacts({
 				searchTerm: parsed.contactName,
 			});
 
 			if (contacts.length === 0) {
 				await callback?.({
-					text: `I couldn't find a contact named "${parsed.contactName}" in the rolodex.`,
+					text: `I couldn't find a contact named "${parsed.contactName}" in the relationships.`,
 				});
 				return;
 			}
 
 			const contact = contacts[0];
 
-			const removed = await rolodexService.removeContact(contact.entityId);
+			const removed = await relationshipsService.removeContact(
+				contact.entityId,
+			);
 
 			if (removed) {
 				const responseText = `I've removed ${parsed.contactName} from your contacts.`;

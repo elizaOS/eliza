@@ -7,6 +7,7 @@ import type {
 	Provider,
 	State,
 } from "../../types/index.ts";
+import { resolveActionContexts } from "../../utils/context-catalog";
 import {
 	CONTEXT_ROUTING_STATE_KEY,
 	getActiveRoutingContexts,
@@ -62,7 +63,9 @@ export const actionsProvider: Provider = {
 
 		// Get actions that validate for this message
 		const actionPromises = runtime.actions.map(async (action: Action) => {
-			if (!shouldIncludeByContext(action.contexts, activeContexts)) {
+			if (
+				!shouldIncludeByContext(resolveActionContexts(action), activeContexts)
+			) {
 				return null;
 			}
 

@@ -8,6 +8,7 @@ import type {
 } from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
+import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 
 export const contextSummaryProvider: Provider = {
 	name: "SUMMARIZED_CONTEXT",
@@ -36,6 +37,20 @@ export const contextSummaryProvider: Provider = {
 			const currentSummary =
 				await memoryService.getCurrentSessionSummary(roomId);
 			if (!currentSummary) {
+				logAdvancedMemoryTrajectory({
+					runtime,
+					message,
+					providerName: "SUMMARIZED_CONTEXT",
+					purpose: "session_summary",
+					data: {
+						summaryPresent: false,
+						messageCount: 0,
+						topicCount: 0,
+					},
+					query: {
+						roomId,
+					},
+				});
 				return {
 					data: {},
 					values: { sessionSummaries: "", sessionSummariesWithTopics: "" },
@@ -59,6 +74,20 @@ export const contextSummaryProvider: Provider = {
 				"# Conversation Summary",
 				summaryWithTopics,
 			);
+			logAdvancedMemoryTrajectory({
+				runtime,
+				message,
+				providerName: "SUMMARIZED_CONTEXT",
+				purpose: "session_summary",
+				data: {
+					summaryPresent: true,
+					messageCount: currentSummary.messageCount,
+					topicCount: currentSummary.topics?.length ?? 0,
+				},
+				query: {
+					roomId,
+				},
+			});
 
 			return {
 				data: {

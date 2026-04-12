@@ -6,7 +6,7 @@
 //! - {{#each items}}...{{/each}} for iteration
 //! - {{#if condition}}...{{/if}} for conditionals
 
-pub const ADD_CONTACT_TEMPLATE: &str = r#"task: Extract contact information to add to the rolodex.
+pub const ADD_CONTACT_TEMPLATE: &str = r#"task: Extract contact information to add to the relationships.
 
 context:
 {{providers}}
@@ -152,47 +152,6 @@ prompt: Detailed image generation prompt
 
 IMPORTANT: Your response must ONLY contain the TOON document above."#;
 
-pub const MESSAGE_HANDLER_TEMPLATE: &str = r#"task: Generate dialog and actions for {{agentName}}.
-
-context:
-{{providers}}
-
-rules[8]:
-- think briefly, then respond
-- actions execute in listed order
-- if replying, REPLY goes first
-- use IGNORE or STOP only by themselves
-- include providers only when needed
-- use provider_hints from context when present instead of restating the same rules
-- if an action needs inputs, include them under params keyed by action name
-- if a required param is unknown, ask for clarification in text
-
-control_actions:
-- STOP means the task is done and the agent should end the run without executing more actions
-- STOP is a terminal control action even if it is not listed in available actions
-
-fields[5]{name,meaning}:
-- thought | short plan
-- actions | ordered array of action names
-- providers | array of provider names, or empty
-- text | next message for {{agentName}}
-- simple | true or false
-- params | optional object keyed by action name containing required inputs
-
-formatting:
-- wrap multi-line code in fenced code blocks
-- use inline backticks for short code identifiers
-
-output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
-
-Example:
-thought: Reply briefly. No extra providers needed.
-actions[1]: REPLY
-providers[0]:
-text: Your message here
-simple: true"#;
-
 pub const MESSAGE_CLASSIFIER_TEMPLATE: &str = r#"Analyze this user request and classify it for planning purposes:
 
 "{{text}}"
@@ -230,6 +189,53 @@ STAKEHOLDERS: [comma-separated list]
 CONSTRAINTS: [comma-separated list]
 DEPENDENCIES: [comma-separated list]
 CONFIDENCE: [0.0-1.0]"#;
+
+pub const MESSAGE_HANDLER_TEMPLATE: &str = r#"task: Generate dialog and actions for {{agentName}}.
+
+context:
+{{providers}}
+
+rules[9]:
+- think briefly, then respond
+- always include a <thought> field, even for direct replies
+- actions execute in listed order
+- if replying, REPLY goes first
+- use IGNORE or STOP only by themselves
+- include providers only when needed
+- use provider_hints from context when present instead of restating the same rules
+- if an action needs inputs, include them inside that action's <params> block
+- if a required param is unknown, ask for clarification in text
+
+control_actions:
+- STOP means the task is done and the agent should end the run without executing more actions
+- STOP is a terminal control action even if it is not listed in available actions
+
+fields[5]{name,meaning}:
+- thought | short plan
+- actions | ordered <action> entries inside <actions>
+- providers | array of provider names, or empty
+- text | next message for {{agentName}}
+- simple | true or false
+
+formatting:
+- wrap multi-line code in fenced code blocks
+- use inline backticks for short code identifiers
+
+output:
+XML only. Return exactly one <response>...</response> document. No prose before or after it. No <think>.
+
+Example:
+<response>
+  <thought>Reply briefly. No extra providers needed.</thought>
+  <actions>
+    <action>
+      <name>REPLY</name>
+    </action>
+  </actions>
+  <providers></providers>
+  <text>Your message here</text>
+  <simple>true</simple>
+</response>"#;
 
 pub const MULTI_STEP_DECISION_TEMPLATE: &str = r#"Determine the next step the assistant should take in this conversation to help the user reach their goal.
 
@@ -336,7 +342,10 @@ recent conversation:
 recent action results:
 {{actionResults}}
 
-rules[9]:
+latest reflection task status:
+{{taskCompletionStatus}}
+
+rules[10]:
 - think briefly, then continue the task from the latest action results
 - actions execute in listed order
 - if replying, REPLY goes first
@@ -345,6 +354,7 @@ rules[9]:
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them under params keyed by action name
 - if a required param is unknown, ask for clarification in text
+- if reflection says the task is incomplete, keep working or explain the concrete follow-up you still need
 - if the task is complete, either reply to the user or use STOP to end the run
 - STOP is a terminal control action even if it is not listed in available actions
 
@@ -416,21 +426,47 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 # Known Facts:
 {{knownFacts}}
 
+# Latest Action Results:
+{{actionResults}}
+
 # Instructions:
 1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
-2. Extract new facts from the conversation.
+2. Extract only durable new facts from the conversation.
+  - Prefer facts about the current user/sender that will still matter in a week: identity, stable preferences, recurring collaborators, durable setup, long-term projects, or ongoing constraints.
+  - Do NOT extract temporary status updates, current debugging/work items, one-off session metrics, isolated praise/complaints, or facts that are only true right now.
+  - If a fact would feel stale, irrelevant, or surprising to store a week from now, skip it.
+  - When in doubt, omit the fact.
 3. Identify and describe relationships between entities.
   - The sourceEntityId is the UUID of the entity initiating the interaction.
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
+4. It is normal to return no facts when nothing durable was learned.
+5. Always decide whether the user's task or request is actually complete right now.
+  - Set `task_completed: true` only if the user no longer needs additional action or follow-up from you in this turn.
+  - If you asked a clarifying question, an action failed, work is still pending, or you only partially completed the request, set `task_completed: false`.
+6. Always include a short `task_completion_reason` grounded in the conversation and action results.
 
+Output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+Do not output JSON, XML, Markdown fences, or commentary.
+Use indexed TOON fields exactly like this:
+thought: "a self-reflective thought on the conversation"
+task_completed: false
+task_completion_reason: "The request is still incomplete because the needed action has not happened yet."
+facts[0]:
+  claim: durable factual statement
+  type: fact
+  in_bio: false
+  already_known: false
+relationships[0]:
+  sourceEntityId: entity_initiating_interaction
+  targetEntityId: entity_being_interacted_with
+  tags[0]: dm_interaction
 
-Generate a response in the following TOON format:
-thought: a self-reflective thought on the conversation
-facts[1]{claim,type,in_bio,already_known}:
-  "factual statement",fact,false,false
-relationships[1]{sourceEntityId,targetEntityId,tags}:
-  entity_initiating_interaction,entity_being_interacted_with,"group_interaction,voice_interaction,dm_interaction,additional_tag1,additional_tag2"
+For additional entries, increment the index: facts[1], relationships[1], tags[1], etc.
+Always include `task_completed` and `task_completion_reason`.
+If there are no durable new facts, omit all facts[...] entries.
+If there are no relationships, omit all relationships[...] entries.
 
 IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it."#;
 
@@ -599,15 +635,28 @@ context:
 
 rules[6]:
 - direct mention of {{agentName}} -> RESPOND
-- different assistant name -> IGNORE
-- continuing an active thread with {{agentName}} -> RESPOND
-- request to stop or be quiet -> STOP
-- talking to someone else -> IGNORE
-- if unsure, prefer IGNORE over hallucinating relevance
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
+
+available_contexts:
+{{availableContexts}}
+
+context_routing:
+- primaryContext: choose one context from available_contexts, or "general" if none apply
+- secondaryContexts: optional comma-separated list of additional relevant contexts
+- evidenceTurnIds: optional comma-separated list of message IDs supporting the decision
 
 decision_note:
-- talking TO {{agentName}} means name mention, reply chain, or direct continuation
-- talking ABOUT {{agentName}} is not enough
+- respond only when the latest message is talking TO {{agentName}}
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
+- mentions of other people do not cancel a direct address to {{agentName}}
+- casual conversation between other users is not enough
+- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
 
 output:
 TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
@@ -615,7 +664,52 @@ TOON only. Return exactly one TOON document. No prose before or after it. No <th
 Example:
 name: {{agentName}}
 reasoning: Direct mention and clear follow-up.
-action: RESPOND"#;
+action: RESPOND
+primaryContext: general
+secondaryContexts:
+evidenceTurnIds:"#;
+
+pub const SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE: &str = r#"task: Decide whether {{agentName}} should respond and which domain context applies.
+
+context:
+{{providers}}
+
+available_contexts:
+{{availableContexts}}
+
+rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
+
+context_routing:
+- primaryContext: the single best-matching domain from available_contexts
+- secondaryContexts: zero or more additional domains that are relevant
+- action intent does not only come from the last message; consider the full recent conversation
+- if no specific domain applies, use "general"
+
+decision_note:
+- respond only when the latest message is talking TO {{agentName}}
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
+- mentions of other people do not cancel a direct address to {{agentName}}
+- casual conversation between other users is not enough
+- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
+- context routing always applies, even for IGNORE/STOP decisions
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention asking about token balance.
+action: RESPOND
+primaryContext: wallet
+secondaryContexts: []"#;
 
 pub const SHOULD_UNFOLLOW_ROOM_TEMPLATE: &str = r#"task: Decide whether {{agentName}} should unfollow this room.
 
@@ -654,6 +748,32 @@ TOON only. Return exactly one TOON document. No prose before or after it. No <th
 
 Example:
 decision: true"#;
+
+pub const THINK_TEMPLATE: &str = r#"# Task: Think deeply and reason carefully for {{agentName}}.
+
+{{providers}}
+
+# Context
+The initial planning phase identified this question as requiring deeper analysis.
+The following is the conversation so far and all available context.
+
+# Instructions
+You are {{agentName}}. A question or request has been identified as complex, ambiguous, or requiring careful reasoning. Your job is to think through this thoroughly before responding.
+
+Approach this systematically:
+1. Identify the core question or problem being asked
+2. Consider multiple angles, approaches, or interpretations
+3. Evaluate trade-offs, risks, and constraints
+4. Draw on relevant knowledge and context from the conversation
+5. Arrive at a well-reasoned conclusion or recommendation
+
+Be thorough but concise. Prioritize depth of reasoning over length. If there are genuine unknowns, acknowledge them rather than guessing.
+
+Respond using TOON:
+thought: Your detailed internal reasoning — the full chain of thought, alternatives considered, and why you reached your conclusion
+text: Your response to the user — clear, structured, and well-reasoned. Use headings, lists, or code blocks as appropriate for the content.
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any preamble or explanation outside of it."#;
 
 pub const UPDATE_CONTACT_TEMPLATE: &str = r#"task: Extract contact updates from the request.
 

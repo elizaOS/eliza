@@ -52,6 +52,15 @@ export interface MessageProcessingOptions
 }
 
 /**
+ * Dual-pressure scores from the shouldRespond classifier.
+ */
+export interface DualPressureScores {
+	speakUp: number;
+	holdBack: number;
+	net: number;
+}
+
+/**
  * Result of message processing
  */
 export interface MessageProcessingResult {
@@ -62,6 +71,8 @@ export interface MessageProcessingResult {
 	mode?: MessageProcessingMode;
 	skipEvaluation?: boolean;
 	reason?: string;
+	dualPressure?: DualPressureScores | null;
+	shouldRespondClassifierAction?: string | null;
 }
 
 /**
@@ -71,6 +82,8 @@ export interface ResponseDecision {
 	shouldRespond: boolean;
 	skipEvaluation: boolean;
 	reason: string;
+	pressure?: DualPressureScores | null;
+	classifierAction?: string | null;
 }
 
 /**
@@ -90,13 +103,11 @@ export interface ContextRoutedResponseDecision extends ResponseDecision {
 export type ShouldRespondModelType =
 	| ProtoShouldRespondModelType
 	| "nano"
-	| "mini"
 	| "small"
 	| "large"
 	| "mega"
 	| "response-handler"
 	| typeof ModelType.TEXT_NANO
-	| typeof ModelType.TEXT_MINI
 	| typeof ModelType.TEXT_SMALL
 	| typeof ModelType.TEXT_LARGE
 	| typeof ModelType.TEXT_MEGA

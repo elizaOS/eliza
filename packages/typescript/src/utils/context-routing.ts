@@ -2,6 +2,10 @@ import type { Action, AgentContext, Provider } from "../types/components";
 import type { Memory } from "../types/memory";
 import type { Content } from "../types/primitives";
 import type { State } from "../types/state";
+import {
+	resolveActionContexts,
+	resolveProviderContexts,
+} from "./context-catalog";
 
 export const AVAILABLE_CONTEXTS_STATE_KEY = "availableContexts";
 export const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
@@ -194,7 +198,7 @@ export function deriveAvailableContexts(
 ): AgentContext[] {
 	const contextSet = new Set<AgentContext>(["general"]);
 	for (const action of actions) {
-		for (const context of action.contexts || []) {
+		for (const context of resolveActionContexts(action)) {
 			const normalized = normalizeContext(context);
 			if (normalized) {
 				contextSet.add(normalized);
@@ -202,7 +206,7 @@ export function deriveAvailableContexts(
 		}
 	}
 	for (const provider of providers) {
-		for (const context of provider.contexts || []) {
+		for (const context of resolveProviderContexts(provider)) {
 			const normalized = normalizeContext(context);
 			if (normalized) {
 				contextSet.add(normalized);

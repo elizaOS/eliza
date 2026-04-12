@@ -42,8 +42,8 @@ class SearchContactsAction:
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
     ) -> bool:
-        rolodex_service = runtime.get_service("rolodex")
-        return rolodex_service is not None
+        relationships_service = runtime.get_service("relationships")
+        return relationships_service is not None
 
     async def handler(
         self,
@@ -54,15 +54,15 @@ class SearchContactsAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        from elizaos.advanced_capabilities.services.rolodex import RolodexService
+        from elizaos.advanced_capabilities.services.relationships import RelationshipsService
 
-        rolodex_service = runtime.get_service("rolodex")
-        if not rolodex_service or not isinstance(rolodex_service, RolodexService):
+        relationships_service = runtime.get_service("relationships")
+        if not relationships_service or not isinstance(relationships_service, RelationshipsService):
             return ActionResult(
-                text="Rolodex service not available",
+                text="Relationships service not available",
                 success=False,
                 values={"error": True},
-                data={"error": "RolodexService not available"},
+                data={"error": "RelationshipsService not available"},
             )
 
         state = await runtime.compose_state(message, ["RECENT_MESSAGES"])
@@ -87,7 +87,7 @@ class SearchContactsAction:
             if parsed.get("tags"):
                 tags = [t.strip() for t in str(parsed["tags"]).split(",") if t.strip()]
 
-        contacts = await rolodex_service.search_contacts(
+        contacts = await relationships_service.search_contacts(
             categories=categories,
             tags=tags,
             search_term=search_term,

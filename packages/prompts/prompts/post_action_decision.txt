@@ -9,7 +9,10 @@ recent conversation:
 recent action results:
 {{actionResults}}
 
-rules[9]:
+latest reflection task status:
+{{taskCompletionStatus}}
+
+rules[10]:
 - think briefly, then continue the task from the latest action results
 - actions execute in listed order
 - if replying, REPLY goes first
@@ -18,6 +21,7 @@ rules[9]:
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them under params keyed by action name
 - if a required param is unknown, ask for clarification in text
+- if reflection says the task is incomplete, keep working or explain the concrete follow-up you still need
 - if the task is complete, either reply to the user or use STOP to end the run
 - STOP is a terminal control action even if it is not listed in available actions
 

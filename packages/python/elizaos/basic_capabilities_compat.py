@@ -52,13 +52,48 @@ class CapabilityConfig:
 # ---------------------------------------------------------------------------
 
 BASIC_ACTIONS = basic_actions
-EXTENDED_ACTIONS = advanced_actions
+NATIVE_RELATIONSHIPS_ACTION_NAMES = {
+    "ADD_CONTACT",
+    "REMOVE_CONTACT",
+    "SCHEDULE_FOLLOW_UP",
+    "SEARCH_CONTACTS",
+    "SEND_MESSAGE",
+    "UPDATE_CONTACT",
+    "UPDATE_ENTITY",
+}
+EXTENDED_ACTIONS = [
+    action for action in advanced_actions if action.name not in NATIVE_RELATIONSHIPS_ACTION_NAMES
+]
 BASIC_PROVIDERS = basic_providers
-EXTENDED_PROVIDERS = advanced_providers
+NATIVE_FEATURE_PROVIDER_NAMES = {
+    "CONTACTS",
+    "FACTS",
+    "FOLLOW_UPS",
+    "KNOWLEDGE",
+    "RELATIONSHIPS",
+}
+EXTENDED_PROVIDERS = [
+    provider
+    for provider in advanced_providers
+    if provider.name not in NATIVE_FEATURE_PROVIDER_NAMES
+]
 BASIC_EVALUATORS: list = []
-EXTENDED_EVALUATORS = advanced_evaluators
+NATIVE_RELATIONSHIPS_EVALUATOR_NAMES = {
+    "REFLECTION",
+    "RELATIONSHIP_EXTRACTION",
+}
+EXTENDED_EVALUATORS = [
+    evaluator
+    for evaluator in advanced_evaluators
+    if evaluator.name not in NATIVE_RELATIONSHIPS_EVALUATOR_NAMES
+]
 BASIC_SERVICES = basic_services
-EXTENDED_SERVICES = advanced_services
+NATIVE_FEATURE_SERVICE_TYPES = {"relationships", "follow_up"}
+EXTENDED_SERVICES = [
+    service
+    for service in advanced_services
+    if getattr(service, "service_type", None) not in NATIVE_FEATURE_SERVICE_TYPES
+]
 
 
 def _get_providers(config: CapabilityConfig) -> list:

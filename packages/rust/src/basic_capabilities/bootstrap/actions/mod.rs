@@ -16,6 +16,7 @@ mod schedule_follow_up;
 mod search_contacts;
 mod send_message;
 mod settings;
+mod think;
 mod unfollow_room;
 mod unmute_room;
 mod update_contact;
@@ -35,6 +36,7 @@ pub use schedule_follow_up::ScheduleFollowUpAction;
 pub use search_contacts::SearchContactsAction;
 pub use send_message::SendMessageAction;
 pub use settings::UpdateSettingsAction;
+pub use think::ThinkAction;
 pub use unfollow_room::UnfollowRoomAction;
 pub use unmute_room::UnmuteRoomAction;
 pub use update_contact::UpdateContactAction;
@@ -95,6 +97,7 @@ pub fn extended_actions() -> Vec<Box<dyn Action>> {
         Box::new(ScheduleFollowUpAction),
         Box::new(SearchContactsAction),
         Box::new(SendMessageAction),
+        Box::new(ThinkAction),
         Box::new(UnfollowRoomAction),
         Box::new(UnmuteRoomAction),
         Box::new(UpdateContactAction),

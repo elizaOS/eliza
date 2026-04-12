@@ -22,7 +22,7 @@ pub trait IAgentRuntime: Send + Sync {
     fn agent_id(&self) -> Uuid;
 
     /// Get the agent's character definition.
-    fn character(&self) -> &Character;
+    fn character(&self) -> Character;
 
     /// Get a setting value.
     fn get_setting(&self, key: &str) -> Option<String>;

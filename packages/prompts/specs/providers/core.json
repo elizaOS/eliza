@@ -40,7 +40,7 @@
     },
     {
       "name": "CONTACTS",
-      "description": "Provides contact information from the rolodex including categories and preferences",
+      "description": "Provides contact information from the relationships including categories and preferences",
       "dynamic": true
     },
     {

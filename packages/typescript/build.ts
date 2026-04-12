@@ -647,7 +647,10 @@ async function buildNode() {
 	const runNode = createBuildRunner({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [`${TS_SRC}/index.node.ts`],
+			entrypoints: [
+				`${TS_SRC}/index.node.ts`,
+				`${TS_SRC}/roles.ts`,
+			],
 			outdir: "dist/node",
 			target: "node",
 			format: "esm",
@@ -675,7 +678,10 @@ async function buildBrowser() {
 	const runBrowser = createBuildRunner({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [`${TS_SRC}/index.browser.ts`],
+			entrypoints: [
+				`${TS_SRC}/index.browser.ts`,
+				`${TS_SRC}/roles.ts`,
+			],
 			outdir: "dist/browser",
 			target: "browser",
 			format: "esm",
@@ -842,8 +848,9 @@ async function generateTypeScriptDeclarations() {
 	console.log(`✅ TypeScript declarations generated in ${duration}s`);
 }
 
-// Execute the build
-buildAll().catch((error) => {
-	console.error("Build script error:", error);
-	process.exit(1);
-});
+if (import.meta.main) {
+	buildAll().catch((error) => {
+		console.error("Build script error:", error);
+		process.exit(1);
+	});
+}

@@ -20,9 +20,9 @@ import {
 	messageHandlerTemplate,
 	postCreationTemplate,
 } from "../prompts.ts";
+import { isExplicitSelfModificationRequest } from "../should-respond.ts";
 import { EmbeddingGenerationService } from "../services/embedding.ts";
 import { TaskService } from "../services/task.ts";
-import { TrajectoryLoggerService } from "../services/trajectoryLogger.ts";
 import type { Role } from "../types/environment.ts";
 import { EventType } from "../types/events.ts";
 import type {
@@ -114,6 +114,40 @@ interface MessageHandlerXml {
 interface PostCreationXml {
 	post?: string;
 	thought?: string;
+}
+
+function escapeRegex(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function textContainsAgentName(
+	text: string | undefined,
+	names: Array<string | null | undefined>,
+): boolean {
+	if (!text) {
+		return false;
+	}
+
+	return names.some((name) => {
+		const candidate = name?.trim();
+		if (!candidate) {
+			return false;
+		}
+
+		const pattern = new RegExp(
+			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
+			"iu",
+		);
+		return pattern.test(text);
+	});
+}
+
+function textContainsUserTag(text: string | undefined): boolean {
+	if (!text) {
+		return false;
+	}
+
+	return /<@!?[^>]+>|@\w+/u.test(text);
 }
 
 // ============================================================================
@@ -388,10 +422,12 @@ export function shouldRespond(
 	const alwaysRespondSources = ["client_chat"];
 
 	const customChannels = normalizeEnvList(
-		runtime.getSetting("ALWAYS_RESPOND_CHANNELS"),
+		runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ??
+			runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
 	);
 	const customSources = normalizeEnvList(
-		runtime.getSetting("ALWAYS_RESPOND_SOURCES"),
+		runtime.getSetting("ALWAYS_RESPOND_SOURCES") ??
+			runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
 	);
 
 	const respondChannels = new Set(
@@ -407,6 +443,12 @@ export function shouldRespond(
 	const roomType = room.type?.toString().toLowerCase() || undefined;
 	const messageContentSource = message.content.source;
 	const sourceStr = messageContentSource?.toLowerCase() || "";
+	const textMentionsAgentByName =
+		textContainsUserTag(message.content.text) &&
+		textContainsAgentName(message.content.text, [
+			runtime.character.name,
+			runtime.character.username,
+		]);
 
 	// 1. DM/VOICE_DM/API channels: always respond (private channels)
 	if (roomType && respondChannels.has(roomType)) {
@@ -442,8 +484,29 @@ export function shouldRespond(
 		};
 	}
 
-	// 4. All other cases: let the LLM decide
-	// The LLM will handle: text-based name detection, indirect questions, conversation context, etc.
+	// 4. Mixed-address messages should still reach the agent when the text
+	// explicitly names it alongside other user tags.
+	if (textMentionsAgentByName) {
+		return {
+			shouldRespond: true,
+			skipEvaluation: true,
+			reason: "text address with tagged participants",
+		};
+	}
+
+	// 5. Clear self-modification requests should bypass the ignore-biased
+	// classifier even in group chat, but only for narrow personality/style
+	// update phrasing to avoid broad false positives.
+	if (isExplicitSelfModificationRequest(message.content.text || "")) {
+		return {
+			shouldRespond: true,
+			skipEvaluation: true,
+			reason: "explicit self-modification request",
+		};
+	}
+
+	// 6. All other cases: let the LLM decide
+	// The LLM will handle: indirect questions, conversation context, etc.
 	return {
 		shouldRespond: false,
 		skipEvaluation: false,
@@ -1301,7 +1364,6 @@ export const basicEvaluators: never[] = [];
 export const basicServices: ServiceClass[] = [
 	TaskService,
 	EmbeddingGenerationService,
-	TrajectoryLoggerService,
 ];
 
 /**
