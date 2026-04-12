@@ -1,4 +1,13 @@
-type ValidationKeywordLocale = "zh-CN" | "ko" | "es" | "pt" | "vi" | "tl";
+export const VALIDATION_KEYWORD_LOCALES = [
+	"zh-CN",
+	"ko",
+	"es",
+	"pt",
+	"vi",
+	"tl",
+] as const;
+
+type ValidationKeywordLocale = (typeof VALIDATION_KEYWORD_LOCALES)[number];
 
 type ValidationKeywordDoc = {
 	base?: string;
@@ -129,6 +138,78 @@ const VALIDATION_KEYWORD_DOCS = {
 						kada linggo
 						kada buwan
 						kada oras
+					`),
+				},
+			},
+		},
+		createPlan: {
+			request: {
+				base: termDoc(`
+					create plan
+					make a plan
+					project plan
+					comprehensive plan
+					organize project
+					strategy
+					strategic plan
+				`),
+				locales: {
+					"zh-CN": termDoc(`
+						创建计划
+						制定计划
+						项目计划
+						综合计划
+						组织项目
+						策略
+						战略计划
+					`),
+					ko: termDoc(`
+						계획 만들어
+						계획 세워
+						프로젝트 계획
+						종합 계획
+						프로젝트 정리
+						전략
+						전략 계획
+					`),
+					es: termDoc(`
+						crear plan
+						hacer un plan
+						plan de proyecto
+						plan integral
+						organizar proyecto
+						estrategia
+						plan estratégico
+						plan estrategico
+					`),
+					pt: termDoc(`
+						criar plano
+						fazer um plano
+						plano de projeto
+						plano abrangente
+						organizar projeto
+						estratégia
+						estrategia
+						plano estratégico
+						plano estrategico
+					`),
+					vi: termDoc(`
+						tạo kế hoạch
+						tao ke hoach
+						lập kế hoạch
+						lap ke hoach
+						kế hoạch dự án
+						ke hoach du an
+						chiến lược
+						chien luoc
+					`),
+					tl: termDoc(`
+						gumawa ng plano
+						plano ng proyekto
+						komprehensibong plano
+						ayusin ang proyekto
+						diskarte
+						estratehiya
 					`),
 				},
 			},
@@ -1173,4 +1254,12 @@ export function getValidationKeywordTerms(
 			options?.locale ? (doc.locales?.[options.locale] ?? "") : ""
 		}`,
 	);
+}
+
+export function getValidationKeywordLocaleTerms(
+	key: string,
+	locale: ValidationKeywordLocale,
+): string[] {
+	const doc = lookupValidationKeywordDoc(key);
+	return splitKeywordDoc(doc.locales?.[locale] ?? "");
 }
