@@ -1916,7 +1916,7 @@ describe("DefaultMessageService", () => {
 			);
 		});
 
-		it("suppresses an identical simple continuation reply after reflection", async () => {
+		it("defers simple reply and drops it when reflection continuation overrides", async () => {
 			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
 
 			const cache = new Map<string, unknown>();
@@ -1978,20 +1978,16 @@ describe("DefaultMessageService", () => {
 				mockCallback,
 			);
 
+			// The first simple REPLY is deferred via pendingSimpleEmit.
+			// Reflection fires (task incomplete) → continuation produces the
+			// same simple text → its callback delivers the text to the user.
+			// The deferred emit is then dropped so only one callback fires.
 			expect(dynamicPromptSpy).toHaveBeenCalledTimes(2);
 			expect(mockCallback).toHaveBeenCalledTimes(1);
 			expect(mockCallback).toHaveBeenCalledWith(
 				expect.objectContaining({
 					text: "I'm glad to hear that. Sometimes just clarifying things can make a difference.",
 				}),
-			);
-			expect(runtime.logger.warn).toHaveBeenCalledWith(
-				expect.objectContaining({
-					messageId: message.id,
-					preview:
-						"I'm glad to hear that. Sometimes just clarifying things can make a difference.",
-				}),
-				"Suppressing duplicate visible callback reply emitted for a single turn",
 			);
 			expect(result.responseContent?.text).toBe(
 				"I'm glad to hear that. Sometimes just clarifying things can make a difference.",
