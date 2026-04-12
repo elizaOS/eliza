@@ -560,12 +560,41 @@ function isStopResponse(
 	);
 }
 
-function shouldContinueAfterActions(
-	responseContent: Content | null | undefined,
-): boolean {
-	// Async background/task actions handle their own follow-up and should not
-	// trigger an immediate continuation loop from the main message service.
-	const terminalActions = new Set([
+function normalizeActionIdentifier(actionName: string): string {
+	return actionName.trim().toUpperCase().replace(/_/g, "");
+}
+
+function buildRuntimeActionLookup(runtime: IAgentRuntime): Map<string, Action> {
+	const actionMap = new Map<string, Action>();
+
+	for (const action of runtime.actions ?? []) {
+		const identifiers = [action.name, ...(action.similes ?? [])];
+		for (const identifier of identifiers) {
+			const normalized = normalizeActionIdentifier(identifier);
+			if (!normalized || actionMap.has(normalized)) {
+				continue;
+			}
+			actionMap.set(normalized, action);
+		}
+	}
+
+	return actionMap;
+}
+
+function resolveRuntimeAction(
+	actionLookup: Map<string, Action>,
+	actionName: string,
+): Action | undefined {
+	const normalized = normalizeActionIdentifier(actionName);
+	if (!normalized) {
+		return undefined;
+	}
+
+	return actionLookup.get(normalized);
+}
+
+const TERMINAL_ACTION_IDENTIFIERS = new Set(
+	[
 		"REPLY",
 		"IGNORE",
 		"STOP",
@@ -574,10 +603,28 @@ function shouldContinueAfterActions(
 		"CODE_TASK",
 		"SPAWN_AGENT",
 		"SPAWN_CODING_AGENT",
-	]);
+	].map(normalizeActionIdentifier),
+);
+
+function shouldContinueAfterActions(
+	runtime: IAgentRuntime,
+	responseContent: Content | null | undefined,
+): boolean {
+	// Async background/task actions handle their own follow-up and should not
+	// trigger an immediate continuation loop from the main message service.
+	const actionLookup = buildRuntimeActionLookup(runtime);
 	return !!responseContent?.actions?.some((action) => {
 		if (typeof action !== "string") return false;
-		return !terminalActions.has(action.trim().toUpperCase());
+
+		const resolvedAction = resolveRuntimeAction(actionLookup, action);
+		if (resolvedAction?.suppressPostActionContinuation) {
+			return false;
+		}
+
+		const canonicalAction = resolvedAction?.name ?? action;
+		return !TERMINAL_ACTION_IDENTIFIERS.has(
+			normalizeActionIdentifier(canonicalAction),
+		);
 	});
 }
 
@@ -589,18 +636,13 @@ function suppressesPostActionContinuation(
 		return false;
 	}
 
-	const actionMap = new Map(
-		(runtime.actions ?? []).map((action) => [
-			action.name.toUpperCase(),
-			action,
-		]),
-	);
-
+	const actionLookup = buildRuntimeActionLookup(runtime);
 	return responseContent.actions.some((action) => {
 		if (typeof action !== "string") return false;
-		const normalized = action.trim().toUpperCase();
-		if (!normalized) return false;
-		return actionMap.get(normalized)?.suppressPostActionContinuation === true;
+		return (
+			resolveRuntimeAction(actionLookup, action)
+				?.suppressPostActionContinuation === true
+		);
 	});
 }
 
@@ -615,9 +657,15 @@ function stripPlannerReplyForSuppressiveActions(
 		return;
 	}
 
+	const actionLookup = buildRuntimeActionLookup(runtime);
 	const filteredActions = responseContent.actions.filter((action) => {
 		if (typeof action !== "string") return true;
-		return action.trim().toUpperCase() !== "REPLY";
+		const canonicalAction =
+			resolveRuntimeAction(actionLookup, action)?.name ?? action;
+		return (
+			normalizeActionIdentifier(canonicalAction) !==
+			normalizeActionIdentifier("REPLY")
+		);
 	});
 	if (filteredActions.length > 0) {
 		responseContent.actions = filteredActions;
@@ -639,6 +687,71 @@ function callbackTextPreview(content: Content | null | undefined): string {
 	}
 
 	return text.replace(/\s+/g, " ").slice(0, 200);
+}
+
+function getLatestVisibleReplyText(
+	responseContent: Content | null | undefined,
+	actionResults: ActionResult[],
+): string {
+	for (let index = actionResults.length - 1; index >= 0; index--) {
+		const result = actionResults[index];
+		const actionName =
+			typeof result?.data?.actionName === "string"
+				? result.data.actionName
+				: "";
+		if (normalizeActionIdentifier(actionName) !== "REPLY") {
+			continue;
+		}
+
+		if (typeof result.text === "string" && result.text.trim().length > 0) {
+			return result.text.trim();
+		}
+	}
+
+	const responseText =
+		typeof responseContent?.text === "string" ? responseContent.text.trim() : "";
+	return responseText;
+}
+
+function isLikelyClarifyingQuestion(text: string): boolean {
+	const normalized = text.trim();
+	if (!normalized) {
+		return false;
+	}
+
+	if (/[?؟]\s*$/.test(normalized)) {
+		return true;
+	}
+
+	const firstSentence = extractFirstSentence(normalized).trim().toLowerCase();
+	return /^(what|which|when|where|who|whom|whose|why|how|can you|could you|would you|will you|do you|did you|are you|is it|should i|should we)\b/.test(
+		firstSentence,
+	);
+}
+
+function shouldWaitForUserAfterIncompleteReflection(
+	responseContent: Content | null | undefined,
+	actionResults: ActionResult[],
+): boolean {
+	const latestVisibleReply = getLatestVisibleReplyText(
+		responseContent,
+		actionResults,
+	);
+	if (!isLikelyClarifyingQuestion(latestVisibleReply)) {
+		return false;
+	}
+
+	if (actionResults.length === 0) {
+		return isSimpleReplyResponse(responseContent);
+	}
+
+	return actionResults.every((result) => {
+		const actionName =
+			typeof result?.data?.actionName === "string"
+				? result.data.actionName
+				: "";
+		return normalizeActionIdentifier(actionName) === "REPLY";
+	});
 }
 
 function formatActionResultsForPrompt(actionResults: ActionResult[]): string {
@@ -2038,7 +2151,7 @@ export class DefaultMessageService implements IMessageService {
 					if (
 						opts.continueAfterActions &&
 						message.id &&
-						shouldContinueAfterActions(responseContent) &&
+						shouldContinueAfterActions(runtime, responseContent) &&
 						!suppressesPostActionContinuation(runtime, responseContent)
 					) {
 						const continuation = await this.runPostActionContinuation(
@@ -2189,25 +2302,46 @@ export class DefaultMessageService implements IMessageService {
 			await runtime.deleteCache(getTaskCompletionCacheKey(message.id));
 
 			if (taskCompletion?.assessed && !taskCompletion.completed) {
-				const continuation = await this.runReflectionTaskContinuation(
-					runtime,
-					message,
-					state,
-					callback,
-					opts,
-					taskCompletion,
-				);
-				if (continuation.responseMessages.length > 0) {
-					responseMessages = [
-						...responseMessages,
-						...continuation.responseMessages,
-					];
+				const latestActionResults = runtime.getActionResults(message.id);
+				if (
+					shouldWaitForUserAfterIncompleteReflection(
+						responseContent,
+						latestActionResults,
+					)
+				) {
+					runtime.logger.debug(
+						{
+							src: "service:message",
+							messageId: message.id,
+							taskCompletionReason: taskCompletion.reason,
+							replyPreview: getLatestVisibleReplyText(
+								responseContent,
+								latestActionResults,
+							).slice(0, 200),
+						},
+						"Skipping reflection continuation because the agent is waiting for user input",
+					);
+				} else {
+					const continuation = await this.runReflectionTaskContinuation(
+						runtime,
+						message,
+						state,
+						callback,
+						opts,
+						taskCompletion,
+					);
+					if (continuation.responseMessages.length > 0) {
+						responseMessages = [
+							...responseMessages,
+							...continuation.responseMessages,
+						];
+					}
+					if (continuation.responseContent) {
+						responseContent = continuation.responseContent;
+						mode = continuation.mode;
+					}
+					state = continuation.state;
 				}
-				if (continuation.responseContent) {
-					responseContent = continuation.responseContent;
-					mode = continuation.mode;
-				}
-				state = continuation.state;
 			}
 		}
 
@@ -2889,7 +3023,7 @@ export class DefaultMessageService implements IMessageService {
 			);
 
 			if (
-				!shouldContinueAfterActions(responseContent) ||
+				!shouldContinueAfterActions(runtime, responseContent) ||
 				suppressesPostActionContinuation(runtime, responseContent)
 			) {
 				break;
@@ -2957,8 +3091,7 @@ export class DefaultMessageService implements IMessageService {
 					runtime.character.templates?.postActionDecisionTemplate ||
 					postActionDecisionTemplate,
 				precomposedState: accumulatedState,
-				failureStage:
-					"continuing after reflection marked the task incomplete",
+				failureStage: "continuing after reflection marked the task incomplete",
 			},
 		);
 
@@ -2972,7 +3105,7 @@ export class DefaultMessageService implements IMessageService {
 		}
 
 		const responseMessages: Memory[] = [];
-		let responseContent = continuation.responseContent;
+		const responseContent = continuation.responseContent;
 		if (message.id) {
 			responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 		}
@@ -3071,7 +3204,7 @@ export class DefaultMessageService implements IMessageService {
 
 		if (
 			latestActionResults.length > 0 &&
-			shouldContinueAfterActions(responseContent) &&
+			shouldContinueAfterActions(runtime, responseContent) &&
 			!suppressesPostActionContinuation(runtime, responseContent)
 		) {
 			return await this.runPostActionContinuation(
