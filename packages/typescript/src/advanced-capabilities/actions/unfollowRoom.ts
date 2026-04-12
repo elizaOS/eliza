@@ -67,10 +67,13 @@ export const unfollowRoomAction: Action = {
 				return decisionValue;
 			}
 
-			// Fallback: check raw response for common affirmative patterns
+			// Fallback: check raw response for common affirmative/negative patterns
 			const cleanedResponse = String(decisionValue ?? "").toLowerCase().trim();
 			if (cleanedResponse.includes("true") || cleanedResponse.includes("yes")) {
 				return true;
+			}
+			if (cleanedResponse.includes("false") || cleanedResponse.includes("no")) {
+				return false;
 			}
 
 			// Ambiguous response - log warning and default to false
