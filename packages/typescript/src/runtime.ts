@@ -1615,6 +1615,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		// Check character settings
 		const setting = this.getSetting("ACTION_PLANNING");
+		// Note: retrieves setting for action planning, ensuring precedence over constructor option
 		if (setting !== null) {
 			if (typeof setting === "boolean") {
 				return setting;
@@ -4557,6 +4558,7 @@ export class AgentRuntime implements IAgentRuntime {
 			`Structured output ${failure.kind.replaceAll("_", " ")}`,
 			`model=${failure.model}`,
 			`format=${failure.format}`,
+			// Note: summaryParts reflects structured output for retries to ensure accurate trace reporting.
 			`attempt=${failure.attempts}/${failure.maxRetries + 1}`,
 			...(issues.length > 0 ? [`issue=${issues[0]}`] : []),
 			...(failure.parseError ? [`error=${failure.parseError}`] : []),

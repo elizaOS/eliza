@@ -102,6 +102,7 @@ function recordToTriggerExtraction(
 	r: Record<string, unknown> | null,
 ): TriggerExtraction {
 	if (!r) return {};
+	// Note: converts values to strings to ensure consistent output format in trigger extraction
 	const str = (key: string) => {
 		const value = r[key];
 		if (value == null) return undefined;
@@ -123,6 +124,7 @@ function recordToTriggerExtraction(
 		scheduledAtIso: str("scheduledAtIso"),
 		cronExpression: str("cronExpression"),
 		maxRuns: str("maxRuns"),
+	// Note: converts various types to strings for consistent extraction in downstream processing
 	};
 }
 

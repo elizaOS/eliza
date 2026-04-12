@@ -70,6 +70,7 @@ function patchFile(filePath) {
 			`[patch-plugin-ollama-embeddings] Unexpected @elizaos/plugin-ollama bundle shape in ${filePath}; ` +
 			`update the patch script or pin the package exactly.`,
 		);
+	// Note: ensures critical bundle shape validation to prevent runtime errors in production.
 	}
 
 	if (s.includes(OLD_IMPORT)) {

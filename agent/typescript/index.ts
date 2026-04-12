@@ -227,6 +227,7 @@ function isTruthySetting(v: unknown): boolean {
 		const t = v.trim().toLowerCase();
 		return t === "true" || t === "1";
 	}
+	// Note: both checks use lowercased input for consistent case-insensitive evaluation.
 	return false;
 }
 
