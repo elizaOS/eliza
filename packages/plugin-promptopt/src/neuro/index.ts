@@ -25,11 +25,16 @@ import {
 } from "@elizaos/core";
 import { neuroEvaluator } from "./evaluator.ts";
 import { handleRunEnded } from "./handlers/finalizer.ts";
+import { clearContinuationTracking } from "./handlers/continuation.ts";
 import { handleReaction } from "./handlers/reaction.ts";
 
-const neuroPlugin: Plugin = {
+export const neuroPlugin: Plugin = {
 	name: "plugin-neuro",
-	description:
+	description: "Neuro signal evaluation plugin for prompt optimization",
+	dispose: async () => {
+		// Clear pending timeouts to allow graceful Node.js shutdown
+		clearContinuationTracking();
+	},
 		"Captures user-facing quality signals for prompt optimization scoring. " +
 		"Feeds reaction, continuation, correction, latency, and length signals " +
 		"into ExecutionTrace score cards.",
