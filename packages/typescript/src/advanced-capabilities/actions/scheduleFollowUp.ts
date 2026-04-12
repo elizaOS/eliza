@@ -1,5 +1,9 @@
 import { findEntityByName } from "../../entities.ts";
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { scheduleFollowUpTemplate } from "../../prompts.ts";
 import type { FollowUpService } from "../../services/followUp.ts";
@@ -19,15 +23,12 @@ import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("SCHEDULE_FOLLOW_UP");
-const FOLLOW_UP_KEYWORDS = [
-	"follow up",
-	"followup",
-	"remind",
-	"check in",
-	"check back",
-	"reach out",
-	"schedule",
-];
+const FOLLOW_UP_KEYWORDS = getValidationKeywordTerms(
+	"action.scheduleFollowUp.request",
+	{
+		includeAllLocales: true,
+	},
+);
 
 interface ScheduleFollowUpXmlResult {
 	contactName?: string;
@@ -59,9 +60,9 @@ export const scheduleFollowUpAction: Action = {
 			return false;
 		}
 
-		const messageText = message.content.text?.toLowerCase() || "";
+		const messageText = message.content.text ?? "";
 		if (!messageText) return false;
-		return FOLLOW_UP_KEYWORDS.some((keyword) => messageText.includes(keyword));
+		return findKeywordTermMatch(messageText, FOLLOW_UP_KEYWORDS) !== undefined;
 	},
 
 	handler: async (

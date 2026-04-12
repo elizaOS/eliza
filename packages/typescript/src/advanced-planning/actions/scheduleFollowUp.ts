@@ -1,5 +1,9 @@
 import { getPromptReferenceDate } from "../../deterministic";
 import { findEntityByName } from "../../entities.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import type { FollowUpService } from "../../services/followUp.ts";
 import type { RelationshipsService } from "../../services/relationships.ts";
@@ -23,6 +27,13 @@ interface ScheduleFollowUpXmlResult {
 	priority?: string;
 	message?: string;
 }
+
+const FOLLOW_UP_KEYWORDS = getValidationKeywordTerms(
+	"action.scheduleFollowUp.request",
+	{
+		includeAllLocales: true,
+	},
+);
 
 function normalizePriority(
 	rawPriority: string | undefined,
@@ -137,18 +148,8 @@ export const scheduleFollowUpAction: Action = {
 			return false;
 		}
 
-		const followUpKeywords = [
-			"follow up",
-			"followup",
-			"remind",
-			"check in",
-			"check back",
-			"reach out",
-			"schedule",
-		];
-		const messageText = message.content.text?.toLowerCase() || "";
-
-		return followUpKeywords.some((keyword) => messageText.includes(keyword));
+		const messageText = message.content.text ?? "";
+		return findKeywordTermMatch(messageText, FOLLOW_UP_KEYWORDS) !== undefined;
 	},
 
 	handler: async (

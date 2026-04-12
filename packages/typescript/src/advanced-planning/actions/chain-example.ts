@@ -1,4 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import type {
 	Action,
 	ActionResult,
@@ -9,6 +13,10 @@ import type {
 	State,
 } from "../../types/index.ts";
 import type { JsonValue } from "../types.ts";
+
+const CREATE_PLAN_TERMS = getValidationKeywordTerms("action.createPlan.request", {
+	includeAllLocales: true,
+});
 
 type PlanningActionOptions = HandlerOptions & {
 	abortSignal?: AbortSignal;
@@ -201,14 +209,8 @@ export const createPlanAction: Action = {
 	similes: ["PLAN_PROJECT", "GENERATE_PLAN", "MAKE_PLAN", "PROJECT_PLAN"],
 
 	validate: async (_runtime: IAgentRuntime, message: Memory) => {
-		const text = message.content.text?.toLowerCase() || "";
-		return (
-			text.includes("plan") ||
-			text.includes("project") ||
-			text.includes("comprehensive") ||
-			text.includes("organize") ||
-			text.includes("strategy")
-		);
+		const text = message.content.text?.trim() ?? "";
+		return findKeywordTermMatch(text, CREATE_PLAN_TERMS) !== undefined;
 	},
 
 	handler: async (

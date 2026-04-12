@@ -1,4 +1,8 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { shouldUnmuteRoomTemplate } from "../../prompts.ts";
 import type {
@@ -20,6 +24,9 @@ import {
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UNMUTE_ROOM");
+const UNMUTE_TERMS = getValidationKeywordTerms("action.unmuteRoom.request", {
+	includeAllLocales: true,
+});
 
 export const unmuteRoomAction: Action = {
 	name: spec.name,
@@ -27,22 +34,11 @@ export const unmuteRoomAction: Action = {
 	description: spec.description,
 	examples: (spec.examples ?? []) as ActionExample[][],
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
-		const text = (
+		const text =
 			typeof message?.content === "string"
 				? message.content
-				: (message?.content?.text ?? "")
-		).toLowerCase();
-		const UNMUTE_TERMS = [
-			"unmute",
-			"unsilence",
-			"listen",
-			"start talking",
-			"talk again",
-			"speak",
-			"enable",
-			"resume",
-		];
-		if (!UNMUTE_TERMS.some((term) => text.includes(term))) return false;
+				: (message?.content?.text ?? "");
+		if (findKeywordTermMatch(text, UNMUTE_TERMS) === undefined) return false;
 		const roomId = message.roomId;
 		const roomState = await runtime.getParticipantUserState(
 			roomId,

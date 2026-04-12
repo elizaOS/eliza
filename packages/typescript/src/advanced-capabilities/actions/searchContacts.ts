@@ -1,4 +1,8 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { searchContactsTemplate } from "../../prompts.ts";
 import type { RelationshipsService } from "../../services/relationships.ts";
@@ -17,17 +21,12 @@ import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("SEARCH_CONTACTS");
-const SEARCH_KEYWORDS = [
-	"list",
-	"show",
-	"search",
-	"find",
-	"contacts",
-	"friends",
-	"colleagues",
-	"vip",
-	"who",
-];
+const SEARCH_KEYWORDS = getValidationKeywordTerms(
+	"action.searchContacts.request",
+	{
+		includeAllLocales: true,
+	},
+);
 
 interface SearchContactsXmlResult {
 	categories?: string;
@@ -57,9 +56,9 @@ export const searchContactsAction: Action = {
 		}
 
 		// Check if message contains intent to search/list contacts
-		const messageText = message.content.text?.toLowerCase() || "";
+		const messageText = message.content.text ?? "";
 		if (!messageText) return false;
-		return SEARCH_KEYWORDS.some((keyword) => messageText.includes(keyword));
+		return findKeywordTermMatch(messageText, SEARCH_KEYWORDS) !== undefined;
 	},
 
 	handler: async (

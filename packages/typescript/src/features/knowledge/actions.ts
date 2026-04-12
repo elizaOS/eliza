@@ -1,5 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger";
 import type {
 	Action,
@@ -20,6 +24,21 @@ type ExtendedValidator = (
 	state?: State,
 	options?: unknown,
 ) => Promise<boolean>;
+
+const PROCESS_KNOWLEDGE_TERMS = getValidationKeywordTerms(
+	"action.processKnowledge.request",
+	{
+		includeAllLocales: true,
+	},
+);
+const SEARCH_KNOWLEDGE_TERMS = getValidationKeywordTerms(
+	"action.searchKnowledge.request",
+	{
+		includeAllLocales: true,
+	},
+);
+const KNOWLEDGE_PATH_PATTERN =
+	/(?:\/[\w.-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
 
 export const processKnowledgeAction: Action = {
 	name: "PROCESS_KNOWLEDGE",
@@ -67,58 +86,16 @@ export const processKnowledgeAction: Action = {
 		state?: State,
 		options?: unknown,
 	): Promise<boolean> => {
-		const __avTextRaw =
-			typeof message?.content?.text === "string" ? message.content.text : "";
-		const __avText = __avTextRaw.toLowerCase();
-		const __avKeywords = ["process", "knowledge"];
-		const __avKeywordOk =
-			__avKeywords.length > 0 &&
-			__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-		const __avRegexOk = /\b(?:process|knowledge)\b/i.test(__avText);
-		const __avSource = String(message?.content?.source ?? "");
-		const __avExpectedSource = "";
-		const __avSourceOk = __avExpectedSource
-			? __avSource === __avExpectedSource
-			: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-		const __avOptions = options && typeof options === "object" ? options : {};
-		const __avInputOk =
-			__avText.trim().length > 0 ||
-			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-			Boolean(message?.content && typeof message.content === "object");
-
-		if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-			return false;
-		}
-
 		const __avLegacyValidate: ExtendedValidator = async (
 			runtime: IAgentRuntime,
 			message: Memory,
 			_state?: State,
 			_options?: unknown,
 		) => {
-			const text = message.content.text?.toLowerCase() || "";
-
-			const knowledgeKeywords = [
-				"process",
-				"add",
-				"upload",
-				"document",
-				"knowledge",
-				"learn",
-				"remember",
-				"store",
-				"ingest",
-				"file",
-			];
-
-			const hasKeyword = knowledgeKeywords.some((keyword) =>
-				text.includes(keyword),
-			);
-
-			const pathPattern =
-				/(?:\/[\w.-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
-			const hasPath = pathPattern.test(text);
-
+			const text = message.content.text ?? "";
+			const hasKeyword =
+				findKeywordTermMatch(text, PROCESS_KNOWLEDGE_TERMS) !== undefined;
+			const hasPath = KNOWLEDGE_PATH_PATTERN.test(text);
 			const service = runtime.getService(KnowledgeService.serviceType);
 			if (!service) {
 				logger.warn(
@@ -154,10 +131,7 @@ export const processKnowledgeAction: Action = {
 			}
 
 			const text = message.content.text || "";
-
-			const pathPattern =
-				/(?:\/[\w.-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
-			const pathMatch = text.match(pathPattern);
+			const pathMatch = text.match(KNOWLEDGE_PATH_PATTERN);
 
 			let response: Content;
 
@@ -302,64 +276,21 @@ export const searchKnowledgeAction: Action = {
 		state?: State,
 		options?: unknown,
 	): Promise<boolean> => {
-		const __avTextRaw =
-			typeof message?.content?.text === "string" ? message.content.text : "";
-		const __avText = __avTextRaw.toLowerCase();
-		const __avKeywords = ["search", "knowledge"];
-		const __avKeywordOk =
-			__avKeywords.length > 0 &&
-			__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-		const __avRegexOk = /\b(?:search|knowledge)\b/i.test(__avText);
-		const __avSource = String(message?.content?.source ?? "");
-		const __avExpectedSource = "";
-		const __avSourceOk = __avExpectedSource
-			? __avSource === __avExpectedSource
-			: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-		const __avOptions = options && typeof options === "object" ? options : {};
-		const __avInputOk =
-			__avText.trim().length > 0 ||
-			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-			Boolean(message?.content && typeof message.content === "object");
-
-		if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-			return false;
-		}
-
 		const __avLegacyValidate: ExtendedValidator = async (
 			runtime: IAgentRuntime,
 			message: Memory,
 			_state?: State,
 			_options?: unknown,
 		) => {
-			const text = message.content.text?.toLowerCase() || "";
-
-			const searchKeywords = [
-				"search",
-				"find",
-				"look up",
-				"query",
-				"what do you know about",
-			];
-			const knowledgeKeywords = [
-				"knowledge",
-				"information",
-				"document",
-				"database",
-			];
-
-			const hasSearchKeyword = searchKeywords.some((keyword) =>
-				text.includes(keyword),
-			);
-			const hasKnowledgeKeyword = knowledgeKeywords.some((keyword) =>
-				text.includes(keyword),
-			);
-
+			const text = message.content.text ?? "";
+			const hasSearchKeyword =
+				findKeywordTermMatch(text, SEARCH_KNOWLEDGE_TERMS) !== undefined;
 			const service = runtime.getService(KnowledgeService.serviceType);
 			if (!service) {
 				return false;
 			}
 
-			return hasSearchKeyword && hasKnowledgeKeyword;
+			return hasSearchKeyword;
 		};
 		try {
 			return Boolean(
