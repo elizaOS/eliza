@@ -221,13 +221,14 @@ rules[11]:
 - think briefly, then respond
 - always include a <thought> field, even for direct replies
 - actions execute in listed order
-- if replying, REPLY goes first
+- if replying without another grounded state/action query, REPLY goes first
 - use IGNORE or STOP only by themselves
 - include providers only when needed
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them inside that action's <params> block
 - if a required param is unknown, ask for clarification in text
 - for live status questions or remaining-work queries, do not answer from recent conversation alone; call the relevant action/provider to refresh state, and do not pair it with a speculative REPLY that guesses the result
+- when an action will fetch the state and produce the final grounded answer, do not add REPLY just to say "checking", "let me look", or similar filler; use the action alone and leave text empty
 - for LifeOps create requests with a clear defaultable habit or natural window, such as drinking water, stretch breaks during the day, weekday-after-lunch Invisalign checks, or brushing when waking up and before bed, call LIFE instead of asking for exact clock times unless the user explicitly asks for precise scheduling
 
 control_actions:

@@ -221,9 +221,7 @@ export class MemoryService extends Service {
 			}
 		}
 		if (!this.storage) {
-			throw new Error(
-				"MemoryStorageProvider not available. Register a memoryStorage service from your database plugin.",
-			);
+			return null as unknown as MemoryStorageProvider;
 		}
 		return this.storage;
 	}

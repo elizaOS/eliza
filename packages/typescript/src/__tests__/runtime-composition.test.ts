@@ -6,7 +6,8 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, type vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import {
 	type AgentRecordForMerge,
 	createRuntimes,
@@ -16,12 +17,30 @@ import {
 } from "../runtime-composition";
 import type { Character } from "../types";
 import { stringToUuid } from "../utils";
-import { createTestCharacter, createTestDatabaseAdapter } from "./test-utils";
 
-type MockFn = ReturnType<typeof vi.fn>;
+const DEFAULT_TEST_CHARACTER: Character = {
+	name: "TestAgent",
+	bio: ["Test agent"],
+	system: "You are a test agent.",
+	templates: {},
+	plugins: [],
+	knowledge: [],
+	secrets: {},
+	settings: {},
+	messageExamples: [],
+	postExamples: [],
+	topics: ["testing"],
+	adjectives: ["helpful", "test"],
+	style: { all: [], chat: [], post: [] } as Character["style"],
+};
 
-function asMock(fn: unknown): MockFn {
-	return fn as MockFn;
+function createTestCharacter(overrides: Partial<Character> = {}): Character {
+	const name = overrides.name ?? "TestAgent";
+	return {
+		...DEFAULT_TEST_CHARACTER,
+		id: stringToUuid(name),
+		...overrides,
+	};
 }
 
 describe("runtime-composition", () => {
@@ -224,11 +243,8 @@ describe("runtime-composition", () => {
 		it("returns one initialized runtime when given one character and adapter override", async () => {
 			const character = createTestCharacter({
 				name: "CompTest",
-				plugins: ["@elizaos/plugin-sql"],
 			});
-			const adapter = createTestDatabaseAdapter(character.id);
-			asMock(adapter.initialize).mockResolvedValue(undefined);
-			asMock(adapter.isReady).mockResolvedValue(true);
+			const adapter = new InMemoryDatabaseAdapter();
 
 			const runtimes = await createRuntimes([character], {
 				adapter,
@@ -240,28 +256,26 @@ describe("runtime-composition", () => {
 			expect(runtime).toBeDefined();
 			expect(runtime?.character.name).toBe("CompTest");
 			expect(runtime?.adapter).toBe(adapter);
+			await runtime?.stop();
 		}, 30_000);
 
 		it("uses merged character (from mergeSettingsInto) when adapter returns agent", async () => {
 			const character = createTestCharacter({
 				name: "MergeTest",
-				plugins: ["@elizaos/plugin-sql"],
 				settings: { FROM_CHAR: "char-val" },
 			});
 			const agentId =
 				character.id ?? stringToUuid(character.name ?? "MergeTest");
-			const adapter = createTestDatabaseAdapter(agentId);
-			asMock(adapter.initialize).mockResolvedValue(undefined);
-			asMock(adapter.isReady).mockResolvedValue(true);
-			asMock(adapter.getAgentsByIds).mockImplementation(async (ids) => {
-				return ids.map((id) => ({
-					id,
+			const adapter = new InMemoryDatabaseAdapter();
+			await adapter.createAgents([
+				{
+					id: agentId,
 					name: "FromDB",
 					settings: { FROM_DB: "db-val" },
 					createdAt: Date.now(),
 					updatedAt: Date.now(),
-				}));
-			});
+				},
+			]);
 
 			const runtimes = await createRuntimes([character], {
 				adapter,
@@ -271,6 +285,7 @@ describe("runtime-composition", () => {
 			const runtime = runtimes[0];
 			expect(runtime?.character.settings?.FROM_DB).toBe("db-val");
 			expect(runtime?.character.settings?.FROM_CHAR).toBe("char-val");
+			await runtime?.stop();
 		});
 	});
 });

@@ -40,21 +40,8 @@
     },
     "./roles": {
       "types": "./dist/roles.d.ts",
-      "browser": {
-        "types": "./dist/roles.d.ts",
-        "import": "./dist/browser/roles.js",
-        "default": "./dist/browser/roles.js"
-      },
-      "node": {
-        "types": "./dist/roles.d.ts",
-        "import": "./dist/browser/roles.js",
-        "default": "./dist/browser/roles.js"
-      },
-      "bun": {
-        "types": "./dist/roles.d.ts",
-        "default": "./dist/browser/roles.js"
-      },
-      "default": "./dist/browser/roles.js"
+      "import": "./dist/roles.js",
+      "default": "./dist/roles.js"
     },
     "./testing": {
       "import": "./dist/testing/index.js",
