@@ -217,7 +217,7 @@ export const messageHandlerTemplate = `task: Generate dialog and actions for {{a
 context:
 {{providers}}
 
-rules[10]:
+rules[11]:
 - think briefly, then respond
 - always include a <thought> field, even for direct replies
 - actions execute in listed order
@@ -228,6 +228,7 @@ rules[10]:
 - if an action needs inputs, include them inside that action's <params> block
 - if a required param is unknown, ask for clarification in text
 - for live status questions or remaining-work queries, do not answer from recent conversation alone; call the relevant action/provider to refresh state, and do not pair it with a speculative REPLY that guesses the result
+- for LifeOps create requests with a clear defaultable habit or natural window, such as drinking water, stretch breaks during the day, weekday-after-lunch Invisalign checks, or brushing when waking up and before bed, call LIFE instead of asking for exact clock times unless the user explicitly asks for precise scheduling
 
 control_actions:
 - STOP means the task is done and the agent should end the run without executing more actions
