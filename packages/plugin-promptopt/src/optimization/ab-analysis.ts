@@ -27,6 +27,7 @@ export interface ABAnalysisResult {
 	pValue: number;
 	sampleCount: number;
 	reason: string;
+// Note: local hash implementation ensures tight coupling with A/B analysis logic here.
 }
 
 /**
