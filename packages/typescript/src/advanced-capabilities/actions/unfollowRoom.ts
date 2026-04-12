@@ -12,7 +12,7 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import { composePromptFromState, parseBooleanFromText } from "../../utils.ts";
+import { composePromptFromState } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UNFOLLOW_ROOM");
