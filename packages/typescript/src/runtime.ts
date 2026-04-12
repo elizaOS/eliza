@@ -20,6 +20,7 @@ import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createLogger } from "./logger";
 import { getOptimizationRootDir } from "./optimization-root-dir.ts";
+import { simpleHash } from "./optimization/ab-analysis.ts";
 import type { PromptOptimizationRuntimeHooks } from "./types/prompt-optimization-hooks.ts";
 import { ScoreCard } from "./types/prompt-optimization-score-card.ts";
 import type {
@@ -5438,17 +5439,13 @@ ${section_end}`;
 							reason: `Estimated output tokens ${outputTokenEst} vs reference 500`,
 						});
 
-						const simpleHash = (s: string) =>
-							s
-								.split("")
-								.reduce((h, c) => ((h * 31) ^ c.charCodeAt(0)) >>> 0, 5381)
-								.toString(16)
-								.slice(0, 8);
 						const templateHashInput =
 							typeof params.prompt === "string"
 								? params.prompt
 								: tracePromptKey;
-						const computedTemplateHash = simpleHash(templateHashInput);
+						const computedTemplateHash = simpleHash(templateHashInput)
+							.toString(16)
+							.slice(0, 8);
 
 						const trace: ExecutionTrace = {
 							id: uuidv4(),
