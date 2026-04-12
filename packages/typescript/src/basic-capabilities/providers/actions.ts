@@ -7,6 +7,14 @@ import type {
 	Provider,
 	State,
 } from "../../types/index.ts";
+import { resolveActionContexts } from "../../utils/context-catalog";
+import {
+	CONTEXT_ROUTING_STATE_KEY,
+	getActiveRoutingContexts,
+	parseContextRoutingMetadata,
+	shouldIncludeByContext,
+} from "../../utils/context-routing.ts";
+import { buildDeterministicSeed } from "../../utils/deterministic";
 import { addHeader } from "../../utils.ts";
 
 // Get text content from centralized specs
@@ -49,8 +57,18 @@ export const actionsProvider: Provider = {
 	description: spec.description,
 	position: spec.position ?? -1,
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+		const activeContexts = getActiveRoutingContexts(
+			parseContextRoutingMetadata(state?.values?.[CONTEXT_ROUTING_STATE_KEY]),
+		);
+
 		// Get actions that validate for this message
 		const actionPromises = runtime.actions.map(async (action: Action) => {
+			if (
+				!shouldIncludeByContext(resolveActionContexts(action), activeContexts)
+			) {
+				return null;
+			}
+
 			const result = await action.validate(runtime, message, state);
 			if (result) {
 				return action;
@@ -61,13 +79,21 @@ export const actionsProvider: Provider = {
 		const resolvedActions = await Promise.all(actionPromises);
 
 		const actionsData = resolvedActions.filter(Boolean) as Action[];
+		const actionSeed = buildDeterministicSeed(
+			runtime.agentId,
+			message.roomId,
+			"ACTIONS",
+		);
 
 		// Format action-related texts
-		const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
+		const actionNames = `Possible response actions: ${formatActionNames(actionsData, actionSeed)}`;
 
 		const actionsWithDescriptions =
 			actionsData.length > 0
-				? addHeader("# Available Actions", formatActions(actionsData))
+				? addHeader(
+						"# Available Actions",
+						formatActions(actionsData, actionSeed),
+					)
 				: "";
 
 		const values = {

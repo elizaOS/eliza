@@ -18,7 +18,7 @@ crate-type = ["cdylib", "rlib"]
 default = ["native"]
 native = ["tokio/full", "sqlx", "which"]
 wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/js"]
-basic_capabilities = ["native", "dep:chrono", "dep:quick-xml"]
+basic_capabilities = ["native", "dep:quick-xml"]
 basic_capabilities-internal = ["basic_capabilities"]
 
 # Sync runtime for environments without async (ICP, embedded, WASI)
@@ -30,7 +30,7 @@ icp = ["sync"]
 
 [dependencies]
 # Date/time utilities (used by basic_capabilities plugin)
-chrono = { version = "0.4", features = ["serde"], optional = true }
+chrono = { version = "0.4", features = ["serde"] }
 
 # XML parsing for basic_capabilities plugin error conversions
 quick-xml = { version = "0.39", features = ["serialize"], optional = true }
@@ -100,6 +100,7 @@ once_cell = "1.21.3"
 
 [build-dependencies]
 prost-build = "0.13"
+protoc-bin-vendored = "3.1"
 
 [dev-dependencies]
 pretty_assertions = "1.0"
@@ -113,4 +114,3 @@ wasm-bindgen-test = "0.3"
 [profile.release]
 lto = true
 opt-level = "z"
-

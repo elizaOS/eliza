@@ -20,7 +20,15 @@ export {
 // Export the abstract, backend-agnostic schema definitions
 export * from "./schemas/index.ts";
 export { MemoryService } from "./services/memory-service.ts";
-export * from "./types.ts";
+export {
+	type LongTermMemory,
+	LongTermMemoryCategory,
+	type MemoryConfig,
+	type MemoryExtraction,
+	type MemoryServiceTypeName,
+	type SessionSummary,
+	type SummaryResult,
+} from "./types.ts";
 
 /**
  * Create the advanced-memory plugin.

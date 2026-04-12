@@ -57,7 +57,7 @@ export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
 export * from "./services/tool-policy";
-export * from "./services/trajectoryLogger";
+export * from "./services/trajectories";
 export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";

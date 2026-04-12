@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -50,7 +50,7 @@ def _convert_spec_examples() -> list[list[ActionExample]]:
     return result
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     OWNER = "OWNER"
     ADMIN = "ADMIN"
     MEMBER = "MEMBER"

@@ -9,6 +9,43 @@ import { addHeader } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ATTACHMENTS");
+const MAX_VISIBLE_ATTACHMENTS = 3;
+
+type AttachmentWithCreatedAt = Media & {
+	_createdAt?: number;
+};
+
+function mergeConversationAttachments(
+	message: Memory,
+	recentMessages: Memory[] | null | undefined,
+): AttachmentWithCreatedAt[] {
+	const attachmentsById = new Map<string, AttachmentWithCreatedAt>();
+
+	const rememberAttachment = (attachment: Media, createdAt: number): void => {
+		const existing = attachmentsById.get(attachment.id);
+		if (existing && (existing._createdAt ?? 0) >= createdAt) {
+			return;
+		}
+		attachmentsById.set(attachment.id, {
+			...attachment,
+			_createdAt: createdAt,
+		});
+	};
+
+	for (const attachment of message.content.attachments ?? []) {
+		rememberAttachment(attachment, message.createdAt ?? Date.now());
+	}
+
+	for (const recentMessage of recentMessages ?? []) {
+		for (const attachment of recentMessage.content.attachments ?? []) {
+			rememberAttachment(attachment, recentMessage.createdAt ?? Date.now());
+		}
+	}
+
+	return Array.from(attachmentsById.values()).sort(
+		(left, right) => (right._createdAt ?? 0) - (left._createdAt ?? 0),
+	);
+}
 
 /**
  * Provides a list of attachments in the current conversation.
@@ -32,10 +69,6 @@ export const attachmentsProvider: Provider = {
 	description: spec.description,
 	dynamic: spec.dynamic ?? true,
 	get: async (runtime: IAgentRuntime, message: Memory) => {
-		// Start with any attachments in the current message
-		const currentMessageAttachments = message.content.attachments || [];
-		let allAttachments = [...currentMessageAttachments];
-
 		const { roomId } = message;
 		const conversationLength = runtime.getConversationLength();
 
@@ -46,65 +79,45 @@ export const attachmentsProvider: Provider = {
 			tableName: "messages",
 		});
 
-		// Process attachments from recent messages
-		if (recentMessagesData && Array.isArray(recentMessagesData)) {
-			const lastMessageWithAttachment = recentMessagesData.find(
-				(msg) => msg.content.attachments && msg.content.attachments.length > 0,
-			);
-
-			if (lastMessageWithAttachment) {
-				const lastMessageTime =
-					lastMessageWithAttachment?.createdAt ?? Date.now();
-				const oneHourBeforeLastMessage = lastMessageTime - 60 * 60 * 1000; // 1 hour before last message
-
-				// Create a map of current message attachments by ID for quick lookup
-				const currentAttachmentsMap = new Map(
-					currentMessageAttachments.map((att) => [att.id, att]),
-				);
-
-				// Process recent messages and merge attachments
-				const recentAttachments: Media[] = [];
-				for (let i = recentMessagesData.length - 1; i >= 0; i -= 1) {
-					const msg = recentMessagesData[i];
-					const msgTime = msg.createdAt ?? Date.now();
-					const isWithinTime = msgTime >= oneHourBeforeLastMessage;
-					const attachments = msg.content.attachments ?? [];
-
-					for (const attachment of attachments) {
-						if (currentAttachmentsMap.has(attachment.id)) {
-							continue;
-						}
-						if (!isWithinTime) {
-							recentAttachments.push({ ...attachment, text: "[Hidden]" });
-							continue;
-						}
-						recentAttachments.push(attachment);
-					}
-				}
-
-				// Combine current message attachments (with rich data) and recent attachments
-				allAttachments = [...currentMessageAttachments, ...recentAttachments];
-			}
-		}
+		const allAttachments = mergeConversationAttachments(
+			message,
+			Array.isArray(recentMessagesData) ? recentMessagesData : [],
+		);
+		const visibleAttachments = allAttachments.slice(0, MAX_VISIBLE_ATTACHMENTS);
+		const omittedCount = Math.max(
+			0,
+			allAttachments.length - visibleAttachments.length,
+		);
 
 		// Format attachments for display
-		const formattedAttachments = allAttachments
+		const formattedAttachments = visibleAttachments
 			.map(
 				(attachment) =>
 					`ID: ${attachment.id}
     Name: ${attachment.title}
     URL: ${attachment.url}
     Type: ${attachment.source}
-    Description: ${attachment.description}
-    Text: ${attachment.text}
+    Content Type: ${attachment.contentType ?? "unknown"}
+    Stored Content: ${
+			attachment.text || attachment.description
+				? "available via READ_ATTACHMENT"
+				: "none"
+		}
     `,
 			)
 			.join("\n");
+		const omissionNotice =
+			omittedCount > 0
+				? `Showing the ${visibleAttachments.length} most recent attachments. ${omittedCount} older attachment${omittedCount === 1 ? "" : "s"} omitted from context; use READ_ATTACHMENT to inspect one.`
+				: "";
 
 		// Create formatted text with header
 		const text =
 			formattedAttachments && formattedAttachments.length > 0
-				? addHeader("# Attachments", formattedAttachments)
+				? addHeader(
+						"# Attachments",
+						[formattedAttachments, omissionNotice].filter(Boolean).join("\n\n"),
+					)
 				: "";
 
 		const values = {
@@ -112,6 +125,8 @@ export const attachmentsProvider: Provider = {
 		};
 		const data = {
 			attachments: allAttachments,
+			visibleAttachments,
+			omittedCount,
 		};
 
 		return {

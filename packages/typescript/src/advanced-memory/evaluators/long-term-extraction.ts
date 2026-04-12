@@ -6,17 +6,70 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	type TextGenerationModelType,
 } from "../../types/index.ts";
-import { composePromptFromState } from "../../utils.ts";
+import {
+	getErrorMessage,
+	isTransientModelError,
+} from "../../utils/model-errors.ts";
+import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 import { longTermExtractionTemplate } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
+import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
 
 const spec = requireEvaluatorSpec("LONG_TERM_MEMORY_EXTRACTION");
 const validMemoryCategories = new Set(Object.values(LongTermMemoryCategory));
 
-function parseMemoryExtractionXML(xml: string): MemoryExtraction[] {
-	const memoryMatches = xml.matchAll(
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseMemoryExtractionResponse(text: string): MemoryExtraction[] {
+	const parsed = parseKeyValueXml<Record<string, unknown>>(text);
+	if (parsed) {
+		const rawMemories = parsed.memories;
+		const candidateEntries = Array.isArray(rawMemories)
+			? rawMemories
+			: isRecord(rawMemories) && "memory" in rawMemories
+				? Array.isArray(rawMemories.memory)
+					? rawMemories.memory
+					: [rawMemories.memory]
+				: [];
+
+		const memories = candidateEntries
+			.filter(isRecord)
+			.map((entry) => {
+				const category =
+					typeof entry.category === "string"
+						? (entry.category.trim() as LongTermMemoryCategory)
+						: null;
+				const content =
+					typeof entry.content === "string" ? entry.content.trim() : "";
+				const confidenceRaw = entry.confidence;
+				const confidence =
+					typeof confidenceRaw === "number"
+						? confidenceRaw
+						: Number.parseFloat(String(confidenceRaw ?? "").trim());
+
+				if (!category || !validMemoryCategories.has(category)) {
+					return null;
+				}
+
+				if (!content || Number.isNaN(confidence)) {
+					return null;
+				}
+
+				return { category, content, confidence };
+			})
+			.filter((entry): entry is MemoryExtraction => entry !== null);
+
+		if (memories.length > 0) {
+			return memories;
+		}
+	}
+
+	const memoryMatches = text.matchAll(
 		/<memory>[\s\S]*?<category>(.*?)<\/category>[\s\S]*?<content>(.*?)<\/content>[\s\S]*?<confidence>(.*?)<\/confidence>[\s\S]*?<\/memory>/g,
 	);
 
@@ -139,8 +192,10 @@ export const longTermExtractionEvaluator: Evaluator = {
 				template: longTermExtractionTemplate,
 			});
 
-			const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-			const extractions = parseMemoryExtractionXML(response);
+			const modelType = (config.summaryModelType ??
+				ModelType.TEXT_NANO) as TextGenerationModelType;
+			const response = await runtime.useModel(modelType, { prompt });
+			const extractions = parseMemoryExtractionResponse(response);
 
 			logger.info(
 				{ src: "evaluator:memory" },
@@ -149,6 +204,7 @@ export const longTermExtractionEvaluator: Evaluator = {
 
 			const minConfidence = Math.max(config.longTermConfidenceThreshold, 0.85);
 			const extractedAt = new Date().toISOString();
+			let storedCount = 0;
 			await Promise.all(
 				extractions.map(async (extraction) => {
 					if (extraction.confidence >= minConfidence) {
@@ -164,6 +220,7 @@ export const longTermExtractionEvaluator: Evaluator = {
 								extractedAt,
 							},
 						});
+						storedCount += 1;
 
 						logger.info(
 							{ src: "evaluator:memory" },
@@ -177,6 +234,23 @@ export const longTermExtractionEvaluator: Evaluator = {
 					}
 				}),
 			);
+			logAdvancedMemoryTrajectory({
+				runtime,
+				message,
+				providerName: "LONG_TERM_MEMORY_EXTRACTION",
+				purpose: "evaluate",
+				data: {
+					recentMessageCount: recentMessages.length,
+					existingMemoryCount: existingMemories.length,
+					extractedMemoryCount: extractions.length,
+					storedMemoryCount: storedCount,
+				},
+				query: {
+					modelType: String(modelType),
+					entityId,
+					roomId,
+				},
+			});
 
 			const currentMessageCount = await runtime.countMemories({
 				roomIds: [roomId],
@@ -193,11 +267,18 @@ export const longTermExtractionEvaluator: Evaluator = {
 				`Updated checkpoint to ${currentMessageCount} for entity ${entityId}`,
 			);
 		} catch (error) {
-			const err = error instanceof Error ? error.message : String(error);
-			logger.error(
-				{ src: "evaluator:memory", err },
-				"Error during long-term memory extraction",
-			);
+			const err = getErrorMessage(error);
+			if (isTransientModelError(error)) {
+				logger.warn(
+					{ src: "evaluator:memory", err },
+					"Skipped long-term memory extraction due to transient model availability issue",
+				);
+			} else {
+				logger.error(
+					{ src: "evaluator:memory", err },
+					"Error during long-term memory extraction",
+				);
+			}
 		}
 		return undefined;
 	},

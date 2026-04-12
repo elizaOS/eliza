@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { messageHandlerTemplate } from "../prompts";
 import { AgentRuntime } from "../runtime";
 import type { Character, IDatabaseAdapter, State, UUID } from "../types";
 import { ModelType } from "../types";
@@ -264,7 +265,10 @@ describe("dynamicPromptExecFromState", () => {
 
 	describe("schema validation", () => {
 		it("should reject empty schema", async () => {
-			const state = createMockState();
+			const state = {
+				...createMockState(),
+				data: {},
+			} as State;
 			const result = await runtime.dynamicPromptExecFromState({
 				state,
 				params: { prompt: "Test prompt" },
@@ -275,7 +279,10 @@ describe("dynamicPromptExecFromState", () => {
 		});
 
 		it("should reject invalid field names", async () => {
-			const state = createMockState();
+			const state = {
+				...createMockState(),
+				data: {},
+			} as State;
 			const result = await runtime.dynamicPromptExecFromState({
 				state,
 				params: { prompt: "Test prompt" },
@@ -293,7 +300,10 @@ describe("dynamicPromptExecFromState", () => {
 				"mock",
 			);
 
-			const state = createMockState();
+			const state = {
+				...createMockState(),
+				data: {},
+			} as State;
 			const result = await runtime.dynamicPromptExecFromState({
 				state,
 				params: { prompt: "Test prompt" },
@@ -307,6 +317,27 @@ describe("dynamicPromptExecFromState", () => {
 
 			expect(result).not.toBeNull();
 			expect(result?.my_field).toBe("value");
+		});
+
+		it("uses explicit modelType when provided", async () => {
+			const miniHandler = vi.fn(
+				async () => "<response><text>mini</text></response>",
+			);
+			runtime.registerModel(ModelType.TEXT_NANO, miniHandler, "mock");
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [{ field: "text", description: "Response text" }],
+				options: {
+					modelType: ModelType.TEXT_NANO,
+					contextCheckLevel: 0,
+				},
+			});
+
+			expect(miniHandler).toHaveBeenCalledTimes(1);
+			expect(result?.text).toBe("mini");
 		});
 
 		it("should warn on contradictory schema declarations", async () => {
@@ -400,6 +431,75 @@ describe("dynamicPromptExecFromState", () => {
 			);
 			expect(hasStable).toBe(true);
 		});
+
+		it("should preserve provider stability inside segmented prompts", async () => {
+			let capturedParams: {
+				promptSegments?: Array<{ content: string; stable: boolean }>;
+			} = {};
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async (_, params) => {
+					capturedParams = {
+						promptSegments: params.promptSegments as Array<{
+							content: string;
+							stable: boolean;
+						}>,
+					};
+					return "<response><thought>ok</thought><text>Hi</text></response>";
+				},
+				"mock",
+			);
+
+			await runtime.dynamicPromptExecFromState({
+				state: {
+					values: {
+						agentName: "Tester",
+						providers:
+							"# Available Actions\nACTIONS\n# Conversation Messages\nhi",
+					},
+					data: {
+						providerOrder: ["ACTIONS", "RECENT_MESSAGES"],
+						providers: {
+							ACTIONS: {
+								providerName: "ACTIONS",
+								text: "# Available Actions\nACTIONS",
+							},
+							RECENT_MESSAGES: {
+								providerName: "RECENT_MESSAGES",
+								text: "# Conversation Messages\nhi",
+							},
+						},
+					},
+					text: "",
+				} as State,
+				params: { prompt: messageHandlerTemplate },
+				schema: [
+					{ field: "thought", description: "Reasoning" },
+					{ field: "text", description: "Response" },
+				],
+				options: {
+					contextCheckLevel: 0,
+				},
+			});
+
+			expect(capturedParams.promptSegments).toBeDefined();
+			const stableSegments = (capturedParams.promptSegments ?? []).filter(
+				(segment) => segment.stable,
+			);
+			const unstableSegments = (capturedParams.promptSegments ?? []).filter(
+				(segment) => !segment.stable,
+			);
+			expect(
+				stableSegments.some((segment) =>
+					segment.content.includes("# Available Actions"),
+				),
+			).toBe(true);
+			expect(
+				unstableSegments.some((segment) =>
+					segment.content.includes("# Conversation Messages"),
+				),
+			).toBe(true);
+		});
 	});
 
 	describe("format handling", () => {
@@ -455,6 +555,182 @@ describe("dynamicPromptExecFromState", () => {
 			expect(result).not.toBeNull();
 			expect(result?.thought).toBe("I should respond");
 			expect(result?.text).toBe("Hello!");
+		});
+
+		it("should parse relaxed TOON classifier output with blank optional fields", async () => {
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () => `name: Eliza
+reasoning: "lool" from im_zo_sol is just a reaction laugh, not directed at me and carries no follow-up question or task. No one is waiting on me here.
+action: IGNORE
+primaryContext: social
+secondaryContexts: 
+evidenceTurnIds: 1491725198326501518`,
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [
+					{ field: "name", description: "Agent name" },
+					{ field: "reasoning", description: "Reasoning" },
+					{ field: "action", description: "Decision" },
+					{ field: "primaryContext", description: "Primary context" },
+					{ field: "secondaryContexts", description: "Secondary contexts" },
+					{ field: "evidenceTurnIds", description: "Evidence turn ids" },
+				],
+				options: {
+					contextCheckLevel: 0,
+					preferredEncapsulation: "toon",
+				},
+			});
+
+			expect(result).not.toBeNull();
+			expect(result?.action).toBe("IGNORE");
+			expect(result?.primaryContext).toBe("social");
+			expect(result?.secondaryContexts).toBe("");
+			expect(result?.evidenceTurnIds).toBe("1491725198326501518");
+		});
+
+		it("recovers fenced JSON wrapped in prose when TOON is preferred", async () => {
+			const warnSpy = vi
+				.spyOn(runtime.logger, "warn")
+				.mockImplementation(() => {});
+
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () => `Here is the structured result:
+
+\`\`\`json
+{
+  "name": "Eliza",
+  "action": "RESPOND",
+  "primaryContext": "automation"
+}
+\`\`\`
+
+Use that object.`,
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [
+					{ field: "name", description: "Agent name" },
+					{ field: "action", description: "Decision" },
+					{ field: "primaryContext", description: "Primary context" },
+				],
+				options: {
+					contextCheckLevel: 0,
+					preferredEncapsulation: "toon",
+				},
+			});
+
+			expect(result).toEqual({
+				name: "Eliza",
+				action: "RESPOND",
+				primaryContext: "automation",
+			});
+			expect(
+				warnSpy.mock.calls.some((call) =>
+					call.some((entry) =>
+						String(entry).includes("dynamicPromptExecFromState parse problem"),
+					),
+				),
+			).toBe(false);
+		});
+
+		it("recovers fenced TOON wrapped in prose when JSON is forced", async () => {
+			const warnSpy = vi
+				.spyOn(runtime.logger, "warn")
+				.mockImplementation(() => {});
+
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () => `Sure:
+
+\`\`\`toon
+name: Eliza
+action: RESPOND
+primaryContext: automation
+\`\`\`
+
+Done.`,
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [
+					{ field: "name", description: "Agent name" },
+					{ field: "action", description: "Decision" },
+					{ field: "primaryContext", description: "Primary context" },
+				],
+				options: {
+					contextCheckLevel: 0,
+					forceFormat: "json",
+				},
+			});
+
+			expect(result).toEqual({
+				name: "Eliza",
+				action: "RESPOND",
+				primaryContext: "automation",
+			});
+			expect(
+				warnSpy.mock.calls.some((call) =>
+					call.some((entry) =>
+						String(entry).includes("dynamicPromptExecFromState parse problem"),
+					),
+				),
+			).toBe(false);
+		});
+
+		it("recovers inline JSON objects surrounded by prose", async () => {
+			const warnSpy = vi
+				.spyOn(runtime.logger, "warn")
+				.mockImplementation(() => {});
+
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () =>
+					'Result: {"name":"Eliza","action":"RESPOND","primaryContext":"automation"}',
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [
+					{ field: "name", description: "Agent name" },
+					{ field: "action", description: "Decision" },
+					{ field: "primaryContext", description: "Primary context" },
+				],
+				options: {
+					contextCheckLevel: 0,
+					forceFormat: "json",
+				},
+			});
+
+			expect(result).toEqual({
+				name: "Eliza",
+				action: "RESPOND",
+				primaryContext: "automation",
+			});
+			expect(
+				warnSpy.mock.calls.some((call) =>
+					call.some((entry) =>
+						String(entry).includes("dynamicPromptExecFromState parse problem"),
+					),
+				),
+			).toBe(false);
 		});
 
 		it("should automatically use JSON for nested schemas", async () => {
@@ -524,7 +800,7 @@ describe("dynamicPromptExecFromState", () => {
 				},
 			});
 
-			expect(capturedPrompt).toContain("Respond using JSON format");
+			expect(capturedPrompt).toContain("Return only JSON.");
 			expect(result).not.toBeNull();
 			expect(result?.facts).toEqual([
 				{
@@ -580,7 +856,7 @@ describe("dynamicPromptExecFromState", () => {
 				},
 			});
 
-			expect(capturedPrompt).toContain("Respond using JSON format");
+			expect(capturedPrompt).toContain("Return only JSON.");
 			expect(result?.facts).toEqual([
 				{
 					claim: "Alice likes tea",
@@ -590,12 +866,42 @@ describe("dynamicPromptExecFromState", () => {
 	});
 
 	describe("validation code handling", () => {
-		it("should handle validation codes at level 2", async () => {
+		it("should omit checkpoint codes by default at level 2", async () => {
+			let capturedPrompt = "";
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				async (_, params) => {
-					// Extract codes from the prompt
 					const prompt = params.prompt as string;
+					capturedPrompt = prompt;
+					return "<response><text>Response text</text></response>";
+				},
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [{ field: "text", description: "Response" }],
+				options: {
+					contextCheckLevel: 2,
+				},
+			});
+
+			expect(result).not.toBeNull();
+			expect(result?.text).toBe("Response text");
+			expect(capturedPrompt).not.toContain("initial code: ");
+			expect(capturedPrompt).not.toContain("middle code: ");
+			expect(capturedPrompt).not.toContain("end code: ");
+		});
+
+		it("should handle checkpoint codes when explicitly enabled", async () => {
+			let capturedPrompt = "";
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async (_, params) => {
+					const prompt = params.prompt as string;
+					capturedPrompt = prompt;
 					const initMatch = prompt.match(/initial code: ([a-f0-9-]+)/);
 					const midMatch = prompt.match(/middle code: ([a-f0-9-]+)/);
 					const endMatch = prompt.match(/end code: ([a-f0-9-]+)/);
@@ -617,13 +923,17 @@ describe("dynamicPromptExecFromState", () => {
 				schema: [{ field: "text", description: "Response" }],
 				options: {
 					contextCheckLevel: 2,
+					checkpointCodes: true,
 				},
 			});
 
 			expect(result).not.toBeNull();
 			expect(result?.text).toBe("Response text");
-			// Validation codes should be removed from result
 			expect(result?.one_initial_code).toBeUndefined();
+			expect(capturedPrompt).toMatch(/initial code: [a-f0-9]{8}\n/);
+			expect(capturedPrompt).toMatch(/\nmiddle code: [a-f0-9]{8}\n/);
+			expect(capturedPrompt).toMatch(/\nend code: [a-f0-9]{8}\n/);
+			expect(capturedPrompt).not.toContain("</output>middle code:");
 		});
 	});
 
@@ -670,6 +980,59 @@ describe("dynamicPromptExecFromState", () => {
 
 			expect(result).not.toBeNull();
 			expect(result?.text).toBe("Valid response");
+		});
+
+		it("accepts planner-style responses without thought when text is present", async () => {
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () =>
+					"<response><actions>REPLY</actions><text>Calendar is available.</text><simple>true</simple></response>",
+				"mock",
+			);
+
+			const state = {
+				...createMockState(),
+				data: {},
+			} as State;
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: messageHandlerTemplate },
+				schema: [
+					{
+						field: "thought",
+						description: "Optional planner reasoning",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "actions",
+						description: "Ordered action entries",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "text",
+						description: "The text response to send to the user",
+						streamField: true,
+					},
+					{
+						field: "simple",
+						description: "Whether this is a simple response (true/false)",
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					contextCheckLevel: 0,
+					preferredEncapsulation: "xml",
+					maxRetries: 0,
+				},
+			});
+
+			expect(result).not.toBeNull();
+			expect(result?.thought).toBeUndefined();
+			expect(result?.actions).toEqual(["REPLY"]);
+			expect(result?.text).toBe("Calendar is available.");
 		});
 
 		it("should fail when nested required fields are missing", async () => {
@@ -754,6 +1117,50 @@ describe("dynamicPromptExecFromState", () => {
 			expect(result).not.toBeNull();
 			expect(result?.text).toBe("Valid on retry");
 			expect(callCount).toBe(2);
+		});
+
+		it("logs transient model failures as warnings while retrying", async () => {
+			let callCount = 0;
+			const warnSpy = vi
+				.spyOn(runtime.logger, "warn")
+				.mockImplementation(() => {});
+			const errorSpy = vi
+				.spyOn(runtime.logger, "error")
+				.mockImplementation(() => {});
+
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async () => {
+					callCount++;
+					if (callCount === 1) {
+						throw new Error(
+							"Service temporarily unavailable. Please try again shortly.",
+						);
+					}
+					return "<response><text>Valid on retry</text></response>";
+				},
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "Test prompt" },
+				schema: [{ field: "text", description: "Response" }],
+				options: {
+					contextCheckLevel: 0,
+					maxRetries: 2,
+				},
+			});
+
+			expect(result?.text).toBe("Valid on retry");
+			expect(callCount).toBe(2);
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining("Model call failed transiently, retrying"),
+			);
+			expect(errorSpy).not.toHaveBeenCalledWith(
+				expect.stringContaining("Service temporarily unavailable"),
+			);
 		});
 	});
 
@@ -875,6 +1282,59 @@ describe("dynamicPromptExecFromState", () => {
 
 			expect(result).not.toBeNull();
 			expect(result?.text).toBe("Simple response");
+		});
+	});
+
+	describe("memory table compatibility", () => {
+		it("defaults omitted memory table names to messages", async () => {
+			const roomId = stringToUuid(`room-${uuidv4()}`);
+			const getMemoriesParams = {
+				roomId,
+				count: 1,
+			} satisfies Omit<Parameters<AgentRuntime["getMemories"]>[0], "tableName">;
+			const searchMemoriesParams = {
+				embedding: [0.1, 0.2, 0.3],
+				roomId,
+				count: 2,
+			} satisfies Omit<
+				Parameters<AgentRuntime["searchMemories"]>[0],
+				"tableName"
+			>;
+			const countMemoriesParams = {
+				roomId,
+			} satisfies Extract<Parameters<AgentRuntime["countMemories"]>[0], object>;
+
+			await runtime.getMemories(
+				getMemoriesParams as Parameters<AgentRuntime["getMemories"]>[0],
+			);
+			expect(mockAdapter.getMemories).toHaveBeenCalledWith(
+				expect.objectContaining({
+					roomId,
+					count: 1,
+					tableName: "messages",
+				}),
+			);
+
+			await runtime.searchMemories(
+				searchMemoriesParams as Parameters<AgentRuntime["searchMemories"]>[0],
+			);
+			expect(mockAdapter.searchMemories).toHaveBeenCalledWith(
+				expect.objectContaining({
+					roomId,
+					count: 2,
+					tableName: "messages",
+				}),
+			);
+
+			await runtime.countMemories(
+				countMemoriesParams as Parameters<AgentRuntime["countMemories"]>[0],
+			);
+			expect(mockAdapter.countMemories).toHaveBeenCalledWith(
+				expect.objectContaining({
+					roomIds: [roomId],
+					tableName: "messages",
+				}),
+			);
 		});
 	});
 

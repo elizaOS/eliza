@@ -1,4 +1,8 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { shouldFollowRoomTemplate } from "../../prompts.ts";
 import type {
@@ -12,18 +16,17 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import { composePromptFromState } from "../../utils.ts";
+import {
+	composePromptFromState,
+	parseBooleanFromText,
+	parseKeyValueXml,
+} from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("FOLLOW_ROOM");
-const FOLLOW_KEYWORDS = [
-	"follow",
-	"participate",
-	"engage",
-	"listen",
-	"take interest",
-	"join",
-];
+const FOLLOW_KEYWORDS = getValidationKeywordTerms("action.followRoom.request", {
+	includeAllLocales: true,
+});
 
 export const followRoomAction: Action = {
 	name: spec.name,
@@ -31,10 +34,10 @@ export const followRoomAction: Action = {
 	description: spec.description,
 	examples: (spec.examples ?? []) as ActionExample[][],
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
-		const messageContentText = message.content.text?.toLowerCase();
+		const messageContentText = message.content.text;
 		if (
 			!messageContentText ||
-			!FOLLOW_KEYWORDS.some((keyword) => messageContentText.includes(keyword))
+			findKeywordTermMatch(messageContentText, FOLLOW_KEYWORDS) === undefined
 		) {
 			return false;
 		}
@@ -87,12 +90,14 @@ export const followRoomAction: Action = {
 				stopSequences: [],
 			});
 
-			const cleanedResponse = response.trim().toLowerCase();
+			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(
+				response,
+			);
+			const decisionValue = parsed?.decision ?? response.trim();
+			const cleanedResponse = String(decisionValue).trim().toLowerCase();
 
 			if (
-				cleanedResponse === "true" ||
-				cleanedResponse === "yes" ||
-				cleanedResponse === "y" ||
+				parseBooleanFromText(decisionValue) ||
 				cleanedResponse.includes("true") ||
 				cleanedResponse.includes("yes")
 			) {

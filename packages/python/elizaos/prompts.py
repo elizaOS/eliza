@@ -1,29 +1,107 @@
+"""
+Auto-generated prompt templates for elizaOS Python runtime.
+DO NOT EDIT - Generated from packages/prompts/prompts/*.txt
+
+These prompts use Handlebars-style template syntax:
+- {{variableName}} for simple substitution
+- {{#each items}}...{{/each}} for iteration
+- {{#if condition}}...{{/if}} for conditionals
+"""
+
 from __future__ import annotations
 
-REPLY_TEMPLATE = """# Task: Generate dialog for the character {{agentName}}.
+ADD_CONTACT_TEMPLATE = """task: Extract contact information to add to the relationships.
 
+context:
 {{providers}}
 
-# Instructions: Write the next message for {{agentName}}.
-"thought" should be a short description of what the agent is thinking about and planning.
-"text" should be the next message for {{agentName}} which they will send to the conversation.
+recent_messages:
+{{recentMessages}}
 
-IMPORTANT CODE BLOCK FORMATTING RULES:
-- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with ``` fenced code blocks (specify the language if known, e.g., ```python).
-- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
-- If including inline code (short single words or function names), use single backticks (`) as appropriate.
-- This ensures the user sees clearly formatted and copyable code when relevant.
+current_message:
+{{message}}
 
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
+instructions[5]:
+- identify the contact name being added
+- include entityId only if it is explicitly known from context
+- return categories as a comma-separated list
+- include notes, timezone, and language only when clearly present
+- include a short reason for why this contact should be saved
 
-Respond using XML format like this:
-<response>
-    <thought>Your thought here</thought>
-    <text>Your message here</text>
-</response>
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>."""
+Example:
+contactName: Jane Doe
+entityId:
+categories: vip,colleague
+notes: Met at the design summit
+timezone: America/New_York
+language: English
+reason: Important collaborator to remember"""
+
+AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE = """Your job: reflect on context, decide what you want to do next, and act if appropriate.
+- Use available actions/tools when they can advance the goal.
+- Use thinking to think about and plan what you want to do.
+- Do NOT speak out loud. This loop is internal-only.
+- Output structure: ONLY a <thought> plus any actions. No other message text.
+- If you don't need to make a change this round, take no action and output only a <thought>.
+- If you cannot act, explain what is missing inside <thought> and take no action.
+- Keep the response concise, focused on the next action.
+
+USER CONTEXT (most recent last):
+{{targetRoomContext}}
+
+Your last autonomous note: "{{lastThought}}"
+
+Continue from that note. Output <thought> and take action if needed."""
+
+AUTONOMY_CONTINUOUS_FIRST_TEMPLATE = """Your job: reflect on context, decide what you want to do next, and act if appropriate.
+- Use available actions/tools when they can advance the goal.
+- Use thinking to think about and plan what you want to do.
+- Do NOT speak out loud. This loop is internal-only.
+- Output structure: ONLY a <thought> plus any actions. No other message text.
+- If you don't need to make a change this round, take no action and output only a <thought>.
+- If you cannot act, explain what is missing inside <thought> and take no action.
+- Keep the response concise, focused on the next action.
+
+USER CONTEXT (most recent last):
+{{targetRoomContext}}
+
+Think briefly, then output <thought> and take action if needed."""
+
+AUTONOMY_TASK_CONTINUE_TEMPLATE = """You are running in AUTONOMOUS TASK MODE.
+
+Your job: continue helping the user and make progress toward the task.
+- Use available actions/tools to gather information or execute steps.
+- Use thinking to think about and plan what you want to do.
+- Do NOT speak out loud. This loop is internal-only.
+- Output structure: ONLY a <thought> plus any actions. No other message text.
+- If you don't need to make a change this round, take no action and output only a <thought>.
+- If you cannot act, explain what is missing inside <thought> and take no action.
+- Keep the response concise, focused on the next action.
+
+USER CHAT CONTEXT (most recent last):
+{{targetRoomContext}}
+
+Your last autonomous note: "{{lastThought}}"
+
+Continue the task. Output <thought> and take action now."""
+
+AUTONOMY_TASK_FIRST_TEMPLATE = """You are running in AUTONOMOUS TASK MODE.
+
+Your job: continue helping the user and make progress toward the task.
+- Use available actions/tools to gather information or execute steps.
+- If you need UI control, use ComputerUse actions.
+- In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
+- Prefer safe, incremental steps; if unsure, gather more UI context before acting.
+- Do NOT speak out loud. This loop is internal-only.
+- Output structure: ONLY a <thought> plus any actions. No other message text.
+
+USER CHAT CONTEXT (most recent last):
+{{targetRoomContext}}
+
+Decide what to do next. Output <thought>, then take the most useful action."""
 
 CHOOSE_OPTION_TEMPLATE = """# Task: Choose an option from the available choices.
 
@@ -36,13 +114,30 @@ CHOOSE_OPTION_TEMPLATE = """# Task: Choose an option from the available choices.
 Analyze the options and select the most appropriate one based on the current context.
 Provide your reasoning and the selected option ID.
 
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the selection</thought>
-    <selected_id>The ID of the selected option</selected_id>
-</response>
+Respond using TOON like this:
+thought: Your reasoning for the selection
+selected_id: The ID of the selected option
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
+IMPORTANT: Your response must ONLY contain the TOON document above."""
+
+IMAGE_DESCRIPTION_TEMPLATE = """Task: Analyze the provided image and generate a comprehensive description with multiple levels of detail.
+
+Instructions:
+Carefully examine the image and provide:
+1. A concise, descriptive title that captures the main subject or scene
+2. A brief summary description (1-2 sentences) highlighting the key elements
+3. An extensive, detailed description that covers all visible elements, composition, lighting, colors, mood, and any other relevant details
+
+Be objective and descriptive. Focus on what you can actually see in the image rather than making assumptions about context or meaning.
+
+Output:
+
+Respond using TOON like this:
+title: A concise, descriptive title for the image
+description: A brief 1-2 sentence summary of the key elements in the image
+text: An extensive, detailed description covering all visible elements, composition, lighting, colors, mood, setting, objects, people, activities, and any other relevant details you can observe in the image
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it."""
 
 IMAGE_GENERATION_TEMPLATE = """# Task: Generate an image prompt for {{agentName}}.
 
@@ -55,504 +150,15 @@ The prompt should be specific, descriptive, and suitable for AI image generation
 # Recent conversation:
 {{recentMessages}}
 
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the image prompt</thought>
-    <prompt>Detailed image generation prompt</prompt>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
-
-REFLECTION_TEMPLATE = """# Task: Reflect on recent agent behavior and interactions.
-
-{{providers}}
-
-# Recent Interactions:
-{{recentInteractions}}
-
-# Instructions:
-Analyze the agent's recent behavior and interactions. Consider:
-1. Was the communication clear and helpful?
-2. Were responses appropriate for the context?
-3. Were any mistakes made?
-4. What could be improved?
-
-Respond using XML format like this:
-<response>
-    <thought>Your detailed analysis</thought>
-    <quality_score>Score 0-100 for overall quality</quality_score>
-    <strengths>What went well</strengths>
-    <improvements>What could be improved</improvements>
-    <learnings>Key takeaways for future interactions</learnings>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
-
-UPDATE_SETTINGS_TEMPLATE = """# Task: Update settings based on the request.
-
-{{providers}}
-
-# Current Settings:
-{{settings}}
-
-# Instructions:
-Based on the request, determine which settings to update.
-Only update settings that the user has explicitly requested.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the settings changes</thought>
-    <updates>
-        <update>
-            <key>setting_key</key>
-            <value>new_value</value>
-        </update>
-    </updates>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
-
-UPDATE_ENTITY_TEMPLATE = """# Task: Update entity information.
-
-{{providers}}
-
-# Current Entity Information:
-{{entityInfo}}
-
-# Instructions:
-Based on the request, determine what information about the entity should be updated.
-Only update fields that the user has explicitly requested to change.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the entity update</thought>
-    <entity_id>The entity ID to update</entity_id>
-    <updates>
-        <field>
-            <name>field_name</name>
-            <value>new_value</value>
-        </field>
-    </updates>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
-
-SHOULD_RESPOND_TEMPLATE = """<task>Decide on behalf of {{agentName}} whether they should respond to the message, ignore it or stop the conversation.</task>
-
-<providers>
-{{providers}}
-</providers>
-
-<instructions>Decide if {{agentName}} should respond to or interact with the conversation.
-
-IMPORTANT RULES FOR RESPONDING:
-- If YOUR name ({{agentName}}) is directly mentioned → RESPOND
-- If someone uses a DIFFERENT name (not {{agentName}}) → IGNORE (they're talking to someone else)
-- If you're actively participating in a conversation and the message continues that thread → RESPOND
-- If someone tells you to stop or be quiet → STOP
-- Otherwise → IGNORE
-
-The key distinction is:
-- "Talking TO {{agentName}}" (your name mentioned, replies to you, continuing your conversation) → RESPOND
-- "Talking ABOUT {{agentName}}" or to someone else → IGNORE
-</instructions>
-
-<output>
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-Respond using XML format like this:
-<response>
-  <name>{{agentName}}</name>
-  <reasoning>Your reasoning here</reasoning>
-  <action>RESPOND | IGNORE | STOP</action>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
-</output>"""
-
-MESSAGE_HANDLER_TEMPLATE = """<task>Generate dialog and actions for the character {{agentName}}.</task>
-
-<providers>
-{{providers}}
-</providers>
-
-<instructions>
-Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
-
-IMPORTANT ACTION ORDERING RULES:
-- Actions are executed in the ORDER you list them - the order MATTERS!
-- REPLY should come FIRST to acknowledge the user's request before executing other actions
-- Common patterns:
-  - For requests requiring tool use: REPLY,CALL_MCP_TOOL (acknowledge first, then gather info)
-  - For task execution: REPLY,SEND_MESSAGE or REPLY,EVM_SWAP_TOKENS (acknowledge first, then do the task)
-  - For multi-step operations: REPLY,ACTION1,ACTION2 (acknowledge first, then complete all steps)
-- REPLY is used to acknowledge and inform the user about what you're going to do
-- Follow-up actions execute the actual tasks after acknowledgment
-- Use IGNORE only when you should not respond at all
-- If you use IGNORE, do not include any other actions. IGNORE should be used alone when you should not respond or take any actions.
-
-IMPORTANT ACTION PARAMETERS:
-- When an action has parameters listed in its description, include a <params> block for that action
-- Extract parameter values from the user's message and conversation context
-- Required parameters MUST be provided; optional parameters can be omitted if not mentioned
-- If you cannot determine a required parameter value, ask the user for clarification in your <text>
-
-EXAMPLE (action parameters):
-User message: "Send a message to @dev_guru on telegram saying Hello!"
-<actions>
-  <action>
-    <name>REPLY</name>
-  </action>
-  <action>
-    <name>SEND_MESSAGE</name>
-    <params>
-      <targetType>user</targetType>
-      <source>telegram</source>
-      <target>dev_guru</target>
-      <text>Hello!</text>
-    </params>
-  </action>
-</actions>
-
-IMPORTANT PROVIDER SELECTION RULES:
-- Only include providers if they are needed to respond accurately.
-- If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
-- If the message asks about or references specific people, include "ENTITIES" in your providers list
-- If the message asks about relationships or connections between people, include "RELATIONSHIPS" in your providers list
-- If the message asks about facts or specific information, include "FACTS" in your providers list
-- If the message asks about the environment or world context, include "WORLD" in your providers list
-- If no additional context is needed, you may leave the providers list empty.
-
-IMPORTANT CODE BLOCK FORMATTING RULES:
-- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with ``` fenced code blocks (specify the language if known, e.g., ```python).
-- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
-- If including inline code (short single words or function names), use single backticks (`) as appropriate.
-- This ensures the user sees clearly formatted and copyable code when relevant.
-</instructions>
-
-<keys>
-"thought" should be a short description of what the agent is thinking about and planning.
-"actions" should be a list of <action> elements IN THE ORDER THEY SHOULD BE EXECUTED (if none, use a single <action><name>IGNORE</name></action>, if simply responding with text, use <action><name>REPLY</name></action>). Each action that requires parameters should include a <params> child element.
-"providers" should be a comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting (NEVER use "IGNORE" as a provider - use specific provider names like ATTACHMENTS, ENTITIES, FACTS, KNOWLEDGE, etc.)
-"text" should be the text of the next message for {{agentName}} which they will send to the conversation.
-</keys>
-
-<output>
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-Respond using XML format like this:
-<response>
-    <thought>Your thought here</thought>
-    <actions>
-        <action>
-            <name>ACTION1</name>
-            <params>
-                <paramName1>value1</paramName1>
-                <paramName2>value2</paramName2>
-            </params>
-        </action>
-        <action>
-            <name>ACTION2</name>
-            <params>
-                <paramName1>value1</paramName1>
-            </params>
-        </action>
-    </actions>
-    <providers>PROVIDER1,PROVIDER2</providers>
-    <text>Your response text here</text>
-</response>
-
-Note: The <params> block inside each <action> is optional and should only be included when that action requires input parameters.
-If an action has no parameters or you're only using REPLY/IGNORE, omit the <params> child entirely.
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
-</output>"""
-
-MULTI_STEP_DECISION_TEMPLATE = """<task>
-Determine the next step the assistant should take in this conversation to help the user reach their goal.
-</task>
-
-{{recentMessages}}
-
-# Multi-Step Workflow
-
-In each step, decide:
-
-1. **Which providers (if any)** should be called to gather necessary data.
-2. **Which action (if any)** should be executed after providers return.
-3. Decide whether the task is complete. If so, set `isFinish: true`. Do not select the `REPLY` action; replies are handled separately after task completion.
-
-You can select **multiple providers** and at most **one action** per step.
-
-If the task is fully resolved and no further steps are needed, mark the step as `isFinish: true`.
-
----
-
-{{actionsWithDescriptions}}
-
-{{providersWithDescriptions}}
-
-These are the actions or data provider calls that have already been used in this run. Use this to avoid redundancy and guide your next move.
-
-{{actionResults}}
-
-<keys>
-"thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
-"action"  Name of the action to execute after providers return (can be empty if no action is needed).
-"providers" List of provider names to call in this step (can be empty if none are needed).
-"isFinish" Set to true only if the task is fully complete.
-</keys>
-
-⚠️ IMPORTANT: Do **not** mark the task as `isFinish: true` immediately after calling an action. Wait for the action to complete before deciding the task is finished.
-
-<output>
-<response>
-  <thought>Your thought here</thought>
-  <action>ACTION</action>
-  <providers>PROVIDER1,PROVIDER2</providers>
-  <isFinish>true | false</isFinish>
-</response>
-</output>"""
-
-MULTI_STEP_SUMMARY_TEMPLATE = """<task>
-Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
-</task>
-
-# Context Information
-{{bio}}
-
----
-
-{{system}}
-
----
-
-{{messageDirections}}
-
-# Conversation Summary
-Below is the user's original request and conversation so far:
-{{recentMessages}}
-
-# Execution Trace
-Here are the actions taken by the assistant to fulfill the request:
-{{actionResults}}
-
-# Assistant's Last Reasoning Step
-{{recentMessage}}
-
-# Instructions
-
- - Review the execution trace and last reasoning step carefully
-
- - Your final output MUST be in this XML format:
-<output>
-<response>
-  <thought>Your thought here</thought>
-  <text>Your final message to the user</text>
-</response>
-</output>
-"""
-
-AUTONOMY_CONTINUOUS_FIRST_TEMPLATE = """You are running in AUTONOMOUS CONTINUOUS MODE.
-
-Your job: reflect on context, decide what you want to do next, and act if appropriate.
-- Use available actions/tools when they can advance the goal.
-- If you cannot act, state the missing info and the safest next step to obtain it.
-- Keep the response concise, focused on the next action.
-
-USER CONTEXT (most recent last):
-{{targetRoomContext}}
-
-Think briefly, then state what you want to do next and take action if needed.
-"""
-
-AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE = """You are running in AUTONOMOUS CONTINUOUS MODE.
-
-Your job: reflect on context, decide what you want to do next, and act if appropriate.
-- Use available actions/tools when they can advance the goal.
-- If you cannot act, state the missing info and the safest next step to obtain it.
-- Keep the response concise, focused on the next action.
-
-USER CONTEXT (most recent last):
-{{targetRoomContext}}
-
-Your last autonomous note: "{{lastThought}}"
-
-Continue from that note. Decide the next step and act if needed.
-"""
-
-AUTONOMY_TASK_FIRST_TEMPLATE = """You are running in AUTONOMOUS TASK MODE.
-
-Your job: continue helping the user and make progress toward the task.
-- Use available actions/tools to gather information or execute steps.
-- If you need UI control, use ComputerUse actions.
-- In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
-- Prefer safe, incremental steps; if unsure, gather more UI context before acting.
-
-USER CHAT CONTEXT (most recent last):
-{{targetRoomContext}}
-
-Decide what to do next. Think briefly, then take the most useful action.
-"""
-
-AUTONOMY_TASK_CONTINUE_TEMPLATE = """You are running in AUTONOMOUS TASK MODE.
-
-Your job: continue helping the user and make progress toward the task.
-- Use available actions/tools to gather information or execute steps.
-- If you need UI control, use ComputerUse actions.
-- In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
-- Prefer safe, incremental steps; if unsure, gather more UI context before acting.
-
-USER CHAT CONTEXT (most recent last):
-{{targetRoomContext}}
-
-Your last autonomous note: "{{lastThought}}"
-
-Continue the task. Decide the next step and take action now.
-"""
-
-BOOLEAN_FOOTER = "Respond with only a YES or a NO."
-
-UPDATE_ROLE_TEMPLATE = """# Task: Update entity role in the world.
-
-{{providers}}
-
-# Current Role Assignments:
-{{roles}}
-
-# Instructions:
-Based on the request, determine the role assignment to make.
-Valid roles are: OWNER, ADMIN, MEMBER, GUEST, NONE
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the role change</thought>
-    <entity_id>The entity ID to update</entity_id>
-    <new_role>The new role to assign (OWNER, ADMIN, MEMBER, GUEST, or NONE)</new_role>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
-
-SCHEDULE_FOLLOW_UP_TEMPLATE = """# Task: Schedule a follow-up reminder.
-
-{{providers}}
-
-# Current Message Context:
-{{message}}
-Sender: {{senderName}} ({{senderId}})
-Current Time: {{currentDateTime}}
-
-# Instructions:
-Extract follow-up details from the conversation. Determine:
-1. When the follow-up should occur
-2. The reason for following up
-3. An optional message to include
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the follow-up</thought>
-    <entity_id>Entity ID to follow up with</entity_id>
-    <scheduled_for>ISO 8601 datetime for follow-up</scheduled_for>
-    <reason>Reason for follow-up</reason>
-    <message>Optional message to include</message>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
-
-ADD_CONTACT_TEMPLATE = """# Task: Add a contact to the rolodex.
-
-{{providers}}
-
-# Current Message Context:
-{{message}}
-Sender: {{senderName}} ({{senderId}})
-
-# Instructions:
-Extract contact information from the conversation. Look for:
-1. Name or identifier
-2. Category/relationship type
-3. Any notes or context
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for adding this contact</thought>
-    <name>Contact name</name>
-    <category>Contact category</category>
-    <notes>Additional notes</notes>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
-
-SEARCH_CONTACTS_TEMPLATE = """# Task: Search for contacts in the rolodex.
-
-{{providers}}
-
-# Current Message Context:
-{{message}}
-Sender: {{senderName}} ({{senderId}})
-
-# Instructions:
-Determine what the user is searching for in their contacts.
-Extract search criteria from the conversation.
-
-Respond using XML format like this:
-<response>
-    <thought>Your understanding of the search request</thought>
-    <query>Search query or criteria</query>
-    <category>Optional category filter</category>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
-
-REMOVE_CONTACT_TEMPLATE = """# Task: Remove a contact from the rolodex.
-
-{{providers}}
-
-# Current Message Context:
-{{message}}
-Sender: {{senderName}} ({{senderId}})
-
-# Instructions:
-Determine which contact should be removed based on the conversation.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for removing this contact</thought>
-    <entity_id>Entity ID to remove</entity_id>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
-
-UPDATE_CONTACT_TEMPLATE = """# Task: Update contact information.
-
-{{providers}}
-
-# Current Message Context:
-{{message}}
-Sender: {{senderName}} ({{senderId}})
-
-# Instructions:
-Determine what contact information should be updated based on the conversation.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the update</thought>
-    <entity_id>Entity ID to update</entity_id>
-    <updates>
-        <field>
-            <name>field_name</name>
-            <value>new_value</value>
-        </field>
-    </updates>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
+Respond using TOON like this:
+thought: Your reasoning for the image prompt
+prompt: Detailed image generation prompt
+
+IMPORTANT: Your response must ONLY contain the TOON document above."""
 
 MESSAGE_CLASSIFIER_TEMPLATE = """Analyze this user request and classify it for planning purposes:
 
-"{text}"
+"{{text}}"
 
 Classify the request across these dimensions:
 
@@ -586,370 +192,127 @@ CAPABILITIES: [comma-separated list]
 STAKEHOLDERS: [comma-separated list]
 CONSTRAINTS: [comma-separated list]
 DEPENDENCIES: [comma-separated list]
-CONFIDENCE: [0.0-1.0]
-"""
+CONFIDENCE: [0.0-1.0]"""
 
-INITIAL_SUMMARIZATION_TEMPLATE = """# Task: Summarize Conversation
+MESSAGE_HANDLER_TEMPLATE = """task: Generate dialog and actions for {{agentName}}.
 
-You are analyzing a conversation to create a concise summary that captures the key points, topics, and important details.
+context:
+{{providers}}
 
-# Recent Messages
-{recent_messages}
+rules[9]:
+- think briefly, then respond
+- always include a <thought> field, even for direct replies
+- actions execute in listed order
+- if replying, REPLY goes first
+- use IGNORE or STOP only by themselves
+- include providers only when needed
+- use provider_hints from context when present instead of restating the same rules
+- if an action needs inputs, include them inside that action's <params> block
+- if a required param is unknown, ask for clarification in text
 
-# Instructions
-Generate a summary that:
-1. Captures the main topics discussed
-2. Highlights key information shared
-3. Notes any decisions made or questions asked
-4. Maintains context for future reference
-5. Is concise but comprehensive
+control_actions:
+- STOP means the task is done and the agent should end the run without executing more actions
+- STOP is a terminal control action even if it is not listed in available actions
 
-**IMPORTANT**: Keep the summary under 2500 tokens. Be comprehensive but concise.
+fields[5]{name,meaning}:
+- thought | short plan
+- actions | ordered <action> entries inside <actions>
+- providers | array of provider names, or empty
+- text | next message for {{agentName}}
+- simple | true or false
 
-Also extract:
-- **Topics**: List of main topics discussed (comma-separated)
-- **Key Points**: Important facts or decisions (bullet points)
+formatting:
+- wrap multi-line code in fenced code blocks
+- use inline backticks for short code identifiers
 
-Respond in this XML format:
-<summary>
-  <text>Your comprehensive summary here</text>
-  <topics>topic1, topic2, topic3</topics>
-  <keyPoints>
-    <point>First key point</point>
-    <point>Second key point</point>
-  </keyPoints>
-</summary>"""
+output:
+XML only. Return exactly one <response>...</response> document. No prose before or after it. No <think>.
 
-UPDATE_SUMMARIZATION_TEMPLATE = """# Task: Update and Condense Conversation Summary
-
-You are updating an existing conversation summary with new messages, while keeping the total summary concise.
-
-# Existing Summary
-{existing_summary}
-
-# Existing Topics
-{existing_topics}
-
-# New Messages Since Last Summary
-{new_messages}
-
-# Instructions
-Update the summary by:
-1. Merging the existing summary with insights from the new messages
-2. Removing redundant or less important details to stay under the token limit
-3. Keeping the most important context and decisions
-4. Adding new topics if they emerge
-5. **CRITICAL**: Keep the ENTIRE updated summary under 2500 tokens
-
-The goal is a rolling summary that captures the essence of the conversation without growing indefinitely.
-
-Respond in this XML format:
-<summary>
-  <text>Your updated and condensed summary here</text>
-  <topics>topic1, topic2, topic3</topics>
-  <keyPoints>
-    <point>First key point</point>
-    <point>Second key point</point>
-  </keyPoints>
-</summary>"""
-
-LONG_TERM_EXTRACTION_TEMPLATE = """# Task: Extract Long-Term Memory (Strict Criteria)
-
-You are analyzing a conversation to extract ONLY the most critical, persistent information about the user using cognitive science memory categories.
-
-# Recent Messages
-{recent_messages}
-
-# Current Long-Term Memories
-{existing_memories}
-
-# ULTRA-STRICT EXTRACTION CRITERIA
-
-Default to NOT extracting. Confidence must be >= 0.85.
-If there are no qualifying facts, respond with <memories></memories>
-
-# Response Format
-
-<memories>
-  <memory>
-    <category>semantic</category>
-    <content>User is a senior TypeScript developer with 8 years of backend experience</content>
-    <confidence>0.95</confidence>
-  </memory>
-</memories>"""
-
-# Room action templates
-SHOULD_FOLLOW_ROOM_TEMPLATE = """# Task: Decide if {{agentName}} should start following this room, i.e. eagerly participating without explicit mentions.
-
-{{recentMessages}}
-
-Should {{agentName}} start following this room, eagerly participating without explicit mentions?
-Respond with YES if:
-- The user has directly asked {{agentName}} to follow the conversation or participate more actively
-- The conversation topic is highly engaging and {{agentName}}'s input would add significant value
-- {{agentName}} has unique insights to contribute and the users seem receptive
-
-Otherwise, respond with NO.
-Respond with only a YES or a NO."""
-
-SHOULD_UNFOLLOW_ROOM_TEMPLATE = """# Task: Decide if {{agentName}} should stop closely following this previously followed room and only respond when mentioned.
-
-{{recentMessages}}
-
-Should {{agentName}} stop closely following this previously followed room and only respond when mentioned?
-Respond with YES if:
-- The user has suggested that {{agentName}} is over-participating or being disruptive
-- {{agentName}}'s eagerness to contribute is not well-received by the users
-- The conversation has shifted to a topic where {{agentName}} has less to add
-
-Otherwise, respond with NO.
-Respond with only a YES or a NO."""
-
-SHOULD_MUTE_ROOM_TEMPLATE = """# Task: Decide if {{agentName}} should mute this room and stop responding unless explicitly mentioned.
-
-{{recentMessages}}
-
-Should {{agentName}} mute this room and stop responding unless explicitly mentioned?
-
-Respond with YES if:
-- The user is being aggressive, rude, or inappropriate
-- The user has directly asked {{agentName}} to stop responding or be quiet
-- {{agentName}}'s responses are not well-received or are annoying the user(s)
-
-Otherwise, respond with NO.
-Respond with only a YES or a NO."""
-
-SHOULD_UNMUTE_ROOM_TEMPLATE = """# Task: Decide if {{agentName}} should unmute this previously muted room and start considering it for responses again.
-
-{{recentMessages}}
-
-Should {{agentName}} unmute this previously muted room and start considering it for responses again?
-Respond with YES if:
-- The user has explicitly asked {{agentName}} to start responding again
-- The user seems to want to re-engage with {{agentName}} in a respectful manner
-- The tone of the conversation has improved and {{agentName}}'s input would be welcome
-
-Otherwise, respond with NO.
-Respond with only a YES or a NO."""
-
-TARGET_EXTRACTION_TEMPLATE = """# Task: Extract Target and Source Information
-
-# Recent Messages:
-{{recentMessages}}
-
-# Instructions:
-Analyze the conversation to identify:
-1. The target type (user or room)
-2. The target platform/source (e.g. telegram, discord, etc)
-3. Any identifying information about the target
-4. The message text to send
-
-Return an XML response with:
+Example:
 <response>
-  <targetType>user|room</targetType>
-  <source>platform-name</source>
-  <messageText>text_to_send</messageText>
-  <identifiers>
-    <username>username_if_applicable</username>
-    <roomName>room_name_if_applicable</roomName>
-  </identifiers>
+  <thought>Reply briefly. No extra providers needed.</thought>
+  <actions>
+    <action>
+      <name>REPLY</name>
+    </action>
+  </actions>
+  <providers></providers>
+  <text>Your message here</text>
+  <simple>true</simple>
 </response>"""
 
-ENTITY_RESOLUTION_TEMPLATE = """# Task: Resolve Entity Name
-Message Sender: {{senderName}} (ID: {{senderId}})
-Agent: {{agentName}} (ID: {{agentId}})
-
-# Entities in Room:
-{{#if entitiesInRoom}}
-{{entitiesInRoom}}
-{{/if}}
+MULTI_STEP_DECISION_TEMPLATE = """Determine the next step the assistant should take in this conversation to help the user reach their goal.
 
 {{recentMessages}}
 
-# Instructions:
-1. Analyze the context to identify which entity is being referenced
-2. Consider special references like "me" (the message sender) or "you" (agent the message is directed to)
-3. Look for usernames/handles in standard formats (e.g. @username, user#1234)
-4. Consider context from recent messages for pronouns and references
-5. If multiple matches exist, use context to disambiguate
-6. Consider recent interactions and relationship strength when resolving ambiguity
+# Multi-Step Workflow
 
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
+In each step, decide:
 
-Return an XML response with:
-<response>
-  <entityId>exact-id-if-known-otherwise-null</entityId>
-  <type>EXACT_MATCH | USERNAME_MATCH | NAME_MATCH | RELATIONSHIP_MATCH | AMBIGUOUS | UNKNOWN</type>
-  <matches>
-    <match>
-      <name>matched-name</name>
-      <reason>why this entity matches</reason>
-    </match>
-  </matches>
-</response>
+1. **Which providers (if any)** should be called to gather necessary data.
+2. **Which action (if any)** should be executed after providers return.
+3. Decide whether the task is complete. If so, set `isFinish: true`. Do not select the `REPLY` action; replies are handled separately after task completion.
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
+You can select **multiple providers** and at most **one action** per step.
 
-COMPONENT_TEMPLATE = """# Task: Extract Source and Update Component Data
+If the task is fully resolved and no further steps are needed, mark the step as `isFinish: true`.
 
-{{recentMessages}}
+---
 
-{{#if existingData}}
-# Existing Component Data:
-{{existingData}}
-{{/if}}
+{{actionsWithDescriptions}}
 
-# Instructions:
-1. Analyze the conversation to identify:
-   - The source/platform being referenced (e.g. telegram, x, discord)
-   - Any specific component data being shared
+{{providersWithDescriptions}}
 
-2. Generate updated component data that:
-   - Is specific to the identified platform/source
-   - Preserves existing data when appropriate
-   - Includes the new information from the conversation
-   - Contains only valid data for this component type
+These are the actions or data provider calls that have already been used in this run. Use this to avoid redundancy and guide your next move.
 
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
+{{actionResults}}
 
-Return an XML response with the following structure:
-<response>
-  <source>platform-name</source>
-  <data>
-    <username>username_value</username>
-    <displayName>display_name_value</displayName>
-  </data>
-</response>
+keys:
+"thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
+"action"  Name of the action to execute after providers return (can be empty if no action is needed).
+"providers" List of provider names to call in this step (can be empty if none are needed).
+"isFinish" Set to true only if the task is fully complete.
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
+⚠️ IMPORTANT: Do **not** mark the task as `isFinish: true` immediately after calling an action. Wait for the action to complete before deciding the task is finished.
 
-SETTINGS_SUCCESS_TEMPLATE = """# Task: Generate a response for successful setting updates
-{{providers}}
+output:
+thought: Your thought here
+action: ACTION
+providers[2]: PROVIDER1,PROVIDER2
+isFinish: false"""
 
-# Update Information:
-- Updated Settings: {{updateMessages}}
-- Next Required Setting: {{nextSetting.name}}
-- Remaining Required Settings: {{remainingRequired}}
+MULTI_STEP_SUMMARY_TEMPLATE = """Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
 
-# Instructions:
-1. Acknowledge the successful update of settings
-2. Maintain {{agentName}}'s personality and tone
-3. Provide clear guidance on the next setting that needs to be configured
-4. Explain what the next setting is for and how to set it
-5. If appropriate, mention how many required settings remain
-
-Write a natural, conversational response that {{agentName}} would send about the successful update and next steps.
-Include the actions array ["SETTING_UPDATED"] in your response."""
-
-SETTINGS_FAILURE_TEMPLATE = """# Task: Generate a response for failed setting updates
-
-# About {{agentName}}:
+# Context Information
 {{bio}}
 
-# Current Settings Status:
-{{settingsStatus}}
+---
 
-# Next Required Setting:
-- Name: {{nextSetting.name}}
-- Description: {{nextSetting.description}}
-- Required: Yes
-- Remaining Required Settings: {{remainingRequired}}
+{{system}}
 
-# Recent Conversation:
+---
+
+{{messageDirections}}
+
+# Conversation Summary
+Below is the user's original request and conversation so far:
 {{recentMessages}}
 
-# Instructions:
-1. Express that you couldn't understand or process the setting update
-2. Maintain {{agentName}}'s personality and tone
-3. Provide clear guidance on what setting needs to be configured next
-4. Explain what the setting is for and how to set it properly
-5. Use a helpful, patient tone
+# Execution Trace
+Here are the actions taken by the assistant to fulfill the request:
+{{actionResults}}
 
-Write a natural, conversational response that {{agentName}} would send about the failed update and how to proceed.
-Include the actions array ["SETTING_UPDATE_FAILED"] in your response."""
+# Assistant's Last Reasoning Step
+{{recentMessage}}
 
-SETTINGS_ERROR_TEMPLATE = """# Task: Generate a response for an error during setting updates
+# Instructions
 
-# About {{agentName}}:
-{{bio}}
+ - Review the execution trace and last reasoning step carefully
 
-# Recent Conversation:
-{{recentMessages}}
-
-# Instructions:
-1. Apologize for the technical difficulty
-2. Maintain {{agentName}}'s personality and tone
-3. Suggest trying again or contacting support if the issue persists
-4. Keep the message concise and helpful
-
-Write a natural, conversational response that {{agentName}} would send about the error.
-Include the actions array ["SETTING_UPDATE_ERROR"] in your response."""
-
-SETTINGS_COMPLETION_TEMPLATE = """# Task: Generate a response for settings completion
-
-# About {{agentName}}:
-{{bio}}
-
-# Settings Status:
-{{settingsStatus}}
-
-# Recent Conversation:
-{{recentMessages}}
-
-# Instructions:
-1. Congratulate the user on completing the settings process
-2. Maintain {{agentName}}'s personality and tone
-3. Summarize the key settings that have been configured
-4. Explain what functionality is now available
-5. Provide guidance on what the user can do next
-6. Express enthusiasm about working together
-
-Write a natural, conversational response that {{agentName}} would send about the successful completion of settings.
-Include the actions array ["ONBOARDING_COMPLETE"] in your response."""
-
-POST_CREATION_TEMPLATE = """# Task: Create a post in the voice and style and perspective of {{agentName}} @{{xUserName}}.
-
-{{providers}}
-
-Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
-Your response should be 1, 2, or 3 sentences (choose the length at random).
-Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.
-
-Your output should be formatted in XML like this:
-<response>
-  <thought>Your thought here</thought>
-  <post>Your post text here</post>
-  <imagePrompt>Optional image prompt here</imagePrompt>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
-
-IMAGE_DESCRIPTION_TEMPLATE = """<task>Analyze the provided image and generate a comprehensive description with multiple levels of detail.</task>
-
-<instructions>
-Carefully examine the image and provide:
-1. A concise, descriptive title that captures the main subject or scene
-2. A brief summary description (1-2 sentences) highlighting the key elements
-3. An extensive, detailed description that covers all visible elements, composition, lighting, colors, mood, and any other relevant details
-
-Be objective and descriptive. Focus on what you can actually see in the image rather than making assumptions about context or meaning.
-</instructions>
-
-<output>
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-Respond using XML format like this:
-<response>
-  <title>A concise, descriptive title for the image</title>
-  <description>A brief 1-2 sentence summary of the key elements in the image</description>
-  <text>An extensive, detailed description covering all visible elements, composition, lighting, colors, mood, setting, objects, people, activities, and any other relevant details you can observe in the image</text>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.
-</output>"""
+ - Your final output MUST be TOON in this format:
+output:
+thought: Your thought here
+text: Your final message to the user"""
 
 OPTION_EXTRACTION_TEMPLATE = """# Task: Extract selected task and option from user message
 
@@ -965,16 +328,84 @@ OPTION_EXTRACTION_TEMPLATE = """# Task: Extract selected task and option from us
 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
 4. If no clear selection is made, return null for both fields
 
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
 
-Return in XML format:
-<response>
-  <taskId>string_or_null</taskId>
-  <selectedOption>OPTION_NAME_or_null</selectedOption>
-</response>
+Return in TOON format:
+taskId: string_or_null
+selectedOption: OPTION_NAME_or_null
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it."""
+
+POST_ACTION_DECISION_TEMPLATE = """Continue helping the user after reviewing the latest action results.
+
+context:
+{{providers}}
+
+recent conversation:
+{{recentMessages}}
+
+recent action results:
+{{actionResults}}
+
+latest reflection task status:
+{{taskCompletionStatus}}
+
+rules[10]:
+- think briefly, then continue the task from the latest action results
+- actions execute in listed order
+- if replying, REPLY goes first
+- use IGNORE or STOP only by themselves
+- include providers only when needed
+- use provider_hints from context when present instead of restating the same rules
+- if an action needs inputs, include them under params keyed by action name
+- if a required param is unknown, ask for clarification in text
+- if reflection says the task is incomplete, keep working or explain the concrete follow-up you still need
+- if the task is complete, either reply to the user or use STOP to end the run
+- STOP is a terminal control action even if it is not listed in available actions
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+thought: Your thought here
+actions[1]: ACTION
+providers[0]:
+text: Your message here
+simple: true"""
+
+POST_CREATION_TEMPLATE = """# Task: Create a post in the voice and style and perspective of {{agentName}} @{{xUserName}}.
+
+Example task outputs:
+1. A post about the importance of AI in our lives
+thought: I am thinking about writing a post about the importance of AI in our lives
+post: AI is changing the world and it is important to understand how it works
+imagePrompt: A futuristic cityscape with flying cars and people using AI to do things
+
+2. A post about dogs
+thought: I am thinking about writing a post about dogs
+post: Dogs are man's best friend and they are loyal and loving
+imagePrompt: A dog playing with a ball in a park
+
+3. A post about finding a new job
+thought: Getting a job is hard, I bet there's a good post in that
+post: Just keep going!
+imagePrompt: A person looking at a computer screen with a job search website
+
+{{providers}}
+
+Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
+Your response should be 1, 2, or 3 sentences (choose the length at random).
+Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.
+
+Your output should be formatted as TOON like this:
+thought: Your thought here
+post: Your post text here
+imagePrompt: Optional image prompt here
+
+The "post" field should be the post you want to send. Do not including any thinking or internal reflection in the "post" field.
+The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
+The "thought" field should be a short description of what the agent is thinking about before responding, including a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
+
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it."""
 
 REFLECTION_EVALUATOR_TEMPLATE = """# Task: Generate Agent Reflection, Extract Facts and Relationships
 
@@ -999,78 +430,484 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 # Known Facts:
 {{knownFacts}}
 
+# Latest Action Results:
+{{actionResults}}
+
 # Instructions:
 1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
-2. Extract new facts from the conversation.
+2. Extract only durable new facts from the conversation.
+  - Prefer facts about the current user/sender that will still matter in a week: identity, stable preferences, recurring collaborators, durable setup, long-term projects, or ongoing constraints.
+  - Do NOT extract temporary status updates, current debugging/work items, one-off session metrics, isolated praise/complaints, or facts that are only true right now.
+  - If a fact would feel stale, irrelevant, or surprising to store a week from now, skip it.
+  - When in doubt, omit the fact.
 3. Identify and describe relationships between entities.
   - The sourceEntityId is the UUID of the entity initiating the interaction.
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
+4. It is normal to return no facts when nothing durable was learned.
+5. Always decide whether the user's task or request is actually complete right now.
+  - Set `task_completed: true` only if the user no longer needs additional action or follow-up from you in this turn.
+  - If you asked a clarifying question, an action failed, work is still pending, or you only partially completed the request, set `task_completed: false`.
+6. Always include a short `task_completion_reason` grounded in the conversation and action results.
+
+Output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+Do not output JSON, XML, Markdown fences, or commentary.
+Use indexed TOON fields exactly like this:
+thought: "a self-reflective thought on the conversation"
+task_completed: false
+task_completion_reason: "The request is still incomplete because the needed action has not happened yet."
+facts[0]:
+  claim: durable factual statement
+  type: fact
+  in_bio: false
+  already_known: false
+relationships[0]:
+  sourceEntityId: entity_initiating_interaction
+  targetEntityId: entity_being_interacted_with
+  tags[0]: dm_interaction
+
+For additional entries, increment the index: facts[1], relationships[1], tags[1], etc.
+Always include `task_completed` and `task_completion_reason`.
+If there are no durable new facts, omit all facts[...] entries.
+If there are no relationships, omit all relationships[...] entries.
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it."""
+
+REFLECTION_TEMPLATE = """# Task: Reflect on recent agent behavior and interactions.
+
+{{providers}}
+
+# Recent Interactions:
+{{recentInteractions}}
+
+# Instructions:
+Analyze the agent's recent behavior and interactions. Consider:
+1. Was the communication clear and helpful?
+2. Were responses appropriate for the context?
+3. Were any mistakes made?
+4. What could be improved?
+
+Respond using TOON like this:
+thought: Your detailed analysis
+quality_score: Score 0-100 for overall quality
+strengths: What went well
+improvements: What could be improved
+learnings: Key takeaways for future interactions
+
+IMPORTANT: Your response must ONLY contain the TOON document above."""
+
+REMOVE_CONTACT_TEMPLATE = """task: Extract the contact removal request.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[4]:
+- identify the contact name to remove
+- set confirmed to yes only when the user explicitly confirms removal
+- set confirmed to no when confirmation is absent or ambiguous
+- return only the requested contact
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+contactName: Jane Doe
+confirmed: yes"""
+
+REPLY_TEMPLATE = """# Task: Generate dialog for the character {{agentName}}.
+
+{{providers}}
+
+# Instructions: Write the next message for {{agentName}}.
+"thought" should be a short description of what the agent is thinking about and planning.
+"text" should be the next message for {{agentName}} which they will send to the conversation.
+
+IMPORTANT CODE BLOCK FORMATTING RULES:
+- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with ``` fenced code blocks (specify the language if known, e.g., ```python).
+- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
+- If including inline code (short single words or function names), use single backticks (`) as appropriate.
+- This ensures the user sees clearly formatted and copyable code when relevant.
 
 Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
+Go directly to the TOON response format without any preamble or explanation.
 
-Generate a response in the following format:
-<response>
-  <thought>a self-reflective thought on the conversation</thought>
-  <facts>
-    <fact>
-      <claim>factual statement</claim>
-      <type>fact|opinion|status</type>
-      <in_bio>false</in_bio>
-      <already_known>false</already_known>
-    </fact>
-  </facts>
-  <relationships>
-    <relationship>
-      <sourceEntityId>entity_initiating_interaction</sourceEntityId>
-      <targetEntityId>entity_being_interacted_with</targetEntityId>
-      <tags>group_interaction,voice_interaction,dm_interaction,additional_tag1,additional_tag2</tags>
-    </relationship>
-  </relationships>
-</response>
+Respond using TOON like this:
+thought: Your thought here
+text: Your message here
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it."""
+
+SCHEDULE_FOLLOW_UP_TEMPLATE = """task: Extract follow-up scheduling information from the request.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+current_datetime:
+{{currentDateTime}}
+
+instructions[5]:
+- identify who to follow up with
+- include entityId only when it is explicitly known
+- convert requested timing into an ISO datetime in scheduledAt
+- normalize priority to high, medium, or low
+- include message only when the user asked for a specific note or reminder text
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+contactName: Jane Doe
+entityId:
+scheduledAt: 2026-04-06T14:00:00.000Z
+reason: Check in on the proposal
+priority: medium
+message: Send the latest deck before the call"""
+
+SEARCH_CONTACTS_TEMPLATE = """task: Extract contact search criteria from the request.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[5]:
+- return categories as a comma-separated list when the user filters by category
+- return tags as a comma-separated list when the user filters by tags
+- return searchTerm for any name or free-text lookup
+- set intent to count when the user only wants a count, otherwise list
+- omit fields that are not clearly requested
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+categories: vip,colleague
+searchTerm: Jane
+tags: ai,design
+intent: list"""
+
+SHOULD_FOLLOW_ROOM_TEMPLATE = """task: Decide whether {{agentName}} should follow this room.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[3]:
+- return true only when the user is clearly asking {{agentName}} to follow, join, listen to, or stay engaged in this room
+- return false when the request is ambiguous or unrelated
+- prefer false when uncertain
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+decision: true"""
+
+SHOULD_MUTE_ROOM_TEMPLATE = """task: Decide whether {{agentName}} should mute this room.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[3]:
+- return true only when the user is clearly asking {{agentName}} to mute, silence, or ignore this room
+- return false when the request is ambiguous or unrelated
+- prefer false when uncertain
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+decision: true"""
+
+SHOULD_RESPOND_TEMPLATE = """task: Decide whether {{agentName}} should respond, ignore, or stop.
+
+context:
+{{providers}}
+
+rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
+
+available_contexts:
+{{availableContexts}}
+
+context_routing:
+- primaryContext: choose one context from available_contexts, or "general" if none apply
+- secondaryContexts: optional comma-separated list of additional relevant contexts
+- evidenceTurnIds: optional comma-separated list of message IDs supporting the decision
+
+decision_note:
+- respond only when the latest message is talking TO {{agentName}}
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
+- mentions of other people do not cancel a direct address to {{agentName}}
+- casual conversation between other users is not enough
+- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention and clear follow-up.
+action: RESPOND
+primaryContext: general
+secondaryContexts:
+evidenceTurnIds:"""
+
+SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE = """task: Decide whether {{agentName}} should respond and which domain context applies.
+
+context:
+{{providers}}
+
+available_contexts:
+{{availableContexts}}
+
+rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
+
+context_routing:
+- primaryContext: the single best-matching domain from available_contexts
+- secondaryContexts: zero or more additional domains that are relevant
+- action intent does not only come from the last message; consider the full recent conversation
+- if no specific domain applies, use "general"
+
+decision_note:
+- respond only when the latest message is talking TO {{agentName}}
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
+- mentions of other people do not cancel a direct address to {{agentName}}
+- casual conversation between other users is not enough
+- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
+- context routing always applies, even for IGNORE/STOP decisions
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention asking about token balance.
+action: RESPOND
+primaryContext: wallet
+secondaryContexts: []"""
+
+SHOULD_UNFOLLOW_ROOM_TEMPLATE = """task: Decide whether {{agentName}} should unfollow this room.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[3]:
+- return true only when the user is clearly asking {{agentName}} to stop following or leave this room
+- return false when the request is ambiguous or unrelated
+- prefer false when uncertain
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+decision: true"""
+
+SHOULD_UNMUTE_ROOM_TEMPLATE = """task: Decide whether {{agentName}} should unmute this room.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[3]:
+- return true only when the user is clearly asking {{agentName}} to unmute or resume listening to this room
+- return false when the request is ambiguous or unrelated
+- prefer false when uncertain
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+decision: true"""
+
+THINK_TEMPLATE = """# Task: Think deeply and reason carefully for {{agentName}}.
+
+{{providers}}
+
+# Context
+The initial planning phase identified this question as requiring deeper analysis.
+The following is the conversation so far and all available context.
+
+# Instructions
+You are {{agentName}}. A question or request has been identified as complex, ambiguous, or requiring careful reasoning. Your job is to think through this thoroughly before responding.
+
+Approach this systematically:
+1. Identify the core question or problem being asked
+2. Consider multiple angles, approaches, or interpretations
+3. Evaluate trade-offs, risks, and constraints
+4. Draw on relevant knowledge and context from the conversation
+5. Arrive at a well-reasoned conclusion or recommendation
+
+Be thorough but concise. Prioritize depth of reasoning over length. If there are genuine unknowns, acknowledge them rather than guessing.
+
+Respond using TOON:
+thought: Your detailed internal reasoning — the full chain of thought, alternatives considered, and why you reached your conclusion
+text: Your response to the user — clear, structured, and well-reasoned. Use headings, lists, or code blocks as appropriate for the content.
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any preamble or explanation outside of it."""
+
+UPDATE_CONTACT_TEMPLATE = """task: Extract contact updates from the request.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[6]:
+- identify the contact name to update
+- set operation to replace unless the user clearly says to add_to or remove_from
+- return categories and tags as comma-separated lists
+- return preferences and customFields as comma-separated key:value pairs
+- include notes only when explicitly requested
+- omit fields that are not being changed
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+contactName: Jane Doe
+operation: add_to
+categories: vip
+tags: ai,friend
+preferences: timezone:America/New_York,language:English
+customFields: company:Acme,title:Designer
+notes: Prefers async communication"""
+
+UPDATE_ENTITY_TEMPLATE = """# Task: Update entity information.
+
+{{providers}}
+
+# Current Entity Information:
+{{entityInfo}}
+
+# Instructions:
+Based on the request, determine what information about the entity should be updated.
+Only update fields that the user has explicitly requested to change.
+
+Respond using TOON like this:
+thought: Your reasoning for the entity update
+entity_id: The entity ID to update
+updates[1]{name,value}:
+  field_name,new_value
+
+IMPORTANT: Your response must ONLY contain the TOON document above."""
+
+UPDATE_ROLE_TEMPLATE = """task: Extract the requested role change.
+
+context:
+{{providers}}
+
+current_roles:
+{{roles}}
+
+recent_messages:
+{{recentMessages}}
+
+current_message:
+{{message}}
+
+instructions[6]:
+- identify the single entity whose role should be updated
+- return entity_id only when the UUID is explicit in context
+- normalize new_role to one of OWNER, ADMIN, MEMBER, GUEST, or NONE
+- if the user is removing elevated access without naming a new role, use NONE
+- do not invent entity ids or roles
+- include a short thought describing the change
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+thought: Sarah should become an admin.
+entity_id: 00000000-0000-0000-0000-000000000000
+new_role: ADMIN"""
+
+UPDATE_SETTINGS_TEMPLATE = """# Task: Update settings based on the request.
+
+{{providers}}
+
+# Current Settings:
+{{settings}}
+
+# Instructions:
+Based on the request, determine which settings to update.
+Only update settings that the user has explicitly requested.
+
+Respond using TOON like this:
+thought: Your reasoning for the settings changes
+updates[1]{key,value}:
+  setting_key,new_value
+
+IMPORTANT: Your response must ONLY contain the TOON document above."""
+
+BOOLEAN_FOOTER = "Respond with only a YES or a NO."
 
 __all__ = [
-    "REPLY_TEMPLATE",
+    "ADD_CONTACT_TEMPLATE",
+    "AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE",
+    "AUTONOMY_CONTINUOUS_FIRST_TEMPLATE",
+    "AUTONOMY_TASK_CONTINUE_TEMPLATE",
+    "AUTONOMY_TASK_FIRST_TEMPLATE",
     "CHOOSE_OPTION_TEMPLATE",
+    "IMAGE_DESCRIPTION_TEMPLATE",
     "IMAGE_GENERATION_TEMPLATE",
-    "REFLECTION_TEMPLATE",
-    "UPDATE_SETTINGS_TEMPLATE",
-    "UPDATE_ENTITY_TEMPLATE",
-    "SHOULD_RESPOND_TEMPLATE",
+    "MESSAGE_CLASSIFIER_TEMPLATE",
     "MESSAGE_HANDLER_TEMPLATE",
     "MULTI_STEP_DECISION_TEMPLATE",
     "MULTI_STEP_SUMMARY_TEMPLATE",
-    "AUTONOMY_CONTINUOUS_FIRST_TEMPLATE",
-    "AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE",
-    "AUTONOMY_TASK_FIRST_TEMPLATE",
-    "AUTONOMY_TASK_CONTINUE_TEMPLATE",
-    "BOOLEAN_FOOTER",
-    "UPDATE_ROLE_TEMPLATE",
-    "SCHEDULE_FOLLOW_UP_TEMPLATE",
-    "ADD_CONTACT_TEMPLATE",
-    "SEARCH_CONTACTS_TEMPLATE",
-    "REMOVE_CONTACT_TEMPLATE",
-    "UPDATE_CONTACT_TEMPLATE",
-    "MESSAGE_CLASSIFIER_TEMPLATE",
-    "INITIAL_SUMMARIZATION_TEMPLATE",
-    "UPDATE_SUMMARIZATION_TEMPLATE",
-    "LONG_TERM_EXTRACTION_TEMPLATE",
-    "SHOULD_FOLLOW_ROOM_TEMPLATE",
-    "SHOULD_UNFOLLOW_ROOM_TEMPLATE",
-    "SHOULD_MUTE_ROOM_TEMPLATE",
-    "SHOULD_UNMUTE_ROOM_TEMPLATE",
-    "TARGET_EXTRACTION_TEMPLATE",
-    "ENTITY_RESOLUTION_TEMPLATE",
-    "COMPONENT_TEMPLATE",
-    "SETTINGS_SUCCESS_TEMPLATE",
-    "SETTINGS_FAILURE_TEMPLATE",
-    "SETTINGS_ERROR_TEMPLATE",
-    "SETTINGS_COMPLETION_TEMPLATE",
-    "POST_CREATION_TEMPLATE",
-    "IMAGE_DESCRIPTION_TEMPLATE",
     "OPTION_EXTRACTION_TEMPLATE",
+    "POST_ACTION_DECISION_TEMPLATE",
+    "POST_CREATION_TEMPLATE",
     "REFLECTION_EVALUATOR_TEMPLATE",
+    "REFLECTION_TEMPLATE",
+    "REMOVE_CONTACT_TEMPLATE",
+    "REPLY_TEMPLATE",
+    "SCHEDULE_FOLLOW_UP_TEMPLATE",
+    "SEARCH_CONTACTS_TEMPLATE",
+    "SHOULD_FOLLOW_ROOM_TEMPLATE",
+    "SHOULD_MUTE_ROOM_TEMPLATE",
+    "SHOULD_RESPOND_TEMPLATE",
+    "SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE",
+    "SHOULD_UNFOLLOW_ROOM_TEMPLATE",
+    "SHOULD_UNMUTE_ROOM_TEMPLATE",
+    "THINK_TEMPLATE",
+    "UPDATE_CONTACT_TEMPLATE",
+    "UPDATE_ENTITY_TEMPLATE",
+    "UPDATE_ROLE_TEMPLATE",
+    "UPDATE_SETTINGS_TEMPLATE",
+    "BOOLEAN_FOOTER",
 ]

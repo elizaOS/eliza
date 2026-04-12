@@ -193,3 +193,12 @@ class TestCharacterProvider:
         result = await get_character_context(_make_runtime(character), AsyncMock(), None)
         assert "A helpful assistant." in result.text
         assert "calm" in result.text
+
+    async def test_name_placeholder_is_resolved(self) -> None:
+        character = _make_character(
+            bio=["{{name}} stays grounded."],
+            style=_make_style(chat=["Talk like {{agentName}}."]),
+        )
+        result = await get_character_context(_make_runtime(character), AsyncMock(), None)
+        assert "Sakuya stays grounded." in result.text
+        assert "Talk like Sakuya." in result.text

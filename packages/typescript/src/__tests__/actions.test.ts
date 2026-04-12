@@ -3,6 +3,7 @@ import {
 	composeActionExamples,
 	formatActionNames,
 	formatActions,
+	parseActionParams,
 } from "../actions";
 import type { Action } from "../types";
 
@@ -84,6 +85,12 @@ describe("Actions", () => {
 	];
 
 	describe("composeActionExamples", () => {
+		it("should be deterministic for the same seed", () => {
+			const first = composeActionExamples(mockActions, 2, "room-seed");
+			const second = composeActionExamples(mockActions, 2, "room-seed");
+			expect(first).toBe(second);
+		});
+
 		it("should generate examples with correct format", () => {
 			const examples = composeActionExamples(mockActions, 1);
 			const lines = examples.trim().split("\n");
@@ -151,6 +158,18 @@ describe("Actions", () => {
 	});
 
 	describe("formatActionNames", () => {
+		it("should keep action ordering deterministic for the same seed", () => {
+			const first = formatActionNames(
+				[mockActions[0], mockActions[1], mockActions[2]],
+				"room-seed",
+			);
+			const second = formatActionNames(
+				[mockActions[0], mockActions[1], mockActions[2]],
+				"room-seed",
+			);
+			expect(first).toBe(second);
+		});
+
 		it("should format action names correctly", () => {
 			const formatted = formatActionNames([mockActions[0], mockActions[1]]);
 			expect(formatted).toMatch(/^(greet|farewell)(, (greet|farewell))?$/);
@@ -170,9 +189,8 @@ describe("Actions", () => {
 	describe("formatActions", () => {
 		it("should format actions with descriptions", () => {
 			const formatted = formatActions([mockActions[0]]);
-			expect(formatted).toContain("<actions>");
-			expect(formatted).toContain("<name>greet</name>");
-			expect(formatted).toContain("<description>");
+			expect(formatted).toContain("actions[1]:");
+			expect(formatted).toContain("- greet:");
 			expect(formatted).toContain("Greet someone");
 		});
 
@@ -201,26 +219,74 @@ describe("Actions", () => {
 				},
 			]);
 
-			expect(formatted).toContain("<name>MOVE</name>");
-			expect(formatted).toContain("<description>Move the agent.</description>");
-			expect(formatted).toContain("<params>");
-			expect(formatted).toContain("<name>direction</name>");
-			expect(formatted).toContain("<required>true</required>");
-			expect(formatted).toContain("<values>north, south</values>");
-			expect(formatted).toContain('<examples>"north"');
+			expect(formatted).toContain("- MOVE: Move the agent.");
+			expect(formatted).toContain("params[1]:");
+			expect(formatted).toContain("direction:string");
+			expect(formatted).toContain("values=north|south");
+			expect(formatted).toContain('examples="north"|"south"');
+		});
+
+		it("includes action-tagged example hints when available", () => {
+			const formatted = formatActions([
+				{
+					name: "LIFE",
+					description: "Manage habits.",
+					examples: [
+						[
+							{
+								name: "name1",
+								content: {
+									text: "help me brush my teeth at 8 am and 9 pm every day",
+								},
+							},
+							{
+								name: "name2",
+								content: {
+									text: 'I can set up a habit named "Brush teeth".',
+									actions: ["LIFE"],
+								},
+							},
+						],
+					],
+					similes: [],
+					handler: async () => {
+						throw new Error("Not implemented");
+					},
+					validate: async () => {
+						throw new Error("Not implemented");
+					},
+				},
+			]);
+
+			expect(formatted).toContain(
+				'example: User: "help me brush my teeth at 8 am and 9 pm every day" -> actions: LIFE',
+			);
 		});
 
 		it("should include commas and newlines between multiple actions", () => {
 			const formatted = formatActions([mockActions[0], mockActions[1]]);
-			expect(formatted).toContain("<actions>");
-			expect(formatted).toContain("</actions>");
-			// Both action names should be present
-			expect(formatted).toMatch(/<name>(greet|farewell)<\/name>/);
+			expect(formatted).toContain("actions[2]:");
+			expect(formatted).toContain("greet");
+			expect(formatted).toContain("farewell");
 		});
 
 		it("should handle empty actions array", () => {
 			const formatted = formatActions([]);
 			expect(formatted).toBe("");
+		});
+	});
+
+	describe("parseActionParams", () => {
+		it("parses JSON payloads inside legacy flat action wrappers", () => {
+			const params = parseActionParams(
+				'<LIFE>{"action":"create","intent":"create a habit to brush teeth at 8am and 9pm daily","title":"Brush Teeth"}</LIFE>',
+			);
+
+			expect(params.get("LIFE")).toEqual({
+				action: "create",
+				intent: "create a habit to brush teeth at 8am and 9pm daily",
+				title: "Brush Teeth",
+			});
 		});
 	});
 

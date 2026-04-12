@@ -11,6 +11,7 @@
  * This is intentionally dependency-free (no zod/yup) to keep builds lightweight.
  */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -612,7 +613,17 @@ export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.eva
 export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;
 `;
 
-  fs.writeFileSync(path.join(outDir, "action-docs.ts"), content);
+  const actionDocsPath = path.join(outDir, "action-docs.ts");
+  fs.writeFileSync(actionDocsPath, content);
+  try {
+    execFileSync(
+      "bunx",
+      ["@biomejs/biome", "check", "--write", actionDocsPath],
+      { cwd: REPO_ROOT, stdio: "pipe" },
+    );
+  } catch {
+    // Biome may be unavailable in stripped-down environments.
+  }
 }
 
 function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {

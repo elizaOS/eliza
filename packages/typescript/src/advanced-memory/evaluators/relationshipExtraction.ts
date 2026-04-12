@@ -1,5 +1,5 @@
 import { logger } from "../../logger.ts";
-import type { RolodexService } from "../../services/rolodex.ts";
+import type { RelationshipsService } from "../../services/relationships.ts";
 import type {
 	ActionResult,
 	Entity,
@@ -51,6 +51,7 @@ export const relationshipExtractionEvaluator: Evaluator = {
 	name: "RELATIONSHIP_EXTRACTION",
 	description:
 		"Passively extracts and updates relationship information from conversations",
+	alwaysRun: true,
 	similes: [
 		"RELATIONSHIP_ANALYZER",
 		"SOCIAL_GRAPH_BUILDER",
@@ -86,9 +87,13 @@ export const relationshipExtractionEvaluator: Evaluator = {
 		message: Memory,
 		_state?: State,
 	): Promise<ActionResult | undefined> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
-		if (!rolodexService) {
-			logger.warn("[RelationshipExtraction] RolodexService not available");
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
+		if (!relationshipsService) {
+			logger.warn(
+				"[RelationshipExtraction] RelationshipsService not available",
+			);
 			return;
 		}
 
@@ -118,7 +123,7 @@ export const relationshipExtractionEvaluator: Evaluator = {
 
 		// Analyze relationships between participants
 		if (recentMessages.length > 1) {
-			await analyzeRelationships(runtime, recentMessages, rolodexService);
+			await analyzeRelationships(runtime, recentMessages, relationshipsService);
 		}
 
 		// Extract information about mentioned third parties
@@ -169,54 +174,65 @@ export const relationshipExtractionEvaluator: Evaluator = {
 };
 
 function extractPlatformIdentities(text: string): PlatformIdentity[] {
-	const identities: PlatformIdentity[] = [];
-
-	// X handles
-	const xMatches = text.match(/@[\w]+/g);
-	if (xMatches) {
-		for (const handle of xMatches) {
-			if (!handle.match(/@(here|everyone|channel)/)) {
-				// Skip Discord mentions
-				identities.push({
-					platform: "x",
-					handle: handle,
-					verified: false,
-					confidence: 0.7,
-					timestamp: Date.now(),
-				});
-			}
+	const now = Date.now();
+	const identities = new Map<string, PlatformIdentity>();
+	const addIdentity = (
+		platform: string,
+		handle: string | undefined,
+		confidence: number,
+	) => {
+		const normalizedHandle = handle?.trim();
+		if (!normalizedHandle) {
+			return;
 		}
-	}
-
-	// GitHub usernames
-	const githubPattern = /github\.com\/(\w+)|@(\w+) on github/gi;
-	let githubMatch = githubPattern.exec(text);
-	while (githubMatch !== null) {
-		identities.push({
-			platform: "github",
-			handle: githubMatch[1] || githubMatch[2],
+		const key = `${platform}:${normalizedHandle.toLowerCase()}`;
+		const existing = identities.get(key);
+		if (existing && existing.confidence >= confidence) {
+			return;
+		}
+		identities.set(key, {
+			platform,
+			handle: normalizedHandle,
 			verified: false,
-			confidence: 0.8,
-			timestamp: Date.now(),
+			confidence,
+			timestamp: now,
 		});
-		githubMatch = githubPattern.exec(text);
-	}
+	};
 
-	// Discord usernames
-	const discordPattern = /discord:?\s*(\w+#\d{4})|my discord is (\w+#\d{4})/gi;
-	let discordMatch = discordPattern.exec(text);
-	while (discordMatch !== null) {
-		identities.push({
-			platform: "discord",
-			handle: discordMatch[1] || discordMatch[2],
-			verified: false,
-			confidence: 0.8,
-			timestamp: Date.now(),
-		});
-		discordMatch = discordPattern.exec(text);
-	}
+	const collectMatches = (
+		pattern: RegExp,
+		platform: string,
+		confidence: number,
+	) => {
+		let match = pattern.exec(text);
+		while (match !== null) {
+			addIdentity(platform, match[1] ?? match[2], confidence);
+			match = pattern.exec(text);
+		}
+	};
 
-	return identities;
+	collectMatches(
+		/(?:https?:\/\/)?(?:www\.)?(?:x|twitter)\.com\/@?([A-Za-z0-9_]{1,15})|(?:\bon\s+(?:x|twitter)\b|\bmy\s+(?:x|twitter)\s+is\b|\b(?:x|twitter)(?:\s+(?:username|handle))?\s*(?:[:=-]|is)\b)\s*@?([A-Za-z0-9_]{1,15})/gi,
+		"twitter",
+		0.8,
+	);
+	collectMatches(
+		/(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)|(?:\bmy\s+github\s+is\b|\bgithub(?:\s+(?:username|handle))?\s*(?:[:=-]|is)\b)\s*@?([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)/gi,
+		"github",
+		0.85,
+	);
+	collectMatches(
+		/(?:\bmy\s+telegram\s+is\b|\btelegram(?:\s+(?:username|handle))?\s*(?:[:=-]|is)\b)\s*(@[A-Za-z][A-Za-z0-9_]{3,31})/gi,
+		"telegram",
+		0.8,
+	);
+	collectMatches(
+		/(?:\bmy\s+discord\s+is\b|\bdiscord(?:\s+(?:username|handle|tag))?\s*(?:[:=-]|is)\b)\s*([A-Za-z0-9_.]{2,32}(?:#\d{4})?)/gi,
+		"discord",
+		0.8,
+	);
+
+	return Array.from(identities.values());
 }
 
 async function storePlatformIdentities(
@@ -304,7 +320,7 @@ async function handleDispute(
 		agentId: runtime.agentId,
 		entityId: message.entityId,
 		roomId: message.roomId,
-		worldId: stringToUuid(`rolodex-world-${runtime.agentId}`),
+		worldId: stringToUuid(`relationships-world-${runtime.agentId}`),
 		sourceEntityId: message.entityId,
 		data: {
 			disputedEntity: dispute.disputedEntity,
@@ -329,7 +345,7 @@ async function handleDispute(
 async function analyzeRelationships(
 	runtime: IAgentRuntime,
 	messages: Memory[],
-	_rolodexService: RolodexService,
+	_relationshipsService: RelationshipsService,
 ) {
 	// Group messages by sender
 	const messagesBySender = new Map<UUID, Memory[]>();
@@ -534,7 +550,7 @@ async function updateRelationship(
 		await runtime.createRelationship({
 			sourceEntityId: entityA,
 			targetEntityId: entityB,
-			tags: ["rolodex", primaryType],
+			tags: ["relationships", primaryType],
 			metadata: {
 				sentiment,
 				indicators: serializeIndicators(indicators) as MetadataCompatibleArray,
@@ -546,7 +562,7 @@ async function updateRelationship(
 		});
 	} else {
 		// Update existing relationship
-		const metadata = relationship.metadata || {};
+		const metadata = { ...(relationship.metadata || {}) };
 		metadata.sentiment = sentiment;
 		const existingIndicators = Array.isArray(metadata.indicators)
 			? (metadata.indicators as MetadataCompatibleArray)
@@ -558,11 +574,16 @@ async function updateRelationship(
 		metadata.indicators = newIndicators;
 		metadata.lastAnalyzed = Date.now();
 
-		// Recreate relationship with updated data
-		await runtime.createRelationship({
-			sourceEntityId: relationship.sourceEntityId,
-			targetEntityId: relationship.targetEntityId,
-			tags: [...(relationship.tags || []), "updated"],
+		await runtime.updateRelationship({
+			...relationship,
+			tags: [
+				...new Set([
+					...(relationship.tags || []),
+					"relationships",
+					primaryType,
+					"updated",
+				]),
+			],
 			metadata: {
 				...metadata,
 				relationshipType: primaryType,
@@ -779,7 +800,7 @@ async function handlePrivacyBoundary(
 		agentId: runtime.agentId,
 		entityId: message.entityId,
 		roomId: message.roomId,
-		worldId: stringToUuid(`rolodex-world-${runtime.agentId}`),
+		worldId: stringToUuid(`relationships-world-${runtime.agentId}`),
 		sourceEntityId: message.entityId,
 		data: {
 			privacyType: privacyInfo.type,
@@ -807,7 +828,7 @@ async function handleAdminUpdates(
 ) {
 	// Check if user has admin role
 	const entity = await runtime.getEntityById(message.entityId);
-	if (!entity || !entity.metadata?.isAdmin) return;
+	if (!entity?.metadata?.isAdmin) return;
 
 	// Look for admin update patterns
 	const text = message.content?.text;

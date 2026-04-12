@@ -13,6 +13,7 @@ from .schedule_follow_up import schedule_follow_up_action
 from .search_contacts import search_contacts_action
 from .send_message import send_message_action
 from .settings import update_settings_action
+from .think import think_action
 from .unfollow_room import unfollow_room_action
 from .unmute_room import unmute_room_action
 from .update_contact import update_contact_action
@@ -27,6 +28,7 @@ __all__ = [
     "schedule_follow_up_action",
     "search_contacts_action",
     "send_message_action",
+    "think_action",
     "unfollow_room_action",
     "unmute_room_action",
     "update_contact_action",
@@ -45,6 +47,7 @@ advanced_actions = [
     schedule_follow_up_action,
     search_contacts_action,
     send_message_action,
+    think_action,
     unfollow_room_action,
     unmute_room_action,
     update_contact_action,

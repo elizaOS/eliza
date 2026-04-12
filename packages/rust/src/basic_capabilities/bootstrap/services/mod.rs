@@ -4,14 +4,15 @@
 
 mod embedding;
 mod follow_up;
-mod rolodex;
+mod relationships;
 mod task;
 
 pub use embedding::EmbeddingService;
 pub use follow_up::{FollowUpService, FollowUpSuggestion, FollowUpTask};
-pub use rolodex::{
-    calculate_relationship_strength, ContactInfo, ContactPreferences, RelationshipAnalytics,
-    RolodexService,
+pub use relationships::{
+    calculate_relationship_strength, ContactCategory, ContactInfo, ContactPreferences,
+    NeedsAttentionEntry, RecentInteractionEntry, RelationshipAnalytics, RelationshipInsightEntry,
+    RelationshipInsights, RelationshipsService,
 };
 pub use task::{Task, TaskPriority, TaskService, TaskStatus};
 

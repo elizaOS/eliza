@@ -44,6 +44,7 @@ export const AUTONOMY_TASK_NAME = "AUTONOMY_THINK" as const;
  * Tags used for autonomy tasks
  */
 export const AUTONOMY_TASK_TAGS = ["repeat", "autonomy", "internal"] as const;
+const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
 
 /**
  * AutonomyService - Manages autonomous agent operation.
@@ -270,6 +271,47 @@ export class AutonomyService extends Service {
 	/**
 	 * Ensure autonomous world and room exist
 	 */
+	private async ensureAutonomyEntity(): Promise<void> {
+		const runtimeWithUpsert = this.runtime as IAgentRuntime & {
+			upsertEntities?: (entities: Entity[]) => Promise<void>;
+		};
+		const autonomyEntity: Entity = {
+			id: this.autonomyEntityId,
+			names: ["Autonomy"],
+			agentId: this.runtime.agentId,
+			metadata: {
+				type: "autonomy",
+				description: "Dedicated entity for autonomy service prompts",
+			},
+		};
+		const existingEntity = this.runtime.getEntityById
+			? await this.runtime.getEntityById(this.autonomyEntityId)
+			: null;
+
+		if (!existingEntity) {
+			const created = await this.runtime.createEntity(autonomyEntity);
+			if (!created) {
+				await runtimeWithUpsert.upsertEntities?.([autonomyEntity]);
+			}
+			return;
+		}
+
+		if (existingEntity.agentId !== this.runtime.agentId) {
+			await this.runtime.updateEntity({
+				...existingEntity,
+				agentId: this.runtime.agentId,
+				names:
+					existingEntity.names && existingEntity.names.length > 0
+						? existingEntity.names
+						: autonomyEntity.names,
+				metadata: {
+					...autonomyEntity.metadata,
+					...(existingEntity.metadata ?? {}),
+				},
+			});
+		}
+	}
+
 	private async ensureAutonomousContext(): Promise<void> {
 		// Ensure world exists
 		if (this.runtime.ensureWorldExists) {
@@ -277,7 +319,7 @@ export class AutonomyService extends Service {
 				id: this.autonomousWorldId,
 				name: "Autonomy World",
 				agentId: this.runtime.agentId,
-				messageServerId: stringToUuid("00000000-0000-0000-0000-000000000000"),
+				messageServerId: AUTONOMY_MESSAGE_SERVER_ID,
 				metadata: {
 					type: "autonomy",
 					description: "World for autonomous agent thinking",
@@ -299,6 +341,8 @@ export class AutonomyService extends Service {
 				},
 			});
 		}
+
+		await this.ensureAutonomyEntity();
 
 		// Add agent as participant
 		if (this.runtime.addParticipant) {

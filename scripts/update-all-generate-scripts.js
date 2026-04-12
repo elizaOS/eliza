@@ -37,6 +37,14 @@ function updateGenerateScript(pluginPath, pluginName) {
     // Replace elizaos_plugin_discord with elizaos_<plugin-name>
     const pythonModuleName = pluginName.replace("plugin-", "elizaos_plugin_");
     content = content.replace(/elizaos_plugin_discord/g, pythonModuleName);
+
+    if (fs.existsSync(scriptPath)) {
+      const current = fs.readFileSync(scriptPath, "utf-8");
+      if (current === content) {
+        console.log(`  ℹ️  Content unchanged, skipping`);
+        return false;
+      }
+    }
     
     fs.writeFileSync(scriptPath, content);
     return true;

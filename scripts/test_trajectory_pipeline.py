@@ -53,7 +53,7 @@ class TestTrajectoryPipeline(unittest.IsolatedAsyncioTestCase):
         # Register Mock Trajectory Logger
         logger_service = MockTrajectoryLogger()
         # Manually inject service since register_service expects a class and does async start
-        runtime._services["trajectory_logger"] = [logger_service]
+        runtime._services["trajectories"] = [logger_service]
         
         # 2. Test compose_state phase logging
         step_id = "test_step_123"

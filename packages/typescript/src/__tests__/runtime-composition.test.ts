@@ -1,9 +1,12 @@
 /**
  * Tests for runtime composition: getBasicCapabilitiesSettings, mergeSettingsInto,
- * loadCharacters (object source, file path via mock, empty), createRuntimes with adapter override.
+ * loadCharacters (object source, JSON file path, empty), createRuntimes with adapter override.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, type vi } from "vitest";
 import {
 	type AgentRecordForMerge,
 	createRuntimes,
@@ -15,6 +18,11 @@ import type { Character } from "../types";
 import { stringToUuid } from "../utils";
 import { createTestCharacter, createTestDatabaseAdapter } from "./test-utils";
 
+type MockFn = ReturnType<typeof vi.fn>;
+
+function asMock(fn: unknown): MockFn {
+	return fn as MockFn;
+}
 
 describe("runtime-composition", () => {
 	describe("getBasicCapabilitiesSettings", () => {
@@ -160,7 +168,51 @@ describe("runtime-composition", () => {
 			await expect(loadCharacters([invalidInput])).rejects.toThrow();
 		});
 
+		it("loads character from a JSON file path", async () => {
+			const dir = mkdtempSync(join(tmpdir(), "eliza-load-chars-"));
+			const file = join(dir, "character.json");
+			writeFileSync(
+				file,
+				JSON.stringify({
+					name: "FileBot",
+					bio: ["from file"],
+					plugins: [],
+					settings: {},
+					secrets: {},
+				}),
+				"utf8",
+			);
+			const result = await loadCharacters([file]);
+			expect(result).toHaveLength(1);
+			expect(result[0]?.name).toBe("FileBot");
+		});
 
+		it("throws when character file path does not exist", async () => {
+			await expect(
+				loadCharacters(["/nonexistent/eliza-character-xyz.json"]),
+			).rejects.toThrow(/not found/);
+		});
+
+		it("resolves relative paths against options.cwd", async () => {
+			const root = mkdtempSync(join(tmpdir(), "eliza-load-chars-cwd-"));
+			const sub = join(root, "characters");
+			mkdirSync(sub, { recursive: true });
+			const file = join(sub, "bot.json");
+			writeFileSync(
+				file,
+				JSON.stringify({
+					name: "CwdBot",
+					bio: ["from cwd option"],
+					plugins: [],
+					settings: {},
+					secrets: {},
+				}),
+				"utf8",
+			);
+			const result = await loadCharacters(["bot.json"], { cwd: sub });
+			expect(result).toHaveLength(1);
+			expect(result[0]?.name).toBe("CwdBot");
+		});
 	});
 
 	describe("createRuntimes", () => {
@@ -175,8 +227,8 @@ describe("runtime-composition", () => {
 				plugins: ["@elizaos/plugin-sql"],
 			});
 			const adapter = createTestDatabaseAdapter(character.id);
-			vi.mocked(adapter.initialize).mockResolvedValue(undefined);
-			vi.mocked(adapter.isReady).mockResolvedValue(true);
+			asMock(adapter.initialize).mockResolvedValue(undefined);
+			asMock(adapter.isReady).mockResolvedValue(true);
 
 			const runtimes = await createRuntimes([character], {
 				adapter,
@@ -199,9 +251,9 @@ describe("runtime-composition", () => {
 			const agentId =
 				character.id ?? stringToUuid(character.name ?? "MergeTest");
 			const adapter = createTestDatabaseAdapter(agentId);
-			vi.mocked(adapter.initialize).mockResolvedValue(undefined);
-			vi.mocked(adapter.isReady).mockResolvedValue(true);
-			vi.mocked(adapter.getAgentsByIds).mockImplementation(async (ids) => {
+			asMock(adapter.initialize).mockResolvedValue(undefined);
+			asMock(adapter.isReady).mockResolvedValue(true);
+			asMock(adapter.getAgentsByIds).mockImplementation(async (ids) => {
 				return ids.map((id) => ({
 					id,
 					name: "FromDB",

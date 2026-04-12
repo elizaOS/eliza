@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/skills",
-	"version": "2.0.0-alpha.109",
+	"version": "2.0.0-alpha.134",
 	"description": "Bundled skills and skill loading utilities for elizaOS agents",
 	"type": "module",
 	"main": "dist/index.js",
@@ -47,6 +47,9 @@
 	},
 	"dependencies": {
 		"yaml": "^2.8.2"
+	},
+	"devDependencies": {
+		"tsx": "^4.19.2"
 	},
 	"publishConfig": {
 		"access": "public"
