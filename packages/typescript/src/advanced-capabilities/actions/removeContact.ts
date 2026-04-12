@@ -1,4 +1,8 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { removeContactTemplate } from "../../prompts.ts";
 import type { RelationshipsService } from "../../services/relationships.ts";
@@ -17,8 +21,12 @@ import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("REMOVE_CONTACT");
-const REMOVE_CONTACT_INTENT =
-	/remove|delete|drop.*contact|remove.*from.*relationships/i;
+const REMOVE_CONTACT_TERMS = getValidationKeywordTerms(
+	"action.removeContact.request",
+	{
+		includeAllLocales: true,
+	},
+);
 
 interface RemoveContactXmlResult {
 	contactName?: string;
@@ -39,7 +47,7 @@ export const removeContactAction: Action = {
 		const hasService = !!runtime.getService("relationships");
 		const text = message.content.text;
 		if (!text) return false;
-		const hasIntent = REMOVE_CONTACT_INTENT.test(text);
+		const hasIntent = findKeywordTermMatch(text, REMOVE_CONTACT_TERMS);
 		return hasService && !!hasIntent;
 	},
 

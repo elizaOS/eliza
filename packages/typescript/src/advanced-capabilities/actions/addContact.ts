@@ -1,5 +1,9 @@
 import { findEntityByName } from "../../entities.ts";
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { addContactTemplate } from "../../prompts.ts";
 import type { RelationshipsService } from "../../services/relationships.ts";
@@ -23,14 +27,9 @@ import {
 
 // Get text content from centralized specs
 const spec = requireActionSpec("ADD_CONTACT");
-const ADD_KEYWORDS = [
-	"add",
-	"save",
-	"remember",
-	"categorize",
-	"contact",
-	"relationships",
-];
+const ADD_KEYWORDS = getValidationKeywordTerms("action.addContact.request", {
+	includeAllLocales: true,
+});
 
 interface AddContactXmlResult {
 	contactName?: string;
@@ -61,9 +60,9 @@ export const addContactAction: Action = {
 			return false;
 		}
 
-		const messageText = message.content.text?.toLowerCase() || "";
+		const messageText = message.content.text ?? "";
 		if (!messageText) return false;
-		return ADD_KEYWORDS.some((keyword) => messageText.includes(keyword));
+		return findKeywordTermMatch(messageText, ADD_KEYWORDS) !== undefined;
 	},
 
 	handler: async (

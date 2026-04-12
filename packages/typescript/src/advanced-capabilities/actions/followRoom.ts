@@ -1,4 +1,8 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { shouldFollowRoomTemplate } from "../../prompts.ts";
 import type {
@@ -20,14 +24,9 @@ import {
 
 // Get text content from centralized specs
 const spec = requireActionSpec("FOLLOW_ROOM");
-const FOLLOW_KEYWORDS = [
-	"follow",
-	"participate",
-	"engage",
-	"listen",
-	"take interest",
-	"join",
-];
+const FOLLOW_KEYWORDS = getValidationKeywordTerms("action.followRoom.request", {
+	includeAllLocales: true,
+});
 
 export const followRoomAction: Action = {
 	name: spec.name,
@@ -35,10 +34,10 @@ export const followRoomAction: Action = {
 	description: spec.description,
 	examples: (spec.examples ?? []) as ActionExample[][],
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
-		const messageContentText = message.content.text?.toLowerCase();
+		const messageContentText = message.content.text;
 		if (
 			!messageContentText ||
-			!FOLLOW_KEYWORDS.some((keyword) => messageContentText.includes(keyword))
+			findKeywordTermMatch(messageContentText, FOLLOW_KEYWORDS) === undefined
 		) {
 			return false;
 		}
