@@ -39,50 +39,50 @@ export const unfollowRoomAction: Action = {
 		_responses?: Memory[],
 	): Promise<ActionResult> => {
 		async function _shouldUnfollow(state: State): Promise<boolean> {
-			const shouldUnfollowPrompt = composePromptFromState({
-				state,
-				template: shouldUnfollowRoomTemplate,
-			});
+		const shouldUnfollowPrompt = composePromptFromState({
+			state,
+			template: shouldUnfollowRoomTemplate,
+		});
 
-			const parsed = await runtime.dynamicPromptExecFromState({
-				params: { prompt: shouldUnfollowPrompt },
-				schema: [
-					{
-						field: "decision",
-						description:
-							"true if the agent should unfollow this room, false otherwise",
-						type: "boolean",
-						required: true,
-					},
-				],
-				options: {
-					modelType: ModelType.TEXT_SMALL,
-					promptName: "shouldUnfollowRoom",
+		const parsed = await runtime.dynamicPromptExecFromState({
+			params: { prompt: shouldUnfollowPrompt },
+			schema: [
+				{
+					field: "decision",
+					description:
+						"true if the agent should unfollow this room, false otherwise",
+					type: "boolean",
+					required: true,
 				},
-			});
+			],
+			options: {
+				modelType: ModelType.TEXT_SMALL,
+				promptName: "shouldUnfollowRoom",
+			},
+		});
 
-			const decisionValue = parsed?.decision as string | boolean | undefined;
+		const decisionValue = parsed?.decision as string | boolean | undefined;
 
-			if (typeof decisionValue === "boolean") {
-				return decisionValue;
-			}
+		if (typeof decisionValue === "boolean") {
+			return decisionValue;
+		}
 
-			// Fallback: check raw response for common affirmative/negative patterns
-			const cleanedResponse = String(decisionValue ?? "").toLowerCase().trim();
-			if (cleanedResponse.includes("true") || cleanedResponse.includes("yes")) {
-				return true;
-			}
-			if (cleanedResponse.includes("false")) {
-				return false;
-			}
-
-			// Ambiguous response - log warning and default to false
-			logger.warn(
-				{ src: "unfollowRoom", response: decisionValue },
-				"Ambiguous decision response, defaulting to false",
-			);
+		// Fallback: check raw response for common affirmative/negative patterns
+		const cleanedResponse = String(decisionValue ?? "").toLowerCase().trim();
+		if (cleanedResponse.includes("true") || cleanedResponse.includes("yes")) {
+			return true;
+		}
+		if (cleanedResponse.includes("false")) {
 			return false;
 		}
+
+		// Ambiguous response - log warning and default to false
+		logger.warn(
+			{ src: "unfollowRoom", response: decisionValue },
+			"Ambiguous decision response, defaulting to false",
+		);
+		return false;
+	}
 
 		if (state && (await _shouldUnfollow(state))) {
 			try {
