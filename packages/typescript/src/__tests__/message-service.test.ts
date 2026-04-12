@@ -1777,7 +1777,8 @@ describe("DefaultMessageService", () => {
 				await runtime.setCache(getTaskCompletionCacheKey(message.id), {
 					assessed: true,
 					completed: false,
-					reason: "The agent asked a clarifying question and is waiting on the user.",
+					reason:
+						"The agent asked a clarifying question and is waiting on the user.",
 					source: "reflection",
 					evaluatedAt: Date.now(),
 					messageId: message.id,
@@ -1801,6 +1802,88 @@ describe("DefaultMessageService", () => {
 			);
 			expect(result.responseContent?.text).toBe(
 				"What did you have in mind for Monday?",
+			);
+		});
+
+		it("suppresses an identical simple continuation reply after reflection", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+
+			const cache = new Map<string, unknown>();
+			vi.spyOn(runtime, "setCache").mockImplementation(async (key, value) => {
+				cache.set(key, value);
+				return true;
+			});
+			vi.spyOn(runtime, "getCache").mockImplementation(
+				async (key) => cache.get(key) as never,
+			);
+			vi.spyOn(runtime, "deleteCache").mockImplementation(async (key) => {
+				cache.delete(key);
+				return true;
+			});
+
+			const dynamicPromptSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Acknowledge the report",
+					actions: "REPLY",
+					text: "I'm glad to hear that. Sometimes just clarifying things can make a difference.",
+					simple: true,
+				})
+				.mockResolvedValueOnce({
+					thought: "Repeat the same acknowledgement",
+					actions: "REPLY",
+					text: "I'm glad to hear that. Sometimes just clarifying things can make a difference.",
+					simple: true,
+				});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026bb" as UUID,
+				content: {
+					text: "this feels so much better ngl",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			vi.spyOn(runtime, "evaluate").mockImplementation(async () => {
+				await runtime.setCache(getTaskCompletionCacheKey(message.id), {
+					assessed: true,
+					completed: false,
+					reason: "The task was not actually completed.",
+					source: "reflection",
+					evaluatedAt: Date.now(),
+					messageId: message.id,
+				});
+				return [];
+			});
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(dynamicPromptSpy).toHaveBeenCalledTimes(2);
+			expect(mockCallback).toHaveBeenCalledTimes(1);
+			expect(mockCallback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					text: "I'm glad to hear that. Sometimes just clarifying things can make a difference.",
+				}),
+			);
+			expect(runtime.logger.warn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					messageId: message.id,
+					preview:
+						"I'm glad to hear that. Sometimes just clarifying things can make a difference.",
+				}),
+				"Suppressing duplicate visible callback reply emitted for a single turn",
+			);
+			expect(result.responseContent?.text).toBe(
+				"I'm glad to hear that. Sometimes just clarifying things can make a difference.",
 			);
 		});
 
@@ -1862,7 +1945,8 @@ describe("DefaultMessageService", () => {
 				await runtime.setCache(getTaskCompletionCacheKey(message.id), {
 					assessed: true,
 					completed: false,
-					reason: "The agent asked a clarifying question and is waiting on the user.",
+					reason:
+						"The agent asked a clarifying question and is waiting on the user.",
 					source: "reflection",
 					evaluatedAt: Date.now(),
 					messageId: message.id,

@@ -14,7 +14,12 @@ import {
 	deterministicShuffle,
 	getDeterministicNames,
 } from "./utils/deterministic";
-import { encodeToonValue, parseToonActionParams } from "./utils/toon";
+import { parseJSONObjectFromText } from "./utils.ts";
+import {
+	encodeToonValue,
+	parseToonActionParams,
+	tryParseToonValue,
+} from "./utils/toon";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
@@ -154,6 +159,50 @@ const formatSelectedExamples = (
 		.join("\n");
 };
 
+function getExampleActionHints(example: ActionExample[]): string[] {
+	const hints = new Set<string>();
+	for (const message of example) {
+		const content = message.content as {
+			action?: unknown;
+			actions?: unknown;
+		};
+		if (typeof content.action === "string" && content.action.trim()) {
+			hints.add(content.action.trim());
+		}
+		if (Array.isArray(content.actions)) {
+			for (const action of content.actions) {
+				if (typeof action === "string" && action.trim()) {
+					hints.add(action.trim());
+				}
+			}
+		}
+	}
+	return [...hints];
+}
+
+function formatActionExampleSummary(action: Action): string | null {
+	const examples = action.examples ?? [];
+	if (!Array.isArray(examples) || examples.length === 0) {
+		return null;
+	}
+
+	for (const example of examples) {
+		if (!Array.isArray(example) || example.length === 0) {
+			continue;
+		}
+
+		const userMessage = example[0]?.content?.text?.trim();
+		const actionHints = getExampleActionHints(example);
+		if (!userMessage || actionHints.length === 0) {
+			continue;
+		}
+
+		return `User: ${JSON.stringify(userMessage)} -> actions: ${actionHints.join(", ")}`;
+	}
+
+	return null;
+}
+
 function shuffleActions<T>(items: T[], seed = "actions"): T[] {
 	return deterministicShuffle(items, seed);
 }
@@ -177,6 +226,7 @@ export function formatActions(actions: Action[], seed = "actions"): string {
 			const lines = [
 				`- ${action.name}: ${action.description || "No description available"}`,
 			];
+			const exampleSummary = formatActionExampleSummary(action);
 
 			if (action.parameters && action.parameters.length > 0) {
 				lines.push(
@@ -184,6 +234,10 @@ export function formatActions(actions: Action[], seed = "actions"): string {
 						action.parameters,
 					)}`,
 				);
+			}
+
+			if (exampleSummary) {
+				lines.push(`  example: ${exampleSummary}`);
 			}
 
 			return lines.join("\n");
@@ -305,6 +359,20 @@ export function parseActionParams(
 			actionParams[paramName] = parseParamValue(paramValue);
 		}
 
+		if (Object.keys(actionParams).length === 0) {
+			const structuredParams =
+				parseJSONObjectFromText(actionParamsXml) ?? tryParseToonValue(actionParamsXml);
+			if (
+				structuredParams &&
+				typeof structuredParams === "object" &&
+				!Array.isArray(structuredParams)
+			) {
+				for (const [paramName, paramValue] of Object.entries(structuredParams)) {
+					actionParams[paramName] = toActionParameterValue(paramValue);
+				}
+			}
+		}
+
 		if (Object.keys(actionParams).length > 0) {
 			result.set(actionName.toUpperCase(), actionParams);
 		}
@@ -393,6 +461,32 @@ function extractXmlChildren(
 	}
 
 	return pairs;
+}
+
+function toActionParameterValue(value: unknown): ActionParameterValue {
+	if (
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean" ||
+		value === null
+	) {
+		return value;
+	}
+
+	if (Array.isArray(value)) {
+		return value.map((entry) => toActionParameterValue(entry));
+	}
+
+	if (value && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, entry]) => [
+				key,
+				toActionParameterValue(entry),
+			]),
+		);
+	}
+
+	return value === undefined ? null : String(value);
 }
 
 function parseParamValue(value: string): string | number | boolean | null {
