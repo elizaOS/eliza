@@ -215,7 +215,7 @@ export const messageHandlerTemplate = `task: Generate dialog and actions for {{a
 context:
 {{providers}}
 
-rules[9]:
+rules[10]:
 - think briefly, then respond
 - always include a <thought> field, even for direct replies
 - actions execute in listed order
@@ -225,6 +225,7 @@ rules[9]:
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them inside that action's <params> block
 - if a required param is unknown, ask for clarification in text
+- for live status questions or remaining-work queries, do not answer from recent conversation alone; call the relevant action/provider to refresh state, and do not pair it with a speculative REPLY that guesses the result
 
 control_actions:
 - STOP means the task is done and the agent should end the run without executing more actions

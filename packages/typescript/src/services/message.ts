@@ -978,6 +978,26 @@ function withContextRoutingValues(
 	};
 }
 
+async function composeContinuationDecisionState(
+	runtime: IAgentRuntime,
+	message: Memory,
+	contextRoutingStateValues?: ContextRoutingStateValues,
+): Promise<State> {
+	// Continuation prompts run after the runtime has already persisted an
+	// assistant reply and/or action_result memories. Refresh RECENT_MESSAGES so
+	// the follow-up planner does not reuse stale conversation history cached on
+	// the original user turn.
+	return withContextRoutingValues(
+		await runtime.composeState(
+			message,
+			["RECENT_MESSAGES", "ACTIONS"],
+			false,
+			false,
+		),
+		contextRoutingStateValues,
+	);
+}
+
 function withoutProviders(state: State, providerNamesToOmit: string[]): State {
 	if (providerNamesToOmit.length === 0) {
 		return state;
@@ -3018,8 +3038,9 @@ export class DefaultMessageService implements IMessageService {
 		) {
 			accumulatedState = withTaskCompletion(
 				withActionResults(
-					withContextRoutingValues(
-						await runtime.composeState(message, ["ACTIONS"], false, false),
+					await composeContinuationDecisionState(
+						runtime,
+						message,
 						contextRoutingStateValues,
 					),
 					traceActionResults,
@@ -3173,8 +3194,9 @@ export class DefaultMessageService implements IMessageService {
 			: [];
 		let accumulatedState = withTaskCompletion(
 			withActionResults(
-				withContextRoutingValues(
-					await runtime.composeState(message, ["ACTIONS"], false, false),
+				await composeContinuationDecisionState(
+					runtime,
+					message,
 					contextRoutingStateValues,
 				),
 				initialActionResults,
