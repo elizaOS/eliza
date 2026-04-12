@@ -72,7 +72,7 @@ export const unfollowRoomAction: Action = {
 			if (cleanedResponse.includes("true") || cleanedResponse.includes("yes")) {
 				return true;
 			}
-			if (cleanedResponse.includes("false") || cleanedResponse.includes("no")) {
+			if (cleanedResponse.includes("false")) {
 				return false;
 			}
 
