@@ -234,7 +234,7 @@ export async function mergeDbSettings(
 ): Promise<Character> {
 	const agents = await adapter.getAgentsByIds([agentId]);
 	const existingAgent = agents[0] ?? null;
-	if (!existingAgent || !existingAgent.settings) {
+	if (!existingAgent?.settings) {
 		return character;
 	}
 

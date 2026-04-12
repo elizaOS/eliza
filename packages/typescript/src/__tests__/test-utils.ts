@@ -58,7 +58,7 @@ export const DEFAULT_TEST_CHARACTER: Character = {
 	postExamples: [],
 	topics: ["testing"],
 	adjectives: ["helpful", "test"],
-	style: { all: [], chat: [], post: [] },
+	style: { all: [], chat: [], post: [] } as Character["style"],
 };
 
 /**
@@ -438,7 +438,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
 				entries.map(() => createUUID()),
 		),
 		deletePairingAllowlistEntries: vi.fn().mockResolvedValue(undefined),
-	} as IDatabaseAdapter;
+	} as unknown as IDatabaseAdapter;
 }
 
 /**

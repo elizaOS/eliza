@@ -8,6 +8,7 @@
 
 // Export core modules (all browser-compatible after refactoring)
 export * from "./actions";
+export * from "./advanced-memory";
 export * from "./character";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
@@ -23,7 +24,7 @@ export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
 export * from "./services";
 export * from "./services/message";
-export * from "./services/trajectoryLogger";
+export * from "./services/trajectories";
 export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";

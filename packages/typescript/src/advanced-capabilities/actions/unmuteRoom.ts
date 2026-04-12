@@ -1,4 +1,8 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { shouldUnmuteRoomTemplate } from "../../prompts.ts";
 import type {
@@ -12,10 +16,17 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import { composePromptFromState } from "../../utils.ts";
+import {
+	composePromptFromState,
+	parseBooleanFromText,
+	parseKeyValueXml,
+} from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UNMUTE_ROOM");
+const UNMUTE_TERMS = getValidationKeywordTerms("action.unmuteRoom.request", {
+	includeAllLocales: true,
+});
 
 export const unmuteRoomAction: Action = {
 	name: spec.name,
@@ -23,6 +34,11 @@ export const unmuteRoomAction: Action = {
 	description: spec.description,
 	examples: (spec.examples ?? []) as ActionExample[][],
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
+		const text =
+			typeof message?.content === "string"
+				? message.content
+				: (message?.content?.text ?? "");
+		if (findKeywordTermMatch(text, UNMUTE_TERMS) === undefined) return false;
 		const roomId = message.roomId;
 		const roomState = await runtime.getParticipantUserState(
 			roomId,
@@ -49,13 +65,15 @@ export const unmuteRoomAction: Action = {
 				stopSequences: [],
 			});
 
-			const cleanedResponse = response.trim().toLowerCase();
+			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(
+				response,
+			);
+			const decisionValue = parsed?.decision ?? response.trim();
+			const cleanedResponse = String(decisionValue).trim().toLowerCase();
 
 			// Handle various affirmative responses
 			if (
-				cleanedResponse === "true" ||
-				cleanedResponse === "yes" ||
-				cleanedResponse === "y" ||
+				parseBooleanFromText(decisionValue) ||
 				cleanedResponse.includes("true") ||
 				cleanedResponse.includes("yes")
 			) {

@@ -8,6 +8,7 @@
 
 // Export all core modules
 export * from "./actions";
+export * from "./advanced-memory";
 // Export capabilities and plugin creation
 export * from "./basic-capabilities/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
@@ -44,6 +45,7 @@ export * from "./memory";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
 export * from "./plugin";
+export * from "./plugins";
 
 export * from "./prompts";
 // Export onboarding providers
@@ -87,12 +89,13 @@ export {
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
 export * from "./services/tool-policy";
-export * from "./services/trajectoryLogger";
+export * from "./services/trajectories";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
 export * from "./settings";
 export * from "./trajectory-context";
+export * from "./trajectory-utils";
 // Export everything from types
 export * from "./types";
 export * from "./types/agentEvent";

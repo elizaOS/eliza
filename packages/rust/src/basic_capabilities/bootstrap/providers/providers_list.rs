@@ -36,12 +36,20 @@ impl Provider for ProvidersListProvider {
         _message: &Memory,
         _state: Option<&State>,
     ) -> PluginResult<ProviderResult> {
+        let selection_hints = [
+            "images, attachments, or visual content -> ATTACHMENTS",
+            "specific people or agents -> ENTITIES",
+            "connections between people -> RELATIONSHIPS",
+            "factual lookup -> FACTS",
+            "world or environment context -> WORLD",
+        ];
         // Get providers from the basic_capabilities plugin itself
         let providers = super::all_providers();
 
         if providers.is_empty() {
             return Ok(
-                ProviderResult::new("No providers available.").with_value("providerCount", 0i64)
+                ProviderResult::new("# Available Providers\nproviders[0]:\n- none")
+                    .with_value("providerCount", 0i64),
             );
         }
 
@@ -61,7 +69,17 @@ impl Provider for ProvidersListProvider {
             .map(|p| format!("- {}: {}", p.name(), p.description()))
             .collect();
 
-        let text = format!("# Available Providers\n{}", formatted.join("\n"));
+        let text = format!(
+            "# Available Providers\nproviders[{}]:\n{}\nprovider_hints[{}]:\n{}",
+            providers.len(),
+            formatted.join("\n"),
+            selection_hints.len(),
+            selection_hints
+                .iter()
+                .map(|hint| format!("- {}", hint))
+                .collect::<Vec<String>>()
+                .join("\n")
+        );
 
         let names: Vec<&str> = providers.iter().map(|p| p.name()).collect();
 

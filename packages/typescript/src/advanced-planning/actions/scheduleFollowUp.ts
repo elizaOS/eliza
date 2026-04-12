@@ -1,8 +1,12 @@
 import { getPromptReferenceDate } from "../../deterministic";
 import { findEntityByName } from "../../entities.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import type { FollowUpService } from "../../services/followUp.ts";
-import type { RolodexService } from "../../services/rolodex.ts";
+import type { RelationshipsService } from "../../services/relationships.ts";
 import type {
 	Action,
 	ActionResult,
@@ -23,6 +27,13 @@ interface ScheduleFollowUpXmlResult {
 	priority?: string;
 	message?: string;
 }
+
+const FOLLOW_UP_KEYWORDS = getValidationKeywordTerms(
+	"action.scheduleFollowUp.request",
+	{
+		includeAllLocales: true,
+	},
+);
 
 function normalizePriority(
 	rawPriority: string | undefined,
@@ -55,19 +66,17 @@ Extract the follow-up scheduling information from the message:
 {{currentDateTime}}
 
 Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
+Go directly to the TOON response format without any preamble or explanation.
 
 ## Response Format
-<response>
-<contactName>Name of the contact to follow up with</contactName>
-<entityId>ID if known, otherwise leave empty</entityId>
-<scheduledAt>ISO datetime for the follow-up</scheduledAt>
-<reason>Reason for the follow-up</reason>
-<priority>high, medium, or low</priority>
-<message>Optional message or notes for the follow-up</message>
-</response>
+contactName: Name of the contact to follow up with
+entityId: ID if known, otherwise leave empty
+scheduledAt: ISO datetime for the follow-up
+reason: Reason for the follow-up
+priority: high, medium, or low
+message: Optional message or notes for the follow-up
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
 
 export const scheduleFollowUpAction: Action = {
 	name: "SCHEDULE_FOLLOW_UP",
@@ -129,26 +138,18 @@ export const scheduleFollowUpAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 		const followUpService = runtime.getService("follow_up") as FollowUpService;
 
-		if (!rolodexService || !followUpService) {
+		if (!relationshipsService || !followUpService) {
 			logger.warn("[ScheduleFollowUp] Required services not available");
 			return false;
 		}
 
-		const followUpKeywords = [
-			"follow up",
-			"followup",
-			"remind",
-			"check in",
-			"check back",
-			"reach out",
-			"schedule",
-		];
-		const messageText = message.content.text?.toLowerCase() || "";
-
-		return followUpKeywords.some((keyword) => messageText.includes(keyword));
+		const messageText = message.content.text ?? "";
+		return findKeywordTermMatch(messageText, FOLLOW_UP_KEYWORDS) !== undefined;
 	},
 
 	handler: async (
@@ -158,10 +159,12 @@ export const scheduleFollowUpAction: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 		const followUpService = runtime.getService("follow_up") as FollowUpService;
 
-		if (!rolodexService || !followUpService) {
+		if (!relationshipsService || !followUpService) {
 			throw new Error("Required services not available");
 		}
 
@@ -218,7 +221,7 @@ export const scheduleFollowUpAction: Action = {
 				entityId = entity.id;
 			} else {
 				throw new Error(
-					`Contact "${parsedResponse.contactName}" not found in rolodex`,
+					`Contact "${parsedResponse.contactName}" not found in relationships`,
 				);
 			}
 		}
@@ -227,9 +230,11 @@ export const scheduleFollowUpAction: Action = {
 			throw new Error("Could not determine contact to follow up with");
 		}
 
-		const contact = await rolodexService.getContact(entityId);
+		const contact = await relationshipsService.getContact(entityId);
 		if (!contact) {
-			throw new Error("Contact not found in rolodex. Please add them first.");
+			throw new Error(
+				"Contact not found in relationships. Please add them first.",
+			);
 		}
 
 		const scheduledAt = new Date(parsedResponse.scheduledAt || "");

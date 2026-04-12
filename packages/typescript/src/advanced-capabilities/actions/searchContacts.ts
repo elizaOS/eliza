@@ -1,7 +1,11 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { searchContactsTemplate } from "../../prompts.ts";
-import type { RolodexService } from "../../services/rolodex.ts";
+import type { RelationshipsService } from "../../services/relationships.ts";
 import type {
 	Action,
 	ActionExample,
@@ -17,17 +21,12 @@ import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("SEARCH_CONTACTS");
-const SEARCH_KEYWORDS = [
-	"list",
-	"show",
-	"search",
-	"find",
-	"contacts",
-	"friends",
-	"colleagues",
-	"vip",
-	"who",
-];
+const SEARCH_KEYWORDS = getValidationKeywordTerms(
+	"action.searchContacts.request",
+	{
+		includeAllLocales: true,
+	},
+);
 
 interface SearchContactsXmlResult {
 	categories?: string;
@@ -47,17 +46,19 @@ export const searchContactsAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		// Check if RolodexService is available
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
-		if (!rolodexService) {
-			logger.warn("[SearchContacts] RolodexService not available");
+		// Check if RelationshipsService is available
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
+		if (!relationshipsService) {
+			logger.warn("[SearchContacts] RelationshipsService not available");
 			return false;
 		}
 
 		// Check if message contains intent to search/list contacts
-		const messageText = message.content.text?.toLowerCase() || "";
+		const messageText = message.content.text ?? "";
 		if (!messageText) return false;
-		return SEARCH_KEYWORDS.some((keyword) => messageText.includes(keyword));
+		return findKeywordTermMatch(messageText, SEARCH_KEYWORDS) !== undefined;
 	},
 
 	handler: async (
@@ -67,10 +68,12 @@ export const searchContactsAction: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 
-		if (!rolodexService) {
-			throw new Error("RolodexService not available");
+		if (!relationshipsService) {
+			throw new Error("RelationshipsService not available");
 		}
 
 		// Build proper state for prompt composition
@@ -130,16 +133,20 @@ export const searchContactsAction: Action = {
 		}
 
 		// Search contacts
-		const contacts = await rolodexService.searchContacts(criteria);
+		const contacts = await relationshipsService.searchContacts(criteria);
 
 		// Get entity names for each contact
 		const contactDetails = await Promise.all(
 			contacts.map(async (contact) => {
 				const entity = await runtime.getEntityById(contact.entityId);
+				const displayName =
+					typeof contact.customFields.displayName === "string"
+						? contact.customFields.displayName
+						: null;
 				return {
 					contact,
 					entity,
-					name: entity?.names[0] || "Unknown",
+					name: entity?.names[0] || displayName || "Unknown",
 				};
 			}),
 		);

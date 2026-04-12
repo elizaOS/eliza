@@ -42,8 +42,8 @@ class AddContactAction:
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
     ) -> bool:
-        rolodex_service = runtime.get_service("rolodex")
-        return rolodex_service is not None
+        relationships_service = runtime.get_service("relationships")
+        return relationships_service is not None
 
     async def handler(
         self,
@@ -54,18 +54,18 @@ class AddContactAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        from elizaos.advanced_capabilities.services.rolodex import (
+        from elizaos.advanced_capabilities.services.relationships import (
             ContactPreferences,
-            RolodexService,
+            RelationshipsService,
         )
 
-        rolodex_service = runtime.get_service("rolodex")
-        if not rolodex_service or not isinstance(rolodex_service, RolodexService):
+        relationships_service = runtime.get_service("relationships")
+        if not relationships_service or not isinstance(relationships_service, RelationshipsService):
             return ActionResult(
-                text="Rolodex service not available",
+                text="Relationships service not available",
                 success=False,
                 values={"error": True},
-                data={"error": "RolodexService not available"},
+                data={"error": "RelationshipsService not available"},
             )
 
         state = await runtime.compose_state(message, ["RECENT_MESSAGES", "ENTITIES"])
@@ -99,7 +99,7 @@ class AddContactAction:
         preferences = ContactPreferences(notes=notes) if notes else None
 
         if entity_id_uuid:
-            await rolodex_service.add_contact(
+            await relationships_service.add_contact(
                 entity_id=entity_id_uuid,
                 categories=categories,
                 preferences=preferences,

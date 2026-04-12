@@ -71,8 +71,9 @@ pub use state::{
 // From database
 pub use database::{
     vector_dims, ActionLogBody, ActionLogContent, ActionLogResult, AgentRunCounts, AgentRunSummary,
-    AgentRunSummaryResult, BaseLogBody, CreateMemoryItem, EmbeddingLogBody, EmbeddingSearchResult,
-    EvaluatorLogBody, GetMemoriesParams, Log, LogBody, MemoryRetrievalOptions, MemorySearchOptions,
+    AgentRunSummaryResult, BaseLogBody, CreateMemoryItem, CreateRelationshipParams,
+    EmbeddingLogBody, EmbeddingSearchResult, EvaluatorLogBody, GetMemoriesParams,
+    GetRelationshipsParams, Log, LogBody, MemoryRetrievalOptions, MemorySearchOptions,
     ModelActionContext, ModelLogBody, PromptLogEntry, RunStatus, SearchMemoriesParams,
     UpdateMemoryItem,
 };

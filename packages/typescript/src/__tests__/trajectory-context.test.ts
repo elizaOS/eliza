@@ -4,12 +4,8 @@ import {
 	runWithTrajectoryContext,
 } from "../trajectory-context";
 
-describe("Trajectory Context", () => {
+describe("trajectory context", () => {
 	it("context is available immediately on first access (no async init race)", () => {
-		// This is the bug this fix addresses: the old lazy async init meant
-		// the first few calls used StackContextManager which doesn't propagate
-		// through async/await. With synchronous init, AsyncLocalStorage is
-		// available immediately.
 		let captured: { trajectoryStepId?: string } | undefined;
 
 		runWithTrajectoryContext({ trajectoryStepId: "test-step-1" }, () => {
@@ -26,8 +22,7 @@ describe("Trajectory Context", () => {
 		await runWithTrajectoryContext(
 			{ trajectoryStepId: "async-step" },
 			async () => {
-				// Simulate async work (provider loading, state composition, etc.)
-				await new Promise((r) => setTimeout(r, 10));
+				await new Promise((resolve) => setTimeout(resolve, 10));
 				captured = getTrajectoryContext();
 			},
 		);
@@ -42,10 +37,9 @@ describe("Trajectory Context", () => {
 		await runWithTrajectoryContext(
 			{ trajectoryStepId: "outer-step" },
 			async () => {
-				await new Promise((r) => setTimeout(r, 5));
-				// Simulates useModel being called after several awaits
+				await new Promise((resolve) => setTimeout(resolve, 5));
 				const doInnerWork = async () => {
-					await new Promise((r) => setTimeout(r, 5));
+					await new Promise((resolve) => setTimeout(resolve, 5));
 					innerCapture = getTrajectoryContext();
 				};
 				await doInnerWork();
@@ -64,26 +58,40 @@ describe("Trajectory Context", () => {
 		const results: string[] = [];
 
 		await Promise.all([
-			runWithTrajectoryContext(
-				{ trajectoryStepId: "call-A" },
-				async () => {
-					await new Promise((r) => setTimeout(r, 20));
-					const ctx = getTrajectoryContext();
-					results.push(ctx?.trajectoryStepId ?? "missing");
-				},
-			),
-			runWithTrajectoryContext(
-				{ trajectoryStepId: "call-B" },
-				async () => {
-					await new Promise((r) => setTimeout(r, 10));
-					const ctx = getTrajectoryContext();
-					results.push(ctx?.trajectoryStepId ?? "missing");
-				},
-			),
+			runWithTrajectoryContext({ trajectoryStepId: "call-A" }, async () => {
+				await new Promise((resolve) => setTimeout(resolve, 20));
+				const ctx = getTrajectoryContext();
+				results.push(ctx?.trajectoryStepId ?? "missing");
+			}),
+			runWithTrajectoryContext({ trajectoryStepId: "call-B" }, async () => {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				const ctx = getTrajectoryContext();
+				results.push(ctx?.trajectoryStepId ?? "missing");
+			}),
 		]);
 
 		expect(results).toContain("call-A");
 		expect(results).toContain("call-B");
 		expect(results).not.toContain("missing");
+	});
+
+	it("shares the context manager across separate module instances", async () => {
+		const moduleA = await import("../trajectory-context?instance=a");
+		const moduleB = await import("../trajectory-context?instance=b");
+
+		const manager = {
+			run: <T>(
+				_context: { trajectoryStepId?: string } | undefined,
+				fn: () => T | Promise<T>,
+			): T | Promise<T> => fn(),
+			active: () => ({ trajectoryStepId: "shared-step" }),
+		};
+
+		moduleA.setTrajectoryContextManager(manager);
+
+		expect(moduleB.getTrajectoryContextManager()).toBe(manager);
+		expect(moduleB.getTrajectoryContext()).toEqual({
+			trajectoryStepId: "shared-step",
+		});
 	});
 });

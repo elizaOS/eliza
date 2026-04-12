@@ -28,7 +28,7 @@ Possible response actions: REPLY, NONE, STATUS, COMPACT_SESSION, IGNORE
 # Eliza's Capabilities
 
 embedding-generation - Handles asynchronous embedding generation for memories
-trajectory_logger - Captures provider/LLM traces for benchmarks and training trajectories
+trajectories - Captures provider/LLM traces for benchmarks and training trajectories
 task - The agent is able to schedule and execute tasks
 # About Eliza
 A helpful AI assistant.
@@ -200,7 +200,7 @@ Possible response actions: COMPACT_SESSION, IGNORE, STATUS, REPLY, NONE
 # Eliza's Capabilities
 
 embedding-generation - Handles asynchronous embedding generation for memories
-trajectory_logger - Captures provider/LLM traces for benchmarks and training trajectories
+trajectories - Captures provider/LLM traces for benchmarks and training trajectories
 task - The agent is able to schedule and execute tasks
 # About Eliza
 A helpful AI assistant.

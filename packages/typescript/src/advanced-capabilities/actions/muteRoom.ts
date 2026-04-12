@@ -1,4 +1,8 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { shouldMuteRoomTemplate } from "../../prompts.ts";
 import type {
@@ -12,10 +16,17 @@ import type {
 	State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import { composePromptFromState } from "../../utils.ts";
+import {
+	composePromptFromState,
+	parseBooleanFromText,
+	parseKeyValueXml,
+} from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("MUTE_ROOM");
+const MUTE_TERMS = getValidationKeywordTerms("action.muteRoom.request", {
+	includeAllLocales: true,
+});
 
 export const muteRoomAction: Action = {
 	name: spec.name,
@@ -23,6 +34,11 @@ export const muteRoomAction: Action = {
 	description: spec.description,
 	examples: (spec.examples ?? []) as ActionExample[][],
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
+		const text =
+			typeof message?.content === "string"
+				? message.content
+				: (message?.content?.text ?? "");
+		if (findKeywordTermMatch(text, MUTE_TERMS) === undefined) return false;
 		const roomId = message.roomId;
 		const roomState = await runtime.getParticipantUserState(
 			roomId,
@@ -72,12 +88,14 @@ export const muteRoomAction: Action = {
 				stopSequences: [],
 			});
 
-			const cleanedResponse = response.trim().toLowerCase();
+			const parsed = parseKeyValueXml<{ decision?: boolean | string }>(
+				response,
+			);
+			const decisionValue = parsed?.decision ?? response.trim();
+			const cleanedResponse = String(decisionValue).trim().toLowerCase();
 
 			if (
-				cleanedResponse === "true" ||
-				cleanedResponse === "yes" ||
-				cleanedResponse === "y" ||
+				parseBooleanFromText(decisionValue) ||
 				cleanedResponse.includes("true") ||
 				cleanedResponse.includes("yes")
 			) {

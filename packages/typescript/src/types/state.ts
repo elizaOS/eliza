@@ -23,6 +23,21 @@ export type StateValue =
 	| StateValue[]
 	| { [key: string]: StateValue };
 
+export interface StructuredOutputFailure {
+	source: "dynamicPromptExecFromState";
+	kind: "model_error" | "parse_error" | "parse_problem" | "validation_error";
+	model: string;
+	format: "XML" | "JSON" | "TOON";
+	schemaFields: string[];
+	attempts: number;
+	maxRetries: number;
+	timestamp: number;
+	key?: string;
+	parseError?: string;
+	issues?: string[];
+	responsePreview?: string;
+}
+
 /** Single step in an action plan */
 export interface ActionPlanStep
 	extends Omit<ProtoActionPlanStep, "$typeName" | "$unknown" | "result"> {
@@ -100,6 +115,8 @@ export interface StateData
 	actionResults?: ActionResult[];
 	/** Working memory for temporary state during multi-step action execution */
 	workingMemory?: WorkingMemory;
+	/** Latest structured-output failure captured during this run */
+	structuredOutputFailure?: StructuredOutputFailure;
 	/** Allow dynamic properties for plugin extensions */
 	[key: string]: StateValue | undefined;
 }
@@ -115,6 +132,8 @@ export interface StateValues
 	actionNames?: string;
 	/** Provider names used */
 	providers?: string;
+	/** Human-readable summary of the latest structured-output failure */
+	structuredOutputFailureSummary?: string;
 	/** Other dynamic values */
 	[key: string]: StateValue | undefined;
 }
@@ -215,7 +234,8 @@ export type SchemaRow = SchemaValueSpec & {
 	 * Behavior by level:
 	 * - Level 0 (Trusted): default false. Set to true to opt-in to per-field codes.
 	 * - Level 1 (Progressive): default true. Set to false to opt-out of codes.
-	 * - Levels 2-3: ignored (uses checkpoint codes at start/end of response instead).
+	 * - Levels 2-3: ignored for per-field wrapping. Those levels can use optional
+	 *   checkpoint codes instead.
 	 *
 	 * Note: Only top-level schema rows use this today. Nested `properties` are still
 	 * validated structurally, but they do not get their own streaming/validation wires.

@@ -66,35 +66,24 @@ const componentTemplate = `# Task: Extract Source and Update Component Data
    - Includes the new information from the conversation
    - Contains only valid data for this component type
 
-
-Return an XML response with the following structure:
-<response>
-  <source>platform-name</source>
-  <data>
-    <username>username_value</username>
-    <displayName>display_name_value</displayName>
-    <!-- Add other component-specific fields as needed -->
-  </data>
-</response>
+Return a TOON document with the following structure:
+source: platform-name
+data:
+  username: username_value
+  displayName: display_name_value
 
 Example outputs:
 1. For "my telegram username is @dev_guru":
-<response>
-  <source>telegram</source>
-  <data>
-    <username>dev_guru</username>
-  </data>
-</response>
+source: telegram
+data:
+  username: dev_guru
 
 2. For "update my x handle to @tech_master":
-<response>
-  <source>x</source>
-  <data>
-    <username>tech_master</username>
-  </data>
-</response>
+source: x
+data:
+  username: tech_master
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
 
 /**
  * Action for updating contact details for a user entity.
@@ -267,7 +256,7 @@ export const updateEntityAction: Action = {
 		const agentId = runtime.agentId;
 		const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
-		if (!room || !room.worldId) {
+		if (!room?.worldId) {
 			return {
 				text: "Could not find room or world",
 				values: { success: false, error: "ROOM_NOT_FOUND" },
@@ -321,7 +310,7 @@ export const updateEntityAction: Action = {
 		// Parse the generated data
 		const parsedResult = parseKeyValueXml<ComponentExtractionResult>(result);
 
-		if (!parsedResult || !parsedResult.source || !parsedResult.data) {
+		if (!parsedResult?.source || !parsedResult.data) {
 			logger.error(
 				{
 					src: "plugin:advanced-capabilities:action:update_entity",

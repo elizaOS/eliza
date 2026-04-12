@@ -6,14 +6,16 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	type TextGenerationModelType,
 	type UUID,
 } from "../../types/index.ts";
-import { composePromptFromState } from "../../utils.ts";
+import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 import {
 	initialSummarizationTemplate,
 	updateSummarizationTemplate,
 } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
+import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import type { SummaryResult } from "../types.ts";
 
 // Get text content from centralized specs
@@ -50,25 +52,64 @@ async function getDialogueMessageCount(
 	return count;
 }
 
-function parseSummaryXML(xml: string): SummaryResult {
-	const summaryMatch = xml.match(/<text>([\s\S]*?)<\/text>/);
-	const topicsMatch = xml.match(/<topics>([\s\S]*?)<\/topics>/);
-	const keyPointsMatches = xml.matchAll(/<point>([\s\S]*?)<\/point>/g);
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
-	const summary = summaryMatch
-		? summaryMatch[1].trim()
-		: "Summary not available";
-	const topics = topicsMatch
-		? topicsMatch[1]
-				.split(",")
-				.map((t) => t.trim())
-				.filter(Boolean)
-		: [];
-	const keyPoints = Array.from(keyPointsMatches).map((match) =>
-		match[1].trim(),
-	);
+function toStringArray(value: unknown): string[] {
+	if (Array.isArray(value)) {
+		return value
+			.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+			.filter(Boolean);
+	}
 
-	return { summary, topics, keyPoints };
+	if (typeof value === "string") {
+		return value
+			.split(",")
+			.map((entry) => entry.trim())
+			.filter(Boolean);
+	}
+
+	if (isRecord(value) && "point" in value) {
+		return toStringArray(value.point);
+	}
+
+	return [];
+}
+
+function parseSummaryResponse(text: string): SummaryResult {
+	const parsed = parseKeyValueXml<Record<string, unknown>>(text);
+	if (parsed) {
+		const summary =
+			typeof parsed.text === "string" && parsed.text.trim().length > 0
+				? parsed.text.trim()
+				: "Summary not available";
+		const topics = toStringArray(parsed.topics);
+		const keyPoints = toStringArray(parsed.keyPoints);
+
+		if (
+			summary !== "Summary not available" ||
+			topics.length > 0 ||
+			keyPoints.length > 0
+		) {
+			return { summary, topics, keyPoints };
+		}
+	}
+
+	const summaryMatch = text.match(/<text>([\s\S]*?)<\/text>/);
+	const topicsMatch = text.match(/<topics>([\s\S]*?)<\/topics>/);
+	const keyPointsMatches = text.matchAll(/<point>([\s\S]*?)<\/point>/g);
+
+	return {
+		summary: summaryMatch ? summaryMatch[1].trim() : "Summary not available",
+		topics: topicsMatch
+			? topicsMatch[1]
+					.split(",")
+					.map((t) => t.trim())
+					.filter(Boolean)
+			: [],
+		keyPoints: Array.from(keyPointsMatches).map((match) => match[1].trim()),
+	};
 }
 
 export const summarizationEvaluator: Evaluator = {
@@ -211,12 +252,31 @@ export const summarizationEvaluator: Evaluator = {
 				});
 			}
 
-			const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+			const modelType = (config.summaryModelType ??
+				ModelType.TEXT_NANO) as TextGenerationModelType;
+			const response = await runtime.useModel(modelType, {
 				prompt,
 				maxTokens: config.summaryMaxTokens || 2500,
 			});
 
-			const summaryResult = parseSummaryXML(response);
+			const summaryResult = parseSummaryResponse(response);
+			logAdvancedMemoryTrajectory({
+				runtime,
+				message,
+				providerName: "MEMORY_SUMMARIZATION",
+				purpose: "evaluate",
+				data: {
+					hasExistingSummary: !!existingSummary,
+					processedDialogueMessages: newDialogueMessages.length,
+					totalDialogueMessages: totalDialogueCount,
+					topicCount: summaryResult.topics.length,
+					keyPointCount: summaryResult.keyPoints.length,
+				},
+				query: {
+					modelType: String(modelType),
+					roomId,
+				},
+			});
 
 			logger.info(
 				{ src: "evaluator:memory" },

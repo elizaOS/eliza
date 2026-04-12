@@ -5,6 +5,8 @@
 //! - Providers: `LONG_TERM_MEMORY`, `SUMMARIZED_CONTEXT`
 //! - Evaluators: `MEMORY_SUMMARIZATION`, `LONG_TERM_MEMORY_EXTRACTION`
 
+pub mod prompts;
+
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
@@ -27,7 +29,7 @@ use crate::types::state::State;
 use crate::types::Memory;
 
 // Import templates from centralized prompts
-use crate::prompts::{
+use crate::advanced_memory::prompts::{
     INITIAL_SUMMARIZATION_TEMPLATE, LONG_TERM_EXTRACTION_TEMPLATE, UPDATE_SUMMARIZATION_TEMPLATE,
 };
 

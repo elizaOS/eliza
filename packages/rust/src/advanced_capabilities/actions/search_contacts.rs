@@ -11,7 +11,7 @@ use crate::types::{ActionResult, Memory, State};
 
 use super::Action;
 
-/// Action to search contacts in the rolodex.
+/// Action to search contacts in the relationships.
 pub struct SearchContactsAction;
 
 static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
@@ -39,7 +39,7 @@ impl Action for SearchContactsAction {
     }
 
     async fn validate(&self, runtime: &dyn IAgentRuntime, _message: &Memory) -> bool {
-        runtime.get_service("rolodex").is_some()
+        runtime.get_service("relationships").is_some()
     }
 
     async fn handler(

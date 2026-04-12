@@ -12,10 +12,10 @@
  * the pieces it needs.
  *
  * **Exports:**
- * - loadCharacters(sources) – load from file paths or inline objects; returns Character[].
+ * - loadCharacters(sources, options?) – JSON file paths (strings) and/or inline CharacterInput; optional `cwd` for relative paths.
  * - getBasicCapabilitiesSettings(character) – flatten character + env for adapter factories (basic-capabilities only).
  * - mergeSettingsInto(character, agentRecord) – pure merge of DB agent into character (for custom pipelines).
- * - createRuntimes(characters, options?) – full pipeline: resolve plugins → adapters → merge DB settings → create/init runtimes; optional provision.
+ * - createRuntimes(characters, options?) – full pipeline; options carry adapter override, provision, logLevel, etc.
  *
  * **Settings divide:** Adapter factories receive only *basic-capabilities* settings (character + env).
  * Runtime settings from the DB are merged *after* the adapter is created and used when
@@ -23,6 +23,10 @@
  * is connected; basic-capabilities settings (e.g. POSTGRES_URL, PGLITE_DATA_DIR) are what you
  * need to create the adapter in the first place.
  */
+
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 import type { CharacterInput } from "./character";
 import { parseCharacter } from "./character";
@@ -204,36 +208,67 @@ function loadOneCharacterFromObject(input: CharacterInput): Character {
 	return out;
 }
 
+/** Options for {@link loadCharacters}. */
+export interface LoadCharactersOptions {
+	/**
+	 * Base directory for resolving relative file paths in `sources`.
+	 * Defaults to `process.cwd()`.
+	 */
+	cwd?: string;
+}
+
 /**
  * Load characters from file paths and/or inline character objects.
- * Reuses loadCharacterFile, parseCharacter, importSecretsFromEnv, ensureEncryptionSalt,
- * syncCharacterSecretsToEnv so behavior matches the rest of the codebase.
+ * String entries are UTF-8 JSON files (`.json`). Uses `parseCharacter` and `importSecretsFromEnv`.
  *
  * **WHY accept mixed sources:** Daemons often load from files; programmatic hosts (e.g. cloud,
  * serverless) may build character config in code. One API supports both.
  *
- * @param sources - File paths (string) or CharacterInput objects
+ * @param sources - Relative or absolute JSON file paths, or CharacterInput objects
+ * @param options - Optional `cwd` for relative paths
  * @returns Validated Character[] (empty array if sources is empty)
  * @throws If a file path fails to load or an object fails validation (message includes path/details)
  */
 export async function loadCharacters(
-	sources: CharacterInput[],
+	sources: Array<CharacterInput | string>,
+	options?: LoadCharactersOptions,
 ): Promise<Character[]> {
 	if (sources.length === 0) {
 		return [];
 	}
 
+	const baseCwd = options?.cwd ?? process.cwd();
 	const results: Character[] = [];
 
 	for (const source of sources) {
-		const character = loadOneCharacterFromObject(source);
-		results.push(character);
+		if (typeof source === "string") {
+			const resolved = path.isAbsolute(source)
+				? source
+				: path.resolve(baseCwd, source);
+			if (!existsSync(resolved)) {
+				throw new Error(
+					`loadCharacters: character file not found: ${resolved}`,
+				);
+			}
+			try {
+				const raw = await readFile(resolved, "utf8");
+				const json = JSON.parse(raw) as CharacterInput;
+				results.push(loadOneCharacterFromObject(json));
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				throw new Error(
+					`loadCharacters: failed to load ${resolved}: ${message}`,
+				);
+			}
+		} else {
+			results.push(loadOneCharacterFromObject(source));
+		}
 	}
 
 	return results;
 }
 
-/** Options for createRuntimes. */
+/** Options for {@link createRuntimes} (second argument). */
 export interface CreateRuntimesOptions {
 	/** Override: use this adapter for all characters (skip adapter discovery). WHY: Cloud/custom hosts may manage their own adapter pool. */
 	adapter?: IDatabaseAdapter;
@@ -245,6 +280,8 @@ export interface CreateRuntimesOptions {
 	logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 	/** Extra settings applied to each runtime (e.g. MODEL_PROVIDER override). */
 	settings?: Record<string, string | boolean | number>;
+	/** When false, the runtime always responds (e.g. direct chat / harness). Passed to AgentRuntime. */
+	checkShouldRespond?: boolean;
 }
 
 /**
@@ -260,7 +297,9 @@ export interface CreateRuntimesOptions {
  * **Adapter discovery:** The first resolved plugin that defines an adapter factory
  * (Plugin.adapter) is used. If options.adapter is set, that overrides and is used for
  * all characters. WHY: One adapter per character is the common case; shared override
- * supports custom pooling.
+ * supports custom pooling. Plugins that only attach the DB in `init` (some `@elizaos/plugin-sql`
+ * builds) expose no `adapter` factory — pass `options.adapter` from `createDatabaseAdapter`
+ * (or equivalent) instead.
  *
  * @param characters - Validated characters (e.g. from loadCharacters)
  * @param options - Optional adapter override, sharedPlugins, provision, logLevel, settings
@@ -372,6 +411,7 @@ export async function createRuntimes(
 			plugins: resolvedPlugins,
 			logLevel: options?.logLevel,
 			settings: options?.settings,
+			checkShouldRespond: options?.checkShouldRespond,
 		});
 	});
 

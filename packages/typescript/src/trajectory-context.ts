@@ -7,6 +7,8 @@
  */
 export interface TrajectoryContext {
 	trajectoryStepId?: string;
+	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
+	purpose?: string;
 }
 
 export interface ITrajectoryContextManager {
@@ -45,6 +47,13 @@ class StackContextManager implements ITrajectoryContextManager {
 // fallback was used for early messages, which doesn't propagate context
 // through async/await — so logLlmCall never saw the trajectory step ID.
 let globalContextManager: ITrajectoryContextManager | null = null;
+const TRAJECTORY_CONTEXT_MANAGER_KEY = Symbol.for(
+	"elizaos.trajectoryContextManager",
+);
+
+type GlobalWithTrajectoryContextManager = typeof globalThis & {
+	[TRAJECTORY_CONTEXT_MANAGER_KEY]?: ITrajectoryContextManager;
+};
 
 function isNodeEnvironment(): boolean {
 	return (
@@ -60,9 +69,7 @@ function initContextManagerSync(): ITrajectoryContextManager {
 			// eslint-disable-next-line @typescript-eslint/no-require-imports
 			const { AsyncLocalStorage } =
 				require("node:async_hooks") as typeof import("node:async_hooks");
-			const storage = new AsyncLocalStorage<
-				TrajectoryContext | undefined
-			>();
+			const storage = new AsyncLocalStorage<TrajectoryContext | undefined>();
 			return {
 				run<T>(
 					context: TrajectoryContext | undefined,
@@ -83,7 +90,17 @@ function initContextManagerSync(): ITrajectoryContextManager {
 
 function getOrCreateContextManager(): ITrajectoryContextManager {
 	if (!globalContextManager) {
-		globalContextManager = initContextManagerSync();
+		const globalManager = (globalThis as GlobalWithTrajectoryContextManager)[
+			TRAJECTORY_CONTEXT_MANAGER_KEY
+		];
+		if (globalManager) {
+			globalContextManager = globalManager;
+		} else {
+			globalContextManager = initContextManagerSync();
+			(globalThis as GlobalWithTrajectoryContextManager)[
+				TRAJECTORY_CONTEXT_MANAGER_KEY
+			] = globalContextManager;
+		}
 	}
 	return globalContextManager;
 }
@@ -92,6 +109,9 @@ export function setTrajectoryContextManager(
 	manager: ITrajectoryContextManager,
 ): void {
 	globalContextManager = manager;
+	(globalThis as GlobalWithTrajectoryContextManager)[
+		TRAJECTORY_CONTEXT_MANAGER_KEY
+	] = manager;
 }
 
 export function getTrajectoryContextManager(): ITrajectoryContextManager {
@@ -107,4 +127,13 @@ export function runWithTrajectoryContext<T>(
 
 export function getTrajectoryContext(): TrajectoryContext | undefined {
 	return getOrCreateContextManager().active();
+}
+
+/**
+ * Set the pipeline purpose on the current trajectory context.
+ * Mutates in place so nested useModel calls pick up the correct stage.
+ */
+export function setTrajectoryPurpose(purpose: string): void {
+	const ctx = getOrCreateContextManager().active();
+	if (ctx) ctx.purpose = purpose;
 }

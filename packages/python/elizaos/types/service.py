@@ -10,6 +10,10 @@ if TYPE_CHECKING:
 
 
 class ServiceTypeRegistry:
+    KNOWLEDGE: ClassVar[str] = "knowledge"
+    RELATIONSHIPS: ClassVar[str] = "relationships"
+    TRAJECTORIES: ClassVar[str] = "trajectories"
+    FOLLOW_UP: ClassVar[str] = "follow_up"
     TRANSCRIPTION: ClassVar[str] = "transcription"
     VIDEO: ClassVar[str] = "video"
     BROWSER: ClassVar[str] = "browser"
@@ -34,6 +38,10 @@ ServiceTypeName = str
 
 
 class ServiceType:
+    KNOWLEDGE = ServiceTypeRegistry.KNOWLEDGE
+    RELATIONSHIPS = ServiceTypeRegistry.RELATIONSHIPS
+    TRAJECTORIES = ServiceTypeRegistry.TRAJECTORIES
+    FOLLOW_UP = ServiceTypeRegistry.FOLLOW_UP
     TRANSCRIPTION = ServiceTypeRegistry.TRANSCRIPTION
     VIDEO = ServiceTypeRegistry.VIDEO
     BROWSER = ServiceTypeRegistry.BROWSER

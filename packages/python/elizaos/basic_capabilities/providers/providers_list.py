@@ -13,6 +13,13 @@ async def get_providers_list(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
+    selection_hints = [
+        "images, attachments, or visual content -> ATTACHMENTS",
+        "specific people or agents -> ENTITIES",
+        "connections between people -> RELATIONSHIPS",
+        "factual lookup -> FACTS",
+        "world or environment context -> WORLD",
+    ]
     provider_info: list[dict[str, str | bool]] = []
 
     for provider in runtime.providers:
@@ -26,14 +33,17 @@ async def get_providers_list(
 
     if not provider_info:
         return ProviderResult(
-            text="No providers available.",
+            text="# Available Providers\nproviders[0]:\n- none",
             values={"providerCount": 0},
             data={"providers": []},
         )
 
     formatted_providers = "\n".join(f"- {p['name']}: {p['description']}" for p in provider_info)
-
-    text = f"# Available Providers\n{formatted_providers}"
+    formatted_hints = "\n".join(f"- {hint}" for hint in selection_hints)
+    text = (
+        f"# Available Providers\nproviders[{len(provider_info)}]:\n{formatted_providers}\n"
+        f"provider_hints[{len(selection_hints)}]:\n{formatted_hints}"
+    )
 
     return ProviderResult(
         text=text,

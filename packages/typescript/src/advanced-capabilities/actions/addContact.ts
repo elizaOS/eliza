@@ -1,12 +1,17 @@
 import { findEntityByName } from "../../entities.ts";
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { addContactTemplate } from "../../prompts.ts";
-import type { RolodexService } from "../../services/rolodex.ts";
+import type { RelationshipsService } from "../../services/relationships.ts";
 import type {
 	Action,
 	ActionExample,
 	ActionResult,
+	Entity,
 	HandlerCallback,
 	HandlerOptions,
 	IAgentRuntime,
@@ -22,14 +27,9 @@ import {
 
 // Get text content from centralized specs
 const spec = requireActionSpec("ADD_CONTACT");
-const ADD_KEYWORDS = [
-	"add",
-	"save",
-	"remember",
-	"categorize",
-	"contact",
-	"rolodex",
-];
+const ADD_KEYWORDS = getValidationKeywordTerms("action.addContact.request", {
+	includeAllLocales: true,
+});
 
 interface AddContactXmlResult {
 	contactName?: string;
@@ -52,15 +52,17 @@ export const addContactAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
-		if (!rolodexService) {
-			logger.warn("[AddContact] RolodexService not available");
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
+		if (!relationshipsService) {
+			logger.warn("[AddContact] RelationshipsService not available");
 			return false;
 		}
 
-		const messageText = message.content.text?.toLowerCase() || "";
+		const messageText = message.content.text ?? "";
 		if (!messageText) return false;
-		return ADD_KEYWORDS.some((keyword) => messageText.includes(keyword));
+		return findKeywordTermMatch(messageText, ADD_KEYWORDS) !== undefined;
 	},
 
 	handler: async (
@@ -70,10 +72,12 @@ export const addContactAction: Action = {
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
-		const rolodexService = runtime.getService("rolodex") as RolodexService;
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService;
 
-		if (!rolodexService) {
-			throw new Error("RolodexService not available");
+		if (!relationshipsService) {
+			throw new Error("RelationshipsService not available");
 		}
 
 		if (!state) {
@@ -127,11 +131,26 @@ export const addContactAction: Action = {
 			} else {
 				// Create a new entity ID based on the name
 				entityId = stringToUuid(`contact-${contactName}-${runtime.agentId}`);
+				const entityToCreate: Entity = {
+					id: entityId,
+					names: [contactName],
+					agentId: runtime.agentId,
+				};
+				await runtime.createEntity(entityToCreate);
 			}
 		}
 
 		if (!entityId) {
 			throw new Error("Could not determine entity ID for contact");
+		}
+
+		const existingEntity = await runtime.getEntityById(entityId);
+		if (!existingEntity) {
+			await runtime.createEntity({
+				id: entityId,
+				names: [contactName],
+				agentId: runtime.agentId,
+			});
 		}
 
 		// Parse categories
@@ -148,16 +167,19 @@ export const addContactAction: Action = {
 		if (parsedResponse.language) preferences.language = parsedResponse.language;
 		if (parsedResponse.notes) preferences.notes = parsedResponse.notes;
 
-		const _contact = await rolodexService.addContact(
+		const _contact = await relationshipsService.addContact(
 			entityId,
 			categories,
 			preferences,
+			{
+				displayName: contactName,
+			},
 		);
 
 		logger.info(`[AddContact] Added contact ${contactName} (${entityId})`);
 
 		const responseText = `I've added ${contactName} to your contacts as ${categories.join(", ")}. ${
-			parsedResponse.reason || "They have been saved to your rolodex."
+			parsedResponse.reason || "They have been saved to your relationships."
 		}`;
 
 		if (callback) {

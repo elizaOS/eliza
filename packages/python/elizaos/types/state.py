@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from elizaos.types.generated.eliza.v1 import state_pb2
 
@@ -55,7 +55,8 @@ class SchemaRow:
     Behavior by level:
     - Level 0 (Trusted): default False. Set to True to opt-in to per-field codes.
     - Level 1 (Progressive): default True. Set to False to opt-out of codes.
-    - Levels 2-3: ignored (uses checkpoint codes at start/end of response instead).
+    - Levels 2-3: ignored for per-field wrapping. Those levels can use optional
+      checkpoint codes instead.
     """
 
     stream_field: bool | None = None
@@ -97,7 +98,7 @@ class RetryBackoffConfig:
         return min(int(delay), self.max_ms)
 
 
-class StreamEventType(str, Enum):
+class StreamEventType(StrEnum):
     """Stream event types for validation-aware streaming.
 
     Rich consumers receive these typed events for custom UX handling.

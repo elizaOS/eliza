@@ -20,8 +20,12 @@ from elizaos.services.hook_service import (
 from elizaos.services.message_service import (
     DefaultMessageService,
     IMessageService,
+    MessageProcessingOptions,
     MessageProcessingResult,
     StreamingMessageResult,
+)
+from elizaos.services.trajectories import (
+    TrajectoriesService,
 )
 
 __all__ = [
@@ -44,6 +48,9 @@ __all__ = [
     # Message Service
     "DefaultMessageService",
     "IMessageService",
+    "MessageProcessingOptions",
     "MessageProcessingResult",
     "StreamingMessageResult",
+    # Trajectory Service
+    "TrajectoriesService",
 ]

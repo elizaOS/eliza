@@ -78,9 +78,9 @@ class ScheduleFollowUpAction:
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
     ) -> bool:
-        rolodex_service = runtime.get_service("rolodex")
+        relationships_service = runtime.get_service("relationships")
         follow_up_service = runtime.get_service("follow_up")
-        return rolodex_service is not None and follow_up_service is not None
+        return relationships_service is not None and follow_up_service is not None
 
     async def handler(
         self,
@@ -92,17 +92,17 @@ class ScheduleFollowUpAction:
         responses: list[Memory] | None = None,
     ) -> ActionResult:
         from elizaos.advanced_capabilities.services.follow_up import FollowUpService
-        from elizaos.advanced_capabilities.services.rolodex import RolodexService
+        from elizaos.advanced_capabilities.services.relationships import RelationshipsService
 
-        rolodex_service = runtime.get_service("rolodex")
+        relationships_service = runtime.get_service("relationships")
         follow_up_service = runtime.get_service("follow_up")
 
-        if not rolodex_service or not isinstance(rolodex_service, RolodexService):
+        if not relationships_service or not isinstance(relationships_service, RelationshipsService):
             return ActionResult(
-                text="Rolodex service not available",
+                text="Relationships service not available",
                 success=False,
                 values={"error": True},
-                data={"error": "RolodexService not available"},
+                data={"error": "RelationshipsService not available"},
             )
 
         if not follow_up_service or not isinstance(follow_up_service, FollowUpService):
@@ -157,7 +157,7 @@ class ScheduleFollowUpAction:
 
         entity_id_uuid = parsed_entity_id or message_entity_id
         if entity_id_uuid is None and contact_name:
-            contacts = await rolodex_service.search_contacts(search_term=contact_name)
+            contacts = await relationships_service.search_contacts(search_term=contact_name)
             if contacts:
                 entity_id_uuid = contacts[0].entity_id
 
@@ -169,10 +169,10 @@ class ScheduleFollowUpAction:
                 data={"error": "Missing contact entity id"},
             )
 
-        contact = await rolodex_service.get_contact(entity_id_uuid)
+        contact = await relationships_service.get_contact(entity_id_uuid)
         if contact is None:
             return ActionResult(
-                text=f"Contact '{contact_name}' was not found in the rolodex.",
+                text=f"Contact '{contact_name}' was not found in the relationships.",
                 success=False,
                 values={"error": True},
                 data={"error": "Contact not found"},

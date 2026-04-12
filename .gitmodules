@@ -1,0 +1,12 @@
+[submodule "plugins/plugin-sql"]
+	path = plugins/plugin-sql
+	url = https://github.com/elizaos-plugins/plugin-sql.git
+	branch = alpha
+[submodule "plugins/plugin-ollama"]
+	path = plugins/plugin-ollama
+	url = https://github.com/elizaos-plugins/plugin-ollama.git
+	branch = alpha
+[submodule "plugins/plugin-local-ai"]
+	path = plugins/plugin-local-ai
+	url = https://github.com/elizaos-plugins/plugin-local-ai.git
+	branch = alpha

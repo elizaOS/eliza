@@ -16,6 +16,20 @@ import type { CreateOptions, Example } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+function getCliVersion(): string {
+  try {
+    const pkgPath = path.join(__dirname, "..", "..", "package.json");
+    const content = fs.readFileSync(pkgPath, "utf-8");
+    const pkg = JSON.parse(content) as { version: string };
+    return pkg.version;
+  } catch {
+    const distPkgPath = path.join(__dirname, "..", "..", "..", "package.json");
+    const content = fs.readFileSync(distPkgPath, "utf-8");
+    const pkg = JSON.parse(content) as { version: string };
+    return pkg.version;
+  }
+}
+
 // Language display names
 const LANGUAGE_NAMES: Record<string, string> = {
   typescript: "TypeScript",
@@ -97,7 +111,7 @@ function findExamplesDir(): string {
   throw new Error("Could not find examples directory");
 }
 
-function fixPackageJson(filePath: string): void {
+export function fixPackageJson(filePath: string): void {
   if (!fs.existsSync(filePath)) return;
 
   const content = fs.readFileSync(filePath, "utf-8");
@@ -108,8 +122,9 @@ function fixPackageJson(filePath: string): void {
     if (!deps) return;
     for (const [key, value] of Object.entries(deps)) {
       if (value === "workspace:*") {
-        // Replace with latest version
-        deps[key] = "^1.0.0";
+        // Replace with the installed CLI version so scaffolded projects
+        // get the correct semver range instead of a stale hardcoded value.
+        deps[key] = `^${getCliVersion()}`;
       }
     }
   };
