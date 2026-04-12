@@ -33,8 +33,50 @@ export const generateImageAction = {
 	name: spec.name,
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
-	validate: async (_runtime: IAgentRuntime) => {
-		return true;
+	validate: async (_runtime: IAgentRuntime, message: Memory) => {
+		const text = (
+			typeof message?.content === "string"
+				? message.content
+				: message?.content?.text ?? ""
+		).toLowerCase();
+		if (!text) return false;
+		const IMAGE_STRONG_TERMS = [
+			"generate image",
+			"create image",
+			"make image",
+			"draw",
+			"paint",
+			"illustration",
+			"generate picture",
+			"create picture",
+			"make picture",
+			"generate art",
+			"create art",
+			"image of",
+			"picture of",
+			"photo of",
+		];
+		const IMAGE_WEAK_TERMS = [
+			"image",
+			"picture",
+			"visual",
+			"art",
+			"graphic",
+			"render",
+			"generate",
+			"create",
+			"design",
+			"sketch",
+			"portrait",
+		];
+		for (const term of IMAGE_STRONG_TERMS) {
+			if (text.includes(term)) return true;
+		}
+		let weakCount = 0;
+		for (const term of IMAGE_WEAK_TERMS) {
+			if (text.includes(term) && ++weakCount >= 2) return true;
+		}
+		return false;
 	},
 	handler: async (
 		runtime: IAgentRuntime,

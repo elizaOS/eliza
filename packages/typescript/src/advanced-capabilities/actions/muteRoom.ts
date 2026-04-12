@@ -27,6 +27,23 @@ export const muteRoomAction: Action = {
 	description: spec.description,
 	examples: (spec.examples ?? []) as ActionExample[][],
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
+		const text = (
+			typeof message?.content === "string"
+				? message.content
+				: message?.content?.text ?? ""
+		).toLowerCase();
+		const MUTE_TERMS = [
+			"mute",
+			"silence",
+			"quiet",
+			"shut up",
+			"stop talking",
+			"be quiet",
+			"hush",
+			"shh",
+			"no more",
+		];
+		if (!MUTE_TERMS.some((term) => text.includes(term))) return false;
 		const roomId = message.roomId;
 		const roomState = await runtime.getParticipantUserState(
 			roomId,
