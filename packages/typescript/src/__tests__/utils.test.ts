@@ -1344,6 +1344,38 @@ action: RESPOND
 		expect(parsed).toEqual({ key: "value", actions: ["a", "b"], simple: true });
 	});
 
+	it("parseKeyValueXml salvages indexed TOON blocks into structured arrays", () => {
+		const toon = `thought: "captured durable preferences"
+facts[0]:
+  claim: User prefers text reminders over phone calls
+  type: fact
+  in_bio: false
+  already_known: false
+relationships[0]:
+  sourceEntityId: agent-1
+  targetEntityId: user-1
+  tags[0]: dm_interaction`;
+		const parsed = parseKeyValueXml(toon);
+		expect(parsed).toEqual({
+			thought: "captured durable preferences",
+			facts: [
+				{
+					claim: "User prefers text reminders over phone calls",
+					type: "fact",
+					in_bio: "false",
+					already_known: "false",
+				},
+			],
+			relationships: [
+				{
+					sourceEntityId: "agent-1",
+					targetEntityId: "user-1",
+					tags: ["dm_interaction"],
+				},
+			],
+		});
+	});
+
 	it("safeReplacer handles circular objects", () => {
 		interface SelfReferencingObject {
 			a: number;

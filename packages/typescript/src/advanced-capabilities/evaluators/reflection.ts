@@ -610,7 +610,8 @@ async function handler(
 	message: Memory,
 	state?: State,
 ): Promise<ActionResult | undefined> {
-	const { agentId, roomId } = message;
+	const agentId = message.agentId ?? runtime.agentId;
+	const { roomId } = message;
 
 	if (!agentId || !roomId) {
 		runtime.logger.warn(

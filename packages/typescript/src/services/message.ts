@@ -689,6 +689,62 @@ function callbackTextPreview(content: Content | null | undefined): string {
 	return text.replace(/\s+/g, " ").slice(0, 200);
 }
 
+function summarizeAttachmentKeyPart(url: string): string {
+	const trimmed = url.trim();
+	if (trimmed.length <= 256) {
+		return trimmed;
+	}
+
+	return `${trimmed.slice(0, 128)}...(${trimmed.length})`;
+}
+
+function callbackDeliveryKey(content: Content | null | undefined): string {
+	if (!content || typeof content !== "object") {
+		return "";
+	}
+
+	const text =
+		typeof content.text === "string"
+			? content.text.replace(/\s+/g, " ").trim()
+			: "";
+	const attachmentKeys = Array.isArray(content.attachments)
+		? content.attachments
+				.map((attachment) => {
+					if (!attachment || typeof attachment !== "object") {
+						return "";
+					}
+
+					const url =
+						typeof attachment.url === "string"
+							? summarizeAttachmentKeyPart(attachment.url)
+							: "";
+					const title =
+						typeof attachment.title === "string" ? attachment.title.trim() : "";
+					const contentType =
+						typeof attachment.contentType === "string"
+							? attachment.contentType
+							: "";
+
+					if (!url && !title && !contentType) {
+						return "";
+					}
+
+					return `${contentType}:${title}:${url}`;
+				})
+				.filter((key) => key.length > 0)
+				.sort()
+		: [];
+
+	if (!text && attachmentKeys.length === 0) {
+		return "";
+	}
+
+	return JSON.stringify({
+		text,
+		attachments: attachmentKeys,
+	});
+}
+
 function getLatestVisibleReplyText(
 	responseContent: Content | null | undefined,
 	actionResults: ActionResult[],
@@ -709,7 +765,9 @@ function getLatestVisibleReplyText(
 	}
 
 	const responseText =
-		typeof responseContent?.text === "string" ? responseContent.text.trim() : "";
+		typeof responseContent?.text === "string"
+			? responseContent.text.trim()
+			: "";
 	return responseText;
 }
 
@@ -723,7 +781,9 @@ function isLikelyClarifyingQuestion(text: string): boolean {
 		return true;
 	}
 
-	const firstSentence = extractFirstSentence(normalized).trim().toLowerCase();
+	const firstSentence = extractFirstSentence(normalized)
+		.first.trim()
+		.toLowerCase();
 	return /^(what|which|when|where|who|whom|whose|why|how|can you|could you|would you|will you|do you|did you|are you|is it|should i|should we)\b/.test(
 		firstSentence,
 	);
@@ -1277,9 +1337,41 @@ export class DefaultMessageService implements IMessageService {
 
 				let visibleCallbackCount = 0;
 				let firstVisibleCallbackPreview = "";
+				const deliveredCallbackKeys = new Set<string>();
 				const instrumentedCallback: HandlerCallback | undefined = callback
 					? async (content, actionName) => {
+							const deliveryKey = callbackDeliveryKey(content);
 							const preview = callbackTextPreview(content);
+							if (deliveryKey && deliveredCallbackKeys.has(deliveryKey)) {
+								runtime.logger.warn(
+									{
+										src: "service:message",
+										agentId: runtime.agentId,
+										messageId: message.id,
+										roomId: message.roomId,
+										action:
+											typeof (content as Record<string, unknown>)?.action ===
+											"string"
+												? String((content as Record<string, unknown>).action)
+												: actionName,
+										source:
+											typeof content.source === "string"
+												? content.source
+												: undefined,
+										preview:
+											preview ||
+											(Array.isArray(content.attachments) &&
+											content.attachments.length > 0
+												? `[attachments:${content.attachments.length}]`
+												: ""),
+									},
+									"Suppressing duplicate visible callback reply emitted for a single turn",
+								);
+								return [];
+							}
+							if (deliveryKey) {
+								deliveredCallbackKeys.add(deliveryKey);
+							}
 							if (preview) {
 								visibleCallbackCount += 1;
 								if (visibleCallbackCount === 1) {
@@ -2308,9 +2400,8 @@ export class DefaultMessageService implements IMessageService {
 						: "";
 				let latestActionResults: ActionResult[] = [];
 				const shouldWaitForUser =
-					isSimpleReplyResponse(responseContent) &&
-					isLikelyClarifyingQuestion(directReplyText)
-						? true
+					isSimpleReplyResponse(responseContent) && directReplyText.length > 0
+						? isLikelyClarifyingQuestion(directReplyText)
 						: (() => {
 								latestActionResults = runtime.getActionResults(message.id);
 								return shouldWaitForUserAfterIncompleteReflection(

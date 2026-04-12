@@ -2185,6 +2185,10 @@ export class AgentRuntime implements IAgentRuntime {
 
 				const isSuccess = actionResult?.success !== false;
 				const statusText = isSuccess ? "completed" : "failed";
+				const actionText =
+					typeof actionResult?.text === "string"
+						? actionResult.text.trim()
+						: "";
 
 				await this.emitEvent(EventType.ACTION_COMPLETED, {
 					messageId: actionId,
@@ -2203,6 +2207,22 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 				});
 
+				if (
+					callback &&
+					actionText &&
+					!storedCallbackData.some(
+						(content) =>
+							typeof content?.text === "string" &&
+							content.text.trim().length > 0,
+					)
+				) {
+					storedCallbackData.push({
+						text: actionText,
+						source: "action",
+						action: action.name,
+					});
+				}
+
 				if (callback) {
 					for (const content of storedCallbackData) {
 						// Redact any secrets from callback content before sending
@@ -2215,10 +2235,6 @@ export class AgentRuntime implements IAgentRuntime {
 
 				// Only persist action memories when the handler returned a real user-facing
 				// message. Placeholder bookkeeping text is internal runtime state, not chat.
-				const actionText =
-					typeof actionResult?.text === "string"
-						? actionResult.text.trim()
-						: "";
 				if (actionText) {
 					const actionMemory: Memory = {
 						id: actionId,
@@ -2228,6 +2244,21 @@ export class AgentRuntime implements IAgentRuntime {
 						content: {
 							text: actionText,
 							source: "action",
+							type: "action_result",
+							actionName: action.name,
+							actionStatus: statusText,
+							runId,
+							...(actionPlan
+								? {
+										planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
+										planThought: actionPlan.thought,
+									}
+								: {}),
+							...(actionResult?.data
+								? {
+										data: actionResult.data,
+									}
+								: {}),
 						},
 					};
 					await this.createMemory(actionMemory, "messages");
