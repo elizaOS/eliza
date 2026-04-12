@@ -22,7 +22,7 @@ import {
 	getSlotProfileManager,
 	getTraceWriter,
 	ScoreCard,
-	resolveOptimizationDir,
+	getOptimizationRootDir,
 } from "../../optimization/index.ts";
 import type { ScoreCardData } from "../../optimization/types.ts";
 import {
@@ -61,7 +61,7 @@ export async function handleRunEnded(
 	}
 
 	// Use shared resolver to ensure consistency with disk-hooks and other writers
-	const optDir = resolveOptimizationDir(runtime);
+	const optDir = getOptimizationRootDir(runtime);
 	runtime.logger.debug(
 		{
 			src: "plugin-neuro",
