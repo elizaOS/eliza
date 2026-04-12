@@ -5443,9 +5443,7 @@ ${section_end}`;
 							typeof params.prompt === "string"
 								? params.prompt
 								: tracePromptKey;
-						const computedTemplateHash = simpleHash(templateHashInput)
-							.toString(16)
-							.slice(0, 8);
+						const computedTemplateHash = simpleHash(templateHashInput);
 
 						const trace: ExecutionTrace = {
 							id: uuidv4(),

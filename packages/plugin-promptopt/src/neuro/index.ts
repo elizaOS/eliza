@@ -24,6 +24,7 @@ import {
 	type RunEventPayload,
 } from "@elizaos/core";
 import { neuroEvaluator } from "./evaluator.ts";
+import { clearContinuationTracking } from "./handlers/continuation.ts";
 import { handleRunEnded } from "./handlers/finalizer.ts";
 import { clearContinuationTracking } from "./handlers/continuation.ts";
 import { handleReaction } from "./handlers/reaction.ts";
@@ -60,8 +61,9 @@ export const neuroPlugin: Plugin = {
 };
 
 export default neuroPlugin;
-export { neuroEvaluator } from "./evaluator.ts";
-export {
+import type { IAgentRuntime } from "@elizaos/core";
+import {
+	clearContinuationTracking,
 	enrichContinuationSignals,
 	trackAgentResponse,
 } from "./handlers/continuation.ts";
