@@ -58,7 +58,7 @@ export const generateImageAction = {
 		if (collectKeywordTermMatches([text], IMAGE_STRONG_TERMS).size > 0) {
 			return true;
 		}
-		return collectKeywordTermMatches([text], IMAGE_WEAK_TERMS).size >= 2;
+		return collectKeywordTermMatches([text], IMAGE_WEAK_TERMS).size > 0;
 	},
 	handler: async (
 		runtime: IAgentRuntime,

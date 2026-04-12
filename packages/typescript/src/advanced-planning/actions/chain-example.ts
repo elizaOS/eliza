@@ -14,9 +14,12 @@ import type {
 } from "../../types/index.ts";
 import type { JsonValue } from "../types.ts";
 
-const CREATE_PLAN_TERMS = getValidationKeywordTerms("action.createPlan.request", {
-	includeAllLocales: true,
-});
+const CREATE_PLAN_TERMS = getValidationKeywordTerms(
+	"action.createPlan.request",
+	{
+		includeAllLocales: true,
+	},
+);
 
 type PlanningActionOptions = HandlerOptions & {
 	abortSignal?: AbortSignal;

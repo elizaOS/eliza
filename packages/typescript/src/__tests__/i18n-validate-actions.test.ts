@@ -17,8 +17,8 @@ import {
 	searchKnowledgeAction,
 } from "../features/knowledge/actions.ts";
 import {
-	VALIDATION_KEYWORD_LOCALES,
 	getValidationKeywordLocaleTerms,
+	VALIDATION_KEYWORD_LOCALES,
 } from "../i18n/validation-keywords.ts";
 
 const AUDITED_ACTION_KEYWORDS = [
@@ -76,14 +76,15 @@ function makeRuntime(options?: {
 }
 
 describe("localized validate audit for upstream eliza actions", () => {
-	it.each(AUDITED_ACTION_KEYWORDS)(
-		"has locale terms for every supported language: %s",
-		(key) => {
-			for (const locale of VALIDATION_KEYWORD_LOCALES) {
-				expect(getValidationKeywordLocaleTerms(key, locale).length).toBeGreaterThan(0);
-			}
-		},
-	);
+	it.each(
+		AUDITED_ACTION_KEYWORDS,
+	)("has locale terms for every supported language: %s", (key) => {
+		for (const locale of VALIDATION_KEYWORD_LOCALES) {
+			expect(
+				getValidationKeywordLocaleTerms(key, locale).length,
+			).toBeGreaterThan(0);
+		}
+	});
 
 	it("validates create-task requests in Spanish", async () => {
 		await expect(
