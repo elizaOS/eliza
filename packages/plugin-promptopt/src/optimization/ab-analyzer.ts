@@ -112,8 +112,10 @@ export class ABAnalyzer {
 			return;
 		}
 
-		// Apply the decision to the artifact
-		const artifactFile: ArtifactFile = { [promptKey]: artifact };
+		// Clone the artifact before mutation to avoid corrupting the resolver cache
+		// if the subsequent disk write fails. This preserves cache consistency.
+		const artifactClone = JSON.parse(JSON.stringify(artifact));
+		const artifactFile: ArtifactFile = { [promptKey]: artifactClone };
 		const decision = applyABDecision(
 			artifactFile,
 			promptKey,
