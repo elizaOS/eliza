@@ -980,6 +980,11 @@ class AgentRuntime(IAgentRuntime):
         if not actions_to_process:
             return
 
+        # Dedupe identical action+params invocations within the same turn.
+        # The LLM sometimes emits the same action twice; the second run would
+        # produce identical output. Collapse them instead.
+        executed_action_keys: set[str] = set()
+
         for response in responses:
             if not response.content.actions:
                 continue
@@ -1088,6 +1093,27 @@ class AgentRuntime(IAgentRuntime):
                             )()  # type: ignore[assignment]
                     except Exception:
                         pass
+
+                # Build dedupe key from action name + serialised params.
+                import json as _json
+
+                _params_for_key = (
+                    getattr(options_obj, "parameters", None)
+                    if validated_params
+                    else None
+                )
+                _dedupe_key = (
+                    f"{action.name.strip().upper()}::"
+                    f"{_json.dumps(_params_for_key, sort_keys=True) if _params_for_key else '<no-params>'}"
+                )
+                if _dedupe_key in executed_action_keys:
+                    self.logger.debug(
+                        "Skipping duplicate action invocation in same turn",
+                        action=action.name,
+                        dedupeKey=_dedupe_key,
+                    )
+                    continue
+                executed_action_keys.add(_dedupe_key)
 
                 result = await action.handler(
                     self,

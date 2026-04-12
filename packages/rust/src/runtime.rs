@@ -1906,6 +1906,12 @@ impl AgentRuntime {
         }
 
         let mut results: Vec<ActionResult> = Vec::new();
+        // Dedupe identical action+params invocations within the same turn.
+        // The LLM sometimes emits the same action twice; the second run would
+        // produce identical output. Collapse them instead.
+        let mut executed_action_keys: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+
         for name in to_run {
             let normalized = normalize_action_name(&name);
 
@@ -1939,6 +1945,21 @@ impl AgentRuntime {
             let key = name.trim().to_uppercase();
             if let Some(p) = action_params.get(&key) {
                 opts.parameters = Some(p.clone());
+            }
+
+            // Build a dedupe key from action name + serialized params.
+            let params_str = opts
+                .parameters
+                .as_ref()
+                .map(|p| serde_json::to_string(p).unwrap_or_default())
+                .unwrap_or_else(|| "<no-params>".to_string());
+            let dedupe_key = format!("{}::{}", key, params_str);
+            if !executed_action_keys.insert(dedupe_key.clone()) {
+                debug!(
+                    "Skipping duplicate action invocation in same turn: {}",
+                    key
+                );
+                continue;
             }
 
             match handler.handle(message, Some(state), Some(&opts)).await {
