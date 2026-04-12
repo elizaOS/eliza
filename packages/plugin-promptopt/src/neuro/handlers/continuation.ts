@@ -74,7 +74,8 @@ const CORRECTION_PATTERNS = [
 	/\b(that'?s?\s+wrong|incorrect|not right|no,?\s+actually|you'?re?\s+wrong)\b/i,
 	/\b(i said|i meant|i was asking|my question was)\b/i,
 	/\b(please\s+re-?do|try again|redo this|start over)\b/i,
-	/^(no[!,.]?\s*)/i,
+	// Require correction context after "no" to avoid false positives like "No thanks"
+	/^no,\s+(?:that|actually|you|it|this|I)\b/i,
 ];
 
 function detectCorrection(text: string): boolean {
