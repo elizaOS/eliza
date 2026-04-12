@@ -343,6 +343,7 @@ export class TrajectoriesService extends Service {
 
 	async stop(): Promise<void> {
 		this.enabled = false;
+		await Promise.allSettled(this.writeQueues.values());
 	}
 
 	setEnabled(enabled: boolean): void {
@@ -736,6 +737,14 @@ export class TrajectoriesService extends Service {
 		}
 	}
 
+	private reportDetachedWriteFailure(
+		message: string,
+		metadata: Record<string, unknown>,
+		err: unknown,
+	): void {
+		logger.error({ err, ...metadata }, message);
+	}
+
 	private async getTrajectoryById(
 		trajectoryId: string,
 	): Promise<Trajectory | null> {
@@ -938,22 +947,22 @@ export class TrajectoriesService extends Service {
 				if (!resolved) return;
 				await this._persistLlmCall(resolved, params);
 			})().catch((err) => {
-				logger.error(
-					{ err, stepId: params.stepId },
+				this.reportDetachedWriteFailure(
 					"[trajectory-logger] Failed to persist LLM call (async step resolution)",
+					{ stepId: params.stepId },
+					err,
 				);
-				throw err;
 			});
 			return;
 		}
 
 		// Enter the write lock synchronously so flushWriteQueue sees this pending write
 		void this._persistLlmCall(trajectoryId, params).catch((err) => {
-			logger.error(
-				{ err, stepId: params.stepId },
+			this.reportDetachedWriteFailure(
 				"[trajectory-logger] Failed to persist LLM call",
+				{ stepId: params.stepId },
+				err,
 			);
-			throw err;
 		});
 	}
 
@@ -1147,11 +1156,11 @@ export class TrajectoriesService extends Service {
 				`);
 			});
 		})().catch((err) => {
-			logger.error(
-				{ err, stepId: params.stepId },
+			this.reportDetachedWriteFailure(
 				"[trajectory-logger] Failed to persist provider access",
+				{ stepId: params.stepId },
+				err,
 			);
-			throw err;
 		});
 	}
 
@@ -1327,11 +1336,11 @@ export class TrajectoriesService extends Service {
 			await this.setStepIndex(stepId, trajectoryId, step.stepNumber, true);
 			await this.persistTrajectory(trajectoryId, trajectory, "active");
 		}).catch((err) => {
-			logger.error(
-				{ err, trajectoryId, stepId },
+			this.reportDetachedWriteFailure(
 				"[trajectory-logger] Failed to persist startStep",
+				{ trajectoryId, stepId },
+				err,
 			);
-			throw err;
 		});
 
 		return stepId;
@@ -1425,11 +1434,11 @@ export class TrajectoriesService extends Service {
 				WHERE id = ${sqlLiteral(trajectoryId)}
 			`);
 		}).catch((err) => {
-			logger.error(
-				{ err, trajectoryId },
+			this.reportDetachedWriteFailure(
 				"[trajectory-logger] Failed to complete step",
+				{ trajectoryId },
+				err,
 			);
-			throw err;
 		});
 	}
 
