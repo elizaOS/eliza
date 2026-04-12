@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
+import { simpleHash } from "../lib/utils/hash.ts";
 import { ScoreCard } from "./score-card.ts";
 import type {
 	ABDecision,
@@ -8,6 +9,9 @@ import type {
 	SlotKey,
 } from "./types.ts";
 
+// Re-export for backward compatibility
+export { simpleHash };
+
 export interface ABAnalysisResult {
 	action: "promote" | "rollback" | "inconclusive";
 	baselineScore: number;
@@ -15,19 +19,6 @@ export interface ABAnalysisResult {
 	pValue: number;
 	sampleCount: number;
 	reason: string;
-}
-
-/**
- * Simple djb2 hash function for deterministic variant selection.
- * Canonical implementation for all optimization modules to ensure consistent A/B bucketing.
- * Returns a number for consistent type usage across the codebase.
- */
-export function simpleHash(str: string): number {
-	let hash = 5381;
-	for (let i = 0; i < str.length; i++) {
-		hash = (hash * 33) ^ str.charCodeAt(i);
-	}
-	return Math.abs(hash);
 }
 
 /**
