@@ -463,7 +463,7 @@ function extractXmlChildren(
 	return pairs;
 }
 
-function toActionParameterValue(value: unknown): ActionParameterValue {
+function toActionParameterValue(value: unknown): ActionParameters[string] {
 	if (
 		typeof value === "string" ||
 		typeof value === "number" ||
