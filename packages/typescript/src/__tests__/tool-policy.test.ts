@@ -82,6 +82,7 @@ describe("expandToolGroups()", () => {
 	it("should expand group:fs to filesystem tools", () => {
 		const expanded = expandToolGroups(["group:fs"]);
 		expect(expanded).toContain("read");
+		expect(expanded).toContain("read_file");
 		expect(expanded).toContain("write");
 		expect(expanded).toContain("edit");
 		expect(expanded).toContain("apply_patch");
@@ -91,6 +92,9 @@ describe("expandToolGroups()", () => {
 		const expanded = expandToolGroups(["group:memory"]);
 		expect(expanded).toContain("scratchpad_search");
 		expect(expanded).toContain("scratchpad_read");
+		expect(expanded).toContain("read_attachment");
+		expect(expanded).toContain("remove_from_scratchpad");
+		expect(expanded).not.toContain("add_to_scratchpad");
 	});
 
 	it("should expand group:web to web tools", () => {

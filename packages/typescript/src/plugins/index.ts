@@ -6,4 +6,4 @@
  * @module plugins
  */
 
-export {};
+export * from "./native-features";

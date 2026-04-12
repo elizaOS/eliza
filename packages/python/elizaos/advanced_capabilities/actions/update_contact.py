@@ -42,8 +42,8 @@ class UpdateContactAction:
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
     ) -> bool:
-        rolodex_service = runtime.get_service("rolodex")
-        return rolodex_service is not None
+        relationships_service = runtime.get_service("relationships")
+        return relationships_service is not None
 
     async def handler(
         self,
@@ -54,15 +54,15 @@ class UpdateContactAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        from elizaos.advanced_capabilities.services.rolodex import RolodexService
+        from elizaos.advanced_capabilities.services.relationships import RelationshipsService
 
-        rolodex_service = runtime.get_service("rolodex")
-        if not rolodex_service or not isinstance(rolodex_service, RolodexService):
+        relationships_service = runtime.get_service("relationships")
+        if not relationships_service or not isinstance(relationships_service, RelationshipsService):
             return ActionResult(
-                text="Rolodex service not available",
+                text="Relationships service not available",
                 success=False,
                 values={"error": True},
-                data={"error": "RolodexService not available"},
+                data={"error": "RelationshipsService not available"},
             )
 
         state = await runtime.compose_state(message, ["RECENT_MESSAGES", "ENTITIES"])
@@ -86,7 +86,7 @@ class UpdateContactAction:
         contact_name = str(parsed.get("contactName", ""))
         operation = str(parsed.get("operation", "replace"))
 
-        contacts = await rolodex_service.search_contacts(search_term=contact_name)
+        contacts = await relationships_service.search_contacts(search_term=contact_name)
 
         if not contacts:
             return ActionResult(
@@ -115,7 +115,7 @@ class UpdateContactAction:
             else:
                 tags = new_tags
 
-        updated = await rolodex_service.update_contact(
+        updated = await relationships_service.update_contact(
             entity_id=contact.entity_id,
             categories=categories,
             tags=tags,

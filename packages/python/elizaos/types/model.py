@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -10,25 +10,29 @@ if TYPE_CHECKING:
 from pydantic import BaseModel, Field
 
 
-class LLMMode(str, Enum):
+class LLMMode(StrEnum):
     DEFAULT = "DEFAULT"
     SMALL = "SMALL"
     LARGE = "LARGE"
 
 
-class ModelType(str, Enum):
+class ModelType(StrEnum):
     # Text generation models
+    TEXT_NANO = "TEXT_NANO"
     TEXT_SMALL = "TEXT_SMALL"
+    TEXT_MEDIUM = "TEXT_MEDIUM"
     TEXT_LARGE = "TEXT_LARGE"
+    TEXT_MEGA = "TEXT_MEGA"
+    RESPONSE_HANDLER = "RESPONSE_HANDLER"
+    ACTION_PLANNER = "ACTION_PLANNER"
     TEXT_COMPLETION = "TEXT_COMPLETION"
 
     # Streaming text generation models
+    TEXT_NANO_STREAM = "TEXT_NANO_STREAM"
     TEXT_SMALL_STREAM = "TEXT_SMALL_STREAM"
+    TEXT_MEDIUM_STREAM = "TEXT_MEDIUM_STREAM"
     TEXT_LARGE_STREAM = "TEXT_LARGE_STREAM"
-
-    # Reasoning models (note: values are REASONING_*, not TEXT_REASONING_*)
-    TEXT_REASONING_SMALL = "REASONING_SMALL"
-    TEXT_REASONING_LARGE = "REASONING_LARGE"
+    TEXT_MEGA_STREAM = "TEXT_MEGA_STREAM"
 
     # Tokenization models
     TEXT_TOKENIZER_ENCODE = "TEXT_TOKENIZER_ENCODE"
@@ -61,7 +65,7 @@ class ModelType(str, Enum):
 ModelTypeName = str
 
 # Union type of text generation model types
-TextGenerationModelType = str  # TEXT_SMALL, TEXT_LARGE, REASONING_*, TEXT_COMPLETION
+TextGenerationModelType = str  # TEXT_SMALL, TEXT_LARGE, TEXT_COMPLETION, ...
 
 # ModelHandler uses Any at runtime to avoid circular imports.
 # Type checkers will see the proper type from the TYPE_CHECKING block.

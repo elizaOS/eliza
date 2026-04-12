@@ -42,8 +42,8 @@ class RemoveContactAction:
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
     ) -> bool:
-        rolodex_service = runtime.get_service("rolodex")
-        return rolodex_service is not None
+        relationships_service = runtime.get_service("relationships")
+        return relationships_service is not None
 
     async def handler(
         self,
@@ -54,15 +54,15 @@ class RemoveContactAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        from elizaos.advanced_capabilities.services.rolodex import RolodexService
+        from elizaos.advanced_capabilities.services.relationships import RelationshipsService
 
-        rolodex_service = runtime.get_service("rolodex")
-        if not rolodex_service or not isinstance(rolodex_service, RolodexService):
+        relationships_service = runtime.get_service("relationships")
+        if not relationships_service or not isinstance(relationships_service, RelationshipsService):
             return ActionResult(
-                text="Rolodex service not available",
+                text="Relationships service not available",
                 success=False,
                 values={"error": True},
-                data={"error": "RolodexService not available"},
+                data={"error": "RelationshipsService not available"},
             )
 
         state = await runtime.compose_state(message, ["RECENT_MESSAGES", "ENTITIES"])
@@ -99,7 +99,7 @@ class RemoveContactAction:
                 data={"contactName": contact_name},
             )
 
-        contacts = await rolodex_service.search_contacts(search_term=contact_name)
+        contacts = await relationships_service.search_contacts(search_term=contact_name)
 
         if not contacts:
             return ActionResult(
@@ -110,7 +110,7 @@ class RemoveContactAction:
             )
 
         contact = contacts[0]
-        removed = await rolodex_service.remove_contact(contact.entity_id)
+        removed = await relationships_service.remove_contact(contact.entity_id)
 
         if removed:
             response_text = f"I've removed {contact_name} from your contacts."

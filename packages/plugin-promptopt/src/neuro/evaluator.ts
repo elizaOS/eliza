@@ -37,14 +37,35 @@ import { NEURO_SOURCE, ROLLING_WINDOW_SIZE, SIGNALS } from "./signals.ts";
 interface RollingStats {
 	latencies: number[];
 	lengths: number[];
+	lastAccessed: number;
 }
 const perAgentStats = new Map<string, RollingStats>();
 
+/** Maximum number of agent stats entries before LRU eviction. */
+const MAX_AGENT_STATS_ENTRIES = 100;
+
 function getAgentStats(agentId: string): RollingStats {
 	let stats = perAgentStats.get(agentId);
+	const now = Date.now();
 	if (!stats) {
-		stats = { latencies: [], lengths: [] };
+		// Evict least-recently-used entries if at capacity
+		if (perAgentStats.size >= MAX_AGENT_STATS_ENTRIES) {
+			let oldestKey: string | null = null;
+			let oldestTime = Infinity;
+			for (const [key, entry] of perAgentStats) {
+				if (entry.lastAccessed < oldestTime) {
+					oldestTime = entry.lastAccessed;
+					oldestKey = key;
+				}
+			}
+			if (oldestKey) {
+				perAgentStats.delete(oldestKey);
+			}
+		}
+		stats = { latencies: [], lengths: [], lastAccessed: now };
 		perAgentStats.set(agentId, stats);
+	} else {
+		stats.lastAccessed = now;
 	}
 	return stats;
 }

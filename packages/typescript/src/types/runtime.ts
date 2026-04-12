@@ -96,6 +96,15 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	): Promise<boolean>;
 	getPluginOwnership(pluginName: string): PluginOwnership | null;
 	getAllPluginOwnership(): PluginOwnership[];
+	enableKnowledge(): Promise<void>;
+	disableKnowledge(): Promise<void>;
+	isKnowledgeEnabled(): boolean;
+	enableRelationships(): Promise<void>;
+	disableRelationships(): Promise<void>;
+	isRelationshipsEnabled(): boolean;
+	enableTrajectories(): Promise<void>;
+	disableTrajectories(): Promise<void>;
+	isTrajectoriesEnabled(): boolean;
 
 	initialize(options?: { skipMigrations?: boolean }): Promise<void>;
 
@@ -110,7 +119,9 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	registerService(service: ServiceClass): Promise<void>;
 
-	getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service>;
+	getServiceLoadPromise(
+		serviceType: ServiceTypeName | string,
+	): Promise<Service>;
 
 	getRegisteredServiceTypes(): ServiceTypeName[];
 
@@ -247,6 +258,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	ensureConnection({
 		entityId,
 		roomId,
+		roomName,
 		metadata,
 		userName,
 		worldName,
@@ -260,6 +272,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	}: {
 		entityId: UUID;
 		roomId: UUID;
+		roomName?: string;
 		userName?: string;
 		name?: string;
 		worldName?: string;
@@ -288,7 +301,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	/**
 	 * Use a model for inference with proper type inference based on parameters.
 	 *
-	 * For text generation models (nano/mini/small/large/mega, handler/planner,
+	 * For text generation models (nano/small/medium/large/mega, handler/planner,
 	 * TEXT_REASONING_*, and TEXT_COMPLETION):
 	 * - Always returns `string`
 	 * - If streaming context is active, chunks are sent to callback automatically
@@ -421,7 +434,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 			 * This is separate from `key` (which is used for response caching).
 			 */
 			promptName?: string;
-			modelSize?: "nano" | "mini" | "small" | "large" | "mega";
+			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: TextGenerationModelType;
 			model?: string;
 			preferredEncapsulation?: "json" | "xml" | "toon";

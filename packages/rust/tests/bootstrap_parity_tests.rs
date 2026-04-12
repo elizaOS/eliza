@@ -57,11 +57,27 @@ async fn basic_capabilities_can_disable_basic_capabilities_via_constructor_flag(
     .await?;
     runtime.initialize().await?;
 
-    let actions: Vec<_> = runtime.list_action_definitions().await;
-    assert!(actions.is_empty());
+    let actions: Vec<_> = runtime
+        .list_action_definitions()
+        .await
+        .into_iter()
+        .map(|d| d.name)
+        .collect::<Vec<_>>();
+    assert!(!actions.contains(&"REPLY".to_string()));
+    assert!(!actions.contains(&"IGNORE".to_string()));
+    assert!(!actions.contains(&"NONE".to_string()));
 
-    let providers: Vec<_> = runtime.list_provider_definitions().await;
-    assert!(providers.is_empty());
+    let providers: Vec<_> = runtime
+        .list_provider_definitions()
+        .await
+        .into_iter()
+        .map(|d| d.name)
+        .collect::<Vec<_>>();
+    assert!(!providers.contains(&"ACTIONS".to_string()));
+    assert!(!providers.contains(&"PROVIDERS".to_string()));
+    assert!(!providers.contains(&"EVALUATORS".to_string()));
+    assert!(!providers.contains(&"RECENT_MESSAGES".to_string()));
+    assert!(!providers.contains(&"CHARACTER".to_string()));
 
     Ok(())
 }

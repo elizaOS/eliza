@@ -5,7 +5,7 @@
 //! - Extended actions (contacts, room management, image generation, etc.)
 //! - Extended providers (facts, knowledge, relationships, etc.)
 //! - Evaluators (reflection, relationship extraction)
-//! - Extended services (rolodex, follow-up scheduling)
+//! - Extended services (relationships, follow-up scheduling)
 //!
 //! These capabilities are re-exported from the basic_capabilities module for organizational clarity.
 
@@ -13,7 +13,7 @@
 pub use crate::basic_capabilities::actions::{
     extended_actions as advanced_actions, AddContactAction, FollowRoomAction, GenerateImageAction,
     MuteRoomAction, RemoveContactAction, ScheduleFollowUpAction, SearchContactsAction,
-    SendMessageAction, UnfollowRoomAction, UnmuteRoomAction, UpdateContactAction,
+    SendMessageAction, ThinkAction, UnfollowRoomAction, UnmuteRoomAction, UpdateContactAction,
     UpdateEntityAction, UpdateRoleAction, UpdateSettingsAction,
 };
 pub use crate::basic_capabilities::evaluators::{
@@ -25,7 +25,7 @@ pub use crate::basic_capabilities::providers::{
     FactsProvider, FollowUpsProvider, KnowledgeProvider, RelationshipsProvider, RolesProvider,
     SettingsProvider,
 };
-pub use crate::basic_capabilities::services::{FollowUpService, RolodexService};
+pub use crate::basic_capabilities::services::{FollowUpService, RelationshipsService};
 
 /// Get all advanced capabilities as vectors.
 pub fn get_advanced_capabilities() -> (

@@ -17,6 +17,7 @@ export interface EnsureConnectionParams {
 	agentId: UUID;
 	entityId: UUID;
 	roomId: UUID;
+	roomName?: string;
 	/** Required if messageServerId is not provided. */
 	worldId?: UUID;
 	worldName?: string;
@@ -115,7 +116,7 @@ export async function ensureConnections(
 				: ChannelType.DM;
 		const room: Room = {
 			id: c.roomId,
-			name: c.name || "default",
+			name: c.roomName || c.name || "default",
 			source,
 			type: roomType,
 			channelId: c.channelId ?? c.roomId,

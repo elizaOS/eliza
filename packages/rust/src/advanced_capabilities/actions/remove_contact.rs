@@ -11,7 +11,7 @@ use crate::types::{ActionResult, Memory, State};
 
 use super::Action;
 
-/// Action to remove a contact from the rolodex.
+/// Action to remove a contact from the relationships.
 pub struct RemoveContactAction;
 
 static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
@@ -39,7 +39,7 @@ impl Action for RemoveContactAction {
     }
 
     async fn validate(&self, runtime: &dyn IAgentRuntime, message: &Memory) -> bool {
-        runtime.get_service("rolodex").is_some() && message.entity_id.is_some()
+        runtime.get_service("relationships").is_some() && message.entity_id.is_some()
     }
 
     async fn handler(

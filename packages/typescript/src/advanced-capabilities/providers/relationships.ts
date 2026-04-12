@@ -28,6 +28,7 @@ const spec = requireProviderSpec("RELATIONSHIPS");
 async function formatRelationships(
 	runtime: IAgentRuntime,
 	relationships: Relationship[],
+	currentEntityId: UUID,
 ) {
 	// Sort relationships by interaction strength (descending)
 	const sortedRelationships = relationships
@@ -45,7 +46,14 @@ async function formatRelationships(
 
 	// Deduplicate target entity IDs to avoid redundant fetches
 	const uniqueEntityIds = Array.from(
-		new Set(sortedRelationships.map((rel) => rel.targetEntityId as UUID)),
+		new Set(
+			sortedRelationships.map(
+				(rel) =>
+					(rel.sourceEntityId === currentEntityId
+						? rel.targetEntityId
+						: rel.sourceEntityId) as UUID,
+			),
+		),
 	);
 
 	// Fetch all required entities in a single batch operation
@@ -77,8 +85,12 @@ async function formatRelationships(
 	// Format relationships using the entity map
 	const formattedRelationships: string[] = [];
 	for (const rel of sortedRelationships) {
-		const targetEntityId = rel.targetEntityId as UUID;
-		const entity = entityMap.get(targetEntityId);
+		const counterpartEntityId = (
+			rel.sourceEntityId === currentEntityId
+				? rel.targetEntityId
+				: rel.sourceEntityId
+		) as UUID;
+		const entity = entityMap.get(counterpartEntityId);
 		if (!entity) continue;
 
 		const names = entity.names.join(" aka ");
@@ -127,6 +139,7 @@ const relationshipsProvider: Provider = {
 		const formattedRelationships = await formatRelationships(
 			runtime,
 			relationships,
+			message.entityId,
 		);
 
 		if (!formattedRelationships) {

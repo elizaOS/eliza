@@ -8,6 +8,7 @@
 
 // Export all core modules
 export * from "./actions";
+export * from "./advanced-memory";
 // Export capabilities and plugin creation
 export * from "./basic-capabilities/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
@@ -49,6 +50,7 @@ export {
 	sanitizeModelId,
 } from "./history-jsonl-paths.ts";
 export { getOptimizationRootDir } from "./optimization-root-dir.ts";
+export * from "./plugins";
 
 export * from "./prompts";
 // Export onboarding providers
@@ -92,7 +94,7 @@ export {
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
 export * from "./services/tool-policy";
-export * from "./services/trajectoryLogger";
+export * from "./services/trajectories";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
@@ -103,6 +105,7 @@ export {
 	isTrajectoryHistoryJsonlEnabled,
 	isTrajectorySignalContextJsonlEnabled,
 } from "./trajectory-settings";
+export * from "./trajectory-utils";
 // Export everything from types
 export * from "./types";
 export * from "./types/agentEvent";
@@ -127,3 +130,4 @@ export * from "./validation";
 // Node-specific exports
 export const isBrowser = false;
 export const isNode = true;
+

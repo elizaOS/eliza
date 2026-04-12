@@ -19,13 +19,19 @@ const NEEDLE =
 const REPLACEMENT = `\`Ollama functionality will be limited until a valid endpoint is provided - Make sure Ollama is running at \${baseURL}\``;
 
 function patchFile(filePath) {
-	if (!existsSync(filePath)) return false;
-	let s = readFileSync(filePath, "utf8");
-	if (!s.includes(NEEDLE)) return false;
-	s = s.replace(NEEDLE, REPLACEMENT);
-	writeFileSync(filePath, s);
-	console.log(`[patch-plugin-ollama-warn] Patched ${filePath}`);
-	return true;
+	try {
+		if (!existsSync(filePath)) return false;
+		let s = readFileSync(filePath, "utf8");
+		if (!s.includes(NEEDLE)) return false;
+		s = s.replace(NEEDLE, REPLACEMENT);
+		writeFileSync(filePath, s);
+		console.log(`[patch-plugin-ollama-warn] Patched ${filePath}`);
+		return true;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.warn(`[patch-plugin-ollama-warn] Skipped ${filePath}: ${message}`);
+		return false;
+	}
 }
 
 function walkBunPluginOllama() {

@@ -12,8 +12,11 @@ DESCRIPTOR: _descriptor.FileDescriptor
 class ShouldRespondModelType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
     SHOULD_RESPOND_MODEL_TYPE_UNSPECIFIED: _ClassVar[ShouldRespondModelType]
+    SHOULD_RESPOND_MODEL_TYPE_NANO: _ClassVar[ShouldRespondModelType]
     SHOULD_RESPOND_MODEL_TYPE_SMALL: _ClassVar[ShouldRespondModelType]
     SHOULD_RESPOND_MODEL_TYPE_LARGE: _ClassVar[ShouldRespondModelType]
+    SHOULD_RESPOND_MODEL_TYPE_MEGA: _ClassVar[ShouldRespondModelType]
+    SHOULD_RESPOND_MODEL_TYPE_RESPONSE_HANDLER: _ClassVar[ShouldRespondModelType]
 
 class MessageProcessingMode(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -22,8 +25,11 @@ class MessageProcessingMode(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     MESSAGE_PROCESSING_MODE_ACTIONS: _ClassVar[MessageProcessingMode]
     MESSAGE_PROCESSING_MODE_NONE: _ClassVar[MessageProcessingMode]
 SHOULD_RESPOND_MODEL_TYPE_UNSPECIFIED: ShouldRespondModelType
+SHOULD_RESPOND_MODEL_TYPE_NANO: ShouldRespondModelType
 SHOULD_RESPOND_MODEL_TYPE_SMALL: ShouldRespondModelType
 SHOULD_RESPOND_MODEL_TYPE_LARGE: ShouldRespondModelType
+SHOULD_RESPOND_MODEL_TYPE_MEGA: ShouldRespondModelType
+SHOULD_RESPOND_MODEL_TYPE_RESPONSE_HANDLER: ShouldRespondModelType
 MESSAGE_PROCESSING_MODE_UNSPECIFIED: MessageProcessingMode
 MESSAGE_PROCESSING_MODE_SIMPLE: MessageProcessingMode
 MESSAGE_PROCESSING_MODE_ACTIONS: MessageProcessingMode

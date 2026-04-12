@@ -5,6 +5,7 @@ import type {
 	Provider,
 	State,
 } from "../../types/index.ts";
+import { resolveProviderContexts } from "../../utils/context-catalog";
 import {
 	CONTEXT_ROUTING_STATE_KEY,
 	getActiveRoutingContexts,
@@ -43,7 +44,7 @@ export const providersProvider: Provider = {
 			parseContextRoutingMetadata(_state?.values?.[CONTEXT_ROUTING_STATE_KEY]),
 		);
 		const isInContext = (provider: Provider) =>
-			shouldIncludeByContext(provider.contexts, activeContexts);
+			shouldIncludeByContext(resolveProviderContexts(provider), activeContexts);
 		const contextFilteredProviders = allProviders.filter(isInContext);
 		const selectionHints = [
 			"images, attachments, or visual content -> ATTACHMENTS",

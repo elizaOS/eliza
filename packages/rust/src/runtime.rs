@@ -4,6 +4,11 @@
 
 use crate::advanced_memory;
 use crate::advanced_planning;
+use crate::native_features::{
+    create_knowledge_plugin, create_relationships_plugin, create_trajectories_plugin,
+    resolve_native_runtime_feature_from_plugin_name, FollowUpServiceAdapter, NativeRuntimeFeature,
+    RelationshipsService, TrajectoriesService, NATIVE_RUNTIME_FEATURE_DEFAULTS,
+};
 use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
 use crate::types::components::{
     ActionDefinition, ActionHandler, ActionResult, EvaluatorDefinition, EvaluatorHandler,
@@ -255,6 +260,12 @@ pub struct RuntimeOptions {
     /// - `Some(false)`: disable autonomy regardless of character settings
     /// - `None` (default): defer to `ENABLE_AUTONOMY` character setting
     pub enable_autonomy: Option<bool>,
+    /// Enable or disable native knowledge runtime capabilities.
+    pub enable_knowledge: Option<bool>,
+    /// Enable or disable native relationships runtime capabilities.
+    pub enable_relationships: Option<bool>,
+    /// Enable or disable native trajectories runtime capabilities.
+    pub enable_trajectories: Option<bool>,
 }
 
 /// Event handler function type
@@ -451,6 +462,12 @@ pub struct AgentRuntime {
     check_should_respond_option: Option<bool>,
     /// Capability options captured at construction time (tri-state; `None` means defer to settings).
     capability_options: CapabilityOptions,
+    /// Native runtime feature options captured at construction time.
+    native_feature_options: NativeFeatureOptions,
+    /// Native runtime feature states after initialization or runtime toggles.
+    native_feature_states: RwLock<HashMap<String, bool>>,
+    /// Registered plugin component ownership used for unloading native runtime features.
+    plugin_components: RwLock<HashMap<String, RegisteredPluginComponents>>,
     /// Runtime flag that toggles autonomy execution.
     enable_autonomy: AtomicBool,
     /// Task workers (maps task name to worker)
@@ -468,9 +485,24 @@ struct CapabilityOptions {
     skip_character_provider: bool,
 }
 
+#[derive(Clone, Debug, Default)]
+struct NativeFeatureOptions {
+    knowledge: Option<bool>,
+    relationships: Option<bool>,
+    trajectories: Option<bool>,
+}
+
+#[derive(Default)]
+struct RegisteredPluginComponents {
+    action_handlers: Vec<Arc<dyn ActionHandler>>,
+    provider_handlers: Vec<Arc<dyn ProviderHandler>>,
+    evaluator_handlers: Vec<Arc<dyn EvaluatorHandler>>,
+    service_types: Vec<String>,
+}
+
 /// Service trait for long-running services
 #[async_trait::async_trait]
-pub trait Service: Send + Sync {
+pub trait Service: Any + Send + Sync {
     /// Get the service type
     fn service_type(&self) -> &str;
 
@@ -541,6 +573,13 @@ impl AgentRuntime {
                 enable_autonomy: opts.enable_autonomy,
                 skip_character_provider: is_anonymous,
             },
+            native_feature_options: NativeFeatureOptions {
+                knowledge: opts.enable_knowledge,
+                relationships: opts.enable_relationships,
+                trajectories: opts.enable_trajectories,
+            },
+            native_feature_states: RwLock::new(HashMap::new()),
+            plugin_components: RwLock::new(HashMap::new()),
             enable_autonomy: AtomicBool::new(opts.enable_autonomy.unwrap_or(false)),
             task_workers: RwLock::new(HashMap::new()),
             tasks: RwLock::new(HashMap::new()),
@@ -557,6 +596,407 @@ impl AgentRuntime {
     /// Get the configured log level for this runtime
     pub fn log_level(&self) -> LogLevel {
         self.log_level
+    }
+
+    fn resolve_service_type_alias(&self, service_type: &str) -> String {
+        service_type.to_string()
+    }
+
+    async fn resolve_native_feature_enabled(&self, feature: NativeRuntimeFeature) -> bool {
+        let explicit = match feature {
+            NativeRuntimeFeature::Knowledge => self.native_feature_options.knowledge,
+            NativeRuntimeFeature::Relationships => self.native_feature_options.relationships,
+            NativeRuntimeFeature::Trajectories => self.native_feature_options.trajectories,
+        };
+        if let Some(enabled) = explicit {
+            return enabled;
+        }
+
+        let setting_key = match feature {
+            NativeRuntimeFeature::Knowledge => "ENABLE_KNOWLEDGE",
+            NativeRuntimeFeature::Relationships => "ENABLE_RELATIONSHIPS",
+            NativeRuntimeFeature::Trajectories => "ENABLE_TRAJECTORIES",
+        };
+        if let Some(enabled) = parse_optional_bool_setting(self.get_setting(setting_key).await) {
+            return enabled;
+        }
+
+        NATIVE_RUNTIME_FEATURE_DEFAULTS
+            .iter()
+            .find_map(|(native_feature, default_enabled)| {
+                if *native_feature == feature {
+                    Some(*default_enabled)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(true)
+    }
+
+    #[allow(dead_code)]
+    async fn has_native_runtime_feature(&self, feature: NativeRuntimeFeature) -> bool {
+        let plugin_name = feature.as_str();
+        #[cfg(not(feature = "wasm"))]
+        {
+            self.plugins
+                .read()
+                .await
+                .iter()
+                .any(|plugin| plugin.name() == plugin_name)
+        }
+        #[cfg(feature = "wasm")]
+        {
+            self.plugins
+                .read()
+                .unwrap()
+                .iter()
+                .any(|plugin| plugin.name() == plugin_name)
+        }
+    }
+
+    fn resolve_native_feature_for_service_type(&self, service_type: &str) -> Option<&'static str> {
+        let resolved = self.resolve_service_type_alias(service_type);
+        match resolved.as_str() {
+            "knowledge" => Some("knowledge"),
+            "relationships" | "follow_up" => Some("relationships"),
+            "trajectories" => Some("trajectories"),
+            _ => None,
+        }
+    }
+
+    async fn is_native_feature_service_enabled(&self, service_type: &str) -> bool {
+        let Some(feature) = self.resolve_native_feature_for_service_type(service_type) else {
+            return true;
+        };
+        #[cfg(not(feature = "wasm"))]
+        {
+            *self
+                .native_feature_states
+                .read()
+                .await
+                .get(feature)
+                .unwrap_or(&false)
+        }
+        #[cfg(feature = "wasm")]
+        {
+            *self
+                .native_feature_states
+                .read()
+                .unwrap()
+                .get(feature)
+                .unwrap_or(&false)
+        }
+    }
+
+    async fn set_native_feature_state(&self, feature: NativeRuntimeFeature, enabled: bool) {
+        #[cfg(not(feature = "wasm"))]
+        {
+            self.native_feature_states
+                .write()
+                .await
+                .insert(feature.as_str().to_string(), enabled);
+        }
+        #[cfg(feature = "wasm")]
+        {
+            self.native_feature_states
+                .write()
+                .unwrap()
+                .insert(feature.as_str().to_string(), enabled);
+        }
+    }
+
+    #[allow(dead_code)]
+    fn is_native_feature_service_enabled_sync(&self, service_type: &str) -> bool {
+        let Some(feature) = self.resolve_native_feature_for_service_type(service_type) else {
+            return true;
+        };
+        #[cfg(not(feature = "wasm"))]
+        {
+            self.native_feature_states
+                .try_read()
+                .ok()
+                .and_then(|states| states.get(feature).copied())
+                .unwrap_or(false)
+        }
+        #[cfg(feature = "wasm")]
+        {
+            self.native_feature_states
+                .try_read()
+                .ok()
+                .and_then(|states| states.get(feature).copied())
+                .unwrap_or(false)
+        }
+    }
+
+    async fn has_registered_service_type(&self, service_type: &str) -> bool {
+        let resolved = self.resolve_service_type_alias(service_type);
+        #[cfg(not(feature = "wasm"))]
+        {
+            self.services.read().await.contains_key(&resolved)
+        }
+        #[cfg(feature = "wasm")]
+        {
+            self.services.read().unwrap().contains_key(&resolved)
+        }
+    }
+
+    async fn record_plugin_service_types(&self, plugin_name: &str, service_types: &[&str]) {
+        let resolved_service_types: Vec<String> = service_types
+            .iter()
+            .map(|service_type| self.resolve_service_type_alias(service_type))
+            .collect();
+
+        #[cfg(not(feature = "wasm"))]
+        {
+            let mut components = self.plugin_components.write().await;
+            let entry = components.entry(plugin_name.to_string()).or_default();
+            for service_type in resolved_service_types {
+                if !entry.service_types.contains(&service_type) {
+                    entry.service_types.push(service_type);
+                }
+            }
+        }
+        #[cfg(feature = "wasm")]
+        {
+            let mut components = self.plugin_components.write().unwrap();
+            let entry = components.entry(plugin_name.to_string()).or_default();
+            for service_type in resolved_service_types {
+                if !entry.service_types.contains(&service_type) {
+                    entry.service_types.push(service_type);
+                }
+            }
+        }
+    }
+
+    async fn unregister_plugin(&self, plugin_name: &str) -> Result<()> {
+        let components = {
+            #[cfg(not(feature = "wasm"))]
+            {
+                self.plugin_components.write().await.remove(plugin_name)
+            }
+            #[cfg(feature = "wasm")]
+            {
+                self.plugin_components.write().unwrap().remove(plugin_name)
+            }
+        };
+
+        if let Some(components) = components {
+            #[cfg(not(feature = "wasm"))]
+            {
+                let mut actions = self.actions.write().await;
+                actions.retain(|action| {
+                    !components
+                        .action_handlers
+                        .iter()
+                        .any(|owned| Arc::ptr_eq(action, owned))
+                });
+            }
+            #[cfg(feature = "wasm")]
+            {
+                let mut actions = self.actions.write().unwrap();
+                actions.retain(|action| {
+                    !components
+                        .action_handlers
+                        .iter()
+                        .any(|owned| Arc::ptr_eq(action, owned))
+                });
+            }
+
+            #[cfg(not(feature = "wasm"))]
+            {
+                let mut providers = self.providers.write().await;
+                providers.retain(|provider| {
+                    !components
+                        .provider_handlers
+                        .iter()
+                        .any(|owned| Arc::ptr_eq(provider, owned))
+                });
+            }
+            #[cfg(feature = "wasm")]
+            {
+                let mut providers = self.providers.write().unwrap();
+                providers.retain(|provider| {
+                    !components
+                        .provider_handlers
+                        .iter()
+                        .any(|owned| Arc::ptr_eq(provider, owned))
+                });
+            }
+
+            #[cfg(not(feature = "wasm"))]
+            {
+                let mut evaluators = self.evaluators.write().await;
+                evaluators.retain(|evaluator| {
+                    !components
+                        .evaluator_handlers
+                        .iter()
+                        .any(|owned| Arc::ptr_eq(evaluator, owned))
+                });
+            }
+            #[cfg(feature = "wasm")]
+            {
+                let mut evaluators = self.evaluators.write().unwrap();
+                evaluators.retain(|evaluator| {
+                    !components
+                        .evaluator_handlers
+                        .iter()
+                        .any(|owned| Arc::ptr_eq(evaluator, owned))
+                });
+            }
+
+            for service_type in components.service_types {
+                let service = {
+                    #[cfg(not(feature = "wasm"))]
+                    {
+                        self.services.write().await.remove(&service_type)
+                    }
+                    #[cfg(feature = "wasm")]
+                    {
+                        self.services.write().unwrap().remove(&service_type)
+                    }
+                };
+                if let Some(service) = service {
+                    service.stop().await?;
+                }
+            }
+        }
+
+        #[cfg(not(feature = "wasm"))]
+        {
+            let mut plugins = self.plugins.write().await;
+            plugins.retain(|plugin| plugin.name() != plugin_name);
+        }
+        #[cfg(feature = "wasm")]
+        {
+            let mut plugins = self.plugins.write().unwrap();
+            plugins.retain(|plugin| plugin.name() != plugin_name);
+        }
+
+        Ok(())
+    }
+
+    async fn register_native_feature_services(
+        self: &Arc<Self>,
+        feature: NativeRuntimeFeature,
+    ) -> Result<()> {
+        match feature {
+            NativeRuntimeFeature::Knowledge => {}
+            NativeRuntimeFeature::Relationships => {
+                if !self.has_registered_service_type("relationships").await {
+                    self.register_service("relationships", Arc::new(RelationshipsService::new()))
+                        .await;
+                }
+                if !self.has_registered_service_type("follow_up").await {
+                    self.register_service("follow_up", Arc::new(FollowUpServiceAdapter::new()))
+                        .await;
+                }
+                self.record_plugin_service_types("relationships", &["relationships", "follow_up"])
+                    .await;
+            }
+            NativeRuntimeFeature::Trajectories => {
+                if !self.has_registered_service_type("trajectories").await {
+                    self.register_service(
+                        "trajectories",
+                        Arc::new(TrajectoriesService::new(Arc::downgrade(self))),
+                    )
+                    .await;
+                }
+                self.record_plugin_service_types("trajectories", &["trajectories"])
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn set_native_runtime_feature_enabled(
+        self: &Arc<Self>,
+        feature: NativeRuntimeFeature,
+        enabled: bool,
+    ) -> Result<()> {
+        if self
+            .is_native_feature_service_enabled(feature.as_str())
+            .await
+            == enabled
+        {
+            return Ok(());
+        }
+
+        if enabled {
+            self.set_native_feature_state(feature, true).await;
+            self.register_native_feature_services(feature).await?;
+            let plugin = match feature {
+                NativeRuntimeFeature::Knowledge => create_knowledge_plugin(Arc::downgrade(self)),
+                NativeRuntimeFeature::Relationships => {
+                    create_relationships_plugin(Arc::downgrade(self))
+                }
+                NativeRuntimeFeature::Trajectories => create_trajectories_plugin(),
+            };
+            self.register_plugin(plugin).await?;
+        } else {
+            self.unregister_plugin(feature.as_str()).await?;
+            self.set_native_feature_state(feature, false).await;
+        }
+        self.set_setting(
+            &format!("ENABLE_{}", feature.as_str().to_uppercase()),
+            SettingValue::Bool(enabled),
+            false,
+        )
+        .await;
+
+        Ok(())
+    }
+
+    /// Enable the native knowledge feature and persist the updated setting.
+    pub async fn enable_knowledge(self: &Arc<Self>) -> Result<()> {
+        self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Knowledge, true)
+            .await
+    }
+
+    /// Disable the native knowledge feature and persist the updated setting.
+    pub async fn disable_knowledge(self: &Arc<Self>) -> Result<()> {
+        self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Knowledge, false)
+            .await
+    }
+
+    /// Return whether the native knowledge feature is currently enabled.
+    pub async fn is_knowledge_enabled(&self) -> bool {
+        self.is_native_feature_service_enabled("knowledge").await
+    }
+
+    /// Enable the native relationships feature and persist the updated setting.
+    pub async fn enable_relationships(self: &Arc<Self>) -> Result<()> {
+        self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Relationships, true)
+            .await
+    }
+
+    /// Disable the native relationships feature and persist the updated setting.
+    pub async fn disable_relationships(self: &Arc<Self>) -> Result<()> {
+        self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Relationships, false)
+            .await
+    }
+
+    /// Return whether the native relationships feature is currently enabled.
+    pub async fn is_relationships_enabled(&self) -> bool {
+        self.is_native_feature_service_enabled("relationships")
+            .await
+    }
+
+    /// Enable the native trajectories feature and persist the updated setting.
+    pub async fn enable_trajectories(self: &Arc<Self>) -> Result<()> {
+        self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Trajectories, true)
+            .await
+    }
+
+    /// Disable the native trajectories feature and persist the updated setting.
+    pub async fn disable_trajectories(self: &Arc<Self>) -> Result<()> {
+        self.set_native_runtime_feature_enabled(NativeRuntimeFeature::Trajectories, false)
+            .await
+    }
+
+    /// Return whether the native trajectories feature is currently enabled.
+    pub async fn is_trajectories_enabled(&self) -> bool {
+        self.is_native_feature_service_enabled("trajectories").await
     }
 
     /// Check if action planning mode is enabled
@@ -662,6 +1102,30 @@ impl AgentRuntime {
             );
         self.register_plugin(basic_capabilities_plugin).await?;
 
+        for (feature, _) in NATIVE_RUNTIME_FEATURE_DEFAULTS {
+            let enabled = self.resolve_native_feature_enabled(feature).await;
+            self.set_native_feature_state(feature, enabled).await;
+            if !enabled {
+                continue;
+            }
+
+            match feature {
+                NativeRuntimeFeature::Knowledge => {
+                    self.register_plugin(create_knowledge_plugin(Arc::downgrade(self)))
+                        .await?;
+                }
+                NativeRuntimeFeature::Relationships => {
+                    self.register_native_feature_services(feature).await?;
+                    self.register_plugin(create_relationships_plugin(Arc::downgrade(self)))
+                        .await?;
+                }
+                NativeRuntimeFeature::Trajectories => {
+                    self.register_native_feature_services(feature).await?;
+                    self.register_plugin(create_trajectories_plugin()).await?;
+                }
+            }
+        }
+
         // Advanced planning is built into core, but only loaded when enabled on the character.
         let advanced_planning_enabled = {
             #[cfg(not(feature = "wasm"))]
@@ -727,6 +1191,9 @@ impl AgentRuntime {
             std::mem::take(&mut *guard)
         };
         for plugin in plugins_to_register {
+            if resolve_native_runtime_feature_from_plugin_name(plugin.name()).is_some() {
+                continue;
+            }
             self.register_plugin(plugin).await?;
         }
 
@@ -755,11 +1222,54 @@ impl AgentRuntime {
     }
 
     /// Register a plugin
-    pub async fn register_plugin(&self, mut plugin: Plugin) -> Result<()> {
-        debug!("Registering plugin: {}", plugin.definition.name);
+    pub async fn register_plugin(self: &Arc<Self>, mut plugin: Plugin) -> Result<()> {
+        if let Some(feature) = resolve_native_runtime_feature_from_plugin_name(plugin.name()) {
+            if !self
+                .is_native_feature_service_enabled(feature.as_str())
+                .await
+            {
+                return Ok(());
+            }
+            plugin = match feature {
+                NativeRuntimeFeature::Knowledge => create_knowledge_plugin(Arc::downgrade(self)),
+                NativeRuntimeFeature::Relationships => {
+                    create_relationships_plugin(Arc::downgrade(self))
+                }
+                NativeRuntimeFeature::Trajectories => create_trajectories_plugin(),
+            };
+        }
+
+        let plugin_name = plugin.name().to_string();
+        #[cfg(not(feature = "wasm"))]
+        if self
+            .plugins
+            .read()
+            .await
+            .iter()
+            .any(|existing| existing.name() == plugin_name)
+        {
+            return Ok(());
+        }
+        #[cfg(feature = "wasm")]
+        if self
+            .plugins
+            .read()
+            .unwrap()
+            .iter()
+            .any(|existing| existing.name() == plugin_name)
+        {
+            return Ok(());
+        }
+
+        debug!("Registering plugin: {}", plugin_name);
+
+        let mut registered_actions = Vec::new();
+        let mut registered_providers = Vec::new();
+        let mut registered_evaluators = Vec::new();
 
         // Register actions
         for action in &plugin.action_handlers {
+            registered_actions.push(action.clone());
             #[cfg(not(feature = "wasm"))]
             {
                 let mut actions = self.actions.write().await;
@@ -774,6 +1284,7 @@ impl AgentRuntime {
 
         // Register providers
         for provider in &plugin.provider_handlers {
+            registered_providers.push(provider.clone());
             #[cfg(not(feature = "wasm"))]
             {
                 let mut providers = self.providers.write().await;
@@ -788,6 +1299,7 @@ impl AgentRuntime {
 
         // Register evaluators
         for evaluator in &plugin.evaluator_handlers {
+            registered_evaluators.push(evaluator.clone());
             #[cfg(not(feature = "wasm"))]
             {
                 let mut evaluators = self.evaluators.write().await;
@@ -828,6 +1340,35 @@ impl AgentRuntime {
             plugins.push(plugin);
         }
 
+        #[cfg(not(feature = "wasm"))]
+        {
+            let mut components = self.plugin_components.write().await;
+            let entry = components.remove(&plugin_name).unwrap_or_default();
+            components.insert(
+                plugin_name,
+                RegisteredPluginComponents {
+                    action_handlers: registered_actions,
+                    provider_handlers: registered_providers,
+                    evaluator_handlers: registered_evaluators,
+                    service_types: entry.service_types,
+                },
+            );
+        }
+        #[cfg(feature = "wasm")]
+        {
+            let mut components = self.plugin_components.write().unwrap();
+            let entry = components.remove(&plugin_name).unwrap_or_default();
+            components.insert(
+                plugin_name,
+                RegisteredPluginComponents {
+                    action_handlers: registered_actions,
+                    provider_handlers: registered_providers,
+                    evaluator_handlers: registered_evaluators,
+                    service_types: entry.service_types,
+                },
+            );
+        }
+
         Ok(())
     }
 
@@ -835,29 +1376,34 @@ impl AgentRuntime {
     ///
     /// Registered services are stopped automatically when `runtime.stop()` is called.
     pub async fn register_service(&self, name: &str, service: Arc<dyn Service>) {
+        let resolved_name = self.resolve_service_type_alias(name);
         #[cfg(not(feature = "wasm"))]
         {
             let mut services = self.services.write().await;
-            services.insert(name.to_string(), service);
+            services.insert(resolved_name, service);
         }
         #[cfg(feature = "wasm")]
         {
             let mut services = self.services.write().unwrap();
-            services.insert(name.to_string(), service);
+            services.insert(resolved_name, service);
         }
     }
 
     /// Get a previously registered service by name.
     pub async fn get_service(&self, name: &str) -> Option<Arc<dyn Service>> {
+        let resolved_name = self.resolve_service_type_alias(name);
+        if !self.is_native_feature_service_enabled(&resolved_name).await {
+            return None;
+        }
         #[cfg(not(feature = "wasm"))]
         {
             let services = self.services.read().await;
-            services.get(name).cloned()
+            services.get(&resolved_name).cloned()
         }
         #[cfg(feature = "wasm")]
         {
             let services = self.services.read().unwrap();
-            services.get(name).cloned()
+            services.get(&resolved_name).cloned()
         }
     }
 
@@ -1172,7 +1718,11 @@ impl AgentRuntime {
         let providers: Vec<_> = self.providers.read().unwrap().iter().cloned().collect();
 
         // Run each provider to gather context
-        let traj_step_id = self.get_trajectory_step_id();
+        let traj_step_id = if self.is_native_feature_service_enabled("trajectories").await {
+            self.get_trajectory_step_id()
+        } else {
+            None
+        };
         for provider in providers.iter() {
             let def = provider.definition();
             if def.private.unwrap_or(false) {
@@ -1229,6 +1779,28 @@ impl AgentRuntime {
         let actions: Vec<_> = self.actions.read().unwrap().iter().cloned().collect();
 
         actions.into_iter().map(|a| a.definition()).collect()
+    }
+
+    /// List registered plugin names.
+    pub async fn list_plugin_names(&self) -> Vec<String> {
+        #[cfg(not(feature = "wasm"))]
+        let plugins: Vec<_> = self
+            .plugins
+            .read()
+            .await
+            .iter()
+            .map(|plugin| plugin.name().to_string())
+            .collect();
+        #[cfg(feature = "wasm")]
+        let plugins: Vec<_> = self
+            .plugins
+            .read()
+            .unwrap()
+            .iter()
+            .map(|plugin| plugin.name().to_string())
+            .collect();
+
+        plugins
     }
 
     /// List registered provider definitions (best-effort).
@@ -1588,12 +2160,7 @@ impl AgentRuntime {
         let llm_mode = self.get_llm_mode().await;
         let effective_model_type = if llm_mode != LLMMode::Default {
             // Streaming model types that can be overridden
-            let text_generation_models = [
-                "TEXT_SMALL_STREAM",
-                "TEXT_LARGE_STREAM",
-                "TEXT_REASONING_SMALL_STREAM",
-                "TEXT_REASONING_LARGE_STREAM",
-            ];
+            let text_generation_models = ["TEXT_SMALL_STREAM", "TEXT_LARGE_STREAM"];
 
             if text_generation_models.contains(&model_type) {
                 let override_model = match llm_mode {
@@ -1659,8 +2226,6 @@ impl AgentRuntime {
             let text_generation_models = [
                 model_type::TEXT_SMALL,
                 model_type::TEXT_LARGE,
-                model_type::TEXT_REASONING_SMALL,
-                model_type::TEXT_REASONING_LARGE,
                 model_type::TEXT_COMPLETION,
             ];
 
@@ -1713,51 +2278,53 @@ impl AgentRuntime {
 
         // Trajectory logging (best-effort; must never break core model flow)
         if let Ok(ref response_text) = result {
-            if let Some(step_id) = self.get_trajectory_step_id() {
-                let end_ms = chrono_timestamp();
-                let prompt = params
-                    .get("prompt")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .chars()
-                    .take(2000)
-                    .collect::<String>();
-                let system_prompt = params
-                    .get("system")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .chars()
-                    .take(2000)
-                    .collect::<String>();
-                let temperature = params
-                    .get("temperature")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.0);
-                let max_tokens = params
-                    .get("maxTokens")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+            if self.is_native_feature_service_enabled("trajectories").await {
+                if let Some(step_id) = self.get_trajectory_step_id() {
+                    let end_ms = chrono_timestamp();
+                    let prompt = params
+                        .get("prompt")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .chars()
+                        .take(2000)
+                        .collect::<String>();
+                    let system_prompt = params
+                        .get("system")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .chars()
+                        .take(2000)
+                        .collect::<String>();
+                    let temperature = params
+                        .get("temperature")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    let max_tokens = params
+                        .get("maxTokens")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
 
-                let response_for_log = if effective_model_type.contains("EMBEDDING") {
-                    "[embedding vector]".to_string()
-                } else {
-                    response_text.chars().take(2000).collect::<String>()
-                };
+                    let response_for_log = if effective_model_type.contains("EMBEDDING") {
+                        "[embedding vector]".to_string()
+                    } else {
+                        response_text.chars().take(2000).collect::<String>()
+                    };
 
-                let mut logs = self.trajectory_logs.lock().expect("lock poisoned");
-                logs.llm_calls.push(TrajectoryLlmCall {
-                    step_id,
-                    model: effective_model_type.to_string(),
-                    system_prompt,
-                    user_prompt: prompt,
-                    response: response_for_log,
-                    temperature,
-                    max_tokens,
-                    purpose: "action".to_string(),
-                    action_type: "runtime.use_model".to_string(),
-                    latency_ms: (end_ms - start_ms).max(0),
-                    timestamp_ms: end_ms,
-                });
+                    let mut logs = self.trajectory_logs.lock().expect("lock poisoned");
+                    logs.llm_calls.push(TrajectoryLlmCall {
+                        step_id,
+                        model: effective_model_type.to_string(),
+                        system_prompt,
+                        user_prompt: prompt,
+                        response: response_for_log,
+                        temperature,
+                        max_tokens,
+                        purpose: "action".to_string(),
+                        action_type: "runtime.use_model".to_string(),
+                        latency_ms: (end_ms - start_ms).max(0),
+                        timestamp_ms: end_ms,
+                    });
+                }
             }
         }
 
@@ -2535,6 +3102,29 @@ fn parse_truthy_setting(v: Option<SettingValue>) -> bool {
     }
 }
 
+fn parse_optional_bool_setting(v: Option<SettingValue>) -> Option<bool> {
+    match v {
+        Some(SettingValue::Bool(b)) => Some(b),
+        Some(SettingValue::String(s)) => {
+            let t = s.trim().to_lowercase();
+            match t.as_str() {
+                "true" | "1" | "yes" | "on" => Some(true),
+                "false" | "0" | "no" | "off" => Some(false),
+                _ => None,
+            }
+        }
+        Some(SettingValue::Number(n)) => Some(n != 0.0),
+        Some(SettingValue::Null) | None => None,
+    }
+}
+
+#[allow(dead_code)]
+fn parse_optional_env_bool(key: &str) -> Option<bool> {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| parse_optional_bool_setting(Some(SettingValue::String(value))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2870,12 +3460,58 @@ impl crate::basic_capabilities::runtime::IAgentRuntime for AgentRuntime {
         uuid::Uuid::parse_str(self.agent_id.as_str()).unwrap_or_default()
     }
 
-    async fn character(&self) -> crate::types::Character {
-        self.character.read().await.clone()
+    fn character(&self) -> crate::types::Character {
+        self.character
+            .try_read()
+            .expect("character lock unavailable during sync trait access")
+            .clone()
     }
 
-    async fn get_setting(&self, key: &str) -> Option<String> {
-        self.get_setting(key).await.map(|v| match v {
+    fn get_setting(&self, key: &str) -> Option<String> {
+        let character = self
+            .character
+            .try_read()
+            .expect("character lock unavailable during sync setting access")
+            .clone();
+
+        let setting = if let Some(secrets) = &character.secrets {
+            secrets
+                .values
+                .get(key)
+                .and_then(json_value_to_setting_value)
+                .map(normalize_setting_value)
+        } else {
+            None
+        }
+        .or_else(|| {
+            character
+                .settings
+                .as_ref()
+                .and_then(|settings| settings.values.get(key))
+                .and_then(json_value_to_setting_value)
+                .map(normalize_setting_value)
+        })
+        .or_else(|| {
+            character
+                .settings
+                .as_ref()
+                .and_then(|settings| settings.values.get("secrets"))
+                .and_then(|nested| nested.as_object())
+                .and_then(|nested| nested.get(key))
+                .and_then(json_value_to_setting_value)
+                .map(normalize_setting_value)
+        })
+        .or_else(|| {
+            self.settings
+                .try_read()
+                .expect("settings lock unavailable during sync setting access")
+                .values
+                .get(key)
+                .cloned()
+                .map(normalize_setting_value)
+        });
+
+        setting.map(|v| match v {
             crate::types::settings::SettingValue::String(s) => s,
             crate::types::settings::SettingValue::Bool(b) => b.to_string(),
             crate::types::settings::SettingValue::Number(n) => n.to_string(),
@@ -2883,7 +3519,7 @@ impl crate::basic_capabilities::runtime::IAgentRuntime for AgentRuntime {
         })
     }
 
-    async fn get_all_settings(&self) -> std::collections::HashMap<String, String> {
+    fn get_all_settings(&self) -> std::collections::HashMap<String, String> {
         fn setting_to_string(v: &crate::types::settings::SettingValue) -> String {
             match v {
                 crate::types::settings::SettingValue::String(s) => s.clone(),
@@ -2897,14 +3533,21 @@ impl crate::basic_capabilities::runtime::IAgentRuntime for AgentRuntime {
 
         // Collect from runtime settings (lowest priority)
         {
-            let settings = self.settings.read().await;
+            let settings = self
+                .settings
+                .try_read()
+                .expect("settings lock unavailable during sync settings access");
             for (k, v) in &settings.values {
                 result.insert(k.clone(), setting_to_string(v));
             }
         }
 
         // Overlay character settings and secrets (higher priority, matching get_setting order)
-        let character = self.character.read().await.clone();
+        let character = self
+            .character
+            .try_read()
+            .expect("character lock unavailable during sync settings access")
+            .clone();
         if let Some(settings) = &character.settings {
             for (k, v) in &settings.values {
                 if let Some(sv) = json_value_to_setting_value(v) {
@@ -3235,22 +3878,20 @@ impl crate::basic_capabilities::runtime::IAgentRuntime for AgentRuntime {
         Ok(self.delete_task(&task_id.to_string()).await)
     }
 
-    async fn get_service(
+    fn get_service(
         &self,
         service_type: &str,
-    ) -> Option<std::sync::Arc<dyn crate::types::service::Service>> {
-        #[cfg(feature = "native")]
-        {
-            let services = self.services.read().await;
-            services
-                .get(service_type)
-                .cloned()
-                .map(|s| s as std::sync::Arc<dyn crate::types::service::Service>)
+    ) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+        let resolved_service_type = self.resolve_service_type_alias(service_type);
+        if !self.is_native_feature_service_enabled_sync(&resolved_service_type) {
+            return None;
         }
-        #[cfg(not(feature = "native"))]
-        {
-            None
-        }
+
+        self.services
+            .try_read()
+            .ok()
+            .and_then(|services| services.get(&resolved_service_type).cloned())
+            .map(|service| service as std::sync::Arc<dyn std::any::Any + Send + Sync>)
     }
 
     async fn register_event(

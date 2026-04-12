@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID
 
 
-class LongTermMemoryCategory(str, Enum):
+class LongTermMemoryCategory(StrEnum):
     EPISODIC = "episodic"
     SEMANTIC = "semantic"
     PROCEDURAL = "procedural"

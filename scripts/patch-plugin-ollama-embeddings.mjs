@@ -58,9 +58,20 @@ const NEW_OLLAMA_CREATE = `        const baseURL = getBaseURL(runtime);
 function patchFile(filePath) {
 	if (!existsSync(filePath)) return false;
 	let s = readFileSync(filePath, "utf8");
-	if (!s.includes(OLD_EMBED_BLOCK)) {
+
+	// Check if already patched
+	if (s.includes(NEW_EMBED_BLOCK.slice(0, 50))) {
 		return false;
 	}
+
+	// Validate expected bundle shape before patching
+	if (!s.includes(OLD_EMBED_BLOCK)) {
+		throw new Error(
+			`[patch-plugin-ollama-embeddings] Unexpected @elizaos/plugin-ollama bundle shape in ${filePath}; ` +
+			`update the patch script or pin the package exactly.`,
+		);
+	}
+
 	if (s.includes(OLD_IMPORT)) {
 		s = s.replace(OLD_IMPORT, NEW_IMPORT);
 	}
@@ -68,8 +79,17 @@ function patchFile(filePath) {
 		s = s.replace(OLD_OLLAMA_CREATE, NEW_OLLAMA_CREATE);
 	}
 	s = s.replace(OLD_EMBED_BLOCK, NEW_EMBED_BLOCK);
+
+	// Verify patch was applied
+	if (!s.includes(NEW_EMBED_BLOCK.slice(0, 50))) {
+		throw new Error(
+			`[patch-plugin-ollama-embeddings] Patch failed to apply correctly in ${filePath}`,
+		);
+	}
+
 	writeFileSync(filePath, s);
 	console.log(`[patch-plugin-ollama-embeddings] Patched ${filePath}`);
+	// Note: quick success return prevents processing a patch file that cannot be applied.
 	return true;
 }
 

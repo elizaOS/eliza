@@ -27,6 +27,13 @@ import type {
 	ScoreSignal,
 } from "./types/prompt-optimization-trace.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
+import {
+	getNativeRuntimeFeaturePlugin,
+	type NativeRuntimeFeature,
+	nativeRuntimeFeatureDefaults,
+	nativeRuntimeFeaturePluginNames,
+	resolveNativeRuntimeFeatureFromPluginName,
+} from "./plugins/native-features";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
@@ -83,6 +90,7 @@ import {
 	type PluginOwnership,
 	type PromptSegment,
 	type Provider,
+	type ProviderResult,
 	type ProviderValue,
 	type Relationship,
 	type Room,
@@ -110,6 +118,7 @@ import type {
 	SchemaRow,
 	SchemaValueSpec,
 	StreamEvent,
+	StructuredOutputFailure,
 } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import {
@@ -119,13 +128,11 @@ import {
 } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
-import {
-	buildDeterministicSeed,
-	hashStringToUint32,
-} from "./utils/deterministic";
+import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { PromptBatcher } from "./utils/prompt-batcher/batcher.js";
 import { PromptDispatcher } from "./utils/prompt-batcher/dispatcher.js";
+import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
 import {
 	ActionStreamFilter,
 	ValidationStreamExtractor,
@@ -140,6 +147,7 @@ const RUNTIME_TEMPLATE_CACHE = new Map<
 >();
 const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
+const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = 30_000;
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
 	"agentName",
 	"bio",
@@ -162,10 +170,25 @@ const STABLE_PROMPT_PROVIDER_NAMES = new Set([
 	"CHARACTER",
 	"PROVIDERS",
 ]);
+const STRUCTURED_CODE_FENCE_PATTERN = /```([^\n`]*)\r?\n?([\s\S]*?)```/g;
+const TOON_HEADER_PATTERN = /^TOON(?:\s+DOCUMENT)?[:\s-]*$/i;
+const TOON_FIELD_PATTERN =
+	/^[A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?:/m;
+const XML_LIKE_PATTERN = /<[/!?A-Za-z_][^>\n]*>/;
+const JSON_OBJECT_KEY_PATTERN =
+	/(?:["'][^"'\n]+["']|[A-Za-z_][A-Za-z0-9_-]*)\s*:/;
+
+type StructuredResponseFormat = "XML" | "JSON" | "TOON";
+
+type StructuredResponseCandidate = {
+	text: string;
+	formats: StructuredResponseFormat[];
+	source: string;
+};
 
 function resolveDynamicPromptModelType(
 	modelType?: TextGenerationModelType,
-	modelSize?: "nano" | "mini" | "small" | "large" | "mega",
+	modelSize?: "nano" | "small" | "medium" | "large" | "mega",
 ): TextGenerationModelType {
 	if (modelType) {
 		return modelType;
@@ -174,10 +197,10 @@ function resolveDynamicPromptModelType(
 	switch (modelSize) {
 		case "nano":
 			return ModelType.TEXT_NANO;
-		case "mini":
-			return ModelType.TEXT_MINI;
 		case "small":
 			return ModelType.TEXT_SMALL;
+		case "medium":
+			return ModelType.TEXT_MEDIUM;
 		case "mega":
 			return ModelType.TEXT_MEGA;
 		default:
@@ -379,6 +402,9 @@ export class AgentRuntime implements IAgentRuntime {
 	private characterPlugins: Plugin[] = [];
 	// Capability options for basic capabilities configuration
 	private capabilityOptions: CapabilityConfig = {};
+	private readonly nativeFeatureOptions: Partial<
+		Record<NativeRuntimeFeature, boolean>
+	>;
 	// Action planning option (undefined means use settings, true/false is explicit)
 	private actionPlanningOption?: boolean;
 	// LLM mode option for overriding model selection (undefined means use settings)
@@ -475,6 +501,9 @@ export class AgentRuntime implements IAgentRuntime {
 		 * Can be enabled at construction time or lazily via settings.
 		 */
 		enableAutonomy?: boolean;
+		enableKnowledge?: boolean;
+		enableRelationships?: boolean;
+		enableTrajectories?: boolean;
 		/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. WHY: Thin runtimes (e.g. serverless) delegate embeddings and task-dirty notifications without blocking. */
 		companionUrl?: string;
 	}) {
@@ -510,6 +539,11 @@ export class AgentRuntime implements IAgentRuntime {
 			skipCharacterProvider: this.isAnonymousCharacter,
 			enableAutonomy: opts.enableAutonomy,
 		};
+		this.nativeFeatureOptions = {
+			knowledge: opts.enableKnowledge,
+			relationships: opts.enableRelationships,
+			trajectories: opts.enableTrajectories,
+		};
 		// Generate deterministic UUID from character name
 		// Falls back to random UUID only if no character name is provided
 		this.agentId =
@@ -522,7 +556,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		// Create the logger with namespace and log level (defaults to "error")
 		this.logger = createLogger({
-			namespace: character.name,
+			namespace: `agent:${character.name ?? "unknown"}`,
 			level: opts.logLevel ?? "error",
 		});
 
@@ -670,6 +704,117 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.currentRunId;
 	}
 
+	private resolveServiceTypeAlias(
+		serviceType: ServiceTypeName | string,
+	): string {
+		return serviceType;
+	}
+
+	private resolveNativeFeatureEnabled(feature: NativeRuntimeFeature): boolean {
+		const explicit = this.nativeFeatureOptions[feature];
+		if (explicit !== undefined) {
+			return explicit;
+		}
+
+		const settingKey = `ENABLE_${feature.toUpperCase()}`;
+		const settingValue = parseBooleanValue(this.getSetting(settingKey));
+		if (settingValue !== undefined) {
+			return settingValue;
+		}
+
+		return nativeRuntimeFeatureDefaults[feature];
+	}
+
+	private hasNativeRuntimeFeature(feature: NativeRuntimeFeature): boolean {
+		const pluginName = nativeRuntimeFeaturePluginNames[feature];
+		return this.plugins.some((plugin) => plugin.name === pluginName);
+	}
+
+	private resolveNativeFeatureForServiceType(
+		serviceType: ServiceTypeName | string,
+	): NativeRuntimeFeature | null {
+		switch (serviceType) {
+			case "knowledge":
+				return "knowledge";
+			case "relationships":
+				return "relationships";
+			case "trajectories":
+				return "trajectories";
+			default:
+				return null;
+		}
+	}
+
+	private isNativeFeatureServiceEnabled(
+		serviceType: ServiceTypeName | string,
+	): boolean {
+		const feature = this.resolveNativeFeatureForServiceType(serviceType);
+		if (!feature) {
+			return true;
+		}
+		return this.hasNativeRuntimeFeature(feature);
+	}
+
+	private isPluginManagedAsNativeFeature(
+		plugin: Plugin | null | undefined,
+	): boolean {
+		return resolveNativeRuntimeFeatureFromPluginName(plugin?.name) !== null;
+	}
+
+	private async setNativeRuntimeFeatureEnabled(
+		feature: NativeRuntimeFeature,
+		enabled: boolean,
+	): Promise<void> {
+		const current = this.hasNativeRuntimeFeature(feature);
+		if (current === enabled) {
+			return;
+		}
+
+		if (enabled) {
+			await this.registerPlugin(getNativeRuntimeFeaturePlugin(feature));
+		} else {
+			await this.unloadPlugin(nativeRuntimeFeaturePluginNames[feature]);
+		}
+
+		this.setSetting(`ENABLE_${feature.toUpperCase()}`, enabled);
+	}
+
+	async enableKnowledge(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("knowledge", true);
+	}
+
+	async disableKnowledge(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("knowledge", false);
+	}
+
+	isKnowledgeEnabled(): boolean {
+		return this.hasNativeRuntimeFeature("knowledge");
+	}
+
+	async enableRelationships(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("relationships", true);
+	}
+
+	async disableRelationships(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("relationships", false);
+	}
+
+	isRelationshipsEnabled(): boolean {
+		return this.hasNativeRuntimeFeature("relationships");
+	}
+
+	async enableTrajectories(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("trajectories", true);
+	}
+
+	async disableTrajectories(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("trajectories", false);
+	}
+
+	isTrajectoriesEnabled(): boolean {
+		return this.hasNativeRuntimeFeature("trajectories");
+	}
+
 	async registerPlugin(plugin: Plugin): Promise<void> {
 		if (!plugin.name) {
 			// Ensure plugin.name is defined
@@ -763,8 +908,24 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 		}
 		if (pluginToRegister.actions) {
+			const existingActionNames = new Set(
+				this.actions.map((action) => action.name),
+			);
 			for (const action of pluginToRegister.actions) {
+				if (existingActionNames.has(action.name)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							plugin: pluginToRegister.name,
+						},
+						"Skipping duplicate plugin action",
+					);
+					continue;
+				}
 				this.registerAction(action);
+				existingActionNames.add(action.name);
 			}
 		}
 		if (pluginToRegister.evaluators) {
@@ -986,6 +1147,17 @@ export class AgentRuntime implements IAgentRuntime {
 			this.registerPlugin(basicCapabilitiesPlugin),
 		);
 
+		for (const feature of Object.keys(
+			nativeRuntimeFeatureDefaults,
+		) as NativeRuntimeFeature[]) {
+			const enabled = this.resolveNativeFeatureEnabled(feature);
+			if (enabled) {
+				pluginRegistrationPromises.push(
+					this.registerPlugin(getNativeRuntimeFeaturePlugin(feature)),
+				);
+			}
+		}
+
 		if (this.character.advancedPlanning === true) {
 			const { createAdvancedPlanningPlugin } = await import(
 				"./advanced-planning/index.ts"
@@ -1005,7 +1177,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		for (const plugin of this.characterPlugins) {
-			if (plugin) {
+			if (plugin && !this.isPluginManagedAsNativeFeature(plugin)) {
 				pluginRegistrationPromises.push(this.registerPlugin(plugin));
 			}
 		}
@@ -1543,24 +1715,25 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Resolve the **actual** checkpoint name for optimization paths and traces
 	 * (e.g. `lfm2:24b`), not only the logical DPE slot (e.g. `ACTION_PLANNER`).
 	 *
-	 * **Why walk `getModelFallbackChain`?** Many agents register `ACTION_PLANNER`
-	 * but fall back to `TEXT_SMALL` at inference. Keying disk by the logical slot
-	 * would split artifacts from the model that really ran and would not match
-	 * provider env resolution (`OLLAMA_SMALL_MODEL` vs `SMALL_MODEL`).
+	 * Walks the model fallback chain and provider-prefixed settings (same keys
+	 * inference uses) so trace paths line up with the served checkpoint when env
+	 * is configured; callers may pass `effectiveModelId` from `useModel` when known.
 	 *
-	 * **Why provider prefixes first?** Mirrors plugin-ollama (and similar) at
-	 * generation time so trace `modelId` matches the served model.
-	 *
-	 * Order: explicit `options.model` → for each fallback slot, try
-	 * `OLLAMA_*`, `OPENAI_*`, `ANTHROPIC_*`, then unprefixed `*_MODEL` → else
-	 * return `resolvedModelType` (last resort).
+	 * @param resolvedModelType - The logical slot name (e.g. 'ACTION_PLANNER')
+	 * @param optionsModel - Explicit model override from options
+	 * @param effectiveModelId - The actual model ID returned by useModel() after resolution
 	 */
 	resolveProviderModelString(
 		resolvedModelType: string,
 		optionsModel?: string,
+		effectiveModelId?: string,
 	): string {
+		// If the caller (useModel) already resolved the effective model, use it directly
+		if (effectiveModelId) return effectiveModelId;
+
 		if (optionsModel) return optionsModel;
 
+		// Walk the fallback chain with provider prefixes
 		const slotToSetting: Record<string, string> = {
 			TEXT_NANO: "NANO_MODEL",
 			TEXT_MINI: "MINI_MODEL",
@@ -1574,9 +1747,6 @@ export class AgentRuntime implements IAgentRuntime {
 			TEXT_COMPLETION: "COMPLETION_MODEL",
 		};
 
-		// Walk the same fallback chain that resolveModelRegistration uses
-		// (e.g. ACTION_PLANNER → TEXT_SMALL) so we find the slot that
-		// actually has a model registered.
 		const providerPrefixes = ["OLLAMA_", "OPENAI_", "ANTHROPIC_", ""];
 		for (const candidate of getModelFallbackChain(resolvedModelType)) {
 			const settingKey = slotToSetting[candidate];
@@ -1596,11 +1766,22 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Called by evaluators, action handlers, and prompt-optimization plugins after the
 	 * initial DPE call returns. The enriched trace is persisted when
 	 * RUN_ENDED fires.
+	 *
+	 * If the signal includes a traceId, only that specific trace is enriched.
+	 * Otherwise, all traces for the run are enriched (legacy behavior for
+	 * run-level signals like continuation/correction).
 	 */
 	enrichTrace(runId: string, signal: ScoreSignal): void {
 		const traceIds = this.runToTraces.get(runId);
 		if (!traceIds) return;
+
+		// If signal targets a specific trace, only enrich that one
+		const targetTraceId = (signal as { traceId?: string }).traceId;
+
 		for (const tid of traceIds) {
+			// Skip if signal targets a specific trace and this isn't it
+			if (targetTraceId && tid !== targetTraceId) continue;
+
 			const trace = this.activeTraces.get(tid);
 			if (!trace) continue;
 			trace.scoreCard.signals.push(signal);
@@ -1716,7 +1897,7 @@ export class AgentRuntime implements IAgentRuntime {
 	registerAction(action: Action) {
 		const canonical = withCanonicalActionDocs(action);
 		if (this.actions.find((a) => a.name === canonical.name)) {
-			this.logger.warn(
+			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, action: canonical.name },
 				"Action already registered, skipping",
 			);
@@ -2443,18 +2624,25 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 				}
 
-				// Store action result as memory
-				const actionMemory: Memory = {
-					id: actionId,
-					entityId: this.agentId,
-					roomId: message.roomId,
-					worldId: message.worldId,
-					content: {
-						text: actionResult?.text || `Executed action: ${action.name}`,
-						source: "action",
-					},
-				};
-				await this.createMemory(actionMemory, "messages");
+				// Only persist action memories when the handler returned a real user-facing
+				// message. Placeholder bookkeeping text is internal runtime state, not chat.
+				const actionText =
+					typeof actionResult?.text === "string"
+						? actionResult.text.trim()
+						: "";
+				if (actionText) {
+					const actionMemory: Memory = {
+						id: actionId,
+						entityId: this.agentId,
+						roomId: message.roomId,
+						worldId: message.worldId,
+						content: {
+							text: actionText,
+							source: "action",
+						},
+					};
+					await this.createMemory(actionMemory, "messages");
+				}
 
 				this.logger.debug(
 					{ src: "agent", agentId: this.agentId, action: action.name },
@@ -2552,33 +2740,34 @@ export class AgentRuntime implements IAgentRuntime {
 			return [];
 		}
 		state = await this.composeState(message, ["RECENT_MESSAGES", "EVALUATORS"]);
-		await Promise.all(
-			evaluators.map(async (evaluator) => {
-				if (evaluator.handler) {
-					await evaluator.handler(
-						this as unknown as IAgentRuntime,
-						message,
-						state,
-						{},
-						callback,
-						responses,
-					);
-					this.adapter.createLogs([
-						{
-							entityId: message.entityId,
-							roomId: message.roomId,
-							type: "evaluator",
-							body: {
-								evaluator: evaluator.name,
-								messageId: message.id,
-								message: message.content.text,
-								runId: this.getCurrentRunId(),
-							},
-						},
-					]);
-				}
-			}),
-		);
+		// Run evaluator handlers sequentially because multiple evaluators can
+		// mutate shared memories/relationships for the same turn.
+		for (const evaluator of evaluators) {
+			if (!evaluator.handler) {
+				continue;
+			}
+			await evaluator.handler(
+				this as unknown as IAgentRuntime,
+				message,
+				state,
+				{},
+				callback,
+				responses,
+			);
+			this.adapter.createLogs([
+				{
+					entityId: message.entityId,
+					roomId: message.roomId,
+					type: "evaluator",
+					body: {
+						evaluator: evaluator.name,
+						messageId: message.id,
+						message: message.content.text,
+						runId: this.getCurrentRunId(),
+					},
+				},
+			]);
+		}
 		return evaluators;
 	}
 
@@ -2731,6 +2920,7 @@ export class AgentRuntime implements IAgentRuntime {
 	async ensureConnection(params: {
 		entityId: UUID;
 		roomId: UUID;
+		roomName?: string;
 		worldId?: UUID;
 		worldName?: string;
 		userName?: string;
@@ -2999,34 +3189,75 @@ export class AgentRuntime implements IAgentRuntime {
 			}) => void;
 		};
 		const trajLogger = (await this._ensureServiceStarted(
-			"trajectory_logger",
+			"trajectories",
 		)) as TrajectoryLogger | null;
 		const providerData = await Promise.all(
 			providersToGet.map(async (provider) => {
 				const start = Date.now();
-				const result = await provider.get(
-					this as unknown as IAgentRuntime,
-					message,
-					cachedState,
-				);
-				const duration = Date.now() - start;
+				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+				let timedOut = false;
+				try {
+					const result = await Promise.race([
+						provider.get(
+							this as unknown as IAgentRuntime,
+							message,
+							cachedState,
+						),
+						new Promise<ProviderResult>((resolve) => {
+							timeoutHandle = setTimeout(() => {
+								timedOut = true;
+								this.logger.error(
+									{
+										src: "agent",
+										agentId: this.agentId,
+										provider: provider.name,
+										timeoutMs: COMPOSE_STATE_PROVIDER_TIMEOUT_MS,
+									},
+									"Provider timed out during state composition",
+								);
+								resolve({ text: "", values: {}, data: {} });
+							}, COMPOSE_STATE_PROVIDER_TIMEOUT_MS);
+						}),
+					]);
+					const duration = Date.now() - start;
 
-				// only need to inform if it's taking a long time
-				if (duration > 100) {
-					this.logger.debug(
+					// Only log slow successful providers. Timed-out providers already logged above.
+					if (!timedOut && duration > 100) {
+						this.logger.debug(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								provider: provider.name,
+								duration,
+							},
+							"Slow provider",
+						);
+					}
+					return {
+						...result,
+						providerName: provider.name,
+					};
+				} catch (error) {
+					this.logger.error(
 						{
 							src: "agent",
 							agentId: this.agentId,
 							provider: provider.name,
-							duration,
+							error: error instanceof Error ? error.message : String(error),
 						},
-						"Slow provider",
+						"Provider failed during state composition",
 					);
+					return {
+						text: "",
+						values: {},
+						data: {},
+						providerName: provider.name,
+					};
+				} finally {
+					if (timeoutHandle !== undefined) {
+						clearTimeout(timeoutHandle);
+					}
 				}
-				return {
-					...result,
-					providerName: provider.name,
-				};
 			}),
 		);
 
@@ -3163,7 +3394,8 @@ export class AgentRuntime implements IAgentRuntime {
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null> {
 		if (this.stopped) return null;
-		const key = serviceType as ServiceTypeName;
+		if (!this.isNativeFeatureServiceEnabled(serviceType)) return null;
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		const instances = this.services.get(key);
 		if (instances && instances.length > 0) {
 			return instances[0];
@@ -3264,7 +3496,11 @@ export class AgentRuntime implements IAgentRuntime {
 	getService<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
 	): T | null {
-		const instances = this.services.get(serviceName as ServiceTypeName);
+		if (!this.isNativeFeatureServiceEnabled(serviceName)) {
+			return null;
+		}
+		const key = this.resolveServiceTypeAlias(serviceName) as ServiceTypeName;
+		const instances = this.services.get(key);
 		if (instances && instances.length > 0) {
 			return instances[0] as T;
 		}
@@ -3292,10 +3528,14 @@ export class AgentRuntime implements IAgentRuntime {
 	getServicesByType<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
 	): T[] {
-		const serviceInstances = this.services.get(serviceName as ServiceTypeName);
+		if (!this.isNativeFeatureServiceEnabled(serviceName)) {
+			return [];
+		}
+		const key = this.resolveServiceTypeAlias(serviceName) as ServiceTypeName;
+		const serviceInstances = this.services.get(key);
 		if (!serviceInstances || serviceInstances.length === 0) {
 			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, serviceName },
+				{ src: "agent", agentId: this.agentId, serviceName: key },
 				"No services found for type",
 			);
 			return [];
@@ -3317,7 +3557,11 @@ export class AgentRuntime implements IAgentRuntime {
 	 * @returns true if the service is registered
 	 */
 	hasService(serviceType: ServiceTypeName | string): boolean {
-		const classes = this.serviceTypes.get(serviceType as ServiceTypeName);
+		if (!this.isNativeFeatureServiceEnabled(serviceType)) {
+			return false;
+		}
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		const classes = this.serviceTypes.get(key);
 		return classes !== undefined && classes.length > 0;
 	}
 
@@ -3329,10 +3573,11 @@ export class AgentRuntime implements IAgentRuntime {
 	getServiceRegistrationStatus(
 		serviceType: ServiceTypeName | string,
 	): "pending" | "registering" | "registered" | "failed" | "unknown" {
-		return (
-			this.serviceRegistrationStatus.get(serviceType as ServiceTypeName) ||
-			"unknown"
-		);
+		if (!this.isNativeFeatureServiceEnabled(serviceType)) {
+			return "unknown";
+		}
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		return this.serviceRegistrationStatus.get(key) || "unknown";
 	}
 
 	/**
@@ -3446,9 +3691,12 @@ export class AgentRuntime implements IAgentRuntime {
 	getServiceLoadPromise(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service> {
-		return this._ensureServiceStarted(serviceType).then((s) => {
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		return this._ensureServiceStarted(key).then((s) => {
 			if (!s)
-				throw new Error(`Service ${serviceType} not found or failed to start`);
+				throw new Error(
+					`Service ${String(serviceType)} not found or failed to start`,
+				);
 			return s;
 		});
 	}
@@ -3462,8 +3710,7 @@ export class AgentRuntime implements IAgentRuntime {
 		provider: string,
 		priority?: number,
 	): void {
-		const modelKey =
-			typeof modelType === "string" ? modelType : ModelType[modelType];
+		const modelKey = String(modelType);
 		if (!this.models.has(modelKey)) {
 			this.models.set(modelKey, []);
 		}
@@ -3499,8 +3746,7 @@ export class AgentRuntime implements IAgentRuntime {
 				provider: string;
 		  }
 		| undefined {
-		const requestedModelKey =
-			typeof modelType === "string" ? modelType : ModelType[modelType];
+		const requestedModelKey = String(modelType);
 
 		for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
 			const models = this.models.get(candidateKey);
@@ -3713,8 +3959,7 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
-		let requestedModelKey =
-			typeof modelType === "string" ? modelType : ModelType[modelType];
+		let requestedModelKey = String(modelType);
 
 		// Apply LLM mode override for text generation models
 		const llmMode = this.getLLMMode();
@@ -3722,14 +3967,12 @@ export class AgentRuntime implements IAgentRuntime {
 			// List of text generation model types that can be overridden
 			const textGenerationModels = [
 				ModelType.TEXT_NANO,
-				ModelType.TEXT_MINI,
 				ModelType.TEXT_SMALL,
+				ModelType.TEXT_MEDIUM,
 				ModelType.TEXT_LARGE,
 				ModelType.TEXT_MEGA,
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
-				ModelType.TEXT_REASONING_SMALL,
-				ModelType.TEXT_REASONING_LARGE,
 				ModelType.TEXT_COMPLETION,
 			];
 
@@ -3864,14 +4107,12 @@ export class AgentRuntime implements IAgentRuntime {
 			// to allow users to intentionally set an empty identifier if needed.
 			const shouldAttachUser =
 				requestedModelKey === ModelType.TEXT_NANO ||
-				requestedModelKey === ModelType.TEXT_MINI ||
 				requestedModelKey === ModelType.TEXT_SMALL ||
+				requestedModelKey === ModelType.TEXT_MEDIUM ||
 				requestedModelKey === ModelType.TEXT_LARGE ||
 				requestedModelKey === ModelType.TEXT_MEGA ||
 				requestedModelKey === ModelType.RESPONSE_HANDLER ||
 				requestedModelKey === ModelType.ACTION_PLANNER ||
-				requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
-				requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
 				requestedModelKey === ModelType.TEXT_COMPLETION;
 			if (
 				shouldAttachUser &&
@@ -3884,73 +4125,6 @@ export class AgentRuntime implements IAgentRuntime {
 				>;
 				if (modelParamsRecord.user === undefined) {
 					modelParamsRecord.user = this.character.name;
-				}
-			}
-
-			if (shouldAttachUser && isPlainObject(modelParams)) {
-				const modelParamsRecord = modelParams as Record<
-					string,
-					JsonValue | object
-				>;
-				const promptSegments = Array.isArray(modelParamsRecord.promptSegments)
-					? (modelParamsRecord.promptSegments as PromptSegment[])
-					: [];
-				const stablePrefix = promptSegments
-					.filter((segment, index) => {
-						if (!segment?.stable) {
-							return false;
-						}
-						return promptSegments
-							.slice(0, index)
-							.every((previous) => previous?.stable === true);
-					})
-					.map((segment) => segment.content)
-					.join("");
-
-				if (stablePrefix.length > 0) {
-					const providerOptions = isPlainObject(
-						modelParamsRecord.providerOptions,
-					)
-						? {
-								...(modelParamsRecord.providerOptions as Record<
-									string,
-									JsonValue | object
-								>),
-							}
-						: {};
-					const openAIOptions = isPlainObject(providerOptions.openai)
-						? {
-								...(providerOptions.openai as Record<
-									string,
-									JsonValue | object
-								>),
-							}
-						: {};
-
-					if (openAIOptions.promptCacheKey === undefined) {
-						openAIOptions.promptCacheKey = buildDeterministicSeed(
-							this.agentId,
-							this.currentRoomId ?? this.agentId,
-							requestedModelKey,
-							hashStringToUint32(stablePrefix).toString(16),
-						);
-					}
-
-					const promptCacheRetention = this.getSetting(
-						"OPENAI_PROMPT_CACHE_RETENTION",
-					);
-					if (
-						openAIOptions.promptCacheRetention === undefined &&
-						(promptCacheRetention === "in_memory" ||
-							promptCacheRetention === "24h")
-					) {
-						openAIOptions.promptCacheRetention = promptCacheRetention;
-					}
-
-					if (Object.keys(openAIOptions).length > 0) {
-						providerOptions.openai = openAIOptions;
-						modelParamsRecord.providerOptions = providerOptions;
-					}
 				}
 			}
 		}
@@ -4035,7 +4209,7 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 
 			this.logModelCall(
-				modelType,
+				String(modelType),
 				resolvedModelKey,
 				params,
 				promptContent,
@@ -4071,7 +4245,7 @@ export class AgentRuntime implements IAgentRuntime {
 					const trajCtx = getTrajectoryContext();
 					const stepId = trajCtx?.trajectoryStepId;
 					const trajLogger = (await this._ensureServiceStarted(
-						"trajectory_logger",
+						"trajectories",
 					)) as TrajectoryLogger | null;
 					if (stepId && trajLogger) {
 						const tempRaw = isPlainObject(modelParams)
@@ -4129,7 +4303,7 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		this.logModelCall(
-			modelType,
+			String(modelType),
 			resolvedModelKey,
 			params,
 			promptContent,
@@ -4164,7 +4338,7 @@ export class AgentRuntime implements IAgentRuntime {
 				const trajCtx = getTrajectoryContext();
 				const stepId = trajCtx?.trajectoryStepId;
 				const trajLogger = (await this._ensureServiceStarted(
-					"trajectory_logger",
+					"trajectories",
 				)) as TrajectoryLogger | null;
 				if (stepId && trajLogger) {
 					const tempRaw = isPlainObject(modelParams)
@@ -4305,6 +4479,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private static readonly METRICS_MAX_ENTRIES = 100;
 	private static readonly METRICS_TTL_MS = 60 * 60 * 1000; // 1 hour
+	private static readonly STRUCTURED_FAILURE_PREVIEW_LIMIT = 4000;
 
 	/**
 	 * Get or create metrics entry with LRU eviction.
@@ -4356,6 +4531,48 @@ export class AgentRuntime implements IAgentRuntime {
 		return metric;
 	}
 
+	private setStructuredOutputFailureState(
+		state: State,
+		failure: StructuredOutputFailure,
+	): void {
+		const issues = Array.isArray(failure.issues)
+			? failure.issues.filter(
+					(issue): issue is string =>
+						typeof issue === "string" && issue.trim().length > 0,
+				)
+			: [];
+		const summaryParts = [
+			`Structured output ${failure.kind.replaceAll("_", " ")}`,
+			`model=${failure.model}`,
+			`format=${failure.format}`,
+			`attempt=${failure.attempts}/${failure.maxRetries + 1}`,
+			...(issues.length > 0 ? [`issue=${issues[0]}`] : []),
+			...(failure.parseError ? [`error=${failure.parseError}`] : []),
+		];
+
+		state.values = {
+			...state.values,
+			structuredOutputFailureSummary: summaryParts.join("; "),
+		};
+		state.data = {
+			...state.data,
+			structuredOutputFailure: failure,
+		};
+	}
+
+	private clearStructuredOutputFailureState(state: State): void {
+		if (state.values?.structuredOutputFailureSummary !== undefined) {
+			const { structuredOutputFailureSummary: _discard, ...restValues } =
+				state.values;
+			state.values = restValues;
+		}
+
+		if (state.data?.structuredOutputFailure !== undefined) {
+			const { structuredOutputFailure: _discard, ...restData } = state.data;
+			state.data = restData;
+		}
+	}
+
 	/**
 	 * Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
 	 *
@@ -4383,8 +4600,8 @@ export class AgentRuntime implements IAgentRuntime {
 		schema: SchemaRow[];
 		options?: {
 			key?: string;
-			promptName?: string;
-			modelSize?: "nano" | "mini" | "small" | "large" | "mega";
+promptName?: string;
+			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
 			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
 			preferredEncapsulation?: "json" | "xml" | "toon";
@@ -4412,6 +4629,7 @@ export class AgentRuntime implements IAgentRuntime {
 			this.logger.error(
 				"dynamicPromptExecFromState: schema must have at least one entry",
 			);
+			this.clearStructuredOutputFailureState(state);
 			return null;
 		}
 
@@ -4432,6 +4650,7 @@ export class AgentRuntime implements IAgentRuntime {
 			this.logger.error(
 				`dynamicPromptExecFromState: invalid field names in schema: ${invalidFields.map((f) => f.field || "(empty)").join(", ")}`,
 			);
+			this.clearStructuredOutputFailureState(state);
 			return null;
 		}
 
@@ -4484,6 +4703,7 @@ export class AgentRuntime implements IAgentRuntime {
 			false;
 		let currentRetry = 0;
 		const promptCode = () => uuidv4().replaceAll("-", "").slice(0, 8);
+		let lastStructuredFailure: StructuredOutputFailure | null = null;
 
 		// Initialize metrics with LRU eviction
 		const metric = AgentRuntime.getOrCreateMetrics(modelSchemaKey);
@@ -4888,6 +5108,7 @@ ${section_end}`;
 			if (options.abortSignal?.aborted) {
 				extractor?.signalError("Cancelled by user");
 				delete (state as Record<string, unknown>)._smartRetryContext;
+				this.clearStructuredOutputFailureState(state);
 				return null;
 			}
 
@@ -4899,12 +5120,38 @@ ${section_end}`;
 					options.model,
 				);
 			} catch (modelError) {
-				this.logger.error(`Model call failed: ${String(modelError)}`);
+				const modelErrorMessage = getErrorMessage(modelError);
+				const isTransientFailure = isTransientModelError(modelError);
+				const willRetry = currentRetry + 1 <= maxRetries;
+				const failureMessage = isTransientFailure
+					? `Model call failed transiently${willRetry ? ", retrying" : ""}: ${modelErrorMessage}`
+					: `Model call failed: ${modelErrorMessage}`;
+				if (isTransientFailure) {
+					this.logger.warn(failureMessage);
+				} else {
+					this.logger.error(failureMessage);
+				}
+				lastStructuredFailure = {
+					source: "dynamicPromptExecFromState",
+					kind: "model_error",
+					model: String(modelIdentifier),
+					format,
+					schemaFields: flattenedSchema.map((row) => row.field),
+					attempts: currentRetry + 1,
+					maxRetries,
+					timestamp: Date.now(),
+					key: options.key ?? modelSchemaKey,
+					parseError: modelErrorMessage,
+					issues: [
+						"Model call failed before a structured response could be validated.",
+					],
+				};
 				currentRetry++;
 
 				if (options.abortSignal?.aborted) {
 					extractor?.signalError("Cancelled by user");
 					delete (state as Record<string, unknown>)._smartRetryContext;
+					this.clearStructuredOutputFailureState(state);
 					return null;
 				}
 
@@ -4927,6 +5174,7 @@ ${section_end}`;
 						if (aborted) {
 							extractor?.signalError("Cancelled by user");
 							delete (state as Record<string, unknown>)._smartRetryContext;
+							this.clearStructuredOutputFailureState(state);
 							return null;
 						}
 					}
@@ -4944,12 +5192,10 @@ ${section_end}`;
 			const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>/g, "");
 
 			let responseContent: Record<string, unknown> | null = null;
+			let parseErrorMessage: string | undefined;
+			const validationIssues: string[] = [];
 			try {
-				responseContent = isXML
-					? parseKeyValueXml(cleanResponse)
-					: isJSON
-						? parseJSONObjectFromText(cleanResponse)
-						: parseKeyValueXml(cleanResponse);
+				responseContent = this.parseStructuredResponse(cleanResponse, format);
 				this.logger.debug(
 					{
 						src: "dpe",
@@ -4959,14 +5205,15 @@ ${section_end}`;
 					`dynamicPromptExecFromState: "${promptDisplayName}" parsed: ${JSON.stringify(responseContent)}`,
 				);
 			} catch (e) {
+				parseErrorMessage = e instanceof Error ? e.message : String(e);
 				this.logger.error(
-					{
+{
 						src: "dpe",
 						promptDisplayName,
 						attempt: attemptNum,
 						err: String(e),
 					},
-					`dynamicPromptExecFromState: "${promptDisplayName}" parse error`,
+					`dynamicPromptExecFromState: "${promptDisplayName}" parse error: ${parseErrorMessage}`,
 				);
 			}
 
@@ -4980,6 +5227,9 @@ ${section_end}`;
 					invalidPaths: [],
 				};
 			if (!responseContent) {
+				validationIssues.push(
+					"No structured output could be parsed from the model response.",
+				);
 				this.logger.warn(
 					{
 						src: "dpe",
@@ -5000,6 +5250,9 @@ ${section_end}`;
 						const endCode = responseContent[endCodeField];
 
 						if (startCode !== expectedCode || endCode !== expectedCode) {
+							validationIssues.push(
+								`Per-field validation failed for ${field}.`,
+							);
 							this.logger.warn(
 								`Per-field validation failed for ${field}: expected=${expectedCode}, start=${startCode}, end=${endCode}`,
 							);
@@ -5030,6 +5283,9 @@ ${section_end}`;
 
 					for (const [field, expected] of validationCodes) {
 						if (responseContent[field] !== expected) {
+							validationIssues.push(
+								`Checkpoint validation failed for ${field}.`,
+							);
 							this.logger.warn(
 								`Checkpoint ${field} mismatch: expected ${expected}`,
 							);
@@ -5058,11 +5314,17 @@ ${section_end}`;
 					schemaValidation.invalidPaths.length > 0
 				) {
 					if (schemaValidation.missingPaths.length > 0) {
+						validationIssues.push(
+							`Missing required schema paths: ${schemaValidation.missingPaths.join(", ")}`,
+						);
 						this.logger.warn(
 							`Missing required schema paths: ${schemaValidation.missingPaths.join(", ")}`,
 						);
 					}
 					if (schemaValidation.invalidPaths.length > 0) {
+						validationIssues.push(
+							`Invalid schema paths: ${schemaValidation.invalidPaths.join(", ")}`,
+						);
 						this.logger.warn(
 							`Invalid schema paths: ${schemaValidation.invalidPaths.join(", ")}`,
 						);
@@ -5088,6 +5350,9 @@ ${section_end}`;
 							isMissingField(responseContent[field]),
 					);
 					if (missingFields.length > 0) {
+						validationIssues.push(
+							`Missing required fields: ${missingFields.join(", ")}`,
+						);
 						this.logger.warn(
 							`Missing required fields: ${missingFields.join(", ")}`,
 						);
@@ -5241,8 +5506,31 @@ ${section_end}`;
 					}
 				}
 
+				this.clearStructuredOutputFailureState(state);
 				return responseContent;
 			}
+
+			lastStructuredFailure = {
+				source: "dynamicPromptExecFromState",
+				kind: !responseContent
+					? parseErrorMessage
+						? "parse_error"
+						: "parse_problem"
+					: "validation_error",
+				model: String(modelIdentifier),
+				format,
+				schemaFields: flattenedSchema.map((row) => row.field),
+				attempts: currentRetry + 1,
+				maxRetries,
+				timestamp: Date.now(),
+				key: options.key ?? modelSchemaKey,
+				parseError: parseErrorMessage,
+				issues: validationIssues,
+				responsePreview: this.redactSecrets(cleanResponse).slice(
+					0,
+					AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
+				),
+			};
 
 			// Failure - update metrics
 			metric.failedAttempts++;
@@ -5258,6 +5546,7 @@ ${section_end}`;
 			if (options.abortSignal?.aborted) {
 				extractor?.signalError("Cancelled by user");
 				delete (state as Record<string, unknown>)._smartRetryContext;
+				this.clearStructuredOutputFailureState(state);
 				return null;
 			}
 
@@ -5280,6 +5569,7 @@ ${section_end}`;
 					if (aborted) {
 						extractor?.signalError("Cancelled by user");
 						delete (state as Record<string, unknown>)._smartRetryContext;
+						this.clearStructuredOutputFailureState(state);
 						return null;
 					}
 				}
@@ -5351,14 +5641,32 @@ ${section_end}`;
 			);
 		}
 
-		this.logger.error(
-			{
-				src: "dpe",
-				promptDisplayName,
-				modelSchemaKey,
-			},
-			`dynamicPromptExecFromState: "${promptDisplayName}" failed after ${maxRetries} retries [${modelSchemaKey}] ${metric.successfulAttempts}/${metric.totalAttempts} successful`,
-		);
+		const finalFailureMessage = `dynamicPromptExecFromState: "${promptDisplayName}" failed after ${maxRetries} retries [${modelSchemaKey}]`;
+		const finalFailureSummary = `${metric.successfulAttempts}/${metric.totalAttempts} successful`;
+		if (
+			lastStructuredFailure?.kind === "model_error" &&
+			isTransientModelError(lastStructuredFailure.parseError)
+		) {
+			this.logger.warn(
+				{
+					src: "dpe",
+					promptDisplayName,
+					modelSchemaKey,
+				},
+				finalFailureMessage,
+				finalFailureSummary,
+			);
+		} else {
+			this.logger.error(
+				{
+					src: "dpe",
+					promptDisplayName,
+					modelSchemaKey,
+				},
+				finalFailureMessage,
+				finalFailureSummary,
+			);
+		}
 
 		// --- Prompt optimization hooks: emit failure trace ---
 		if (optimizationHooks && traceModelId && tracePromptKey) {
@@ -5446,6 +5754,11 @@ ${section_end}`;
 
 		// Clean up smart retry context from state
 		delete (state as Record<string, unknown>)._smartRetryContext;
+		if (lastStructuredFailure) {
+			this.setStructuredOutputFailureState(state, lastStructuredFailure);
+		} else {
+			this.clearStructuredOutputFailureState(state);
+		}
 		return null;
 	}
 
@@ -6134,6 +6447,305 @@ ${section_end}`;
 		return responseContent;
 	}
 
+	private parseStructuredResponse(
+		response: string,
+		expectedFormat: StructuredResponseFormat,
+	): Record<string, unknown> | null {
+		const parserOrder =
+			expectedFormat === "JSON"
+				? (["JSON", "XML_OR_TOON"] as const)
+				: (["XML_OR_TOON", "JSON"] as const);
+		const candidates = this.extractStructuredResponseCandidates(response);
+
+		for (const candidate of candidates) {
+			for (const parser of parserOrder) {
+				if (parser === "JSON") {
+					if (!candidate.formats.includes("JSON")) {
+						continue;
+					}
+
+					const parsed = parseJSONObjectFromText(candidate.text);
+					if (parsed) {
+						if (candidate.source !== "raw" || expectedFormat !== "JSON") {
+							this.logger.debug(
+								`dynamicPromptExecFromState recovered JSON from ${candidate.source}`,
+							);
+						}
+						return parsed;
+					}
+					continue;
+				}
+
+				if (
+					!candidate.formats.includes("TOON") &&
+					!candidate.formats.includes("XML")
+				) {
+					continue;
+				}
+
+				const parsed = parseKeyValueXml(candidate.text);
+				if (parsed) {
+					if (candidate.source !== "raw" || expectedFormat === "JSON") {
+						this.logger.debug(
+							`dynamicPromptExecFromState recovered ${candidate.formats.includes("TOON") ? "TOON/XML" : "XML"} from ${candidate.source}`,
+						);
+					}
+					return parsed;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	private extractStructuredResponseCandidates(
+		response: string,
+	): StructuredResponseCandidate[] {
+		const seen = new Set<string>();
+		const candidates: StructuredResponseCandidate[] = [];
+
+		const addCandidate = (
+			text: string,
+			source: string,
+			hints: StructuredResponseFormat[] = [],
+		): void => {
+			const trimmed = text.trim();
+			if (!trimmed || seen.has(trimmed)) {
+				return;
+			}
+
+			const formats = Array.from(
+				new Set([...hints, ...this.detectStructuredResponseFormats(trimmed)]),
+			);
+			if (formats.length === 0) {
+				return;
+			}
+
+			seen.add(trimmed);
+			candidates.push({ text: trimmed, formats, source });
+		};
+
+		addCandidate(response, "raw");
+
+		for (const match of response.matchAll(STRUCTURED_CODE_FENCE_PATTERN)) {
+			const label = match[1]?.trim().toLowerCase() ?? "";
+			const content = match[2]?.trim() ?? "";
+			const hints: StructuredResponseFormat[] =
+				label === "json" || label === "json5"
+					? ["JSON"]
+					: label === "xml"
+						? ["XML"]
+						: label === "toon"
+							? ["TOON"]
+							: [];
+			addCandidate(content, label ? `fence:${label}` : "fence", hints);
+		}
+
+		const embeddedJson = this.extractEmbeddedJsonObject(response);
+		if (embeddedJson) {
+			addCandidate(embeddedJson, "embedded-json", ["JSON"]);
+		}
+
+		const embeddedToon = this.extractEmbeddedToonDocument(response);
+		if (embeddedToon) {
+			addCandidate(embeddedToon, "embedded-toon", ["TOON"]);
+		}
+
+		return candidates;
+	}
+
+	private detectStructuredResponseFormats(
+		text: string,
+	): StructuredResponseFormat[] {
+		const trimmed = text.trim();
+		const formats: StructuredResponseFormat[] = [];
+
+		if (this.looksLikeJsonObject(trimmed)) {
+			formats.push("JSON");
+		}
+		if (this.looksLikeToonDocument(trimmed)) {
+			formats.push("TOON");
+		}
+		if (XML_LIKE_PATTERN.test(trimmed)) {
+			formats.push("XML");
+		}
+
+		return formats;
+	}
+
+	private looksLikeJsonObject(text: string): boolean {
+		const trimmed = text.trim();
+		return (
+			trimmed.startsWith("{") &&
+			trimmed.includes("}") &&
+			JSON_OBJECT_KEY_PATTERN.test(trimmed)
+		);
+	}
+
+	private looksLikeToonDocument(text: string): boolean {
+		const lines = text
+			.trim()
+			.split(/\r?\n/)
+			.filter((line) => line.trim().length > 0);
+		if (lines.length === 0) {
+			return false;
+		}
+
+		const firstLine = lines[0]?.trim() ?? "";
+		if (TOON_HEADER_PATTERN.test(firstLine)) {
+			return lines
+				.slice(1)
+				.some((line) => TOON_FIELD_PATTERN.test(line.trim()));
+		}
+
+		if (!TOON_FIELD_PATTERN.test(firstLine)) {
+			return false;
+		}
+
+		if (lines.length === 1) {
+			const [, value = ""] = firstLine.split(/:(.*)/s);
+			const trimmedValue = value.trim();
+			return !(trimmedValue.startsWith("{") && trimmedValue.endsWith("}"));
+		}
+
+		let structuredFieldCount = 0;
+		for (const line of lines) {
+			const trimmed = line.trim();
+			if (TOON_FIELD_PATTERN.test(trimmed)) {
+				structuredFieldCount += 1;
+				continue;
+			}
+			if (/^[\t ]+/.test(line)) {
+				continue;
+			}
+			return false;
+		}
+
+		return structuredFieldCount > 0;
+	}
+
+	private extractEmbeddedToonDocument(text: string): string | null {
+		const lines = text.trim().split(/\r?\n/);
+		const startIndex = lines.findIndex((line) => {
+			const trimmed = line.trim();
+			return (
+				TOON_HEADER_PATTERN.test(trimmed) || TOON_FIELD_PATTERN.test(trimmed)
+			);
+		});
+
+		if (startIndex === -1) {
+			return null;
+		}
+
+		const collected: string[] = [];
+		let sawStructuredField = false;
+
+		for (let index = startIndex; index < lines.length; index++) {
+			const line = lines[index] ?? "";
+			const trimmed = line.trim();
+			const isStructuredField = TOON_FIELD_PATTERN.test(trimmed);
+			const isIndented = /^[\t ]+/.test(line);
+			const isHeader = TOON_HEADER_PATTERN.test(trimmed);
+
+			if (isHeader && !sawStructuredField) {
+				collected.push(line);
+				continue;
+			}
+
+			if (isStructuredField) {
+				sawStructuredField = true;
+				collected.push(line);
+				continue;
+			}
+
+			if (trimmed.length === 0 || isIndented) {
+				if (collected.length > 0) {
+					collected.push(line);
+					continue;
+				}
+			}
+
+			break;
+		}
+
+		return sawStructuredField ? collected.join("\n").trim() : null;
+	}
+
+	private extractEmbeddedJsonObject(text: string): string | null {
+		const trimmed = text.trim();
+		if (this.looksLikeJsonObject(trimmed)) {
+			return trimmed;
+		}
+
+		for (
+			let start = text.indexOf("{");
+			start !== -1;
+			start = text.indexOf("{", start + 1)
+		) {
+			const candidate = this.extractBalancedJsonObject(text, start);
+			if (candidate && this.looksLikeJsonObject(candidate)) {
+				return candidate.trim();
+			}
+		}
+
+		return null;
+	}
+
+	private extractBalancedJsonObject(
+		text: string,
+		startIndex: number,
+	): string | null {
+		let depth = 0;
+		let inString = false;
+		let stringQuote = "";
+		let escaped = false;
+
+		for (let index = startIndex; index < text.length; index++) {
+			const char = text[index] ?? "";
+
+			if (inString) {
+				if (escaped) {
+					escaped = false;
+					continue;
+				}
+				if (char === "\\") {
+					escaped = true;
+					continue;
+				}
+				if (char === stringQuote) {
+					inString = false;
+					stringQuote = "";
+				}
+				continue;
+			}
+
+			if (char === '"' || char === "'") {
+				inString = true;
+				stringQuote = char;
+				continue;
+			}
+
+			if (char === "{") {
+				depth += 1;
+				continue;
+			}
+
+			if (char !== "}") {
+				continue;
+			}
+
+			depth -= 1;
+			if (depth === 0) {
+				return text.slice(startIndex, index + 1);
+			}
+			if (depth < 0) {
+				return null;
+			}
+		}
+
+		return null;
+	}
+
 	registerEvent<T extends keyof EventPayloadMap>(
 		event: T,
 		handler: EventHandler<T>,
@@ -6531,7 +7143,10 @@ ${section_end}`;
 		start?: number;
 		end?: number;
 	}): Promise<Memory[]> {
-		return await this.adapter.getMemories(params);
+		return await this.adapter.getMemories({
+			...params,
+			tableName: params.tableName ?? "messages",
+		});
 	}
 	async getAllMemories(): Promise<Memory[]> {
 		const tables = ["memories", "messages", "facts", "documents"];
@@ -6580,7 +7195,10 @@ ${section_end}`;
 		entityId?: UUID;
 		tableName: string;
 	}): Promise<Memory[]> {
-		const memories = await this.adapter.searchMemories(params);
+		const memories = await this.adapter.searchMemories({
+			...params,
+			tableName: params.tableName ?? "messages",
+		});
 		if (params.query) {
 			const rerankedMemories = await this.rerankMemories(
 				params.query,
@@ -6679,13 +7297,13 @@ ${section_end}`;
 			return await this.adapter.countMemories({
 				roomIds: [roomIdOrParams as UUID],
 				unique,
-				tableName,
+				tableName: tableName ?? "messages",
 			});
 		}
 		return await this.adapter.countMemories({
 			roomIds: roomIdOrParams.roomId ? [roomIdOrParams.roomId] : undefined,
 			unique: roomIdOrParams.unique,
-			tableName: roomIdOrParams.tableName,
+			tableName: roomIdOrParams.tableName ?? "messages",
 			entityId: roomIdOrParams.entityId,
 			agentId: roomIdOrParams.agentId,
 			metadata: roomIdOrParams.metadata,
@@ -6859,12 +7477,23 @@ ${section_end}`;
 		await this.adapter.updateParticipantUserStates(updates);
 	}
 	async getRelationships(params: {
-		entityId: UUID;
+		entityIds?: UUID[];
+		entityId?: UUID;
 		tags?: string[];
+		limit?: number;
+		offset?: number;
 	}): Promise<Relationship[]> {
+		const entityIds =
+			Array.isArray(params.entityIds) && params.entityIds.length > 0
+				? params.entityIds
+				: params.entityId
+					? [params.entityId]
+					: [];
 		return await this.adapter.getRelationships({
-			entityIds: [params.entityId],
+			entityIds,
 			tags: params.tags,
+			limit: params.limit,
+			offset: params.offset,
 		});
 	}
 	// Batch cache methods

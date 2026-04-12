@@ -76,6 +76,7 @@ export async function handleRunEnded(
 	const abAnalyzer = getABAnalyzer(optDir);
 	const persistedTraces: typeof traces = [];
 	const autoOptScheduled = new Set<string>();
+	const autoOptPromises: Promise<void>[] = [];
 
 	for (const trace of traces) {
 		try {
@@ -110,8 +111,11 @@ export async function handleRunEnded(
 						promptKey: trace.promptKey,
 						modelSlot: trace.modelSlot,
 					});
-				} catch {
-					/* best-effort */
+				} catch (signalCtxErr) {
+					runtime.logger.debug(
+						{ src: "plugin-neuro", error: signalCtxErr instanceof Error ? signalCtxErr.message : String(signalCtxErr) },
+						"appendSignalContext failed (best-effort)"
+					);
 				}
 			}
 			persistedTraces.push(trace);
@@ -153,34 +157,40 @@ export async function handleRunEnded(
 			const autoKey = autoOptimizationDedupeKey(trace);
 			if (!autoOptScheduled.has(autoKey)) {
 				autoOptScheduled.add(autoKey);
-				void maybeRunAutoPromptOptimization(runtime, optDir, trace).catch(
-					(err) => {
-						runtime.logger.warn(
-							{
-								src: "plugin-neuro",
-								runId,
-								modelId: trace.modelId,
-								modelSlot: trace.modelSlot,
-								promptKey: trace.promptKey,
-								error: err instanceof Error ? err.message : String(err),
-							},
-							"Auto prompt optimization failed",
-						);
-					},
+				// Collect promises to await later, ensuring profile writes complete
+				// before subsequent RUN_ENDED events evaluate profile readiness
+				autoOptPromises.push(
+					maybeRunAutoPromptOptimization(runtime, optDir, trace).catch(
+						(err) => {
+							runtime.logger.warn(
+								{
+									src: "plugin-neuro",
+									runId,
+									modelId: trace.modelId,
+									modelSlot: trace.modelSlot,
+									promptKey: trace.promptKey,
+									error: err instanceof Error ? err.message : String(err),
+								},
+								"Auto prompt optimization failed",
+							);
+						},
+					),
 				);
 			}
 		} catch {
-			// This trace failed to persist — it remains in activeTraces
-			// (with a baseline copy on disk from the DPE write).
-			runtime.logger.warn(
-				{
-					src: "plugin-neuro",
-					runId,
-					reason: "trace_persist_failed",
-				},
-				"RUN_ENDED finalizer: trace append failed",
-			);
-		}
+		// This trace failed to persist — it remains in activeTraces
+		// (with a baseline copy on disk from the DPE write).
+		runtime.logger.warn(
+			{
+				src: "plugin-neuro",
+				runId,
+				traceId: trace.id,
+				promptKey: trace.promptKey,
+				reason: "trace_persist_failed",
+			},
+			"RUN_ENDED finalizer: trace append failed",
+		);
+	}
 	}
 
 	if (persistedTraces.length > 0) {
@@ -216,5 +226,11 @@ export async function handleRunEnded(
 			},
 			"RUN_ENDED finalizer: done",
 		);
+	}
+
+	// Await auto-optimization to ensure markOptimized writes complete before
+	// subsequent RUN_ENDED events evaluate profile readiness (prevents stale reads)
+	if (autoOptPromises.length > 0) {
+		await Promise.all(autoOptPromises);
 	}
 }

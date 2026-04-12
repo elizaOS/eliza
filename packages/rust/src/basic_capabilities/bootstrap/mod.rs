@@ -85,7 +85,10 @@ impl BasicCapabilitiesPlugin {
 
     /// Initialize the plugin with a runtime.
     pub async fn init(&self, runtime: Arc<dyn IAgentRuntime>) -> PluginResult<()> {
-        runtime.log_info("plugin:basic_capabilities", "Initializing BasicCapabilities plugin");
+        runtime.log_info(
+            "plugin:basic_capabilities",
+            "Initializing BasicCapabilities plugin",
+        );
 
         // Initialize services only if basic capabilities are enabled
         if !self.config.disable_basic {

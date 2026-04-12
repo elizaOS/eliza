@@ -405,6 +405,74 @@ describe("entities", () => {
 			expect(result).toBeDefined();
 			expect(result?.id).toBe("entity-handle" as UUID);
 		});
+
+		it("uses replied-to message ids when resolving relationship matches", async () => {
+			const mockRoom = {
+				id: "room-789" as UUID,
+				name: "Test Room",
+				worldId: null,
+				createdAt: Date.now(),
+			};
+
+			const aliceEntity: Entity = {
+				id: "entity-alice" as UUID,
+				names: ["Alice"],
+				agentId: runtime.agentId,
+				metadata: {},
+				components: [],
+			};
+			const bobEntity: Entity = {
+				id: "entity-bob" as UUID,
+				names: ["Bob"],
+				agentId: runtime.agentId,
+				metadata: {},
+				components: [],
+			};
+
+			vi.spyOn(runtime, "getRoom").mockResolvedValue(mockRoom);
+			vi.spyOn(runtime, "getWorld").mockResolvedValue(null);
+			vi.spyOn(runtime, "getEntitiesForRoom").mockResolvedValue([
+				aliceEntity,
+				bobEntity,
+			]);
+			vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
+			vi.spyOn(runtime, "getMemories").mockResolvedValue([
+				{
+					id: "message-alice" as UUID,
+					entityId: "entity-alice" as UUID,
+					roomId: "room-789" as UUID,
+					content: {
+						text: "Need anything?",
+					},
+				},
+				{
+					id: "message-user" as UUID,
+					entityId: "entity-456" as UUID,
+					roomId: "room-789" as UUID,
+					content: {
+						text: "Replying to Alice",
+						inReplyTo: "message-alice" as UUID,
+					},
+				},
+			]);
+			vi.spyOn(runtime, "useModel").mockResolvedValue(
+				JSON.stringify({
+					type: "RELATIONSHIP_MATCH",
+					matches: {
+						match: [
+							{
+								name: "Alice",
+								reason: "Recent reply thread",
+							},
+						],
+					},
+				}),
+			);
+
+			const result = await findEntityByName(runtime, mockMemory, mockState);
+
+			expect(result?.id).toBe("entity-alice" as UUID);
+		});
 	});
 
 	describe("createUniqueUuid", () => {

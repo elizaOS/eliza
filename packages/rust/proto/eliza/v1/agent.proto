@@ -67,6 +67,12 @@ message CharacterSettings {
   optional bool enable_extended_capabilities = 15;
   // Additional dynamic settings
   google.protobuf.Struct extra = 16;
+  // Enable native knowledge runtime feature
+  optional bool enable_knowledge = 17;
+  // Enable native relationships runtime feature
+  optional bool enable_relationships = 18;
+  // Enable native trajectories runtime feature
+  optional bool enable_trajectories = 19;
 }
 
 // Writing style guides

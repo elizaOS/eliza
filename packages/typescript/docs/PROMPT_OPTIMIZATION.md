@@ -60,7 +60,7 @@ Phase 4 is **not** the same as seeing **`[OPTIMIZED EXAMPLES]`** in DPE logs. Th
 
 Default: `~/.eliza/optimization/` if `OPTIMIZATION_DIR` is unset.
 
-```
+```text
 <OPTIMIZATION_DIR>/
   _prompt_registry/
     <promptKey>__<schemaFingerprint>.json   # template + schema for runner

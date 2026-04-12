@@ -239,6 +239,11 @@ test-output.txt
 # Vitest type compatibility shims
 packages/typescript/src/types/vitest-*.d.ts
 
+# Accidental tsc --declaration output next to .ts sources in @elizaos/core (declarations ship from dist/)
+# Scoped to packages/typescript only so other packages can commit ambient-only *.d.ts under src/ if needed.
+packages/typescript/src/**/*.d.ts
+packages/typescript/src/**/*.d.ts.map
+
 # Migration scripts (temporary)
 scripts/migrate-tests-to-vitest.ts
 scripts/migrate-all-tests.sh
@@ -367,4 +372,4 @@ skills/.cache/
 .pr-resolver-state.json
 
 # Local prompt optimization traces/artifacts when OPTIMIZATION_DIR points at repo
-/opt/
+/.eliza-optimization/

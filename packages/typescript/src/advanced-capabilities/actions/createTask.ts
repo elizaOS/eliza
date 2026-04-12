@@ -102,8 +102,18 @@ function recordToTriggerExtraction(
 	r: Record<string, unknown> | null,
 ): TriggerExtraction {
 	if (!r) return {};
-	const str = (key: string) =>
-		typeof r[key] === "string" ? (r[key] as string) : undefined;
+	const str = (key: string) => {
+		const value = r[key];
+		if (value == null) return undefined;
+		if (
+			typeof value === "string" ||
+			typeof value === "number" ||
+			typeof value === "boolean"
+		) {
+			return String(value);
+		}
+		return undefined;
+	};
 	return {
 		triggerType: str("triggerType"),
 		displayName: str("displayName"),

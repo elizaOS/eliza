@@ -23,6 +23,21 @@ export type StateValue =
 	| StateValue[]
 	| { [key: string]: StateValue };
 
+export interface StructuredOutputFailure {
+	source: "dynamicPromptExecFromState";
+	kind: "model_error" | "parse_error" | "parse_problem" | "validation_error";
+	model: string;
+	format: "XML" | "JSON" | "TOON";
+	schemaFields: string[];
+	attempts: number;
+	maxRetries: number;
+	timestamp: number;
+	key?: string;
+	parseError?: string;
+	issues?: string[];
+	responsePreview?: string;
+}
+
 /** Single step in an action plan */
 export interface ActionPlanStep
 	extends Omit<ProtoActionPlanStep, "$typeName" | "$unknown" | "result"> {
@@ -100,6 +115,8 @@ export interface StateData
 	actionResults?: ActionResult[];
 	/** Working memory for temporary state during multi-step action execution */
 	workingMemory?: WorkingMemory;
+	/** Latest structured-output failure captured during this run */
+	structuredOutputFailure?: StructuredOutputFailure;
 	/** Allow dynamic properties for plugin extensions */
 	[key: string]: StateValue | undefined;
 }
@@ -115,6 +132,8 @@ export interface StateValues
 	actionNames?: string;
 	/** Provider names used */
 	providers?: string;
+	/** Human-readable summary of the latest structured-output failure */
+	structuredOutputFailureSummary?: string;
 	/** Other dynamic values */
 	[key: string]: StateValue | undefined;
 }

@@ -1,6 +1,7 @@
 import { logger } from "../logger";
-import type { Entity, Relationship } from "../types/environment";
+import type { Component, Entity, Relationship } from "../types/environment";
 import type {
+	ChannelType,
 	JsonValue,
 	Metadata,
 	MetadataValue,
@@ -46,6 +47,13 @@ export interface ContactInfo {
 	lastModified: string;
 }
 
+function getContactDisplayName(contactInfo: ContactInfo): string | null {
+	const displayName = contactInfo.customFields.displayName;
+	return typeof displayName === "string" && displayName.trim().length > 0
+		? displayName.trim()
+		: null;
+}
+
 /** Helper to convert ContactInfo to Metadata for storage */
 function contactInfoToMetadata(contactInfo: ContactInfo): Metadata {
 	return {
@@ -75,6 +83,7 @@ function metadataToContactInfo(data: Metadata): ContactInfo {
 export interface RelationshipAnalytics {
 	strength: number;
 	interactionCount: number;
+	sharedConversationWindows?: number;
 	lastInteractionAt?: string;
 	averageResponseTime?: number;
 	sentimentScore?: number;
@@ -114,14 +123,21 @@ export function calculateRelationshipStrength({
 	lastInteractionAt,
 	messageQuality = 5,
 	relationshipType = "acquaintance",
+	sharedConversationWindows = 0,
 }: {
 	interactionCount: number;
 	lastInteractionAt?: string;
 	messageQuality?: number;
 	relationshipType?: string;
+	sharedConversationWindows?: number;
 }): number {
 	// Base score from interaction count (max 40 points)
 	const interactionScore = Math.min(interactionCount * 2, 40);
+
+	// Shared conversation windows in the same room within an hour are a
+	// stronger social signal than isolated messages. Cap to avoid swamping
+	// explicit relationship/context signals.
+	const sharedConversationScore = Math.min(sharedConversationWindows * 4, 16);
 
 	// Recency score (max 30 points)
 	let recencyScore = 0;
@@ -153,14 +169,115 @@ export function calculateRelationshipStrength({
 		interactionScore +
 		recencyScore +
 		qualityScore +
+		sharedConversationScore +
 		(relationshipBonus[relationshipType] ?? 0);
 
 	// Return clamped value between 0 and 100
 	return Math.max(0, Math.min(100, Math.round(totalStrength)));
 }
 
-export class RolodexService extends Service {
-	static serviceType = "rolodex" as const;
+type RelationshipMessageLike = {
+	entityId?: UUID;
+	roomId?: UUID;
+	createdAt?: number | string | null;
+};
+
+function toMessageTimestamp(
+	value: RelationshipMessageLike["createdAt"],
+): number | null {
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return value;
+	}
+	if (typeof value === "string" && value.trim().length > 0) {
+		const parsed = Number(value);
+		if (Number.isFinite(parsed)) {
+			return parsed;
+		}
+	}
+	return null;
+}
+
+export function countSharedConversationWindows(
+	messages: RelationshipMessageLike[],
+	leftEntityId: UUID,
+	rightEntityId: UUID,
+	windowMs = 1000 * 60 * 60,
+): number {
+	const relevantMessages = messages
+		.filter(
+			(message) =>
+				(message.entityId === leftEntityId ||
+					message.entityId === rightEntityId) &&
+				toMessageTimestamp(message.createdAt) !== null,
+		)
+		.sort(
+			(left, right) =>
+				(toMessageTimestamp(left.createdAt) ?? 0) -
+				(toMessageTimestamp(right.createdAt) ?? 0),
+		);
+
+	if (relevantMessages.length < 2) {
+		return 0;
+	}
+
+	const rooms = new Map<string, RelationshipMessageLike[]>();
+	for (const message of relevantMessages) {
+		const roomKey =
+			typeof message.roomId === "string" ? message.roomId : "__shared__";
+		if (!rooms.has(roomKey)) {
+			rooms.set(roomKey, []);
+		}
+		rooms.get(roomKey)?.push(message);
+	}
+
+	let windowCount = 0;
+	for (const roomMessages of rooms.values()) {
+		let currentWindowStart: number | null = null;
+		let seenLeft = false;
+		let seenRight = false;
+
+		const flushWindow = () => {
+			if (seenLeft && seenRight) {
+				windowCount += 1;
+			}
+			currentWindowStart = null;
+			seenLeft = false;
+			seenRight = false;
+		};
+
+		for (const message of roomMessages) {
+			const createdAt = toMessageTimestamp(message.createdAt);
+			if (createdAt === null) {
+				continue;
+			}
+			if (
+				currentWindowStart === null ||
+				createdAt - currentWindowStart > windowMs
+			) {
+				if (currentWindowStart !== null) {
+					flushWindow();
+				}
+				currentWindowStart = createdAt;
+			}
+
+			if (message.entityId === leftEntityId) {
+				seenLeft = true;
+			}
+			if (message.entityId === rightEntityId) {
+				seenRight = true;
+			}
+		}
+
+		if (currentWindowStart !== null) {
+			flushWindow();
+		}
+	}
+
+	return windowCount;
+}
+
+export class RelationshipsService extends Service {
+	static serviceType = "relationships" as const;
 
 	capabilityDescription =
 		"Comprehensive contact and relationship management service";
@@ -190,19 +307,104 @@ export class RolodexService extends Service {
 		}
 	}
 
+	private getRelationshipsWorldId(): UUID {
+		return stringToUuid(`relationships-world-${this.runtime.agentId}`);
+	}
+
+	private getRelationshipsRoomId(): UUID {
+		return stringToUuid(`relationships-${this.runtime.agentId}`);
+	}
+
+	private isRelationshipsContactComponent(component: Component): boolean {
+		return (
+			component.type === "contact_info" &&
+			component.agentId === this.runtime.agentId &&
+			component.worldId === this.getRelationshipsWorldId() &&
+			component.sourceEntityId === this.runtime.agentId
+		);
+	}
+
+	private async getStoredContactComponent(
+		entityId: UUID,
+	): Promise<Component | null> {
+		if (typeof this.runtime.getComponent === "function") {
+			return await this.runtime.getComponent(
+				entityId,
+				"contact_info",
+				this.getRelationshipsWorldId(),
+				this.runtime.agentId,
+			);
+		}
+
+		const components = await this.runtime.getComponents(entityId);
+		return (
+			components.find((component) =>
+				this.isRelationshipsContactComponent(component),
+			) ?? null
+		);
+	}
+
+	private cacheContactInfoFromEntities(entities: Entity[]): void {
+		for (const entity of entities) {
+			if (!entity.id || !entity.components) {
+				continue;
+			}
+
+			const contactComponent = entity.components.find((component) =>
+				this.isRelationshipsContactComponent(component),
+			);
+
+			if (!contactComponent?.data) {
+				continue;
+			}
+
+			const contactInfo = metadataToContactInfo(
+				contactComponent.data as Metadata,
+			);
+			this.setCacheWithLimit(
+				this.contactInfoCache,
+				entity.id as UUID,
+				contactInfo,
+				RelationshipsService.CONTACT_CACHE_LIMIT,
+			);
+		}
+	}
+
 	async initialize(runtime: IAgentRuntime): Promise<void> {
 		this.runtime = runtime;
+		const relationshipsWorldId = this.getRelationshipsWorldId();
+		const relationshipsRoomId = this.getRelationshipsRoomId();
 
-		// Ensure the synthetic rolodex world exists so component FK constraints pass
+		// Ensure the synthetic relationships world exists so component FK constraints pass
 		if (typeof this.runtime.ensureWorldExists === "function") {
 			try {
 				await this.runtime.ensureWorldExists({
-					id: stringToUuid(`rolodex-world-${this.runtime.agentId}`),
-					name: "Rolodex World",
+					id: relationshipsWorldId,
+					name: "Relationships World",
 					agentId: this.runtime.agentId,
 				} as Parameters<typeof this.runtime.ensureWorldExists>[0]);
 			} catch (err) {
-				logger.warn(`[RolodexService] Failed to ensure rolodex world: ${err}`);
+				logger.warn(
+					`[RelationshipsService] Failed to ensure relationships world: ${err}`,
+				);
+			}
+		}
+
+		// Components are stored in a synthetic room inside the relationships world.
+		if (typeof this.runtime.ensureRoomExists === "function") {
+			try {
+				await this.runtime.ensureRoomExists({
+					id: relationshipsRoomId,
+					name: "Relationships",
+					source: "relationships",
+					type: "API" as ChannelType,
+					channelId: `relationships-${this.runtime.agentId}`,
+					worldId: relationshipsWorldId,
+				} as Parameters<typeof this.runtime.ensureRoomExists>[0]);
+			} catch (err) {
+				logger.warn(
+					`[RelationshipsService] Failed to ensure relationships room: ${err}`,
+				);
 			}
 		}
 
@@ -220,7 +422,7 @@ export class RolodexService extends Service {
 		await this.loadContactInfoFromComponents();
 
 		// Service initialized
-		logger.info("[RolodexService] Initialized successfully");
+		logger.info("[RelationshipsService] Initialized successfully");
 	}
 
 	async stop(): Promise<void> {
@@ -229,16 +431,47 @@ export class RolodexService extends Service {
 		this.analyticsCache.clear();
 		this.categoriesCache = [];
 		// Service stopped
-		logger.info("[RolodexService] Stopped successfully");
+		logger.info("[RelationshipsService] Stopped successfully");
 	}
 
 	static async start(runtime: IAgentRuntime): Promise<Service> {
-		const service = new RolodexService();
+		const service = new RelationshipsService();
 		await service.initialize(runtime);
 		return service;
 	}
 
 	private async loadContactInfoFromComponents(): Promise<void> {
+		this.contactInfoCache.clear();
+		const relationshipsWorldId = this.getRelationshipsWorldId();
+		let loadedFromRelationshipsWorld = false;
+
+		// First load directly from the synthetic relationships world where contacts are stored.
+		if (typeof this.runtime.queryEntities === "function") {
+			try {
+				const entities = await this.runtime.queryEntities({
+					componentType: "contact_info",
+					worldId: relationshipsWorldId,
+					includeAllComponents: true,
+				});
+				if (entities.length > 0) {
+					this.cacheContactInfoFromEntities(entities);
+					loadedFromRelationshipsWorld = true;
+				}
+			} catch (err) {
+				logger.warn(
+					`[RelationshipsService] Failed to query contact components directly: ${err}`,
+				);
+			}
+		}
+
+		if (loadedFromRelationshipsWorld) {
+			logger.info(
+				`[RelationshipsService] Loaded ${this.contactInfoCache.size} contacts from components`,
+			);
+			return;
+		}
+
+		// Fall back to the legacy room scan for adapters that do not support queryEntities yet.
 		// Get all rooms for the agent to find entities
 		const rooms = await this.runtime.getRooms(
 			stringToUuid(`world-${this.runtime.agentId}`),
@@ -256,25 +489,16 @@ export class RolodexService extends Service {
 		// Load contact info from components for each entity
 		for (const entityId of entityIds) {
 			const components = await this.runtime.getComponents(entityId);
-			const contactComponent = components.find(
-				(c) => c.type === "contact_info" && c.agentId === this.runtime.agentId,
-			);
-
-			if (contactComponent?.data) {
-				const contactInfo = metadataToContactInfo(
-					contactComponent.data as Metadata,
-				);
-				this.setCacheWithLimit(
-					this.contactInfoCache,
-					entityId,
-					contactInfo,
-					RolodexService.CONTACT_CACHE_LIMIT,
-				);
-			}
+			this.cacheContactInfoFromEntities([
+				{
+					id: entityId,
+					components,
+				} as Entity,
+			]);
 		}
 
 		logger.info(
-			`[RolodexService] Loaded ${this.contactInfoCache.size} contacts from components`,
+			`[RelationshipsService] Loaded ${this.contactInfoCache.size} contacts from components`,
 		);
 	}
 
@@ -301,8 +525,8 @@ export class RolodexService extends Service {
 			type: "contact_info",
 			agentId: this.runtime.agentId,
 			entityId,
-			roomId: stringToUuid(`rolodex-${this.runtime.agentId}`),
-			worldId: stringToUuid(`rolodex-world-${this.runtime.agentId}`),
+			roomId: this.getRelationshipsRoomId(),
+			worldId: this.getRelationshipsWorldId(),
 			sourceEntityId: this.runtime.agentId,
 			data: contactInfoToMetadata(contactInfo),
 			createdAt: Date.now(),
@@ -312,7 +536,7 @@ export class RolodexService extends Service {
 			this.contactInfoCache,
 			entityId,
 			contactInfo,
-			RolodexService.CONTACT_CACHE_LIMIT,
+			RelationshipsService.CONTACT_CACHE_LIMIT,
 		);
 
 		// Emit entity lifecycle event
@@ -327,12 +551,12 @@ export class RolodexService extends Service {
 				}
 			).emitEvent(EntityLifecycleEvent.UPDATED, {
 				entityId: entity.id ?? "",
-				source: "rolodex",
+				source: "relationships",
 			});
 		}
 
 		logger.info(
-			`[RolodexService] Added contact ${entityId} with categories: ${categories.join(", ")}`,
+			`[RelationshipsService] Added contact ${entityId} with categories: ${categories.join(", ")}`,
 		);
 		return contactInfo;
 	}
@@ -343,7 +567,7 @@ export class RolodexService extends Service {
 	): Promise<ContactInfo | null> {
 		const existing = await this.getContact(entityId);
 		if (!existing) {
-			logger.warn(`[RolodexService] Contact ${entityId} not found`);
+			logger.warn(`[RelationshipsService] Contact ${entityId} not found`);
 			return null;
 		}
 
@@ -355,10 +579,7 @@ export class RolodexService extends Service {
 		};
 
 		// Update component
-		const components = await this.runtime.getComponents(entityId);
-		const contactComponent = components.find(
-			(c) => c.type === "contact_info" && c.agentId === this.runtime.agentId,
-		);
+		const contactComponent = await this.getStoredContactComponent(entityId);
 
 		if (contactComponent) {
 			await this.runtime.updateComponent({
@@ -371,10 +592,10 @@ export class RolodexService extends Service {
 			this.contactInfoCache,
 			entityId,
 			updated,
-			RolodexService.CONTACT_CACHE_LIMIT,
+			RelationshipsService.CONTACT_CACHE_LIMIT,
 		);
 
-		logger.info(`[RolodexService] Updated contact ${entityId}`);
+		logger.info(`[RelationshipsService] Updated contact ${entityId}`);
 		return updated;
 	}
 
@@ -388,10 +609,7 @@ export class RolodexService extends Service {
 		}
 
 		// Load from component if not in cache
-		const components = await this.runtime.getComponents(entityId);
-		const contactComponent = components.find(
-			(c) => c.type === "contact_info" && c.agentId === this.runtime.agentId,
-		);
+		const contactComponent = await this.getStoredContactComponent(entityId);
 
 		if (contactComponent?.data) {
 			const contactInfo = metadataToContactInfo(
@@ -401,7 +619,7 @@ export class RolodexService extends Service {
 				this.contactInfoCache,
 				entityId,
 				contactInfo,
-				RolodexService.CONTACT_CACHE_LIMIT,
+				RelationshipsService.CONTACT_CACHE_LIMIT,
 			);
 			return contactInfo;
 		}
@@ -412,15 +630,12 @@ export class RolodexService extends Service {
 	async removeContact(entityId: UUID): Promise<boolean> {
 		const existing = await this.getContact(entityId);
 		if (!existing) {
-			logger.warn(`[RolodexService] Contact ${entityId} not found`);
+			logger.warn(`[RelationshipsService] Contact ${entityId} not found`);
 			return false;
 		}
 
 		// Remove component
-		const components = await this.runtime.getComponents(entityId);
-		const contactComponent = components.find(
-			(c) => c.type === "contact_info" && c.agentId === this.runtime.agentId,
-		);
+		const contactComponent = await this.getStoredContactComponent(entityId);
 
 		if (contactComponent) {
 			await this.runtime.deleteComponent(contactComponent.id);
@@ -429,7 +644,7 @@ export class RolodexService extends Service {
 		// Remove from cache
 		this.contactInfoCache.delete(entityId);
 
-		logger.info(`[RolodexService] Removed contact ${entityId}`);
+		logger.info(`[RelationshipsService] Removed contact ${entityId}`);
 		return true;
 	}
 
@@ -476,10 +691,14 @@ export class RolodexService extends Service {
 			const filteredResults: ContactInfo[] = [];
 			for (let i = 0; i < results.length; i++) {
 				const entity = entities[i];
+				const entityNames = entity?.names ?? [];
+				const displayName = getContactDisplayName(results[i])?.toLowerCase();
 				if (
-					entity?.names.some((name) =>
+					entityNames.some((name) =>
 						name.toLowerCase().includes(searchTermLower),
-					)
+					) ||
+					displayName?.includes(searchTermLower) ||
+					String(results[i].entityId).toLowerCase().includes(searchTermLower)
 				) {
 					filteredResults.push(results[i]);
 				}
@@ -522,30 +741,50 @@ export class RolodexService extends Service {
 				r.sourceEntityId === targetEntityId,
 		) as ExtendedRelationship | undefined;
 
-		if (!relationship) {
+		// Get recent messages from rooms both entities share. `inReplyTo` stores a
+		// parent message id, not an entity id, so direct reply matching here is incorrect.
+		const [sourceRoomIds, targetRoomIds] = await Promise.all([
+			this.runtime.getRoomsForParticipant(sourceEntityId),
+			this.runtime.getRoomsForParticipant(targetEntityId),
+		]);
+		const targetRoomIdSet = new Set(
+			targetRoomIds.map((roomId) => String(roomId)),
+		);
+		const sharedRoomIds = sourceRoomIds.filter((roomId) =>
+			targetRoomIdSet.has(String(roomId)),
+		);
+		const sharedMessages =
+			sharedRoomIds.length > 0
+				? await this.runtime.getMemoriesByRoomIds({
+						tableName: "messages",
+						roomIds: sharedRoomIds,
+						limit: 200,
+					})
+				: [];
+
+		const interactions = sharedMessages
+			.filter(
+				(message) =>
+					message.entityId === sourceEntityId ||
+					message.entityId === targetEntityId,
+			)
+			.sort((a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0));
+
+		if (!relationship && interactions.length === 0) {
 			return null;
 		}
 
-		// Get recent messages between entities
-		const messages = await this.runtime.getMemories({
-			tableName: "messages",
-			entityId: sourceEntityId,
-			count: 100,
-		});
-
-		const interactions = messages.filter(
-			(m) =>
-				m.content.inReplyTo === targetEntityId ||
-				(m.entityId === targetEntityId &&
-					m.content.inReplyTo === sourceEntityId),
-		);
-
 		// Calculate metrics
 		const interactionCount = interactions.length;
-		const lastInteraction = interactions[0];
+		const sharedConversationWindows = countSharedConversationWindows(
+			interactions,
+			sourceEntityId,
+			targetEntityId,
+		);
+		const lastInteraction = interactions[interactions.length - 1];
 		const lastInteractionAt = lastInteraction?.createdAt
-			? new Date(lastInteraction.createdAt).toISOString()
-			: undefined;
+			? new Date(Number(lastInteraction.createdAt)).toISOString()
+			: relationship?.lastInteractionAt;
 
 		// Calculate average response time
 		let totalResponseTime = 0;
@@ -560,9 +799,7 @@ export class RolodexService extends Service {
 				current.createdAt &&
 				next.createdAt
 			) {
-				const timeDiff =
-					new Date(next.createdAt).getTime() -
-					new Date(current.createdAt).getTime();
+				const timeDiff = Number(next.createdAt) - Number(current.createdAt);
 				totalResponseTime += timeDiff;
 				responseCount++;
 			}
@@ -586,12 +823,14 @@ export class RolodexService extends Service {
 		const strength = calculateRelationshipStrength({
 			interactionCount,
 			lastInteractionAt,
-			relationshipType: relationship.relationshipType,
+			relationshipType: relationship?.relationshipType,
+			sharedConversationWindows,
 		});
 
 		const analytics: RelationshipAnalytics = {
 			strength,
 			interactionCount,
+			sharedConversationWindows,
 			lastInteractionAt,
 			averageResponseTime,
 			sentimentScore: 0.7, // Placeholder - could integrate sentiment analysis
@@ -600,8 +839,9 @@ export class RolodexService extends Service {
 
 		// Update relationship with calculated strength
 		if (
-			relationship.strength !== strength ||
-			relationship.lastInteractionAt !== lastInteractionAt
+			relationship &&
+			(relationship.strength !== strength ||
+				relationship.lastInteractionAt !== lastInteractionAt)
 		) {
 			// Update relationship using components
 			const relationshipComponent = {
@@ -609,8 +849,8 @@ export class RolodexService extends Service {
 				type: "relationship_update",
 				agentId: this.runtime.agentId,
 				entityId: relationship.sourceEntityId,
-				roomId: stringToUuid(`rolodex-${this.runtime.agentId}`),
-				worldId: stringToUuid(`rolodex-world-${this.runtime.agentId}`),
+				roomId: this.getRelationshipsRoomId(),
+				worldId: this.getRelationshipsWorldId(),
 				sourceEntityId: relationship.sourceEntityId,
 				data: {
 					targetEntityId: relationship.targetEntityId,
@@ -628,7 +868,7 @@ export class RolodexService extends Service {
 			this.analyticsCache,
 			cacheKey,
 			analytics,
-			RolodexService.ANALYTICS_CACHE_LIMIT,
+			RelationshipsService.ANALYTICS_CACHE_LIMIT,
 		);
 
 		return analytics;
@@ -732,7 +972,7 @@ export class RolodexService extends Service {
 		}
 
 		this.categoriesCache.push(category);
-		logger.info(`[RolodexService] Added category: ${category.name}`);
+		logger.info(`[RelationshipsService] Added category: ${category.name}`);
 	}
 
 	// Privacy Management
@@ -747,7 +987,7 @@ export class RolodexService extends Service {
 		await this.updateContact(entityId, { privacyLevel });
 
 		logger.info(
-			`[RolodexService] Set privacy level for ${entityId} to ${privacyLevel}`,
+			`[RelationshipsService] Set privacy level for ${entityId} to ${privacyLevel}`,
 		);
 		return true;
 	}

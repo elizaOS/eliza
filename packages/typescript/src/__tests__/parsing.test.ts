@@ -46,6 +46,7 @@ describe("Parsing Module", () => {
 
 		it("should handle empty objects", () => {
 			expect(parseJSONObjectFromText("```json\n{}\n```")).toEqual({});
+			expect(parseJSONObjectFromText("```\n{}\n```")).toEqual({});
 			expect(parseJSONObjectFromText("{}")).toEqual({});
 		});
 

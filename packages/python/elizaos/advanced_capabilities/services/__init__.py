@@ -4,15 +4,15 @@ Services that can be enabled with `advanced_capabilities=True`.
 """
 
 from .follow_up import FollowUpService
-from .rolodex import RolodexService
+from .relationships import RelationshipsService
 
 __all__ = [
     "FollowUpService",
-    "RolodexService",
+    "RelationshipsService",
     "advanced_services",
 ]
 
 advanced_services: list[type] = [
-    RolodexService,
+    RelationshipsService,
     FollowUpService,
 ]

@@ -5,7 +5,7 @@ This module provides advanced capabilities that can be enabled with
 - Extended actions (contacts, room management, image generation, etc.)
 - Extended providers (facts, knowledge, relationships, etc.)
 - Evaluators (reflection, relationship extraction)
-- Extended services (rolodex, follow-up scheduling)
+- Extended services (relationships, follow-up scheduling)
 """
 
 from .actions import (
@@ -43,7 +43,7 @@ from .providers import (
 )
 from .services import (
     FollowUpService,
-    RolodexService,
+    RelationshipsService,
     advanced_services,
 )
 
@@ -81,5 +81,5 @@ __all__ = [
     # Services
     "advanced_services",
     "FollowUpService",
-    "RolodexService",
+    "RelationshipsService",
 ]

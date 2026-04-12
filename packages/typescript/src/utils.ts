@@ -17,7 +17,11 @@ import {
 	getDeterministicNames,
 } from "./utils/deterministic";
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
-import { normalizeStructuredRecord, tryParseToonValue } from "./utils/toon";
+import {
+	normalizeStructuredRecord,
+	tryParseLooseToonRecord,
+	tryParseToonValue,
+} from "./utils/toon";
 
 // Token / embedding budget constants
 export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
@@ -486,6 +490,8 @@ export const formatMessages = ({
 }) => {
 	const entityById = new Map(entities.map((entity) => [entity.id, entity]));
 	const messageStrings: string[] = [];
+	let remainingAttachmentContext = 3;
+	let omittedAttachmentCount = 0;
 
 	for (let i = messages.length - 1; i >= 0; i -= 1) {
 		const message = messages[i];
@@ -501,20 +507,37 @@ export const formatMessages = ({
 		const formattedName = foundEntityNames?.[0] || "Unknown User";
 
 		const attachments = (message.content as Content).attachments;
+		const visibleAttachments =
+			attachments && attachments.length > 0
+				? attachments.slice(0, Math.max(0, remainingAttachmentContext))
+				: [];
+		if (attachments && attachments.length > 0) {
+			remainingAttachmentContext = Math.max(
+				0,
+				remainingAttachmentContext - visibleAttachments.length,
+			);
+			omittedAttachmentCount += attachments.length - visibleAttachments.length;
+		}
 
 		const attachmentString =
-			attachments && attachments.length > 0
-				? ` (Attachments: ${attachments
+			visibleAttachments.length > 0
+				? ` (Attachments: ${visibleAttachments
 						.map((media) => {
 							const lines = [`[${media.id} - ${media.title} (${media.url})]`];
-							if (media.text) lines.push(`Text: ${media.text}`);
-							if (media.description)
-								lines.push(`Description: ${media.description}`);
+							if (media.contentType) {
+								lines.push(`Type: ${media.contentType}`);
+							}
+							if (media.text || media.description) {
+								lines.push("Stored content available via READ_ATTACHMENT");
+							}
 							return lines.join("\n");
 						})
 						.join(
 							// Use comma separator only if all attachments are single-line (no text/description)
-							attachments.every((media) => !media.text && !media.description)
+							visibleAttachments.every(
+								(media) =>
+									!media.text && !media.description && !media.contentType,
+							)
 								? ", "
 								: "\n",
 						)})`
@@ -554,7 +577,17 @@ export const formatMessages = ({
 		messageStrings.push(messageString);
 	}
 
-	return messageStrings.join("\n");
+	const formattedMessages = messageStrings.join("\n");
+	if (omittedAttachmentCount === 0) {
+		return formattedMessages;
+	}
+
+	return [
+		formattedMessages,
+		`Note: ${omittedAttachmentCount} older attachment${omittedAttachmentCount === 1 ? "" : "s"} omitted from context. Use READ_ATTACHMENT to inspect additional attachments.`,
+	]
+		.filter(Boolean)
+		.join("\n");
 };
 
 export const formatTimestamp = (messageDate: number) => {
@@ -610,6 +643,15 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 		return parsedToon as T;
 	}
 
+	// Some providers emit relaxed TOON-like key/value lines with unescaped quotes
+	// or blank optional fields. Salvage those before falling back to XML parsing.
+	const parsedLooseToon = normalizeStructuredRecord(
+		tryParseLooseToonRecord(text),
+	);
+	if (parsedLooseToon) {
+		return parsedLooseToon as T;
+	}
+
 	// First, try to find a specific <response> block using linear search (avoids regex ReDoS)
 	let xmlContent: string | null = null;
 	const responseStart = text.indexOf("<response>");
@@ -622,6 +664,11 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	}
 
 	if (!xmlContent) {
+		const looksLikeXml = /<[/!?A-Za-z_][^>\n]*>/.test(text);
+		if (!looksLikeXml) {
+			return null;
+		}
+
 		// Fall back: perform a linear scan to find the first simple XML element and its matching close tag
 		// This avoids potentially expensive backtracking on crafted inputs
 		const findFirstXmlBlock = (

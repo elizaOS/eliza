@@ -1,14 +1,14 @@
 /**
  * Auto-generated prompt templates for elizaOS
  * DO NOT EDIT - Generated from packages/prompts/prompts/*.txt
- *
+ * 
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
  * - {{#each items}}...{{/each}} for iteration
  * - {{#if condition}}...{{/if}} for conditionals
  */
 
-export const addContactTemplate = `task: Extract contact information to add to the rolodex.
+export const addContactTemplate = `task: Extract contact information to add to the relationships.
 
 context:
 {{providers}}
@@ -56,8 +56,7 @@ Your last autonomous note: "{{lastThought}}"
 
 Continue from that note. Output <thought> and take action if needed.`;
 
-export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE =
-	autonomyContinuousContinueTemplate;
+export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE = autonomyContinuousContinueTemplate;
 
 export const autonomyContinuousFirstTemplate = `Your job: reflect on context, decide what you want to do next, and act if appropriate.
 - Use available actions/tools when they can advance the goal.
@@ -73,8 +72,7 @@ USER CONTEXT (most recent last):
 
 Think briefly, then output <thought> and take action if needed.`;
 
-export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE =
-	autonomyContinuousFirstTemplate;
+export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE = autonomyContinuousFirstTemplate;
 
 export const autonomyTaskContinueTemplate = `You are running in AUTONOMOUS TASK MODE.
 
@@ -172,19 +170,60 @@ IMPORTANT: Your response must ONLY contain the TOON document above.`;
 
 export const IMAGE_GENERATION_TEMPLATE = imageGenerationTemplate;
 
+export const messageClassifierTemplate = `Analyze this user request and classify it for planning purposes:
+
+"{{text}}"
+
+Classify the request across these dimensions:
+
+1. COMPLEXITY LEVEL:
+- simple: Direct actions that don't require planning
+- medium: Multi-step tasks requiring coordination
+- complex: Strategic initiatives with multiple stakeholders
+- enterprise: Large-scale transformations with full complexity
+
+2. PLANNING TYPE:
+- direct_action: Single action, no planning needed
+- sequential_planning: Multiple steps in sequence
+- strategic_planning: Complex coordination with stakeholders
+
+3. REQUIRED CAPABILITIES:
+- List specific capabilities needed (analysis, communication, project_management, etc.)
+
+4. STAKEHOLDERS:
+- List types of people/groups involved
+
+5. CONSTRAINTS:
+- List limitations or requirements mentioned
+
+6. DEPENDENCIES:
+- List dependencies between tasks or external factors
+
+Respond in this exact format:
+COMPLEXITY: [simple|medium|complex|enterprise]
+PLANNING: [direct_action|sequential_planning|strategic_planning]
+CAPABILITIES: [comma-separated list]
+STAKEHOLDERS: [comma-separated list]
+CONSTRAINTS: [comma-separated list]
+DEPENDENCIES: [comma-separated list]
+CONFIDENCE: [0.0-1.0]`;
+
+export const MESSAGE_CLASSIFIER_TEMPLATE = messageClassifierTemplate;
+
 export const messageHandlerTemplate = `task: Generate dialog and actions for {{agentName}}.
 
 context:
 {{providers}}
 
-rules[8]:
+rules[9]:
 - think briefly, then respond
+- always include a <thought> field, even for direct replies
 - actions execute in listed order
 - if replying, REPLY goes first
 - use IGNORE or STOP only by themselves
 - include providers only when needed
 - use provider_hints from context when present instead of restating the same rules
-- if an action needs inputs, include them under params keyed by action name
+- if an action needs inputs, include them inside that action's <params> block
 - if a required param is unknown, ask for clarification in text
 
 control_actions:
@@ -193,25 +232,30 @@ control_actions:
 
 fields[5]{name,meaning}:
 - thought | short plan
-- actions | ordered array of action names
+- actions | ordered <action> entries inside <actions>
 - providers | array of provider names, or empty
 - text | next message for {{agentName}}
 - simple | true or false
-- params | optional object keyed by action name containing required inputs
 
 formatting:
 - wrap multi-line code in fenced code blocks
 - use inline backticks for short code identifiers
 
 output:
-TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+XML only. Return exactly one <response>...</response> document. No prose before or after it. No <think>.
 
 Example:
-thought: Reply briefly. No extra providers needed.
-actions[1]: REPLY
-providers[0]:
-text: Your message here
-simple: true`;
+<response>
+  <thought>Reply briefly. No extra providers needed.</thought>
+  <actions>
+    <action>
+      <name>REPLY</name>
+    </action>
+  </actions>
+  <providers></providers>
+  <text>Your message here</text>
+  <simple>true</simple>
+</response>`;
 
 export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;
 
@@ -326,7 +370,10 @@ recent conversation:
 recent action results:
 {{actionResults}}
 
-rules[9]:
+latest reflection task status:
+{{taskCompletionStatus}}
+
+rules[10]:
 - think briefly, then continue the task from the latest action results
 - actions execute in listed order
 - if replying, REPLY goes first
@@ -335,6 +382,7 @@ rules[9]:
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them under params keyed by action name
 - if a required param is unknown, ask for clarification in text
+- if reflection says the task is incomplete, keep working or explain the concrete follow-up you still need
 - if the task is complete, either reply to the user or use STOP to end the run
 - STOP is a terminal control action even if it is not listed in available actions
 
@@ -410,21 +458,47 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 # Known Facts:
 {{knownFacts}}
 
+# Latest Action Results:
+{{actionResults}}
+
 # Instructions:
 1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
-2. Extract new facts from the conversation.
+2. Extract only durable new facts from the conversation.
+  - Prefer facts about the current user/sender that will still matter in a week: identity, stable preferences, recurring collaborators, durable setup, long-term projects, or ongoing constraints.
+  - Do NOT extract temporary status updates, current debugging/work items, one-off session metrics, isolated praise/complaints, or facts that are only true right now.
+  - If a fact would feel stale, irrelevant, or surprising to store a week from now, skip it.
+  - When in doubt, omit the fact.
 3. Identify and describe relationships between entities.
   - The sourceEntityId is the UUID of the entity initiating the interaction.
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
+4. It is normal to return no facts when nothing durable was learned.
+5. Always decide whether the user's task or request is actually complete right now.
+  - Set \`task_completed: true\` only if the user no longer needs additional action or follow-up from you in this turn.
+  - If you asked a clarifying question, an action failed, work is still pending, or you only partially completed the request, set \`task_completed: false\`.
+6. Always include a short \`task_completion_reason\` grounded in the conversation and action results.
 
+Output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+Do not output JSON, XML, Markdown fences, or commentary.
+Use indexed TOON fields exactly like this:
+thought: "a self-reflective thought on the conversation"
+task_completed: false
+task_completion_reason: "The request is still incomplete because the needed action has not happened yet."
+facts[0]:
+  claim: durable factual statement
+  type: fact
+  in_bio: false
+  already_known: false
+relationships[0]:
+  sourceEntityId: entity_initiating_interaction
+  targetEntityId: entity_being_interacted_with
+  tags[0]: dm_interaction
 
-Generate a response in the following TOON format:
-thought: a self-reflective thought on the conversation
-facts[1]{claim,type,in_bio,already_known}:
-  "factual statement",fact,false,false
-relationships[1]{sourceEntityId,targetEntityId,tags}:
-  entity_initiating_interaction,entity_being_interacted_with,"group_interaction,voice_interaction,dm_interaction,additional_tag1,additional_tag2"
+For additional entries, increment the index: facts[1], relationships[1], tags[1], etc.
+Always include \`task_completed\` and \`task_completion_reason\`.
+If there are no durable new facts, omit all facts[...] entries.
+If there are no relationships, omit all relationships[...] entries.
 
 IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
 
@@ -607,25 +681,30 @@ export const shouldRespondTemplate = `task: Decide whether {{agentName}} should 
 context:
 {{providers}}
 
-available_contexts:
-{{availableContexts}}
-
 rules[6]:
 - direct mention of {{agentName}} -> RESPOND
-- different assistant name -> IGNORE
-- continuing an active thread with {{agentName}} -> RESPOND
-- request to stop or be quiet -> STOP
-- talking to someone else -> IGNORE
-- if unsure, prefer IGNORE over hallucinating relevance
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
+
+available_contexts:
+{{availableContexts}}
 
 context_routing:
 - primaryContext: choose one context from available_contexts, or "general" if none apply
 - secondaryContexts: optional comma-separated list of additional relevant contexts
-- evidenceTurnIds: optional comma-separated list of memory IDs supporting the decision
+- evidenceTurnIds: optional comma-separated list of message IDs supporting the decision
 
 decision_note:
-- talking TO {{agentName}} means name mention, reply chain, or direct continuation
-- talking ABOUT {{agentName}} is not enough
+- respond only when the latest message is talking TO {{agentName}}
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
+- mentions of other people do not cancel a direct address to {{agentName}}
+- casual conversation between other users is not enough
+- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
 
 output:
 TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
@@ -634,19 +713,55 @@ Example:
 name: {{agentName}}
 reasoning: Direct mention and clear follow-up.
 action: RESPOND
-primaryContext: wallet
-secondaryContexts:
-evidenceTurnIds:
-
-Example:
-name: {{agentName}}
-reasoning: Direct mention but no relevant action.
-action: IGNORE
 primaryContext: general
 secondaryContexts:
 evidenceTurnIds:`;
 
 export const SHOULD_RESPOND_TEMPLATE = shouldRespondTemplate;
+
+export const shouldRespondWithContextTemplate = `task: Decide whether {{agentName}} should respond and which domain context applies.
+
+context:
+{{providers}}
+
+available_contexts:
+{{availableContexts}}
+
+rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
+
+context_routing:
+- primaryContext: the single best-matching domain from available_contexts
+- secondaryContexts: zero or more additional domains that are relevant
+- action intent does not only come from the last message; consider the full recent conversation
+- if no specific domain applies, use "general"
+
+decision_note:
+- respond only when the latest message is talking TO {{agentName}}
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
+- mentions of other people do not cancel a direct address to {{agentName}}
+- casual conversation between other users is not enough
+- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
+- context routing always applies, even for IGNORE/STOP decisions
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention asking about token balance.
+action: RESPOND
+primaryContext: wallet
+secondaryContexts: []`;
+
+export const SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE = shouldRespondWithContextTemplate;
 
 export const shouldUnfollowRoomTemplate = `task: Decide whether {{agentName}} should unfollow this room.
 
@@ -689,6 +804,34 @@ Example:
 decision: true`;
 
 export const SHOULD_UNMUTE_ROOM_TEMPLATE = shouldUnmuteRoomTemplate;
+
+export const thinkTemplate = `# Task: Think deeply and reason carefully for {{agentName}}.
+
+{{providers}}
+
+# Context
+The initial planning phase identified this question as requiring deeper analysis.
+The following is the conversation so far and all available context.
+
+# Instructions
+You are {{agentName}}. A question or request has been identified as complex, ambiguous, or requiring careful reasoning. Your job is to think through this thoroughly before responding.
+
+Approach this systematically:
+1. Identify the core question or problem being asked
+2. Consider multiple angles, approaches, or interpretations
+3. Evaluate trade-offs, risks, and constraints
+4. Draw on relevant knowledge and context from the conversation
+5. Arrive at a well-reasoned conclusion or recommendation
+
+Be thorough but concise. Prioritize depth of reasoning over length. If there are genuine unknowns, acknowledge them rather than guessing.
+
+Respond using TOON:
+thought: Your detailed internal reasoning — the full chain of thought, alternatives considered, and why you reached your conclusion
+text: Your response to the user — clear, structured, and well-reasoned. Use headings, lists, or code blocks as appropriate for the content.
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any preamble or explanation outside of it.`;
+
+export const THINK_TEMPLATE = thinkTemplate;
 
 export const updateContactTemplate = `task: Extract contact updates from the request.
 
@@ -740,6 +883,38 @@ updates[1]{name,value}:
 IMPORTANT: Your response must ONLY contain the TOON document above.`;
 
 export const UPDATE_ENTITY_TEMPLATE = updateEntityTemplate;
+
+export const updateRoleTemplate = `task: Extract the requested role change.
+
+context:
+{{providers}}
+
+current_roles:
+{{roles}}
+
+recent_messages:
+{{recentMessages}}
+
+current_message:
+{{message}}
+
+instructions[6]:
+- identify the single entity whose role should be updated
+- return entity_id only when the UUID is explicit in context
+- normalize new_role to one of OWNER, ADMIN, MEMBER, GUEST, or NONE
+- if the user is removing elevated access without naming a new role, use NONE
+- do not invent entity ids or roles
+- include a short thought describing the change
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+thought: Sarah should become an admin.
+entity_id: 00000000-0000-0000-0000-000000000000
+new_role: ADMIN`;
+
+export const UPDATE_ROLE_TEMPLATE = updateRoleTemplate;
 
 export const updateSettingsTemplate = `# Task: Update settings based on the request.
 

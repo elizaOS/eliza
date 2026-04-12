@@ -715,6 +715,41 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			expect(state.text).toBe("p1_text");
 		});
 
+		it("should continue composing state when a provider throws", async () => {
+			const provider1Get = vi
+				.fn()
+				.mockRejectedValue(new Error("rolodex provider exploded"));
+			const provider2Get = vi.fn().mockResolvedValue({
+				text: "p2_text",
+				values: { p2_val: 2 },
+			});
+			const provider1: Provider = { name: "P1", get: provider1Get };
+			const provider2: Provider = { name: "P2", get: provider2Get };
+
+			runtime.registerProvider(provider1);
+			runtime.registerProvider(provider2);
+
+			const message = createMockMemory(
+				"test message",
+				undefined,
+				undefined,
+				undefined,
+				agentId,
+			);
+			const state = await runtime.composeState(message);
+
+			expect(provider1Get).toHaveBeenCalledTimes(1);
+			expect(provider2Get).toHaveBeenCalledTimes(1);
+			expect(state.text).toBe("p2_text");
+			expect(state.values).toHaveProperty("p2_val", 2);
+			expect(state.text).not.toContain("rolodex provider exploded");
+
+			const providerResults = state.data?.providers as
+				| Record<string, { text?: string }>
+				| undefined;
+			expect(providerResults?.P1?.text ?? "").toBe("");
+		});
+
 		// Add tests for includeList, caching behavior
 	});
 
@@ -804,7 +839,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			expect(params.stream).toBe(true);
 		});
 
-		it("falls back from TEXT_MINI to TEXT_SMALL when no mini handler is registered", async () => {
+		it("falls back from TEXT_NANO to TEXT_SMALL when no nano handler is registered", async () => {
 			const smallHandler = vi.fn().mockResolvedValue("small-response");
 			runtime.registerModel(
 				ModelType.TEXT_SMALL,
@@ -812,22 +847,22 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 				"test-provider",
 			);
 
-			const result = await runtime.useModel(ModelType.TEXT_MINI, {
-				prompt: "mini request",
+			const result = await runtime.useModel(ModelType.TEXT_NANO, {
+				prompt: "nano request",
 			});
 
 			expect(smallHandler).toHaveBeenCalledTimes(1);
 			expect(result).toBe("small-response");
 		});
 
-		it("prefers TEXT_MINI over TEXT_SMALL when RESPONSE_HANDLER falls back", async () => {
-			const miniHandler = vi.fn().mockResolvedValue("mini-response");
+		it("prefers TEXT_NANO over TEXT_SMALL when RESPONSE_HANDLER falls back", async () => {
+			const nanoHandler = vi.fn().mockResolvedValue("nano-response");
 			const smallHandler = vi.fn().mockResolvedValue("small-response");
 
 			runtime.registerModel(
-				ModelType.TEXT_MINI,
-				miniHandler as ModelHandlerFunction,
-				"mini-provider",
+				ModelType.TEXT_NANO,
+				nanoHandler as ModelHandlerFunction,
+				"nano-provider",
 			);
 			runtime.registerModel(
 				ModelType.TEXT_SMALL,
@@ -839,9 +874,9 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 				prompt: "should respond?",
 			});
 
-			expect(miniHandler).toHaveBeenCalledTimes(1);
+			expect(nanoHandler).toHaveBeenCalledTimes(1);
 			expect(smallHandler).not.toHaveBeenCalled();
-			expect(result).toBe("mini-response");
+			expect(result).toBe("nano-response");
 		});
 	});
 
@@ -965,6 +1000,43 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
 			expect(replyWithImageHandler).toHaveBeenCalledTimes(1);
 			expect(replyHandler).not.toHaveBeenCalled();
+		});
+
+		it("does not create a placeholder action memory when the handler returns no text", async () => {
+			const createMemorySpy = vi
+				.spyOn(runtime, "createMemory")
+				.mockResolvedValue(stringToUuid(uuidv4()));
+
+			mockActionHandler.mockResolvedValueOnce({
+				success: true,
+			});
+
+			await runtime.processActions(message, [responseMemory]);
+
+			expect(createMemorySpy).not.toHaveBeenCalled();
+		});
+
+		it("persists trimmed action text when the handler returns a real message", async () => {
+			const createMemorySpy = vi
+				.spyOn(runtime, "createMemory")
+				.mockResolvedValue(stringToUuid(uuidv4()));
+
+			mockActionHandler.mockResolvedValueOnce({
+				success: true,
+				text: "  Action completed successfully.  ",
+			});
+
+			await runtime.processActions(message, [responseMemory]);
+
+			expect(createMemorySpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({
+						text: "Action completed successfully.",
+						source: "action",
+					}),
+				}),
+				"messages",
+			);
 		});
 
 		// "should evict oldest working memory entries when limit exceeded" test removed —
@@ -1176,6 +1248,21 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 				runtime.registerAction(action2);
 				expect(runtime.actions).toContain(action1);
 				expect(runtime.actions).toContain(action2);
+			});
+
+			it("should skip duplicate plugin actions before registerAction", async () => {
+				runtime.registerAction(createMockAction("duplicateAction"));
+				const registerActionSpy = vi.spyOn(runtime, "registerAction");
+
+				await runtime.registerPlugin({
+					name: "duplicate-plugin",
+					actions: [createMockAction("duplicateAction")],
+				});
+
+				expect(
+					runtime.actions.filter((action) => action.name === "duplicateAction"),
+				).toHaveLength(1);
+				expect(registerActionSpy).not.toHaveBeenCalled();
 			});
 		});
 
@@ -1594,7 +1681,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 					settings: {
 						DEFAULT_TEMPERATURE: 0.7,
 						TEXT_SMALL_TEMPERATURE: 0.5,
-						// No specific settings for TEXT_REASONING_SMALL
+						// No specific settings for TEXT_COMPLETION
 					},
 				};
 
@@ -1615,13 +1702,13 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
 				// Register a model type that doesn't have specific configuration support
 				runtime.registerModel(
-					ModelType.TEXT_REASONING_SMALL,
+					ModelType.TEXT_COMPLETION,
 					mockHandler as ModelHandlerFunction,
 					"test-provider",
 				);
 
-				await runtime.useModel(ModelType.TEXT_REASONING_SMALL, {
-					prompt: "test reasoning",
+				await runtime.useModel(ModelType.TEXT_COMPLETION, {
+					prompt: "test completion",
 				});
 
 				// Should fall back to default settings

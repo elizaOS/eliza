@@ -7,9 +7,8 @@
  */
 
 import JSON5 from "json5";
-import { logger } from "../logger.js";
 
-const jsonBlockPattern = /```(?:json|json5)\s*\r?\n([\s\S]*?)\r?\n```/i;
+const jsonBlockPattern = /```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```/i;
 
 /**
  * Extract and parse JSON from text using JSON5 for LLM output tolerance.
@@ -33,11 +32,7 @@ export function extractAndParseJSONObjectFromText(
 	// Use JSON5.parse directly - it already handles unquoted keys, single quotes, trailing commas
 	try {
 		return JSON5.parse(textToParse) as Record<string, unknown>;
-	} catch (err) {
-		logger.warn(
-			{ src: "core:utils:json-llm", err },
-			"Failed to parse text as JSON",
-		);
+	} catch {
 		throw new Error("Failed to parse invalid JSON");
 	}
 }

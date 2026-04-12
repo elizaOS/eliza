@@ -11,7 +11,7 @@ use crate::types::{ActionResult, Memory, State};
 
 use super::Action;
 
-/// Action to update contact information in the rolodex.
+/// Action to update contact information in the relationships.
 pub struct UpdateContactAction;
 
 static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
@@ -39,7 +39,7 @@ impl Action for UpdateContactAction {
     }
 
     async fn validate(&self, runtime: &dyn IAgentRuntime, message: &Memory) -> bool {
-        runtime.get_service("rolodex").is_some() && message.entity_id.is_some()
+        runtime.get_service("relationships").is_some() && message.entity_id.is_some()
     }
 
     async fn handler(
