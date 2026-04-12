@@ -344,6 +344,34 @@ facts[3]{claim,type,in_bio,already_known}:
 		);
 	});
 
+	it("treats missing task_completed as complete when only a reason is present", async () => {
+		const message = createMessage(getMockEntityId(0));
+		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;
+
+		useModel.mockResolvedValue(`<response>
+			<thought>All good</thought>
+			<task_completion_reason>The user seems satisfied.</task_completion_reason>
+			<facts>
+				<fact>
+					<claim>Bob is a builder</claim>
+					<type>fact</type>
+					<in_bio>false</in_bio>
+					<already_known>false</already_known>
+				</fact>
+			</facts>
+		</response>`);
+
+		await reflectionEvaluator.handler(runtime, message);
+
+		expect(vi.mocked(runtime.setCache)).toHaveBeenCalledWith(
+			expect.stringContaining("reflection-task-completion"),
+			expect.objectContaining({
+				assessed: true,
+				completed: true,
+			}),
+		);
+	});
+
 	it("stores task completion assessments in memories and cache", async () => {
 		const message = createMessage(getMockEntityId(0));
 		const useModel = runtime.useModel as unknown as ReturnType<typeof vi.fn>;

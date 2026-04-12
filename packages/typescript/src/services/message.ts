@@ -250,6 +250,200 @@ export function extractStandaloneActionParams(
 	return fragments.join("\n");
 }
 
+function stripBracketedControlToken(raw: string): string {
+	const t = raw.trim();
+	const m = /^\[\s*([A-Z0-9_-]+)\s*\]$/i.exec(t);
+	if (m) return m[1].toUpperCase();
+	return t;
+}
+
+function appendUserTextToParsedXml(
+	parsedXml: Record<string, unknown>,
+	text: string,
+): void {
+	const inner = text.trim();
+	if (!inner) return;
+	const existing =
+		typeof parsedXml.text === "string" ? parsedXml.text.trim() : "";
+	if (!existing) {
+		parsedXml.text = inner;
+		return;
+	}
+	if (existing === inner) return;
+	if (existing.includes(inner)) return;
+	if (inner.includes(existing)) {
+		parsedXml.text = inner;
+		return;
+	}
+	const probe = inner.slice(0, Math.min(80, inner.length));
+	if (probe && !existing.includes(probe)) {
+		parsedXml.text = `${existing} ${inner}`.trim();
+	}
+}
+
+/**
+ * Merge REPLY-visible text from `<params><text>` or `<reply>` into `parsedXml.text`.
+ * When the model duplicates drafts in top-level `text` and the structured body,
+ * prefer the structured body — never concatenate two unrelated full replies.
+ */
+function mergeStructuredReplyBodyIntoParsedXml(
+	parsedXml: Record<string, unknown>,
+	innerRaw: string,
+): void {
+	const inner = innerRaw.trim();
+	if (!inner) return;
+	const existing =
+		typeof parsedXml.text === "string" ? parsedXml.text.trim() : "";
+	if (!existing) {
+		parsedXml.text = inner;
+		return;
+	}
+	if (existing === inner || existing.includes(inner)) return;
+	if (inner.includes(existing)) {
+		parsedXml.text = inner;
+		return;
+	}
+	parsedXml.text = inner;
+}
+
+function mergeActionEntriesParamsIntoParsedXml(
+	actionEntries: Array<{ name: string; paramsXml?: string }>,
+	parsedXml: Record<string, unknown>,
+): void {
+	const inlineParamsXml = actionEntries
+		.filter((entry) => entry.paramsXml)
+		.map(
+			(entry) =>
+				`<${entry.name.toUpperCase()}>${entry.paramsXml}</${entry.name.toUpperCase()}>`,
+		)
+		.join("\n");
+	if (inlineParamsXml && (!parsedXml.params || parsedXml.params === "")) {
+		parsedXml.params = inlineParamsXml;
+	}
+	for (const entry of actionEntries) {
+		if (
+			(entry.name === "REPLY" || entry.name === "RESPOND") &&
+			entry.paramsXml
+		) {
+			const textM = entry.paramsXml.match(/<text>([\s\S]*?)<\/text>/i);
+			if (textM) mergeStructuredReplyBodyIntoParsedXml(parsedXml, textM[1]);
+		}
+	}
+}
+
+/**
+ * Parse `<action>...</action>` blocks including bare `REPLY` / `STOP` bodies
+ * (no `<name>`) and `<params>...</params>` immediately following `</action>`.
+ */
+export function parseActionBlocksFromXml(actionsXml: string): Array<{
+	name: string;
+	paramsXml?: string;
+}> {
+	const entries: Array<{ name: string; paramsXml?: string }> = [];
+	for (const match of actionsXml.matchAll(/<action[^>]*>([\s\S]*?)<\/action>/gi)) {
+		const inner = match[1].trim();
+		let name: string | undefined;
+		const nameTag = inner.match(/<name>([\s\S]*?)<\/name>/i);
+		if (nameTag) {
+			name = nameTag[1].trim().toUpperCase();
+		} else {
+			const bare = inner.match(/^\s*([A-Za-z][A-Za-z0-9_]*)\s*$/i);
+			if (bare) name = bare[1].toUpperCase();
+			else {
+				const head = inner.match(/^\s*([A-Za-z][A-Za-z0-9_]*)\b/i);
+				if (head) name = head[1].toUpperCase();
+			}
+		}
+		const paramsMatch = inner.match(/<params>([\s\S]*?)<\/params>/i);
+		const paramsXml = paramsMatch ? paramsMatch[1].trim() : undefined;
+		if (name) entries.push({ name, paramsXml });
+	}
+	const trailingParams = [
+		...actionsXml.matchAll(/<\/action>\s*<params>([\s\S]*?)<\/params>/gi),
+	];
+	for (let i = 0; i < entries.length; i++) {
+		if (!entries[i].paramsXml && trailingParams[i]) {
+			entries[i].paramsXml = trailingParams[i][1].trim();
+		}
+	}
+	return entries;
+}
+
+/**
+ * When the model puts `<reply>...</reply>` or full `<action>...</action>` blobs
+ * inside `actions` (string or array entries), coerce to real action names and
+ * lift user text into `parsedXml.text` / `parsedXml.params`.
+ */
+function tryCoerceXmlishActionsField(
+	raw: string,
+	parsedXml: Record<string, unknown>,
+): string[] | null {
+	const s = raw.trim();
+	if (!s.includes("<")) return null;
+
+	if (/<reply[\s>]/i.test(s) && /<\/reply>/i.test(s)) {
+		const m = s.match(/<reply[^>]*>([\s\S]*?)<\/reply>/i);
+		if (m) {
+			mergeStructuredReplyBodyIntoParsedXml(parsedXml, m[1]);
+			return ["REPLY"];
+		}
+	}
+
+	if (/<\/?action/i.test(s)) {
+		const actionEntries = parseActionBlocksFromXml(s);
+		if (actionEntries.length > 0) {
+			mergeActionEntriesParamsIntoParsedXml(actionEntries, parsedXml);
+			return actionEntries.map((e) => e.name);
+		}
+	}
+
+	return null;
+}
+
+function dedupeConsecutiveActionNames(actions: string[]): string[] {
+	const out: string[] = [];
+	for (const a of actions) {
+		const up = a.toUpperCase();
+		if (out.length && out[out.length - 1].toUpperCase() === up) continue;
+		out.push(a);
+	}
+	return out;
+}
+
+export function coercePlannerActionTokenList(
+	rawActions: string[],
+	parsedXml: Record<string, unknown>,
+	runtime: IAgentRuntime,
+): string[] {
+	const out: string[] = [];
+	for (const raw of rawActions) {
+		const pre = String(raw).trim();
+		if (!pre) continue;
+		if (pre.includes("<")) {
+			const expanded = tryCoerceXmlishActionsField(pre, parsedXml);
+			if (expanded?.length) {
+				for (const x of expanded) {
+					out.push(stripBracketedControlToken(x));
+				}
+				continue;
+			}
+			const salvageText = pre.match(/<text>([\s\S]*?)<\/text>/i);
+			if (salvageText?.[1]?.trim()) {
+				appendUserTextToParsedXml(parsedXml, salvageText[1]);
+				out.push("REPLY");
+				continue;
+			}
+			runtime.logger.warn(
+				{ src: "service:message", preview: pre.slice(0, 200) },
+				"Planner actions field contained XML that could not be parsed; dropping entry",
+			);
+			continue;
+		}
+		out.push(stripBracketedControlToken(pre));
+	}
+	return dedupeConsecutiveActionNames(out);
+}
+
 function normalizePlannerActions(
 	parsedXml: Record<string, unknown>,
 	runtime: IAgentRuntime,
@@ -257,39 +451,10 @@ function normalizePlannerActions(
 	const normalizedActions = (() => {
 		if (typeof parsedXml.actions === "string") {
 			const actionsXml = parsedXml.actions;
-			if (actionsXml.includes("<action>") || actionsXml.includes("<action ")) {
-				const actionEntries: Array<{
-					name: string;
-					paramsXml?: string;
-				}> = [];
-				for (const match of actionsXml.matchAll(
-					/<action>([\s\S]*?)<\/action>/g,
-				)) {
-					const inner = match[1];
-					const nameMatch = inner.match(/<name>([\s\S]*?)<\/name>/);
-					const paramsMatch = inner.match(/<params>([\s\S]*?)<\/params>/);
-					if (nameMatch) {
-						const name = nameMatch[1].trim();
-						const paramsXml = paramsMatch ? paramsMatch[1].trim() : undefined;
-						if (name) actionEntries.push({ name, paramsXml });
-					}
-				}
-
+			if (/<action[\s>]/i.test(actionsXml)) {
+				const actionEntries = parseActionBlocksFromXml(actionsXml);
 				if (actionEntries.length > 0) {
-					const inlineParamsXml = actionEntries
-						.filter((entry) => entry.paramsXml)
-						.map(
-							(entry) =>
-								`<${entry.name.toUpperCase()}>${entry.paramsXml}</${entry.name.toUpperCase()}>`,
-						)
-						.join("\n");
-					if (
-						inlineParamsXml &&
-						(!parsedXml.params || parsedXml.params === "")
-					) {
-						parsedXml.params = inlineParamsXml;
-					}
-
+					mergeActionEntriesParamsIntoParsedXml(actionEntries, parsedXml);
 					return actionEntries.map((entry) => entry.name);
 				}
 			}
@@ -319,10 +484,16 @@ function normalizePlannerActions(
 		return [];
 	})();
 
+	const coerced = coercePlannerActionTokenList(
+		normalizedActions,
+		parsedXml,
+		runtime,
+	);
+
 	const finalActions =
-		!runtime.isActionPlanningEnabled() && normalizedActions.length > 1
-			? [normalizedActions[0]]
-			: normalizedActions;
+		!runtime.isActionPlanningEnabled() && coerced.length > 1
+			? [coerced[0]]
+			: coerced;
 
 	if (finalActions.length > 0) {
 		return finalActions;
@@ -331,6 +502,132 @@ function normalizePlannerActions(
 	const replyText =
 		typeof parsedXml.text === "string" ? parsedXml.text.trim() : "";
 	return replyText.length > 0 ? ["REPLY"] : ["IGNORE"];
+}
+
+/**
+ * Pull an `<actions>...</actions>` fragment from partially malformed XML.
+ * If `</actions>` is missing (truncated preview), returns from `<actions` onward.
+ */
+function extractLooseActionsXml(s: string): string | undefined {
+	const idx = s.search(/<actions\b/i);
+	if (idx === -1) return undefined;
+	const slice = s.slice(idx);
+	const end = slice.search(/<\/actions>/i);
+	if (end === -1) return slice.trim();
+	const closeTag = slice.slice(end).match(/^<\/actions>/i)?.[0];
+	const closeLen = closeTag?.length ?? "</actions>".length;
+	return slice.slice(0, end + closeLen).trim();
+}
+
+/**
+ * First balanced `<response>...</response>` slice whose inner body is plain text
+ * (no XML child tags). Handles models that put the reply prose directly inside
+ * `<response>` without `<text>...</text>`.
+ */
+function trySalvagePlainProseInsideFirstResponseBlock(raw: string): string | null {
+	const m = raw.match(/<response[^>]*>([\s\S]*?)<\/response>/i);
+	if (!m?.[1]) return null;
+	const inner = m[1].trim();
+	if (!inner) return null;
+	if (/<[a-z_][\w:-]*\b/i.test(inner)) return null;
+	return inner;
+}
+
+/**
+ * Whether to run {@link DefaultMessageService.runReflectionTaskContinuation} when
+ * reflection assessed the task incomplete. Skips for **simple** turns (direct
+ * REPLY, no `processActions`) with **no** action results on this user message, so
+ * casual Q&A does not get a second LLM + second `callback` that duplicates the first reply.
+ */
+export function shouldApplyReflectionTaskContinuation(
+	runtime: IAgentRuntime,
+	message: Memory,
+	mode: StrategyMode,
+): boolean {
+	if (mode !== "simple") return true;
+	const n = message.id ? runtime.getActionResults(message.id).length : 0;
+	return n > 0;
+}
+
+/**
+ * Recover user-visible planner output when `dynamicPromptExecFromState` returns
+ * null after retries (e.g. broken `<response>` nesting, stray tags, validation
+ * codes wrong) but the model still emitted usable `<text>` / `<actions>` content.
+ *
+ * Uses {@link StructuredOutputFailure.responsePreview} (see runtime DPE limit),
+ * which is sufficient for most single-shot and continuation replies.
+ */
+export function salvagePlannerContentFromStructuredFailure(
+	failure: StructuredOutputFailure | null | undefined,
+	runtime: IAgentRuntime,
+): Content | null {
+	const raw = failure?.responsePreview?.trim();
+	if (!raw) return null;
+
+	let parsedXml = parseKeyValueXml<Record<string, unknown>>(raw);
+	if (!parsedXml) parsedXml = {};
+
+	const thoughtMatch = raw.match(/<thought[^>]*>([\s\S]*?)<\/thought>/i);
+	if (thoughtMatch?.[1]?.trim()) {
+		const fromParse =
+			typeof parsedXml.thought === "string" ? parsedXml.thought.trim() : "";
+		if (!fromParse) parsedXml.thought = thoughtMatch[1].trim();
+	}
+
+	let bestText = "";
+	for (const m of raw.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/gi)) {
+		const t = m[1]?.trim() ?? "";
+		if (t.length > bestText.length) bestText = t;
+	}
+	if (bestText) {
+		const fromParse =
+			typeof parsedXml.text === "string" ? parsedXml.text.trim() : "";
+		if (!fromParse || bestText.length >= fromParse.length) {
+			parsedXml.text = bestText;
+		}
+	}
+
+	const textSoFar =
+		typeof parsedXml.text === "string" ? parsedXml.text.trim() : "";
+	if (!bestText && !textSoFar) {
+		const prose = trySalvagePlainProseInsideFirstResponseBlock(raw);
+		if (prose) parsedXml.text = prose;
+	}
+
+	const looseActions = extractLooseActionsXml(raw);
+	if (
+		looseActions &&
+		(typeof parsedXml.actions !== "string" || !String(parsedXml.actions).trim())
+	) {
+		parsedXml.actions = looseActions;
+	}
+
+	const simpleMatch = raw.match(/<simple[^>]*>([\s\S]*?)<\/simple>/i);
+	if (simpleMatch?.[1]?.trim() && parsedXml.simple === undefined) {
+		parsedXml.simple = simpleMatch[1].trim();
+	}
+
+	const finalActions = normalizePlannerActions(parsedXml, runtime);
+	const text = String(parsedXml.text ?? "").trim();
+	const first = finalActions[0];
+	const firstUp = typeof first === "string" ? first.toUpperCase() : "";
+
+	if (firstUp === "REPLY" && !text) return null;
+
+	const meaningfulAction = finalActions.some((a) => {
+		const u = typeof a === "string" ? a.toUpperCase() : "";
+		return u && u !== "IGNORE";
+	});
+	if (!text && !meaningfulAction) return null;
+
+	return {
+		...parsedXml,
+		thought: String(parsedXml.thought ?? ""),
+		actions: finalActions,
+		providers: [],
+		text: String(parsedXml.text ?? ""),
+		simple: parsedXml.simple === true || parsedXml.simple === "true",
+	};
 }
 
 /**
@@ -465,6 +762,12 @@ type ResolvedMessageOptions = {
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
 	shouldRespondModel: ShouldRespondModelType;
+};
+
+/** Mutable: correlates user-visible HandlerCallback emissions for one handleMessage turn */
+type ReplyEmitTrace = {
+	phase: string;
+	postActionLoopIndex?: number;
 };
 
 function normalizeShouldRespondModelType(
@@ -1203,6 +1506,11 @@ if (
 					shouldRespondModel: resolvedShouldRespondModel,
 				};
 
+				const replyEmitTrace: ReplyEmitTrace = { phase: "handleMessage:start" };
+
+				// Count HandlerCallback invocations that carry non-empty user text
+				// (see callbackTextPreview). Warn when count > 1; emitTrace on the warn
+				// reflects the last pipeline phase (replyEmitTrace).
 				let visibleCallbackCount = 0;
 				let firstVisibleCallbackPreview = "";
 				const instrumentedCallback: HandlerCallback | undefined = callback
@@ -1210,25 +1518,50 @@ if (
 							const preview = callbackTextPreview(content);
 							if (preview) {
 								visibleCallbackCount += 1;
+								const actionLabel =
+									typeof (content as Record<string, unknown>)?.action ===
+									"string"
+										? String((content as Record<string, unknown>).action)
+										: actionName;
+								const sourceLabel =
+									typeof content.source === "string"
+										? content.source
+										: undefined;
+								const thought =
+									typeof content.thought === "string"
+										? content.thought.trim()
+										: "";
+								const actionsList = Array.isArray(content.actions)
+									? content.actions.filter(
+											(a): a is string => typeof a === "string",
+										)
+									: [];
+
+								const visibleDebugBase = {
+									src: "service:message" as const,
+									agentId: runtime.agentId,
+									messageId: message.id,
+									roomId: message.roomId,
+									callbackCount: visibleCallbackCount,
+									previewLength: preview.length,
+									preview,
+									action: actionLabel,
+									source: sourceLabel,
+									hasThought: thought.length > 0,
+									thoughtPreview:
+										thought.length > 0 ? thought.slice(0, 120) : undefined,
+									actions: actionsList.length > 0 ? actionsList : undefined,
+									continueAfterActions: opts.continueAfterActions,
+									useMultiStep: opts.useMultiStep,
+									emitTrace: { ...replyEmitTrace },
+								};
+
 								if (visibleCallbackCount === 1) {
 									firstVisibleCallbackPreview = preview;
 								} else {
 									runtime.logger.warn(
 										{
-											src: "service:message",
-											agentId: runtime.agentId,
-											messageId: message.id,
-											roomId: message.roomId,
-											callbackCount: visibleCallbackCount,
-											action:
-												typeof (content as Record<string, unknown>)?.action ===
-												"string"
-													? String((content as Record<string, unknown>).action)
-													: actionName,
-											source:
-												typeof content.source === "string"
-													? content.source
-													: undefined,
+											...visibleDebugBase,
 											firstPreview: firstVisibleCallbackPreview,
 											currentPreview: preview,
 										},
@@ -1457,6 +1790,7 @@ if (
 								runId,
 								startTime,
 								opts,
+								replyEmitTrace,
 							),
 					);
 
@@ -1563,6 +1897,7 @@ if (
 		runId: UUID,
 		startTime: number,
 		opts: ResolvedMessageOptions,
+		replyEmitTrace: ReplyEmitTrace,
 	): Promise<MessageProcessingResult> {
 		const agentResponses = latestResponseIds.get(runtime.agentId);
 		if (!agentResponses) throw new Error("Agent responses map not found");
@@ -1949,6 +2284,10 @@ if (
 				);
 			}
 
+			replyEmitTrace.phase = opts.useMultiStep
+				? "strategy:multistep"
+				: "strategy:single-shot";
+
 			const result = opts.useMultiStep
 				? await this.runMultiStepCore(
 						runtime,
@@ -1961,6 +2300,7 @@ if (
 						{
 							precomposedState: executionState,
 						},
+						replyEmitTrace,
 					)
 				: await this.runSingleShotCore(
 						runtime,
@@ -2049,6 +2389,7 @@ if (
 						);
 					}
 					if (callback) {
+						replyEmitTrace.phase = "primary:simple-direct-callback";
 						// Redact any secrets from response content before sending
 						if (responseContent.text) {
 							responseContent.text = runtime.redactSecrets(
@@ -2058,16 +2399,13 @@ if (
 						await callback(responseContent);
 					}
 				} else if (mode === "actions") {
+					replyEmitTrace.phase = "primary:processActions";
 					// Pass onStreamChunk to processActions so each action can manage its own streaming context
 					await runtime.processActions(
 						message,
 						responseMessages,
 						state,
 						async (content) => {
-							runtime.logger.debug(
-								{ src: "service:message", content },
-								"Action callback",
-							);
 							if (responseContent) {
 								responseContent.actionCallbacks = content;
 							}
@@ -2079,12 +2417,26 @@ if (
 						{ onStreamChunk: opts.onStreamChunk },
 					);
 
+					const postActionGate = {
+						continueAfterActions: opts.continueAfterActions,
+						hasMessageId: !!message.id,
+						shouldContinue: shouldContinueAfterActions(responseContent),
+						suppresses: suppressesPostActionContinuation(
+							runtime,
+							responseContent,
+						),
+						actionResultsCount: message.id
+							? runtime.getActionResults(message.id).length
+							: 0,
+					};
+
 					if (
 						opts.continueAfterActions &&
 						message.id &&
-						shouldContinueAfterActions(responseContent) &&
-						!suppressesPostActionContinuation(runtime, responseContent)
+						postActionGate.shouldContinue &&
+						!postActionGate.suppresses
 					) {
+						replyEmitTrace.phase = "post-action:enter";
 						const continuation = await this.runPostActionContinuation(
 							runtime,
 							message,
@@ -2092,6 +2444,7 @@ if (
 							callback,
 							opts,
 							runtime.getActionResults(message.id),
+							replyEmitTrace,
 						);
 						if (continuation.responseMessages.length > 0) {
 							responseMessages = [
@@ -2105,6 +2458,17 @@ if (
 						}
 						state = continuation.state;
 					}
+				} else if (mode === "none" && callback && responseContent) {
+					// STOP (and similar) returns mode "none" from runSingleShotCore so
+					// processActions is skipped — still notify the client callback or the
+					// channel never shows the final assistant turn (e.g. farewell text).
+					replyEmitTrace.phase = "primary:none-terminal-callback";
+					if (responseContent.text) {
+						responseContent.text = runtime.redactSecrets(
+							responseContent.text,
+						);
+					}
+					await callback(responseContent);
 				}
 			}
 		} else {
@@ -2171,6 +2535,7 @@ if (
 
 			// Call the callback with the terminal content
 			if (callback) {
+				replyEmitTrace.phase = "terminal:ignore-or-stop-callback";
 				await callback(terminalContent);
 			}
 
@@ -2209,10 +2574,7 @@ if (
 				state,
 				shouldRespondToMessage && !isStopResponse(responseContent),
 				async (content) => {
-					runtime.logger.debug(
-						{ src: "service:message", content },
-						"Evaluate callback",
-					);
+					replyEmitTrace.phase = "evaluator:callback";
 					if (responseContent) {
 						responseContent.evalCallbacks = content;
 					}
@@ -2229,6 +2591,7 @@ if (
 
 		// Run evaluators with timeout to prevent slow evaluators from blocking
 		try {
+			replyEmitTrace.phase = "evaluator:batch-start";
 			await Promise.race([
 				runEvaluate(),
 				new Promise<void>((_, reject) =>
@@ -2252,25 +2615,40 @@ if (
 			await runtime.deleteCache(getTaskCompletionCacheKey(message.id));
 
 			if (taskCompletion?.assessed && !taskCompletion.completed) {
-				const continuation = await this.runReflectionTaskContinuation(
-					runtime,
-					message,
-					state,
-					callback,
-					opts,
-					taskCompletion,
-				);
-				if (continuation.responseMessages.length > 0) {
-					responseMessages = [
-						...responseMessages,
-						...continuation.responseMessages,
-					];
+				if (
+					!shouldApplyReflectionTaskContinuation(runtime, message, mode)
+				) {
+					runtime.logger.debug(
+						{
+							src: "service:message",
+							messageId: message.id,
+							mode,
+						},
+						"Skipping reflection task continuation: simple turn with no action results on this message",
+					);
+				} else {
+					replyEmitTrace.phase = "reflection:task-incomplete";
+					const continuation = await this.runReflectionTaskContinuation(
+						runtime,
+						message,
+						state,
+						callback,
+						opts,
+						taskCompletion,
+						replyEmitTrace,
+					);
+					if (continuation.responseMessages.length > 0) {
+						responseMessages = [
+							...responseMessages,
+							...continuation.responseMessages,
+						];
+					}
+					if (continuation.responseContent) {
+						responseContent = continuation.responseContent;
+						mode = continuation.mode;
+					}
+					state = continuation.state;
 				}
-				if (continuation.responseContent) {
-					responseContent = continuation.responseContent;
-					mode = continuation.mode;
-				}
-				state = continuation.state;
 			}
 		}
 
@@ -2818,6 +3196,7 @@ if (
 		callback: HandlerCallback | undefined,
 		opts: ResolvedMessageOptions,
 		initialActionResults: ActionResult[],
+		replyEmitTrace: ReplyEmitTrace,
 	): Promise<StrategyResult> {
 		const contextRoutingStateValues = {
 			[AVAILABLE_CONTEXTS_STATE_KEY]:
@@ -2847,6 +3226,9 @@ if (
 			iterationCount < opts.maxMultiStepIterations;
 			iterationCount++
 		) {
+			replyEmitTrace.postActionLoopIndex = iterationCount;
+			replyEmitTrace.phase = `post-action:iter-${iterationCount}:compose+llm`;
+
 			accumulatedState = withTaskCompletion(
 				withActionResults(
 					withContextRoutingValues(
@@ -2881,6 +3263,8 @@ if (
 				);
 				break;
 			}
+
+			replyEmitTrace.phase = `post-action:iter-${iterationCount}:after-llm`;
 
 			responseContent = continuation.responseContent;
 			if (message.id) {
@@ -2923,6 +3307,7 @@ if (
 
 			if (continuation.mode === "simple") {
 				if (callback) {
+					replyEmitTrace.phase = `post-action:iter-${iterationCount}:simple-callback`;
 					if (responseContent.text) {
 						responseContent.text = runtime.redactSecrets(responseContent.text);
 					}
@@ -2935,15 +3320,13 @@ if (
 				break;
 			}
 
+			replyEmitTrace.phase = `post-action:iter-${iterationCount}:processActions`;
+
 			await runtime.processActions(
 				message,
 				continuation.responseMessages,
 				accumulatedState,
 				async (content) => {
-					runtime.logger.debug(
-						{ src: "service:message", content },
-						"Post-action callback",
-					);
 					if (responseContent) {
 						responseContent.actionCallbacks = content;
 					}
@@ -2993,6 +3376,7 @@ if (
 		callback: HandlerCallback | undefined,
 		opts: ResolvedMessageOptions,
 		taskCompletion: TaskCompletionAssessment,
+		replyEmitTrace: ReplyEmitTrace,
 	): Promise<StrategyResult> {
 		const contextRoutingStateValues = {
 			[AVAILABLE_CONTEXTS_STATE_KEY]:
@@ -3002,6 +3386,8 @@ if (
 		const initialActionResults = message.id
 			? runtime.getActionResults(message.id)
 			: [];
+
+		replyEmitTrace.phase = "reflection:before-llm";
 		let accumulatedState = withTaskCompletion(
 			withActionResults(
 				withContextRoutingValues(
@@ -3037,6 +3423,8 @@ if (
 				mode: "none",
 			};
 		}
+
+		replyEmitTrace.phase = "reflection:after-llm";
 
 		const responseMessages: Memory[] = [];
 		let responseContent = continuation.responseContent;
@@ -3082,6 +3470,7 @@ if (
 
 		if (continuation.mode === "simple") {
 			if (callback) {
+				replyEmitTrace.phase = "reflection:simple-callback";
 				if (responseContent.text) {
 					responseContent.text = runtime.redactSecrets(responseContent.text);
 				}
@@ -3105,15 +3494,13 @@ if (
 			};
 		}
 
+		replyEmitTrace.phase = "reflection:processActions";
+
 		await runtime.processActions(
 			message,
 			continuation.responseMessages,
 			accumulatedState,
 			async (content) => {
-				runtime.logger.debug(
-					{ src: "service:message", content },
-					"Reflection continuation callback",
-				);
 				responseContent.actionCallbacks = content;
 				if (callback) {
 					return callback(content);
@@ -3141,6 +3528,7 @@ if (
 			shouldContinueAfterActions(responseContent) &&
 			!suppressesPostActionContinuation(runtime, responseContent)
 		) {
+			replyEmitTrace.phase = "reflection:chain-post-action";
 			return await this.runPostActionContinuation(
 				runtime,
 				message,
@@ -3148,6 +3536,7 @@ if (
 				callback,
 				opts,
 				latestActionResults,
+				replyEmitTrace,
 			);
 		}
 
@@ -3366,13 +3755,31 @@ Output ONLY the continuation, starting immediately after the last character abov
 					{ src: "service:message" },
 					"dynamicPromptExecFromState returned null",
 				);
-				return await this.buildStructuredFailureReply(
+				const structuredFailure = getStructuredOutputFailure(state);
+				const salvaged = salvagePlannerContentFromStructuredFailure(
+					structuredFailure,
 					runtime,
-					message,
-					state,
-					responseId,
-					overrides?.failureStage ?? "preparing the reply",
 				);
+				if (salvaged) {
+					streamingExtractor?.markComplete();
+					runtime.logger.info(
+						{
+							src: "service:message",
+							failureKind: structuredFailure?.kind,
+							previewLen: structuredFailure?.responsePreview?.length ?? 0,
+						},
+						"Salvaged planner content from malformed structured output preview",
+					);
+					responseContent = salvaged;
+				} else {
+					return await this.buildStructuredFailureReply(
+						runtime,
+						message,
+						state,
+						responseId,
+						overrides?.failureStage ?? "preparing the reply",
+					);
+				}
 			}
 		}
 
@@ -3718,6 +4125,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 		overrides?: {
 			precomposedState?: State;
 		},
+		replyEmitTrace?: ReplyEmitTrace,
 	): Promise<StrategyResult> {
 		const contextRoutingStateValues = {
 			[AVAILABLE_CONTEXTS_STATE_KEY]:
@@ -3732,6 +4140,9 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 		while (iterationCount < opts.maxMultiStepIterations) {
 			iterationCount++;
+			if (replyEmitTrace) {
+				replyEmitTrace.phase = `multistep:iter-${iterationCount - 1}`;
+			}
 			runtime.logger.debug(
 				{
 					src: "service:message",

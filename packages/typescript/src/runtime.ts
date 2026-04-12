@@ -2116,7 +2116,10 @@ export class AgentRuntime implements IAgentRuntime {
 			let accumulatedState = state;
 
 			function normalizeAction(actionString: string) {
-				return actionString.toLowerCase().replace(/_/g, "");
+				let s = String(actionString).trim();
+				const bracket = /^\[\s*([^\]]+?)\s*\]$/.exec(s);
+				if (bracket) s = bracket[1].trim();
+				return s.toLowerCase().replace(/_/g, "");
 			}
 			const normalizedActions = this.actions.map((action) => {
 				const normalizedName = normalizeAction(action.name);
@@ -2173,8 +2176,10 @@ export class AgentRuntime implements IAgentRuntime {
 				// 1. Exact match on normalized name
 				let action = actionByName.get(normalizedResponseAction);
 
-				// 2. Substring inclusion (catches truncations / prefixes)
-				if (!action) {
+				// 2. Substring inclusion (catches truncations / prefixes).
+				// Skip when the model emitted XML/markup as an "action" — otherwise
+				// `<reply>...reply...</reply>` falsely matches the REPLY action name.
+				if (!action && !responseAction.includes("<")) {
 					for (const entry of normalizedActions) {
 						if (
 							entry.normalizedName.includes(normalizedResponseAction) ||
@@ -2207,11 +2212,13 @@ export class AgentRuntime implements IAgentRuntime {
 							break;
 						}
 
-						const fuzzySimileMatch = entry.normalizedSimiles.find(
-							(simile) =>
-								simile.includes(normalizedResponseAction) ||
-								normalizedResponseAction.includes(simile),
-						);
+						const fuzzySimileMatch = !responseAction.includes("<")
+							? entry.normalizedSimiles.find(
+									(simile) =>
+										simile.includes(normalizedResponseAction) ||
+										normalizedResponseAction.includes(simile),
+								)
+							: undefined;
 
 						if (fuzzySimileMatch) {
 							action = entry.action;
@@ -2230,7 +2237,11 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 
 				// 4. Edit-distance fallback for single-char typos (e.g. REPLLY → REPLY)
-				if (!action) {
+				if (
+					!action &&
+					!responseAction.includes("<") &&
+					normalizedResponseAction.length <= 48
+				) {
 					const editMatch = findClosestActionByEditDistance(
 						normalizedResponseAction,
 						normalizedActions,

@@ -522,11 +522,14 @@ function normalizeTaskCompletion(
 		: isRecord(reflection.taskCompletion)
 			? reflection.taskCompletion
 			: null;
+	// Default to complete when the model omits an explicit boolean. Otherwise a
+	// prose-only `task_completion_reason` (no `task_completed`) was treated as
+	// incomplete and could trigger an extra continuation LLM + callback per turn.
 	const completed =
 		parseBooleanLike(reflection.task_completed) ??
 		parseBooleanLike(reflection.taskCompleted) ??
 		parseBooleanLike(nestedTask?.completed) ??
-		false;
+		true;
 	const reasonCandidate =
 		typeof reflection.task_completion_reason === "string"
 			? reflection.task_completion_reason
