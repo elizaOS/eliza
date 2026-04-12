@@ -60,55 +60,104 @@ export class AxBootstrapFewShotAdapter implements OptimizerAdapter {
 		const ax = await import("@ax-llm/ax").catch(() => null);
 		if (!ax) throw new Error("@ax-llm/ax not available");
 
-		// Build training examples from traces (score all before truncating)
+		// Check if AxBootstrapFewShot optimizer is available
+		const AxBootstrapFewShot = ax.AxBootstrapFewShot;
+		if (!AxBootstrapFewShot) {
+			throw new Error("AxBootstrapFewShot not available in @ax-llm/ax");
+		}
+
+		// Build training examples from traces
 		const examples = buildTrainingExamples(config.traces);
 		if (examples.length === 0) {
 			throw new Error("No successful traces available for BootstrapFewShot");
 		}
 
-		// Score all examples using the metric function
-		const scoredExamples = await Promise.all(
-			examples.map(async (ex) => {
-				// Find the matching trace to compute score
-				const traceId = ex._traceId as string | undefined;
-				const trace = config.traces.find((t) => t.id === traceId);
-				const score = trace ? config.metricFn(trace) : 0.5;
-				return { example: ex, score };
-			}),
-		);
-
-		// Rank by score first, then truncate to maxExamples for evaluation
-		const rankedCandidates = scoredExamples
-			.filter((e) => e.score >= 0.5)
-			.sort((a, b) => b.score - a.score)
-			.slice(0, this.maxExamples);
-
-		// Select top demos from the ranked candidates
-		const topDemos = rankedCandidates
-			.slice(0, this.maxDemos)
-			.map((e) => e.example);
-
-		if (topDemos.length === 0) {
-			return { score: 0, adopted: false, stats: { demoCount: 0 } };
-		}
-
-		// Serialize demos as formatted string
-		const demoStr = formatDemos(topDemos, config.schema);
-		const avgScore =
-			rankedCandidates.length > 0
-				? rankedCandidates.reduce((s, e) => s + e.score, 0) / rankedCandidates.length
-				: 0;
-
-		return {
-			demos: demoStr,
-			score: avgScore,
-			stats: {
-				demoCount: topDemos.length,
-				examplesEvaluated: examples.length,
-				candidatesRanked: rankedCandidates.length,
-				avgScore,
-			},
+		// Create metric function for Ax optimizer
+		const metricFn = (args: { prediction: unknown; example: Record<string, unknown> }) => {
+			const traceId = args.example._traceId as string | undefined;
+			const trace = config.traces.find((t) => t.id === traceId);
+			return trace ? config.metricFn(trace) : 0.5;
 		};
+
+		// Instantiate and run the Ax BootstrapFewShot optimizer
+		const optimizer = new AxBootstrapFewShot({
+			maxRounds: this.maxRounds,
+			maxDemos: this.maxDemos,
+			maxExamples: this.maxExamples,
+		});
+
+		try {
+			// Run the optimizer with examples and metric
+			const result = await optimizer.compile({
+				examples: examples.slice(0, this.maxExamples),
+				metric: metricFn,
+			});
+
+			// Extract demos from optimizer result
+			const demos = result?.demos ?? [];
+			if (demos.length === 0) {
+				return { score: 0, adopted: false, stats: { demoCount: 0, axOptimizer: true } };
+			}
+
+			// Format demos for output
+			const demoStr = formatDemos(demos, config.schema);
+			const avgScore = result?.score ?? 0;
+
+			return {
+				demos: demoStr,
+				score: avgScore,
+				adopted: true,
+				stats: {
+					demoCount: demos.length,
+					examplesEvaluated: examples.length,
+					axOptimizer: true,
+				},
+			};
+		} catch (optimizerError) {
+			// If Ax optimizer fails, fall back to heuristic selection
+			// but still use the Ax-scored examples
+			const scoredExamples = await Promise.all(
+				examples.map(async (ex) => {
+					const traceId = ex._traceId as string | undefined;
+					const trace = config.traces.find((t) => t.id === traceId);
+					const score = trace ? config.metricFn(trace) : 0.5;
+					return { example: ex, score };
+				}),
+			);
+
+			const rankedCandidates = scoredExamples
+				.filter((e) => e.score >= 0.5)
+				.sort((a, b) => b.score - a.score)
+				.slice(0, this.maxExamples);
+
+			const topDemos = rankedCandidates
+				.slice(0, this.maxDemos)
+				.map((e) => e.example);
+
+			if (topDemos.length === 0) {
+				return { score: 0, adopted: false, stats: { demoCount: 0, axFallback: true } };
+			}
+
+			const demoStr = formatDemos(topDemos, config.schema);
+			const avgScore =
+				rankedCandidates.length > 0
+					? rankedCandidates.reduce((s, e) => s + e.score, 0) / rankedCandidates.length
+					: 0;
+
+			return {
+				demos: demoStr,
+				score: avgScore,
+				adopted: true,
+				stats: {
+					demoCount: topDemos.length,
+					examplesEvaluated: examples.length,
+					candidatesRanked: rankedCandidates.length,
+					avgScore,
+					axFallback: true,
+					axError: optimizerError instanceof Error ? optimizerError.message : String(optimizerError),
+				},
+			};
+		}
 	}
 
 	private compileFallback(
@@ -151,6 +200,7 @@ export class AxBootstrapFewShotAdapter implements OptimizerAdapter {
 		return {
 			demos: demoStr,
 			score: avgScore,
+			adopted: true,
 			stats: { demoCount: scored.length, fallback: true },
 		};
 	}
