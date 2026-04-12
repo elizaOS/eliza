@@ -36,13 +36,15 @@ export function flattenSchemaFields(
 	const result: Array<{ path: string; description: string }> = [];
 	for (const row of rows) {
 		const path = prefix ? `${prefix}.${row.field}` : row.field;
-		result.push({ path, description: row.description });
 		if (row.properties?.length) {
 			result.push(...flattenSchemaFields(row.properties, path));
+			continue;
 		}
 		if (row.items?.properties?.length) {
 			result.push(...flattenSchemaFields(row.items.properties, `${path}[]`));
+			continue;
 		}
+		result.push({ path, description: row.description });
 	}
 	return result;
 }
