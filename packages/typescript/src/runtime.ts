@@ -2290,7 +2290,7 @@ export class AgentRuntime implements IAgentRuntime {
 								: {}),
 							...(actionResult?.data
 								? {
-										data: actionResult.data,
+										data: actionResult.data as import("./types/proto.js").JsonObject,
 									}
 								: {}),
 						},
