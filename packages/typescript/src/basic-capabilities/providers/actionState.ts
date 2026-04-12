@@ -11,8 +11,12 @@ import { addHeader } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTION_STATE");
-const ACTION_RESULTS_TARGET_CHARS = 2600;
-const ACTION_HISTORY_TARGET_CHARS = 2400;
+// ~10k tokens combined budget for action state context
+const ACTION_RESULTS_TARGET_CHARS = 20000;
+const ACTION_HISTORY_TARGET_CHARS = 20000;
+const MAX_RUNS = 3;
+const MAX_THOUGHT_CHARS = 2000;
+const MAX_RESULT_TEXT_CHARS = 4000;
 
 type WorkingMemoryEntry = {
 	actionName: string;
@@ -114,7 +118,10 @@ export const actionStateProvider: Provider = {
 					let resultText = `**${index + 1}. ${actionName}** - ${status}`;
 
 					if (result.text) {
-						resultText += `\n   Output: ${result.text}`;
+						const truncated = result.text.length > MAX_RESULT_TEXT_CHARS
+							? `${result.text.slice(0, MAX_RESULT_TEXT_CHARS)}…`
+							: result.text;
+						resultText += `\n   Output: ${truncated}`;
 					}
 
 					if (result.error) {
@@ -205,8 +212,12 @@ export const actionStateProvider: Provider = {
 				}
 			}
 
+			// Take only the most recent runs, then apply budget trimming
+			const allRuns = Array.from(groupedByRun.entries());
+			const recentRuns = allRuns.slice(-MAX_RUNS);
+
 			const selectedRuns = sliceToFitBudget(
-				Array.from(groupedByRun.entries()),
+				recentRuns,
 				([runId, memories]) => {
 					const textChars = memories.reduce((sum, memory) => {
 						const content = memory.content;
@@ -215,13 +226,13 @@ export const actionStateProvider: Provider = {
 							String(content?.actionName || "").length +
 							String(content?.actionStatus || "").length +
 							String(content?.planStep || "").length +
-							String(content?.text || "").length
+							Math.min(String(content?.text || "").length, MAX_RESULT_TEXT_CHARS)
 						);
 					}, 0);
 					return textChars + runId.length + 80;
 				},
 				ACTION_HISTORY_TARGET_CHARS,
-				{ fromEnd: true }, // Select newest entries since groupedByRun is chronological
+				{ fromEnd: true },
 			);
 
 			const formattedMemories = selectedRuns
@@ -236,7 +247,10 @@ export const actionStateProvider: Provider = {
 							const actionName = memContent?.actionName || "Unknown";
 							const status = memContent?.actionStatus || "unknown";
 							const planStep = memContent?.planStep || "";
-							const text = memContent?.text || "";
+							const rawText = memContent?.text || "";
+							const text = rawText.length > MAX_RESULT_TEXT_CHARS
+								? `${rawText.slice(0, MAX_RESULT_TEXT_CHARS)}…`
+								: rawText;
 
 							let memText = `  - ${actionName} (${status})`;
 							if (planStep) {
@@ -251,7 +265,10 @@ export const actionStateProvider: Provider = {
 						.join("\n");
 
 					const firstMemory = sortedMemories[0];
-					const thought = firstMemory?.content?.planThought || "";
+					const rawThought = String(firstMemory?.content?.planThought || "");
+					const thought = rawThought.length > MAX_THOUGHT_CHARS
+						? `${rawThought.slice(0, MAX_THOUGHT_CHARS)}…`
+						: rawThought;
 					return `**Run ${runId.slice(0, 8)}**${thought ? ` - ${thought}` : ""}\n${runText}`;
 				})
 				.join("\n\n");

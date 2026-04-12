@@ -10,12 +10,10 @@ import type {
 	UUID,
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
-import { sliceToFitBudget } from "../../utils/slice-to-fit-budget.js";
 import { addHeader, formatMessages, formatPosts } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("RECENT_MESSAGES");
-const RECENT_ACTION_RUNS_TARGET_CHARS = 2200;
 
 function buildFormattingFallbackEntity(memory: Memory): Entity | null {
 	const metadata = memory.metadata as CustomMetadata | undefined;
@@ -215,82 +213,8 @@ export const recentMessagesProvider: Provider = {
 			}),
 		]);
 
-		// Format action results separately
-		let actionResultsText = "";
-		if (actionResultMessages.length > 0) {
-			// Group by runId using Map
-			const groupedByRun = new Map<string, Memory[]>();
-
-			for (const mem of actionResultMessages) {
-				const runId: string = String(mem.content?.runId || "unknown");
-				if (!groupedByRun.has(runId)) {
-					groupedByRun.set(runId, []);
-				}
-				const memories = groupedByRun.get(runId);
-				if (memories) {
-					memories.push(mem);
-				}
-			}
-
-			const recentRuns = sliceToFitBudget(
-				Array.from(groupedByRun.entries()),
-				([runId, memories]) => {
-					const textChars = memories.reduce((sum, memory) => {
-						const content = memory.content;
-						return (
-							sum +
-							String(content?.actionName || "").length +
-							String(content?.actionStatus || "").length +
-							String(content?.planStep || "").length +
-							String(content?.text || "").length +
-							String(content?.error || "").length
-						);
-					}, 0);
-					return textChars + runId.length + 80;
-				},
-				RECENT_ACTION_RUNS_TARGET_CHARS,
-				{ fromEnd: true }, // Select newest entries since groupedByRun is chronological
-			);
-
-			const formattedActionResults = recentRuns
-				.map(([runId, memories]) => {
-					const sortedMemories = memories.sort(
-						(a: Memory, b: Memory) => (a.createdAt || 0) - (b.createdAt || 0),
-					);
-
-					const firstMemory = sortedMemories[0];
-					const thought = firstMemory?.content?.planThought || "";
-					const runText = sortedMemories
-						.map((mem: Memory) => {
-							const memContent = mem.content;
-							const actionName = memContent?.actionName || "Unknown";
-							const status = memContent?.actionStatus || "unknown";
-							const planStep = memContent?.planStep || "";
-							const text = memContent?.text || "";
-							const error = memContent?.error || "";
-
-							let memText = `  - ${actionName} (${status})`;
-							if (planStep) {
-								memText += ` [${planStep}]`;
-							}
-							if (error) {
-								memText += `: Error - ${error}`;
-							} else if (text && text !== `Executed action: ${actionName}`) {
-								memText += `: ${text}`;
-							}
-
-							return memText;
-						})
-						.join("\n");
-
-					return `**Action Run ${runId.slice(0, 8)}**${thought ? ` - "${thought}"` : ""}\n${runText}`;
-				})
-				.join("\n\n");
-
-			actionResultsText = formattedActionResults
-				? addHeader("# Recent Action Executions", formattedActionResults)
-				: "";
-		}
+		// Action results are formatted exclusively by the ACTION_STATE provider
+		// (position 150) to avoid duplication in the LLM context.
 
 		// Create formatted text with headers
 		const recentPosts =
@@ -323,7 +247,7 @@ export const recentMessagesProvider: Provider = {
 					recentMessageInteractions: "",
 					recentPostInteractions: "",
 					recentInteractions: "",
-					recentActionResults: actionResultsText,
+					recentActionResults: "",
 				},
 				text: "No recent messages available",
 			};
@@ -493,14 +417,13 @@ export const recentMessagesProvider: Provider = {
 			recentInteractions: isPostFormat
 				? recentPostInteractions
 				: recentMessageInteractions,
-			recentActionResults: actionResultsText,
+			recentActionResults: "",
 			recentMessage,
 		};
 
 		// Combine all text sections
 		const text = [
 			isPostFormat ? recentPosts : recentMessages,
-			actionResultsText, // Include action results in the text output
 			// Only add received message and focus headers if there are messages or a current message to process
 			recentMessages || recentPosts || message.content.text
 				? receivedMessageHeader
