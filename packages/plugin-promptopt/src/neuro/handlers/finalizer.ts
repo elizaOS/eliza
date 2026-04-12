@@ -157,7 +157,8 @@ export async function handleRunEnded(
 			if (!autoOptScheduled.has(autoKey)) {
 				autoOptScheduled.add(autoKey);
 				// Collect promises to await later, ensuring profile writes complete
-				// before subsequent RUN_ENDED events evaluate profile readiness
+				// before subsequent RUN_ENDED events evaluate profile readiness.
+				// Note: Cross-event deduplication is handled by runLocks in auto-optimizer.ts
 				autoOptPromises.push(
 					maybeRunAutoPromptOptimization(runtime, optDir, trace).catch(
 						(err) => {
