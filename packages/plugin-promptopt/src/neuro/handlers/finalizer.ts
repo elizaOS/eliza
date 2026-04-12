@@ -21,13 +21,13 @@ import {
 	getABAnalyzer,
 	getSlotProfileManager,
 	getTraceWriter,
-	ScoreCard,
 	getOptimizationRootDir,
 } from "../../optimization/index.ts";
 import type { ScoreCardData } from "../../optimization/types.ts";
 import {
 	EventType,
 	isTrajectorySignalContextJsonlEnabled,
+	ScoreCard,
 	type IAgentRuntime,
 	type RunEventPayload,
 } from "@elizaos/core";
