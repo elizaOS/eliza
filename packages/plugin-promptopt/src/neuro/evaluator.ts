@@ -149,8 +149,9 @@ export const neuroEvaluator: Evaluator = {
 		const stats = getAgentStats(runtime.agentId);
 
 		// --- Length appropriateness ---
-		pushRolling(stats.lengths, responseLength);
+		// Compute median BEFORE pushing current value to avoid self-referential scoring
 		const medianLen = median(stats.lengths);
+		pushRolling(stats.lengths, responseLength);
 		const lengthRatio = medianLen > 0 ? responseLength / medianLen : 1.0;
 		const lengthScore = Math.max(
 			0,
@@ -191,25 +192,28 @@ export const neuroEvaluator: Evaluator = {
 		// WHY per-trace latency: unlike length (which is a property of the final
 		// response), latency is meaningful per-DPE-call. A slow should-respond
 		// check matters independently of a slow reply generation.
+		// Compute median BEFORE the loop to avoid cross-contamination between traces
+		// in the same run (e.g., should-respond + reply both updating stats mid-loop).
+		const medianLatency = median(stats.latencies);
 		for (const trace of allTraces) {
 			const latencyMs = trace.latencyMs;
 			if (typeof latencyMs !== "number" || latencyMs <= 0) continue;
 
 			pushRolling(stats.latencies, latencyMs);
-			const medianLatency = median(stats.latencies);
+			const currentMedian = medianLatency > 0 ? medianLatency : median(stats.latencies);
 			const latencyScore =
-				medianLatency > 0
-					? Math.min(1.0, medianLatency / Math.max(latencyMs, medianLatency))
+				currentMedian > 0
+					? Math.min(1.0, currentMedian / Math.max(latencyMs, currentMedian))
 					: 0.5;
 
 			trace.scoreCard.signals.push({
 				source: NEURO_SOURCE,
 				kind: SIGNALS.RESPONSE_LATENCY,
 				value: latencyScore,
-				reason: `DPE latency ${latencyMs}ms vs rolling median ${medianLatency.toFixed(0)}ms`,
+				reason: `DPE latency ${latencyMs}ms vs rolling median ${currentMedian.toFixed(0)}ms`,
 				metadata: {
 					latencyMs,
-					medianLatencyMs: medianLatency,
+					medianLatencyMs: currentMedian,
 				},
 			});
 			trace.enrichedAt = Date.now();
