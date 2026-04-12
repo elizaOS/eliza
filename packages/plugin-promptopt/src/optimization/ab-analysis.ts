@@ -1,5 +1,4 @@
 import { v4 as uuidv4 } from "uuid";
-import { simpleHash } from "../lib/utils/hash.ts";
 import { ScoreCard } from "./score-card.ts";
 import type {
 	ABDecision,
@@ -9,8 +8,17 @@ import type {
 	SlotKey,
 } from "./types.ts";
 
-// Re-export for backward compatibility
-export { simpleHash };
+/**
+ * Simple hash function for deterministic variant selection.
+ * Returns a positive integer hash suitable for modulo operations.
+ */
+export function simpleHash(str: string): number {
+	let hash = 5381;
+	for (let i = 0; i < str.length; i++) {
+		hash = (hash * 33) ^ str.charCodeAt(i);
+	}
+	return hash >>> 0; // Convert to unsigned 32-bit integer
+}
 
 export interface ABAnalysisResult {
 	action: "promote" | "rollback" | "inconclusive";
