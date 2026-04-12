@@ -872,7 +872,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "What's the best architecture for a real-time multiplayer game with 10k concurrent users?" }
+            "content": {
+              "text": "What's the best architecture for a real-time multiplayer game with 10k concurrent users?"
+            }
           },
           {
             "name": "{{name2}}",
@@ -885,7 +887,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Should I use a monorepo or polyrepo for my team of 15 engineers working on 3 microservices?" }
+            "content": {
+              "text": "Should I use a monorepo or polyrepo for my team of 15 engineers working on 3 microservices?"
+            }
           },
           {
             "name": "{{name2}}",
@@ -898,7 +902,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "We're seeing intermittent 502 errors in production but only during peak hours. Our setup is nginx -> node -> postgres. What could cause this?" }
+            "content": {
+              "text": "We're seeing intermittent 502 errors in production but only during peak hours. Our setup is nginx -> node -> postgres. What could cause this?"
+            }
           },
           {
             "name": "{{name2}}",
@@ -911,7 +917,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "How should we handle authentication across our mobile app, web app, and API given we need SSO with both Google and enterprise SAML providers?" }
+            "content": {
+              "text": "How should we handle authentication across our mobile app, web app, and API given we need SSO with both Google and enterprise SAML providers?"
+            }
           },
           {
             "name": "{{name2}}",

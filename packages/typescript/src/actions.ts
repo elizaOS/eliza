@@ -14,12 +14,12 @@ import {
 	deterministicShuffle,
 	getDeterministicNames,
 } from "./utils/deterministic";
-import { parseJSONObjectFromText } from "./utils.ts";
 import {
 	encodeToonValue,
 	parseToonActionParams,
 	tryParseToonValue,
 } from "./utils/toon";
+import { parseJSONObjectFromText } from "./utils.ts";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
@@ -361,13 +361,16 @@ export function parseActionParams(
 
 		if (Object.keys(actionParams).length === 0) {
 			const structuredParams =
-				parseJSONObjectFromText(actionParamsXml) ?? tryParseToonValue(actionParamsXml);
+				parseJSONObjectFromText(actionParamsXml) ??
+				tryParseToonValue(actionParamsXml);
 			if (
 				structuredParams &&
 				typeof structuredParams === "object" &&
 				!Array.isArray(structuredParams)
 			) {
-				for (const [paramName, paramValue] of Object.entries(structuredParams)) {
+				for (const [paramName, paramValue] of Object.entries(
+					structuredParams,
+				)) {
 					actionParams[paramName] = toActionParameterValue(paramValue);
 				}
 			}
