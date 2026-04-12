@@ -27,19 +27,18 @@ import {
 	type TriggerType,
 	type TriggerWakeMode,
 } from "../../types/trigger";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { parseKeyValueXml, stringToUuid } from "../../utils";
 
-const CREATE_TASK_KEYWORDS = [
-	"create task",
-	"create trigger",
-	"create a trigger",
-	"set a trigger",
-	"schedule a trigger",
-	"schedule a task",
-	"remind me every",
-	"run every",
-	"run at",
-];
+const CREATE_TASK_KEYWORDS = getValidationKeywordTerms(
+	"action.createTask.request",
+	{
+		includeAllLocales: true,
+	},
+);
 
 const MAX_TRIGGERS_PER_CREATOR = 100;
 const DEFAULT_INTERVAL_MS = 12 * 60 * 60 * 1000;
@@ -127,9 +126,10 @@ export const createTaskAction: Action = {
 		message: Memory,
 	): Promise<boolean> => {
 		if (!runtime.enableAutonomy) return false;
-		const text = message.content.text?.toLowerCase() ?? "";
+		const text = message.content.text ?? "";
 		return (
-			text.length > 0 && CREATE_TASK_KEYWORDS.some((kw) => text.includes(kw))
+			text.trim().length > 0 &&
+			findKeywordTermMatch(text, CREATE_TASK_KEYWORDS) !== undefined
 		);
 	},
 

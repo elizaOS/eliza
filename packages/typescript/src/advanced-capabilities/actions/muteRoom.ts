@@ -1,4 +1,8 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { shouldMuteRoomTemplate } from "../../prompts.ts";
 import type {
@@ -20,6 +24,9 @@ import {
 
 // Get text content from centralized specs
 const spec = requireActionSpec("MUTE_ROOM");
+const MUTE_TERMS = getValidationKeywordTerms("action.muteRoom.request", {
+	includeAllLocales: true,
+});
 
 export const muteRoomAction: Action = {
 	name: spec.name,
@@ -31,19 +38,8 @@ export const muteRoomAction: Action = {
 			typeof message?.content === "string"
 				? message.content
 				: (message?.content?.text ?? "")
-		).toLowerCase();
-		const MUTE_TERMS = [
-			"mute",
-			"silence",
-			"quiet",
-			"shut up",
-			"stop talking",
-			"be quiet",
-			"hush",
-			"shh",
-			"no more",
-		];
-		if (!MUTE_TERMS.some((term) => text.includes(term))) return false;
+		);
+		if (findKeywordTermMatch(text, MUTE_TERMS) === undefined) return false;
 		const roomId = message.roomId;
 		const roomState = await runtime.getParticipantUserState(
 			roomId,

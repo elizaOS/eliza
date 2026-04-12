@@ -1,4 +1,8 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger.ts";
 import { updateContactTemplate } from "../../prompts.ts";
 import type {
@@ -20,7 +24,12 @@ import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UPDATE_CONTACT");
-const UPDATE_CONTACT_INTENT = /update|edit|modify|change|add.*to|remove.*from/i;
+const UPDATE_CONTACT_TERMS = getValidationKeywordTerms(
+	"action.updateContact.request",
+	{
+		includeAllLocales: true,
+	},
+);
 
 interface UpdateContactXmlResult {
 	contactName?: string;
@@ -59,7 +68,7 @@ export const updateContactAction: Action = {
 		const hasService = !!runtime.getService("relationships");
 		const text = message.content.text;
 		if (!text) return false;
-		const hasIntent = UPDATE_CONTACT_INTENT.test(text);
+		const hasIntent = findKeywordTermMatch(text, UPDATE_CONTACT_TERMS);
 		return hasService && !!hasIntent;
 	},
 
