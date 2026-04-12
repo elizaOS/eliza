@@ -80,8 +80,7 @@ class ThinkAction:
 
         template = (
             runtime.character.templates.get("thinkTemplate")
-            if runtime.character.templates
-            and "thinkTemplate" in runtime.character.templates
+            if runtime.character.templates and "thinkTemplate" in runtime.character.templates
             else THINK_TEMPLATE
         )
         prompt = runtime.compose_prompt(state=state, template=template)

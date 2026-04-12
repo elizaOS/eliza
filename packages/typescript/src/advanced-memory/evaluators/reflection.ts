@@ -160,9 +160,7 @@ function normalizeFactEntries(value: unknown): FactXml[] {
 		return normalizeFactEntries(value.fact);
 	}
 
-	return isRecord(value)
-		? [sanitizeStructuredRecord(value) as FactXml]
-		: [];
+	return isRecord(value) ? [sanitizeStructuredRecord(value) as FactXml] : [];
 }
 
 function normalizeRelationshipEntries(value: unknown): RelationshipXml[] {
@@ -222,9 +220,7 @@ function hasValidStructuredList<T>(
 	return isOmittedStructuredList(value, itemKey) || normalize(value).length > 0;
 }
 
-function hasValidReflectionStructure(
-	reflection: ReflectionXmlResult,
-): boolean {
+function hasValidReflectionStructure(reflection: ReflectionXmlResult): boolean {
 	return (
 		hasValidStructuredList(reflection.facts, "fact", normalizeFactEntries) &&
 		hasValidStructuredList(

@@ -1,7 +1,7 @@
 /**
  * Auto-generated prompt templates for elizaOS
  * DO NOT EDIT - Generated from packages/prompts/prompts/*.txt
- * 
+ *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
  * - {{#each items}}...{{/each}} for iteration
@@ -56,7 +56,8 @@ Your last autonomous note: "{{lastThought}}"
 
 Continue from that note. Output <thought> and take action if needed.`;
 
-export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE = autonomyContinuousContinueTemplate;
+export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE =
+	autonomyContinuousContinueTemplate;
 
 export const autonomyContinuousFirstTemplate = `Your job: reflect on context, decide what you want to do next, and act if appropriate.
 - Use available actions/tools when they can advance the goal.
@@ -72,7 +73,8 @@ USER CONTEXT (most recent last):
 
 Think briefly, then output <thought> and take action if needed.`;
 
-export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE = autonomyContinuousFirstTemplate;
+export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE =
+	autonomyContinuousFirstTemplate;
 
 export const autonomyTaskContinueTemplate = `You are running in AUTONOMOUS TASK MODE.
 
@@ -762,7 +764,8 @@ action: RESPOND
 primaryContext: wallet
 secondaryContexts: []`;
 
-export const SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE = shouldRespondWithContextTemplate;
+export const SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE =
+	shouldRespondWithContextTemplate;
 
 export const shouldUnfollowRoomTemplate = `task: Decide whether {{agentName}} should unfollow this room.
 

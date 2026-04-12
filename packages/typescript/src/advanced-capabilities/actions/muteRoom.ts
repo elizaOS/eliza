@@ -30,7 +30,7 @@ export const muteRoomAction: Action = {
 		const text = (
 			typeof message?.content === "string"
 				? message.content
-				: message?.content?.text ?? ""
+				: (message?.content?.text ?? "")
 		).toLowerCase();
 		const MUTE_TERMS = [
 			"mute",
