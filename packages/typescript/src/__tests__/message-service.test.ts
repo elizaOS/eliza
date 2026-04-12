@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChannelType, ContentType, EventType, ModelType } from "../index";
 import { getTaskCompletionCacheKey } from "../advanced-capabilities/evaluators/task-completion";
+import { ChannelType, ContentType, EventType, ModelType } from "../index";
 import { DefaultMessageService } from "../services/message";
 import type {
 	Content,
@@ -1861,6 +1861,153 @@ expect(dpeSpy).toHaveBeenCalledTimes(2);
 			);
 		});
 
+		it("does not continue a simple clarifying reply when reflection marks the task incomplete", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+
+			const cache = new Map<string, unknown>();
+			vi.spyOn(runtime, "setCache").mockImplementation(async (key, value) => {
+				cache.set(key, value);
+				return true;
+			});
+			vi.spyOn(runtime, "getCache").mockImplementation(
+				async (key) => cache.get(key) as never,
+			);
+			vi.spyOn(runtime, "deleteCache").mockImplementation(async (key) => {
+				cache.delete(key);
+				return true;
+			});
+
+			const dynamicPromptSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Need clarification first",
+					actions: "REPLY",
+					text: "What did you have in mind for Monday?",
+					simple: true,
+				});
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026b" as UUID,
+				content: {
+					text: "@Eliza for MONDAY",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			vi.spyOn(runtime, "evaluate").mockImplementation(async () => {
+				await runtime.setCache(getTaskCompletionCacheKey(message.id), {
+					assessed: true,
+					completed: false,
+					reason: "The agent asked a clarifying question and is waiting on the user.",
+					source: "reflection",
+					evaluatedAt: Date.now(),
+					messageId: message.id,
+				});
+				return [];
+			});
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(dynamicPromptSpy).toHaveBeenCalledTimes(1);
+			expect(runtime.processActions).not.toHaveBeenCalled();
+			expect(mockCallback).toHaveBeenCalledTimes(1);
+			expect(mockCallback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					text: "What did you have in mind for Monday?",
+				}),
+			);
+			expect(result.responseContent?.text).toBe(
+				"What did you have in mind for Monday?",
+			);
+		});
+
+		it("does not continue a REPLY action clarifying question when reflection marks the task incomplete", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+
+			const cache = new Map<string, unknown>();
+			vi.spyOn(runtime, "setCache").mockImplementation(async (key, value) => {
+				cache.set(key, value);
+				return true;
+			});
+			vi.spyOn(runtime, "getCache").mockImplementation(
+				async (key) => cache.get(key) as never,
+			);
+			vi.spyOn(runtime, "deleteCache").mockImplementation(async (key) => {
+				cache.delete(key);
+				return true;
+			});
+
+			const dynamicPromptSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValueOnce({
+					thought: "Need clarification first",
+					actions: "REPLY",
+					text: "",
+					simple: false,
+				});
+
+			vi.spyOn(runtime, "processActions").mockImplementation(
+				async (_message, _responses, _state, callback) => {
+					await callback?.({
+						text: "What did you have in mind for Monday?",
+						actions: ["REPLY"],
+					});
+				},
+			);
+			vi.spyOn(runtime, "getActionResults").mockReturnValue([
+				{
+					success: true,
+					text: "What did you have in mind for Monday?",
+					data: { actionName: "REPLY" },
+				},
+			]);
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174026c" as UUID,
+				content: {
+					text: "@Eliza for MONDAY",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			vi.spyOn(runtime, "evaluate").mockImplementation(async () => {
+				await runtime.setCache(getTaskCompletionCacheKey(message.id), {
+					assessed: true,
+					completed: false,
+					reason: "The agent asked a clarifying question and is waiting on the user.",
+					source: "reflection",
+					evaluatedAt: Date.now(),
+					messageId: message.id,
+				});
+				return [];
+			});
+
+			await messageService.handleMessage(runtime, message, mockCallback);
+
+			expect(dynamicPromptSpy).toHaveBeenCalledTimes(1);
+			expect(runtime.processActions).toHaveBeenCalledTimes(1);
+			expect(mockCallback).toHaveBeenCalledTimes(1);
+			expect(mockCallback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					text: "What did you have in mind for Monday?",
+				}),
+			);
+		});
+
 		it("only runs alwaysRun evaluators on ignored turns, then runs rich evaluators after a reply", async () => {
 			runtime.evaluate = Object.getPrototypeOf(runtime).evaluate.bind(runtime);
 			(runtime as unknown as { evaluators: Evaluator[] }).evaluators = [];
@@ -2447,6 +2594,84 @@ expect(dpeSpy).toHaveBeenCalledTimes(2);
 					([memory]) =>
 						(memory as Memory).content?.text ===
 						"here's what is on your calendar while you're in denver",
+				),
+			).toBe(false);
+		});
+
+		it("treats suppressive action similes as terminal when stripping planner replies", async () => {
+			vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(false);
+			vi.spyOn(runtime, "composeState").mockResolvedValue({
+				data: {},
+				values: {},
+				text: "",
+			});
+			const createMemorySpy = vi
+				.spyOn(runtime, "createMemory")
+				.mockResolvedValue("123e4567-e89b-12d3-a456-426614174102" as UUID);
+			const processActionsSpy = vi
+				.spyOn(runtime, "processActions")
+				.mockResolvedValue(undefined);
+			const dynamicPromptSpy = vi
+				.spyOn(runtime, "dynamicPromptExecFromState")
+				.mockResolvedValue({
+					thought: "Acknowledge and update personality",
+					actions: "REPLY,UPDATE_PERSONALITY",
+					text: "i understand. thank you for the feedback.",
+					simple: false,
+				});
+			runtime.actions = [
+				{
+					name: "MODIFY_CHARACTER",
+					similes: ["UPDATE_PERSONALITY"],
+					description: "Update the character",
+					handler: vi.fn(),
+					validate: vi.fn(async () => true),
+					suppressPostActionContinuation: true,
+				},
+			];
+
+			const message: Memory = {
+				id: "123e4567-e89b-12d3-a456-426614174032b" as UUID,
+				content: {
+					text: "update its personality to stop asking follow-up questions",
+					source: "discord",
+					channelType: ChannelType.GROUP,
+				} as Content,
+				entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+				roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+				agentId: runtime.agentId,
+				createdAt: Date.now(),
+			};
+
+			const result = await messageService.handleMessage(
+				runtime,
+				message,
+				mockCallback,
+			);
+
+			expect(result.didRespond).toBe(true);
+			expect(result.responseContent?.text).toBe("");
+			expect(result.responseContent?.actions).toEqual(["UPDATE_PERSONALITY"]);
+			expect(dynamicPromptSpy).toHaveBeenCalledTimes(1);
+			expect(processActionsSpy).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.arrayContaining([
+					expect.objectContaining({
+						content: expect.objectContaining({
+							text: "",
+							actions: ["UPDATE_PERSONALITY"],
+						}),
+					}),
+				]),
+				expect.anything(),
+				expect.any(Function),
+				expect.anything(),
+			);
+			expect(
+				createMemorySpy.mock.calls.some(
+					([memory]) =>
+						(memory as Memory).content?.text ===
+						"i understand. thank you for the feedback.",
 				),
 			).toBe(false);
 		});
