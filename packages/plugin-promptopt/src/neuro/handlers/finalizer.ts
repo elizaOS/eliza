@@ -19,10 +19,10 @@ import {
 } from "../../optimization/auto-optimizer.ts";
 import {
 	getABAnalyzer,
-	getOptimizationRootDir,
 	getSlotProfileManager,
 	getTraceWriter,
 	ScoreCard,
+	resolveOptimizationDir,
 } from "../../optimization/index.ts";
 import type { ScoreCardData } from "../../optimization/types.ts";
 import {
@@ -60,9 +60,8 @@ export async function handleRunEnded(
 		return;
 	}
 
-	const optDir = getOptimizationRootDir(
-		runtime.getSetting?.("OPTIMIZATION_DIR") as string | null,
-	);
+	// Use shared resolver to ensure consistency with disk-hooks and other writers
+	const optDir = resolveOptimizationDir(runtime);
 	runtime.logger.debug(
 		{
 			src: "plugin-neuro",
