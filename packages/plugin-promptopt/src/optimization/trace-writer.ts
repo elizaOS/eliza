@@ -163,7 +163,7 @@ export class TraceWriter {
 				if (record.type === "trace") {
 					const trace = record as ExecutionTrace;
 					const existing = byId.get(trace.id);
-					if (!existing || (trace.seq ?? 0) >= (existing.seq ?? 0)) {
+					if (!existing || (trace.seq ?? 0) > (existing.seq ?? 0)) {
 						byId.set(trace.id, trace);
 					}
 				}
