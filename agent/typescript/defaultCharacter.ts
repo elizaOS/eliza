@@ -1,7 +1,7 @@
-import type { Character } from "@elizaos/core";
+import type { CharacterInput } from "@elizaos/core";
 
 /** Minimal default for the harness when no --character JSON is passed. */
-export const defaultCharacter: Character = {
+export const defaultCharacter: CharacterInput = {
 	name: "Eliza",
 	bio: ["Local harness agent for exercising @elizaos/core."],
 	system:

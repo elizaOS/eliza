@@ -405,7 +405,7 @@ export interface HookMessageSendingPayload extends HookEventPayload {
 
 /**
  * Payload for OPTIMIZATION_TRACE events emitted after a trace is finalized.
- * Allows plugin-neuro and other plugins to react to completed traces.
+ * Allows prompt-optimization plugins and other listeners to react to completed traces.
  */
 export interface OptimizationTracePayload extends EventPayload {
 	runId: string;

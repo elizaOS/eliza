@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-promptopt": "workspace:*",
     "@elizaos/plugin-local-ai": "alpha",
     "@elizaos/plugin-ollama": "^1.2.4",
     "@elizaos/plugin-openai": "alpha",

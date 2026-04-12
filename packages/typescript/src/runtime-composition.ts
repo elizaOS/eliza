@@ -314,7 +314,7 @@ export async function createRuntimes(
 	}
 
 	const pluginNames = new Set<string>();
-	/** Inline Plugin objects from character.plugins (e.g. harness-injected neuroPlugin). */
+	/** Inline Plugin objects from character.plugins (e.g. harness-injected `@elizaos/plugin-promptopt`). */
 	const characterPluginObjects = new Map<string, Plugin>();
 	for (const c of characters) {
 		for (const p of c.plugins ?? []) {

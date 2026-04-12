@@ -1,0 +1,41 @@
+{
+	"name": "@elizaos/plugin-promptopt",
+	"version": "2.0.0-alpha.119",
+	"description": "Prompt optimization disk I/O, neuro quality signals, and RUN_ENDED finalization",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": ["dist", "README.md", "ROADMAP.md"],
+	"scripts": {
+		"clean": "rm -rf dist",
+		"build": "bun build ./src/index.ts --outdir=./dist --target=node --format=esm --sourcemap=external --packages=external --dts",
+		"test": "vitest run --pool=threads",
+		"lint": "bunx @biomejs/biome check --write ./src",
+		"lint:check": "bunx @biomejs/biome check ./src"
+	},
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"uuid": "^13.0.0"
+	},
+	"devDependencies": {
+		"@types/node": "^25.0.6",
+		"@types/uuid": "^11.0.0",
+		"typescript": "^5.9.3",
+		"vitest": "^4.0.0"
+	},
+	"optionalDependencies": {
+		"@ax-llm/ax": "^19.0.42"
+	},
+	"license": "MIT",
+	"publishConfig": {
+		"access": "public"
+	}
+}

@@ -179,11 +179,11 @@ Background work (embeddings, batched I/O, repeat drains) shares **priority order
 
 ## Prompt optimization (traces, artifacts, A/B)
 
-DPE can emit **execution traces** and a **prompt registry**; `plugin-neuro` finalizes traces on `RUN_ENDED` and may run **background optimization** when slot profiles say enough data exists. Artifacts and history live under **`OPTIMIZATION_DIR`**, keyed by **sanitized provider model id** and **slot key**—not only by logical slot names like `ACTION_PLANNER`, because the same logical slot may fallback to `TEXT_SMALL` and must share the real checkpoint’s folder.
+DPE can emit **execution traces** and drive a **prompt registry** via hooks when **`@elizaos/plugin-promptopt`** registers disk I/O; the plugin finalizes traces on `RUN_ENDED` and may run **background optimization** when slot profiles say enough data exists. Artifacts and history live under **`OPTIMIZATION_DIR`**, keyed by **sanitized provider model id** and **slot key**—not only by logical slot names like `ACTION_PLANNER`, because the same logical slot may fallback to `TEXT_SMALL` and must share the real checkpoint’s folder.
 
 **Why document separately?** Parsing order (`parseKeyValueXml` tries TOON then XML), streaming format (`xml` when chunking), and A/B `no_artifact` confuse operators unless the **WHYs** sit in one place.
 
-**Full layout, data flow, and parsing notes:** [PROMPT_OPTIMIZATION.md](./PROMPT_OPTIMIZATION.md). **Optimizer pipeline phases:** [../src/optimization/ROADMAP.md](../src/optimization/ROADMAP.md).
+**Full layout, data flow, and parsing notes:** [PROMPT_OPTIMIZATION.md](./PROMPT_OPTIMIZATION.md). **Optimizer pipeline phases:** [../../plugin-promptopt/src/optimization/ROADMAP.md](../../plugin-promptopt/src/optimization/ROADMAP.md).
 
 ---
 

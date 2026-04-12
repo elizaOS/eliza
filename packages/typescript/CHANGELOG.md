@@ -2,7 +2,26 @@
 
 ## Unreleased
 
+### Changed
+
+- **Prompt optimization is now `@elizaos/plugin-promptopt`.** The former `src/optimization/` and `plugin-neuro` trees live in `packages/plugin-promptopt`. **`@elizaos/core`** exposes `PromptOptimizationRuntimeHooks`, `registerPromptOptimizationHooks` / `getPromptOptimizationHooks`, trace types (`ExecutionTrace`, `ScoreCard`, …), `getOptimizationRootDir`, **`sanitizeModelId`** / **`historyJsonlFilePath`** (shared with trajectory JSONL append + plugin `TraceWriter`), and **`trajectory-jsonl-append`** so `TrajectoryLoggerService` can append to `history.jsonl` without depending on the plugin. DPE calls hooks only when non-null; **`PROMPT_OPTIMIZATION_ENABLED`** is no longer read in core (including `processEnvFallbackSetting`).
+- **`@elizaos/plugin-promptopt`:** `dispose` clears default disk hooks when they are still the registered instance (safe reload / teardown); default hooks are a module singleton.
+
+### Documentation
+
+- **Prompt optimization split (WHYs):** [`docs/PROMPT_OPTIMIZATION.md`](docs/PROMPT_OPTIMIZATION.md) now includes a **core vs plugin** responsibility table; [`../plugin-promptopt/README.md`](../plugin-promptopt/README.md) and [`../plugin-promptopt/ROADMAP.md`](../plugin-promptopt/ROADMAP.md) document the package for npm/registry readers. **Why:** Rationale lived only in long core docs or deep `src/optimization/*` files; operators and contributors need a short entry point that states *policy in plugin, contracts in core*.
+- **In-source WHYs:** Expanded module JSDoc on `types/prompt-optimization-hooks.ts`, `optimization-root-dir.ts`, `history-jsonl-paths.ts`, runtime hook registration, and plugin `index.ts` / `disk-hooks.ts`. **Why:** Design intent rots when it exists only in PR threads; colocating short rationale reduces wrong “simplifications” in future refactors.
+
 ### Added
+
+- **Phase 4 — AI-powered optimizer stages (GEPA / ACE) via `@ax-llm/ax`.** When the optional dependency is installed and **`OPTIMIZATION_AI_PROVIDER`**, **`OPTIMIZATION_AI_API_KEY`**, and **`OPTIMIZATION_AI_MODEL`** are set (plus optional **`OPTIMIZATION_TEACHER_*`**), **AxGEPA** and **AxACE** run real provider-backed optimization instead of stubs.
+  - **Why standalone `AxAI`:** GEPA/ACE need a full **`AxAIService`** (multi-turn `chat`, tools, streaming, embeddings). Bridging Eliza’s `runtime.useModel` would reimplement each provider SDK and break on Ax internals.
+  - **Why settings, not hot-path registry:** Optimization is offline/background; separate API keys avoid coupling the agent’s inference stack to meta-LLM calls.
+  - **`instrumentation.jsonl`:** Each wrapped `chat()` can append JSON lines under the same `(OPTIMIZATION_DIR / modelId / slotKey)` as traces. **`OPTIMIZATION_INSTRUMENTATION_LEVEL`** (`full` | `summary` | `minimal` | `off`) trades fidelity vs PII surface.
+  - **`OptimizationRunnerOptions.runtime`:** Runner reads AI + instrumentation settings from the agent; **`auto-optimizer.ts`** forwards **`runtime`** so background runs see the same keys as a manual `runner.run()`.
+  - **Metric parity:** **`signalWeights`** (merged defaults + **`PROMPT_OPT_SIGNAL_WEIGHTS`**) is passed into **`OptimizerAdapterConfig`** and into **`elizaMetricFn`** for Ax so the inner loop optimizes the **same composite objective** as the pipeline baseline.
+  - **Adoption:** GEPA/ACE set **`adopted: false`** when extracted instructions/playbook are empty after trim, so **`finalScore`** is not advanced without real artifact text. Failures **warn** (logger) and set **`stats.error`** on the stub result.
+  - **Docs:** [`docs/PROMPT_OPTIMIZATION.md`](docs/PROMPT_OPTIMIZATION.md) (Phase 4 section), [`../plugin-promptopt/src/optimization/README.md`](../plugin-promptopt/src/optimization/README.md), [`../plugin-promptopt/src/optimization/ROADMAP.md`](../plugin-promptopt/src/optimization/ROADMAP.md).
 
 - **Trajectory observability (union `history.jsonl`).** Optional row types **`llm_observation`**, **`provider_observation`**, and **`signal_context`** append to the same per-`modelId`/`slotKey` file as optimizer traces, without changing **`loadTraces`** (still `type === "trace"` only).
   - **Why:** One durable append path and one lock; operators can record raw `useModel` / provider facts for replay while keeping the optimizer contract frozen. **Why not a separate product DB?** Same portability story as `OPTIMIZATION_DIR` (copy directory, `jq`, git).
@@ -25,7 +44,7 @@
 
 ### Added
 
-- **Package [ROADMAP.md](ROADMAP.md)** — near/medium/long-term core items with WHYs; points to `src/optimization/ROADMAP.md` for optimizer-specific phases.
+- **Package [ROADMAP.md](ROADMAP.md)** — near/medium/long-term core items with WHYs; points to `../plugin-promptopt/src/optimization/ROADMAP.md` for optimizer-specific phases.
   - **Why:** README already linked `ROADMAP.md` from DESIGN; the file now exists and scopes “core vs optimization” cleanly.
 
 - **Batch queue toolkit** (`src/utils/batch-queue/`): `PriorityQueue`, `BatchProcessor`, `TaskDrain`, `Semaphore`, composed `BatchQueue`. Priority ordering (high → normal → low), optional `maxSize` with `onPressure` / `onOverflowWarning` (no silent eviction by default), concurrency-limited batch execution with retries via `utils/retry.ts`, find-or-create `queue`+`repeat` tasks with `maxFailures: -1`, optional `skipRegisterWorker` when TaskService already registers the worker (e.g. `BATCHER_DRAIN`). Barrel export: `src/utils/batch-queue.ts`.

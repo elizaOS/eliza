@@ -30,6 +30,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { stdin as input, stdout as output } from "node:process";
 import path from "node:path";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
+import { promptOptPlugin } from "@elizaos/plugin-promptopt";
 import {
 	ChannelType,
 	createRuntimes,
@@ -37,9 +38,9 @@ import {
 	loadCharacters,
 	logger,
 	MemoryType,
-	neuroPlugin,
 	stringToUuid,
 	type Character,
+	type CharacterInput,
 	type Content,
 	type HandlerCallback,
 	type IAgentRuntime,
@@ -208,7 +209,7 @@ Options:
 
 Environment:
   LOG_LEVEL, OPENAI_API_KEY, HARNESS_PROVIDER=openai|ollama, PGLITE_DATA_DIR, HARNESS_PGLITE_DIR
-  PROMPT_OPTIMIZATION_ENABLED=true — enables DPE traces and injects plugin-neuro (text quality signals + RUN_ENDED finalizer; emoji reactions optional)
+  PROMPT_OPTIMIZATION_ENABLED=true — enables DPE hooks and injects @elizaos/plugin-promptopt (text quality signals + RUN_ENDED finalizer; emoji reactions optional)
 `);
 }
 
@@ -230,9 +231,9 @@ function isTruthySetting(v: unknown): boolean {
 }
 
 /**
- * When prompt optimization is on, enriched traces and A/B analysis expect plugin-neuro
- * (evaluator signals + RUN_ENDED finalizer). Reactions are optional; text-only harnesses
- * still get length, latency, and continuation signals.
+ * When prompt optimization is on, enriched traces and A/B analysis expect
+ * `@elizaos/plugin-promptopt` (evaluator signals + RUN_ENDED finalizer). Reactions are optional;
+ * text-only harnesses still get length, latency, and continuation signals.
  */
 function isPromptOptimizationEnabledForHarness(character: Character): boolean {
 	const fromChar = (character.settings as Record<string, unknown> | undefined)
@@ -243,7 +244,7 @@ function isPromptOptimizationEnabledForHarness(character: Character): boolean {
 	return isTruthySetting(process.env.PROMPT_OPTIMIZATION_ENABLED);
 }
 
-function hasNeuroPlugin(plugins: Character["plugins"]): boolean {
+function hasPromptOptPlugin(plugins: Character["plugins"]): boolean {
 	if (!plugins) return false;
 	for (const p of plugins) {
 		if (typeof p === "string") {
@@ -251,7 +252,10 @@ function hasNeuroPlugin(plugins: Character["plugins"]): boolean {
 			if (
 				s === "plugin-neuro" ||
 				s.endsWith("plugin-neuro") ||
-				s.includes("@elizaos/plugin-neuro")
+				s.includes("@elizaos/plugin-neuro") ||
+				s === "plugin-promptopt" ||
+				s.endsWith("plugin-promptopt") ||
+				s.includes("@elizaos/plugin-promptopt")
 			) {
 				return true;
 			}
@@ -259,7 +263,8 @@ function hasNeuroPlugin(plugins: Character["plugins"]): boolean {
 			p &&
 			typeof p === "object" &&
 			"name" in p &&
-			(p as Plugin).name === "plugin-neuro"
+			((p as Plugin).name === "plugin-neuro" ||
+				(p as Plugin).name === "@elizaos/plugin-promptopt")
 		) {
 			return true;
 		}
@@ -297,9 +302,9 @@ function mergeHarnessSqlPlugins(character: Character): Character {
 	let mergedNonString = nonStringPlugins;
 	if (
 		isPromptOptimizationEnabledForHarness(character) &&
-		!hasNeuroPlugin(existingPlugins)
+		!hasPromptOptPlugin(existingPlugins)
 	) {
-		mergedNonString = [...nonStringPlugins, neuroPlugin];
+		mergedNonString = [...nonStringPlugins, promptOptPlugin];
 	}
 
 	const combinedPlugins: (string | Plugin)[] = [...mergedNonString, ...list];
@@ -341,7 +346,7 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	const sources: Array<Character | string> = characterPath
+	const sources: Array<CharacterInput | string> = characterPath
 		? [characterPath]
 		: [defaultCharacter];
 
@@ -349,37 +354,44 @@ async function main(): Promise<void> {
 
 	const pgliteDirDefault = path.join(process.cwd(), ".eliza", "harness-pglite");
 
-	characters = characters.map((c: Character) => ({
-		...c,
-		settings: {
-			...c.settings,
-			...ollamaSettingsFromEnv(),
-			...promptOptimizationSettingsFromEnv(),
-			PGLITE_DATA_DIR:
-				(c.settings as Record<string, unknown> | undefined)?.PGLITE_DATA_DIR ??
-				process.env.PGLITE_DATA_DIR ??
-				process.env.HARNESS_PGLITE_DIR ??
-				pgliteDirDefault,
+	characters = characters.map((c: Character) => {
+		const pgliteFromSettings = (
+			c.settings as Record<string, unknown> | undefined
+		)?.PGLITE_DATA_DIR;
+		const pgliteDataDir: string =
+			typeof pgliteFromSettings === "string"
+				? pgliteFromSettings
+				: (process.env.PGLITE_DATA_DIR ??
+					process.env.HARNESS_PGLITE_DIR ??
+					pgliteDirDefault);
+		return {
+			...c,
+			settings: {
+				...c.settings,
+				...ollamaSettingsFromEnv(),
+				...promptOptimizationSettingsFromEnv(),
+				PGLITE_DATA_DIR: pgliteDataDir,
 			/** Harness is direct chat: always respond (overrides character JSON if set). */
 			CHECK_SHOULD_RESPOND: false,
-		},
-	}));
+			},
+		};
+	});
 
 	characters = characters.map(mergeHarnessSqlPlugins);
 
 	const firstChar = characters[0];
 	if (firstChar) {
 		const optOn = isPromptOptimizationEnabledForHarness(firstChar);
-		const neuroPresent = hasNeuroPlugin(firstChar.plugins ?? []);
-		if (optOn && neuroPresent) {
+		const promptOptPresent = hasPromptOptPlugin(firstChar.plugins ?? []);
+		if (optOn && promptOptPresent) {
 			logger.info(
-				{ src: "harness", pluginNeuro: true },
-				"Prompt optimization: plugin-neuro merged; DPE traces + RUN_ENDED finalizer active",
+				{ src: "harness", pluginPromptOpt: true },
+				"Prompt optimization: @elizaos/plugin-promptopt merged; DPE hooks + RUN_ENDED finalizer active",
 			);
-		} else if (optOn && !neuroPresent) {
+		} else if (optOn && !promptOptPresent) {
 			logger.warn(
-				{ src: "harness", pluginNeuro: false },
-				"PROMPT_OPTIMIZATION_ENABLED is true but plugin-neuro was not added (check plugins list for a false-positive /neuro/ string match)",
+				{ src: "harness", pluginPromptOpt: false },
+				"PROMPT_OPTIMIZATION_ENABLED is true but @elizaos/plugin-promptopt was not added (check plugins list for a false-positive name match)",
 			);
 		}
 	}

@@ -5,7 +5,9 @@ High-level planned and in-progress work for the core package. **Why a single fil
 For **prompt optimization** phases (GEPA/ACE, signals, retention), see also:
 
 - [`docs/PROMPT_OPTIMIZATION.md`](docs/PROMPT_OPTIMIZATION.md) — behavior, paths, parsing WHYs
-- [`src/optimization/ROADMAP.md`](src/optimization/ROADMAP.md) — deep dive on optimizer stages and open questions
+- [`../plugin-promptopt/README.md`](../plugin-promptopt/README.md) — **why** the plugin exists and how `init` / `dispose` interact with hooks
+- [`../plugin-promptopt/ROADMAP.md`](../plugin-promptopt/ROADMAP.md) — package-level forward look (points to the deep roadmap below)
+- [`../plugin-promptopt/src/optimization/ROADMAP.md`](../plugin-promptopt/src/optimization/ROADMAP.md) — deep dive on optimizer stages and open questions
 
 ---
 
@@ -47,7 +49,7 @@ For **prompt optimization** phases (GEPA/ACE, signals, retention), see also:
 
 ## Longer term — optimization product
 
-- **Wire AxGEPA / AxACE** to real LLM-backed optimization (see `src/optimization/ROADMAP.md`).
+- **Phase 4 (shipped in `@elizaos/plugin-promptopt`):** AxGEPA / AxACE with standalone `AxAI` when `@ax-llm/ax` + `OPTIMIZATION_AI_*` are configured — see [`docs/PROMPT_OPTIMIZATION.md`](docs/PROMPT_OPTIMIZATION.md) and [`../plugin-promptopt/src/optimization/ROADMAP.md`](../plugin-promptopt/src/optimization/ROADMAP.md). **Why still listed:** follow-ups include richer training **context** (today `contextText` uses `templateHash`), optional **native** optimizers to replace Ax for cost control, and **CLI / API** one-shot runs.
 - **Cross-model artifact migration** when changing `modelId`.
 - **Optional DB-backed index** of artifacts (files remain source of truth).
   - **Why:** Query “which prompts are optimized?” across many agents without scanning disk on every node.

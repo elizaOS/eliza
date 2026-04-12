@@ -1026,6 +1026,49 @@ describe("dynamicPromptExecFromState", () => {
 			expect(result).not.toBeNull();
 		});
 	});
+
+	describe("prompt optimization hooks", () => {
+		it("invokes merge and disk hooks on successful parse", async () => {
+			const mergePromptTemplate = vi.fn().mockResolvedValue({
+				template: "MERGED_PROMPT_BODY",
+				variant: "baseline",
+			});
+			const persistRegistryEntry = vi.fn().mockResolvedValue(undefined);
+			const appendBaselineTrace = vi.fn().mockResolvedValue(undefined);
+			const appendFailureTrace = vi.fn().mockResolvedValue(undefined);
+
+			runtime.registerPromptOptimizationHooks({
+				mergePromptTemplate,
+				persistRegistryEntry,
+				appendBaselineTrace,
+				appendFailureTrace,
+			});
+
+			let captured = "";
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				async (_, params) => {
+					captured = params.prompt as string;
+					return "<response><text>ok</text></response>";
+				},
+				"mock",
+			);
+
+			const state = createMockState();
+			const result = await runtime.dynamicPromptExecFromState({
+				state,
+				params: { prompt: "BASE" },
+				schema: [{ field: "text", description: "x" }],
+				options: { contextCheckLevel: 0 },
+			});
+
+			expect(mergePromptTemplate).toHaveBeenCalled();
+			expect(captured).toContain("MERGED_PROMPT_BODY");
+			expect(result?.text).toBe("ok");
+			expect(persistRegistryEntry).toHaveBeenCalled();
+			expect(appendBaselineTrace).toHaveBeenCalled();
+		});
+	});
 });
 
 // ============================================================================

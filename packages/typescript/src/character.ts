@@ -29,7 +29,7 @@ export interface CharacterInput {
 	knowledge?: LegacyKnowledgeItem[];
 	plugins?: string[];
 	settings?: CharacterSettings;
-	secrets?: Record<string, string>;
+	secrets?: Record<string, string | number | boolean>;
 	style?: { all?: string[]; chat?: string[]; post?: string[] };
 	advancedPlanning?: boolean;
 	advancedMemory?: boolean;
@@ -49,7 +49,7 @@ interface NormalizedCharacterInput {
 	knowledge: KnowledgeSourceItem[];
 	plugins: string[];
 	settings?: CharacterSettings;
-	secrets: Record<string, string>;
+	secrets: Record<string, string | number | boolean>;
 	style?: { all?: string[]; chat?: string[]; post?: string[] };
 	advancedPlanning?: boolean;
 	advancedMemory?: boolean;

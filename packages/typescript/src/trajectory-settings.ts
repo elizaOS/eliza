@@ -5,7 +5,7 @@
  * auto-optimizer. Benchmarks and operators may need raw `useModel` / provider
  * logs without that pipeline, or may forbid writing full prompts to disk while
  * still optimizing. Centralizing bool parsing here keeps `TrajectoryLoggerService`
- * and plugin-neuro finalizer consistent.
+ * and the prompt-optimization plugin finalizer consistent.
  *
  * **Why `parseBool` is strict-ish:** Env and `getSetting` return inconsistent
  * types (`"true"`, `1`, `""`). We trim strings, accept numeric 0/1, and treat

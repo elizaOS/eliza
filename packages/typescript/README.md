@@ -14,7 +14,7 @@ The `@elizaos/core` package provides a robust foundation for building AI agents 
 - **Entity and Memory Management:** Core support for tracking entities and their associated information.
 - **Shared Config Helpers:** Common utilities for runtime-first setting resolution, typed coercion, and schema-based config validation.
 
-**Operator docs:** [Prompt optimization, trajectories, and on-disk layout](docs/PROMPT_OPTIMIZATION.md) — `OPTIMIZATION_DIR`, union `history.jsonl`, toggles, and **why** facts/judgments/policy are split.
+**Operator docs:** [Prompt optimization, trajectories, and on-disk layout](docs/PROMPT_OPTIMIZATION.md) — `OPTIMIZATION_DIR`, union `history.jsonl`, toggles, and **why** facts/judgments/policy are split. **Plugin entry:** [`../plugin-promptopt/README.md`](../plugin-promptopt/README.md) explains **why** optimization ships as `@elizaos/plugin-promptopt` instead of core-only.
 
 ## Installation
 
@@ -72,7 +72,7 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
 - `BATCHER_MAX_PARALLEL`: Positive integer; caps concurrent prompt-batcher dispatches (default `2` if unset). **Why:** Prevents too many simultaneous structured LLM calls when many sections drain together—see [docs/LLM_ROUTING.md](docs/LLM_ROUTING.md).
-- `PROMPT_OPTIMIZATION_ENABLED`: When truthy, DPE emits optimization traces, writes the prompt registry, and (with `plugin-neuro`) runs the RUN_ENDED finalizer path that updates slot profiles and may start background `OptimizationRunner`. **Why:** Single master switch for the whole on-disk optimization pipeline—see [docs/PROMPT_OPTIMIZATION.md](docs/PROMPT_OPTIMIZATION.md).
+- `PROMPT_OPTIMIZATION_ENABLED`: When truthy, **`@elizaos/plugin-promptopt`** registers disk hooks so DPE emits traces and registry entries, and RUN_ENDED updates slot profiles and may start background `OptimizationRunner`. Core does not read this flag. **Why:** Single master switch for the on-disk pipeline—see [docs/PROMPT_OPTIMIZATION.md](docs/PROMPT_OPTIMIZATION.md).
 - `OPTIMIZATION_DIR`: Optional root directory for traces, profiles, `artifact.json`, and `_prompt_registry` (defaults under `~/.eliza/optimization` when unset). **Why:** Lets you colocate artifacts with a repo or mount a volume without changing code.
 - `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`). Defaults from runtime settings if not set in options.
 - `DISABLE_MEMORY_CREATION` / `ALLOW_MEMORY_SOURCE_IDS`: Basic-capabilities-related; see plugin docs. Shown in the basic-capabilities banner when set.

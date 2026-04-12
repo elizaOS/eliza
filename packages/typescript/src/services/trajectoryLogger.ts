@@ -1,14 +1,15 @@
 import type {
 	LlmObservationRecord,
 	ProviderObservationRecord,
-} from "../optimization/types.ts";
-import { TRAJECTORY_PROVIDER_SLOT } from "../optimization/types.ts";
+} from "../types/trajectory-jsonl.ts";
+import { TRAJECTORY_PROVIDER_SLOT } from "../types/trajectory-jsonl.ts";
 import {
 	isTrajectoryCaptureEnabled,
 	isTrajectoryHistoryJsonlEnabled,
 } from "../trajectory-settings.ts";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
+import { appendTrajectoryHistoryJsonl } from "./trajectory-jsonl-append.ts";
 
 export type TrajectoryScalar = string | number | boolean | null;
 export type TrajectoryData = Record<string, TrajectoryScalar>;
@@ -53,9 +54,8 @@ export type TrajectoryLlmCall = {
  * and directory layout as prompt optimization (`OPTIMIZATION_DIR`) so operators
  * get one portable tree — not because raw telemetry is semantically “training data.”
  *
- * **Why dynamic `import("../optimization/index")` for disk:** Static import would
- * pull Node `fs` (via `TraceWriter`) into bundles that include this service for
- * browser targets; disk append is opt-in and rare.
+ * **Why a dedicated append helper:** Keeps `TraceWriter` in the prompt-opt plugin
+ * while preserving the same on-disk paths for optional JSONL.
  *
  * Settings: `TRAJECTORY_CAPTURE_ENABLED` (master), `TRAJECTORY_HISTORY_JSONL` (disk).
  * Independent of `PROMPT_OPTIMIZATION_ENABLED`.
@@ -130,24 +130,20 @@ export class TrajectoryLoggerService extends Service {
 			messageId: params.messageId,
 			executionTraceId: params.executionTraceId,
 		};
-		void import("../optimization/index.ts")
-			.then(({ getOptimizationRootDir, getTraceWriter }) => {
-				const optDir = getOptimizationRootDir(optDirSetting);
-				return getTraceWriter(optDir).appendProviderObservation(
-					modelId,
-					TRAJECTORY_PROVIDER_SLOT,
-					row,
-				);
-			})
-			.catch((err) => {
-				this.runtime.logger?.debug?.(
-					{
-						src: "trajectory_logger",
-						error: err instanceof Error ? err.message : String(err),
-					},
-					"provider_observation JSONL append failed",
-				);
-			});
+		void appendTrajectoryHistoryJsonl(
+			optDirSetting,
+			modelId,
+			TRAJECTORY_PROVIDER_SLOT,
+			row,
+		).catch((err) => {
+			this.runtime.logger?.debug?.(
+				{
+					src: "trajectory_logger",
+					error: err instanceof Error ? err.message : String(err),
+				},
+				"provider_observation JSONL append failed",
+			);
+		});
 	}
 
 	logLlmCall(
@@ -206,24 +202,20 @@ export class TrajectoryLoggerService extends Service {
 			messageId: params.messageId,
 			executionTraceId: params.executionTraceId,
 		};
-		void import("../optimization/index.ts")
-			.then(({ getOptimizationRootDir, getTraceWriter }) => {
-				const optDir = getOptimizationRootDir(optDirSetting);
-				return getTraceWriter(optDir).appendLlmObservation(
-					modelId,
-					logicalSlot,
-					row,
-				);
-			})
-			.catch((err) => {
-				this.runtime.logger?.debug?.(
-					{
-						src: "trajectory_logger",
-						error: err instanceof Error ? err.message : String(err),
-					},
-					"llm_observation JSONL append failed",
-				);
-			});
+		void appendTrajectoryHistoryJsonl(
+			optDirSetting,
+			modelId,
+			logicalSlot,
+			row,
+		).catch((err) => {
+			this.runtime.logger?.debug?.(
+				{
+					src: "trajectory_logger",
+					error: err instanceof Error ? err.message : String(err),
+				},
+				"llm_observation JSONL append failed",
+			);
+		});
 	}
 
 	getProviderAccessLogs(): readonly TrajectoryProviderAccess[] {

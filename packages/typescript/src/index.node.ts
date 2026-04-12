@@ -44,8 +44,11 @@ export * from "./memory";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
 export * from "./plugin";
-// Prompt-quality signals + RUN_ENDED trace finalization (pairs with PROMPT_OPTIMIZATION_ENABLED)
-export { neuroEvaluator, neuroPlugin } from "./plugin-neuro/index.ts";
+export {
+	historyJsonlFilePath,
+	sanitizeModelId,
+} from "./history-jsonl-paths.ts";
+export { getOptimizationRootDir } from "./optimization-root-dir.ts";
 
 export * from "./prompts";
 // Export onboarding providers

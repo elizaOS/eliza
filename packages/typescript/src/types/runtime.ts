@@ -447,7 +447,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 *
 	 * Traces are keyed by runId and held in memory until RUN_ENDED, at which
 	 * point they are finalized and persisted to disk. This allows evaluators,
-	 * action handlers, and plugin-neuro to contribute signals to a trace after
+	 * action handlers, and prompt-optimization plugins to contribute signals to a trace after
 	 * the initial LLM call completes.
 	 *
 	 * @param runId - The current run ID (from runtime.getCurrentRunId())
@@ -455,18 +455,18 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 */
 	enrichTrace(
 		runId: string,
-		signal: import("../optimization/types").ScoreSignal,
+		signal: import("./prompt-optimization-trace").ScoreSignal,
 	): void;
 
 	/** Retrieve the most recent in-flight optimization trace for a runId. */
 	getActiveTrace(
 		runId: string,
-	): import("../optimization/types").ExecutionTrace | undefined;
+	): import("./prompt-optimization-trace").ExecutionTrace | undefined;
 
 	/** Retrieve all in-flight optimization traces for a runId (multiple DPE calls per run). */
 	getActiveTracesForRun?(
 		runId: string,
-	): import("../optimization/types").ExecutionTrace[];
+	): import("./prompt-optimization-trace").ExecutionTrace[];
 
 	/** Remove all in-flight optimization traces for a runId after finalization. */
 	deleteActiveTrace(runId: string): void;
@@ -474,8 +474,18 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	/** Remove a single in-flight trace by its unique trace id. */
 	deleteActiveTraceById?(traceId: string): void;
 
-	/** Whether prompt optimization (traces, plugin-neuro, auto artifact runs) is enabled. */
-	isPromptOptimizationEnabled(): boolean;
+	/**
+	 * Register disk-backed or custom prompt optimization hooks (merge, registry, traces).
+	 * When `null`, DPE performs no optimization I/O.
+	 */
+	registerPromptOptimizationHooks(
+		hooks: import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks | null,
+	): void;
+
+	getPromptOptimizationHooks(): import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks | null;
+
+	/** Resolved `OPTIMIZATION_DIR` (see `getOptimizationRootDir` in `@elizaos/core`). */
+	getOptimizationDir(): string;
 
 	stop(): Promise<void>;
 

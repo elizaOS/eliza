@@ -6,7 +6,13 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["bun"]
+    "types": ["bun"],
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../packages/typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["../packages/typescript/src/*"]
+    }
   },
-  "include": ["typescript/**/*.ts"]
+  "include": ["typescript/**/*.ts", "typescript/**/*.d.ts"]
 }

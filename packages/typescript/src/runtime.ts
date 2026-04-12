@@ -19,16 +19,13 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createLogger } from "./logger";
-import {
-	type ExecutionTrace,
-	getOptimizationRootDir,
-	getResolver,
-	getTraceWriter,
-	mergeArtifactIntoPrompt,
-	ScoreCard,
-	type ScoreSignal,
-} from "./optimization/index.ts";
-import { writePromptRegistryEntry } from "./optimization/prompt-registry.ts";
+import { getOptimizationRootDir } from "./optimization-root-dir.ts";
+import type { PromptOptimizationRuntimeHooks } from "./types/prompt-optimization-hooks.ts";
+import { ScoreCard } from "./types/prompt-optimization-score-card.ts";
+import type {
+	ExecutionTrace,
+	ScoreSignal,
+} from "./types/prompt-optimization-trace.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
@@ -193,8 +190,8 @@ function resolveDynamicPromptModelType(
  * are merged into the character. `getSetting` consults this when the key is absent from
  * character settings/secrets.
  *
- * Includes Ollama slot resolution (`@elizaos/plugin-ollama` init) and prompt optimization
- * (`PROMPT_OPTIMIZATION_ENABLED`, `OPTIMIZATION_DIR`) so `.env` matches harness behavior.
+ * Includes Ollama slot resolution (`@elizaos/plugin-ollama` init) and `OPTIMIZATION_DIR`
+ * (used by prompt-optimization plugins) so `.env` matches harness behavior.
  */
 function processEnvFallbackSetting(key: string): string | undefined {
 	if (typeof process === "undefined" || !process.env) return undefined;
@@ -203,7 +200,6 @@ function processEnvFallbackSetting(key: string): string | undefined {
 		key.startsWith("OLLAMA_") ||
 		key === "SMALL_MODEL" ||
 		key === "LARGE_MODEL" ||
-		key === "PROMPT_OPTIMIZATION_ENABLED" ||
 		key === "OPTIMIZATION_DIR"
 	) {
 		const v = env[key];
@@ -368,6 +364,14 @@ export class AgentRuntime implements IAgentRuntime {
 	 */
 	private activeTraces = new Map<string, ExecutionTrace>();
 	private runToTraces = new Map<string, Set<string>>();
+	/**
+	 * Optional DPE-side prompt optimization I/O (merge, registry, baseline/failure traces).
+	 *
+	 * **Why nullable:** Most runtimes have no plugin; DPE must not branch on env flags
+	 * in core. **Why not lazy-read a global?** Tests and multi-agent hosts need per-runtime
+	 * hook instances without cross-talk.
+	 */
+	private promptOptimizationHooks: PromptOptimizationRuntimeHooks | null = null;
 
 	// A map of all plugins available to the runtime, keyed by name, for dependency resolution.
 	private allAvailablePlugins = new Map<string, Plugin>();
@@ -1509,25 +1513,30 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/**
-	 * Check if prompt optimization is enabled.
-	 * Controlled by the PROMPT_OPTIMIZATION_ENABLED setting.
-	 */
-	isPromptOptimizationEnabled(): boolean {
-		const setting = this.getSetting("PROMPT_OPTIMIZATION_ENABLED");
-		if (typeof setting === "boolean") return setting;
-		if (typeof setting === "string") {
-			return setting.toLowerCase() === "true" || setting === "1";
-		}
-		return false;
-	}
-
-	/**
 	 * Get the configured optimization root directory.
 	 * Falls back to ~/.eliza/optimization/ if not configured.
 	 */
 	getOptimizationDir(): string {
 		const setting = this.getSetting("OPTIMIZATION_DIR");
 		return getOptimizationRootDir(typeof setting === "string" ? setting : null);
+	}
+
+	/**
+	 * Register or clear prompt-optimization hooks used by DPE.
+	 *
+	 * **Why `null`:** Explicit teardown (plugin `dispose`, tests) must drop disk hooks
+	 * without recreating runtime. **Why no reference counting:** Single owner model—last
+	 * writer wins; advanced hosts should coordinate plugin order if multiple writers exist.
+	 */
+	registerPromptOptimizationHooks(
+		hooks: PromptOptimizationRuntimeHooks | null,
+	): void {
+		this.promptOptimizationHooks = hooks;
+	}
+
+	/** Active hooks for DPE; when null, no merge/registry/trace file I/O from DPE. */
+	getPromptOptimizationHooks(): PromptOptimizationRuntimeHooks | null {
+		return this.promptOptimizationHooks;
 	}
 
 	/**
@@ -1584,7 +1593,7 @@ export class AgentRuntime implements IAgentRuntime {
 	/**
 	 * Enrich an in-flight execution trace with an additional score signal.
 	 *
-	 * Called by evaluators, action handlers, and plugin-neuro after the
+	 * Called by evaluators, action handlers, and prompt-optimization plugins after the
 	 * initial DPE call returns. The enriched trace is persisted when
 	 * RUN_ENDED fires.
 	 */
@@ -1641,6 +1650,34 @@ export class AgentRuntime implements IAgentRuntime {
 				this.runToTraces.delete(rid);
 			}
 		}
+	}
+
+	/** Cap in-memory growth when RUN_ENDED never runs (no finalizer clears traces). */
+	private static readonly ACTIVE_TRACE_TTL_MS = 5 * 60 * 1000;
+	private activeTraceTtlPurgeCounter = 0;
+
+	/** Remove traces older than ACTIVE_TRACE_TTL_MS from activeTraces / runToTraces. */
+	private purgeStaleActiveTraces(): void {
+		const now = Date.now();
+		const ttl = AgentRuntime.ACTIVE_TRACE_TTL_MS;
+		for (const [id, t] of this.activeTraces) {
+			if (now - t.createdAt <= ttl) continue;
+			this.activeTraces.delete(id);
+			for (const [rid, tids] of this.runToTraces) {
+				tids.delete(id);
+				if (tids.size === 0) this.runToTraces.delete(rid);
+			}
+		}
+	}
+
+	/**
+	 * Throttled TTL purge on hot DPE success path (every 100 registrations).
+	 * Why: full map scans every success would add overhead; stale traces still
+	 * disappear within ~5 minutes plus at most 99 more successes.
+	 */
+	private maybeRunActiveTraceTTLPurge(): void {
+		if (++this.activeTraceTtlPurgeCounter % 100 !== 0) return;
+		this.purgeStaleActiveTraces();
 	}
 
 	/**
@@ -2998,7 +3035,7 @@ export class AgentRuntime implements IAgentRuntime {
 				typeof message.content?.text === "string" ? message.content.text : "";
 			const trajCtx = getTrajectoryContext();
 			// Best-effort link to in-flight DPE trace (latest registered for this run).
-			// Why getActiveTrace: compose may run before/after DPE; id is omitted when optimization off.
+			// Why getActiveTrace: compose may run before/after DPE; id is omitted when no prompt-opt hooks.
 			const providerTraceId = this.getActiveTrace(this.getCurrentRunId())?.id;
 			for (const r of providerData) {
 				try {
@@ -4462,9 +4499,9 @@ export class AgentRuntime implements IAgentRuntime {
 		let traceVariant: string = "baseline";
 		let traceArtifactVersion: number | undefined;
 		const traceStartTime = Date.now();
-		const optimizationEnabled = this.isPromptOptimizationEnabled();
+		const optimizationHooks = this.getPromptOptimizationHooks();
 
-		if (optimizationEnabled) {
+		if (optimizationHooks) {
 			traceModelId = this.resolveProviderModelString(
 				resolvedModelType,
 				options.model,
@@ -4513,27 +4550,24 @@ export class AgentRuntime implements IAgentRuntime {
 			const templateStr =
 				typeof template === "function" ? template({ state }) : template;
 
-			// --- Optimization: resolve artifact and merge into template ---
+			// --- Prompt optimization hooks: merge artifact into template (first attempt only) ---
 			let finalTemplateStr = templateStr;
 			if (
-				optimizationEnabled &&
+				optimizationHooks &&
 				traceModelId &&
 				tracePromptKey &&
 				currentRetry === 0
 			) {
 				try {
-					const optDir = this.getOptimizationDir();
-					const resolver = getResolver(optDir);
-					const { artifact, selectedVariant } = await resolver.resolveWithAB(
-						traceModelId,
-						resolvedModelType,
-						tracePromptKey,
-					);
-					traceVariant = selectedVariant;
-					if (artifact && selectedVariant === "optimized") {
-						finalTemplateStr = mergeArtifactIntoPrompt(templateStr, artifact);
-						traceArtifactVersion = artifact.version;
-					}
+					const merged = await optimizationHooks.mergePromptTemplate(this, {
+						baselineTemplate: templateStr,
+						modelId: traceModelId,
+						modelSlot: resolvedModelType,
+						promptKey: tracePromptKey,
+					});
+					finalTemplateStr = merged.template;
+					traceVariant = merged.variant;
+					traceArtifactVersion = merged.artifactVersion;
 				} catch (optErr) {
 					this.logger.warn(
 						{ error: optErr },
@@ -5093,8 +5127,8 @@ ${section_end}`;
 				// Clean up smart retry context from state
 				delete (state as Record<string, unknown>)._smartRetryContext;
 
-				// --- Optimization: emit success trace ---
-				if (optimizationEnabled && traceModelId && tracePromptKey) {
+				// --- Prompt optimization hooks: emit success trace ---
+				if (optimizationHooks && traceModelId && tracePromptKey) {
 					try {
 						const scoreCard = new ScoreCard();
 						// Each signal may include `reason` for auditable JSONL / UIs (see ScoreSignal in types).
@@ -5128,6 +5162,12 @@ ${section_end}`;
 							reason: `Estimated output tokens ${outputTokenEst} vs reference 500`,
 						});
 
+						const simpleHash = (s: string) =>
+							s
+								.split("")
+								.reduce((h, c) => ((h * 31) ^ c.charCodeAt(0)) >>> 0, 5381)
+								.toString(16)
+								.slice(0, 8);
 						const templateHashInput =
 							typeof params.prompt === "string"
 								? params.prompt
@@ -5161,7 +5201,7 @@ ${section_end}`;
 
 						// Store in activeTraces for downstream enrichment.
 						// Prune stale entries periodically (every 100 calls) to prevent memory leaks
-						// when plugin-neuro is not active or RUN_ENDED never fires.
+						// when no RUN_ENDED finalizer clears them.
 						this.maybeRunActiveTraceTTLPurge();
 						const runId = trace.runId;
 						if (runId) {
@@ -5172,32 +5212,27 @@ ${section_end}`;
 							this.runToTraces.get(runId)?.add(trace.id);
 						}
 
-						// Write the pre-enrichment trace to disk as a baseline.
-						// If plugin-neuro is active, its finalizer writes the
-						// enriched version with a higher seq; dedup keeps the
-						// enriched copy regardless of I/O ordering.
-						// Without plugin-neuro, this guarantees traces still persist.
-						const optDir = this.getOptimizationDir();
-						void writePromptRegistryEntry(optDir, {
-							promptKey: tracePromptKey,
-							schemaFingerprint: schemaKey,
-							templateHash: computedTemplateHash,
-							promptTemplate:
-								typeof params.prompt === "string" ? params.prompt : "",
-							schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
-						}).catch((err) => {
-							this.logger.warn(
-								{ error: err, src: "dpe" },
-								"Failed to write prompt optimization registry",
-							);
-						});
-						const tw = getTraceWriter(optDir);
-						trace.seq = tw.nextSeq();
-						tw.appendTrace(traceModelId, resolvedModelType, trace).catch(
-							(err) => {
+						// Baseline trace on disk; optional plugin finalizer may write enriched seq.
+						void optimizationHooks
+							.persistRegistryEntry(this, {
+								promptKey: tracePromptKey,
+								schemaFingerprint: schemaKey,
+								templateHash: computedTemplateHash,
+								promptTemplate:
+									typeof params.prompt === "string" ? params.prompt : "",
+								schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
+							})
+							.catch((err) => {
+								this.logger.warn(
+									{ error: err, src: "dpe" },
+									"Failed to write prompt optimization registry",
+								);
+							});
+						void optimizationHooks
+							.appendBaselineTrace(this, { trace })
+							.catch((err) => {
 								this.logger.warn("Failed to write optimization trace", err);
-							},
-						);
+							});
 					} catch (traceErr) {
 						this.logger.warn(
 							{ error: traceErr },
@@ -5325,21 +5360,11 @@ ${section_end}`;
 			`dynamicPromptExecFromState: "${promptDisplayName}" failed after ${maxRetries} retries [${modelSchemaKey}] ${metric.successfulAttempts}/${metric.totalAttempts} successful`,
 		);
 
-		// --- Optimization: emit failure trace ---
-		if (optimizationEnabled && traceModelId && tracePromptKey) {
+		// --- Prompt optimization hooks: emit failure trace ---
+		if (optimizationHooks && traceModelId && tracePromptKey) {
 			try {
-				// Prune stale activeTraces entries on failure path too
-				const ACTIVE_TRACE_TTL_MS = 5 * 60 * 1000;
-				const nowFail = Date.now();
-				for (const [id, t] of this.activeTraces) {
-					if (nowFail - t.createdAt > ACTIVE_TRACE_TTL_MS) {
-						this.activeTraces.delete(id);
-						for (const [rid, tids] of this.runToTraces) {
-							tids.delete(id);
-							if (tids.size === 0) this.runToTraces.delete(rid);
-						}
-					}
-				}
+				// Failure path: purge every time (success path is throttled to every 100).
+				this.purgeStaleActiveTraces();
 
 				const scoreCard = new ScoreCard();
 				scoreCard.add({
@@ -5392,26 +5417,25 @@ ${section_end}`;
 					createdAt: Date.now(),
 				};
 
-				const optDir = this.getOptimizationDir();
-				void writePromptRegistryEntry(optDir, {
-					promptKey: tracePromptKey,
-					schemaFingerprint: schemaKey,
-					templateHash: simpleHash(
-						typeof params.prompt === "string" ? params.prompt : tracePromptKey,
-					),
-					promptTemplate:
-						typeof params.prompt === "string" ? params.prompt : "",
-					schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
-				}).catch((err) => {
-					this.logger.warn(
-						{ error: err, src: "dpe" },
-						"Failed to write prompt optimization registry",
-					);
-				});
-				const failTw = getTraceWriter(optDir);
-				trace.seq = failTw.nextSeq();
-				failTw
-					.appendTrace(traceModelId, resolvedModelType, trace)
+				void optimizationHooks
+					.persistRegistryEntry(this, {
+						promptKey: tracePromptKey,
+						schemaFingerprint: schemaKey,
+						templateHash: simpleHash(
+							typeof params.prompt === "string" ? params.prompt : tracePromptKey,
+						),
+						promptTemplate:
+							typeof params.prompt === "string" ? params.prompt : "",
+						schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
+					})
+					.catch((err) => {
+						this.logger.warn(
+							{ error: err, src: "dpe" },
+							"Failed to write prompt optimization registry",
+						);
+					});
+				void optimizationHooks
+					.appendFailureTrace(this, { trace })
 					.catch((err) => {
 						this.logger.warn("Failed to write failure trace", err);
 					});
