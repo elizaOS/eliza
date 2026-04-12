@@ -16,9 +16,7 @@ const isPlaywrightE2E = process.env.ELIZA_PLAYWRIGHT_E2E === "1";
 if (isPlaywrightE2E) {
 	// Skip the entire suite when no provider is available (set by global-setup).
 	test.beforeEach(() => {
-		if (process.env.__E2E_SKIP__ === "1") {
-			test.skip(true, "No inference provider available");
-		}
+		test.skip(process.env.__E2E_SKIP__ === "1", "No inference provider available");
 	});
 
 	// ─── Health & status ──────────────────────────────────────────────────────
