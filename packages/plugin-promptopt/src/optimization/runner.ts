@@ -299,7 +299,7 @@ export class OptimizationRunner {
 		Array<{ modelId: string; slotKey: SlotKey; promptKey: PromptKey }>
 	> {
 		// Read directory structure to discover all model/slot/profile combinations
-		const { readdir } = await import("node:fs/promises");
+		const { readdir, readFile } = await import("node:fs/promises");
 		const { join } = await import("node:path");
 
 		const pending: Array<{
@@ -324,7 +324,6 @@ export class OptimizationRunner {
 						if (!file.startsWith("profile_") || !file.endsWith(".json"))
 							continue;
 
-						const { readFile } = await import("node:fs/promises");
 						try {
 							const content = await readFile(join(slotPath, file), "utf-8");
 							const profile = JSON.parse(content);
