@@ -372,4 +372,4 @@ skills/.cache/
 .pr-resolver-state.json
 
 # Local prompt optimization traces/artifacts when OPTIMIZATION_DIR points at repo
-/opt/
+/.eliza-optimization/
