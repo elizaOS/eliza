@@ -47,17 +47,16 @@ export class EmbeddingGenerationService extends Service {
 		// Check if TEXT_EMBEDDING model is registered
 		const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
 		if (!embeddingModel) {
-			runtime.logger.warn(
+			runtime.logger.error(
 				{
 					src: "plugin:basic-capabilities:service:embedding",
 					agentId: runtime.agentId,
 				},
-				"No TEXT_EMBEDDING model registered - service will not be initialized",
+				"No TEXT_EMBEDDING model registered - embedding generation cannot start",
 			);
-			// Return a no-op service that does nothing
-			const noOpService = new EmbeddingGenerationService(runtime);
-			noOpService.isDisabled = true;
-			return noOpService;
+			throw new Error(
+				"EmbeddingGenerationService requires a registered TEXT_EMBEDDING model",
+			);
 		}
 
 		const service = new EmbeddingGenerationService(runtime);

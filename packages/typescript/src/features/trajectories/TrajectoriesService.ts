@@ -473,34 +473,9 @@ export class TrajectoriesService extends Service {
 
 		for (const [columnName, definition] of requiredColumns) {
 			if (columns.has(columnName)) continue;
-			try {
-				await this.executeRawSql(`
-          ALTER TABLE trajectories
-          ADD COLUMN IF NOT EXISTS ${columnName} ${definition}
-        `);
-			} catch (errWithIfExists) {
-				// Some DB adapters don't support IF NOT EXISTS on ADD COLUMN.
-				try {
-					await this.executeRawSql(`
-            ALTER TABLE trajectories
-            ADD COLUMN ${columnName} ${definition}
-          `);
-				} catch (errPlain) {
-					const combinedMessage =
-						`${errWithIfExists instanceof Error ? errWithIfExists.message : String(errWithIfExists)} | ${errPlain instanceof Error ? errPlain.message : String(errPlain)}`.toLowerCase();
-					if (
-						combinedMessage.includes("already exists") ||
-						combinedMessage.includes("duplicate column") ||
-						combinedMessage.includes("duplicate_column")
-					) {
-						continue;
-					}
-
-					logger.warn(
-						`[trajectory-logger] Failed to add trajectories.${columnName} (non-fatal): ${errPlain instanceof Error ? errPlain.message : String(errPlain)}`,
-					);
-				}
-			}
+			throw new Error(
+				`[trajectory-logger] Missing required trajectories.${columnName} column (${definition}). Run schema migrations before starting the runtime.`,
+			);
 		}
 
 		// Legacy Milady schema used 32-bit INTEGER for ms timestamps. Upgrade to
@@ -1268,31 +1243,9 @@ export class TrajectoriesService extends Service {
       `);
 			persistedStart = true;
 		} catch (_err) {
-			try {
-				// Compatibility fallback for legacy Milady schema that stores metadata
-				// in `metadata` instead of `metadata_json`.
-				await this.executeRawSql(`
-          INSERT INTO trajectories (
-            id, agent_id, source, status, start_time, steps_json, metadata, created_at, updated_at
-          ) VALUES (
-            ${sqlLiteral(trajectoryId)},
-            ${sqlLiteral(agentId)},
-            ${sqlLiteral(options.source ?? "chat")},
-            'active',
-            ${now},
-            ${sqlLiteral([])},
-            ${sqlLiteral(trajectory.metadata)},
-            ${sqlLiteral(timestampIso)},
-            ${sqlLiteral(timestampIso)}
-          )
-        `);
-				persistedStart = true;
-			} catch (legacyErr) {
-				logger.warn(
-					{ err: legacyErr, trajectoryId },
-					"[trajectory-logger] Failed to persist trajectory start",
-				);
-			}
+			throw new Error(
+				`[trajectory-logger] Failed to persist trajectory start for ${trajectoryId}`,
+			);
 		}
 
 		if (persistedStart && legacyStepId) {
