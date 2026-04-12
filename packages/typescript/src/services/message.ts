@@ -2302,13 +2302,24 @@ export class DefaultMessageService implements IMessageService {
 			await runtime.deleteCache(getTaskCompletionCacheKey(message.id));
 
 			if (taskCompletion?.assessed && !taskCompletion.completed) {
-				const latestActionResults = runtime.getActionResults(message.id);
-				if (
-					shouldWaitForUserAfterIncompleteReflection(
-						responseContent,
-						latestActionResults,
-					)
-				) {
+				const directReplyText =
+					typeof responseContent?.text === "string"
+						? responseContent.text.trim()
+						: "";
+				let latestActionResults: ActionResult[] = [];
+				const shouldWaitForUser =
+					isSimpleReplyResponse(responseContent) &&
+					isLikelyClarifyingQuestion(directReplyText)
+						? true
+						: (() => {
+								latestActionResults = runtime.getActionResults(message.id);
+								return shouldWaitForUserAfterIncompleteReflection(
+									responseContent,
+									latestActionResults,
+								);
+							})();
+
+				if (shouldWaitForUser) {
 					runtime.logger.debug(
 						{
 							src: "service:message",
