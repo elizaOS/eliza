@@ -53,7 +53,14 @@ export class PromptArtifactResolver {
 		const prev = this.writeLocks.get(key) ?? Promise.resolve();
 		const next = prev.then(fn, fn);
 		this.writeLocks.set(key, next);
-		await next;
+		try {
+			await next;
+		} finally {
+			// Clean up resolved lock to prevent unbounded memory growth
+			if (this.writeLocks.get(key) === next) {
+				this.writeLocks.delete(key);
+			}
+		}
 	}
 
 	constructor(rootDir: string) {
