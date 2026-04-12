@@ -1,11 +1,11 @@
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
-import { logger } from "../../logger.ts";
-import { searchContactsTemplate } from "../../prompts.ts";
-import type { RelationshipsService } from "../../services/relationships.ts";
 import {
 	findKeywordTermMatch,
 	getValidationKeywordTerms,
 } from "../../i18n/validation-keywords.ts";
+import { logger } from "../../logger.ts";
+import { searchContactsTemplate } from "../../prompts.ts";
+import type { RelationshipsService } from "../../services/relationships.ts";
 import type {
 	Action,
 	ActionExample,

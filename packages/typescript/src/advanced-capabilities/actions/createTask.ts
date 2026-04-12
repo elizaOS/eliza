@@ -1,5 +1,9 @@
 import { v4 as uuidv4 } from "uuid";
 import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../../i18n/validation-keywords.ts";
+import {
 	buildTriggerTaskMetadata,
 	normalizeTriggerIntervalMs,
 	parseCronExpression,
@@ -27,10 +31,6 @@ import {
 	type TriggerType,
 	type TriggerWakeMode,
 } from "../../types/trigger";
-import {
-	findKeywordTermMatch,
-	getValidationKeywordTerms,
-} from "../../i18n/validation-keywords.ts";
 import { parseKeyValueXml, stringToUuid } from "../../utils";
 
 const CREATE_TASK_KEYWORDS = getValidationKeywordTerms(

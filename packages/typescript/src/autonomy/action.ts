@@ -5,6 +5,10 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
+import {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+} from "../i18n/validation-keywords.ts";
 import type {
 	Action,
 	ActionResult,
@@ -15,10 +19,6 @@ import type {
 	State,
 	UUID,
 } from "../types";
-import {
-	findKeywordTermMatch,
-	getValidationKeywordTerms,
-} from "../i18n/validation-keywords.ts";
 import { stringToUuid } from "../utils";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
 

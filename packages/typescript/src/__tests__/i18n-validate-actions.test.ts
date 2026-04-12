@@ -164,7 +164,10 @@ describe("localized validate audit for upstream eliza actions", () => {
 					},
 					adminUserId: "admin-1",
 				}),
-				makeMessage("avisa al administrador sobre el progreso", "autonomy-room"),
+				makeMessage(
+					"avisa al administrador sobre el progreso",
+					"autonomy-room",
+				),
 			),
 		).resolves.toBe(true);
 	});

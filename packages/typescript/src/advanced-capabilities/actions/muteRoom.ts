@@ -34,11 +34,10 @@ export const muteRoomAction: Action = {
 	description: spec.description,
 	examples: (spec.examples ?? []) as ActionExample[][],
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
-		const text = (
+		const text =
 			typeof message?.content === "string"
 				? message.content
-				: (message?.content?.text ?? "")
-		);
+				: (message?.content?.text ?? "");
 		if (findKeywordTermMatch(text, MUTE_TERMS) === undefined) return false;
 		const roomId = message.roomId;
 		const roomState = await runtime.getParticipantUserState(
