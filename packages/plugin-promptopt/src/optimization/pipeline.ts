@@ -1,3 +1,4 @@
+import { logger } from "@elizaos/core";
 import { ScoreCard } from "./score-card.ts";
 import type {
 	OptimizedPromptArtifact,
@@ -99,7 +100,7 @@ export class DefaultOptimizerPipeline implements OptimizerPipeline {
 
 				config.onProgress?.(stage.name, 1.0);
 			} catch (err) {
-				console.warn(`[OptimizerPipeline] Stage "${stage.name}" failed:`, err);
+				logger.warn({ src: "OptimizerPipeline", stage: stage.name, error: err instanceof Error ? err.message : String(err) }, `Stage "${stage.name}" failed`);
 				stageResults.push({
 					optimizerName: stage.adapter.name,
 					completedAt: Date.now(),
