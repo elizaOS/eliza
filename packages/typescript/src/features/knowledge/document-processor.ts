@@ -9,6 +9,7 @@ import {
 	ModelType,
 	type UUID,
 } from "../../types";
+import { BatchProcessor } from "../../utils/batch-queue";
 import { splitChunks } from "../../utils";
 import { getProviderRateLimits, validateModelConfig } from "./config.ts";
 import {
@@ -549,19 +550,34 @@ async function generateBatchEmbeddingsViaRuntime(
 	}
 
 	if (isEmbeddingVector(batchResult)) {
-		const embeddings: number[][] = await Promise.all(
-			texts.map(async (text) => {
+		// Provider returned one vector for many texts — fall back to per-text calls with bounded
+		// concurrency (same stack as action-filter / embedding batch paths).
+		const slots: number[][] = new Array(texts.length);
+		const processor = new BatchProcessor<number>({
+			maxParallel: 10,
+			maxRetriesAfterFailure: 2,
+			process: async (idx) => {
+				const text = texts[idx];
+				if (text === undefined) {
+					return;
+				}
 				const result = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
 					text,
 				});
 				if (isEmbeddingVector(result)) {
-					return result;
+					slots[idx] = result;
+				} else {
+					const embeddingResult = result as { embedding?: number[] } | undefined;
+					slots[idx] = embeddingResult?.embedding ?? [];
 				}
-				const embeddingResult = result as { embedding?: number[] } | undefined;
-				return embeddingResult?.embedding ?? [];
-			}),
-		);
-		return embeddings;
+			},
+			onExhausted: (idx) => {
+				slots[idx] = [];
+			},
+		});
+		const indices = texts.map((_, idx) => idx);
+		await processor.processBatch(indices);
+		return slots;
 	}
 
 	throw new Error("Unexpected batch embedding result format");

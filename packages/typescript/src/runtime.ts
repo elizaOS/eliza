@@ -202,31 +202,6 @@ function resolveDynamicPromptModelType(
 	}
 }
 
-export class Semaphore {
-	private permits: number;
-	private waiting: Array<() => void> = [];
-	constructor(count: number) {
-		this.permits = count;
-	}
-	async acquire(): Promise<void> {
-		if (this.permits > 0) {
-			this.permits -= 1;
-			return Promise.resolve();
-		}
-		return new Promise<void>((resolve) => {
-			this.waiting.push(resolve);
-		});
-	}
-	release(): void {
-		this.permits += 1;
-		const nextResolve = this.waiting.shift();
-		if (nextResolve && this.permits > 0) {
-			this.permits -= 1;
-			nextResolve();
-		}
-	}
-}
-
 type ServiceResolver = (service: Service) => void;
 type ServiceRejecter = (reason: Error | string) => void;
 type ServicePromiseHandler = {

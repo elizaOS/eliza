@@ -4,6 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText as aiGenerateText, embed, type ModelMessage } from "ai";
 import { logger } from "../../logger";
+import { BatchProcessor } from "../../utils/batch-queue";
 import {
 	logActiveTrajectoryLlmCall,
 	withStandaloneTrajectory,
@@ -142,28 +143,53 @@ export async function generateTextEmbeddingsBatch(
 		const batch = texts.slice(i, i + batchSize);
 		const batchStartIndex = i;
 
-		const batchPromises = batch.map(async (text, batchIndex) => {
-			const globalIndex = batchStartIndex + batchIndex;
-			try {
-				const result = await generateTextEmbedding(runtime, text);
-				return {
-					embedding: result.embedding,
-					success: true,
-					index: globalIndex,
-				};
-			} catch (error) {
-				logger.error({ error }, `Embedding error for item ${globalIndex}`);
-				return {
-					embedding: null,
-					success: false,
-					error,
-					index: globalIndex,
-				};
-			}
-		});
+		type BatchItem = { text: string; globalIndex: number; batchPos: number };
+		const items: BatchItem[] = batch.map((text, batchIndex) => ({
+			text,
+			globalIndex: batchStartIndex + batchIndex,
+			batchPos: batchIndex,
+		}));
+		const slot: Array<{
+			embedding: number[] | null;
+			success: boolean;
+			error?: unknown;
+			index: number;
+		} | null> = batch.map(() => null);
 
-		const batchResults = await Promise.all(batchPromises);
-		results.push(...batchResults);
+		// Note: BatchProcessor is used here purely as a concurrency limiter (semaphore).
+		// Errors are caught internally and written to `slot`, so retries and onExhausted are bypassed.
+		const processor = new BatchProcessor<BatchItem>({
+			maxParallel: 10,
+			maxRetriesAfterFailure: 0,
+			process: async (item) => {
+				try {
+					const result = await generateTextEmbedding(runtime, item.text);
+					slot[item.batchPos] = {
+						embedding: result.embedding,
+						success: true,
+						index: item.globalIndex,
+					};
+				} catch (error) {
+					logger.error(
+						{ error },
+						`Embedding error for item ${item.globalIndex}`,
+					);
+					slot[item.batchPos] = {
+						embedding: null,
+						success: false,
+						error,
+						index: item.globalIndex,
+					};
+				}
+			},
+		});
+		await processor.processBatch(items);
+		for (let j = 0; j < slot.length; j++) {
+			const row = slot[j];
+			if (row) {
+				results.push(row);
+			}
+		}
 
 		if (i + batchSize < texts.length) {
 			await new Promise((resolve) => setTimeout(resolve, 100));
