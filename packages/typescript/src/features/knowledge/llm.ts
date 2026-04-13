@@ -156,6 +156,8 @@ export async function generateTextEmbeddingsBatch(
 			index: number;
 		} | null> = batch.map(() => null);
 
+		// Note: BatchProcessor is used here purely as a concurrency limiter (semaphore).
+		// Errors are caught internally and written to `slot`, so retries and onExhausted are bypassed.
 		const processor = new BatchProcessor<BatchItem>({
 			maxParallel: 10,
 			maxRetriesAfterFailure: 0,
