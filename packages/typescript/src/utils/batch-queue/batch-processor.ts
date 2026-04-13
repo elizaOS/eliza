@@ -69,17 +69,23 @@ function toBackoffPolicy(
 /**
  * If the item carries `maxRetries` (e.g. embedding payload), total attempts = `maxRetries + 1`.
  * **Why:** Aligns with “retryCount < maxRetries” style loops elsewhere in the codebase.
+/**
+ * Per-item attempt override via explicit `_batchMaxAttempts` property.
+ *
+ * Uses `_batchMaxAttempts` (not `maxRetries`) to avoid accidentally duck-typing payload fields
+ * that happen to carry `maxRetries` for other purposes. Items must explicitly opt-in to override
+ * the queue-level `maxRetriesAfterFailure` by setting `_batchMaxAttempts` (total attempts, not retries).
  */
 function getPerItemMaxAttempts(item: unknown, fallback: number): number {
 	if (
 		item &&
 		typeof item === "object" &&
-		"maxRetries" in item &&
-		typeof (item as { maxRetries?: unknown }).maxRetries === "number"
+		"_batchMaxAttempts" in item &&
+		typeof (item as { _batchMaxAttempts?: unknown })._batchMaxAttempts === "number"
 	) {
-		const mr = (item as { maxRetries: number }).maxRetries;
-		if (Number.isFinite(mr) && mr >= 0) {
-			return mr + 1;
+		const attempts = (item as { _batchMaxAttempts: number })._batchMaxAttempts;
+		if (Number.isFinite(attempts) && attempts >= 1) {
+			return attempts;
 		}
 	}
 	return fallback;
