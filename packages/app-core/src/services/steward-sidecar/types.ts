@@ -52,6 +52,7 @@ export interface StewardCredentials {
   agentId: string;
   agentToken: string;
   walletAddress: string;
+  masterPassword?: string;
 }
 
 // ---------------------------------------------------------------------------

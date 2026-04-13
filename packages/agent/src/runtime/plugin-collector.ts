@@ -27,7 +27,7 @@ const OPTIONAL_CORE_PLUGIN_NAMES = new Set<string>(OPTIONAL_CORE_PLUGINS);
 
 /**
  * Agent orchestrator ships inside @elizaos/core (`src/orchestrator`); Eliza
- * loads the compat-wrapped plugin via STATIC_ELIZA_PLUGINS["agent-orchestrator"].
+ * loads it via STATIC_ELIZA_PLUGINS["agent-orchestrator"].
  */
 function orchestratorCompatPluginRequested(config: ElizaConfig): boolean {
   const agentEntry = config.agents?.list?.[0];
@@ -154,12 +154,8 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   bluebubbles: "@elizaos/plugin-bluebubbles",
   discordLocal: "@elizaos/plugin-discord-local",
   x402: "@elizaos/plugin-x402",
-  "plugin-manager": "@elizaos/plugin-plugin-manager",
-  pluginManager: "@elizaos/plugin-plugin-manager",
-  "secrets-manager": "@elizaos/plugin-secrets-manager",
-  secretsManager: "@elizaos/plugin-secrets-manager",
-  trust: "@elizaos/plugin-trust",
-  pluginTrust: "@elizaos/plugin-trust",
+  // plugin-manager, secrets-manager, trust: now built-in core capabilities
+  // Enable via ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   "streaming-base": "@elizaos/plugin-streaming-base",
   "twitch-streaming": "@elizaos/plugin-twitch-streaming",
   "youtube-streaming": "@elizaos/plugin-youtube-streaming",
@@ -271,7 +267,7 @@ export function collectPluginNames(
   for (const core of CORE_PLUGINS) track(core, "CORE_PLUGINS");
   if (orchestratorCompatPluginRequested(config)) {
     pluginsToLoad.add("agent-orchestrator");
-    track("agent-orchestrator", "agent-orchestrator (core + compat)");
+    track("agent-orchestrator", "agent-orchestrator (@elizaos/core/orchestrator)");
   }
   if (localEmbeddingsExplicitlyDisabled) {
     pluginsToLoad.delete("@elizaos/plugin-local-embedding");

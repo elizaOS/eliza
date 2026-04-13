@@ -12,7 +12,7 @@ import {
   type StreamEventEnvelope,
   client,
 } from "../api";
-import { mapServerTasksToSessions } from "../coding";
+import { mapServerTasksToSessions } from "@elizaos/app-coding";
 import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
 import {
   loadAvatarIndex,

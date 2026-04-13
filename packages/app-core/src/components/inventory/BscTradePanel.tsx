@@ -17,7 +17,7 @@ import { Button, Input } from "@elizaos/app-core";
 import { useCallback, useState } from "react";
 import { HEX_ADDRESS_RE } from "@elizaos/app-companion";
 import { formatBalance, type TrackedToken } from "./constants";
-import { StewardLogo } from "../steward/StewardLogo";
+import { StewardLogo } from "@elizaos/app-steward";
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 

@@ -1,13 +1,13 @@
-# Milady Benchmark Server
+# Eliza Benchmark Server
 
-HTTP bridge exposing the Milady runtime to Python benchmark runners.
+HTTP bridge exposing the Eliza runtime to Python benchmark runners.
 
 ## Architecture
 
 ```
 Python Benchmark Runner
-    |  (imports milady-adapter)
-milady-adapter (Python client)
+    |  (imports eliza-adapter)
+eliza-adapter (Python client)
     |  (HTTP requests)
 server.ts (this directory)
     |  (canonical message pipeline)
@@ -20,22 +20,22 @@ This directory contains:
 |---|---|
 | `server.ts` | HTTP server for benchmark traffic. Initializes `AgentRuntime`, handles benchmark sessions, and routes each message through `runtime.messageService.handleMessage(...)`. |
 | `mock-plugin-base.ts` | Tracked deterministic mock plugin used by benchmark unit tests and CI smoke checks. |
-| `mock-plugin.ts` | Optional local override (gitignored) loaded first when `MILADY_BENCH_MOCK=true`. |
+| `mock-plugin.ts` | Optional local override (gitignored) loaded first when `ELIZA_BENCH_MOCK=true`. |
 | `TESTING_PROTOCOL.md` | Benchmark action/testing protocol (required checks + CUA-bench compatibility commands). |
 
-The Python client side can live in a local adapter directory such as `benchmarks/milady-adapter/`.
+The Python client side can live in a local adapter directory such as `benchmarks/eliza-adapter/`.
 
 ## Start the server
 
 ```bash
-# from the milady package root
+# from the eliza package root
 npm run benchmark:server
 
 # or directly
 node --import tsx src/benchmark/server.ts
 ```
 
-The server prints `MILADY_BENCH_READY port=<port>` when ready.
+The server prints `ELIZA_BENCH_READY port=<port>` when ready.
 
 ## Testing
 
@@ -81,7 +81,7 @@ Response:
 
 ### `GET /api/benchmark/cua/status`
 
-Returns CUA service status when CUA benchmark mode is enabled (`MILADY_ENABLE_CUA=1`).
+Returns CUA service status when CUA benchmark mode is enabled (`ELIZA_ENABLE_CUA=1`).
 
 ### `POST /api/benchmark/cua/run`
 
@@ -136,13 +136,13 @@ Response:
 
 | Environment variable | Default | Description |
 |---|---|---|
-| `MILADY_BENCH_PORT` | `3939` | Port to listen on |
-| `MILADY_ENABLE_COMPUTERUSE` | unset | If set, loads local computeruse plugin |
-| `MILADY_ENABLE_CUA` | unset | If set (or CUA env is configured), loads `@elizaos/plugin-cua` |
+| `ELIZA_BENCH_PORT` | `3939` | Port to listen on |
+| `ELIZA_ENABLE_COMPUTERUSE` | unset | If set, loads local computeruse plugin |
+| `ELIZA_ENABLE_CUA` | unset | If set (or CUA env is configured), loads `@elizaos/plugin-cua` |
 | `CUA_HOST` | unset | Local CUA/LUME host (e.g. `localhost:8000`) |
 | `CUA_API_KEY` + `CUA_SANDBOX_NAME` | unset | Cloud CUA mode alternative to `CUA_HOST` |
 | `CUA_COMPUTER_USE_MODEL` | `auto` | Set `computer-use-preview` to force OpenAI computer-use runner |
-| `MILADY_BENCH_MOCK` | unset | Enables inline mock benchmark plugin |
+| `ELIZA_BENCH_MOCK` | unset | Enables inline mock benchmark plugin |
 
 ## Notes
 

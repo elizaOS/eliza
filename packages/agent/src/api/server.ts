@@ -65,7 +65,7 @@ import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
-import * as agentOrchestratorCompat from "../runtime/agent-orchestrator-compat.js";
+import * as agentOrchestratorCompat from "@elizaos/core/orchestrator";
 import { classifyRegistryPluginRelease } from "../runtime/release-plugin-policy.js";
 import {
   AUDIT_EVENT_TYPES,
@@ -6321,8 +6321,8 @@ async function handleRequest(
       );
     }
 
-    // Prefer the local orchestrator compat layer first so Eliza's richer
-    // coordinator contract wins over older plugin-coding-agent status routes.
+    // Prefer @elizaos/core/orchestrator route handler so the full coordinator
+    // contract is served from the embedded runtime (replaces the old plugin).
     if (!handled)
       try {
         const orchestratorPlugin =
@@ -6343,37 +6343,8 @@ async function handleRequest(
           );
         }
       } catch {
-        // Compat layer unavailable, try older coding-agent plugin next
+        // Compat layer unavailable — final fallback below handles coding-agents routes.
       }
-
-    // Then try the older coding-agent plugin when present.
-    if (!handled) {
-      try {
-        const codingAgentPlugin = (await import(
-          "@elizaos/plugin-coding-agent"
-        )) as {
-          createCodingAgentRouteHandler?: (
-            runtime: typeof state.runtime,
-            coordinator?: unknown,
-          ) => (
-            req: http.IncomingMessage,
-            res: http.ServerResponse,
-            pathname: string,
-          ) => Promise<boolean>;
-          getCoordinator?: (runtime: typeof state.runtime) => unknown;
-        };
-        if (codingAgentPlugin.createCodingAgentRouteHandler) {
-          const coordinator = codingAgentPlugin.getCoordinator?.(state.runtime);
-          const handler = codingAgentPlugin.createCodingAgentRouteHandler(
-            state.runtime,
-            coordinator,
-          );
-          handled = await handler(req, res, pathname);
-        }
-      } catch {
-        // Local plugin not available, skip
-      }
-    }
 
     // Final fallback: Handle coding-agents routes using AgentOrchestratorService
     if (!handled && pathname.startsWith("/api/coding-agents")) {
@@ -7756,7 +7727,7 @@ export async function startApiServer(opts?: {
           const msgs = await rt.getMemories({
             roomId: room.id as UUID,
             tableName: "messages",
-            count: 1,
+            limit: 1,
           });
           if (msgs.length > 0 && msgs[0].createdAt) {
             updatedAt = new Date(msgs[0].createdAt).toISOString();

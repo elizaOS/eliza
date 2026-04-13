@@ -13,10 +13,12 @@
     "paths": {
       "@elizaos/core": ["../../eliza/packages/typescript/src/index.node.ts"],
       "@elizaos/core/*": ["../../eliza/packages/typescript/src/*"],
-      "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
-      "@elizaos/app-lifeops/*": ["../../plugins/app-lifeops/src/*"],
-      "@elizaos/app-form": ["../../plugins/app-form/src/index.ts"],
-      "@elizaos/app-form/*": ["../../plugins/app-form/src/*"],
+      "@elizaos/app-lifeops": ["../../apps/app-lifeops/src/index.ts"],
+      "@elizaos/app-lifeops/*": ["../../apps/app-lifeops/src/*"],
+      "@elizaos/app-form": ["../../apps/app-form/src/index.ts"],
+      "@elizaos/app-form/*": ["../../apps/app-form/src/*"],
+      "@elizaos/app-companion": ["../../apps/app-companion/src/index.ts"],
+      "@elizaos/app-companion/*": ["../../apps/app-companion/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"]
     }

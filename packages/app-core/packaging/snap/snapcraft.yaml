@@ -1,0 +1,314 @@
+name: elizaos-app
+version: '2.0.0-alpha.92'
+summary: Personal AI assistant built on elizaOS
+description: |
+  elizaOS App is a personal AI assistant you run on your own devices, built on
+  elizaOS. It provides zero-config onboarding, multi-provider AI support,
+  a web dashboard, and a plugin system for extensibility.
+
+  Features:
+  - Interactive setup on first run — pick a name, personality, and AI provider
+  - Support for Anthropic (Claude), OpenAI, Google Gemini, Ollama, and more
+  - Web dashboard at http://localhost:2138
+  - Gateway API at http://localhost:18789
+  - Plugin system for extensibility
+  - Web3 wallet integration (EVM + Solana)
+  - Desktop apps for macOS, Windows, and Linux
+
+  Quick start: sudo snap install elizaos-app && elizaos-app setup
+
+grade: devel
+confinement: strict
+base: core22
+license: MIT
+website: https://app.elizaos.ai
+source-code: https://github.com/elizaos/elizaos-app
+issues: https://github.com/elizaos/elizaos-app/issues
+
+architectures:
+  - build-on: [amd64]
+    build-for: [amd64]
+  - build-on: [arm64]
+    build-for: [arm64]
+
+layout:
+  /usr/lib/x86_64-linux-gnu/libatomic.so.1:
+    symlink: $SNAP/usr/lib/x86_64-linux-gnu/libatomic.so.1
+
+apps:
+  elizaos-app:
+    command: bin/elizaos-app-wrapper
+    plugs:
+      - network
+      - network-bind
+      - home
+      - desktop
+      - browser-support
+      - password-manager-service
+    environment:
+      PATH: $SNAP/node/bin:$SNAP/usr/bin:$SNAP/bin:$PATH
+      NODE_PATH: $SNAP/lib/elizaos-app/node_modules
+      HOME: $SNAP_USER_DATA
+      ELIZAOS_APP_DATA_DIR: $SNAP_USER_COMMON/.elizaos-app
+      # Ensure Node.js can resolve DNS and make HTTPS requests
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+      # Snap-specific: tell elizaos-app where config lives
+      XDG_CONFIG_HOME: $SNAP_USER_COMMON
+      XDG_DATA_HOME: $SNAP_USER_COMMON
+
+parts:
+  node:
+    plugin: nil
+    override-build: |
+      set -eu
+      NODE_VERSION="22.12.0"
+      ARCH=$(dpkg --print-architecture)
+      case "$ARCH" in
+        amd64) NODE_ARCH="x64" ;;
+        arm64) NODE_ARCH="arm64" ;;
+        *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+      esac
+
+      curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
+        | tar xJ --strip-components=1 -C "$CRAFT_PART_INSTALL"
+
+      export PATH="$CRAFT_PART_INSTALL/bin:$PATH"
+
+      "$CRAFT_PART_INSTALL/bin/node" --version
+      "$CRAFT_PART_INSTALL/bin/npm" --version
+    organize:
+      '*': node/
+
+  bun:
+    plugin: nil
+    override-build: |
+      set -eu
+      ARCH=$(dpkg --print-architecture)
+      case "$ARCH" in
+        amd64) BUN_ARCH="x64" ;;
+        arm64) BUN_ARCH="aarch64" ;;
+        *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+      esac
+
+      curl -fsSL "https://github.com/oven-sh/bun/releases/latest/download/bun-linux-${BUN_ARCH}.zip" -o /tmp/bun.zip
+      unzip -o /tmp/bun.zip -d /tmp/bun-extract
+      mkdir -p "$CRAFT_PART_INSTALL/bun/bin"
+      cp /tmp/bun-extract/bun-linux-${BUN_ARCH}/bun "$CRAFT_PART_INSTALL/bun/bin/bun"
+      chmod +x "$CRAFT_PART_INSTALL/bun/bin/bun"
+      ln -sf bun "$CRAFT_PART_INSTALL/bun/bin/bunx"
+      "$CRAFT_PART_INSTALL/bun/bin/bun" --version
+    build-packages:
+      - unzip
+      - curl
+
+  elizaos-app:
+    after: [node, bun]
+    plugin: nil
+    source: .
+    override-build: |
+      set -eu
+      export PATH="$CRAFT_STAGE/bun/bin:$CRAFT_STAGE/node/bin:$PATH"
+
+      # Skip building upstream plugins from source — use npm-published packages
+      export ELIZAOS_APP_SKIP_LOCAL_UPSTREAMS=1
+
+      # Use the shared disable-local-eliza-workspace script so snap and
+      # every other SKIP_LOCAL_UPSTREAMS CI path are consistent. The
+      # script strips `eliza/packages/*` from workspaces, rewrites
+      # `@elizaos/core: workspace:*` to the pinned registry version
+      # across every workspace package.json, and cleans the root
+      # `overrides` block so `bun install` and `bun pm pack` produce a
+      # conflict-free lockfile. Snapcraft runs inside a multipass VM
+      # that does NOT inherit `GITHUB_ACTIONS=true`, so we set the
+      # force flag here to opt into the destructive mutation path.
+      ELIZAOS_APP_DISABLE_LOCAL_UPSTREAMS=force node scripts/disable-local-eliza-workspace.mjs
+
+      # Remove plugin source directories so tsc/build does not attempt
+      # to compile them (their deps like coding-agent-adapters are
+      # absent from the snap sandbox). The workspace rewrite above
+      # already remapped `@elizaos/plugin-*: workspace:*` → registry
+      # pins for the ones that need them at build time, so removing
+      # the on-disk plugin sources is safe.
+      node -e '
+        const fs = require("fs");
+        const path = require("path");
+        if (!fs.existsSync("plugins")) process.exit(0);
+        for (const dir of fs.readdirSync("plugins").filter(d =>
+          fs.statSync(path.join("plugins", d)).isDirectory()
+        )) {
+          fs.rmSync(path.join("plugins", dir), { recursive: true, force: true });
+        }
+      '
+
+      # Also drop any remaining `workspace:*` entries that point at
+      # plugin workspaces we just removed. This has to scan every
+      # surviving package.json, not just the root + packages/agent,
+      # because package-level devDependencies such as app-core's
+      # plugin-agent-skills/plugin-plugin-manager refs also participate
+      # in Bun's workspace resolution.
+      node -e '
+        const fs = require("fs");
+        const path = require("path");
+        const repoRoot = process.cwd();
+        const packageJsonPaths = [path.join(repoRoot, "package.json")];
+        const availableWorkspaceNames = new Set();
+        const dependencySections = [
+          "dependencies",
+          "devDependencies",
+          "peerDependencies",
+          "optionalDependencies",
+        ];
+
+        function walk(dir) {
+          if (!fs.existsSync(dir)) return;
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (entry.name === "node_modules" || entry.name.startsWith(".git")) {
+              continue;
+            }
+            const entryPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              walk(entryPath);
+              continue;
+            }
+            if (entry.isFile() && entry.name === "package.json") {
+              packageJsonPaths.push(entryPath);
+            }
+          }
+        }
+
+        for (const dir of ["apps", "packages", "deploy"]) {
+          walk(path.join(repoRoot, dir));
+        }
+
+        for (const pkgPath of packageJsonPaths) {
+          try {
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+            if (typeof pkg.name === "string" && pkg.name.length > 0) {
+              availableWorkspaceNames.add(pkg.name);
+            }
+          } catch {}
+        }
+
+        function stripWorkspaceDeps(pkgPath) {
+          if (!fs.existsSync(pkgPath)) return;
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+          let mutated = false;
+          for (const section of dependencySections) {
+            if (!pkg[section]) continue;
+            for (const [k, v] of Object.entries(pkg[section])) {
+              if (
+                typeof v === "string" &&
+                v.startsWith("workspace:") &&
+                !availableWorkspaceNames.has(k)
+              ) {
+                delete pkg[section][k];
+                mutated = true;
+              }
+            }
+          }
+          if (pkg.overrides && typeof pkg.overrides === "object") {
+            for (const [k, v] of Object.entries(pkg.overrides)) {
+              if (
+                typeof v === "string" &&
+                v.startsWith("workspace:") &&
+                !availableWorkspaceNames.has(k)
+              ) {
+                delete pkg.overrides[k];
+                mutated = true;
+              }
+            }
+            if (Object.keys(pkg.overrides).length === 0) {
+              delete pkg.overrides;
+            }
+          }
+          if (Array.isArray(pkg.bundleDependencies)) {
+            pkg.bundleDependencies = pkg.bundleDependencies.filter(
+              d => availableWorkspaceNames.has(d)
+            );
+            mutated = true;
+          }
+          if (mutated) {
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+          }
+        }
+        for (const pkgPath of packageJsonPaths) {
+          stripWorkspaceDeps(pkgPath);
+        }
+      '
+
+      # The cloud-agent template is a release helper workspace, not a
+      # snap runtime dependency. Keeping it in the workspace graph
+      # pulls the published @elizaos/plugin-sql package, whose current
+      # alpha manifest self-pins an unavailable alpha.114 build.
+      node -e '
+        const fs = require("fs");
+        const pkgPath = "package.json";
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+        if (Array.isArray(pkg.workspaces)) {
+          const next = pkg.workspaces.filter(
+            (entry) => entry !== "deploy/cloud-agent-template"
+          );
+          if (next.length !== pkg.workspaces.length) {
+            pkg.workspaces = next;
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+          }
+        }
+      '
+
+      # The committed lockfile still references repo-local workspace
+      # paths that no longer exist after the destructive rewrite
+      # above. Force Bun to resolve against the patched manifests.
+      rm -f bun.lock
+
+      # Install dependencies — skip postinstall to avoid ensure-bundled-workspaces
+      # trying to build the (now-removed) plugin-agent-orchestrator from source.
+      bun install --ignore-scripts
+
+      # Run only the safe postinstall steps (patch deps, link browser server)
+      node scripts/patch-deps.mjs || true
+      node scripts/link-browser-server.mjs || true
+
+      # Build the project
+      bun run build || true
+
+      # Install into snap
+      mkdir -p "$CRAFT_PART_INSTALL/lib/elizaos-app"
+
+      # Copy built artifacts
+      cp -r dist/ "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+      cp elizaos-app.mjs "$CRAFT_PART_INSTALL/lib/elizaos-app/"
+      cp package.json "$CRAFT_PART_INSTALL/lib/elizaos-app/"
+      cp plugins.json "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+
+      # Copy node_modules for runtime
+      cp -r node_modules "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+
+      # Copy additional runtime files
+      for dir in src scripts skills patches; do
+        if [ -d "$dir" ]; then
+          cp -r "$dir" "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+        fi
+      done
+
+      # Create wrapper script
+      mkdir -p "$CRAFT_PART_INSTALL/bin"
+      cat > "$CRAFT_PART_INSTALL/bin/elizaos-app-wrapper" << 'WRAPPER'
+      #!/bin/sh
+      set -e
+
+      # Ensure elizaos-app data directory exists
+      ELIZAOS_APP_HOME="${ELIZAOS_APP_DATA_DIR:-$SNAP_USER_COMMON/.elizaos-app}"
+      mkdir -p "$ELIZAOS_APP_HOME"
+
+      exec "$SNAP/node/bin/node" "$SNAP/lib/elizaos-app/elizaos-app.mjs" "$@"
+      WRAPPER
+      chmod +x "$CRAFT_PART_INSTALL/bin/elizaos-app-wrapper"
+
+    build-packages:
+      - curl
+      - git
+      - build-essential
+      - python3
+    stage-packages:
+      - libatomic1
+      - ca-certificates

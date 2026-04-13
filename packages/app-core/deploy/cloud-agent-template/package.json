@@ -1,0 +1,14 @@
+{
+  "name": "milady-cloud-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx entrypoint.ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "2.0.0-alpha.18",
+    "@elizaos/plugin-elizacloud": "2.0.0-alpha.7",
+    "tsx": "4.21.0"
+  }
+}

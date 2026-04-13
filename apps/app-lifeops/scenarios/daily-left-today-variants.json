@@ -1,0 +1,152 @@
+{
+  "id": "daily-left-today-variants",
+  "title": "Daily leftover overview phrasing variants",
+  "domain": "lifeops",
+  "requiresIsolation": true,
+  "rooms": [
+    {
+      "id": "discord",
+      "source": "discord",
+      "title": "LifeOps Daily Left Today Discord"
+    },
+    {
+      "id": "telegram",
+      "source": "telegram",
+      "title": "LifeOps Daily Left Today Telegram"
+    }
+  ],
+  "turns": [
+    {
+      "name": "seed pay rent",
+      "apiRequest": {
+        "method": "POST",
+        "path": "/api/lifeops/definitions",
+        "body": {
+          "kind": "task",
+          "title": "Pay rent",
+          "timezone": "UTC",
+          "priority": 2,
+          "cadence": {
+            "kind": "once",
+            "dueAt": "{{now+45m}}",
+            "visibilityLeadMinutes": 240,
+            "visibilityLagMinutes": 720
+          },
+          "reminderPlan": {
+            "steps": [
+              {
+                "channel": "in_app",
+                "offsetMinutes": 0,
+                "label": "In-app reminder"
+              }
+            ]
+          }
+        }
+      },
+      "apiStatus": 201
+    },
+    {
+      "name": "seed call mom",
+      "apiRequest": {
+        "method": "POST",
+        "path": "/api/lifeops/definitions",
+        "body": {
+          "kind": "task",
+          "title": "Call mom",
+          "timezone": "UTC",
+          "priority": 1,
+          "cadence": {
+            "kind": "once",
+            "dueAt": "{{now+25m}}",
+            "visibilityLeadMinutes": 240,
+            "visibilityLagMinutes": 720
+          },
+          "reminderPlan": {
+            "steps": [
+              {
+                "channel": "in_app",
+                "offsetMinutes": 0,
+                "label": "In-app reminder"
+              }
+            ]
+          }
+        }
+      },
+      "apiStatus": 201
+    },
+    {
+      "name": "overview variant one",
+      "room": "discord",
+      "text": "what life ops tasks are still left for today?",
+      "plannerIncludesAll": ["<name>life</name>", "overview"],
+      "plannerExcludes": ["<name>reply</name>"],
+      "responseIncludesAll": ["pay rent", "call mom"]
+    },
+    {
+      "name": "complete call mom",
+      "apiRequest": {
+        "method": "POST",
+        "path": "/api/lifeops/occurrences/{{occurrenceId:Call mom}}/complete",
+        "body": {
+          "note": "finished during live lifecycle coverage"
+        }
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": ["completed"]
+    },
+    {
+      "name": "api overview after completion",
+      "apiRequest": {
+        "method": "GET",
+        "path": "/api/lifeops/overview"
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": ["Pay rent"],
+      "apiResponseExcludes": ["Call mom"]
+    },
+    {
+      "name": "overview variant two",
+      "room": "telegram",
+      "text": "what do i still need to do today in life ops?",
+      "plannerIncludesAll": ["<name>life</name>", "overview"],
+      "plannerExcludes": ["<name>reply</name>"],
+      "responseIncludesAll": ["pay rent"],
+      "responseExcludes": ["call mom"]
+    },
+    {
+      "name": "api overview before final follow-up",
+      "apiRequest": {
+        "method": "GET",
+        "path": "/api/lifeops/overview"
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": ["Pay rent"],
+      "apiResponseExcludes": ["Call mom"]
+    },
+    {
+      "name": "overview variant three",
+      "room": "discord",
+      "text": "anything else in my life ops list i need to get done today?",
+      "plannerIncludesAll": ["<name>life</name>", "overview"],
+      "plannerExcludes": ["<name>reply</name>"],
+      "responseIncludesAny": ["pay rent", "rent"],
+      "responseExcludes": ["call mom"]
+    }
+  ],
+  "finalChecks": [
+    {
+      "type": "definitionCountDelta",
+      "title": "Pay rent",
+      "delta": 1,
+      "cadenceKind": "once",
+      "requireReminderPlan": true
+    },
+    {
+      "type": "definitionCountDelta",
+      "title": "Call mom",
+      "delta": 1,
+      "cadenceKind": "once",
+      "requireReminderPlan": true
+    }
+  ]
+}

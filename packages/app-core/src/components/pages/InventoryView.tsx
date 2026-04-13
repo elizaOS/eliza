@@ -62,8 +62,8 @@ import { NftGrid } from "../inventory/NftGrid";
 import { TokensTable } from "../inventory/TokensTable";
 import { useInventoryData } from "../inventory/useInventoryData";
 import { PolicyControlsView } from "../settings/PolicyControlsView";
-import { ApprovalQueue } from "../steward/ApprovalQueue";
-import { TransactionHistory } from "../steward/TransactionHistory";
+import { ApprovalQueue } from "@elizaos/app-steward";
+import { TransactionHistory } from "@elizaos/app-steward";
 import { ConfigPageView } from "./ConfigPageView";
 
 /* ── Component ─────────────────────────────────────────────────────── */

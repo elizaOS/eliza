@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Windows-compatible dev server launcher for Milady.
+ * Windows-compatible dev server launcher for Eliza.
  *
  * Usage:
  *   node eliza/packages/app-core/scripts/dev-win.mjs [--ui-only]

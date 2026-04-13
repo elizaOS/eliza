@@ -1,0 +1,7 @@
+name = "milady-eliza-cloud-proxy"
+main = "worker.ts"
+compatibility_date = "2026-03-15"
+
+[vars]
+ELIZA_CLOUD_ORIGIN = "https://www.elizacloud.ai"
+ALLOWED_ORIGINS = "https://app.milady.ai,https://milady.ai,http://localhost:5173,http://127.0.0.1:5173"

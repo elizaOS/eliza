@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * One-shot probe for local Milady desktop dev (Vite/UI port + API port).
+ * One-shot probe for local Eliza desktop dev (Vite/UI port + API port).
  *
  * **Why this exists:** `GET /api/dev/stack` alone requires a running API; this script also checks
  * TCP listeners and merges health/status so CI and agents get one exit code and one JSON blob.

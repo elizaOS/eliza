@@ -189,9 +189,9 @@ Examples:
     parser.add_argument(
         "--model-provider",
         type=str,
-        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama", "milady"],
+        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama", "eliza"],
         default=None,
-        help="Force specific model provider (auto-detected if not set; 'milady' uses TS agent)",
+        help="Force specific model provider (auto-detected if not set; 'eliza' uses TS agent)",
     )
 
     # Trajectory logging (for training/benchmarks)

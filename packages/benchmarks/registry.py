@@ -564,8 +564,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--max-tasks", str(max_tasks)])
         # Agent runtime selection
         agent = extra.get("agent")
-        if agent == "milady":
-            args.append("--milady")
+        if agent == "eliza":
+            args.append("--eliza")
         elif extra.get("elizaos") is True:
             args.append("--elizaos")
         _ = model
@@ -576,8 +576,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _contextbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         agent = extra.get("agent")
-        if agent == "milady":
-            provider_str = "milady"
+        if agent == "eliza":
+            provider_str = "eliza"
         else:
             provider = extra.get("provider")
             provider_name = ""
@@ -750,8 +750,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = extra.get("agent")
-        if agent == "milady":
-            args.extend(["--real-llm", "--model-provider", "milady"])
+        if agent == "eliza":
+            args.extend(["--real-llm", "--model-provider", "eliza"])
         else:
             real = extra.get("real_llm")
             if real is True:
@@ -912,8 +912,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _mind2web_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.mind2web", "--output", str(output_dir)]
         agent = extra.get("agent")
-        if agent == "milady":
-            args.extend(["--real-llm", "--provider", "milady"])
+        if agent == "eliza":
+            args.extend(["--real-llm", "--provider", "eliza"])
         else:
             if model.provider:
                 args.extend(["--provider", model.provider])

@@ -8,7 +8,7 @@ import {
   buildTestHandler,
   registerCustomActionLive,
 } from "../runtime/custom-actions.js";
-import { EMOTE_BY_ID, EMOTE_CATALOG } from "../emotes/catalog.js";
+import { EMOTE_BY_ID, EMOTE_CATALOG } from "@elizaos/app-companion/emotes/catalog";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.js";
 import {
   ensurePrivyWalletsForCustomUser,

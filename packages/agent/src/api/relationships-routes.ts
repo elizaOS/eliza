@@ -172,7 +172,7 @@ export async function handleRelationshipsRoutes(
       const recentFacts = await runtime.getMemories({
         agentId: runtime.agentId,
         tableName: "facts",
-        count: 200,
+        limit: 200,
       });
       for (const fact of recentFacts) {
         const text =

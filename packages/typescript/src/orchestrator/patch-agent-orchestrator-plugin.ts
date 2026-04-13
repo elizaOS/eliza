@@ -213,11 +213,6 @@ type PatchedRouteHandler = (
   method?: string,
 ) => Promise<boolean>;
 
-type RouteHandlerFactory = (
-  runtime: IAgentRuntime,
-  coordinator?: unknown,
-) => PatchedRouteHandler;
-
 interface FrameworkAvailability {
   id: FrameworkId;
   label: string;
@@ -1926,6 +1921,11 @@ function patchPtyServiceClass(): void {
 
 patchPluginSurface();
 patchPtyServiceClass();
+
+/** @public Shipped plugin instance (includes action aliases, route extensions, and PTY patches). */
+export function createAgentOrchestratorPlugin(): Plugin {
+  return basePlugin;
+}
 
 export function createCodingAgentRouteHandler(
   runtime: IAgentRuntime,

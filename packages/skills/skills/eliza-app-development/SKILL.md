@@ -1,11 +1,11 @@
 ---
 name: eliza-app-development
-description: "Use when building or changing an elizaOS-based application in this repository. Covers eliza app architecture, monorepo layout, local versus remote versus cloud routing, where to edit features, and non-negotiable runtime constraints. Milady is the product name of this particular eliza app checkout."
+description: "Use when building or changing an elizaOS-based application in this repository. Covers eliza app architecture, monorepo layout, local versus remote versus cloud routing, where to edit features, and non-negotiable runtime constraints. Eliza is the product name of this particular eliza app checkout."
 ---
 
 # eliza app development
 
-This repository is an **elizaOS application**: a local-first assistant with CLI, dashboard, Electrobun desktop shell, connectors, and Eliza Cloud integration. **Milady** is this app’s product and CLI name—not a separate platform from elizaOS.
+This repository is an **elizaOS application**: a local-first assistant with CLI, dashboard, Electrobun desktop shell, connectors, and Eliza Cloud integration. **Eliza** is this app’s product and CLI name—not a separate platform from elizaOS.
 
 ## Read These References First
 
@@ -38,7 +38,7 @@ bun run test
 Narrower commands when useful:
 
 ```bash
-bun run milady ...
+bun run eliza ...
 bun run dev
 bun run dev:desktop
 bun run test:e2e

@@ -158,27 +158,27 @@ async function collectSessionDiagnostics(
       runtime.getMemories({
         tableName: "messages",
         roomId: session.roomId,
-        count: 2000,
+        limit: 2000,
         unique: false,
       }),
       runtime.getMemories({
         tableName: "messages",
         roomId: session.roomId,
-        count: 2000,
+        limit: 2000,
         unique: false,
         ...(lastCompactionAt !== null ? { start: lastCompactionAt } : {}),
       }),
       runtime.getMemories({
         tableName: "facts",
         roomId: session.roomId,
-        count: 2000,
+        limit: 2000,
         unique: false,
       }),
       runtime.getMemories({
         tableName: "facts",
         roomId: session.roomId,
         entityId: session.userEntityId,
-        count: 500,
+        limit: 500,
         unique: false,
       }),
     ]);
@@ -331,19 +331,8 @@ export async function startBenchmarkServer() {
     );
   }
 
-  // Load trust plugin — provides trust engine, security module, and permission system
-  // (may already be in CORE_PLUGINS but we want to ensure it's loaded)
-  if (!loadedPlugins.includes("@elizaos/plugin-trust")) {
-    try {
-      const { default: trustPlugin } = await import("@elizaos/plugin-trust");
-      plugins.push(toPlugin(trustPlugin, "@elizaos/plugin-trust"));
-      elizaLogger.info("[bench] Loaded plugin: @elizaos/plugin-trust");
-    } catch (error: unknown) {
-      elizaLogger.debug(
-        `[bench] Trust plugin not available: ${formatUnknownError(error)}`,
-      );
-    }
-  }
+  // Trust is now a built-in core capability — enable via ENABLE_TRUST character setting.
+  // No need to load as a separate plugin.
 
   // Load LLM provider plugins based on environment
   const groqApiKey = process.env.GROQ_API_KEY?.trim();

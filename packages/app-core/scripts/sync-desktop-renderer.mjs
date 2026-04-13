@@ -26,7 +26,7 @@ const RENDERER_PATH_ARG =
   null;
 const SKIP_BUILD = getBooleanArg("skip-build") || getBooleanArg("no-build");
 const WATCH = getBooleanArg("watch");
-const DEFAULT_APP_PATH = "/Applications/Milady-canary.app";
+const DEFAULT_APP_PATH = "/Applications/Eliza-canary.app";
 const DEFAULT_RENDERER_DIR = path.join(
   resolveAppPath(APP_PATH_ARG || DEFAULT_APP_PATH),
   "Contents",
@@ -259,7 +259,7 @@ function printUsage() {
   );
   console.log("Environment:");
   console.log(
-    "  ELIZA_DESKTOP_APP_PATH      Override /Applications/Milady-canary.app",
+    "  ELIZA_DESKTOP_APP_PATH      Override /Applications/Eliza-canary.app",
   );
   console.log(
     "  ELIZA_DESKTOP_RENDERER_PATH  Override renderer folder directly",
@@ -267,7 +267,7 @@ function printUsage() {
   console.log("\nExamples:");
   console.log("  node scripts/sync-desktop-renderer.mjs");
   console.log(
-    "  node scripts/sync-desktop-renderer.mjs --app-path ~/Applications/Milady.app --skip-build",
+    "  node scripts/sync-desktop-renderer.mjs --app-path ~/Applications/Eliza.app --skip-build",
   );
   console.log("  node scripts/sync-desktop-renderer.mjs --watch");
 }

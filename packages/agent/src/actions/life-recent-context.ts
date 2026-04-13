@@ -94,7 +94,7 @@ export async function recentConversationTexts(args: {
     const memories = await args.runtime.getMemories({
       roomId,
       tableName: "messages",
-      count: limit,
+      limit: limit,
     });
     const memoryTexts = Array.isArray(memories)
       ? memories

@@ -489,7 +489,7 @@ async function ensureConversationGreetingStored(
     memories = await runtime.getMemories({
       roomId: conv.roomId,
       tableName: "messages",
-      count: 12,
+      limit: 12,
     });
   } catch (err) {
     throw new Error(
@@ -580,7 +580,7 @@ async function truncateConversationMessages(
   const memories = await runtime.getMemories({
     roomId: conv.roomId,
     tableName: "messages",
-    count: 1000,
+    limit: 1000,
   });
 
   memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
@@ -725,7 +725,7 @@ export async function handleConversationRoutes(
       const memories = await runtime.getMemories({
         roomId: conv.roomId,
         tableName: "messages",
-        count: 200,
+        limit: 200,
       });
       // Sort by createdAt ascending
       memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
@@ -1435,7 +1435,7 @@ export async function handleConversationRoutes(
         const memories = await state.runtime.getMemories({
           roomId: conv.roomId,
           tableName: "messages",
-          count: 5,
+          limit: 5,
         });
         const lastUserMemory = memories.find(
           (m) => m.entityId !== state.runtime?.agentId,
@@ -1491,7 +1491,7 @@ export async function handleConversationRoutes(
         const memories = await state.runtime.getMemories({
           roomId: conv.roomId,
           tableName: "messages",
-          count: 1000,
+          limit: 1000,
         });
         const memoryIds = memories
           .map((memory) => memory.id)

@@ -1,8 +1,8 @@
+import { CodingAgentSettingsSection } from "@elizaos/app-coding";
 import {
   BrowserWorkspaceView,
   ChatView,
   CloudDashboard,
-  CodingAgentSettingsSection,
   ConfigPageView,
   ConnectorsPageView,
   ConversationsSidebar,

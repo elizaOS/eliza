@@ -380,6 +380,12 @@ export class AgentRuntime implements IAgentRuntime {
 		 * Can be enabled at construction time or lazily via settings.
 		 */
 		enableAutonomy?: boolean;
+		/** Enable trust engine, security, and permissions infrastructure. */
+		enableTrust?: boolean;
+		/** Enable encrypted secrets management and dynamic plugin activation. */
+		enableSecretsManager?: boolean;
+		/** Enable plugin introspection, install/eject/sync. */
+		enablePluginManager?: boolean;
 		enableKnowledge?: boolean;
 		enableRelationships?: boolean;
 		enableTrajectories?: boolean;
@@ -417,6 +423,9 @@ export class AgentRuntime implements IAgentRuntime {
 			advancedCapabilities: opts.advancedCapabilities,
 			skipCharacterProvider: this.isAnonymousCharacter,
 			enableAutonomy: opts.enableAutonomy,
+			enableTrust: opts.enableTrust,
+			enableSecretsManager: opts.enableSecretsManager,
+			enablePluginManager: opts.enablePluginManager,
 		};
 		this.nativeFeatureOptions = {
 			knowledge: opts.enableKnowledge,
@@ -690,18 +699,36 @@ export class AgentRuntime implements IAgentRuntime {
 				this.capabilityOptions.enableAutonomy ??
 				(settings?.ENABLE_AUTONOMY === true ||
 					settings?.ENABLE_AUTONOMY === "true");
+			const enableTrust =
+				this.capabilityOptions.enableTrust ??
+				(settings?.ENABLE_TRUST === true ||
+					settings?.ENABLE_TRUST === "true");
+			const enableSecretsManager =
+				this.capabilityOptions.enableSecretsManager ??
+				(settings?.ENABLE_SECRETS_MANAGER === true ||
+					settings?.ENABLE_SECRETS_MANAGER === "true");
+			const enablePluginManager =
+				this.capabilityOptions.enablePluginManager ??
+				(settings?.ENABLE_PLUGIN_MANAGER === true ||
+					settings?.ENABLE_PLUGIN_MANAGER === "true");
 
 			if (
 				disableBasic ||
 				enableExtended ||
 				skipCharacterProvider ||
-				enableAutonomy
+				enableAutonomy ||
+				enableTrust ||
+				enableSecretsManager ||
+				enablePluginManager
 			) {
 				const config: CapabilityConfig = {
 					disableBasic,
 					enableExtended,
 					skipCharacterProvider,
 					enableAutonomy,
+					enableTrust,
+					enableSecretsManager,
+					enablePluginManager,
 				};
 				const configuredPlugin = createBasicCapabilitiesPlugin(config);
 				pluginToRegister = {

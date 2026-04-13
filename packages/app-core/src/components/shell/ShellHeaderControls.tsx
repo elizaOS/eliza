@@ -133,7 +133,8 @@ export function ShellHeaderControls({
   const compactCompanionActionClassName = `${SHELL_ICON_BUTTON_CLASSNAME} pointer-events-auto text-sm leading-none`;
   const expandedCompanionActionClassName = `${SHELL_EXPANDED_BUTTON_CLASSNAME} !w-auto gap-1.5 !px-3.5 justify-center text-sm leading-none`;
 
-  const renderVoiceButton = (iconOnly: boolean) => (
+  const renderVoiceButton = (iconOnly: boolean) =>
+    onToggleVoiceMute ? (
     <Button
       size="icon"
       variant="outline"
@@ -161,7 +162,7 @@ export function ShellHeaderControls({
         </span>
       )}
     </Button>
-  );
+  ) : null;
 
   const renderNewChatButton = (iconOnly: boolean) => (
     <Button

@@ -4,7 +4,7 @@
  * Uses **mtime** of `dist/index.html` vs. app sources, shared packages, and key config files.
  * **Why not always build:** A full Vite production compile is expensive; skipping when dist
  * is fresh makes `dev:desktop` restarts fast. **Why mtime:** Good enough for local dev; use
- * `--force-renderer` / `MILADY_DESKTOP_RENDERER_BUILD=always` when you need a guaranteed
+ * `--force-renderer` / `ELIZA_DESKTOP_RENDERER_BUILD=always` when you need a guaranteed
  * clean bundle (lockfile or plugin changes the heuristic might miss).
  */
 import fs from "node:fs";

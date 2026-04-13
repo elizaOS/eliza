@@ -17,16 +17,19 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required
   "@elizaos/plugin-local-embedding", // local embeddings — required for memory
-  "@elizaos/app-form", // conversational forms (native app; loaded dynamically — not in static plugin map)
+  // @elizaos/app-form — now built-in as advanced capability (form); enabled when advancedCapabilities: true
+  "@elizaos/app-companion", // VRM companion emotes; actions gated until app session is active
   // @elizaos/agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
   "@elizaos/plugin-cron", // scheduled jobs and automation
   "@elizaos/plugin-shell", // shell command execution
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
-  // Native runtime features live inside the runtime now:
-  // knowledge, relationships/relationships, trajectories.
-  "@elizaos/plugin-personality", // personality coherence
-  // experience learning: bundled in @elizaos/core advanced capabilities when advancedCapabilities is enabled
+  // Built-in runtime capabilities (no longer external plugins):
+  // - experience, form, clipboard, personality: advanced capabilities (advancedCapabilities: true)
+  // - trust: core capability (enableTrust: true)
+  // - secrets-manager: core capability (enableSecretsManager: true)
+  // - plugin-manager: core capability (enablePluginManager: true)
+  // - knowledge, relationships, trajectories: native features
 ];
 
 /**
@@ -34,10 +37,8 @@ export const CORE_PLUGINS: readonly string[] = [
  * Not loaded by default — require explicit configuration or have platform dependencies.
  */
 export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
-  // Bundled admin — opt-in via dashboard, plugins.allow, or plugins.entries (enabled: true)
-  "@elizaos/plugin-plugin-manager",
-  "@elizaos/plugin-secrets-manager",
-  "@elizaos/plugin-trust", // trust scoring and policy signals (optional; off by default)
+  // plugin-manager, secrets-manager, trust: now built-in core capabilities
+  // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   "@elizaos/app-lifeops", // LifeOps: browser companions + hosts-file website blocker
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
@@ -62,5 +63,5 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // "@elizaos/plugin-directives", // directive processing - not yet ready
   // "@elizaos/plugin-mcp", // MCP protocol support - not yet ready
   // "@elizaos/plugin-scheduling", // scheduling - not yet ready
-  // "@elizaos/plugin-clipboard", // clipboard notes - not yet ready
+  // clipboard: now built-in as advanced capability (advancedCapabilities: true)
 ];

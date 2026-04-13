@@ -116,7 +116,7 @@ async function getRecentConversationMessages(
       return await runtime.getMemories({
         tableName: "messages",
         roomId,
-        count: ROLE_CONTEXT_MESSAGE_COUNT,
+        limit: ROLE_CONTEXT_MESSAGE_COUNT,
       });
     } catch {
       // Fall back below.

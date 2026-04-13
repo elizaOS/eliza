@@ -31,8 +31,8 @@ function skip(reason) {
   process.exit(0);
 }
 
-if (envFlagEnabled("MILADY_SKIP_ELIZA_LIVE_SMOKE")) {
-  skip("MILADY_SKIP_ELIZA_LIVE_SMOKE=1");
+if (envFlagEnabled("ELIZA_SKIP_ELIZA_LIVE_SMOKE")) {
+  skip("ELIZA_SKIP_ELIZA_LIVE_SMOKE=1");
 }
 
 if (!fs.existsSync(specPath)) {

@@ -373,6 +373,88 @@ function resolvePersistedPluginEnabled(
   return pluginEnabled;
 }
 
+// ── Enabled-state drift reconciliation ────────────────────────────────
+//
+// The write path (persistCompatPluginMutation) always updates both
+// plugins.entries[id].enabled AND the compat connector/streaming section.
+// However drift can occur if the config file is edited externally or a
+// migration only touched one location.  This pass detects any mismatch
+// and re-synchronises the compat section from plugins.entries, which is
+// the canonical source for the Settings UI.
+//
+// Runs once per process on the first buildPluginListResponse() call.
+
+let _enabledStateReconciled = false;
+
+function reconcilePluginEnabledStates(): void {
+  if (_enabledStateReconciled) return;
+  _enabledStateReconciled = true;
+
+  const config = loadElizaConfig();
+  const configRecord = config as Record<string, unknown>;
+  const entries = (config.plugins?.entries ?? {}) as Record<
+    string,
+    { enabled?: unknown }
+  >;
+
+  let dirty = false;
+
+  for (const [pluginId, entry] of Object.entries(entries)) {
+    if (typeof entry.enabled !== "boolean") continue;
+
+    // Check connector section
+    const connectorKey = resolveCompatConfigKey(
+      pluginId,
+      undefined,
+      CONNECTOR_PLUGINS,
+    );
+    if (connectorKey) {
+      const sectionEnabled = readCompatSectionEnabled(
+        configRecord.connectors,
+        connectorKey,
+      );
+      if (sectionEnabled !== undefined && sectionEnabled !== entry.enabled) {
+        writeCompatSectionEnabled(
+          configRecord,
+          "connectors",
+          connectorKey,
+          entry.enabled,
+        );
+        dirty = true;
+      }
+    }
+
+    // Check streaming section
+    const streamingKey = resolveCompatConfigKey(
+      pluginId,
+      undefined,
+      STREAMING_PLUGINS,
+    );
+    if (streamingKey) {
+      const sectionEnabled = readCompatSectionEnabled(
+        configRecord.streaming,
+        streamingKey,
+      );
+      if (sectionEnabled !== undefined && sectionEnabled !== entry.enabled) {
+        writeCompatSectionEnabled(
+          configRecord,
+          "streaming",
+          streamingKey,
+          entry.enabled,
+        );
+        dirty = true;
+      }
+    }
+  }
+
+  if (dirty) {
+    saveElizaConfig(config);
+    logger.info(
+      "[plugins] Reconciled drifted plugin enabled states in config",
+    );
+  }
+}
+
 function compatMutationRequiresRestart(
   plugin: CompatPluginRecord,
   body: Record<string, unknown>,
@@ -641,6 +723,7 @@ function isPluginLoaded(
 export function buildPluginListResponse(runtime: AgentRuntime | null): {
   plugins: Array<Record<string, unknown>>;
 } {
+  reconcilePluginEnabledStates();
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const loadedNames = resolveLoadedPluginNames(runtime);

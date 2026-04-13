@@ -1,0 +1,33 @@
+# Local Postgres for Milady using Supabase's Postgres image.
+#
+# Milady only needs a PostgreSQL database (plugin-sql). You do NOT need the
+# full Supabase stack (auth/rest/realtime/storage) unless you want Studio.
+#
+# Usage:
+#   docker compose -f deploy/docker-compose.supabase-db.yml up -d
+#   # then set in ~/.milady/milady.json:
+#   #   database.provider = "postgres"
+#   #   database.postgres.connectionString = "postgresql://postgres:postgres@localhost:54322/milady"
+#
+services:
+  milady-db:
+    # If this tag ever fails to pull, try: supabase/postgres:latest
+    image: supabase/postgres:15.1.0.147
+    container_name: milady-db
+    restart: unless-stopped
+    ports:
+      - "54322:5432"
+    environment:
+      POSTGRES_DB: milady
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - milady-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d milady"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  milady-db-data:

@@ -37,11 +37,7 @@ export * from "./chat/MessageContent";
 export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";
 export * from "./cloud/CloudSourceControls";
-export * from "./coding/CodingAgentSettingsSection";
-export * from "./coding/PtyConsoleBase";
-export * from "./coding/PtyConsoleDrawer";
-export * from "./coding/PtyConsoleSidePanel";
-export * from "./coding/PtyTerminalPane";
+
 export * from "./config-ui";
 export * from "./connectors/BlueBubblesStatusPanel";
 export * from "./connectors/ConnectorSetupPanel";
@@ -64,7 +60,7 @@ export * from "./pages/AppsView";
 export * from "./pages/BrowserWorkspaceView";
 export * from "./pages/ChatModalView";
 export * from "./pages/ChatView";
-export * from "./pages/CompanionView";
+
 export * from "./pages/ConfigPageView";
 export * from "./pages/ConnectorsPageView";
 export * from "./pages/DatabasePageView";
@@ -73,7 +69,7 @@ export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/HeartbeatsView";
 export * from "./pages/InventoryView";
 export * from "./pages/KnowledgeView";
-export * from "./pages/LifeOpsPageView";
+
 export * from "./pages/LogsPageView";
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";
@@ -105,10 +101,8 @@ export * from "./shared/LanguageDropdown";
 export * from "./shared/ThemeToggle";
 export * from "./shell/BugReportModal";
 export * from "./shell/CommandPalette";
-export * from "./shell/CompanionShell";
 export * from "./shell/ConnectionFailedBanner";
 export * from "./shell/ConnectionLostOverlay";
-export * from "./shell/companion-shell-styles";
 export * from "./shell/Header";
 export * from "./shell/LoadingScreen";
 export * from "./shell/PairingView";
@@ -117,4 +111,4 @@ export * from "./shell/ShellOverlays";
 export * from "./shell/ShortcutsOverlay";
 export * from "./shell/StartupFailureView";
 export * from "./shell/SystemWarningBanner";
-export * from "./steward";
+

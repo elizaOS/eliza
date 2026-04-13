@@ -1,8 +1,8 @@
 /**
- * Local Milady desktop dev stack probes (API + UI ports).
+ * Local Eliza desktop dev stack probes (API + UI ports).
  * Used by `eliza/packages/app-core/scripts/desktop-stack-status.mjs` and tests.
  *
- * **Why fetch `/api/dev/stack` after port checks:** env in the agent shell may omit `MILADY_PORT`;
+ * **Why fetch `/api/dev/stack` after port checks:** env in the agent shell may omit `ELIZA_PORT`;
  * the API process (spawned by dev-platform) carries the canonical desktop env and returns `uiPort`
  * and hook flags for screenshot / console log.
  */
@@ -24,7 +24,7 @@ function parsePositivePort(value) {
 
 function resolveDesktopApiPort(env) {
   return (
-    parsePositivePort(env.MILADY_API_PORT) ||
+    parsePositivePort(env.ELIZA_API_PORT) ||
     parsePositivePort(env.ELIZA_API_PORT) ||
     parsePositivePort(env.ELIZA_PORT) ||
     DEFAULT_API_PORT
@@ -117,7 +117,7 @@ export async function gatherDesktopStackStatus(
     }
   }
 
-  const uiFromEnv = parsePositivePort(env.MILADY_PORT);
+  const uiFromEnv = parsePositivePort(env.ELIZA_PORT);
   const uiFromApi =
     devStack?.desktop &&
     typeof devStack.desktop.uiPort === "number" &&

@@ -1,7 +1,7 @@
 import http from "node:http";
 import { WebSocketServer } from "ws";
 
-const port = Number(process.env.MILADY_UI_SMOKE_API_PORT || "31337");
+const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 
 function applyCors(req, res) {
   const origin = req.headers.origin;
@@ -62,7 +62,7 @@ function streamSettings(payload = {}) {
   return {
     ok: true,
     settings: {
-      theme: "milady",
+      theme: "eliza",
       avatarIndex: 0,
       ...payload,
     },

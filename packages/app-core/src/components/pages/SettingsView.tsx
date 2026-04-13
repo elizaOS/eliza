@@ -35,7 +35,7 @@ import {
 } from "react";
 import { useApp } from "../../state";
 import { WidgetHost } from "../../widgets";
-import { CodingAgentSettingsSection } from "../coding/CodingAgentSettingsSection";
+import { CodingAgentSettingsSection } from "@elizaos/app-coding";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";

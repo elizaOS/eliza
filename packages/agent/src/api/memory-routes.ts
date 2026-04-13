@@ -114,7 +114,7 @@ async function searchMemoryNotes(
   const memories = await runtime.getMemories({
     roomId,
     tableName: "messages",
-    count: MEMORY_SEARCH_SCAN_LIMIT,
+    limit: MEMORY_SEARCH_SCAN_LIMIT,
   });
 
   const hits: MemorySearchHit[] = [];
@@ -284,7 +284,7 @@ async function fetchMemoriesFromTables(
       agentId: runtime.agentId as UUID,
       roomId: params.roomId,
       tableName,
-      count: perTableLimit,
+      limit: perTableLimit,
     });
     for (const m of memories) {
       allMemories.push(Object.assign(m, { _table: tableName }));
@@ -589,7 +589,7 @@ export async function handleMemoryRoutes(
       const memories = await runtime.getMemories({
         agentId: runtime.agentId as UUID,
         tableName,
-        count: 10000,
+        limit: 10000,
       });
       counts[tableName] = memories.length;
       total += memories.length;

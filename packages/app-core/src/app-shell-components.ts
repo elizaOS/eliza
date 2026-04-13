@@ -16,7 +16,7 @@ export { AdvancedPageView } from "./components/pages/AdvancedPageView";
 export { AppsPageView } from "./components/pages/AppsPageView";
 export { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
 export { ChatView } from "./components/pages/ChatView";
-export { CompanionView } from "./components/pages/CompanionView";
+
 export { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
 export { DatabasePageView } from "./components/pages/DatabasePageView";
 export {
@@ -25,7 +25,7 @@ export {
 } from "./components/pages/HeartbeatsView";
 export { InventoryView } from "./components/pages/InventoryView";
 export { KnowledgeView } from "./components/pages/KnowledgeView";
-export { LifeOpsPageView } from "./components/pages/LifeOpsPageView";
+
 export { LogsPageView } from "./components/pages/LogsPageView";
 export { MemoryViewerView } from "./components/pages/MemoryViewerView";
 export { PluginsPageView } from "./components/pages/PluginsPageView";
@@ -38,7 +38,7 @@ export { TrajectoriesView } from "./components/pages/TrajectoriesView";
 export { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
 export { FineTuningView } from "./components/settings/FineTuningView";
 export { BugReportModal } from "./components/shell/BugReportModal";
-export { CompanionShell } from "./components/shell/CompanionShell";
+
 export { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 export { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 export { Header } from "./components/shell/Header";

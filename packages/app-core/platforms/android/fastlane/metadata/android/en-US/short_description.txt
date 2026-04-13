@@ -1,0 +1,1 @@
+Personal AI assistant that runs locally. Private, fast, extensible.

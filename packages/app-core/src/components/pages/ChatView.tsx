@@ -41,8 +41,8 @@ import {
 } from "react";
 import { AgentActivityBox } from "../chat/AgentActivityBox";
 import { MessageContent } from "../chat/MessageContent";
-import { CodingAgentControlChip } from "../coding/CodingAgentControlChip";
-import { PtyConsoleDrawer } from "../coding/PtyConsoleDrawer";
+import { CodingAgentControlChip } from "@elizaos/app-coding";
+import { PtyConsoleDrawer } from "@elizaos/app-coding";
 import {
   useChatVoiceController,
   useGameModalMessages,

@@ -17,6 +17,7 @@ import {
   scoreEntries,
   toSearchResults,
 } from "../services/registry-client-queries.js";
+import { setOverlayAppPresence } from "../services/overlay-app-presence.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
 export interface AppManagerLike {
@@ -451,6 +452,18 @@ export async function handleAppsRoutes(
   if (method === "GET" && pathname === "/api/apps/runs") {
     const runs = await appManager.listRuns(runtime as IAgentRuntime | null);
     json(res, runs as object);
+    return true;
+  }
+
+  // Dashboard heartbeat for overlay apps (companion, etc.) — no AppManager run.
+  if (method === "POST" && pathname === "/api/apps/overlay-presence") {
+    const body = await readJsonBody<{ appName?: string | null }>(req, res);
+    if (!body) return true;
+    const raw = body.appName;
+    const appName =
+      typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+    setOverlayAppPresence(appName);
+    json(res, { ok: true, appName });
     return true;
   }
 

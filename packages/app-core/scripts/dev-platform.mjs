@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * dev:desktop — orchestrates Milady desktop local development (Vite, API, Electrobun).
+ * dev:desktop — orchestrates Eliza desktop local development (Vite, API, Electrobun).
  *
  * ## Why orchestrate instead of "just run electrbun"?
  * Electrobun needs a renderer URL, usually the dashboard API, and (in dev) repo-root `dist/`
@@ -10,21 +10,21 @@
  * ## Startup phases
  * 1. **Renderer production build** — Runs `vite build` only when `viteRendererBuildNeeded()`
  *    says `apps/app/dist` is missing or older than sources (cheap mtime heuristic). Override:
- *    `--force-renderer` or `MILADY_DESKTOP_RENDERER_BUILD=always`. **Why skip:** redundant
+ *    `--force-renderer` or `ELIZA_DESKTOP_RENDERER_BUILD=always`. **Why skip:** redundant
  *    production builds on every restart are slow; watch mode users get HMR from `vite dev`.
- * 2. **Root bundle** — `tsdown` at repo root if `dist/entry.js` missing (Electrobun milady-dist).
+ * 2. **Root bundle** — `tsdown` at repo root if `dist/entry.js` missing (Electrobun eliza-dist).
  * 3. **Long-lived children** (see `launch()`):
  *    - **API** — `bun --watch dev-server` unless `--no-api`.
- *    - **Watch + default** — Vite **dev** server + `MILADY_RENDERER_URL` for Electrobun (HMR).
- *      Stale dep chunks: `--vite-force` or `MILADY_VITE_FORCE=1` / `ELIZA_VITE_FORCE=1` (passes `vite --force`).
- *    - **Watch + Rollup** — `--rollup-watch` or `MILADY_DESKTOP_VITE_BUILD_WATCH=1` with
- *      `MILADY_DESKTOP_VITE_WATCH=1`: legacy `vite build --watch` (slow on large graphs).
+ *    - **Watch + default** — Vite **dev** server + `ELIZA_RENDERER_URL` for Electrobun (HMR).
+ *      Stale dep chunks: `--vite-force` or `ELIZA_VITE_FORCE=1` / `ELIZA_VITE_FORCE=1` (passes `vite --force`).
+ *    - **Watch + Rollup** — `--rollup-watch` or `ELIZA_DESKTOP_VITE_BUILD_WATCH=1` with
+ *      `ELIZA_DESKTOP_VITE_WATCH=1`: legacy `vite build --watch` (slow on large graphs).
  *    - **Electrobun** — `bun run dev` in `apps/app/electrobun`.
  *
  * ## Port allocation (`launch()`) — WHY
  * Before spawning API / Vite / Electrobun, `allocateFirstFreeLoopbackPort()` from
- * `eliza/packages/app-core/scripts/lib/allocate-loopback-port.mjs` resolves **MILADY_API_PORT** (default
- * 31337) and, in Vite dev mode, **MILADY_PORT** (default 2138) if something else
+ * `eliza/packages/app-core/scripts/lib/allocate-loopback-port.mjs` resolves **ELIZA_API_PORT** (default
+ * 31337) and, in Vite dev mode, **ELIZA_PORT** (default 2138) if something else
  * already listens. **Why:** every child must agree on the same numbers; Vite's
  * proxy is fixed at config load time, so "API picks a port later" desyncs the UI.
  *
@@ -43,13 +43,13 @@
  *
  * ## Observability (IDEs / agents) — WHY
  *
- * This script sets env so the Milady API and Electrobun expose **machine-readable** hooks:
- * - Aggregated child log file + `MILADY_DESKTOP_DEV_LOG_PATH` → `GET /api/dev/console-log` (loopback tail).
+ * This script sets env so the Eliza API and Electrobun expose **machine-readable** hooks:
+ * - Aggregated child log file + `ELIZA_DESKTOP_DEV_LOG_PATH` → `GET /api/dev/console-log` (loopback tail).
  * - Screenshot token + upstream URL → `GET /api/dev/cursor-screenshot` on the API (proxies Electrobun).
  * **Why:** multiple processes (Vite, API, Electrobun) are opaque to tools that cannot see the native
  *   window; loopback + optional token bounds exposure vs. convenience. Defaults are **on** so agents
- *   and humans debugging together get signal; opt-out via `MILADY_DESKTOP_DEV_LOG=0` and
- *   `MILADY_DESKTOP_SCREENSHOT_SERVER=0`.
+ *   and humans debugging together get signal; opt-out via `ELIZA_DESKTOP_DEV_LOG=0` and
+ *   `ELIZA_DESKTOP_SCREENSHOT_SERVER=0`.
  */
 
 import { execSync, spawn } from "node:child_process";
@@ -92,14 +92,14 @@ if (existsSync(_worktreeEnvPath)) {
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`Usage: bun run dev:desktop [options]
-       MILADY_DESKTOP_VITE_WATCH=1 bun eliza/packages/app-core/scripts/dev-platform.mjs   # same as bun run dev
+       ELIZA_DESKTOP_VITE_WATCH=1 bun eliza/packages/app-core/scripts/dev-platform.mjs   # same as bun run dev
 
 Starts Vite (optional), API (optional), and Electrobun with aligned ports and env.
 
 Options:
   --no-api           Skip the API server (Electrobun + renderer only)
   --force-renderer   Force vite build before starting (even if dist is fresh)
-  --rollup-watch     Use vite build --watch instead of vite dev (requires MILADY_DESKTOP_VITE_WATCH=1)
+  --rollup-watch     Use vite build --watch instead of vite dev (requires ELIZA_DESKTOP_VITE_WATCH=1)
   --vite-force       Pass --force to Vite (clear dep optimization cache on dev server start)
   -h, --help         Show this help
 
@@ -108,13 +108,13 @@ columns Setting / Effective / Source / Change — Source shows default vs explic
 Secrets are redacted. Run without --help to see them.
 
 Environment (CI / automation; flags override where noted):
-  MILADY_DESKTOP_RENDERER_BUILD=always   Same as --force-renderer
-  MILADY_DESKTOP_VITE_BUILD_WATCH=1      Same as --rollup-watch (with MILADY_DESKTOP_VITE_WATCH=1)
-  MILADY_VITE_FORCE=1 / ELIZA_VITE_FORCE=1   Same as --vite-force
-  MILADY_DESKTOP_SCREENSHOT_SERVER=0     Disable screenshot dev server
-  MILADY_DESKTOP_DEV_LOG=0               Disable aggregated log file
-  MILADY_API_PORT / ELIZA_API_PORT / ELIZA_PORT   API port (first non-empty wins)
-  MILADY_PORT                            UI port (Vite dev)
+  ELIZA_DESKTOP_RENDERER_BUILD=always   Same as --force-renderer
+  ELIZA_DESKTOP_VITE_BUILD_WATCH=1      Same as --rollup-watch (with ELIZA_DESKTOP_VITE_WATCH=1)
+  ELIZA_VITE_FORCE=1 / ELIZA_VITE_FORCE=1   Same as --vite-force
+  ELIZA_DESKTOP_SCREENSHOT_SERVER=0     Disable screenshot dev server
+  ELIZA_DESKTOP_DEV_LOG=0               Disable aggregated log file
+  ELIZA_API_PORT / ELIZA_API_PORT / ELIZA_PORT   API port (first non-empty wins)
+  ELIZA_PORT                            UI port (Vite dev)
 
 Docs: docs/apps/desktop-local-development.md
 `);
@@ -127,53 +127,53 @@ const skipApi = process.argv.includes("--no-api");
 const forceRendererCli = process.argv.includes("--force-renderer");
 const forceRenderer =
   forceRendererCli ||
-  process.env.MILADY_DESKTOP_RENDERER_BUILD === "always" ||
-  process.env.MILADY_DESKTOP_RENDERER_BUILD === "1";
-const viteWatch = process.env.MILADY_DESKTOP_VITE_WATCH === "1";
+  process.env.ELIZA_DESKTOP_RENDERER_BUILD === "always" ||
+  process.env.ELIZA_DESKTOP_RENDERER_BUILD === "1";
+const viteWatch = process.env.ELIZA_DESKTOP_VITE_WATCH === "1";
 const viteDepForceCli = process.argv.includes("--vite-force");
 const viteDepForce =
   viteDepForceCli ||
-  process.env.MILADY_VITE_FORCE === "1" ||
+  process.env.ELIZA_VITE_FORCE === "1" ||
   process.env.ELIZA_VITE_FORCE === "1";
 const viteRollupWatchCli = process.argv.includes("--rollup-watch");
 /** Legacy: Rollup `vite build --watch` (tens of seconds per edit on large graphs). */
 const viteRollupWatch =
   viteWatch &&
-  (viteRollupWatchCli || process.env.MILADY_DESKTOP_VITE_BUILD_WATCH === "1");
-/** Default when VITE_WATCH: Vite dev server + Electrobun MILADY_RENDERER_URL (fast HMR). */
+  (viteRollupWatchCli || process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1");
+/** Default when VITE_WATCH: Vite dev server + Electrobun ELIZA_RENDERER_URL (fast HMR). */
 const viteDevServer = viteWatch && !viteRollupWatch;
 /** On by default for `dev:desktop` / `dev:desktop:watch`; set to 0/false/no/off to disable. */
 const screenshotServerOptOut = (() => {
-  const v = process.env.MILADY_DESKTOP_SCREENSHOT_SERVER?.trim().toLowerCase();
+  const v = process.env.ELIZA_DESKTOP_SCREENSHOT_SERVER?.trim().toLowerCase();
   return v === "0" || v === "false" || v === "no" || v === "off";
 })();
 const screenshotServerEnabled = !screenshotServerOptOut;
 const preferredScreenshotPort = Number.parseInt(
-  process.env.MILADY_SCREENSHOT_SERVER_PORT || "31339",
+  process.env.ELIZA_SCREENSHOT_SERVER_PORT || "31339",
   10,
 );
 const preferredBrowserWorkspacePort = Number.parseInt(
-  process.env.MILADY_BROWSER_WORKSPACE_PORT || "31340",
+  process.env.ELIZA_BROWSER_WORKSPACE_PORT || "31340",
   10,
 );
 const screenshotToken = screenshotServerEnabled
   ? randomBytes(24).toString("hex")
   : "";
 
-/** On by default for dev-platform; set MILADY_DESKTOP_DEV_LOG=0 to disable file + API tail. */
+/** On by default for dev-platform; set ELIZA_DESKTOP_DEV_LOG=0 to disable file + API tail. */
 const desktopDevLogOptOut = (() => {
-  const v = process.env.MILADY_DESKTOP_DEV_LOG?.trim().toLowerCase();
+  const v = process.env.ELIZA_DESKTOP_DEV_LOG?.trim().toLowerCase();
   return v === "0" || v === "false" || v === "no" || v === "off";
 })();
 const desktopDevLogPath = desktopDevLogOptOut
   ? null
-  : path.resolve(repoRoot, ".milady", "desktop-dev-console.log");
+  : path.resolve(repoRoot, ".eliza", "desktop-dev-console.log");
 const desktopCefWorkaroundEnv = (() => {
   if (process.platform !== "darwin") {
     return null;
   }
 
-  const explicit = process.env.MILADY_DESKTOP_FORCE_CEF?.trim();
+  const explicit = process.env.ELIZA_DESKTOP_FORCE_CEF?.trim();
   if (explicit) {
     return explicit;
   }
@@ -185,7 +185,7 @@ const desktopUnsafeDevtoolsEnv = (() => {
     return null;
   }
 
-  const explicit = process.env.MILADY_ALLOW_UNSAFE_NATIVE_DEVTOOLS?.trim();
+  const explicit = process.env.ELIZA_ALLOW_UNSAFE_NATIVE_DEVTOOLS?.trim();
   if (explicit) {
     return explicit;
   }
@@ -193,7 +193,7 @@ const desktopUnsafeDevtoolsEnv = (() => {
   return "1";
 })();
 const desktopWhisperOptOut = (() => {
-  const v = process.env.MILADY_DESKTOP_ENSURE_WHISPER?.trim().toLowerCase();
+  const v = process.env.ELIZA_DESKTOP_ENSURE_WHISPER?.trim().toLowerCase();
   return v === "0" || v === "false" || v === "no" || v === "off";
 })();
 
@@ -292,14 +292,14 @@ if (needRendererBuild) {
 } else {
   console.log(
     "\n[eliza] Skipping vite build — apps/app/dist is up to date.\n" +
-      "  Force: --force-renderer or MILADY_DESKTOP_RENDERER_BUILD=always\n",
+      "  Force: --force-renderer or ELIZA_DESKTOP_RENDERER_BUILD=always\n",
   );
 }
 
 const rootDistEntry = path.join(repoRoot, "dist", "entry.js");
 if (!existsSync(rootDistEntry)) {
   console.log(
-    "\n[eliza] Building root bundle (tsdown) for Electrobun milady-dist…\n",
+    "\n[eliza] Building root bundle (tsdown) for Electrobun eliza-dist…\n",
   );
   execSync("bunx tsdown", { cwd: repoRoot, stdio: "inherit" });
   const distPkg = path.join(repoRoot, "dist", "package.json");
@@ -495,15 +495,15 @@ async function launch() {
   }
   const screenshotEnvElectrobun = screenshotServerEnabled
     ? {
-        MILADY_DESKTOP_SCREENSHOT_SERVER: "1",
-        MILADY_SCREENSHOT_SERVER_PORT: String(screenshotPort),
-        MILADY_SCREENSHOT_SERVER_TOKEN: screenshotToken,
+        ELIZA_DESKTOP_SCREENSHOT_SERVER: "1",
+        ELIZA_SCREENSHOT_SERVER_PORT: String(screenshotPort),
+        ELIZA_SCREENSHOT_SERVER_TOKEN: screenshotToken,
       }
     : {};
   const screenshotEnvApi = screenshotServerEnabled
     ? {
-        MILADY_ELECTROBUN_SCREENSHOT_URL: `http://127.0.0.1:${screenshotPort}`,
-        MILADY_SCREENSHOT_SERVER_TOKEN: screenshotToken,
+        ELIZA_ELECTROBUN_SCREENSHOT_URL: `http://127.0.0.1:${screenshotPort}`,
+        ELIZA_SCREENSHOT_SERVER_TOKEN: screenshotToken,
       }
     : {};
 
@@ -511,7 +511,7 @@ async function launch() {
     mkdirSync(path.dirname(desktopDevLogPath), { recursive: true });
     writeFileSync(
       desktopDevLogPath,
-      `--- milady desktop dev ${new Date().toISOString()} ---\n`,
+      `--- eliza desktop dev ${new Date().toISOString()} ---\n`,
       "utf8",
     );
   }
@@ -544,11 +544,11 @@ async function launch() {
     desktopDevLogPath,
     desktopDevLogOptOut,
     childrenList: serviceLine,
-    elizaNamespace: process.env.ELIZA_NAMESPACE?.trim() || "milady",
+    elizaNamespace: process.env.ELIZA_NAMESPACE?.trim() || "eliza",
     elizaNamespaceUnset: !process.env.ELIZA_NAMESPACE?.trim(),
   });
   console.log(
-    `${chalk.bold(`Milady desktop dev${skipApi ? " (no API)" : ""}`)}\n`,
+    `${chalk.bold(`Eliza desktop dev${skipApi ? " (no API)" : ""}`)}\n`,
   );
   console.log(colorizeDevSettingsStartupBanner(orchestratorBanner));
   if (screenshotServerEnabled && !skipApi) {
@@ -584,17 +584,17 @@ async function launch() {
         ELIZA_PORT: apiPort,
         ELIZA_API_PORT: apiPort,
         ELIZA_HEADLESS: "1",
-        MILADY_API_PORT: apiPort,
-        MILADY_PORT: String(uiDevPort),
-        MILADY_NAMESPACE: process.env.MILADY_NAMESPACE ?? "milady",
-        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "milady",
+        ELIZA_API_PORT: apiPort,
+        ELIZA_PORT: String(uiDevPort),
+        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "eliza",
+        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "eliza",
         ...(rendererUrlForShell
-          ? { MILADY_RENDERER_URL: rendererUrlForShell }
+          ? { ELIZA_RENDERER_URL: rendererUrlForShell }
           : {}),
-        MILADY_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
+        ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
         ...screenshotEnvApi,
         ...(desktopDevLogPath
-          ? { MILADY_DESKTOP_DEV_LOG_PATH: desktopDevLogPath }
+          ? { ELIZA_DESKTOP_DEV_LOG_PATH: desktopDevLogPath }
           : {}),
       },
     );
@@ -605,12 +605,12 @@ async function launch() {
   if (viteDevServer) {
     killUiListenPort(uiDevPort);
     console.log(
-      "\n[eliza] Vite dev server (HMR) for desktop — Electrobun loads MILADY_RENDERER_URL.\n" +
-        `    (Slow Rollup watch: MILADY_DESKTOP_VITE_BUILD_WATCH=1 with MILADY_DESKTOP_VITE_WATCH=1)\n`,
+      "\n[eliza] Vite dev server (HMR) for desktop — Electrobun loads ELIZA_RENDERER_URL.\n" +
+        `    (Slow Rollup watch: ELIZA_DESKTOP_VITE_BUILD_WATCH=1 with ELIZA_DESKTOP_VITE_WATCH=1)\n`,
     );
     if (viteDepForce) {
       console.log(
-        "[eliza] Vite --force (MILADY_VITE_FORCE=1): re-optimizing dependencies.\n",
+        "[eliza] Vite --force (ELIZA_VITE_FORCE=1): re-optimizing dependencies.\n",
       );
     }
     pushChild(
@@ -620,12 +620,12 @@ async function launch() {
       appDir,
       {
         NODE_ENV: "development",
-        MILADY_PORT: String(uiDevPort),
-        MILADY_API_PORT: apiPort,
+        ELIZA_PORT: String(uiDevPort),
+        ELIZA_API_PORT: apiPort,
         ELIZA_API_PORT: apiPort,
         ELIZA_PORT: apiPort,
-        MILADY_NAMESPACE: process.env.MILADY_NAMESPACE ?? "milady",
-        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "milady",
+        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "eliza",
+        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "eliza",
       },
     );
     await waitForPort(uiDevPort);
@@ -634,7 +634,7 @@ async function launch() {
 
   if (viteRollupWatch) {
     pushChild("vite", "bun", ["run", "vite", "build", "--watch"], appDir, {
-      MILADY_DESKTOP_VITE_FAST_DIST: "1",
+      ELIZA_DESKTOP_VITE_FAST_DIST: "1",
     });
   }
 
@@ -642,27 +642,27 @@ async function launch() {
     NODE_ENV: "development",
     ELECTROBUN_SKIP_CODESIGN: "1",
     ...(desktopCefWorkaroundEnv
-      ? { MILADY_DESKTOP_FORCE_CEF: desktopCefWorkaroundEnv }
+      ? { ELIZA_DESKTOP_FORCE_CEF: desktopCefWorkaroundEnv }
       : {}),
     ...(desktopUnsafeDevtoolsEnv
       ? {
-          MILADY_ALLOW_UNSAFE_NATIVE_DEVTOOLS: desktopUnsafeDevtoolsEnv,
+          ELIZA_ALLOW_UNSAFE_NATIVE_DEVTOOLS: desktopUnsafeDevtoolsEnv,
         }
       : {}),
     ...(rendererUrlForShell
-      ? { MILADY_RENDERER_URL: rendererUrlForShell }
+      ? { ELIZA_RENDERER_URL: rendererUrlForShell }
       : {}),
     ...(skipApi
       ? {}
       : {
-          MILADY_API_PORT: apiPort,
+          ELIZA_API_PORT: apiPort,
           ELIZA_API_PORT: apiPort,
           ELIZA_PORT: apiPort,
-          MILADY_NAMESPACE: process.env.MILADY_NAMESPACE ?? "milady",
-          ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "milady",
-          MILADY_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
+          ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "eliza",
+          ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "eliza",
+          ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
         }),
-    MILADY_BROWSER_WORKSPACE_PORT: String(browserWorkspacePort),
+    ELIZA_BROWSER_WORKSPACE_PORT: String(browserWorkspacePort),
     ...screenshotEnvElectrobun,
   });
 }

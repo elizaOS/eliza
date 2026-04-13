@@ -10,7 +10,6 @@ import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
 import { launchAppAction, stopAppAction } from "../actions/app-control.js";
 import { calendarAction } from "../actions/calendar.js";
-import { emoteAction } from "../actions/emote.js";
 import {
   readEntityAction,
   searchEntityAction,
@@ -97,13 +96,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     createUserNameProvider(),
   ];
 
-  // Emote IDs are now declared as an enum on the PLAY_EMOTE action parameter,
-  // so they appear in the `# Available Actions` section automatically via
-  // core's formatActions. No separate provider injection needed.
-  //
-  // Backwards-compat: character.settings.DISABLE_EMOTES still works — when set,
-  // the PLAY_EMOTE action is excluded at init time so it never appears in the
-  // prompt. Previously this was checked per-request in the emote provider.
+  // PLAY_EMOTE lives in @elizaos/app-companion (emote catalog + action).
 
   const plugin: Plugin = {
     name: "eliza",
@@ -189,14 +182,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
             }
           }
         })();
-      }
-
-      // Honour DISABLE_EMOTES: remove PLAY_EMOTE so it never appears in prompts.
-      if (runtime.character?.settings?.DISABLE_EMOTES) {
-        const idx = plugin.actions?.findIndex((a) => a.name === "PLAY_EMOTE");
-        if (idx != null && idx >= 0) {
-          plugin.actions?.splice(idx, 1);
-        }
       }
 
       // ── Auto-register skills as slash commands ───────────────────────
@@ -302,7 +287,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       sendAdminMessageAction,
       terminalAction,
       createTriggerTaskAction,
-      emoteAction,
       calendarAction,
       gmailAction,
       lifeAction,

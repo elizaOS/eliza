@@ -166,7 +166,7 @@ export const createTriggerTaskAction: Action = {
       const recent = await runtime.getMemories({
         tableName: "messages",
         roomId: message.roomId,
-        count: 6,
+        limit: 6,
       });
       for (const mem of recent) {
         if (looksLikeTriggerIntent(mem.content.text ?? "")) return true;

@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { createConversation, req } from "../../../../test/helpers/http.ts";
+import { createConversation, req } from "../../../../../test/helpers/http.ts";
 import type {
   LifeOpsDefinitionEntry,
   LifeOpsGoalEntry,
@@ -157,10 +157,15 @@ export type ScenarioMatrixReport = {
   totalCount: number;
 };
 
-const DEFAULT_SCENARIO_DIR = path.join(
-  REPO_ROOT,
-  "test",
-  "lifeops",
+/** PRD scenario JSON files live in `@elizaos/app-lifeops` (`eliza/apps/app-lifeops/scenarios`). */
+const DEFAULT_SCENARIO_DIR = path.resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "apps",
+  "app-lifeops",
   "scenarios",
 );
 const FINAL_CHECK_TIMEOUT_MS = 20_000;

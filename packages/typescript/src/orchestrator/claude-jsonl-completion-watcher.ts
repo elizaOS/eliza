@@ -38,7 +38,7 @@
  *   - the jsonl doesn't exist when the session spawns — we need retry
  *     logic anyway, which fs.watch doesn't naturally provide
  *
- * @module runtime/claude-jsonl-completion-watcher
+ * @module orchestrator/claude-jsonl-completion-watcher
  */
 
 import { promises as fs } from "node:fs";
