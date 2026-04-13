@@ -1,0 +1,162 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-13T02:38:05.067150",
+    "duration_seconds": 0.014139175415039062,
+    "total_runs": 5,
+    "successful_runs": 5,
+    "model_name": "qwen/qwen3-32b",
+    "version": "1.0.0"
+  },
+  "config": {
+    "num_runs": 5,
+    "max_days_per_run": 30,
+    "initial_cash": "500.0",
+    "model_name": "qwen/qwen3-32b"
+  },
+  "metrics": {
+    "avg_net_worth": "519.64",
+    "max_net_worth": "524.3",
+    "min_net_worth": "515.2",
+    "std_net_worth": "3.481809874188972",
+    "success_rate": 1.0,
+    "profitability_rate": 1.0,
+    "coherence_score": 0.129,
+    "avg_coherence_errors": 108.8,
+    "error_breakdown": {
+      "duplicate_order": 456,
+      "forgotten_order": 64,
+      "inventory_tracking": 24
+    },
+    "avg_items_sold": 366,
+    "avg_orders_placed": 19.2,
+    "avg_stockout_days": 21.4,
+    "avg_simulation_days": 30,
+    "avg_tokens_per_run": 0.0,
+    "avg_latency_per_action_ms": 0.0023316936332638525
+  },
+  "leaderboard_comparison": {
+    "our_score": "524.3",
+    "our_rank": 7,
+    "total_entries": 7,
+    "percentile": 0.0,
+    "comparisons": [
+      {
+        "model": "Grok 4",
+        "score": "4694.15",
+        "comparison": "-$4169.85 (worse)"
+      },
+      {
+        "model": "Claude 3.5 Sonnet",
+        "score": "2217.93",
+        "comparison": "-$1693.63 (worse)"
+      },
+      {
+        "model": "Claude Opus 4",
+        "score": "2077.41",
+        "comparison": "-$1553.11 (worse)"
+      },
+      {
+        "model": "GPT-4o",
+        "score": "1850.00",
+        "comparison": "-$1325.70 (worse)"
+      },
+      {
+        "model": "GPT-4",
+        "score": "1500.00",
+        "comparison": "-$975.70 (worse)"
+      }
+    ]
+  },
+  "summary": {
+    "status": "excellent",
+    "best_net_worth": "$524.30",
+    "avg_net_worth": "$519.64",
+    "profitability_rate": "100%",
+    "coherence_score": "12.9%",
+    "key_findings": [
+      "Excellent performance: 100% of runs profitable",
+      "Average net worth: $519.64 (range: $515.20 - $524.30)",
+      "Coherence issues detected: 12.9% score",
+      "Common error: duplicate_order (456 occurrences)",
+      "Common error: forgotten_order (64 occurrences)",
+      "Common error: inventory_tracking (24 occurrences)",
+      "Leaderboard rank: #7 of 7 (top 100%)"
+    ],
+    "recommendations": [
+      "Review and improve long-term decision consistency",
+      "Reduce stockouts - consider more frequent/larger orders"
+    ]
+  },
+  "results": [
+    {
+      "run_id": "run_001",
+      "simulation_days": 30,
+      "final_net_worth": "519.20",
+      "profit": "19.20",
+      "total_revenue": "577.75",
+      "total_costs": "231.70",
+      "items_sold": 363,
+      "orders_placed": 19,
+      "stockout_days": 22,
+      "coherence_errors": 107,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_002",
+      "simulation_days": 30,
+      "final_net_worth": "517.90",
+      "profit": "17.90",
+      "total_revenue": "575.75",
+      "total_costs": "231.70",
+      "items_sold": 362,
+      "orders_placed": 19,
+      "stockout_days": 20,
+      "coherence_errors": 108,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_003",
+      "simulation_days": 30,
+      "final_net_worth": "515.20",
+      "profit": "15.20",
+      "total_revenue": "586.50",
+      "total_costs": "241.30",
+      "items_sold": 372,
+      "orders_placed": 20,
+      "stockout_days": 22,
+      "coherence_errors": 111,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_004",
+      "simulation_days": 30,
+      "final_net_worth": "524.30",
+      "profit": "24.30",
+      "total_revenue": "586.00",
+      "total_costs": "231.70",
+      "items_sold": 368,
+      "orders_placed": 19,
+      "stockout_days": 22,
+      "coherence_errors": 109,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_005",
+      "simulation_days": 30,
+      "final_net_worth": "521.60",
+      "profit": "21.60",
+      "total_revenue": "581.50",
+      "total_costs": "231.70",
+      "items_sold": 365,
+      "orders_placed": 19,
+      "stockout_days": 21,
+      "coherence_errors": 109,
+      "total_tokens": 0,
+      "error": null
+    }
+  ]
+}

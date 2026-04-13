@@ -1,0 +1,23 @@
+# System related
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# OpenCode specific (keep plugins, ignore runtime/cache)
+.opencode/node_modules/
+.opencode/bun.lock
+.opencode/dist/
+.opencode/build/
+.opencode/cache/
+
+# Worktrees (if created inside repo)
+.worktrees/
+.opencode-worktree/
+
+# Logs
+logs/
+*.log

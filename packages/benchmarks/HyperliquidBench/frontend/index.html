@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HyperLiquidBench — Operational Coverage</title>
+  <link rel="stylesheet" href="assets/style.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script type="module" defer src="assets/app.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 selection:bg-cyan-200">
+  <header class="border-b bg-white">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <a id="site-title" href="./" class="font-semibold tracking-tight">HyperLiquidBench</a>
+      <nav class="text-sm">
+        <a id="nav-home" class="hover:underline mr-4" href="./">Overview</a>
+        <a id="nav-trajectories" class="hover:underline mr-4" href="./trajectories.html">Action Logs</a>
+        <a id="nav-breakdown" class="hover:underline" href="./lc.html">Domain Breakdown</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="bg-gradient-to-b from-white to-slate-50">
+    <div class="max-w-6xl mx-auto px-4 py-12">
+      <h1 id="hero-title" class="text-3xl md:text-4xl font-bold">Loading…</h1>
+      <p id="hero-subtitle" class="mt-3 max-w-2xl text-slate-600"></p>
+
+      <div id="pillars" class="mt-6 grid md:grid-cols-3 gap-4"></div>
+    </div>
+  </section>
+
+  <section class="max-w-6xl mx-auto px-4 py-8">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <h2 id="scoreboard-title" class="text-xl font-semibold">Leaderboard</h2>
+      <div class="text-sm text-slate-500">
+        <span id="scoreboard-source">Datasets:</span>
+        <a id="scoreboard-link" class="underline" href="./trajectories.html">Inspect trajectories</a>
+      </div>
+    </div>
+    <div class="mt-4 overflow-x-auto">
+      <table class="w-full text-sm bg-white border rounded-lg shadow-sm min-w-[720px]">
+        <thead class="bg-slate-100 text-slate-700">
+          <tr>
+            <th class="px-3 py-2 text-left">Rank</th>
+            <th class="px-3 py-2 text-left">Agent</th>
+            <th class="px-3 py-2 text-right">Final</th>
+            <th class="px-3 py-2 text-right">Base</th>
+            <th class="px-3 py-2 text-right">Bonus</th>
+            <th class="px-3 py-2 text-right">Penalty</th>
+            <th class="px-3 py-2 text-right">Unique sigs</th>
+            <th class="px-3 py-2 text-left">Domains</th>
+            <th class="px-3 py-2 text-left">Run</th>
+          </tr>
+        </thead>
+        <tbody id="lb-body"></tbody>
+      </table>
+    </div>
+
+    <div class="mt-8 grid md:grid-cols-2 gap-6">
+      <div class="p-4 bg-white border rounded-lg shadow-sm">
+        <h3 id="chart-score-title" class="font-semibold">Final vs Base Score</h3>
+        <canvas id="scoreChart" class="mt-3"></canvas>
+      </div>
+      <div class="p-4 bg-white border rounded-lg shadow-sm">
+        <h3 id="chart-domain-title" class="font-semibold">Composition Bonus</h3>
+        <canvas id="domainChart" class="mt-3"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <section class="bg-white border-t">
+    <div class="max-w-6xl mx-auto px-4 py-10">
+      <h2 id="howto-title" class="text-xl font-semibold">Keep the snapshot fresh</h2>
+      <ol id="howto-steps" class="list-decimal ml-6 mt-3 text-sm text-slate-700 space-y-2"></ol>
+      <p id="howto-foot" class="text-xs text-slate-500 mt-4"></p>
+    </div>
+  </section>
+
+  <footer class="border-t bg-slate-50">
+    <div id="footer-text" class="max-w-6xl mx-auto px-4 py-6 text-xs text-slate-500">
+      HyperLiquidBench
+    </div>
+  </footer>
+</body>
+</html>

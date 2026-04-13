@@ -1,0 +1,84 @@
+name: ${APP_NAME:-eliza}
+
+services:
+  gateway:
+    container_name: ${APP_NAME:-eliza}-gateway
+    image: ${APP_IMAGE:-eliza:local}
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      APP_NAME: ${APP_NAME:-eliza}
+      APP_PORT: ${APP_PORT:-2138}
+      APP_GATEWAY_PORT: ${APP_GATEWAY_PORT:-18789}
+      APP_BRIDGE_PORT: ${APP_BRIDGE_PORT:-18790}
+      APP_GATEWAY_TOKEN: ${APP_GATEWAY_TOKEN:-}
+      APP_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-}
+      APP_API_TOKEN: ${APP_API_TOKEN:-}
+      APP_API_BIND: ${APP_API_BIND:-127.0.0.1}
+      ELIZA_PORT: ${APP_PORT:-2138}
+      ELIZA_API_PORT: ${APP_PORT:-2138}
+      ELIZA_GATEWAY_PORT: ${APP_GATEWAY_PORT:-18789}
+      ELIZA_BRIDGE_PORT: ${APP_BRIDGE_PORT:-18790}
+      ELIZA_API_BIND: ${APP_API_BIND:-127.0.0.1}
+      ELIZA_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-}
+      ELIZA_API_TOKEN: ${APP_API_TOKEN:-}
+      ELIZA_STATE_DIR: ${APP_STATE_DIR:-/home/node/.eliza}
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
+    volumes:
+      - ${APP_CONFIG_DIR:-.docker-home/config}:${APP_STATE_DIR:-/home/node/.eliza}
+      - ${APP_WORKSPACE_DIR:-.docker-home/workspace}:${APP_STATE_DIR:-/home/node/.eliza}/workspace
+    ports:
+      - "${APP_GATEWAY_PORT:-18789}:${APP_GATEWAY_PORT:-18789}"
+      - "${APP_BRIDGE_PORT:-18790}:18790"
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${APP_GATEWAY_PORT:-18789}/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    command:
+      [
+        "node",
+        "dist/index.js",
+        "gateway",
+        "--bind",
+        "${APP_GATEWAY_BIND:-lan}",
+        "--port",
+        "${APP_GATEWAY_PORT:-18789}",
+      ]
+
+  cli:
+    container_name: ${APP_NAME:-eliza}-cli
+    image: ${APP_IMAGE:-eliza:local}
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      APP_NAME: ${APP_NAME:-eliza}
+      APP_PORT: ${APP_PORT:-2138}
+      APP_GATEWAY_PORT: ${APP_GATEWAY_PORT:-18789}
+      APP_BRIDGE_PORT: ${APP_BRIDGE_PORT:-18790}
+      APP_GATEWAY_TOKEN: ${APP_GATEWAY_TOKEN:-}
+      APP_API_TOKEN: ${APP_API_TOKEN:-}
+      APP_API_BIND: ${APP_API_BIND:-127.0.0.1}
+      ELIZA_PORT: ${APP_PORT:-2138}
+      ELIZA_API_PORT: ${APP_PORT:-2138}
+      ELIZA_GATEWAY_PORT: ${APP_GATEWAY_PORT:-18789}
+      ELIZA_BRIDGE_PORT: ${APP_BRIDGE_PORT:-18790}
+      ELIZA_API_BIND: ${APP_API_BIND:-127.0.0.1}
+      ELIZA_API_TOKEN: ${APP_API_TOKEN:-}
+      ELIZA_STATE_DIR: ${APP_STATE_DIR:-/home/node/.eliza}
+      BROWSER: echo
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
+    volumes:
+      - ${APP_CONFIG_DIR:-.docker-home/config}:${APP_STATE_DIR:-/home/node/.eliza}
+      - ${APP_WORKSPACE_DIR:-.docker-home/workspace}:${APP_STATE_DIR:-/home/node/.eliza}/workspace
+    stdin_open: true
+    tty: true
+    init: true
+    entrypoint: ["node", "dist/index.js"]

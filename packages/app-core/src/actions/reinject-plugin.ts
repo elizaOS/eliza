@@ -1,0 +1,52 @@
+import type { Action, HandlerOptions } from "@elizaos/core";
+import { requestRestart } from "@elizaos/shared/restart";
+import { reinjectPlugin } from "../services/plugin-eject";
+
+export const reinjectPluginAction: Action = {
+  name: "REINJECT_PLUGIN",
+
+  similes: ["UNEJECT_PLUGIN", "RESTORE_PLUGIN", "REMOVE_LOCAL_PLUGIN"],
+
+  description:
+    "Remove an ejected plugin copy so runtime falls back to the npm package.",
+
+  validate: async () => true,
+
+  handler: async (_runtime, _message, _state, options) => {
+    const params = (options as HandlerOptions | undefined)?.parameters;
+    const pluginId =
+      typeof params?.pluginId === "string" ? params.pluginId.trim() : "";
+
+    if (!pluginId) {
+      return { text: "I need a plugin ID to reinject.", success: false };
+    }
+
+    const result = await reinjectPlugin(pluginId);
+    if (!result.success) {
+      return {
+        text: `Failed to reinject ${pluginId}: ${result.error ?? "unknown error"}`,
+        success: false,
+      };
+    }
+
+    setTimeout(() => {
+      requestRestart(`Plugin ${result.pluginName} reinjected`);
+    }, 1_000);
+
+    return {
+      text: `Removed ejected plugin ${result.pluginName}. Restarting to load npm version.`,
+      success: true,
+      data: { ...result },
+    };
+  },
+
+  parameters: [
+    {
+      name: "pluginId",
+      description:
+        "Plugin ID or npm package to reinject (e.g. 'discord' or '@elizaos/plugin-discord')",
+      required: true,
+      schema: { type: "string" as const },
+    },
+  ],
+};

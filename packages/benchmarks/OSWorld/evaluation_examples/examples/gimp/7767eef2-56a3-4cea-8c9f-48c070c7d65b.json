@@ -1,0 +1,57 @@
+{
+  "id": "7767eef2-56a3-4cea-8c9f-48c070c7d65b",
+  "snapshot": "gimp",
+  "instruction": "Please help change GIMP's theme from dark to light.",
+  "source": "https://www.youtube.com/watch?v=LX-S1CX1HUI",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "gimp"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "gimp"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python3",
+            "-c",
+            "import time; import pyautogui; time.sleep(1);pyautogui.hotkey([\"ctrl\", \"q\"]);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "check_config_status",
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "type:": "key-value",
+        "key": "theme",
+        "value": "\"Light\""
+      }
+    },
+    "result": {
+      "type": "gimp_config_file",
+      "file_name": "gimprc",
+      "dest": "gimprc"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

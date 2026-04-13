@@ -1,0 +1,67 @@
+{
+  "id": "ecc2413d-8a48-416e-a3a2-d30106ca36cb",
+  "snapshot": "word",
+  "instruction": "Hey, can you throw in a blank page right after this one?",
+  "source": "https://www.quora.com/How-can-I-insert-a-blank-page-on-libreoffice",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/word/ecc2413d-8a48-416e-a3a2-d30106ca36cb/Sample_Statutory_Declaration.docx",
+            "path": "C:\\Users\\User\\Sample_Statutory_Declaration.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Sample_Statutory_Declaration.docx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "word"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Sample_Statutory_Declaration - Word",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5); "
+          ]
+        }
+      }
+    ],
+    "func": "compare_docx_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/word/ecc2413d-8a48-416e-a3a2-d30106ca36cb/Sample_Statutory_Declaration_Gold.docx",
+      "dest": "Sample_Statutory_Declaration_Gold.docx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Sample_Statutory_Declaration.docx",
+      "dest": "Sample_Statutory_Declaration.docx"
+    }
+  }
+}

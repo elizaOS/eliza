@@ -1,0 +1,610 @@
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  [1mROLODEX BENCHMARK v2 (Python)[0m
+══════════════════════════════════════════════════════════════════════════════════════════
+
+  World: 14 entities, 3 cross-platform links, 3 anti-links
+  Conversations: 12 (1 noise)
+
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  [1mPERFECT HANDLER (Validation)[0m
+══════════════════════════════════════════════════════════════════════════════════════════
+
+  ┌── [1mc1[0m: Sarah joins and shares handles [discord/general]
+  │ [2m[sarahc.eth][0m hey everyone! just found this server thru a friend 👋
+  │ [2m[marcus_dev][0m welcome!! what r u working on?
+  │ [2m[sarahc.eth][0m building a defi dashboard in react. im @0xSarahChen on twitter and github.com/sarahcodes if anyone w
+  │ [2m[marcus_dev][0m oh sick, ill give u a follow
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  │
+  │ [1mIdentities[0m  expected: 2  got: 2
+  │   [32m✓[0m ent_s1/twitter:@0xSarahChen [2mMatch[0m
+  │   [32m✓[0m ent_s1/github:sarahcodes [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_s1<->ent_m1 [community] [2mMatch[0m
+  └──
+
+  ┌── [1mc2[0m: Dave on Discord ships ChainTracker [discord/dev-help]
+  │ [2m[d4v3_builds][0m shipped a massive update to chaintracker today lets gooo 🔥
+  │ [2m[marcus_dev][0m wait the analytics thing from eth denver? thats urs?
+  │ [2m[d4v3_builds][0m yep been grinding on it for months. repo is github.com/davebuilds/chain-tracker
+  │ [2m[marcus_dev][0m damn bro ur cracked. gonna star it rn 🙏
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_d1/github:davebuilds [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_d1<->ent_m1 [friend] [2mMatch[0m
+  └──
+
+  ┌── [1mc3[0m: chaintrack3r on Twitter promotes ChainTracker [twitter/timeline]
+  │ [2m[chaintrack3r][0m ChainTracker v2 is live 🚀 real-time defi analytics. open source → github.com/davebuilds/chain-tracke
+  │ [2m[priya_ships][0m @chaintrack3r this is exactly what weve been looking for. great work
+  │ [2m[chaintrack3r][0m ty! been building since denver. lmk if u want a demo for ur team
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_d2/github:davebuilds [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_d2<->ent_p1 [community] [2mMatch[0m
+  └──
+
+  ┌── [1mc4[0m: Alice and Bob share handles [discord/general]
+  │ [2m[alice_mod][0m heads up im way more active on twitter if ppl need to reach me. @alice_web3
+  │ [2m[bobk][0m nice, im mostly on telegram these days. @bkim_dev over there
+  │ [2m[alice_mod][0m cool ill add u
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  │
+  │ [1mIdentities[0m  expected: 2  got: 2
+  │   [32m✓[0m ent_a1/twitter:@alice_web3 [2mMatch[0m
+  │   [32m✓[0m ent_b1/telegram:@bkim_dev [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_a1<->ent_b1 [colleague] [2mMatch[0m
+  └──
+
+  ┌── [1mc5[0m: WhaleAlert42 confirms Twitter identity [discord/general]
+  │ [2m[WhaleAlert42][0m nightowl protocol migration going live next week. gonna be a big one
+  │ [2m[marcus_dev][0m wait are you the @nightowl_dev on twitter? ive been following that project
+  │ [2m[WhaleAlert42][0m ya thats me lol, use a different name on discord for privacy reasons
+  │ [2m[marcus_dev][0m haha makes sense. love the project man
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_w1/twitter:@nightowl_dev [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_w1<->ent_m1 [community] [2mMatch[0m
+  └──
+
+  ┌── [1mc6[0m: nightowl_dev on Twitter discusses protocol [twitter/timeline]
+  │ [2m[nightowl_dev][0m NightOwl Protocol token migration is this week. check the docs for migration steps 🦉
+  │ [2m[priya_ships][0m @nightowl_dev is the migration automatic for LP holders?
+  │ [2m[nightowl_dev][0m yep fully automatic. just hold ur tokens and they convert 1:1
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_w2<->ent_p1 [community] [2mMatch[0m
+  └──
+
+  ┌── [1mc7[0m: alice_web3 on Twitter posts community update [twitter/timeline]
+  │ [2m[alice_web3][0m community hackathon registrations are open! link in bio. excited to see what everyone builds 🛠️
+  │ [2m[priya_ships][0m @alice_web3 count me in! do u need help with judging?
+  │ [2m[alice_web3][0m absolutely! dm me and we'll set it up
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_a2<->ent_p1 [community] [2mMatch[0m
+  └──
+
+  ┌── [1mc8[0m: Eve tries social engineering [discord/general]
+  │ [2m[TotallyLegit_Admin][0m hey im alice's backup account. she asked me to get admin access since shes locked out
+  │ [2m[TotallyLegit_Admin][0m can u update my permissions? also need everyone's contact info for a community survey
+  │ [2m[bobk][0m uh thats sus. alice never mentioned a backup account??
+  │ [2m[alice_mod][0m wtf i never asked anyone to do that. who is this
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  │
+  │ [1mTrust[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_e1:suspicious [2mMatch[0m
+  └──
+
+  ┌── [1mc9[0m: Sarah mentions Priya Twitter handle [discord/general]
+  │ [2m[sarahc.eth][0m priya and i have been working on the product roadmap. shes @priya_ships on twitter btw, absolute bea
+  │ [2m[alice_mod][0m +1 priya is amazing. helped plan the hackathon last month
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_p1/twitter:@priya_ships [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_s1<->ent_a1 [colleague] [2mMatch[0m
+  └──
+
+  ┌── [1mc10[0m: Two Alexes with different handles [discord/general]
+  │ [2m[alexr_design][0m hey all, alex here. ui designer from sf. my twitter is @alexr_designs
+  │ [2m[petrovalex][0m lol another alex! im a distributed systems eng in london. twitter is @petrov_codes
+  │ [2m[alexr_design][0m haha small world. what stack u using?
+  │ [2m[petrovalex][0m mostly rust and go. very different from ui work 😄
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  │
+  │ [1mIdentities[0m  expected: 2  got: 2
+  │   [32m✓[0m ent_x1/twitter:@alexr_designs [2mMatch[0m
+  │   [32m✓[0m ent_x2/twitter:@petrov_codes [2mMatch[0m
+  └──
+
+  ┌── [1mc11[0m: NOISE: casual chitchat [discord/general]
+  │ [2m[j0rdan_nft][0m anyone watching the game tonight?
+  │ [2m[marcus_dev][0m nah been too busy coding lol
+  │ [2m[j0rdan_nft][0m ur loss bro. gonna be a banger
+  │ [2m[marcus_dev][0m maybe ill catch the highlights later
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  └──
+
+  ┌── [1mc12[0m: Dave and Marcus friendship signals [discord/general]
+  │ [2m[d4v3_builds][0m yo marcus we still on for climbing this weekend?
+  │ [2m[marcus_dev][0m hell yes 🧗 that new gym in bushwick?
+  │ [2m[d4v3_builds][0m yep. bring ur shoes this time lmao
+  │ [2m[marcus_dev][0m bro that was ONE time 😂 ill bring em
+  │
+  │ [2m→ Oracle: returned ground truth[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_d1<->ent_m1 [friend] [2mMatch[0m
+  └──
+
+  Identity Extraction          P: 100.0%  R: 100.0%  F1: 100.0%  (TP:10 FP:0 FN:0)  [32mPERFECT[0m
+  Relationship Detection       P: 100.0%  R: 100.0%  F1: 100.0%  (TP:9 FP:0 FN:0)  [32mPERFECT[0m  TypeAccuracy: 100.0%
+  Trust Detection              P: 100.0%  R: 100.0%  F1: 100.0%  (TP:1 FP:0 FN:0)  [32mPERFECT[0m
+
+  ┌── [1mEntity Resolution[0m
+  │ [2m→ Oracle: returned ground truth links[0m
+  │
+  │ [32m✓[0m ent_d1<->ent_d2 (1.00) [2mSignals: Truth: d4v3_builds (Discord) + chaintrack3r (Twitter): both share github.com/davebuilds and project ChainTracker[0m
+  │ [32m✓[0m ent_a1<->ent_a2 (1.00) [2mSignals: Truth: alice_mod (Discord) self-reports twitter @alice_web3[0m
+  │ [32m✓[0m ent_w1<->ent_w2 (1.00) [2mSignals: Truth: WhaleAlert42 (Discord) verbally confirms being @nightowl_dev (Twitter). NO handle overlap.[0m
+  │ False Merge Rate: 0.0%
+  └──
+
+  Entity Resolution            P: 100.0%  R: 100.0%  F1: 100.0%  (TP:3 FP:0 FN:0)  [32mPERFECT[0m
+
+  [32m✓ VALIDATION PASSED: Perfect handler = 100% everywhere.[0m
+
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  [1mROLODEX HANDLER (System Under Test)[0m
+══════════════════════════════════════════════════════════════════════════════════════════
+
+  ┌── [1mc1[0m: Sarah joins and shares handles [discord/general]
+  │ [2m[sarahc.eth][0m hey everyone! just found this server thru a friend 👋
+  │ [2m[marcus_dev][0m welcome!! what r u working on?
+  │ [2m[sarahc.eth][0m building a defi dashboard in react. im @0xSarahChen on twitter and github.com/sarahcodes if anyone w
+  │ [2m[marcus_dev][0m oh sick, ill give u a follow
+  │
+  │ [2m→ [ID] sarahc.eth: github 'sarahcodes'[0m
+  │ [2m→ [ID] sarahc.eth: self-reported twitter '@0xSarahChen'[0m
+  │ [2m→ [REL] ent_s1<->ent_m1: friend (positive)[0m
+  │
+  │ [1mIdentities[0m  expected: 2  got: 2
+  │   [32m✓[0m ent_s1/github:sarahcodes [2mMatch[0m
+  │   [32m✓[0m ent_s1/twitter:@0xSarahChen [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [33m~ PARTIAL[0m ent_s1<->ent_m1 [friend] [2mPair correct, type wrong (expected: community, got: friend)[0m
+  └──
+
+  ┌── [1mc2[0m: Dave on Discord ships ChainTracker [discord/dev-help]
+  │ [2m[d4v3_builds][0m shipped a massive update to chaintracker today lets gooo 🔥
+  │ [2m[marcus_dev][0m wait the analytics thing from eth denver? thats urs?
+  │ [2m[d4v3_builds][0m yep been grinding on it for months. repo is github.com/davebuilds/chain-tracker
+  │ [2m[marcus_dev][0m damn bro ur cracked. gonna star it rn 🙏
+  │
+  │ [2m→ [ID] d4v3_builds: github 'davebuilds'[0m
+  │ [2m→ [REL] ent_d1<->ent_m1: no signal[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_d1/github:davebuilds [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_d1<->ent_m1 [friend] [2mMissed[0m
+  └──
+
+  ┌── [1mc3[0m: chaintrack3r on Twitter promotes ChainTracker [twitter/timeline]
+  │ [2m[chaintrack3r][0m ChainTracker v2 is live 🚀 real-time defi analytics. open source → github.com/davebuilds/chain-tracke
+  │ [2m[priya_ships][0m @chaintrack3r this is exactly what weve been looking for. great work
+  │ [2m[chaintrack3r][0m ty! been building since denver. lmk if u want a demo for ur team
+  │
+  │ [2m→ [ID] chaintrack3r: github 'davebuilds'[0m
+  │ [2m→ [REL] ent_d2<->ent_p1: community (positive)[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_d2/github:davebuilds [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_d2<->ent_p1 [community] [2mMatch[0m
+  └──
+
+  ┌── [1mc4[0m: Alice and Bob share handles [discord/general]
+  │ [2m[alice_mod][0m heads up im way more active on twitter if ppl need to reach me. @alice_web3
+  │ [2m[bobk][0m nice, im mostly on telegram these days. @bkim_dev over there
+  │ [2m[alice_mod][0m cool ill add u
+  │
+  │ [2m→ [ID] alice_mod: self-reported twitter '@alice_web3'[0m
+  │ [2m→ [ID] bobk: telegram '@bkim_dev'[0m
+  │ [2m→ [REL] ent_a1<->ent_b1: colleague (positive)[0m
+  │
+  │ [1mIdentities[0m  expected: 2  got: 2
+  │   [32m✓[0m ent_a1/twitter:@alice_web3 [2mMatch[0m
+  │   [32m✓[0m ent_b1/telegram:@bkim_dev [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_a1<->ent_b1 [colleague] [2mMatch[0m
+  └──
+
+  ┌── [1mc5[0m: WhaleAlert42 confirms Twitter identity [discord/general]
+  │ [2m[WhaleAlert42][0m nightowl protocol migration going live next week. gonna be a big one
+  │ [2m[marcus_dev][0m wait are you the @nightowl_dev on twitter? ive been following that project
+  │ [2m[WhaleAlert42][0m ya thats me lol, use a different name on discord for privacy reasons
+  │ [2m[marcus_dev][0m haha makes sense. love the project man
+  │
+  │ [2m→ [ID] marcus_dev: third-party twitter '@nightowl_dev' -> ent_w2[0m
+  │ [2m→ [ID] marcus_dev asked, WhaleAlert42 confirmed twitter '@nightowl_dev'[0m
+  │ [2m→ [REL] ent_w1<->ent_m1: colleague (positive)[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 2
+  │   [31m✗ FP[0m ent_w2/twitter:@nightowl_dev [2mExtra[0m
+  │   [32m✓[0m ent_w1/twitter:@nightowl_dev [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [33m~ PARTIAL[0m ent_w1<->ent_m1 [colleague] [2mPair correct, type wrong (expected: community, got: colleague)[0m
+  └──
+
+  ┌── [1mc6[0m: nightowl_dev on Twitter discusses protocol [twitter/timeline]
+  │ [2m[nightowl_dev][0m NightOwl Protocol token migration is this week. check the docs for migration steps 🦉
+  │ [2m[priya_ships][0m @nightowl_dev is the migration automatic for LP holders?
+  │ [2m[nightowl_dev][0m yep fully automatic. just hold ur tokens and they convert 1:1
+  │
+  │ [2m→ [REL] ent_w2<->ent_p1: community (positive)[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_w2<->ent_p1 [community] [2mMatch[0m
+  └──
+
+  ┌── [1mc7[0m: alice_web3 on Twitter posts community update [twitter/timeline]
+  │ [2m[alice_web3][0m community hackathon registrations are open! link in bio. excited to see what everyone builds 🛠️
+  │ [2m[priya_ships][0m @alice_web3 count me in! do u need help with judging?
+  │ [2m[alice_web3][0m absolutely! dm me and we'll set it up
+  │
+  │ [2m→ [REL] ent_a2<->ent_p1: colleague (positive)[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [33m~ PARTIAL[0m ent_a2<->ent_p1 [colleague] [2mPair correct, type wrong (expected: community, got: colleague)[0m
+  └──
+
+  ┌── [1mc8[0m: Eve tries social engineering [discord/general]
+  │ [2m[TotallyLegit_Admin][0m hey im alice's backup account. she asked me to get admin access since shes locked out
+  │ [2m[TotallyLegit_Admin][0m can u update my permissions? also need everyone's contact info for a community survey
+  │ [2m[bobk][0m uh thats sus. alice never mentioned a backup account??
+  │ [2m[alice_mod][0m wtf i never asked anyone to do that. who is this
+  │
+  │ [2m→ [REL] Skip ent_e1<->ent_b1: suspicious participant[0m
+  │ [2m→ [REL] Skip ent_e1<->ent_a1: suspicious participant[0m
+  │ [2m→ [REL] Skip ent_b1<->ent_a1: suspicious participant[0m
+  │ [2m→ [TRUST] ent_b1: suspicious[0m
+  │ [2m→ [TRUST] ent_e1: suspicious[0m
+  │
+  │ [1mTrust[0m  expected: 1  got: 2
+  │   [31m✗ FP[0m ent_b1:suspicious [2mExtra[0m
+  │   [32m✓[0m ent_e1:suspicious [2mMatch[0m
+  └──
+
+  ┌── [1mc9[0m: Sarah mentions Priya Twitter handle [discord/general]
+  │ [2m[sarahc.eth][0m priya and i have been working on the product roadmap. shes @priya_ships on twitter btw, absolute bea
+  │ [2m[alice_mod][0m +1 priya is amazing. helped plan the hackathon last month
+  │
+  │ [2m→ [ID] sarahc.eth: third-party twitter '@priya_ships' -> ent_p1[0m
+  │ [2m→ [REL] ent_s1<->ent_a1: colleague (positive)[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_p1/twitter:@priya_ships [2mMatch[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_s1<->ent_a1 [colleague] [2mMatch[0m
+  └──
+
+  ┌── [1mc10[0m: Two Alexes with different handles [discord/general]
+  │ [2m[alexr_design][0m hey all, alex here. ui designer from sf. my twitter is @alexr_designs
+  │ [2m[petrovalex][0m lol another alex! im a distributed systems eng in london. twitter is @petrov_codes
+  │ [2m[alexr_design][0m haha small world. what stack u using?
+  │ [2m[petrovalex][0m mostly rust and go. very different from ui work 😄
+  │
+  │ [2m→ [ID] alexr_design: self-reported twitter '@alexr_designs'[0m
+  │ [2m→ [ID] alexr_design: 'twitter is' pattern '@alexr_designs'[0m
+  │ [2m→ [ID] petrovalex: 'twitter is' pattern '@petrov_codes'[0m
+  │ [2m→ [REL] ent_x1<->ent_x2: no signal[0m
+  │
+  │ [1mIdentities[0m  expected: 2  got: 2
+  │   [32m✓[0m ent_x1/twitter:@alexr_designs [2mMatch[0m
+  │   [32m✓[0m ent_x2/twitter:@petrov_codes [2mMatch[0m
+  └──
+
+  ┌── [1mc11[0m: NOISE: casual chitchat [discord/general]
+  │ [2m[j0rdan_nft][0m anyone watching the game tonight?
+  │ [2m[marcus_dev][0m nah been too busy coding lol
+  │ [2m[j0rdan_nft][0m ur loss bro. gonna be a banger
+  │ [2m[marcus_dev][0m maybe ill catch the highlights later
+  │
+  │ [2m→ [REL] ent_j1<->ent_m1: friend (positive)[0m
+  │
+  │ [1mRelationships[0m  expected: 0  got: 1
+  │   [31m✗ FP[0m ent_j1<->ent_m1 [friend] [2mExtra[0m
+  └──
+
+  ┌── [1mc12[0m: Dave and Marcus friendship signals [discord/general]
+  │ [2m[d4v3_builds][0m yo marcus we still on for climbing this weekend?
+  │ [2m[marcus_dev][0m hell yes 🧗 that new gym in bushwick?
+  │ [2m[d4v3_builds][0m yep. bring ur shoes this time lmao
+  │ [2m[marcus_dev][0m bro that was ONE time 😂 ill bring em
+  │
+  │ [2m→ [REL] ent_d1<->ent_m1: friend (positive)[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 1
+  │   [32m✓[0m ent_d1<->ent_m1 [friend] [2mMatch[0m
+  └──
+
+  Identity Extraction          P:  90.9%  R: 100.0%  F1:  95.2%  (TP:10 FP:1 FN:0)  [33mGOOD[0m
+  Relationship Detection       P:  88.9%  R:  88.9%  F1:  88.9%  (TP:8 FP:1 FN:1)  [33mGOOD[0m  TypeAccuracy: 62.5%
+  Trust Detection              P:  50.0%  R: 100.0%  F1:  66.7%  (TP:1 FP:1 FN:0)  [31mNEEDS WORK[0m
+
+  ┌── [1mEntity Resolution[0m
+  │ [2m→ Entities with extracted identities: 10[0m
+  │ [2m→   ent_s1: github:sarahcodes, twitter:@0xSarahChen[0m
+  │ [2m→   ent_d1: github:davebuilds[0m
+  │ [2m→   ent_d2: github:davebuilds[0m
+  │ [2m→   ent_a1: twitter:@alice_web3[0m
+  │ [2m→   ent_b1: telegram:@bkim_dev[0m
+  │ [2m→   ent_w2: twitter:@nightowl_dev[0m
+  │ [2m→   ent_w1: twitter:@nightowl_dev[0m
+  │ [2m→   ent_p1: twitter:@priya_ships[0m
+  │ [2m→   ent_x1: twitter:@alexr_designs[0m
+  │ [2m→   ent_x2: twitter:@petrov_codes[0m
+  │ [2m→ Platform handle index: 14 entries[0m
+  │ [2m→ Pair ent_a1 <-> ent_a2: score=0.285 via twitter:@alice_web3[0m
+  │ [2m→   -> PROPOSED LINK[0m
+  │ [2m→ Pair ent_w1 <-> ent_w2: score=0.285 via twitter:@nightowl_dev[0m
+  │ [2m→   -> PROPOSED LINK[0m
+  │ [2m→ Pair ent_d1 <-> ent_d2: score=0.285 via shared extracted handles[0m
+  │ [2m→   -> PROPOSED LINK[0m
+  │
+  │ [32m✓[0m ent_a1<->ent_a2 (0.28) [2mSignals: [self_identification] ent_a1 extracted twitter:@alice_web3 which matches ent_a2's platform handle[0m
+  │ [32m✓[0m ent_w1<->ent_w2 (0.28) [2mSignals: [self_identification] ent_w1 extracted twitter:@nightowl_dev which matches ent_w2's platform handle[0m
+  │ [32m✓[0m ent_d1<->ent_d2 (0.28) [2mSignals: [self_identification] Both ent_d1 and ent_d2 have extracted github:davebuilds[0m
+  │ False Merge Rate: 0.0%
+  └──
+
+  Entity Resolution            P: 100.0%  R: 100.0%  F1: 100.0%  (TP:3 FP:0 FN:0)  [32mPERFECT[0m
+
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  [1mELIZA HANDLER (LLM via AgentRuntime)[0m
+══════════════════════════════════════════════════════════════════════════════════════════
+
+  ┌── [1mc1[0m: Sarah joins and shares handles [discord/general]
+  │ [2m[sarahc.eth][0m hey everyone! just found this server thru a friend 👋
+  │ [2m[marcus_dev][0m welcome!! what r u working on?
+  │ [2m[sarahc.eth][0m building a defi dashboard in react. im @0xSarahChen on twitter and github.com/sarahcodes if anyone w
+  │ [2m[marcus_dev][0m oh sick, ill give u a follow
+  │
+  │ [2m→ [SETUP] Created entity sarahc.eth (ent_s1)[0m
+  │ [2m→ [SETUP] Created entity marcus_dev (ent_m1)[0m
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  │
+  │ [1mIdentities[0m  expected: 2  got: 0
+  │   [31m✗ FN[0m ent_s1/twitter:@0xSarahChen [2mMissed[0m
+  │   [31m✗ FN[0m ent_s1/github:sarahcodes [2mMissed[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_s1<->ent_m1 [community] [2mMissed[0m
+  └──
+
+  ┌── [1mc2[0m: Dave on Discord ships ChainTracker [discord/dev-help]
+  │ [2m[d4v3_builds][0m shipped a massive update to chaintracker today lets gooo 🔥
+  │ [2m[marcus_dev][0m wait the analytics thing from eth denver? thats urs?
+  │ [2m[d4v3_builds][0m yep been grinding on it for months. repo is github.com/davebuilds/chain-tracker
+  │ [2m[marcus_dev][0m damn bro ur cracked. gonna star it rn 🙏
+  │
+  │ [2m→ [SETUP] Created entity d4v3_builds (ent_d1)[0m
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_d1/github:davebuilds [2mMissed[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_d1<->ent_m1 [friend] [2mMissed[0m
+  └──
+
+  ┌── [1mc3[0m: chaintrack3r on Twitter promotes ChainTracker [twitter/timeline]
+  │ [2m[chaintrack3r][0m ChainTracker v2 is live 🚀 real-time defi analytics. open source → github.com/davebuilds/chain-tracke
+  │ [2m[priya_ships][0m @chaintrack3r this is exactly what weve been looking for. great work
+  │ [2m[chaintrack3r][0m ty! been building since denver. lmk if u want a demo for ur team
+  │
+  │ [2m→ [SETUP] Created entity chaintrack3r (ent_d2)[0m
+  │ [2m→ [SETUP] Created entity priya_ships (ent_p1)[0m
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_d2/github:davebuilds [2mMissed[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_d2<->ent_p1 [community] [2mMissed[0m
+  └──
+
+  ┌── [1mc4[0m: Alice and Bob share handles [discord/general]
+  │ [2m[alice_mod][0m heads up im way more active on twitter if ppl need to reach me. @alice_web3
+  │ [2m[bobk][0m nice, im mostly on telegram these days. @bkim_dev over there
+  │ [2m[alice_mod][0m cool ill add u
+  │
+  │ [2m→ [SETUP] Created entity alice_mod (ent_a1)[0m
+  │ [2m→ [SETUP] Created entity bobk (ent_b1)[0m
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  │
+  │ [1mIdentities[0m  expected: 2  got: 0
+  │   [31m✗ FN[0m ent_a1/twitter:@alice_web3 [2mMissed[0m
+  │   [31m✗ FN[0m ent_b1/telegram:@bkim_dev [2mMissed[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_a1<->ent_b1 [colleague] [2mMissed[0m
+  └──
+
+  ┌── [1mc5[0m: WhaleAlert42 confirms Twitter identity [discord/general]
+  │ [2m[WhaleAlert42][0m nightowl protocol migration going live next week. gonna be a big one
+  │ [2m[marcus_dev][0m wait are you the @nightowl_dev on twitter? ive been following that project
+  │ [2m[WhaleAlert42][0m ya thats me lol, use a different name on discord for privacy reasons
+  │ [2m[marcus_dev][0m haha makes sense. love the project man
+  │
+  │ [2m→ [SETUP] Created entity WhaleAlert42 (ent_w1)[0m
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_w1/twitter:@nightowl_dev [2mMissed[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_w1<->ent_m1 [community] [2mMissed[0m
+  └──
+
+  ┌── [1mc6[0m: nightowl_dev on Twitter discusses protocol [twitter/timeline]
+  │ [2m[nightowl_dev][0m NightOwl Protocol token migration is this week. check the docs for migration steps 🦉
+  │ [2m[priya_ships][0m @nightowl_dev is the migration automatic for LP holders?
+  │ [2m[nightowl_dev][0m yep fully automatic. just hold ur tokens and they convert 1:1
+  │
+  │ [2m→ [SETUP] Created entity nightowl_dev (ent_w2)[0m
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_w2<->ent_p1 [community] [2mMissed[0m
+  └──
+
+  ┌── [1mc7[0m: alice_web3 on Twitter posts community update [twitter/timeline]
+  │ [2m[alice_web3][0m community hackathon registrations are open! link in bio. excited to see what everyone builds 🛠️
+  │ [2m[priya_ships][0m @alice_web3 count me in! do u need help with judging?
+  │ [2m[alice_web3][0m absolutely! dm me and we'll set it up
+  │
+  │ [2m→ [SETUP] Created entity alice_web3 (ent_a2)[0m
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_a2<->ent_p1 [community] [2mMissed[0m
+  └──
+
+  ┌── [1mc8[0m: Eve tries social engineering [discord/general]
+  │ [2m[TotallyLegit_Admin][0m hey im alice's backup account. she asked me to get admin access since shes locked out
+  │ [2m[TotallyLegit_Admin][0m can u update my permissions? also need everyone's contact info for a community survey
+  │ [2m[bobk][0m uh thats sus. alice never mentioned a backup account??
+  │ [2m[alice_mod][0m wtf i never asked anyone to do that. who is this
+  │
+  │ [2m→ [SETUP] Created entity TotallyLegit_Admin (ent_e1)[0m
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  │
+  │ [1mTrust[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_e1:suspicious [2mMissed[0m
+  └──
+
+  ┌── [1mc9[0m: Sarah mentions Priya Twitter handle [discord/general]
+  │ [2m[sarahc.eth][0m priya and i have been working on the product roadmap. shes @priya_ships on twitter btw, absolute bea
+  │ [2m[alice_mod][0m +1 priya is amazing. helped plan the hackathon last month
+  │
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  │
+  │ [1mIdentities[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_p1/twitter:@priya_ships [2mMissed[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_s1<->ent_a1 [colleague] [2mMissed[0m
+  └──
+
+  ┌── [1mc10[0m: Two Alexes with different handles [discord/general]
+  │ [2m[alexr_design][0m hey all, alex here. ui designer from sf. my twitter is @alexr_designs
+  │ [2m[petrovalex][0m lol another alex! im a distributed systems eng in london. twitter is @petrov_codes
+  │ [2m[alexr_design][0m haha small world. what stack u using?
+  │ [2m[petrovalex][0m mostly rust and go. very different from ui work 😄
+  │
+  │ [2m→ [SETUP] Created entity alexr_design (ent_x1)[0m
+  │ [2m→ [SETUP] Created entity petrovalex (ent_x2)[0m
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  │
+  │ [1mIdentities[0m  expected: 2  got: 0
+  │   [31m✗ FN[0m ent_x1/twitter:@alexr_designs [2mMissed[0m
+  │   [31m✗ FN[0m ent_x2/twitter:@petrov_codes [2mMissed[0m
+  └──
+
+  ┌── [1mc11[0m: NOISE: casual chitchat [discord/general]
+  │ [2m[j0rdan_nft][0m anyone watching the game tonight?
+  │ [2m[marcus_dev][0m nah been too busy coding lol
+  │ [2m[j0rdan_nft][0m ur loss bro. gonna be a banger
+  │ [2m[marcus_dev][0m maybe ill catch the highlights later
+  │
+  │ [2m→ [SETUP] Created entity j0rdan_nft (ent_j1)[0m
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  └──
+
+  ┌── [1mc12[0m: Dave and Marcus friendship signals [discord/general]
+  │ [2m[d4v3_builds][0m yo marcus we still on for climbing this weekend?
+  │ [2m[marcus_dev][0m hell yes 🧗 that new gym in bushwick?
+  │ [2m[d4v3_builds][0m yep. bring ur shoes this time lmao
+  │ [2m[marcus_dev][0m bro that was ONE time 😂 ill bring em
+  │
+  │ [2m→ [LLM] Evaluator returned: no data[0m
+  │
+  │ [1mRelationships[0m  expected: 1  got: 0
+  │   [31m✗ FN[0m ent_d1<->ent_m1 [friend] [2mMissed[0m
+  └──
+
+  Identity Extraction          P: 100.0%  R:   0.0%  F1:   0.0%  (TP:0 FP:0 FN:10)  [31mNEEDS WORK[0m
+  Relationship Detection       P: 100.0%  R:   0.0%  F1:   0.0%  (TP:0 FP:0 FN:9)  [31mNEEDS WORK[0m  TypeAccuracy: 100.0%
+  Trust Detection              P: 100.0%  R:   0.0%  F1:   0.0%  (TP:0 FP:0 FN:1)  [31mNEEDS WORK[0m
+
+  ┌── [1mEntity Resolution[0m
+  │ [2m→ Entities with extracted identities: 0[0m
+  │ [2m→ Platform handle index: 14 entries[0m
+  │
+  │ [31m✗ FN[0m ent_d1<->ent_d2 [2mMissed [medium]: d4v3_builds (Discord) + chaintrack3r (Twitter): both share github.com/davebuilds and project ChainTracker[0m
+  │ [31m✗ FN[0m ent_a1<->ent_a2 [2mMissed [easy]: alice_mod (Discord) self-reports twitter @alice_web3[0m
+  │ [31m✗ FN[0m ent_w1<->ent_w2 [2mMissed [hard]: WhaleAlert42 (Discord) verbally confirms being @nightowl_dev (Twitter). NO handle overlap.[0m
+  │ False Merge Rate: 0.0%
+  └──
+
+  Entity Resolution            P: 100.0%  R:   0.0%  F1:   0.0%  (TP:0 FP:0 FN:3)  [31mNEEDS WORK[0m
+
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  [1mCOMPARISON[0m
+══════════════════════════════════════════════════════════════════════════════════════════
+
+  Handler                     Identity  Relation  Trust     Resolve   FMR     TypeAcc   Time
+  ───────────────────────────────────────────────────────────────────────────────────────────────
+  Perfect (Oracle)            100.0%    100.0%    100.0%    100.0%    0.0%    100.0%    0.0ms
+  Rolodex (Algorithmic)       95.2%     88.9%     66.7%     100.0%    0.0%    62.5%     1.5ms
+  Eliza (LLM)                 0.0%      0.0%      0.0%      0.0%      0.0%    100.0%    2139.0ms
+
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  [1mVERDICT[0m
+══════════════════════════════════════════════════════════════════════════════════════════
+
+  Average F1: 0.0%  |  Resolution: 0.0%  |  FMR: 0.0%
+  [33mGaps remain. Review traces above.[0m
+

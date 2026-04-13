@@ -1,0 +1,145 @@
+{
+  "id": "bf4e9888-f10f-47af-8dba-76413038b73c",
+  "snapshot": "libreoffice_impress",
+  "instruction": "I have a series of .png images named pic1.png to pic6.png saved on the Desktop. I want to create a new presentation with six blank slides(which means no textbox or any other stuff on the page), and insert one image per slide in order—pic1.png on the first slide, pic2.png on the second, and so on—following the numerical order. The goal is to prepare a presentation suitable for continuous playback in a kiosk or multimedia show. Could you help me with that?",
+  "source": "https://help.libreoffice.org/6.4/en-US/text/simpress/guide/photo_album.html?DbPAR=IMPRESS",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/bf4e9888-f10f-47af-8dba-76413038b73c/4.3-Template_4.29.2016.pptx",
+            "path": "/home/user/Desktop/4.3-Template_4.29.2016.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/4.3-Template_4.29.2016.pptx"
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/bf4e9888-f10f-47af-8dba-76413038b73c/pic1.png",
+            "path": "/home/user/Desktop/pic1.png"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/bf4e9888-f10f-47af-8dba-76413038b73c/pic2.png",
+            "path": "/home/user/Desktop/pic2.png"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/bf4e9888-f10f-47af-8dba-76413038b73c/pic3.png",
+            "path": "/home/user/Desktop/pic3.png"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/bf4e9888-f10f-47af-8dba-76413038b73c/pic4.png",
+            "path": "/home/user/Desktop/pic4.png"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/bf4e9888-f10f-47af-8dba-76413038b73c/pic5.png",
+            "path": "/home/user/Desktop/pic5.png"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/bf4e9888-f10f-47af-8dba-76413038b73c/pic6.png",
+            "path": "/home/user/Desktop/pic6.png"
+          }
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "4.3-Template_4.29.2016.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_pptx_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/bf4e9888-f10f-47af-8dba-76413038b73c/4.3-Template_4.29.2016_Gold.pptx",
+      "dest": "4.3-Template_4.29.2016_Gold.pptx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/4.3-Template_4.29.2016.pptx",
+      "dest": "4.3-Template_4.29.2016.pptx"
+    },
+    "options": {
+      "examine_shape": false
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

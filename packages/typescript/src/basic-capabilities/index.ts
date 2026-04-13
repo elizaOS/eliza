@@ -73,6 +73,13 @@ import {
 	advancedProviders,
 	advancedServices,
 } from "../advanced-capabilities/index.ts";
+// Import core capabilities (trust, secrets, plugin-manager)
+import {
+	coreCapabilities,
+	trustCapability,
+	secretsCapability,
+	pluginManagerCapability,
+} from "../core-capabilities/index.ts";
 // Import for local use
 import * as actions from "./actions/index.ts";
 import * as providers from "./providers/index.ts";
@@ -89,6 +96,14 @@ export {
 	advancedServices,
 } from "../advanced-capabilities/index.ts";
 export * from "../advanced-capabilities/providers/index.ts";
+
+// Re-export core capabilities (trust, secrets, plugin-manager)
+export {
+	coreCapabilities,
+	trustCapability,
+	secretsCapability,
+	pluginManagerCapability,
+} from "../core-capabilities/index.ts";
 
 // Re-export autonomy
 export * from "../autonomy/index.ts";
@@ -1400,6 +1415,12 @@ export interface CapabilityConfig {
 	skipCharacterProvider?: boolean;
 	/** Enable autonomy capabilities (default: false) */
 	enableAutonomy?: boolean;
+	/** Enable trust engine, security, and permissions (default: false) */
+	enableTrust?: boolean;
+	/** Enable encrypted secrets management and dynamic plugin activation (default: false) */
+	enableSecretsManager?: boolean;
+	/** Enable plugin introspection, install/eject/sync (default: false) */
+	enablePluginManager?: boolean;
 }
 
 // Autonomy capabilities - opt-in
@@ -1429,6 +1450,12 @@ export function createBasicCapabilitiesPlugin(
 		? basicProviders.filter((p) => p.name !== "CHARACTER")
 		: basicProviders;
 
+	// Build init chain for core capabilities that need initialization
+	const initFns: Array<(runtime: IAgentRuntime) => Promise<void>> = [];
+	if (config.enableTrust) {
+		initFns.push(trustCapability.init);
+	}
+
 	return {
 		name: "basic-capabilities",
 		description: "Agent basic capabilities with core actions and evaluators",
@@ -1436,11 +1463,17 @@ export function createBasicCapabilitiesPlugin(
 			...(config.disableBasic ? [] : basicActions),
 			...(useAdvanced ? advancedActions : []),
 			...(config.enableAutonomy ? autonomyCapabilities.actions : []),
+			...(config.enableTrust ? trustCapability.actions : []),
+			...(config.enableSecretsManager ? secretsCapability.actions : []),
+			...(config.enablePluginManager ? pluginManagerCapability.actions : []),
 		],
 		providers: [
 			...(config.disableBasic ? [] : filteredBasicProviders),
 			...(useAdvanced ? advancedProviders : []),
 			...(config.enableAutonomy ? autonomyCapabilities.providers : []),
+			...(config.enableTrust ? trustCapability.providers : []),
+			...(config.enableSecretsManager ? secretsCapability.providers : []),
+			...(config.enablePluginManager ? pluginManagerCapability.providers : []),
 		],
 		evaluators: [
 			...(config.disableBasic ? [] : basicEvaluators),
@@ -1451,9 +1484,24 @@ export function createBasicCapabilitiesPlugin(
 			...(config.disableBasic ? [] : basicServices),
 			...(useAdvanced ? advancedServices : []),
 			...(config.enableAutonomy ? autonomyCapabilities.services : []),
+			...(config.enableTrust ? trustCapability.services : []),
+			...(config.enableSecretsManager ? secretsCapability.services : []),
+			...(config.enablePluginManager ? pluginManagerCapability.services : []),
 		],
 		routes: [...(config.enableAutonomy ? autonomyCapabilities.routes : [])],
 		events,
+		...(initFns.length > 0
+			? {
+					init: async (
+						_config: Record<string, string>,
+						runtime: IAgentRuntime,
+					) => {
+						for (const fn of initFns) {
+							await fn(runtime);
+						}
+					},
+				}
+			: {}),
 	};
 }
 

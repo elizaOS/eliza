@@ -355,6 +355,12 @@ export class AgentRuntime implements IAgentRuntime {
 		 * Can be enabled at construction time or lazily via settings.
 		 */
 		enableAutonomy?: boolean;
+		/** Enable trust engine, security, and permissions infrastructure. */
+		enableTrust?: boolean;
+		/** Enable encrypted secrets management and dynamic plugin activation. */
+		enableSecretsManager?: boolean;
+		/** Enable plugin introspection, install/eject/sync. */
+		enablePluginManager?: boolean;
 		enableKnowledge?: boolean;
 		enableRelationships?: boolean;
 		enableTrajectories?: boolean;
@@ -392,6 +398,9 @@ export class AgentRuntime implements IAgentRuntime {
 			advancedCapabilities: opts.advancedCapabilities,
 			skipCharacterProvider: this.isAnonymousCharacter,
 			enableAutonomy: opts.enableAutonomy,
+			enableTrust: opts.enableTrust,
+			enableSecretsManager: opts.enableSecretsManager,
+			enablePluginManager: opts.enablePluginManager,
 		};
 		this.nativeFeatureOptions = {
 			knowledge: opts.enableKnowledge,
@@ -665,18 +674,36 @@ export class AgentRuntime implements IAgentRuntime {
 				this.capabilityOptions.enableAutonomy ??
 				(settings?.ENABLE_AUTONOMY === true ||
 					settings?.ENABLE_AUTONOMY === "true");
+			const enableTrust =
+				this.capabilityOptions.enableTrust ??
+				(settings?.ENABLE_TRUST === true ||
+					settings?.ENABLE_TRUST === "true");
+			const enableSecretsManager =
+				this.capabilityOptions.enableSecretsManager ??
+				(settings?.ENABLE_SECRETS_MANAGER === true ||
+					settings?.ENABLE_SECRETS_MANAGER === "true");
+			const enablePluginManager =
+				this.capabilityOptions.enablePluginManager ??
+				(settings?.ENABLE_PLUGIN_MANAGER === true ||
+					settings?.ENABLE_PLUGIN_MANAGER === "true");
 
 			if (
 				disableBasic ||
 				enableExtended ||
 				skipCharacterProvider ||
-				enableAutonomy
+				enableAutonomy ||
+				enableTrust ||
+				enableSecretsManager ||
+				enablePluginManager
 			) {
 				const config: CapabilityConfig = {
 					disableBasic,
 					enableExtended,
 					skipCharacterProvider,
 					enableAutonomy,
+					enableTrust,
+					enableSecretsManager,
+					enablePluginManager,
 				};
 				const configuredPlugin = createBasicCapabilitiesPlugin(config);
 				pluginToRegister = {
@@ -4567,7 +4594,7 @@ ${section_end}`;
 
 				// WHY accumulated is forwarded: the VSE tracks the full extracted text
 				// per field internally (`content` in emitFieldContent). Surfacing it
-				// here means consumers like first-sentence voice detection or Milady's
+				// here means consumers like first-sentence voice detection or Eliza's
 				// streaming-text resolver can use the authoritative value instead of
 				// Note: this design prevents dual extractor conflicts by providing authoritative accumulated data
 				// re-accumulating from deltas — which broke when two extractors ran
@@ -6395,14 +6422,21 @@ ${section_end}`;
 		entityId?: UUID;
 		agentId?: UUID;
 		roomId?: UUID;
+		limit?: number;
 		count?: number;
+		offset?: number;
 		unique?: boolean;
 		tableName: string;
 		start?: number;
 		end?: number;
+		worldId?: UUID;
+		metadata?: Record<string, unknown>;
+		orderBy?: "createdAt";
+		orderDirection?: "asc" | "desc";
 	}): Promise<Memory[]> {
 		return await this.adapter.getMemories({
 			...params,
+			limit: params.limit ?? params.count,
 			tableName: params.tableName ?? "messages",
 		});
 	}
@@ -6414,7 +6448,7 @@ ${section_end}`;
 			const memories = await this.adapter.getMemories({
 				agentId: this.agentId,
 				tableName,
-				count: 10000, // Get a large number to fetch all
+				limit: 10000, // Get a large number to fetch all
 			});
 			allMemories.push(...memories);
 		}
@@ -6446,7 +6480,7 @@ ${section_end}`;
 		embedding: number[];
 		query?: string;
 		match_threshold?: number;
-		count?: number;
+		limit?: number;
 		roomId?: UUID;
 		unique?: boolean;
 		worldId?: UUID;
@@ -6571,7 +6605,7 @@ ${section_end}`;
 		entityId?: UUID;
 		roomId?: UUID;
 		type?: string;
-		count?: number;
+		limit?: number;
 		offset?: number;
 	}): Promise<Log[]> {
 		return await this.adapter.getLogs(params);
@@ -6611,10 +6645,6 @@ ${section_end}`;
 	}
 	async deleteWorld(worldId: UUID): Promise<void> {
 		await this.adapter.deleteWorlds([worldId]);
-	}
-	/** @deprecated Use deleteWorld instead */
-	async removeWorld(worldId: UUID): Promise<void> {
-		await this.deleteWorld(worldId);
 	}
 	async getAllWorlds(): Promise<World[]> {
 		return await this.adapter.getAllWorlds();
@@ -7314,7 +7344,7 @@ ${section_end}`;
 	}
 	async getMemoriesByWorldId(params: {
 		worldId: UUID;
-		count?: number;
+		limit?: number;
 		tableName?: string;
 	}): Promise<Memory[]> {
 		return await this.adapter.getMemoriesByWorldId(params);

@@ -1,0 +1,3 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python -m benchmarks.realm.cli --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/realm__realm/run_realm_20260215T025903Z_1_cc092a10/output --max-tasks 1 --model qwen/qwen3-32b
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_realm_20260215T025903Z_1_cc092a10

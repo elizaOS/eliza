@@ -1,0 +1,45 @@
+{
+  "id": "3aaa4e37-dc91-482e-99af-132a612d40f3",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Could you help me to export the current sheet to a csv file? Export the contents just as they are shown on the screen. Just keep the other options untouched. A default csv format is ok. The csv should share the file name with the original xlsx.",
+  "source": "https://www.quora.com/How-can-you-import-export-CSV-files-with-LibreOffice-Calc-or-OpenOffice",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/3aaa4e37-dc91-482e-99af-132a612d40f3/Export_Calc_to_CSV.xlsx",
+            "path": "/home/user/Export_Calc_to_CSV.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Export_Calc_to_CSV.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/3aaa4e37-dc91-482e-99af-132a612d40f3",
+  "related_apps": [
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "func": "compare_csv",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Export_Calc_to_CSV.csv",
+      "dest": "Export_Calc_to_CSV.csv"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/3aaa4e37-dc91-482e-99af-132a612d40f3/Export_Calc_to_CSV.csv",
+      "dest": "Export_Calc_to_CSV_gold.csv"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

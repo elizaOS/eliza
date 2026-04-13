@@ -1,0 +1,262 @@
+
+╔═══════════════════════════════════════════════════════════════════╗
+║            REALM-Bench: Real-World Planning Benchmark             ║
+║                        for ElizaOS                                ║
+╠═══════════════════════════════════════════════════════════════════╣
+║  Paper: https://arxiv.org/abs/2412.13102                         ║
+║  GitHub: https://github.com/genglongling/REALM-Bench             ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+📋 Configuration:
+   Data Path: ./data/realm
+   Output Dir: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/realm__realm/run_realm_20260215T025903Z_1_cc092a10/output
+   Categories: all
+   Max Tasks: 1
+   Max Steps: 15
+   Execution Model: dag
+   Adaptation: enabled
+
+🚀 Starting benchmark...
+
+[2m2026-02-15T02:59:05.184611Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.185664Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.185735Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.185803Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.187415Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.190170Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.190522Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.190952Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.193578Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.194520Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.194580Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.194639Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-15T02:59:05.196060Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.196954Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.196994Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.197046Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.198031Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.198904Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.198942Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.198993Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.201542Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.206303Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.206399Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.206479Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-15T02:59:05.210297Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.211233Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.211284Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.211345Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.212409Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.213962Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.214033Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.214100Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.215158Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.216037Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.216078Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.216135Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-15T02:59:05.218214Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.219219Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.219264Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.219326Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.220347Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.221205Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.221243Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.221296Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.222258Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.223115Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.223153Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.223205Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-15T02:59:05.224355Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.227796Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.227947Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.228123Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.229754Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.230657Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.230699Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.230752Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.231731Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.232609Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.232649Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.232702Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-15T02:59:05.233892Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.234874Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.234926Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.234979Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.235955Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.236825Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.236863Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.236913Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.237860Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.238727Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.238765Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-15T02:59:05.238814Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+
+======================================================================
+📊 REALM-Bench Results Summary
+======================================================================
+
+🎯 Overall Performance:
+   Status: MODERATE
+   Success Rate: 33.3%
+   Total Tasks: 6
+   Passed: 2
+   Failed: 4
+   Estimated Rank: #8
+
+📈 Planning Metrics:
+   Plan Quality: 77.3%
+   Goal Achievement: 66.7%
+   Efficiency: 100.0%
+
+⏱️  Performance:
+   Avg Planning Time: 3ms
+   Avg Execution Time: 8ms
+   Total Duration: 0.4s
+
+📊 Category Breakdown:
+   sequential: 1/1 (100.0%)
+   reactive: 1/1 (100.0%)
+   complex: 0/1 (0.0%)
+   multi_agent: 0/1 (0.0%)
+   tool_use: 0/1 (0.0%)
+   reasoning: 0/1 (0.0%)
+
+📌 Key Findings:
+   • Moderate planning performance: 33.3% success rate
+   • Strongest category: sequential (100.0%)
+   • Needs improvement: complex (0.0%)
+   • High plan quality scores achieved
+   • Excellent execution efficiency
+   • Estimated leaderboard rank: #8
+
+💡 Recommendations:
+   • Focus on improving complex task handling
+
+======================================================================
+
+📁 Full results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/realm__realm/run_realm_20260215T025903Z_1_cc092a10/output/
+   📊 Training trajectories exported (ART/GRPO formats)
+
+✅ Benchmark completed successfully!
+
+----------------------------------------------------------------------
+📊 Leaderboard Comparison:
+   🔴 vs GPT-4-Turbo: -39.6%
+   🔴 vs GPT-4: -36.0%
+   🔴 vs Claude-3-Opus: -33.9%
+   🔴 vs Claude-3-Sonnet: -29.4%
+   🔴 vs Gemini-Pro: -25.4%

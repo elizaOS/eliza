@@ -39,7 +39,7 @@ async function getDialogueMessageCount(
 	const messages = await runtime.getMemories({
 		tableName: "messages",
 		roomId,
-		count: 100,
+		limit: 100,
 		unique: false,
 	});
 
@@ -168,7 +168,7 @@ export const summarizationEvaluator: Evaluator = {
 			const allMessages = await runtime.getMemories({
 				tableName: "messages",
 				roomId,
-				count: 1000,
+				limit: 1000,
 				unique: false,
 			});
 

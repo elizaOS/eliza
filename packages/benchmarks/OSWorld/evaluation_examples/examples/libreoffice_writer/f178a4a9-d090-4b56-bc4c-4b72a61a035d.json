@@ -1,0 +1,46 @@
+{
+  "id": "f178a4a9-d090-4b56-bc4c-4b72a61a035d",
+  "snapshot": "libreoffice_writer",
+  "instruction": "Make Times New Roman the default Font",
+  "source": "https://ask.libreoffice.org/t/how-do-i-make-times-new-roman-the-default-font-in-lo/64604",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_writer/f178a4a9-d090-4b56-bc4c-4b72a61a035d/loa-one-time-submission-sealand.docx",
+            "path": "/home/user/Desktop/loa-one-time-submission-sealand.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/loa-one-time-submission-sealand.docx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_writer"
+  ],
+  "evaluator": {
+    "func": "find_default_font",
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "font_name": "Times New Roman"
+      }
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/.config/libreoffice/4/user/registrymodifications.xcu",
+      "dest": "registrymodifications.xcu"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

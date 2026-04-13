@@ -1,0 +1,92 @@
+[2m2026-02-15T02:57:41.561271Z[0m [[31m[1merror    [0m] [1mError processing message: Unexpected type
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 456, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/actions.py", line 305, in get_actions
+    return ProviderResult(
+           ^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 576, in _internal_assign
+    self.update(dictionary)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 531, in _SetStructValue
+    struct_value.list_value.extend(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 636, in extend
+    self.append(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 632, in append
+    _SetStructValue(self.values.add(), value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 528, in _SetStructValue
+    struct_value.struct_value.update(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 531, in _SetStructValue
+    struct_value.list_value.extend(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 636, in extend
+    self.append(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 632, in append
+    _SetStructValue(self.values.add(), value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 528, in _SetStructValue
+    struct_value.struct_value.update(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 533, in _SetStructValue
+    raise ValueError('Unexpected type')
+ValueError: Unexpected type
+[0m [[0m[1m[34mMind2WebAgent[0m][0m
+Error processing task sample_001: Unexpected type
+[2m2026-02-15T02:57:41.563073Z[0m [[31m[1merror    [0m] [1mError processing message: Unexpected type
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 456, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/actions.py", line 305, in get_actions
+    return ProviderResult(
+           ^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 576, in _internal_assign
+    self.update(dictionary)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 531, in _SetStructValue
+    struct_value.list_value.extend(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 636, in extend
+    self.append(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 632, in append
+    _SetStructValue(self.values.add(), value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 528, in _SetStructValue
+    struct_value.struct_value.update(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 531, in _SetStructValue
+    struct_value.list_value.extend(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 636, in extend
+    self.append(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 632, in append
+    _SetStructValue(self.values.add(), value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 528, in _SetStructValue
+    struct_value.struct_value.update(value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/google/protobuf/internal/well_known_types.py", line 533, in _SetStructValue
+    raise ValueError('Unexpected type')
+ValueError: Unexpected type
+[0m [[0m[1m[34mMind2WebAgent[0m][0m
+Error processing task sample_002: Unexpected type
+
+============================================================
+Mind2Web Benchmark Results
+============================================================
+Tasks: 2, Trials: 2
+Task Success Rate: 0.0%
+Step Accuracy: 0.0%
+Element Accuracy: 0.0%
+Avg Latency: 35ms
+
+Results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/mind2web__mind2web/run_mind2web_20260215T025741Z_1_9d459190/output
+============================================================

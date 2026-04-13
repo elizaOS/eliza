@@ -1,0 +1,78 @@
+{
+  "id": "3b27600c-3668-4abd-8f84-7bcdebbccbdb",
+  "snapshot": "ppt",
+  "instruction": "Please make the background blue on all my slides. I was stuck by finding the entrance to do that for a while...",
+  "source": "https://www.libreofficehelp.com/change-slide-background-impress/#All_Slides",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/ppt/3b27600c-3668-4abd-8f84-7bcdebbccbdb/lec17-gui-events.pptx",
+            "path": "C:\\Users\\User\\lec17-gui-events.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\lec17-gui-events.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "ppt"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "lec17-gui-events - PowerPoint",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "evaluate_presentation_fill_to_rgb_distance",
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "rgb": [
+          0,
+          0,
+          255
+        ]
+      }
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\lec17-gui-events.pptx",
+      "dest": "lec17-gui-events.pptx"
+    }
+  }
+}

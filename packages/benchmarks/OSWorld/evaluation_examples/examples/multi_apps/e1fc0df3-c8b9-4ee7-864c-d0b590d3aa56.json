@@ -1,0 +1,85 @@
+{
+  "id": "e1fc0df3-c8b9-4ee7-864c-d0b590d3aa56",
+  "snapshot": "libreoffice_writer",
+  "instruction": "Install LanguageTool extension for my LibreOffice",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "libreoffice",
+          "--writer"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/e1fc0df3-c8b9-4ee7-864c-d0b590d3aa56",
+  "related_apps": [
+    "chrome",
+    "libreoffice",
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "command",
+        "parameters": {
+          "command": [
+            "grep",
+            "-nHr",
+            "languagetool",
+            "/home/user/.config/libreoffice/4/user/uno_packages/cache/uno_packages/"
+          ],
+          "stdout": "grep.out"
+        }
+      },
+      {
+        "type": "command",
+        "parameters": {
+          "command": [
+            "apt",
+            "list",
+            "--installed"
+          ],
+          "stdout": "apt.out"
+        }
+      }
+    ],
+    "func": [
+      "check_list",
+      "check_list"
+    ],
+    "result": [
+      {
+        "type": "cache_file",
+        "path": "grep.out"
+      },
+      {
+        "type": "cache_file",
+        "path": "apt.out"
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "expect": [
+            "org\\.openoffice\\.languagetool\\.oxt"
+          ]
+        }
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "expect": [
+            "openjdk-\\d+-(jre|jdk)"
+          ]
+        }
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

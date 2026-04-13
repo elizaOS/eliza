@@ -1,0 +1,11 @@
+{
+  "name": "RustTestAgent",
+  "description": "Test agent for Rust plugin starter",
+  "clients": [],
+  "plugins": ["@elizaos/rust-plugin-starter"],
+  "modelProvider": "openai",
+  "settings": {
+    "MODEL_PROVIDER": "openai",
+    "OPENAI_API_KEY": "test-key"
+  }
+}

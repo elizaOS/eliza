@@ -1,0 +1,110 @@
+{
+  "id": "5990457f-2adb-467b-a4af-5c857c92d762",
+  "snapshot": "chrome",
+  "instruction": "Append one entry of AI researcher Yann LeCun from Google Scholar into an existing table researchers.xlsx.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/5990457f-2adb-467b-a4af-5c857c92d762/researchers.xlsx",
+            "path": "/home/user/Desktop/researchers.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "nautilus",
+          "/home/user/Desktop"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "chrome",
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "func": "literal_match",
+    "result": {
+      "type": "content_from_vm_file",
+      "path": "/home/user/Desktop/researchers.xlsx",
+      "file_type": "xlsx",
+      "file_content": "last_row"
+    },
+    "expected": {
+      "type": "info_from_website",
+      "url": "https://scholar.google.com/citations?user=WLN3QrAAAAAJ&hl=en",
+      "infos": [
+        {
+          "action": "inner_text",
+          "selector": "#gsc_prf_in"
+        },
+        {
+          "action": "inner_text",
+          "selector": "#gsc_rsb_st > tbody > tr:nth-child(1) > td:nth-child(2)"
+        },
+        {
+          "action": "inner_text",
+          "selector": "#gsc_rsb_st > tbody > tr:nth-child(2) > td:nth-child(2)"
+        },
+        {
+          "action": "inner_text",
+          "selector": "#gsc_rsb_st > tbody > tr:nth-child(3) > td:nth-child(2)"
+        },
+        {
+          "action": "inner_text",
+          "selector": "#gsc_a_b > tr:nth-child(1) > td.gsc_a_t > a"
+        },
+        {
+          "action": "click_and_attribute",
+          "selector": [
+            "#gsc_a_b > tr:nth-child(1) > td.gsc_a_t > a",
+            "#gsc_oci_title_gg > div:nth-child(1) > a"
+          ],
+          "attribute": "href"
+        }
+      ],
+      "backups": [
+        "Yann LeCun",
+        "345074",
+        "147",
+        "372",
+        "Deep learning",
+        "https://hal.science/hal-04206682/document"
+      ]
+    },
+    "options": {
+      "type": "list",
+      "ignore_case": true
+    }
+  },
+  "proxy": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

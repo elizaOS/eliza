@@ -1,0 +1,16 @@
+============================================================
+MINT BENCHMARK - ElizaOS Python Runtime Evaluation
+============================================================
+
+Configuration:
+  Provider: openai
+  Categories: ['reasoning', 'coding', 'decision_making', 'information_seeking']
+  Max tasks per category: 1
+  Max turns: 5
+  Tools enabled: True
+  Feedback enabled: True
+  LLM feedback: False
+  Ablation study: True
+  Docker: True
+
+Benchmark failed: cannot import name 'StyleConfig' from 'elizaos.types.agent' (/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/types/agent.py)

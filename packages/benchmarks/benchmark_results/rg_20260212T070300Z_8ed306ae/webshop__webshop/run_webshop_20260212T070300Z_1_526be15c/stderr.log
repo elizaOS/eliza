@@ -1,0 +1,3 @@
+# command: python -m elizaos_webshop --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T070300Z_8ed306ae/webshop__webshop/run_webshop_20260212T070300Z_1_526be15c/output --model-provider groq --model qwen/qwen3-32b --max-tasks 1 --sample
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/webshop
+# run_id: run_webshop_20260212T070300Z_1_526be15c

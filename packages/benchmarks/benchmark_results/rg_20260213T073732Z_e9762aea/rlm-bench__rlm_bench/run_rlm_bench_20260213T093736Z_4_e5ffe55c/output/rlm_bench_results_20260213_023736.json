@@ -1,0 +1,1326 @@
+{
+  "config": {
+    "output_dir": "/Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260213T073732Z_e9762aea/rlm-bench__rlm_bench/run_rlm_bench_20260213T093736Z_4_e5ffe55c/output",
+    "context_lengths": [
+      1000,
+      10000,
+      100000
+    ],
+    "rlm_backend": "gemini",
+    "use_dual_model": false
+  },
+  "metrics": {
+    "total_tasks": 81,
+    "passed_tasks": 16,
+    "overall_accuracy": 0.19753086419753085,
+    "avg_semantic_similarity": 0.21604938271604937,
+    "type_accuracies": {
+      "s_niah": 0.15555555555555556,
+      "s_niah_multi": 0.0,
+      "oolong": 1.0,
+      "oolong_pairs": 0.0
+    },
+    "length_accuracies": {
+      "1000": 0.18518518518518517,
+      "10000": 0.2222222222222222,
+      "100000": 0.18518518518518517
+    },
+    "s_niah_by_length": {
+      "1K": 0.13333333333333333,
+      "10K": 0.2,
+      "100K": 0.13333333333333333
+    },
+    "oolong_accuracy": 1.0,
+    "oolong_pairs_accuracy": 0.0,
+    "total_cost_usd": 3.0042619999999998,
+    "avg_latency_ms": 2.7455871487841192,
+    "avg_iterations": 4.0
+  },
+  "results": [
+    {
+      "task_id": "s_niah_29344433",
+      "bench_type": "s_niah",
+      "context_length": 1034,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001034,
+      "latency_ms": 0.15306472778320312,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_b7df9917",
+      "bench_type": "s_niah",
+      "context_length": 1027,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001027,
+      "latency_ms": 0.17380714416503906,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_ba3b9030",
+      "bench_type": "s_niah",
+      "context_length": 1038,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.0010379999999999999,
+      "latency_ms": 0.06699562072753906,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_58467056",
+      "bench_type": "s_niah",
+      "context_length": 1020,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.0010199999999999999,
+      "latency_ms": 0.08416175842285156,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_00765a5a",
+      "bench_type": "s_niah",
+      "context_length": 1084,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001084,
+      "latency_ms": 0.08702278137207031,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_cdf86bea",
+      "bench_type": "s_niah",
+      "context_length": 1073,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001073,
+      "latency_ms": 0.0209808349609375,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_6ec63bc5",
+      "bench_type": "s_niah",
+      "context_length": 1057,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001057,
+      "latency_ms": 0.03886222839355469,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_b1b18439",
+      "bench_type": "s_niah",
+      "context_length": 1078,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001078,
+      "latency_ms": 0.04100799560546875,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_c31f6842",
+      "bench_type": "s_niah",
+      "context_length": 1022,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001022,
+      "latency_ms": 0.02002716064453125,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_ac1071c3",
+      "bench_type": "s_niah",
+      "context_length": 1067,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001067,
+      "latency_ms": 0.04029273986816406,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_7b5beeeb",
+      "bench_type": "s_niah",
+      "context_length": 1065,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001065,
+      "latency_ms": 0.10704994201660156,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_5a4aeb1b",
+      "bench_type": "s_niah",
+      "context_length": 1062,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001062,
+      "latency_ms": 0.020265579223632812,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_13c9929a",
+      "bench_type": "s_niah",
+      "context_length": 1049,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001049,
+      "latency_ms": 0.06508827209472656,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_2a775a12",
+      "bench_type": "s_niah",
+      "context_length": 1087,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.0010869999999999999,
+      "latency_ms": 0.08893013000488281,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_304ab59b",
+      "bench_type": "s_niah",
+      "context_length": 1028,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001028,
+      "latency_ms": 0.0820159912109375,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_093d5001",
+      "bench_type": "s_niah_multi",
+      "context_length": 1059,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001059,
+      "latency_ms": 0.06604194641113281,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_741b74cd",
+      "bench_type": "s_niah_multi",
+      "context_length": 1107,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001107,
+      "latency_ms": 0.02002716064453125,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_baedc0cb",
+      "bench_type": "s_niah_multi",
+      "context_length": 1086,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001086,
+      "latency_ms": 0.06699562072753906,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_992b22c5",
+      "bench_type": "s_niah_multi",
+      "context_length": 1067,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001067,
+      "latency_ms": 0.0209808349609375,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_97d33683",
+      "bench_type": "s_niah_multi",
+      "context_length": 1102,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001102,
+      "latency_ms": 0.0209808349609375,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_323cb9cd",
+      "bench_type": "s_niah_multi",
+      "context_length": 1068,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001068,
+      "latency_ms": 0.02002716064453125,
+      "error": null
+    },
+    {
+      "task_id": "oolong_c8e9ef89",
+      "bench_type": "oolong",
+      "context_length": 1212,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001212,
+      "latency_ms": 0.17595291137695312,
+      "error": null
+    },
+    {
+      "task_id": "oolong_8a4ef872",
+      "bench_type": "oolong",
+      "context_length": 1268,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001268,
+      "latency_ms": 0.15091896057128906,
+      "error": null
+    },
+    {
+      "task_id": "oolong_e15295bb",
+      "bench_type": "oolong",
+      "context_length": 1226,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.0012259999999999999,
+      "latency_ms": 0.14400482177734375,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_be5e5a02",
+      "bench_type": "oolong_pairs",
+      "context_length": 1137,
+      "is_correct": false,
+      "semantic_similarity": 0.16666666666666666,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001137,
+      "latency_ms": 0.18525123596191406,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_a9e2d97b",
+      "bench_type": "oolong_pairs",
+      "context_length": 1181,
+      "is_correct": false,
+      "semantic_similarity": 0.16666666666666666,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001181,
+      "latency_ms": 0.1659393310546875,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_6dc2d5c1",
+      "bench_type": "oolong_pairs",
+      "context_length": 1170,
+      "is_correct": false,
+      "semantic_similarity": 0.16666666666666666,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.00117,
+      "latency_ms": 0.15807151794433594,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_ebb9b87e",
+      "bench_type": "s_niah",
+      "context_length": 10064,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010064,
+      "latency_ms": 1.0068416595458984,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_35d2d161",
+      "bench_type": "s_niah",
+      "context_length": 10039,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010039,
+      "latency_ms": 0.18930435180664062,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_e68215cd",
+      "bench_type": "s_niah",
+      "context_length": 10014,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010014,
+      "latency_ms": 0.3819465637207031,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_2da970b6",
+      "bench_type": "s_niah",
+      "context_length": 10061,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010060999999999999,
+      "latency_ms": 0.9970664978027344,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_9324152d",
+      "bench_type": "s_niah",
+      "context_length": 10058,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010058,
+      "latency_ms": 0.3771781921386719,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_2066bc83",
+      "bench_type": "s_niah",
+      "context_length": 10082,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010081999999999999,
+      "latency_ms": 1.0178089141845703,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_f948cccc",
+      "bench_type": "s_niah",
+      "context_length": 10050,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.01005,
+      "latency_ms": 0.8220672607421875,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_97723319",
+      "bench_type": "s_niah",
+      "context_length": 10083,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010083,
+      "latency_ms": 0.18906593322753906,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_f66d4104",
+      "bench_type": "s_niah",
+      "context_length": 10054,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010053999999999999,
+      "latency_ms": 0.8192062377929688,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_33e1f914",
+      "bench_type": "s_niah",
+      "context_length": 10031,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010031,
+      "latency_ms": 0.37789344787597656,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_541df6e2",
+      "bench_type": "s_niah",
+      "context_length": 10042,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010041999999999999,
+      "latency_ms": 0.8168220520019531,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_1c636dcf",
+      "bench_type": "s_niah",
+      "context_length": 10023,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010022999999999999,
+      "latency_ms": 0.19121170043945312,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_6a3c2da0",
+      "bench_type": "s_niah",
+      "context_length": 10041,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010041,
+      "latency_ms": 0.8418560028076172,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_d7ae42b6",
+      "bench_type": "s_niah",
+      "context_length": 10050,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.01005,
+      "latency_ms": 0.8590221405029297,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_87013c8e",
+      "bench_type": "s_niah",
+      "context_length": 10059,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010059,
+      "latency_ms": 0.8487701416015625,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_e64d49db",
+      "bench_type": "s_niah_multi",
+      "context_length": 10041,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010041,
+      "latency_ms": 0.6787776947021484,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_a4b3c9a1",
+      "bench_type": "s_niah_multi",
+      "context_length": 10106,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010106,
+      "latency_ms": 0.19884109497070312,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_f3757de7",
+      "bench_type": "s_niah_multi",
+      "context_length": 10045,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010045,
+      "latency_ms": 0.202178955078125,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_89e519d5",
+      "bench_type": "s_niah_multi",
+      "context_length": 10103,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010103,
+      "latency_ms": 0.2009868621826172,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_67a45f22",
+      "bench_type": "s_niah_multi",
+      "context_length": 10114,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010114,
+      "latency_ms": 0.20313262939453125,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_c13de4d9",
+      "bench_type": "s_niah_multi",
+      "context_length": 10147,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010147,
+      "latency_ms": 0.20003318786621094,
+      "error": null
+    },
+    {
+      "task_id": "oolong_a1efb866",
+      "bench_type": "oolong",
+      "context_length": 10214,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010213999999999999,
+      "latency_ms": 1.25885009765625,
+      "error": null
+    },
+    {
+      "task_id": "oolong_de850e39",
+      "bench_type": "oolong",
+      "context_length": 10252,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010251999999999999,
+      "latency_ms": 1.2331008911132812,
+      "error": null
+    },
+    {
+      "task_id": "oolong_c95c9eb0",
+      "bench_type": "oolong",
+      "context_length": 10157,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010157,
+      "latency_ms": 1.2407302856445312,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_3b61eddd",
+      "bench_type": "oolong_pairs",
+      "context_length": 10146,
+      "is_correct": false,
+      "semantic_similarity": 0.16666666666666666,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010145999999999999,
+      "latency_ms": 1.3988018035888672,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_8dd535a3",
+      "bench_type": "oolong_pairs",
+      "context_length": 10149,
+      "is_correct": false,
+      "semantic_similarity": 0.16666666666666666,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010149,
+      "latency_ms": 1.4081001281738281,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_c7739f8f",
+      "bench_type": "oolong_pairs",
+      "context_length": 10125,
+      "is_correct": false,
+      "semantic_similarity": 0.16666666666666666,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010125,
+      "latency_ms": 1.4252662658691406,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_f7e5aff8",
+      "bench_type": "s_niah",
+      "context_length": 100018,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100018,
+      "latency_ms": 8.632898330688477,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_07471e5b",
+      "bench_type": "s_niah",
+      "context_length": 100042,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.10004199999999999,
+      "latency_ms": 8.885860443115234,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_de31671a",
+      "bench_type": "s_niah",
+      "context_length": 100055,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.10005499999999999,
+      "latency_ms": 10.92982292175293,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_5b32185b",
+      "bench_type": "s_niah",
+      "context_length": 100070,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.10006999999999999,
+      "latency_ms": 4.017829895019531,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_ac815215",
+      "bench_type": "s_niah",
+      "context_length": 100052,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100052,
+      "latency_ms": 8.951902389526367,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_81300293",
+      "bench_type": "s_niah",
+      "context_length": 100081,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.10008099999999999,
+      "latency_ms": 8.817911148071289,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_8b007f22",
+      "bench_type": "s_niah",
+      "context_length": 100021,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100021,
+      "latency_ms": 7.005929946899414,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_ffec1d9b",
+      "bench_type": "s_niah",
+      "context_length": 100020,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.10002,
+      "latency_ms": 6.80088996887207,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_6e983b72",
+      "bench_type": "s_niah",
+      "context_length": 100059,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100059,
+      "latency_ms": 6.35075569152832,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_63f65aec",
+      "bench_type": "s_niah",
+      "context_length": 100046,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100046,
+      "latency_ms": 5.995988845825195,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_502db55b",
+      "bench_type": "s_niah",
+      "context_length": 100044,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100044,
+      "latency_ms": 7.731914520263672,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_6e4bc692",
+      "bench_type": "s_niah",
+      "context_length": 100046,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100046,
+      "latency_ms": 1.7879009246826172,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_1736e79a",
+      "bench_type": "s_niah",
+      "context_length": 100058,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100058,
+      "latency_ms": 9.89675521850586,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_0e9754e5",
+      "bench_type": "s_niah",
+      "context_length": 100057,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100057,
+      "latency_ms": 6.845235824584961,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_dc39a1ad",
+      "bench_type": "s_niah",
+      "context_length": 100023,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100023,
+      "latency_ms": 8.669853210449219,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_34d28b5e",
+      "bench_type": "s_niah_multi",
+      "context_length": 100064,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100064,
+      "latency_ms": 1.9290447235107422,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_0b1f50a1",
+      "bench_type": "s_niah_multi",
+      "context_length": 100111,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.10011099999999999,
+      "latency_ms": 1.8727779388427734,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_a3c245f8",
+      "bench_type": "s_niah_multi",
+      "context_length": 100054,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.10005399999999999,
+      "latency_ms": 1.8761157989501953,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_db51e9af",
+      "bench_type": "s_niah_multi",
+      "context_length": 100128,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100128,
+      "latency_ms": 1.8792152404785156,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_be3aa695",
+      "bench_type": "s_niah_multi",
+      "context_length": 100072,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100072,
+      "latency_ms": 1.9228458404541016,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_725eb685",
+      "bench_type": "s_niah_multi",
+      "context_length": 100124,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.10012399999999999,
+      "latency_ms": 1.9421577453613281,
+      "error": null
+    },
+    {
+      "task_id": "oolong_6de13d6c",
+      "bench_type": "oolong",
+      "context_length": 100213,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100213,
+      "latency_ms": 12.09878921508789,
+      "error": null
+    },
+    {
+      "task_id": "oolong_c3aca212",
+      "bench_type": "oolong",
+      "context_length": 100322,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100322,
+      "latency_ms": 12.061834335327148,
+      "error": null
+    },
+    {
+      "task_id": "oolong_7af2a641",
+      "bench_type": "oolong",
+      "context_length": 100211,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100211,
+      "latency_ms": 12.083768844604492,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_a7a95401",
+      "bench_type": "oolong_pairs",
+      "context_length": 100132,
+      "is_correct": false,
+      "semantic_similarity": 0.16666666666666666,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100132,
+      "latency_ms": 13.747930526733398,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_8333a270",
+      "bench_type": "oolong_pairs",
+      "context_length": 100172,
+      "is_correct": false,
+      "semantic_similarity": 0.16666666666666666,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100172,
+      "latency_ms": 14.130830764770508,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_baf39338",
+      "bench_type": "oolong_pairs",
+      "context_length": 100143,
+      "is_correct": false,
+      "semantic_similarity": 0.16666666666666666,
+      "iterations": 10,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.100143,
+      "latency_ms": 13.856172561645508,
+      "error": null
+    }
+  ],
+  "paper_comparison": {
+    "S-NIAH": {
+      "this_run": {
+        "1K": 0.13333333333333333,
+        "10K": 0.2,
+        "100K": 0.13333333333333333
+      },
+      "RLM (Gemini 2.0 Flash)": {
+        "1k": 1.0,
+        "10k": 1.0,
+        "100k": 0.98,
+        "1M": 0.95,
+        "10M": 0.92,
+        "100M": 0.88
+      },
+      "Gemini 2.0 Flash (direct)": {
+        "1k": 1.0,
+        "10k": 0.98,
+        "100k": 0.85,
+        "1M": 0.0,
+        "10M": 0.0,
+        "100M": 0.0
+      },
+      "GPT-5 (direct)": {
+        "1k": 1.0,
+        "10k": 0.99,
+        "100k": 0.92,
+        "1M": 0.0,
+        "10M": 0.0,
+        "100M": 0.0
+      }
+    },
+    "OOLONG": {
+      "this_run": {
+        "oolong_retrieval": 1.0,
+        "oolong_pairs": 0.0
+      },
+      "RLM (Gemini 2.0 Flash)": {
+        "oolong_retrieval": 0.85,
+        "oolong_qa": 0.78,
+        "oolong_pairs": 0.72
+      },
+      "Gemini 2.0 Flash (direct)": {
+        "oolong_retrieval": 0.65,
+        "oolong_qa": 0.58,
+        "oolong_pairs": 0.52
+      }
+    }
+  },
+  "cost_analysis": {
+    "total_cost_usd": 3.0042619999999998,
+    "avg_cost_per_task_usd": 0.03708965432098765,
+    "cost_per_1k_tokens_usd": 0.0009986537300652326,
+    "accuracy_per_dollar": 0.06575021226428683
+  },
+  "summary": {
+    "title": "RLM Benchmark Results",
+    "accuracy": "19.8%",
+    "findings": [
+      "Overall accuracy: 19.8% (16/81 tasks)",
+      "S-NIAH by length: 100K: 13.3%, 10K: 20.0%, 1K: 13.3%",
+      "OOLONG accuracy: 100.0%, OOLONG-Pairs: 0.0%",
+      "Most used strategies: peek, grep",
+      "Total cost: $3.0043, Avg: $0.037090/task"
+    ]
+  },
+  "metadata": {
+    "mode": "stub",
+    "total_tasks": 81
+  }
+}

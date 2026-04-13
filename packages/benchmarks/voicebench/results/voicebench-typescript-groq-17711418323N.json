@@ -1,0 +1,150 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "typescript",
+  "profile": "groq",
+  "timestamp": "17711418323N",
+  "iterations": 1,
+  "datasetName": "single-audio",
+  "datasetPath": null,
+  "sampleCount": 1,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/examples/town/public/assets/background.mp3",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 3449.692,
+      "responseTtftMs": 1222.769,
+      "responseTotalMs": 1223.118,
+      "voiceGenerationMs": 293.992,
+      "voiceFirstTokenUncachedMs": 294.183,
+      "voiceFirstTokenCachedMs": 294.533,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 294.533,
+      "endToEndMs": 5555.779,
+      "inContext": {
+        "transcript": "Thank you. Thank you. Thank you. Thank you.",
+        "benchmarkContext": "",
+        "prompt": "Thank you. Thank you. Thank you. Thank you.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "You're welcome!",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 61510,
+      "ttsFirstSentenceUncachedBytes": 61510,
+      "ttsFirstSentenceCachedBytes": 61510,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 61510,
+      "responseSegmentation": {
+        "firstSentence": "You're welcome!",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/examples/town/public/assets/background.mp3",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 2187.121,
+      "responseTtftMs": 1617.932,
+      "responseTotalMs": 1618.302,
+      "voiceGenerationMs": 1728.753,
+      "voiceFirstTokenUncachedMs": 5331.253,
+      "voiceFirstTokenCachedMs": 0.001,
+      "ttsFirstSentenceCacheHit": true,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 0.001,
+      "endToEndMs": 10865.492,
+      "inContext": {
+        "transcript": "Thank you. Thank you. Thank you. Thank you.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Thank you. Thank you. Thank you. Thank you.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "You're welcome!",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 61510,
+      "ttsFirstSentenceUncachedBytes": 61510,
+      "ttsFirstSentenceCachedBytes": 61510,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 61510,
+      "responseSegmentation": {
+        "firstSentence": "You're welcome!",
+        "remainder": ""
+      }
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 3449.692,
+      "avgResponseTtftMs": 1222.769,
+      "avgResponseTotalMs": 1223.118,
+      "avgVoiceGenerationMs": 293.992,
+      "avgVoiceFirstTokenUncachedMs": 294.183,
+      "avgVoiceFirstTokenCachedMs": 294.533,
+      "avgTtsCachedPipelineMs": 294.533,
+      "firstSentenceCacheHitRate": 0,
+      "transcriptionNormalizedAccuracy": 0,
+      "avgEndToEndMs": 5555.779
+    },
+    "non-simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 2187.121,
+      "avgResponseTtftMs": 1617.932,
+      "avgResponseTotalMs": 1618.302,
+      "avgVoiceGenerationMs": 1728.753,
+      "avgVoiceFirstTokenUncachedMs": 5331.253,
+      "avgVoiceFirstTokenCachedMs": 0.001,
+      "avgTtsCachedPipelineMs": 0.001,
+      "firstSentenceCacheHitRate": 1,
+      "transcriptionNormalizedAccuracy": 0,
+      "avgEndToEndMs": 10865.492
+    }
+  }
+}

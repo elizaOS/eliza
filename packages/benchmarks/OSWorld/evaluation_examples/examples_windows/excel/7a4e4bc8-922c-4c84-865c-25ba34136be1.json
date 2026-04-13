@@ -1,0 +1,82 @@
+{
+  "id": "7a4e4bc8-922c-4c84-865c-25ba34136be1",
+  "snapshot": "excel",
+  "instruction": "Reorder the columns to be \"Date\", \"First Name\", \"Last Name\", \"Order ID\", \"Sales\"",
+  "source": "https://www.youtube.com/shorts/bvUhr1AHs44",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/7a4e4bc8-922c-4c84-865c-25ba34136be1/Name_Order_Id_move_column.xlsx",
+            "path": "C:\\Users\\User\\Name_Order_Id_move_column.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Name_Order_Id_move_column.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/7a4e4bc8-922c-4c84-865c-25ba34136be1",
+  "related_apps": [
+    "excel"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Name_Order_Id_move_column - Excel",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/7a4e4bc8-922c-4c84-865c-25ba34136be1/Name_Order_Id_move_column_gold.xlsx",
+      "dest": "Name_Order_Id_move_column_gold.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Name_Order_Id_move_column.xlsx",
+      "dest": "Name_Order_Id_move_column.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_data",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0"
+        }
+      ]
+    }
+  }
+}

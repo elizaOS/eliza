@@ -122,7 +122,7 @@ export class AutonomyService extends Service {
 				: Promise.resolve([]),
 			this.runtime.getMemories({
 				roomId: this.autonomousRoomId,
-				count: perRoomLimit,
+				limit: perRoomLimit,
 				tableName: "memories",
 			}),
 		]);
@@ -432,7 +432,7 @@ export class AutonomyService extends Service {
 
 		const recentMemories = await this.runtime.getMemories({
 			roomId: this.autonomousRoomId,
-			count: 3,
+			limit: 3,
 			tableName: "memories",
 		});
 
@@ -683,7 +683,7 @@ export class AutonomyService extends Service {
 
 		const recentMemories = await this.runtime.getMemories({
 			roomId: this.autonomousRoomId,
-			count: 3,
+			limit: 3,
 			tableName: "memories",
 		});
 

@@ -1,0 +1,17 @@
+services:
+  monitor:
+    build:
+      context: ..
+      dockerfile: monitor/Dockerfile
+    ports:
+      - "${FLASK_PORT:-8080}:8080"
+    volumes:
+      - .:/app/monitor
+      - ${TASK_CONFIG_PATH:-../evaluation_examples/test_all.json}:/app/evaluation_examples/test.json
+      - ${EXAMPLES_BASE_PATH:-../evaluation_examples/examples}:/app/evaluation_examples/examples
+      - ${RESULTS_BASE_PATH:-../results_operator_aws}:/app/results
+    env_file:
+      - .env
+    environment:
+      - MONITOR_IN_DOCKER=true
+    restart: unless-stopped

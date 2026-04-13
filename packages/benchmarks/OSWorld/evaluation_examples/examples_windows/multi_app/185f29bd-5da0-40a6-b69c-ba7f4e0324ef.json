@@ -1,0 +1,112 @@
+{
+  "id": "185f29bd-5da0-40a6-b69c-ba7f4e0324ef",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Transfer the data from our 'Employee Performance Evaluation Summary' Excel sheet into our standardized PDF evaluation forms. Each employee's evaluation data should be accurately filled into the designated fields of the PDF form. It's crucial that the final PDF documents retain a uniform and professional look, ready for distribution to our staff or for filing purposes. Furthermore, please ensure that each PDF file is named according to the employee's name as it appears in the Excel document. This will greatly streamline our evaluation process and enhance our efficiency in managing employee performance records. Oh, use \"√\" as mark on characters.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "C:\\Users\\User\\Desktop\\Employee Performance Evaluation Summary.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/185f29bd-5da0-40a6-b69c-ba7f4e0324ef/Employee%20Performance%20Evaluation%20Summary.xlsx"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\review_template.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/185f29bd-5da0-40a6-b69c-ba7f4e0324ef/IC-Simple-Performance-Review-Template-10796_PDF.pdf"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Desktop\\Employee Performance Evaluation Summary.xlsx"
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 2
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Desktop\\review_template.pdf"
+      }
+    }
+  ],
+  "trajectory": "trajectories/185f29bd-5da0-40a6-b69c-ba7f4e0324ef",
+  "related_apps": [
+    "excel",
+    "os",
+    "pdf"
+  ],
+  "evaluator": {
+    "func": "compare_pdfs",
+    "result": {
+      "type": "cloud_file",
+      "path": [
+        "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/185f29bd-5da0-40a6-b69c-ba7f4e0324ef/Alex%20Lee.pdf",
+        "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/185f29bd-5da0-40a6-b69c-ba7f4e0324ef/David%20Wilson.pdf",
+        "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/185f29bd-5da0-40a6-b69c-ba7f4e0324ef/Emily%20Johnson.pdf",
+        "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/185f29bd-5da0-40a6-b69c-ba7f4e0324ef/John%20Doe.pdf",
+        "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/185f29bd-5da0-40a6-b69c-ba7f4e0324ef/Linda%20Green.pdf",
+        "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/185f29bd-5da0-40a6-b69c-ba7f4e0324ef/Michael%20Brown.pdf",
+        "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/185f29bd-5da0-40a6-b69c-ba7f4e0324ef/Sophia%20Carter.pdf"
+      ],
+      "dest": [
+        "Alex Lee_Gold.pdf",
+        "David Wilson_Gold.pdf",
+        "Emily Johnson_Gold.pdf",
+        "John Doe_Gold.pdf",
+        "Linda Green_Gold.pdf",
+        "Michael Brown_Gold.pdf",
+        "Sophia Carter_Gold.pdf"
+      ],
+      "multi": true,
+      "gives": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    "expected": {
+      "type": "vm_file",
+      "path": [
+        "C:\\Users\\User\\Desktop\\Alex Lee.pdf",
+        "C:\\Users\\User\\Desktop\\David Wilson.pdf",
+        "C:\\Users\\User\\Desktop\\Emily Johnson.pdf",
+        "C:\\Users\\User\\Desktop\\John Doe.pdf",
+        "C:\\Users\\User\\Desktop\\Linda Green.pdf",
+        "C:\\Users\\User\\Desktop\\Michael Brown.pdf",
+        "C:\\Users\\User\\Desktop\\Sophia Carter.pdf"
+      ],
+      "dest": [
+        "Alex Lee.pdf",
+        "David Wilson.pdf",
+        "Emily Johnson.pdf",
+        "John Doe.pdf",
+        "Linda Green.pdf",
+        "Michael Brown.pdf",
+        "Sophia Carter.pdf"
+      ],
+      "multi": true,
+      "gives": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    }
+  }
+}

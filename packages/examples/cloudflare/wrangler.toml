@@ -1,0 +1,48 @@
+# elizaOS Cloudflare Worker Configuration
+# See https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "elizaos-worker"
+main = "src/worker.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"
+
+# Environment variables (set via wrangler secret or dashboard)
+# These are examples - actual secrets should be set via:
+#   wrangler secret put OPENAI_API_KEY
+[vars]
+CHARACTER_NAME = "Eliza"
+CHARACTER_BIO = "A helpful AI assistant powered by elizaOS, running on Cloudflare Workers."
+CHARACTER_SYSTEM = "You are Eliza, a helpful AI assistant. You are friendly, knowledgeable, and always eager to help users with their questions."
+OPENAI_MODEL = "gpt-5-mini"
+# OPENAI_BASE_URL = "https://api.openai.com/v1"  # Optional, defaults to OpenAI
+
+# Production environment
+[env.production]
+name = "elizaos-worker-prod"
+[env.production.vars]
+CHARACTER_NAME = "Eliza"
+CHARACTER_BIO = "A helpful AI assistant powered by elizaOS."
+OPENAI_MODEL = "gpt-5"
+
+# Staging environment
+[env.staging]
+name = "elizaos-worker-staging"
+[env.staging.vars]
+CHARACTER_NAME = "Eliza-Staging"
+CHARACTER_BIO = "A staging AI assistant for testing."
+OPENAI_MODEL = "gpt-5-mini"
+
+
+
+
+
+
+
+
+
+

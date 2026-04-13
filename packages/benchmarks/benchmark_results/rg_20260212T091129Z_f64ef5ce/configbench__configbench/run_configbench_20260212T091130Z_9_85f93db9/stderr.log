@@ -1,0 +1,16 @@
+# command: bun run src/index.ts --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T091129Z_f64ef5ce/configbench__configbench/run_configbench_20260212T091130Z_9_85f93db9/output --eliza
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/configbench
+# run_id: run_configbench_20260212T091130Z_9_85f93db9
+ Warn       [PLUGIN:SQL] Could not install extension (extension=pgcrypto, error=Failed query: CREATE EXTENSION IF NOT EXISTS "pgcrypto"
+params: )
+ Warn       #ConfigBench Agent  [AGENT] No TEXT_EMBEDDING model registered, skipping embedding setup
+ Warn       [PluginActivator] SecretsService not available, activation will be limited
+
+[31mFatal error:[0m worldId is required
+Error: worldId is required
+    at createRoom (/Users/shawwalters/node_modules/@elizaos/core/dist/node/index.node.js:49388:17)
+    at run (/Users/shawwalters/eliza-workspace/benchmarks/configbench/src/handlers/eliza.ts:241:19)
+    at async runHandler (/Users/shawwalters/eliza-workspace/benchmarks/configbench/src/runner.ts:15:33)
+    at async runBenchmark (/Users/shawwalters/eliza-workspace/benchmarks/configbench/src/runner.ts:35:28)
+    at async main (/Users/shawwalters/eliza-workspace/benchmarks/configbench/src/index.ts:46:25)
+    at processTicksAndRejections (native:7:39)

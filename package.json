@@ -65,9 +65,11 @@
   "packageManager": "bun@1.3.5",
   "workspaces": [
     "packages/*",
-    "packages/computeruse/packages/*",
+    "packages/native-plugins/*",
     "apps/*",
-    "agent"
+    "plugins/plugin-sql/typescript",
+    "plugins/plugin-ollama/typescript",
+    "plugins/plugin-local-ai/typescript"
   ],
   "devDependencies": {
     "@bufbuild/buf": "^1.47.2",
@@ -152,10 +154,10 @@
     "@elizaos/plugin-anthropic": "alpha",
     "@elizaos/plugin-groq": "alpha",
     "@elizaos/plugin-local-embedding": "alpha",
-    "@elizaos/plugin-local-ai": "alpha",
-    "@elizaos/plugin-ollama": "alpha",
+    "@elizaos/plugin-local-ai": "workspace:*",
+    "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-openai": "alpha",
-    "@elizaos/plugin-sql": "alpha",
+    "@elizaos/plugin-sql": "workspace:*",
     "@elysiajs/cors": "^1.4.1",
     "@polymarket/clob-client": "^5.2.0",
     "@sinclair/typebox": "^0.34.47",

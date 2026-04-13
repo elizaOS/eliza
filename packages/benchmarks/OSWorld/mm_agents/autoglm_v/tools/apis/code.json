@@ -1,0 +1,236 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.launch_vscode",
+            "description": "Launch VS Code with specified path",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path or directory to open"
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.compare_files",
+            "description": "Compare two files in VS Code",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file1": {
+                        "type": "string",
+                        "description": "First file path"
+                    },
+                    "file2": {
+                        "type": "string",
+                        "description": "Second file path"
+                    }
+                },
+                "required": ["file1", "file2"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.add_folder",
+            "description": "Add folder to active VS Code window",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "folder": {
+                        "type": "string",
+                        "description": "Folder path to add"
+                    }
+                },
+                "required": ["folder"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.goto_file",
+            "description": "Open file at specific position",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "File path to open"
+                    },
+                    "line": {
+                        "type": "integer",
+                        "description": "Line number",
+                        "default": 1
+                    },
+                    "character": {
+                        "type": "integer",
+                        "description": "Character position",
+                        "default": 1
+                    }
+                },
+                "required": ["file_path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.perform_merge",
+            "description": "Perform three-way merge",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path1": {
+                        "type": "string",
+                        "description": "First version file path"
+                    },
+                    "path2": {
+                        "type": "string",
+                        "description": "Second version file path"
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "Base version file path"
+                    },
+                    "result": {
+                        "type": "string",
+                        "description": "Output file path"
+                    }
+                },
+                "required": ["path1", "path2", "base", "result"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.remove_folder",
+            "description": "Remove folder from active VS Code window",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "folder": {
+                        "type": "string",
+                        "description": "Folder path to remove"
+                    }
+                },
+                "required": ["folder"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.install_extension",
+            "description": "Install or update VS Code extension",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "extension_id": {
+                        "type": "string",
+                        "description": "Extension identifier"
+                    },
+                    "pre_release": {
+                        "type": "boolean",
+                        "description": "Install pre-release version",
+                        "default": false
+                    }
+                },
+                "required": ["extension_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.uninstall_extension",
+            "description": "Uninstall VS Code extension",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "extension_id": {
+                        "type": "string",
+                        "description": "Extension identifier"
+                    }
+                },
+                "required": ["extension_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.list_extensions",
+            "description": "List installed extensions",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "show_versions": {
+                        "type": "boolean",
+                        "description": "Show extension versions",
+                        "default": false
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Filter by category"
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.update_extensions",
+            "description": "Update all extensions to latest version",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.disable_extension",
+            "description": "Disable extension for next VS Code instance",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "extension_id": {
+                        "type": "string",
+                        "description": "Extension identifier"
+                    }
+                },
+                "required": ["extension_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.toggle_sync",
+            "description": "Toggle VS Code synchronization",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "state": {
+                        "type": "string",
+                        "description": "Sync state",
+                        "enum": ["on", "off"]
+                    }
+                },
+                "required": ["state"]
+            }
+        }
+    }
+]

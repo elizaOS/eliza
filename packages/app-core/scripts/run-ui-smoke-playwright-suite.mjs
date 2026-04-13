@@ -1,0 +1,91 @@
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import net from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const candidateRoots = [
+  path.resolve(here, ".."),
+  path.resolve(here, "..", "..", "..", ".."),
+];
+const repoRoot =
+  candidateRoots.find((candidate) =>
+    fs.existsSync(path.join(candidate, "apps", "app", "scripts", "run-ui-playwright.mjs")),
+  ) ?? path.resolve(here, "..");
+const uiPlaywrightRunner = path.join(
+  repoRoot,
+  "apps",
+  "app",
+  "scripts",
+  "run-ui-playwright.mjs",
+);
+const nodeCmd =
+  typeof process.execPath === "string" && process.execPath.length > 0
+    ? process.execPath
+    : process.platform === "win32"
+      ? "node.exe"
+      : "node";
+
+const specGroups = [
+  [
+    "test/ui-smoke/apps-session.spec.ts",
+    "test/ui-smoke/browser-workspace.spec.ts",
+  ],
+  ["test/ui-smoke/ui-smoke.spec.ts"],
+];
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("Failed to allocate a free port."));
+        return;
+      }
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(address.port);
+      });
+    });
+  });
+}
+
+const env = { ...process.env };
+if (!env.MILADY_UI_SMOKE_API_PORT) {
+  const apiPort = await getFreePort();
+  env.MILADY_UI_SMOKE_API_PORT = String(apiPort);
+  env.MILADY_API_PORT = env.MILADY_API_PORT || String(apiPort);
+}
+if (!env.MILADY_UI_SMOKE_PORT) {
+  const uiPort = await getFreePort();
+  env.MILADY_UI_SMOKE_PORT = String(uiPort);
+  env.MILADY_PORT = env.MILADY_PORT || String(uiPort);
+}
+
+for (const specs of specGroups) {
+  const result = spawnSync(
+    nodeCmd,
+    [
+      uiPlaywrightRunner,
+      "--config",
+      "playwright.ui-smoke.config.ts",
+      ...specs,
+    ],
+    {
+      cwd: repoRoot,
+      env,
+      stdio: "inherit",
+    },
+  );
+
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}

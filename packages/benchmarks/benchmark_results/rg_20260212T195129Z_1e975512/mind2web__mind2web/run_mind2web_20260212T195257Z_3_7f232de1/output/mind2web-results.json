@@ -1,0 +1,62 @@
+{
+  "total_tasks": 3,
+  "total_trials": 3,
+  "overall_element_accuracy": 0.0,
+  "overall_operation_accuracy": 0.0,
+  "overall_step_accuracy": 0.0,
+  "overall_task_success_rate": 0.0,
+  "average_latency_ms": 46.7076301574707,
+  "by_domain": {
+    "travel": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 2.7582645416259766
+    },
+    "shopping": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 134.78875160217285
+    },
+    "software": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 2.5758743286132812
+    }
+  },
+  "by_website": {
+    "google.com/flights": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 2.7582645416259766
+    },
+    "amazon.com": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 134.78875160217285
+    },
+    "github.com": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 2.5758743286132812
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "timestamp": "2026-02-12T11:52:58.200104",
+    "mode": "real-llm",
+    "split": "test_task",
+    "model_provider": "groq"
+  }
+}

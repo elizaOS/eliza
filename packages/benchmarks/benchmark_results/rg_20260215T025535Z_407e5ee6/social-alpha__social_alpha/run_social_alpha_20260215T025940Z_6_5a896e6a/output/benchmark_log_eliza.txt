@@ -1,0 +1,19 @@
+[INFO] Dataset: 28,491 calls (20,292 recs, 8,199 noise)
+[INFO]   BUY: 16,665 | SELL: 3,627
+[INFO]   WIN: 18,450 | LOSS: 8,689 | NEUTRAL: 1,352
+[INFO]   Users: 1,416 total, 539 qualified, 477 trustworthy
+[INFO]   Tokens: 3,274 total, 0 rug tokens
+[INFO]   Archetypes: {'low_info': 894, 'solid_trader': 473, 'fud_artist': 44, 'alpha_caller': 3, 'noise_maker': 2}
+[WARN] WARNING: 0 rug tokens — DETECT rug/promoter tasks will score 0
+[WARN] WARNING: 0 rug_promoter users — DETECT promoter task will score 0
+[DETAIL]   rug_precision: 0.0000
+[DETAIL]   rug_recall: 0.0000
+[DETAIL]   rug_f1: 0.0000
+[DETAIL]   rug_total: 0
+[DETAIL]   promoter_precision: 0.0000
+[DETAIL]   promoter_recall: 0.0000
+[DETAIL]   promoter_f1: 0.0000
+[DETAIL]   promoter_total: 0
+[WARN]   archetype_macro_f1: 0.0987
+[WARN]   archetype_accuracy: 0.0853
+[DETAIL]   archetype_labels: ['alpha_caller', 'low_info', 'noise_maker', 'solid_trader']

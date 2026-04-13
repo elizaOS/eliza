@@ -1,0 +1,26 @@
+{
+  "name": "@elizaos/app-lifeops",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LifeOps app plugin: browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
+  "main": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./ui": "./src/ui.ts",
+    "./agent-lifeops": "./src/agent-lifeops.ts",
+    "./plugin": "./src/plugin.ts",
+    "./selfcontrol": "./src/selfcontrol/index.ts",
+    "./selfcontrol/selfcontrol": "./src/selfcontrol/selfcontrol.ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/shared": "workspace:*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  }
+}

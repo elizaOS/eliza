@@ -1,0 +1,207 @@
+{
+  "id": "415ef462-bed3-493a-ac36-ca8c6d23bf1b",
+  "snapshot": "thunderbird",
+  "instruction": "There's an e-mail containing the AWS invoice for December saved in local \"Bills\" folder. Extract the invoice PDF to the my receipts folder. Follow the file name pattern of the old files and append a record at the end of my tally book.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Documents/Finance/receipts",
+          "/home/user/Documents/Projects"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2308.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/invoice0123456789-2308.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2309.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/invoice0123456789-2309.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2310.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/invoice0123456789-2310.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2311.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/invoice0123456789-2311.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/X-receipt-2312.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/Receipt-0123-4567.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/tally_book.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/tally_book.xlsx"
+          },
+          {
+            "path": "/home/user/.projects.tar.xz",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/projects.tar.xz"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/thunderbird-profile.tar.gz",
+            "path": "/home/user/thunderbird-profile.tar.gz"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xJvf",
+          "/home/user/.projects.tar.xz",
+          "-C",
+          "/home/user/Documents/Projects"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xzv",
+          "--recursive-unlink",
+          "-f",
+          "/home/user/thunderbird-profile.tar.gz",
+          "-C",
+          "/home/user/"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "thunderbird"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "nautilus",
+          "/home/user/Documents/Finance"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/415ef462-bed3-493a-ac36-ca8c6d23bf1b",
+  "related_apps": [
+    "thunderbird",
+    "libreoffice_calc",
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "tally_book.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "download",
+        "parameters": {
+          "files": [
+            {
+              "path": "/home/user/.aws-invoice-2312.pdf",
+              "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/invoice0123456789-2312.pdf"
+            }
+          ]
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "diff",
+            ".aws-invoice-2312.pdf",
+            "/home/user/Documents/Finance/receipts/aws-invoice-2312.pdf"
+          ],
+          "stdout": "diff.out"
+        }
+      }
+    ],
+    "func": [
+      "compare_table",
+      "check_list"
+    ],
+    "result": [
+      {
+        "type": "vm_file",
+        "path": "/home/user/Documents/Finance/tally_book.xlsx",
+        "dest": "tally_book.xlsx"
+      },
+      {
+        "type": "cache_file",
+        "path": "diff.out"
+      }
+    ],
+    "expected": [
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/tally_book_gt.xlsx",
+        "dest": "tally_book_gt.xlsx"
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "unexpect": [
+            ".+"
+          ]
+        }
+      }
+    ],
+    "options": [
+      {
+        "rules": [
+          {
+            "type": "sheet_data",
+            "sheet_idx0": 0,
+            "sheet_idx1": "EI0"
+          }
+        ]
+      },
+      {}
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements-mock.txt .
+RUN pip install --no-cache-dir -r requirements-mock.txt
+
+COPY clawbench/mock_tools/ ./mock_tools/
+
+EXPOSE 3001
+
+CMD ["python", "-m", "mock_tools.server"]

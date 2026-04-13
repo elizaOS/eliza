@@ -1,0 +1,89 @@
+{
+  "id": "12382c62-0cd1-4bf2-bdc8-1d20bf9b2371",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Create a clustered column chart showing the Sales and COGS data for each week in a new sheet named \"Sheet2\". Set the chart title as \"Sales & COGS\".",
+  "source": "SheetCopilot@210",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/1e8df695-bd1b-45b3-b557-e7d599cf7597/WeeklySales.xlsx",
+            "path": "/home/user/WeeklySales.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/WeeklySales.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/12382c62-0cd1-4bf2-bdc8-1d20bf9b2371",
+  "related_apps": [
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "WeeklySales.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/12382c62-0cd1-4bf2-bdc8-1d20bf9b2371/13_WeeklySales_gt1.xlsx",
+      "dest": "13_WeeklySales_gt1.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/WeeklySales.xlsx",
+      "dest": "WeeklySales.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "chart",
+          "sheet_idx0": "RNSheet2",
+          "sheet_idx1": "ENSheet2",
+          "chart_props": [
+            "type",
+            "title"
+          ]
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

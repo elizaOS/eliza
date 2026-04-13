@@ -1,0 +1,98 @@
+{
+  "id": "47f7c0ce-a5fb-4100-a5e6-65cd0e7429e5",
+  "snapshot": "vlc",
+  "instruction": "The landscape at 00:08 in this video is so beautiful. Please extract this frame and set it as the background of the second page of the opened slides.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/47f7c0ce-a5fb-4100-a5e6-65cd0e7429e5/landscape.mp4",
+            "path": "/home/user/Desktop/landscape.mp4"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/47f7c0ce-a5fb-4100-a5e6-65cd0e7429e5/Robotic_Workshop_Infographics.pptx",
+            "path": "/home/user/Desktop/Robotic_Workshop_Infographics.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/Robotic_Workshop_Infographics.pptx"
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 3
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "vlc",
+          "--repeat",
+          "/home/user/Desktop/landscape.mp4"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress",
+    "vlc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Robotic_Workshop_Infographics.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_images",
+    "result": {
+      "type": "background_image_in_slide",
+      "ppt_file_path": "/home/user/Desktop/Robotic_Workshop_Infographics.pptx",
+      "slide_index": 1,
+      "dest": "landscape.png"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/47f7c0ce-a5fb-4100-a5e6-65cd0e7429e5/landscape.png",
+      "dest": "gold_landscape.png"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

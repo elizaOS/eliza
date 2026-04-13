@@ -1,0 +1,7 @@
+[
+  {"id": "c_001", "name": "Sarah Kim", "email": "boss@company.com", "role": "Engineering Manager", "relationship": "direct_manager", "vip": true},
+  {"id": "c_002", "name": "Jordan Lee", "email": "client@bigcorp.com", "role": "PM (BigCorp)", "relationship": "client", "vip": true},
+  {"id": "c_003", "name": "Rachel Green", "email": "hr@company.com", "role": "HR Manager", "relationship": "cross_functional", "vip": false},
+  {"id": "c_004", "name": "James Liu", "email": "james.liu@company.com", "role": "Senior Engineer", "relationship": "direct_report", "vip": false},
+  {"id": "c_005", "name": "Priya Patel", "email": "priya.patel@company.com", "role": "Product Designer", "relationship": "cross_functional", "vip": false}
+]

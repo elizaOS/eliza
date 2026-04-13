@@ -1,0 +1,85 @@
+{
+  "id": "9f3bb592-209d-43bc-bb47-d77d9df56504",
+  "snapshot": "multiapps",
+  "instruction": "I downloaded a video to practice listening, but I don't know how to remove the subtitles. Please help me remove the subtitles from the video and export it as \"subtitles.srt\" and store it in the same directory as the video.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/9f3bb592-209d-43bc-bb47-d77d9df56504/video.mp4",
+            "path": "/home/user/video.mp4"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/video.mp4"
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "video.mp4 - VLC media player"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "os",
+    "vlc",
+    "ubuntu_media_player"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "download",
+        "parameters": {
+          "files": [
+            {
+              "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/9f3bb592-209d-43bc-bb47-d77d9df56504/Gold%20subtitles.srt",
+              "path": "/home/user/subtitles_Gold.srt"
+            }
+          ]
+        }
+      },
+      {
+        "type": "download",
+        "parameters": {
+          "files": [
+            {
+              "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/9f3bb592-209d-43bc-bb47-d77d9df56504/Subtitles%20script.py",
+              "path": "/home/user/Desktop/subtitles_script.py"
+            }
+          ]
+        }
+      },
+      {
+        "type": "command",
+        "parameters": {
+          "command": "echo {CLIENT_PASSWORD} | sudo -S pip install pysrt",
+          "shell": "true"
+        }
+      }
+    ],
+    "func": "exact_match",
+    "result": {
+      "type": "vm_command_line",
+      "command": "python /home/user/Desktop/subtitles_script.py",
+      "shell": "true"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": "true\n"
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

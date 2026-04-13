@@ -187,7 +187,7 @@ export const actionStateProvider: Provider = {
 		const recentMessages = await runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
-			count: 20,
+			limit: 20,
 			unique: false,
 		});
 

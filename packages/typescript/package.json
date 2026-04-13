@@ -3,10 +3,10 @@
   "version": "2.0.0-alpha.139",
   "description": "",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "browser": "dist/browser/index.browser.js",
+  "main": "./dist/index.node.js",
+  "module": "./dist/index.node.js",
+  "types": "./dist/index.d.ts",
+  "browser": "./dist/index.browser.js",
   "sideEffects": false,
   "exports": {
     "./package.json": "./package.json",
@@ -14,8 +14,8 @@
       "types": "./dist/index.d.ts",
       "browser": {
         "types": "./dist/index.browser.d.ts",
-        "import": "./dist/browser/index.browser.js",
-        "default": "./dist/browser/index.browser.js"
+        "import": "./dist/index.browser.js",
+        "default": "./dist/index.browser.js"
       },
       "node": {
         "types": "./dist/index.node.d.ts",
@@ -35,8 +35,8 @@
     },
     "./browser": {
       "types": "./dist/index.browser.d.ts",
-      "import": "./dist/browser/index.browser.js",
-      "default": "./dist/browser/index.browser.js"
+      "import": "./dist/index.browser.js",
+      "default": "./dist/index.browser.js"
     },
     "./roles": {
       "types": "./dist/roles.d.ts",
@@ -44,19 +44,27 @@
       "default": "./dist/roles.js"
     },
     "./testing": {
+      "types": "./src/testing/index.ts",
       "import": "./dist/testing/index.js",
       "default": "./dist/testing/index.js"
+    },
+    "./orchestrator": {
+      "types": "./src/orchestrator/index.ts",
+      "import": "./dist/node/orchestrator/index.js",
+      "default": "./dist/node/orchestrator/index.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
+    "postinstall": "node ./scripts/ensure-node-pty.mjs",
     "prebuild": "[ -d src/types/generated ] || (cd ../schemas && bunx buf generate)",
     "build": "bun run build.ts",
+    "build:node": "bun run build.ts --node-only",
     "build:watch": "bun run build.ts --watch",
     "dev": "bun run build:watch",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo && find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete 2>/dev/null || true",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo && find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) ! -path 'src/types/generated/*' -delete 2>/dev/null || true",
     "perf:settings": "bun run scripts/perf-settings.ts",
     "test": "vitest run",
     "test:coverage": "mkdir -p coverage/.tmp && vitest run --coverage",
@@ -73,6 +81,8 @@
   "author": "elizaOS",
   "license": "MIT",
   "devDependencies": {
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/schemas": "workspace:*",
     "@playwright/test": "^1.52.0",
     "@types/bun": "^1.3.5",
@@ -102,8 +112,10 @@
     "ai": "^6.0.30",
     "dedent": "^1.7.1",
     "dotenv": "^17.2.3",
+    "coding-agent-adapters": "0.16.3",
     "drizzle-orm": "^0.45.1",
     "fast-redact": "^3.5.0",
+    "git-workspace-service": "0.4.5",
     "file-type": "^21.3.0",
     "glob": "^13.0.0",
     "handlebars": "^4.7.8",
@@ -111,6 +123,9 @@
     "mammoth": "^1.9.0",
     "markdown-it": "^14.1.0",
     "pdfjs-dist": "^5.4.530",
+    "pty-console": "0.3.1",
+    "pty-manager": "1.11.0",
+    "pty-state-capture": "0.2.0",
     "undici": "^7.0.0",
     "unique-names-generator": "^4.7.1",
     "unpdf": "^1.4.0",

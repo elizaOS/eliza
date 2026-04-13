@@ -1,0 +1,31 @@
+{
+  "id": "brush-teeth-cancel",
+  "title": "Brush teeth cancel before save",
+  "domain": "tasks",
+  "rooms": [
+    {
+      "id": "main",
+      "source": "telegram",
+      "title": "LifeOps Brush Teeth Cancel"
+    }
+  ],
+  "turns": [
+    {
+      "name": "brush-teeth preview",
+      "text": "Help me brush my teeth in the morning and at night.",
+      "responseIncludesAll": ["brush teeth"]
+    },
+    {
+      "name": "brush-teeth cancel",
+      "text": "Actually never mind, do not save it yet.",
+      "responseExcludes": ["saved \"brush teeth\""]
+    }
+  ],
+  "finalChecks": [
+    {
+      "type": "definitionCountDelta",
+      "title": "Brush teeth",
+      "delta": 0
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+# command: python scripts/python/run_multienv_eliza.py --result_dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/osworld__osworld/run_osworld_20260215T025742Z_1_0727f1e7/output --model qwen/qwen3-32b --provider_name docker --observation_type screenshot_a11y_tree --max_steps 10 --max_tasks 1 --headless
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/OSWorld
+# run_id: run_osworld_20260215T025742Z_1_0727f1e7
+2026-02-14 19:59:01,088 [osworld.eliza.runner] INFO: Loaded 1 tasks
+2026-02-14 19:59:01,921 [OSWorld Desktop Agent] INFO: [2m2026-02-15T02:59:01.921268Z[0m [[32m[1minfo     [0m] [1mInitializing AgentRuntime...  [0m [[0m[1m[34mOSWorld Desktop Agent[0m][0m
+2026-02-14 19:59:02,021 [elizaos] INFO: [2m2026-02-15T02:59:02.021777Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: bootstrap [0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 19:59:02,022 [OSWorld Desktop Agent] INFO: [2m2026-02-15T02:59:02.022044Z[0m [[32m[1minfo     [0m] [1mInitializing Bootstrap plugin [0m [[0m[1m[34mOSWorld Desktop Agent[0m][0m [36magentId[0m=[35m1878cfb3-b571-0c2d-8bff-586262ca2663[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-14 19:59:02,022 [OSWorld Desktop Agent] INFO: [2m2026-02-15T02:59:02.022168Z[0m [[32m[1minfo     [0m] [1mBootstrap plugin initialized  [0m [[0m[1m[34mOSWorld Desktop Agent[0m][0m [36mactionCount[0m=[35m0[0m [36magentId[0m=[35m1878cfb3-b571-0c2d-8bff-586262ca2663[0m [36mevaluatorCount[0m=[35m0[0m [36mproviderCount[0m=[35m0[0m [36mserviceCount[0m=[35m0[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-14 19:59:02,022 [elizaos] INFO: [2m2026-02-15T02:59:02.022247Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: bootstrap[0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 19:59:02,022 [elizaos] INFO: [2m2026-02-15T02:59:02.022306Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: osworld-bench[0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 19:59:02,022 [elizaos] INFO: [2m2026-02-15T02:59:02.022668Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: osworld-bench[0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 19:59:02,022 [OSWorld Desktop Agent] INFO: [2m2026-02-15T02:59:02.022820Z[0m [[32m[1minfo     [0m] [1mAgentRuntime initialized successfully[0m [[0m[1m[34mOSWorld Desktop Agent[0m][0m
+2026-02-14 19:59:02,022 [osworld.eliza.agent] INFO: Eliza OSWorld agent initialized with model=qwen/qwen3-32b, provider=groq
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/urllib3/connectionpool.py", line 493, in _make_request
+    conn.request(
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/urllib3/connection.py", line 500, in request
+    self.endheaders()
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/http/client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/http/client.py", line 1093, in _send_output
+    self.send(msg)
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/http/client.py", line 1037, in send
+    self.connect()
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/transport/unixconn.py", line 26, in connect
+    sock.connect(self.unix_socket)
+FileNotFoundError: [Errno 2] No such file or directory
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/requests/adapters.py", line 486, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/urllib3/connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/urllib3/util/retry.py", line 490, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/urllib3/util/util.py", line 38, in reraise
+    raise value.with_traceback(tb)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/urllib3/connectionpool.py", line 493, in _make_request
+    conn.request(
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/urllib3/connection.py", line 500, in request
+    self.endheaders()
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/http/client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/http/client.py", line 1093, in _send_output
+    self.send(msg)
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/http/client.py", line 1037, in send
+    self.connect()
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/transport/unixconn.py", line 26, in connect
+    sock.connect(self.unix_socket)
+urllib3.exceptions.ProtocolError: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/client.py", line 223, in _retrieve_server_version
+    return self.version(api_version=False)["ApiVersion"]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/daemon.py", line 181, in version
+    return self._result(self._get(url), json=True)
+                        ^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/utils/decorators.py", line 44, in inner
+    return f(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/client.py", line 246, in _get
+    return self.get(url, **self._set_request_timeout(kwargs))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/requests/sessions.py", line 602, in get
+    return self.request("GET", url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/requests/adapters.py", line 501, in send
+    raise ConnectionError(err, request=request)
+requests.exceptions.ConnectionError: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 327, in <module>
+    main()
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 323, in main
+    run_benchmark(args)
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 214, in run_benchmark
+    env = DesktopEnv(**env_kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/desktop_env.py", line 154, in __init__
+    self.manager, self.provider = create_vm_manager_and_provider(provider_name, region, use_proxy=False)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/providers/__init__.py", line 33, in create_vm_manager_and_provider
+    return DockerVMManager(), DockerProvider(region)
+                              ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/providers/docker/provider.py", line 27, in __init__
+    self.client = docker.from_env()
+                  ^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/client.py", line 94, in from_env
+    return cls(
+           ^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/client.py", line 45, in __init__
+    self.api = APIClient(*args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/client.py", line 207, in __init__
+    self._version = self._retrieve_server_version()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/client.py", line 230, in _retrieve_server_version
+    raise DockerException(
+docker.errors.DockerException: Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))

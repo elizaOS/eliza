@@ -636,9 +636,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async getMemories(params: {
 		entityId?: UUID;
 		agentId?: UUID;
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
+		count?: number;
 		offset?: number;
 		unique?: boolean;
 		tableName: string;
@@ -732,12 +731,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		entityId?: UUID;
 		roomId?: UUID;
 		type?: string;
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		offset?: number;
 	}): Promise<Log[]> {
-		const effectiveLimit = params.limit ?? params.count ?? 10;
+		const effectiveLimit = params.limit ?? 10;
 		let filtered = this.logs;
 
 		// Filter by entityId if provided
@@ -1337,8 +1334,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async getMemoriesByWorldId(params: {
 		worldIds?: UUID[];
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		tableName?: string;
 	}): Promise<Memory[]> {
@@ -1346,7 +1341,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (worldIds.length === 0) return [];
 		const rooms = await this.getRoomsByWorlds(worldIds);
 		const roomIds = rooms.map((r) => r.id);
-		const effectiveLimit = params.limit ?? params.count ?? 50;
+		const effectiveLimit = params.limit ?? 50;
 		const out: Memory[] = [];
 		for (const rid of roomIds) {
 			if (params.tableName) {

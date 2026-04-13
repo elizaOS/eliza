@@ -1,0 +1,93 @@
+{
+  "id": "26150609-0da3-4a7d-8868-0faf9c5f01bb",
+  "snapshot": "vs_code",
+  "instruction": "So, I've been dabbling with coding a Snake game in Python, and I finally got it up and running. It's pretty cool, but it's not without its quirks. The biggest issue I'm facing right now is that the snake can't seem to eat the food, no matter what. Could you help me tweak the code so the snake can actually eat the food? Thanks a bunch!",
+  "source": "authors",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Desktop/snake"
+        ]
+      }
+    },
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "pip",
+          "install",
+          "pygame"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Desktop/snake/food.py",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/26150609-0da3-4a7d-8868-0faf9c5f01bb/food.py"
+          },
+          {
+            "path": "/home/user/Desktop/snake/main.py",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/26150609-0da3-4a7d-8868-0faf9c5f01bb/main.py"
+          },
+          {
+            "path": "/home/user/Desktop/snake/settings.py",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/26150609-0da3-4a7d-8868-0faf9c5f01bb/settings.py"
+          },
+          {
+            "path": "/home/user/Desktop/snake/snake.py",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/26150609-0da3-4a7d-8868-0faf9c5f01bb/snake.py"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "code",
+          "/home/user/Desktop/snake"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/26150609-0da3-4a7d-8868-0faf9c5f01bb",
+  "related_apps": [
+    "vs_code",
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [],
+    "func": "check_python_file_by_test_suite",
+    "result": {
+      "type": "vm_file",
+      "path": [
+        "/home/user/Desktop/snake/food.py",
+        "/home/user/Desktop/snake/main.py",
+        "/home/user/Desktop/snake/settings.py",
+        "/home/user/Desktop/snake/snake.py"
+      ],
+      "dest": [
+        "food.py",
+        "main.py",
+        "settings.py",
+        "snake.py"
+      ],
+      "multi": true
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/26150609-0da3-4a7d-8868-0faf9c5f01bb/test.py",
+      "dest": "test_suite.py"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -87,7 +87,7 @@ export const relationshipExtractionEvaluator: Evaluator = {
 		const recentMessages = await runtime.getMemories({
 			roomId: message.roomId,
 			tableName: "messages",
-			count: 10,
+			limit: 10,
 			unique: false,
 		});
 
@@ -635,7 +635,7 @@ async function createOrUpdateMentionedEntity(
 	// Get all recent memories to find entities with matching names
 	const memories = await runtime.getMemories({
 		tableName: "entities",
-		count: 1000,
+		limit: 1000,
 		unique: true,
 	});
 

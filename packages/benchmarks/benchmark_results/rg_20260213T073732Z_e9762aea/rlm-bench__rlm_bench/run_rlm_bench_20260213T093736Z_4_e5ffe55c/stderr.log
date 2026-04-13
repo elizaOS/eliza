@@ -1,0 +1,24 @@
+# command: /opt/miniconda3/bin/python /Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/run_benchmark.py --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260213T073732Z_e9762aea/rlm-bench__rlm_bench/run_rlm_bench_20260213T093736Z_4_e5ffe55c/output --mode stub
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/rlm-bench
+# run_id: run_rlm_bench_20260213T093736Z_4_e5ffe55c
+2026-02-13 02:37:36,459 - rlm-bench - INFO - ============================================================
+2026-02-13 02:37:36,459 - rlm-bench - INFO - RLM Benchmark Suite
+2026-02-13 02:37:36,459 - rlm-bench - INFO - ============================================================
+2026-02-13 02:37:36,459 - rlm-bench - INFO - Mode: stub
+2026-02-13 02:37:36,459 - rlm-bench - INFO - Backend: gemini
+2026-02-13 02:37:36,459 - rlm-bench - INFO - Context lengths: [1000, 10000, 100000]
+2026-02-13 02:37:36,459 - rlm-bench - INFO - Tasks per config: 3
+2026-02-13 02:37:36,459 - rlm-bench - INFO - S-NIAH: enabled
+2026-02-13 02:37:36,459 - rlm-bench - INFO - OOLONG: enabled
+2026-02-13 02:37:36,459 - rlm-bench - INFO - ============================================================
+2026-02-13 02:37:36,638 - elizaos.rlm-bench - INFO - Running 81 benchmark tasks in stub mode
+2026-02-13 02:37:36,639 - elizaos.rlm-bench - INFO - Completed 10/81 tasks
+2026-02-13 02:37:36,640 - elizaos.rlm-bench - INFO - Completed 20/81 tasks
+2026-02-13 02:37:36,642 - elizaos.rlm-bench - INFO - Completed 30/81 tasks
+2026-02-13 02:37:36,649 - elizaos.rlm-bench - INFO - Completed 40/81 tasks
+2026-02-13 02:37:36,655 - elizaos.rlm-bench - INFO - Completed 50/81 tasks
+2026-02-13 02:37:36,711 - elizaos.rlm-bench - INFO - Completed 60/81 tasks
+2026-02-13 02:37:36,774 - elizaos.rlm-bench - INFO - Completed 70/81 tasks
+2026-02-13 02:37:36,848 - elizaos.rlm-bench - INFO - Completed 80/81 tasks
+2026-02-13 02:37:36,863 - elizaos.rlm-bench - INFO - Results saved to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260213T073732Z_e9762aea/rlm-bench__rlm_bench/run_rlm_bench_20260213T093736Z_4_e5ffe55c/output/rlm_bench_results_20260213_023736.json
+2026-02-13 02:37:36,863 - elizaos.rlm-bench - INFO - Report saved to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260213T073732Z_e9762aea/rlm-bench__rlm_bench/run_rlm_bench_20260213T093736Z_4_e5ffe55c/output/rlm_bench_report_20260213_023736.md

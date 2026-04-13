@@ -16,10 +16,10 @@ const LIVE_TEST_TIMEOUT_MS = 30_000;
 function buildShouldRespondState(recentMessages: string): State {
 	return {
 		values: {
-			agentName: "Milady",
+			agentName: "Eliza",
 			providers: [
 				"# Character",
-				"Milady is a direct, technically capable assistant for software work.",
+				"Eliza is a direct, technically capable assistant for software work.",
 				"",
 				"# Recent Messages",
 				recentMessages,
@@ -99,7 +99,7 @@ liveDescribe("shouldRespond live", () => {
 		}
 
 		const character: Character = {
-			name: "Milady",
+			name: "Eliza",
 			system: "You are a precise assistant used for live prompt validation.",
 			bio: ["Precise assistant used for live prompt validation."],
 			templates: {},
@@ -162,7 +162,7 @@ liveDescribe("shouldRespond live", () => {
 			const result = await classify(
 				[
 					"user-1: morning everyone",
-					"user-1: Milady, can you help me debug this TypeScript type error?",
+					"user-1: Eliza, can you help me debug this TypeScript type error?",
 				].join("\n"),
 			);
 
@@ -211,7 +211,7 @@ liveDescribe("shouldRespond live", () => {
 		async () => {
 			const result = await classify(
 				[
-					"user-1: Milady stop. This is a direct instruction for you to end the run and stop talking immediately.",
+					"user-1: Eliza stop. This is a direct instruction for you to end the run and stop talking immediately.",
 				].join("\n"),
 			);
 

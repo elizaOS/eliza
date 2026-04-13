@@ -1,0 +1,78 @@
+{
+  "id": "dd84e895-72fd-4023-a336-97689ded257c",
+  "snapshot": "thunderbird",
+  "instruction": "Add a star to every email in local Bills folder",
+  "source": "https://support.mozilla.org/en-US/kb/organize-your-messages-using-filters",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/thunderbird/dd84e895-72fd-4023-a336-97689ded257c/thunderbird-profile.tar.gz",
+            "path": "/home/user/thunderbird-profile.tar.gz"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xzv",
+          "--recursive-unlink",
+          "-f",
+          "/home/user/thunderbird-profile.tar.gz",
+          "-C",
+          "/home/user/"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "/usr/bin/thunderbird"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "thunderbird"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "close_window",
+        "parameters": {
+          "window_name": "Mail.thunderbird",
+          "strict": true,
+          "by_class": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/.thunderbird/t5q2a5hp.default-release/global-messages-db.sqlite",
+      "dest": "global-messages-db.sqlite"
+    },
+    "func": "run_sqlite3",
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "sql": "select sum(1) > 0 from messageAttributes where attributeID = 58 and value = 1 and messageID in (select id from messages where folderID = 13);"
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

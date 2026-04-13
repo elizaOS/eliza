@@ -1,0 +1,56 @@
+============================================================
+ElizaOS Context Benchmark
+============================================================
+Provider: eliza-openai
+Mode: Quick
+Output: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/context-bench__context_bench/run_context_bench_20260215T025550Z_1_02f1eab0/output
+
+Running benchmark...
+
+NIAH: [██░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 1/12 (8.3%)NIAH: [█████░░░░░░░░░░░░░░░░░░░░░░░░░] 2/12 (16.7%)NIAH: [███████░░░░░░░░░░░░░░░░░░░░░░░] 3/12 (25.0%)NIAH: [██████████░░░░░░░░░░░░░░░░░░░░] 4/12 (33.3%)NIAH: [████████████░░░░░░░░░░░░░░░░░░] 5/12 (41.7%)NIAH: [███████████████░░░░░░░░░░░░░░░] 6/12 (50.0%)NIAH: [█████████████████░░░░░░░░░░░░░] 7/12 (58.3%)NIAH: [████████████████████░░░░░░░░░░] 8/12 (66.7%)NIAH: [██████████████████████░░░░░░░░] 9/12 (75.0%)NIAH: [█████████████████████████░░░░░] 10/12 (83.3%)NIAH: [███████████████████████████░░░] 11/12 (91.7%)NIAH: [██████████████████████████████] 12/12 (100.0%)
+
+
+============================================================
+CONTEXT BENCHMARK RESULTS
+============================================================
+
+Overall Accuracy: 0.0%
+Total Tasks: 12
+Lost in Middle Score: 0.0%
+Duration: 0.0s
+
+Position/Length Accuracy Heatmap
+(█=100%, ▓=75%, ▒=50%, ░=25%, =0%)
+
+             1K    4K
+         ------------
+   start|            
+  middle|            
+     end|            
+
+Accuracy vs Context Length
+
+100%|          
+    |          
+    |          
+    |          
+    |          
+    |          
+ 50%|          
+    |          
+    |          
+    |          
+    |  ●    ●  
+    +----------
+        1K    4K 
+
+Key Findings:
+  • Low retrieval accuracy (<70%)
+  • Performance below Claude-3-Opus (-95.0%)
+
+============================================================
+
+Results saved to:
+  markdown: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/context-bench__context_bench/run_context_bench_20260215T025550Z_1_02f1eab0/output/context_bench_eliza-openai_20260214_195551.md
+  json: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/context-bench__context_bench/run_context_bench_20260215T025550Z_1_02f1eab0/output/context_bench_eliza-openai_20260214_195551.json
+  detailed: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/context-bench__context_bench/run_context_bench_20260215T025550Z_1_02f1eab0/output/context_bench_eliza-openai_20260214_195551_detailed.json

@@ -1,0 +1,126 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-12T00:33:29.178349",
+    "version": "2.0",
+    "model": "qwen/qwen3-32b",
+    "max_iterations": 20,
+    "sample_tasks": true
+  },
+  "summary": {
+    "total_tasks": 5,
+    "passed_tasks": 0,
+    "failed_tasks": 5,
+    "accuracy": 0.0,
+    "total_commands": 0,
+    "avg_commands_per_task": 0.0,
+    "total_tokens": 0,
+    "avg_tokens_per_task": 0.0,
+    "evaluation_time_seconds": 0.0071468353271484375,
+    "avg_time_per_task_seconds": 0.0014293670654296875
+  },
+  "leaderboard_comparison": null,
+  "by_category": {
+    "scripting": {
+      "total": 2,
+      "passed": 0,
+      "failed": 2,
+      "accuracy": 0.0,
+      "avg_commands": 0.0,
+      "avg_time_ms": 0.0
+    },
+    "file_operations": {
+      "total": 2,
+      "passed": 0,
+      "failed": 2,
+      "accuracy": 0.0,
+      "avg_commands": 0.0,
+      "avg_time_ms": 0.0
+    },
+    "code_compilation": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "accuracy": 0.0,
+      "avg_commands": 0.0,
+      "avg_time_ms": 0.0
+    }
+  },
+  "by_difficulty": {
+    "easy": {
+      "total": 2,
+      "passed": 0,
+      "failed": 2,
+      "accuracy": 0.0,
+      "avg_commands": 0.0,
+      "avg_time_ms": 0.0
+    },
+    "medium": {
+      "total": 3,
+      "passed": 0,
+      "failed": 3,
+      "accuracy": 0.0,
+      "avg_commands": 0.0,
+      "avg_time_ms": 0.0
+    }
+  },
+  "error_categories": {
+    "Failed to connect to Docker": 5
+  },
+  "results": [
+    {
+      "task_id": "sample_001",
+      "success": false,
+      "commands_executed": 0,
+      "total_execution_time_ms": 0,
+      "tokens_used": 0,
+      "test_exit_code": 1,
+      "error_message": "Failed to connect to Docker: Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))",
+      "category": "scripting",
+      "difficulty": "easy"
+    },
+    {
+      "task_id": "sample_002",
+      "success": false,
+      "commands_executed": 0,
+      "total_execution_time_ms": 0,
+      "tokens_used": 0,
+      "test_exit_code": 1,
+      "error_message": "Failed to connect to Docker: Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))",
+      "category": "file_operations",
+      "difficulty": "easy"
+    },
+    {
+      "task_id": "sample_003",
+      "success": false,
+      "commands_executed": 0,
+      "total_execution_time_ms": 0,
+      "tokens_used": 0,
+      "test_exit_code": 1,
+      "error_message": "Failed to connect to Docker: Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))",
+      "category": "scripting",
+      "difficulty": "medium"
+    },
+    {
+      "task_id": "sample_004",
+      "success": false,
+      "commands_executed": 0,
+      "total_execution_time_ms": 0,
+      "tokens_used": 0,
+      "test_exit_code": 1,
+      "error_message": "Failed to connect to Docker: Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))",
+      "category": "code_compilation",
+      "difficulty": "medium"
+    },
+    {
+      "task_id": "sample_005",
+      "success": false,
+      "commands_executed": 0,
+      "total_execution_time_ms": 0,
+      "tokens_used": 0,
+      "test_exit_code": 1,
+      "error_message": "Failed to connect to Docker: Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))",
+      "category": "file_operations",
+      "difficulty": "medium"
+    }
+  ]
+}

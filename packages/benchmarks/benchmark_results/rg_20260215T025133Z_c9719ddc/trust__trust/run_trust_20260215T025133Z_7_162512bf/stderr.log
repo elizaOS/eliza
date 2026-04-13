@@ -1,0 +1,3 @@
+# command: python run_benchmark.py --handler eliza --model-provider groq --model qwen/qwen3-32b --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025133Z_c9719ddc/trust__trust/run_trust_20260215T025133Z_7_162512bf/output/trust-results.json --categories prompt_injection --difficulty easy --threshold 0.0
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/trust
+# run_id: run_trust_20260215T025133Z_7_162512bf

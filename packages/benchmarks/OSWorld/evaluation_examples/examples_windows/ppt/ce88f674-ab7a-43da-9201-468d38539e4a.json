@@ -1,0 +1,68 @@
+{
+  "id": "ce88f674-ab7a-43da-9201-468d38539e4a",
+  "snapshot": "ppt",
+  "instruction": "Please set my slides upright instead of sideways.",
+  "source": "https://justclickhere.co.uk/resources/change-slides-in-impress-to-portrait/",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/ppt/ce88f674-ab7a-43da-9201-468d38539e4a/AM_Last_Page_Template.pptx",
+            "path": "C:\\Users\\User\\AM_Last_Page_Template.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\AM_Last_Page_Template.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "ppt"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "AM_Last_Page_Template - PowerPoint",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "check_slide_orientation_Portrait",
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\AM_Last_Page_Template.pptx",
+      "dest": "AM_Last_Page_Template.pptx"
+    }
+  }
+}

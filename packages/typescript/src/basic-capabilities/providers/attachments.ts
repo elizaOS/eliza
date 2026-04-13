@@ -74,7 +74,7 @@ export const attachmentsProvider: Provider = {
 
 		const recentMessagesData = await runtime.getMemories({
 			roomId,
-			count: conversationLength,
+			limit: conversationLength,
 			unique: false,
 			tableName: "messages",
 		});

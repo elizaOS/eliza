@@ -1,0 +1,51 @@
+{
+  "id": "09a37c51-e625-49f4-a514-20a773797a8a",
+  "snapshot": "libreoffice_writer",
+  "instruction": "I've received a request from my friend who asked for assistance in editing an image. The document with the requirements and the picture to be adjusted are on the Desktop. Please make the necessary modifications to the image as his instructions and save the edited picture as \"pic.jpg\" on the Desktop. Thank you!",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/09a37c51-e625-49f4-a514-20a773797a8a/requirement.docx",
+            "path": "/home/user/Desktop/requirment.docx"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/09a37c51-e625-49f4-a514-20a773797a8a/ChMkKV8wsR6IBfEtABYfc0Tgu9cAAA1lQHO_78AFh-L733.jpg",
+            "path": "/home/user/Desktop/ChMkKV8wsR6IBfEtABYfc0Tgu9cAAA1lQHO_78AFh-L733.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/requirment.docx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/09a37c51-e625-49f4-a514-20a773797a8a",
+  "related_apps": [
+    "libreoffice_writer",
+    "gimp",
+    "os"
+  ],
+  "evaluator": {
+    "func": "compare_images",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/09a37c51-e625-49f4-a514-20a773797a8a/pic.jpg",
+      "dest": "pic_Gold.jpg"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/pic.jpg",
+      "dest": "pic.jpg"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

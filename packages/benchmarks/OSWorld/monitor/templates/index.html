@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OSWorld Monitor</title>
+    <link rel="icon" href="/static/favicon.png" type="image/x-icon">
+    <link rel="shortcut icon" href="/static/favicon.png" type="image/x-icon">
+    <link rel="apple-touch-icon" href="/static/favicon.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/index.css">
+</head>
+<body>
+    <div class="layout-container">
+        <!-- Floating Config Button and Sidebar -->
+        <div class="config-sidebar" id="config-sidebar">
+            <div class="config-toggle-btn">
+                <i class="fas fa-cogs"></i>
+            </div>
+            <div class="config-panel">
+                <div class="config-header">
+                    <i class="fas fa-cogs"></i>
+                    <span>Configuration</span>
+                </div>
+                <div class="config-content">
+                    <div class="config-selector">
+                        <div class="selector-item">
+                            <label for="config-select">Select Configuration:</label>
+                            <select id="config-select" onchange="changeConfiguration()">
+                                <option value="">Loading configurations...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="config-list">
+                        <div class="config-item">
+                            <span class="config-label">Action Space:</span>
+                            <span class="config-value" id="action-space">Loading...</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">Observation:</span>
+                            <span class="config-value" id="observation-type">Loading...</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">Model:</span>
+                            <span class="config-value" id="model-name">Loading...</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">Max Steps:</span>
+                            <span class="config-value" id="max-steps">Loading...</span>
+                        </div>
+                        <div id="model-args" style="display: none;">
+                            <!-- Model args from args.json will be populated here -->
+                        </div>
+                    </div>
+                    <div class="config-actions">
+                        <button id="clear-cache-btn" class="btn btn-warning" onclick="clearCacheAndRefresh()">
+                            <i class="fas fa-broom"></i> Clear Cache
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            <h1>OSWorld Monitor <span class="system-status online">System Online</span></h1>
+            
+            <!-- Score Display Banner -->
+            <div class="score-banner">
+                <div class="score-content">
+                    <i class="fas fa-star"></i>
+                    <span class="score-label">Score:</span>
+                    <span id="score-display" class="score-value">Loading...</span>
+                </div>
+            </div>
+            
+            <div class="dashboard-stats">
+            <div class="stat-card">
+                <i class="fas fa-running"></i>
+                <span id="active-tasks">Loading...</span>
+                <div class="stat-label">Active</div>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-check-circle"></i>
+                <span id="completed-tasks">Loading...</span>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-exclamation-circle"></i>
+                <span id="error-tasks">Loading...</span>
+                <div class="stat-label">Error</div>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-tasks"></i>
+                <span id="total-tasks">Loading...</span>
+                <div class="stat-label">Total Tasks</div>
+            </div>
+        </div>
+            <div id="task-container">
+                <div class="loading-spinner">
+                    <div class="spinner"></div>
+                    <div>Loading task data...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/index.js"></script>
+</body>
+</html>

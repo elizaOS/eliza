@@ -1,0 +1,95 @@
+
+╔═══════════════════════════════════════════════════════════════════════╗
+║                  ElizaOS Tau-bench Benchmark Runner                   ║
+║           Tool-Agent-User Interaction in Real-World Domains           ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+📋 Configuration:
+   Domains: retail, airline
+   Data Path: ./benchmark-data/tau-bench
+   Output: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T074547Z_e1316a35/tau-bench__tau_bench/run_tau_bench_20260212T074547Z_1_4b79d8a2/output
+   Trials per Task: 1
+   Max Tasks: unlimited
+   Max Turns: 15
+   Timeout: 120000ms
+   Memory Tracking: ✅
+   LLM Judge: ❌
+   Mode: 🤖 Real LLM (ElizaOS)
+   Temperature: 0.0
+   Provider: groq
+   Trajectories: ❌ (art)
+
+🚀 Starting Tau-bench evaluation...
+
+[2m2026-02-12T07:45:50.115336Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:45:57.415889Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:02.065295Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:05.067857Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:06.444992Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:19.272576Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: EXECUTE_TOOL. Attempting param repair.[0m [[0m[1m[34mTauBenchAgent[0m][0m
+[2m2026-02-12T07:46:26.548457Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:36.266851Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:37.663227Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:39.246445Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:41.398709Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:42.761579Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:44.823659Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:45.541714Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:51.165945Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:46:53.833665Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:47:00.003657Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:47:01.559549Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:47:06.888334Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:47:10.322356Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:47:15.200963Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T07:47:17.353727Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+
+======================================================================
+📊 TAU-BENCH RESULTS SUMMARY
+======================================================================
+
+🎯 Overall Performance:
+   Status: NEEDS_IMPROVEMENT
+   Success Rate: 38.9%
+   Total Tasks: 18 (18 trials)
+   Passed: 7
+
+📈 Pass^k Reliability:
+   Pass^1: 38.9%
+   Pass^2: 0.0%
+   Pass^4: 0.0%
+   Pass^8: 0.0%
+
+⚡ Performance Metrics:
+   Tool Accuracy: 37.7%
+   Policy Compliance: 94.4%
+   Response Quality: 34.4%
+   Avg Duration: 5112ms
+
+🏆 Leaderboard Comparison:
+   Closest Model: gpt-4-turbo
+   Difference: 1.0% behind
+
+📌 Key Findings:
+   • Significant improvement needed in task completion
+
+💪 Strengths:
+   ✅ Strong policy compliance
+
+⚠️ Areas for Improvement:
+   • Low overall success rate
+   • Tool selection needs improvement
+   • Weak performance in airline domain
+
+💡 Recommendations:
+   • Focus on improving tool selection accuracy
+   • Improve parameter extraction from context
+
+======================================================================
+
+📁 Full results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T074547Z_e1316a35/tau-bench__tau_bench/run_tau_bench_20260212T074547Z_1_4b79d8a2/output/
+   - tau-bench-results.json (main results)
+   - tau-bench-summary.md (human-readable summary)
+   - tau-bench-detailed.json (per-task details)
+
+✅ Tau-bench evaluation completed successfully!

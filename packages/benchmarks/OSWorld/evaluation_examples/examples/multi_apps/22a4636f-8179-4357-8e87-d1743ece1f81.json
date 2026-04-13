@@ -1,0 +1,111 @@
+{
+  "id": "22a4636f-8179-4357-8e87-d1743ece1f81",
+  "snapshot": "chrome",
+  "instruction": "Please help me convert the file \"Meeting-Agenda.docx\" to a pdf file and upload to the folder 'meetings' in my google drive.",
+  "source": "https://marketplace.uipath.com/listings/merge-pdfs-from-gmail-email-attachments-and-upload-to-gogle-drive",
+  "config": [
+    {
+      "type": "googledrive",
+      "parameters": {
+        "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
+        "operation": [
+          "delete",
+          "mkdirs"
+        ],
+        "args": [
+          {
+            "query": "title = 'Meeting-Agenda.docx' or title = 'Meeting-Agenda.pdf'",
+            "trash": false
+          },
+          {
+            "path": [
+              "meetings"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://news.google.com",
+          "https://x.com",
+          "https://www.deepl.com"
+        ]
+      }
+    },
+    {
+      "type": "login",
+      "parameters": {
+        "settings_file": "evaluation_examples/settings/google/settings.json",
+        "platform": "googledrive"
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/22a4636f-8179-4357-8e87-d1743ece1f81/Meeting-Agenda.docx",
+            "path": "/home/user/Desktop/Meeting-Agenda.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "libreoffice",
+          "--writer",
+          "/home/user/Desktop/Meeting-Agenda.docx"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_writer",
+    "chrome"
+  ],
+  "evaluator": {
+    "func": "compare_pdfs",
+    "result": {
+      "type": "googledrive_file",
+      "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
+      "path": [
+        "meetings",
+        "Meeting-Agenda.pdf"
+      ],
+      "dest": "Meeting-Agenda.pdf"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/22a4636f-8179-4357-8e87-d1743ece1f81/gold-Meeting-Agenda.pdf",
+      "dest": "gold-Meeting-Agenda.pdf"
+    }
+  },
+  "proxy": true,
+  "fixed_ip": true,
+  "possibility_of_env_change": "low"
+}

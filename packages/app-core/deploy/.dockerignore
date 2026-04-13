@@ -1,0 +1,35 @@
+# Default dockerignore for `docker build` (copy to repo root as `.dockerignore`).
+# For CI / production local builds, use `eliza/packages/app-core/deploy/.dockerignore.ci` instead.
+
+.git
+.github
+.claude
+.devin
+.vscode
+.idea
+.env
+.env.local
+.env.*.local
+node_modules/.cache
+apps/app/android
+apps/app/electrobun
+apps/homepage
+apps/home
+apps/landing
+apps/chrome-extension
+apps/ui
+docs/
+coverage/
+dev.log
+install.sh
+install.ps1
+packaging/
+artifacts/
+deploy/
+
+# Other deploy Docker recipes — CI agent build only needs Dockerfile.ci
+eliza/packages/app-core/deploy/Dockerfile.cloud
+eliza/packages/app-core/deploy/Dockerfile.cloud-agent
+eliza/packages/app-core/deploy/Dockerfile.sandbox
+eliza/packages/app-core/deploy/Dockerfile.cloud.dockerignore
+!eliza/packages/app-core/deploy/Dockerfile.ci
