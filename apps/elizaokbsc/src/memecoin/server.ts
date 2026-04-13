@@ -147,14 +147,12 @@ function renderLandingPage(): string {
     .marquee-track { display:flex;width:max-content;gap:32px;animation:marquee 30s linear infinite; }
     .marquee-track span { font-size:12px;color:var(--yellow);white-space:nowrap;font-weight:400;letter-spacing:0.03em;opacity:0.85; }
     @keyframes marquee { 0%{transform:translateX(0);} 100%{transform:translateX(-50%);} }
-    .click-listen { position:absolute;top:50px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--yellow-muted);cursor:pointer;letter-spacing:0.1em;z-index:10;transition:color 0.3s,text-shadow 0.3s,opacity 0.4s;white-space:nowrap; }
-    .click-listen:hover { color:var(--yellow);text-shadow:0 0 20px var(--yellow-glow); }
-    .music-player { position:absolute;top:44px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;z-index:10;opacity:0;transition:opacity 0.4s;pointer-events:none;white-space:nowrap; }
-    .music-player.visible { opacity:1;pointer-events:all; }
-    .music-player button { background:none;border:none;cursor:pointer;color:var(--yellow);padding:4px;transition:color 0.3s,transform 0.3s,filter 0.3s;display:flex;align-items:center; }
-    .music-player button:hover { color:var(--yellow-soft);transform:scale(1.25);filter:drop-shadow(0 0 8px var(--yellow-glow)); }
-    .music-player .track-name { font-size:10px;color:var(--yellow-dim);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-    #yt-player { position:absolute;width:0;height:0;overflow:hidden; }
+    .audio-player { position:absolute;right:16px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:20px;z-index:10; }
+    @media(min-width:768px){.audio-player{right:32px;top:96px;transform:none;flex-direction:row;gap:20px;}}
+    .audio-player button { background:none;border:none;cursor:pointer;color:var(--yellow);padding:0;display:flex;align-items:center;transition:color 0.3s,transform 0.3s,filter 0.3s;outline:none;opacity:0.85; }
+    .audio-player button:hover { color:var(--yellow-soft);transform:scale(1.25);filter:drop-shadow(0 0 20px var(--yellow-glow));opacity:1; }
+    .audio-player button.waiting { animation:ap-pulse 2s ease-in-out infinite; }
+    @keyframes ap-pulse { 0%,100%{filter:drop-shadow(0 0 4px rgba(246,231,15,0.2));} 50%{filter:drop-shadow(0 0 16px var(--yellow-glow));transform:scale(1.15);} }
     .sound-bars { display:inline-flex;align-items:flex-end;gap:2px;height:14px; }
     .sound-bars span { display:inline-block;width:2px;background:var(--yellow);border-radius:1px;animation:soundbar 1.1s ease-in-out infinite; }
     .sound-bars span:nth-child(1){animation-delay:0s;height:40%;} .sound-bars span:nth-child(2){animation-delay:0.2s;height:75%;}
@@ -176,8 +174,8 @@ function renderLandingPage(): string {
       .bottom-title{font-size:20px;}
       .center-dots{margin-left:8px;gap:4px;}
       .center-dots span{width:3px;height:3px;}
-      .music-player{gap:8px;top:40px;}
-      .music-player .track-name{max-width:100px;font-size:8px;}
+      .audio-player{gap:14px;right:12px;}
+      .audio-player button svg{width:18px;height:18px;}
     }
     .bottom-title:hover { color:var(--yellow-soft);text-shadow:0 0 32px var(--yellow-glow),0 0 60px rgba(246,231,15,0.2);transform:scale(1.03); }
     .bottom-title.flash { animation:title-flash 0.5s ease-out; }
@@ -200,6 +198,7 @@ function renderLandingPage(): string {
   </style>
 </head>
 <body>
+  <audio id="bgm" autoplay loop preload="auto" src="/assets/bgm.mp3"></audio>
   <div class="video-bg" id="videoBg">
     <video id="vid-a" muted playsinline preload="auto"><source src="/assets/videobg.mp4" type="video/mp4" /></video>
     <video id="vid-b" muted playsinline preload="auto"><source src="/assets/videobg.mp4" type="video/mp4" /></video>
@@ -213,14 +212,9 @@ function renderLandingPage(): string {
       <span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot; elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;&nbsp;&nbsp;&nbsp;</span>
       <span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot; elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;&nbsp;&nbsp;&nbsp;</span>
     </div></div>
-    <div class="music-player" id="musicPlayer">
-      <div id="yt-player"></div>
-      <div class="sound-bars" id="soundBars"><span></span><span></span><span></span><span></span></div>
-      <button id="btnPrev" aria-label="Previous"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" x2="5" y1="19" y2="5"/></svg></button>
-      <button id="btnPlay" aria-label="Play/Pause"><svg id="iconPlay" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><svg id="iconPause" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
-      <span class="track-name" id="trackName">lofi / ambient</span>
-      <button id="btnNext" aria-label="Next"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/></svg></button>
-      <button id="btnShuffle" aria-label="Shuffle"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/></svg></button>
+    <div class="audio-player" id="audioPlayer">
+      <button id="ap-play" class="waiting" aria-label="Play/Pause"><svg id="ap-icon-play" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><svg id="ap-icon-pause" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
+      <button id="ap-mute" aria-label="Mute/Unmute"><svg id="ap-icon-vol" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg><svg id="ap-icon-muted" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg></button>
     </div>
     <div class="social-icons">
       <a href="https://github.com/elizaokbsc" target="_blank" rel="noopener noreferrer" aria-label="GitHub"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg></a>
@@ -237,7 +231,41 @@ function renderLandingPage(): string {
     (function(){var c=document.getElementById('grain-canvas'),x=c.getContext('2d'),W,H;function r(){W=c.width=innerWidth;H=c.height=innerHeight;}addEventListener('resize',r);r();function d(){var img=x.createImageData(W,H),dt=img.data;for(var i=0;i<dt.length;i+=4){var v=(Math.random()*255)|0;dt[i]=v;dt[i+1]=(v*0.88)|0;dt[i+2]=0;dt[i+3]=Math.random()<0.35?28:0;}x.putImageData(img,0,0);requestAnimationFrame(d);}d();})();
     (function(){var a=document.getElementById('vid-a'),b=document.getElementById('vid-b'),CF=1.8,act=a,stb=b;function swap(){stb.currentTime=0;stb.play();stb.style.opacity='1';act.style.opacity='0';setTimeout(function(){act.pause();act.currentTime=0;var t=act;act=stb;stb=t;},1300);}function tick(){if(act.duration&&!isNaN(act.duration)){if(act.duration-act.currentTime<=CF&&stb.paused)swap();}requestAnimationFrame(tick);}a.style.opacity='1';a.play().catch(function(){});b.load();requestAnimationFrame(tick);})();
     var vbg=document.getElementById('videoBg'),px=0,py=0,vs=1.15;function apV(){if(vbg)vbg.style.transform='scale('+vs+') translate('+px+'px,'+py+'px)';}document.addEventListener('mousemove',function(e){var cx=innerWidth/2,cy=innerHeight/2;px=(e.clientX-cx)/cx*-14;py=(e.clientY-cy)/cy*-9;apV();});addEventListener('wheel',function(e){e.preventDefault();vs=Math.min(Math.max(vs+e.deltaY*0.001,1.1),1.5);apV();},{passive:false});
-    var TRACKS=[{id:'jfKfPfyJRdk',name:'lofi hip hop radio'},{id:'5qap5aO4i9A',name:'lofi chill beats'},{id:'DWcJFNfaw9c',name:'coding lo-fi'},{id:'rUxyKA_-grg',name:'synthwave / retrowave'},{id:'n61ULEU7CO0',name:'dark ambient'}];var cur=0,yt=null,rdy=false,pl=false,ld=false;var cl=document.getElementById('clickListen'),mp=document.getElementById('musicPlayer'),sb=document.getElementById('soundBars'),tn=document.getElementById('trackName'),bp=document.getElementById('btnPlay'),bpv=document.getElementById('btnPrev'),bn=document.getElementById('btnNext'),bs=document.getElementById('btnShuffle'),ip=document.getElementById('iconPlay'),ipa=document.getElementById('iconPause');function ldYT(){if(ld)return;ld=true;var s=document.createElement('script');s.src='https://www.youtube.com/iframe_api';document.head.appendChild(s);}window.onYouTubeIframeAPIReady=function(){yt=new YT.Player('yt-player',{height:'0',width:'0',videoId:TRACKS[cur].id,playerVars:{autoplay:1,controls:0},events:{onReady:function(e){rdy=true;e.target.playVideo();pl=true;uUI();},onStateChange:function(e){if(e.data===YT.PlayerState.PLAYING){pl=true;uUI();}if(e.data===YT.PlayerState.PAUSED){pl=false;uUI();}if(e.data===YT.PlayerState.ENDED)pT(cur+1);}}});};function uUI(){tn.textContent=TRACKS[cur].name;ip.style.display=pl?'none':'block';ipa.style.display=pl?'block':'none';sb.querySelectorAll('span').forEach(function(s){s.style.animationPlayState=pl?'running':'paused';});}function pT(i){cur=((i%TRACKS.length)+TRACKS.length)%TRACKS.length;if(rdy){yt.loadVideoById(TRACKS[cur].id);pl=true;uUI();}}if(cl){cl.addEventListener('click',function(){ldYT();cl.style.opacity='0';cl.style.pointerEvents='none';setTimeout(function(){cl.style.display='none';},400);mp.classList.add('visible');});}bp.addEventListener('click',function(){if(!rdy)return;pl?yt.pauseVideo():yt.playVideo();});bn.addEventListener('click',function(){pT(cur+1);});bpv.addEventListener('click',function(){pT(cur-1);});bs.addEventListener('click',function(){pT(Math.floor(Math.random()*TRACKS.length));});
+    (function(){
+      var a=document.getElementById('bgm');a.volume=0.35;
+      var playing=false,muted=false,unlocked=false,userStopped=false;
+      var pb=document.getElementById('ap-play'),mb=document.getElementById('ap-mute');
+      var iP=document.getElementById('ap-icon-play'),iPa=document.getElementById('ap-icon-pause');
+      var iV=document.getElementById('ap-icon-vol'),iM=document.getElementById('ap-icon-muted');
+      function u(){
+        iP.style.display=playing?'none':'block';iPa.style.display=playing?'block':'none';
+        iV.style.display=muted?'none':'block';iM.style.display=muted?'block':'none';
+        pb.classList.toggle('waiting',!unlocked&&!playing);
+      }
+      function startFresh(){
+        if(playing||userStopped)return;
+        var fresh=new Audio('/assets/bgm.mp3');fresh.loop=true;fresh.volume=0.35;fresh.muted=muted;
+        fresh.play().then(function(){
+          a.pause();a.parentNode&&a.parentNode.removeChild(a);
+          a=fresh;playing=true;unlocked=true;cleanEvents();u();
+          a.addEventListener('ended',function(){a.currentTime=0;a.play();});
+        }).catch(function(){});
+      }
+      pb.addEventListener('click',function(e){
+        e.stopPropagation();
+        if(playing){a.pause();playing=false;userStopped=true;}
+        else{userStopped=false;startFresh();if(!playing){a.play().catch(function(){});playing=true;unlocked=true;}}
+        u();
+      });
+      mb.addEventListener('click',function(e){e.stopPropagation();muted=!muted;a.muted=muted;u();});
+      var evts=['click','touchstart','touchend','pointerdown','pointerup','keydown'];
+      function boot(){if(unlocked||userStopped)return;startFresh();}
+      function cleanEvents(){evts.forEach(function(e){document.removeEventListener(e,boot,true);});}
+      evts.forEach(function(e){document.addEventListener(e,boot,true);});
+      a.play().then(function(){playing=true;unlocked=true;cleanEvents();u();}).catch(function(){});
+      setTimeout(function(){if(!playing&&!userStopped)a.play().then(function(){playing=true;unlocked=true;cleanEvents();u();}).catch(function(){});},500);
+      u();
+    })();
     /* Bottom title cycle */
     (function(){
       var titles=['elizaOK agent','alpha discovery','position building','value distribution'];
@@ -5182,6 +5210,43 @@ async function handleRequest(
     }
 
     sendJson(res, 404, { error: "Logo asset not found" });
+    return;
+  }
+
+  if (pathname === "/assets/bgm.mp3") {
+    const mp3Path = path.resolve(process.cwd(), "apps/elizaokbsc/assets/bgm.mp3");
+    try {
+      const stat = await import("fs/promises").then(m => m.stat(mp3Path));
+      const total = stat.size;
+      const rangeHeader = req.headers.range;
+      if (rangeHeader) {
+        const [startStr, endStr] = rangeHeader.replace("bytes=", "").split("-");
+        const start = parseInt(startStr, 10);
+        const end = endStr ? parseInt(endStr, 10) : Math.min(start + 500_000, total - 1);
+        const chunkSize = end - start + 1;
+        const { createReadStream } = await import("fs");
+        const stream = createReadStream(mp3Path, { start, end });
+        res.writeHead(206, {
+          "content-type": "audio/mpeg",
+          "content-range": `bytes ${start}-${end}/${total}`,
+          "accept-ranges": "bytes",
+          "content-length": String(chunkSize),
+          "cache-control": "public, max-age=86400",
+        });
+        stream.pipe(res);
+      } else {
+        const content = await readFile(mp3Path);
+        res.writeHead(200, {
+          "content-type": "audio/mpeg",
+          "accept-ranges": "bytes",
+          "content-length": String(total),
+          "cache-control": "public, max-age=86400",
+        });
+        res.end(content);
+      }
+    } catch {
+      sendJson(res, 404, { error: "Audio asset not found" });
+    }
     return;
   }
 
