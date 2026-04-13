@@ -161,7 +161,7 @@ export const recentMessagesProvider: Provider = {
 				runtime.getMemories({
 					tableName: "messages",
 					roomId,
-					count: conversationLength,
+					limit: conversationLength,
 					unique: false,
 					// Use compaction point to filter history
 					start: lastCompactionAt,

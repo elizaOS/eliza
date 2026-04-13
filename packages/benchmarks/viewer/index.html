@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ElizaOS Benchmark Viewer</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <h1>ElizaOS Benchmark Viewer</h1>
+        <p id="generated-at">Loading benchmark data...</p>
+      </header>
+
+      <section class="cards" id="summary-cards"></section>
+
+      <section class="panel">
+        <h2>Runs</h2>
+        <div class="controls">
+          <label>
+            Sort by
+            <select id="sort-by">
+              <option value="started_at">started_at</option>
+              <option value="agent">agent</option>
+              <option value="run_id">run_id</option>
+              <option value="benchmark_id">benchmark_id</option>
+              <option value="status">status</option>
+              <option value="score">score</option>
+              <option value="delta_to_high_score">delta_to_high_score</option>
+            </select>
+          </label>
+          <label>
+            Order
+            <select id="sort-order">
+              <option value="desc">desc</option>
+              <option value="asc">asc</option>
+            </select>
+          </label>
+          <label>
+            Benchmark
+            <select id="filter-benchmark">
+              <option value="">all</option>
+            </select>
+          </label>
+          <label>
+            Status
+            <select id="filter-status">
+              <option value="">all</option>
+            </select>
+          </label>
+          <label>
+            Search
+            <input id="filter-search" type="search" placeholder="run id, model, agent..." />
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table id="runs-table">
+            <thead>
+              <tr>
+                <th data-sort="run_id">run_id</th>
+                <th data-sort="run_group_id">run_group_id</th>
+                <th data-sort="benchmark_id">benchmark</th>
+                <th data-sort="status">status</th>
+                <th data-sort="agent">agent</th>
+                <th data-sort="provider">provider</th>
+                <th data-sort="model">model</th>
+                <th data-sort="score">score</th>
+                <th data-sort="high_score_value">high_score</th>
+                <th data-sort="delta_to_high_score">delta</th>
+                <th data-sort="started_at">started_at</th>
+                <th data-sort="duration_seconds">duration_s</th>
+              </tr>
+            </thead>
+            <tbody id="runs-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Latest Scores</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>benchmark</th>
+                <th>run_id</th>
+                <th>agent</th>
+                <th>provider</th>
+                <th>model</th>
+                <th>score</th>
+                <th>high_score</th>
+                <th>delta</th>
+              </tr>
+            </thead>
+            <tbody id="latest-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

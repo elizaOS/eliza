@@ -1,0 +1,366 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "python",
+  "profile": "elevenlabs",
+  "timestamp": "1771194648498",
+  "iterations": 1,
+  "datasetName": "single-audio",
+  "datasetPath": null,
+  "sampleCount": 1,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 1260.899,
+      "responseTtftMs": 2609.587,
+      "responseTotalMs": 2609.611,
+      "speechToResponseStartMs": 3870.486,
+      "speechToVoiceStartUncachedMs": 4539.07,
+      "speechToVoiceStartCachedMs": 4387.58,
+      "voiceGenerationMs": 501.435,
+      "endToEndMs": 5557.921,
+      "voiceFirstTokenUncachedMs": 668.56,
+      "voiceFirstTokenCachedMs": 517.07,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 517.075,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond in one brief conversational sentence under 140 characters."
+      },
+      "outContext": {
+        "response": "Here\u2019s a brief example conversation with VoicebenchAgent (fast, precise): User: What\u2019s the typical latency for my microphone on your.",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [],
+        "modelInput": "initial code: a3bd0269-e2ab-00b5-f791-6d126c30f039\n<task>Generate dialog and actions for the character {{agentName}}.</task>\n\n<providers>\nPossible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.\n- **NONE**: Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.\n- **REPLY**: Replies to the current conversation with the text from the generated message. D...",
+        "modelOutputRaw": "<response>\n  <thought>Generate a concise example dialog for VoicebenchAgent demonstrating its fast, precise style about voice latency benchmarking.</thought>\n  <providers></providers>\n  <actions>REPLY</actions>\n  <text>Here\u2019s a brief example conversation with VoicebenchAgent (fast, precise):&#10;User: What\u2019s the typical latency for my microphone on your platform?&#10;VoicebenchAgent: The average latency is 12\u202fms, with a 95\u202f% confidence interval of \u00b12\u202fms.&#10;User: How can I reduce it further?&#10;VoicebenchAgent: Try using a USB audio interface and enable low\u2011latency mode in the settings.&#10;User: Thanks!&#10;VoicebenchAgent: You\u2019re welcome. Let me know if you need more benchmarks.</text>\n  <simple>true</simple>\n</response>",
+        "modelOutputClean": "REPLY Here\u2019s a brief example conversation with VoicebenchAgent (fast, precise):&#10;User: What\u2019s the typical latency for my microphone on your platform?&#10;VoicebenchAgent: The average latency is 12 ms, with a 95 % confidence interval of \u00b12 ms.&#10;User: How can I reduce it further?&#10;VoicebenchAgent: Try using a USB audio interface and enable low\u2011latency mode in the settings.&#10;User: Thanks!&#10;VoicebenchAgent: You\u2019re welcome. Let me know if you need more benchmarks. true",
+        "modelOutputHasThinkingTag": true,
+        "modelOutputHasXml": true,
+        "modelOutputThoughtTagCount": 2,
+        "modelOutputXmlTagCount": 12
+      },
+      "trajectory": {
+        "llmCallCount": 2,
+        "providerAccessCount": 15,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 2599
+          },
+          {
+            "model": "TEXT_SMALL",
+            "purpose": "action",
+            "latencyMs": 334
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "MESSAGE_SERVICE",
+            "purpose": "parsed_response"
+          }
+        ]
+      },
+      "ttsOutputBytes": 142569,
+      "ttsFirstSentenceUncachedBytes": 122507,
+      "ttsFirstSentenceCachedBytes": 149256,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 149256,
+      "responseCharCount": 133,
+      "responseWasCapped": true,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a brief example conversation with VoicebenchAgent (fast, precise): User: What\u2019s the typical latency for my microphone on your.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 628.113,
+      "responseTtftMs": 2618.656,
+      "responseTotalMs": 2618.684,
+      "speechToResponseStartMs": 3246.769,
+      "speechToVoiceStartUncachedMs": 3536.883,
+      "speechToVoiceStartCachedMs": 3582.212,
+      "voiceGenerationMs": 524.083,
+      "endToEndMs": 4724.23,
+      "voiceFirstTokenUncachedMs": 290.086,
+      "voiceFirstTokenCachedMs": 335.415,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 663.135,
+      "ttsCachedPipelineMs": 663.141,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond in one brief conversational sentence under 140 characters."
+      },
+      "outContext": {
+        "response": "User: \"Hi, I want to benchmark my mic latency.\" VoicebenchAgent (REPLY): \"Hello! I can run a quick latency benchmark. Please upload a.",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [],
+        "modelInput": "initial code: a3bd0269-e2ab-00b5-f791-6d126c30f039\n<task>Generate dialog and actions for the character {{agentName}}.</task>\n\n<providers>\nPossible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.\n- **NONE**: Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.\n- **REPLY**: Replies to the current conversation with the text from the generated message. D...",
+        "modelOutputRaw": "<response>\n    <thought>Generate a concise sample dialog for VoicebenchAgent with the corresponding REPLY actions.</thought>\n    <providers></providers>\n    <actions>REPLY</actions>\n    <text>\nUser: \"Hi, I want to benchmark my mic latency.\"\nVoicebenchAgent (REPLY): \"Hello! I can run a quick latency benchmark. Please upload a short audio clip or describe the test you\u2019d like to perform.\"\nUser: \"Here's a 3\u2011second recording.\"\nVoicebenchAgent (REPLY): \"Got it. Processing\u2026 Your measured latency is 115\u202fms. Would you like a detailed report or tips to reduce latency?\"\nUser: \"Give me the report.\"\nVoicebenchAgent (REPLY): \"Report: \u2022 Average latency: 115\u202fms \u2022 Peak latency: 132\u202fms \u2022 Recommended: Use a wired connection and lower buffer size. Anything else I can help with?\"\n    </text>\n    <simple>true</simple>\n</response>",
+        "modelOutputClean": "REPLY User: \"Hi, I want to benchmark my mic latency.\" VoicebenchAgent (REPLY): \"Hello! I can run a quick latency benchmark. Please upload a short audio clip or describe the test you\u2019d like to perform.\" User: \"Here's a 3\u2011second recording.\" VoicebenchAgent (REPLY): \"Got it. Processing\u2026 Your measured latency is 115 ms. Would you like a detailed report or tips to reduce latency?\" User: \"Give me the report.\" VoicebenchAgent (REPLY): \"Report: \u2022 Average latency: 115 ms \u2022 Peak latency: 132 ms \u2022 Recommended: Use a wired connection and lower buffer size. Anything else I can help with?\" true",
+        "modelOutputHasThinkingTag": true,
+        "modelOutputHasXml": true,
+        "modelOutputThoughtTagCount": 2,
+        "modelOutputXmlTagCount": 12
+      },
+      "trajectory": {
+        "llmCallCount": 2,
+        "providerAccessCount": 15,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 2615
+          },
+          {
+            "model": "TEXT_SMALL",
+            "purpose": "action",
+            "latencyMs": 314
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "MESSAGE_SERVICE",
+            "purpose": "parsed_response"
+          }
+        ]
+      },
+      "ttsOutputBytes": 177677,
+      "ttsFirstSentenceUncachedBytes": 51036,
+      "ttsFirstSentenceCachedBytes": 56469,
+      "ttsRemainderBytes": 94921,
+      "ttsCachedPipelineBytes": 151390,
+      "responseCharCount": 134,
+      "responseWasCapped": true,
+      "responseSegmentation": {
+        "firstSentence": "User: \"Hi, I want to benchmark my mic latency.\"",
+        "remainder": "VoicebenchAgent (REPLY): \"Hello! I can run a quick latency benchmark. Please upload a."
+      }
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 1260.899,
+      "avgResponseTtftMs": 2609.587,
+      "avgResponseTotalMs": 2609.611,
+      "avgSpeechToResponseStartMs": 3870.486,
+      "avgSpeechToVoiceStartUncachedMs": 4539.07,
+      "avgSpeechToVoiceStartCachedMs": 4387.58,
+      "avgVoiceGenerationMs": 501.435,
+      "avgEndToEndMs": 5557.921,
+      "avgVoiceFirstTokenUncachedMs": 668.56,
+      "avgVoiceFirstTokenCachedMs": 517.07,
+      "avgTtsCachedPipelineMs": 517.075,
+      "p95TranscriptionMs": 1260.899,
+      "p99TranscriptionMs": 1260.899,
+      "p95ResponseTtftMs": 2609.587,
+      "p99ResponseTtftMs": 2609.587,
+      "p95ResponseTotalMs": 2609.611,
+      "p99ResponseTotalMs": 2609.611,
+      "p95SpeechToResponseStartMs": 3870.486,
+      "p99SpeechToResponseStartMs": 3870.486,
+      "p95SpeechToVoiceStartUncachedMs": 4539.07,
+      "p99SpeechToVoiceStartUncachedMs": 4539.07,
+      "p95SpeechToVoiceStartCachedMs": 4387.58,
+      "p99SpeechToVoiceStartCachedMs": 4387.58,
+      "p95VoiceGenerationMs": 501.435,
+      "p99VoiceGenerationMs": 501.435,
+      "p95VoiceFirstTokenUncachedMs": 668.56,
+      "p99VoiceFirstTokenUncachedMs": 668.56,
+      "p95VoiceFirstTokenCachedMs": 517.07,
+      "p99VoiceFirstTokenCachedMs": 517.07,
+      "p95TtsCachedPipelineMs": 517.075,
+      "p99TtsCachedPipelineMs": 517.075,
+      "p95EndToEndMs": 5557.921,
+      "p99EndToEndMs": 5557.921,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.0
+    },
+    "non-simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 628.113,
+      "avgResponseTtftMs": 2618.656,
+      "avgResponseTotalMs": 2618.684,
+      "avgSpeechToResponseStartMs": 3246.769,
+      "avgSpeechToVoiceStartUncachedMs": 3536.883,
+      "avgSpeechToVoiceStartCachedMs": 3582.212,
+      "avgVoiceGenerationMs": 524.083,
+      "avgEndToEndMs": 4724.23,
+      "avgVoiceFirstTokenUncachedMs": 290.086,
+      "avgVoiceFirstTokenCachedMs": 335.415,
+      "avgTtsCachedPipelineMs": 663.141,
+      "p95TranscriptionMs": 628.113,
+      "p99TranscriptionMs": 628.113,
+      "p95ResponseTtftMs": 2618.656,
+      "p99ResponseTtftMs": 2618.656,
+      "p95ResponseTotalMs": 2618.684,
+      "p99ResponseTotalMs": 2618.684,
+      "p95SpeechToResponseStartMs": 3246.769,
+      "p99SpeechToResponseStartMs": 3246.769,
+      "p95SpeechToVoiceStartUncachedMs": 3536.883,
+      "p99SpeechToVoiceStartUncachedMs": 3536.883,
+      "p95SpeechToVoiceStartCachedMs": 3582.212,
+      "p99SpeechToVoiceStartCachedMs": 3582.212,
+      "p95VoiceGenerationMs": 524.083,
+      "p99VoiceGenerationMs": 524.083,
+      "p95VoiceFirstTokenUncachedMs": 290.086,
+      "p99VoiceFirstTokenUncachedMs": 290.086,
+      "p95VoiceFirstTokenCachedMs": 335.415,
+      "p99VoiceFirstTokenCachedMs": 335.415,
+      "p95TtsCachedPipelineMs": 663.141,
+      "p99TtsCachedPipelineMs": 663.141,
+      "p95EndToEndMs": 4724.23,
+      "p99EndToEndMs": 4724.23,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.0
+    }
+  }
+}

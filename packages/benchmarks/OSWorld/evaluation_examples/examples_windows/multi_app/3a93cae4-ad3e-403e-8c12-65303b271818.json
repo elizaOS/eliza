@@ -1,0 +1,162 @@
+{
+  "id": "3a93cae4-ad3e-403e-8c12-65303b271818",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Could you please add a two-hour lecture slot to my weekly course timetable, scheduled for every Wednesday at 12 PM? It seems I accidentally omitted that when setting up my schedule. I'd appreciate you taking care of that for me. Thanks!",
+  "source": "authors",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": "mkdir \"C:\\Users\\User\\Desktop\\students work\" \"C:\\Users\\User\\Desktop\\Lec powerpoint\" \"C:\\Users\\User\\Desktop\\Grammar test\" \"C:\\Users\\User\\Desktop\\Grammar rules PDF\" C:\\Users\\User\\Desktop\\FDI",
+        "shell": true
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "C:\\Users\\User\\Desktop\\students work\\Zheng He .docx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/Zheng%20He%20.docx"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\students work\\cassie.docx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/cassie.docx"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\students work\\case study.docx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/case%20study.docx"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Grammar rules PDF\\irregularrules02.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/irregularrules02.pdf"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Grammar rules PDF\\irregularrules01.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/irregularrules01.pdf"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Grammar rules PDF\\fragrules.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/fragrules.pdf"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Grammar rules PDF\\csfsrules.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/csfsrules.pdf"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Public Lecture Teaching Plan.docx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/Public%20Lecture%20Teaching%20Plan.docx"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Course Timetable.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/Course%20Timetable.xlsx"
+          }
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/3a93cae4-ad3e-403e-8c12-65303b271818",
+  "related_apps": [
+    "os",
+    "excel"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Course Timetable - Excel",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5); pyautogui.press(\"enter\");"
+          ]
+        }
+      }
+    ],
+    "func": [
+      "compare_table",
+      "compare_table",
+      "compare_table"
+    ],
+    "result": [
+      {
+        "type": "vm_file",
+        "path": "C:\\Users\\User\\Desktop\\Course Timetable.xlsx",
+        "dest": "Course Timetable.xlsx"
+      },
+      {
+        "type": "vm_file",
+        "path": "C:\\Users\\User\\Desktop\\Course Timetable.xlsx",
+        "dest": "Course Timetable.xlsx"
+      },
+      {
+        "type": "vm_file",
+        "path": "C:\\Users\\User\\Desktop\\Course Timetable.xlsx",
+        "dest": "Course Timetable.xlsx"
+      }
+    ],
+    "expected": [
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/3a93cae4-ad3e-403e-8c12-65303b271818/Course%20Timetable%20Gold.xlsx",
+        "dest": "Course Timetable gold.xlsx"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/3a93cae4-ad3e-403e-8c12-65303b271818/Course%20Timetable%20Gold%202.xlsx",
+        "dest": "Course Timetable gold 2.xlsx"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/3a93cae4-ad3e-403e-8c12-65303b271818/Course%20Timetable%20Gold%203.xlsx",
+        "dest": "Course Timetable gold 3.xlsx"
+      }
+    ],
+    "options": [
+      {
+        "rules": [
+          {
+            "type": "sheet_data",
+            "sheet_idx0": "RNSheet1",
+            "sheet_idx1": "ENSheet1",
+            "ignore_case": true
+          }
+        ]
+      },
+      {
+        "rules": [
+          {
+            "type": "sheet_data",
+            "sheet_idx0": "RNSheet1",
+            "sheet_idx1": "ENSheet1",
+            "ignore_case": true
+          }
+        ]
+      },
+      {
+        "rules": [
+          {
+            "type": "sheet_data",
+            "sheet_idx0": "RNSheet1",
+            "sheet_idx1": "ENSheet1",
+            "ignore_case": true
+          }
+        ]
+      }
+    ],
+    "conj": "or"
+  }
+}

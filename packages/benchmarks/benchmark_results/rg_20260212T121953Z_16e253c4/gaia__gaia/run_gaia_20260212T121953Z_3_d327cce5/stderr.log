@@ -1,0 +1,3 @@
+# command: /opt/miniconda3/bin/python -m elizaos_gaia.cli --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T121953Z_16e253c4/gaia__gaia/run_gaia_20260212T121953Z_3_d327cce5/output --provider groq --model qwen/qwen3-32b --dataset sample --max-questions 3 --quick-test
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/gaia
+# run_id: run_gaia_20260212T121953Z_3_d327cce5

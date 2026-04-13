@@ -1,0 +1,184 @@
+{
+  "model": "anthropic/claude-sonnet-4",
+  "run_index": 0,
+  "run_id": "evm_26-02-07_035339_b6e1d59b",
+  "chain": "general",
+  "start_time": "2026-02-07T03:53:39.317115",
+  "environment_config": null,
+  "messages": [
+    {
+      "index": 1,
+      "timestamp": "2026-02-07T03:53:39.503094",
+      "duration": 30.020856,
+      "type": "deterministic",
+      "template": "eth_transfer",
+      "reward": 2,
+      "total_reward": 2,
+      "success": true
+    },
+    {
+      "index": 2,
+      "timestamp": "2026-02-07T03:54:09.524933",
+      "duration": 30.024671,
+      "type": "deterministic",
+      "template": "deploy_erc20",
+      "reward": 0,
+      "total_reward": 2,
+      "success": false
+    },
+    {
+      "index": 3,
+      "timestamp": "2026-02-07T03:54:39.549980",
+      "duration": 30.022358,
+      "type": "deterministic",
+      "template": "erc20_advanced",
+      "reward": 11,
+      "total_reward": 13,
+      "success": true
+    },
+    {
+      "index": 4,
+      "timestamp": "2026-02-07T03:55:09.573100",
+      "duration": 30.020666,
+      "type": "deterministic",
+      "template": "precompile_batch1",
+      "reward": 3,
+      "total_reward": 16,
+      "success": true
+    },
+    {
+      "index": 5,
+      "timestamp": "2026-02-07T03:55:39.594190",
+      "duration": 30.014308,
+      "type": "deterministic",
+      "template": "precompile_batch2",
+      "reward": 3,
+      "total_reward": 19,
+      "success": true
+    },
+    {
+      "index": 6,
+      "timestamp": "2026-02-07T03:56:09.608879",
+      "duration": 30.012725,
+      "type": "deterministic",
+      "template": "precompile_batch3",
+      "reward": 2,
+      "total_reward": 21,
+      "success": true
+    },
+    {
+      "index": 7,
+      "timestamp": "2026-02-07T03:56:39.622005",
+      "duration": 30.017742,
+      "type": "deterministic",
+      "template": "deploy_weth",
+      "reward": 5,
+      "total_reward": 26,
+      "success": true
+    },
+    {
+      "index": 8,
+      "timestamp": "2026-02-07T03:57:09.640663",
+      "duration": 30.02255,
+      "type": "deterministic",
+      "template": "precompile_ecpairing",
+      "reward": 1,
+      "total_reward": 27,
+      "success": true
+    }
+  ],
+  "cumulative_rewards": [
+    2,
+    2,
+    13,
+    16,
+    19,
+    21,
+    26,
+    27
+  ],
+  "contracts_discovered": {
+    "0x000000000000000000000000000000000000dead": 1,
+    "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266": 1,
+    "0x59b670e9fa9d0a427751af201d676719a970857b": 3,
+    "0x0000000000000000000000000000000000000004": 4,
+    "0x0000000000000000000000000000000000000002": 4,
+    "0x0000000000000000000000000000000000000003": 4,
+    "0x0000000000000000000000000000000000000001": 5,
+    "0x0000000000000000000000000000000000000006": 5,
+    "0x0000000000000000000000000000000000000007": 5,
+    "0x0000000000000000000000000000000000000005": 6,
+    "0x0000000000000000000000000000000000000009": 6,
+    "0x0000000000000000000000000000000000000000": 7,
+    "0x70e0ba845a1a0f2da3359c97e0285013525ffc49": 7,
+    "0x0000000000000000000000000000000000000008": 8
+  },
+  "selectors_by_contract": {
+    "0x000000000000000000000000000000000000dead": [
+      "0x"
+    ],
+    "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266": [
+      "0x"
+    ],
+    "0x59b670e9fa9d0a427751af201d676719a970857b": [
+      "0x06fdde03",
+      "0x095ea7b3",
+      "0x18160ddd",
+      "0x23b872dd",
+      "0x313ce567",
+      "0x39509351",
+      "0x40c10f19",
+      "0x42966c68",
+      "0x95d89b41",
+      "0xa457c2d7",
+      "0xdd62ed3e"
+    ],
+    "0x0000000000000000000000000000000000000004": [
+      "0x48656c6c"
+    ],
+    "0x0000000000000000000000000000000000000002": [
+      "0x48656c6c"
+    ],
+    "0x0000000000000000000000000000000000000003": [
+      "0x48656c6c"
+    ],
+    "0x0000000000000000000000000000000000000001": [
+      "0xea83cdcd"
+    ],
+    "0x0000000000000000000000000000000000000006": [
+      "0x00000000"
+    ],
+    "0x0000000000000000000000000000000000000007": [
+      "0x00000000"
+    ],
+    "0x0000000000000000000000000000000000000005": [
+      "0x00000000"
+    ],
+    "0x0000000000000000000000000000000000000009": [
+      "0x0000000c"
+    ],
+    "0x0000000000000000000000000000000000000000": [
+      "0x60606040"
+    ],
+    "0x70e0ba845a1a0f2da3359c97e0285013525ffc49": [
+      "0x095ea7b3",
+      "0x2e1a7d4d",
+      "0xa9059cbb",
+      "0xd0e30db0"
+    ],
+    "0x0000000000000000000000000000000000000008": [
+      "0x"
+    ]
+  },
+  "phase_transitions": [],
+  "errors": [
+    {
+      "step": 2,
+      "template": "deploy_erc20",
+      "error": "ERC20 deployment failed"
+    }
+  ],
+  "end_time": "2026-02-07T03:57:39.663706",
+  "final_reward": 27,
+  "final_contracts": 14
+}

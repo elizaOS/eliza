@@ -1,0 +1,7 @@
+{
+  "require": [
+    {"signature": "account.usdClassTransfer.toPerp"},
+    {"signature": "perp.order.ALO:false:none"}
+  ],
+  "optional": []
+}

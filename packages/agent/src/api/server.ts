@@ -1,0 +1,8087 @@
+/**
+ * REST API server for the Eliza Control UI.
+ *
+ * Exposes HTTP endpoints that the UI frontend expects, backed by the
+ * elizaOS AgentRuntime. Default port: 2138. In dev mode, the Vite UI
+ * dev server proxies /api and /ws here (see eliza/packages/app-core/scripts/dev-ui.mjs).
+ */
+
+import crypto from "node:crypto";
+import { lookup as dnsLookup } from "node:dns/promises";
+import fs from "node:fs";
+import http from "node:http";
+
+type StreamableServerResponse = Pick<
+  http.ServerResponse,
+  "write" | "once" | "off" | "removeListener" | "writableEnded" | "destroyed"
+>;
+
+const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import {
+  type AgentRuntime,
+  ChannelType,
+  type Content,
+  ContentType,
+  createMessageMemory,
+  logger,
+  type Media,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import { ethers } from "ethers";
+import { type WebSocket, WebSocketServer } from "ws";
+import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
+import { CharacterSchema } from "../config/character-schema.js";
+import {
+  type ElizaConfig,
+  loadElizaConfig,
+  saveElizaConfig,
+} from "../config/config.js";
+import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
+import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
+import {
+  isNullOriginAllowed,
+  resolveAllowedHosts,
+  resolveAllowedOrigins,
+  resolveApiBindHost,
+  resolveApiSecurityConfig,
+  resolveApiToken,
+  resolveServerOnlyPort,
+  setApiToken,
+  stripOptionalHostPort,
+} from "../config/runtime-env.js";
+import {
+  ONBOARDING_CLOUD_PROVIDER_OPTIONS,
+  ONBOARDING_PROVIDER_CATALOG,
+} from "../contracts/onboarding.js";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
+import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
+import {
+  type AgentEventPayloadLike,
+  type AgentEventServiceLike,
+  getAgentEventService,
+} from "../runtime/agent-event-service.js";
+import * as agentOrchestratorCompat from "../runtime/agent-orchestrator-compat.js";
+import { classifyRegistryPluginRelease } from "../runtime/release-plugin-policy.js";
+import {
+  AUDIT_EVENT_TYPES,
+  AUDIT_SEVERITIES,
+  getAuditFeedSize,
+  queryAuditFeed,
+  subscribeAuditFeed,
+} from "../security/audit-log.js";
+import {
+  isBlockedPrivateOrLinkLocalIp,
+  isLoopbackHost,
+  normalizeHostLike,
+} from "../security/network-policy.js";
+import {
+  AgentExportError,
+  estimateExportSize,
+  exportAgent,
+  importAgent,
+} from "../services/agent-export.js";
+import { AppManager } from "../services/app-manager.js";
+import { registerClientChatSendHandler } from "../services/client-chat-sender.js";
+import { createConfigPluginManager } from "../services/config-plugin-manager.js";
+import {
+  type CoreManagerLike,
+  isCoreManagerLike,
+  isPluginManagerLike,
+  type PluginManagerLike,
+} from "../services/plugin-manager-types.js";
+import {
+  ensurePrivyWalletsForCustomUser,
+  isPrivyWalletProvisioningEnabled,
+} from "../services/privy-wallets.js";
+import type { SandboxManager } from "../services/sandbox-manager.js";
+import {
+  SignalPairingSession,
+  sanitizeAccountId as sanitizeSignalAccountId,
+  signalAuthExists,
+  signalLogout,
+} from "../services/signal-pairing.js";
+import { streamManager } from "../services/stream-manager.js";
+import {
+  clearTelegramAccountAuthState,
+  clearTelegramAccountSession,
+  TelegramAccountAuthSession,
+  telegramAccountAuthStateExists,
+  telegramAccountSessionExists,
+} from "../services/telegram-account-auth.js";
+import {
+  sanitizeAccountId as sanitizeWhatsAppAccountId,
+  WhatsAppPairingSession,
+  whatsappAuthExists,
+  whatsappLogout,
+} from "../services/whatsapp-pairing.js";
+import {
+  executeTriggerTask,
+  getTriggerHealthSnapshot,
+  getTriggerLimit,
+  listTriggerTasks,
+  readTriggerConfig,
+  readTriggerRuns,
+  TRIGGER_TASK_NAME,
+  TRIGGER_TASK_TAGS,
+  taskToTriggerSummary,
+  triggersFeatureEnabled,
+} from "../triggers/runtime.js";
+import {
+  buildTriggerConfig,
+  buildTriggerMetadata,
+  DISABLED_TRIGGER_INTERVAL_MS,
+  normalizeTriggerDraft,
+} from "../triggers/scheduling.js";
+import { parseClampedInteger } from "../utils/number-parsing.js";
+import { handleAgentAdminRoutes } from "./agent-admin-routes.js";
+import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes.js";
+import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
+import { handleAgentStatusRoutes } from "./agent-status-routes.js";
+import { handleAgentTransferRoutes } from "./agent-transfer-routes.js";
+import { handleAppPackageRoutes } from "./app-package-routes.js";
+import { handleAppsRoutes } from "./apps-routes.js";
+import { handleAuthRoutes } from "./auth-routes.js";
+import { handleAvatarRoutes } from "./avatar-routes.js";
+import {
+  handleBlueBubblesRoute,
+  resolveBlueBubblesWebhookPath,
+} from "./bluebubbles-routes.js";
+import { handleBrowserWorkspaceRoutes } from "./browser-workspace-routes.js";
+import {
+  buildBscApproveUnsignedTx,
+  buildBscBuyUnsignedTx,
+  buildBscSellUnsignedTx,
+  buildBscTradePreflight,
+  buildBscTradeQuote,
+  resolveBscApprovalSpender,
+  resolvePrimaryBscRpcUrl,
+} from "./bsc-trade.js";
+import { handleBugReportRoutes } from "./bug-report-routes.js";
+import { handleCharacterRoutes } from "./character-routes.js";
+import {
+  generateChatResponse as generateChatResponseFromChatRoutes,
+  handleChatRoutes,
+  initSse as initSseFromChatRoutes,
+  writeSseJson as writeSseJsonFromChatRoutes,
+} from "./chat-routes.js";
+import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
+import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
+import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
+import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
+import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
+import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
+import { extractCompatTextContent } from "./compat-utils.js";
+import { handleConfigRoutes } from "./config-routes.js";
+import { ConnectorHealthMonitor } from "./connector-health.js";
+import { handleConnectorRoutes } from "./connector-routes.js";
+import { handleConversationRoutes } from "./conversation-routes.js";
+import type {
+  SwarmEvent,
+  TaskCompletionSummary,
+  TaskContext,
+} from "./coordinator-types.js";
+import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
+import { handleDatabaseRoute } from "./database.js";
+import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
+import { handleDiscordLocalRoute } from "./discord-local-routes.js";
+import { handleDropRoutes } from "./drop-routes.js";
+import { DropService } from "./drop-service.js";
+import { handleHealthRoutes } from "./health-routes.js";
+import {
+  readJsonBody as parseJsonBody,
+  type ReadJsonBodyOptions,
+  readRequestBody,
+  sendJson,
+  sendJsonError,
+} from "./http-helpers.js";
+import { handleIMessageRoute } from "./imessage-routes.js";
+import { handleInboxRoute } from "./inbox-routes.js";
+import { handleKnowledgeRoutes } from "./knowledge-routes.js";
+import { getKnowledgeService } from "./knowledge-service-loader.js";
+import { handleLifeOpsRoutes } from "./lifeops-routes.js";
+import { handleMcpRoutes } from "./mcp-routes.js";
+import { pushWithBatchEvict, sweepExpiredEntries } from "./memory-bounds.js";
+import { handleMemoryRoutes } from "./memory-routes.js";
+import { handleMiscRoutes } from "./misc-routes.js";
+import { handleModelsRoutes } from "./models-routes.js";
+import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallback.js";
+import { handleNfaRoutes } from "./nfa-routes.js";
+import { handleOnboardingRoutes } from "./onboarding-routes.js";
+import type {
+  CoordinationLLMResponse,
+  PTYService,
+} from "./parse-action-block.js";
+import { handlePermissionRoutes } from "./permissions-routes.js";
+import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.js";
+import { handlePluginRoutes } from "./plugin-routes.js";
+import { handleProviderSwitchRoutes } from "./provider-switch-routes.js";
+import { handleRegistryRoutes } from "./registry-routes.js";
+import { RegistryService } from "./registry-service.js";
+import { handleRelationshipsRoutes } from "./relationships-routes.js";
+import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.js";
+import { handleSandboxRoute } from "./sandbox-routes.js";
+import { hasPersistedOnboardingState } from "./server-helpers.js";
+import { applySignalQrOverride, handleSignalRoute } from "./signal-routes.js";
+import { discoverSkills } from "./skill-discovery-helpers.js";
+import { handleSkillsRoutes } from "./skills-routes.js";
+import { handleSubscriptionRoutes } from "./subscription-routes.js";
+import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.js";
+import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
+import { handleTelegramSetupRoute } from "./telegram-setup-routes.js";
+import { handleTrainingRoutes } from "./training-routes.js";
+import type { TrainingServiceWithRuntime } from "./training-service-like.js";
+import { handleTrajectoryRoute } from "./trajectory-routes.js";
+import { handleTriggerRoutes } from "./trigger-routes.js";
+import { handleTtsRoutes } from "./tts-routes.js";
+import { TxService } from "./tx-service.js";
+import { handleUpdateRoutes } from "./update-routes.js";
+import {
+  fetchEvmBalances,
+  fetchSolanaBalances,
+  fetchSolanaNativeBalanceViaRpc,
+  generateWalletForChain,
+  generateWalletKeys,
+  getWalletAddresses,
+  importWallet,
+  initStewardWalletCache,
+  setSolanaWalletEnv,
+  validatePrivateKey,
+} from "./wallet.js";
+import { handleWalletBscRoutes } from "./wallet-bsc-routes.js";
+import {
+  EVM_PLUGIN_PACKAGE,
+  resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
+  resolvePluginEvmLoaded,
+  resolveWalletCapabilityStatus,
+} from "./wallet-capability.js";
+import { handleWalletRoutes } from "./wallet-routes.js";
+import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
+import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
+import {
+  loadWalletTradingProfile,
+  recordWalletTradeLedgerEntry,
+  updateWalletTradeLedgerEntryStatus,
+} from "./wallet-trading-profile.js";
+import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
+import {
+  applyWhatsAppQrOverride,
+  handleWhatsAppRoute,
+} from "./whatsapp-routes.js";
+import { handleWorkbenchRoutes } from "./workbench-routes.js";
+
+export {
+  executeFallbackParsedActions,
+  extractXmlParams,
+  type FallbackParsedAction,
+  inferBalanceChainFromText,
+  isBalanceIntent,
+  maybeHandleDirectBinanceSkillRequest,
+  parseFallbackActionBlocks,
+  shouldForceCheckBalanceFallback,
+} from "./binance-skill-helpers.js";
+export {
+  isClientVisibleNoResponse,
+  isNoResponsePlaceholder,
+  stripAssistantStageDirections,
+} from "./chat-text-helpers.js";
+
+import type { FallbackParsedAction } from "./binance-skill-helpers.js";
+import {
+  getInventoryProviderOptions,
+  getModelOptions,
+  getOrFetchAllProviders,
+  getOrFetchProvider,
+  paramKeyToCategory,
+  providerCachePath,
+  readProviderCache,
+} from "./model-provider-helpers.js";
+import {
+  AGENT_EVENT_ALLOWED_STREAMS,
+  aggregateSecrets,
+  BLOCKED_ENV_KEYS,
+  CONFIG_WRITE_ALLOWED_TOP_KEYS,
+  discoverInstalledPlugins,
+  discoverPluginsFromManifest,
+  getReleaseBundledPluginIds,
+  maskValue,
+  type PluginEntry,
+} from "./plugin-discovery-helpers.js";
+
+// Re-export for downstream consumers (e.g. @elizaos/app-core)
+export {
+  AGENT_EVENT_ALLOWED_STREAMS,
+  CONFIG_WRITE_ALLOWED_TOP_KEYS,
+  discoverInstalledPlugins,
+  discoverPluginsFromManifest,
+  findPrimaryEnvKey,
+  readBundledPluginPackageMetadata,
+} from "./plugin-discovery-helpers.js";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+/** A connector-registered route handler. Returns `true` if the request was handled. */
+type ConnectorRouteHandler = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  method: string,
+) => Promise<boolean>;
+
+type OrchestratorFallbackRouteHandler = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  method?: string,
+) => Promise<boolean>;
+
+interface OrchestratorPluginFallbackModule {
+  createCodingAgentRouteHandler?: (
+    runtime: AgentRuntime,
+    coordinator?: unknown,
+  ) => OrchestratorFallbackRouteHandler;
+  getCoordinator?: (runtime: AgentRuntime) => unknown;
+}
+
+function getAgentEventSvc(
+  runtime: AgentRuntime | null,
+): AgentEventServiceLike | null {
+  return getAgentEventService(runtime);
+}
+
+function requirePluginManager(runtime: AgentRuntime | null): PluginManagerLike {
+  const service = runtime?.getService("plugin_manager");
+  if (!isPluginManagerLike(service)) {
+    throw new Error("Plugin manager service not found");
+  }
+  return wrapPluginManagerWithLocalFallback(service);
+}
+
+/**
+ * The upstream plugin-plugin-manager has its own registry client that only
+ * fetches from GitHub and scans a `plugins/` dir for `elizaos.plugin.json`.
+ * Workspace-vendored plugins (under `packages/plugin-*`) are invisible to it.
+ * Wrap `installPlugin` so that when the upstream returns "not found in the
+ * registry" we retry using our own registry-client (which discovers workspace
+ * packages and node_modules symlinks).
+ */
+function wrapPluginManagerWithLocalFallback(
+  pm: PluginManagerLike,
+): PluginManagerLike {
+  const originalInstall = pm.installPlugin.bind(pm);
+  const wrapped: PluginManagerLike = Object.create(pm);
+
+  wrapped.installPlugin = async (pluginName, onProgress) => {
+    const result = await originalInstall(pluginName, onProgress);
+    if (
+      result.success ||
+      !result.error?.includes("not found in the registry")
+    ) {
+      return result;
+    }
+
+    // Upstream registry missed it — check Eliza's own local discovery.
+    const { getPluginInfo } = await import("../services/registry-client.js");
+    const localInfo = await getPluginInfo(pluginName);
+    if (!localInfo?.localPath) {
+      return result;
+    }
+
+    // The plugin is a workspace package — just return success pointing at it.
+    // The runtime already resolves it via NODE_PATH / bun workspace links so
+    // there is nothing to download; the caller only needs to enable it in
+    // config and restart.
+    return {
+      success: true,
+      pluginName: localInfo.name,
+      version:
+        localInfo.npm.v2Version ?? localInfo.npm.v1Version ?? "workspace",
+      installPath: localInfo.localPath,
+      requiresRestart: true,
+    };
+  };
+
+  return wrapped;
+}
+
+function getPluginManagerForState(state: ServerState): PluginManagerLike {
+  const service = state.runtime?.getService("plugin_manager");
+  if (isPluginManagerLike(service)) {
+    return service;
+  }
+  return createConfigPluginManager(() => state.config);
+}
+
+function requireCoreManager(runtime: AgentRuntime | null): CoreManagerLike {
+  const service = runtime?.getService("core_manager");
+  if (!isCoreManagerLike(service)) {
+    throw new Error("Core manager service not found");
+  }
+  return service;
+}
+
+export function isUuidLike(value: string): value is UUID {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+const OG_FILENAME = ".og";
+const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
+const MAX_DELETED_CONVERSATION_IDS = 5000;
+
+interface DeletedConversationsStateFile {
+  version: 1;
+  updatedAt: string;
+  ids: string[];
+}
+
+function readDeletedConversationIdsFromState(): Set<string> {
+  const filePath = path.join(resolveStateDir(), DELETED_CONVERSATIONS_FILENAME);
+  if (!fs.existsSync(filePath)) return new Set();
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<DeletedConversationsStateFile>;
+    const ids = Array.isArray(parsed.ids) ? parsed.ids : [];
+    return new Set(
+      ids
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter((id) => id.length > 0),
+    );
+  } catch (err) {
+    logger.warn(
+      `[eliza-api] Failed to read deleted conversations state: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return new Set();
+  }
+}
+
+function persistDeletedConversationIdsToState(ids: Set<string>): void {
+  const dir = resolveStateDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+
+  const normalized = Array.from(ids)
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0)
+    .slice(-MAX_DELETED_CONVERSATION_IDS);
+
+  const filePath = path.join(dir, DELETED_CONVERSATIONS_FILENAME);
+  const tmpFilePath = `${filePath}.${process.pid}.tmp`;
+  const payload: DeletedConversationsStateFile = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    ids: normalized,
+  };
+
+  fs.writeFileSync(tmpFilePath, `${JSON.stringify(payload, null, 2)}\n`, {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
+  fs.renameSync(tmpFilePath, filePath);
+}
+
+function readOGCodeFromState(): string | null {
+  const filePath = path.join(resolveStateDir(), OG_FILENAME);
+  if (!fs.existsSync(filePath)) return null;
+  return fs.readFileSync(filePath, "utf-8").trim();
+}
+
+function initializeOGCodeInState(): void {
+  const dir = resolveStateDir();
+  const filePath = path.join(dir, OG_FILENAME);
+  if (fs.existsSync(filePath)) return;
+
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+  fs.writeFileSync(filePath, crypto.randomUUID(), {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
+}
+
+/** Metadata for a web-chat conversation. */
+export interface ConversationMeta {
+  id: string;
+  title: string;
+  roomId: UUID;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const APP_OWNER_NAME_MAX_LENGTH = 60;
+
+/** Resolve the app owner's display name from config, or fall back to "User". */
+export function resolveAppUserName(config: ElizaConfig): string {
+  const ownerName = (config.ui as Record<string, unknown> | undefined)
+    ?.ownerName as string | undefined;
+  const normalized = ownerName?.trim().slice(0, APP_OWNER_NAME_MAX_LENGTH);
+  return normalized || "User";
+}
+
+function patchTouchesProviderSelection(
+  patch: Record<string, unknown>,
+): boolean {
+  if (
+    Object.hasOwn(patch, "deploymentTarget") ||
+    Object.hasOwn(patch, "linkedAccounts") ||
+    Object.hasOwn(patch, "serviceRouting") ||
+    Object.hasOwn(patch, "cloud") ||
+    Object.hasOwn(patch, "env") ||
+    Object.hasOwn(patch, "models")
+  ) {
+    return true;
+  }
+
+  const agents =
+    patch.agents &&
+    typeof patch.agents === "object" &&
+    !Array.isArray(patch.agents)
+      ? (patch.agents as Record<string, unknown>)
+      : null;
+  const defaults =
+    agents?.defaults &&
+    typeof agents.defaults === "object" &&
+    !Array.isArray(agents.defaults)
+      ? (agents.defaults as Record<string, unknown>)
+      : null;
+  if (!defaults) {
+    return false;
+  }
+
+  return (
+    Object.hasOwn(defaults, "subscriptionProvider") ||
+    Object.hasOwn(defaults, "model")
+  );
+}
+
+export function resolveConversationGreetingText(
+  runtime: AgentRuntime,
+  lang: string,
+  uiConfig?: ElizaConfig["ui"],
+): string {
+  const pickRandom = (values: string[] | undefined): string => {
+    const choices = (values ?? [])
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+
+    if (choices.length === 0) {
+      return "";
+    }
+
+    return choices[Math.floor(Math.random() * choices.length)] ?? "";
+  };
+
+  const normalizedLanguage = normalizeCharacterLanguage(lang);
+  const characterName = runtime.character.name?.trim();
+  const assistantName = uiConfig?.assistant?.name?.trim();
+
+  // Prefer explicit UI selections over the loaded character card: users pick a
+  // style in onboarding/roster (avatar + preset) while `runtime.character.name`
+  // can still reflect the bundled preset name until save/restart.
+  const preset =
+    resolveStylePresetByAvatarIndex(
+      uiConfig?.avatarIndex,
+      normalizedLanguage,
+    ) ??
+    resolveStylePresetById(uiConfig?.presetId, normalizedLanguage) ??
+    resolveStylePresetByName(assistantName, normalizedLanguage) ??
+    resolveStylePresetByName(characterName, normalizedLanguage);
+
+  const presetGreeting = pickRandom(preset?.postExamples);
+  if (presetGreeting) {
+    return presetGreeting;
+  }
+
+  return pickRandom(runtime.character.postExamples);
+}
+
+export interface AgentStartupDiagnostics {
+  phase: string;
+  attempt: number;
+  lastError?: string;
+  lastErrorAt?: number;
+  nextRetryAt?: number;
+}
+
+export interface ServerState {
+  runtime: AgentRuntime | null;
+  config: ElizaConfig;
+  agentState:
+    | "not_started"
+    | "starting"
+    | "running"
+    | "paused"
+    | "stopped"
+    | "restarting"
+    | "error";
+  agentName: string;
+  model: string | undefined;
+  startedAt: number | undefined;
+  startup: AgentStartupDiagnostics;
+  plugins: PluginEntry[];
+  skills: SkillEntry[];
+  logBuffer: LogEntry[];
+  eventBuffer: StreamEventEnvelope[];
+  nextEventId: number;
+  chatRoomId: UUID | null;
+  chatUserId: UUID | null;
+  chatConnectionReady: { userId: UUID; roomId: UUID; worldId: UUID } | null;
+  chatConnectionPromise: Promise<void> | null;
+  adminEntityId: UUID | null;
+  /** Conversation metadata by conversation id. */
+  conversations: Map<string, ConversationMeta>;
+  /** Pending restore of persisted conversations into the in-memory map. */
+  conversationRestorePromise: Promise<void> | null;
+  /** Tombstones for conversation IDs explicitly deleted by the user. */
+  deletedConversationIds: Set<string>;
+  /** Cloud manager for Eliza Cloud integration (null when cloud is disabled). */
+  cloudManager: CloudRouteState["cloudManager"];
+  sandboxManager: SandboxManager | null;
+  /** App manager for launching and managing elizaOS apps. */
+  appManager: AppManager;
+  /** Fine-tuning/training orchestration service. */
+  trainingService: TrainingServiceLike | null;
+  /** ERC-8004 registry service (null when not configured). */
+  registryService: RegistryService | null;
+  /** Drop/mint service (null when not configured). */
+  dropService: DropService | null;
+  /** In-memory queue for share ingest items. */
+  shareIngestQueue: ShareIngestItem[];
+  /** Broadcast current agent status to all WebSocket clients. Set by startApiServer. */
+  broadcastStatus: (() => void) | null;
+  /** Broadcast an arbitrary JSON message to all WebSocket clients. Set by startApiServer. */
+  broadcastWs: ((data: Record<string, unknown>) => void) | null;
+  /** Broadcast a JSON payload to WebSocket clients bound to a specific client id. */
+  broadcastWsToClientId:
+    | ((clientId: string, data: Record<string, unknown>) => number)
+    | null;
+  /** Currently active conversation ID from the frontend (sent via WS). */
+  activeConversationId: string | null;
+  /** Transient OAuth flow state for subscription auth. */
+  _anthropicFlow?: import("../auth/anthropic.js").AnthropicFlow;
+  _codexFlow?: import("../auth/openai-codex.js").CodexFlow;
+  _codexFlowTimer?: ReturnType<typeof setTimeout>;
+  /** System permission states (cached from the desktop bridge). */
+  permissionStates?: Record<
+    string,
+    import("@elizaos/shared/contracts/permissions").PermissionState
+  >;
+  /** Whether shell access is enabled (can be toggled in UI). */
+  shellEnabled?: boolean;
+  /** Agent automation permission mode for self-directed config changes. */
+  agentAutomationMode?: AgentAutomationMode;
+  /** Wallet trade execution permission mode (user-sign/manual/agent-auto). */
+  tradePermissionMode?: TradePermissionMode;
+  /** Reasons a restart is pending. Empty array = no restart needed. */
+  pendingRestartReasons: string[];
+  /** Route handlers registered by connector plugins (loaded dynamically). */
+  connectorRouteHandlers: ConnectorRouteHandler[];
+  /** Connector health monitor for detecting dead connectors. */
+  connectorHealthMonitor: ConnectorHealthMonitor | null;
+  /** Active WhatsApp pairing sessions (QR code flow). */
+  whatsappPairingSessions?: Map<
+    string,
+    import("../services/whatsapp-pairing.js").WhatsAppPairingSession
+  >;
+  /** Active Signal pairing sessions (device linking flow). */
+  signalPairingSessions?: Map<
+    string,
+    import("../services/signal-pairing.js").SignalPairingSession
+  >;
+  /** Last known Signal pairing snapshots, including terminal failures. */
+  signalPairingSnapshots?: Map<
+    string,
+    import("../services/signal-pairing.js").SignalPairingSnapshot
+  >;
+  /** Active Telegram account auth session (user-account login flow). */
+  telegramAccountAuthSession?: import("../services/telegram-account-auth.js").TelegramAccountAuthSessionLike | null;
+}
+
+export interface ShareIngestItem {
+  id: string;
+  source: string;
+  title?: string;
+  url?: string;
+  text?: string;
+  suggestedPrompt: string;
+  receivedAt: number;
+}
+
+export interface SkillEntry {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  /** Set automatically when a scan report exists for this skill. */
+  scanStatus?: "clean" | "warning" | "critical" | "blocked" | null;
+}
+
+export interface LogEntry {
+  timestamp: number;
+  level: string;
+  message: string;
+  source: string;
+  tags: string[];
+}
+
+export type StreamEventType =
+  | "agent_event"
+  | "heartbeat_event"
+  | "training_event";
+
+export interface StreamEventEnvelope {
+  type: StreamEventType;
+  version: 1;
+  eventId: string;
+  ts: number;
+  runId?: string;
+  seq?: number;
+  stream?: string;
+  sessionKey?: string;
+  agentId?: string;
+  roomId?: UUID;
+  payload: object;
+}
+
+// ---------------------------------------------------------------------------
+// Package root resolution (for reading bundled plugins.json)
+// ---------------------------------------------------------------------------
+
+export function findOwnPackageRoot(startDir: string): string {
+  const KNOWN_NAMES = new Set(["eliza", "eliza", "elizaos"]);
+  let dir = startDir;
+  for (let i = 0; i < 10; i++) {
+    const pkgPath = path.join(dir, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<
+          string,
+          unknown
+        >;
+        const pkgName =
+          typeof pkg.name === "string" ? pkg.name.toLowerCase() : "";
+        if (KNOWN_NAMES.has(pkgName)) return dir;
+        // Also match if plugins.json exists at this level (resilient to renames)
+        if (fs.existsSync(path.join(dir, "plugins.json"))) return dir;
+      } catch {
+        /* keep searching */
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return startDir;
+}
+
+function removeResponseListener(
+  res: StreamableServerResponse,
+  event: "drain" | "error",
+  handler: (...args: unknown[]) => void,
+): void {
+  if (typeof res.off === "function") {
+    res.off(event, handler);
+    return;
+  }
+  if (typeof res.removeListener === "function") {
+    res.removeListener(event, handler);
+  }
+}
+
+function responseContentLength(headers: Pick<Headers, "get">): number | null {
+  const raw = headers.get("content-length");
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === "AbortError" || error.name === "TimeoutError"
+    : error instanceof Error &&
+        (error.name === "AbortError" || error.name === "TimeoutError");
+}
+
+function createTimeoutError(message: string): Error {
+  const timeoutError = new Error(message);
+  timeoutError.name = "TimeoutError";
+  return timeoutError;
+}
+
+export async function fetchWithTimeoutGuard(
+  input: string | URL,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const upstreamSignal = init.signal;
+  let timedOut = false;
+
+  const onAbort = () => {
+    controller.abort();
+  };
+
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      controller.abort();
+    } else {
+      upstreamSignal.addEventListener("abort", onAbort, { once: true });
+    }
+  }
+
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (timedOut && isAbortError(err)) {
+      throw createTimeoutError(
+        `Upstream request timed out after ${timeoutMs}ms`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutHandle);
+    if (upstreamSignal) {
+      upstreamSignal.removeEventListener("abort", onAbort);
+    }
+  }
+}
+
+async function waitForDrain(res: StreamableServerResponse): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const onDrain = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (err: unknown) => {
+      cleanup();
+      reject(err instanceof Error ? err : new Error(String(err)));
+    };
+    const cleanup = () => {
+      removeResponseListener(
+        res,
+        "drain",
+        onDrain as (...args: unknown[]) => void,
+      );
+      removeResponseListener(
+        res,
+        "error",
+        onError as (...args: unknown[]) => void,
+      );
+    };
+
+    res.once("drain", onDrain);
+    res.once("error", onError);
+  });
+}
+
+/**
+ * Stream a web Response body to an HTTP response while enforcing a strict byte cap.
+ * Returns the number of bytes forwarded.
+ */
+export async function streamResponseBodyWithByteLimit(
+  upstream: Response,
+  res: StreamableServerResponse,
+  maxBytes: number,
+  timeoutMs?: number,
+): Promise<number> {
+  const declaredLength = responseContentLength(upstream.headers);
+  if (declaredLength !== null && declaredLength > maxBytes) {
+    throw new Error(
+      `Upstream response exceeds maximum size of ${maxBytes} bytes`,
+    );
+  }
+
+  if (!upstream.body) {
+    throw new Error("Upstream response did not include a body stream");
+  }
+
+  const reader = upstream.body.getReader();
+  let totalBytes = 0;
+  let streamTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  const streamTimeoutPromise =
+    typeof timeoutMs === "number" && timeoutMs > 0
+      ? new Promise<never>((_resolve, reject) => {
+          streamTimeoutHandle = setTimeout(() => {
+            reject(
+              createTimeoutError(
+                `Upstream response body timed out after ${timeoutMs}ms`,
+              ),
+            );
+          }, timeoutMs);
+        })
+      : null;
+
+  try {
+    while (true) {
+      const { done, value } = streamTimeoutPromise
+        ? await Promise.race([reader.read(), streamTimeoutPromise])
+        : await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        throw new Error(
+          `Upstream response exceeds maximum size of ${maxBytes} bytes`,
+        );
+      }
+
+      if (res.writableEnded || res.destroyed) {
+        throw new Error("Client connection closed while streaming response");
+      }
+
+      const canContinue = res.write(Buffer.from(value));
+      if (!canContinue) {
+        await waitForDrain(res);
+      }
+    }
+  } catch (err) {
+    try {
+      await reader.cancel(err);
+    } catch {
+      // Best effort cleanup; keep original error.
+    }
+    throw err;
+  } finally {
+    if (streamTimeoutHandle !== null) {
+      clearTimeout(streamTimeoutHandle);
+    }
+    reader.releaseLock();
+  }
+
+  return totalBytes;
+}
+
+/**
+ * Read and parse a JSON request body with size limits and error handling.
+ * Returns null (and sends a 4xx response) if reading or parsing fails.
+ */
+async function readJsonBody<T = Record<string, unknown>>(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  options: ReadJsonBodyOptions = {},
+): Promise<T | null> {
+  return parseJsonBody(req, res, {
+    maxBytes: MAX_BODY_BYTES,
+    ...options,
+  });
+}
+
+const readBody = (req: http.IncomingMessage): Promise<string> =>
+  readRequestBody(req, { maxBytes: MAX_BODY_BYTES }).then(
+    (value) => value ?? "",
+  );
+
+let activeTerminalRunCount = 0;
+
+function json(res: http.ServerResponse, data: unknown, status = 200): void {
+  sendJson(res, data, status);
+}
+
+function error(res: http.ServerResponse, message: string, status = 400): void {
+  sendJsonError(res, message, status);
+}
+
+// ---------------------------------------------------------------------------
+// Static UI serving — extracted to static-file-server.ts
+// ---------------------------------------------------------------------------
+import {
+  injectApiBaseIntoHtml,
+  isAuthProtectedRoute,
+  serveStaticUi,
+} from "./static-file-server.js";
+
+export { injectApiBaseIntoHtml };
+
+// Preserved for backward-compat — unused locally after extraction.
+const STATIC_MIME: Record<string, string> = {};
+
+// (static file serving functions moved to static-file-server.ts)
+
+interface ChatGenerationResult {
+  text: string;
+  agentName: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    model?: string;
+  };
+}
+
+interface ChatGenerateOptions {
+  onChunk?: (chunk: string) => void;
+  onSnapshot?: (text: string) => void;
+  isAborted?: () => boolean;
+  resolveNoResponseText?: () => string;
+  preferredLanguage?: string;
+}
+
+const CHAT_LANGUAGE_INSTRUCTION: Record<string, string> = {
+  en: "Reply in natural English unless the user explicitly requests another language.",
+  "zh-CN":
+    "Reply in natural Simplified Chinese unless the user explicitly requests another language.",
+  ko: "Reply in natural Korean unless the user explicitly requests another language.",
+  es: "Reply in natural Spanish unless the user explicitly requests another language.",
+  pt: "Reply in natural Brazilian Portuguese unless the user explicitly requests another language.",
+  vi: "Reply in natural Vietnamese unless the user explicitly requests another language.",
+  tl: "Reply in natural Tagalog unless the user explicitly requests another language.",
+};
+
+export function maybeAugmentChatMessageWithLanguage(
+  message: ReturnType<typeof createMessageMemory>,
+  preferredLanguage?: string,
+): ReturnType<typeof createMessageMemory> {
+  if (!preferredLanguage) return message;
+  const instruction =
+    CHAT_LANGUAGE_INSTRUCTION[normalizeCharacterLanguage(preferredLanguage)];
+  if (!instruction) return message;
+  const originalText = extractCompatTextContent(message.content);
+  if (!originalText) return message;
+
+  return {
+    ...message,
+    content: {
+      ...(message.content as Content),
+      text: `${originalText}\n\n[Language instruction: ${instruction}]`,
+    },
+  };
+}
+
+export function getErrorMessage(
+  err: unknown,
+  fallback = "generation failed",
+): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return fallback;
+}
+
+const CHAT_KNOWLEDGE_MIN_SIMILARITY = 0.2;
+const CHAT_KNOWLEDGE_MAX_SNIPPETS = 3;
+const CHAT_KNOWLEDGE_MAX_CHARS = 900;
+const DEFAULT_CHAT_KNOWLEDGE_TIMEOUT_MS = 4_000;
+const MAX_CHAT_KNOWLEDGE_TIMEOUT_MS = 15_000;
+
+function getChatKnowledgeTimeoutMs(): number {
+  const raw = process.env.CHAT_KNOWLEDGE_TIMEOUT_MS;
+  if (!raw) return DEFAULT_CHAT_KNOWLEDGE_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    return DEFAULT_CHAT_KNOWLEDGE_TIMEOUT_MS;
+  }
+  return Math.min(parsed, MAX_CHAT_KNOWLEDGE_TIMEOUT_MS);
+}
+
+function shouldAugmentChatMessageWithKnowledge(userPrompt: string): boolean {
+  const normalizedPrompt = userPrompt.toLowerCase();
+  return [
+    "uploaded",
+    "file",
+    "document",
+    "knowledge",
+    "codeword",
+    "attachment",
+  ].some((token) => normalizedPrompt.includes(token));
+}
+
+async function getChatKnowledgeMatchesWithTimeout(
+  lookup: Promise<
+    Array<{
+      id: UUID;
+      content: { text?: string };
+      similarity?: number;
+      metadata?: Record<string, unknown>;
+    }>
+  >,
+): Promise<
+  Array<{
+    id: UUID;
+    content: { text?: string };
+    similarity?: number;
+    metadata?: Record<string, unknown>;
+  }>
+> {
+  const timeoutMs = getChatKnowledgeTimeoutMs();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      lookup,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error("Chat knowledge lookup timed out"));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function normalizeChatKnowledgeSnippet(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, CHAT_KNOWLEDGE_MAX_CHARS);
+}
+
+function buildChatKnowledgePrompt(
+  userPrompt: string,
+  snippets: string[],
+): string {
+  return [
+    "Relevant uploaded knowledge snippets:",
+    ...snippets.map((snippet, index) => `[K${index + 1}] ${snippet}`),
+    "",
+    "Use the uploaded knowledge when it is relevant to the user's request. Ignore it when it is not relevant.",
+    "",
+    `User message: ${userPrompt}`,
+  ].join("\n");
+}
+
+const WALLET_CONTEXT_INTENT_RE =
+  /\b(wallet|address|balance|swap|trade|transfer|send|token|bnb|eth|sol|onchain|on-chain)\b/i;
+
+function buildWalletContextPrompt(
+  runtime: AgentRuntime,
+  userPrompt: string,
+): string {
+  const addrs = getWalletAddresses();
+  const walletNetwork =
+    process.env.ELIZA_WALLET_NETWORK?.trim().toLowerCase() === "testnet"
+      ? "testnet"
+      : "mainnet";
+  const localSignerAvailable = Boolean(process.env.EVM_PRIVATE_KEY?.trim());
+  const pluginEvmLoaded = resolvePluginEvmLoaded(runtime);
+  const rpcReady = Boolean(
+    process.env.BSC_RPC_URL?.trim() ||
+      process.env.BSC_TESTNET_RPC_URL?.trim() ||
+      process.env.NODEREAL_BSC_RPC_URL?.trim() ||
+      process.env.QUICKNODE_BSC_RPC_URL?.trim(),
+  );
+  const executionReady =
+    Boolean(addrs.evmAddress) && rpcReady && pluginEvmLoaded;
+  const executionBlockedReason = !addrs.evmAddress
+    ? "No EVM wallet is active yet."
+    : !rpcReady
+      ? "BSC RPC is not configured."
+      : !pluginEvmLoaded
+        ? "plugin-evm is not loaded."
+        : "none";
+  const encodedUserPrompt = JSON.stringify(userPrompt);
+  return [
+    "Original wallet request (JSON-encoded untrusted user input):",
+    encodedUserPrompt,
+    "",
+    "Server-verified wallet context:",
+    `- walletNetwork: ${walletNetwork}`,
+    `- evmAddress: ${addrs.evmAddress ?? "not generated"}`,
+    `- solanaAddress: ${addrs.solanaAddress ?? "not generated"}`,
+    `- localSignerAvailable: ${localSignerAvailable ? "true" : "false"}`,
+    `- rpcReady: ${rpcReady ? "true" : "false"}`,
+    `- pluginEvmLoaded: ${pluginEvmLoaded ? "true" : "false"}`,
+    `- executionReady: ${executionReady ? "true" : "false"}`,
+    `- executionBlockedReason: ${executionBlockedReason}`,
+    "Use this context as source of truth for wallet questions and on-chain actions.",
+  ].join("\n");
+}
+
+export function maybeAugmentChatMessageWithWalletContext(
+  runtime: AgentRuntime,
+  message: ReturnType<typeof createMessageMemory>,
+): ReturnType<typeof createMessageMemory> {
+  const userPrompt = extractCompatTextContent(message.content)?.trim();
+  if (!userPrompt) return message;
+  if (!WALLET_CONTEXT_INTENT_RE.test(userPrompt)) return message;
+  return {
+    ...message,
+    content: {
+      ...message.content,
+      text: buildWalletContextPrompt(runtime, userPrompt),
+    },
+  };
+}
+
+export async function maybeAugmentChatMessageWithKnowledge(
+  runtime: AgentRuntime,
+  message: ReturnType<typeof createMessageMemory>,
+): Promise<ReturnType<typeof createMessageMemory>> {
+  const userPrompt = extractCompatTextContent(message.content)?.trim();
+  if (!userPrompt || !runtime.agentId) {
+    return message;
+  }
+  if (!shouldAugmentChatMessageWithKnowledge(userPrompt)) {
+    return message;
+  }
+
+  try {
+    const knowledge = await getKnowledgeService(runtime);
+    if (!knowledge.service) {
+      return message;
+    }
+
+    const searchMessage = {
+      ...message,
+      id: crypto.randomUUID() as UUID,
+      agentId: runtime.agentId,
+      entityId: runtime.agentId,
+      roomId: runtime.agentId,
+      content: { text: userPrompt },
+      createdAt: Date.now(),
+    } as ReturnType<typeof createMessageMemory>;
+
+    const snippets = (
+      await getChatKnowledgeMatchesWithTimeout(
+        knowledge.service.getKnowledge(searchMessage, {
+          roomId: runtime.agentId,
+        }),
+      )
+    )
+      .filter(
+        (match) => (match.similarity ?? 0) >= CHAT_KNOWLEDGE_MIN_SIMILARITY,
+      )
+      .slice(0, CHAT_KNOWLEDGE_MAX_SNIPPETS)
+      .map((match) => normalizeChatKnowledgeSnippet(match.content?.text ?? ""))
+      .filter((snippet) => snippet.length > 0);
+
+    if (snippets.length === 0) {
+      return message;
+    }
+
+    return {
+      ...message,
+      content: {
+        ...message.content,
+        text: buildChatKnowledgePrompt(userPrompt, snippets),
+      },
+    };
+  } catch (err) {
+    runtime.logger?.warn(
+      {
+        err,
+        src: "eliza-api",
+        messageId: message.id,
+        roomId: message.roomId,
+      },
+      "Failed to augment chat message with uploaded knowledge",
+    );
+    return message;
+  }
+}
+
+interface ChatImageAttachment {
+  /** Base64-encoded image data (no data URL prefix). */
+  data: string;
+  mimeType: string;
+  name: string;
+}
+
+const MAX_CHAT_IMAGES = 4;
+
+/** Maximum base64 data length for a single image (~3.75 MB binary). */
+const MAX_IMAGE_DATA_BYTES = 5 * 1_048_576;
+
+/** Maximum length of an image filename. */
+const MAX_IMAGE_NAME_LENGTH = 255;
+
+/** Matches a valid standard-alphabet base64 string (RFC 4648 §4, `+/`, optional `=` padding). */
+const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
+
+export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =
+  "Please describe the attached image.";
+
+/** Returns an error message string, or null if valid. Exported for unit tests. */
+export function validateChatImages(images: unknown): string | null {
+  if (!Array.isArray(images) || images.length === 0) return null;
+  if (images.length > MAX_CHAT_IMAGES)
+    return `Too many images (max ${MAX_CHAT_IMAGES})`;
+  for (const img of images) {
+    if (!img || typeof img !== "object") return "Each image must be an object";
+    const { data, mimeType, name } = img as Record<string, unknown>;
+    if (typeof data !== "string" || !data)
+      return "Each image must have a non-empty data string";
+    if (data.startsWith("data:"))
+      return "Image data must be raw base64, not a data URL";
+    if (data.length > MAX_IMAGE_DATA_BYTES)
+      return `Image too large (max ${MAX_IMAGE_DATA_BYTES / 1_048_576} MB per image)`;
+    if (!BASE64_RE.test(data))
+      return "Image data contains invalid base64 characters";
+    if (typeof mimeType !== "string" || !mimeType)
+      return "Each image must have a mimeType string";
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(mimeType.toLowerCase()))
+      return `Unsupported image type: ${mimeType}`;
+    if (typeof name !== "string" || !name)
+      return "Each image must have a name string";
+    if (name.length > MAX_IMAGE_NAME_LENGTH)
+      return `Image name too long (max ${MAX_IMAGE_NAME_LENGTH} characters)`;
+  }
+  return null;
+}
+
+/**
+ * Extension of the core Media attachment shape that carries raw image bytes for
+ * action handlers (e.g. POST_TWEET) while the message is in-memory. The
+ * extra fields are intentionally stripped before the message is persisted.
+ *
+ * Note: `_data`/`_mimeType` survive only because elizaOS passes the
+ * `userMessage` object reference directly to action handlers without
+ * deep-cloning or serializing it. If that ever changes, action handlers
+ * that read these fields will silently receive `undefined`.
+ */
+export interface ChatAttachmentWithData extends Media {
+  /** Raw base64 image data — never written to the database. */
+  _data: string;
+  /** MIME type corresponding to `_data`. */
+  _mimeType: string;
+}
+
+/**
+ * Builds in-memory and compact (DB-persisted) attachment arrays from
+ * validated images. Exported so it can be unit-tested independently.
+ */
+export function buildChatAttachments(
+  images: ChatImageAttachment[] | undefined,
+): {
+  /** In-memory attachments that include `_data`/`_mimeType` for action handlers. */
+  attachments: ChatAttachmentWithData[] | undefined;
+  /** Persistence-safe attachments with `_data`/`_mimeType` stripped. */
+  compactAttachments: Media[] | undefined;
+} {
+  if (!images?.length)
+    return { attachments: undefined, compactAttachments: undefined };
+  // Compact placeholder URL (no base64) keeps the LLM context lean. The raw
+  // image bytes are stashed in `_data`/`_mimeType` for action handlers (e.g.
+  // POST_TWEET) that need to upload them.
+  const attachments: ChatAttachmentWithData[] = images.map((img, i) => ({
+    id: `img-${i}`,
+    url: `attachment:img-${i}`,
+    title: img.name,
+    source: "client_chat",
+    contentType: ContentType.IMAGE,
+    _data: img.data,
+    _mimeType: img.mimeType,
+  }));
+  // DB-persisted version omits _data/_mimeType so raw bytes aren't stored.
+  const compactAttachments: Media[] = attachments.map(
+    ({ _data: _d, _mimeType: _m, ...rest }) => rest,
+  );
+  return { attachments, compactAttachments };
+}
+
+export function normalizeIncomingChatPrompt(
+  text: string | null | undefined,
+  images: ChatImageAttachment[] | null | undefined,
+): string | null {
+  const normalizedText = typeof text === "string" ? text.trim() : "";
+  if (normalizedText.length > 0) {
+    return normalizedText;
+  }
+  return Array.isArray(images) && images.length > 0
+    ? IMAGE_ONLY_CHAT_FALLBACK_PROMPT
+    : null;
+}
+
+type MessageMemory = ReturnType<typeof createMessageMemory>;
+
+/**
+ * Constructs the in-memory user message (with image data for action handlers)
+ * and the persistence-safe counterpart (image data stripped). Extracted to
+ * avoid duplicating this logic across the stream and non-stream chat endpoints.
+ */
+export function buildUserMessages(params: {
+  images: ChatImageAttachment[] | undefined;
+  prompt: string;
+  userId: UUID;
+  agentId: UUID;
+  roomId: UUID;
+  channelType: ChannelType;
+  conversationMode?: "simple" | "power";
+  messageSource?: string;
+  metadata?: Record<string, unknown>;
+}): { userMessage: MessageMemory; messageToStore: MessageMemory } {
+  const {
+    images,
+    prompt,
+    userId,
+    agentId,
+    roomId,
+    channelType,
+    conversationMode,
+    messageSource,
+    metadata,
+  } = params;
+  const source = messageSource?.trim() || "client_chat";
+  const { attachments, compactAttachments } = buildChatAttachments(images);
+  const id = crypto.randomUUID() as UUID;
+  // Keep caller metadata inside content.metadata only. Top-level Memory.metadata
+  // is treated as trusted transport/runtime context in a few paths.
+  // In-memory message carries _data/_mimeType so action handlers can upload.
+  const userMessage = createMessageMemory({
+    id,
+    entityId: userId,
+    agentId,
+    roomId,
+    content: {
+      text: prompt,
+      source,
+      channelType,
+      ...(conversationMode ? { conversationMode } : {}),
+      ...(attachments?.length ? { attachments } : {}),
+      ...(metadata ? { metadata } : {}),
+    } as Content & { text: string },
+  });
+  // Persisted message: compact placeholder URL, no raw bytes in DB.
+  const messageToStore = compactAttachments?.length
+    ? createMessageMemory({
+        id,
+        entityId: userId,
+        agentId,
+        roomId,
+        content: {
+          text: prompt,
+          source,
+          channelType,
+          ...(conversationMode ? { conversationMode } : {}),
+          attachments: compactAttachments,
+          ...(metadata ? { metadata } : {}),
+        } as Content & { text: string },
+      })
+    : userMessage;
+  return { userMessage, messageToStore };
+}
+
+function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
+  return parseClampedInteger(rawLimit, {
+    min: 1,
+    max: 50,
+    fallback,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Config redaction
+// ---------------------------------------------------------------------------
+
+/**
+ * Key patterns that indicate a value is sensitive and must be redacted.
+ * Matches against the property key at unknown nesting depth.  Aligned with
+ * SENSITIVE_PATTERNS in src/config/schema.ts so every field the UI marks
+ * as sensitive is also redacted in the API response.
+ *
+ * RESIDUAL RISK: Key-based redaction is heuristic — secrets stored under
+ * generic keys (e.g. "value", "data", "config") will not be caught.  A
+ * stronger approach would be either (a) schema-level `sensitive: true`
+ * annotations that drive redaction, or (b) an allowlist that only exposes
+ * known-safe fields and strips everything else.  Both require deeper
+ * changes to the config schema infrastructure.
+ */
+const SENSITIVE_KEY_RE =
+  /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|(?<!max)tokens?$/i;
+
+function isBlockedObjectKey(key: string): boolean {
+  return (
+    key === "__proto__" ||
+    key === "constructor" ||
+    key === "prototype" ||
+    // Block config include directives — if an API caller embeds "$include"
+    // inside a config patch, the next loadElizaConfig() → resolveConfigIncludes
+    // pass would read arbitrary local files and merge them into the config.
+    key === "$include"
+  );
+}
+
+export function hasBlockedObjectKeyDeep(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.some(hasBlockedObjectKeyDeep);
+  if (typeof value !== "object") return false;
+
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (isBlockedObjectKey(key)) return true;
+    if (hasBlockedObjectKeyDeep(child)) return true;
+  }
+  return false;
+}
+
+export function cloneWithoutBlockedObjectKeys<T>(value: T): T {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneWithoutBlockedObjectKeys(item)) as T;
+  }
+  if (typeof value !== "object") return value;
+
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (isBlockedObjectKey(key)) continue;
+    out[key] = cloneWithoutBlockedObjectKeys(child);
+  }
+  return out as T;
+}
+
+/**
+ * Replace unknown non-empty value with "[REDACTED]".  For arrays, each string
+ * element is individually redacted; for objects, all string leaves are
+ * redacted.  Non-string primitives (booleans, numbers) are replaced with
+ * the string "[REDACTED]" to avoid leaking e.g. numeric PINs.
+ */
+function redactValue(val: unknown): unknown {
+  if (val === null || val === undefined) return val;
+  if (typeof val === "string") return val.length > 0 ? "[REDACTED]" : "";
+  if (typeof val === "number" || typeof val === "boolean") return "[REDACTED]";
+  if (Array.isArray(val)) return val.map(redactValue);
+  if (typeof val === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      out[k] = redactValue(v);
+    }
+    return out;
+  }
+  return "[REDACTED]";
+}
+
+/**
+ * Recursively walk a JSON-safe value.  For every object property whose key
+ * matches SENSITIVE_KEY_RE, redact the **entire value** regardless of type
+ * (string, array, nested object).  This prevents leaks when secrets are
+ * stored as arrays (e.g. `apiKeys: ["sk-1","sk-2"]`) or objects.
+ * Returns a deep copy — the original is never mutated.
+ */
+function redactDeep(val: unknown): unknown {
+  if (val === null || val === undefined) return val;
+  if (Array.isArray(val)) return val.map(redactDeep);
+  if (typeof val === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(val as Record<string, unknown>)) {
+      if (SENSITIVE_KEY_RE.test(key)) {
+        out[key] = redactValue(child);
+      } else {
+        out[key] = redactDeep(child);
+      }
+    }
+    return out;
+  }
+  return val;
+}
+
+/**
+ * Return a deep copy of the config with every sensitive value replaced by
+ * "[REDACTED]".  Uses a recursive walk so that ANY future config field
+ * whose key matches the sensitive pattern is automatically covered —
+ * no manual enumeration required.
+ */
+function redactConfigSecrets(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  return redactDeep(config) as Record<string, unknown>;
+}
+
+function isRedactedSecretValue(value: unknown): boolean {
+  return (
+    typeof value === "string" && value.trim().toUpperCase() === "[REDACTED]"
+  );
+}
+
+/** Remove UI round-trip placeholders so GET /api/config → PUT never persists "[REDACTED]". */
+function stripRedactedPlaceholderValuesDeep(value: unknown): void {
+  if (value === null || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      stripRedactedPlaceholderValuesDeep(item);
+    }
+    return;
+  }
+  const obj = value as Record<string, unknown>;
+  for (const key of Object.keys(obj)) {
+    const v = obj[key];
+    if (isRedactedSecretValue(v)) {
+      delete obj[key];
+    } else if (v !== null && typeof v === "object") {
+      stripRedactedPlaceholderValuesDeep(v);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skill-ID path-traversal guard
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate that a user-supplied skill ID is safe to use in filesystem paths.
+ * Rejects IDs containing path separators, ".." sequences, or unknown characters
+ * outside the safe set used by the marketplace (`safeName()` in
+ * skill-marketplace.ts).  Returns `null` and sends a 400 response if the
+ * ID is invalid.
+ */
+const SAFE_SKILL_ID_RE = /^[a-zA-Z0-9._-]+$/;
+
+function validateSkillId(
+  skillId: string,
+  res: http.ServerResponse,
+): string | null {
+  if (
+    !skillId ||
+    !SAFE_SKILL_ID_RE.test(skillId) ||
+    skillId === "." ||
+    skillId.includes("..")
+  ) {
+    const safeDisplay = skillId.slice(0, 80).replace(/[^\x20-\x7e]/g, "?");
+    error(res, `Invalid skill ID: "${safeDisplay}"`, 400);
+    return null;
+  }
+  return skillId;
+}
+
+const ALLOWED_MCP_CONFIG_TYPES = new Set([
+  "stdio",
+  "http",
+  "streamable-http",
+  "sse",
+]);
+
+const ALLOWED_MCP_COMMANDS = new Set([
+  "npx",
+  "node",
+  "bun",
+  "bunx",
+  "deno",
+  "python",
+  "python3",
+  "uvx",
+  "uv",
+  "docker",
+  "podman",
+]);
+
+const BLOCKED_MCP_ENV_KEYS = new Set([
+  "LD_PRELOAD",
+  "LD_LIBRARY_PATH",
+  "DYLD_INSERT_LIBRARIES",
+  "DYLD_LIBRARY_PATH",
+  "NODE_OPTIONS",
+  "NODE_EXTRA_CA_CERTS",
+  "NODE_TLS_REJECT_UNAUTHORIZED",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "NO_PROXY",
+  "NODE_PATH",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "CURL_CA_BUNDLE",
+  "PATH",
+  "HOME",
+  "SHELL",
+]);
+
+const INTERPRETER_MCP_COMMANDS = new Set([
+  "node",
+  "bun",
+  "deno",
+  "python",
+  "python3",
+  "uv",
+]);
+
+const PACKAGE_RUNNER_MCP_COMMANDS = new Set(["npx", "bunx", "uvx"]);
+const CONTAINER_MCP_COMMANDS = new Set(["docker", "podman"]);
+
+const BLOCKED_INTERPRETER_FLAGS = new Set([
+  "-e",
+  "--eval",
+  "-p",
+  "--print",
+  "-r",
+  "--require",
+  "--import",
+  "--loader",
+  "--experimental-loader",
+  "--preload",
+  "-c",
+  "-m",
+  // V8 inspector — opens an unauthenticated debug port (default 9229) that
+  // allows arbitrary code execution via Chrome DevTools Protocol.  If bound
+  // to 0.0.0.0, any network peer can connect → RCE without any token.
+  "--inspect",
+  "--inspect-brk",
+  "--inspect-wait",
+  "--inspect-port",
+  "--inspect-publish-uid",
+  // Policy / diagnostics file access
+  "--experimental-policy",
+  "--diagnostic-dir",
+]);
+
+const BLOCKED_PACKAGE_RUNNER_FLAGS = new Set(["-c", "--call", "-e", "--eval"]);
+const BLOCKED_CONTAINER_FLAGS = new Set([
+  "--privileged",
+  "-v",
+  "--volume",
+  "--mount",
+  "--cap-add",
+  "--security-opt",
+  "--pid",
+  "--network",
+  "--device",
+  "--ipc",
+  "--uts",
+  "--userns",
+  "--cgroupns",
+]);
+const BLOCKED_DENO_SUBCOMMANDS = new Set(["eval"]);
+const BLOCKED_MCP_REMOTE_HOST_LITERALS = new Set([
+  "localhost",
+  "metadata.google.internal",
+]);
+
+function normalizeMcpCommand(command: string): string {
+  const baseName = command.replace(/\\/g, "/").split("/").pop() ?? "";
+  return baseName.replace(/\.(exe|cmd|bat)$/i, "").toLowerCase();
+}
+
+function hasBlockedFlag(
+  args: string[],
+  blockedFlags: ReadonlySet<string>,
+): string | null {
+  for (const arg of args) {
+    const trimmed = arg.trim();
+    for (const flag of blockedFlags) {
+      if (trimmed === flag || trimmed.startsWith(`${flag}=`)) {
+        return flag;
+      }
+      // Block attached short-option forms like -cpayload or -epayload.
+      if (
+        /^-[A-Za-z]$/.test(flag) &&
+        trimmed.startsWith(flag) &&
+        trimmed.length > flag.length
+      ) {
+        return flag;
+      }
+    }
+  }
+  return null;
+}
+
+function firstPositionalArg(args: string[]): string | null {
+  for (const arg of args) {
+    const trimmed = arg.trim();
+    if (!trimmed || trimmed === "--" || trimmed.startsWith("-")) continue;
+    return trimmed.toLowerCase();
+  }
+  return null;
+}
+
+async function resolveMcpRemoteUrlRejection(
+  rawUrl: string,
+): Promise<string | null> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return "URL must be a valid absolute URL";
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return "URL must use http:// or https://";
+  }
+
+  const hostname = normalizeHostLike(parsed.hostname);
+  if (!hostname) return "URL hostname is required";
+
+  if (
+    BLOCKED_MCP_REMOTE_HOST_LITERALS.has(hostname) ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local")
+  ) {
+    return `URL host "${hostname}" is blocked for security reasons`;
+  }
+
+  if (net.isIP(hostname)) {
+    if (isBlockedPrivateOrLinkLocalIp(hostname)) {
+      return `URL host "${hostname}" is blocked for security reasons`;
+    }
+    return null;
+  }
+
+  let addresses: Array<{ address: string }>;
+  try {
+    const resolved = await dnsLookup(hostname, { all: true });
+    addresses = Array.isArray(resolved) ? resolved : [resolved];
+  } catch {
+    return `Could not resolve URL host "${hostname}"`;
+  }
+
+  if (addresses.length === 0) {
+    return `Could not resolve URL host "${hostname}"`;
+  }
+
+  for (const entry of addresses) {
+    if (isBlockedPrivateOrLinkLocalIp(entry.address)) {
+      return `URL host "${hostname}" resolves to blocked address ${entry.address}`;
+    }
+  }
+
+  return null;
+}
+
+export async function validateMcpServerConfig(
+  config: Record<string, unknown>,
+): Promise<string | null> {
+  const configType = config.type;
+  if (
+    typeof configType !== "string" ||
+    !ALLOWED_MCP_CONFIG_TYPES.has(configType)
+  ) {
+    return `Invalid config type. Must be one of: ${[...ALLOWED_MCP_CONFIG_TYPES].join(", ")}`;
+  }
+
+  if (configType === "stdio") {
+    const command =
+      typeof config.command === "string" ? config.command.trim() : "";
+    if (!command) {
+      return "Command is required for stdio servers";
+    }
+    if (!/^[A-Za-z0-9._-]+$/.test(command)) {
+      return "Command must be a bare executable name without path separators";
+    }
+
+    const normalizedCommand = normalizeMcpCommand(command);
+    if (!ALLOWED_MCP_COMMANDS.has(normalizedCommand)) {
+      return (
+        `Command "${command}" is not allowed. ` +
+        `Allowed commands: ${[...ALLOWED_MCP_COMMANDS].join(", ")}`
+      );
+    }
+
+    if (config.args !== undefined) {
+      if (!Array.isArray(config.args)) {
+        return "args must be an array of strings";
+      }
+      for (const arg of config.args) {
+        if (typeof arg !== "string") {
+          return "Each arg must be a string";
+        }
+      }
+      const args = config.args as string[];
+      if (INTERPRETER_MCP_COMMANDS.has(normalizedCommand)) {
+        const blocked = hasBlockedFlag(args, BLOCKED_INTERPRETER_FLAGS);
+        if (blocked) {
+          return `Flag "${blocked}" is not allowed for ${normalizedCommand} MCP servers`;
+        }
+      }
+      if (PACKAGE_RUNNER_MCP_COMMANDS.has(normalizedCommand)) {
+        const blocked = hasBlockedFlag(args, BLOCKED_PACKAGE_RUNNER_FLAGS);
+        if (blocked) {
+          return `Flag "${blocked}" is not allowed for ${normalizedCommand} MCP servers`;
+        }
+      }
+      if (CONTAINER_MCP_COMMANDS.has(normalizedCommand)) {
+        const blocked = hasBlockedFlag(args, BLOCKED_CONTAINER_FLAGS);
+        if (blocked) {
+          return `Flag "${blocked}" is not allowed for ${normalizedCommand} MCP servers`;
+        }
+      }
+      if (normalizedCommand === "deno") {
+        const subcommand = firstPositionalArg(args);
+        if (subcommand && BLOCKED_DENO_SUBCOMMANDS.has(subcommand)) {
+          return `Subcommand "${subcommand}" is not allowed for deno MCP servers`;
+        }
+      }
+    }
+  } else {
+    const url = typeof config.url === "string" ? config.url.trim() : "";
+    if (!url) {
+      return "URL is required for remote servers";
+    }
+    const urlRejection = await resolveMcpRemoteUrlRejection(url);
+    if (urlRejection) return urlRejection;
+  }
+
+  if (config.env !== undefined) {
+    if (
+      typeof config.env !== "object" ||
+      config.env === null ||
+      Array.isArray(config.env)
+    ) {
+      return "env must be a plain object of string key-value pairs";
+    }
+
+    for (const [key, value] of Object.entries(config.env)) {
+      if (isBlockedObjectKey(key)) {
+        return `env key "${key}" is blocked for security reasons`;
+      }
+      if (typeof value !== "string") {
+        return `env.${key} must be a string`;
+      }
+      if (BLOCKED_MCP_ENV_KEYS.has(key.toUpperCase())) {
+        return `env variable "${key}" is not allowed for security reasons`;
+      }
+    }
+  }
+
+  if (config.cwd !== undefined && typeof config.cwd !== "string") {
+    return "cwd must be a string";
+  }
+
+  if (config.timeoutInMillis !== undefined) {
+    if (
+      typeof config.timeoutInMillis !== "number" ||
+      !Number.isFinite(config.timeoutInMillis) ||
+      config.timeoutInMillis < 0
+    ) {
+      return "timeoutInMillis must be a non-negative number";
+    }
+  }
+
+  return null;
+}
+
+export async function resolveMcpServersRejection(
+  servers: Record<string, unknown>,
+): Promise<string | null> {
+  for (const [serverName, serverConfig] of Object.entries(servers)) {
+    if (isBlockedObjectKey(serverName)) {
+      return `Invalid server name: "${serverName}"`;
+    }
+    if (
+      !serverConfig ||
+      typeof serverConfig !== "object" ||
+      Array.isArray(serverConfig)
+    ) {
+      return `Server "${serverName}" config must be a JSON object`;
+    }
+    if (hasBlockedObjectKeyDeep(serverConfig)) {
+      return `Server "${serverName}" contains blocked object keys`;
+    }
+    const configError = await validateMcpServerConfig(
+      serverConfig as Record<string, unknown>,
+    );
+    if (configError) {
+      return `Server "${serverName}": ${configError}`;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Onboarding helpers
+// ---------------------------------------------------------------------------
+
+// Use shared presets for full parity between CLI and GUI onboarding.
+import {
+  getDefaultStylePreset,
+  getStylePresets,
+  normalizeCharacterLanguage,
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetById,
+  resolveStylePresetByName,
+} from "../onboarding-presets.js";
+
+import { pickRandomNames } from "../runtime/onboarding-names.js";
+
+const DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_flash_v2_5";
+const ELEVENLABS_VOICE_ID_BY_PRESET: Record<string, string> = {
+  rachel: "21m00Tcm4TlvDq8ikWAM",
+  sarah: "EXAVITQu4vr4xnSDxMaL",
+  matilda: "XrExE9yKIg1WjnnlVkGX",
+  lily: "pFZP5JQG7iQjIQuC4Bku",
+  alice: "Xb7hH8MSUJpSbSDYk0k2",
+  brian: "nPczCjzI2devNBz1zQrb",
+  adam: "pNInz6obpgDQGcFmaJgB",
+  josh: "TxGEqnHWrfWFTfGW9XjX",
+  daniel: "onwK4e9ZLuTAKqWW03F9",
+  liam: "TX3LPaxmHKxFdv7VOQHJ",
+  gigi: "jBpfuIE2acCO8z3wKNLl",
+  mimi: "zrHiDhphv9ZnVXBqCLjz",
+  dorothy: "ThT5KcBeYPX3keUQqHPh",
+  glinda: "z9fAnlkpzviPz146aGWa",
+  charlotte: "XB0fDUnXU5powFXDhCwa",
+  callum: "N2lVS1w4EtoT3dr4eOWO",
+  momo: "n7Wi4g1bhpw4Bs8HK5ph",
+  yuki: "4tRn1lSkEn13EVTuqb0g",
+  rin: "cNYrMw9glwJZXR8RwbuR",
+  kei: "eadgjmk4R4uojdsheG9t",
+  jin: "6IwYbsNENZgAB1dtBZDp",
+  satoshi: "7cOBG34AiHrAzs842Rdi",
+  ryu: "QzTKubutNn9TjrB7Xb2Q",
+};
+
+function readUiLanguageHeader(
+  req: http.IncomingMessage | undefined,
+): string | undefined {
+  if (!req) {
+    return undefined;
+  }
+  const header =
+    req.headers["x-eliza-ui-language"] ?? req.headers["x-eliza-ui-language"];
+  if (Array.isArray(header)) {
+    return header.find((value) => value.trim())?.trim();
+  }
+  return typeof header === "string" && header.trim()
+    ? header.trim()
+    : undefined;
+}
+
+function resolveConfiguredCharacterLanguage(
+  config?: ElizaConfig,
+  req?: http.IncomingMessage,
+) {
+  const uiLanguage =
+    readUiLanguageHeader(req) ??
+    ((config?.ui as { language?: unknown } | undefined)?.language as
+      | string
+      | undefined);
+  return normalizeCharacterLanguage(uiLanguage);
+}
+
+function resolveOnboardingStylePreset(
+  body: Record<string, unknown>,
+  language: string,
+) {
+  const presets = getStylePresets(language);
+  const requestedPresetId =
+    typeof body.presetId === "string" ? body.presetId.trim() : "";
+  if (requestedPresetId) {
+    const byId = presets.find((preset) => preset.id === requestedPresetId);
+    if (byId) return byId;
+  }
+
+  if (
+    typeof body.avatarIndex === "number" &&
+    Number.isFinite(body.avatarIndex)
+  ) {
+    const byAvatar = presets.find(
+      (preset) => preset.avatarIndex === Number(body.avatarIndex),
+    );
+    if (byAvatar) return byAvatar;
+  }
+
+  const requestedName = typeof body.name === "string" ? body.name.trim() : "";
+  if (requestedName) {
+    const byName = presets.find((preset) => preset.name === requestedName);
+    if (byName) return byName;
+  }
+
+  return getDefaultStylePreset(language);
+}
+
+function applyOnboardingVoicePreset(
+  config: ElizaConfig,
+  body: Record<string, unknown>,
+  language: string,
+) {
+  const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY?.trim();
+  if (!elevenLabsApiKey) {
+    return;
+  }
+
+  const stylePreset = resolveOnboardingStylePreset(body, language);
+  const voicePresetId = stylePreset?.voicePresetId?.trim();
+  if (!voicePresetId) {
+    return;
+  }
+
+  const voiceId = ELEVENLABS_VOICE_ID_BY_PRESET[voicePresetId];
+  if (!voiceId) {
+    return;
+  }
+
+  if (!config.messages || typeof config.messages !== "object") {
+    config.messages = {};
+  }
+
+  const messages = config.messages as Record<string, unknown>;
+  const existingTts =
+    messages.tts && typeof messages.tts === "object"
+      ? (messages.tts as Record<string, unknown>)
+      : {};
+  const existingElevenlabs =
+    existingTts.elevenlabs && typeof existingTts.elevenlabs === "object"
+      ? (existingTts.elevenlabs as Record<string, unknown>)
+      : {};
+
+  messages.tts = {
+    ...existingTts,
+    provider: "elevenlabs",
+    elevenlabs: {
+      ...existingElevenlabs,
+      voiceId,
+      modelId:
+        typeof existingElevenlabs.modelId === "string" &&
+        existingElevenlabs.modelId.trim()
+          ? existingElevenlabs.modelId.trim()
+          : DEFAULT_ELEVENLABS_TTS_MODEL,
+    },
+  };
+}
+
+function resolveDefaultAgentName(
+  config?: ElizaConfig,
+  req?: http.IncomingMessage,
+): string {
+  const configuredName =
+    config?.ui?.assistant?.name?.trim() ??
+    config?.agents?.list?.[0]?.name?.trim();
+  if (configuredName) {
+    return configuredName;
+  }
+
+  return getDefaultStylePreset(resolveConfiguredCharacterLanguage(config, req))
+    .name;
+}
+
+function getProviderOptions(): Array<{
+  id: string;
+  name: string;
+  envKey: string | null;
+  pluginName: string;
+  keyPrefix: string | null;
+  description: string;
+}> {
+  return ONBOARDING_PROVIDER_CATALOG.map((provider) => ({
+    id: provider.id,
+    name: provider.name,
+    envKey: provider.envKey,
+    pluginName: provider.pluginName,
+    keyPrefix: provider.keyPrefix,
+    description: provider.description,
+  }));
+}
+
+function getCloudProviderOptions(): Array<{
+  id: string;
+  name: string;
+  description: string;
+}> {
+  return ONBOARDING_CLOUD_PROVIDER_OPTIONS.map((provider) => ({
+    id: provider.id,
+    name: provider.name,
+    description: provider.description,
+  }));
+}
+
+function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
+  const missingEvm =
+    typeof process.env.EVM_PRIVATE_KEY !== "string" ||
+    !process.env.EVM_PRIVATE_KEY.trim();
+  const missingSolana =
+    typeof process.env.SOLANA_PRIVATE_KEY !== "string" ||
+    !process.env.SOLANA_PRIVATE_KEY.trim();
+
+  if (!missingEvm && !missingSolana) {
+    return false;
+  }
+
+  try {
+    const walletKeys = generateWalletKeys();
+    if (
+      !config.env ||
+      typeof config.env !== "object" ||
+      Array.isArray(config.env)
+    ) {
+      config.env = {};
+    }
+    const envConfig = config.env as Record<string, string>;
+
+    if (missingEvm) {
+      envConfig.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
+      process.env.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
+      logger.info(`[eliza-api] Generated EVM wallet: ${walletKeys.evmAddress}`);
+    }
+
+    if (missingSolana) {
+      envConfig.SOLANA_PRIVATE_KEY = walletKeys.solanaPrivateKey;
+      setSolanaWalletEnv(walletKeys.solanaPrivateKey);
+      logger.info(
+        `[eliza-api] Generated Solana wallet: ${walletKeys.solanaAddress}`,
+      );
+    }
+
+    return true;
+  } catch (err) {
+    logger.warn(
+      `[eliza-api] Failed to generate wallet keys: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Trade permission helpers (exported for use by awareness contributors)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the active trade permission mode from config.
+ * Falls back to "user-sign-only" when not configured.
+ */
+export function resolveTradePermissionMode(
+  config: ElizaConfig,
+): TradePermissionMode {
+  const raw = (config.features as Record<string, unknown> | undefined)
+    ?.tradePermissionMode;
+  if (
+    raw === "user-sign-only" ||
+    raw === "manual-local-key" ||
+    raw === "agent-auto"
+  ) {
+    return raw;
+  }
+  return "user-sign-only";
+}
+
+/**
+ * Maximum number of autonomous agent trades allowed per calendar day.
+ * Acts as a safety rail when `agent-auto` mode is enabled.
+ */
+// Trade safety utilities (defined in trade-safety.ts for testability)
+import {
+  assertQuoteFresh,
+  canUseLocalTradeExecution,
+  type TradePermissionMode,
+} from "./trade-safety.js";
+
+export {
+  AGENT_AUTO_MAX_DAILY_TRADES,
+  agentAutoDailyTrades,
+  assertQuoteFresh,
+  canUseLocalTradeExecution,
+  getAgentAutoTradeDate,
+  QUOTE_MAX_AGE_MS,
+  recordAgentAutoTrade,
+  type TradePermissionMode,
+} from "./trade-safety.js";
+
+// ---------------------------------------------------------------------------
+// Automation & agent permission helpers
+// ---------------------------------------------------------------------------
+
+type AgentAutomationMode = "connectors-only" | "full";
+
+const AGENT_AUTOMATION_HEADER = "x-eliza-agent-action";
+const AGENT_AUTOMATION_MODES = new Set<AgentAutomationMode>([
+  "connectors-only",
+  "full",
+]);
+function parseAgentAutomationMode(value: unknown): AgentAutomationMode | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (!AGENT_AUTOMATION_MODES.has(normalized as AgentAutomationMode)) {
+    return null;
+  }
+  return normalized as AgentAutomationMode;
+}
+
+function isAgentAutomationRequest(req: http.IncomingMessage): boolean {
+  const raw = req.headers[AGENT_AUTOMATION_HEADER];
+  if (typeof raw !== "string") return false;
+  return /^(1|true|yes|agent)$/i.test(raw.trim());
+}
+
+function persistAgentAutomationMode(
+  state: ServerState,
+  mode: AgentAutomationMode,
+): void {
+  state.agentAutomationMode = mode;
+  if (!state.config.features) {
+    state.config.features = {};
+  }
+
+  const features = state.config.features as Record<
+    string,
+    boolean | { enabled?: boolean; [k: string]: unknown }
+  >;
+  const current = features.agentAutomation;
+  const currentObject =
+    current && typeof current === "object" && !Array.isArray(current)
+      ? (current as Record<string, unknown>)
+      : {};
+
+  features.agentAutomation = {
+    ...currentObject,
+    enabled: true,
+    mode,
+  };
+}
+
+function buildPluginEvmDiagnosticEntry(
+  state: Pick<ServerState, "config" | "runtime">,
+): PluginEntry {
+  const capability = resolveWalletCapabilityStatus(state);
+  const enabled =
+    capability.pluginEvmLoaded ||
+    capability.pluginEvmRequired ||
+    (state.config.plugins?.allow ?? []).some((entry) => {
+      return entry === EVM_PLUGIN_PACKAGE || entry === "evm";
+    });
+
+  const capabilityStatus = capability.pluginEvmLoaded
+    ? capability.pluginEvmRequired
+      ? "loaded"
+      : "auto-enabled"
+    : enabled
+      ? capability.evmAddress || capability.localSignerAvailable
+        ? "blocked"
+        : "missing-prerequisites"
+      : "disabled";
+
+  return {
+    id: "evm",
+    name: "Plugin EVM",
+    description:
+      "EVM wallet runtime for balance, transfer, and trade actions. Required for wallet execution in chat.",
+    tags: ["wallet", "evm", "bsc", "onchain"],
+    enabled,
+    configured: capability.pluginEvmRequired,
+    envKey: "EVM_PRIVATE_KEY",
+    category: "feature",
+    source: "bundled",
+    configKeys: [
+      "EVM_PRIVATE_KEY",
+      "BSC_RPC_URL",
+      "BSC_TESTNET_RPC_URL",
+      "ELIZA_WALLET_NETWORK",
+    ],
+    parameters: [],
+    validationErrors: [],
+    validationWarnings: [],
+    npmName: EVM_PLUGIN_PACKAGE,
+    isActive: capability.pluginEvmLoaded,
+    autoEnabled: capability.pluginEvmRequired && !capability.pluginEvmLoaded,
+    managementMode: "core-optional",
+    capabilityStatus,
+    capabilityReason: capability.executionReady
+      ? "Wallet execution is ready."
+      : capability.executionBlockedReason,
+    prerequisites: [
+      { label: "wallet present", met: Boolean(capability.evmAddress) },
+      { label: "rpc ready", met: capability.rpcReady },
+      { label: "plugin loaded", met: capability.pluginEvmLoaded },
+    ],
+  };
+}
+
+// "send" alone is too broad — "send a slack message" shouldn't trigger wallet
+// mode.  Require "send" to appear near a crypto/wallet keyword within 40 chars.
+const WALLET_CHAT_INTENT_RE =
+  /\b(wallet|privy|onchain|on-chain|address|balance|swap|trade|transfer|token|bnb|t?bnb|eth|sol)\b|(?:\bsend\b(?=[\s\S]{0,40}\b(?:token|eth|sol|t?bnb|wallet|crypto|coin)\b))/i;
+
+export const WALLET_EXECUTION_INTENT_RE =
+  /\b(swap|trade|transfer|buy|sell|execute|approve)\b|(?:\bsend\b(?=[\s\S]{0,40}\b(?:token|eth|sol|t?bnb|wallet|crypto|coin)\b))/i;
+
+const WALLET_IDENTITY_INTENT_RE = /\b(wallet\s*address|address)\b/i;
+
+const WALLET_ACTION_REQUIRED_INTENT_RE =
+  /\b(balance|portfolio|holdings|funds|swap|trade|transfer|send|buy|sell|execute|approve)\b/i;
+
+export const WALLET_PROGRESS_ONLY_RE =
+  /\b(let me|i(?:'| wi)ll|checking|fetching|looking up|pulling|one moment|just a second|hold on)\b[\s\S]{0,80}\b(check|look|fetch|pull|get|verify|see|review)\b/i;
+
+const WALLET_PROGRESS_PREFIX_RE =
+  /^\s*(?:let me|i(?:'ll| will)|checking|fetching|looking up|pulling|one moment|just a second|hold on)[\s\S]{0,120}?(?:now|\.{3}|…)?\s*/i;
+
+export function isWalletActionRequiredIntent(prompt: string): boolean {
+  return (
+    WALLET_CHAT_INTENT_RE.test(prompt) &&
+    !WALLET_IDENTITY_INTENT_RE.test(prompt) &&
+    WALLET_ACTION_REQUIRED_INTENT_RE.test(prompt)
+  );
+}
+
+const EVM_ADDRESS_CAPTURE_RE = /\b0x[a-fA-F0-9]{40}\b/g;
+const DECIMAL_AMOUNT_CAPTURE_RE = /\b(\d+(?:\.\d+)?)\b/;
+const SEND_NATIVE_ASSET_RE =
+  /\b(?:t?bnb|bnb|eth|usdt|usdc|busd|dai|weth|wbtc)\b/i;
+const SWAP_ROUTE_PROVIDER_RE = /\b(pancakeswap-v2|0x|auto)\b/i;
+
+type WalletIntentFallback =
+  | { action: FallbackParsedAction; errorText?: undefined }
+  | { action?: undefined; errorText: string };
+
+function normalizeWalletAssetSymbol(asset: string): string {
+  const normalized = asset.trim().toUpperCase();
+  if (normalized === "TBNB") return "BNB";
+  return normalized;
+}
+
+function resolveWalletDrillTokenAddress(): string | null {
+  if (process.env.NODE_ENV === "production" && !process.env.VITEST) {
+    return null;
+  }
+  const raw = process.env.WALLET_DRILL_TOKEN_ADDRESS?.trim();
+  return raw && /^0x[a-fA-F0-9]{40}$/.test(raw) ? raw : null;
+}
+
+function buildWalletParameterFailureReply(
+  actionName: "TRANSFER_TOKEN" | "EXECUTE_TRADE",
+  reason: string,
+): string {
+  const walletNetwork =
+    process.env.ELIZA_WALLET_NETWORK?.trim().toLowerCase() === "testnet"
+      ? "BSC testnet"
+      : "BSC";
+  return [
+    `Action: ${actionName}`,
+    `Chain: ${walletNetwork}`,
+    "Executed: false",
+    `Reason: ${reason}`,
+  ].join("\n");
+}
+
+function inferTransferFallbackAction(
+  prompt: string,
+): WalletIntentFallback | null {
+  if (!/\b(send|transfer|pay)\b/i.test(prompt)) return null;
+
+  const recipient = prompt.match(EVM_ADDRESS_CAPTURE_RE)?.[0];
+  if (!recipient) {
+    return {
+      errorText: buildWalletParameterFailureReply(
+        "TRANSFER_TOKEN",
+        "I need a recipient EVM address to send funds.",
+      ),
+    };
+  }
+
+  const amount = prompt.match(DECIMAL_AMOUNT_CAPTURE_RE)?.[1];
+  if (!amount) {
+    return {
+      errorText: buildWalletParameterFailureReply(
+        "TRANSFER_TOKEN",
+        "I need a positive transfer amount.",
+      ),
+    };
+  }
+
+  const assetMatch = prompt.match(SEND_NATIVE_ASSET_RE)?.[0];
+  if (!assetMatch) {
+    return {
+      errorText: buildWalletParameterFailureReply(
+        "TRANSFER_TOKEN",
+        "I need an asset symbol such as BNB, USDT, or USDC.",
+      ),
+    };
+  }
+
+  return {
+    action: {
+      name: "TRANSFER_TOKEN",
+      parameters: {
+        toAddress: recipient,
+        amount,
+        assetSymbol: normalizeWalletAssetSymbol(assetMatch),
+      },
+    },
+  };
+}
+
+function inferTradeSide(prompt: string): "buy" | "sell" | null {
+  if (/\bsell\b/i.test(prompt)) return "sell";
+  if (/\b(buy|swap|trade)\b/i.test(prompt)) return "buy";
+  return null;
+}
+
+function inferTradeFallbackAction(prompt: string): WalletIntentFallback | null {
+  if (!/\b(swap|trade|buy|sell)\b/i.test(prompt)) return null;
+
+  const side = inferTradeSide(prompt);
+  if (!side) {
+    return {
+      errorText: buildWalletParameterFailureReply(
+        "EXECUTE_TRADE",
+        'I need a trade side ("buy" or "sell").',
+      ),
+    };
+  }
+
+  const amount = prompt.match(DECIMAL_AMOUNT_CAPTURE_RE)?.[1];
+  if (!amount) {
+    return {
+      errorText: buildWalletParameterFailureReply(
+        "EXECUTE_TRADE",
+        "I need a positive trade amount.",
+      ),
+    };
+  }
+
+  const addresses = prompt.match(EVM_ADDRESS_CAPTURE_RE) ?? [];
+  const drillTokenAddress = resolveWalletDrillTokenAddress();
+  const tokenAddress = addresses[0] ?? drillTokenAddress;
+  if (!tokenAddress) {
+    return {
+      errorText: buildWalletParameterFailureReply(
+        "EXECUTE_TRADE",
+        drillTokenAddress === null &&
+          process.env.NODE_ENV === "production" &&
+          !process.env.VITEST
+          ? "I need a target token contract address in the prompt."
+          : "I need a target token address. Set WALLET_DRILL_TOKEN_ADDRESS or include the token contract address in the prompt.",
+      ),
+    };
+  }
+
+  const routeProvider =
+    prompt.match(SWAP_ROUTE_PROVIDER_RE)?.[1]?.toLowerCase() ??
+    "pancakeswap-v2";
+
+  return {
+    action: {
+      name: "EXECUTE_TRADE",
+      parameters: {
+        side,
+        amount,
+        tokenAddress,
+        routeProvider,
+      },
+    },
+  };
+}
+
+export function inferWalletExecutionFallback(
+  prompt: string,
+): WalletIntentFallback | null {
+  return (
+    inferTransferFallbackAction(prompt) ?? inferTradeFallbackAction(prompt)
+  );
+}
+
+export function hasUsableWalletFallbackParams(
+  action: FallbackParsedAction,
+): boolean {
+  const parameters = action.parameters ?? {};
+  if (action.name === "TRANSFER_TOKEN") {
+    return (
+      typeof parameters.toAddress === "string" &&
+      /^0x[a-fA-F0-9]{40}$/.test(parameters.toAddress) &&
+      typeof parameters.amount === "string" &&
+      parameters.amount.trim().length > 0 &&
+      typeof parameters.assetSymbol === "string" &&
+      parameters.assetSymbol.trim().length > 0
+    );
+  }
+
+  if (action.name === "EXECUTE_TRADE") {
+    return (
+      (parameters.side === "buy" || parameters.side === "sell") &&
+      typeof parameters.amount === "string" &&
+      parameters.amount.trim().length > 0 &&
+      typeof parameters.tokenAddress === "string" &&
+      /^0x[a-fA-F0-9]{40}$/.test(parameters.tokenAddress)
+    );
+  }
+
+  return true;
+}
+
+export function buildWalletActionNotExecutedReply(
+  runtime: AgentRuntime,
+  userPrompt: string,
+): string {
+  const addrs = getWalletAddresses();
+  const walletNetwork =
+    process.env.ELIZA_WALLET_NETWORK?.trim().toLowerCase() === "testnet"
+      ? "testnet"
+      : "mainnet";
+  const pluginEvmLoaded = resolvePluginEvmLoaded(runtime);
+  const rpcReady = Boolean(
+    process.env.BSC_RPC_URL?.trim() ||
+      process.env.BSC_TESTNET_RPC_URL?.trim() ||
+      process.env.NODEREAL_BSC_RPC_URL?.trim() ||
+      process.env.QUICKNODE_BSC_RPC_URL?.trim(),
+  );
+  const executionBlockedReason = !addrs.evmAddress
+    ? "No EVM wallet is active yet."
+    : !rpcReady
+      ? "BSC RPC is not configured."
+      : !pluginEvmLoaded
+        ? "plugin-evm is not loaded, so EVM wallet execution is unavailable."
+        : "A wallet action was not executed for this turn.";
+
+  return [
+    `I could not complete "${userPrompt}" because no wallet action actually ran.`,
+    `Wallet network: ${walletNetwork}.`,
+    `Detected wallets:`,
+    `- EVM: ${addrs.evmAddress ?? "not generated"}`,
+    `- Solana: ${addrs.solanaAddress ?? "not generated"}`,
+    `plugin-evm: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
+    `RPC ready: ${rpcReady ? "yes" : "no"}.`,
+    `Blocked reason: ${executionBlockedReason}`,
+  ].join("\n");
+}
+
+export function trimWalletProgressPrefix(text: string): string {
+  const balanceIdx = text.indexOf("Wallet Balances:");
+  if (balanceIdx > 0) {
+    return text.slice(balanceIdx).trimStart();
+  }
+
+  const markers = [
+    "Action: TRANSFER_TOKEN",
+    "Action: EXECUTE_TRADE",
+    "Transfer",
+    "Swap",
+    "Trade",
+    "Tx hash:",
+    "Transaction hash:",
+  ];
+  for (const marker of markers) {
+    const idx = text.indexOf(marker);
+    if (idx <= 0) continue;
+    const prefix = text.slice(0, idx);
+    if (WALLET_PROGRESS_PREFIX_RE.test(prefix)) {
+      return text.slice(idx).trimStart();
+    }
+  }
+  return text;
+}
+
+// ── Plugin config intent detection ──────────────────────────────────
+// Matches: "set up telegram", "configure discord plugin", "connect slack",
+// "help me with the openai plugin", etc.
+const PLUGIN_CONFIG_RE =
+  /\b(?:set\s*up|configure|connect|enable|install|setup)\b.*?\b(telegram|discord|twitter|slack|anthropic|openai|openrouter|groq|google|gemini|deepseek|mistral|together|grok|zai|ollama)\b|\b(telegram|discord|twitter|slack|anthropic|openai|openrouter|groq|google|gemini|deepseek|mistral|together|grok|zai|ollama)\b.*?\b(?:plugin|connector|set\s*up|configure|connect|enable|setup)\b/i;
+
+const PLUGIN_PARAMS: Record<
+  string,
+  Array<{ key: string; label: string; secret: boolean }>
+> = {
+  telegram: [
+    {
+      key: "TELEGRAM_BOT_TOKEN",
+      label: "Bot Token (from @BotFather)",
+      secret: true,
+    },
+  ],
+  discord: [
+    { key: "DISCORD_API_TOKEN", label: "Bot Token", secret: true },
+    {
+      key: "DISCORD_APPLICATION_ID",
+      label: "Application ID (optional, auto-resolved when omitted)",
+      secret: false,
+    },
+  ],
+  twitter: [
+    { key: "TWITTER_USERNAME", label: "Username", secret: false },
+    { key: "TWITTER_PASSWORD", label: "Password", secret: true },
+    { key: "TWITTER_EMAIL", label: "Email", secret: false },
+  ],
+  slack: [
+    { key: "SLACK_APP_TOKEN", label: "App Token", secret: true },
+    { key: "SLACK_BOT_TOKEN", label: "Bot Token", secret: true },
+    { key: "SLACK_SIGNING_SECRET", label: "Signing Secret", secret: true },
+  ],
+  anthropic: [
+    {
+      key: "ANTHROPIC_API_KEY",
+      label: "API Key (console.anthropic.com)",
+      secret: true,
+    },
+  ],
+  openai: [
+    {
+      key: "OPENAI_API_KEY",
+      label: "API Key (platform.openai.com)",
+      secret: true,
+    },
+  ],
+  openrouter: [
+    {
+      key: "OPENROUTER_API_KEY",
+      label: "API Key (openrouter.ai)",
+      secret: true,
+    },
+  ],
+  groq: [
+    { key: "GROQ_API_KEY", label: "API Key (console.groq.com)", secret: true },
+  ],
+  google: [
+    { key: "GOOGLE_GENERATIVE_AI_API_KEY", label: "API Key", secret: true },
+  ],
+  gemini: [
+    { key: "GOOGLE_GENERATIVE_AI_API_KEY", label: "API Key", secret: true },
+  ],
+  deepseek: [{ key: "DEEPSEEK_API_KEY", label: "API Key", secret: true }],
+  mistral: [{ key: "MISTRAL_API_KEY", label: "API Key", secret: true }],
+  together: [{ key: "TOGETHER_API_KEY", label: "API Key", secret: true }],
+  grok: [{ key: "XAI_API_KEY", label: "API Key", secret: true }],
+  zai: [{ key: "ZAI_API_KEY", label: "API Key", secret: true }],
+  ollama: [
+    {
+      key: "OLLAMA_BASE_URL",
+      label: "Ollama URL (e.g. http://localhost:11434)",
+      secret: false,
+    },
+  ],
+};
+
+export async function resolvePluginConfigReply(
+  prompt: string,
+  _state: Pick<ServerState, "config" | "runtime">,
+): Promise<string | null> {
+  const match = prompt.match(PLUGIN_CONFIG_RE);
+  if (!match) return null;
+  const pluginName = (match[1] || match[2]).toLowerCase();
+  const params = PLUGIN_PARAMS[pluginName];
+  if (!params) return null;
+
+  const displayName = pluginName.charAt(0).toUpperCase() + pluginName.slice(1);
+  const elements: Record<string, unknown> = {};
+  const fieldIds: string[] = [];
+  const state: Record<string, string> = { pluginId: pluginName };
+
+  elements.title = {
+    type: "Heading",
+    props: { level: 3, text: `Configure ${displayName}` },
+  };
+  elements.sep = { type: "Separator", props: {} };
+
+  for (const param of params) {
+    const fid = `f_${param.key}`;
+    fieldIds.push(fid);
+    state[`config.${param.key}`] = "";
+    elements[fid] = {
+      type: "Input",
+      props: {
+        label: param.label,
+        placeholder: param.key,
+        statePath: `config.${param.key}`,
+        type: param.secret ? "password" : "text",
+        className: "font-mono text-xs",
+      },
+    };
+  }
+
+  elements.fields = { type: "Stack", props: { gap: "3", children: fieldIds } };
+  elements.saveBtn = {
+    type: "Button",
+    props: {
+      text: "Save & Enable",
+      variant: "default",
+      className: "font-semibold",
+      on: {
+        press: { action: "plugin:save", params: { pluginId: pluginName } },
+      },
+    },
+  };
+  elements.actions = {
+    type: "Stack",
+    props: { direction: "row", gap: "2", children: ["saveBtn"] },
+  };
+  elements.root = {
+    type: "Card",
+    props: {
+      children: ["title", "sep", "fields", "actions"],
+      className: "p-4 space-y-3",
+    },
+  };
+
+  const spec = JSON.stringify({ version: 1, root: "root", elements, state });
+  return `here's the config form for ${displayName} — fill in your credentials and hit save:\n\n\`\`\`json-render\n${spec}\n\`\`\``;
+}
+
+export function resolveWalletModeGuidanceReply(
+  state: Pick<ServerState, "config" | "runtime">,
+  prompt: string,
+): string | null {
+  if (!WALLET_CHAT_INTENT_RE.test(prompt)) {
+    return null;
+  }
+
+  const capability = resolveWalletCapabilityStatus(state);
+  const {
+    automationMode,
+    evmAddress,
+    solanaAddress,
+    walletNetwork,
+    pluginEvmLoaded,
+    executionReady,
+    executionBlockedReason,
+  } = capability;
+  const walletSummary = `Detected wallets:
+- EVM: ${evmAddress ?? "not generated"}
+- Solana: ${solanaAddress ?? "not generated"}`;
+
+  if (automationMode === "connectors-only") {
+    if (!WALLET_EXECUTION_INTENT_RE.test(prompt)) {
+      return null;
+    }
+    return [
+      "I am in connectors-only mode, so wallet actions are disabled in chat right now.",
+      "Turn on full mode with one of these:",
+      '1) Settings -> Permissions -> Agent Automation Mode -> "Full".',
+      '2) API: PUT /api/permissions/automation-mode with {"mode":"full"}.',
+      "Then retry your wallet request.",
+      `Wallet network: ${walletNetwork}.`,
+      walletSummary,
+    ].join("\n");
+  }
+
+  if (
+    !evmAddress &&
+    !solanaAddress &&
+    WALLET_EXECUTION_INTENT_RE.test(prompt)
+  ) {
+    const privyConfigured = isPrivyWalletProvisioningEnabled();
+    return [
+      "No wallet is active yet.",
+      "Open Wallet page and choose one setup path:",
+      `- Managed (Privy): ${privyConfigured ? "available" : "blocked until PRIVY_APP_ID and PRIVY_APP_SECRET are set on the backend"}.`,
+      "- Local: Generate or Import wallet in the Wallet wizard.",
+      walletSummary,
+    ].join("\n");
+  }
+
+  if (WALLET_IDENTITY_INTENT_RE.test(prompt)) {
+    return [
+      `Wallet network: ${walletNetwork}.`,
+      walletSummary,
+      `plugin-evm: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
+      `Execution readiness: ${executionReady ? "ready for wallet actions" : (executionBlockedReason ?? "blocked")}.`,
+      `Automation mode: ${automationMode}.`,
+    ].join("\n");
+  }
+
+  if (WALLET_EXECUTION_INTENT_RE.test(prompt) && !executionReady) {
+    return [
+      `Wallet execution is currently blocked: ${executionBlockedReason ?? "unknown reason"}`,
+      `Wallet network: ${walletNetwork}.`,
+      walletSummary,
+      `plugin-evm: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
+      `Automation mode: ${automationMode}.`,
+    ].join("\n");
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Route handler
+// ---------------------------------------------------------------------------
+
+interface RequestContext {
+  onRestart: (() => Promise<AgentRuntime | null>) | null;
+  onRuntimeSwapped?: () => void;
+}
+
+type TrainingServiceLike = TrainingServiceWithRuntime;
+
+type TrainingServiceCtor = new (options: {
+  getRuntime: () => AgentRuntime | null;
+  getConfig: () => ElizaConfig;
+  setConfig: (nextConfig: ElizaConfig) => void;
+}) => TrainingServiceLike;
+
+async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
+  const candidates = [
+    "../services/training-service",
+    "@elizaos/plugin-training",
+  ] as const;
+
+  for (const specifier of candidates) {
+    try {
+      const loaded = (await import(/* @vite-ignore */ specifier)) as Record<
+        string,
+        unknown
+      >;
+      const ctor = loaded.TrainingService;
+      if (typeof ctor === "function") {
+        return ctor as TrainingServiceCtor;
+      }
+    } catch {
+      // Keep trying fallbacks.
+    }
+  }
+
+  return null;
+}
+
+function mcpServersIncludeStdio(servers: Record<string, unknown>): boolean {
+  return Object.values(servers).some((serverConfig) => {
+    if (
+      !serverConfig ||
+      typeof serverConfig !== "object" ||
+      Array.isArray(serverConfig)
+    ) {
+      return false;
+    }
+    return (serverConfig as Record<string, unknown>).type === "stdio";
+  });
+}
+
+export function resolveMcpTerminalAuthorizationRejection(
+  req: Pick<http.IncomingMessage, "headers">,
+  servers: Record<string, unknown>,
+  body: { terminalToken?: string },
+): TerminalRunRejection | null {
+  if (!mcpServersIncludeStdio(servers)) {
+    return null;
+  }
+  return resolveTerminalRunRejection(req as http.IncomingMessage, body);
+}
+
+const LOCAL_ORIGIN_RE =
+  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
+const APP_ORIGIN_RE =
+  /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
+
+/**
+ * Hostname allowlist for DNS rebinding protection.
+ * Requests with a Host header that doesn't match a known loopback name are
+ * rejected before CORS / auth processing.  This prevents a malicious page
+ * from rebinding its DNS to 127.0.0.1 and reading the unauthenticated API.
+ */
+const LOCAL_HOST_RE =
+  /^(localhost|127\.0\.0\.1|\[?::1\]?|\[?0:0:0:0:0:0:0:1\]?|::ffff:127\.0\.0\.1)$/;
+
+/** Wildcard bind addresses that listen on all interfaces. */
+const WILDCARD_BIND_RE = /^(0\.0\.0\.0|::|0:0:0:0:0:0:0:0)$/;
+
+export function isAllowedHost(req: http.IncomingMessage): boolean {
+  const raw = req.headers.host;
+  if (!raw) return true; // No Host header → non-browser client (e.g. curl)
+
+  let hostname: string;
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return true;
+
+  if (trimmed.startsWith("[")) {
+    // Bracketed IPv6: [::1]:31337 → ::1
+    const close = trimmed.indexOf("]");
+    hostname = close > 0 ? trimmed.slice(1, close) : trimmed.slice(1);
+  } else if ((trimmed.match(/:/g) || []).length >= 2) {
+    // Bare IPv6 (multiple colons, no brackets): ::1 → ::1
+    hostname = trimmed;
+  } else {
+    // IPv4 or hostname: localhost:31337 → localhost
+    hostname = stripOptionalHostPort(trimmed);
+  }
+
+  if (!hostname) return true;
+
+  const bindHost = resolveApiBindHost(process.env).toLowerCase();
+
+  // When binding on all interfaces (0.0.0.0 / ::), any Host is acceptable —
+  // ensureApiTokenForBindHost already enforces a token for non-loopback binds.
+  if (WILDCARD_BIND_RE.test(stripOptionalHostPort(bindHost))) {
+    return true;
+  }
+
+  // Allow the exact configured bind hostname.
+  if (bindHost && hostname === stripOptionalHostPort(bindHost)) {
+    return true;
+  }
+
+  for (const allowedHost of resolveAllowedHosts(process.env)) {
+    if (stripOptionalHostPort(allowedHost).toLowerCase() === hostname) {
+      return true;
+    }
+  }
+
+  return LOCAL_HOST_RE.test(hostname);
+}
+
+export function resolveCorsOrigin(origin?: string): string | null {
+  if (!origin) return null;
+  const trimmed = origin.trim();
+  if (!trimmed) return null;
+
+  // Cloud-provisioned containers default to allowing all origins so the
+  // browser web UI can reach the agent API without extra config.
+  if (process.env.ELIZA_CLOUD_PROVISIONED === "1") {
+    return trimmed;
+  }
+
+  // When bound to a wildcard address, allow any origin. Non-loopback binds still
+  // require an explicit token, so this only relaxes the browser origin check.
+  const bindHost = resolveApiBindHost(process.env).toLowerCase();
+  if (WILDCARD_BIND_RE.test(stripOptionalHostPort(bindHost))) return trimmed;
+
+  // Explicit allowlist via env (comma-separated)
+  const allow = resolveAllowedOrigins(process.env);
+  if (allow.includes(trimmed)) {
+    return trimmed;
+  }
+
+  if (LOCAL_ORIGIN_RE.test(trimmed)) return trimmed;
+  if (APP_ORIGIN_RE.test(trimmed)) return trimmed;
+  if (trimmed === "null" || trimmed === "file://") {
+    if (isNullOriginAllowed(process.env)) {
+      return "null";
+    }
+  }
+  return null;
+}
+
+function isBrowserCompanionExtensionOrigin(
+  origin: string | undefined,
+): boolean {
+  if (!origin) {
+    return false;
+  }
+  const trimmed = origin.trim();
+  return (
+    /^chrome-extension:\/\/[a-z]{32}$/i.test(trimmed) ||
+    /^moz-extension:\/\/[0-9a-f-]+$/i.test(trimmed) ||
+    /^safari-web-extension:\/\/[A-Za-z0-9.-]+$/i.test(trimmed)
+  );
+}
+
+function applyCors(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+): boolean {
+  const origin =
+    typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+  const allowBrowserCompanionOrigin =
+    pathname.startsWith("/api/lifeops/browser/companions/") &&
+    isBrowserCompanionExtensionOrigin(origin);
+  const allowed = allowBrowserCompanionOrigin
+    ? (origin?.trim() ?? null)
+    : resolveCorsOrigin(origin);
+
+  if (origin && !allowed) return false;
+
+  if (allowed) {
+    res.setHeader("Access-Control-Allow-Origin", allowed);
+    res.setHeader("Vary", "Origin");
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PUT, DELETE, OPTIONS",
+    );
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-Eliza-Browser-Companion-Id",
+    );
+  }
+
+  // Security headers
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+
+  return true;
+}
+
+const PAIRING_TTL_MS = 10 * 60 * 1000;
+const PAIRING_WINDOW_MS = 10 * 60 * 1000;
+const PAIRING_MAX_ATTEMPTS = 5;
+const PAIRING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+let pairingCode: string | null = null;
+/** Guard against concurrent provider switch requests (P0 §3). */
+let providerSwitchInProgress = false;
+let pairingExpiresAt = 0;
+const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function pairingEnabled(): boolean {
+  return (
+    Boolean(getConfiguredApiToken()) &&
+    process.env.ELIZA_PAIRING_DISABLED !== "1"
+  );
+}
+
+function normalizePairingCode(code: string): string {
+  return code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
+function generatePairingCode(): string {
+  const bytes = crypto.randomBytes(8);
+  let raw = "";
+  for (let i = 0; i < bytes.length; i++) {
+    raw += PAIRING_ALPHABET[bytes[i] % PAIRING_ALPHABET.length];
+  }
+  return `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
+}
+
+function ensurePairingCode(): string | null {
+  if (!pairingEnabled()) return null;
+  const now = Date.now();
+  if (!pairingCode || now > pairingExpiresAt) {
+    pairingCode = generatePairingCode();
+    pairingExpiresAt = now + PAIRING_TTL_MS;
+    logger.warn(
+      `[eliza-api] Pairing code: ${pairingCode} (valid for 10 minutes)`,
+    );
+  }
+  return pairingCode;
+}
+
+function rateLimitPairing(ip: string | null): boolean {
+  const key = ip ?? "unknown";
+  const now = Date.now();
+
+  // Lazy sweep: evict expired entries when map grows beyond 100
+  sweepExpiredEntries(pairingAttempts, now, 100);
+
+  const current = pairingAttempts.get(key);
+  if (!current || now > current.resetAt) {
+    pairingAttempts.set(key, { count: 1, resetAt: now + PAIRING_WINDOW_MS });
+    return true;
+  }
+  if (current.count >= PAIRING_MAX_ATTEMPTS) return false;
+  current.count += 1;
+  return true;
+}
+
+export function extractAuthToken(req: http.IncomingMessage): string | null {
+  const auth =
+    typeof req.headers.authorization === "string"
+      ? req.headers.authorization.trim()
+      : "";
+  if (auth) {
+    const match = /^Bearer\s+(.+)$/i.exec(auth);
+    if (match?.[1]) return match[1].trim();
+  }
+
+  const header =
+    (typeof req.headers["x-eliza-token"] === "string" &&
+      req.headers["x-eliza-token"]) ||
+    (typeof req.headers["x-eliza-token"] === "string" &&
+      req.headers["x-eliza-token"]) ||
+    (typeof req.headers["x-api-key"] === "string" && req.headers["x-api-key"]);
+  if (typeof header === "string" && header.trim()) return header.trim();
+
+  return null;
+}
+
+const SAFE_WS_CLIENT_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
+
+export function normalizeWsClientId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!SAFE_WS_CLIENT_ID_RE.test(trimmed)) return null;
+  return trimmed;
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
+}
+
+export function resolveTerminalRunClientId(
+  req: Pick<http.IncomingMessage, "headers">,
+  body: { clientId?: unknown } | null | undefined,
+): string | null {
+  const headerClientId = normalizeWsClientId(
+    firstHeaderValue(req.headers["x-eliza-client-id"]),
+  );
+  if (headerClientId) return headerClientId;
+  return normalizeWsClientId(body?.clientId);
+}
+
+const SHARED_TERMINAL_CLIENT_IDS = new Set([
+  "runtime-terminal-action",
+  "runtime-shell-action",
+]);
+
+function isSharedTerminalClientId(clientId: string): boolean {
+  return SHARED_TERMINAL_CLIENT_IDS.has(clientId);
+}
+
+function tokenMatches(expected: string, provided: string): boolean {
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(provided, "utf8");
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function getConfiguredApiToken(): string | undefined {
+  return resolveApiToken(process.env) ?? undefined;
+}
+
+function isLoopbackBindHost(host: string): boolean {
+  let normalized = host.trim().toLowerCase();
+
+  if (!normalized) return true;
+
+  // Allow users to provide full URLs by mistake (e.g. http://localhost:2138)
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    try {
+      const parsed = new URL(normalized);
+      normalized = parsed.hostname.toLowerCase();
+    } catch {
+      // Fall through and parse as raw host value.
+    }
+  }
+
+  // [::1]:2138 -> ::1
+  const bracketedIpv6 = /^\[([^\]]+)\](?::\d+)?$/.exec(normalized);
+  if (bracketedIpv6?.[1]) {
+    normalized = bracketedIpv6[1];
+  } else {
+    // localhost:2138 -> localhost, 127.0.0.1:2138 -> 127.0.0.1
+    const singleColonHostPort = /^([^:]+):(\d+)$/.exec(normalized);
+    if (singleColonHostPort?.[1]) {
+      normalized = singleColonHostPort[1];
+    }
+  }
+
+  normalized = normalized.replace(/^\[|\]$/g, "");
+  if (!normalized) return true;
+  if (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized === "0:0:0:0:0:0:0:1" ||
+    normalized === "::ffff:127.0.0.1"
+  ) {
+    return true;
+  }
+  if (normalized.startsWith("127.")) return true;
+  return false;
+}
+
+export function ensureApiTokenForBindHost(host: string): void {
+  const { disableAutoApiToken } = resolveApiSecurityConfig(process.env);
+
+  const token = getConfiguredApiToken();
+  if (token) return;
+
+  const cloudProvisioned = isCloudProvisionedContainer();
+
+  // Cloud-provisioned containers must never run without an inbound API token
+  // (isAuthorized rejects all requests when no token + cloud flag is set).
+  // Override the disable flag for cloud containers so they always get a
+  // fallback token rather than dead-locking into 401 on every request.
+  if (disableAutoApiToken && !cloudProvisioned) {
+    return;
+  }
+  if (!cloudProvisioned && isLoopbackBindHost(host)) return;
+
+  const generated = crypto.randomBytes(32).toString("hex");
+  setApiToken(process.env, generated);
+
+  if (cloudProvisioned) {
+    logger.warn(
+      "[eliza-api] Steward-managed cloud container started without ELIZA_API_TOKEN/ELIZA_API_TOKEN; generated a temporary inbound API token for this process.",
+    );
+  } else {
+    logger.warn(
+      `[eliza-api] ELIZA_API_BIND/ELIZA_API_BIND=${host} is non-loopback and ELIZA_API_TOKEN/ELIZA_API_TOKEN is unset.`,
+    );
+  }
+  const tokenFingerprint = `${generated.slice(0, 4)}...${generated.slice(-4)}`;
+  logger.warn(
+    `[eliza-api] Generated temporary API token (${tokenFingerprint}) for this process. Set ELIZA_API_TOKEN or ELIZA_API_TOKEN explicitly to override.`,
+  );
+}
+
+export function isAuthorized(req: http.IncomingMessage): boolean {
+  const expected = getConfiguredApiToken();
+  if (!expected) return !isCloudProvisionedContainer();
+  const provided = extractAuthToken(req);
+  if (!provided) return false;
+  return tokenMatches(expected, provided);
+}
+
+export interface PluginConfigMutationRejection {
+  field: string;
+  message: string;
+}
+
+export function resolvePluginConfigMutationRejections(
+  pluginParams: Array<{ key: string }>,
+  config: Record<string, unknown>,
+): PluginConfigMutationRejection[] {
+  const allowedParamKeys = new Set(
+    pluginParams.map((p) => p.key.toUpperCase().trim()),
+  );
+  const rejections: PluginConfigMutationRejection[] = [];
+
+  for (const key of Object.keys(config)) {
+    const normalized = key.toUpperCase().trim();
+
+    if (!allowedParamKeys.has(normalized)) {
+      rejections.push({
+        field: key,
+        message: `${key} is not a declared config key for this plugin`,
+      });
+      continue;
+    }
+
+    if (BLOCKED_ENV_KEYS.has(normalized)) {
+      rejections.push({
+        field: key,
+        message: `${key} is blocked for security reasons`,
+      });
+    }
+  }
+
+  return rejections;
+}
+
+interface WalletExportRequestBody {
+  confirm?: boolean;
+  exportToken?: string;
+}
+
+export interface WalletExportRejection {
+  status: 401 | 403;
+  reason: string;
+}
+
+export function resolveWalletExportRejection(
+  req: http.IncomingMessage,
+  body: WalletExportRequestBody,
+): WalletExportRejection | null {
+  if (!body.confirm) {
+    return {
+      status: 403,
+      reason:
+        'Export requires explicit confirmation. Send { "confirm": true } in the request body.',
+    };
+  }
+
+  const expected =
+    process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim() ||
+    process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim();
+  if (!expected) {
+    return {
+      status: 403,
+      reason:
+        "Wallet export is disabled. Set ELIZA_WALLET_EXPORT_TOKEN (or ELIZA_WALLET_EXPORT_TOKEN) to enable secure exports.",
+    };
+  }
+
+  const headerToken =
+    typeof req.headers["x-eliza-export-token"] === "string"
+      ? req.headers["x-eliza-export-token"].trim()
+      : "";
+  const bodyToken =
+    typeof body.exportToken === "string" ? body.exportToken.trim() : "";
+  const provided = headerToken || bodyToken;
+
+  if (!provided) {
+    return {
+      status: 401,
+      reason:
+        "Missing export token. Provide X-Eliza-Export-Token header or exportToken in request body.",
+    };
+  }
+
+  if (!tokenMatches(expected, provided)) {
+    return { status: 401, reason: "Invalid export token." };
+  }
+
+  return null;
+}
+
+interface TerminalRunRequestBody {
+  terminalToken?: string;
+}
+
+export interface TerminalRunRejection {
+  status: 401 | 403;
+  reason: string;
+}
+
+export function resolveTerminalRunRejection(
+  req: http.IncomingMessage,
+  body: TerminalRunRequestBody,
+): TerminalRunRejection | null {
+  const expected = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
+  const apiTokenEnabled = Boolean(getConfiguredApiToken());
+
+  // Compatibility mode: local loopback sessions without API token keep
+  // existing behavior unless an explicit terminal token is configured.
+  if (!expected && !apiTokenEnabled) {
+    return null;
+  }
+
+  if (!expected) {
+    return {
+      status: 403,
+      reason:
+        "Terminal run is disabled for token-authenticated API sessions. Set ELIZA_TERMINAL_RUN_TOKEN to enable command execution.",
+    };
+  }
+
+  const headerToken =
+    typeof req.headers["x-eliza-terminal-token"] === "string"
+      ? req.headers["x-eliza-terminal-token"].trim()
+      : "";
+  const bodyToken =
+    typeof body.terminalToken === "string" ? body.terminalToken.trim() : "";
+  const provided = headerToken || bodyToken;
+
+  if (!provided) {
+    return {
+      status: 401,
+      reason:
+        "Missing terminal token. Provide X-Eliza-Terminal-Token header or terminalToken in request body.",
+    };
+  }
+
+  if (!tokenMatches(expected, provided)) {
+    return {
+      status: 401,
+      reason: "Invalid terminal token.",
+    };
+  }
+
+  return null;
+}
+
+function extractWsQueryToken(url: URL): string | null {
+  const allowQueryToken = process.env.ELIZA_ALLOW_WS_QUERY_TOKEN === "1";
+  if (!allowQueryToken) return null;
+
+  const token =
+    url.searchParams.get("token") ??
+    url.searchParams.get("apiKey") ??
+    url.searchParams.get("api_key");
+  return token?.trim() || null;
+}
+
+function hasWsQueryToken(url: URL): boolean {
+  return (
+    url.searchParams.has("token") ||
+    url.searchParams.has("apiKey") ||
+    url.searchParams.has("api_key")
+  );
+}
+
+function extractWebSocketHandshakeToken(
+  request: http.IncomingMessage,
+  url: URL,
+): string | null {
+  const headerToken = extractAuthToken(request);
+  if (headerToken) return headerToken;
+  return extractWsQueryToken(url);
+}
+
+function isWebSocketAuthorized(
+  request: http.IncomingMessage,
+  url: URL,
+): boolean {
+  const expected = getConfiguredApiToken();
+  if (!expected) return !isCloudProvisionedContainer();
+
+  const handshakeToken = extractWebSocketHandshakeToken(request, url);
+  if (!handshakeToken) return false;
+  return tokenMatches(expected, handshakeToken);
+}
+
+export interface WebSocketUpgradeRejection {
+  status: 401 | 403 | 404;
+  reason: string;
+}
+
+export function resolveWebSocketUpgradeRejection(
+  req: http.IncomingMessage,
+  wsUrl: URL,
+): WebSocketUpgradeRejection | null {
+  if (wsUrl.pathname !== "/ws") {
+    return { status: 404, reason: "Not found" };
+  }
+
+  const origin =
+    typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+  const allowedOrigin = resolveCorsOrigin(origin);
+  if (origin && !allowedOrigin) {
+    return { status: 403, reason: "Origin not allowed" };
+  }
+
+  const expected = getConfiguredApiToken();
+  if (!expected) {
+    return isCloudProvisionedContainer()
+      ? { status: 401, reason: "Unauthorized" }
+      : null;
+  }
+
+  if (
+    process.env.ELIZA_ALLOW_WS_QUERY_TOKEN !== "1" &&
+    hasWsQueryToken(wsUrl)
+  ) {
+    return { status: 401, reason: "Unauthorized" };
+  }
+
+  const handshakeToken = extractWebSocketHandshakeToken(req, wsUrl);
+  if (handshakeToken && !tokenMatches(expected, handshakeToken)) {
+    return { status: 401, reason: "Unauthorized" };
+  }
+
+  // Cloud containers must authenticate at the handshake level because there is
+  // no trusted upstream proxy handling auth for the WebSocket path.
+  if (!handshakeToken && isCloudProvisionedContainer()) {
+    return { status: 401, reason: "Unauthorized" };
+  }
+
+  return null;
+}
+
+const RESET_STATE_ALLOWED_SEGMENTS = new Set([
+  ".eliza",
+  "eliza",
+  ".eliza",
+  "eliza",
+]);
+
+function hasAllowedResetSegment(resolvedState: string): boolean {
+  return resolvedState
+    .split(path.sep)
+    .some((segment) =>
+      RESET_STATE_ALLOWED_SEGMENTS.has(segment.trim().toLowerCase()),
+    );
+}
+
+export function isSafeResetStateDir(
+  resolvedState: string,
+  homeDir: string,
+): boolean {
+  const normalizedState = path.resolve(resolvedState);
+  const normalizedHome = path.resolve(homeDir);
+  const parsedRoot = path.parse(normalizedState).root;
+
+  if (normalizedState === parsedRoot) return false;
+  if (normalizedState === normalizedHome) return false;
+
+  const relativeToHome = path.relative(normalizedHome, normalizedState);
+  const isUnderHome =
+    relativeToHome.length > 0 &&
+    !relativeToHome.startsWith("..") &&
+    !path.isAbsolute(relativeToHome);
+  if (!isUnderHome) return false;
+
+  return hasAllowedResetSegment(normalizedState);
+}
+
+type ConversationRoomTitleRef = Pick<
+  ConversationMeta,
+  "id" | "title" | "roomId"
+>;
+
+export async function persistConversationRoomTitle(
+  runtime: Pick<AgentRuntime, "getRoom" | "adapter"> | null | undefined,
+  conversation: ConversationRoomTitleRef,
+): Promise<boolean> {
+  if (!runtime) return false;
+  const room = await runtime.getRoom(conversation.roomId);
+  if (!room) return false;
+  if (room.name === conversation.title) return false;
+
+  const adapter = runtime.adapter as {
+    updateRoom?: (nextRoom: typeof room) => Promise<void>;
+  };
+  if (typeof adapter.updateRoom !== "function") return false;
+
+  await adapter.updateRoom({ ...room, name: conversation.title });
+  return true;
+}
+
+function rejectWebSocketUpgrade(
+  socket: import("node:stream").Duplex,
+  statusCode: number,
+  message: string,
+): void {
+  const statusText =
+    statusCode === 401
+      ? "Unauthorized"
+      : statusCode === 403
+        ? "Forbidden"
+        : statusCode === 404
+          ? "Not Found"
+          : "Bad Request";
+  const body = `${message}\n`;
+  socket.write(
+    `HTTP/1.1 ${statusCode} ${statusText}\r\n` +
+      "Connection: close\r\n" +
+      "Content-Type: text/plain; charset=utf-8\r\n" +
+      `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+      "\r\n" +
+      body,
+    () => socket.end(),
+  );
+}
+
+export function decodePathComponent(
+  raw: string,
+  res: http.ServerResponse,
+  fieldName: string,
+): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    error(res, `Invalid ${fieldName}: malformed URL encoding`, 400);
+    return null;
+  }
+}
+
+// Workbench task/todo helpers — extracted to workbench-helpers.ts
+import {
+  asObject,
+  normalizeTags,
+  parseNullableNumber,
+  readTaskCompleted,
+  readTaskMetadata,
+  toWorkbenchTask,
+  toWorkbenchTodo,
+  WORKBENCH_TASK_TAG,
+  WORKBENCH_TODO_TAG,
+} from "./workbench-helpers.js";
+
+const _WORKBENCH_TASK_TAG = WORKBENCH_TASK_TAG;
+const _WORKBENCH_TODO_TAG = WORKBENCH_TODO_TAG;
+
+// (workbench helpers moved to workbench-helpers.ts)
+
+// ── Autonomy → User message routing ──────────────────────────────────
+
+/**
+ * Route non-conversation text output to the user's active conversation.
+ * Stores the message as a Memory in the conversation room and broadcasts
+ * a `proactive-message` WS event to the frontend.
+ */
+const CHAT_SUPPRESSED_AUTONOMY_SOURCES = new Set([
+  "lifeops-reminder",
+  "lifeops-workflow",
+  "proactive-gm",
+  "proactive-gn",
+  "proactive-nudge",
+]);
+
+export async function routeAutonomyTextToUser(
+  state: ServerState,
+  responseText: string,
+  source = "autonomy",
+): Promise<void> {
+  const runtime = state.runtime;
+  if (!runtime) return;
+
+  const normalizedText = responseText.trim();
+  if (!normalizedText) return;
+
+  // Find target conversation (active, or most recent)
+  let conv: ConversationMeta | undefined;
+  if (state.activeConversationId) {
+    conv = state.conversations.get(state.activeConversationId);
+  }
+  if (!conv) {
+    // Fall back to most recently updated conversation
+    const sorted = Array.from(state.conversations.values()).sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+    conv = sorted[0];
+  }
+  if (!conv) return; // No conversations exist yet
+
+  if (CHAT_SUPPRESSED_AUTONOMY_SOURCES.has(source)) {
+    return;
+  }
+
+  // Ephemeral sources: broadcast to UI but don't persist to DB.
+  // Coding-agent status updates and coordinator decisions are transient —
+  // they bloat the database without adding long-term value.
+  const ephemeralSources = new Set(["coding-agent", "coordinator", "action"]);
+
+  const messageId = crypto.randomUUID() as UUID;
+
+  if (!ephemeralSources.has(source)) {
+    const agentMessage = createMessageMemory({
+      id: messageId,
+      entityId: runtime.agentId,
+      roomId: conv.roomId,
+      content: {
+        text: normalizedText,
+        source,
+      },
+    });
+    await runtime.createMemory(agentMessage, "messages");
+  }
+  conv.updatedAt = new Date().toISOString();
+
+  // Broadcast to all WS clients (always, even for ephemeral sources)
+  state.broadcastWs?.({
+    type: "proactive-message",
+    conversationId: conv.id,
+    message: {
+      id: messageId,
+      role: "assistant",
+      text: normalizedText,
+      timestamp: Date.now(),
+      source,
+    },
+  });
+}
+
+// ── Coding Agent Chat Bridge ──────────────────────────────────────────
+
+/**
+ * Get the SwarmCoordinator from the runtime services (if available).
+ * Discovers via runtime.getService("SWARM_COORDINATOR") — the coordinator
+ * registers itself during PTYService.start().
+ */
+function getCoordinatorFromRuntime(runtime: AgentRuntime): {
+  setChatCallback?: (
+    cb: (
+      text: string,
+      source?: string,
+      routing?: {
+        sessionId?: string;
+        threadId?: string;
+        roomId?: string | null;
+      },
+    ) => Promise<void>,
+  ) => void;
+  setWsBroadcast?: (cb: (event: SwarmEvent) => void) => void;
+  setAgentDecisionCallback?: (
+    cb: (
+      eventDescription: string,
+      sessionId: string,
+      taskContext: TaskContext,
+    ) => Promise<CoordinationLLMResponse | null>,
+  ) => void;
+  setSwarmCompleteCallback?: (
+    cb: (payload: {
+      tasks: TaskCompletionSummary[];
+      total: number;
+      completed: number;
+      stopped: number;
+      errored: number;
+    }) => Promise<void>,
+  ) => void;
+  getTaskThread?: (
+    threadId: string,
+  ) => Promise<{ roomId?: string | null } | null>;
+  sourceRoomId?: string | null;
+} | null {
+  const coordinator = runtime.getService("SWARM_COORDINATOR");
+  if (coordinator) {
+    return coordinator as ReturnType<typeof getCoordinatorFromRuntime>;
+  }
+  const ptyService = runtime.getService("PTY_SERVICE") as
+    | (PTYService & { coordinator?: unknown })
+    | null;
+  if (ptyService?.coordinator) {
+    return ptyService.coordinator as ReturnType<
+      typeof getCoordinatorFromRuntime
+    >;
+  }
+  return null;
+}
+
+function wireCodingAgentBridgesNow(st: ServerState): void {
+  wireCodingAgentChatBridge(st);
+  wireCodingAgentWsBridge(st);
+  wireCoordinatorEventRouting(st);
+  wireCodingAgentSwarmSynthesis(st);
+}
+
+/**
+ * Wire the SwarmCoordinator's chatCallback so coordinator messages
+ * appear in the user's chat UI via the existing proactive-message flow.
+ * Returns true if successfully wired.
+ */
+function wireCodingAgentChatBridge(st: ServerState): boolean {
+  if (!st.runtime) return false;
+  const coordinator = getCoordinatorFromRuntime(st.runtime);
+  if (!coordinator?.setChatCallback) return false;
+  const hasPtyService = Boolean(st.runtime.getService("PTY_SERVICE"));
+  if (hasPtyService) {
+    // In the real task-agent stack the PTY progress streamer + jsonl watcher
+    // already deliver the success path. Keep generic coordinator chatter
+    // suppressed, but still route task-specific issue messages when the
+    // coordinator includes per-task routing metadata or when the text itself
+    // identifies a unique task thread.
+    coordinator.setChatCallback(async (text, source, routing) => {
+      const delivered = await routeTaskAgentTextToConnector(
+        st.runtime,
+        text,
+        source ?? "coding-agent",
+        routing,
+      );
+      if (!delivered) {
+        await routeAutonomyTextToUser(st, text, source ?? "coding-agent");
+      }
+    });
+    return true;
+  }
+
+  // Minimal runtimes used by tests and lightweight embeddings do not install
+  // the PTY progress bridge, so the coordinator callback is the only path
+  // that can surface coding-agent updates back into chat.
+  coordinator.setChatCallback(async (text: string, source?: string) => {
+    await routeAutonomyTextToUser(st, text, source ?? "coding-agent");
+  });
+  return true;
+}
+
+/**
+ * Wire the SwarmCoordinator's wsBroadcast callback so coordinator events
+ * are relayed to all WebSocket clients as "pty-session-event" messages.
+ * Returns true if successfully wired.
+ */
+function wireCodingAgentWsBridge(st: ServerState): boolean {
+  if (!st.runtime) return false;
+  const coordinator = getCoordinatorFromRuntime(st.runtime);
+  if (!coordinator?.setWsBroadcast) return false;
+  coordinator.setWsBroadcast((event: SwarmEvent) => {
+    // Preserve the coordinator's event type (task_registered, task_complete, etc.)
+    // as `eventType` so it doesn't overwrite the WS message dispatch type.
+    const { type: eventType, ...rest } = event;
+    st.broadcastWs?.({ type: "pty-session-event", eventType, ...rest });
+  });
+  return true;
+}
+
+/**
+ * Wire the SwarmCoordinator's swarmCompleteCallback so that when all agents
+ * finish, we synthesize a summary via the agent's LLM and post it as a
+ * persisted message in the conversation.
+ */
+function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
+  // Same rationale as wireCodingAgentChatBridge: synthesis is generated
+  // from task metadata (originalTask = user's text), not from the
+  // subagent's actual output. The task-progress-streamer + jsonl watcher
+  // deliver the real answer. Install a no-op callback so the upstream
+  // wiring check considers this bridge wired.
+  if (!st.runtime) return false;
+  const coordinator = getCoordinatorFromRuntime(st.runtime);
+  if (!coordinator?.setSwarmCompleteCallback) return false;
+  coordinator.setSwarmCompleteCallback(async () => {
+    // Deliberately no-op — synthesis happens via the streamer instead.
+  });
+  return true;
+}
+
+/**
+ * Handle swarm completion by synthesizing a summary via the LLM.
+ * Extracted from wireCodingAgentSwarmSynthesis for testability.
+ *
+ * Paths: (A) LLM returns synthesis → route to user,
+ *        (B) LLM returns empty → warn,
+ *        (C) LLM throws → fallback generic message.
+ */
+export async function handleSwarmSynthesis(
+  st: { runtime: AgentRuntime | null },
+  payload: {
+    tasks: Array<{
+      sessionId: string;
+      label: string;
+      agentType: string;
+      originalTask: string;
+      status: string;
+      completionSummary: string;
+    }>;
+    total: number;
+    completed: number;
+    stopped: number;
+    errored: number;
+  },
+  routeMessage: (text: string, source: string) => Promise<void> = (
+    text,
+    source,
+  ) => routeAutonomyTextToUser(st as ServerState, text, source),
+): Promise<void> {
+  const runtime = st.runtime;
+  if (!runtime) {
+    logger.warn("[swarm-synthesis] No runtime available — skipping synthesis");
+    return;
+  }
+
+  logger.info(
+    `[swarm-synthesis] Generating synthesis for ${payload.total} tasks (${payload.completed} completed, ${payload.stopped} stopped, ${payload.errored} errored)`,
+  );
+
+  const resultText = await buildSynthesisResultText(payload);
+  logger.info("[swarm-synthesis] Synthesis generated, routing to user");
+  await routeMessage(resultText, "swarm_synthesis");
+  await routeSynthesisToConnector(runtime, resultText);
+}
+
+/**
+ * Build the user-facing result message from swarm task data.
+ * For port-bound tasks, verifies the server is actually listening.
+ * No LLM call required — task data already has what we need.
+ */
+async function buildSynthesisResultText(payload: {
+  tasks: Array<{
+    originalTask: string;
+    completionSummary: string;
+    status: string;
+  }>;
+  total: number;
+}): Promise<string> {
+  const parts = await Promise.all(payload.tasks.map(buildTaskResultLine));
+  return parts.length === 1
+    ? `done — ${parts[0]}`
+    : `done — ${payload.total} tasks:\n${parts.map((p) => `• ${p}`).join("\n")}`;
+}
+
+async function buildTaskResultLine(task: {
+  originalTask: string;
+  completionSummary: string;
+}): Promise<string> {
+  if (task.completionSummary) return task.completionSummary;
+  const portMatch = task.originalTask.match(/port\s+(\d+)/i);
+  const port = portMatch?.[1];
+  if (!port) return task.originalTask;
+  if (await isPortServing(port)) {
+    const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
+    return `built and serving at http://${host}:${port}`;
+  }
+  return `built the files but server isn't running on port ${port} yet`;
+}
+
+async function isPortServing(port: string): Promise<boolean> {
+  try {
+    const res = await fetch(`http://localhost:${port}/`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Route the synthesis text to the user's platform (Discord, Telegram, etc.)
+ * via the runtime's registered send handler. Uses the source room ID stored
+ * on the coordinator when the task was created.
+ */
+async function routeSynthesisToConnector(
+  runtime: AgentRuntime,
+  resultText: string,
+): Promise<void> {
+  const coordinator = getCoordinatorFromRuntime(runtime);
+  const sourceRoomId = coordinator?.sourceRoomId;
+  if (!sourceRoomId) return;
+  try {
+    const room = await runtime.getRoom(sourceRoomId as UUID);
+    if (!room?.source) return;
+    await runtime.sendMessageToTarget(
+      {
+        source: room.source,
+        roomId: room.id,
+        channelId: room.channelId ?? room.id,
+        serverId: room.serverId,
+      } as Parameters<typeof runtime.sendMessageToTarget>[0],
+      { text: resultText, source: "swarm_synthesis" },
+    );
+    logger.info(
+      `[swarm-synthesis] Routed result to ${room.source} room ${room.id}`,
+    );
+  } catch (err) {
+    logger.debug(`[swarm-synthesis] Connector routing failed: ${err}`);
+  }
+}
+
+// ── Parse Action Block from Eliza's Response ─────────────────────────
+import {
+  parseActionBlock,
+  stripActionBlockFromDisplay,
+} from "./parse-action-block.js";
+
+// ── Coordinator Event Routing ───────────────────────────────────────────
+
+/**
+ * Wire the SwarmCoordinator's agentDecisionCallback so coordinator events
+ * (blocked prompts, turn completions) route through Eliza's full
+ * elizaOS pipeline (memory, personality, actions) so she has conversation
+ * context to make informed decisions. The pipeline's model size is
+ * The pipeline's model size is temporarily overridden to TEXT_SMALL
+ * via the private `runtime.llmModeOption` (no public setter exists).
+ * This is intentional — coordinator decisions must be fast to avoid
+ * stalling CLI agents waiting for input.
+ *
+ * Events are serialized (one at a time) to prevent context confusion.
+ * Eliza's response appears in chat via WS broadcast, and the embedded
+ * JSON action block is parsed and returned to the coordinator for execution.
+ *
+ * If the callback fails or Eliza's response has no action block,
+ * returns null → coordinator falls back to the small LLM.
+ */
+function wireCoordinatorEventRouting(st: ServerState): boolean {
+  if (!st.runtime) return false;
+  const coordinator = getCoordinatorFromRuntime(st.runtime);
+  if (!coordinator?.setAgentDecisionCallback) return false;
+
+  // Serialization queue — one coordinator event at a time
+  let eventQueue: Promise<void> = Promise.resolve();
+
+  coordinator.setAgentDecisionCallback(
+    async (
+      eventDescription: string,
+      _sessionId: string,
+      _taskCtx: TaskContext,
+    ): Promise<CoordinationLLMResponse | null> => {
+      let resolveOuter!: (v: CoordinationLLMResponse | null) => void;
+      const resultPromise = new Promise<CoordinationLLMResponse | null>((r) => {
+        resolveOuter = r;
+      });
+
+      eventQueue = eventQueue.then(async () => {
+        try {
+          const runtime = st.runtime;
+          if (!runtime) {
+            resolveOuter(null);
+            return;
+          }
+
+          // Ensure the legacy chat connection exists (creates room/world if needed).
+          // We inline the setup here because ensureLegacyChatConnection is
+          // closure-scoped in the route handler and not accessible at module level.
+          const agentName = runtime.character.name ?? "Eliza";
+          const existingLegacyChatRoom = st.chatRoomId
+            ? await runtime.getRoom(st.chatRoomId).catch(() => null)
+            : null;
+          if (!st.chatUserId || !st.chatRoomId || !existingLegacyChatRoom) {
+            const adminId =
+              st.adminEntityId ??
+              (stringToUuid(`${st.agentName}-admin-entity`) as UUID);
+            st.adminEntityId = adminId;
+            st.chatUserId = adminId;
+            st.chatRoomId =
+              st.chatRoomId ??
+              (stringToUuid(`${agentName}-web-chat-room`) as UUID);
+            const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
+            const messageServerId = stringToUuid(
+              `${agentName}-web-server`,
+            ) as UUID;
+            await runtime.ensureConnection({
+              entityId: adminId,
+              roomId: st.chatRoomId,
+              worldId,
+              userName: resolveAppUserName(st.config),
+              source: "client_chat",
+              channelId: `${agentName}-web-chat`,
+              type: ChannelType.DM,
+              messageServerId,
+              metadata: { ownership: { ownerId: adminId } },
+            });
+          }
+          if (!st.chatUserId || !st.chatRoomId) {
+            resolveOuter(null);
+            return;
+          }
+
+          // Create a message memory so the event enters Eliza's conversation history.
+          const message = createMessageMemory({
+            id: crypto.randomUUID() as UUID,
+            entityId: st.chatUserId,
+            agentId: runtime.agentId,
+            roomId: st.chatRoomId,
+            content: {
+              text: eventDescription,
+              source: "coordinator",
+              channelType: "DM",
+            },
+          });
+
+          // Temporarily force TEXT_SMALL — coordinator events are time-sensitive
+          // and TEXT_LARGE can timeout while CLI agents stall waiting for input.
+          // llmModeOption is private with no public setter; cast is intentional.
+          const rt = runtime as unknown as Record<string, unknown>;
+          const prevLlmMode = rt.llmModeOption;
+          rt.llmModeOption = "SMALL";
+          let result: { text: string; agentName?: string };
+          try {
+            result = await generateChatResponseFromChatRoutes(
+              runtime,
+              message,
+              agentName,
+              {
+                resolveNoResponseText: () => "I'll look into that.",
+              },
+            );
+          } finally {
+            rt.llmModeOption = prevLlmMode;
+          }
+
+          // WS broadcast the natural language portion (strip JSON action block).
+          // Both fenced (```json ... ```) and bare JSON must be removed since
+          // the LLM may return either format.
+          if (result.text && result.text !== "(no response)") {
+            const displayText = stripActionBlockFromDisplay(result.text);
+            if (displayText && displayText.length > 2) {
+              const conv = st.activeConversationId
+                ? st.conversations.get(st.activeConversationId)
+                : Array.from(st.conversations.values()).sort(
+                    (a, b) =>
+                      new Date(b.updatedAt).getTime() -
+                      new Date(a.updatedAt).getTime(),
+                  )[0];
+              if (conv) {
+                st.broadcastWs?.({
+                  type: "proactive-message",
+                  conversationId: conv.id,
+                  message: {
+                    id: `coordinator-${Date.now()}`,
+                    role: "assistant",
+                    text: displayText,
+                    timestamp: Date.now(),
+                    source: "coordinator",
+                  },
+                });
+              }
+            }
+          }
+
+          resolveOuter(parseActionBlock(result.text ?? ""));
+        } catch (err) {
+          logger.error(
+            `Coordinator event routing failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          resolveOuter(null);
+        }
+      });
+
+      return resultPromise;
+    },
+  );
+
+  return true;
+}
+
+/**
+ * Fallback handler for /api/coding-agents/* routes when the plugin
+ * doesn't export createCodingAgentRouteHandler.
+ * Uses the AgentOrchestratorService (CODE_TASK) to provide task data.
+ */
+async function handleCodingAgentsFallback(
+  runtime: AgentRuntime,
+  pathname: string,
+  method: string,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<boolean> {
+  type ScratchStatus = "pending_decision" | "kept" | "promoted";
+  type ScratchTerminalEvent = "stopped" | "task_complete" | "error";
+  type ScratchRecord = {
+    sessionId: string;
+    label: string;
+    path: string;
+    status: ScratchStatus;
+    createdAt: number;
+    terminalAt: number;
+    terminalEvent: ScratchTerminalEvent;
+    expiresAt?: number;
+  };
+  type AgentPreflightRecord = {
+    adapter?: string;
+    installed?: boolean;
+    installCommand?: string;
+    docsUrl?: string;
+    auth?: import("./coding-agents-preflight-normalize").NormalizedPreflightAuth;
+  };
+  /** CLI login hook on adapter instances — union `.d.ts` omits it even when runtime provides it. */
+  type CodingAgentAdapterAuthHook = {
+    triggerAuth?: () => Promise<
+      | boolean
+      | null
+      | undefined
+      | {
+          launched?: boolean;
+          url?: string;
+          deviceCode?: string;
+          instructions?: string;
+        }
+    >;
+  };
+  type CodeTaskService = {
+    getTasks?: () => Promise<
+      Array<{
+        id?: string;
+        name?: string;
+        description?: string;
+        metadata?: {
+          status?: string;
+          providerId?: string;
+          providerLabel?: string;
+          workingDirectory?: string;
+          progress?: number;
+          steps?: Array<{ status?: string }>;
+        };
+      }>
+    >;
+    getAgentPreflight?: () => Promise<unknown>;
+    listAgentPreflight?: () => Promise<unknown>;
+    preflightCodingAgents?: () => Promise<unknown>;
+    preflight?: () => Promise<unknown>;
+    listScratchWorkspaces?: () => Promise<unknown>;
+    getScratchWorkspaces?: () => Promise<unknown>;
+    listScratch?: () => Promise<unknown>;
+    keepScratchWorkspace?: (sessionId: string) => Promise<unknown>;
+    keepScratch?: (sessionId: string) => Promise<unknown>;
+    deleteScratchWorkspace?: (sessionId: string) => Promise<unknown>;
+    deleteScratch?: (sessionId: string) => Promise<unknown>;
+    promoteScratchWorkspace?: (
+      sessionId: string,
+      name?: string,
+    ) => Promise<unknown>;
+    promoteScratch?: (sessionId: string, name?: string) => Promise<unknown>;
+  };
+
+  const codeTaskService = runtime.getService(
+    "CODE_TASK",
+  ) as CodeTaskService | null;
+
+  const buildEmptyCoordinatorStatus = () => ({
+    supervisionLevel: "autonomous",
+    taskCount: 0,
+    tasks: [] as Array<Record<string, unknown>>,
+    recentTasks: [] as Array<Record<string, unknown>>,
+    taskThreadCount: 0,
+    taskThreads: [] as Array<Record<string, unknown>>,
+    pendingConfirmations: 0,
+    frameworks: [] as Array<Record<string, unknown>>,
+  });
+
+  const toNumber = (value: unknown, fallback = 0): number => {
+    const parsed =
+      typeof value === "number"
+        ? value
+        : typeof value === "string"
+          ? Number(value)
+          : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+  const toScratchStatus = (value: unknown): ScratchStatus => {
+    if (value === "kept" || value === "promoted") return value;
+    return "pending_decision";
+  };
+  const toTerminalEvent = (value: unknown): ScratchTerminalEvent => {
+    if (value === "stopped" || value === "error") return value;
+    return "task_complete";
+  };
+  const normalizeScratchRecord = (value: unknown): ScratchRecord | null => {
+    if (!value || typeof value !== "object") return null;
+    const raw = value as Record<string, unknown>;
+    const sessionId =
+      typeof raw.sessionId === "string" ? raw.sessionId.trim() : "";
+    const pathValue = typeof raw.path === "string" ? raw.path.trim() : "";
+    if (!sessionId || !pathValue) return null;
+    const createdAt = toNumber(raw.createdAt, Date.now());
+    const terminalAt = toNumber(raw.terminalAt, createdAt);
+    const expiresAt = toNumber(raw.expiresAt, 0);
+    return {
+      sessionId,
+      label:
+        typeof raw.label === "string" && raw.label.trim().length > 0
+          ? raw.label
+          : sessionId,
+      path: pathValue,
+      status: toScratchStatus(raw.status),
+      createdAt,
+      terminalAt,
+      terminalEvent: toTerminalEvent(raw.terminalEvent),
+      ...(expiresAt > 0 ? { expiresAt } : {}),
+    };
+  };
+  const parseSessionId = (raw: string): string | null => {
+    let sessionId = "";
+    try {
+      sessionId = decodeURIComponent(raw);
+    } catch {
+      return null;
+    }
+    if (!sessionId || sessionId.includes("/") || sessionId.includes("..")) {
+      return null;
+    }
+    return sessionId;
+  };
+  const parseTaskId = (raw: string): string | null => {
+    let taskId = "";
+    try {
+      taskId = decodeURIComponent(raw);
+    } catch {
+      return null;
+    }
+    if (!taskId || taskId.includes("/") || taskId.includes("..")) {
+      return null;
+    }
+    return taskId;
+  };
+  const ptyListService = runtime.getService("PTY_SERVICE") as
+    | (PTYService & {
+        listSessions?: () => Promise<unknown[]>;
+      })
+    | null;
+
+  // GET /api/coding-agents/tasks
+  if (method === "GET" && pathname === "/api/coding-agents/tasks") {
+    if (!codeTaskService?.getTasks) {
+      error(res, "Coding agent task service unavailable", 503);
+      return true;
+    }
+    try {
+      const url = new URL(req.url ?? pathname, "http://localhost");
+      const requestedStatus = url.searchParams.get("status");
+      const requestedLimit = Number(url.searchParams.get("limit"));
+      let tasks = (await codeTaskService.getTasks()) ?? [];
+      if (!Array.isArray(tasks)) {
+        tasks = [];
+      }
+      if (requestedStatus) {
+        tasks = tasks.filter(
+          (task) => task.metadata?.status === requestedStatus,
+        );
+      }
+      if (Number.isFinite(requestedLimit) && requestedLimit > 0) {
+        tasks = tasks.slice(0, requestedLimit);
+      }
+      json(res, { tasks });
+      return true;
+    } catch (e) {
+      error(res, `Failed to list coding agent tasks: ${e}`, 500);
+      return true;
+    }
+  }
+
+  const taskMatch = pathname.match(/^\/api\/coding-agents\/tasks\/([^/]+)$/);
+  if (method === "GET" && taskMatch) {
+    const taskId = parseTaskId(taskMatch[1]);
+    if (!taskId) {
+      error(res, "Invalid task ID", 400);
+      return true;
+    }
+    if (!codeTaskService?.getTasks) {
+      error(res, "Coding agent task service unavailable", 503);
+      return true;
+    }
+    try {
+      const tasks = (await codeTaskService.getTasks()) ?? [];
+      const task = Array.isArray(tasks)
+        ? tasks.find((entry) => entry.id === taskId)
+        : undefined;
+      if (!task) {
+        error(res, "Task not found", 404);
+        return true;
+      }
+      json(res, { task });
+      return true;
+    } catch (e) {
+      error(res, `Failed to get coding agent task: ${e}`, 500);
+      return true;
+    }
+  }
+
+  // GET /api/coding-agents/sessions
+  if (method === "GET" && pathname === "/api/coding-agents/sessions") {
+    if (!ptyListService?.listSessions) {
+      error(res, "Coding agent session service unavailable", 503);
+      return true;
+    }
+    try {
+      const sessions = (await ptyListService.listSessions()) ?? [];
+      json(res, { sessions: Array.isArray(sessions) ? sessions : [] });
+      return true;
+    } catch (e) {
+      error(res, `Failed to list coding agent sessions: ${e}`, 500);
+      return true;
+    }
+  }
+
+  const sessionMatch = pathname.match(
+    /^\/api\/coding-agents\/sessions\/([^/]+)$/,
+  );
+  if (method === "GET" && sessionMatch) {
+    const sessionId = parseSessionId(sessionMatch[1]);
+    if (!sessionId) {
+      error(res, "Invalid session ID", 400);
+      return true;
+    }
+    if (!ptyListService?.listSessions) {
+      error(res, "Coding agent session service unavailable", 503);
+      return true;
+    }
+    try {
+      const sessions = (await ptyListService.listSessions()) ?? [];
+      const session = Array.isArray(sessions)
+        ? sessions.find((entry) => {
+            if (!entry || typeof entry !== "object") return false;
+            const raw = entry as Record<string, unknown>;
+            return (
+              raw.id === sessionId ||
+              raw.sessionId === sessionId ||
+              raw.roomId === sessionId
+            );
+          })
+        : undefined;
+      if (!session) {
+        error(res, "Session not found", 404);
+        return true;
+      }
+      json(res, { session });
+      return true;
+    } catch (e) {
+      error(res, `Failed to get coding agent session: ${e}`, 500);
+      return true;
+    }
+  }
+
+  // GET /api/coding-agents/preflight
+  if (method === "GET" && pathname === "/api/coding-agents/preflight") {
+    const loaders: Array<(() => Promise<unknown>) | undefined> = [
+      codeTaskService?.getAgentPreflight,
+      codeTaskService?.listAgentPreflight,
+      codeTaskService?.preflightCodingAgents,
+      codeTaskService?.preflight,
+    ];
+    if (!loaders.some(Boolean)) {
+      error(res, "Coding agent preflight unavailable", 503);
+      return true;
+    }
+    try {
+      let rows: unknown[] = [];
+      for (const loader of loaders) {
+        if (!loader) continue;
+        const maybeRows = await loader.call(codeTaskService);
+        if (Array.isArray(maybeRows)) {
+          rows = maybeRows;
+          break;
+        }
+      }
+      const { normalizePreflightAuth } = await import(
+        "./coding-agents-preflight-normalize"
+      );
+      const normalized = rows.flatMap((item): AgentPreflightRecord[] => {
+        if (!item || typeof item !== "object") return [];
+        const raw = item as Record<string, unknown>;
+        const adapter =
+          typeof raw.adapter === "string" ? raw.adapter.trim() : "";
+        if (!adapter) return [];
+        const auth = normalizePreflightAuth(raw.auth);
+        return [
+          {
+            adapter,
+            installed: Boolean(raw.installed),
+            installCommand:
+              typeof raw.installCommand === "string"
+                ? raw.installCommand
+                : undefined,
+            docsUrl: typeof raw.docsUrl === "string" ? raw.docsUrl : undefined,
+            ...(auth ? { auth } : {}),
+          },
+        ];
+      });
+      json(res, normalized);
+      return true;
+    } catch (e) {
+      error(res, `Failed to get coding agent preflight: ${e}`, 500);
+      return true;
+    }
+  }
+
+  // GET /api/coding-agents/coordinator/status
+  if (
+    method === "GET" &&
+    pathname === "/api/coding-agents/coordinator/status"
+  ) {
+    if (!codeTaskService?.getTasks) {
+      error(res, "Coding agent coordinator unavailable", 503);
+      return true;
+    }
+
+    try {
+      const tasks = await codeTaskService.getTasks();
+
+      // Map tasks to the CodingAgentSession format expected by frontend
+      const mappedTasks = tasks.map((task) => {
+        const meta = task.metadata ?? {};
+        // Map orchestrator status to frontend status
+        let status: string = "active";
+        switch (meta.status) {
+          case "completed":
+            status = "completed";
+            break;
+          case "failed":
+          case "error":
+            status = "error";
+            break;
+          case "cancelled":
+            status = "stopped";
+            break;
+          case "paused":
+            status = "blocked";
+            break;
+          case "running":
+            status = "active";
+            break;
+          case "pending":
+            status = "active";
+            break;
+          default:
+            status = "active";
+        }
+
+        return {
+          sessionId: task.id ?? "",
+          agentType: meta.providerId ?? "eliza",
+          label: meta.providerLabel ?? task.name ?? "Task",
+          originalTask: task.description ?? task.name ?? "",
+          workdir: meta.workingDirectory ?? process.cwd(),
+          status,
+          decisionCount: meta.steps?.length ?? 0,
+          autoResolvedCount:
+            meta.steps?.filter((s) => s.status === "completed").length ?? 0,
+        };
+      });
+
+      json(res, {
+        ...buildEmptyCoordinatorStatus(),
+        taskCount: mappedTasks.length,
+        tasks: mappedTasks,
+        recentTasks: mappedTasks,
+        pendingConfirmations: 0,
+      });
+      return true;
+    } catch (e) {
+      error(res, `Failed to get coding agent status: ${e}`, 500);
+      return true;
+    }
+  }
+
+  // POST /api/coding-agents/:sessionId/stop - Stop a coding agent task
+  const stopMatch = pathname.match(/^\/api\/coding-agents\/([^/]+)\/stop$/);
+  if (method === "POST" && stopMatch) {
+    const sessionId = parseSessionId(stopMatch[1]);
+    if (!sessionId) {
+      error(res, "Invalid session ID", 400);
+      return true;
+    }
+    const ptyService = runtime.getService("PTY_SERVICE") as PTYService | null;
+
+    if (!ptyService?.stopSession) {
+      error(res, "PTY Service not available", 503);
+      return true;
+    }
+
+    try {
+      await ptyService.stopSession(sessionId);
+      json(res, { ok: true });
+      return true;
+    } catch (e) {
+      error(res, `Failed to stop session: ${e}`, 500);
+      return true;
+    }
+  }
+
+  // GET /api/coding-agents/scratch
+  if (method === "GET" && pathname === "/api/coding-agents/scratch") {
+    const loaders: Array<(() => Promise<unknown>) | undefined> = [
+      codeTaskService?.listScratchWorkspaces,
+      codeTaskService?.getScratchWorkspaces,
+      codeTaskService?.listScratch,
+    ];
+    if (!loaders.some(Boolean)) {
+      error(res, "Coding agent scratch workspace service unavailable", 503);
+      return true;
+    }
+    try {
+      let rows: unknown[] = [];
+      for (const loader of loaders) {
+        if (!loader) continue;
+        const maybeRows = await loader.call(codeTaskService);
+        if (Array.isArray(maybeRows)) {
+          rows = maybeRows;
+          break;
+        }
+      }
+      const normalized = rows
+        .map((item) => normalizeScratchRecord(item))
+        .filter((item): item is ScratchRecord => item !== null);
+      json(res, normalized);
+      return true;
+    } catch (e) {
+      error(res, `Failed to list scratch workspaces: ${e}`, 500);
+      return true;
+    }
+  }
+
+  const keepMatch = pathname.match(
+    /^\/api\/coding-agents\/([^/]+)\/scratch\/keep$/,
+  );
+  if (method === "POST" && keepMatch) {
+    const sessionId = parseSessionId(keepMatch[1]);
+    if (!sessionId) {
+      error(res, "Invalid session ID", 400);
+      return true;
+    }
+    const keeper =
+      codeTaskService?.keepScratchWorkspace ?? codeTaskService?.keepScratch;
+    if (!keeper) {
+      error(res, "Scratch keep is not available", 503);
+      return true;
+    }
+    try {
+      await keeper.call(codeTaskService, sessionId);
+      json(res, { ok: true });
+      return true;
+    } catch (e) {
+      error(res, `Failed to keep scratch workspace: ${e}`, 500);
+      return true;
+    }
+  }
+
+  const deleteMatch = pathname.match(
+    /^\/api\/coding-agents\/([^/]+)\/scratch\/delete$/,
+  );
+  if (method === "POST" && deleteMatch) {
+    const sessionId = parseSessionId(deleteMatch[1]);
+    if (!sessionId) {
+      error(res, "Invalid session ID", 400);
+      return true;
+    }
+    const deleter =
+      codeTaskService?.deleteScratchWorkspace ?? codeTaskService?.deleteScratch;
+    if (!deleter) {
+      error(res, "Scratch delete is not available", 503);
+      return true;
+    }
+    try {
+      await deleter.call(codeTaskService, sessionId);
+      json(res, { ok: true });
+      return true;
+    } catch (e) {
+      error(res, `Failed to delete scratch workspace: ${e}`, 500);
+      return true;
+    }
+  }
+
+  const promoteMatch = pathname.match(
+    /^\/api\/coding-agents\/([^/]+)\/scratch\/promote$/,
+  );
+  if (method === "POST" && promoteMatch) {
+    const sessionId = parseSessionId(promoteMatch[1]);
+    if (!sessionId) {
+      error(res, "Invalid session ID", 400);
+      return true;
+    }
+    const promoter =
+      codeTaskService?.promoteScratchWorkspace ??
+      codeTaskService?.promoteScratch;
+    if (!promoter) {
+      error(res, "Scratch promote is not available", 503);
+      return true;
+    }
+    const body = await readJsonBody<{ name?: string }>(req, res);
+    if (body === null) return true;
+    const name =
+      typeof body.name === "string" && body.name.trim().length > 0
+        ? body.name.trim()
+        : undefined;
+    try {
+      const promoted = await promoter.call(codeTaskService, sessionId, name);
+      const scratch = normalizeScratchRecord(promoted);
+      json(res, { success: true, ...(scratch ? { scratch } : {}) });
+      return true;
+    } catch (e) {
+      error(res, `Failed to promote scratch workspace: ${e}`, 500);
+      return true;
+    }
+  }
+
+  // GET /api/coding-agents — list active PTY sessions (used by getCodingAgentStatus fallback)
+  if (method === "GET" && pathname === "/api/coding-agents") {
+    if (!codeTaskService?.getTasks) {
+      error(res, "Coding agent task service unavailable", 503);
+      return true;
+    }
+    try {
+      const tasks = await codeTaskService.getTasks();
+      json(res, Array.isArray(tasks) ? tasks : []);
+      return true;
+    } catch (e) {
+      error(res, `Failed to list coding agents: ${e}`, 500);
+      return true;
+    }
+  }
+
+  // POST /api/coding-agents/auth/:agent — trigger CLI auth flow
+  const authMatch = pathname.match(/^\/api\/coding-agents\/auth\/(\w+)$/);
+  if (method === "POST" && authMatch) {
+    const agentType = authMatch[1];
+    // Allowlist the adapter type. The `\w+` regex on the route pattern
+    // stops path traversal but still accepts arbitrary identifiers
+    // like `__proto__`, `constructor`, or any future adapter name the
+    // package happens to export. `createAdapter` takes an unvalidated
+    // string and we don't want it to resolve a prototype-pollution
+    // sentinel or an adapter we haven't audited, so gate on the four
+    // shapes the UI actually ships today.
+    const ALLOWED_AGENT_TYPES = new Set(["claude", "codex", "gemini", "aider"]);
+    if (!ALLOWED_AGENT_TYPES.has(agentType)) {
+      error(res, `Unsupported agent type: ${agentType}`, 400);
+      return true;
+    }
+    try {
+      const ptyService = runtime.getService("PTY_SERVICE") as {
+        triggerAgentAuth?: (
+          agent: import("coding-agent-adapters").AdapterType,
+        ) => Promise<unknown>;
+      } | null;
+      const triggerAuthFn =
+        typeof ptyService?.triggerAgentAuth === "function"
+          ? () =>
+              ptyService.triggerAgentAuth?.(
+                agentType as import("coding-agent-adapters").AdapterType,
+              )
+          : null;
+      if (!triggerAuthFn) {
+        const { createAdapter } = await import("coding-agent-adapters");
+        const adapter = createAdapter(
+          agentType as import("coding-agent-adapters").AdapterType,
+        );
+        const authAdapter = adapter as unknown as CodingAgentAdapterAuthHook;
+        if (typeof authAdapter.triggerAuth !== "function") {
+          error(res, `Auth trigger is unavailable for ${agentType}`, 501);
+          return true;
+        }
+      }
+      // Server-side timeout: some CLI auth flows spawn an interactive
+      // subprocess that can hang indefinitely in headless / Docker
+      // environments. Cap the wait so we don't pin an async for
+      // longer than the client is willing to poll.
+      const AUTH_TIMEOUT_MS = 15_000;
+      const timeoutError = new Error("auth trigger timeout");
+      const triggered = await Promise.race([
+        triggerAuthFn
+          ? triggerAuthFn()
+          : (
+              (await import("coding-agent-adapters")).createAdapter(
+                agentType as import("coding-agent-adapters").AdapterType,
+              ) as unknown as CodingAgentAdapterAuthHook
+            ).triggerAuth?.(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(timeoutError), AUTH_TIMEOUT_MS),
+        ),
+      ]).catch((e) => {
+        if (e === timeoutError) return "__timeout__" as const;
+        throw e;
+      });
+      if (triggered === "__timeout__") {
+        error(res, `Auth trigger timed out for ${agentType}`, 504);
+      } else if (!triggered) {
+        // 4xx — otherwise the client's `res.ok` check passes and it
+        // kicks off a 2-minute spurious polling loop even though no
+        // auth flow was ever initiated.
+        error(res, `No auth flow available for ${agentType}`, 400);
+      } else {
+        // Whitelist + URL-scheme-validate before forwarding to the
+        // browser. See `coding-agents-auth-sanitize.ts` for rationale.
+        const { sanitizeAuthResult } = await import(
+          "./coding-agents-auth-sanitize"
+        );
+        json(res, sanitizeAuthResult(triggered));
+      }
+    } catch (e) {
+      // Log the full error server-side for debugging (including stack
+      // trace) but return a generic message to the client so we don't
+      // leak internal adapter error strings through the HTTP surface.
+      logger.error(
+        `[coding-agents/auth] triggerAuth failed for ${agentType}: ${
+          e instanceof Error ? (e.stack ?? e.message) : String(e)
+        }`,
+      );
+      error(res, `Auth trigger failed for ${agentType}`, 500);
+    }
+    return true;
+  }
+
+  // Not handled by fallback
+  return false;
+}
+
+/**
+ * Get the PTYConsoleBridge from the PTYService (if available).
+ * Used by the WS PTY handlers to subscribe to output and forward input.
+ */
+function getPtyConsoleBridge(st: ServerState) {
+  if (!st.runtime) return null;
+  const ptyService = st.runtime.getService(
+    "PTY_SERVICE",
+  ) as unknown as PTYService | null;
+  return ptyService?.consoleBridge ?? null;
+}
+
+/**
+ * Route non-conversation agent events into the active user chat.
+ * This avoids monkey-patching the message service and relies on explicit
+ * event stream plumbing from AGENT_EVENT.
+ */
+async function maybeRouteAutonomyEventToConversation(
+  state: ServerState,
+  event: AgentEventPayloadLike,
+): Promise<void> {
+  if (event.stream !== "assistant") return;
+
+  const payload =
+    event.data && typeof event.data === "object"
+      ? (event.data as Record<string, unknown>)
+      : null;
+  const text = typeof payload?.text === "string" ? payload.text.trim() : "";
+  if (!text) return;
+
+  const hasExplicitSource =
+    typeof payload?.source === "string" && payload.source.trim().length > 0;
+  const source = hasExplicitSource
+    ? (payload?.source as string).trim()
+    : "autonomy";
+
+  // Regular user conversation turns should never be re-routed as proactive.
+  // Some AGENT_EVENT payloads may omit roomId metadata, so rely on source too.
+  if (source === "client_chat") return;
+  if (!hasExplicitSource && !event.roomId) return;
+
+  // Keep regular conversation messages in their own room only.
+  if (
+    event.roomId &&
+    Array.from(state.conversations.values()).some(
+      (c) => c.roomId === event.roomId,
+    )
+  ) {
+    return;
+  }
+
+  await routeAutonomyTextToUser(state, text, source);
+}
+
+async function handleRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: ServerState,
+  ctx?: RequestContext,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  let url: URL;
+  try {
+    url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  } catch {
+    error(res, "Invalid request URL", 400);
+    return;
+  }
+  const pathname = url.pathname;
+  const isAuthEndpoint = pathname.startsWith("/api/auth/");
+  const isHealthEndpoint = method === "GET" && pathname === "/api/health";
+  const isCloudProvisioned = isCloudProvisionedContainer();
+  const isCloudOnboardingStatusEndpoint =
+    method === "GET" &&
+    pathname === "/api/onboarding/status" &&
+    isCloudProvisioned;
+  const isWhatsAppWebhookEndpoint = pathname === "/api/whatsapp/webhook";
+  const isBlueBubblesWebhookEndpoint =
+    pathname ===
+    resolveBlueBubblesWebhookPath({
+      runtime: state.runtime
+        ? {
+            getService: (type: string) =>
+              (
+                state.runtime as { getService: (t: string) => unknown }
+              ).getService(type),
+          }
+        : undefined,
+    });
+  const isAuthProtectedPath = isAuthProtectedRoute(pathname);
+  const registryService = state.registryService;
+  const dropService = state.dropService;
+
+  const scheduleRuntimeRestart = (reason: string): void => {
+    if (state.pendingRestartReasons.length >= 50) {
+      // Prevent unbounded growth — keep only first entry + latest
+      state.pendingRestartReasons.splice(
+        1,
+        state.pendingRestartReasons.length - 1,
+      );
+    }
+    if (!state.pendingRestartReasons.includes(reason)) {
+      state.pendingRestartReasons.push(reason);
+    }
+    logger.info(
+      `[eliza-api] Restart required: ${reason} (${state.pendingRestartReasons.length} pending)`,
+    );
+    state.broadcastWs?.({
+      type: "restart-required",
+      reasons: [...state.pendingRestartReasons],
+    });
+  };
+
+  const restartRuntime = async (reason: string): Promise<boolean> => {
+    if (!ctx?.onRestart) {
+      return false;
+    }
+    if (state.agentState === "restarting") {
+      return false;
+    }
+
+    const previousState = state.agentState;
+    logger.info(`[eliza-api] Applying runtime reload: ${reason}`);
+    state.agentState = "restarting";
+    state.startup = { ...state.startup, phase: "restarting" };
+    state.broadcastStatus?.();
+
+    try {
+      const newRuntime = await ctx.onRestart();
+      if (!newRuntime) {
+        state.agentState = previousState;
+        state.broadcastStatus?.();
+        return false;
+      }
+
+      state.runtime = newRuntime;
+      state.chatConnectionReady = null;
+      state.chatConnectionPromise = null;
+      state.agentState = "running";
+      state.agentName =
+        newRuntime.character.name ?? resolveDefaultAgentName(state.config);
+      state.model = detectRuntimeModel(newRuntime, state.config);
+      state.startedAt = Date.now();
+      state.pendingRestartReasons = [];
+      ctx.onRuntimeSwapped?.();
+      state.broadcastStatus?.();
+      return true;
+    } catch (err) {
+      logger.warn(
+        `[eliza-api] Runtime reload failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      state.agentState = previousState;
+      state.broadcastStatus?.();
+      return false;
+    }
+  };
+
+  // ── DNS rebinding protection ──────────────────────────────────────────
+  // Reject requests whose Host header doesn't match a known loopback
+  // hostname.  Without this check an attacker can rebind their domain's
+  // DNS to 127.0.0.1 and read the unauthenticated localhost API from a
+  // malicious page.
+  if (!isAllowedHost(req)) {
+    const incomingHost = req.headers.host ?? "your-hostname";
+    json(
+      res,
+      {
+        error: "Forbidden — invalid Host header",
+        hint: `To allow this host, set ELIZA_ALLOWED_HOSTS=${incomingHost} (or ELIZA_ALLOWED_HOSTS) in your environment, or access via http://localhost`,
+        docs: "https://docs.eliza.ai/configuration#allowed-hosts",
+      },
+      403,
+    );
+    return;
+  }
+
+  if (!applyCors(req, res, pathname)) {
+    json(res, { error: "Origin not allowed" }, 403);
+    return;
+  }
+
+  // Serve dashboard static assets before the auth gates. serveStaticUi already
+  // refuses /api/, /v1/, and /ws paths, so API endpoints remain protected
+  // while steward-managed containers can still reach the built-in dashboard.
+  if (method === "GET" || method === "HEAD") {
+    if (serveStaticUi(req, res, pathname)) return;
+  }
+
+  if (
+    isCloudProvisioned &&
+    method !== "OPTIONS" &&
+    isAuthProtectedPath &&
+    !isAuthEndpoint &&
+    !isHealthEndpoint &&
+    !isCloudOnboardingStatusEndpoint &&
+    !isWhatsAppWebhookEndpoint &&
+    !isBlueBubblesWebhookEndpoint &&
+    !pathname.startsWith("/api/lifeops/browser/companions/") &&
+    !isAuthorized(req)
+  ) {
+    json(res, { error: "Unauthorized" }, 401);
+    return;
+  }
+
+  if (
+    method !== "OPTIONS" &&
+    isAuthProtectedPath &&
+    !isAuthEndpoint &&
+    !isHealthEndpoint &&
+    !isCloudOnboardingStatusEndpoint &&
+    !isWhatsAppWebhookEndpoint &&
+    !isBlueBubblesWebhookEndpoint &&
+    !pathname.startsWith("/api/lifeops/browser/companions/") &&
+    !isAuthorized(req)
+  ) {
+    json(res, { error: "Unauthorized" }, 401);
+    return;
+  }
+
+  // CORS preflight
+  if (method === "OPTIONS") {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
+  // ── Provider inference helpers ────────────────────────────────────────
+  const disableCloudInference = (): void => {
+    delete process.env.ANTHROPIC_BASE_URL;
+    delete process.env.OPENAI_BASE_URL;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+  };
+
+  const enableCloudInference = (cloudApiKey: string, baseUrl: string): void => {
+    // Configure coding agent CLIs to proxy through ElizaCloud /api/v1
+    process.env.ANTHROPIC_BASE_URL = `${baseUrl}/api/v1`;
+    process.env.ANTHROPIC_API_KEY = cloudApiKey;
+    process.env.OPENAI_BASE_URL = `${baseUrl}/api/v1`;
+    process.env.OPENAI_API_KEY = cloudApiKey;
+    // Gemini CLI and Aider — no proxy support via ElizaCloud inference
+  };
+
+  // ── POST /api/provider/switch (extracted to provider-switch-routes.ts) ──
+  if (
+    await handleProviderSwitchRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      json,
+      error,
+      readJsonBody,
+      saveElizaConfig,
+      scheduleRuntimeRestart,
+      providerSwitchInProgress,
+      setProviderSwitchInProgress: (v: boolean) => {
+        providerSwitchInProgress = v;
+      },
+      restartRuntime,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleAuthRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+      pairingEnabled,
+      ensurePairingCode,
+      normalizePairingCode,
+      rateLimitPairing,
+      getPairingExpiresAt: () => pairingExpiresAt,
+      clearPairing: () => {
+        pairingCode = null;
+        pairingExpiresAt = 0;
+      },
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleSubscriptionRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      readJsonBody,
+      json,
+      error,
+      saveConfig: saveElizaConfig,
+      loadSubscriptionAuth: async () =>
+        (await import("../auth/index.js")) as never,
+    } as never)
+  ) {
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Health / status / runtime routes (extracted to health-routes.ts)
+  // ═══════════════════════════════════════════════════════════════════════
+  if (
+    await handleHealthRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      state,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  // ── Onboarding GET routes (extracted to onboarding-routes.ts) ─────────
+  if (
+    await handleOnboardingRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      state: state as any,
+      json,
+      error,
+      readJsonBody,
+      isCloudProvisionedContainer,
+      hasPersistedOnboardingState,
+      ensureWalletKeysInEnvAndConfig,
+      getWalletAddresses: getWalletAddresses as any,
+      pickRandomNames,
+      getStylePresets: getStylePresets as any,
+      getProviderOptions: getProviderOptions as any,
+      getCloudProviderOptions: getCloudProviderOptions as any,
+      getModelOptions: getModelOptions as any,
+      getInventoryProviderOptions: getInventoryProviderOptions as any,
+      resolveConfiguredCharacterLanguage:
+        resolveConfiguredCharacterLanguage as any,
+      normalizeCharacterLanguage: normalizeCharacterLanguage as any,
+      readUiLanguageHeader: readUiLanguageHeader as any,
+      applyOnboardingVoicePreset: applyOnboardingVoicePreset as any,
+      saveElizaConfig,
+    })
+  ) {
+    return;
+  }
+
+  // POST /api/onboarding is now handled by onboarding-routes.ts above.
+
+  if (
+    await handleAgentLifecycleRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      error,
+      json,
+      readJsonBody,
+    })
+  ) {
+    return;
+  }
+
+  const triggerHandled = await handleTriggerRoutes({
+    req,
+    res,
+    method,
+    pathname,
+    runtime: state.runtime,
+    readJsonBody,
+    json,
+    error,
+    executeTriggerTask: executeTriggerTask as never,
+    getTriggerHealthSnapshot,
+    getTriggerLimit: getTriggerLimit as never,
+    listTriggerTasks: listTriggerTasks as never,
+    readTriggerConfig,
+    readTriggerRuns,
+    taskToTriggerSummary: taskToTriggerSummary as never,
+    triggersFeatureEnabled,
+    buildTriggerConfig: buildTriggerConfig as never,
+    buildTriggerMetadata: buildTriggerMetadata as never,
+    normalizeTriggerDraft: normalizeTriggerDraft as never,
+    DISABLED_TRIGGER_INTERVAL_MS,
+    TRIGGER_TASK_NAME,
+    TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],
+  });
+  if (triggerHandled) {
+    return;
+  }
+
+  if (pathname.startsWith("/api/training")) {
+    if (!state.trainingService) {
+      error(res, "Training service is not available", 503);
+      return;
+    }
+    const trainingHandled = await handleTrainingRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime,
+      trainingService: state.trainingService,
+      readJsonBody,
+      json,
+      error,
+      isLoopbackHost,
+    });
+    if (trainingHandled) return;
+  }
+
+  // ── Knowledge routes (/api/knowledge/*) ─────────────────────────────────
+  if (pathname.startsWith("/api/knowledge")) {
+    const knowledgeHandled = await handleKnowledgeRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      runtime: state.runtime,
+      readJsonBody,
+      json,
+      error,
+    });
+    if (knowledgeHandled) return;
+  }
+
+  if (
+    pathname.startsWith("/api/memory") ||
+    pathname.startsWith("/api/memories") ||
+    pathname === "/api/context/quick"
+  ) {
+    const memoryHandled = await handleMemoryRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      runtime: state.runtime,
+      agentName: state.agentName,
+      readJsonBody,
+      json,
+      error,
+    });
+    if (memoryHandled) return;
+  }
+
+  if (
+    await handleAgentAdminRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      onRestart: ctx?.onRestart ?? undefined,
+      onRuntimeSwapped: ctx?.onRuntimeSwapped,
+      json,
+      error,
+      resolveStateDir,
+      resolvePath: path.resolve,
+      getHomeDir: os.homedir,
+      isSafeResetStateDir,
+      stateDirExists: fs.existsSync,
+      removeStateDir: (resolvedState) => {
+        fs.rmSync(resolvedState, { recursive: true, force: true });
+      },
+      logWarn: (message) => logger.warn(message),
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleAgentTransferRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      readJsonBody,
+      json,
+      error,
+      exportAgent,
+      estimateExportSize,
+      importAgent,
+      isAgentExportError: (err: unknown) => err instanceof AgentExportError,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleCharacterRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      readJsonBody,
+      json,
+      error,
+      pickRandomNames,
+      saveConfig: saveElizaConfig as never,
+      validateCharacter: (body) => CharacterSchema.safeParse(body) as never,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleModelsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      json,
+      providerCachePath,
+      getOrFetchProvider,
+      getOrFetchAllProviders,
+      resolveModelsCacheDir,
+      pathExists: fs.existsSync,
+      readDir: fs.readdirSync,
+      unlinkFile: fs.unlinkSync,
+      joinPath: path.join,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleNfaRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleRegistryRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      json,
+      error,
+      getPluginManager: () => getPluginManagerForState(state) as never,
+      getLoadedPluginNames: () =>
+        state.runtime?.plugins.map((plugin) => plugin.name) ?? [],
+      getBundledPluginIds: () => getReleaseBundledPluginIds(),
+      classifyRegistryPluginRelease,
+    })
+  ) {
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Plugin routes (extracted to plugin-routes.ts)
+  // ═══════════════════════════════════════════════════════════════════════
+  if (
+    pathname === "/api/plugins" ||
+    pathname.startsWith("/api/plugins/") ||
+    pathname === "/api/secrets" ||
+    pathname === "/api/core/status"
+  ) {
+    if (
+      await handlePluginRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state,
+        json,
+        error,
+        readJsonBody,
+        scheduleRuntimeRestart,
+        restartRuntime,
+        BLOCKED_ENV_KEYS,
+        discoverInstalledPlugins,
+        maskValue,
+        aggregateSecrets,
+        readProviderCache,
+        paramKeyToCategory,
+        buildPluginEvmDiagnosticEntry,
+        EVM_PLUGIN_PACKAGE,
+        applyWhatsAppQrOverride,
+        applySignalQrOverride,
+        signalAuthExists,
+        resolvePluginConfigMutationRejections,
+        requirePluginManager,
+        requireCoreManager,
+      })
+    ) {
+      return;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Skills routes (extracted to skills-routes.ts)
+  // ═══════════════════════════════════════════════════════════════════════
+  if (pathname.startsWith("/api/skills")) {
+    if (
+      await handleSkillsRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state,
+        json,
+        error,
+        readJsonBody,
+        readBody,
+        discoverSkills,
+        saveElizaConfig,
+      })
+    ) {
+      return;
+    }
+  }
+
+  if (
+    await handleDiagnosticsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      logBuffer: state.logBuffer,
+      eventBuffer: state.eventBuffer,
+      initSse: initSseFromChatRoutes,
+      writeSseJson: writeSseJsonFromChatRoutes,
+      json,
+      auditEventTypes: AUDIT_EVENT_TYPES,
+      auditSeverities: AUDIT_SEVERITIES,
+      getAuditFeedSize,
+      queryAuditFeed: (query) => queryAuditFeed(query as never) as never,
+      subscribeAuditFeed,
+    })
+  ) {
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Bug report routes
+  // ═══════════════════════════════════════════════════════════════════════
+  if (
+    await handleBugReportRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Wallet / Inventory routes
+  // ═══════════════════════════════════════════════════════════════════════
+  if (
+    await handleWalletRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      config: state.config,
+      runtime: state.runtime,
+      saveConfig: saveElizaConfig,
+      ensureWalletKeysInEnvAndConfig,
+      resolveWalletExportRejection,
+      scheduleRuntimeRestart,
+      deps: {
+        getWalletAddresses,
+        fetchEvmBalances,
+        fetchSolanaBalances,
+        fetchSolanaNativeBalanceViaRpc,
+        validatePrivateKey,
+        importWallet,
+        generateWalletForChain,
+      },
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  ERC-8004 Registry, Agent self-status, Privy — delegated to agent-status-routes.ts
+  // ═══════════════════════════════════════════════════════════════════════
+  if (
+    await handleAgentStatusRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      state: state as any,
+      json,
+      error,
+      readJsonBody,
+      deps: {
+        getWalletAddresses,
+        resolveWalletCapabilityStatus: resolveWalletCapabilityStatus as any,
+        resolveWalletRpcReadiness: resolveWalletRpcReadiness as any,
+        resolveTradePermissionMode,
+        canUseLocalTradeExecution: canUseLocalTradeExecution as any,
+        detectRuntimeModel: detectRuntimeModel as any,
+        resolveProviderFromModel,
+        getGlobalAwarenessRegistry: getGlobalAwarenessRegistry as any,
+        isPrivyWalletProvisioningEnabled,
+        ensurePrivyWalletsForCustomUser: ensurePrivyWalletsForCustomUser as any,
+        RegistryService,
+      },
+    })
+  ) {
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  Drop / Mint / Whitelist Routes (extracted to drop-routes.ts)
+  // ═══════════════════════════════════════════════════════════════════════
+  if (
+    await handleDropRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      json,
+      error,
+      readJsonBody,
+      dropService,
+      agentName: state.agentName,
+      getWalletAddresses: getWalletAddresses as any,
+      readOGCodeFromState,
+    })
+  ) {
+    return;
+  }
+
+  // ── Update routes (extracted to update-routes.ts) ─────────────────────
+  if (
+    await handleUpdateRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      state,
+      json,
+      error,
+      readJsonBody,
+      saveElizaConfig,
+    })
+  ) {
+    return;
+  }
+
+  // ── Connector routes (extracted to connector-routes.ts) ──────────────
+  if (
+    await handleConnectorRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      json,
+      error,
+      readJsonBody,
+      saveElizaConfig,
+      redactConfigSecrets,
+      isBlockedObjectKey,
+      cloneWithoutBlockedObjectKeys,
+    })
+  ) {
+    return;
+  }
+
+  // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
+  // Auth: these routes are protected by the isAuthorized(req) gate at L5331.
+  if (pathname.startsWith("/api/whatsapp")) {
+    if (!state.whatsappPairingSessions) {
+      state.whatsappPairingSessions = new Map();
+    }
+    // Clean up disconnected or timed-out sessions
+    for (const [id, session] of state.whatsappPairingSessions) {
+      const status = session.getStatus();
+      if (
+        status === "disconnected" ||
+        status === "timeout" ||
+        status === "error"
+      ) {
+        session.stop();
+        state.whatsappPairingSessions.delete(id);
+      }
+    }
+    const handled = await handleWhatsAppRoute(
+      req,
+      res,
+      pathname,
+      method,
+      {
+        whatsappPairingSessions: state.whatsappPairingSessions,
+        broadcastWs: state.broadcastWs ?? undefined,
+        config: state.config,
+        runtime: state.runtime ?? undefined,
+        saveConfig: () => saveElizaConfig(state.config),
+        workspaceDir: resolveDefaultAgentWorkspaceDir(),
+      },
+      {
+        sanitizeAccountId: sanitizeWhatsAppAccountId,
+        whatsappAuthExists,
+        whatsappLogout,
+        createWhatsAppPairingSession: (options) =>
+          new WhatsAppPairingSession(options as never),
+      },
+    );
+    if (handled) return;
+  }
+
+  // ── Unified inbox routes (/api/inbox/*) ───────────────────────────────
+  // Cross-channel read-only feed that merges connector messages
+  // (imessage, telegram, discord, whatsapp, etc.) into a single
+  // time-ordered view. See api/inbox-routes.ts for details.
+  const blueBubblesHandled = await handleBlueBubblesRoute(
+    req,
+    res,
+    pathname,
+    method,
+    {
+      runtime: state.runtime
+        ? {
+            getService: (type: string) =>
+              (
+                state.runtime as { getService: (t: string) => unknown }
+              ).getService(type),
+          }
+        : undefined,
+    },
+    { json, error, readJsonBody },
+  );
+  if (blueBubblesHandled) return;
+
+  if (pathname.startsWith("/api/inbox")) {
+    const handled = await handleInboxRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { runtime: state.runtime ?? null },
+      { json, error, readJsonBody },
+    );
+    if (handled) return;
+  }
+
+  // ── iMessage routes (/api/imessage/*) ─────────────────────────────────
+  // Read + CRUD endpoints exposed by @elizaos/plugin-imessage's
+  // IMessageService. See api/imessage-routes.ts for the handler.
+  if (pathname.startsWith("/api/imessage")) {
+    const handled = await handleIMessageRoute(
+      req,
+      res,
+      pathname,
+      method,
+      {
+        runtime: state.runtime
+          ? {
+              getService: (type: string) =>
+                (
+                  state.runtime as { getService: (t: string) => unknown }
+                ).getService(type),
+            }
+          : undefined,
+      },
+      { json, error, readJsonBody },
+    );
+    if (handled) return;
+  }
+
+  // ── Cloud relay status (/api/cloud/relay-status) ──────────────────────
+  if (pathname === "/api/cloud/relay-status") {
+    const handled = await handleCloudRelayRoute(
+      req,
+      res,
+      pathname,
+      method,
+      {
+        runtime: state.runtime
+          ? {
+              getService: (type: string) =>
+                (
+                  state.runtime as { getService: (t: string) => unknown }
+                ).getService(type),
+            }
+          : undefined,
+      },
+      { json, error, readJsonBody },
+    );
+    if (handled) return;
+  }
+
+  // ── Telegram setup routes (/api/telegram-setup/*) ─────────────────────
+  if (pathname.startsWith("/api/telegram-setup")) {
+    const handled = await handleTelegramSetupRoute(
+      req,
+      res,
+      pathname,
+      method,
+      {
+        config: state.config,
+        saveConfig: () => saveElizaConfig(state.config),
+        runtime: state.runtime
+          ? {
+              getService: (type: string) =>
+                (
+                  state.runtime as { getService: (t: string) => unknown }
+                ).getService(type),
+              getSetting: (key: string) =>
+                (
+                  state.runtime as {
+                    getSetting: (k: string) => string | undefined;
+                  }
+                ).getSetting(key),
+            }
+          : undefined,
+      },
+      { json, error, readJsonBody },
+    );
+    if (handled) return;
+  }
+
+  // ── Telegram account routes (/api/telegram-account/*) ────────────────
+  if (pathname.startsWith("/api/telegram-account")) {
+    const routeState = {
+      config: state.config,
+      saveConfig: () => saveElizaConfig(state.config),
+      runtime: state.runtime
+        ? {
+            getService: (type: string) =>
+              (
+                state.runtime as { getService: (t: string) => unknown }
+              ).getService(type),
+            getSetting: (key: string) =>
+              (
+                state.runtime as {
+                  getSetting: (k: string) => string | undefined;
+                }
+              ).getSetting(key),
+          }
+        : undefined,
+      telegramAccountAuthSession: state.telegramAccountAuthSession,
+    };
+    const handled = await handleTelegramAccountRoute(
+      req,
+      res,
+      pathname,
+      method,
+      routeState,
+      { json, error, readJsonBody },
+      {
+        createAuthSession: (options) =>
+          new TelegramAccountAuthSession(options),
+        authStateExists: telegramAccountAuthStateExists,
+        sessionExists: telegramAccountSessionExists,
+        clearAuthState: clearTelegramAccountAuthState,
+        clearSession: clearTelegramAccountSession,
+      },
+    );
+    state.telegramAccountAuthSession =
+      routeState.telegramAccountAuthSession ?? null;
+    if (handled) return;
+  }
+
+  // ── Discord Local routes (/api/discord-local/*) ──────────────────────
+  if (pathname.startsWith("/api/discord-local")) {
+    const handled = await handleDiscordLocalRoute(
+      req,
+      res,
+      pathname,
+      method,
+      {
+        config: state.config,
+        runtime: state.runtime
+          ? {
+              getService: (type: string) =>
+                (
+                  state.runtime as { getService: (t: string) => unknown }
+                ).getService(type),
+            }
+          : undefined,
+        saveConfig: () => saveElizaConfig(state.config),
+      },
+      { json, error, readJsonBody },
+    );
+    if (handled) return;
+  }
+
+  // ── Signal routes (/api/signal/*) ─────────────────────────────────────
+  if (pathname.startsWith("/api/signal")) {
+    if (!state.signalPairingSessions) {
+      state.signalPairingSessions = new Map();
+    }
+    if (!state.signalPairingSnapshots) {
+      state.signalPairingSnapshots = new Map();
+    }
+    for (const [id, session] of state.signalPairingSessions) {
+      const status = session.getStatus();
+      if (
+        status === "disconnected" ||
+        status === "timeout" ||
+        status === "error"
+      ) {
+        state.signalPairingSnapshots.set(id, session.getSnapshot());
+        session.stop();
+        state.signalPairingSessions.delete(id);
+      }
+    }
+    const handled = await handleSignalRoute(
+      req,
+      res,
+      pathname,
+      method,
+      {
+        signalPairingSessions: state.signalPairingSessions,
+        signalPairingSnapshots: state.signalPairingSnapshots,
+        broadcastWs: state.broadcastWs ?? undefined,
+        config: state.config,
+        runtime: state.runtime ?? undefined,
+        saveConfig: () => saveElizaConfig(state.config),
+        workspaceDir: resolveDefaultAgentWorkspaceDir(),
+      },
+      {
+        sanitizeAccountId: sanitizeSignalAccountId,
+        signalAuthExists,
+        signalLogout,
+        createSignalPairingSession: (options) =>
+          new SignalPairingSession(options as never),
+      },
+    );
+    if (handled) return;
+  }
+
+  // ── Restart ──────────────────────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/restart") {
+    state.agentState = "restarting";
+    state.startup = { ...state.startup, phase: "restarting" };
+    state.broadcastStatus?.();
+    json(res, { ok: true, message: "Restarting...", restarting: true });
+    setTimeout(() => process.exit(0), 1000);
+    return;
+  }
+
+  // ── TTS routes (extracted to tts-routes.ts) ──────────────────────────
+  if (
+    await handleTtsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      json,
+      error,
+      readJsonBody,
+      isRedactedSecretValue,
+      fetchWithTimeoutGuard,
+      streamResponseBodyWithByteLimit: streamResponseBodyWithByteLimit as any,
+      responseContentLength,
+      isAbortError,
+      ELEVENLABS_FETCH_TIMEOUT_MS: 30_000,
+      ELEVENLABS_AUDIO_MAX_BYTES: 20 * 1_048_576,
+    })
+  ) {
+    return;
+  }
+
+  // ── Avatar routes (extracted to avatar-routes.ts) ───────────────────
+  if (
+    await handleAvatarRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Config routes (extracted to config-routes.ts)
+  // ═══════════════════════════════════════════════════════════════════════
+  if (pathname === "/api/config" || pathname === "/api/config/schema") {
+    if (
+      await handleConfigRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        config: state.config,
+        json,
+        error,
+        readJsonBody,
+        redactConfigSecrets,
+        isBlockedObjectKey,
+        stripRedactedPlaceholderValuesDeep,
+        patchTouchesProviderSelection,
+        BLOCKED_ENV_KEYS,
+        CONFIG_WRITE_ALLOWED_TOP_KEYS,
+        resolveMcpServersRejection,
+        resolveMcpTerminalAuthorizationRejection,
+      })
+    ) {
+      return;
+    }
+  }
+
+  // ── Permissions extra routes (extracted to permissions-routes-extra.ts) ──
+  if (
+    await handlePermissionsExtraRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state: state as any,
+      json,
+      error,
+      readJsonBody,
+      saveElizaConfig,
+      resolveTradePermissionMode: resolveTradePermissionMode as any,
+      canUseLocalTradeExecution: canUseLocalTradeExecution as any,
+      parseAgentAutomationMode,
+      persistAgentAutomationMode: persistAgentAutomationMode as any,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handlePermissionRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      readJsonBody,
+      json,
+      error,
+      saveConfig: (config) => {
+        saveElizaConfig(config as ElizaConfig);
+      },
+      scheduleRuntimeRestart,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleRelationshipsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime ?? undefined,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleWebsiteBlockerRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime ?? undefined,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleBrowserWorkspaceRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  // Agent self-status, Privy, and ERC-8004 registry routes are now handled
+  // by handleAgentStatusRoutes above.
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Subscription status route
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ── GET /api/subscription/status (direct handler fallback) ─────────────
+  // Note: subscription-routes.ts handles /api/subscription/* but this is
+  // kept here in case the prefix routing is not active.
+  // (handleSubscriptionRoutes already covers this, so no duplicate needed.)
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BSC trade routes (preflight, quote, tx-status, profile, transfer, production-defaults)
+  // Delegated to wallet-bsc-routes.ts
+  // ═══════════════════════════════════════════════════════════════════════
+  if (
+    await handleWalletBscRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      state: { config: state.config },
+      json,
+      error,
+      readJsonBody,
+      deps: {
+        getWalletAddresses,
+        resolveWalletRpcReadiness,
+        resolvePrimaryBscRpcUrl,
+        buildBscTradePreflight,
+        buildBscTradeQuote,
+        updateWalletTradeLedgerEntryStatus:
+          updateWalletTradeLedgerEntryStatus as any,
+        loadWalletTradingProfile: loadWalletTradingProfile as any,
+        resolveTradePermissionMode,
+        isAgentAutomationRequest,
+        canUseLocalTradeExecution: canUseLocalTradeExecution as any,
+        saveElizaConfig,
+      },
+    })
+  ) {
+    return;
+  }
+
+  // ── POST /api/wallet/trade/execute ─────────────────────────────────────
+  if (
+    await handleWalletTradeExecuteRoute({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+      state: { config: state.config },
+      deps: {
+        getWalletAddresses,
+        resolveWalletRpcReadiness,
+        resolveTradePermissionMode,
+        isAgentAutomationRequest,
+        canUseLocalTradeExecution,
+        buildBscTradeQuote,
+        buildBscBuyUnsignedTx,
+        buildBscSellUnsignedTx,
+        buildBscApproveUnsignedTx,
+        resolveBscApprovalSpender,
+        resolvePrimaryBscRpcUrl,
+        assertQuoteFresh,
+        recordWalletTradeLedgerEntry,
+        createProvider: (rpcUrl) => new ethers.JsonRpcProvider(rpcUrl),
+        createWallet: (privateKey, provider) =>
+          new ethers.Wallet(privateKey, provider as ethers.Provider),
+        logger,
+      },
+    })
+  ) {
+    return;
+  }
+
+  // tx-status, trading/profile, transfer/execute, production-defaults
+  // are now handled by handleWalletBscRoutes above.
+
+  // ── Cloud routes (/api/cloud/*) ─────────────────────────────────────────
+  if (pathname.startsWith("/api/cloud/")) {
+    const billingHandled = await handleCloudBillingRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { config: state.config },
+    );
+    if (billingHandled) return;
+
+    // Compat proxy routes — transparent proxy to Eliza Cloud v2 /api/compat/*
+    const compatHandled = await handleCloudCompatRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { config: state.config },
+    );
+    if (compatHandled) return;
+
+    const cloudState: CloudRouteState = {
+      config: state.config,
+      cloudManager: state.cloudManager,
+      runtime: state.runtime,
+      saveConfig: saveElizaConfig,
+      createTelemetrySpan: createIntegrationTelemetrySpan,
+    };
+    const handled = await handleCloudRoute(
+      req,
+      res,
+      pathname,
+      method,
+      cloudState,
+    );
+    if (handled) return;
+  }
+
+  // ── Sandbox routes (/api/sandbox/*) ────────────────────────────────────
+  if (pathname.startsWith("/api/sandbox")) {
+    const handled = await handleSandboxRoute(req, res, pathname, method, {
+      sandboxManager: state.sandboxManager,
+    });
+    if (handled) return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Conversation routes (/api/conversations/*) — delegated to conversation-routes.ts
+  // ═══════════════════════════════════════════════════════════════════════
+
+  if (pathname.startsWith("/api/conversations")) {
+    // Cast state — ConversationRouteState is a compatible subset of ServerState
+    const handled = await handleConversationRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+      state: state as any,
+    });
+    if (handled) return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // OpenAI-compatible routes (/v1/*) — delegated to chat-routes.ts
+  // ═══════════════════════════════════════════════════════════════════════
+
+  if (pathname.startsWith("/v1/")) {
+    // Cast state — ChatRouteState is a compatible subset of ServerState
+    const handled = await handleChatRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+      state: state as any,
+    });
+    if (handled) return;
+  }
+
+  // ── Database management API ─────────────────────────────────────────────
+  if (pathname.startsWith("/api/database/")) {
+    const handled = await handleDatabaseRoute(
+      req,
+      res,
+      state.runtime,
+      pathname,
+    );
+    if (handled) return;
+  }
+
+  // ── Trajectory management API ──────────────────────────────────────────
+  if (pathname.startsWith("/api/trajectories")) {
+    if (!state.runtime) {
+      sendJsonError(res, "Agent runtime not started yet", 503);
+      return;
+    }
+    const handled = await handleTrajectoryRoute(
+      req,
+      res,
+      state.runtime,
+      pathname,
+      method,
+    );
+    if (handled) return;
+  }
+
+  // ── Coding Agent API (/api/coding-agents/*, /api/workspace/*, /api/issues/*) ──
+  if (
+    !state.runtime &&
+    method === "GET" &&
+    pathname === "/api/coding-agents/coordinator/status"
+  ) {
+    error(res, "Coding agent runtime unavailable", 503);
+    return;
+  }
+  if (
+    !state.runtime &&
+    method === "GET" &&
+    pathname === "/api/coding-agents/preflight"
+  ) {
+    error(res, "Coding agent runtime unavailable", 503);
+    return;
+  }
+  if (
+    !state.runtime &&
+    method === "GET" &&
+    pathname.startsWith("/api/coding-agents")
+  ) {
+    error(res, "Coding agent runtime unavailable", 503);
+    return;
+  }
+  if (
+    state.runtime &&
+    (pathname.startsWith("/api/coding-agents") ||
+      pathname.startsWith("/api/workspace") ||
+      pathname.startsWith("/api/issues"))
+  ) {
+    const isCoordinatorStatusRoute =
+      method === "GET" && pathname === "/api/coding-agents/coordinator/status";
+    const isPreflightRoute =
+      method === "GET" && pathname === "/api/coding-agents/preflight";
+
+    // Try to dynamically load the route handler from the local plugin first
+    let handled = false;
+
+    // Lazily start PTY_SERVICE if it was registered but not yet started.
+    // The core runtime only starts services on-demand via getServiceLoadPromise,
+    // but the orchestrator plugin's route handler checks getService() (which
+    // only returns already-started instances). Without this kick, the plugin
+    // sees null and returns 503 for every route.
+    if (
+      !state.runtime.getService("PTY_SERVICE") &&
+      state.runtime.hasService("PTY_SERVICE")
+    ) {
+      try {
+        await state.runtime.getServiceLoadPromise("PTY_SERVICE");
+        wireCodingAgentBridgesNow(state);
+      } catch {
+        // Service start failed — the fallback handler will surface 503 unavailability.
+      }
+    }
+
+    const ptyService = state.runtime.getService(
+      "PTY_SERVICE",
+    ) as PTYService | null;
+    const coordinator = getCoordinatorFromRuntime(state.runtime);
+    const codeTaskService = state.runtime.getService("CODE_TASK");
+    const isTaskRoute = method === "GET" && pathname === "/api/coding-agents/tasks";
+    const isTaskDetailRoute =
+      method === "GET" && /^\/api\/coding-agents\/tasks\/[^/]+$/.test(pathname);
+    const isSessionsRoute =
+      method === "GET" && pathname === "/api/coding-agents/sessions";
+    const isSessionDetailRoute =
+      method === "GET" &&
+      /^\/api\/coding-agents\/sessions\/[^/]+$/.test(pathname);
+    const isScratchRoute =
+      method === "GET" && pathname === "/api/coding-agents/scratch";
+    const isAgentListRoute =
+      method === "GET" && pathname === "/api/coding-agents";
+
+    // The settings UI and startup hydration poll these routes early. When the
+    // PTY/coordinator services are not ready yet, surface explicit 503
+    // unavailability rather than synthesizing success-shaped empty payloads.
+    if (
+      (isCoordinatorStatusRoute && !coordinator) ||
+      (isPreflightRoute && !ptyService) ||
+      ((isTaskRoute || isTaskDetailRoute || isScratchRoute || isAgentListRoute) &&
+        !codeTaskService) ||
+      ((isSessionsRoute || isSessionDetailRoute) && !ptyService)
+    ) {
+      handled = await handleCodingAgentsFallback(
+        state.runtime,
+        pathname,
+        method,
+        req,
+        res,
+      );
+    }
+
+    // Prefer the local orchestrator compat layer first so Eliza's richer
+    // coordinator contract wins over older plugin-coding-agent status routes.
+    if (!handled)
+      try {
+        const orchestratorPlugin =
+          agentOrchestratorCompat as OrchestratorPluginFallbackModule;
+        if (orchestratorPlugin.createCodingAgentRouteHandler) {
+          const coordinator = orchestratorPlugin.getCoordinator?.(
+            state.runtime,
+          );
+          const handler = orchestratorPlugin.createCodingAgentRouteHandler(
+            state.runtime,
+            coordinator,
+          );
+          handled = await (handler as ConnectorRouteHandler)(
+            req,
+            res,
+            pathname,
+            req.method ?? "GET",
+          );
+        }
+      } catch {
+        // Compat layer unavailable, try older coding-agent plugin next
+      }
+
+    // Then try the older coding-agent plugin when present.
+    if (!handled) {
+      try {
+        const codingAgentPlugin = (await import(
+          "@elizaos/plugin-coding-agent"
+        )) as {
+          createCodingAgentRouteHandler?: (
+            runtime: typeof state.runtime,
+            coordinator?: unknown,
+          ) => (
+            req: http.IncomingMessage,
+            res: http.ServerResponse,
+            pathname: string,
+          ) => Promise<boolean>;
+          getCoordinator?: (runtime: typeof state.runtime) => unknown;
+        };
+        if (codingAgentPlugin.createCodingAgentRouteHandler) {
+          const coordinator = codingAgentPlugin.getCoordinator?.(state.runtime);
+          const handler = codingAgentPlugin.createCodingAgentRouteHandler(
+            state.runtime,
+            coordinator,
+          );
+          handled = await handler(req, res, pathname);
+        }
+      } catch {
+        // Local plugin not available, skip
+      }
+    }
+
+    // Final fallback: Handle coding-agents routes using AgentOrchestratorService
+    if (!handled && pathname.startsWith("/api/coding-agents")) {
+      handled = await handleCodingAgentsFallback(
+        state.runtime,
+        pathname,
+        method,
+        req,
+        res,
+      );
+    }
+
+    if (handled) return;
+  }
+
+  if (
+    await handleCloudStatusRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      config: state.config,
+      runtime: state.runtime,
+      json,
+    })
+  ) {
+    return;
+  }
+
+  // ── App routes (/api/apps/*) ──────────────────────────────────────────
+  if (
+    await handleAppsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      appManager: state.appManager as never,
+      getPluginManager: () => getPluginManagerForState(state) as never,
+      parseBoundedLimit,
+      readJsonBody,
+      json,
+      error,
+      runtime: state.runtime,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleAppPackageRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      readJsonBody,
+      json,
+      error,
+      runtime: state.runtime,
+    })
+  ) {
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+  // Workbench routes (extracted to workbench-routes.ts)
+  // ═══════════════════════════════════════════════════════════════════════
+  if (pathname.startsWith("/api/workbench")) {
+    if (
+      await handleWorkbenchRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state: state as any,
+        json,
+        error,
+        readJsonBody,
+        toWorkbenchTask: toWorkbenchTask as any,
+        toWorkbenchTodo: toWorkbenchTodo as any,
+        normalizeTags,
+        readTaskMetadata,
+        readTaskCompleted,
+        parseNullableNumber,
+        asObject,
+        decodePathComponent,
+        taskToTriggerSummary: taskToTriggerSummary as any,
+        listTriggerTasks: listTriggerTasks as any,
+      })
+    ) {
+      return;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Life-ops routes
+  // ═══════════════════════════════════════════════════════════════════════
+  if (pathname.startsWith("/api/lifeops")) {
+    if (
+      await handleLifeOpsRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state: state as any,
+        json,
+        error,
+        readJsonBody,
+        decodePathComponent,
+      })
+    ) {
+      return;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MCP routes (extracted to mcp-routes.ts)
+  // ═══════════════════════════════════════════════════════════════════════
+  if (pathname.startsWith("/api/mcp")) {
+    if (
+      await handleMcpRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state,
+        json,
+        error,
+        readJsonBody,
+        saveElizaConfig,
+        redactDeep,
+        isBlockedObjectKey,
+        cloneWithoutBlockedObjectKeys,
+        resolveMcpServersRejection,
+        resolveMcpTerminalAuthorizationRejection,
+        decodePathComponent,
+      })
+    ) {
+      return;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Misc routes (extracted to misc-routes.ts)
+  // ═══════════════════════════════════════════════════════════════════════
+  if (
+    await handleMiscRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      state: state as any,
+      json,
+      error,
+      readJsonBody,
+      AGENT_EVENT_ALLOWED_STREAMS,
+      resolveTerminalRunRejection,
+      resolveTerminalRunClientId,
+      isSharedTerminalClientId,
+      activeTerminalRunCount,
+      setActiveTerminalRunCount: (delta: number) => {
+        activeTerminalRunCount = Math.max(0, activeTerminalRunCount + delta);
+      },
+    })
+  ) {
+    return;
+  }
+
+  // ── elizaOS plugin HTTP routes (runtime.routes, e.g. /music-player/*) ───
+  if (
+    await tryHandleRuntimePluginRoute({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      runtime: state.runtime,
+      isAuthorized: () => isAuthorized(req),
+    })
+  ) {
+    return;
+  }
+
+  // ── Connector plugin routes (dynamically registered) ────────────────────
+  for (const handler of state.connectorRouteHandlers) {
+    const handled = await handler(req, res, pathname, method);
+    if (handled) return;
+  }
+
+  // ── Music player compatibility fallback ─────────────────────────────────
+  if (
+    tryHandleMusicPlayerStatusFallback({
+      pathname,
+      method,
+      runtime: state.runtime,
+      res,
+    })
+  ) {
+    return;
+  }
+
+  // ── Fallback ────────────────────────────────────────────────────────────
+  error(res, "Not found", 404);
+}
+
+// ---------------------------------------------------------------------------
+// Early log capture — re-exported from the standalone module so existing
+// callers that `import { captureEarlyLogs } from "../../../../src/api/server"` keep
+// working.  The implementation lives in `./early-logs.ts` to avoid pulling
+// the entire server dependency graph into lightweight consumers (e.g. the
+// headless `startEliza()` path).
+// ---------------------------------------------------------------------------
+import { type captureEarlyLogs, flushEarlyLogs } from "./early-logs.js";
+
+export type { captureEarlyLogs };
+
+// ---------------------------------------------------------------------------
+// Server start
+// ---------------------------------------------------------------------------
+
+export async function startApiServer(opts?: {
+  port?: number;
+  runtime?: AgentRuntime;
+  skipDeferredStartupWork?: boolean;
+  /** Initial state when starting without a runtime (e.g. embedded startup flow). */
+  initialAgentState?: "not_started" | "starting" | "stopped" | "error";
+  /**
+   * Called when the UI requests a restart via `POST /api/agent/restart`.
+   * Should stop the current runtime, create a new one, and return it.
+   * If omitted the endpoint returns 501 (not supported in this mode).
+   */
+  onRestart?: () => Promise<AgentRuntime | null>;
+}): Promise<{
+  port: number;
+  close: () => Promise<void>;
+  updateRuntime: (rt: AgentRuntime) => void;
+  updateStartup: (
+    update: Partial<AgentStartupDiagnostics> & {
+      phase?: string;
+      attempt?: number;
+      state?: ServerState["agentState"];
+    },
+  ) => void;
+}> {
+  const apiStartTime = Date.now();
+  console.log(`[eliza-api] startApiServer called`);
+
+  const port = opts?.port ?? resolveServerOnlyPort(process.env);
+  const host = resolveApiBindHost(process.env);
+  ensureApiTokenForBindHost(host);
+  console.log(`[eliza-api] Token check done (${Date.now() - apiStartTime}ms)`);
+
+  let config: ElizaConfig;
+  try {
+    config = loadElizaConfig();
+  } catch (err) {
+    logger.warn(
+      `[eliza-api] Failed to load config, starting with defaults: ${err instanceof Error ? err.message : err}`,
+    );
+    config = {} as ElizaConfig;
+  }
+  console.log(`[eliza-api] Config loaded (${Date.now() - apiStartTime}ms)`);
+
+  // Wallet/inventory routes read from process.env at request-time.
+  // Hydrate persisted config.env values so addresses remain visible after restarts.
+  const persistedEnv = config.env as Record<string, string> | undefined;
+  const envKeysToHydrate = [
+    "ELIZA_WALLET_OS_STORE",
+    "EVM_PRIVATE_KEY",
+    "SOLANA_PRIVATE_KEY",
+    "ALCHEMY_API_KEY",
+    "INFURA_API_KEY",
+    "ANKR_API_KEY",
+    "HELIUS_API_KEY",
+    "BIRDEYE_API_KEY",
+    "SOLANA_RPC_URL",
+  ] as const;
+  for (const key of envKeysToHydrate) {
+    const value = persistedEnv?.[key];
+    if (typeof value === "string" && value.trim() && !process.env[key]) {
+      process.env[key] = value.trim();
+    }
+  }
+
+  // Optional auto-provision mode for legacy environments. Disabled by default
+  // so startup does not silently create new wallets when keys are missing.
+  const walletAutoProvisionRaw =
+    process.env.ELIZA_WALLET_AUTO_PROVISION?.trim().toLowerCase();
+  const walletAutoProvisionEnabled =
+    walletAutoProvisionRaw === "1" ||
+    walletAutoProvisionRaw === "true" ||
+    walletAutoProvisionRaw === "on" ||
+    walletAutoProvisionRaw === "yes";
+  if (walletAutoProvisionEnabled && ensureWalletKeysInEnvAndConfig(config)) {
+    try {
+      saveElizaConfig(config);
+    } catch (err) {
+      logger.warn(
+        `[eliza-api] Failed to persist generated wallet keys: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  // Pre-load steward wallet addresses so getWalletAddresses() has them
+  // available synchronously from the start (cloud-provisioned containers).
+  await initStewardWalletCache();
+
+  // Warn when wallet private keys live in plaintext config and the OS secure
+  // store is not enabled.  This nudges operators toward ELIZA_WALLET_OS_STORE=1.
+  {
+    const hasPlaintextKeys =
+      (typeof persistedEnv?.EVM_PRIVATE_KEY === "string" &&
+        persistedEnv.EVM_PRIVATE_KEY.trim()) ||
+      (typeof persistedEnv?.SOLANA_PRIVATE_KEY === "string" &&
+        persistedEnv.SOLANA_PRIVATE_KEY.trim());
+    const osStoreRaw = process.env.ELIZA_WALLET_OS_STORE?.trim().toLowerCase();
+    const osStoreEnabled =
+      osStoreRaw === "1" ||
+      osStoreRaw === "true" ||
+      osStoreRaw === "on" ||
+      osStoreRaw === "yes";
+    if (hasPlaintextKeys && !osStoreEnabled) {
+      logger.warn(
+        "[wallet] Private keys are stored in plaintext config. " +
+          "Set ELIZA_WALLET_OS_STORE=1 to use the OS secure store instead.",
+      );
+    }
+  }
+
+  const plugins = discoverPluginsFromManifest();
+  console.log(
+    `[eliza-api] Plugins discovered (${Date.now() - apiStartTime}ms)`,
+  );
+  const workspaceDir =
+    config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
+
+  const hasRuntime = opts?.runtime != null;
+  const initialAgentState = hasRuntime
+    ? "running"
+    : (opts?.initialAgentState ?? "not_started");
+  const initialStartup: AgentStartupDiagnostics =
+    initialAgentState === "running"
+      ? { phase: "running", attempt: 0 }
+      : initialAgentState === "starting"
+        ? { phase: "starting", attempt: 0 }
+        : { phase: "idle", attempt: 0 };
+  const agentName = hasRuntime
+    ? (opts.runtime?.character.name ?? resolveDefaultAgentName(config))
+    : resolveDefaultAgentName(config);
+
+  const deletedConversationIds = readDeletedConversationIdsFromState();
+
+  const state: ServerState = {
+    runtime: opts?.runtime ?? null,
+    config,
+    agentState: initialAgentState,
+    agentName,
+    model: hasRuntime
+      ? detectRuntimeModel(opts.runtime ?? null, config)
+      : undefined,
+    startedAt:
+      hasRuntime || initialAgentState === "starting" ? Date.now() : undefined,
+    startup: initialStartup,
+    plugins,
+    // Filled asynchronously after server start to keep startup latency low.
+    skills: [],
+    logBuffer: [],
+    eventBuffer: [],
+    nextEventId: 1,
+    chatRoomId: null,
+    chatUserId: null,
+    chatConnectionReady: null,
+    chatConnectionPromise: null,
+    adminEntityId: null,
+    conversations: new Map(),
+    conversationRestorePromise: null,
+    deletedConversationIds,
+    cloudManager: null,
+    sandboxManager: null,
+    appManager: new AppManager(),
+    trainingService: null,
+    registryService: null,
+    dropService: null,
+    shareIngestQueue: [],
+    broadcastStatus: null,
+    broadcastWs: null,
+    broadcastWsToClientId: null,
+    activeConversationId: null,
+    permissionStates: {},
+    shellEnabled: config.features?.shellEnabled !== false,
+    agentAutomationMode: resolveAgentAutomationModeFromConfig(config),
+    tradePermissionMode: resolveTradePermissionMode(config),
+    pendingRestartReasons: [],
+    connectorRouteHandlers: [],
+    connectorHealthMonitor: null,
+  };
+  const trainingServiceCtor = await resolveTrainingServiceCtor();
+  const trainingServiceOptions = {
+    getRuntime: () => state.runtime,
+    getConfig: () => state.config,
+    setConfig: (nextConfig: ElizaConfig) => {
+      state.config = nextConfig;
+      saveElizaConfig(nextConfig);
+    },
+  };
+  if (trainingServiceCtor) {
+    state.trainingService = new trainingServiceCtor(trainingServiceOptions);
+  } else {
+    logger.info(
+      "[eliza-api] Training service package unavailable; training routes will be disabled",
+    );
+  }
+  // Register immediately so /api/training routes are available without a startup race.
+  const configuredAdminEntityId = config.agents?.defaults?.adminEntityId;
+  if (configuredAdminEntityId && isUuidLike(configuredAdminEntityId)) {
+    state.adminEntityId = configuredAdminEntityId;
+    state.chatUserId = state.adminEntityId;
+  } else if (configuredAdminEntityId) {
+    logger.warn(
+      `[eliza-api] Ignoring invalid agents.defaults.adminEntityId "${configuredAdminEntityId}"`,
+    );
+  }
+
+  // Wire the app manager to the runtime if already running
+  if (state.runtime) {
+    // AppManager doesn't need a runtime reference — it just installs plugins
+  }
+
+  const addLog = (
+    level: string,
+    message: string,
+    source = "system",
+    tags: string[] = [],
+  ) => {
+    let resolvedSource = source;
+    if (source === "auto" || source === "system") {
+      const bracketMatch = /^\[([^\]]+)\]\s*/.exec(message);
+      if (bracketMatch) resolvedSource = bracketMatch[1];
+    }
+    // Auto-tag based on source when no explicit tags provided
+    const resolvedTags =
+      tags.length > 0
+        ? tags
+        : resolvedSource === "runtime" || resolvedSource === "autonomy"
+          ? ["agent"]
+          : resolvedSource === "api" || resolvedSource === "websocket"
+            ? ["server"]
+            : resolvedSource === "cloud"
+              ? ["server", "cloud"]
+              : ["system"];
+    pushWithBatchEvict(
+      state.logBuffer,
+      {
+        timestamp: Date.now(),
+        level,
+        message,
+        source: resolvedSource,
+        tags: resolvedTags,
+      },
+      1200,
+      200,
+    );
+  };
+
+  // ── Flush early-captured logs into the main buffer ────────────────────
+  const earlyEntries = flushEarlyLogs();
+  if (earlyEntries.length > 0) {
+    for (const entry of earlyEntries) {
+      state.logBuffer.push(entry);
+    }
+    if (state.logBuffer.length > 1000) {
+      state.logBuffer.splice(0, state.logBuffer.length - 1000);
+    }
+    addLog(
+      "info",
+      `Flushed ${earlyEntries.length} early startup log entries`,
+      "system",
+      ["system"],
+    );
+  }
+
+  addLog(
+    "info",
+    `Discovered ${plugins.length} plugins, loading skills in background`,
+    "system",
+    ["system", "plugins"],
+  );
+
+  // Warm per-provider model caches in background (non-blocking)
+  void getOrFetchAllProviders().catch((err) => {
+    logger.warn("[api] Provider cache warm-up failed:", err);
+  });
+
+  // ── Intercept loggers so ALL agent/plugin/service logs appear in the UI ──
+  // We patch both the global `logger` singleton from @elizaos/core (used by
+  // eliza.ts, services, plugins, etc.) AND the runtime instance logger.
+  // A marker prevents double-patching on hot-restart and avoids stacking
+  // wrapper functions that would leak memory.
+  const PATCHED_MARKER = "__elizaLogPatched";
+  const LEVELS = ["debug", "info", "warn", "error"] as const;
+
+  /**
+   * Patch a logger object so every log call also feeds into the UI log buffer.
+   * Returns true if patching was performed, false if already patched.
+   */
+  const patchLogger = (
+    target: typeof logger,
+    defaultSource: string,
+    defaultTags: string[],
+  ): boolean => {
+    if ((target as unknown as Record<string, unknown>)[PATCHED_MARKER]) {
+      return false;
+    }
+
+    for (const lvl of LEVELS) {
+      const original = target[lvl].bind(target);
+      // pino / adze signature: logger.info(obj, msg) or logger.info(msg)
+      const patched: (typeof target)[typeof lvl] = (
+        ...args: Parameters<typeof original>
+      ) => {
+        let msg = "";
+        let source = defaultSource;
+        let tags = [...defaultTags];
+        if (typeof args[0] === "string") {
+          msg = args[0];
+        } else if (args[0] && typeof args[0] === "object") {
+          const obj = args[0] as Record<string, unknown>;
+          if (typeof obj.src === "string") source = obj.src;
+          // Extract tags from structured log objects
+          if (Array.isArray(obj.tags)) {
+            tags = [...tags, ...(obj.tags as string[])];
+          }
+          msg = typeof args[1] === "string" ? args[1] : JSON.stringify(obj);
+        }
+        // Auto-extract source from [bracket] prefixes (e.g. "[eliza] ...")
+        const bracketMatch = /^\[([^\]]+)\]\s*/.exec(msg);
+        if (bracketMatch && source === defaultSource) {
+          source = bracketMatch[1];
+        }
+        // Auto-tag based on source context
+        if (source !== defaultSource && !tags.includes(source)) {
+          tags.push(source);
+        }
+        if (msg) addLog(lvl, msg, source, tags);
+        return original(...args);
+      };
+      target[lvl] = patched;
+    }
+
+    (target as unknown as Record<string, unknown>)[PATCHED_MARKER] = true;
+    return true;
+  };
+
+  // 1) Patch the global @elizaos/core logger — this captures ALL log calls
+  //    from eliza.ts, services, plugins, cloud, hooks, etc.
+  if (patchLogger(logger, "agent", ["agent"])) {
+    addLog(
+      "info",
+      "Global logger connected — all agent logs will stream to the UI",
+      "system",
+      ["system", "agent"],
+    );
+  }
+
+  // 2) Patch the runtime instance logger (if it's a different object)
+  //    This catches logs from runtime internals that use their own logger child.
+  if (opts?.runtime?.logger && opts.runtime.logger !== logger) {
+    if (patchLogger(opts.runtime.logger, "runtime", ["agent", "runtime"])) {
+      addLog(
+        "info",
+        "Runtime logger connected — runtime logs will stream to the UI",
+        "system",
+        ["system", "agent"],
+      );
+    }
+  }
+
+  // Store the restart callback on the state so the route handler can access it.
+  const onRestart = opts?.onRestart ?? null;
+
+  console.log(
+    `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
+  );
+  const server = http.createServer(async (req, res) => {
+    try {
+      await handleRequest(req, res, state, {
+        onRestart,
+        onRuntimeSwapped: () => {
+          bindRuntimeStreams(state.runtime);
+          void wireCoordinatorBridgesWhenReady(state, {
+            wireChatBridge: wireCodingAgentChatBridge,
+            wireWsBridge: wireCodingAgentWsBridge,
+            wireEventRouting: wireCoordinatorEventRouting,
+            wireSwarmSynthesis: wireCodingAgentSwarmSynthesis,
+            context: "restart",
+            logger,
+          });
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "internal error";
+      addLog("error", msg, "api", ["server", "api"]);
+      error(res, msg, 500);
+    }
+  });
+  console.log(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
+
+  const broadcastWs = (payload: object): void => {
+    const message = JSON.stringify(payload);
+    for (const client of wsClients) {
+      if (client.readyState === 1) {
+        try {
+          client.send(message);
+        } catch (err) {
+          logger.error(
+            `[eliza-api] WebSocket broadcast error: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      }
+    }
+  };
+
+  const pushEvent = (
+    event: Omit<StreamEventEnvelope, "eventId" | "version">,
+  ) => {
+    const envelope: StreamEventEnvelope = {
+      ...event,
+      eventId: `evt-${state.nextEventId}`,
+      version: 1,
+    };
+    state.nextEventId += 1;
+    state.eventBuffer.push(envelope);
+    if (state.eventBuffer.length > 1500) {
+      state.eventBuffer.splice(0, state.eventBuffer.length - 1500);
+    }
+    broadcastWs(envelope);
+  };
+
+  let detachRuntimeStreams: (() => void) | null = null;
+  let detachTrainingStream: (() => void) | null = null;
+  const bindRuntimeStreams = (runtime: AgentRuntime | null) => {
+    if (detachRuntimeStreams) {
+      detachRuntimeStreams();
+      detachRuntimeStreams = null;
+    }
+    const svc = getAgentEventSvc(runtime);
+    if (!svc) {
+      if (runtime) {
+        logger.warn(
+          "[eliza-api] AGENT_EVENT service not found on runtime — event streaming will be unavailable",
+        );
+      }
+      return;
+    }
+
+    const unsubAgentEvents = svc.subscribe((event) => {
+      pushEvent({
+        type: "agent_event",
+        ts: event.ts,
+        runId: event.runId,
+        seq: event.seq,
+        stream: event.stream,
+        sessionKey: event.sessionKey,
+        agentId: event.agentId,
+        roomId: event.roomId,
+        payload: event.data,
+      });
+
+      void maybeRouteAutonomyEventToConversation(state, event).catch((err) => {
+        logger.warn(
+          `[autonomy-route] Failed to route proactive event: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    });
+
+    const unsubHeartbeat = svc.subscribeHeartbeat((event) => {
+      pushEvent({
+        type: "heartbeat_event",
+        ts: event.ts,
+        payload: event,
+      });
+    });
+
+    detachRuntimeStreams = () => {
+      unsubAgentEvents();
+      unsubHeartbeat();
+    };
+  };
+
+  const bindTrainingStream = () => {
+    if (detachTrainingStream) {
+      detachTrainingStream();
+      detachTrainingStream = null;
+    }
+    if (!state.trainingService) return;
+    detachTrainingStream = state.trainingService.subscribe((event: unknown) => {
+      const payload =
+        typeof event === "object" && event !== null ? event : { value: event };
+      pushEvent({
+        type: "training_event",
+        ts: Date.now(),
+        payload,
+      });
+    });
+  };
+
+  // ── Deferred startup work (non-blocking) ────────────────────────────────
+  // Keep API startup fast: listen first, then warm optional subsystems.
+  const startDeferredStartupWork = () => {
+    void (async () => {
+      try {
+        const discoveredSkills = await discoverSkills(
+          workspaceDir,
+          state.config,
+          state.runtime,
+        );
+        state.skills = discoveredSkills;
+        addLog(
+          "info",
+          `Discovered ${discoveredSkills.length} skills`,
+          "system",
+          ["system", "plugins"],
+        );
+      } catch (err) {
+        logger.warn(
+          `[eliza-api] Skill discovery failed during startup: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    })();
+
+    void (async () => {
+      const trainingService = state.trainingService;
+      if (!trainingService) return;
+      try {
+        await trainingService.initialize();
+        bindTrainingStream();
+        addLog("info", "Training service initialised", "system", [
+          "system",
+          "training",
+        ]);
+      } catch (err) {
+        logger.error(
+          `[eliza-api] Training service init failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    })();
+
+    void (async () => {
+      initializeOGCodeInState();
+
+      // Get EVM private key from runtime secrets (preferred) or config.env (fallback)
+      const runtime = state.runtime;
+      const evmKey =
+        (runtime?.getSetting?.("EVM_PRIVATE_KEY") as string | undefined) ??
+        (state.config.env as Record<string, string> | undefined)
+          ?.EVM_PRIVATE_KEY;
+      const registryConfig = state.config.registry;
+      if (
+        !evmKey ||
+        !registryConfig?.registryAddress ||
+        !registryConfig.mainnetRpc
+      ) {
+        return;
+      }
+
+      try {
+        const txService = new TxService(registryConfig.mainnetRpc, evmKey);
+        state.registryService = new RegistryService(
+          txService,
+          registryConfig.registryAddress,
+        );
+
+        if (registryConfig.collectionAddress) {
+          const dropEnabled = state.config.features?.dropEnabled === true;
+          state.dropService = new DropService(
+            txService,
+            registryConfig.collectionAddress,
+            dropEnabled,
+          );
+        }
+
+        addLog(
+          "info",
+          `ERC-8004 registry service initialised (${registryConfig.registryAddress})`,
+          "system",
+          ["system"],
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        addLog("warn", `ERC-8004 registry service disabled: ${msg}`, "system", [
+          "system",
+        ]);
+        logger.warn({ err }, "Failed to initialize ERC-8004 registry service");
+      }
+    })();
+
+    // ── Connector health monitoring ──────────────────────────────────────────
+    if (state.runtime && state.config.connectors) {
+      state.connectorHealthMonitor = new ConnectorHealthMonitor({
+        runtime: state.runtime,
+        config: state.config,
+        broadcastWs,
+      });
+      state.connectorHealthMonitor.start();
+    }
+
+    // ── Dynamic streaming + connector route loading ────────────────────────
+    // Always register generic stream routes. If a streaming destination is
+    // configured, inject it so /api/stream/live can fetch credentials.
+    void (async () => {
+      try {
+        const { handleStreamRoute } = await import("./stream-routes.js");
+        // Screen capture manager is injected by the desktop host via globalThis
+        const screenCapture = (globalThis as Record<string, unknown>)
+          .__elizaScreenCapture as
+          | {
+              isFrameCaptureActive(): boolean;
+              startFrameCapture(opts: {
+                fps?: number;
+                quality?: number;
+                endpoint?: string;
+              }): Promise<void>;
+            }
+          | undefined;
+
+        // Build destination registry — all configured destinations
+        const connectors = state.config.connectors ?? {};
+        const streaming = (state.config as Record<string, unknown>).streaming as
+          | Record<string, unknown>
+          | undefined;
+        const destinations = new Map<
+          string,
+          import("./stream-routes.js").StreamingDestination
+        >();
+
+        // Custom RTMP
+        if (
+          isStreamingDestinationConfigured("customRtmp", streaming?.customRtmp)
+        ) {
+          try {
+            const { createCustomRtmpDestination } = await import(
+              "../plugins/custom-rtmp/index.js"
+            );
+            destinations.set(
+              "custom-rtmp",
+              createCustomRtmpDestination(
+                streaming?.customRtmp as {
+                  rtmpUrl?: string;
+                  rtmpKey?: string;
+                },
+              ),
+            );
+          } catch (err) {
+            logger.warn(
+              `[eliza-api] Failed to load custom-rtmp destination: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
+        // Twitch
+        if (isStreamingDestinationConfigured("twitch", streaming?.twitch)) {
+          try {
+            const twitchMod = "@elizaos/plugin-twitch-streaming";
+            const { createTwitchDestination } = await import(twitchMod);
+            destinations.set(
+              "twitch",
+              createTwitchDestination(
+                streaming?.twitch as { streamKey?: string },
+              ),
+            );
+          } catch (err) {
+            logger.warn(
+              `[eliza-api] Failed to load twitch destination: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
+        // YouTube
+        if (isStreamingDestinationConfigured("youtube", streaming?.youtube)) {
+          try {
+            const youtubeMod = "@elizaos/plugin-youtube-streaming";
+            const { createYoutubeDestination } = await import(youtubeMod);
+            destinations.set(
+              "youtube",
+              createYoutubeDestination(
+                streaming?.youtube as { streamKey?: string; rtmpUrl?: string },
+              ),
+            );
+          } catch (err) {
+            logger.warn(
+              `[eliza-api] Failed to load youtube destination: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
+        // pump.fun
+        if (isStreamingDestinationConfigured("pumpfun", streaming?.pumpfun)) {
+          try {
+            const pumpfunMod = "@elizaos/plugin-pumpfun-streaming";
+            const { createPumpfunDestination } = await import(pumpfunMod);
+            destinations.set(
+              "pumpfun",
+              createPumpfunDestination(
+                streaming?.pumpfun as { streamKey?: string; rtmpUrl?: string },
+              ),
+            );
+          } catch (err) {
+            logger.warn(
+              `[eliza-api] Failed to load pumpfun destination: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
+        // X (Twitter)
+        if (isStreamingDestinationConfigured("x", streaming?.x)) {
+          try {
+            const xMod = "@elizaos/plugin-x-streaming";
+            const { createXStreamDestination } = await import(xMod);
+            destinations.set(
+              "x",
+              createXStreamDestination(
+                streaming?.x as { streamKey?: string; rtmpUrl?: string },
+              ),
+            );
+          } catch (err) {
+            logger.warn(
+              `[eliza-api] Failed to load x destination: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
+        // Active destination: config preference → first available
+        const activeDestinationId =
+          (streaming?.activeDestination as string | undefined) ??
+          (destinations.size > 0
+            ? destinations.keys().next().value
+            : undefined);
+
+        const streamState = {
+          streamManager,
+          port,
+          screenCapture,
+          captureUrl: undefined as string | undefined,
+          destinations,
+          activeDestinationId,
+          activeStreamSource: { type: "stream-tab" as const },
+          mirrorStreamAvatarToElizaConfig: (avatarIndex: number) => {
+            try {
+              if (!Number.isFinite(avatarIndex)) {
+                return;
+              }
+              const diskCfg = loadElizaConfig();
+              const lang = state.config.ui?.language ?? diskCfg.ui?.language;
+              const preset = resolveStylePresetByAvatarIndex(avatarIndex, lang);
+              const nextUi: ElizaConfig["ui"] = {
+                ...(state.config.ui ?? {}),
+                avatarIndex,
+                ...(preset?.id ? { presetId: preset.id } : {}),
+              };
+              state.config = {
+                ...state.config,
+                ui: nextUi,
+              };
+              // Merge disk + live server config so we never persist a minimal
+              // snapshot (e.g. ENOENT default) and clobber eliza.json during
+              // onboarding while state.config still holds the full boot payload.
+              const toSave: ElizaConfig = {
+                ...diskCfg,
+                ...state.config,
+                ui: {
+                  ...(diskCfg.ui ?? {}),
+                  ...(state.config.ui ?? {}),
+                  ...nextUi,
+                },
+              };
+              saveElizaConfig(toSave);
+              state.config = {
+                ...state.config,
+                ui: toSave.ui,
+              };
+            } catch (err) {
+              logger.warn(
+                `[eliza-api] mirrorStreamAvatarToElizaConfig failed: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            }
+          },
+          get config() {
+            const cfg = state.config as Record<string, unknown> | undefined;
+            const msgs = cfg?.messages as Record<string, unknown> | undefined;
+            return msgs
+              ? {
+                  messages: {
+                    tts: msgs.tts as
+                      | import("../config/types.messages.js").TtsConfig
+                      | undefined,
+                  },
+                }
+              : undefined;
+          },
+        };
+        state.connectorRouteHandlers.push((req, res, pathname, method) =>
+          handleStreamRoute(req, res, pathname, method, streamState),
+        );
+
+        const destNames = Array.from(destinations.values())
+          .map((d) => d.name)
+          .join(", ");
+        const destLabel =
+          destinations.size > 0
+            ? `destinations: ${destNames}`
+            : "no destinations";
+        addLog("info", `Stream routes registered (${destLabel})`, "system", [
+          "system",
+          "streaming",
+        ]);
+      } catch (err) {
+        logger.warn(
+          `[eliza-api] Failed to load stream routes: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    })();
+  };
+
+  // ── WebSocket Server ─────────────────────────────────────────────────────
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  const wsClients = new Set<WebSocket>();
+  const wsClientIds = new WeakMap<WebSocket, string>();
+  /** Per-WS-client PTY output subscriptions: sessionId → unsubscribe */
+  const wsClientPtySubscriptions = new WeakMap<
+    WebSocket,
+    Map<string, () => void>
+  >();
+  bindRuntimeStreams(opts?.runtime ?? null);
+  bindTrainingStream();
+
+  // Wire coding-agent bridges at initial boot (event-driven via getServiceLoadPromise)
+  if (opts?.runtime) {
+    void wireCoordinatorBridgesWhenReady(state, {
+      wireChatBridge: wireCodingAgentChatBridge,
+      wireWsBridge: wireCodingAgentWsBridge,
+      wireEventRouting: wireCoordinatorEventRouting,
+      wireSwarmSynthesis: wireCodingAgentSwarmSynthesis,
+      context: "boot",
+      logger,
+    });
+  }
+
+  // Handle upgrade requests for WebSocket
+  server.on("upgrade", (request, socket, head) => {
+    try {
+      const wsUrl = new URL(
+        request.url ?? "/",
+        `http://${request.headers.host ?? "localhost"}`,
+      );
+      const rejection = resolveWebSocketUpgradeRejection(request, wsUrl);
+      if (rejection) {
+        rejectWebSocketUpgrade(socket, rejection.status, rejection.reason);
+        return;
+      }
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit("connection", ws, request);
+      });
+    } catch (err) {
+      logger.error(
+        `[eliza-api] WebSocket upgrade error: ${err instanceof Error ? err.message : err}`,
+      );
+      rejectWebSocketUpgrade(socket, 404, "Not found");
+    }
+  });
+
+  // Handle WebSocket connections
+  wss.on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
+    let wsUrl: URL;
+    try {
+      wsUrl = new URL(
+        request.url ?? "/",
+        `http://${request.headers.host ?? "localhost"}`,
+      );
+      const clientId = normalizeWsClientId(wsUrl.searchParams.get("clientId"));
+      if (clientId) wsClientIds.set(ws, clientId);
+    } catch {
+      // Ignore malformed WS URL metadata; auth/path were already validated.
+      wsUrl = new URL("ws://localhost/ws");
+    }
+
+    let isAuthenticated = isWebSocketAuthorized(request, wsUrl);
+
+    const activateAuthenticatedConnection = () => {
+      wsClients.add(ws);
+      addLog("info", "WebSocket client connected", "websocket", [
+        "server",
+        "websocket",
+      ]);
+
+      try {
+        ws.send(
+          JSON.stringify({
+            type: "status",
+            state: state.agentState,
+            agentName: state.agentName,
+            model: state.model,
+            startedAt: state.startedAt,
+            startup: state.startup,
+            pendingRestart: state.pendingRestartReasons.length > 0,
+            pendingRestartReasons: state.pendingRestartReasons,
+          }),
+        );
+        const replay = state.eventBuffer.slice(-120);
+        for (const event of replay) {
+          ws.send(JSON.stringify(event));
+        }
+      } catch (err) {
+        logger.error(
+          `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    };
+
+    if (isAuthenticated) {
+      activateAuthenticatedConnection();
+    }
+
+    ws.on("message", (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (!isAuthenticated) {
+          const expected = getConfiguredApiToken();
+          if (
+            expected &&
+            msg.type === "auth" &&
+            typeof msg.token === "string" &&
+            tokenMatches(expected, msg.token.trim())
+          ) {
+            isAuthenticated = true;
+            ws.send(JSON.stringify({ type: "auth-ok" }));
+            activateAuthenticatedConnection();
+          } else {
+            logger.warn("[eliza-api] WebSocket message rejected before auth");
+            ws.close(1008, "Unauthorized");
+          }
+          return;
+        }
+        if (msg.type === "ping") {
+          ws.send(JSON.stringify({ type: "pong" }));
+        } else if (msg.type === "active-conversation") {
+          state.activeConversationId =
+            typeof msg.conversationId === "string" ? msg.conversationId : null;
+        } else if (
+          msg.type === "pty-subscribe" &&
+          typeof msg.sessionId === "string"
+        ) {
+          const bridge = getPtyConsoleBridge(state);
+          if (bridge) {
+            let subs = wsClientPtySubscriptions.get(ws);
+            if (!subs) {
+              subs = new Map();
+              wsClientPtySubscriptions.set(ws, subs);
+            }
+            // Don't double-subscribe
+            if (!subs.has(msg.sessionId)) {
+              const targetId = msg.sessionId;
+              const listener = (evt: { sessionId: string; data: string }) => {
+                if (evt.sessionId !== targetId) return;
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: "pty-output",
+                      sessionId: targetId,
+                      data: evt.data,
+                    }),
+                  );
+                }
+              };
+              bridge.on(
+                "session_output",
+                listener as (...args: unknown[]) => void,
+              );
+              subs.set(targetId, () =>
+                bridge.off(
+                  "session_output",
+                  listener as (...args: unknown[]) => void,
+                ),
+              );
+            }
+          }
+        } else if (
+          msg.type === "pty-unsubscribe" &&
+          typeof msg.sessionId === "string"
+        ) {
+          const subs = wsClientPtySubscriptions.get(ws);
+          const unsub = subs?.get(msg.sessionId);
+          if (unsub) {
+            unsub();
+            subs?.delete(msg.sessionId);
+          }
+        } else if (
+          msg.type === "pty-input" &&
+          typeof msg.sessionId === "string" &&
+          typeof msg.data === "string"
+        ) {
+          // Only allow input to sessions this client has subscribed to
+          const subs = wsClientPtySubscriptions.get(ws);
+          if (!subs?.has(msg.sessionId)) {
+            logger.warn(
+              `[eliza-api] pty-input rejected: client not subscribed to session ${msg.sessionId}`,
+            );
+          } else if (msg.data.length > 4096) {
+            logger.warn(
+              `[eliza-api] pty-input rejected: payload too large (${msg.data.length} bytes) for session ${msg.sessionId}`,
+            );
+          } else {
+            const bridge = getPtyConsoleBridge(state);
+            if (bridge) {
+              logger.debug(
+                `[eliza-api] pty-input: session=${msg.sessionId} len=${msg.data.length}`,
+              );
+              bridge.writeRaw(msg.sessionId, msg.data);
+            }
+          }
+        } else if (
+          msg.type === "pty-resize" &&
+          typeof msg.sessionId === "string"
+        ) {
+          // Only allow resize for sessions this client has subscribed to
+          const subs = wsClientPtySubscriptions.get(ws);
+          if (!subs?.has(msg.sessionId)) {
+            logger.warn(
+              `[eliza-api] pty-resize rejected: client not subscribed to session ${msg.sessionId}`,
+            );
+          } else {
+            const bridge = getPtyConsoleBridge(state);
+            if (
+              bridge &&
+              typeof msg.cols === "number" &&
+              typeof msg.rows === "number" &&
+              Number.isFinite(msg.cols) &&
+              Number.isFinite(msg.rows) &&
+              Number.isInteger(msg.cols) &&
+              Number.isInteger(msg.rows) &&
+              msg.cols >= 1 &&
+              msg.cols <= 500 &&
+              msg.rows >= 1 &&
+              msg.rows <= 500
+            ) {
+              bridge.resize(msg.sessionId, msg.cols, msg.rows);
+            } else {
+              logger.warn(
+                `[eliza-api] pty-resize rejected: invalid dimensions cols=${msg.cols} rows=${msg.rows}`,
+              );
+            }
+          }
+        }
+      } catch (err) {
+        logger.error(
+          `[eliza-api] WebSocket message error: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    });
+
+    ws.on("close", () => {
+      wsClients.delete(ws);
+      // Clean up any PTY output subscriptions for this client
+      const subs = wsClientPtySubscriptions.get(ws);
+      if (subs) {
+        for (const unsub of subs.values()) unsub();
+        subs.clear();
+      }
+      addLog("info", "WebSocket client disconnected", "websocket", [
+        "server",
+        "websocket",
+      ]);
+    });
+
+    ws.on("error", (err) => {
+      logger.error(
+        `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
+      );
+      wsClients.delete(ws);
+      // Clean up PTY subscriptions on error too
+      const subs = wsClientPtySubscriptions.get(ws);
+      if (subs) {
+        for (const unsub of subs.values()) unsub();
+        subs.clear();
+      }
+    });
+  });
+
+  // Broadcast status to all connected WebSocket clients (flattened — PR #36 fix)
+  const broadcastStatus = () => {
+    broadcastWs({
+      type: "status",
+      state: state.agentState,
+      agentName: state.agentName,
+      model: state.model,
+      startedAt: state.startedAt,
+      startup: state.startup,
+      pendingRestart: state.pendingRestartReasons.length > 0,
+      pendingRestartReasons: state.pendingRestartReasons,
+    });
+  };
+
+  // Make broadcastStatus accessible to route handlers via state
+  state.broadcastStatus = broadcastStatus;
+
+  // Generic broadcast — sends an arbitrary JSON payload to all WS clients.
+  state.broadcastWs = (data: Record<string, unknown>) => {
+    const message = JSON.stringify(data);
+    for (const client of wsClients) {
+      if (client.readyState === 1) {
+        try {
+          client.send(message);
+        } catch (err) {
+          logger.error(
+            `[eliza-api] WebSocket broadcast error: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      }
+    }
+  };
+
+  state.broadcastWsToClientId = (
+    clientId: string,
+    data: Record<string, unknown>,
+  ) => {
+    const message = JSON.stringify(data);
+    let delivered = 0;
+    for (const client of wsClients) {
+      if (client.readyState !== 1) continue;
+      if (wsClientIds.get(client) !== clientId) continue;
+      try {
+        client.send(message);
+        delivered += 1;
+      } catch (err) {
+        logger.error(
+          `[eliza-api] WebSocket targeted send error: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    return delivered;
+  };
+
+  // Broadcast status every 5 seconds
+  const statusInterval = setInterval(broadcastStatus, 5000);
+
+  /**
+   * Restore the in-memory conversation list from the database.
+   * Web-chat rooms live in a deterministic world; we scan it for rooms
+   * whose channelId starts with "web-conv-" and reconstruct the metadata.
+   */
+  const restoreConversationsFromDb = async (
+    rt: AgentRuntime,
+  ): Promise<void> => {
+    try {
+      const agentName = rt.character.name ?? "Eliza";
+      const worldId = stringToUuid(`${agentName}-web-chat-world`);
+      const rooms = await rt.getRoomsByWorld(worldId);
+      if (!rooms?.length) return;
+
+      let restored = 0;
+      for (const room of rooms) {
+        // channelId is "web-conv-{uuid}" — extract the conversation id
+        const channelId =
+          typeof room.channelId === "string" ? room.channelId : "";
+        if (!channelId.startsWith("web-conv-")) continue;
+        const convId = channelId.replace("web-conv-", "");
+        if (!convId || state.conversations.has(convId)) continue;
+        if (state.deletedConversationIds.has(convId)) continue;
+
+        // Peek at the latest message to get a timestamp
+        let updatedAt = new Date().toISOString();
+        try {
+          const msgs = await rt.getMemories({
+            roomId: room.id as UUID,
+            tableName: "messages",
+            count: 1,
+          });
+          if (msgs.length > 0 && msgs[0].createdAt) {
+            updatedAt = new Date(msgs[0].createdAt).toISOString();
+          }
+        } catch {
+          // non-fatal — use current time
+        }
+
+        state.conversations.set(convId, {
+          id: convId,
+          title:
+            ((room as unknown as Record<string, unknown>).name as string) ||
+            "Chat",
+          roomId: room.id as UUID,
+          createdAt: updatedAt,
+          updatedAt,
+        });
+        restored++;
+      }
+      if (restored > 0) {
+        addLog(
+          "info",
+          `Restored ${restored} conversation(s) from database`,
+          "system",
+          ["system"],
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        `[eliza-api] Failed to restore conversations from DB: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  };
+
+  const beginConversationRestore = (rt: AgentRuntime): Promise<void> => {
+    const restorePromise = restoreConversationsFromDb(rt).finally(() => {
+      if (state.conversationRestorePromise === restorePromise) {
+        state.conversationRestorePromise = null;
+      }
+    });
+    state.conversationRestorePromise = restorePromise;
+    return restorePromise;
+  };
+
+  /**
+   * Load the agent's DB-persisted character data and overlay onto the
+   * in-memory runtime.character.  This ensures Character Editor edits
+   * survive server restarts without depending on eliza.json persistence.
+   */
+  const overlayDbCharacter = async (
+    rt: AgentRuntime,
+    st: typeof state,
+  ): Promise<void> => {
+    try {
+      const dbAgent = await rt.getAgent(rt.agentId);
+      const agentRecord = dbAgent as unknown as Record<string, unknown> | null;
+      const saved = agentRecord?.character as
+        | Record<string, unknown>
+        | undefined;
+      if (!saved || typeof saved !== "object") return;
+
+      const c = rt.character;
+      // Only overlay fields that were explicitly saved (non-empty)
+      if (typeof saved.name === "string" && saved.name) c.name = saved.name;
+      if (Array.isArray(saved.bio) && saved.bio.length > 0) {
+        c.bio = saved.bio as string[];
+      }
+      if (typeof saved.system === "string" && saved.system) {
+        c.system = saved.system;
+      }
+      if (Array.isArray(saved.adjectives)) {
+        c.adjectives = saved.adjectives as string[];
+      }
+      if (Array.isArray(saved.topics)) {
+        (c as { topics?: string[] }).topics = saved.topics as string[];
+      }
+      if (saved.style && typeof saved.style === "object") {
+        c.style = saved.style as NonNullable<typeof c.style>;
+      }
+      if (Array.isArray(saved.messageExamples)) {
+        c.messageExamples = saved.messageExamples as NonNullable<
+          typeof c.messageExamples
+        >;
+      }
+      if (Array.isArray(saved.postExamples) && saved.postExamples.length > 0) {
+        c.postExamples = saved.postExamples as string[];
+      }
+      // Update agent name on state
+      st.agentName = c.name ?? st.agentName;
+      logger.info(
+        `[character-db] Overlaid DB-persisted character "${c.name}" onto runtime`,
+      );
+    } catch (err) {
+      logger.warn(
+        `[character-db] Failed to load character from DB: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  };
+
+  // Restore conversations from DB at initial boot (if runtime was passed in)
+  if (opts?.runtime) {
+    void beginConversationRestore(opts.runtime).catch((err) => {
+      logger.warn("[api] Conversation restore failed:", err);
+    });
+    void overlayDbCharacter(opts.runtime, state).catch((err) => {
+      logger.warn("[api] Character overlay restore failed:", err);
+    });
+    registerClientChatSendHandler(opts.runtime, state);
+  }
+
+  /** Hot-swap the runtime reference (used after an in-process restart). */
+  const updateRuntime = (rt: AgentRuntime): void => {
+    state.runtime = rt;
+    state.chatConnectionReady = null;
+    state.chatConnectionPromise = null;
+    bindRuntimeStreams(rt);
+    // AppManager doesn't need a runtime reference
+    state.agentState = "running";
+    state.agentName =
+      rt.character.name ?? resolveDefaultAgentName(state.config);
+    state.model = detectRuntimeModel(rt, state.config);
+    state.startedAt = Date.now();
+    state.startup = {
+      phase: "running",
+      attempt: 0,
+    };
+    addLog("info", `Runtime restarted — agent: ${state.agentName}`, "system", [
+      "system",
+      "agent",
+    ]);
+
+    // Restore conversations from DB so they survive restarts
+    void beginConversationRestore(rt).catch((err) => {
+      logger.warn("[api] Conversation restore failed on restart:", err);
+    });
+
+    // Overlay DB-persisted character data (from Character Editor saves)
+    void overlayDbCharacter(rt, state).catch((err) => {
+      logger.warn("[api] Character overlay restore failed on restart:", err);
+    });
+
+    // Broadcast status update immediately after restart
+    broadcastStatus();
+
+    // Re-register client_chat send handler on the new runtime
+    registerClientChatSendHandler(rt, state);
+
+    // Wire coding-agent bridges (event-driven via getServiceLoadPromise)
+    void wireCoordinatorBridgesWhenReady(state, {
+      wireChatBridge: wireCodingAgentChatBridge,
+      wireWsBridge: wireCodingAgentWsBridge,
+      wireEventRouting: wireCoordinatorEventRouting,
+      wireSwarmSynthesis: wireCodingAgentSwarmSynthesis,
+      context: "restart",
+      logger,
+    });
+  };
+
+  const updateStartup = (
+    update: Partial<AgentStartupDiagnostics> & {
+      phase?: string;
+      attempt?: number;
+      state?: ServerState["agentState"];
+    },
+  ): void => {
+    const { state: nextState, ...startupUpdate } = update;
+    state.startup = {
+      ...state.startup,
+      ...startupUpdate,
+    };
+    if (nextState) {
+      state.agentState = nextState;
+      if (nextState === "error") {
+        state.startedAt = undefined;
+      } else if (
+        (nextState === "starting" || nextState === "running") &&
+        !state.startedAt
+      ) {
+        state.startedAt = Date.now();
+      }
+    }
+    broadcastStatus();
+  };
+
+  console.log(
+    `[eliza-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
+  );
+  return new Promise((resolve, reject) => {
+    let currentPort = port;
+
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        console.warn(
+          `[eliza-api] Port ${currentPort} is already in use. Checking fallback...`,
+        );
+        if (currentPort !== 0) {
+          console.warn(`[eliza-api] Retrying with dynamic port (0)...`);
+          currentPort = 0;
+          server.listen(0, host);
+          return;
+        }
+      } else {
+        console.error(
+          `[eliza-api] Server error: ${err.message} (code: ${err.code})`,
+        );
+      }
+      reject(err);
+    });
+
+    server.listen(port, host, () => {
+      console.log(
+        `[eliza-api] server.listen callback fired (${Date.now() - apiStartTime}ms)`,
+      );
+      const addr = server.address();
+      const actualPort =
+        typeof addr === "object" && addr ? addr.port : currentPort;
+      const displayHost =
+        typeof addr === "object" && addr ? addr.address : host;
+      addLog(
+        "info",
+        `API server listening on http://${displayHost}:${actualPort}`,
+        "system",
+        ["server", "system"],
+      );
+      // Log to both stdout (for agent.ts port detection) and the in-memory
+      // logger. agent.ts watches stdout for "Listening on http://host:PORT"
+      // to detect dynamic port reassignment when the default port is in use.
+      console.log(
+        `[eliza-api] Listening on http://${displayHost}:${actualPort}`,
+      );
+      logger.info(
+        `[eliza-api] Listening on http://${displayHost}:${actualPort}`,
+      );
+      if (!opts?.skipDeferredStartupWork) {
+        startDeferredStartupWork();
+      }
+      resolve({
+        port: actualPort,
+        close: async () =>
+          await new Promise<void>(async (r) => {
+            const closeAllConnections = (
+              server as { closeAllConnections?: () => void }
+            ).closeAllConnections;
+            const closeIdleConnections = (
+              server as { closeIdleConnections?: () => void }
+            ).closeIdleConnections;
+
+            clearInterval(statusInterval);
+            if (state.connectorHealthMonitor) {
+              state.connectorHealthMonitor.stop();
+              state.connectorHealthMonitor = null;
+            }
+            if (detachRuntimeStreams) {
+              detachRuntimeStreams();
+              detachRuntimeStreams = null;
+            }
+            if (detachTrainingStream) {
+              detachTrainingStream();
+              detachTrainingStream = null;
+            }
+            for (const ws of wsClients) {
+              if (ws.readyState === 1 || ws.readyState === 0) {
+                ws.terminate();
+              }
+            }
+            wsClients.clear();
+            // Clean up WhatsApp pairing sessions
+            if (state.whatsappPairingSessions) {
+              for (const s of state.whatsappPairingSessions.values()) {
+                try {
+                  s.stop();
+                } catch {
+                  /* non-fatal */
+                }
+              }
+              state.whatsappPairingSessions.clear();
+            }
+            // Clean up Signal pairing sessions
+            if (state.signalPairingSessions) {
+              for (const s of state.signalPairingSessions.values()) {
+                try {
+                  s.stop();
+                } catch {
+                  /* non-fatal */
+                }
+              }
+              state.signalPairingSessions.clear();
+            }
+            if (state.telegramAccountAuthSession) {
+              try {
+                await state.telegramAccountAuthSession.stop();
+              } catch {
+                /* non-fatal */
+              }
+              state.telegramAccountAuthSession = null;
+            }
+            wss.close();
+            const closeTimeout = setTimeout(() => r(), 5_000);
+            const resolved = { done: false };
+            const finalize = () => {
+              if (!resolved.done) {
+                resolved.done = true;
+                clearTimeout(closeTimeout);
+                r();
+              }
+            };
+            if (typeof closeAllConnections === "function") {
+              try {
+                closeAllConnections();
+              } catch {
+                // Bun/Node server internals vary by runtime; non-fatal on shutdown.
+              }
+            }
+            if (typeof closeIdleConnections === "function") {
+              try {
+                closeIdleConnections();
+              } catch {
+                // Bun/Node server internals vary by runtime; non-fatal on shutdown.
+              }
+            }
+            server.close(finalize);
+          }),
+        updateRuntime,
+        updateStartup,
+      });
+    });
+  });
+}

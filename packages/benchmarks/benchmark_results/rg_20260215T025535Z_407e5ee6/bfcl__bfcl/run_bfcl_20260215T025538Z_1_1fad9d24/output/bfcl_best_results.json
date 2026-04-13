@@ -1,0 +1,12 @@
+{
+  "groq/llama-3.1-8b-instant": {
+    "model": "groq/llama-3.1-8b-instant",
+    "provider": "groq",
+    "overall_score": 0.0,
+    "ast_accuracy": 0.0,
+    "exec_accuracy": 0.0,
+    "relevance_accuracy": 0.1111111111111111,
+    "total_tests": 9,
+    "timestamp": "2026-02-14T19:55:50.705223"
+  }
+}

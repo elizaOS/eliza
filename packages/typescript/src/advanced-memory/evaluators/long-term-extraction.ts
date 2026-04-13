@@ -153,7 +153,7 @@ export const longTermExtractionEvaluator: Evaluator = {
 			const recentMessages = await runtime.getMemories({
 				tableName: "messages",
 				roomId,
-				count: 20,
+				limit: 20,
 				unique: false,
 			});
 

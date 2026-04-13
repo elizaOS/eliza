@@ -1,0 +1,11 @@
+{
+  "name": "@elizaos-examples/html-eliza",
+  "version": "2.0.0-alpha",
+  "private": true,
+  "description": "elizaOS browser demo using AgentRuntime with plugin-localdb and plugin-eliza-classic",
+  "scripts": {
+    "start": "npx serve ../..",
+    "serve": "python3 -m http.server 3000 --directory ../.."
+  },
+  "devDependencies": {}
+}

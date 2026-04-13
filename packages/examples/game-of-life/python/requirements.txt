@@ -1,0 +1,6 @@
+# elizaOS Python packages (installed from local source)
+# Install with: pip install -r requirements.txt
+
+# Editable install from this repo
+-e ../../../packages/python
+

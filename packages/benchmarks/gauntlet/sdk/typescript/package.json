@@ -1,0 +1,27 @@
+{
+    "name": "@solana-gauntlet/sdk",
+    "version": "0.1.0",
+    "description": "TypeScript SDK for Solana Gauntlet AI Agent Benchmark",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "test": "jest"
+    },
+    "keywords": [
+        "solana",
+        "ai",
+        "agent",
+        "benchmark",
+        "gauntlet"
+    ],
+    "author": "Solana Gauntlet Team",
+    "license": "MIT",
+    "dependencies": {
+        "@solana/web3.js": "^1.87.0"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0",
+        "@types/node": "^20.0.0"
+    }
+}

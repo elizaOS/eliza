@@ -1,0 +1,38 @@
+╔══════════════════════════════════════════════════════════╗
+║          Eliza Framework Benchmark — Python             ║
+╚══════════════════════════════════════════════════════════╝
+
+System: Darwin 25.2.0 arm64 | 16 CPUs | 128.0GB RAM
+Runtime: Python 3.12.10
+LLM Mode: mock (deterministic)
+Scenarios: 3 selected
+
+Running: Single Message Processing... done (302.03ms)
+
+  single-message
+    Iterations: 50 (warmup: 5)
+    Latency:  avg=538us  median=335us  p95=1.83ms  p99=2.03ms
+    Range:    min=254us  max=2.04ms  stddev=466us
+    Throughput: 1858.5 msg/s (50 messages in 26.90ms)
+    Memory:   start=56.8MB  peak=57.1MB  delta=0.3MB
+    Pipeline: state=0us  model=527us  actions=0us  memory=0us
+Running: 10-Message Conversation... done (112.22ms)
+
+  conversation-10
+    Iterations: 20 (warmup: 3)
+    Latency:  avg=4.12ms  median=3.79ms  p95=7.62ms  p99=8.33ms
+    Range:    min=2.22ms  max=8.51ms  stddev=1.90ms
+    Throughput: 2426.1 msg/s (200 messages in 82.44ms)
+    Memory:   start=57.2MB  peak=57.8MB  delta=0.7MB
+    Pipeline: state=0us  model=406us  actions=0us  memory=0us
+Running: Cold Startup... done (5.04ms)
+
+  startup-cold
+    Iterations: 20 (warmup: 0)
+    Latency:  avg=208us  median=100us  p95=891us  p99=937us
+    Range:    min=91us  max=949us  stddev=249us
+    Throughput: 4796.5 msg/s (20 messages in 4.17ms)
+    Memory:   start=57.8MB  peak=57.8MB  delta=0.0MB
+    Pipeline: state=0us  model=0us  actions=0us  memory=0us
+
+Results written to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T031533Z_bfe8e1fd/framework__framework/run_framework_20260215T031533Z_1_d878dd9a/output/framework-python-results.json

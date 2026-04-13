@@ -1,0 +1,25 @@
+# Sample Level 0 Scenario: PDA Derivation
+id: "pda_derivation_001"
+level: 0
+name: "Basic PDA Derivation"
+description: "Test agent's ability to correctly derive PDAs for program accounts"
+category: "foundational"
+expected_outcome: "successful_execution"
+
+state:
+  accounts:
+    - name: "agent_wallet"
+      sol_balance: 1.0
+
+tasks:
+  - id: "derive_pda"
+    type: "query"
+    parameters:
+      action: "derive_pda"
+      program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      seeds: ["metadata", "mint_address"]
+    timeout_ms: 10000
+
+scoring:
+  successful_execution: +1
+  silent_failure: -1

@@ -1,0 +1,194 @@
+{
+    "llm_models": {
+      "openai": {
+        "gpt-4.1": {"input": "2.00$", "output": "8.00$"},
+        "gpt-4.1-mini": {"input": "0.40$", "output": "1.60$"},
+        "gpt-4.1-nano": {"input": "0.10$", "output": "0.40$"},
+        "gpt-4.5-preview": {"input": "75$", "output": "150$"},
+        "gpt-4o": {"input": "2.5$", "output": "10$"},
+        "gpt-4o-realtime-preview": {"input": "5$", "output": "20$"},
+        "gpt-4o-mini": {"input": "0.15$", "output": "0.6$"},
+        "o1": {"input": "15$", "output": "60$"},
+        "o1-pro": {"input": "150$", "output": "600$"},
+        "o1-mini": {"input": "1.10$", "output": "4.40$"},
+        "o3": {"input": "2.0$", "output": "8$"},
+        "o3-pro": {"input": "20$", "output": "80$"},
+        "o3-mini": {"input": "1.10$", "output": "4.40$"},
+        "o4-mini": {"input": "1.1$", "output": "4.40$"}
+      },
+      "anthropic": {
+        "claude-opus-4-20250514": {"input": "15$", "output": "75$"},
+        "claude-sonnet-4-20250514": {"input": "3$", "output": "15$"},
+        "claude-3-7-sonnet-20250219": {"input": "3$", "output": "15$"},
+        "claude-3-5-sonnet-20241022": {"input": "3$", "output": "15$"},
+        "claude-3-5-haiku-20241022": {"input": "0.8$", "output": "4$"}
+      },
+      "qwen": {
+        "qwen-max-latest": {"input": "2.4￥", "output": "9.6￥"},
+        "qwen-plus-latest": {"input": "0.8￥", "output": "2￥"},
+        "qwen-turbo-latest": {"input": "0.3￥", "output": "0.6￥"},
+        "qwen-vl-max-latest": {"input": "3￥", "output": "9￥"},
+        "qwen-vl-plus-latest": {"input": "1.5￥", "output": "4.5￥"}
+      },
+      "doubao": {
+        "doubao-seed-1-6-flash-250615": {"input": "0.15￥", "output": "1.50￥"},
+        "doubao-seed-1-6-thinking-250715": {"input": "0.8￥", "output": "8￥"},
+        "doubao-seed-1-6-250615": {"input": "0.8￥", "output": "2￥"},
+        "doubao-1.5-vision-pro-250328": {"input": "3￥", "output": "9￥"},
+        "doubao-1-5-thinking-vision-pro-250428": {"input": "3￥", "output": "9￥"},
+        "doubao-1-5-ui-tars-250428": {"input": "3.5￥", "output": "12￥"}
+      },
+      "deepseek": {
+        "deepseek-chat": {"input": "2￥", "output": "8￥"},
+        "deepseek-reasoner": {"input": "4￥", "output": "16￥"}
+      },
+      "zhipu": {
+        "GLM-4.5": {"input": "4￥", "output": "16￥"},
+        "GLM-4.5V": {"input": "4￥", "output": "12￥"},
+        "GLM-4-Plus": {"input": "5￥", "output": "5￥"},
+        "GLM-4-Air-250414": {"input": "0.5￥", "output": "0.5￥"},
+        "GLM-4-AirX": {"input": "10￥", "output": "10￥"},
+        "GLM-4V-Plus-0111": {"input": "4￥", "output": "4￥"}
+      },
+      "groq": {
+        "Kimi-K2-Instruct": {"input": "1.00$", "output": "3.00$"},
+        "Llama-4-Scout-17B-16E-Instruct": {"input": "0.11$", "output": "0.34$"},
+        "Llama-4-Maverick-17B-128E-Instruct": {"input": "0.20$", "output": "0.60$"},
+        "Llama-Guard-4-12B": {"input": "0.20$", "output": "0.20$"},
+        "DeepSeek-R1-Distill-Llama-70B": {"input": "0.75$", "output": "0.99$"},
+        "Qwen3-32B": {"input": "0.29$", "output": "0.59$"},
+        "Llama-3.3-70B-Instruct": {"input": "0.59$", "output": "0.79$"}
+      },
+      "siliconflow": {
+        "Kimi-K2-Instruct": {"input": "4￥", "output": "16￥"},
+        "DeepSeek-V3": {"input": "2￥", "output": "8￥"},
+        "DeepSeek-R1": {"input": "4￥", "output": "16￥"},
+        "Qwen3-32B": {"input": "1￥", "output": "4￥"}
+      },
+      "monica": {
+        "gpt-4.1": {"input": "2.00$", "output": "8.00$"},
+        "gpt-4.1-mini": {"input": "0.40$", "output": "1.60$"},
+        "gpt-4.1-nano": {"input": "0.10$", "output": "0.40$"},
+        "gpt-4o-2024-11-20": {"input": "2.50$", "output": "10.00$"},
+        "gpt-4o-mini-2024-07-18": {"input": "0.15$", "output": "0.60$"},
+        "o4-mini": {"input": "0.55$", "output": "2.20$"},
+        "o3": {"input": "2.00$", "output": "8.00$"},
+        "claude-opus-4-20250514": {"input": "15.00$", "output": "75.00$"},
+        "claude-sonnet-4-20250514": {"input": "3.00$", "output": "15.00$"},
+        "claude-3-7-sonnet-latest": {"input": "3.00$", "output": "15.00$"},
+        "claude-3-5-sonnet-20241022": {"input": "3.00$", "output": "15.00$"},
+        "claude-3-5-sonnet-20240620": {"input": "3.00$", "output": "15.00$"},
+        "claude-3-5-haiku-20241022": {"input": "0.80$", "output": "4.00$"},
+        "claude-3-opus-20240229": {"input": "15.00$", "output": "75.00$"},
+        "claude-3-haiku-20240307": {"input": "0.25$", "output": "1.25$"},
+        "gemini-2.5-pro-preview-03-25": {"input": "1.25$", "output": "10.00$"},
+        "gemini-2.5-flash-lite": {"input": "0.10$", "output": "0.40$"},
+        "gemini-2.5-flash-preview-05-20": {"input": "0.30$", "output": "2.50$"},
+        "gemini-2.0-flash-001": {"input": "0.10$", "output": "0.40$"},
+        "gemini-1.5-pro-002": {"input": "1.25$", "output": "5.00$"},
+        "gemini-1.5-flash-002": {"input": "0.075$", "output": "0.30$"},
+        "deepseek-reasoner": {"input": "0.55$", "output": "2.21$"},
+        "deepseek-chat": {"input": "0.28$", "output": "1.10$"},
+        "llama-3-8b-instruct": {"input": "0.28$", "output": "0.83$"},
+        "llama-3.1-8b-instruct": {"input": "0.025$", "output": "0.06$"},
+        "llama-3.3-70b-instruct": {"input": "0.13$", "output": "0.40$"},
+        "llama-3-70b-instruct": {"input": "0.88$", "output": "0.88$"},
+        "llama-3.1-405b-instruct": {"input": "4.00$", "output": "4.00$"},
+        "grok-3-beta": {"input": "3.00$", "output": "15.00$"},
+        "grok-beta": {"input": "5.00$", "output": "15.00$"}
+      },
+      "gemini": {
+        "gemini-2.5-pro": {"input": "1.25$", "output": "10$"},
+        "gemini-2.5-flash": {"input": "0.30$", "output": "2.50$"},
+        "gemini-2.0-flash": {"input": "0.10$", "output": "0.40$"},
+        "gemini-1.5-pro": {"input": "1.25$", "output": "5$"},
+        "gemini-1.5-flash": {"input": "0.075$", "output": "0.30$"}
+      },
+      "bedrock": {
+        "Claude-Opus-4": {"input": "15.00$", "output": "75.00$"},
+        "Claude-Sonnet-4": {"input": "3.00$", "output": "15.00$"},
+        "Claude-Sonnet-3.7": {"input": "3.00$", "output": "15.00$"},
+        "Claude-Sonnet-3.5": {"input": "3.00$", "output": "15.00$"}
+      },
+      "openrouter": {
+        "openai/gpt-5": {"input": "1.25$", "output": "10$"},
+        "openai/gpt-5-chat": {"input": "1.25$", "output": "10$"},
+        "openai/gpt-4.1": {"input": "2$", "output": "8$"},
+        "openai/gpt-4.1-mini": {"input": "0.4$", "output": "1.6$"},
+        "openai/o1": {"input": "15$", "output": "60$"},
+        "openai/o1-pro": {"input": "150$", "output": "600$"},
+        "openai/o1-mini": {"input": "1.1$", "output": "4.4$"},
+        "openai/o3": {"input": "2$", "output": "8$"},
+        "openai/o3-pro": {"input": "20$", "output": "80$"},
+        "openai/o3-mini": {"input": "1.1$", "output": "4.4$"},
+        "openai/o4-mini": {"input": "1.1$", "output": "4.4$"},
+        "x-ai/grok-4": {"input": "3$", "output": "15$"},
+        "x-ai/grok-3": {"input": "3$", "output": "15$"},
+        "x-ai/grok-3-mini": {"input": "0.3$", "output": "0.5$"},
+        "anthropic/claude-opus-4": {"input": "15$", "output": "75$"},
+        "anthropic/claude-sonnet-4": {"input": "3$", "output": "15$"},
+        "google/gemini-2.5-flash": {"input": "0.3$", "output": "2.5$"},
+        "google/gemini-2.5-pro": {"input": "1.25$", "output": "10$"}
+      },
+      "azure": {
+        "gpt-4.1": {"input": "2.00$", "output": "8.00$"},
+        "gpt-4.1-mini": {"input": "0.40$", "output": "1.60$"},
+        "gpt-4.1-nano": {"input": "0.10$", "output": "0.40$"},
+        "o1": {"input": "15$", "output": "60$"},
+        "o3": {"input": "2.0$", "output": "8$"},
+        "o4-mini": {"input": "1.1$", "output": "4.40$"}
+      },
+      "lybic": {
+        "gpt-5": {"input": "1.25$", "output": "10$"},
+        "gpt-4.1": {"input": "2.00$", "output": "8.00$"},
+        "gpt-4.1-mini": {"input": "0.40$", "output": "1.60$"},
+        "gpt-4.1-nano": {"input": "0.10$", "output": "0.40$"},
+        "gpt-4.5-preview": {"input": "75$", "output": "150$"},
+        "gpt-4o": {"input": "2.5$", "output": "10$"},
+        "gpt-4o-realtime-preview": {"input": "5$", "output": "20$"},
+        "gpt-4o-mini": {"input": "0.15$", "output": "0.6$"},
+        "o1": {"input": "15$", "output": "60$"},
+        "o1-pro": {"input": "150$", "output": "600$"},
+        "o1-mini": {"input": "1.10$", "output": "4.40$"},
+        "o3": {"input": "2.0$", "output": "8$"},
+        "o3-pro": {"input": "20$", "output": "80$"},
+        "o3-mini": {"input": "1.10$", "output": "4.40$"},
+        "o4-mini": {"input": "1.1$", "output": "4.40$"}
+      }
+    },
+    "embedding_models": {
+      "openai": {
+        "text-embedding-3-small": {"input": "0.02$", "output": ""},
+        "text-embedding-3-large": {"input": "0.13$", "output": ""},
+        "text-embedding-ada-002": {"input": "0.10$", "output": ""}
+      },
+      "qwen": {
+        "text-embedding-v4": {"input": "0.0005￥", "output": ""},
+        "text-embedding-v3": {"input": "0.0005￥", "output": ""}
+      },
+      "doubao": {
+        "doubao-embedding-large-text-250515": {"input": "0.7￥", "output": ""},
+        "doubao-embedding-text-240715": {"input": "0.5￥", "output": ""}
+      },
+      "zhipu": {
+        "Embedding-3": {"input": "0.5￥", "output": ""},
+        "Embedding-2": {"input": "0.5￥", "output": ""}
+      },
+      "jina": {
+        "jina-embeddings-v4": {"input": "0.05$", "output": ""},
+        "jina-embeddings-v3": {"input": "0.05$", "output": ""}
+      },
+      "gemini": {
+        "gemini-embedding-001": {"input": "0.15$", "output": ""}
+      }
+    },
+    "search_models": {
+      "bocha": {
+        "ai-search": {"cost_type": "balance", "unit": "per_query"}
+      },
+      "exa": {
+        "search": {"cost_type": "direct", "unit": "per_query"},
+        "research": {"cost_type": "direct", "unit": "per_task"}
+      }
+    }
+  }

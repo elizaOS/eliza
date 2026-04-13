@@ -1,0 +1,35 @@
+# Environment variables
+.env
+.env.*
+
+# Nix/direnv
+.direnv/
+result
+.isolated_home/*
+!.isolated_home/.vibe/
+.isolated_home/.vibe/.env
+.isolated_home/.vibe/.env.*
+.isolated_home/.vibe/sessions/
+.isolated_home/.vibe/cache/
+.isolated_home/.vibe/logs/
+.isolated_home/.vibe/vibehistory
+.isolated_home/.vibe/update_cache.json
+
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Logs
+*.log
+
+# Temp
+.DS_Store
+
+# Cloned skill sources (use sync_skills.sh to update)
+references/skills-sources/

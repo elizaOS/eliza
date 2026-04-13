@@ -1,0 +1,7 @@
+{
+  "name": "general_evm_benchmark",
+  "description": "General EVM benchmark using local Anvil node",
+  "chain": "general",
+  "chain_id": 31337,
+  "timeout": 30000
+}

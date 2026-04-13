@@ -1,0 +1,19 @@
+2026-02-13 02:37:30,736 - benchmarks.mind2web.cli - INFO - Using sample tasks (use --hf to load from HuggingFace)
+2026-02-13 02:37:30,736 - benchmarks.mind2web.dataset - INFO - Loaded 3 tasks from Mind2Web (test_task)
+2026-02-13 02:37:30,736 - benchmarks.mind2web.runner - INFO - Running Mind2Web benchmark on 3 tasks
+2026-02-13 02:37:30,736 - benchmarks.mind2web.runner - INFO - Task sample_001 trial 1: SUCCESS (step_acc=100.00%)
+2026-02-13 02:37:30,736 - benchmarks.mind2web.runner - INFO - Task sample_002 trial 1: SUCCESS (step_acc=100.00%)
+2026-02-13 02:37:30,736 - benchmarks.mind2web.runner - INFO - Task sample_003 trial 1: SUCCESS (step_acc=100.00%)
+2026-02-13 02:37:30,736 - benchmarks.mind2web.runner - INFO - Results saved to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260213T073732Z_e9762aea/mind2web__mind2web/run_mind2web_20260213T093730Z_5_1a48633d/output
+
+============================================================
+Mind2Web Benchmark Results
+============================================================
+Tasks: 3, Trials: 3
+Task Success Rate: 100.0%
+Step Accuracy: 100.0%
+Element Accuracy: 100.0%
+Avg Latency: 0ms
+
+Results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260213T073732Z_e9762aea/mind2web__mind2web/run_mind2web_20260213T093730Z_5_1a48633d/output
+============================================================

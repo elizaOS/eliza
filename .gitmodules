@@ -1,7 +1,3 @@
-[submodule "plugins/plugin-agent-orchestrator"]
-	path = plugins/plugin-agent-orchestrator
-	url = https://github.com/elizaos-plugins/plugin-agent-orchestrator.git
-	branch = alpha
 [submodule "plugins/plugin-agent-skills"]
 	path = plugins/plugin-agent-skills
 	url = https://github.com/elizaos-plugins/plugin-agent-skills.git
@@ -13,14 +9,6 @@
 [submodule "plugins/plugin-cli"]
 	path = plugins/plugin-cli
 	url = https://github.com/elizaos-plugins/plugin-cli.git
-[submodule "plugins/plugin-clipboard"]
-	path = plugins/plugin-clipboard
-	url = https://github.com/elizaos-plugins/plugin-scratchpad.git
-	branch = alpha
-[submodule "plugins/plugin-coding-agent"]
-	path = plugins/plugin-coding-agent
-	url = https://github.com/elizaos-plugins/plugin-coding-agent.git
-	branch = main
 [submodule "plugins/plugin-commands"]
 	path = plugins/plugin-commands
 	url = https://github.com/elizaos-plugins/plugin-commands.git
@@ -37,21 +25,9 @@
 	path = plugins/plugin-edge-tts
 	url = https://github.com/elizaos-plugins/plugin-edge-tts.git
 	branch = alpha
-[submodule "plugins/plugin-elizacloud"]
-	path = plugins/plugin-elizacloud
-	url = https://github.com/elizaos-plugins/plugin-elizacloud.git
-	branch = alpha
 [submodule "plugins/plugin-evm"]
 	path = plugins/plugin-evm
 	url = https://github.com/elizaos-plugins/plugin-evm.git
-	branch = alpha
-[submodule "plugins/plugin-experience"]
-	path = plugins/plugin-experience
-	url = https://github.com/elizaos-plugins/plugin-experience.git
-	branch = alpha
-[submodule "plugins/plugin-form"]
-	path = plugins/plugin-form
-	url = https://github.com/elizaos-plugins/plugin-form.git
 	branch = alpha
 [submodule "plugins/plugin-google-genai"]
 	path = plugins/plugin-google-genai
@@ -96,22 +72,10 @@
 	path = plugins/plugin-pdf
 	url = https://github.com/elizaos-plugins/plugin-pdf.git
 	branch = alpha
-[submodule "plugins/plugin-personality"]
-	path = plugins/plugin-personality
-	url = https://github.com/elizaos-plugins/plugin-personality.git
-	branch = alpha
 [submodule "plugins/plugin-pi-ai"]
 	path = plugins/plugin-pi-ai
 	url = https://github.com/elizaos-plugins/plugin-pi-ai.git
 	branch = next
-[submodule "plugins/plugin-plugin-manager"]
-	path = plugins/plugin-plugin-manager
-	url = https://github.com/elizaos-plugins/plugin-plugin-manager.git
-	branch = alpha
-[submodule "plugins/plugin-secrets-manager"]
-	path = plugins/plugin-secrets-manager
-	url = https://github.com/elizaos-plugins/plugin-secrets-manager.git
-	branch = alpha
 [submodule "plugins/plugin-selfcontrol"]
 	path = plugins/plugin-selfcontrol
 	url = https://github.com/elizaos-plugins/plugin-selfcontrol.git
@@ -135,10 +99,6 @@
 [submodule "plugins/plugin-telegram"]
 	path = plugins/plugin-telegram
 	url = https://github.com/elizaos-plugins/plugin-telegram.git
-	branch = alpha
-[submodule "plugins/plugin-trust"]
-	path = plugins/plugin-trust
-	url = https://github.com/elizaos-plugins/plugin-trust.git
 	branch = alpha
 [submodule "plugins/plugin-whatsapp"]
 	path = plugins/plugin-whatsapp

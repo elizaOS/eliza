@@ -1,0 +1,53 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python /Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/run_benchmark.py --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T031215Z_945af7be/rlm-bench__rlm_bench/run_rlm_bench_20260215T031409Z_2_91f8679d/output --mode eliza --context-lengths 1000,10000 --tasks-per-config 1 --max-iterations 5 --max-depth 3
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/rlm-bench
+# run_id: run_rlm_bench_20260215T031409Z_2_91f8679d
+2026-02-14 20:14:09,297 - rlm-bench - INFO - ============================================================
+2026-02-14 20:14:09,297 - rlm-bench - INFO - RLM Benchmark Suite
+2026-02-14 20:14:09,297 - rlm-bench - INFO - ============================================================
+2026-02-14 20:14:09,297 - rlm-bench - INFO - Mode: eliza
+2026-02-14 20:14:09,298 - rlm-bench - INFO - Backend: gemini
+2026-02-14 20:14:09,298 - rlm-bench - INFO - Context lengths: [1000, 10000]
+2026-02-14 20:14:09,298 - rlm-bench - INFO - Tasks per config: 1
+2026-02-14 20:14:09,298 - rlm-bench - INFO - S-NIAH: enabled
+2026-02-14 20:14:09,298 - rlm-bench - INFO - OOLONG: enabled
+2026-02-14 20:14:09,298 - rlm-bench - INFO - ============================================================
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/run_benchmark.py", line 358, in <module>
+    sys.exit(asyncio.run(main()))
+             ^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/run_benchmark.py", line 313, in main
+    return await run_eliza_benchmark_mode(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/run_benchmark.py", line 226, in run_eliza_benchmark_mode
+    results = await run_eliza_benchmark(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/elizaos_rlm_bench/runner.py", line 523, in run_eliza_benchmark
+    runner = await setup_eliza_runner(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/elizaos_rlm_bench/runner.py", line 491, in setup_eliza_runner
+    runtime = await setup_benchmark_runtime(model_plugin)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/elizaos_rlm_bench/eliza_plugin.py", line 699, in setup_benchmark_runtime
+    from elizaos_plugin_rlm import plugin as rlm_plugin
+  File "/Users/shawwalters/eliza-workspace/plugins/plugin-rlm/python/elizaos_plugin_rlm/__init__.py", line 43, in <module>
+    from .plugin import (
+  File "/Users/shawwalters/eliza-workspace/plugins/plugin-rlm/python/elizaos_plugin_rlm/plugin.py", line 301, in <module>
+    TestCase(name="plugin_initialization", fn=test_plugin_initialization),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/pydantic/main.py", line 250, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/pydantic/_internal/_mock_val_ser.py", line 100, in __getattr__
+    raise PydanticUserError(self._error_message, code=self._code)
+pydantic.errors.PydanticUserError: `TestCase` is not fully defined; you should define `IAgentRuntime`, then call `TestCase.model_rebuild()`.
+
+For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined

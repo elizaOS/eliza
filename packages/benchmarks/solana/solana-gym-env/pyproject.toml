@@ -1,0 +1,27 @@
+[project]
+name = "solana-gym"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.58.2",
+    "base58>=2.1.1",
+    "chromadb>=1.0.15",
+    "cryptography>=46.0.4",
+    "gymnasium>=1.2.3",
+    "handlebars>=4.7.8.post20241027",
+    "javascript>=1!1.2.2",
+    "langchain>=0.3.26",
+    "langchain-anthropic>=0.3.17",
+    "langchain-openai>=0.3.28",
+    "openai>=1.93.0",
+    "protobuf>=6.33.5",
+    "pytest>=9.0.2",
+    "python-dotenv>=1.1.1",
+    "seaborn>=0.13.2",
+    "setuptools>=80.9.0",
+    "solana>=0.36.11",
+    "solders>=0.27.1",
+    "structlog>=25.5.0",
+]

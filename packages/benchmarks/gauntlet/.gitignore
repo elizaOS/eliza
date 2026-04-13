@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+
+# Local development outputs (not official results)
+output/
+test_output/
+test_verification/
+llm_output/
+
+# Keep only official benchmark_results/multi_run_*
+benchmark_results/always_execute_run1/
+
+# Databases (binary files)
+*.db
+
+# Environment & secrets
+.env
+.env.local
+*.pem
+
+# Surfpool local config
+.surfpool/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Website (separate project)
+website/
+
+# OS generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# Jupyter notebooks
+.ipynb_checkpoints/

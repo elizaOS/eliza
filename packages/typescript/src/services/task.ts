@@ -1,11 +1,9 @@
 // registered to runtime through plugin
 
 import type { JsonValue } from "../types";
-import type { Memory } from "../types/memory";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
-import type { State } from "../types/state";
 import type { Task, TaskMetadata, TaskRunStatus } from "../types/task";
 import {
 	getTaskSchedulerAdapter,
@@ -92,7 +90,7 @@ export class TaskService extends Service {
 		// Register task worker for repeating task
 		this.runtime.registerTaskWorker({
 			name: "REPEATING_TEST_TASK",
-			validate: async (_runtime, _message, _state) => {
+			shouldRun: async () => {
 				this.runtime.logger.debug(
 					{
 						src: "plugin:basic-capabilities:service:task",
@@ -117,7 +115,7 @@ export class TaskService extends Service {
 		// Register task worker for one-time task
 		this.runtime.registerTaskWorker({
 			name: "ONETIME_TEST_TASK",
-			validate: async (_runtime, _message, _state) => {
+			shouldRun: async () => {
 				this.runtime.logger.debug(
 					{
 						src: "plugin:basic-capabilities:service:task",
@@ -194,7 +192,7 @@ export class TaskService extends Service {
 	/**
 	 * Validates an array of Task objects.
 	 * Skips tasks without IDs or if no worker is found for the task.
-	 * Uses worker.shouldRun(runtime, task) when present, else falls back to worker.validate(runtime, {}, {}).
+	 * Uses worker.shouldRun(runtime, task) when present; otherwise the task passes.
 	 * @param {Task[]} tasks - An array of Task objects to validate.
 	 * @returns {Promise<Task[]>} - A Promise that resolves with an array of validated Task objects.
 	 */
@@ -214,15 +212,6 @@ export class TaskService extends Service {
 			if (worker.shouldRun) {
 				const shouldRun = await worker.shouldRun(this.runtime, task);
 				if (!shouldRun) {
-					continue;
-				}
-			} else if (worker.validate) {
-				const isValid = await worker.validate(
-					this.runtime,
-					{} as Memory,
-					{} as State,
-				);
-				if (!isValid) {
 					continue;
 				}
 			}

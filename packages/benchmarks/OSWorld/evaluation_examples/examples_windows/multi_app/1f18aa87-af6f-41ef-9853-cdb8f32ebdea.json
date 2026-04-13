@@ -1,0 +1,109 @@
+{
+  "id": "1f18aa87-af6f-41ef-9853-cdb8f32ebdea",
+  "snapshot": "libreoffice_calc",
+  "instruction": "I've prepared some grammar tests and placed them in the 'Grammar test' folder. I've already provided the multiple-choice answers for Test 1 in the 'answer doc' file. Could you please follow the same format to write out the answers for the remaining two tests in the doc file? This way, I can distribute them to the students as a reference. Thank you.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": "mkdir \"C:\\Users\\User\\Desktop\\students work\" \"C:\\Users\\User\\Desktop\\Lec powerpoint\" \"C:\\Users\\User\\Desktop\\Grammar test\" \"C:\\Users\\User\\Desktop\\Grammar rules PDF\" C:\\Users\\User\\Desktop\\FDI",
+        "shell": true
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "C:\\Users\\User\\Desktop\\Grammer test 1.docx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/1f18aa87-af6f-41ef-9853-cdb8f32ebdea/Grammer%20test%201.docx"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Grammer test 2.docx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/1f18aa87-af6f-41ef-9853-cdb8f32ebdea/Grammar%20test%202.docx"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Grammer test 3.docx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/1f18aa87-af6f-41ef-9853-cdb8f32ebdea/Grammer%20test%203.docx"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Answer.docx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/1f18aa87-af6f-41ef-9853-cdb8f32ebdea/Answer.docx"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Grammar rules PDF\\irregularrules02.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/irregularrules02.pdf"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Grammar rules PDF\\irregularrules01.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/irregularrules01.pdf"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Grammar rules PDF\\fragrules.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/fragrules.pdf"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Grammar rules PDF\\csfsrules.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/csfsrules.pdf"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Public Lecture Teaching Plan.docx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/Public%20Lecture%20Teaching%20Plan.docx"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\Course Timetable.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/2c1ebcd7-9c6d-4c9a-afad-900e381ecd5e/Course%20Timetable.xlsx"
+          }
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/1f18aa87-af6f-41ef-9853-cdb8f32ebdea",
+  "related_apps": [
+    "os",
+    "word"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Answer - Word",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5); pyautogui.press(\"enter\");"
+          ]
+        }
+      }
+    ],
+    "func": "compare_docx_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/1f18aa87-af6f-41ef-9853-cdb8f32ebdea/Answer_Gold.docx",
+      "dest": "Answer gold.docx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Desktop\\Answer.docx",
+      "dest": "Answer.docx"
+    },
+    "options": {
+      "ignore_case": true,
+      "ignore_blanks": true
+    }
+  }
+}

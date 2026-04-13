@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Task Detail: {{ task_id }}</title>
+    <link rel="icon" href="/static/favicon.png" type="image/x-icon">
+    <link rel="shortcut icon" href="/static/favicon.png" type="image/x-icon">
+    <link rel="apple-touch-icon" href="/static/favicon.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="/static/task_detail.css">
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link"><i class="fas fa-arrow-left"></i> Back to Home</a>
+        <h1>Task Detail <span class="task-id">{{ task_id }}</span></h1>
+        <div class="task-info">
+            <h2><i class="fas fa-info-circle"></i> Basic Information</h2>
+            <dl>
+                <dt>Task ID</dt>
+                <dd>{{ task_id }}</dd>
+                <dt>Task Type</dt>
+                <dd>{{ task_type }}</dd>
+                <dt>Instruction</dt>
+                <dd>{{ task_info.instruction }}</dd>
+                <dt>Status</dt>
+                <dd class="status status-{{ task_status.status|lower|replace(' ', '-')|replace('(', '')|replace(')', '') }}">
+                    {{ task_status.status }}
+                    {% if task_status.status == 'Error' %}
+                    <span class="tooltip">
+                        <i class="fas fa-question-circle"></i>
+                        <span class="tooltip-text">Error occurred during task execution</span>
+                    </span>
+                    {% elif task_status.status == 'Done (Message Exit)' %}
+                    <span class="tooltip">
+                        <i class="fas fa-question-circle"></i>
+                        <span class="tooltip-text">Task completed with a message exit condition</span>
+                    </span>
+                    {% elif task_status.status == 'Done (Max Steps)' %}
+                    <span class="tooltip">
+                        <i class="fas fa-question-circle"></i>
+                        <span class="tooltip-text">Maximum steps reached, task completed</span>
+                    </span>
+                    {% elif task_status.status == 'Done (Thought Exit)' %}
+                    <span class="tooltip">
+                        <i class="fas fa-question-circle"></i>
+                        <span class="tooltip-text">Task completed with a thought exit condition</span>
+                    </span>
+                    {% endif %}
+                </dd>
+                <dt>Current Step</dt>
+                <dd>{{ task_status.progress }}</dd>
+                <dt>Last Update</dt>
+                <dd>{{ task_status.last_update or 'None' }}</dd>
+                {% if task_status.log_data and task_status.log_data.exit_condition %}
+                <dt>Exit Condition</dt>
+                <dd class="exit-condition">
+                    {{ task_status.log_data.exit_condition }}
+                </dd>
+                {% endif %}
+                {% if task_status.status == 'Done (Message Exit)' and task_status.log_data and task_status.log_data.last_message %}
+                <dt>Exit Message</dt>
+                <dd class="exit-message">
+                    {{ task_status.log_data.last_message }}
+                </dd>
+                {% endif %}
+                <dt>Result</dt>
+                <dd>{{ task_status.result }}</dd>
+                
+                {% if task_status.status.startswith('Done') %}
+                <dt>Recording</dt>
+                <dd id="recording-container">
+                    <div class="video-player">
+                        <video id="task-recording" controls playsinline webkit-playsinline
+                               preload="metadata" width="100%" controlslist="nodownload">
+                            <source src="/task/{{ task_type }}/{{ task_id }}/recording?action_space={{ action_space }}&observation_type={{ observation_type }}&model_name={{ model_name }}" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                        <div id="video-status" class="video-status">Loading video...</div>
+                    </div>
+                </dd>
+                {% endif %}
+            </dl>
+        </div>
+        <div class="task-steps">
+            <h2><i class="fas fa-list-ol"></i> Execution Steps</h2>
+            <div id="steps-container">
+                {% if task_status.steps %}
+                    {% for step in task_status.steps %}
+                        <div class="step-card">
+                            <div class="step-header">
+                                <div class="step-title"><i class="fas fa-check-circle"></i> Step {{ step.step_num }}</div>
+                                <div class="step-time"><i class="far fa-clock"></i> {{ step.action_timestamp }}</div>
+                            </div>
+                            {% if task_status.log_data and task_status.log_data.agent_responses and loop.index0 < task_status.log_data.agent_responses|length %}
+                                <div class="step-intent">
+                                    <i class="fas fa-comment"></i> <strong>Agent Intent:</strong> {{ task_status.log_data.agent_responses[loop.index0] }}
+                                </div>
+                            {% endif %}
+                            <pre>{% if step.action and step.action.action %}{{ step.action.action }}
+                            {% elif step.Error %}Error: {{ step.Error }}
+                            {% else %}{{ step|tojson }}
+                            {% endif %}</pre>
+                            {% if step.screenshot_file %}
+                                <div>
+                                    <img src="/task/{{ task_type }}/{{ task_id }}/screenshot/{{ step.screenshot_file }}?action_space={{ action_space }}&observation_type={{ observation_type }}&model_name={{ model_name }}" 
+                                            alt="Step {{ step.step_num }} Screenshot" class="step-image">
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="no-steps"><i class="far fa-frown"></i> No step data available</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <button class="fab fab-refresh" onclick="refreshPage()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+    <script>
+        function refreshPage() {
+            window.location.reload();
+        }
+        
+        // Handle video player with enhanced mobile support
+        document.addEventListener('DOMContentLoaded', function() {
+            const videoElement = document.getElementById('task-recording');
+            const videoStatus = document.getElementById('video-status');
+            
+            if (videoElement) {
+                // Function to update status on successful video load
+                function updateSuccessStatus() {
+                    videoStatus.textContent = 'Recording available';
+                    videoStatus.className = 'video-status video-success';
+                }
+                
+                // Multiple event listeners for different browser implementations
+                // The 'loadeddata' event might not fire on all mobile browsers
+                videoElement.addEventListener('loadeddata', updateSuccessStatus);
+                videoElement.addEventListener('loadedmetadata', updateSuccessStatus);
+                videoElement.addEventListener('canplay', updateSuccessStatus);
+                
+                // Error handling for video
+                videoElement.addEventListener('error', function(e) {
+                    console.error('Video error:', e);
+                    videoStatus.textContent = 'Recording not available';
+                    videoStatus.className = 'video-status video-error';
+                });
+                
+                // Timeout for slow connections or browser issues
+                setTimeout(function() {
+                    // If video is playable but events didn't fire correctly
+                    if (videoElement.readyState >= 2 && videoStatus.textContent === 'Loading video...') {
+                        updateSuccessStatus();
+                    }
+                }, 2000);
+                
+                // Directly check video source availability with fetch API
+                fetch('/task/{{ task_type }}/{{ task_id }}/recording?action_space={{ action_space }}&observation_type={{ observation_type }}&model_name={{ model_name }}', {method: 'HEAD'})
+                    .then(function(response) {
+                        if (response.ok && videoStatus.textContent === 'Loading video...') {
+                            // If HEAD request succeeds but video events haven't fired
+                            setTimeout(updateSuccessStatus, 500);
+                        }
+                    })
+                    .catch(function() {
+                        // Network error or CORS issue
+                        if (videoStatus.textContent === 'Loading video...') {
+                            videoStatus.textContent = 'Recording check failed';
+                            videoStatus.className = 'video-status video-error';
+                        }
+                    });
+            }
+        });
+    </script>
+</body>
+</html>

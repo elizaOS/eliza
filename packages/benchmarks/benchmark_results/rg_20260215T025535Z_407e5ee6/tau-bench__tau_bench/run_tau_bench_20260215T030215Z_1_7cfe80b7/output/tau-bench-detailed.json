@@ -1,0 +1,1789 @@
+{
+  "results": [
+    {
+      "task_id": "retail_001",
+      "domain": "retail",
+      "trial_number": 1,
+      "success": true,
+      "tool_call_accuracy": 0.25,
+      "policy_compliance": 1.0,
+      "response_quality": 0.611764705882353,
+      "goal_achieved": true,
+      "duration_ms": 2428.9658069610596,
+      "turns_used": 2,
+      "tool_calls_made": [
+        {
+          "tool_name": "initiate_return",
+          "arguments": {
+            "order_id": "ORD-12345",
+            "reason": "Item not as described"
+          },
+          "result": {
+            "success": true,
+            "return_id": "RET-ORD-12345",
+            "status": "initiated",
+            "return_label_url": "https://returns.example.com/label/RET-ORD-12345",
+            "instructions": "Print the return label and ship the items within 14 days."
+          },
+          "status": "correct",
+          "error_message": null
+        }
+      ],
+      "policy_violations": [],
+      "error": null
+    },
+    {
+      "task_id": "retail_002",
+      "domain": "retail",
+      "trial_number": 1,
+      "success": false,
+      "tool_call_accuracy": 0.0,
+      "policy_compliance": 1.0,
+      "response_quality": 0.3,
+      "goal_achieved": false,
+      "duration_ms": 16659.552812576294,
+      "turns_used": 16,
+      "tool_calls_made": [
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {},
+          "result": {
+            "error": "Missing required parameter: customer_id"
+          },
+          "status": "wrong_params",
+          "error_message": "Missing required parameter: customer_id"
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {},
+          "result": {
+            "error": "Missing required parameter: customer_id"
+          },
+          "status": "wrong_params",
+          "error_message": "Missing required parameter: customer_id"
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {},
+          "result": {
+            "error": "Missing required parameter: customer_id"
+          },
+          "status": "wrong_params",
+          "error_message": "Missing required parameter: customer_id"
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_customer_orders",
+          "arguments": {
+            "customer_id": "John Smith"
+          },
+          "result": {
+            "customer_id": "John Smith",
+            "orders": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        }
+      ],
+      "policy_violations": [],
+      "error": null
+    },
+    {
+      "task_id": "airline_001",
+      "domain": "airline",
+      "trial_number": 1,
+      "success": false,
+      "tool_call_accuracy": 0.3333333333333333,
+      "policy_compliance": 1.0,
+      "response_quality": 0.0779220779220779,
+      "goal_achieved": false,
+      "duration_ms": 3205.9412002563477,
+      "turns_used": 2,
+      "tool_calls_made": [
+        {
+          "tool_name": "search_flights",
+          "arguments": {
+            "origin": "JFK",
+            "destination": "LAX",
+            "date": "2026-02-20",
+            "cabin_class": "economy"
+          },
+          "result": {
+            "flights": [
+              {
+                "flight_id": "FL-AA100",
+                "flight_number": "AA100",
+                "departure": "2026-02-21T08:30:35.217459",
+                "arrival": "2026-02-21T11:45:35.217490",
+                "price": 249.0,
+                "available_seats": 45,
+                "cabin_class": "economy"
+              },
+              {
+                "flight_id": "FL-AA101",
+                "flight_number": "AA101",
+                "departure": "2026-02-21T14:00:35.217529",
+                "arrival": "2026-02-21T17:15:35.217565",
+                "price": 199.0,
+                "available_seats": 120,
+                "cabin_class": "economy"
+              }
+            ],
+            "count": 2
+          },
+          "status": "correct",
+          "error_message": null
+        }
+      ],
+      "policy_violations": [],
+      "error": null
+    },
+    {
+      "task_id": "airline_002",
+      "domain": "airline",
+      "trial_number": 1,
+      "success": false,
+      "tool_call_accuracy": 0.0,
+      "policy_compliance": 1.0,
+      "response_quality": 0.3,
+      "goal_achieved": false,
+      "duration_ms": 20462.66198158264,
+      "turns_used": 16,
+      "tool_calls_made": [
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {
+            "passenger_id": "Jane Smith"
+          },
+          "result": {
+            "passenger_id": "Jane Smith",
+            "bookings": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {
+            "passenger_id": "Jane Smith"
+          },
+          "result": {
+            "passenger_id": "Jane Smith",
+            "bookings": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {
+            "passenger_id": "Jane Smith"
+          },
+          "result": {
+            "passenger_id": "Jane Smith",
+            "bookings": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "cancel_booking",
+          "arguments": {
+            "booking_id": "123456",
+            "reason": "Change of plans"
+          },
+          "result": {
+            "error": "Booking 123456 not found"
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {},
+          "result": {
+            "error": "Missing required parameter: passenger_id"
+          },
+          "status": "wrong_params",
+          "error_message": "Missing required parameter: passenger_id"
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {},
+          "result": {
+            "error": "Missing required parameter: passenger_id"
+          },
+          "status": "wrong_params",
+          "error_message": "Missing required parameter: passenger_id"
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {},
+          "result": {
+            "error": "Missing required parameter: passenger_id"
+          },
+          "status": "wrong_params",
+          "error_message": "Missing required parameter: passenger_id"
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {
+            "passenger_id": "jane.smith123"
+          },
+          "result": {
+            "passenger_id": "jane.smith123",
+            "bookings": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {
+            "passenger_id": "jane.smith123"
+          },
+          "result": {
+            "passenger_id": "jane.smith123",
+            "bookings": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {
+            "passenger_id": "jane.smith123"
+          },
+          "result": {
+            "passenger_id": "jane.smith123",
+            "bookings": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {
+            "passenger_id": "jane.smith123"
+          },
+          "result": {
+            "passenger_id": "jane.smith123",
+            "bookings": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "cancel_booking",
+          "arguments": {
+            "booking_id": "jane.smith123",
+            "reason": "Customer requested cancellation"
+          },
+          "result": {
+            "error": "Booking jane.smith123 not found"
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {},
+          "result": {
+            "error": "Missing required parameter: passenger_id"
+          },
+          "status": "wrong_params",
+          "error_message": "Missing required parameter: passenger_id"
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {
+            "passenger_id": "passenger_id"
+          },
+          "result": {
+            "passenger_id": "passenger_id",
+            "bookings": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "list_passenger_bookings",
+          "arguments": {
+            "passenger_id": "passenger_id"
+          },
+          "result": {
+            "passenger_id": "passenger_id",
+            "bookings": [],
+            "count": 0
+          },
+          "status": "correct",
+          "error_message": null
+        }
+      ],
+      "policy_violations": [],
+      "error": null
+    }
+  ],
+  "domain_reports": {
+    "retail": {
+      "domain": "TauDomain.RETAIL",
+      "total_tasks": 2,
+      "passed_tasks": 1,
+      "failed_tasks": 1,
+      "success_rate": 0.5,
+      "average_tool_accuracy": 0.125,
+      "average_policy_compliance": 1.0,
+      "average_response_quality": 0.4558823529411765,
+      "average_turns": 9.0,
+      "average_duration_ms": 9544.259309768677,
+      "pass_k_metrics": {
+        "1": {
+          "k": 1,
+          "pass_rate": 0.5,
+          "trials_passed": 1,
+          "total_trials": 2
+        },
+        "2": {
+          "k": 2,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 2
+        },
+        "4": {
+          "k": 4,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 2
+        },
+        "8": {
+          "k": 8,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 2
+        }
+      },
+      "results": [
+        {
+          "task_id": "retail_001",
+          "domain": "TauDomain.RETAIL",
+          "trial_number": 1,
+          "tool_calls_made": [
+            {
+              "tool_name": "initiate_return",
+              "arguments": {
+                "order_id": "ORD-12345",
+                "reason": "Item not as described"
+              },
+              "result": {
+                "success": true,
+                "return_id": "RET-ORD-12345",
+                "status": "initiated",
+                "return_label_url": "https://returns.example.com/label/RET-ORD-12345",
+                "instructions": "Print the return label and ship the items within 14 days."
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.06103515625
+            }
+          ],
+          "tool_call_accuracy": 0.25,
+          "tool_selection_accuracy": 0.5,
+          "parameter_accuracy": 0.0,
+          "conversation_history": [],
+          "response_generated": "Your return has been successfully initiated. Your return ID is RET-ORD-12345. Please print the return label from the link below and ship the items within 14 days: https://returns.example.com/label/RET-ORD-12345. Let me know if you need further assistance!",
+          "response_quality": 0.611764705882353,
+          "policy_violations": [],
+          "policy_compliance": 1.0,
+          "goal_achieved": true,
+          "final_state": {
+            "state": {
+              "orders": {
+                "ORD-12345": {
+                  "order_id": "ORD-12345",
+                  "customer_id": "CUST-001",
+                  "status": "delivered",
+                  "items": [
+                    {
+                      "product_id": "PROD-001",
+                      "name": "Wireless Headphones",
+                      "price": 149.99,
+                      "quantity": 1
+                    },
+                    {
+                      "product_id": "PROD-002",
+                      "name": "Phone Case",
+                      "price": 29.99,
+                      "quantity": 2
+                    }
+                  ],
+                  "subtotal": 209.97,
+                  "shipping": 9.99,
+                  "tax": 18.9,
+                  "total": 238.86,
+                  "shipping_address": {
+                    "street": "123 Main St",
+                    "city": "San Francisco",
+                    "state": "CA",
+                    "zip": "94102"
+                  },
+                  "order_date": "2026-02-09T20:02:16.120529",
+                  "delivery_date": "2026-02-13T20:02:16.120552",
+                  "payment_method": "credit_card_ending_4242"
+                },
+                "ORD-12346": {
+                  "order_id": "ORD-12346",
+                  "customer_id": "CUST-001",
+                  "status": "processing",
+                  "items": [
+                    {
+                      "product_id": "PROD-003",
+                      "name": "Laptop Stand",
+                      "price": 79.99,
+                      "quantity": 1
+                    }
+                  ],
+                  "subtotal": 79.99,
+                  "shipping": 0.0,
+                  "tax": 7.2,
+                  "total": 87.19,
+                  "shipping_address": {
+                    "street": "123 Main St",
+                    "city": "San Francisco",
+                    "state": "CA",
+                    "zip": "94102"
+                  },
+                  "order_date": "2026-02-14T20:02:16.120568",
+                  "estimated_delivery": "2026-02-19T20:02:16.120573",
+                  "payment_method": "credit_card_ending_4242"
+                }
+              },
+              "customers": {
+                "CUST-001": {
+                  "customer_id": "CUST-001",
+                  "name": "John Smith",
+                  "email": "john.smith@example.com",
+                  "phone": "+1-555-0123",
+                  "membership_tier": "gold",
+                  "account_created": "2022-03-15",
+                  "total_orders": 12,
+                  "total_spent": 2450.0
+                }
+              },
+              "products": {
+                "PROD-001": {
+                  "product_id": "PROD-001",
+                  "name": "Wireless Headphones",
+                  "price": 149.99,
+                  "category": "Electronics",
+                  "in_stock": true,
+                  "stock_quantity": 50
+                },
+                "PROD-002": {
+                  "product_id": "PROD-002",
+                  "name": "Phone Case",
+                  "price": 29.99,
+                  "category": "Accessories",
+                  "in_stock": true,
+                  "stock_quantity": 200
+                },
+                "PROD-003": {
+                  "product_id": "PROD-003",
+                  "name": "Laptop Stand",
+                  "price": 79.99,
+                  "category": "Accessories",
+                  "in_stock": true,
+                  "stock_quantity": 25
+                }
+              },
+              "returns": {
+                "RET-ORD-12345": {
+                  "return_id": "RET-ORD-12345",
+                  "order_id": "ORD-12345",
+                  "items": [
+                    "PROD-001",
+                    "PROD-002"
+                  ],
+                  "reason": "Item not as described",
+                  "status": "initiated",
+                  "created_at": "2026-02-14T20:02:17.742715",
+                  "return_label_url": "https://returns.example.com/label/RET-ORD-12345"
+                }
+              },
+              "refunds": {},
+              "policies": {
+                "return_window_days": 30,
+                "requires_receipt": false,
+                "restocking_fee_percent": 0,
+                "refund_processing_days": 5,
+                "free_shipping_threshold": 50.0
+              }
+            },
+            "tool_call_count": 1,
+            "initialized": true
+          },
+          "success": true,
+          "duration_ms": 2428.9658069610596,
+          "turns_used": 2,
+          "tokens_used": 0,
+          "error": null,
+          "metrics": {
+            "planning_time_ms": 0.0,
+            "execution_time_ms": 0.06103515625,
+            "tool_invocation_count": 1.0,
+            "correct_tool_count": 0.0
+          }
+        },
+        {
+          "task_id": "retail_002",
+          "domain": "TauDomain.RETAIL",
+          "trial_number": 1,
+          "tool_calls_made": [
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {},
+              "result": {
+                "error": "Missing required parameter: customer_id"
+              },
+              "status": "ToolCallStatus.WRONG_PARAMS",
+              "error_message": "Missing required parameter: customer_id",
+              "execution_time_ms": 0.0
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.03218650817871094
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.025033950805664062
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {},
+              "result": {
+                "error": "Missing required parameter: customer_id"
+              },
+              "status": "ToolCallStatus.WRONG_PARAMS",
+              "error_message": "Missing required parameter: customer_id",
+              "execution_time_ms": 0.0
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.030994415283203125
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.024080276489257812
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.024080276489257812
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.026226043701171875
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.02384185791015625
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.029087066650390625
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.02574920654296875
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {},
+              "result": {
+                "error": "Missing required parameter: customer_id"
+              },
+              "status": "ToolCallStatus.WRONG_PARAMS",
+              "error_message": "Missing required parameter: customer_id",
+              "execution_time_ms": 0.0
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.02288818359375
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.02574920654296875
+            },
+            {
+              "tool_name": "list_customer_orders",
+              "arguments": {
+                "customer_id": "John Smith"
+              },
+              "result": {
+                "customer_id": "John Smith",
+                "orders": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.024080276489257812
+            }
+          ],
+          "tool_call_accuracy": 0.0,
+          "tool_selection_accuracy": 0.0,
+          "parameter_accuracy": 0.0,
+          "conversation_history": [],
+          "response_generated": "",
+          "response_quality": 0.3,
+          "policy_violations": [],
+          "policy_compliance": 1.0,
+          "goal_achieved": false,
+          "final_state": {
+            "state": {
+              "orders": {
+                "ORD-12345": {
+                  "order_id": "ORD-12345",
+                  "customer_id": "CUST-001",
+                  "status": "delivered",
+                  "items": [
+                    {
+                      "product_id": "PROD-001",
+                      "name": "Wireless Headphones",
+                      "price": 149.99,
+                      "quantity": 1
+                    },
+                    {
+                      "product_id": "PROD-002",
+                      "name": "Phone Case",
+                      "price": 29.99,
+                      "quantity": 2
+                    }
+                  ],
+                  "subtotal": 209.97,
+                  "shipping": 9.99,
+                  "tax": 18.9,
+                  "total": 238.86,
+                  "shipping_address": {
+                    "street": "123 Main St",
+                    "city": "San Francisco",
+                    "state": "CA",
+                    "zip": "94102"
+                  },
+                  "order_date": "2026-02-09T20:02:18.557502",
+                  "delivery_date": "2026-02-13T20:02:18.557522",
+                  "payment_method": "credit_card_ending_4242"
+                },
+                "ORD-12346": {
+                  "order_id": "ORD-12346",
+                  "customer_id": "CUST-001",
+                  "status": "processing",
+                  "items": [
+                    {
+                      "product_id": "PROD-003",
+                      "name": "Laptop Stand",
+                      "price": 79.99,
+                      "quantity": 1
+                    }
+                  ],
+                  "subtotal": 79.99,
+                  "shipping": 0.0,
+                  "tax": 7.2,
+                  "total": 87.19,
+                  "shipping_address": {
+                    "street": "123 Main St",
+                    "city": "San Francisco",
+                    "state": "CA",
+                    "zip": "94102"
+                  },
+                  "order_date": "2026-02-14T20:02:18.557534",
+                  "estimated_delivery": "2026-02-19T20:02:18.557539",
+                  "payment_method": "credit_card_ending_4242"
+                }
+              },
+              "customers": {
+                "CUST-001": {
+                  "customer_id": "CUST-001",
+                  "name": "John Smith",
+                  "email": "john.smith@example.com",
+                  "phone": "+1-555-0123",
+                  "membership_tier": "gold",
+                  "account_created": "2022-03-15",
+                  "total_orders": 12,
+                  "total_spent": 2450.0
+                }
+              },
+              "products": {
+                "PROD-001": {
+                  "product_id": "PROD-001",
+                  "name": "Wireless Headphones",
+                  "price": 149.99,
+                  "category": "Electronics",
+                  "in_stock": true,
+                  "stock_quantity": 50
+                },
+                "PROD-002": {
+                  "product_id": "PROD-002",
+                  "name": "Phone Case",
+                  "price": 29.99,
+                  "category": "Accessories",
+                  "in_stock": true,
+                  "stock_quantity": 200
+                },
+                "PROD-003": {
+                  "product_id": "PROD-003",
+                  "name": "Laptop Stand",
+                  "price": 79.99,
+                  "category": "Accessories",
+                  "in_stock": true,
+                  "stock_quantity": 25
+                }
+              },
+              "returns": {},
+              "refunds": {},
+              "policies": {
+                "return_window_days": 30,
+                "requires_receipt": false,
+                "restocking_fee_percent": 0,
+                "refund_processing_days": 5,
+                "free_shipping_threshold": 50.0
+              }
+            },
+            "tool_call_count": 12,
+            "initialized": true
+          },
+          "success": false,
+          "duration_ms": 16659.552812576294,
+          "turns_used": 16,
+          "tokens_used": 0,
+          "error": null,
+          "metrics": {
+            "planning_time_ms": 0.0,
+            "execution_time_ms": 0.3139972686767578,
+            "tool_invocation_count": 15.0,
+            "correct_tool_count": 0.0
+          }
+        }
+      ]
+    },
+    "airline": {
+      "domain": "TauDomain.AIRLINE",
+      "total_tasks": 2,
+      "passed_tasks": 0,
+      "failed_tasks": 2,
+      "success_rate": 0.0,
+      "average_tool_accuracy": 0.16666666666666666,
+      "average_policy_compliance": 1.0,
+      "average_response_quality": 0.18896103896103894,
+      "average_turns": 9.0,
+      "average_duration_ms": 11834.301590919495,
+      "pass_k_metrics": {
+        "1": {
+          "k": 1,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 2
+        },
+        "2": {
+          "k": 2,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 2
+        },
+        "4": {
+          "k": 4,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 2
+        },
+        "8": {
+          "k": 8,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 2
+        }
+      },
+      "results": [
+        {
+          "task_id": "airline_001",
+          "domain": "TauDomain.AIRLINE",
+          "trial_number": 1,
+          "tool_calls_made": [
+            {
+              "tool_name": "search_flights",
+              "arguments": {
+                "origin": "JFK",
+                "destination": "LAX",
+                "date": "2026-02-20",
+                "cabin_class": "economy"
+              },
+              "result": {
+                "flights": [
+                  {
+                    "flight_id": "FL-AA100",
+                    "flight_number": "AA100",
+                    "departure": "2026-02-21T08:30:35.217459",
+                    "arrival": "2026-02-21T11:45:35.217490",
+                    "price": 249.0,
+                    "available_seats": 45,
+                    "cabin_class": "economy"
+                  },
+                  {
+                    "flight_id": "FL-AA101",
+                    "flight_number": "AA101",
+                    "departure": "2026-02-21T14:00:35.217529",
+                    "arrival": "2026-02-21T17:15:35.217565",
+                    "price": 199.0,
+                    "available_seats": 120,
+                    "cabin_class": "economy"
+                  }
+                ],
+                "count": 2
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.04792213439941406
+            }
+          ],
+          "tool_call_accuracy": 0.3333333333333333,
+          "tool_selection_accuracy": 0.3333333333333333,
+          "parameter_accuracy": 0.3333333333333333,
+          "conversation_history": [],
+          "response_generated": "Here are the available flights and the change fee details for you, Jane Smith, as a Gold frequent flyer: \n\n1. **Flight AA100** (FL-AA100) - Departs at 08:30 AM, arrives at 11:45 AM. Price: $249. Available seats: 45. Economy class.\n2. **Flight AA101** (FL-AA101) - Departs at 02:00 PM, arrives at 05:15 PM. Price: $199. Available seats: 120. Economy class.\n\nThe change fee for switching to either of these flights is $50. Let me know if you'd like to proceed with one of these options.",
+          "response_quality": 0.0779220779220779,
+          "policy_violations": [],
+          "policy_compliance": 1.0,
+          "goal_achieved": false,
+          "final_state": {
+            "state": {
+              "bookings": {
+                "BK-123456": {
+                  "booking_id": "BK-123456",
+                  "passenger_id": "PAX-001",
+                  "passenger_name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "flights": [
+                    {
+                      "flight_id": "FL-AA100",
+                      "flight_number": "AA100",
+                      "origin": "JFK",
+                      "destination": "LAX",
+                      "departure": "2026-02-21T08:30:35.217171",
+                      "arrival": "2026-02-21T11:45:35.217193",
+                      "cabin_class": "economy",
+                      "seat": "24A",
+                      "status": "confirmed"
+                    },
+                    {
+                      "flight_id": "FL-AA200",
+                      "flight_number": "AA200",
+                      "origin": "LAX",
+                      "destination": "JFK",
+                      "departure": "2026-02-28T14:00:35.217206",
+                      "arrival": "2026-02-28T22:30:35.217220",
+                      "cabin_class": "economy",
+                      "seat": "24A",
+                      "status": "confirmed"
+                    }
+                  ],
+                  "baggage": {
+                    "checked_bags": 1,
+                    "carry_on": 1
+                  },
+                  "total_price": 548.0,
+                  "payment_status": "paid",
+                  "booking_date": "2026-01-31T20:02:35.217239",
+                  "status": "confirmed",
+                  "frequent_flyer": "AA-12345678"
+                },
+                "BK-123457": {
+                  "booking_id": "BK-123457",
+                  "passenger_id": "PAX-001",
+                  "passenger_name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "flights": [
+                    {
+                      "flight_id": "FL-AA300",
+                      "flight_number": "AA300",
+                      "origin": "JFK",
+                      "destination": "MIA",
+                      "departure": "2026-03-16T10:00:35.217336",
+                      "arrival": "2026-03-16T13:15:35.217404",
+                      "cabin_class": "business",
+                      "seat": "3B",
+                      "status": "confirmed"
+                    }
+                  ],
+                  "baggage": {
+                    "checked_bags": 2,
+                    "carry_on": 1
+                  },
+                  "total_price": 892.0,
+                  "payment_status": "paid",
+                  "booking_date": "2026-02-07T20:02:35.217434",
+                  "status": "confirmed",
+                  "frequent_flyer": "AA-12345678"
+                }
+              },
+              "passengers": {
+                "PAX-001": {
+                  "passenger_id": "PAX-001",
+                  "name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "frequent_flyer": "AA-12345678",
+                  "tier": "gold",
+                  "miles_balance": 45000,
+                  "known_traveler_number": "KTN123456"
+                }
+              },
+              "flights": {
+                "FL-AA100": {
+                  "flight_id": "FL-AA100",
+                  "flight_number": "AA100",
+                  "origin": "JFK",
+                  "destination": "LAX",
+                  "departure": "2026-02-21T08:30:35.217459",
+                  "arrival": "2026-02-21T11:45:35.217490",
+                  "aircraft": "Boeing 777-200",
+                  "available_seats": {
+                    "economy": 45,
+                    "business": 8,
+                    "first": 2
+                  },
+                  "prices": {
+                    "economy": 249.0,
+                    "business": 649.0,
+                    "first": 1299.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA101": {
+                  "flight_id": "FL-AA101",
+                  "flight_number": "AA101",
+                  "origin": "JFK",
+                  "destination": "LAX",
+                  "departure": "2026-02-21T14:00:35.217529",
+                  "arrival": "2026-02-21T17:15:35.217565",
+                  "aircraft": "Airbus A321",
+                  "available_seats": {
+                    "economy": 120,
+                    "business": 16,
+                    "first": 0
+                  },
+                  "prices": {
+                    "economy": 199.0,
+                    "business": 549.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA200": {
+                  "flight_id": "FL-AA200",
+                  "flight_number": "AA200",
+                  "origin": "LAX",
+                  "destination": "JFK",
+                  "departure": "2026-02-28T14:00:35.217610",
+                  "arrival": "2026-02-28T22:30:35.217652",
+                  "aircraft": "Boeing 777-200",
+                  "available_seats": {
+                    "economy": 32,
+                    "business": 4,
+                    "first": 1
+                  },
+                  "prices": {
+                    "economy": 299.0,
+                    "business": 699.0,
+                    "first": 1399.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA300": {
+                  "flight_id": "FL-AA300",
+                  "flight_number": "AA300",
+                  "origin": "JFK",
+                  "destination": "MIA",
+                  "departure": "2026-03-16T10:00:35.217703",
+                  "arrival": "2026-03-16T13:15:35.217751",
+                  "aircraft": "Airbus A320",
+                  "available_seats": {
+                    "economy": 80,
+                    "business": 12
+                  },
+                  "prices": {
+                    "economy": 149.0,
+                    "business": 449.0
+                  },
+                  "status": "on_time"
+                }
+              },
+              "seat_maps": {
+                "FL-AA100": {
+                  "available": [
+                    "24B",
+                    "24C",
+                    "25A",
+                    "25B",
+                    "25C",
+                    "26A",
+                    "26B",
+                    "26C"
+                  ],
+                  "occupied": [
+                    "24A"
+                  ],
+                  "premium": [
+                    "10A",
+                    "10B",
+                    "10C",
+                    "11A",
+                    "11B",
+                    "11C"
+                  ],
+                  "exit_row": [
+                    "15A",
+                    "15B",
+                    "15C"
+                  ]
+                }
+              },
+              "policies": {
+                "free_cancellation_hours": 24,
+                "change_fee": {
+                  "economy": 75.0,
+                  "business": 50.0,
+                  "first": 0.0
+                },
+                "cancellation_fee": {
+                  "economy": 150.0,
+                  "business": 100.0,
+                  "first": 0.0
+                },
+                "same_day_change_fee": 75.0,
+                "baggage_fees": {
+                  "first_bag": 35.0,
+                  "second_bag": 45.0,
+                  "overweight": 100.0
+                },
+                "upgrade_available_hours": 72
+              },
+              "cancellations": {},
+              "changes": {}
+            },
+            "tool_call_count": 1,
+            "initialized": true
+          },
+          "success": false,
+          "duration_ms": 3205.9412002563477,
+          "turns_used": 2,
+          "tokens_used": 0,
+          "error": null,
+          "metrics": {
+            "planning_time_ms": 0.0,
+            "execution_time_ms": 0.04792213439941406,
+            "tool_invocation_count": 1.0,
+            "correct_tool_count": 1.0
+          }
+        },
+        {
+          "task_id": "airline_002",
+          "domain": "TauDomain.AIRLINE",
+          "trial_number": 1,
+          "tool_calls_made": [
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {
+                "passenger_id": "Jane Smith"
+              },
+              "result": {
+                "passenger_id": "Jane Smith",
+                "bookings": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.06985664367675781
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {
+                "passenger_id": "Jane Smith"
+              },
+              "result": {
+                "passenger_id": "Jane Smith",
+                "bookings": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.03409385681152344
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {
+                "passenger_id": "Jane Smith"
+              },
+              "result": {
+                "passenger_id": "Jane Smith",
+                "bookings": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.03409385681152344
+            },
+            {
+              "tool_name": "cancel_booking",
+              "arguments": {
+                "booking_id": "123456",
+                "reason": "Change of plans"
+              },
+              "result": {
+                "error": "Booking 123456 not found"
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.05602836608886719
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {},
+              "result": {
+                "error": "Missing required parameter: passenger_id"
+              },
+              "status": "ToolCallStatus.WRONG_PARAMS",
+              "error_message": "Missing required parameter: passenger_id",
+              "execution_time_ms": 0.0
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {},
+              "result": {
+                "error": "Missing required parameter: passenger_id"
+              },
+              "status": "ToolCallStatus.WRONG_PARAMS",
+              "error_message": "Missing required parameter: passenger_id",
+              "execution_time_ms": 0.0
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {},
+              "result": {
+                "error": "Missing required parameter: passenger_id"
+              },
+              "status": "ToolCallStatus.WRONG_PARAMS",
+              "error_message": "Missing required parameter: passenger_id",
+              "execution_time_ms": 0.0
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {
+                "passenger_id": "jane.smith123"
+              },
+              "result": {
+                "passenger_id": "jane.smith123",
+                "bookings": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.028133392333984375
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {
+                "passenger_id": "jane.smith123"
+              },
+              "result": {
+                "passenger_id": "jane.smith123",
+                "bookings": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.030040740966796875
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {
+                "passenger_id": "jane.smith123"
+              },
+              "result": {
+                "passenger_id": "jane.smith123",
+                "bookings": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.026941299438476562
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {
+                "passenger_id": "jane.smith123"
+              },
+              "result": {
+                "passenger_id": "jane.smith123",
+                "bookings": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.029802322387695312
+            },
+            {
+              "tool_name": "cancel_booking",
+              "arguments": {
+                "booking_id": "jane.smith123",
+                "reason": "Customer requested cancellation"
+              },
+              "result": {
+                "error": "Booking jane.smith123 not found"
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.028848648071289062
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {},
+              "result": {
+                "error": "Missing required parameter: passenger_id"
+              },
+              "status": "ToolCallStatus.WRONG_PARAMS",
+              "error_message": "Missing required parameter: passenger_id",
+              "execution_time_ms": 0.0
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {
+                "passenger_id": "passenger_id"
+              },
+              "result": {
+                "passenger_id": "passenger_id",
+                "bookings": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.026941299438476562
+            },
+            {
+              "tool_name": "list_passenger_bookings",
+              "arguments": {
+                "passenger_id": "passenger_id"
+              },
+              "result": {
+                "passenger_id": "passenger_id",
+                "bookings": [],
+                "count": 0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.030040740966796875
+            }
+          ],
+          "tool_call_accuracy": 0.0,
+          "tool_selection_accuracy": 0.5,
+          "parameter_accuracy": 0.0,
+          "conversation_history": [],
+          "response_generated": "",
+          "response_quality": 0.3,
+          "policy_violations": [],
+          "policy_compliance": 1.0,
+          "goal_achieved": false,
+          "final_state": {
+            "state": {
+              "bookings": {
+                "BK-123456": {
+                  "booking_id": "BK-123456",
+                  "passenger_id": "PAX-001",
+                  "passenger_name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "flights": [
+                    {
+                      "flight_id": "FL-AA100",
+                      "flight_number": "AA100",
+                      "origin": "JFK",
+                      "destination": "LAX",
+                      "departure": "2026-02-21T08:30:38.423306",
+                      "arrival": "2026-02-21T11:45:38.423329",
+                      "cabin_class": "economy",
+                      "seat": "24A",
+                      "status": "confirmed"
+                    },
+                    {
+                      "flight_id": "FL-AA200",
+                      "flight_number": "AA200",
+                      "origin": "LAX",
+                      "destination": "JFK",
+                      "departure": "2026-02-28T14:00:38.423343",
+                      "arrival": "2026-02-28T22:30:38.423358",
+                      "cabin_class": "economy",
+                      "seat": "24A",
+                      "status": "confirmed"
+                    }
+                  ],
+                  "baggage": {
+                    "checked_bags": 1,
+                    "carry_on": 1
+                  },
+                  "total_price": 548.0,
+                  "payment_status": "paid",
+                  "booking_date": "2026-01-31T20:02:38.423489",
+                  "status": "confirmed",
+                  "frequent_flyer": "AA-12345678"
+                },
+                "BK-123457": {
+                  "booking_id": "BK-123457",
+                  "passenger_id": "PAX-001",
+                  "passenger_name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "flights": [
+                    {
+                      "flight_id": "FL-AA300",
+                      "flight_number": "AA300",
+                      "origin": "JFK",
+                      "destination": "MIA",
+                      "departure": "2026-03-16T10:00:38.423505",
+                      "arrival": "2026-03-16T13:15:38.423527",
+                      "cabin_class": "business",
+                      "seat": "3B",
+                      "status": "confirmed"
+                    }
+                  ],
+                  "baggage": {
+                    "checked_bags": 2,
+                    "carry_on": 1
+                  },
+                  "total_price": 892.0,
+                  "payment_status": "paid",
+                  "booking_date": "2026-02-07T20:02:38.423555",
+                  "status": "confirmed",
+                  "frequent_flyer": "AA-12345678"
+                }
+              },
+              "passengers": {
+                "PAX-001": {
+                  "passenger_id": "PAX-001",
+                  "name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "frequent_flyer": "AA-12345678",
+                  "tier": "gold",
+                  "miles_balance": 45000,
+                  "known_traveler_number": "KTN123456"
+                }
+              },
+              "flights": {
+                "FL-AA100": {
+                  "flight_id": "FL-AA100",
+                  "flight_number": "AA100",
+                  "origin": "JFK",
+                  "destination": "LAX",
+                  "departure": "2026-02-21T08:30:38.423578",
+                  "arrival": "2026-02-21T11:45:38.423678",
+                  "aircraft": "Boeing 777-200",
+                  "available_seats": {
+                    "economy": 45,
+                    "business": 8,
+                    "first": 2
+                  },
+                  "prices": {
+                    "economy": 249.0,
+                    "business": 649.0,
+                    "first": 1299.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA101": {
+                  "flight_id": "FL-AA101",
+                  "flight_number": "AA101",
+                  "origin": "JFK",
+                  "destination": "LAX",
+                  "departure": "2026-02-21T14:00:38.423774",
+                  "arrival": "2026-02-21T17:15:38.423837",
+                  "aircraft": "Airbus A321",
+                  "available_seats": {
+                    "economy": 120,
+                    "business": 16,
+                    "first": 0
+                  },
+                  "prices": {
+                    "economy": 199.0,
+                    "business": 549.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA200": {
+                  "flight_id": "FL-AA200",
+                  "flight_number": "AA200",
+                  "origin": "LAX",
+                  "destination": "JFK",
+                  "departure": "2026-02-28T14:00:38.423912",
+                  "arrival": "2026-02-28T22:30:38.423961",
+                  "aircraft": "Boeing 777-200",
+                  "available_seats": {
+                    "economy": 32,
+                    "business": 4,
+                    "first": 1
+                  },
+                  "prices": {
+                    "economy": 299.0,
+                    "business": 699.0,
+                    "first": 1399.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA300": {
+                  "flight_id": "FL-AA300",
+                  "flight_number": "AA300",
+                  "origin": "JFK",
+                  "destination": "MIA",
+                  "departure": "2026-03-16T10:00:38.424012",
+                  "arrival": "2026-03-16T13:15:38.424060",
+                  "aircraft": "Airbus A320",
+                  "available_seats": {
+                    "economy": 80,
+                    "business": 12
+                  },
+                  "prices": {
+                    "economy": 149.0,
+                    "business": 449.0
+                  },
+                  "status": "on_time"
+                }
+              },
+              "seat_maps": {
+                "FL-AA100": {
+                  "available": [
+                    "24B",
+                    "24C",
+                    "25A",
+                    "25B",
+                    "25C",
+                    "26A",
+                    "26B",
+                    "26C"
+                  ],
+                  "occupied": [
+                    "24A"
+                  ],
+                  "premium": [
+                    "10A",
+                    "10B",
+                    "10C",
+                    "11A",
+                    "11B",
+                    "11C"
+                  ],
+                  "exit_row": [
+                    "15A",
+                    "15B",
+                    "15C"
+                  ]
+                }
+              },
+              "policies": {
+                "free_cancellation_hours": 24,
+                "change_fee": {
+                  "economy": 75.0,
+                  "business": 50.0,
+                  "first": 0.0
+                },
+                "cancellation_fee": {
+                  "economy": 150.0,
+                  "business": 100.0,
+                  "first": 0.0
+                },
+                "same_day_change_fee": 75.0,
+                "baggage_fees": {
+                  "first_bag": 35.0,
+                  "second_bag": 45.0,
+                  "overweight": 100.0
+                },
+                "upgrade_available_hours": 72
+              },
+              "cancellations": {},
+              "changes": {}
+            },
+            "tool_call_count": 11,
+            "initialized": true
+          },
+          "success": false,
+          "duration_ms": 20462.66198158264,
+          "turns_used": 16,
+          "tokens_used": 0,
+          "error": null,
+          "metrics": {
+            "planning_time_ms": 0.0,
+            "execution_time_ms": 0.3948211669921875,
+            "tool_invocation_count": 15.0,
+            "correct_tool_count": 0.0
+          }
+        }
+      ]
+    }
+  }
+}

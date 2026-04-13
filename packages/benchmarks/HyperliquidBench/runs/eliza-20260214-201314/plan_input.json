@@ -1,0 +1,1 @@
+{"steps":[{"perp_orders":{"orders":[{"coin":"ETH","side":"buy","tif":"ALO","sz":0.01,"px":"mid-0.5%","reduceOnly":false},{"coin":"BTC","side":"sell","tif":"GTC","sz":0.005,"px":"mid+0.8%","reduceOnly":true}]}},{"usd_class_transfer":{"toPerp":true,"usdc":1000}},{"set_leverage":{"coin":"ETH","leverage":10,"cross":true}}]}

@@ -1,0 +1,57 @@
+============================================================
+ElizaOS Experience Benchmark - Agent Mode
+============================================================
+This tests the full Eliza canonical flow:
+  EXPERIENCE_CONTEXT Provider -> Model -> RECORD/QUERY Actions -> Evaluator
+
+
+[ExperienceBench] Running ELIZA AGENT benchmark...
+  This tests the full Eliza canonical flow:
+  Provider -> MESSAGE_HANDLER_TEMPLATE -> Actions -> Evaluators
+[ElizaAgent] Loading background experiences...
+[ElizaAgent] Loaded 10 background experiences
+
+[ElizaAgent] Phase 1: Learning (2 scenarios)...
+  Learning: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0/2 (0.0%)  Learning: [███████████████░░░░░░░░░░░░░░░] 1/2 (50.0%)  Learning: [██████████████████████████████] 2/2 (100.0%)
+[ElizaAgent] Learning phase: 0/2 experiences recorded (0.0%)
+
+[ElizaAgent] Phase 2: Retrieval (2 queries)...
+  Retrieval: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0/2 (0.0%)  Retrieval: [███████████████░░░░░░░░░░░░░░░] 1/2 (50.0%)  Retrieval: [██████████████████████████████] 2/2 (100.0%)
+
+[ElizaAgent] Phase 3: Computing metrics...
+
+============================================================
+ELIZA AGENT EXPERIENCE BENCHMARK RESULTS
+============================================================
+
+  Learning Phase:
+    Experience recording rate: 0.0%
+    Total experiences recorded: 0
+    Total in service: 10
+    Avg latency: 644ms
+
+  Retrieval Phase (Agent-Mediated):
+    Recall rate: 0.0%
+    Keyword incorporation: 0.0%
+    Avg latency: 682ms
+
+  Retrieval Phase (Direct Service):
+    Recall rate: 0.0%
+    MRR: 0.000
+    Hit@1: 0.000
+    Hit@3: 0.000
+    Hit@5: 0.000
+    Hit@10: 0.000
+
+  Learning Failures (2):
+    - coding: how to handle merge conflicts in lock files...
+    - network: API auth fails after refreshing oauth token...
+
+  Retrieval Failures (2):
+    - coding: how to handle merge conflicts in lock files...
+    - network: API auth fails after refreshing oauth token...
+
+  Total Duration: 2.7s
+============================================================
+
+[ExperienceBench] Report written to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T070514Z_34fc35cb/experience__experience/run_experience_20260212T070514Z_1_fad924c7/output/experience-results.json

@@ -49,6 +49,7 @@ pub mod autonomy;
 pub mod basic_capabilities;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod basic_capabilities_core;
+pub mod agent_orchestrator_env;
 pub mod character;
 #[cfg(all(
     feature = "basic_capabilities-internal",

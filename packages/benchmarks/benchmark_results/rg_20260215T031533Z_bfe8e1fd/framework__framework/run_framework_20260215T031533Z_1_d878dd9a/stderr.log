@@ -1,0 +1,3 @@
+# command: python -m src.bench --output=/Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T031533Z_bfe8e1fd/framework__framework/run_framework_20260215T031533Z_1_d878dd9a/output/framework-python-results.json --scenarios=single-message,conversation-10,startup-cold
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/framework/python
+# run_id: run_framework_20260215T031533Z_1_d878dd9a

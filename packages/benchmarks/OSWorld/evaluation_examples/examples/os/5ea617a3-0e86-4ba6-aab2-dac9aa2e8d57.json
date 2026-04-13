@@ -1,0 +1,57 @@
+{
+  "id": "5ea617a3-0e86-4ba6-aab2-dac9aa2e8d57",
+  "snapshot": "os",
+  "instruction": "I am currently using an Ubuntu system, and I have wrongly deleted a poster of party night. Could you help me recover it from the Trash?",
+  "source": "https://help.ubuntu.com/lts/ubuntu-help/files-recover.html.en",
+  "trajectory": "trajectories/",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/os/5ea617a3-0e86-4ba6-aab2-dac9aa2e8d57/poster_party_night.webp",
+            "path": "/home/user/Desktop/poster_party_night.webp"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "gio trash /home/user/Desktop/poster_party_night.webp",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "func": "exact_match",
+    "result": {
+      "type": "vm_command_line",
+      "command": "[ -f /home/user/Desktop/poster_party_night.webp ] && echo 'File exists.' || echo 'File does not exist.'",
+      "shell": true
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": "File exists.\n"
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

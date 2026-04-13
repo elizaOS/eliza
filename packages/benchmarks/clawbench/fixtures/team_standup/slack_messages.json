@@ -1,0 +1,177 @@
+[
+  {
+    "id": "sm_001",
+    "channel": "#platform-engineering",
+    "author": "james.liu",
+    "text": "Finished the dashboard data layer refactor. PR #342 is up — ~800 lines but mostly structural. Moved everything to the new service pattern we discussed. Would love a review before sprint planning.",
+    "timestamp": "2026-02-05T17:45:00-08:00"
+  },
+  {
+    "id": "sm_002",
+    "channel": "#platform-engineering",
+    "author": "marcus.johnson",
+    "text": "Auth migration update: session management changes are done but I can't test without the new Redis cluster. Tom said it's in the queue but no ETA. This is blocking the sprint goal. 😤",
+    "timestamp": "2026-02-05T16:30:00-08:00"
+  },
+  {
+    "id": "sm_003",
+    "channel": "#platform-engineering",
+    "author": "tom.anderson",
+    "text": "@marcus.johnson I hear you. The Redis thing is blocked on a decision — managed ($400/mo) vs self-hosted. I pinged Alex and David. Once someone says go I can have it running in 2 hours.",
+    "timestamp": "2026-02-05T16:45:00-08:00"
+  },
+  {
+    "id": "sm_004",
+    "channel": "#platform-engineering",
+    "author": "marcus.johnson",
+    "text": "Also pushed the rate limiting feature to the API. TC-891 is done, moved to review. Pretty happy with the implementation — used a sliding window approach instead of fixed buckets.",
+    "timestamp": "2026-02-05T18:00:00-08:00"
+  },
+  {
+    "id": "sm_005",
+    "channel": "#platform-engineering",
+    "author": "james.liu",
+    "text": "Fixed the timezone bug in the scheduler (TC-903). Root cause was we were using local time instead of UTC for recurring events. Added regression tests. Should I also update the migration script?",
+    "timestamp": "2026-02-05T19:15:00-08:00"
+  },
+  {
+    "id": "sm_006",
+    "channel": "#platform-engineering",
+    "author": "marcus.johnson",
+    "text": "Updated the auth error messages too (TC-912). Much clearer now — instead of 'Auth failed' users get specific messages like 'Session expired, please log in again' or 'Account locked after 5 attempts'.",
+    "timestamp": "2026-02-05T20:30:00-08:00"
+  },
+  {
+    "id": "sm_007",
+    "channel": "#platform-engineering",
+    "author": "james.liu",
+    "text": "Heads up: I'm going to start the GraphQL prototype for the dashboard API today. @alex.chen @marcus.johnson I know we haven't officially decided between GraphQL and REST but I want to have something concrete to compare by sprint planning. I'll keep it small — just the analytics query endpoint.",
+    "timestamp": "2026-02-05T22:00:00-08:00"
+  },
+  {
+    "id": "sm_008",
+    "channel": "#platform-engineering",
+    "author": "priya.patel",
+    "text": "Dashboard V2 mockups are in Figma! 3 layout options for the analytics view. Option A is clean and simple, Option B is data-dense (like Datadog), Option C is a compromise. Need PM input before I start specs. Design review tomorrow at 3:30.",
+    "timestamp": "2026-02-05T15:30:00-08:00"
+  },
+  {
+    "id": "sm_009",
+    "channel": "#platform-engineering",
+    "author": "tom.anderson",
+    "text": "FYI — staging is going down tonight 2-4am for the database migration. Won't affect prod. If anyone needs staging tonight ping me.",
+    "timestamp": "2026-02-05T15:00:00-08:00"
+  },
+  {
+    "id": "sm_010",
+    "channel": "#platform-engineering",
+    "author": "marcus.johnson",
+    "text": "BTW anyone else seeing flaky tests in the CI? Build #1847 failed on main but it might be a container issue, not my code. The database container isn't starting in the integration test step.",
+    "timestamp": "2026-02-06T01:00:00-08:00"
+  },
+  {
+    "id": "sm_011",
+    "channel": "#platform-engineering",
+    "author": "tom.anderson",
+    "text": "@marcus.johnson yeah that's probably related to the staging migration prep. I updated the Docker compose file for staging but it might have leaked into the CI config. I'll check in the morning.",
+    "timestamp": "2026-02-06T01:15:00-08:00"
+  },
+  {
+    "id": "sm_012",
+    "channel": "#platform-general",
+    "author": "sarah.kim",
+    "text": "Team — reminder that sprint 13 ends Friday. Let's make sure all in-progress items have realistic status updates by standup tomorrow. Also: I got 2 headcount approved! 🎉 Details coming from Alex.",
+    "timestamp": "2026-02-05T14:00:00-08:00"
+  },
+  {
+    "id": "sm_013",
+    "channel": "#platform-general",
+    "author": "priya.patel",
+    "text": "User research summary from last week is in my email to Alex and the design channel. TL;DR: users want customizable views, hate slow loading, and ignore the sidebar. Adjusting Dashboard V2 mockups based on this.",
+    "timestamp": "2026-02-05T16:00:00-08:00"
+  },
+  {
+    "id": "sm_014",
+    "channel": "#platform-general",
+    "author": "marcus.johnson",
+    "text": "Heads up: I'm planning vacation Feb 17-21 (Presidents Day week). Will make sure auth migration PR and rate limiting are both in review before I go.",
+    "timestamp": "2026-02-05T14:30:00-08:00"
+  },
+  {
+    "id": "sm_015",
+    "channel": "#platform-general",
+    "author": "rachel.green",
+    "text": "Reminder: Priya's 30th birthday is Feb 14! I'm organizing a small team celebration at 3pm. DM me to contribute to the gift fund. 🎂",
+    "timestamp": "2026-02-05T11:00:00-08:00"
+  },
+  {
+    "id": "sm_016",
+    "channel": "#incidents",
+    "author": "sentry-bot",
+    "text": "🔴 HIGH ERROR RATE: /api/v2/analytics — error rate spiked to 12% at 10:15pm PST. Triggered by commit 3a7f2b1 (marcus.johnson). Investigating.",
+    "timestamp": "2026-02-05T22:20:00-08:00"
+  },
+  {
+    "id": "sm_017",
+    "channel": "#incidents",
+    "author": "marcus.johnson",
+    "text": "Looking into this. The nil pointer is in the caching layer — my session handling changes exposed a race condition in the existing code. Hot-fixing now.",
+    "timestamp": "2026-02-05T22:35:00-08:00"
+  },
+  {
+    "id": "sm_018",
+    "channel": "#incidents",
+    "author": "marcus.johnson",
+    "text": "Deployed fix in v2.14.7. Error rate dropping. Root cause: the old caching code assumed single-threaded access — my auth changes introduced concurrent session lookups that triggered the race. Added a mutex. Will write up the postmortem tomorrow.",
+    "timestamp": "2026-02-05T23:45:00-08:00"
+  },
+  {
+    "id": "sm_019",
+    "channel": "#incidents",
+    "author": "sentry-bot",
+    "text": "✅ RESOLVED: /api/v2/analytics error rate back to 0.3%. 847 users affected over ~3 hours.",
+    "timestamp": "2026-02-06T01:30:00-08:00"
+  },
+  {
+    "id": "sm_020",
+    "channel": "#platform-engineering",
+    "author": "james.liu",
+    "text": "Nice catch @marcus.johnson on the race condition. That caching code has been sketchy for a while. Should we add it to the tech debt backlog? The whole caching layer probably needs a rewrite with the new auth patterns.",
+    "timestamp": "2026-02-06T02:00:00-08:00"
+  },
+  {
+    "id": "sm_021",
+    "channel": "#platform-random",
+    "author": "priya.patel",
+    "text": "Anyone want to do lunch at the new ramen place on Market St tomorrow?",
+    "timestamp": "2026-02-05T17:00:00-08:00"
+  },
+  {
+    "id": "sm_022",
+    "channel": "#platform-random",
+    "author": "james.liu",
+    "text": "I'm in! 🍜",
+    "timestamp": "2026-02-05T17:05:00-08:00"
+  },
+  {
+    "id": "sm_023",
+    "channel": "#platform-engineering",
+    "author": "david.park",
+    "text": "Team — scheduling an arch review for the auth migration tomorrow at 4pm. This is critical, we've delayed twice. Need Alex, Marcus, and Tom there. If there are conflicts let me know by 10am.",
+    "timestamp": "2026-02-05T21:30:00-08:00"
+  },
+  {
+    "id": "sm_024",
+    "channel": "#platform-general",
+    "author": "sarah.kim",
+    "text": "David's right — the auth migration arch review is overdue. @alex.chen I know you have an interview at 4pm. Can you check if the interview can move? The arch review is higher priority given it's blocking 3 teams.",
+    "timestamp": "2026-02-05T21:50:00-08:00"
+  },
+  {
+    "id": "sm_025",
+    "channel": "#platform-engineering",
+    "author": "tom.anderson",
+    "text": "One more thing for standup: the MFA rollout David mentioned starts March 1. I need to plan the hardware key distribution and setup sessions. Probably need 2 hours of everyone's time over the next 2 weeks. Will send a poll for timeslots.",
+    "timestamp": "2026-02-05T22:30:00-08:00"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "results": [
+    {
+      "task_id": "webshop_sample_001",
+      "trial_number": 1,
+      "success": false,
+      "purchased_product_id": null,
+      "reward": 0.0,
+      "turns_used": 0,
+      "duration_ms": 298.74300956726074,
+      "steps": [],
+      "final_response": "Error processing request: get",
+      "error": null,
+      "tokens_used": 0
+    }
+  ]
+}

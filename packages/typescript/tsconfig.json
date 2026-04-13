@@ -1,5 +1,6 @@
 {
 	"extends": "../../tsconfig.json",
+	// Sources only: build emits JS to dist/; declarations via tsconfig.declarations.json + build.ts. Stray .js/.d.ts next to .ts are accidental IDE/tsc emits — remove with bun run clean.
 	"compilerOptions": {
 		"outDir": "./dist",
 		"rootDir": "../../",

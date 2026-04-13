@@ -1,0 +1,46 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node", "vite/client"],
+    "declaration": false,
+    "noEmit": true,
+    "baseUrl": "../../",
+    "paths": {
+      "@elizaos/app-lifeops": ["./plugins/app-lifeops/src/index.ts"],
+      "@elizaos/app-lifeops/*": ["./plugins/app-lifeops/src/*"],
+      "@elizaos/plugin-lifeops-browser": [
+        "./plugins/plugin-lifeops-browser/src/index.ts"
+      ],
+      "@elizaos/plugin-lifeops-browser/*": [
+        "./plugins/plugin-lifeops-browser/src/*"
+      ],
+      "@elizaos/app-core": ["./eliza/packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["./eliza/packages/app-core/src/*"],
+      "@elizaos/agent": ["./eliza/packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["./eliza/packages/agent/src/*"],
+      "@elizaos/app-companion": ["./eliza/plugins/app-companion/src/index.ts"],
+      "@elizaos/app-companion/*": ["./eliza/plugins/app-companion/src/*"],
+      "@elizaos/shared": ["./eliza/packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["./eliza/packages/shared/src/*"],
+      "@elizaos/core": ["./eliza/packages/typescript/src/index.ts"],
+      "@elizaos/core/*": ["./eliza/packages/typescript/src/*"],
+      "@elizaos/*": ["./node_modules/@elizaos/*"]
+    }
+  },
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "../../plugins/app-companion/src/**/*.stories.ts",
+    "../../plugins/app-companion/src/**/*.stories.tsx",
+    "../../plugins/app-companion/src/**/*.test.ts",
+    "../../plugins/app-companion/src/**/*.test.tsx"
+  ],
+  "include": ["src", "../agent/src/external-modules.d.ts", "../../plugins/app-companion/src"]
+}

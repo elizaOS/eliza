@@ -1,0 +1,84 @@
+{
+  "id": "a746add2-cab0-4740-ac36-c3769d9bfb46",
+  "snapshot": "gimp",
+  "instruction": "Help me open up the Vignette filter window.",
+  "source": "https://www.youtube.com/watch?v=_L_MMU22bAw",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/gimp/a746add2-cab0-4740-ac36-c3769d9bfb46/dog_with_background.png",
+            "path": "/home/user/Desktop/dog_with_background.png"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "gimp",
+          "/home/user/Desktop/dog_with_background.png"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "gimp"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python3",
+            "-c",
+            "import time; import pyautogui; pyautogui.press([\"esc\"]);time.sleep(1);pyautogui.hotkey([\"ctrl\", \"q\"]);time.sleep(1);"
+          ]
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python3",
+            "-c",
+            "import time; import pyautogui; pyautogui.press([\"right\"]);time.sleep(1);pyautogui.press([\"enter\"])"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "check_include_exclude",
+    "result": {
+      "type": "vm_command_line",
+      "command": "cat /home/user/.config/GIMP/2.10/action-history",
+      "shell": true
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "include": [
+          "filters-vignette"
+        ],
+        "exclude": [
+          "error",
+          "failed",
+          "not found"
+        ]
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

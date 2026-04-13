@@ -1,0 +1,91 @@
+{
+  "id": "1334ca3e-f9e3-4db8-9ca7-b4c653be7d17",
+  "snapshot": "libreoffice_calc",
+  "instruction": "The cells are so big that I can not click on the cell I want, zoom out a little bit.",
+  "source": "https://techcommunity.microsoft.com/t5/excel/excel-workbook-top-way-too-big-can-t-see-rows-and-columns/m-p/4014694",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/1334ca3e-f9e3-4db8-9ca7-b4c653be7d17/Zoom_Out_Oversized_Cells.xlsx",
+            "path": "/home/user/Zoom_Out_Oversized_Cells.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Zoom_Out_Oversized_Cells.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/1334ca3e-f9e3-4db8-9ca7-b4c653be7d17",
+  "related_apps": [
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Zoom_Out_Oversized_Cells.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Zoom_Out_Oversized_Cells.xlsx",
+      "dest": "Zoom_Out_Oversized_Cells.xlsx"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/1334ca3e-f9e3-4db8-9ca7-b4c653be7d17/Zoom_Out_Oversized_Cells_gold.xlsx",
+      "dest": "Zoom_Out_Oversized_Cells_gold.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "zoom",
+          "sheet_idx": 0,
+          "method": "lt",
+          "ref": 260
+        },
+        {
+          "type": "sheet_data",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0"
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

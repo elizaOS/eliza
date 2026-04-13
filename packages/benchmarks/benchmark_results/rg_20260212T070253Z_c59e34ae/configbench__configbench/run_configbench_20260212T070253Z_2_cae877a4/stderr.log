@@ -1,0 +1,5 @@
+# command: bun run src/index.ts --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T070253Z_c59e34ae/configbench__configbench/run_configbench_20260212T070253Z_2_cae877a4/output --eliza
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/configbench
+# run_id: run_configbench_20260212T070253Z_2_cae877a4
+[ElizaHandler] Failed to import dependencies: ResolveMessage: Cannot find module '@elizaos/plugin-secrets-manager' from '/Users/shawwalters/eliza-workspace/benchmarks/configbench/src/handlers/eliza.ts'
+[ElizaHandler] Dependencies not available. Eliza handler will skip all scenarios.

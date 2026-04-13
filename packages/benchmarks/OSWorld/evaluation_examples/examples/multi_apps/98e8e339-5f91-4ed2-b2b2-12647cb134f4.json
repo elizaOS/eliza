@@ -1,0 +1,57 @@
+{
+  "id": "98e8e339-5f91-4ed2-b2b2-12647cb134f4",
+  "snapshot": "vs_code",
+  "instruction": "Merge the contents of all .txt files from your vscode project into a single document \"concat.docx\" on Desktop with libreoffice writer. No merging separator is needed. Ensure to set the overall font size of the document to 10.",
+  "source": "",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/98e8e339-5f91-4ed2-b2b2-12647cb134f4/doc_proc.zip",
+            "path": "/home/user/Desktop/doc_proc.zip"
+          }
+        ]
+      }
+    },
+    {
+      "type": "command",
+      "parameters": {
+        "command": "mkdir -p /home/user/Desktop/doc_proc/; unzip /home/user/Desktop/doc_proc.zip -d /home/user/Desktop/doc_proc/",
+        "shell": true
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "code",
+          "-g",
+          "/home/user/Desktop/doc_proc/"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "vs_code",
+    "libreoffice_writer"
+  ],
+  "evaluator": {
+    "func": "compare_docx_files",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/concat.docx",
+      "dest": "concat.docx"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/98e8e339-5f91-4ed2-b2b2-12647cb134f4/concat_gold.docx",
+      "dest": "concat_gold.docx"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

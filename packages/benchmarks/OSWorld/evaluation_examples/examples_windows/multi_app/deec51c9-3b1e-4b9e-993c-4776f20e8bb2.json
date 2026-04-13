@@ -1,0 +1,101 @@
+{
+  "id": "deec51c9-3b1e-4b9e-993c-4776f20e8bb2",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Find a paper list of all the new foundation language models issued on 11st Oct. 2023 via arxiv daily, and organize it into the sheet I opened.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "C:\\Users\\User\\Desktop\\New Large Language Models.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/deec51c9-3b1e-4b9e-993c-4776f20e8bb2/New%20Large%20Language%20Models.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Desktop\\New Large Language Models.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/deec51c9-3b1e-4b9e-993c-4776f20e8bb2",
+  "related_apps": [
+    "excel",
+    "chrome",
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "New Large Language Models - Excel",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5); pyautogui.press(\"enter\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 1.0
+        }
+      }
+    ],
+    "func": "compare_table",
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Desktop\\New Large Language Models.xlsx",
+      "dest": "New Large Language Models.xlsx"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/deec51c9-3b1e-4b9e-993c-4776f20e8bb2/New%20Large%20Language%20Models%20Gold.xlsx",
+      "dest": "New Large Language Models Gold.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_fuzzy",
+          "sheet_idx0": "RNSheet1",
+          "sheet_idx1": "ENSheet1",
+          "rules": [
+            {
+              "range": [
+                "B2:B5",
+                "C2:C5"
+              ],
+              "type": "exact_match"
+            },
+            {
+              "range": [
+                "A2:A5"
+              ],
+              "type": "fuzzy_match",
+              "threshold": 90,
+              "ignore_case": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

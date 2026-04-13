@@ -1,0 +1,22 @@
+{
+  "name": "@elizaos/configbench",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Configuration & Secrets Security Benchmark for ElizaOS plugin-secrets-manager and plugin-plugin-manager",
+  "main": "src/index.ts",
+  "scripts": {
+    "bench": "bun run src/index.ts",
+    "bench:eliza": "bun run src/index.ts --eliza",
+    "bench:all": "bun run src/index.ts --eliza --all",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-alpha.3"
+  },
+  "devDependencies": {
+    "vitest": "3.1.4",
+    "typescript": "5.8.2"
+  }
+}

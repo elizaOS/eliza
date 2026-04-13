@@ -1,0 +1,100 @@
+╔══════════════════════════════════════════════════════════╗
+║          Eliza Framework Benchmark — Python             ║
+╚══════════════════════════════════════════════════════════╝
+
+System: Darwin 25.2.0 arm64 | 16 CPUs | 128.0GB RAM
+Runtime: Python 3.12.10
+LLM Mode: mock (deterministic)
+Scenarios: 12 selected
+
+Running: Single Message Processing... done (123.43ms)
+
+  single-message
+    Iterations: 50 (warmup: 5)
+    Latency:  avg=434us  median=292us  p95=874us  p99=1.14ms
+    Range:    min=239us  max=1.17ms  stddev=241us
+    Throughput: 2304.1 msg/s (50 messages in 21.70ms)
+    Memory:   start=57.9MB  peak=58.2MB  delta=0.3MB
+    Pipeline: state=0us  model=425us  actions=0us  memory=0us
+Running: 10-Message Conversation... done (74.89ms)
+
+  conversation-10
+    Iterations: 20 (warmup: 3)
+    Latency:  avg=2.58ms  median=2.33ms  p95=3.35ms  p99=4.66ms
+    Range:    min=2.17ms  max=4.98ms  stddev=639us
+    Throughput: 3877.1 msg/s (200 messages in 51.59ms)
+    Memory:   start=58.3MB  peak=59.0MB  delta=0.6MB
+    Pipeline: state=0us  model=253us  actions=0us  memory=0us
+Running: 100-Message Burst... done (197.17ms)
+
+  burst-100
+    Iterations: 5 (warmup: 2)
+    Latency:  avg=26.34ms  median=26.57ms  p95=32.07ms  p99=33.03ms
+    Range:    min=20.47ms  max=33.27ms  stddev=4.20ms
+    Throughput: 3795.8 msg/s (500 messages in 131.72ms)
+    Memory:   start=59.3MB  peak=60.8MB  delta=1.4MB
+    Pipeline: state=0us  model=258us  actions=0us  memory=0us
+Running: With ShouldRespond Check... done (48.29ms)
+
+  with-should-respond
+    Iterations: 20 (warmup: 3)
+    Latency:  avg=1.46ms  median=1.12ms  p95=2.42ms  p99=2.66ms
+    Range:    min=1.01ms  max=2.72ms  stddev=580us
+    Throughput: 3424.7 msg/s (100 messages in 29.20ms)
+    Memory:   start=60.8MB  peak=60.9MB  delta=0.2MB
+    Pipeline: state=0us  model=285us  actions=0us  memory=0us
+Running: 10 Providers... done (44.00ms)
+
+  provider-scaling-10
+    Iterations: 30 (warmup: 3)
+    Latency:  avg=876us  median=369us  p95=2.79ms  p99=8.02ms
+    Range:    min=324us  max=9.71ms  stddev=1.77ms
+    Throughput: 1141.6 msg/s (30 messages in 26.28ms)
+    Memory:   start=60.9MB  peak=61.0MB  delta=0.1MB
+    Pipeline: state=0us  model=869us  actions=0us  memory=0us
+Running: 50 Providers... done (41.28ms)
+
+  provider-scaling-50
+    Iterations: 30 (warmup: 3)
+    Latency:  avg=692us  median=636us  p95=1.03ms  p99=1.10ms
+    Range:    min=611us  max=1.13ms  stddev=133us
+    Throughput: 1445.8 msg/s (30 messages in 20.75ms)
+    Memory:   start=61.1MB  peak=61.1MB  delta=0.1MB
+    Pipeline: state=0us  model=685us  actions=0us  memory=0us
+Running: 100 History Messages... done (31.40ms)
+
+  history-scaling-100
+    Iterations: 20 (warmup: 3)
+    Latency:  avg=369us  median=320us  p95=601us  p99=749us
+    Range:    min=256us  max=786us  stddev=136us
+    Throughput: 2707.0 msg/s (20 messages in 7.39ms)
+    Memory:   start=61.2MB  peak=61.2MB  delta=0.0MB
+    Pipeline: state=0us  model=359us  actions=0us  memory=0us
+Running: 1000 History Messages... done (50.43ms)
+
+  history-scaling-1000
+    Iterations: 10 (warmup: 2)
+    Latency:  avg=340us  median=325us  p95=436us  p99=440us
+    Range:    min=268us  max=441us  stddev=55us
+    Throughput: 2945.5 msg/s (10 messages in 3.40ms)
+    Memory:   start=62.0MB  peak=62.0MB  delta=0.0MB
+    Pipeline: state=0us  model=329us  actions=0us  memory=0us
+Running: 10 Concurrent Messages... done (80.87ms)
+
+  concurrent-10
+    Iterations: 10 (warmup: 2)
+    Latency:  avg=5.65ms  median=2.96ms  p95=16.17ms  p99=18.06ms
+    Range:    min=2.35ms  max=18.53ms  stddev=5.32ms
+    Throughput: 1769.4 msg/s (100 messages in 56.52ms)
+    Memory:   start=62.1MB  peak=62.3MB  delta=0.2MB
+    Pipeline: state=0us  model=348us  actions=0us  memory=0us
+Running: DB Write Throughput... done (208.50ms)
+
+  db-write-throughput
+    Iterations: 5 (warmup: 1)
+    Latency:  avg=41.06ms  median=35.14ms  p95=64.22ms  p99=69.74ms
+    Range:    min=30.71ms  max=71.11ms  stddev=15.19ms
+    Throughput: 243574.8 msg/s (50000 messages in 205.28ms)
+    Memory:   start=71.7MB  peak=71.7MB  delta=0.0MB
+    Pipeline: state=0us  model=0us  actions=0us  memory=4us
+Running: DB Read Throughput...

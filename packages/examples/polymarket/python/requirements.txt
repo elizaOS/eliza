@@ -1,0 +1,10 @@
+# elizaOS Python packages (installed from local source)
+# Install with: pip install -r examples/polymarket/python/requirements.txt
+
+-e ../../../packages/python
+-e ../../../plugins/plugin-evm/python
+-e ../../../plugins/plugin-polymarket/python
+
+pytest>=8.0.0
+py-clob-client==0.34.4
+

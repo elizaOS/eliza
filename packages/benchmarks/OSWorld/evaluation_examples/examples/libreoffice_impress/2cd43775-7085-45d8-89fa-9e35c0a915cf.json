@@ -1,0 +1,38 @@
+{
+  "id": "2cd43775-7085-45d8-89fa-9e35c0a915cf",
+  "snapshot": "libreoffice_impress",
+  "instruction": "Enable auto-save every 3min for me, so that I don't need to hit \"ctrl-s\" that much",
+  "source": "https://www.libreofficehelp.com/enable-autosave-libreoffice/",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "libreoffice",
+          "--impress"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "func": "check_auto_saving_time",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/.config/libreoffice/4/user/registrymodifications.xcu",
+      "dest": "registrymodifications.xcu"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "minutes": 3
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,8 @@
+{
+  "name": "hyperliquid_evm_benchmark",
+  "description": "Hyperliquid EVM benchmark — standard EVM + HL-specific system contracts (UNVERIFIED)",
+  "chain": "hyperliquid",
+  "chain_id": 998,
+  "timeout": 60000,
+  "notes": "Requires AGENT_PRIVATE_KEY with testnet funds. Set RPC_URL and CHAIN_ID via env vars."
+}

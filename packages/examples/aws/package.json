@@ -1,0 +1,29 @@
+{
+  "name": "@elizaos/aws-examples",
+  "version": "2.0.0-alpha",
+  "description": "elizaOS AWS Lambda worker examples and test clients",
+  "type": "module",
+  "scripts": {
+    "test:typescript": "npx ts-node test-client.ts",
+    "test:python": "python test-client.py",
+    "build:typescript": "cd typescript && npm install && npm run build",
+    "build:python": "cd python && pip install -r requirements.txt -t .",
+    "build:rust": "cd rust && cargo lambda build --release",
+    "deploy": "sam deploy --guided",
+    "deploy:typescript": "npm run build:typescript && sam deploy --parameter-overrides RuntimeLanguage=typescript",
+    "deploy:python": "npm run build:python && sam deploy --parameter-overrides RuntimeLanguage=python",
+    "deploy:rust": "npm run build:rust && sam deploy --parameter-overrides RuntimeLanguage=rust",
+    "local": "sam local start-api",
+    "logs": "sam logs --tail",
+    "delete": "sam delete",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

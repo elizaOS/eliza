@@ -1,0 +1,5 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python -m elizaos_vending_bench.cli run --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/vending-bench__vending_bench/run_vending_bench_20260215T030307Z_1_f2f134a5/output --model qwen/qwen3-32b --num-runs 1
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/vending-bench
+# run_id: run_vending_bench_20260215T030307Z_1_f2f134a5
+usage: cli.py [-h] {run,report,info} ...
+cli.py: error: unrecognized arguments: --num-runs 1

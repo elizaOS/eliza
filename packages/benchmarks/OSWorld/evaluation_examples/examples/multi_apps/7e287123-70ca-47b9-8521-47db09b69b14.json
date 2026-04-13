@@ -1,0 +1,161 @@
+{
+  "id": "7e287123-70ca-47b9-8521-47db09b69b14",
+  "snapshot": "libreoffice_calc",
+  "instruction": "I am an assistant professor of CS at HKU, I want to apply for the General Research Fund next year, I need to get some insights, so I need you to help me to organise the data. First please help me to organise the pass rate of the GRF applications of the CS departments of each school for 2019~2023 in percentage form with 2 decimal digits in a table, which I can use subsequently. Set the headers as \"Year\", \"#Applied\", \"#Supported\", and \"Success Rate\". The materials are saved under Documents/Fundings. And please save the result table as \"GRF-p5y.xlsx\" on my desktop.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Documents/Fundings/ecs",
+          "/home/user/Documents/Fundings/grf"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs15.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/ecs15.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs16.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/ecs16.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs17.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/ecs17.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs23.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/ecs23.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs22.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/ecs22.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs21.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/ecs21.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs20.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/ecs20.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs19.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/ecs19.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs18.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/ecs18.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/customer-information-sheet-for-inward-payments-to-hong-kong.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/customer-information-sheet-for-inward-payments-to-hong-kong.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf15.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/grf15.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf16.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/grf16.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf17.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/grf17.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf18.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/grf18.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf19.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/grf19.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf20.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/grf20.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf21.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/grf21.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf22.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/grf22.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf23.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/grf23.pdf"
+          }
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/7e287123-70ca-47b9-8521-47db09b69b14",
+  "related_apps": [
+    "libreoffice_calc",
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "libreoffice",
+            "--convert-to",
+            "csv:Text - txt - csv (StarCalc):44,34,UTF-8,,,,false,true,true,false,false,1",
+            "--outdir",
+            "/home/user/Desktop",
+            "/home/user/Desktop/GRF-p5y.xlsx"
+          ]
+        }
+      }
+    ],
+    "func": "compare_table",
+    "result": {
+      "type": "vm_file",
+      "path": [
+        "/home/user/Desktop/GRF-p5y.xlsx",
+        "/home/user/Desktop/GRF-p5y-Sheet1.csv"
+      ],
+      "dest": [
+        "GRF-p5y.xlsx",
+        "GRF-p5y-Sheet1.csv"
+      ],
+      "multi": true
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": [
+        "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/GRF-p5y.bak.xlsx",
+        "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/GRF-p5y.bak-Sheet1.csv"
+      ],
+      "dest": [
+        "GRF-p5y-gt.xlsx",
+        "GRF-p5y-gt-Sheet1.csv"
+      ],
+      "multi": true
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_print",
+          "sheet_idx0": "RNSheet1",
+          "sheet_idx1": "ENSheet1"
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

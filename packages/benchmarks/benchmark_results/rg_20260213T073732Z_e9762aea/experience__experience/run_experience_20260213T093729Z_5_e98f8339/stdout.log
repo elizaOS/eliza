@@ -1,0 +1,6 @@
+============================================================
+ElizaOS Experience Benchmark - Agent Mode
+============================================================
+This tests the full Eliza canonical flow:
+  EXPERIENCE_CONTEXT Provider -> Model -> RECORD/QUERY Actions -> Evaluator
+

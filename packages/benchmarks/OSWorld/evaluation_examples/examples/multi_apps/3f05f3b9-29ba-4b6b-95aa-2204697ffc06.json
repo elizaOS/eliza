@@ -1,0 +1,272 @@
+{
+  "id": "3f05f3b9-29ba-4b6b-95aa-2204697ffc06",
+  "snapshot": "os",
+  "instruction": "I have a collection of MP3s with blank meta data, but already named with their artists and titles. I've heard that Picard or Kid3 may help, but I'm unfamiliar with them. Can you help me to fix the meta data \"title\" and \"artist\"?",
+  "source": "authors",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Documents/Finance/receipts",
+          "/home/user/Documents/Projects/OSWorld",
+          "/home/user/Documents/Novels/4th Year in Tsinghua",
+          "/home/user/Documents/Novels/Pass Through"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2308.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/invoice0123456789-2308.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2309.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/invoice0123456789-2309.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2310.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/invoice0123456789-2310.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2311.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/invoice0123456789-2311.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2312.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/invoice0123456789-2312.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/X-receipt-2312.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/Receipt-0123-4567.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/tally_book.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/tally_book.xlsx"
+          },
+          {
+            "path": "/home/user/.projects.tar.xz",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/projects.tar.xz"
+          },
+          {
+            "path": "/home/user/.old-chapters.tar.xz",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/old-chapters.tar.xz"
+          },
+          {
+            "path": "/home/user/.pass-through.tar.xz",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/PassThrough.tar.xz"
+          },
+          {
+            "path": "/home/user/Music/Cheng Xiang - Missing You.mp3",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/Cheng%20Xiang%20-%20Missing%20You.mp3"
+          },
+          {
+            "path": "/home/user/Music/Han Baoyi - Tears of Dancing Girl.mp3",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/Han%20Baoyi%20-%20Tears%20of%20Dancing%20Girl.mp3"
+          },
+          {
+            "path": "/home/user/Music/Huang An - I Know Missing is Painful.mp3",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/Huang%20An%20-%20I%20Know%20Missing%20is%20Painful.mp3"
+          },
+          {
+            "path": "/home/user/Music/Chen Shaohua - Red Daughter.mp3",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/Chen%20Shaohua%20-%20Red%20Daughter.mp3"
+          },
+          {
+            "path": "/home/user/Music/Zhou Xuan - Nights in Shanghai.mp3",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3f05f3b9-29ba-4b6b-95aa-2204697ffc06/Zhou%20Xuan%20-%20Nights%20in%20Shanghai.mp3"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xJvf",
+          "/home/user/.projects.tar.xz",
+          "-C",
+          "/home/user/Documents/Projects/OSWorld"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xJvf",
+          "/home/user/.old-chapters.tar.xz",
+          "-C",
+          "/home/user/Documents/Novels/4th Year in Tsinghua"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xJvf",
+          "/home/user/.pass-through.tar.xz",
+          "-C",
+          "/home/user/Documents/Novels/Pass Through"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://picard.musicbrainz.org/",
+          "https://kid3.kde.org/"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "nautilus",
+          "/home/user/Music"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/3f05f3b9-29ba-4b6b-95aa-2204697ffc06",
+  "related_apps": [
+    "os",
+    "picard"
+  ],
+  "evaluator": {
+    "func": [
+      "check_mp3_meta",
+      "check_mp3_meta",
+      "check_mp3_meta",
+      "check_mp3_meta",
+      "check_mp3_meta"
+    ],
+    "result": [
+      {
+        "type": "vm_file",
+        "path": "/home/user/Music/Cheng Xiang - Missing You.mp3",
+        "dest": "Cheng Xiang - Missing You.mp3"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Music/Han Baoyi - Tears of Dancing Girl.mp3",
+        "dest": "Han Baoyi - Tears of Dancing Girl.mp3"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Music/Huang An - I Know Missing is Painful.mp3",
+        "dest": "Huang An - I Know Missing is Painful.mp3"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Music/Chen Shaohua - Red Daughter.mp3",
+        "dest": "Chen Shaohua - Red Daughter.mp3"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Music/Zhou Xuan - Nights in Shanghai.mp3",
+        "dest": "Zhou Xuan - Nights in Shanghai.mp3"
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "title": {
+            "method": "eq",
+            "ref": "Missing You"
+          },
+          "artist": {
+            "method": "eq",
+            "ref": "Cheng Xiang"
+          }
+        }
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "title": {
+            "method": "eq",
+            "ref": "Tears of Dancing Girl"
+          },
+          "artist": {
+            "method": "eq",
+            "ref": "Han Baoyi"
+          }
+        }
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "title": {
+            "method": "eq",
+            "ref": "I Know Missing is Painful"
+          },
+          "artist": {
+            "method": "eq",
+            "ref": "Huang An"
+          }
+        }
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "title": {
+            "method": "eq",
+            "ref": "Red Daughter"
+          },
+          "artist": {
+            "method": "eq",
+            "ref": "Chen Shaohua"
+          }
+        }
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "title": {
+            "method": "eq",
+            "ref": "Nights in Shanghai"
+          },
+          "artist": {
+            "method": "eq",
+            "ref": "Zhou Xuan"
+          }
+        }
+      }
+    ]
+  },
+  "proxy": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

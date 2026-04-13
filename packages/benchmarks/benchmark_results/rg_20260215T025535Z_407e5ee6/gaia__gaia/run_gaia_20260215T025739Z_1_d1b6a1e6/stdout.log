@@ -1,0 +1,3 @@
+Running quick test (3 questions) with groq/qwen/qwen3-32b...
+
+Benchmark failed: AgentRuntime.__init__() got an unexpected keyword argument 'enable_extended_capabilities'

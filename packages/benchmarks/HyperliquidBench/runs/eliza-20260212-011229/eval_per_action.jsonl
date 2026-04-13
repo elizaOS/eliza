@@ -1,0 +1,5 @@
+{"stepIdx":0,"action":"perp_orders","submitTsMs":1770887549821,"windowKeyMs":1770887549800,"signatures":["perp.order.ALO:false:none","perp.order.GTC:true:none"],"ignored":false,"reason":null}
+{"stepIdx":1,"action":"perp_orders","submitTsMs":1770887549821,"windowKeyMs":1770887549800,"signatures":["perp.order.IOC:false:none"],"ignored":false,"reason":null}
+{"stepIdx":2,"action":"cancel_last","submitTsMs":1770887549821,"windowKeyMs":1770887549800,"signatures":["perp.cancel.last"],"ignored":false,"reason":null}
+{"stepIdx":3,"action":"usd_class_transfer","submitTsMs":1770887549821,"windowKeyMs":1770887549800,"signatures":["account.usdClassTransfer.toPerp"],"ignored":false,"reason":null}
+{"stepIdx":4,"action":"set_leverage","submitTsMs":1770887549821,"windowKeyMs":1770887549800,"signatures":["risk.setLeverage.BTC"],"ignored":false,"reason":null}

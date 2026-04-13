@@ -1,0 +1,134 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_profile_settings",
+            "description": "Opens the profile settings page in the browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_password_settings",
+            "description": "Opens the password/autofill settings page in the browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_privacy_settings",
+            "description": "Opens the privacy settings page in the browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_appearance_settings",
+            "description": "Opens the appearance settings page in the browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_search_engine_settings",
+            "description": "Opens the search engine settings page in the browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.bring_back_last_tab",
+            "description": "Restores the last-closed tab in the browser (equivalent to Ctrl+Shift+T).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.print",
+            "description": "Opens the print dialog for the current browser page (equivalent to Ctrl+P).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.delete_browsing_data",
+            "description": "Opens the 'Clear browsing data' dialog in the browser (equivalent to Ctrl+Shift+Del).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_extensions",
+            "description": "Opens the extensions management page in the browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.bookmark_page",
+            "description": "Bookmarks the current page in the browser (equivalent to Ctrl+D).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_bookmarks",
+            "description": "Opens the bookmarks page in the browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    }
+]

@@ -1,0 +1,109 @@
+[
+  {
+    "task_id": "seq-001",
+    "success": true,
+    "steps": 3,
+    "actions": [
+      "sum_two_elements",
+      "multiply_two_elements",
+      "compute_log"
+    ],
+    "duration_ms": 776.8661975860596,
+    "metrics": {
+      "planning_time": 194.2165493965149,
+      "execution_time": 582.6496481895447,
+      "plan_quality": 1.0,
+      "goal_achievement": 1.0,
+      "efficiency": 0.9870522300402323
+    }
+  },
+  {
+    "task_id": "react-001",
+    "success": true,
+    "steps": 3,
+    "actions": [
+      "monitor_status",
+      "check_condition",
+      "scale_resources"
+    ],
+    "duration_ms": 785.0241661071777,
+    "metrics": {
+      "planning_time": 196.25604152679443,
+      "execution_time": 588.7681245803833,
+      "plan_quality": 0.8875,
+      "goal_achievement": 1.0,
+      "efficiency": 0.9912775092654758
+    }
+  },
+  {
+    "task_id": "complex-001",
+    "success": false,
+    "steps": 3,
+    "actions": [
+      "allocate_resource",
+      "schedule_task",
+      "coordinate_execution"
+    ],
+    "duration_ms": 780.0302505493164,
+    "metrics": {
+      "planning_time": 195.0075626373291,
+      "execution_time": 585.0226879119873,
+      "plan_quality": 0.7541666666666667,
+      "goal_achievement": 0.6666666666666666,
+      "efficiency": 0.9956664986080593
+    }
+  },
+  {
+    "task_id": "multi-001",
+    "success": false,
+    "steps": 2,
+    "actions": [
+      "delegate_task",
+      "aggregate_results"
+    ],
+    "duration_ms": 710.860013961792,
+    "metrics": {
+      "planning_time": 177.715003490448,
+      "execution_time": 533.145010471344,
+      "plan_quality": 0.375,
+      "goal_achievement": 0.0,
+      "efficiency": 0.9960507777002123
+    }
+  },
+  {
+    "task_id": "tool-001",
+    "success": false,
+    "steps": 3,
+    "actions": [
+      "call_api",
+      "parse_json",
+      "send_email"
+    ],
+    "duration_ms": 652.2490978240967,
+    "metrics": {
+      "planning_time": 163.06227445602417,
+      "execution_time": 489.1868233680725,
+      "plan_quality": 0.8666666666666667,
+      "goal_achievement": 0.6666666666666666,
+      "efficiency": 0.9891291817029317
+    }
+  },
+  {
+    "task_id": "reason-001",
+    "success": false,
+    "steps": 3,
+    "actions": [
+      "gather_information",
+      "evaluate_options",
+      "make_decision"
+    ],
+    "duration_ms": 725.233793258667,
+    "metrics": {
+      "planning_time": 181.30844831466675,
+      "execution_time": 543.9253449440002,
+      "plan_quality": 0.7541666666666667,
+      "goal_achievement": 0.6666666666666666,
+      "efficiency": 0.9919418467415704
+    }
+  }
+]

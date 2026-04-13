@@ -455,8 +455,9 @@ export class RelationshipsService extends Service {
 				});
 				if (entities.length > 0) {
 					this.cacheContactInfoFromEntities(entities);
-					loadedFromRelationshipsWorld = true;
 				}
+				// Query succeeded — the world exists, even if there are no contacts yet.
+				loadedFromRelationshipsWorld = true;
 			} catch (err) {
 				logger.warn(
 					`[RelationshipsService] Failed to query contact components directly: ${err}`,

@@ -1,0 +1,37 @@
+# command: python -m benchmarks.HyperliquidBench --coverage --model qwen/qwen3-32b
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench
+# run_id: run_hyperliquidbench_20260212T090745Z_6_a049c311
+01:07:45 [INFO] benchmarks.HyperliquidBench.eliza_agent: ━━━ Running scenario: coverage_20260212_010745 ━━━
+01:07:46 [INFO] HyperliquidTrader: [2m2026-02-12T09:07:46.033712Z[0m [[32m[1minfo     [0m] [1mInitializing AgentRuntime...  [0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:07:46 [INFO] elizaos: [2m2026-02-12T09:07:46.049270Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: bootstrap [0m [[0m[1m[34melizaos[0m][0m
+01:07:46 [INFO] HyperliquidTrader: [2m2026-02-12T09:07:46.049384Z[0m [[32m[1minfo     [0m] [1mInitializing Bootstrap plugin [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mplugin:bootstrap[0m
+01:07:46 [INFO] HyperliquidTrader: [2m2026-02-12T09:07:46.049435Z[0m [[32m[1minfo     [0m] [1mBootstrap plugin initialized  [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36mactionCount[0m=[35m4[0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36mevaluatorCount[0m=[35m0[0m [36mproviderCount[0m=[35m14[0m [36mserviceCount[0m=[35m2[0m [36msrc[0m=[35mplugin:bootstrap[0m
+01:07:46 [INFO] HyperliquidTrader: [2m2026-02-12T09:07:46.049547Z[0m [[32m[1minfo     [0m] [1mTask service started          [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:task[0m
+01:07:46 [INFO] HyperliquidTrader: [2m2026-02-12T09:07:46.049636Z[0m [[32m[1minfo     [0m] [1mEmbedding service started     [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:embedding[0m
+01:07:46 [INFO] elizaos: [2m2026-02-12T09:07:46.049685Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: bootstrap[0m [[0m[1m[34melizaos[0m][0m
+01:07:46 [INFO] elizaos: [2m2026-02-12T09:07:46.049716Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: groq-model[0m [[0m[1m[34melizaos[0m][0m
+01:07:46 [INFO] elizaos: [2m2026-02-12T09:07:46.049750Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: groq-model[0m [[0m[1m[34melizaos[0m][0m
+01:07:46 [INFO] elizaos: [2m2026-02-12T09:07:46.049773Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: hyperliquid-bench[0m [[0m[1m[34melizaos[0m][0m
+01:07:46 [INFO] elizaos: [2m2026-02-12T09:07:46.049803Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: hyperliquid-bench[0m [[0m[1m[34melizaos[0m][0m
+01:07:46 [INFO] HyperliquidTrader: [2m2026-02-12T09:07:46.049830Z[0m [[32m[1minfo     [0m] [1mAgentRuntime initialized successfully[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:07:46 [INFO] benchmarks.HyperliquidBench.eliza_agent: ElizaOS runtime initialised with 6 actions, 15 providers
+01:07:46 [INFO] benchmarks.HyperliquidBench.eliza_agent: Scenario coverage_20260212_010745 – iteration 1/3
+01:07:48 [WARNING] benchmarks.HyperliquidBench.plugin.actions.generate_plan: Failed to parse plan JSON: No JSON object found in LLM response
+01:07:48 [INFO] benchmarks.HyperliquidBench.eliza_agent: Scenario coverage_20260212_010745 – iteration 2/3
+01:07:50 [WARNING] benchmarks.HyperliquidBench.plugin.actions.generate_plan: Failed to parse plan JSON: Expecting ',' delimiter: line 1 column 574 (char 573)
+01:07:50 [INFO] benchmarks.HyperliquidBench.eliza_agent: Scenario coverage_20260212_010745 – iteration 3/3
+01:07:51 [WARNING] HyperliquidTrader: [2m2026-02-12T09:07:51.432354Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:07:56 [INFO] benchmarks.HyperliquidBench.plugin.actions.generate_plan: Generated valid plan with 5 steps: perp_orders, perp_orders, perp_orders, cancel_last, usd_class_transfer
+01:07:56 [INFO] benchmarks.HyperliquidBench.eliza_agent: Plan generated — explicitly executing via Rust runner...
+01:07:56 [INFO] benchmarks.HyperliquidBench.plugin.actions.execute_plan: Running: /Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench/target/release/hl-runner --plan /Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench/runs/eliza-20260212-010756/plan_input.json --out /Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench/runs/eliza-20260212-010756 --demo --effect-timeout-ms 2000.0  (cwd=/Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench)
+01:07:56 [ERROR] benchmarks.HyperliquidBench.plugin.actions.execute_plan: hl-runner failed (exit 2):
+stdout: 
+stderr: error: invalid value '2000.0' for '--effect-timeout-ms <EFFECT_TIMEOUT_MS>': invalid digit found in string
+
+For more information, try '--help'.
+
+01:07:56 [WARNING] benchmarks.HyperliquidBench.eliza_agent:   Error: No plan was successfully executed
+01:07:56 [INFO] HyperliquidTrader: [2m2026-02-12T09:07:56.396165Z[0m [[32m[1minfo     [0m] [1mStopping AgentRuntime...      [0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:07:56 [INFO] HyperliquidTrader: [2m2026-02-12T09:07:56.396261Z[0m [[32m[1minfo     [0m] [1mTask service stopped          [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:task[0m
+01:07:56 [INFO] HyperliquidTrader: [2m2026-02-12T09:07:56.396364Z[0m [[32m[1minfo     [0m] [1mEmbedding service stopped     [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:embedding[0m
+01:07:56 [INFO] HyperliquidTrader: [2m2026-02-12T09:07:56.396519Z[0m [[32m[1minfo     [0m] [1mAgentRuntime stopped          [0m [[0m[1m[34mHyperliquidTrader[0m][0m

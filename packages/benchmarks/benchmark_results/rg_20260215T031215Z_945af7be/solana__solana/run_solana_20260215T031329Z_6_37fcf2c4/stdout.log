@@ -1,0 +1,15 @@
+2026-02-14 20:13:29,417  INFO     Model: qwen/qwen3-32b  Messages: 2  Env: voyager/environments/basic_env.json  External: False
+2026-02-14 20:13:29,800  INFO     surfpool [87234] launched
+2026-02-14 20:13:30,845  INFO     Airdropping SOL to 4rzrLBqKgBZrQjAmnXGTEqsZWgFgWaYrqyoMXmP6RmJe...
+2026-02-14 20:13:30,861  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-14 20:13:30,868  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-14 20:14:00,872  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-14 20:14:00,874  INFO     Airdrop successful.
+2026-02-14 20:14:00,876  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-14 20:14:00,878  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-14 20:14:00,878  INFO     Agent: 4rzrLBqKgBZrQjAmnXGTEqsZWgFgWaYrqyoMXmP6RmJe
+2026-02-14 20:14:00,890  INFO     elizaos_plugin_anthropic not found, falling back to OpenAI plugin
+2026-02-14 20:14:00,890  INFO     Model plugin: OpenAI (qwen/qwen3-32b)
+2026-02-14 20:14:00,910  INFO     Stopping surfpool [87234] …
+2026-02-14 20:14:08,911  WARNING  surfpool unresponsive; killing
+2026-02-14 20:14:08,914  INFO     surfpool shut down

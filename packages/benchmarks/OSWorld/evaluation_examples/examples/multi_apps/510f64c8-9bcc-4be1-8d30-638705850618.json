@@ -1,0 +1,119 @@
+{
+  "id": "510f64c8-9bcc-4be1-8d30-638705850618",
+  "snapshot": "vscode",
+  "instruction": "Could you start VS Code in folder ~/Desktop/project from the terminal?",
+  "source": "https://www.geeksforgeeks.org/how-to-start-vs-code-from-the-terminal-command-line/",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/510f64c8-9bcc-4be1-8d30-638705850618/vscodeEvalExtension.zip",
+            "path": "/home/user/Downloads/vscodeEvalExtension.zip"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "/bin/bash",
+          "-c",
+          "cd /home/user/Downloads && unzip -q vscodeEvalExtension.zip && code --install-extension vscodeEvalExtension/eval-0.0.1.vsix && rm -rf vscodeEvalExtension vscodeEvalExtension.zip && mkdir -p ~/Desktop/project/.vscode && history -c && echo > ~/.bash_history"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/510f64c8-9bcc-4be1-8d30-638705850618/main.py",
+            "path": "/home/user/Desktop/project/main.py"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/510f64c8-9bcc-4be1-8d30-638705850618/README.md",
+            "path": "/home/user/Desktop/project/README.md"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/510f64c8-9bcc-4be1-8d30-638705850618/settings.json",
+            "path": "/home/user/Desktop/project/.vscode/settings.json"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "export DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus'\ngnome-terminal --maximize --working-directory=/home/user",
+        "shell": true
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "vscode",
+    "terminal"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "/bin/bash",
+            "-c",
+            "killall gnome-terminal-server"
+          ]
+        }
+      },
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Visual Studio Code"
+        }
+      }
+    ],
+    "func": [
+      "check_include_exclude",
+      "compare_config"
+    ],
+    "result": [
+      {
+        "type": "vm_command_line",
+        "command": [
+          "/bin/bash",
+          "-c",
+          "use_terminal=$(cat ~/.bash_history | grep \"[c]ode \"); if [ -z \"$use_terminal\" ]; then echo \"false\"; else echo \"true\"; fi"
+        ]
+      },
+      {
+        "type": "vscode_config",
+        "vscode_extension_command": "OpenProject",
+        "path": "/home/user/OpenProject.txt",
+        "dest": "OpenProject.txt"
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "include": [
+            "true"
+          ]
+        }
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "expected": "project"
+        }
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

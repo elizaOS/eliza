@@ -1,0 +1,1552 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "rust",
+  "profile": "groq",
+  "timestamp": "1771142578659",
+  "iterations": 1,
+  "datasetName": "voicebench-ground-truth-groq",
+  "datasetPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/manifest-groq.json",
+  "sampleCount": 10,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "greeting_short",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Hello there. This is a short voice benchmark sample.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 1461.889,
+      "responseTtftMs": 1454.173,
+      "responseTotalMs": 1454.177,
+      "voiceGenerationMs": 1230.552,
+      "voiceFirstTokenUncachedMs": 262.352,
+      "voiceFirstTokenCachedMs": 403.227,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 1165.619,
+      "ttsCachedPipelineMs": 1568.846,
+      "endToEndMs": 5980.701,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Sure! Could you let me know the character name ({{agentName}}) and any specific providers you’d like me to use for generating the dialog and actions?",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 1454
+          }
+        ],
+        "providerAccesses": [
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "CHARACTER"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 372550,
+      "ttsFirstSentenceUncachedBytes": 38470,
+      "ttsFirstSentenceCachedBytes": 38470,
+      "ttsRemainderBytes": 353350,
+      "ttsCachedPipelineBytes": 391820,
+      "responseSegmentation": {
+        "firstSentence": "Sure!",
+        "remainder": "Could you let me know the character name ({{agentName}}) and any specific providers you’d like me to use for generating the dialog and actions?"
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "weather_city",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/weather_city.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Today in Austin, skies are clear and temperatures are mild.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 445.941,
+      "responseTtftMs": 1240.438,
+      "responseTotalMs": 1240.442,
+      "voiceGenerationMs": 1560.412,
+      "voiceFirstTokenUncachedMs": 1527.901,
+      "voiceFirstTokenCachedMs": 1521.474,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 1521.474,
+      "endToEndMs": 6299.53,
+      "inContext": {
+        "transcript": "Today in Austin, skies are clear and temperatures are mild.",
+        "benchmarkContext": "",
+        "prompt": "Today in Austin, skies are clear and temperatures are mild.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Please provide some details about the character (e.g., name, personality traits, setting) so I can generate suitable dialogue and actions for them.",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "model": "TEXT_LARGE",
+            "latencyMs": 1241
+          }
+        ],
+        "providerAccesses": [
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "CHARACTER"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 468550,
+      "ttsFirstSentenceUncachedBytes": 468550,
+      "ttsFirstSentenceCachedBytes": 468550,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 468550,
+      "responseSegmentation": {
+        "firstSentence": "Please provide some details about the character (e.g., name, personality traits, setting) so I can generate suitable dialogue and actions for them.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "finance_brief",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/finance_brief.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "The quarterly report shows revenue growth and improving margins.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 453.531,
+      "responseTtftMs": 1314.5,
+      "responseTotalMs": 1314.504,
+      "voiceGenerationMs": 1109.799,
+      "voiceFirstTokenUncachedMs": 1144.837,
+      "voiceFirstTokenCachedMs": 1126.022,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 1126.022,
+      "endToEndMs": 5150.999,
+      "inContext": {
+        "transcript": "The quarterly report shows revenue growth and improving margins.",
+        "benchmarkContext": "",
+        "prompt": "The quarterly report shows revenue growth and improving margins.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Could you please provide more details about the scenario or what you’d like {{agentName}} to say or do?",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "model": "TEXT_LARGE",
+            "latencyMs": 1314
+          }
+        ],
+        "providerAccesses": [
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "CHARACTER"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "ACTIONS"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 326470,
+      "ttsFirstSentenceUncachedBytes": 326470,
+      "ttsFirstSentenceCachedBytes": 326470,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 326470,
+      "responseSegmentation": {
+        "firstSentence": "Could you please provide more details about the scenario or what you’d like {{agentName}} to say or do?",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "support_reset",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/support_reset.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "To reset your password, open settings, choose security, then tap reset.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 977.714,
+      "responseTtftMs": 1474.337,
+      "responseTotalMs": 1474.34,
+      "voiceGenerationMs": 1176.472,
+      "voiceFirstTokenUncachedMs": 1297.506,
+      "voiceFirstTokenCachedMs": 1176.673,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 1176.673,
+      "endToEndMs": 6105.473,
+      "inContext": {
+        "transcript": "To reset your password, open Settings, choose Security, then tap Reset.",
+        "benchmarkContext": "",
+        "prompt": "To reset your password, open Settings, choose Security, then tap Reset.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Please provide the name of the character and any specific context or details you’d like me to use when generating the dialog.",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "latencyMs": 1474,
+            "model": "TEXT_LARGE",
+            "purpose": "action"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "ACTIONS"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 353350,
+      "ttsFirstSentenceUncachedBytes": 353350,
+      "ttsFirstSentenceCachedBytes": 353350,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 353350,
+      "responseSegmentation": {
+        "firstSentence": "Please provide the name of the character and any specific context or details you’d like me to use when generating the dialog.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "calendar_note",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/calendar_note.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 425.432,
+      "responseTtftMs": 2167.475,
+      "responseTotalMs": 2167.479,
+      "voiceGenerationMs": 9453.228,
+      "voiceFirstTokenUncachedMs": 3575.399,
+      "voiceFirstTokenCachedMs": 3448.655,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 5918.43,
+      "ttsCachedPipelineMs": 9367.085,
+      "endToEndMs": 25011.438,
+      "inContext": {
+        "transcript": "Your next meeting starts at 3.15 p.m. and lasts 45 minutes.",
+        "benchmarkContext": "",
+        "prompt": "Your next meeting starts at 3.15 p.m. and lasts 45 minutes.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here’s a short sample conversation with {{agentName}} and the actions they would take:\\n\\n**User:** “Can you help me find a good Italian restaurant nearby?”\\n**{{agentName}} (thinking):** Looks up nearby Italian restaurants.\\n**{{agentName}} (action):** REPLY – “Sure...",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "model": "TEXT_LARGE",
+            "latencyMs": 2168
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "PROVIDERS"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 3106622,
+      "ttsFirstSentenceUncachedBytes": 1082950,
+      "ttsFirstSentenceCachedBytes": 1082950,
+      "ttsRemainderBytes": 1881662,
+      "ttsCachedPipelineBytes": 2964612,
+      "responseSegmentation": {
+        "firstSentence": "Here’s a short sample conversation with {{agentName}} and the actions they would take:\\n\\n**User:** “Can you help me find a good Italian restaurant nearby?”\\n**{{agentName}} (thinking):** Looks up nearby Italian restaurants.\\n**{{agentName}} (action):** REPLY – “Sure!",
+        "remainder": "I found a few Italian places close to you: 1. Luigi’s Trattoria (0.5 mi) – classic pasta, 2. Mama Mia (0.8 mi) – great pizza, 3. Bella Italia (1.0 mi) – cozy atmosphere. Would you like a reservation at any of these?”\\n\\n**User:** “Book a table for two at Lu..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "navigation_turn",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/navigation_turn.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "In five hundred feet, turn right and continue for two miles.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 619.322,
+      "responseTtftMs": 1768.191,
+      "responseTotalMs": 1768.195,
+      "voiceGenerationMs": 6158.206,
+      "voiceFirstTokenUncachedMs": 1187.746,
+      "voiceFirstTokenCachedMs": 1168.453,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 4104.497,
+      "ttsCachedPipelineMs": 5272.95,
+      "endToEndMs": 15019.806,
+      "inContext": {
+        "transcript": "In 500 feet, turn right and continue for two miles.",
+        "benchmarkContext": "",
+        "prompt": "In 500 feet, turn right and continue for two miles.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here is a sample dialog and action plan for {{agentName}}:\n\n**Dialog**\n- {{agentName}}: \"Hello! How can I assist you today?\"\n- User: \"I need help with my account.\"\n- {{agentName}}: \"Sure, let me check that for you.\"\n\n**Planned Actions**\n1. REPLY – acknowledge the user’s re...",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "latencyMs": 1768,
+            "purpose": "action"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 1939262,
+      "ttsFirstSentenceUncachedBytes": 357190,
+      "ttsFirstSentenceCachedBytes": 357190,
+      "ttsRemainderBytes": 1313350,
+      "ttsCachedPipelineBytes": 1670540,
+      "responseSegmentation": {
+        "firstSentence": "Here is a sample dialog and action plan for {{agentName}}:\n\n**Dialog**\n- {{agentName}}: \"Hello!",
+        "remainder": "How can I assist you today?\"\n- User: \"I need help with my account.\"\n- {{agentName}}: \"Sure, let me check that for you.\"\n\n**Planned Actions**\n1. REPLY – acknowledge the user’s request.\n2. CALL_MCP_TOOL – retrieve the user's account details.\n3. SEND_MESSAGE – provide the..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "medical_disclaimer",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/medical_disclaimer.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "This information is educational and does not replace medical advice from a clinician.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 462.333,
+      "responseTtftMs": 2450.348,
+      "responseTotalMs": 2450.351,
+      "voiceGenerationMs": 15529.487,
+      "voiceFirstTokenUncachedMs": 2005.738,
+      "voiceFirstTokenCachedMs": 2094.402,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 11159.222,
+      "ttsCachedPipelineMs": 13253.624,
+      "endToEndMs": 33734.998,
+      "inContext": {
+        "transcript": "This information is educational and does not replace medical advice from a clinician.",
+        "benchmarkContext": "",
+        "prompt": "This information is educational and does not replace medical advice from a clinician.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here’s a sample dialogue for {{agentName}} along with the actions they would take in each turn:\n\n**Scenario:** A user asks {{agentName}} for a quick cryptocurrency price check and then wants to swap tokens.\n\n**User:** “Hey {{agentName}}, what’s the current price of ETH i...",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "latencyMs": 2450,
+            "model": "TEXT_LARGE"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "ACTIONS"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 4830774,
+      "ttsFirstSentenceUncachedBytes": 606790,
+      "ttsFirstSentenceCachedBytes": 606790,
+      "ttsRemainderBytes": 3471414,
+      "ttsCachedPipelineBytes": 4078204,
+      "responseSegmentation": {
+        "firstSentence": "Here’s a sample dialogue for {{agentName}} along with the actions they would take in each turn:\n\n**Scenario:** A user asks {{agentName}} for a quick cryptocurrency price check and then wants to swap tokens.",
+        "remainder": "**User:** “Hey {{agentName}}, what’s the current price of ETH in USD? Also, can you swap 0.5 ETH to USDC for me?”\n\n**{{agentName}} Dialogue & Actions:**\n1. **Reply (acknowledge request)**\n   - *Text:* “Sure! Let me fetch the latest ETH price for you.”\n   - *Action:* ..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "multisentence_long",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/multisentence_long.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 580.386,
+      "responseTtftMs": 1608.398,
+      "responseTotalMs": 1608.403,
+      "voiceGenerationMs": 1165.425,
+      "voiceFirstTokenUncachedMs": 1177.723,
+      "voiceFirstTokenCachedMs": 1203.107,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 1203.107,
+      "endToEndMs": 5737.447,
+      "inContext": {
+        "transcript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+        "benchmarkContext": "",
+        "prompt": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Please provide more details about the scenario or request for which you’d like me to generate dialog and actions for the character.",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "model": "TEXT_LARGE",
+            "latencyMs": 1608
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "ACTIONS"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 345670,
+      "ttsFirstSentenceUncachedBytes": 345670,
+      "ttsFirstSentenceCachedBytes": 345670,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 345670,
+      "responseSegmentation": {
+        "firstSentence": "Please provide more details about the scenario or request for which you’d like me to generate dialog and actions for the character.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "list_format",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/list_format.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 591.137,
+      "responseTtftMs": 1559.355,
+      "responseTotalMs": 1559.36,
+      "voiceGenerationMs": 1196.109,
+      "voiceFirstTokenUncachedMs": 1156.781,
+      "voiceFirstTokenCachedMs": 1190.655,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 1190.655,
+      "endToEndMs": 5697.349,
+      "inContext": {
+        "transcript": "Checklist. 1. Capture audio. 2. Transcribe. 3. Generate response. 4. Synthesize speech.",
+        "benchmarkContext": "",
+        "prompt": "Checklist. 1. Capture audio. 2. Transcribe. 3. Generate response. 4. Synthesize speech.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Please provide the character name (agentName) and any specific details or context you'd like included in the generated dialog.",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "latencyMs": 1559,
+            "model": "TEXT_LARGE"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "ACTIONS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "PROVIDERS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 345670,
+      "ttsFirstSentenceUncachedBytes": 345670,
+      "ttsFirstSentenceCachedBytes": 345670,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 345670,
+      "responseSegmentation": {
+        "firstSentence": "Please provide the character name (agentName) and any specific details or context you'd like included in the generated dialog.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "numbers_dates",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/numbers_dates.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 502.528,
+      "responseTtftMs": 1777.449,
+      "responseTotalMs": 1777.452,
+      "voiceGenerationMs": 7420.31,
+      "voiceFirstTokenUncachedMs": 211.014,
+      "voiceFirstTokenCachedMs": 0.002,
+      "ttsFirstSentenceCacheHit": true,
+      "ttsRemainderMs": 7239.193,
+      "ttsCachedPipelineMs": 7239.195,
+      "endToEndMs": 17169.184,
+      "inContext": {
+        "transcript": "On January 15, 2026, the average response time was 1.4 seconds.",
+        "benchmarkContext": "",
+        "prompt": "On January 15, 2026, the average response time was 1.4 seconds.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Sure! Here’s an example conversation you could use for {{agentName}}:\\n\\nUser: Hey {{agentName}}, can you help me plan a weekend trip to the mountains?\\n{{agentName}}: Absolutely! First, let’s pick a destination. Do you have a specific range in mind, or should I suggest a ...",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 1777
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "PROVIDERS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 2380862,
+      "ttsFirstSentenceUncachedBytes": 38470,
+      "ttsFirstSentenceCachedBytes": 38470,
+      "ttsRemainderBytes": 2231102,
+      "ttsCachedPipelineBytes": 2269572,
+      "responseSegmentation": {
+        "firstSentence": "Sure!",
+        "remainder": "Here’s an example conversation you could use for {{agentName}}:\\n\\nUser: Hey {{agentName}}, can you help me plan a weekend trip to the mountains?\\n{{agentName}}: Absolutely! First, let’s pick a destination. Do you have a specific range in mind, or should I suggest a few po..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "greeting_short",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Hello there. This is a short voice benchmark sample.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 709.29,
+      "responseTtftMs": 2013.524,
+      "responseTotalMs": 2013.528,
+      "voiceGenerationMs": 2011.109,
+      "voiceFirstTokenUncachedMs": 211.644,
+      "voiceFirstTokenCachedMs": 0.002,
+      "ttsFirstSentenceCacheHit": true,
+      "ttsRemainderMs": 2164.746,
+      "ttsCachedPipelineMs": 2164.748,
+      "endToEndMs": 7116.151,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Sure! To generate dialog and actions for the character, I’ll need the character’s name and any specific context or providers you’d like to include. Please provide those details, and I’ll craft the appropriate response.",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "latencyMs": 2013,
+            "purpose": "action"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "CHARACTER"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 606790,
+      "ttsFirstSentenceUncachedBytes": 38470,
+      "ttsFirstSentenceCachedBytes": 38470,
+      "ttsRemainderBytes": 668230,
+      "ttsCachedPipelineBytes": 706700,
+      "responseSegmentation": {
+        "firstSentence": "Sure!",
+        "remainder": "To generate dialog and actions for the character, I’ll need the character’s name and any specific context or providers you’d like to include. Please provide those details, and I’ll craft the appropriate response."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "weather_city",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/weather_city.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Today in Austin, skies are clear and temperatures are mild.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 627.813,
+      "responseTtftMs": 1423.1,
+      "responseTotalMs": 1423.104,
+      "voiceGenerationMs": 1113.975,
+      "voiceFirstTokenUncachedMs": 1091.327,
+      "voiceFirstTokenCachedMs": 1098.491,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 1098.491,
+      "endToEndMs": 5358.596,
+      "inContext": {
+        "transcript": "Today in Austin, skies are clear and temperatures are mild.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Today in Austin, skies are clear and temperatures are mild.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Could you please provide the name of the character (agent) and any specific providers you’d like me to use?",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "latencyMs": 1423,
+            "model": "TEXT_LARGE"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "CHARACTER"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "ACTIONS"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 322630,
+      "ttsFirstSentenceUncachedBytes": 322630,
+      "ttsFirstSentenceCachedBytes": 322630,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 322630,
+      "responseSegmentation": {
+        "firstSentence": "Could you please provide the name of the character (agent) and any specific providers you’d like me to use?",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "finance_brief",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/finance_brief.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "The quarterly report shows revenue growth and improving margins.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 652.382,
+      "responseTtftMs": 1255.387,
+      "responseTotalMs": 1255.391,
+      "voiceGenerationMs": 1049.957,
+      "voiceFirstTokenUncachedMs": 1042.822,
+      "voiceFirstTokenCachedMs": 1068.939,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 1068.939,
+      "endToEndMs": 5071.943,
+      "inContext": {
+        "transcript": "The quarterly report shows revenue growth and improving margins.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "The quarterly report shows revenue growth and improving margins.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Please provide the name of the character ({{agentName}}) and any details or context you’d like included in the generated dialog.",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "latencyMs": 1255,
+            "model": "TEXT_LARGE"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 314950,
+      "ttsFirstSentenceUncachedBytes": 314950,
+      "ttsFirstSentenceCachedBytes": 314950,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 314950,
+      "responseSegmentation": {
+        "firstSentence": "Please provide the name of the character ({{agentName}}) and any details or context you’d like included in the generated dialog.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "support_reset",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/support_reset.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "To reset your password, open settings, choose security, then tap reset.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 748.083,
+      "responseTtftMs": 2598.14,
+      "responseTotalMs": 2598.145,
+      "voiceGenerationMs": 6068.078,
+      "voiceFirstTokenUncachedMs": 941.3,
+      "voiceFirstTokenCachedMs": 929.29,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 3884.914,
+      "ttsCachedPipelineMs": 4814.204,
+      "endToEndMs": 15183.325,
+      "inContext": {
+        "transcript": "To reset your password, open Settings, choose Security, then tap Reset.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "To reset your password, open Settings, choose Security, then tap Reset.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here is a short sample dialogue featuring {{agentName}} along with the corresponding actions they might take:\n\n**Dialogue**\n- **User:** Hi {{agentName}}, can you help me with my project?\n- **{{agentName}}:** Absolutely! Let me know what you need.\n- **User:** I need to fetch th...",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 2597
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 1939262,
+      "ttsFirstSentenceUncachedBytes": 268870,
+      "ttsFirstSentenceCachedBytes": 268870,
+      "ttsRemainderBytes": 1209670,
+      "ttsCachedPipelineBytes": 1478540,
+      "responseSegmentation": {
+        "firstSentence": "Here is a short sample dialogue featuring {{agentName}} along with the corresponding actions they might take:\n\n**Dialogue**\n- **User:** Hi {{agentName}}, can you help me with my project?",
+        "remainder": "- **{{agentName}}:** Absolutely! Let me know what you need.\n- **User:** I need to fetch the latest sales data.\n- **{{agentName}}:** I’ll retrieve that for you now.\n\n**Planned Actions**\n- REPLY – acknowledge the request and inform the user I’m fetching the data.\n- CALL_MC..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "calendar_note",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/calendar_note.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 486.878,
+      "responseTtftMs": 1426.312,
+      "responseTotalMs": 1426.316,
+      "voiceGenerationMs": 4548.901,
+      "voiceFirstTokenUncachedMs": 332.068,
+      "voiceFirstTokenCachedMs": 0.002,
+      "ttsFirstSentenceCacheHit": true,
+      "ttsRemainderMs": 4540.638,
+      "ttsCachedPipelineMs": 4540.64,
+      "endToEndMs": 11346.397,
+      "inContext": {
+        "transcript": "Your next meeting starts at 3.15 p.m. and lasts 45 minutes.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Your next meeting starts at 3.15 p.m. and lasts 45 minutes.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Sure! Here’s a short example of a conversation with {{agentName}} and the actions they would take:\n\n**User:** “Can you tell me the weather in Paris tomorrow?”\n**{{agentName}} (thinking):** Checks the weather service.\n**Actions:** REPLY, CALL_MCP_TOOL (weather API)\n**{{ag...",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 1425
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "PROVIDERS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 1440070,
+      "ttsFirstSentenceUncachedBytes": 38470,
+      "ttsFirstSentenceCachedBytes": 38470,
+      "ttsRemainderBytes": 1420870,
+      "ttsCachedPipelineBytes": 1459340,
+      "responseSegmentation": {
+        "firstSentence": "Sure!",
+        "remainder": "Here’s a short example of a conversation with {{agentName}} and the actions they would take:\n\n**User:** “Can you tell me the weather in Paris tomorrow?”\n**{{agentName}} (thinking):** Checks the weather service.\n**Actions:** REPLY, CALL_MCP_TOOL (weather API)\n**{{agentNam..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "navigation_turn",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/navigation_turn.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "In five hundred feet, turn right and continue for two miles.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 452.978,
+      "responseTtftMs": 1331.202,
+      "responseTotalMs": 1331.206,
+      "voiceGenerationMs": 1211.463,
+      "voiceFirstTokenUncachedMs": 1206.242,
+      "voiceFirstTokenCachedMs": 1238.266,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 1238.266,
+      "endToEndMs": 5443.169,
+      "inContext": {
+        "transcript": "In 500 feet, turn right and continue for two miles.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "In 500 feet, turn right and continue for two miles.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Please provide the name of the character ({{agentName}}) and describe what you would like them to say or do, so I can generate the appropriate dialog and actions for you.",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "model": "TEXT_LARGE",
+            "latencyMs": 1330
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "ACTIONS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "PROVIDERS"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 368710,
+      "ttsFirstSentenceUncachedBytes": 368710,
+      "ttsFirstSentenceCachedBytes": 368710,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 368710,
+      "responseSegmentation": {
+        "firstSentence": "Please provide the name of the character ({{agentName}}) and describe what you would like them to say or do, so I can generate the appropriate dialog and actions for you.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "medical_disclaimer",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/medical_disclaimer.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "This information is educational and does not replace medical advice from a clinician.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 585.401,
+      "responseTtftMs": 895.881,
+      "responseTotalMs": 895.884,
+      "voiceGenerationMs": 635.623,
+      "voiceFirstTokenUncachedMs": 208.241,
+      "voiceFirstTokenCachedMs": 0.002,
+      "ttsFirstSentenceCacheHit": true,
+      "ttsRemainderMs": 580.385,
+      "ttsCachedPipelineMs": 580.387,
+      "endToEndMs": 2907.735,
+      "inContext": {
+        "transcript": "This information is educational and does not replace medical advice from a clinician.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "This information is educational and does not replace medical advice from a clinician.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Sure! I’ll generate the dialog and actions for the character as requested.",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 895
+          }
+        ],
+        "providerAccesses": [
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "CHARACTER"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "ACTIONS"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 184390,
+      "ttsFirstSentenceUncachedBytes": 38470,
+      "ttsFirstSentenceCachedBytes": 38470,
+      "ttsRemainderBytes": 161350,
+      "ttsCachedPipelineBytes": 199820,
+      "responseSegmentation": {
+        "firstSentence": "Sure!",
+        "remainder": "I’ll generate the dialog and actions for the character as requested."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "multisentence_long",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/multisentence_long.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 987.159,
+      "responseTtftMs": 1280.127,
+      "responseTotalMs": 1280.132,
+      "voiceGenerationMs": 1558.378,
+      "voiceFirstTokenUncachedMs": 1567.152,
+      "voiceFirstTokenCachedMs": 1555.647,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 1555.647,
+      "endToEndMs": 6952.978,
+      "inContext": {
+        "transcript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Could you please provide more details about the character {{agentName}} you’d like dialogue for, such as their personality, setting, or any specific situation you have in mind?",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "latencyMs": 1280,
+            "model": "TEXT_LARGE"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "ACTIONS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "PROVIDERS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 476230,
+      "ttsFirstSentenceUncachedBytes": 476230,
+      "ttsFirstSentenceCachedBytes": 476230,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 476230,
+      "responseSegmentation": {
+        "firstSentence": "Could you please provide more details about the character {{agentName}} you’d like dialogue for, such as their personality, setting, or any specific situation you have in mind?",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "list_format",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/list_format.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 1085.898,
+      "responseTtftMs": 1187.212,
+      "responseTotalMs": 1187.216,
+      "voiceGenerationMs": 1124.667,
+      "voiceFirstTokenUncachedMs": 201.534,
+      "voiceFirstTokenCachedMs": 0.002,
+      "ttsFirstSentenceCacheHit": true,
+      "ttsRemainderMs": 1108.701,
+      "ttsCachedPipelineMs": 1108.703,
+      "endToEndMs": 4710.96,
+      "inContext": {
+        "transcript": "Checklist. 1. Capture audio. 2. Transcribe. 3. Generate response. 4. Synthesize speech.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Checklist. 1. Capture audio. 2. Transcribe. 3. Generate response. 4. Synthesize speech.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Sure! Could you please provide the agent name ({{agentName}}) and let me know what you’d like the character to do or say?",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "latencyMs": 1187,
+            "model": "TEXT_LARGE",
+            "purpose": "action"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "CHARACTER"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 326470,
+      "ttsFirstSentenceUncachedBytes": 38470,
+      "ttsFirstSentenceCachedBytes": 38470,
+      "ttsRemainderBytes": 284230,
+      "ttsCachedPipelineBytes": 322700,
+      "responseSegmentation": {
+        "firstSentence": "Sure!",
+        "remainder": "Could you please provide the agent name ({{agentName}}) and let me know what you’d like the character to do or say?"
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "numbers_dates",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/numbers_dates.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 525.244,
+      "responseTtftMs": 1580.899,
+      "responseTotalMs": 1580.904,
+      "voiceGenerationMs": 1418.239,
+      "voiceFirstTokenUncachedMs": 288.118,
+      "voiceFirstTokenCachedMs": 296.084,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 1205.129,
+      "ttsCachedPipelineMs": 1501.213,
+      "endToEndMs": 5322.132,
+      "inContext": {
+        "transcript": "On January 15, 2026, the average response time was 1.4 seconds.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "On January 15, 2026, the average response time was 1.4 seconds.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Got it! I'm ready to generate dialog and actions for the specified character. Please provide the character name and any details you'd like me to incorporate.",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 1580
+          }
+        ],
+        "providerAccesses": [
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "CHARACTER"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "ACTIONS"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 422470,
+      "ttsFirstSentenceUncachedBytes": 65350,
+      "ttsFirstSentenceCachedBytes": 65350,
+      "ttsRemainderBytes": 353350,
+      "ttsCachedPipelineBytes": 418700,
+      "responseSegmentation": {
+        "firstSentence": "Got it!",
+        "remainder": "I'm ready to generate dialog and actions for the specified character. Please provide the character name and any details you'd like me to incorporate."
+      }
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 10,
+      "avgTranscriptionMs": 652.021,
+      "avgResponseTtftMs": 1681.466,
+      "avgResponseTotalMs": 1681.47,
+      "avgVoiceGenerationMs": 4600.0,
+      "avgVoiceFirstTokenUncachedMs": 1354.7,
+      "avgVoiceFirstTokenCachedMs": 1333.267,
+      "avgTtsCachedPipelineMs": 4291.963,
+      "firstSentenceCacheHitRate": 0.1,
+      "transcriptionNormalizedAccuracy": 0.6,
+      "avgEndToEndMs": 12590.693
+    },
+    "non-simple": {
+      "runs": 10,
+      "avgTranscriptionMs": 686.113,
+      "avgResponseTtftMs": 1499.178,
+      "avgResponseTotalMs": 1499.183,
+      "avgVoiceGenerationMs": 2074.039,
+      "avgVoiceFirstTokenUncachedMs": 709.045,
+      "avgVoiceFirstTokenCachedMs": 618.673,
+      "avgTtsCachedPipelineMs": 1967.124,
+      "firstSentenceCacheHitRate": 0.4,
+      "transcriptionNormalizedAccuracy": 0.6,
+      "avgEndToEndMs": 6941.339
+    }
+  }
+}

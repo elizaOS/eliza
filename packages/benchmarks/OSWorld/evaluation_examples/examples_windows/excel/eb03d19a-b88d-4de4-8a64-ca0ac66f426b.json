@@ -1,0 +1,82 @@
+{
+  "id": "eb03d19a-b88d-4de4-8a64-ca0ac66f426b",
+  "snapshot": "excel",
+  "instruction": "Transpose the table and paste it starting from B8.",
+  "source": "https://www.youtube.com/shorts/t9JLUaT55UQ",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/eb03d19a-b88d-4de4-8a64-ca0ac66f426b/Students_Class_Subject_Marks.xlsx",
+            "path": "C:\\Users\\User\\Students_Class_Subject_Marks.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Students_Class_Subject_Marks.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/eb03d19a-b88d-4de4-8a64-ca0ac66f426b",
+  "related_apps": [
+    "excel"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Students_Class_Subject_Marks - Excel",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/eb03d19a-b88d-4de4-8a64-ca0ac66f426b/Students_Class_Subject_Marks_gold.xlsx",
+      "dest": "Students_Class_Subject_Marks_gold.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Students_Class_Subject_Marks.xlsx",
+      "dest": "Students_Class_Subject_Marks.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_data",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0"
+        }
+      ]
+    }
+  }
+}

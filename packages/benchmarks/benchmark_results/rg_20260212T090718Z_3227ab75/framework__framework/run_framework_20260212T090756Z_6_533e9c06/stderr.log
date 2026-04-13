@@ -1,0 +1,37 @@
+# command: python -m src.bench --output=/Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T090718Z_3227ab75/framework__framework/run_framework_20260212T090756Z_6_533e9c06/output/framework-python-results.json
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/framework/python
+# run_id: run_framework_20260212T090756Z_6_533e9c06
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/shawwalters/eliza-workspace/benchmarks/framework/python/src/bench.py", line 555, in <module>
+    main_sync()
+    ~~~~~~~~~^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/framework/python/src/bench.py", line 551, in main_sync
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/framework/python/src/bench.py", line 534, in main
+    result = await run_message_benchmark(character, msgs, cfg, llm_plugin)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/framework/python/src/bench.py", line 411, in run_message_benchmark
+    runtime = await create_benchmark_runtime(character, config, llm_plugin)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/framework/python/src/bench.py", line 192, in create_benchmark_runtime
+    runtime = AgentRuntime(
+        agent_id=AGENT_ID,
+    ...<2 lines>...
+        adapter=adapter,
+    )
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 202, in __init__
+    self._logger = create_logger(namespace=resolved_character.name, level=log_level.upper())
+                                           ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'dict' object has no attribute 'name'

@@ -478,7 +478,7 @@ export class TrajectoriesService extends Service {
 			);
 		}
 
-		// Legacy Milady schema used 32-bit INTEGER for ms timestamps. Upgrade to
+		// Legacy Eliza schema used 32-bit INTEGER for ms timestamps. Upgrade to
 		// BIGINT so runtime timestamps (Date.now()) can be stored safely.
 		// This migration is Postgres-specific. Ignore on adapters that don't support it.
 		for (const statement of [
@@ -843,7 +843,7 @@ export class TrajectoriesService extends Service {
         WHERE id = ${sqlLiteral(trajectoryId)}
       `);
 		} catch (modernErr) {
-			// Compatibility fallback for legacy Milady schema.
+			// Compatibility fallback for legacy Eliza schema.
 			await this.executeRawSql(`
         UPDATE trajectories SET
           status = ${sqlLiteral(status)},

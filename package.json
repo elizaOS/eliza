@@ -65,9 +65,7 @@
   "packageManager": "bun@1.3.5",
   "workspaces": [
     "packages/*",
-    "packages/computeruse/packages/*",
-    "apps/*",
-    "agent"
+    "apps/*"
   ],
   "devDependencies": {
     "@bufbuild/buf": "^1.47.2",

@@ -164,7 +164,7 @@ async function getRecentInteractions(
 	const recentMessages = await runtime.getMemories({
 		tableName: "messages",
 		roomId,
-		count: 20,
+		limit: 20,
 	});
 	const messageEntityById = new Map<UUID, UUID>();
 	for (const recentMessage of recentMessages) {

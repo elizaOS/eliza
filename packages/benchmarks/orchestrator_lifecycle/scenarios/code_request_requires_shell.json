@@ -1,0 +1,14 @@
+{
+  "scenario_id": "code_request_requires_shell",
+  "title": "Code Request Requires Shell",
+  "category": "capability",
+  "required_capabilities": ["code.shell"],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "Fix the failing tests and run the suite in shell before reporting.",
+      "expected_behaviors": ["spawn_subagent", "report_active_subagent_status"]
+    }
+  ]
+}
+

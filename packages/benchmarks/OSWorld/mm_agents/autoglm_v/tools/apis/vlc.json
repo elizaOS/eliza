@@ -1,0 +1,166 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.get_playlist",
+            "description": "Get current playlist with track info",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function", 
+        "function": {
+            "name": "VLCTools.play",
+            "description": "Start playing current media",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.pause",
+            "description": "Pause current media",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.next",
+            "description": "Switch to next track",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.previous",
+            "description": "Switch to previous track",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.add_to_playlist",
+            "description": "Add media file to playlist",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "uri": {
+                        "type": "string",
+                        "description": "Media file URI (file:// or https://)"
+                    }
+                },
+                "required": ["uri"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.get_current_time",
+            "description": "Get current playback position in seconds",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.get_media_duration",
+            "description": "Get media duration in seconds",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.toggle_fullscreen",
+            "description": "Toggle or set fullscreen mode",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "enable": {
+                        "type": "boolean",
+                        "description": "Force fullscreen on/off, omit to toggle"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.get_settings",
+            "description": "Get VLC settings",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.set_settings",
+            "description": "Set VLC settings",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "field": {
+                        "type": "string",
+                        "description": "Setting name (e.g. qt-max-volume, qt-minimal-view)"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Setting value (use 0/1 for booleans)"
+                    }
+                },
+                "required": ["field", "value"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.get_media_files",
+            "description": "Get media files from path",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Directory path"
+                    },
+                    "suffix": {
+                        "type": "array",
+                        "description": "File extensions, default: ['mp4','avi','mkv','mov','mp3','m4a','wav']"
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    }
+]

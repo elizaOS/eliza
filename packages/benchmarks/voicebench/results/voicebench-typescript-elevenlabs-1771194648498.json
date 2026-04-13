@@ -1,0 +1,429 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "typescript",
+  "profile": "elevenlabs",
+  "timestamp": "1771194648498",
+  "iterations": 1,
+  "datasetName": "single-audio",
+  "datasetPath": null,
+  "sampleCount": 1,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 1107.152,
+      "responseTtftMs": 1445.499,
+      "responseTotalMs": 1448.327,
+      "speechToResponseStartMs": 2552.651,
+      "speechToVoiceStartUncachedMs": 2863.846,
+      "speechToVoiceStartCachedMs": 2823.433,
+      "voiceGenerationMs": 311.969,
+      "voiceFirstTokenUncachedMs": 308.366,
+      "voiceFirstTokenCachedMs": 267.954,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 267.96,
+      "endToEndMs": 3446.142,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond in one brief conversational sentence under 140 characters."
+      },
+      "outContext": {
+        "response": "Got it—ready to benchmark your voice latency!",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconversation...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [],
+        "modelInput": "",
+        "modelOutputRaw": "Got it—ready to benchmark your voice latency!",
+        "modelOutputClean": "Got it—ready to benchmark your voice latency!",
+        "modelOutputHasThinkingTag": false,
+        "modelOutputHasXml": false,
+        "modelOutputThoughtTagCount": 0,
+        "modelOutputXmlTagCount": 0
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 12,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:evaluate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 10181,
+      "ttsFirstSentenceUncachedBytes": 9972,
+      "ttsFirstSentenceCachedBytes": 10285,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 10285,
+      "responseCharCount": 45,
+      "responseWasCapped": false,
+      "responseSegmentation": {
+        "firstSentence": "Got it—ready to benchmark your voice latency!",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 561.465,
+      "responseTtftMs": 2444.827,
+      "responseTotalMs": 2445.001,
+      "speechToResponseStartMs": 3006.291,
+      "speechToVoiceStartUncachedMs": 3340.467,
+      "speechToVoiceStartCachedMs": 3339.106,
+      "voiceGenerationMs": 290.384,
+      "voiceFirstTokenUncachedMs": 334.001,
+      "voiceFirstTokenCachedMs": 332.64,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 332.652,
+      "endToEndMs": 3963.545,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond in one brief conversational sentence under 140 characters."
+      },
+      "outContext": {
+        "response": "Got it, ready to measure latency—let's start!",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconversation...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ],
+        "modelInput": "initial code: a77e5d08-b5a0-852c-cc85-51cbb8177b71\n<task>Generate dialog and actions for the character VoicebenchAgent.</task>\n\n<providers>\n# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconversational\nbrief\nconcise\nconversational\nbrief\n\n\nYou are VoicebenchAgent. Respond in exactly one brief conversational sentence, under 140 characters.\n# VoicebenchAgent's Capabilities\n\nagent_event - Manages agent event streaming for lifecycle, messages, actions, evaluators, providers, memory, tools, and heartbeats\napproval - Manages approval workflows using the task system\nembedding-generation - Handles asynchronous embedding generation for memories\ntool_policy - Manages tool access po...",
+        "modelOutputRaw": "<response>\n  <thought>Acknowledge the user's benchmark sample with a brief reply.</thought>\n  <providers></providers>\n  <actions>REPLY</actions>\n  <text>Got it, ready to measure latency!</text>\n  <simple>true</simple>\n</response>",
+        "modelOutputClean": "REPLY Got it, ready to measure latency! true",
+        "modelOutputHasThinkingTag": true,
+        "modelOutputHasXml": true,
+        "modelOutputThoughtTagCount": 2,
+        "modelOutputXmlTagCount": 12
+      },
+      "trajectory": {
+        "llmCallCount": 2,
+        "providerAccessCount": 36,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 1542
+          },
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 853
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:evaluate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:multi_step_provider"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:multi_step_provider"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:multi_step_provider"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:multi_step_provider"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:multi_step_provider"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:multi_step_provider"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:multi_step_provider"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:multi_step_provider"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state"
+          }
+        ]
+      },
+      "ttsOutputBytes": 10494,
+      "ttsFirstSentenceUncachedBytes": 10285,
+      "ttsFirstSentenceCachedBytes": 10703,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 10703,
+      "responseCharCount": 45,
+      "responseWasCapped": false,
+      "responseSegmentation": {
+        "firstSentence": "Got it, ready to measure latency—let's start!",
+        "remainder": ""
+      }
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 1107.152,
+      "avgResponseTtftMs": 1445.499,
+      "avgResponseTotalMs": 1448.327,
+      "avgSpeechToResponseStartMs": 2552.651,
+      "avgSpeechToVoiceStartUncachedMs": 2863.846,
+      "avgSpeechToVoiceStartCachedMs": 2823.433,
+      "avgVoiceGenerationMs": 311.969,
+      "avgVoiceFirstTokenUncachedMs": 308.366,
+      "avgVoiceFirstTokenCachedMs": 267.954,
+      "avgTtsCachedPipelineMs": 267.96,
+      "p95TranscriptionMs": 1107.152,
+      "p99TranscriptionMs": 1107.152,
+      "p95ResponseTtftMs": 1445.499,
+      "p99ResponseTtftMs": 1445.499,
+      "p95ResponseTotalMs": 1448.327,
+      "p99ResponseTotalMs": 1448.327,
+      "p95SpeechToResponseStartMs": 2552.651,
+      "p99SpeechToResponseStartMs": 2552.651,
+      "p95SpeechToVoiceStartUncachedMs": 2863.846,
+      "p99SpeechToVoiceStartUncachedMs": 2863.846,
+      "p95SpeechToVoiceStartCachedMs": 2823.433,
+      "p99SpeechToVoiceStartCachedMs": 2823.433,
+      "p95VoiceGenerationMs": 311.969,
+      "p99VoiceGenerationMs": 311.969,
+      "p95VoiceFirstTokenUncachedMs": 308.366,
+      "p99VoiceFirstTokenUncachedMs": 308.366,
+      "p95VoiceFirstTokenCachedMs": 267.954,
+      "p99VoiceFirstTokenCachedMs": 267.954,
+      "p95TtsCachedPipelineMs": 267.96,
+      "p99TtsCachedPipelineMs": 267.96,
+      "firstSentenceCacheHitRate": 0,
+      "transcriptionNormalizedAccuracy": 0,
+      "avgEndToEndMs": 3446.142,
+      "p95EndToEndMs": 3446.142,
+      "p99EndToEndMs": 3446.142
+    },
+    "non-simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 561.465,
+      "avgResponseTtftMs": 2444.827,
+      "avgResponseTotalMs": 2445.001,
+      "avgSpeechToResponseStartMs": 3006.291,
+      "avgSpeechToVoiceStartUncachedMs": 3340.467,
+      "avgSpeechToVoiceStartCachedMs": 3339.106,
+      "avgVoiceGenerationMs": 290.384,
+      "avgVoiceFirstTokenUncachedMs": 334.001,
+      "avgVoiceFirstTokenCachedMs": 332.64,
+      "avgTtsCachedPipelineMs": 332.652,
+      "p95TranscriptionMs": 561.465,
+      "p99TranscriptionMs": 561.465,
+      "p95ResponseTtftMs": 2444.827,
+      "p99ResponseTtftMs": 2444.827,
+      "p95ResponseTotalMs": 2445.001,
+      "p99ResponseTotalMs": 2445.001,
+      "p95SpeechToResponseStartMs": 3006.291,
+      "p99SpeechToResponseStartMs": 3006.291,
+      "p95SpeechToVoiceStartUncachedMs": 3340.467,
+      "p99SpeechToVoiceStartUncachedMs": 3340.467,
+      "p95SpeechToVoiceStartCachedMs": 3339.106,
+      "p99SpeechToVoiceStartCachedMs": 3339.106,
+      "p95VoiceGenerationMs": 290.384,
+      "p99VoiceGenerationMs": 290.384,
+      "p95VoiceFirstTokenUncachedMs": 334.001,
+      "p99VoiceFirstTokenUncachedMs": 334.001,
+      "p95VoiceFirstTokenCachedMs": 332.64,
+      "p99VoiceFirstTokenCachedMs": 332.64,
+      "p95TtsCachedPipelineMs": 332.652,
+      "p99TtsCachedPipelineMs": 332.652,
+      "firstSentenceCacheHitRate": 0,
+      "transcriptionNormalizedAccuracy": 0,
+      "avgEndToEndMs": 3963.545,
+      "p95EndToEndMs": 3963.545,
+      "p99EndToEndMs": 3963.545
+    }
+  }
+}

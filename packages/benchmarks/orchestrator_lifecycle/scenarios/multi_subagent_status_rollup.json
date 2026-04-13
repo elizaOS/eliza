@@ -1,0 +1,14 @@
+{
+  "scenario_id": "multi_subagent_status_rollup",
+  "title": "Multi Subagent Status Rollup",
+  "category": "status",
+  "required_capabilities": ["orchestration.status_reporting"],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "Give me rolled-up status for all active subagents.",
+      "expected_behaviors": ["report_active_subagent_status"]
+    }
+  ]
+}
+

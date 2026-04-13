@@ -1,0 +1,11 @@
+[
+  {
+    "run_id": "run_001",
+    "final_net_worth": "522.10",
+    "profit": "22.10",
+    "simulation_days": 30,
+    "actions_count": 117,
+    "coherence_errors": 108,
+    "error": null
+  }
+]

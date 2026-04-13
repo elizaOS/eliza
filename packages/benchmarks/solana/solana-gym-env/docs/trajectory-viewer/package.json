@@ -1,0 +1,25 @@
+{
+  "name": "trajectory-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "recharts": "^2.10.0",
+    "prismjs": "^1.29.0",
+    "react-markdown": "^9.0.0"
+  },
+  "scripts": {
+    "start": "vite",
+    "build": "vite build && cp public/404.html dist/404.html",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0"
+  }
+}

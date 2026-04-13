@@ -1,0 +1,25 @@
+{
+  "name": "example-computer-use-typescript",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@elizaos/core": "alpha",
+    "@elizaos/plugin-eliza-classic": "alpha",
+    "@elizaos/plugin-openai": "alpha",
+    "@elizaos/plugin-inmemorydb": "alpha",
+    "@elizaos/plugin-mcp": "alpha",
+    "@elizaos/plugin-computeruse": "alpha",
+    "express": "^4.21.2",
+    "uuid": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.22",
+    "@types/node": "^25.0.6",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "dev": "bun --hot server.ts",
+    "start": "bun server.ts"
+  }
+}

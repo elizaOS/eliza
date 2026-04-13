@@ -1,0 +1,14 @@
+{
+  "scenario_id": "check_in_while_running",
+  "title": "Check In While Running",
+  "category": "status",
+  "required_capabilities": ["orchestration.status_reporting"],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "How is it going? Give me a status update.",
+      "expected_behaviors": ["report_active_subagent_status"]
+    }
+  ]
+}
+

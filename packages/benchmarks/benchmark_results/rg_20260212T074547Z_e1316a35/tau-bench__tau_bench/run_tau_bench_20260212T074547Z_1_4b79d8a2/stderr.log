@@ -1,0 +1,3 @@
+# command: /opt/miniconda3/bin/python -m elizaos_tau_bench.cli --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T074547Z_e1316a35/tau-bench__tau_bench/run_tau_bench_20260212T074547Z_1_4b79d8a2/output --model-provider groq --no-trajectories
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/tau-bench
+# run_id: run_tau_bench_20260212T074547Z_1_4b79d8a2
