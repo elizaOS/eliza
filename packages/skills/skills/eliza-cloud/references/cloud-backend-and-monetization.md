@@ -52,7 +52,7 @@ Cloud already exposes:
 - payment methods
 - billing history
 
-In Milady, billing is intended to stay inside the app where possible, with hosted URLs treated as fallback.
+In Eliza, billing is intended to stay inside the app where possible, with hosted URLs treated as fallback.
 
 ## Current App Monetization Model In This Repo
 

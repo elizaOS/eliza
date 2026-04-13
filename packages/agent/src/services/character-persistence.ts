@@ -1,7 +1,7 @@
 import { logger, Service, type IAgentRuntime } from "@elizaos/core";
 import { loadElizaConfig, saveElizaConfig, type ElizaConfig } from "../config/config.js";
 
-export const CHARACTER_PERSISTENCE_SERVICE = "milady_character_persistence";
+export const CHARACTER_PERSISTENCE_SERVICE = "eliza_character_persistence";
 
 type RuntimeCharacterLike = {
   name?: string;

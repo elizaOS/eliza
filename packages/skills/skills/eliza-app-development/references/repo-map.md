@@ -2,7 +2,7 @@
 
 ## What this repository is
 
-This checkout is an **elizaOS application**: runtime, UI, connectors, and Cloud hooks bundled as the **Milady** product (CLI `milady`, user-facing name Milady). Same stack patterns apply to other eliza apps; this repo is one concrete implementation.
+This checkout is an **elizaOS application**: runtime, UI, connectors, and Cloud hooks bundled as the **Eliza** product (CLI `eliza`, user-facing name Eliza). Same stack patterns apply to other eliza apps; this repo is one concrete implementation.
 
 It combines:
 
@@ -54,7 +54,7 @@ Useful narrower commands:
 ```bash
 bun run dev
 bun run dev:desktop
-bun run milady ...
+bun run eliza ...
 bun run test:e2e
 bun run test:coverage
 ```
@@ -67,4 +67,4 @@ bun run test:coverage
 
 ## Default skill seeding
 
-Shipped skills are bundled in `@elizaos/skills` and are seeded into the state-dir skills folder (e.g. `~/.milady/skills` when `ELIZA_NAMESPACE=milady`) by Milady’s `scripts/ensure-skills.mjs`. They are default agent knowledge, not optional extras.
+Shipped skills are bundled in `@elizaos/skills` and are seeded into the state-dir skills folder (e.g. `~/.eliza/skills` when `ELIZA_NAMESPACE=eliza`) by Eliza’s `scripts/ensure-skills.mjs`. They are default agent knowledge, not optional extras.

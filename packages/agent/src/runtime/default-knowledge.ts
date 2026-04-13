@@ -249,7 +249,7 @@ async function listFragmentIdsForDocument(
     const batch = await runtime.getMemories({
       tableName: "knowledge",
       roomId: runtime.agentId,
-      count: KNOWLEDGE_BATCH_SIZE,
+      limit: KNOWLEDGE_BATCH_SIZE,
       start: offset,
     });
 

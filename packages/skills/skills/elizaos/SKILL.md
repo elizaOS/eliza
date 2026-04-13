@@ -5,7 +5,7 @@ description: "Use when the task involves elizaOS core runtime concepts, plugins,
 
 # elizaOS
 
-elizaOS is the plugin-based agent runtime that Milady builds on top of.
+elizaOS is the plugin-based agent runtime that Eliza builds on top of.
 
 ## Read These References First
 
@@ -17,7 +17,7 @@ elizaOS is the plugin-based agent runtime that Milady builds on top of.
 - a change touches `eliza/`
 - you need to reason about `AgentRuntime`
 - you are implementing or debugging actions, providers, evaluators, services, or model handlers
-- you need the correct plugin lifecycle instead of guessing from Milady wrappers
+- you need the correct plugin lifecycle instead of guessing from Eliza wrappers
 
 ## Working Rules
 

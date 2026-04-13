@@ -1,0 +1,106 @@
+PODS:
+  - Capacitor (8.3.0):
+    - CapacitorCordova
+  - CapacitorApp (8.1.0):
+    - Capacitor
+  - CapacitorCordova (8.3.0)
+  - CapacitorKeyboard (8.0.0):
+    - Capacitor
+  - CapacitorPreferences (8.0.1):
+    - Capacitor
+  - CapacitorStatusBar (8.0.2):
+    - Capacitor
+  - MiladyaiCapacitorAgent (1.0.0):
+    - Capacitor
+  - MiladyaiCapacitorCamera (1.0.0):
+    - Capacitor
+  - MiladyaiCapacitorCanvas (1.0.0):
+    - Capacitor
+  - MiladyaiCapacitorGateway (1.0.0):
+    - Capacitor
+  - MiladyaiCapacitorLocation (1.0.0):
+    - Capacitor
+  - MiladyaiCapacitorMobileSignals (1.0.0):
+    - Capacitor
+  - MiladyaiCapacitorScreencapture (1.0.0):
+    - Capacitor
+  - MiladyaiCapacitorSwabble (1.0.0):
+    - Capacitor
+  - MiladyaiCapacitorTalkmode (1.0.0):
+    - Capacitor
+  - MiladyaiCapacitorWebsiteblocker (1.0.0):
+    - Capacitor
+
+DEPENDENCIES:
+  - "Capacitor (from `../../../../node_modules/.bun/@capacitor+ios@8.3.0+db0c1b46371b240c/node_modules/@capacitor/ios`)"
+  - "CapacitorApp (from `../../../../node_modules/.bun/@capacitor+app@8.1.0+db0c1b46371b240c/node_modules/@capacitor/app`)"
+  - "CapacitorCordova (from `../../../../node_modules/.bun/@capacitor+ios@8.3.0+db0c1b46371b240c/node_modules/@capacitor/ios`)"
+  - "CapacitorKeyboard (from `../../../../node_modules/.bun/@capacitor+keyboard@8.0.0+db0c1b46371b240c/node_modules/@capacitor/keyboard`)"
+  - "CapacitorPreferences (from `../../../../node_modules/.bun/@capacitor+preferences@8.0.1+db0c1b46371b240c/node_modules/@capacitor/preferences`)"
+  - "CapacitorStatusBar (from `../../../../node_modules/.bun/@capacitor+status-bar@8.0.2+db0c1b46371b240c/node_modules/@capacitor/status-bar`)"
+  - MiladyaiCapacitorAgent (from `../../../../eliza/packages/native-plugins/agent`)
+  - MiladyaiCapacitorCamera (from `../../../../eliza/packages/native-plugins/camera`)
+  - MiladyaiCapacitorCanvas (from `../../../../eliza/packages/native-plugins/canvas`)
+  - MiladyaiCapacitorGateway (from `../../../../eliza/packages/native-plugins/gateway`)
+  - MiladyaiCapacitorLocation (from `../../../../eliza/packages/native-plugins/location`)
+  - MiladyaiCapacitorMobileSignals (from `../../../../eliza/packages/native-plugins/mobile-signals`)
+  - MiladyaiCapacitorScreencapture (from `../../../../eliza/packages/native-plugins/screencapture`)
+  - MiladyaiCapacitorSwabble (from `../../../../eliza/packages/native-plugins/swabble`)
+  - MiladyaiCapacitorTalkmode (from `../../../../eliza/packages/native-plugins/talkmode`)
+  - MiladyaiCapacitorWebsiteblocker (from `../../../../eliza/packages/native-plugins/websiteblocker`)
+
+EXTERNAL SOURCES:
+  Capacitor:
+    :path: "../../../../node_modules/.bun/@capacitor+ios@8.3.0+db0c1b46371b240c/node_modules/@capacitor/ios"
+  CapacitorApp:
+    :path: "../../../../node_modules/.bun/@capacitor+app@8.1.0+db0c1b46371b240c/node_modules/@capacitor/app"
+  CapacitorCordova:
+    :path: "../../../../node_modules/.bun/@capacitor+ios@8.3.0+db0c1b46371b240c/node_modules/@capacitor/ios"
+  CapacitorKeyboard:
+    :path: "../../../../node_modules/.bun/@capacitor+keyboard@8.0.0+db0c1b46371b240c/node_modules/@capacitor/keyboard"
+  CapacitorPreferences:
+    :path: "../../../../node_modules/.bun/@capacitor+preferences@8.0.1+db0c1b46371b240c/node_modules/@capacitor/preferences"
+  CapacitorStatusBar:
+    :path: "../../../../node_modules/.bun/@capacitor+status-bar@8.0.2+db0c1b46371b240c/node_modules/@capacitor/status-bar"
+  MiladyaiCapacitorAgent:
+    :path: "../../../../eliza/packages/native-plugins/agent"
+  MiladyaiCapacitorCamera:
+    :path: "../../../../eliza/packages/native-plugins/camera"
+  MiladyaiCapacitorCanvas:
+    :path: "../../../../eliza/packages/native-plugins/canvas"
+  MiladyaiCapacitorGateway:
+    :path: "../../../../eliza/packages/native-plugins/gateway"
+  MiladyaiCapacitorLocation:
+    :path: "../../../../eliza/packages/native-plugins/location"
+  MiladyaiCapacitorMobileSignals:
+    :path: "../../../../eliza/packages/native-plugins/mobile-signals"
+  MiladyaiCapacitorScreencapture:
+    :path: "../../../../eliza/packages/native-plugins/screencapture"
+  MiladyaiCapacitorSwabble:
+    :path: "../../../../eliza/packages/native-plugins/swabble"
+  MiladyaiCapacitorTalkmode:
+    :path: "../../../../eliza/packages/native-plugins/talkmode"
+  MiladyaiCapacitorWebsiteblocker:
+    :path: "../../../../eliza/packages/native-plugins/websiteblocker"
+
+SPEC CHECKSUMS:
+  Capacitor: 22e541237135648c9aa736232bb4d2eec35fddcb
+  CapacitorApp: 449ffe26375e96f8aaaee625ac6e01e5c57c8650
+  CapacitorCordova: 2e1e2bb93b2f365309dc4ff18b72b9a69a7814a9
+  CapacitorKeyboard: d7868c079a4d5277a3deca27a10a488fcbbb8b69
+  CapacitorPreferences: cca2021f386efb75947c850334447d9ff22b14f1
+  CapacitorStatusBar: 01d5763b4ed720de5ce2edbc938de6a98f4c8f32
+  MiladyaiCapacitorAgent: d1a76bd65d1fdb5384966ddf6d0e652e278ea25d
+  MiladyaiCapacitorCamera: ba4e573db05084fc02c976fe57866ea29aec0e63
+  MiladyaiCapacitorCanvas: d57a4b5340d25e7b6d462532e35d27c0ecea69d1
+  MiladyaiCapacitorGateway: 65743f10dd4696b39d6b3142f27a87ecc996fd1f
+  MiladyaiCapacitorLocation: 99ccc716f788d741c0a5425cde9b7008a3616c7d
+  MiladyaiCapacitorMobileSignals: eb15ad15197cadc82c0df25f64ca03dd1cade99d
+  MiladyaiCapacitorScreencapture: 3df3d7e94ac6ba7f69c63152ae18a46bf909c0d7
+  MiladyaiCapacitorSwabble: 793036783c59e69a84866dca0841195dbb2c8d83
+  MiladyaiCapacitorTalkmode: fe375718c8defd943b1ce3ff7dfd8af9864325c9
+  MiladyaiCapacitorWebsiteblocker: 5ed6309dacf6ff341dccdbe6c140baeae50e65a4
+
+PODFILE CHECKSUM: f6dbc7503f24e745882e02a877aa99ebe327853a
+
+COCOAPODS: 1.16.2

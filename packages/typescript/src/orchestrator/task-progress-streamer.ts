@@ -22,7 +22,7 @@
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { readLatestAssistantFromWorkdir } from "./claude-jsonl-completion-watcher";
+import { readLatestAssistantFromWorkdir } from "./claude-jsonl-completion-watcher.ts";
 
 const HEARTBEAT_AFTER_MS = 45_000;
 

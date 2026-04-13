@@ -7,7 +7,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AgentRuntime, Route } from "@elizaos/core";
 
-const EXPRESS_SHIM = Symbol("miladyExpressResponseShim");
+const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
 export function matchPluginRoutePath(
   pattern: string,

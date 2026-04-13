@@ -46,7 +46,6 @@ const ROLE_GATED_PLUGINS: Readonly<Record<string, RoleGate>> = {
 
   // Orchestration — spawns agents, PTY sessions, workspaces
   "agent-orchestrator": "admin",
-  "@milaidy/plugin-coding-agent": "admin",
 
   // Secrets — sets env vars, manages encrypted secrets
   "@elizaos/plugin-secrets-manager": "owner",
@@ -97,7 +96,7 @@ const ACTION_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
   MANAGE_ISSUES: "owner",
   CREATE_TASK: "owner",
 
-  // --- plugin-coding-agent: same pattern ---
+  // --- orchestrator coding-agent actions ---
   SPAWN_CODING_AGENT: "owner",
   SEND_TO_CODING_AGENT: "owner",
   STOP_CODING_AGENT: "owner",

@@ -8,7 +8,7 @@ import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../test/helpers/http.ts";
+} from "../../../../../test/helpers/http.ts";
 
 export const LIVE_TESTS_ENABLED =
   process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
@@ -16,8 +16,10 @@ export const LIVE_PROVIDER_OVERRIDE =
   process.env.ELIZA_LIVE_PROVIDER?.trim().toLowerCase() ?? "";
 export const LIVE_CHAT_TEST_TIMEOUT_MS = 300_000;
 export const LIVE_RUNTIME_BOOT_TIMEOUT_MS = 180_000;
+/** Milady monorepo root (parent of `eliza/`). */
 export const REPO_ROOT = path.resolve(
   import.meta.dirname,
+  "..",
   "..",
   "..",
   "..",

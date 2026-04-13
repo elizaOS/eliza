@@ -1,20 +1,17 @@
-declare module "@elizaos/plugin-coding-agent";
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-agent-skills";
 declare module "@elizaos/plugin-elizacloud";
 declare module "@elizaos/plugin-pi-ai";
 declare module "@elizaos/plugin-commands";
-declare module "@elizaos/plugin-secrets-manager";
+// plugin-secrets-manager, plugin-experience, plugin-personality, plugin-trust:
+// now built-in capabilities in @elizaos/core (no longer external modules)
 declare module "@elizaos/signal-native";
 declare module "qrcode";
 declare module "@elizaos/plugin-cron";
-declare module "@elizaos/plugin-experience";
 declare module "@elizaos/plugin-local-embedding";
 declare module "@elizaos/plugin-ollama";
 declare module "@elizaos/plugin-openai";
-declare module "@elizaos/plugin-personality";
 declare module "@elizaos/plugin-shell";
-declare module "@elizaos/plugin-trust";
 declare module "abitype" {
   export type TypedData = Record<
     string,
@@ -44,13 +41,10 @@ declare module "abitype" {
 declare module "@elizaos/plugin-cron";
 declare module "@elizaos/plugin-edge-tts";
 declare module "@elizaos/plugin-edge-tts/node";
-declare module "@elizaos/plugin-experience";
 declare module "@elizaos/plugin-local-embedding";
 declare module "@elizaos/plugin-ollama";
 declare module "@elizaos/plugin-openai";
-declare module "@elizaos/plugin-personality";
 declare module "@elizaos/plugin-shell";
-declare module "@elizaos/plugin-trust";
 
 // `@elizaos/core/roles` is a subpath that the local `./eliza/`
 // checkout exposes via the `@elizaos/core/*` paths mapping, but the
@@ -190,43 +184,8 @@ declare module "@elizaos/core/roles" {
 }
 
 
-declare module "@elizaos/plugin-plugin-manager" {
-  import type { IAgentRuntime, Plugin } from "@elizaos/core";
-
-  export class CoreManagerService {
-    constructor(runtime: IAgentRuntime);
-  }
-
-  export class PluginManagerService {
-    constructor(runtime: IAgentRuntime);
-  }
-
-  export const pluginRegistry: Record<string, unknown>;
-  export const types: Record<string, unknown>;
-  export const pluginManagerPlugin: Plugin;
-
-  export default pluginManagerPlugin;
-}
-
-declare module "@elizaos/plugin-clipboard" {
-  import type { IAgentRuntime, Memory } from "@elizaos/core";
-
-  export function maybeStoreTaskClipboardItem(
-    runtime: IAgentRuntime,
-    message: Memory,
-    item: Record<string, unknown>,
-  ): Promise<{
-    requested?: boolean;
-    stored?: boolean;
-    replaced?: boolean;
-    reason?: string;
-    item?: { id: string; title: string };
-    snapshot?: { items: Array<unknown>; maxItems: number };
-  }>;
-
-  const plugin: Plugin;
-  export default plugin;
-}
+// plugin-plugin-manager and plugin-clipboard are now built-in capabilities
+// in @elizaos/core — no longer need ambient module declarations.
 
 declare module "@elizaos/plugin-sql" {
   import type { Plugin } from "@elizaos/core";

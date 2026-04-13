@@ -16,7 +16,7 @@ html.eliza-electrobun-frameless {
    * Extra top inset so the first interactive row (shell toggle, header) sits below
    * the traffic lights — hiddenInset draws them over the web view with no title bar.
    */
-  --milady-macos-frame-top-inset: 26px;
+  --eliza-macos-frame-top-inset: 26px;
 }
 
 html.eliza-electrobun-frameless body {

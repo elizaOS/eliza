@@ -58,34 +58,6 @@ export async function resolveOnchainPreference({
     };
   }
 
-  // ── Non-interactive: default on, auto-install Foundry if missing ────────
-  if (!isTTY || !promptFn) {
-    let anvilAvailable = whichFn("anvil") !== null;
-    if (!anvilAvailable && installFn) {
-      anvilAvailable = await installFn();
-    }
-    if (!anvilAvailable) {
-      return { onchainEnabled: false, anchorRequested: false };
-    }
-    return { onchainEnabled: true, anchorRequested: true };
-  }
-
-  // ── Interactive flow ─────────────────────────────────────────────────────
-  let anvilAvailable = whichFn("anvil") !== null;
-
-  if (!anvilAvailable) {
-    const wantsInstall = await promptFn(
-      "Anvil not found. Install Foundry now? (y/N) ",
-      false,
-    );
-    if (wantsInstall && installFn) {
-      anvilAvailable = await installFn();
-    }
-  }
-
-  if (!anvilAvailable) {
-    return { onchainEnabled: false, anchorRequested: false };
-  }
-
-  return { onchainEnabled: true, anchorRequested: true };
+  // ── Default: disabled. Use ELIZA_DEV_ONCHAIN=1 to opt in. ───────────────
+  return { onchainEnabled: false, anchorRequested: false };
 }

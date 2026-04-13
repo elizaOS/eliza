@@ -69,6 +69,7 @@ import {
   getPgliteErrorCode,
   createPgliteInitError,
 } from "./pglite-error-compat";
+import * as pluginAppCompanion from "@elizaos/app-companion/plugin";
 import * as pluginAppLifeops from "@elizaos/app-lifeops";
 import {
   isElizaSettingsDebugEnabled,
@@ -136,11 +137,10 @@ import rolesPlugin from "./roles.js";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";
 
 const require = createRequire(import.meta.url);
-// Agent orchestrator is embedded in @elizaos/core; Eliza-specific wiring lives
-// in agent-orchestrator-compat (re-exports / patches) and is loaded below.
+// Agent orchestrator ships as @elizaos/core/orchestrator (PTY, workspaces, patched routes).
 let pluginAgentOrchestrator: unknown = null;
 try {
-  pluginAgentOrchestrator = require("./agent-orchestrator-compat");
+  pluginAgentOrchestrator = require("@elizaos/core/orchestrator");
 } catch {
   pluginAgentOrchestrator = null;
 }
@@ -162,38 +162,9 @@ try {
 } catch {
   pluginCommands = null;
 }
-// Keep plugin-plugin-manager behind a guarded runtime require too. Some
-// published alpha builds resolve through package.json but do not ship
-// dist/index.js, which breaks CLI/bootstrap in published-only CI.
-let pluginPluginManager: unknown = null;
-try {
-  pluginPluginManager = require("@elizaos/plugin-plugin-manager");
-} catch {
-  pluginPluginManager = null;
-}
-// Keep plugin-secrets-manager behind a guarded runtime require too. Some
-// published alpha builds resolve through package.json but do not ship
-// dist/index.js, which breaks CLI/bootstrap in published-only CI.
-let pluginSecretsManager: unknown = null;
-try {
-  pluginSecretsManager = require("@elizaos/plugin-secrets-manager");
-} catch (error) {
-  logger.warn(
-    `[eliza] Optional plugin @elizaos/plugin-secrets-manager unavailable: ${formatError(error)}`,
-  );
-  pluginSecretsManager = null;
-}
-// Keep plugin-trust behind a guarded runtime require. Bundled but optional at
-// runtime (OPTIONAL_CORE_PLUGINS); published builds may omit the dist entry.
-let pluginTrust: unknown = null;
-try {
-  pluginTrust = require("@elizaos/plugin-trust");
-} catch (error) {
-  logger.warn(
-    `[eliza] Optional plugin @elizaos/plugin-trust unavailable: ${formatError(error)}`,
-  );
-  pluginTrust = null;
-}
+// plugin-plugin-manager, plugin-secrets-manager, and plugin-trust are now
+// built-in core capabilities in @elizaos/core. Enable via character settings:
+// ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST.
 // Keep plugin-cron behind a guarded runtime require for the same reason. Some
 // published alpha builds resolve through package.json but are missing the
 // shipped dist/index.js entry, which breaks CLI bootstrap before help/version.
@@ -230,15 +201,8 @@ try {
 } catch {
   pluginOpenai = null;
 }
-// Keep plugin-personality behind a guarded runtime require too. Some published
-// alpha builds resolve through package.json but do not ship the runtime entry,
-// which breaks live startup smokes before the API server is ready.
-let pluginPersonality: unknown = null;
-try {
-  pluginPersonality = require("@elizaos/plugin-personality");
-} catch {
-  pluginPersonality = null;
-}
+// plugin-personality is now built into @elizaos/core advanced-capabilities.
+// Enabled when advancedCapabilities: true.
 
 type SignalShutdownContext = {
   getRuntime: () => AgentRuntime;
@@ -321,17 +285,13 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
 export const STATIC_ELIZA_PLUGINS: Record<string, unknown> = {
   "@elizaos/plugin-sql": pluginSql,
   "@elizaos/plugin-local-embedding": pluginLocalEmbedding,
-  ...(pluginSecretsManager
-    ? { "@elizaos/plugin-secrets-manager": pluginSecretsManager }
-    : {}),
+  // secrets-manager: now built-in core capability (ENABLE_SECRETS_MANAGER)
   ...(pluginAgentOrchestrator
     ? { "agent-orchestrator": pluginAgentOrchestrator }
     : {}),
   ...(pluginCron ? { "@elizaos/plugin-cron": pluginCron } : {}),
   ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
-  ...(pluginPluginManager
-    ? { "@elizaos/plugin-plugin-manager": pluginPluginManager }
-    : {}),
+  // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
   "@elizaos/plugin-agent-skills": pluginAgentSkills,
   ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
   "@elizaos/plugin-pdf": pluginPdf,
@@ -341,12 +301,11 @@ export const STATIC_ELIZA_PLUGINS: Record<string, unknown> = {
   ...(pluginElizacloud
     ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
     : {}),
-  ...(pluginTrust ? { "@elizaos/plugin-trust": pluginTrust } : {}),
+  // trust: now built-in core capability (ENABLE_TRUST)
   "@elizaos/app-lifeops": pluginAppLifeops,
+  "@elizaos/app-companion": pluginAppCompanion,
   "@elizaos/plugin-discord-local": discordLocalPlugin,
-  ...(pluginPersonality
-    ? { "@elizaos/plugin-personality": pluginPersonality }
-    : {}),
+  // personality: now built-in advanced capability (advancedCapabilities: true)
 };
 
 // NODE_PATH so dynamic plugin imports (e.g. @elizaos/plugin-*) resolve.

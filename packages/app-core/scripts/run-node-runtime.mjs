@@ -18,7 +18,7 @@ export function isKnownUnstableBunOnLinux({ platform, bunVersion }) {
  * 2) Safety fallback for known unstable Bun/Linux combo
  * 3) Default to bun
  */
-export function chooseMiladyRuntime({
+export function chooseElizaRuntime({
   requestedRuntime,
   platform,
   bunVersion,

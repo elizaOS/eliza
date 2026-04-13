@@ -9,7 +9,7 @@
  * natural-language directives, without leaving the Apps tab.
  *
  * Data source: `run.session.telemetry`, populated by
- * `plugins/app-scape/src/routes.ts::buildScapeSessionState` from the
+ * `apps/app-scape/src/routes.ts::buildScapeSessionState` from the
  * ScapeGameService's perception, journal, and recent event log. The
  * telemetry contract is intentionally shallow — see the `TelemetryShape`
  * type below for what we read.
@@ -412,7 +412,7 @@ function formatHp(agent: ScapeAgentSelf | null): string {
   return `${agent.hp} / ${agent.maxHp}`;
 }
 
-// Real SdkConnectionStatus values from plugins/app-scape/src/sdk/index.ts:
+// Real SdkConnectionStatus values from apps/app-scape/src/sdk/index.ts:
 // idle | connecting | auth-pending | spawn-pending | connected | reconnecting
 // | closed | failed
 function connectionTone(status: string | undefined): SurfaceTone {

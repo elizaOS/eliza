@@ -798,7 +798,7 @@ async function maybeBackfillTrajectoryFromConversationMemory(
     const memories = await runtime.getMemories({
       roomId,
       tableName: "messages",
-      count: 100,
+      limit: 100,
     });
     if (!Array.isArray(memories) || memories.length === 0) {
       return traj;

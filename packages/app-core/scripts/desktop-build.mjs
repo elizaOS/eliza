@@ -542,7 +542,7 @@ function packageDesktopBuild() {
     runBun(["scripts/local-adhoc-sign-macos.ts", appBundlePath], {
       cwd: ELECTROBUN_DIR,
       env: packageEnv,
-      label: `Applying local ad-hoc Milady signing (${path.basename(appBundlePath)})`,
+      label: `Applying local ad-hoc Eliza signing (${path.basename(appBundlePath)})`,
     });
   }
 

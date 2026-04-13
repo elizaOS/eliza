@@ -17,11 +17,11 @@ import {
   useState,
 } from "react";
 import { client } from "../../../../api";
-import { TERMINAL_STATUSES } from "../../../../coding";
+import { TERMINAL_STATUSES } from "@elizaos/app-coding";
 import type { ActivityEvent } from "../../../../hooks/useActivityEvents";
 import { useApp, usePtySessions } from "../../../../state";
 import { getRunAttentionReasons } from "../../../apps/RunningAppsPanel";
-import { PULSE_STATUSES, STATUS_DOT } from "../../../coding/pty-status-dots";
+import { PULSE_STATUSES, STATUS_DOT } from "@elizaos/app-coding/pty-status-dots";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import type {
   ChatSidebarWidgetDefinition,

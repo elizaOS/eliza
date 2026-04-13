@@ -4,10 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import {
-  chooseMiladyRuntime,
+  chooseElizaRuntime,
   resolveRuntimeExecPath,
 } from "./run-node-runtime.mjs";
-import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
+import { syncElizaEnvAliases } from "../../../../scripts/lib/sync-eliza-env-aliases.mjs";
 
 const args = process.argv.slice(2);
 const cwd = process.cwd();
@@ -39,7 +39,7 @@ syncElizaEnvAliases();
 
 const env = { ...process.env };
 if (!env.ELIZA_NAMESPACE) {
-  env.ELIZA_NAMESPACE = "milady";
+  env.ELIZA_NAMESPACE = "eliza";
 }
 // WHY: The child runs dist/eliza.js, which dynamic-imports @elizaos/plugin-*. Node does not
 // use cwd to resolve package names for import("pkg"); we must set NODE_PATH to repo root
@@ -159,7 +159,7 @@ const RESTART_WINDOW_MS = 60_000;
 const restartTimestamps = [];
 
 const runNode = () => {
-  const { runtime, warning } = chooseMiladyRuntime({
+  const { runtime, warning } = chooseElizaRuntime({
     requestedRuntime: process.env.ELIZA_RUNTIME,
     platform: process.platform,
     bunVersion: process.versions?.bun,
@@ -173,7 +173,7 @@ const runNode = () => {
     platform: process.platform,
     explicitNodePath: process.env.ELIZA_NODE_PATH,
   });
-  const nodeProcess = spawn(execPath, ["milady.mjs", ...args], {
+  const nodeProcess = spawn(execPath, ["eliza.mjs", ...args], {
     cwd,
     env,
     stdio: "inherit",

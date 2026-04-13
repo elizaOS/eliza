@@ -131,7 +131,7 @@ Lifecycle suite example:
   --extra '{"per_benchmark":{"orchestrator_lifecycle":{"max_scenarios":12,"strict":true}}}'
 ```
 
-Replay scoring example (from normalized Milady capture artifacts):
+Replay scoring example (from normalized Eliza capture artifacts):
 
 ```bash
 /opt/miniconda3/bin/python -m benchmarks.orchestrator run \

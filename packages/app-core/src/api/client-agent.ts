@@ -24,7 +24,7 @@ import {
   type WebsiteBlockerPermissionResult,
   type WebsiteBlockerStatusResult,
 } from "../bridge/native-plugins";
-import { TERMINAL_STATUSES } from "../coding";
+import { TERMINAL_STATUSES } from "@elizaos/app-coding";
 import { ElizaClient } from "./client-base";
 import type {
   AgentAutomationMode,

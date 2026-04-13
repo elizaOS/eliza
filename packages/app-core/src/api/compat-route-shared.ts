@@ -8,7 +8,7 @@ import {
   normalizeOnboardingProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "../contracts/onboarding";
+} from "@elizaos/shared/contracts/onboarding";
 import { sendJsonError as sendJsonErrorResponse } from "./response";
 
 const MAX_BODY_BYTES = 1_048_576;

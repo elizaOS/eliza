@@ -1187,7 +1187,7 @@ async function loadLatestRoomMemory(
     const memories = await runtime.getMemories({
       tableName: "messages",
       roomId,
-      count: 10,
+      limit: 10,
       unique: false,
     });
     if (!Array.isArray(memories) || memories.length === 0) {
@@ -1214,7 +1214,7 @@ async function augmentRoomsFromRecentMemories(
 
   const recentMemories = await runtime.getMemories({
     agentId: runtime.agentId,
-    count: ORPHAN_ROOM_MEMORY_SCAN_LIMIT,
+    limit: ORPHAN_ROOM_MEMORY_SCAN_LIMIT,
     tableName: "messages",
     unique: false,
   });
@@ -1274,7 +1274,7 @@ async function loadInboxMessages(
     memories = await runtime.getMemories({
       tableName: "messages",
       roomId,
-      count: limit * PER_ROOM_OVERFETCH_MULTIPLIER,
+      limit: limit * PER_ROOM_OVERFETCH_MULTIPLIER,
       unique: false,
     });
   } else {

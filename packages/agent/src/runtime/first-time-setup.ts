@@ -153,7 +153,7 @@ export async function runFirstTimeSetup(config: ElizaConfig): Promise<ElizaConfi
   const clack = await loadClack();
 
   // ── Step 1: Welcome ────────────────────────────────────────────────────
-  clack.intro("WELCOME TO MILADY!");
+  clack.intro("WELCOME TO ELIZA!");
 
   // ── Step 2: Name ───────────────────────────────────────────────────────
   const randomNames = pickRandomNames(4);

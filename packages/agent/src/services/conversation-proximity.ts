@@ -50,7 +50,7 @@ export async function findProximityPairs(
   const recentMessages = await runtime.getMemories({
     roomId,
     tableName: "messages",
-    count: PROXIMITY_WINDOW_SIZE + 1, // +1 because the current msg may be included
+    limit: PROXIMITY_WINDOW_SIZE + 1, // +1 because the current msg may be included
   });
 
   const now = message.createdAt ?? Date.now();

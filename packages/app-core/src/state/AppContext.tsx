@@ -50,7 +50,7 @@ import {
   invokeDesktopBridgeRequestWithTimeout,
   isElectrobunRuntime,
 } from "../bridge";
-import { mapServerTasksToSessions } from "../coding";
+import { mapServerTasksToSessions } from "@elizaos/app-coding";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import {
   dispatchAppEmoteEvent,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Milady adapter for OpenClaw Benchmark suite.
+"""Eliza adapter for OpenClaw Benchmark suite.
 
 This adapter supports TWO scoring modes:
 
@@ -32,14 +32,14 @@ import time
 from pathlib import Path
 
 # Add parent directory to path for milady_adapter imports
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "milady-adapter"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "eliza-adapter"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
     from milady_adapter import MiladyClient, MiladyServerManager
-    MILADY_AVAILABLE = True
+    ELIZA_AVAILABLE = True
 except ImportError:
-    MILADY_AVAILABLE = False
+    ELIZA_AVAILABLE = False
 
 # Try to import the new execution-based runner
 try:
@@ -53,7 +53,7 @@ except ImportError:
 # Paths & Configuration
 # ---------------------------------------------------------------------------
 BENCHMARK_DIR = Path(__file__).resolve().parent
-MILADY_URL = os.environ.get("MILADY_BENCH_URL", "http://localhost:3939")
+ELIZA_URL = os.environ.get("ELIZA_BENCH_URL", "http://localhost:3939")
 
 # Legacy conceptual tasks - only used in conceptual mode
 CONCEPTUAL_TASKS = {
@@ -215,7 +215,7 @@ class ConceptualBenchRunner:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run OpenClaw benchmark with milady",
+        description="Run OpenClaw benchmark with eliza",
         epilog="""
 Scoring modes:
   execution   - RECOMMENDED: Actually executes code and validates results
@@ -240,7 +240,7 @@ Scoring modes:
     parser.add_argument("--docker", action="store_true",
                         help="Use Docker for sandbox isolation (execution mode)")
     parser.add_argument("--start-server", action="store_true",
-                        help="Auto-start milady benchmark server (conceptual mode)")
+                        help="Auto-start eliza benchmark server (conceptual mode)")
 
     args = parser.parse_args()
 
@@ -296,17 +296,17 @@ Scoring modes:
         client = None
         mgr = None
 
-        if MILADY_AVAILABLE:
+        if ELIZA_AVAILABLE:
             if args.start_server:
                 mgr = MiladyServerManager()
                 mgr.start()
                 client = mgr.client
             else:
-                client = MiladyClient(MILADY_URL)
+                client = MiladyClient(ELIZA_URL)
                 try:
                     client.wait_until_ready(timeout=10)
                 except TimeoutError:
-                    print("Warning: Milady server not available, running in standalone mode")
+                    print("Warning: Eliza server not available, running in standalone mode")
                     client = None
 
         runner = ConceptualBenchRunner(client)

@@ -63,9 +63,9 @@ At plugin registration:
 3. routes are namespaced
 4. services are initialized asynchronously
 
-## Milady Context
+## Eliza Context
 
-In this repo, Milady adds product behavior around elizaOS, but the underlying runtime composition rules still come from elizaOS. When a Milady feature behaves strangely, check whether the root cause is actually in:
+In this repo, Eliza adds product behavior around elizaOS, but the underlying runtime composition rules still come from elizaOS. When a Eliza feature behaves strangely, check whether the root cause is actually in:
 
 - provider ordering
 - action planning

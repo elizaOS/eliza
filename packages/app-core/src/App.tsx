@@ -26,7 +26,6 @@ import {
   BugReportModal,
   CharacterEditor,
   ChatView,
-  CompanionShell,
   ConnectionFailedBanner,
   ConnectionLostOverlay,
   ConversationsSidebar,
@@ -40,7 +39,6 @@ import {
   HeartbeatsDesktopShell,
   HeartbeatsView,
   InventoryView,
-  LifeOpsPageView,
   LogsPageView,
   MemoryViewerView,
   PluginsPageView,
@@ -55,10 +53,12 @@ import {
   SystemWarningBanner,
   TrajectoriesView,
 } from "./app-shell-components";
+import { CompanionShell } from "@elizaos/app-companion";
+import { LifeOpsPageView } from "@elizaos/app-lifeops";
 // Register overlay apps (self-register on import)
 import "@elizaos/app-companion/register";
-import "./components/vincent/vincent-app";
-import "./components/shopify/shopify-app";
+import "@elizaos/app-vincent/register";
+import "@elizaos/app-shopify/register";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
 import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
@@ -303,6 +303,38 @@ export function App() {
 
   useStreamPopoutNavigation(setTab);
   useLifeOpsActivitySignals(lifeOpsSignalsEnabled);
+
+  useEffect(() => {
+    if (startupCoordinator.phase !== "ready") return;
+    if (backendConnection?.state !== "connected") return;
+
+    const report = () => {
+      void fetch("/api/apps/overlay-presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appName: activeOverlayApp }),
+      }).catch(() => {
+        /* ignore */
+      });
+    };
+
+    report();
+    const intervalId = window.setInterval(report, 25_000);
+    return () => {
+      window.clearInterval(intervalId);
+      void fetch("/api/apps/overlay-presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appName: null }),
+      }).catch(() => {
+        /* ignore */
+      });
+    };
+  }, [
+    activeOverlayApp,
+    backendConnection?.state,
+    startupCoordinator.phase,
+  ]);
 
   const [customActionsPanelOpen, setCustomActionsPanelOpen] = useState(false);
   const [customActionsEditorOpen, setCustomActionsEditorOpen] = useState(false);

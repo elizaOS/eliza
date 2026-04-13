@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Development script that starts:
- * 1. The Milady dev server (\[(eliza|milady)(?:-api)?\]|runtime + API on port 31337) with restart support
+ * 1. The Eliza dev server (\[(eliza|eliza)(?:-api)?\]|runtime + API on port 31337) with restart support
  * 2. The vite app dev server (port 2138, proxies /api and /ws to 31337)
  *
  * Automatically kills zombie processes on both ports before starting.
@@ -64,7 +64,7 @@ const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
 const appName = appArgMatch ? appArgMatch.split("=")[1] : "app";
 const APP_UI_PORTS = {
   app: resolveDesktopUiPort(process.env),
-  home: Number(process.env.MILADY_HOME_PORT) || 2142,
+  home: Number(process.env.ELIZA_HOME_PORT) || 2142,
 };
 const UI_PORT = APP_UI_PORTS[appName] ?? 2138;
 const appDir = `apps/${appName}`;
@@ -81,11 +81,11 @@ function getCliName() {
         let name = pkg.name;
         if (name.startsWith("@")) name = name.split("/")[1];
         if (
-          name === "miladyai" ||
-          name === "milady-ai" ||
-          name.includes("milady")
+          name === "elizaai" ||
+          name === "eliza-ai" ||
+          name.includes("eliza")
         )
-          return "milady";
+          return "eliza";
         if (name === "elizaos" || name.includes("eliza")) return "eliza";
         return name;
       }
@@ -97,9 +97,9 @@ function getCliName() {
   // Fallbacks based on directory structure
   if (
     process.cwd().includes("eliza-workspace") ||
-    process.cwd().includes("milady")
+    process.cwd().includes("eliza")
   ) {
-    return "milady";
+    return "eliza";
   }
 
   return "eliza";
@@ -274,8 +274,8 @@ if (!hasBun && !which("npx")) {
 
 // coerceBoolean — imported from ./lib/dev-ui-onchain.mjs
 
-function resolveMiladyStateDir() {
-  const brandedStateDir = process.env.MILADY_STATE_DIR?.trim();
+function resolveElizaStateDir() {
+  const brandedStateDir = process.env.ELIZA_STATE_DIR?.trim();
   if (brandedStateDir) {
     return path.resolve(brandedStateDir);
   }
@@ -285,7 +285,7 @@ function resolveMiladyStateDir() {
     return path.resolve(upstreamStateDir);
   }
 
-  const brandedDefault = path.join(os.homedir(), ".milady");
+  const brandedDefault = path.join(os.homedir(), ".eliza");
   if (existsSync(brandedDefault)) {
     return brandedDefault;
   }
@@ -293,17 +293,17 @@ function resolveMiladyStateDir() {
   return path.join(os.homedir(), ".eliza");
 }
 
-function resolveMiladyConfigPath() {
+function resolveElizaConfigPath() {
   const explicitConfigPath =
-    process.env.MILADY_CONFIG_PATH?.trim() ||
+    process.env.ELIZA_CONFIG_PATH?.trim() ||
     process.env.ELIZA_CONFIG_PATH?.trim();
   if (explicitConfigPath) {
     return path.resolve(explicitConfigPath);
   }
 
-  const brandedStateDir = process.env.MILADY_STATE_DIR?.trim();
+  const brandedStateDir = process.env.ELIZA_STATE_DIR?.trim();
   if (brandedStateDir) {
-    return path.join(path.resolve(brandedStateDir), "milady.json");
+    return path.join(path.resolve(brandedStateDir), "eliza.json");
   }
 
   const upstreamStateDir = process.env.ELIZA_STATE_DIR?.trim();
@@ -311,7 +311,7 @@ function resolveMiladyConfigPath() {
     return path.join(path.resolve(upstreamStateDir), "eliza.json");
   }
 
-  const brandedDefault = path.join(os.homedir(), ".milady", "milady.json");
+  const brandedDefault = path.join(os.homedir(), ".eliza", "eliza.json");
   if (existsSync(brandedDefault)) {
     return brandedDefault;
   }
@@ -320,8 +320,8 @@ function resolveMiladyConfigPath() {
   return path.join(os.homedir(), ".eliza", "eliza.json");
 }
 
-function loadMiladyConfigForDev() {
-  const configPath = resolveMiladyConfigPath();
+function loadElizaConfigForDev() {
+  const configPath = resolveElizaConfigPath();
   if (!existsSync(configPath)) return null;
   try {
     const raw = readFileSync(configPath, "utf-8");
@@ -366,7 +366,7 @@ function resolveStealthImportFlags() {
     claudeFlag = globalFlag;
   }
 
-  const config = loadMiladyConfigForDev();
+  const config = loadElizaConfigForDev();
   if (config && typeof config === "object") {
     const feature = config.features?.stealthImports;
     if (typeof feature === "boolean") {
@@ -415,7 +415,7 @@ function resolveStealthImportFlags() {
   // Auto-detect subscription credentials: if the user has logged in via
   // a subscription provider, enable the corresponding stealth interceptor
   // automatically (unless explicitly disabled above).
-  const stateDir = resolveMiladyStateDir();
+  const stateDir = resolveElizaStateDir();
   if (openaiFlag === null) {
     const codexAuthPath = path.join(stateDir, "auth", "openai-codex.json");
     if (existsSync(codexAuthPath)) {
@@ -525,8 +525,8 @@ function createOnchainDevConfig({
   evmPrivateKey,
   solanaRpcUrl,
 }) {
-  const baseConfigPath = resolveMiladyConfigPath();
-  const base = loadMiladyConfigForDev();
+  const baseConfigPath = resolveElizaConfigPath();
+  const base = loadElizaConfigForDev();
   const config =
     base && typeof base === "object" && !Array.isArray(base) ? { ...base } : {};
 
@@ -680,8 +680,8 @@ async function bootstrapOnchainDev() {
       "test",
       "contracts",
       "out",
-      "MockMiladyAgentRegistry.sol",
-      "MockMiladyAgentRegistry.json",
+      "MockElizaAgentRegistry.sol",
+      "MockElizaAgentRegistry.json",
     ),
   ];
   const collectionCandidates = [
@@ -690,8 +690,8 @@ async function bootstrapOnchainDev() {
       "test",
       "contracts",
       "out",
-      "MockMiladyCollection.sol",
-      "MockMiladyCollection.json",
+      "MockElizaCollection.sol",
+      "MockElizaCollection.json",
     ),
   ];
   let registryArtifactPath = resolveArtifactPath(registryCandidates);
@@ -770,7 +770,7 @@ async function bootstrapOnchainDev() {
   await registryContract
     .connect(validationWallet)
     .registerAgent.staticCall(
-      "MiladyDevValidation",
+      "ElizaDevValidation",
       "http://localhost:31337/dev-validation",
       ethers.id("eliza-dev"),
       "ipfs://eliza-dev-validation",
@@ -778,7 +778,7 @@ async function bootstrapOnchainDev() {
   await collectionContract
     .connect(validationWallet)
     .mint.staticCall(
-      "MiladyDevValidation",
+      "ElizaDevValidation",
       "http://localhost:31337/dev-validation",
       ethers.id("eliza-dev"),
     );
@@ -864,7 +864,7 @@ async function bootstrapOnchainDev() {
       ELIZA_DEV_CHAIN_RPC: ANVIL_RPC_URL,
       ELIZA_DEV_REGISTRY_ADDRESS: registryAddress,
       ELIZA_DEV_COLLECTION_ADDRESS: collectionAddress,
-      MILADY_PERSIST_CONFIG_PATH: baseConfigPath,
+      ELIZA_PERSIST_CONFIG_PATH: baseConfigPath,
       ...(anchorConfigured ? { SOLANA_RPC_URL: ANCHOR_RPC_URL } : {}),
     },
     anvil,
@@ -883,7 +883,7 @@ async function bootstrapOnchainDev() {
 const SUPPRESS_RE = /^\s*(Info|Warn|Debug|Trace)\s/;
 const SUPPRESS_UNSTRUCTURED_RE = /^\[dotenv[@\d]/;
 const STARTUP_RE =
-  /\[eliza(?:-api)?\]|\[(eliza|milady)(?:-api)?\]|runtime bootstrap|\[(eliza|milady)(?:-api)?\]|runtime ready|\[(eliza|milady)(?:-api)?\]|runtime created|api server ready|plugin.*load|startup.*complete|\d+ms|\[PTYService|\[SwarmCoordinator\]|Triage:/i;
+  /\[eliza(?:-api)?\]|\[(eliza|eliza)(?:-api)?\]|runtime bootstrap|\[(eliza|eliza)(?:-api)?\]|runtime ready|\[(eliza|eliza)(?:-api)?\]|runtime created|api server ready|plugin.*load|startup.*complete|\d+ms|\[PTYService|\[SwarmCoordinator\]|Triage:/i;
 
 function createErrorFilter(dest) {
   let buf = "";
@@ -1040,7 +1040,7 @@ async function waitForAgentReady(
 
 // ---------------------------------------------------------------------------
 // Orphan cleanup (startup only) — never kills arbitrary Bun; PID/name-wide pkill is avoided.
-// Only processes whose command line ties them to this repo or Milady workspace dirs.
+// Only processes whose command line ties them to this repo or Eliza workspace dirs.
 // ---------------------------------------------------------------------------
 
 function killOrphanedWorkspaceProcesses() {
@@ -1065,7 +1065,7 @@ function killOrphanedWorkspaceProcesses() {
   }
 
   const workspaceDirRe =
-    /\.milady\/workspaces|\.miladyai\/workspaces|\.eliza\/workspaces|\.elizaai\/workspaces/i;
+    /\.eliza\/workspaces|\.elizaai\/workspaces|\.eliza\/workspaces|\.elizaai\/workspaces/i;
   const ptyWorkerRe = /pty-worker\.js/i;
 
   const workspacePids = [];
@@ -1192,14 +1192,14 @@ function startVite() {
         const appAbs = path.join(cwd, appDir);
         const pluginsDir = NATIVE_PLUGINS_ROOT;
         const forcePlugins =
-          process.env.MILADY_DEV_PLUGIN_BUILD === "1" ||
-          process.env.MILADY_DEV_PLUGIN_BUILD === "always";
+          process.env.ELIZA_DEV_PLUGIN_BUILD === "1" ||
+          process.env.ELIZA_DEV_PLUGIN_BUILD === "always";
         const skipPlugins =
-          process.env.MILADY_DEV_PLUGIN_BUILD === "0" ||
-          process.env.MILADY_SKIP_PLUGIN_BUILD === "1";
+          process.env.ELIZA_DEV_PLUGIN_BUILD === "0" ||
+          process.env.ELIZA_SKIP_PLUGIN_BUILD === "1";
         if (skipPlugins) {
           console.log(
-            `  ${green(logPrefix)} ${dim("Skipping Capacitor plugin build (MILADY_SKIP_PLUGIN_BUILD=1).")}`,
+            `  ${green(logPrefix)} ${dim("Skipping Capacitor plugin build (ELIZA_SKIP_PLUGIN_BUILD=1).")}`,
           );
         } else if (
           forcePlugins ||
@@ -1215,7 +1215,7 @@ function startVite() {
           });
         } else {
           console.log(
-            `  ${green(logPrefix)} ${dim("Capacitor plugins dist up to date (skip rimraf/tsc/rollup). Set MILADY_DEV_PLUGIN_BUILD=1 to force.")}`,
+            `  ${green(logPrefix)} ${dim("Capacitor plugins dist up to date (skip rimraf/tsc/rollup). Set ELIZA_DEV_PLUGIN_BUILD=1 to force.")}`,
           );
         }
       }
@@ -1229,14 +1229,14 @@ function startVite() {
 
   const viteCmd = hasBun ? "bunx" : "npx";
   const viteForce =
-    process.env.MILADY_VITE_FORCE === "1" ||
+    process.env.ELIZA_VITE_FORCE === "1" ||
     process.env.ELIZA_VITE_FORCE === "1";
   const viteArgs = viteForce
     ? ["vite", "--force", "--port", String(UI_PORT)]
     : ["vite", "--port", String(UI_PORT)];
   if (viteForce) {
     console.log(
-      `  ${green(logPrefix)} ${dim("Vite --force (MILADY_VITE_FORCE=1): re-optimizing deps.")}`,
+      `  ${green(logPrefix)} ${dim("Vite --force (ELIZA_VITE_FORCE=1): re-optimizing deps.")}`,
     );
   }
   viteProcess = spawn(viteCmd, viteArgs, {
@@ -1245,10 +1245,10 @@ function startVite() {
       ...process.env,
       NODE_ENV: "development",
       ELIZA_NAMESPACE: cliName,
-      MILADY_PORT: String(UI_PORT),
+      ELIZA_PORT: String(UI_PORT),
       ELIZA_UI_PORT: String(UI_PORT),
       ELIZA_API_PORT: String(API_PORT),
-      MILADY_API_PORT: String(API_PORT),
+      ELIZA_API_PORT: String(API_PORT),
       ELIZA_PORT: String(API_PORT),
       ELIZA_HOME_API_PORT: String(API_PORT),
     },
@@ -1394,15 +1394,15 @@ if (uiOnly) {
         ...process.env,
         NODE_ENV: "development",
         ...chainEnv,
-        MILADY_NAMESPACE: cliName,
         ELIZA_NAMESPACE: cliName,
-        MILADY_API_PORT: String(API_PORT),
+        ELIZA_NAMESPACE: cliName,
+        ELIZA_API_PORT: String(API_PORT),
         ELIZA_API_PORT: String(API_PORT),
         ELIZA_PORT: String(API_PORT),
-        MILADY_PORT: String(UI_PORT),
+        ELIZA_PORT: String(UI_PORT),
         ELIZA_UI_PORT: String(UI_PORT),
         ELIZA_HEADLESS: "1",
-        MILADY_DEV_AUTH_BYPASS: "1",
+        ELIZA_DEV_AUTH_BYPASS: "1",
         LOG_LEVEL: devLogLevel,
       },
       cwd,

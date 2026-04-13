@@ -74,9 +74,9 @@ async def main() -> int:
         help="Use ElizaOS runtime (requires elizaos package)",
     )
     parser.add_argument(
-        "--milady",
+        "--eliza",
         action="store_true",
-        help="Use milady TypeScript agent via benchmark server",
+        help="Use eliza TypeScript agent via benchmark server",
     )
     parser.add_argument(
         "--env",
@@ -248,7 +248,7 @@ async def main() -> int:
             print(f"Warning: ElizaOS not available ({e})")
             print("Falling back to deterministic mock runtime")
             runtime = SmartMockRuntime()
-    elif args.milady:
+    elif args.eliza:
         print("\n" + "=" * 60)
         print("Using MILADY TypeScript agent via benchmark server")
         print("=" * 60)
@@ -263,7 +263,7 @@ async def main() -> int:
         # the actual agent loop.
         runtime = SmartMockRuntime()
         runtime._milady_harness = milady_harness  # type: ignore[attr-defined]
-        print("✅ Milady benchmark server connected")
+        print("✅ Eliza benchmark server connected")
     else:
         print("\nUsing deterministic mock runtime (for harness validation)")
         runtime = SmartMockRuntime()

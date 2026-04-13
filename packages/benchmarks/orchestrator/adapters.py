@@ -574,7 +574,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         for p in benchmarks_root.iterdir()
         if p.is_dir()
         and p.name
-        not in {"__pycache__", ".git", "benchmark_results", "orchestrator", "milady-adapter", "viewer"}
+        not in {"__pycache__", ".git", "benchmark_results", "orchestrator", "eliza-adapter", "viewer"}
     )
 
     score_extractor_factory = RegistryScoreExtractor(workspace_root)
@@ -813,7 +813,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         _make_extra_adapter(
             adapter_id="milaidy_replay",
             directory="milaidy-adapter",
-            description="Replay benchmark over normalized Milady PARALLAX captures",
+            description="Replay benchmark over normalized Eliza PARALLAX captures",
             cwd=str((benchmarks_root / "milaidy-adapter").resolve()),
             command_builder=_command_milaidy_replay,
             result_patterns=["milaidy-replay-results.json", "*.json"],

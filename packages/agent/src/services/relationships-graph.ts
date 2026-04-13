@@ -978,7 +978,7 @@ async function countFacts(
       const facts = await runtime.getMemories({
         tableName: "facts",
         entityId,
-        count: 500,
+        limit: 500,
       });
       counts.set(entityId, facts.length);
     }),
@@ -1276,7 +1276,7 @@ async function buildConversationEdgeMap(
         const messages = await runtime.getMemories({
           tableName: "messages",
           roomId: room.id,
-          count: 80,
+          limit: 80,
         });
         if (messages.length < 2) {
           return;
@@ -1674,7 +1674,7 @@ async function buildFacts(
     const memories = await runtime.getMemories({
       tableName: "facts",
       entityId,
-      count: 100,
+      limit: 100,
     });
     for (const memory of memories) {
       const metadata = asRecord(memory.metadata);
@@ -1738,7 +1738,7 @@ async function buildRecentConversations(
         const messages = await runtime.getMemories({
           tableName: "messages",
           roomId,
-          count: 6,
+          limit: 6,
         });
         if (messages.length === 0) {
           return null;

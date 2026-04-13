@@ -454,7 +454,7 @@ async function extractAgentData(
     const memories = await db.getMemories({
       agentId,
       tableName,
-      count: Number.MAX_SAFE_INTEGER,
+      limit: Number.MAX_SAFE_INTEGER,
     });
     for (const mem of memories) {
       if (mem.id && !memoryIdSet.has(mem.id)) {
@@ -471,7 +471,7 @@ async function extractAgentData(
     for (const tableName of MEMORY_TABLES) {
       const worldMemories = await db.getMemoriesByWorldId({
         worldIds: [world.id],
-        count: Number.MAX_SAFE_INTEGER,
+        limit: Number.MAX_SAFE_INTEGER,
         tableName,
       });
       for (const mem of worldMemories) {
@@ -499,7 +499,7 @@ async function extractAgentData(
   // 9. Logs (optional)
   let logs: Log[] = [];
   if (options.includeLogs) {
-    logs = await db.getLogs({ count: Number.MAX_SAFE_INTEGER });
+    logs = await db.getLogs({ limit: Number.MAX_SAFE_INTEGER });
     logger.info(`[agent-export] Found ${logs.length} logs`);
   }
 
@@ -948,7 +948,7 @@ export async function estimateExportSize(
     const mems = await db.getMemories({
       agentId,
       tableName,
-      count: Number.MAX_SAFE_INTEGER,
+      limit: Number.MAX_SAFE_INTEGER,
     });
     memoriesCount += mems.length;
   }

@@ -1,13 +1,13 @@
-# Milady Benchmark Testing Protocol
+# Eliza Benchmark Testing Protocol
 
-This protocol defines benchmark-focused tests for Milady's benchmark bridge (`src/benchmark/`).
+This protocol defines benchmark-focused tests for Eliza's benchmark bridge (`src/benchmark/`).
 
 ## Scope
 
 Covers:
 
 - `BENCHMARK_ACTION` capture and parameter parsing
-- benchmark provider context shaping (`MILADY_BENCHMARK`)
+- benchmark provider context shaping (`ELIZA_BENCHMARK`)
 - deterministic mock benchmark model behavior
 - compatibility checks against `cua-bench` benchmark primitives
 
@@ -57,14 +57,14 @@ uv run --with pytest pytest cua_bench/tests/test_actions.py -v
 uv run --with pytest pytest cua_bench/tests/test_run_benchmark.py -v
 ```
 
-These validate the underlying benchmark action/runner contracts we align Milady with.
+These validate the underlying benchmark action/runner contracts we align Eliza with.
 
 ## Optional server bridge smoke
 
-Run Milady benchmark server with deterministic mock behavior:
+Run Eliza benchmark server with deterministic mock behavior:
 
 ```bash
-MILADY_BENCH_MOCK=true node --import tsx src/benchmark/server.ts
+ELIZA_BENCH_MOCK=true node --import tsx src/benchmark/server.ts
 ```
 
 Then probe:

@@ -1,0 +1,139 @@
+# syntax=docker/dockerfile:1.7
+# Milady Agent — Cloud-optimized Docker image
+# Goal: keep runtime under ~2GB by doing a production-only install,
+# flattening Bun's store-backed node_modules, and copying only the cloud runtime.
+ARG NODE_VERSION=22
+ARG BUN_VERSION=1.3.10
+ARG OCI_SOURCE="https://github.com/milady-ai/milady"
+ARG OCI_TITLE="Milady Agent (Cloud)"
+ARG OCI_DESCRIPTION="Milady agent cloud runtime with prebuilt UI/API artifacts"
+ARG OCI_LICENSES="MIT"
+ARG VERSION=""
+ARG VERSION_CLEAN=""
+ARG REVISION=""
+# CDN base URL baked into the Vite bundle at build time.
+# Format: https://cdn.jsdelivr.net/gh/{org}/{repo}@{tag}/apps/app/public/
+# Leave empty for local/dev builds (assets served from origin).
+ARG VITE_ASSET_BASE_URL=""
+
+FROM oven/bun:${BUN_VERSION}-slim AS deps
+WORKDIR /src
+
+# Copy only the manifests Bun needs to resolve the production dependency graph.
+COPY package.json bun.lock ./
+COPY patches ./patches
+COPY eliza/packages/agent/package.json ./eliza/packages/agent/package.json
+COPY eliza/packages/app-core/package.json ./eliza/packages/app-core/package.json
+COPY plugins/plugin-selfcontrol/package.json ./plugins/plugin-selfcontrol/package.json
+COPY eliza/packages/shared/package.json ./eliza/packages/shared/package.json
+COPY apps/app/package.json ./apps/app/package.json
+COPY apps/app/electrobun/package.json ./apps/app/electrobun/package.json
+COPY deploy/cloud-agent-template/package.json ./deploy/cloud-agent-template/package.json
+
+ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
+RUN bun install --frozen-lockfile --ignore-scripts --no-progress
+
+FROM node:${NODE_VERSION}-slim AS tsx
+RUN npm install --prefix /opt/tsx --ignore-scripts --no-save tsx@4.21.0 \
+  && npm cache clean --force
+
+FROM node:${NODE_VERSION}-slim AS prep
+WORKDIR /src
+ARG VERSION_CLEAN
+# Re-declare so it's in scope for this build stage.
+ARG VITE_ASSET_BASE_URL=""
+ENV VITE_ASSET_BASE_URL=${VITE_ASSET_BASE_URL}
+
+COPY --from=deps /src/node_modules ./node_modules
+COPY dist ./dist
+COPY apps/app/dist ./apps/app/dist
+COPY eliza/packages/agent ./eliza/packages/agent
+COPY eliza/packages/app-core ./eliza/packages/app-core
+COPY plugins/plugin-selfcontrol ./plugins/plugin-selfcontrol
+COPY eliza/packages/shared ./eliza/packages/shared
+COPY milady.mjs package.json plugins.json ./
+COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
+
+RUN set -eux; \
+  mkdir -p /runtime/node_modules /runtime/apps/app /runtime/scripts; \
+  # Keep bun's symlink structure intact — cp -rL breaks transitive dep resolution.
+  cp -a node_modules/. /runtime/node_modules/; \
+  # Overlay workspace packages with full source (not just the symlinked dist).
+  for dir in eliza/packages/agent eliza/packages/app-core plugins/plugin-selfcontrol eliza/packages/shared; do \
+    name="$(node -p "require('./${dir}/package.json').name")"; \
+    target="/runtime/node_modules/${name}"; \
+    rm -rf "$target"; \
+    mkdir -p "$(dirname "$target")"; \
+    cp -a "$dir" "$target"; \
+    find "$target" -type d \( -name node_modules -o -name coverage -o -name .turbo -o -name .vite \) -prune -exec rm -rf {} +; \
+    rm -rf "$target/dist" "$target/test" "$target/tests" "$target/__tests__" 2>/dev/null || true; \
+  done; \
+  cp -a dist /runtime/dist; \
+  cp -a apps/app/dist /runtime/apps/app/dist; \
+  cp -a scripts/docker-entrypoint.sh /runtime/scripts/docker-entrypoint.sh; \
+  cp -a milady.mjs package.json plugins.json /runtime/; \
+  sed -i 's/const stats = service.getCatalogStats();/const stats = typeof service.getCatalogStats === "function" ? service.getCatalogStats() : { loaded: 0, total: 0, storageType: "unknown" };/g' /runtime/node_modules/@elizaos/plugin-agent-skills/dist/index.js 2>/dev/null || true; \
+  if [ -n "${VERSION_CLEAN}" ]; then \
+    node -e "const fs=require('fs'); const v=process.argv[1]; const p='/runtime/node_modules/@elizaos/agent/package.json'; try { const pkg=JSON.parse(fs.readFileSync(p,'utf8')); pkg.version=v; fs.writeFileSync(p, JSON.stringify(pkg, null, 2)); console.log('Patched autonomous to', v); } catch (err) { console.log('skip:', err.message); }" "${VERSION_CLEAN}"; \
+  fi; \
+  # ---------- Safe cleanup only (no .bun store pruning — transitive deps break) ----------
+  # Only remove top-level symlinks for packages that are confirmed unused AND
+  # don't have hidden transitive dependents. Keep .bun store fully intact.
+  rm -rf \
+    node_modules/@storybook \
+    node_modules/storybook \
+    node_modules/testcafe \
+    node_modules/testcafe-* \
+    node_modules/playwright \
+    node_modules/playwright-core \
+    node_modules/@playwright \
+    node_modules/@elizaos/plugin-agent-orchestrator \
+    node_modules/coding-agent-adapters \
+    node_modules/pty-console \
+    node_modules/pty-state-capture \
+    node_modules/pty-manager \
+    node_modules/git-workspace-service \
+    node_modules/.vite \
+    2>/dev/null || true; \
+  # Clean up source maps and test dirs (safe, no runtime impact)
+  find /runtime/node_modules -name '*.map' -delete 2>/dev/null; \
+  find /runtime/node_modules -type d -name '__tests__' -prune -exec rm -rf {} + 2>/dev/null; \
+  find /runtime/node_modules -type d -name 'test' -prune -exec rm -rf {} + 2>/dev/null
+
+FROM node:${NODE_VERSION}-slim
+ARG OCI_SOURCE
+ARG OCI_TITLE
+ARG OCI_DESCRIPTION
+ARG OCI_LICENSES
+ARG VERSION
+ARG VERSION_CLEAN
+ARG REVISION
+LABEL org.opencontainers.image.title="${OCI_TITLE}" \
+      org.opencontainers.image.description="${OCI_DESCRIPTION}" \
+      org.opencontainers.image.source="${OCI_SOURCE}" \
+      org.opencontainers.image.url="${OCI_SOURCE}" \
+      org.opencontainers.image.version="${VERSION_CLEAN}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.licenses="${OCI_LICENSES}"
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libopus-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=prep /runtime/ /app/
+COPY --from=tsx /opt/tsx /opt/tsx
+
+ENV NODE_ENV=production
+# MILADY_PORT is the canonical name; ELIZA_PORT kept for backward compat
+ENV MILADY_PORT=2138
+ENV ELIZA_PORT=${MILADY_PORT}
+# Cloud images keep loopback bind by default unless overridden explicitly.
+ENV MILADY_API_BIND=127.0.0.1
+ENV ELIZA_ALLOWED_HOSTS=*
+EXPOSE 2138
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD sh -lc 'port="${PORT:-${MILADY_PORT:-2138}}"; code="$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}/api/health")" && [ "$code" = "200" -o "$code" = "401" ]'
+
+ENTRYPOINT ["sh", "./scripts/docker-entrypoint.sh"]
+CMD ["node", "--import", "/opt/tsx/node_modules/tsx/dist/loader.mjs", "milady.mjs", "start"]

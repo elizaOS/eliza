@@ -142,7 +142,7 @@ class AgentBenchRunner:
         self._results: list[AgentBenchResult] = []
         self._harness: "ElizaAgentHarness | None" = None
 
-        # Allow external harness injection (used by the Milady TS bridge).
+        # Allow external harness injection (used by the Eliza TS bridge).
         external_harness = getattr(runtime, "_milady_harness", None) if runtime is not None else None
         if external_harness is not None:
             self._harness = external_harness  # type: ignore[assignment]
