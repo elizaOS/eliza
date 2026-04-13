@@ -21,7 +21,7 @@
     "@elizaos/plugin-ollama": "alpha",
     "@elizaos/plugin-openai": "alpha",
     "@elizaos/plugin-openrouter": "alpha",
-    "electron": "^33.2.0",
+    "electron": "^41.2.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
