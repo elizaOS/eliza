@@ -9,9 +9,6 @@ import { BatchQueue } from "../utils/batch-queue";
 interface EmbeddingQueueItem {
 	memory: Memory;
 	priority: "high" | "normal" | "low";
-	retryCount: number;
-	maxRetries: number;
-	addedAt: number;
 	runId?: string;
 }
 
@@ -166,9 +163,6 @@ export class EmbeddingGenerationService extends Service {
 		const queueItem: EmbeddingQueueItem = {
 			memory,
 			priority,
-			retryCount,
-			maxRetries,
-			addedAt: Date.now(),
 			runId,
 		};
 
