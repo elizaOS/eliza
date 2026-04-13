@@ -132,7 +132,7 @@
     "@whiskeysockets/baileys": "7.0.0-rc.9",
     "coding-agent-adapters": "0.16.3",
     "dotenv": "^17.2.3",
-    "drizzle-orm": "0.45.1",
+    "drizzle-orm": "0.45.2",
     "ethers": "^6.16.0",
     "git-workspace-service": "0.4.5",
     "jsdom": "^28.1.0",
