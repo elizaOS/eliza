@@ -116,7 +116,8 @@
                   "runtime/core",
                   "runtime/memory",
                   "runtime/events",
-                  "runtime/providers"
+                  "runtime/providers",
+                  "runtime/batch-queue"
                 ]
               },
               {

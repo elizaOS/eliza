@@ -25,6 +25,7 @@ import type {
 import { ModelType } from "../types/model.ts";
 import { Service } from "../types/service.ts";
 import type { State } from "../types/state.ts";
+import { BatchProcessor } from "../utils/batch-queue.ts";
 import { BM25Index } from "./bm25.ts";
 import { cosineSimilarity } from "./cosine-similarity.ts";
 
@@ -331,39 +332,46 @@ export class ActionFilterService extends Service {
 			}
 
 			if (this.embeddingAvailable) {
-				// Embed in batches to avoid flooding the model
+				// `utils/batch-queue` BatchProcessor only (no TaskDrain): index build is synchronous;
+				// shares retry/concurrency primitives with embedding + batcher drains (see `batch-queue.ts`).
 				const batchSize = 10;
-				for (let i = 0; i < actions.length; i += batchSize) {
-					const batch = actions.slice(i, i + batchSize);
-					const embedPromises = batch.map(async (action) => {
-						try {
-							const text = getActionEmbeddingText(action);
-							const embedding: number[] = await runtime.useModel(
-								ModelType.TEXT_EMBEDDING,
-								{ text },
-							);
-							if (isValidEmbedding(embedding)) {
-								this.actionEmbeddings.set(action.name, embedding);
-							} else {
-								this.metrics.embedFailureCount++;
-								throw new Error(
-									`Embedding model returned an invalid vector for action ${action.name}`,
-								);
-							}
-						} catch (err) {
-							logger.error(
+				const processor = new BatchProcessor<Action>({
+					maxParallel: 10,
+					maxRetriesAfterFailure: 2,
+					process: async (action) => {
+						const text = getActionEmbeddingText(action);
+						const embedding: number[] = await runtime.useModel(
+							ModelType.TEXT_EMBEDDING,
+							{ text },
+						);
+						if (isValidEmbedding(embedding)) {
+							this.actionEmbeddings.set(action.name, embedding);
+						} else {
+							logger.warn(
 								{
 									src: "service:action-filter",
 									action: action.name,
-									error: err instanceof Error ? err.message : String(err),
 								},
-								"Failed to embed action",
+								"Embedding model returned invalid vector (NaN/empty) — action available via BM25 only",
 							);
 							this.metrics.embedFailureCount++;
-							throw err;
 						}
-					});
-					await Promise.all(embedPromises);
+					},
+					onExhausted: (action, err) => {
+						logger.warn(
+							{
+								src: "service:action-filter",
+								action: action.name,
+								error: err.message,
+							},
+							"Failed to embed action after retries — it will still be available via BM25",
+						);
+						this.metrics.embedFailureCount++;
+					},
+				});
+				for (let i = 0; i < actions.length; i += batchSize) {
+					const batch = actions.slice(i, i + batchSize);
+					await processor.processBatch(batch);
 				}
 			}
 		}

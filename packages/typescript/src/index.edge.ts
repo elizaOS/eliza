@@ -39,6 +39,7 @@ export * from "./providers/onboarding-progress";
 export * from "./providers/skill-eligibility";
 export * from "./roles";
 export * from "./runtime";
+export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./schemas/character";
 export * from "./schemas/index";
 export { type BaseTables, buildBaseTables } from "./schemas/index";

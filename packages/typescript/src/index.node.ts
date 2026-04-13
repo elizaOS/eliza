@@ -56,6 +56,8 @@ export * from "./providers/skill-eligibility";
 export * from "./provisioning";
 export * from "./roles";
 export * from "./runtime";
+/** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
+export { Semaphore } from "./utils/batch-queue/semaphore.js";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
 // Export character schemas
