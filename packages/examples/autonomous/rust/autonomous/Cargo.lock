@@ -72,9 +72,9 @@ checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
 
 [[package]]
 name = "bytes"
-version = "1.11.0"
+version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b35204fbdc0b3f4446b89fc1ac2cf84a8a68971995d0bf2e925ec7cd960f9cb3"
+checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "cc"
@@ -142,6 +142,8 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 [[package]]
 name = "elizaos-plugin-inmemorydb"
 version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1476a1978a9b8e58bfb082340c8ab8429c7d03ba2518e9f29cbde22fef5831a"
 dependencies = [
  "async-trait",
  "chrono",
@@ -157,6 +159,8 @@ dependencies = [
 [[package]]
 name = "elizaos-plugin-local-ai"
 version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32516bdeee18ff8e70c1f248ac00035dc14291729be2ffff02e3d2c4bd65a820"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -173,6 +177,8 @@ dependencies = [
 [[package]]
 name = "elizaos-plugin-shell"
 version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "881e4b15d34892e239736519413365c437dde73c7ae9dfcade980f12e0d1253d"
 dependencies = [
  "anyhow",
  "async-trait",
