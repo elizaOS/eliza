@@ -141,6 +141,7 @@ export class BatchProcessor<T> {
 		let lastError: Error = new Error("unknown");
 
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+			let exhausted = false;
 			await this.semaphore.acquire();
 			try {
 				await this.process(item);
@@ -151,19 +152,27 @@ export class BatchProcessor<T> {
 					attempt >= maxAttempts ||
 					!this.shouldRetry(item, lastError, attempt)
 				) {
-					if (this.onExhausted) {
-						await this.onExhausted(item, lastError);
-					}
-					return {
-						item,
-						success: false,
-						error: lastError,
-						retryCount,
-					};
+					exhausted = true;
+				} else {
+					retryCount++;
 				}
-				retryCount++;
 			} finally {
 				this.semaphore.release();
+			}
+			if (exhausted) {
+				if (this.onExhausted) {
+					try {
+						await this.onExhausted(item, lastError);
+					} catch {
+						// Keep callback failures from aborting the whole batch
+					}
+				}
+				return {
+					item,
+					success: false,
+					error: lastError,
+					retryCount,
+				};
 			}
 			const delayMs = computeBackoff(this.policy, attempt);
 			if (delayMs > 0) {
