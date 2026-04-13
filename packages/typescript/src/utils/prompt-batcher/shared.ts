@@ -64,34 +64,11 @@ export type PromptBatcherSettings = {
 	modelSeparation: number;
 };
 
-export class Semaphore {
-	private permits: number;
-	private queue: Array<() => void> = [];
-
-	constructor(count: number) {
-		this.permits = Math.max(1, count);
-	}
-
-	async acquire(): Promise<void> {
-		if (this.permits > 0) {
-			this.permits -= 1;
-			return;
-		}
-
-		await new Promise<void>((resolve) => {
-			this.queue.push(resolve);
-		});
-	}
-
-	release(): void {
-		this.permits += 1;
-		const next = this.queue.shift();
-		if (next && this.permits > 0) {
-			this.permits -= 1;
-			next();
-		}
-	}
-}
+/**
+ * Re-export so dispatcher keeps `import { Semaphore } from "./shared"`.
+ * Single `Semaphore` implementation under `utils/batch-queue` (see `batch-queue.ts` header).
+ */
+export { Semaphore } from "../batch-queue/semaphore.js";
 
 export function sanitizeIdentifier(value: string): string {
 	const normalized = value.replace(/[^a-zA-Z0-9_]/g, "_");

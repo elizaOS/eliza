@@ -18,6 +18,7 @@ export * from "./memory";
 export * from "./prompts";
 export * from "./roles";
 export * from "./runtime";
+export { Semaphore } from "./utils/batch-queue/semaphore.js";
 // Export schemas (including buildBaseTables for plugin-sql browser/PGLite builds)
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
