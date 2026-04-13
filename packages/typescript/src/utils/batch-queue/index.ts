@@ -57,8 +57,8 @@ export interface BatchQueueOptions<T> {
 	onDrainComplete?: (stats: DrainStats) => void;
 	shouldRetry?: (item: T, error: Error, attempt: number) => boolean;
 	/**
-	 * When false, only registers the repeat task — caller must register `name` with TaskService
-	 * (e.g. `BATCHER_DRAIN`). Default true.
+	 * When true, skips registering the task worker and only registers the repeat task — caller must
+	 * register `name` with TaskService (e.g. `BATCHER_DRAIN`). Default false.
 	 */
 	skipRegisterWorker?: boolean;
 	/** Merged into repeat task metadata (e.g. `{ affinityKey: "room:x" }`). */
@@ -139,13 +139,21 @@ export class BatchQueue<T> {
 				return;
 			}
 			const outcomes = await this.batchProcessor.processBatch(batch);
-			this.options.onDrainBatchOutcomes?.(outcomes);
+			try {
+				this.options.onDrainBatchOutcomes?.(outcomes);
+			} catch {
+				// Keep hook failures from failing a completed batch
+			}
 			const durationMs = Date.now() - started;
-			this.options.onDrainComplete?.({
-				batchSize: batch.length,
-				remaining: this.priorityQueue.size,
-				durationMs,
-			});
+			try {
+				this.options.onDrainComplete?.({
+					batchSize: batch.length,
+					remaining: this.priorityQueue.size,
+					durationMs,
+				});
+			} catch {
+				// Keep hook failures from failing a completed batch
+			}
 		} finally {
 			this.isDraining = false;
 		}
@@ -153,6 +161,12 @@ export class BatchQueue<T> {
 
 	/** Wire `TaskDrain` (worker + repeat task unless `skipRegisterWorker`). */
 	async start(runtime: IAgentRuntime): Promise<void> {
+		if (this.disposed) {
+			throw new Error(`BatchQueue "${this.options.name}" has already been disposed`);
+		}
+		if (this.taskDrain) {
+			return;
+		}
 		const skip = this.options.skipRegisterWorker ?? false;
 		this.taskDrain = new TaskDrain(
 			{
