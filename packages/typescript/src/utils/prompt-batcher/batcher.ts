@@ -115,9 +115,19 @@ export class PromptBatcher {
 		});
 
 		const affinityKey = normalized.affinityKey ?? "default";
-		void this._ensureAffinityDrain(affinityKey).then(() =>
-			this._syncAffinityTask(affinityKey),
-		);
+		void this._ensureAffinityDrain(affinityKey)
+			.then(() => this._syncAffinityTask(affinityKey))
+			.catch((error) => {
+				this.runtime.logger.error(
+					{
+						src: "prompt-batcher",
+						agentId: this.runtime.agentId,
+						affinityKey,
+						error,
+					},
+					"Failed to ensure prompt batcher drain",
+				);
+			});
 
 		const shouldDrainNow =
 			normalized.priority === "immediate" ||
