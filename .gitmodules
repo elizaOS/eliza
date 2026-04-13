@@ -112,3 +112,7 @@
 	path = steward-fi
 	url = https://github.com/Steward-Fi/steward.git
 	branch = develop
+[submodule "plugins/plugin-elizacloud"]
+	path = plugins/plugin-elizacloud
+	url = https://github.com/elizaos-plugins/plugin-elizacloud.git
+	branch = alpha
