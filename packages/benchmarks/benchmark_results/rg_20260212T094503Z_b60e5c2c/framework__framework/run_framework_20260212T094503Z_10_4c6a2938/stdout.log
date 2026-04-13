@@ -1,0 +1,27 @@
+╔══════════════════════════════════════════════════════════╗
+║          Eliza Framework Benchmark — Python             ║
+╚══════════════════════════════════════════════════════════╝
+
+System: Darwin 25.2.0 arm64 | 16 CPUs | 128.0GB RAM
+Runtime: Python 3.13.2
+LLM Mode: mock (deterministic)
+Scenarios: 12 selected
+
+Running: Single Message Processing...[2m2026-02-12T09:45:03.707802Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mBenchmarkAgent[0m][0m

@@ -1,0 +1,3 @@
+# command: python run_benchmark.py --mode eliza-agent --provider groq --model qwen/qwen3-32b --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/experience__experience/run_experience_20260215T025734Z_1_da7cedc5/output/experience-results.json --experiences 10 --queries 2 --learning-cycles 1
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/experience
+# run_id: run_experience_20260215T025734Z_1_da7cedc5

@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ELIZA on ICP - elizaOS</title>
+  <style>
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-secondary: #141414;
+      --bg-tertiary: #1a1a1a;
+      --border-color: #2a2a2a;
+      --border-hover: #3a3a3a;
+      --text-primary: #fafafa;
+      --text-secondary: #a1a1a1;
+      --text-muted: #666666;
+      --accent: #0066ff;
+      --accent-hover: #0052cc;
+      --accent-glow: rgba(0, 102, 255, 0.15);
+      --user-bubble: #1a1a2e;
+      --eliza-bubble: #0d1117;
+      --success: #10b981;
+      --error: #ef4444;
+      --icp-purple: #29ABE2;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    @keyframes dotBounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-4px); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-color);
+      backdrop-filter: blur(12px);
+    }
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--icp-purple) 0%, #6366f1 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 1.25rem;
+      color: white;
+    }
+
+    .logo-text h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .logo-text span {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: var(--bg-secondary);
+      border-radius: 20px;
+      border: 1px solid var(--border-color);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      transition: background 0.3s;
+    }
+
+    .status-dot.online {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .status-dot.offline {
+      background: var(--text-muted);
+      animation: pulse 1.5s infinite;
+    }
+
+    .status-text {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .main {
+      flex: 1;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    .messages-container {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .message {
+      display: flex;
+      gap: 12px;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .message.user {
+      flex-direction: row-reverse;
+    }
+
+    .message-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--bg-tertiary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+
+    .message-content {
+      max-width: 70%;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .message.user .message-content {
+      align-items: flex-end;
+    }
+
+    .message-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.75rem;
+    }
+
+    .message-role {
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .message-time {
+      color: var(--text-muted);
+    }
+
+    .message-text {
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .message.assistant .message-text {
+      background: var(--eliza-bubble);
+      border: 1px solid var(--border-color);
+      border-radius: 16px 16px 16px 4px;
+    }
+
+    .message.user .message-text {
+      background: var(--accent);
+      color: white;
+      border-radius: 16px 16px 4px 16px;
+    }
+
+    .typing-indicator {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px 0;
+    }
+
+    .typing-indicator span {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      animation: dotBounce 1.4s infinite;
+    }
+
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+    .error-banner {
+      position: sticky;
+      bottom: 80px;
+      margin: 0 24px;
+      padding: 12px 16px;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      color: var(--error);
+      font-size: 0.9rem;
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    .error-banner.show { display: flex; }
+
+    .error-banner button {
+      background: none;
+      border: none;
+      color: var(--error);
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 0 4px;
+      opacity: 0.7;
+    }
+
+    .error-banner button:hover { opacity: 1; }
+
+    .footer {
+      position: sticky;
+      bottom: 0;
+      background: var(--bg-primary);
+      border-top: 1px solid var(--border-color);
+      padding: 16px 24px;
+    }
+
+    .input-form {
+      display: flex;
+      gap: 12px;
+    }
+
+    .input {
+      flex: 1;
+      padding: 14px 18px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .input::placeholder { color: var(--text-muted); }
+    .input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .send-button {
+      width: 48px;
+      height: 48px;
+      background: var(--accent);
+      border: none;
+      border-radius: 12px;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .send-button:hover:not(:disabled) { background: var(--accent-hover); }
+    .send-button:active:not(:disabled) { transform: scale(0.95); }
+    .send-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .footer-meta {
+      margin-top: 10px;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .footer-meta a {
+      color: var(--icp-purple);
+      text-decoration: none;
+    }
+
+    .footer-meta a:hover { text-decoration: underline; }
+
+    .icp-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      background: rgba(41, 171, 226, 0.1);
+      border: 1px solid rgba(41, 171, 226, 0.3);
+      border-radius: 4px;
+      font-size: 0.7rem;
+      color: var(--icp-purple);
+      margin-left: 8px;
+    }
+
+    /* Mode Switcher */
+    .mode-switcher {
+      display: flex;
+      gap: 6px;
+      padding: 4px;
+      background: var(--bg-secondary);
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+    }
+
+    .mode-btn {
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: transparent;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .mode-btn:hover:not(:disabled) {
+      color: var(--text-secondary);
+      background: var(--bg-tertiary);
+    }
+
+    .mode-btn.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    .mode-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .mode-btn.switching {
+      animation: pulse 0.5s infinite;
+    }
+
+    .mode-btn.local-only {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .mode-note {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    @media (max-width: 768px) {
+      .header-content { 
+        flex-direction: column; 
+        gap: 12px;
+        padding: 12px 16px; 
+      }
+      .header-right {
+        width: 100%;
+        justify-content: space-between;
+      }
+      .mode-switcher {
+        flex: 1;
+        justify-content: center;
+      }
+      .mode-btn {
+        padding: 6px 8px;
+        font-size: 0.7rem;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .logo-icon { width: 36px; height: 36px; font-size: 1.1rem; }
+      .logo-text h1 { font-size: 1.1rem; }
+      .messages-container { padding: 16px; }
+      .message-content { max-width: 85%; }
+      .message-text { padding: 10px 14px; font-size: 0.9rem; }
+      .footer { padding: 12px 16px; }
+      .input { padding: 12px 14px; }
+      .send-button { width: 44px; height: 44px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="header-content">
+        <div class="logo">
+          <div class="logo-icon">E</div>
+          <div class="logo-text">
+            <h1>ELIZA <span class="icp-badge">ICP</span></h1>
+            <span>elizaOS on the Internet Computer</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <div class="mode-switcher" id="mode-switcher">
+            <button class="mode-btn" data-mode="ElizaClassic" id="mode-classic" disabled>Classic</button>
+            <button class="mode-btn" data-mode="DfinityLLM" id="mode-dfinity" disabled>DFINITY</button>
+            <button class="mode-btn" data-mode="OpenAI" id="mode-openai" disabled>GPT-4o</button>
+            <button class="mode-btn" data-mode="OnChainLLM" id="mode-onchain" disabled>On-Chain</button>
+          </div>
+          <span class="mode-note" id="mode-note" hidden>DFINITY LLM: mainnet only</span>
+          <div class="status">
+            <span class="status-dot offline" id="status-dot"></span>
+            <span class="status-text" id="status-text">Connecting...</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="main">
+      <div class="messages-container" id="messages"></div>
+      <div class="error-banner" id="error-banner">
+        <span id="error-text"></span>
+        <button id="error-close-btn">×</button>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <form class="input-form" id="chat-form">
+        <input
+          type="text"
+          id="message-input"
+          class="input"
+          placeholder="Connecting to canister..."
+          disabled
+          autocomplete="off"
+        />
+        <button type="submit" class="send-button" id="send-button" disabled>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+          </svg>
+        </button>
+      </form>
+      <div class="footer-meta">
+        Powered by <a href="https://elizaos.ai" target="_blank">elizaOS</a> • 
+        Running on <a href="https://internetcomputer.org" target="_blank">Internet Computer</a> •
+        VetKeys Enabled
+      </div>
+    </footer>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

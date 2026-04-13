@@ -1,0 +1,26 @@
+[package]
+name = "virus"
+version = "0.1.0"
+edition = "2021"
+description = "An autonomous Eliza agent that lives on your machine"
+
+[[bin]]
+name = "virus"
+path = "src/main.rs"
+
+[dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+sysinfo = "0.33"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winuser", "sysinfoapi", "winreg", "minwindef"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true

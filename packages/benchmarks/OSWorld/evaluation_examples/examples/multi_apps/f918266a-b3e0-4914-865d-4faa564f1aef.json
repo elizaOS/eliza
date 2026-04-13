@@ -1,0 +1,50 @@
+{
+  "id": "f918266a-b3e0-4914-865d-4faa564f1aef",
+  "snapshot": "vscode",
+  "instruction": "Please complete the code and retrieve the output from the Python script 'calculator.py' located on the desktop and save it as 'log.txt' in the same directory as the Python file.",
+  "source": "GAIA",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/f918266a-b3e0-4914-865d-4faa564f1aef/calculator.zip",
+            "path": "/home/user/Desktop/calculator.zip"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "/bin/bash",
+          "-c",
+          "unzip /home/user/Desktop/calculator.zip -d /home/user/Desktop/ && rm -rf /home/user/Desktop/calculator.zip"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/f918266a-b3e0-4914-865d-4faa564f1aef",
+  "related_apps": [
+    "vscode",
+    "os"
+  ],
+  "evaluator": {
+    "func": "compare_text_file",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/f918266a-b3e0-4914-865d-4faa564f1aef/log_Gold.txt",
+      "dest": "log_Gold.txt"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/log.txt",
+      "dest": "log.txt"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

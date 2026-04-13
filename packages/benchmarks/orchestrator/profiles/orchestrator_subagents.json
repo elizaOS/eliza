@@ -1,0 +1,34 @@
+{
+  "per_benchmark": {
+    "swe_bench_orchestrated": {
+      "matrix": true,
+      "max_instances": 3,
+      "no_docker": true,
+      "providers": ["claude-code", "swe-agent", "codex"],
+      "required_capabilities": [
+        "code.read",
+        "code.write",
+        "code.edit",
+        "code.search",
+        "code.shell"
+      ],
+      "strict_capabilities": true
+    },
+    "gaia_orchestrated": {
+      "matrix": true,
+      "dataset": "sample",
+      "max_questions": 10,
+      "providers": ["claude-code", "swe-agent", "codex"],
+      "required_capabilities": [
+        "research.web_search",
+        "research.web_browse",
+        "research.docs_lookup"
+      ],
+      "strict_capabilities": true
+    },
+    "orchestrator_lifecycle": {
+      "max_scenarios": 12,
+      "strict": true
+    }
+  }
+}

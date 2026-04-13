@@ -46,7 +46,7 @@ const factsProvider: Provider = {
 		const recentMessages = await runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
-			count: 10,
+			limit: 10,
 			unique: false,
 		});
 
@@ -72,7 +72,7 @@ const factsProvider: Provider = {
 				embedding,
 				roomId: message.roomId,
 				worldId: message.worldId,
-				count: 6,
+				limit: 6,
 				query: message.content.text,
 			}),
 			runtime.searchMemories({
@@ -81,7 +81,7 @@ const factsProvider: Provider = {
 				tableName: "facts",
 				roomId: message.roomId,
 				entityId: message.entityId,
-				count: 6,
+				limit: 6,
 			}),
 		]);
 

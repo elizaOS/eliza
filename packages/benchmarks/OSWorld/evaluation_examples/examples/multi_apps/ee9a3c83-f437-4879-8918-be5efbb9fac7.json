@@ -1,0 +1,98 @@
+{
+  "id": "ee9a3c83-f437-4879-8918-be5efbb9fac7",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Could you help me convert the opened ods file in the desktop to csv file with the same file name using command line when Libreoffice instance is running?",
+  "source": "https://stackoverflow.com/questions/64589140/convert-ods-to-csv-using-command-line-when-libreoffice-instance-is-running",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/ee9a3c83-f437-4879-8918-be5efbb9fac7/file_example_ODS_5000.ods",
+            "path": "/home/user/Desktop/file_example_ODS_5000.ods"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/file_example_ODS_5000.ods"
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "/bin/bash",
+          "-c",
+          "history -c && echo > ~/.bash_history && sleep 3"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "export DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus'\ngnome-terminal --maximize --working-directory=/home/user/Desktop",
+        "shell": true
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_calc",
+    "terminal"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "/bin/bash",
+            "-c",
+            "killall gnome-terminal-server"
+          ]
+        }
+      }
+    ],
+    "func": [
+      "check_include_exclude",
+      "compare_csv"
+    ],
+    "result": [
+      {
+        "type": "vm_command_line",
+        "command": [
+          "/bin/bash",
+          "-c",
+          "use_terminal=$(cat ~/.bash_history | grep \"\\(soffice\\|libreoffice\\).\\+--convert-to\\s\\+csv\"); if [ -z \"$use_terminal\" ]; then echo \"use no terminal\"; else echo \"use terminal\"; fi"
+        ]
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/file_example_ODS_5000.csv",
+        "dest": "file_example_ODS_5000.csv"
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "include": [
+            "use terminal"
+          ]
+        }
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/ee9a3c83-f437-4879-8918-be5efbb9fac7/file_example_ODS_5000.csv",
+        "dest": "file_example_ODS_5000_gold.csv"
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,58 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-11T23:05:23.049057",
+    "version": "2.0",
+    "model": "qwen/qwen3-32b",
+    "max_iterations": 20,
+    "sample_tasks": true
+  },
+  "summary": {
+    "total_tasks": 1,
+    "passed_tasks": 0,
+    "failed_tasks": 1,
+    "accuracy": 0.0,
+    "total_commands": 0,
+    "avg_commands_per_task": 0.0,
+    "total_tokens": 0,
+    "avg_tokens_per_task": 0.0,
+    "evaluation_time_seconds": 0.004499912261962891,
+    "avg_time_per_task_seconds": 0.004499912261962891
+  },
+  "leaderboard_comparison": null,
+  "by_category": {
+    "scripting": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "accuracy": 0.0,
+      "avg_commands": 0.0,
+      "avg_time_ms": 0.0
+    }
+  },
+  "by_difficulty": {
+    "easy": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "accuracy": 0.0,
+      "avg_commands": 0.0,
+      "avg_time_ms": 0.0
+    }
+  },
+  "error_categories": {
+    "Failed to connect to Docker": 1
+  },
+  "results": [
+    {
+      "task_id": "sample_001",
+      "success": false,
+      "commands_executed": 0,
+      "total_execution_time_ms": 0,
+      "tokens_used": 0,
+      "test_exit_code": 1,
+      "error_message": "Failed to connect to Docker: Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))",
+      "category": "scripting",
+      "difficulty": "easy"
+    }
+  ]
+}

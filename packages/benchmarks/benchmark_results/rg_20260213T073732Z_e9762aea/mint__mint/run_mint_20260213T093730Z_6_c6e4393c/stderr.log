@@ -1,0 +1,48 @@
+# command: /opt/miniconda3/bin/python /Users/shawwalters/eliza-workspace/benchmarks/mint/run_benchmark.py --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260213T073732Z_e9762aea/mint__mint/run_mint_20260213T093730Z_6_c6e4393c/output
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_mint_20260213T093730Z_6_c6e4393c
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/mint/run_benchmark.py", line 45, in <module>
+    from benchmarks.mint.runner import MINTRunner
+  File "/Users/shawwalters/eliza-workspace/benchmarks/mint/runner.py", line 28, in <module>
+    from benchmarks.mint.agent import MINTAgent
+  File "/Users/shawwalters/eliza-workspace/benchmarks/mint/agent.py", line 25, in <module>
+    from benchmarks.mint.plugin import (
+    ...<4 lines>...
+    )
+  File "/Users/shawwalters/eliza-workspace/benchmarks/mint/plugin.py", line 45, in <module>
+    from elizaos.runtime import AgentRuntime
+  File "/Users/shawwalters/eliza-workspace/packages/python/elizaos/__init__.py", line 1, in <module>
+    from elizaos.character import parse_character, validate_character_config
+  File "/Users/shawwalters/eliza-workspace/packages/python/elizaos/character.py", line 10, in <module>
+    from elizaos.types.agent import Character
+  File "/Users/shawwalters/eliza-workspace/packages/python/elizaos/types/__init__.py", line 3, in <module>
+    from elizaos.types.agent import (
+    ...<6 lines>...
+    )
+  File "/Users/shawwalters/eliza-workspace/packages/python/elizaos/types/agent.py", line 5, in <module>
+    from elizaos.types.generated.eliza.v1 import agent_pb2
+  File "/Users/shawwalters/eliza-workspace/packages/python/elizaos/types/generated/eliza/v1/agent_pb2.py", line 12, in <module>
+    _runtime_version.ValidateProtobufRuntimeVersion(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        _runtime_version.Domain.PUBLIC,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        'eliza/v1/agent.proto'
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/runtime_version.py", line 100, in ValidateProtobufRuntimeVersion
+    _ReportVersionError(
+    ~~~~~~~~~~~~~~~~~~~^
+        'Detected incompatible Protobuf Gencode/Runtime versions when loading'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        f' {location}: gencode {gen_version} runtime {version}. Runtime version'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        f' cannot be older than the linked gencode version. {error_prompt}'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/runtime_version.py", line 50, in _ReportVersionError
+    raise VersionError(msg)
+google.protobuf.runtime_version.VersionError: Detected incompatible Protobuf Gencode/Runtime versions when loading eliza/v1/agent.proto: gencode 6.33.5 runtime 5.29.6. Runtime version cannot be older than the linked gencode version. See Protobuf version guarantees at https://protobuf.dev/support/cross-version-runtime-guarantee.

@@ -1,0 +1,3 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python -m elizaos_terminal_bench.cli --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/terminal-bench__terminal_bench/run_terminal_bench_20260215T030258Z_1_27c0aaf3/output --model qwen/qwen3-32b --model-provider groq --max-tasks 2 --sample
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/terminal-bench
+# run_id: run_terminal_bench_20260215T030258Z_1_27c0aaf3

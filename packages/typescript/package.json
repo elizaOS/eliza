@@ -46,17 +46,23 @@
     "./testing": {
       "import": "./dist/testing/index.js",
       "default": "./dist/testing/index.js"
+    },
+    "./orchestrator": {
+      "types": "./dist/node/orchestrator/index.d.ts",
+      "import": "./dist/node/orchestrator/index.js",
+      "default": "./dist/node/orchestrator/index.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
+    "postinstall": "node ./scripts/ensure-node-pty.mjs",
     "prebuild": "[ -d src/types/generated ] || (cd ../schemas && bunx buf generate)",
     "build": "bun run build.ts",
     "build:watch": "bun run build.ts --watch",
     "dev": "bun run build:watch",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo && find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete 2>/dev/null || true",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo && find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) ! -path 'src/types/generated/*' -delete 2>/dev/null || true",
     "perf:settings": "bun run scripts/perf-settings.ts",
     "test": "vitest run",
     "test:coverage": "mkdir -p coverage/.tmp && vitest run --coverage",
@@ -102,8 +108,10 @@
     "ai": "^6.0.30",
     "dedent": "^1.7.1",
     "dotenv": "^17.2.3",
+    "coding-agent-adapters": "0.16.3",
     "drizzle-orm": "^0.45.1",
     "fast-redact": "^3.5.0",
+    "git-workspace-service": "0.4.5",
     "file-type": "^21.3.0",
     "glob": "^13.0.0",
     "handlebars": "^4.7.8",
@@ -111,6 +119,9 @@
     "mammoth": "^1.9.0",
     "markdown-it": "^14.1.0",
     "pdfjs-dist": "^5.4.530",
+    "pty-console": "0.3.1",
+    "pty-manager": "1.11.0",
+    "pty-state-capture": "0.2.0",
     "undici": "^7.0.0",
     "unique-names-generator": "^4.7.1",
     "unpdf": "^1.4.0",

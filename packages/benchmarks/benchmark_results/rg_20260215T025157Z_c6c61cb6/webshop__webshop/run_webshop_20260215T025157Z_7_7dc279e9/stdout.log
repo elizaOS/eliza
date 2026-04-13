@@ -1,0 +1,16 @@
+[2m2026-02-15T02:51:59.742244Z[0m [[31m[1merror    [0m] [1mError processing message: get
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 450, in handle_message
+    await runtime.create_memory(message, "messages")
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1822, in create_memory
+    return await self._adapter.create_memory(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/plugins/plugin-localdb/python/elizaos_plugin_localdb/adapter.py", line 412, in create_memory
+    memory_id = memory.get("id") or str(uuid.uuid4())
+                ^^^^^^^^^^
+AttributeError: get
+[0m [[0m[1m[34mWebShopAgent[0m][0m
+[WebShop canonical] Error: get
+Success rate: 0.0%
+Average reward: 0.000
+Output: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025157Z_c6c61cb6/webshop__webshop/run_webshop_20260215T025157Z_7_7dc279e9/output

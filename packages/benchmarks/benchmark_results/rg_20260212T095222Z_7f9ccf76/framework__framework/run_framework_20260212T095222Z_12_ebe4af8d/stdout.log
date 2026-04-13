@@ -1,0 +1,22 @@
+╔══════════════════════════════════════════════════════════╗
+║          Eliza Framework Benchmark — Python             ║
+╚══════════════════════════════════════════════════════════╝
+
+System: Darwin 25.2.0 arm64 | 16 CPUs | 128.0GB RAM
+Runtime: Python 3.13.2
+LLM Mode: mock (deterministic)
+Scenarios: 12 selected
+
+Running: Single Message Processing...[2m2026-02-12T09:52:23.079375Z[0m [[31m[1merror    [0m] [1mError processing message: 'dict' object has no attribute 'id'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/entities.py", line 30, in get_entities_context
+    "id": str(sender.id),
+              ^^^^^^^^^
+AttributeError: 'dict' object has no attribute 'id'
+[0m [[0m[1m[34mBenchmarkAgent[0m][0m

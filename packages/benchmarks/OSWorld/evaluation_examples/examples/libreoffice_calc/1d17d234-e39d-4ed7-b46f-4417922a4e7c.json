@@ -1,0 +1,179 @@
+{
+  "id": "1d17d234-e39d-4ed7-b46f-4417922a4e7c",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Create a new sheet named \"Sheet2\" and merge cells A1:C1 to write the header \"Investment Summary\". Beneath that, merge cells A2:B2 to write \"High Interest Rate\" and merge cells C2:D2 to form \"Low Interest Rate\".",
+  "source": "SheetCopilot@73",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/1d17d234-e39d-4ed7-b46f-4417922a4e7c/FutureValue.xlsx",
+            "path": "/home/user/FutureValue.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/FutureValue.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/1d17d234-e39d-4ed7-b46f-4417922a4e7c",
+  "related_apps": [
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "FutureValue.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/1d17d234-e39d-4ed7-b46f-4417922a4e7c/5_FutureValue_gt1.xlsx",
+      "dest": "5_FutureValue_gt1.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/FutureValue.xlsx",
+      "dest": "FutureValue.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "check_cell",
+          "sheet_idx": "RNSheet2",
+          "coordinate": "A1",
+          "props": {
+            "value": {
+              "method": "eq",
+              "ref": "Investment Summary"
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": "RNSheet2",
+          "coordinate": "B1",
+          "props": {
+            "merge": {
+              "method": "eq",
+              "ref": true
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": "RNSheet2",
+          "coordinate": "C1",
+          "props": {
+            "merge": {
+              "method": "eq",
+              "ref": true
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": "RNSheet2",
+          "coordinate": "D1",
+          "props": {
+            "merge": {
+              "method": "eq",
+              "ref": false
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": "RNSheet2",
+          "coordinate": "A2",
+          "props": {
+            "value": {
+              "method": "eq",
+              "ref": "High Interest Rate"
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": "RNSheet2",
+          "coordinate": "B2",
+          "props": {
+            "merge": {
+              "method": "eq",
+              "ref": true
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": "RNSheet2",
+          "coordinate": "C2",
+          "props": {
+            "value": {
+              "method": "eq",
+              "ref": "Low Interest Rate"
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": "RNSheet2",
+          "coordinate": "D2",
+          "props": {
+            "merge": {
+              "method": "eq",
+              "ref": true
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": "RNSheet2",
+          "coordinate": "E2",
+          "props": {
+            "merge": {
+              "method": "eq",
+              "ref": false
+            }
+          }
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

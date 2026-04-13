@@ -1,0 +1,64 @@
+# command: python -m benchmark.harness --data-dir trenches-chat-dataset/data --system eliza --model qwen/qwen3-32b --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260213T073732Z_e9762aea/social-alpha__social_alpha/run_social_alpha_20260213T093802Z_5_21b71bbb/output --suite detect
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/social-alpha
+# run_id: run_social_alpha_20260213T093802Z_5_21b71bbb
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/shawwalters/eliza-workspace/benchmarks/social-alpha/benchmark/harness.py", line 452, in <module>
+    main()
+    ~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/click/core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/click/core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "/opt/miniconda3/lib/python3.13/site-packages/click/core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/click/core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "/Users/shawwalters/eliza-workspace/benchmarks/social-alpha/benchmark/harness.py", line 425, in main
+    results = run_benchmark(sys_instance, gt, suites_to_run)
+  File "/Users/shawwalters/eliza-workspace/benchmarks/social-alpha/benchmark/harness.py", line 254, in run_benchmark
+    system.reset()
+    ~~~~~~~~~~~~^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/social-alpha/benchmark/systems/eliza_system.py", line 355, in reset
+    from ..plugin import reset_plugin_state
+  File "/Users/shawwalters/eliza-workspace/benchmarks/social-alpha/benchmark/plugin.py", line 599, in <module>
+    social_alpha_benchmark_plugin = create_social_alpha_benchmark_plugin()
+  File "/Users/shawwalters/eliza-workspace/benchmarks/social-alpha/benchmark/plugin.py", line 572, in create_social_alpha_benchmark_plugin
+    from elizaos.types.model import ModelType
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/__init__.py", line 1, in <module>
+    from elizaos.character import parse_character, validate_character_config
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/character.py", line 10, in <module>
+    from elizaos.types.agent import Character
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/types/__init__.py", line 3, in <module>
+    from elizaos.types.agent import (
+    ...<6 lines>...
+    )
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/types/agent.py", line 5, in <module>
+    from elizaos.types.generated.eliza.v1 import agent_pb2
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/types/generated/eliza/v1/agent_pb2.py", line 12, in <module>
+    _runtime_version.ValidateProtobufRuntimeVersion(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        _runtime_version.Domain.PUBLIC,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        'eliza/v1/agent.proto'
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/runtime_version.py", line 100, in ValidateProtobufRuntimeVersion
+    _ReportVersionError(
+    ~~~~~~~~~~~~~~~~~~~^
+        'Detected incompatible Protobuf Gencode/Runtime versions when loading'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        f' {location}: gencode {gen_version} runtime {version}. Runtime version'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        f' cannot be older than the linked gencode version. {error_prompt}'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/runtime_version.py", line 50, in _ReportVersionError
+    raise VersionError(msg)
+google.protobuf.runtime_version.VersionError: Detected incompatible Protobuf Gencode/Runtime versions when loading eliza/v1/agent.proto: gencode 6.33.5 runtime 5.29.6. Runtime version cannot be older than the linked gencode version. See Protobuf version guarantees at https://protobuf.dev/support/cross-version-runtime-guarantee.

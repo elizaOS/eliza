@@ -1,0 +1,2152 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "python",
+  "profile": "elevenlabs",
+  "timestamp": "1771143655257",
+  "iterations": 1,
+  "datasetName": "voicebench-ground-truth-elevenlabs",
+  "datasetPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/manifest-elevenlabs.json",
+  "sampleCount": 10,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "greeting_short",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/greeting_short.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Hello there. This is a short voice benchmark sample.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 619.709,
+      "responseTtftMs": 2450.309,
+      "responseTotalMs": 2450.349,
+      "voiceGenerationMs": 7731.149,
+      "endToEndMs": 20661.398,
+      "voiceFirstTokenUncachedMs": 1603.697,
+      "voiceFirstTokenCachedMs": 2153.217,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 6102.974,
+      "ttsCachedPipelineMs": 8256.191,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a short example of how {{agentName}} (VoicebenchAgent) might interact, including the actions it would take:\n\n**User:** Hi, I need to benchmark my microphone latency.  \n**{{agentName}}:** Sure, I can help with that. Please tell me the model of your microphone and the tes...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 975561,
+      "ttsFirstSentenceUncachedBytes": 208606,
+      "ttsFirstSentenceCachedBytes": 226578,
+      "ttsRemainderBytes": 779956,
+      "ttsCachedPipelineBytes": 1006534,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a short example of how {{agentName}} (VoicebenchAgent) might interact, including the actions it would take:\n\n**User:** Hi, I need to benchmark my microphone latency.",
+        "remainder": "**{{agentName}}:** Sure, I can help with that. Please tell me the model of your microphone and the test duration you\u2019d like. *(REPLY)*\n\n**User:** It\u2019s a Blue Yeti, and I want a 30\u2011second test.  \n**{{agentName}}:** Got it. Running a 30\u2011second latency benchmark for the Blue Yeti..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "weather_city",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/weather_city.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Today in Austin, skies are clear and temperatures are mild.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 718.76,
+      "responseTtftMs": 1091.205,
+      "responseTotalMs": 1091.236,
+      "voiceGenerationMs": 885.063,
+      "endToEndMs": 4438.938,
+      "voiceFirstTokenUncachedMs": 919.376,
+      "voiceFirstTokenCachedMs": 824.338,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 824.338,
+      "inContext": {
+        "transcript": "Today in Austin, skies are clear and temperatures are mild.",
+        "benchmarkContext": "",
+        "prompt": "Today in Austin, skies are clear and temperatures are mild.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Could you let me know what you\u2019d like assistance with regarding voice benchmarking?",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 66082,
+      "ttsFirstSentenceUncachedBytes": 71098,
+      "ttsFirstSentenceCachedBytes": 58559,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 58559,
+      "responseSegmentation": {
+        "firstSentence": "Could you let me know what you\u2019d like assistance with regarding voice benchmarking?",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "finance_brief",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/finance_brief.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "The quarterly report shows revenue growth and improving margins.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 564.384,
+      "responseTtftMs": 2339.033,
+      "responseTotalMs": 2339.066,
+      "voiceGenerationMs": 5350.877,
+      "endToEndMs": 14433.419,
+      "voiceFirstTokenUncachedMs": 962.526,
+      "voiceFirstTokenCachedMs": 888.881,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 4327.591,
+      "ttsCachedPipelineMs": 5216.472,
+      "inContext": {
+        "transcript": "The quarterly report shows revenue growth and improving margins.",
+        "benchmarkContext": "",
+        "prompt": "The quarterly report shows revenue growth and improving margins.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Sample dialog:\nUser: Hi, can you tell me how to measure voice latency?\nVoicebenchAgent: Measure round\u2011trip time using a known audio clip and timestamps. Record when you send the clip and when you receive the echo, then compute the difference.\nUser: What tools do you recommend?...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 624058,
+      "ttsFirstSentenceUncachedBytes": 90742,
+      "ttsFirstSentenceCachedBytes": 74859,
+      "ttsRemainderBytes": 556348,
+      "ttsCachedPipelineBytes": 631207,
+      "responseSegmentation": {
+        "firstSentence": "Sample dialog:\nUser: Hi, can you tell me how to measure voice latency?",
+        "remainder": "VoicebenchAgent: Measure round\u2011trip time using a known audio clip and timestamps. Record when you send the clip and when you receive the echo, then compute the difference.\nUser: What tools do you recommend?\nVoicebenchAgent: Use a high\u2011resolution audio recorder and a synchroniz..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "support_reset",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/support_reset.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "To reset your password, open settings, choose security, then tap reset.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 693.778,
+      "responseTtftMs": 2972.079,
+      "responseTotalMs": 2972.103,
+      "voiceGenerationMs": 6839.96,
+      "endToEndMs": 18943.241,
+      "voiceFirstTokenUncachedMs": 1425.459,
+      "voiceFirstTokenCachedMs": 1370.951,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 5640.858,
+      "ttsCachedPipelineMs": 7011.809,
+      "inContext": {
+        "transcript": "To reset your password, open settings, choose security, then tap reset.",
+        "benchmarkContext": "",
+        "prompt": "To reset your password, open settings, choose security, then tap reset.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a short example of how VoicebenchAgent might converse and the actions it would take:\n\n**Dialogue**\n\nUser: I need to benchmark the latency of my new microphone.  \nVoicebenchAgent: Sure, let\u2019s run a quick test. Please say \u201ctesting latency\u201d for about 5 seconds.  \n\nUser: te...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 875251,
+      "ttsFirstSentenceUncachedBytes": 186454,
+      "ttsFirstSentenceCachedBytes": 171408,
+      "ttsRemainderBytes": 702634,
+      "ttsCachedPipelineBytes": 874042,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a short example of how VoicebenchAgent might converse and the actions it would take:\n\n**Dialogue**\n\nUser: I need to benchmark the latency of my new microphone.",
+        "remainder": "VoicebenchAgent: Sure, let\u2019s run a quick test. Please say \u201ctesting latency\u201d for about 5 seconds.  \n\nUser: testing latency (speaks for 5 seconds)  \nVoicebenchAgent: (processes audio) Latency measured: **12\u202fms**. Your microphone is performing within the normal range.\n\n**Action s..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "calendar_note",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/calendar_note.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 888.1,
+      "responseTtftMs": 2000.324,
+      "responseTotalMs": 2000.355,
+      "voiceGenerationMs": 4817.345,
+      "endToEndMs": 16399.281,
+      "voiceFirstTokenUncachedMs": 4002.197,
+      "voiceFirstTokenCachedMs": 3984.504,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 706.646,
+      "ttsCachedPipelineMs": 4691.15,
+      "inContext": {
+        "transcript": "Your next meeting starts at 3:15 PM and lasts 45 minutes.",
+        "benchmarkContext": "",
+        "prompt": "Your next meeting starts at 3:15 PM and lasts 45 minutes.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a short example of how the VoicebenchAgent might interact:\\n\\nUser: Hi, can you tell me the latency of the latest voice model?\\nVoicebenchAgent: The current latency is 32\u202fms on average, with a 95\u202fth percentile of 45\u202fms.\\nUser: How does that compare to the previous versi...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 644120,
+      "ttsFirstSentenceUncachedBytes": 513298,
+      "ttsFirstSentenceCachedBytes": 517896,
+      "ttsRemainderBytes": 35571,
+      "ttsCachedPipelineBytes": 553467,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a short example of how the VoicebenchAgent might interact:\\n\\nUser: Hi, can you tell me the latency of the latest voice model?\\nVoicebenchAgent: The current latency is 32\u202fms on average, with a 95\u202fth percentile of 45\u202fms.\\nUser: How does that compare to the previous versi...",
+        "remainder": "Let me know if you need more benchmarks.\\n"
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "navigation_turn",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/navigation_turn.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "In five hundred feet, turn right and continue for two miles.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 689.698,
+      "responseTtftMs": 2460.117,
+      "responseTotalMs": 2460.141,
+      "voiceGenerationMs": 1303.956,
+      "endToEndMs": 6882.657,
+      "voiceFirstTokenUncachedMs": 615.528,
+      "voiceFirstTokenCachedMs": 600.859,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 1212.375,
+      "ttsCachedPipelineMs": 1813.233,
+      "inContext": {
+        "transcript": "In five hundred feet, turn right and continue for two miles.",
+        "benchmarkContext": "",
+        "prompt": "In five hundred feet, turn right and continue for two miles.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Hello! I'm the VoicebenchAgent, here to benchmark your voice latency quickly and precisely. Please provide a short audio snippet, and I'll give you the results.",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 157615,
+      "ttsFirstSentenceUncachedBytes": 13419,
+      "ttsFirstSentenceCachedBytes": 13419,
+      "ttsRemainderBytes": 132120,
+      "ttsCachedPipelineBytes": 145539,
+      "responseSegmentation": {
+        "firstSentence": "Hello!",
+        "remainder": "I'm the VoicebenchAgent, here to benchmark your voice latency quickly and precisely. Please provide a short audio snippet, and I'll give you the results."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "medical_disclaimer",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/medical_disclaimer.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "This information is educational and does not replace medical advice from a clinician.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 588.59,
+      "responseTtftMs": 2048.221,
+      "responseTotalMs": 2048.246,
+      "voiceGenerationMs": 5383.264,
+      "endToEndMs": 18814.641,
+      "voiceFirstTokenUncachedMs": 5322.675,
+      "voiceFirstTokenCachedMs": 5471.726,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 5471.726,
+      "inContext": {
+        "transcript": "This information is educational and does not replace medical advice from a clinician.",
+        "benchmarkContext": "",
+        "prompt": "This information is educational and does not replace medical advice from a clinician.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a brief example of VoicebenchAgent in a conversation, showing the actions it would take:\n\nUser: \u201cHow do I measure voice latency?\u201d\nVoicebenchAgent: \u201cUse our benchmark tool to capture start\u2011to\u2011end timestamps and compute the difference.\u201d (REPLY)\n\nUser: \u201cRun a benchmark on ...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 641194,
+      "ttsFirstSentenceUncachedBytes": 645791,
+      "ttsFirstSentenceCachedBytes": 662092,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 662092,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a brief example of VoicebenchAgent in a conversation, showing the actions it would take:\n\nUser: \u201cHow do I measure voice latency?\u201d\nVoicebenchAgent: \u201cUse our benchmark tool to capture start\u2011to\u2011end timestamps and compute the difference.\u201d (REPLY)\n\nUser: \u201cRun a benchmark on ...",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "multisentence_long",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/multisentence_long.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 767.363,
+      "responseTtftMs": 1617.644,
+      "responseTotalMs": 1617.666,
+      "voiceGenerationMs": 959.194,
+      "endToEndMs": 4839.398,
+      "voiceFirstTokenUncachedMs": 584.714,
+      "voiceFirstTokenCachedMs": 0.001,
+      "ttsFirstSentenceCacheHit": true,
+      "ttsRemainderMs": 910.363,
+      "ttsCachedPipelineMs": 910.364,
+      "inContext": {
+        "transcript": "Latency depends on model size, region distance and network jitter. Caching first sentence audio can reduce perceived delay.",
+        "benchmarkContext": "",
+        "prompt": "Latency depends on model size, region distance and network jitter. Caching first sentence audio can reduce perceived delay.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Hello! I'm ready to generate dialog and actions for the VoicebenchAgent. How can I assist you?",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 87398,
+      "ttsFirstSentenceUncachedBytes": 11747,
+      "ttsFirstSentenceCachedBytes": 13419,
+      "ttsRemainderBytes": 74859,
+      "ttsCachedPipelineBytes": 88278,
+      "responseSegmentation": {
+        "firstSentence": "Hello!",
+        "remainder": "I'm ready to generate dialog and actions for the VoicebenchAgent. How can I assist you?"
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "list_format",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/list_format.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 703.696,
+      "responseTtftMs": 3075.018,
+      "responseTotalMs": 3075.611,
+      "voiceGenerationMs": 9875.657,
+      "endToEndMs": 24707.235,
+      "voiceFirstTokenUncachedMs": 1441.033,
+      "voiceFirstTokenCachedMs": 1251.061,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 8359.463,
+      "ttsCachedPipelineMs": 9610.525,
+      "inContext": {
+        "transcript": "Checklist. One, capture audio. Two, transcribe. Three, generate response. Four, synthesize speech.",
+        "benchmarkContext": "",
+        "prompt": "Checklist. One, capture audio. Two, transcribe. Three, generate response. Four, synthesize speech.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "**Sample Dialog & Actions for VoicebenchAgent**  \n\n**User:** Hey, can you tell me how to benchmark the latency of my new microphone?  \n**VoicebenchAgent (REPLY):** Sure. Run a 1\u202fkHz sine\u2011wave test, record 10\u202fseconds, then compute the round\u2011trip latency. Typical results are ~2\u202f...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 1266879,
+      "ttsFirstSentenceUncachedBytes": 185618,
+      "ttsFirstSentenceCachedBytes": 148420,
+      "ttsRemainderBytes": 1076707,
+      "ttsCachedPipelineBytes": 1225127,
+      "responseSegmentation": {
+        "firstSentence": "**Sample Dialog & Actions for VoicebenchAgent**  \n\n**User:** Hey, can you tell me how to benchmark the latency of my new microphone?",
+        "remainder": "**VoicebenchAgent (REPLY):** Sure. Run a 1\u202fkHz sine\u2011wave test, record 10\u202fseconds, then compute the round\u2011trip latency. Typical results are ~2\u202fms for USB mics, ~5\u202fms for analog.\n\n**User:** Please run the quick test now.  \n**VoicebenchAgent (REPLY):** Starting quick latency test..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "numbers_dates",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/numbers_dates.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 654.844,
+      "responseTtftMs": 2507.973,
+      "responseTotalMs": 2507.998,
+      "voiceGenerationMs": 4373.379,
+      "endToEndMs": 13389.565,
+      "voiceFirstTokenUncachedMs": 1145.595,
+      "voiceFirstTokenCachedMs": 1262.429,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 3445.227,
+      "ttsCachedPipelineMs": 4707.656,
+      "inContext": {
+        "transcript": "On January 15th, 2026, the average response time was 1.4 seconds.",
+        "benchmarkContext": "",
+        "prompt": "On January 15th, 2026, the average response time was 1.4 seconds.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Sample dialog for VoicebenchAgent ({{agentName}}):\n\nUser: Hi, can you tell me the latency of my recent voice benchmark?\n{{agentName}}: Your last benchmark recorded an end\u2011to\u2011end latency of 78\u202fms.\n\nUser: How does that compare to the target?\n{{agentName}}: It\u2019s 5\u202fms above the 73...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 551333,
+      "ttsFirstSentenceUncachedBytes": 118745,
+      "ttsFirstSentenceCachedBytes": 147166,
+      "ttsRemainderBytes": 431796,
+      "ttsCachedPipelineBytes": 578962,
+      "responseSegmentation": {
+        "firstSentence": "Sample dialog for VoicebenchAgent ({{agentName}}):\n\nUser: Hi, can you tell me the latency of my recent voice benchmark?",
+        "remainder": "{{agentName}}: Your last benchmark recorded an end\u2011to\u2011end latency of 78\u202fms.\n\nUser: How does that compare to the target?\n{{agentName}}: It\u2019s 5\u202fms above the 73\u202fms target, so a slight delay.\n\nUser: What can I do to improve it?\n{{agentName}}: Reduce packet size or switch to a high..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "greeting_short",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/greeting_short.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Hello there. This is a short voice benchmark sample.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 600.717,
+      "responseTtftMs": 2741.579,
+      "responseTotalMs": 2741.601,
+      "voiceGenerationMs": 687.511,
+      "endToEndMs": 5440.56,
+      "voiceFirstTokenUncachedMs": 709.056,
+      "voiceFirstTokenCachedMs": 701.573,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 701.573,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "{'br': ['', '', '', '', '', '']}",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 33899,
+      "ttsFirstSentenceUncachedBytes": 30556,
+      "ttsFirstSentenceCachedBytes": 40169,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 40169,
+      "responseSegmentation": {
+        "firstSentence": "{'br': ['', '', '', '', '', '']}",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "weather_city",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/weather_city.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Today in Austin, skies are clear and temperatures are mild.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 1361.772,
+      "responseTtftMs": 1952.881,
+      "responseTotalMs": 1952.911,
+      "voiceGenerationMs": 10193.307,
+      "endToEndMs": 30097.442,
+      "voiceFirstTokenUncachedMs": 6834.59,
+      "voiceFirstTokenCachedMs": 6864.052,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 2890.648,
+      "ttsCachedPipelineMs": 9754.701,
+      "inContext": {
+        "transcript": "Today in Austin, skies are clear and temperatures are mild.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Today in Austin, skies are clear and temperatures are mild.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a short sample conversation with VoicebenchAgent (a fast, precise voice\u2011benchmarking assistant) and the actions you would log for each exchange:\n\n**User:** \u201cHi, can you give me the average latency for the latest iOS voice model?\u201d  \n**VoicebenchAgent (REPLY):** \u201cThe curr...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 1248907,
+      "ttsFirstSentenceUncachedBytes": 852263,
+      "ttsFirstSentenceCachedBytes": 836381,
+      "ttsRemainderBytes": 338174,
+      "ttsCachedPipelineBytes": 1174555,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a short sample conversation with VoicebenchAgent (a fast, precise voice\u2011benchmarking assistant) and the actions you would log for each exchange:\n\n**User:** \u201cHi, can you give me the average latency for the latest iOS voice model?\u201d  \n**VoicebenchAgent (REPLY):** \u201cThe curr...",
+        "remainder": "**User:** \u201cThanks, that\u2019s all.\u201d  \n**VoicebenchAgent (REPLY):** \u201cYou\u2019re welcome! Let me know if you need more measurements.\u201d  \n**Action:** REPLY\n\nEach line from the agent is a **REPLY** action; additional tool calls (e.g.,\u202fCALL_BENCHMARK) would be added after the initial REPLY ..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "finance_brief",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/finance_brief.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "The quarterly report shows revenue growth and improving margins.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 562.631,
+      "responseTtftMs": 2320.728,
+      "responseTotalMs": 2320.756,
+      "voiceGenerationMs": 5565.379,
+      "endToEndMs": 15422.917,
+      "voiceFirstTokenUncachedMs": 1809.718,
+      "voiceFirstTokenCachedMs": 1718.305,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 3446.013,
+      "ttsCachedPipelineMs": 5164.319,
+      "inContext": {
+        "transcript": "The quarterly report shows revenue growth and improving margins.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "The quarterly report shows revenue growth and improving margins.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here is a short example of how VoicebenchAgent might respond in a voice\u2011benchmarking conversation:\n\nUser: \u201cI\u2019d like to run a latency test on my new headset.\u201d\nVoicebenchAgent: \u201cSure, I\u2019ll start a latency benchmark now. Please speak a sustained \u201cah\u201d for about 5 seconds.\u201d\n\n**Acti...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 656658,
+      "ttsFirstSentenceUncachedBytes": 227414,
+      "ttsFirstSentenceCachedBytes": 232430,
+      "ttsRemainderBytes": 415078,
+      "ttsCachedPipelineBytes": 647508,
+      "responseSegmentation": {
+        "firstSentence": "Here is a short example of how VoicebenchAgent might respond in a voice\u2011benchmarking conversation:\n\nUser: \u201cI\u2019d like to run a latency test on my new headset.\u201d\nVoicebenchAgent: \u201cSure, I\u2019ll start a latency benchmark now.",
+        "remainder": "Please speak a sustained \u201cah\u201d for about 5 seconds.\u201d\n\n**Action chain**:\n1. **REPLY** \u2013 acknowledge the request.\n2. **START_BENCHMARK** \u2013 initiate the latency test (hypothetical tool).\n3. **REPLY** \u2013 provide results once the test completes.\n\nThis illustrates a concise, fast, and..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "support_reset",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/support_reset.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "To reset your password, open settings, choose security, then tap reset.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 672.658,
+      "responseTtftMs": 1770.434,
+      "responseTotalMs": 1770.457,
+      "voiceGenerationMs": 1141.477,
+      "endToEndMs": 5345.445,
+      "voiceFirstTokenUncachedMs": 582.331,
+      "voiceFirstTokenCachedMs": 0.001,
+      "ttsFirstSentenceCacheHit": true,
+      "ttsRemainderMs": 1178.441,
+      "ttsCachedPipelineMs": 1178.442,
+      "inContext": {
+        "transcript": "To reset your password, open settings, choose security, then tap reset.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "To reset your password, open settings, choose security, then tap reset.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Hello! I'm the VoicebenchAgent, here to help you benchmark voice latency quickly and precisely. What would you like to measure or improve today?",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 132956,
+      "ttsFirstSentenceUncachedBytes": 12583,
+      "ttsFirstSentenceCachedBytes": 13419,
+      "ttsRemainderBytes": 128358,
+      "ttsCachedPipelineBytes": 141777,
+      "responseSegmentation": {
+        "firstSentence": "Hello!",
+        "remainder": "I'm the VoicebenchAgent, here to help you benchmark voice latency quickly and precisely. What would you like to measure or improve today?"
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "calendar_note",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/calendar_note.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 726.394,
+      "responseTtftMs": 1782.548,
+      "responseTotalMs": 1782.57,
+      "voiceGenerationMs": 1040.719,
+      "endToEndMs": 5145.606,
+      "voiceFirstTokenUncachedMs": 591.891,
+      "voiceFirstTokenCachedMs": 0.001,
+      "ttsFirstSentenceCacheHit": true,
+      "ttsRemainderMs": 1003.876,
+      "ttsCachedPipelineMs": 1003.877,
+      "inContext": {
+        "transcript": "Your next meeting starts at 3:15 PM and lasts 45 minutes.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Your next meeting starts at 3:15 PM and lasts 45 minutes.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Hello! I'm the VoicebenchAgent, here to help with voice latency benchmarking. How can I assist you today?",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 100355,
+      "ttsFirstSentenceUncachedBytes": 12583,
+      "ttsFirstSentenceCachedBytes": 13419,
+      "ttsRemainderBytes": 91996,
+      "ttsCachedPipelineBytes": 105415,
+      "responseSegmentation": {
+        "firstSentence": "Hello!",
+        "remainder": "I'm the VoicebenchAgent, here to help with voice latency benchmarking. How can I assist you today?"
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "navigation_turn",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/navigation_turn.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "In five hundred feet, turn right and continue for two miles.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 529.252,
+      "responseTtftMs": 1884.975,
+      "responseTotalMs": 1885.0,
+      "voiceGenerationMs": 10074.739,
+      "endToEndMs": 23626.66,
+      "voiceFirstTokenUncachedMs": 1360.65,
+      "voiceFirstTokenCachedMs": 1277.409,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 8499.509,
+      "ttsCachedPipelineMs": 9776.918,
+      "inContext": {
+        "transcript": "In five hundred feet, turn right and continue for two miles.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "In five hundred feet, turn right and continue for two miles.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "**Example Dialog with VoicebenchAgent**\n\n**User:** Hi, can you tell me the typical latency for a high\u2011quality voice benchmark?  \n**VoicebenchAgent:** High\u2011quality voice benchmarks usually target end\u2011to\u2011end latency under 50\u202fms. Anything above that may be noticeable in real\u2011time...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 1257684,
+      "ttsFirstSentenceUncachedBytes": 177677,
+      "ttsFirstSentenceCachedBytes": 160959,
+      "ttsRemainderBytes": 1015685,
+      "ttsCachedPipelineBytes": 1176644,
+      "responseSegmentation": {
+        "firstSentence": "**Example Dialog with VoicebenchAgent**\n\n**User:** Hi, can you tell me the typical latency for a high\u2011quality voice benchmark?",
+        "remainder": "**VoicebenchAgent:** High\u2011quality voice benchmarks usually target end\u2011to\u2011end latency under 50\u202fms. Anything above that may be noticeable in real\u2011time conversations.\n\n**User:** How do I run a benchmark on my own device?  \n**VoicebenchAgent:** 1. Install the VoiceBench CLI. 2. Co..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "medical_disclaimer",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/medical_disclaimer.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "This information is educational and does not replace medical advice from a clinician.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 724.46,
+      "responseTtftMs": 1570.667,
+      "responseTotalMs": 1570.692,
+      "voiceGenerationMs": 8896.311,
+      "endToEndMs": 22270.409,
+      "voiceFirstTokenUncachedMs": 1654.125,
+      "voiceFirstTokenCachedMs": 1764.33,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 7660.309,
+      "ttsCachedPipelineMs": 9424.638,
+      "inContext": {
+        "transcript": "This information is educational and does not replace medical advice from a clinician.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "This information is educational and does not replace medical advice from a clinician.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "**Sample Dialog & Actions for VoicebenchAgent**&#10;&#10;**User:** Hi, I need to benchmark the latency of my new voice model.&#10;**VoicebenchAgent (REPLY):** Sure, I can help. Please provide the model endpoint and the test audio length.&#10;&#10;**User:** The endpoint is http...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 1158209,
+      "ttsFirstSentenceUncachedBytes": 219891,
+      "ttsFirstSentenceCachedBytes": 242879,
+      "ttsRemainderBytes": 941289,
+      "ttsCachedPipelineBytes": 1184168,
+      "responseSegmentation": {
+        "firstSentence": "**Sample Dialog & Actions for VoicebenchAgent**&#10;&#10;**User:** Hi, I need to benchmark the latency of my new voice model.&#10;**VoicebenchAgent (REPLY):** Sure, I can help.",
+        "remainder": "Please provide the model endpoint and the test audio length.&#10;&#10;**User:** The endpoint is https://api.example.com/v1/voice and I\u2019ll use a 5\u2011second clip.&#10;**VoicebenchAgent (REPLY):** Got it. I\u2019ll run a latency test now.&#10;&#10;**User:** How long will that take?&#10;..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "multisentence_long",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/multisentence_long.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 733.204,
+      "responseTtftMs": 2166.322,
+      "responseTotalMs": 2166.345,
+      "voiceGenerationMs": 9754.031,
+      "endToEndMs": 23616.978,
+      "voiceFirstTokenUncachedMs": 832.494,
+      "voiceFirstTokenCachedMs": 806.14,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 9324.612,
+      "ttsCachedPipelineMs": 10130.753,
+      "inContext": {
+        "transcript": "Latency depends on model size, region distance and network jitter. Caching first sentence audio can reduce perceived delay.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Latency depends on model size, region distance and network jitter. Caching first sentence audio can reduce perceived delay.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "User: I need to benchmark the latency of my new microphone. How should I start?\nAgent: Start by playing a sharp click sound through a reference speaker while simultaneously triggering a high\u2011resolution timestamp on your recording device. Record the click, then locate the audio...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 1177018,
+      "ttsFirstSentenceUncachedBytes": 55633,
+      "ttsFirstSentenceCachedBytes": 56469,
+      "ttsRemainderBytes": 1122683,
+      "ttsCachedPipelineBytes": 1179152,
+      "responseSegmentation": {
+        "firstSentence": "User: I need to benchmark the latency of my new microphone.",
+        "remainder": "How should I start?\nAgent: Start by playing a sharp click sound through a reference speaker while simultaneously triggering a high\u2011resolution timestamp on your recording device. Record the click, then locate the audio peak and compute the difference between the timestamp and t..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "list_format",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/list_format.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 716.412,
+      "responseTtftMs": 2023.242,
+      "responseTotalMs": 2023.272,
+      "voiceGenerationMs": 3965.79,
+      "endToEndMs": 11731.865,
+      "voiceFirstTokenUncachedMs": 854.197,
+      "voiceFirstTokenCachedMs": 828.665,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 3343.427,
+      "ttsCachedPipelineMs": 4172.092,
+      "inContext": {
+        "transcript": "Checklist. One, capture audio. Two, transcribe. Three, generate response. Four, synthesize speech.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Checklist. One, capture audio. Two, transcribe. Three, generate response. Four, synthesize speech.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "User: Hi, I need to benchmark the latency of my voice model.\nVoicebenchAgent: Sure, please provide the audio sample URL and the target latency you expect.\nUser: Here\u2019s the URL: https://example.com/sample.wav and I aim for under 50\u202fms.\nVoicebenchAgent: Running the benchmark\u2026 Es...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 490311,
+      "ttsFirstSentenceUncachedBytes": 65246,
+      "ttsFirstSentenceCachedBytes": 64410,
+      "ttsRemainderBytes": 413824,
+      "ttsCachedPipelineBytes": 478234,
+      "responseSegmentation": {
+        "firstSentence": "User: Hi, I need to benchmark the latency of my voice model.",
+        "remainder": "VoicebenchAgent: Sure, please provide the audio sample URL and the target latency you expect.\nUser: Here\u2019s the URL: https://example.com/sample.wav and I aim for under 50\u202fms.\nVoicebenchAgent: Running the benchmark\u2026 Estimated latency: 42\u202fms. Your model meets the target latency. ..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "numbers_dates",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/numbers_dates.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 679.312,
+      "responseTtftMs": 2190.374,
+      "responseTotalMs": 2190.414,
+      "voiceGenerationMs": 3740.235,
+      "endToEndMs": 14207.215,
+      "voiceFirstTokenUncachedMs": 3315.464,
+      "voiceFirstTokenCachedMs": 3509.565,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 772.079,
+      "ttsCachedPipelineMs": 4281.644,
+      "inContext": {
+        "transcript": "On January 15th, 2026, the average response time was 1.4 seconds.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "On January 15th, 2026, the average response time was 1.4 seconds.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Example interaction for the VoicebenchAgent (fast, precise, voice\u2011benchmarking focus):\nUser: \u201cWhat\u2019s the latency of my last voice benchmark?\u201d\nVoicebenchAgent: \u201cThe most recent benchmark recorded an average latency of 32\u202fms with 5\u202fms jitter.\u201d\nUser: \u201cCan you run a new benchmark ...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 14,
+        "llmCalls": [],
+        "providerAccesses": [
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTION_STATE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ATTACHMENTS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CAPABILITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CHOICE",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CONTEXT_BENCH",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "CURRENT_TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ENTITIES",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "TIME",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "WORLD",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 476936,
+      "ttsFirstSentenceUncachedBytes": 427199,
+      "ttsFirstSentenceCachedBytes": 437648,
+      "ttsRemainderBytes": 37661,
+      "ttsCachedPipelineBytes": 475309,
+      "responseSegmentation": {
+        "firstSentence": "Example interaction for the VoicebenchAgent (fast, precise, voice\u2011benchmarking focus):\nUser: \u201cWhat\u2019s the latency of my last voice benchmark?\u201d\nVoicebenchAgent: \u201cThe most recent benchmark recorded an average latency of 32\u202fms with 5\u202fms jitter.\u201d\nUser: \u201cCan you run a new benchmark ...",
+        "remainder": "I\u2019ll report the results as soon as they\u2019re ready.\u201d"
+      }
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 10,
+      "avgTranscriptionMs": 688.892,
+      "avgResponseTtftMs": 2256.192,
+      "avgResponseTotalMs": 2256.277,
+      "avgVoiceGenerationMs": 4751.984,
+      "avgEndToEndMs": 14350.977,
+      "avgVoiceFirstTokenUncachedMs": 1802.28,
+      "avgVoiceFirstTokenCachedMs": 1780.797,
+      "avgTtsCachedPipelineMs": 4851.346,
+      "firstSentenceCacheHitRate": 0.1,
+      "transcriptionNormalizedAccuracy": 0.8
+    },
+    "non-simple": {
+      "runs": 10,
+      "avgTranscriptionMs": 730.681,
+      "avgResponseTtftMs": 2040.375,
+      "avgResponseTotalMs": 2040.402,
+      "avgVoiceGenerationMs": 5505.95,
+      "avgEndToEndMs": 15690.51,
+      "avgVoiceFirstTokenUncachedMs": 1854.452,
+      "avgVoiceFirstTokenCachedMs": 1747.004,
+      "avgTtsCachedPipelineMs": 5558.896,
+      "firstSentenceCacheHitRate": 0.2,
+      "transcriptionNormalizedAccuracy": 0.8
+    }
+  }
+}

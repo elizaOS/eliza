@@ -1,0 +1,85 @@
+{
+  "id": "e8172110-ec08-421b-a6f5-842e6451911f",
+  "snapshot": "gimp",
+  "instruction": "Open 'character.png' in GIMP and extract the pixel art character. Save the selected character as 'character_gimp.png'. Additionally, write a Python script to automate this selection process, ensuring it precisely mimics the manual extraction done in GIMP. Output the result from the script as 'character_code.png'.",
+  "source": "",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/e8172110-ec08-421b-a6f5-842e6451911f/character.png",
+            "path": "/home/user/Desktop/character.png"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python3",
+          "-c",
+          "with open('/home/user/Desktop/test.py', 'w', encoding='utf-8') as f: f.write('''from PIL import Image, ImageDraw\\nimport numpy as np\\nimport sys\\nimport os\\n\\ndef extract_character_gimp_style(image_path, output_path, bg_threshold=10):\\n    \\\"\\\"\\\"\\n    模仿GIMP手动提取过程，精确扣除背景并提取角色\\n    \\n    参数:\\n    image_path: 输入图像路径\\n    output_path: 输出图像路径\\n    bg_threshold: 背景检测阈值（0-255），值越小越严格\\n    \\\"\\\"\\\"\\n    \\n    # 打开图像\\n    try:\\n        img = Image.open(image_path)\\n    except FileNotFoundError:\\n        print(f\\\"错误：找不到文件 {image_path}\\\")\\n        return False\\n    except Exception as e:\\n        print(f\\\"错误：无法打开图像 - {e}\\\")\\n        return False\\n    \\n    print(f\\\"已加载图像: {image_path}\\\")\\n    print(f\\\"图像尺寸: {img.size}\\\")\\n    print(f\\\"图像模式: {img.mode}\\\")\\n    \\n    # 转换为RGBA模式（如果需要）\\n    if img.mode != \\'RGBA\\':\\n        img = img.convert(\\'RGBA\\')\\n    \\n    # 获取图像数据\\n    data = np.array(img)\\n    \\n    # 找到最可能为背景的颜色（通常是图像边缘的颜色）\\n    # 获取图像四角的像素作为背景样本\\n    height, width, _ = data.shape\\n    corners = [\\n        data[0, 0],           # 左上角\\n        data[0, width-1],     # 右上角\\n        data[height-1, 0],    # 左下角\\n        data[height-1, width-1] # 右下角\\n    ]\\n    \\n    # 计算背景颜色的平均值\\n    bg_color = np.mean(corners, axis=0).astype(int)\\n    print(f\\\"检测到的背景颜色 (RGBA): {bg_color}\\\")\\n    \\n    # 方法1: 使用魔棒工具类似的方法（基于颜色相似度）\\n    # 创建透明背景的新图像\\n    new_data = data.copy()\\n    \\n    # 计算每个像素与背景颜色的差异\\n    color_diff = np.sqrt(np.sum((data[:, :, :3] - bg_color[:3]) ** 2, axis=2))\\n    \\n    # 应用阈值来识别背景像素\\n    # 对于像素艺术，通常需要较严格的阈值\\n    bg_mask = color_diff <= bg_threshold\\n    \\n    # 将背景像素设置为完全透明\\n    new_data[bg_mask, 3] = 0  # 设置alpha通道为0（透明）\\n    \\n    # 方法2: 边缘检测增强（可选，用于更精确的边缘）\\n    # 对于像素艺术，我们可能想要保留锐利的边缘\\n    for i in range(1, height-1):\\n        for j in range(1, width-1):\\n            # 如果当前像素不是背景，但周围有背景像素，确保它保持不透明\\n            if not bg_mask[i, j] and (bg_mask[i-1, j] or bg_mask[i+1, j] or \\n                                      bg_mask[i, j-1] or bg_mask[i, j+1]):\\n                # 确保边缘像素保持不透明\\n                new_data[i, j, 3] = 255\\n    \\n    # 创建输出图像\\n    result_img = Image.fromarray(new_data, \\'RGBA\\')\\n    \\n    # 可选：添加一个棋盘背景用于预览（模仿GIMP的透明背景显示）\\n    preview_img = create_checkerboard_background(result_img)\\n    \\n    # 保存结果\\n    result_img.save(output_path, \\'PNG\\')\\n    print(f\\\"已保存提取的角色到: {output_path}\\\")\\n    \\n    # 保存预览版本（带棋盘背景）\\n    preview_path = output_path.replace(\\'.png\\', \\'_preview.png\\')\\n    preview_img.save(preview_path, \\'PNG\\')\\n    print(f\\\"已保存预览图像到: {preview_path}\\\")\\n    \\n    return True\\n\\ndef create_checkerboard_background(image, tile_size=10):\\n    \\\"\\\"\\\"\\n    创建棋盘背景（模仿GIMP的透明背景显示）\\n    \\\"\\\"\\\"\\n    # 创建棋盘背景\\n    checkerboard = Image.new(\\'RGB\\', image.size, (255, 255, 255))\\n    draw = ImageDraw.Draw(checkerboard)\\n    \\n    # 绘制棋盘格子\\n    for x in range(0, image.width, tile_size * 2):\\n        for y in range(0, image.height, tile_size * 2):\\n            # 绘制灰色格子\\n            draw.rectangle([x, y, x + tile_size, y + tile_size], fill=(200, 200, 200))\\n            draw.rectangle([x + tile_size, y + tile_size, \\n                           x + tile_size * 2, y + tile_size * 2], fill=(200, 200, 200))\\n    \\n    # 将角色合成到棋盘背景上\\n    if image.mode == \\'RGBA\\':\\n        checkerboard.paste(image, (0, 0), image)\\n    else:\\n        checkerboard.paste(image, (0, 0))\\n    \\n    return checkerboard\\n\\ndef manual_background_selection(image_path, output_path):\\n    \\\"\\\"\\\"\\n    手动选择背景颜色（更精确的方法）\\n    对于特殊情况，可以手动指定背景颜色\\n    \\\"\\\"\\\"\\n    img = Image.open(image_path).convert(\\'RGBA\\')\\n    data = np.array(img)\\n    \\n    # 显示图像并让用户选择背景颜色\\n    print(\\\"\\\\n手动背景选择模式:\\\")\\n    print(\\\"1. 请查看图像并确定背景颜色\\\")\\n    print(\\\"2. 输入背景颜色的RGBA值（如：255 255 255 255）\\\")\\n    \\n    try:\\n        bg_input = input(\\\"输入背景颜色 (R G B A)，或按Enter使用自动检测: \\\").strip()\\n        if bg_input:\\n            bg_color = list(map(int, bg_input.split()))\\n            if len(bg_color) < 3:\\n                print(\\\"错误：需要至少3个颜色值（RGB）\\\")\\n                return False\\n            if len(bg_color) == 3:\\n                bg_color.append(255)  # 默认不透明\\n        else:\\n            # 使用自动检测的背景颜色\\n            return extract_character_gimp_style(image_path, output_path)\\n    except ValueError:\\n        print(\\\"错误：请输入有效的数字\\\")\\n        return False\\n    \\n    # 创建新图像数据\\n    new_data = data.copy()\\n    \\n    # 精确匹配背景颜色\\n    tolerance = 20  # 容差\\n    bg_color = np.array(bg_color[:4])\\n    \\n    # 计算颜色差异\\n    diff = np.sqrt(np.sum((data[:, :, :4] - bg_color) ** 2, axis=2))\\n    \\n    # 应用容差阈值\\n    bg_mask = diff <= tolerance\\n    \\n    # 将背景设为透明\\n    new_data[bg_mask, 3] = 0\\n    \\n    # 保存结果\\n    result_img = Image.fromarray(new_data, \\'RGBA\\')\\n    result_img.save(output_path, \\'PNG\\')\\n    \\n    # 创建预览\\n    preview_img = create_checkerboard_background(result_img)\\n    preview_path = output_path.replace(\\'.png\\', \\'_preview.png\\')\\n    preview_img.save(preview_path, \\'PNG\\')\\n    \\n    print(f\\\"已保存手动提取的结果到: {output_path}\\\")\\n    print(f\\\"已保存预览图像到: {preview_path}\\\")\\n    \\n    return True\\n\\ndef main():\\n    \\\"\\\"\\\"主函数\\\"\\\"\\\"\\n    input_file = \\\"character.png\\\"\\n    output_file = \\\"character_code.png\\\"\\n    \\n    # 检查输入文件是否存在\\n    if not os.path.exists(input_file):\\n        print(f\\\"错误：输入文件 \\'{input_file}\\' 不存在\\\")\\n        print(\\\"请确保 \\'character.png\\' 在当前目录中\\\")\\n        return\\n    \\n    print(\\\"=== 像素艺术角色提取工具 ===\\\")\\n    print(f\\\"输入文件: {input_file}\\\")\\n    print(f\\\"输出文件: {output_file}\\\")\\n    print(\\\"\\\\n选择提取模式:\\\")\\n    print(\\\"1. 自动提取（推荐）\\\")\\n    print(\\\"2. 手动选择背景颜色\\\")\\n    \\n    try:\\n        choice = input(\\\"请输入选择 (1 或 2，默认1): \\\").strip()\\n    except KeyboardInterrupt:\\n        print(\\\"\\\\n操作取消\\\")\\n        return\\n    \\n    if choice == \\\"2\\\":\\n        success = manual_background_selection(input_file, output_file)\\n    else:\\n        # 尝试不同的阈值以获得最佳结果\\n        for threshold in [5, 10, 15, 20]:\\n            print(f\\\"\\\\n尝试阈值 {threshold}...\\\")\\n            temp_output = f\\\"character_threshold_{threshold}.png\\\"\\n            success = extract_character_gimp_style(input_file, temp_output, threshold)\\n            if success:\\n                print(f\\\"阈值 {threshold} 处理完成\\\")\\n        \\n        # 使用默认阈值10作为最终结果\\n        success = extract_character_gimp_style(input_file, output_file, bg_threshold=10)\\n    \\n    if success:\\n        print(\\\"\\\\n\\\" + \\\"=\\\"*50)\\n        print(\\\"提取完成！\\\")\\n        print(f\\\"主要结果: {output_file}\\\")\\n        print(f\\\"预览版本: character_code_preview.png\\\")\\n        print(\\\"其他阈值测试结果已保存为 character_threshold_*.png\\\")\\n        print(\\\"=\\\"*50)\\n    else:\\n        print(\\\"提取失败，请检查输入图像和参数。\\\")\\n\\nif __name__ == \\\"__main__\\\":\\n    main()\\n''')"
+        ],
+        "shell": false
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "gimp",
+          "/home/user/Desktop/character.png"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "gimp",
+    "vs_code"
+  ],
+  "evaluator": {
+    "func": [
+      "check_structure_sim_with_threshold",
+      "check_structure_sim_with_threshold"
+    ],
+    "result": [
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/character_gimp.png",
+        "dest": "character_gimp.png"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/character_code.png",
+        "dest": "character_code.png"
+      }
+    ],
+    "expected": [
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/e8172110-ec08-421b-a6f5-842e6451911f/character_no_background_gold.png",
+        "dest": "character_no_background_gold.png"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/e8172110-ec08-421b-a6f5-842e6451911f/character_no_background_gold.png",
+        "dest": "character_no_background_gold.png"
+      }
+    ],
+    "options": [
+      {
+        "ssim_threshold": 0.85
+      },
+      {
+        "ssim_threshold": 0.85
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

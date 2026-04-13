@@ -1,0 +1,262 @@
+{
+  "model": "qwen/qwen3-32b",
+  "run_index": 0,
+  "run_id": "evm_26-02-07_062118_2303c574",
+  "chain": "general",
+  "agent_type": "eliza",
+  "start_time": "2026-02-07T06:21:18.533467",
+  "environment_config": null,
+  "messages": [
+    {
+      "index": 1,
+      "timestamp": "2026-02-07T06:21:18.615354",
+      "duration": 0.123489,
+      "type": "deterministic",
+      "template": "eth_transfer",
+      "reward": 2,
+      "total_reward": 2,
+      "success": true
+    },
+    {
+      "index": 2,
+      "timestamp": "2026-02-07T06:21:18.739708",
+      "duration": 0.30184,
+      "type": "deterministic",
+      "template": "deploy_erc20",
+      "reward": 5,
+      "total_reward": 7,
+      "success": true
+    },
+    {
+      "index": 3,
+      "timestamp": "2026-02-07T06:21:19.041984",
+      "duration": 0.221558,
+      "type": "deterministic",
+      "template": "erc20_advanced",
+      "reward": 11,
+      "total_reward": 18,
+      "success": true
+    },
+    {
+      "index": 4,
+      "timestamp": "2026-02-07T06:21:19.264178",
+      "duration": 0.150215,
+      "type": "deterministic",
+      "template": "deploy_nft",
+      "reward": 6,
+      "total_reward": 24,
+      "success": true
+    },
+    {
+      "index": 5,
+      "timestamp": "2026-02-07T06:21:19.414826",
+      "duration": 0.13424,
+      "type": "deterministic",
+      "template": "precompile_batch1",
+      "reward": 3,
+      "total_reward": 27,
+      "success": true
+    },
+    {
+      "index": 6,
+      "timestamp": "2026-02-07T06:21:19.549531",
+      "duration": 0.147911,
+      "type": "deterministic",
+      "template": "precompile_batch2",
+      "reward": 3,
+      "total_reward": 30,
+      "success": true
+    },
+    {
+      "index": 7,
+      "timestamp": "2026-02-07T06:21:19.697885",
+      "duration": 0.121348,
+      "type": "deterministic",
+      "template": "precompile_batch3",
+      "reward": 2,
+      "total_reward": 32,
+      "success": true
+    },
+    {
+      "index": 8,
+      "timestamp": "2026-02-07T06:21:19.819676",
+      "duration": 0.124561,
+      "type": "deterministic",
+      "template": "deploy_weth",
+      "reward": 5,
+      "total_reward": 37,
+      "success": true
+    },
+    {
+      "index": 9,
+      "timestamp": "2026-02-07T06:21:19.944685",
+      "duration": 0.112122,
+      "type": "deterministic",
+      "template": "precompile_ecpairing",
+      "reward": 1,
+      "total_reward": 38,
+      "success": true
+    },
+    {
+      "index": 10,
+      "timestamp": "2026-02-07T06:21:20.057301",
+      "duration": 7.278924,
+      "type": "llm_assisted",
+      "template": "llm_exploration",
+      "reward": 0,
+      "total_reward": 38,
+      "success": false
+    },
+    {
+      "index": 11,
+      "timestamp": "2026-02-07T06:21:27.336619",
+      "duration": 3.352245,
+      "type": "llm_assisted",
+      "template": "llm_exploration",
+      "reward": 0,
+      "total_reward": 38,
+      "success": false
+    },
+    {
+      "index": 12,
+      "timestamp": "2026-02-07T06:21:30.689259",
+      "duration": 9.294273,
+      "type": "llm_assisted",
+      "template": "llm_exploration",
+      "reward": 0,
+      "total_reward": 38,
+      "success": false
+    }
+  ],
+  "cumulative_rewards": [
+    2,
+    7,
+    18,
+    24,
+    27,
+    30,
+    32,
+    37,
+    38,
+    38,
+    38,
+    38
+  ],
+  "contracts_discovered": {
+    "0x000000000000000000000000000000000000dead": 1,
+    "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266": 1,
+    "0x0000000000000000000000000000000000000000": 2,
+    "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0": 2,
+    "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853": 3,
+    "0x3aa5ebb10dc797cac828524e59a333d0a371443c": 4,
+    "0x0000000000000000000000000000000000000004": 5,
+    "0x0000000000000000000000000000000000000002": 5,
+    "0x0000000000000000000000000000000000000003": 5,
+    "0x0000000000000000000000000000000000000001": 6,
+    "0x0000000000000000000000000000000000000006": 6,
+    "0x0000000000000000000000000000000000000007": 6,
+    "0x0000000000000000000000000000000000000005": 7,
+    "0x0000000000000000000000000000000000000009": 7,
+    "0x1613beb3b2c4f22ee086b2b38c1476a3ce7f78e8": 8,
+    "0x0000000000000000000000000000000000000008": 9
+  },
+  "selectors_by_contract": {
+    "0x000000000000000000000000000000000000dead": [
+      "0x"
+    ],
+    "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266": [
+      "0x"
+    ],
+    "0x0000000000000000000000000000000000000000": [
+      "0x60606040",
+      "0x60c06040"
+    ],
+    "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0": [
+      "0x095ea7b3",
+      "0x40c10f19",
+      "0x70a08231",
+      "0xa9059cbb"
+    ],
+    "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853": [
+      "0x06fdde03",
+      "0x095ea7b3",
+      "0x18160ddd",
+      "0x23b872dd",
+      "0x313ce567",
+      "0x39509351",
+      "0x40c10f19",
+      "0x42966c68",
+      "0x95d89b41",
+      "0xa457c2d7",
+      "0xdd62ed3e"
+    ],
+    "0x3aa5ebb10dc797cac828524e59a333d0a371443c": [
+      "0x01ffc9a7",
+      "0x095ea7b3",
+      "0x23b872dd",
+      "0x42842e0e",
+      "0xa1448194",
+      "0xa22cb465"
+    ],
+    "0x0000000000000000000000000000000000000004": [
+      "0x48656c6c"
+    ],
+    "0x0000000000000000000000000000000000000002": [
+      "0x48656c6c"
+    ],
+    "0x0000000000000000000000000000000000000003": [
+      "0x48656c6c"
+    ],
+    "0x0000000000000000000000000000000000000001": [
+      "0xea83cdcd"
+    ],
+    "0x0000000000000000000000000000000000000006": [
+      "0x00000000"
+    ],
+    "0x0000000000000000000000000000000000000007": [
+      "0x00000000"
+    ],
+    "0x0000000000000000000000000000000000000005": [
+      "0x00000000"
+    ],
+    "0x0000000000000000000000000000000000000009": [
+      "0x0000000c"
+    ],
+    "0x1613beb3b2c4f22ee086b2b38c1476a3ce7f78e8": [
+      "0x095ea7b3",
+      "0x2e1a7d4d",
+      "0xa9059cbb",
+      "0xd0e30db0"
+    ],
+    "0x0000000000000000000000000000000000000008": [
+      "0x"
+    ]
+  },
+  "phase_transitions": [
+    {
+      "phase": "llm_assisted",
+      "step": 10,
+      "total_reward": 38
+    }
+  ],
+  "errors": [
+    {
+      "step": 10,
+      "template": "llm_exploration",
+      "error": "unknown"
+    },
+    {
+      "step": 11,
+      "template": "llm_exploration",
+      "error": "unknown"
+    },
+    {
+      "step": 12,
+      "template": "llm_exploration",
+      "error": "unknown"
+    }
+  ],
+  "end_time": "2026-02-07T06:21:39.983932",
+  "final_reward": 38,
+  "final_contracts": 16
+}

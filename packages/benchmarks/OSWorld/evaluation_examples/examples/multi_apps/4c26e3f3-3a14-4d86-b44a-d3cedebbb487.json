@@ -1,0 +1,50 @@
+{
+  "id": "4c26e3f3-3a14-4d86-b44a-d3cedebbb487",
+  "snapshot": "libreoffice_impress",
+  "instruction": "I've noticed that the image on the second slide is too dim. Can you please enhance its brightness for me? Save the adjusted image on the Desktop and name it \"background.png\". Thank you!",
+  "source": "https://www.quora.com/How-do-I-edit-a-photo-in-GIMP",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/4c26e3f3-3a14-4d86-b44a-d3cedebbb487/PPT-Template_widescreen.pptx",
+            "path": "/home/user/Desktop/PPT-Template_widescreen.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/PPT-Template_widescreen.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/4c26e3f3-3a14-4d86-b44a-d3cedebbb487",
+  "related_apps": [
+    "gimp",
+    "libreoffice_impress",
+    "os"
+  ],
+  "evaluator": {
+    "func": "check_brightness_decrease_and_structure_sim",
+    "expected": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/background.png",
+      "dest": "background.png"
+    },
+    "result": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/4c26e3f3-3a14-4d86-b44a-d3cedebbb487/back.png",
+      "dest": "image_original.png"
+    },
+    "options": {
+      "threshold": 0.15
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

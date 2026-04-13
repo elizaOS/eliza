@@ -1,0 +1,1012 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "python",
+  "profile": "groq",
+  "timestamp": "1771142578659",
+  "iterations": 1,
+  "datasetName": "voicebench-ground-truth-groq",
+  "datasetPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/manifest-groq.json",
+  "sampleCount": 10,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "greeting_short",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Hello there. This is a short voice benchmark sample.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 535.991,
+      "responseTtftMs": 2224.11,
+      "responseTotalMs": 2224.122,
+      "voiceGenerationMs": 2077.478,
+      "endToEndMs": 8579.044,
+      "voiceFirstTokenUncachedMs": 1408.099,
+      "voiceFirstTokenCachedMs": 1398.497,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 934.693,
+      "ttsCachedPipelineMs": 2333.19,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Voice benchmarking measures the end\u2011to\u2011end latency of a voice system, from input capture to playback output. It captures network delay, processing time, and playback rendering to give a single latency figure.",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 633670,
+      "ttsFirstSentenceUncachedBytes": 426310,
+      "ttsFirstSentenceCachedBytes": 426310,
+      "ttsRemainderBytes": 272710,
+      "ttsCachedPipelineBytes": 699020,
+      "responseSegmentation": {
+        "firstSentence": "Voice benchmarking measures the end\u2011to\u2011end latency of a voice system, from input capture to playback output.",
+        "remainder": "It captures network delay, processing time, and playback rendering to give a single latency figure."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "weather_city",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/weather_city.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Today in Austin, skies are clear and temperatures are mild.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 460.524,
+      "responseTtftMs": 2765.293,
+      "responseTotalMs": 2765.31,
+      "voiceGenerationMs": 8660.939,
+      "endToEndMs": 20497.939,
+      "voiceFirstTokenUncachedMs": 1424.784,
+      "voiceFirstTokenCachedMs": 1394.371,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 5791.937,
+      "ttsCachedPipelineMs": 7186.308,
+      "inContext": {
+        "transcript": "Today in Austin, skies are clear and temperatures are mild.",
+        "benchmarkContext": "",
+        "prompt": "Today in Austin, skies are clear and temperatures are mild.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "**Sample interaction with VoicebenchAgent**\n\nUser: How can I benchmark the latency of my TTS model?\nVoicebenchAgent (REPLY): Run a fixed\u2011length script through your model, measure end\u2011to\u2011end time, and divide by the number of tokens. Use a warm\u2011up run to avoid cold\u2011start bias.\n\n...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 2707262,
+      "ttsFirstSentenceUncachedBytes": 418630,
+      "ttsFirstSentenceCachedBytes": 418630,
+      "ttsRemainderBytes": 1820222,
+      "ttsCachedPipelineBytes": 2238852,
+      "responseSegmentation": {
+        "firstSentence": "**Sample interaction with VoicebenchAgent**\n\nUser: How can I benchmark the latency of my TTS model?",
+        "remainder": "VoicebenchAgent (REPLY): Run a fixed\u2011length script through your model, measure end\u2011to\u2011end time, and divide by the number of tokens. Use a warm\u2011up run to avoid cold\u2011start bias.\n\nUser: Show me a command\u2011line example.\nVoicebenchAgent (REPLY): `python -m benchmark --model my_tts -..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "finance_brief",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/finance_brief.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "The quarterly report shows revenue growth and improving margins.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 542.68,
+      "responseTtftMs": 1844.709,
+      "responseTotalMs": 1844.724,
+      "voiceGenerationMs": 3148.541,
+      "endToEndMs": 8565.1,
+      "voiceFirstTokenUncachedMs": 214.219,
+      "voiceFirstTokenCachedMs": 204.037,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 2610.844,
+      "ttsCachedPipelineMs": 2814.881,
+      "inContext": {
+        "transcript": "The quarterly report shows revenue growth and improving margins.",
+        "benchmarkContext": "",
+        "prompt": "The quarterly report shows revenue growth and improving margins.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Sure! Here\u2019s a quick example of how {{agentName}} might converse:\n\nUser: \u201cHow can I measure voice latency?\u201d\n{{agentName}}: \u201cUse a high\u2011resolution timer to capture the round\u2011trip time of a spoken cue. I can walk you through the exact steps if needed.\u201d\n\nIf you\u2019d like a deeper wa...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 990790,
+      "ttsFirstSentenceUncachedBytes": 38470,
+      "ttsFirstSentenceCachedBytes": 38470,
+      "ttsRemainderBytes": 802630,
+      "ttsCachedPipelineBytes": 841100,
+      "responseSegmentation": {
+        "firstSentence": "Sure!",
+        "remainder": "Here\u2019s a quick example of how {{agentName}} might converse:\n\nUser: \u201cHow can I measure voice latency?\u201d\n{{agentName}}: \u201cUse a high\u2011resolution timer to capture the round\u2011trip time of a spoken cue. I can walk you through the exact steps if needed.\u201d\n\nIf you\u2019d like a deeper walkthro..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "support_reset",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/support_reset.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "To reset your password, open settings, choose security, then tap reset.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 1808.332,
+      "responseTtftMs": 1741.734,
+      "responseTotalMs": 1741.748,
+      "voiceGenerationMs": 6920.234,
+      "endToEndMs": 18143.933,
+      "voiceFirstTokenUncachedMs": 1317.196,
+      "voiceFirstTokenCachedMs": 1433.956,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 4922.398,
+      "ttsCachedPipelineMs": 6356.354,
+      "inContext": {
+        "transcript": "To reset your password, open Settings, choose Security, then tap Reset.",
+        "benchmarkContext": "",
+        "prompt": "To reset your password, open Settings, choose Security, then tap Reset.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a short example conversation with the VoicebenchAgent (fast, precise, voice\u2011benchmarking focus):\n\n**User:** Hi, can you tell me the latency of the latest voice model?  \n**VoicebenchAgent:** The current model reports an average latency of 42\u202fms per utterance.\n\n**User:** ...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 2231102,
+      "ttsFirstSentenceUncachedBytes": 399430,
+      "ttsFirstSentenceCachedBytes": 399430,
+      "ttsRemainderBytes": 1597502,
+      "ttsCachedPipelineBytes": 1996932,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a short example conversation with the VoicebenchAgent (fast, precise, voice\u2011benchmarking focus):\n\n**User:** Hi, can you tell me the latency of the latest voice model?",
+        "remainder": "**VoicebenchAgent:** The current model reports an average latency of 42\u202fms per utterance.\n\n**User:** How does that compare to the previous version?  \n**VoicebenchAgent:** The prior version averaged 58\u202fms, so the new model is about 27% faster.\n\n**User:** Can you run a quick ben..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "calendar_note",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/calendar_note.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 507.636,
+      "responseTtftMs": 2312.178,
+      "responseTotalMs": 2312.19,
+      "voiceGenerationMs": 1126.744,
+      "endToEndMs": 5479.42,
+      "voiceFirstTokenUncachedMs": 233.566,
+      "voiceFirstTokenCachedMs": 231.212,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 1068.011,
+      "ttsCachedPipelineMs": 1299.223,
+      "inContext": {
+        "transcript": "Your next meeting starts at 3.15 p.m. and lasts 45 minutes.",
+        "benchmarkContext": "",
+        "prompt": "Your next meeting starts at 3.15 p.m. and lasts 45 minutes.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Hello! I\u2019m the VoicebenchAgent, here to help with voice latency benchmarking. What would you like to know or do today?",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 322630,
+      "ttsFirstSentenceUncachedBytes": 46150,
+      "ttsFirstSentenceCachedBytes": 46150,
+      "ttsRemainderBytes": 311110,
+      "ttsCachedPipelineBytes": 357260,
+      "responseSegmentation": {
+        "firstSentence": "Hello!",
+        "remainder": "I\u2019m the VoicebenchAgent, here to help with voice latency benchmarking. What would you like to know or do today?"
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "navigation_turn",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/navigation_turn.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "In five hundred feet, turn right and continue for two miles.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 725.807,
+      "responseTtftMs": 2295.932,
+      "responseTotalMs": 2295.945,
+      "voiceGenerationMs": 4824.637,
+      "endToEndMs": 15314.368,
+      "voiceFirstTokenUncachedMs": 1635.52,
+      "voiceFirstTokenCachedMs": 1635.385,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 4197.008,
+      "ttsCachedPipelineMs": 5832.393,
+      "inContext": {
+        "transcript": "In 500 feet, turn right and continue for two miles.",
+        "benchmarkContext": "",
+        "prompt": "In 500 feet, turn right and continue for two miles.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here is a short example interaction for VoicebenchAgent (fast, precise, focused on voice latency benchmarking):\nUser: \"What is the current voice latency?\"\nVoicebenchAgent: \"Current measured voice latency is 42\u202fms.\" (Action: REPLY)\n\nUser: \"Run a new benchmark on channel 3.\"\nVoi...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 1539910,
+      "ttsFirstSentenceUncachedBytes": 495430,
+      "ttsFirstSentenceCachedBytes": 495430,
+      "ttsRemainderBytes": 1305670,
+      "ttsCachedPipelineBytes": 1801100,
+      "responseSegmentation": {
+        "firstSentence": "Here is a short example interaction for VoicebenchAgent (fast, precise, focused on voice latency benchmarking):\nUser: \"What is the current voice latency?\"",
+        "remainder": "VoicebenchAgent: \"Current measured voice latency is 42\u202fms.\" (Action: REPLY)\n\nUser: \"Run a new benchmark on channel 3.\"\nVoicebenchAgent: \"Starting benchmark on channel\u202f3\u2026 results will be posted shortly.\" (Action: REPLY)\n\nUser: \"Thanks!\"\nVoicebenchAgent: \"You\u2019re welcome. Let me ..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "medical_disclaimer",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/medical_disclaimer.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "This information is educational and does not replace medical advice from a clinician.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 571.851,
+      "responseTtftMs": 3840.296,
+      "responseTotalMs": 3840.314,
+      "voiceGenerationMs": 16430.522,
+      "endToEndMs": 38396.06,
+      "voiceFirstTokenUncachedMs": 2101.143,
+      "voiceFirstTokenCachedMs": 2093.034,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 13359.119,
+      "ttsCachedPipelineMs": 15452.153,
+      "inContext": {
+        "transcript": "This information is educational and does not replace medical advice from a clinician.",
+        "benchmarkContext": "",
+        "prompt": "This information is educational and does not replace medical advice from a clinician.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s an example of a short conversation with VoicebenchAgent, illustrating both the dialogue and the actions (REPLY) it would perform:\n\n**User:** \u201cHey, can you tell me how to benchmark voice latency?\u201d  \n**VoicebenchAgent (REPLY):** \u201cSure. To benchmark voice latency, you\u2019ll n...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 5452838,
+      "ttsFirstSentenceUncachedBytes": 656710,
+      "ttsFirstSentenceCachedBytes": 656710,
+      "ttsRemainderBytes": 4523566,
+      "ttsCachedPipelineBytes": 5180276,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s an example of a short conversation with VoicebenchAgent, illustrating both the dialogue and the actions (REPLY) it would perform:\n\n**User:** \u201cHey, can you tell me how to benchmark voice latency?\u201d  \n**VoicebenchAgent (REPLY):** \u201cSure.",
+        "remainder": "To benchmark voice latency, you\u2019ll need a test call setup, a timing tool, and a stable network. I can walk you through the steps.\u201d\n\n**User:** \u201cWhat are the steps?\u201d  \n**VoicebenchAgent (REPLY):** \u201c1. Initiate a call between two endpoints. 2. Record the time from speaking to hea..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "multisentence_long",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/multisentence_long.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 898.473,
+      "responseTtftMs": 2507.644,
+      "responseTotalMs": 2507.659,
+      "voiceGenerationMs": 6359.272,
+      "endToEndMs": 19378.588,
+      "voiceFirstTokenUncachedMs": 2227.328,
+      "voiceFirstTokenCachedMs": 2203.321,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 5182.458,
+      "ttsCachedPipelineMs": 7385.779,
+      "inContext": {
+        "transcript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+        "benchmarkContext": "",
+        "prompt": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a short example of how VoicebenchAgent interacts:\\n\\nUser: What is the typical latency for a high\u2011quality voice model?\\nVoicebenchAgent: High\u2011quality models usually report end\u2011to\u2011end latency around 120\u202fms. Need a detailed breakdown?\\n\\nUser: Show me a comparison between...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 1993022,
+      "ttsFirstSentenceUncachedBytes": 679750,
+      "ttsFirstSentenceCachedBytes": 679750,
+      "ttsRemainderBytes": 1585990,
+      "ttsCachedPipelineBytes": 2265740,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a short example of how VoicebenchAgent interacts:\\n\\nUser: What is the typical latency for a high\u2011quality voice model?\\nVoicebenchAgent: High\u2011quality models usually report end\u2011to\u2011end latency around 120\u202fms.",
+        "remainder": "Need a detailed breakdown?\\n\\nUser: Show me a comparison between Model\u202fA and Model\u202fB.\\nVoicebenchAgent: Model\u202fA: 115\u202fms, Model\u202fB: 130\u202fms. Model\u202fA is about 12\u202f% faster.\\n\\nUser: Thanks.\\nVoicebenchAgent: You\u2019re welcome. Let me know if you need more benchmarks.\\n\\n*Actions used*..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "list_format",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/list_format.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 1131.593,
+      "responseTtftMs": 2288.488,
+      "responseTotalMs": 2288.502,
+      "voiceGenerationMs": 8700.542,
+      "endToEndMs": 26239.584,
+      "voiceFirstTokenUncachedMs": 4417.878,
+      "voiceFirstTokenCachedMs": 4362.123,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 5338.8,
+      "ttsCachedPipelineMs": 9700.923,
+      "inContext": {
+        "transcript": "Checklist. 1. Capture audio. 2. Transcribe. 3. Generate response. 4. Synthesize speech.",
+        "benchmarkContext": "",
+        "prompt": "Checklist. 1. Capture audio. 2. Transcribe. 3. Generate response. 4. Synthesize speech.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a short example of how VoicebenchAgent might interact, with the actions it would take at each step:\n\n**User:** \u201cHi, can you give me the average latency for my last three voice benchmarks?\u201d  \n**VoicebenchAgent (REPLY):** \u201cSure, I\u2019ll fetch the latest benchmark data for yo...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 2868534,
+      "ttsFirstSentenceUncachedBytes": 1390150,
+      "ttsFirstSentenceCachedBytes": 1390150,
+      "ttsRemainderBytes": 1670462,
+      "ttsCachedPipelineBytes": 3060612,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a short example of how VoicebenchAgent might interact, with the actions it would take at each step:\n\n**User:** \u201cHi, can you give me the average latency for my last three voice benchmarks?\u201d  \n**VoicebenchAgent (REPLY):** \u201cSure, I\u2019ll fetch the latest benchmark data for yo...",
+        "remainder": "**User:** \u201cGreat, what\u2019s the best\u2011performing device?\u201d  \n**VoicebenchAgent (REPLY):** \u201cThe device with the lowest average latency is the X\u2011200 model at 12\u202fms.\u201d  \n**Action:** REPLY.\n\n**User:** \u201cThanks, that\u2019s all for now.\u201d  \n**VoicebenchAgent (REPLY):** \u201cYou\u2019re welcome! Let me k..."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "numbers_dates",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/numbers_dates.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 661.265,
+      "responseTtftMs": 2257.904,
+      "responseTotalMs": 2257.917,
+      "voiceGenerationMs": 15860.348,
+      "endToEndMs": 29444.205,
+      "voiceFirstTokenUncachedMs": 705.214,
+      "voiceFirstTokenCachedMs": 706.621,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 9252.775,
+      "ttsCachedPipelineMs": 9959.395,
+      "inContext": {
+        "transcript": "On January 15, 2026, the average response time was 1.4 seconds.",
+        "benchmarkContext": "",
+        "prompt": "On January 15, 2026, the average response time was 1.4 seconds.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "**Sample Dialog**  \n**User:** Hey, can you explain how to benchmark voice latency?  \n**VoicebenchAgent:** Absolutely. To benchmark voice latency, follow these steps:  \n1. **Generate a test tone** (e.g., a 1\u202fkHz sine wave) on the source device.  \n2. **Record the exact timestamp...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 5034294,
+      "ttsFirstSentenceUncachedBytes": 199750,
+      "ttsFirstSentenceCachedBytes": 199750,
+      "ttsRemainderBytes": 2964534,
+      "ttsCachedPipelineBytes": 3164284,
+      "responseSegmentation": {
+        "firstSentence": "**Sample Dialog**  \n**User:** Hey, can you explain how to benchmark voice latency?",
+        "remainder": "**VoicebenchAgent:** Absolutely. To benchmark voice latency, follow these steps:  \n1. **Generate a test tone** (e.g., a 1\u202fkHz sine wave) on the source device.  \n2. **Record the exact timestamp** when the tone is emitted.  \n3. **Transmit the audio** over the target network or p..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "greeting_short",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Hello there. This is a short voice benchmark sample.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 619.497,
+      "responseTtftMs": 1745.175,
+      "responseTotalMs": 1745.19,
+      "voiceGenerationMs": 8491.962,
+      "endToEndMs": 19013.458,
+      "voiceFirstTokenUncachedMs": 746.398,
+      "voiceFirstTokenCachedMs": 762.445,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 6647.912,
+      "ttsCachedPipelineMs": 7410.357,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "User: Hey, how do I measure voice latency on my new headset?\nVoicebenchAgent: Sure. Run a loopback test: record a short phrase, play it back immediately, and measure the round\u2011trip time. Use a high\u2011resolution timer for accuracy.\nUser: What tool should I use?\nVoicebenchAgent: I...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 2622782,
+      "ttsFirstSentenceUncachedBytes": 211270,
+      "ttsFirstSentenceCachedBytes": 211270,
+      "ttsRemainderBytes": 2092862,
+      "ttsCachedPipelineBytes": 2304132,
+      "responseSegmentation": {
+        "firstSentence": "User: Hey, how do I measure voice latency on my new headset?",
+        "remainder": "VoicebenchAgent: Sure. Run a loopback test: record a short phrase, play it back immediately, and measure the round\u2011trip time. Use a high\u2011resolution timer for accuracy.\nUser: What tool should I use?\nVoicebenchAgent: I recommend the open\u2011source \u201clatency\u2011tester\u201d CLI. It outputs l..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "weather_city",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/weather_city.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Today in Austin, skies are clear and temperatures are mild.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 480.712,
+      "responseTtftMs": 1986.928,
+      "responseTotalMs": 1986.942,
+      "voiceGenerationMs": 3136.718,
+      "endToEndMs": 10157.102,
+      "voiceFirstTokenUncachedMs": 908.869,
+      "voiceFirstTokenCachedMs": 1331.446,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 2312.354,
+      "ttsCachedPipelineMs": 3643.8,
+      "inContext": {
+        "transcript": "Today in Austin, skies are clear and temperatures are mild.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Today in Austin, skies are clear and temperatures are mild.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Example dialog:\nUser: How can I benchmark the latency of my microphone?\nVoicebenchAgent: Capture a click sound, play it back, and measure the time between the input edge and output edge using a high\u2011resolution timer. Run multiple trials, average the results, and compare agains...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 1002310,
+      "ttsFirstSentenceUncachedBytes": 261190,
+      "ttsFirstSentenceCachedBytes": 261190,
+      "ttsRemainderBytes": 679750,
+      "ttsCachedPipelineBytes": 940940,
+      "responseSegmentation": {
+        "firstSentence": "Example dialog:\nUser: How can I benchmark the latency of my microphone?",
+        "remainder": "VoicebenchAgent: Capture a click sound, play it back, and measure the time between the input edge and output edge using a high\u2011resolution timer. Run multiple trials, average the results, and compare against your target latency threshold."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "finance_brief",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/finance_brief.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "The quarterly report shows revenue growth and improving margins.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 459.69,
+      "responseTtftMs": 2250.143,
+      "responseTotalMs": 2250.156,
+      "voiceGenerationMs": 3741.607,
+      "endToEndMs": 12236.098,
+      "voiceFirstTokenUncachedMs": 700.656,
+      "voiceFirstTokenCachedMs": 691.038,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 4392.884,
+      "ttsCachedPipelineMs": 5083.922,
+      "inContext": {
+        "transcript": "The quarterly report shows revenue growth and improving margins.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "The quarterly report shows revenue growth and improving margins.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "**Sample Dialog**  \nUser: Hi, I need to benchmark my microphone\u2019s latency.  \nVoicebenchAgent: Sure. Upload a 2\u2011second silent clip, and I\u2019ll run the latency benchmark and return the result in milliseconds.  \n\n**Possible Actions**  \n- REPLY: Provide a concise answer or instructi...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 1178942,
+      "ttsFirstSentenceUncachedBytes": 195910,
+      "ttsFirstSentenceCachedBytes": 195910,
+      "ttsRemainderBytes": 1363270,
+      "ttsCachedPipelineBytes": 1559180,
+      "responseSegmentation": {
+        "firstSentence": "**Sample Dialog**  \nUser: Hi, I need to benchmark my microphone\u2019s latency.",
+        "remainder": "VoicebenchAgent: Sure. Upload a 2\u2011second silent clip, and I\u2019ll run the latency benchmark and return the result in milliseconds.  \n\n**Possible Actions**  \n- REPLY: Provide a concise answer or instruction.  \n- NONE: No extra operation needed after replying.  \n- CHOOSE_OPTION: If..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "support_reset",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/support_reset.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "To reset your password, open settings, choose security, then tap reset.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 719.985,
+      "responseTtftMs": 2337.327,
+      "responseTotalMs": 2337.34,
+      "voiceGenerationMs": 5074.001,
+      "endToEndMs": 15282.341,
+      "voiceFirstTokenUncachedMs": 1566.631,
+      "voiceFirstTokenCachedMs": 1550.341,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 4033.978,
+      "ttsCachedPipelineMs": 5584.319,
+      "inContext": {
+        "transcript": "To reset your password, open Settings, choose Security, then tap Reset.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "To reset your password, open Settings, choose Security, then tap Reset.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a brief sample dialogue showcasing VoicebenchAgent\u2019s fast, precise style for voice latency benchmarking:\n\n**User:** I need to benchmark the latency of my new voice model.  \n**VoicebenchAgent:** Sure. Please provide the model identifier and the target platform.  \n**User:...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 1440062,
+      "ttsFirstSentenceUncachedBytes": 472390,
+      "ttsFirstSentenceCachedBytes": 472390,
+      "ttsRemainderBytes": 1263430,
+      "ttsCachedPipelineBytes": 1735820,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a brief sample dialogue showcasing VoicebenchAgent\u2019s fast, precise style for voice latency benchmarking:\n\n**User:** I need to benchmark the latency of my new voice model.",
+        "remainder": "**VoicebenchAgent:** Sure. Please provide the model identifier and the target platform.  \n**User:** Model\u202fID\u202f`v2\u2011alpha`, targeting WebRTC.  \n**VoicebenchAgent:** Running benchmark\u2026 Estimated round\u2011trip latency: 32\u202fms. Would you like a detailed report?\n\n(If you\u2019d like to run a ..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "calendar_note",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/calendar_note.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 674.804,
+      "responseTtftMs": 2962.189,
+      "responseTotalMs": 2962.202,
+      "voiceGenerationMs": 1891.829,
+      "endToEndMs": 12519.623,
+      "voiceFirstTokenUncachedMs": 655.239,
+      "voiceFirstTokenCachedMs": 654.865,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 5680.625,
+      "ttsCachedPipelineMs": 6335.49,
+      "inContext": {
+        "transcript": "Your next meeting starts at 3.15 p.m. and lasts 45 minutes.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Your next meeting starts at 3.15 p.m. and lasts 45 minutes.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "**Dialog Example:**\n\n**User:** I need to benchmark the latency of my new voice model. How should I start?\n\n**VoicebenchAgent:** To benchmark latency, run a series of timed inference calls on representative audio samples. Use a consistent hardware setup, measure average process...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 576062,
+      "ttsFirstSentenceUncachedBytes": 180550,
+      "ttsFirstSentenceCachedBytes": 180550,
+      "ttsRemainderBytes": 1816382,
+      "ttsCachedPipelineBytes": 1996932,
+      "responseSegmentation": {
+        "firstSentence": "**Dialog Example:**\n\n**User:** I need to benchmark the latency of my new voice model.",
+        "remainder": "How should I start?\n\n**VoicebenchAgent:** To benchmark latency, run a series of timed inference calls on representative audio samples. Use a consistent hardware setup, measure average processing time per utterance, and report the mean and 95th\u2011percentile values. Let me know if..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "navigation_turn",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/navigation_turn.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "In five hundred feet, turn right and continue for two miles.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 564.215,
+      "responseTtftMs": 2364.208,
+      "responseTotalMs": 2364.224,
+      "voiceGenerationMs": 9018.309,
+      "endToEndMs": 22824.23,
+      "voiceFirstTokenUncachedMs": 1201.462,
+      "voiceFirstTokenCachedMs": 1075.289,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 8600.524,
+      "ttsCachedPipelineMs": 9675.813,
+      "inContext": {
+        "transcript": "In 500 feet, turn right and continue for two miles.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "In 500 feet, turn right and continue for two miles.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a sample conversation with VoicebenchAgent:\n\nUser: I need to benchmark the latency of my new microphone.\nVoicebenchAgent: Sure, let\u2019s run a quick test. Please provide the audio sample rate and the device ID.\nUser: 48kHz, device ID 5.\nVoicebenchAgent: Running benchmark\u2026 ...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 2918454,
+      "ttsFirstSentenceUncachedBytes": 330310,
+      "ttsFirstSentenceCachedBytes": 330310,
+      "ttsRemainderBytes": 2791742,
+      "ttsCachedPipelineBytes": 3122052,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a sample conversation with VoicebenchAgent:\n\nUser: I need to benchmark the latency of my new microphone.",
+        "remainder": "VoicebenchAgent: Sure, let\u2019s run a quick test. Please provide the audio sample rate and the device ID.\nUser: 48kHz, device ID 5.\nVoicebenchAgent: Running benchmark\u2026 Done. The average latency is 12.4\u202fms with a standard deviation of 0.8\u202fms.\nUser: How does that compare to typical..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "medical_disclaimer",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/medical_disclaimer.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "This information is educational and does not replace medical advice from a clinician.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 599.931,
+      "responseTtftMs": 3209.607,
+      "responseTotalMs": 3209.62,
+      "voiceGenerationMs": 12073.684,
+      "endToEndMs": 26405.602,
+      "voiceFirstTokenUncachedMs": 1455.478,
+      "voiceFirstTokenCachedMs": 1420.532,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 7646.284,
+      "ttsCachedPipelineMs": 9066.816,
+      "inContext": {
+        "transcript": "This information is educational and does not replace medical advice from a clinician.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "This information is educational and does not replace medical advice from a clinician.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here is a concise example dialogue featuring VoicebenchAgent ({{agentName}}) with its corresponding actions:\\n\\n**User:** How do I measure voice latency?\\n**VoicebenchAgent (REPLY):** To benchmark voice latency, record a short phrase, send it through your pipeline, and compare...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 3955246,
+      "ttsFirstSentenceUncachedBytes": 433990,
+      "ttsFirstSentenceCachedBytes": 433990,
+      "ttsRemainderBytes": 2449974,
+      "ttsCachedPipelineBytes": 2883964,
+      "responseSegmentation": {
+        "firstSentence": "Here is a concise example dialogue featuring VoicebenchAgent ({{agentName}}) with its corresponding actions:\\n\\n**User:** How do I measure voice latency?\\n**VoicebenchAgent (REPLY):** To benchmark voice latency, record a short phrase, send it through your pipeline, and compare...",
+        "remainder": "Use a high\u2011resolution timer for accuracy.\\n\\n**User:** What tools should I use?\\n**VoicebenchAgent (REPLY):** I recommend Audacity for recording and a Python script with `time.perf_counter()` to log timestamps. Combine this with your VoIP client\u2019s logging feature.\\n\\n**User:**..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "multisentence_long",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/multisentence_long.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 608.436,
+      "responseTtftMs": 2205.554,
+      "responseTotalMs": 2205.567,
+      "voiceGenerationMs": 5693.24,
+      "endToEndMs": 15084.813,
+      "voiceFirstTokenUncachedMs": 685.434,
+      "voiceFirstTokenCachedMs": 687.953,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 5204.112,
+      "ttsCachedPipelineMs": 5892.064,
+      "inContext": {
+        "transcript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "**Example dialog**\nUser: How can I measure latency in my voice application?\nVoicebenchAgent: Measure latency by recording a known utterance, sending it through your processing pipeline, and timing the interval between the input timestamp and the playback start. Use a high\u2011reso...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 1801022,
+      "ttsFirstSentenceUncachedBytes": 195910,
+      "ttsFirstSentenceCachedBytes": 195910,
+      "ttsRemainderBytes": 1632070,
+      "ttsCachedPipelineBytes": 1827980,
+      "responseSegmentation": {
+        "firstSentence": "**Example dialog**\nUser: How can I measure latency in my voice application?",
+        "remainder": "VoicebenchAgent: Measure latency by recording a known utterance, sending it through your processing pipeline, and timing the interval between the input timestamp and the playback start. Use a high\u2011resolution timer (e.g., `performance.now()` in the browser) and repeat several t..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "list_format",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/list_format.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 1160.647,
+      "responseTtftMs": 4095.752,
+      "responseTotalMs": 4095.769,
+      "voiceGenerationMs": 3797.571,
+      "endToEndMs": 14375.547,
+      "voiceFirstTokenUncachedMs": 1024.035,
+      "voiceFirstTokenCachedMs": 1009.503,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 3287.959,
+      "ttsCachedPipelineMs": 4297.461,
+      "inContext": {
+        "transcript": "Checklist. 1. Capture audio. 2. Transcribe. 3. Generate response. 4. Synthesize speech.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Checklist. 1. Capture audio. 2. Transcribe. 3. Generate response. 4. Synthesize speech.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a brief example interaction with VoicebenchAgent:\n\n**User:** How can I measure the latency of my TTS model?\n\n**VoicebenchAgent:** Run the `voicebench benchmark --model my_model --latency` command. It reports the average inference time in milliseconds. Add `--detail` for...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 1194310,
+      "ttsFirstSentenceUncachedBytes": 299590,
+      "ttsFirstSentenceCachedBytes": 299590,
+      "ttsRemainderBytes": 1044550,
+      "ttsCachedPipelineBytes": 1344140,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a brief example interaction with VoicebenchAgent:\n\n**User:** How can I measure the latency of my TTS model?",
+        "remainder": "**VoicebenchAgent:** Run the `voicebench benchmark --model my_model --latency` command. It reports the average inference time in milliseconds. Add `--detail` for per\u2011sample stats.\n\n**User:** Can you show the exact command?\n\n**VoicebenchAgent:** ```bash\nvoicebench benchmark --m..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "numbers_dates",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/numbers_dates.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 728.804,
+      "responseTtftMs": 2636.834,
+      "responseTotalMs": 2636.848,
+      "voiceGenerationMs": 6676.168,
+      "endToEndMs": 15653.948,
+      "voiceFirstTokenUncachedMs": 2188.214,
+      "voiceFirstTokenCachedMs": 2318.353,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 1105.49,
+      "ttsCachedPipelineMs": 3423.842,
+      "inContext": {
+        "transcript": "On January 15, 2026, the average response time was 1.4 seconds.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "On January 15, 2026, the average response time was 1.4 seconds.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a quick example of how VoicebenchAgent might converse and the actions it would take:\\n\\n**User:** How can I benchmark my voice model\u2019s latency?\\n**VoicebenchAgent (REPLY):** Use a 1\u2011second audio snippet and measure the round\u2011trip time. The tool will report the average l...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 2177342,
+      "ttsFirstSentenceUncachedBytes": 675910,
+      "ttsFirstSentenceCachedBytes": 675910,
+      "ttsRemainderBytes": 322630,
+      "ttsCachedPipelineBytes": 998540,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a quick example of how VoicebenchAgent might converse and the actions it would take:\\n\\n**User:** How can I benchmark my voice model\u2019s latency?\\n**VoicebenchAgent (REPLY):** Use a 1\u2011second audio snippet and measure the round\u2011trip time.",
+        "remainder": "The tool will report the average latency in milliseconds.\\n\\n**User:** Show me the command.\\n**VoicebenchAgent (REPLY):** `voicebench --input sample.wav --measure latency`\\n\\n**User:** Thanks.\\n**VoicebenchAgent (REPLY):** You\u2019re welcome! Let me know if you need further analys..."
+      }
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 10,
+      "avgTranscriptionMs": 784.415,
+      "avgResponseTtftMs": 2407.829,
+      "avgResponseTotalMs": 2407.843,
+      "avgVoiceGenerationMs": 7410.926,
+      "avgEndToEndMs": 19003.824,
+      "avgVoiceFirstTokenUncachedMs": 1568.495,
+      "avgVoiceFirstTokenCachedMs": 1566.256,
+      "avgTtsCachedPipelineMs": 6832.06,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.6
+    },
+    "non-simple": {
+      "runs": 10,
+      "avgTranscriptionMs": 661.672,
+      "avgResponseTtftMs": 2579.372,
+      "avgResponseTotalMs": 2579.386,
+      "avgVoiceGenerationMs": 5959.509,
+      "avgEndToEndMs": 16355.276,
+      "avgVoiceFirstTokenUncachedMs": 1113.242,
+      "avgVoiceFirstTokenCachedMs": 1150.177,
+      "avgTtsCachedPipelineMs": 6041.388,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.6
+    }
+  }
+}

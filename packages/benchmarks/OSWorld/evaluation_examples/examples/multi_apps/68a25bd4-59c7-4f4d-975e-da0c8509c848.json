@@ -1,0 +1,82 @@
+{
+  "id": "68a25bd4-59c7-4f4d-975e-da0c8509c848",
+  "snapshot": "libreoffice_calc",
+  "instruction": "I've compiled papers and books with links in this spreadsheet. Help me download the PDF of the first paper, save it as \"paper01.pdf\" in the /home/user directory. Additionally, I would like to know which paper in my list cites the initial one. Please determine and document the title saved as \"ans.docx\" in the same directory.",
+  "source": "",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/68a25bd4-59c7-4f4d-975e-da0c8509c848/rsc-ebook-collection-2023.xlsx",
+            "path": "/home/user/Desktop/rsc-ebook-collection-2023.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/rsc-ebook-collection-2023.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/68a25bd4-59c7-4f4d-975e-da0c8509c848",
+  "related_apps": [
+    "libreoffice_calc",
+    "chrome"
+  ],
+  "evaluator": {
+    "func": [
+      "compare_pdfs",
+      "compare_docx_files"
+    ],
+    "expected": [
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/68a25bd4-59c7-4f4d-975e-da0c8509c848/paper01.pdf",
+        "dest": "paper01_Gold.pdf"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/68a25bd4-59c7-4f4d-975e-da0c8509c848/ans.docx",
+        "dest": "ans_Gold.docx"
+      }
+    ],
+    "result": [
+      {
+        "type": "vm_file",
+        "path": "/home/user/paper01.pdf",
+        "dest": "paper01.pdf"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/ans.docx",
+        "dest": "ans.docx"
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

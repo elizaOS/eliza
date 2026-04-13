@@ -1,0 +1,32 @@
+# Copy this file to terraform.tfvars and fill in your values
+#
+# cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your values
+# terraform apply
+
+# Required
+project_id     = "your-gcp-project-id"
+openai_api_key = "sk-your-openai-api-key"
+
+# Optional - uncomment to customize
+# region           = "us-central1"
+# runtime          = "typescript"  # typescript, python, or rust
+# service_name     = "eliza-worker"
+# openai_model     = "gpt-5-mini"
+# character_name   = "Eliza"
+# character_bio    = "A helpful AI assistant."
+# min_instances    = 0
+# max_instances    = 100
+# memory           = "512Mi"
+# cpu              = "1"
+# timeout_seconds  = 60
+
+
+
+
+
+
+
+
+
+

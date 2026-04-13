@@ -1,0 +1,238 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "rust",
+  "profile": "elevenlabs",
+  "timestamp": "1771147450402",
+  "iterations": 1,
+  "datasetName": "single-audio",
+  "datasetPath": null,
+  "sampleCount": 1,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 617.055,
+      "responseTtftMs": 1363.98,
+      "responseTotalMs": 1363.987,
+      "voiceGenerationMs": 361.352,
+      "voiceFirstTokenUncachedMs": 329.234,
+      "voiceFirstTokenCachedMs": 373.722,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0.0,
+      "ttsCachedPipelineMs": 373.723,
+      "endToEndMs": 3047.706,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond in one brief conversational sentence under 140 characters."
+      },
+      "outContext": {
+        "response": "Could you please provide the name of the character ({{agentName}}) and any specific details or request you have in mind?",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "latencyMs": 1363,
+            "model": "TEXT_LARGE"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "CHARACTER"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "PROVIDERS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 112894,
+      "ttsFirstSentenceUncachedBytes": 110804,
+      "ttsFirstSentenceCachedBytes": 107460,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 107460,
+      "responseCharCount": 120,
+      "responseWasCapped": false,
+      "responseSegmentation": {
+        "firstSentence": "Could you please provide the name of the character ({{agentName}}) and any specific details or request you have in mind?",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 679.279,
+      "responseTtftMs": 2462.673,
+      "responseTotalMs": 2462.679,
+      "voiceGenerationMs": 561.886,
+      "voiceFirstTokenUncachedMs": 155.511,
+      "voiceFirstTokenCachedMs": 142.722,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 492.045,
+      "ttsCachedPipelineMs": 493.191,
+      "endToEndMs": 4353.808,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond in one brief conversational sentence under 140 characters."
+      },
+      "outContext": {
+        "response": "Sure! Here’s an example dialogue and a set of actions for {{agentName}}: **Dialogue** - {{agentName}}: “Hello! How can I assist you today?”.",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "model": "TEXT_LARGE",
+            "latencyMs": 2461
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "PROVIDERS"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 198993,
+      "ttsFirstSentenceUncachedBytes": 10911,
+      "ttsFirstSentenceCachedBytes": 10911,
+      "ttsRemainderBytes": 148420,
+      "ttsCachedPipelineBytes": 159331,
+      "responseCharCount": 140,
+      "responseWasCapped": true,
+      "responseSegmentation": {
+        "firstSentence": "Sure!",
+        "remainder": "Here’s an example dialogue and a set of actions for {{agentName}}: **Dialogue** - {{agentName}}: “Hello! How can I assist you today?”."
+      }
+    }
+  ],
+  "summary": {
+    "non-simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 679.279,
+      "avgResponseTtftMs": 2462.673,
+      "avgResponseTotalMs": 2462.679,
+      "avgVoiceGenerationMs": 561.886,
+      "avgVoiceFirstTokenUncachedMs": 155.511,
+      "avgVoiceFirstTokenCachedMs": 142.722,
+      "avgTtsCachedPipelineMs": 493.191,
+      "p95TranscriptionMs": 679.279,
+      "p99TranscriptionMs": 679.279,
+      "p95ResponseTtftMs": 2462.673,
+      "p99ResponseTtftMs": 2462.673,
+      "p95ResponseTotalMs": 2462.679,
+      "p99ResponseTotalMs": 2462.679,
+      "p95VoiceGenerationMs": 561.886,
+      "p99VoiceGenerationMs": 561.886,
+      "p95VoiceFirstTokenUncachedMs": 155.511,
+      "p99VoiceFirstTokenUncachedMs": 155.511,
+      "p95VoiceFirstTokenCachedMs": 142.722,
+      "p99VoiceFirstTokenCachedMs": 142.722,
+      "p95TtsCachedPipelineMs": 493.191,
+      "p99TtsCachedPipelineMs": 493.191,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.0,
+      "avgEndToEndMs": 4353.808,
+      "p95EndToEndMs": 4353.808,
+      "p99EndToEndMs": 4353.808
+    },
+    "simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 617.055,
+      "avgResponseTtftMs": 1363.98,
+      "avgResponseTotalMs": 1363.987,
+      "avgVoiceGenerationMs": 361.352,
+      "avgVoiceFirstTokenUncachedMs": 329.234,
+      "avgVoiceFirstTokenCachedMs": 373.722,
+      "avgTtsCachedPipelineMs": 373.723,
+      "p95TranscriptionMs": 617.055,
+      "p99TranscriptionMs": 617.055,
+      "p95ResponseTtftMs": 1363.98,
+      "p99ResponseTtftMs": 1363.98,
+      "p95ResponseTotalMs": 1363.987,
+      "p99ResponseTotalMs": 1363.987,
+      "p95VoiceGenerationMs": 361.352,
+      "p99VoiceGenerationMs": 361.352,
+      "p95VoiceFirstTokenUncachedMs": 329.234,
+      "p99VoiceFirstTokenUncachedMs": 329.234,
+      "p95VoiceFirstTokenCachedMs": 373.722,
+      "p99VoiceFirstTokenCachedMs": 373.722,
+      "p95TtsCachedPipelineMs": 373.723,
+      "p99TtsCachedPipelineMs": 373.723,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.0,
+      "avgEndToEndMs": 3047.706,
+      "p95EndToEndMs": 3047.706,
+      "p99EndToEndMs": 3047.706
+    }
+  }
+}

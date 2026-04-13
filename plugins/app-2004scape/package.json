@@ -1,0 +1,16 @@
+{
+  "name": "@elizaos/app-2004scape",
+  "version": "0.1.0",
+  "description": "2004scape game service — autonomous RS agent with SDK WebSocket layer",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@elizaos/core": ">=2.0.0-alpha.100"
+  }
+}

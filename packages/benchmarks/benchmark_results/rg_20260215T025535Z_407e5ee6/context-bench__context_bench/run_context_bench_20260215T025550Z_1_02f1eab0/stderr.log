@@ -1,0 +1,3 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python /Users/shawwalters/eliza-workspace/benchmarks/context-bench/run_benchmark.py --provider eliza-openai --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/context-bench__context_bench/run_context_bench_20260215T025550Z_1_02f1eab0/output --quick
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_context_bench_20260215T025550Z_1_02f1eab0

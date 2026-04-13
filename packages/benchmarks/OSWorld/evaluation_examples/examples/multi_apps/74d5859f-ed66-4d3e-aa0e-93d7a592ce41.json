@@ -1,0 +1,177 @@
+{
+  "id": "74d5859f-ed66-4d3e-aa0e-93d7a592ce41",
+  "snapshot": "chrome",
+  "instruction": "Help me to set up an initial web extension project with help of the web tool, tagging it \"happy-extension v0.0.1\". Leave description blank for now. Include a background script and browser action, while other features are not required. Remember to unzip the auto-generated folder into \"~/Projects\".",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://webext.eu"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Projects"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "nautilus",
+          "/home/user/Projects"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/74d5859f-ed66-4d3e-aa0e-93d7a592ce41",
+  "related_apps": [
+    "chrome",
+    "os"
+  ],
+  "evaluator": {
+    "func": [
+      "check_json",
+      "diff_text_file",
+      "diff_text_file",
+      "diff_text_file",
+      "diff_text_file"
+    ],
+    "result": [
+      {
+        "type": "vm_file",
+        "path": "/home/user/Projects/happy-extension/manifest.json",
+        "dest": "manifest.json"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Projects/happy-extension/background_script.js",
+        "dest": "background_script.js"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Projects/happy-extension/browserAction/index.html",
+        "dest": "index.html"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Projects/happy-extension/browserAction/style.css",
+        "dest": "style.css"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Projects/happy-extension/browserAction/script.js",
+        "dest": "script.js"
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "expect": [
+            {
+              "key": [
+                "name"
+              ],
+              "method": "eq",
+              "ref": "happy-extension"
+            },
+            {
+              "key": [
+                "version"
+              ],
+              "method": "eq",
+              "ref": "0.0.1"
+            },
+            {
+              "key": [
+                "background",
+                "scripts"
+              ],
+              "method": "eq",
+              "ref": [
+                "background_script.js"
+              ]
+            },
+            {
+              "key": [
+                "browser_action",
+                "default_icon"
+              ],
+              "method": "eq",
+              "ref": {
+                "64": "icons/icon.png"
+              }
+            },
+            {
+              "key": [
+                "browser_action",
+                "default_popup"
+              ],
+              "method": "eq",
+              "ref": "browserAction/index.html"
+            },
+            {
+              "key": [
+                "browser_action",
+                "default_title"
+              ],
+              "method": "eq",
+              "ref": "happy-extension"
+            }
+          ]
+        }
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/74d5859f-ed66-4d3e-aa0e-93d7a592ce41/file_1t5Llhn6seDUXVs-eILu6CjwFEQL9Z5Qm.bin",
+        "dest": "background_script.js"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/74d5859f-ed66-4d3e-aa0e-93d7a592ce41/index.html",
+        "dest": "index.html"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/74d5859f-ed66-4d3e-aa0e-93d7a592ce41/style.css",
+        "dest": "style.css"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/74d5859f-ed66-4d3e-aa0e-93d7a592ce41/file_14YYnhCfRtHQNk8M4fBPaUQeteoFMGBsA.bin",
+        "dest": "script.js"
+      }
+    ]
+  },
+  "proxy": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

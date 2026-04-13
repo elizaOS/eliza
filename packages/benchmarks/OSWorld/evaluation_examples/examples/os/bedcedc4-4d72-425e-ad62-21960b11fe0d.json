@@ -1,0 +1,78 @@
+{
+  "id": "bedcedc4-4d72-425e-ad62-21960b11fe0d",
+  "snapshot": "os",
+  "instruction": "Could you set the 'Dim screen when inactive' to off in setting?",
+  "source": "https://www.youtube.com/watch?v=D4WyNjt_hbQ&t=2s",
+  "trajectory": "trajectories/",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.session",
+          "idle-delay",
+          "300"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "func": [
+      "exact_match",
+      "exact_match"
+    ],
+    "conj": "or",
+    "result": [
+      {
+        "type": "vm_command_line",
+        "command": [
+          "gsettings",
+          "get",
+          "org.gnome.desktop.session",
+          "idle-delay"
+        ]
+      },
+      {
+        "type": "vm_command_line",
+        "command": [
+          "gsettings",
+          "get",
+          "org.gnome.settings-daemon.plugins.power",
+          "idle-dim"
+        ]
+      }
+  ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "expected": "uint32 0\n"
+        }
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "expected": "false\n"
+        }
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

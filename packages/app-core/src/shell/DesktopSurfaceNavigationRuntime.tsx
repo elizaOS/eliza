@@ -1,0 +1,55 @@
+import { subscribeDesktopBridgeEvent } from "@elizaos/app-core/bridge";
+import type { Tab } from "@elizaos/app-core/navigation";
+import { useApp } from "@elizaos/app-core/state";
+import { useEffect } from "react";
+
+const MAIN_SURFACE_TABS = new Set<Tab>([
+  "chat",
+  "plugins",
+  "connectors",
+  "triggers",
+]);
+const MAIN_NAVIGATION_TABS = new Set<Tab>([
+  "chat",
+  "plugins",
+  "connectors",
+  "triggers",
+  "lifeops",
+  "settings",
+]);
+
+export function DesktopSurfaceNavigationRuntime() {
+  const { setTab, switchShellView } = useApp();
+
+  useEffect(() => {
+    return subscribeDesktopBridgeEvent({
+      rpcMessage: "desktopTrayMenuClick",
+      ipcChannel: "desktop:trayMenuClick",
+      listener: (payload) => {
+        const itemId =
+          (payload as { itemId?: string } | null | undefined)?.itemId ?? "";
+        let target: Tab | null = null;
+        if (itemId.startsWith("show-main:")) {
+          const candidate = itemId.slice("show-main:".length) as Tab;
+          if (MAIN_SURFACE_TABS.has(candidate)) {
+            target = candidate;
+          }
+        } else if (itemId.startsWith("navigate-")) {
+          const candidate = itemId.slice("navigate-".length) as Tab;
+          if (MAIN_NAVIGATION_TABS.has(candidate)) {
+            target = candidate;
+          }
+        }
+
+        if (!target) {
+          return;
+        }
+
+        switchShellView("desktop");
+        setTab(target);
+      },
+    });
+  }, [setTab, switchShellView]);
+
+  return null;
+}

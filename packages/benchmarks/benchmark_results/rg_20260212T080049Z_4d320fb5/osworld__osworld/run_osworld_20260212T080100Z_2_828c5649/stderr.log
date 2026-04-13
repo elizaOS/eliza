@@ -1,0 +1,11 @@
+# command: /opt/miniconda3/bin/python /Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py --result_dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T080049Z_4d320fb5/osworld__osworld/run_osworld_20260212T080100Z_2_828c5649/output --model qwen/qwen3-32b --provider_name docker --observation_type screenshot_a11y_tree
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/OSWorld
+# run_id: run_osworld_20260212T080100Z_2_828c5649
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 60, in <module>
+    from desktop_env.desktop_env import DesktopEnv
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/desktop_env.py", line 13, in <module>
+    from desktop_env.controllers.setup import SetupController
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/controllers/setup.py", line 18, in <module>
+    from pydrive.auth import GoogleAuth
+ModuleNotFoundError: No module named 'pydrive'

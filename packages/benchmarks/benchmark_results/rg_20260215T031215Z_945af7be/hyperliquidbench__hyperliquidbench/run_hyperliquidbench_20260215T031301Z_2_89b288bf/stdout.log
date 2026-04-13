@@ -1,0 +1,12 @@
+
+============================================================
+HyperliquidBench – Eliza Agent Results
+============================================================
+
+  [PASS] coverage_20260214_201302
+    Score: 4.750  (base=4.0, bonus=0.8, penalty=0.0)
+    Signatures: account.usdClassTransfer.toPerp, perp.order.ALO:false:none, perp.order.GTC:true:none, risk.setLeverage.ETH
+
+  Total Score: 4.750
+  Scenarios: 1
+============================================================

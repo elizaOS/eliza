@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "savedAt": 1768542062809,
+  "currentRoomId": "4257aba9-9dbc-475c-9aa1-2ace5b2acb8a",
+  "rooms": [
+    {
+      "id": "4257aba9-9dbc-475c-9aa1-2ace5b2acb8a",
+      "name": "Chat 1",
+      "createdAt": 1768536194777,
+      "messages": [
+        {
+          "id": "1e6187e6-1c38-4345-a01f-616c9abe4982",
+          "role": "assistant",
+          "content": "Hello! I'm the Polymarket trading agent. I can scan markets, summarize positions, and place orders when enabled. Type /help for commands.",
+          "timestamp": 1768536194783
+        },
+        {
+          "id": "6fc2bcfc-7956-4228-b9e1-d83ca705b3b3",
+          "role": "system",
+          "content": "idle",
+          "timestamp": 1768538752942
+        },
+        {
+          "id": "2f8e9c09-a941-464a-a59e-8e3530d37e26",
+          "role": "user",
+          "content": "please give e the latest nba markets closing soonest",
+          "timestamp": 1768538752942
+        },
+        {
+          "id": "7ef79fc0-c295-4a8c-9a07-a9a5ef410ecc",
+          "role": "assistant",
+          "content": "On it—searching active NBA markets and sorting by earliest close. I’ll post the list next.",
+          "timestamp": 1768538752942
+        },
+        {
+          "id": "8b819f28-dbcb-4fd9-a7ba-13091a30f2b9",
+          "role": "system",
+          "content": "Actions: POLYMARKET_GET_MARKETS",
+          "timestamp": 1768538804546
+        },
+        {
+          "id": "0c42fb5b-4fe7-4af7-a6c0-7337bcb31ffd",
+          "role": "assistant",
+          "content": "⏳ Searching Polymarket for \"nba\"...\n📋 Parameters: mode: search, activeOnly: yes, limit: 50",
+          "timestamp": 1768538805490
+        },
+        {
+          "id": "424e21eb-1ef3-445d-a6c2-270a98df0e8b",
+          "role": "assistant",
+          "content": "🔍 **Search Results for \"nba\"**\n\nFound 30 market(s):\n\n**1. Will the Oklahoma City Thunder win the 2026 NBA Finals?** 🟢\n   📊 Yes: 39.5% | No: 60.5%\n   💰 Volume: $2.50M (24h: $39.4K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`495002998568...` No=`449144656372...` \n\n**2. Will the Houston Rockets win the 2026 NBA Finals?** 🟢\n   📊 Yes: 5.5% | No: 94.5%\n   💰 Volume: $1.14M (24h: $47.3K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`507052487133...` No=`900325100169...` \n\n**3. Will the New Orleans Pelicans win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.1% | No: 99.9%\n   💰 Volume: $7.80M (24h: $186.0K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`538667787795...` No=`253688637409...` \n\n**4. Will the Toronto Raptors win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.9% | No: 99.2%\n   💰 Volume: $3.30M (24h: $69.6K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`111039354521...` No=`303577679474...` \n\n**5. Will the Chicago Bulls win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.3% | No: 99.8%\n   💰 Volume: $15.91M (24h: $50.8K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`101657448900...` No=`951098924728...` \n\n**6. Will the Cleveland Cavaliers win the 2026 NBA Finals?** 🟢\n   📊 Yes: 3.4% | No: 96.7%\n   💰 Volume: $1.50M (24h: $54.4K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`219298638940...` No=`873306899062...` \n\n**7. Will the New York Knicks win the 2026 NBA Finals?** 🟢\n   📊 Yes: 5.5% | No: 94.5%\n   💰 Volume: $1.35M (24h: $95.9K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`202571905407...` No=`177084055977...` \n\n**8. Will the Minnesota Timberwolves win the 2026 NBA Finals?** 🟢\n   📊 Yes: 3.0% | No: 97.0%\n   💰 Volume: $1.79M (24h: $48.8K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`577167662718...` No=`657454171843...` \n\n**9. Will the Phoenix Suns win the 2026 NBA Finals?** 🟢\n   📊 Yes: 1.1% | No: 98.9%\n   💰 Volume: $4.29M (24h: $48.4K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`106572879185...` No=`580878691060...` \n\n**10. Will the Boston Celtics win the 2026 NBA Finals?** 🟢\n   📊 Yes: 5.1% | No: 94.8%\n   💰 Volume: $2.53M (24h: $67.9K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`989513434209...` No=`689887810870...` \n\n**11. Will the Indiana Pacers win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.1% | No: 100.0%\n   💰 Volume: $16.58M (24h: $508.8K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`108169301860...` No=`114708109544...` \n\n**12. Will the Orlando Magic win the 2026 NBA Finals?** 🟢\n   📊 Yes: 1.5% | No: 98.5%\n   💰 Volume: $1.69M (24h: $43.6K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`951403469522...` No=`833231493968...` \n\n**13. Will the Denver Nuggets win the 2026 NBA Finals?** 🟢\n   📊 Yes: 12.5% | No: 87.5%\n   💰 Volume: $1.48M (24h: $92.1K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`568147258701...` No=`765024900600...` \n\n**14. Will the San Antonio Spurs win the 2026 NBA Finals?** 🟢\n   📊 Yes: 6.5% | No: 93.5%\n   💰 Volume: $2.60M (24h: $56.7K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`102227184035...` No=`126360350705...` \n\n**15. Will the Milwaukee Bucks win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.4% | No: 99.7%\n   💰 Volume: $3.00M (24h: $38.6K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`459900131434...` No=`646343466946...` \n\n**16. Will the Los Angeles Clippers win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.9% | No: 99.2%\n   💰 Volume: $2.15M (24h: $49.5K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`801364190761...` No=`100235989029...` \n\n**17. Will the Golden State Warriors win the 2026 NBA Finals?** 🟢\n   📊 Yes: 2.5% | No: 97.5%\n   💰 Volume: $1.90M (24h: $51.4K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`245624514068...` No=`969546896948...` \n\n**18. Will the Dallas Mavericks win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.3% | No: 99.8%\n   💰 Volume: $2.51M (24h: $42.0K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`663662576558...` No=`922829612156...` \n\n**19. Will the Detroit Pistons win the 2026 NBA Finals?** 🟢\n   📊 Yes: 5.8% | No: 94.2%\n   💰 Volume: $2.36M (24h: $66.4K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`597424116020...` No=`172295594123...` \n\n**20. Will the Memphis Grizzlies win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.5% | No: 99.5%\n   💰 Volume: $21.21M (24h: $1.47M)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`144717017681...` No=`248808186171...` \n\n**21. Will the Los Angeles Lakers win the 2026 NBA Finals?** 🟢\n   📊 Yes: 2.6% | No: 97.4%\n   💰 Volume: $2.06M (24h: $55.8K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`862975208707...` No=`707997581897...` \n\n**22. Will the Portland Trail Blazers win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.3% | No: 99.8%\n   💰 Volume: $4.96M (24h: $42.6K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`824028234844...` No=`482625489060...` \n\n**23. Will the Atlanta Hawks win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.8% | No: 99.3%\n   💰 Volume: $1.96M (24h: $64.8K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`460183786849...` No=`201299835655...` \n\n**24. Will the Brooklyn Nets win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.1% | No: 99.9%\n   💰 Volume: $9.74M (24h: $63.6K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`645498422736...` No=`305989998303...` \n\n**25. Will the Charlotte Hornets win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.1% | No: 99.9%\n   💰 Volume: $11.67M (24h: $230.1K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`569585030326...` No=`659932095313...` \n\n**26. Will the Utah Jazz win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.1% | No: 100.0%\n   💰 Volume: $12.53M (24h: $21.3K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`530063154264...` No=`339557813532...` \n\n**27. Will the Sacramento Kings win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.1% | No: 99.9%\n   💰 Volume: $7.72M (24h: $85.8K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`431884568994...` No=`537626565648...` \n\n**28. Will the Miami Heat win the 2026 NBA Finals?** 🟢\n   📊 Yes: 1.3% | No: 98.8%\n   💰 Volume: $2.86M (24h: $57.5K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`375531539986...` No=`153778009093...` \n\n**29. Will the Philadelphia 76ers win the 2026 NBA Finals?** 🟢\n   📊 Yes: 1.2% | No: 98.8%\n   💰 Volume: $1.86M (24h: $52.2K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`564467998268...` No=`870341767669...` \n\n**30. Will the Washington Wizards win the 2026 NBA Finals?** 🟢\n   📊 Yes: 0.1% | No: 99.9%\n   💰 Volume: $9.88M (24h: $216.3K)\n   📁 Event: 2026 NBA Champion\n   ⏰ Ends: 6/30/2026\n   🔑 Tokens: Yes=`572163462431...` No=`303997757384...`",
+          "timestamp": 1768538805490
+        }
+      ]
+    }
+  ],
+  "sidebarView": "logs",
+  "sidebarVisible": true,
+  "chatVisible": true,
+  "focusPanel": "chat"
+}

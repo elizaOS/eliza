@@ -1,0 +1,35 @@
+# command: /opt/miniconda3/bin/python /Users/shawwalters/eliza-workspace/benchmarks/mint/run_benchmark.py --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T071143Z_5325e486/mint__mint/run_mint_20260212T071320Z_1_64215a26/output --max-tasks 1
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_mint_20260212T071320Z_1_64215a26
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/mint/run_benchmark.py", line 462, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/mint/run_benchmark.py", line 449, in main
+    return asyncio.run(
+           ~~~~~~~~~~~^
+        run_benchmark(
+        ^^^^^^^^^^^^^^
+    ...<6 lines>...
+        )
+        ^
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/mint/run_benchmark.py", line 361, in run_benchmark
+    runtime = await _create_eliza_runtime(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/mint/run_benchmark.py", line 303, in _create_eliza_runtime
+    from elizaos.types.agent import StyleConfig
+ImportError: cannot import name 'StyleConfig' from 'elizaos.types.agent' (/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/types/agent.py)

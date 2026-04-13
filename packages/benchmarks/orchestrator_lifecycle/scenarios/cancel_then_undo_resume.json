@@ -1,0 +1,19 @@
+{
+  "scenario_id": "cancel_then_undo_resume",
+  "title": "Cancel Then Undo Resume",
+  "category": "interrupt",
+  "required_capabilities": ["orchestration.cancel", "orchestration.pause_resume"],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "Cancel this task.",
+      "expected_behaviors": ["cancel_task"]
+    },
+    {
+      "actor": "user",
+      "message": "Undo cancel and continue with the updated scope.",
+      "expected_behaviors": ["resume_task", "apply_scope_change_to_task"]
+    }
+  ]
+}
+

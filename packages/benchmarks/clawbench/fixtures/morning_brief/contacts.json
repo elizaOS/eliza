@@ -1,0 +1,13 @@
+[
+  {"id": "c_001", "name": "Sarah Kim", "email": "sarah.kim@techcorp.com", "role": "Engineering Manager", "relationship": "direct_manager", "vip": true},
+  {"id": "c_002", "name": "Elena Rodriguez", "email": "elena.rodriguez@techcorp.com", "role": "CEO", "relationship": "skip_level", "vip": true},
+  {"id": "c_003", "name": "David Park", "email": "david.park@techcorp.com", "role": "CTO", "relationship": "skip_level", "vip": true},
+  {"id": "c_004", "name": "James Liu", "email": "james.liu@techcorp.com", "role": "Senior Engineer", "relationship": "direct_report", "vip": false},
+  {"id": "c_005", "name": "Priya Patel", "email": "priya.patel@techcorp.com", "role": "Product Designer", "relationship": "cross_functional", "vip": false},
+  {"id": "c_006", "name": "Marcus Johnson", "email": "marcus.johnson@techcorp.com", "role": "Backend Engineer", "relationship": "direct_report", "vip": false},
+  {"id": "c_007", "name": "Tom Anderson", "email": "tom.anderson@techcorp.com", "role": "DevOps Engineer", "relationship": "cross_functional", "vip": false},
+  {"id": "c_008", "name": "Lisa Wang", "email": "lisa.wang@techcorp.com", "role": "Finance Manager", "relationship": "cross_functional", "vip": false},
+  {"id": "c_009", "name": "Rachel Green", "email": "rachel.green@techcorp.com", "role": "HR Manager", "relationship": "cross_functional", "vip": false},
+  {"id": "c_010", "name": "Mike Stevens", "email": "mike.stevens@acmecorp.com", "role": "VP Engineering (Acme Corp)", "relationship": "client", "vip": true},
+  {"id": "c_011", "name": "Jennifer Walsh", "email": "jennifer.walsh@acmecorp.com", "role": "Project Manager (Acme Corp)", "relationship": "client", "vip": false}
+]

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate Extension Icons</title>
+  <style>
+    body { font-family: system-ui; padding: 20px; }
+    canvas { border: 1px solid #ccc; margin: 10px; }
+    .icons { display: flex; gap: 20px; flex-wrap: wrap; }
+    .icon-container { text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Extension Icons Generator</h1>
+  <p>Right-click each icon and save as PNG with the filename shown.</p>
+  <div class="icons">
+    <div class="icon-container">
+      <canvas id="icon16" width="16" height="16"></canvas>
+      <p>icon-16.png</p>
+    </div>
+    <div class="icon-container">
+      <canvas id="icon48" width="48" height="48"></canvas>
+      <p>icon-48.png</p>
+    </div>
+    <div class="icon-container">
+      <canvas id="icon128" width="128" height="128"></canvas>
+      <p>icon-128.png</p>
+    </div>
+  </div>
+
+  <script>
+    function drawIcon(canvas) {
+      const ctx = canvas.getContext('2d');
+      const size = canvas.width;
+      const scale = size / 128;
+
+      // Background gradient
+      const grad = ctx.createLinearGradient(0, 0, size, size);
+      grad.addColorStop(0, '#6366f1');
+      grad.addColorStop(1, '#4f46e5');
+      
+      // Rounded rectangle
+      const radius = 24 * scale;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, size, size, radius);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      
+      // Chat bubble
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      const bubbleScale = scale;
+      ctx.roundRect(32 * bubbleScale, 40 * bubbleScale, 64 * bubbleScale, 52 * bubbleScale, 8 * bubbleScale);
+      ctx.fill();
+      
+      // Tail
+      ctx.beginPath();
+      ctx.moveTo(52 * bubbleScale, 92 * bubbleScale);
+      ctx.lineTo(40 * bubbleScale, 104 * bubbleScale);
+      ctx.lineTo(40 * bubbleScale, 92 * bubbleScale);
+      ctx.fill();
+      
+      // Dots
+      ctx.fillStyle = '#6366f1';
+      const dotRadius = 6 * bubbleScale;
+      [48, 64, 80].forEach(x => {
+        ctx.beginPath();
+        ctx.arc(x * bubbleScale, 66 * bubbleScale, dotRadius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    ['icon16', 'icon48', 'icon128'].forEach(id => {
+      drawIcon(document.getElementById(id));
+    });
+  </script>
+</body>
+</html>

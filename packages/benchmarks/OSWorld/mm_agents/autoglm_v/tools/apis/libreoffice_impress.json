@@ -1,0 +1,559 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.save",
+      "description": "Save current presentation",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.go_to_slide",
+      "description": "Navigate to specific slide",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          }
+        },
+        "required": ["slide_index"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.get_slide_count",
+      "description": "Get total slide count",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.duplicate_slide",
+      "description": "Duplicate slide and place at end",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index to duplicate (1-based)"
+          }
+        },
+        "required": ["slide_index"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_slide_font",
+      "description": "Set font for all text in slide",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          },
+          "font_name": {
+            "type": "string",
+            "description": "Font name (e.g., 'Arial', 'Times New Roman')"
+          }
+        },
+        "required": ["slide_index", "font_name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.write_text",
+      "description": "Write text to textbox",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Text content"
+          },
+          "page_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "Textbox index (0-based)"
+          },
+          "bold": {
+            "type": "boolean",
+            "description": "Bold text (default: false)"
+          },
+          "italic": {
+            "type": "boolean",
+            "description": "Italic text (default: false)"
+          },
+          "size": {
+            "type": "integer",
+            "description": "Font size"
+          },
+          "append": {
+            "type": "boolean",
+            "description": "Append to existing text (default: false)"
+          }
+        },
+        "required": ["content", "page_index", "box_index"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_style",
+      "description": "Set text style for textbox",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "Textbox index (0-based)"
+          },
+          "bold": {
+            "type": "boolean",
+            "description": "Bold text"
+          },
+          "italic": {
+            "type": "boolean",
+            "description": "Italic text"
+          },
+          "underline": {
+            "type": "boolean",
+            "description": "Underline text"
+          }
+        },
+        "required": ["slide_index", "box_index"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.configure_auto_save",
+      "description": "Configure auto-save settings",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Enable auto-save"
+          },
+          "interval_minutes": {
+            "type": "number",
+            "description": "Auto-save interval in minutes (min: 1)"
+          }
+        },
+        "required": ["enabled", "interval_minutes"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_background_color",
+      "description": "Set textbox background color",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "Textbox index (0-based)"
+          },
+          "color": {
+            "type": "string",
+            "description": "Color name or hex code"
+          }
+        },
+        "required": ["slide_index", "box_index", "color"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_text_color",
+      "description": "Set text color for textbox",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "Textbox index (0-based)"
+          },
+          "color": {
+            "type": "string",
+            "description": "Color name or hex code"
+          }
+        },
+        "required": ["slide_index", "box_index", "color"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.delete_content",
+      "description": "Delete textbox from slide",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "Textbox index (0-based)"
+          }
+        },
+        "required": ["slide_index", "box_index"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_slide_orientation",
+      "description": "Set slide orientation",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "orientation": {
+            "type": "string",
+            "description": "Slide orientation",
+            "enum": ["portrait", "landscape"]
+          }
+        },
+        "required": ["orientation"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.position_box",
+      "description": "Position textbox or image on slide",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "Box index (0-based)"
+          },
+          "position": {
+            "type": "string",
+            "description": "Position on slide",
+            "enum": ["left", "right", "center", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"]
+          }
+        },
+        "required": ["slide_index", "box_index", "position"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.insert_file",
+      "description": "Insert video or audio file",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "File path"
+          },
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          },
+          "position": {
+            "type": "object",
+            "description": "Position coordinates",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X position (% of slide width)"
+              },
+              "y": {
+                "type": "number",
+                "description": "Y position (% of slide height)"
+              }
+            }
+          },
+          "size": {
+            "type": "object",
+            "description": "Size dimensions",
+            "properties": {
+              "width": {
+                "type": "number",
+                "description": "Width (% of slide width)"
+              },
+              "height": {
+                "type": "number",
+                "description": "Height (% of slide height)"
+              }
+            }
+          },
+          "autoplay": {
+            "type": "boolean",
+            "description": "Auto-play media"
+          }
+        },
+        "required": ["file_path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_slide_background",
+      "description": "Set slide background color or image",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based). If not provided, applies to all slides"
+          },
+          "color": {
+            "type": "string",
+            "description": "Background color"
+          },
+          "image_path": {
+            "type": "string",
+            "description": "Background image path (overrides color)"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.save_as",
+      "description": "Save document to specified location",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "File save path with filename and extension"
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Overwrite existing file (default: false)"
+          }
+        },
+        "required": ["file_path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.insert_image",
+      "description": "Insert image to slide",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          },
+          "image_path": {
+            "type": "string",
+            "description": "Image file path"
+          },
+          "width": {
+            "type": "number",
+            "description": "Image width in cm"
+          },
+          "height": {
+            "type": "number",
+            "description": "Image height in cm"
+          },
+          "position": {
+            "type": "object",
+            "description": "Position coordinates",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X position (% of slide width)"
+              },
+              "y": {
+                "type": "number",
+                "description": "Y position (% of slide height)"
+              }
+            }
+          }
+        },
+        "required": ["slide_index", "image_path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.configure_display_settings",
+      "description": "Configure presentation display settings",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "use_presenter_view": {
+            "type": "boolean",
+            "description": "Use presenter view"
+          },
+          "primary_monitor_only": {
+            "type": "boolean",
+            "description": "Use primary monitor only"
+          },
+          "monitor_for_presentation": {
+            "type": "integer",
+            "description": "Monitor number for presentation"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_slide_number_color",
+      "description": "Set slide number color",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "color": {
+            "type": "string",
+            "description": "Color name or hex code"
+          }
+        },
+        "required": ["color"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_text_strikethrough",
+      "description": "Apply strikethrough formatting to text",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "Textbox index (0-based)"
+          },
+          "line_numbers": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Line numbers for strikethrough (1-based)"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "Apply or remove strikethrough"
+          }
+        },
+        "required": ["slide_index", "box_index", "line_numbers", "apply"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_textbox_alignment",
+      "description": "Set text alignment for textbox",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "Slide index (1-based)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "Textbox index (0-based)"
+          },
+          "alignment": {
+            "type": "string",
+            "description": "Text alignment",
+            "enum": ["left", "center", "right", "justify"]
+          }
+        },
+        "required": ["slide_index", "box_index", "alignment"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.export_to_image",
+      "description": "Export presentation or slide to image",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Image save path with filename and extension"
+          },
+          "format": {
+            "type": "string",
+            "description": "Image format",
+            "enum": ["png", "jpeg", "jpg", "gif", "bmp", "tiff"]
+          },
+          "slide_index": {
+            "type": "integer",
+            "description": "Specific slide index (1-based). If not provided, exports all slides"
+          }
+        },
+        "required": ["file_path", "format"]
+      }
+    }
+  }
+]

@@ -716,18 +716,15 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * - InMemory: Deep equality check (less efficient but correct)
 	 *
 	 * WHY limit/offset: Standard pagination naming (limit = max results, offset = skip N).
-	 * The deprecated 'count' parameter is kept for backward compatibility.
 	 *
 	 * @param params.metadata Filter by metadata fields (partial object match)
-	 * @param params.limit Max results to return (replaces deprecated 'count')
+	 * @param params.limit Max results to return
 	 * @param params.offset Skip first N results for pagination
 	 * @param params.tableName Memory type/table (required)
 	 */
 	getMemories(params: {
 		entityId?: UUID;
 		agentId?: UUID;
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		offset?: number;
 		unique?: boolean;
@@ -769,8 +766,6 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		entityId?: UUID;
 		roomId?: UUID;
 		type?: string;
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		offset?: number;
 	}): Promise<Log[]>;
@@ -829,8 +824,6 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	searchMemories(params: {
 		embedding: number[];
 		match_threshold?: number;
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		unique?: boolean;
 		tableName: string;
@@ -1151,8 +1144,6 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	getMemoriesByWorldId(params: {
 		worldIds?: UUID[];
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		tableName?: string;
 	}): Promise<Memory[]>;

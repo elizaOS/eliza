@@ -1,0 +1,48 @@
+# ICP/DFX artifacts
+.dfx/
+.env
+canister_ids.json
+
+# Rust build artifacts
+target/
+Cargo.lock
+
+# Node modules (if using frontend)
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ============================================
+# ON-CHAIN LLM (llama_cpp_canister)
+# ============================================
+# This is a cloned external repo with large model files (~900MB+)
+# To set up on-chain LLM, clone it yourself:
+#   git clone https://github.com/onicai/llama_cpp_canister.git
+# See ON_CHAIN_LLM_PLAN.md for setup instructions
+llama_cpp_canister/
+
+# Model files (if stored elsewhere)
+*.gguf
+models/
+
+# Python virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# ============================================
+# VETKEYS (optional - download from DFINITY)
+# ============================================
+# The chainkey_testing_canister.wasm can be downloaded:
+#   curl -sLO https://github.com/dfinity/chainkey-testing-canister/releases/latest/download/chainkey_testing_canister.wasm
+# Uncomment below to ignore (we include it for convenience):
+# vetkeys/*.wasm

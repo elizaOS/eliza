@@ -1,0 +1,17 @@
+{
+  "name": "@elizaos/example-browser-extension",
+  "version": "1.0.0",
+  "description": "Chat with any webpage using AI - Browser Extension powered by ElizaOS",
+  "private": true,
+  "workspaces": [
+    "chrome",
+    "safari"
+  ],
+  "scripts": {
+    "build": "npm run build:chrome",
+    "build:chrome": "cd chrome && npm run build",
+    "build:safari": "cd safari && npm run build",
+    "dev": "cd chrome && npm run dev",
+    "clean": "rm -rf chrome/dist safari/Chat\\ with\\ Webpage"
+  }
+}

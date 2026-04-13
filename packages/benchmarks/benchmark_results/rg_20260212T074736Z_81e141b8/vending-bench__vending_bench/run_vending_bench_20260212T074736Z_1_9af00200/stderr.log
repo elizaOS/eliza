@@ -1,0 +1,4 @@
+# command: /opt/miniconda3/bin/python -m elizaos_vending_bench.cli --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T074736Z_81e141b8/vending-bench__vending_bench/run_vending_bench_20260212T074736Z_1_9af00200/output --model qwen/qwen3-32b
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/vending-bench/python
+# run_id: run_vending_bench_20260212T074736Z_1_9af00200
+/opt/miniconda3/bin/python: Error while finding module specification for 'elizaos_vending_bench.cli' (ModuleNotFoundError: No module named 'elizaos_vending_bench')

@@ -1,0 +1,731 @@
+{
+  "runtime": "python",
+  "timestamp": "2026-02-12T09:52:51.728532+00:00",
+  "system": {
+    "os": "Darwin 25.2.0",
+    "arch": "arm64",
+    "cpus": 16,
+    "memory_gb": 128.0,
+    "runtime_version": "Python 3.13.2",
+    "platform_name": "python"
+  },
+  "scenarios": {
+    "single-message": {
+      "iterations": 50,
+      "warmup": 5,
+      "latency": {
+        "min_ms": 0.152083,
+        "max_ms": 0.28075,
+        "avg_ms": 0.16817668000000002,
+        "median_ms": 0.159125,
+        "p95_ms": 0.20681889999999997,
+        "p99_ms": 0.2745025,
+        "stddev_ms": 0.02510505129286933,
+        "raw_ms": [
+          0.193625,
+          0.171666,
+          0.164292,
+          0.160125,
+          0.154792,
+          0.1595,
+          0.268,
+          0.203542,
+          0.185958,
+          0.169791,
+          0.175792,
+          0.189875,
+          0.161542,
+          0.162667,
+          0.159125,
+          0.160917,
+          0.159125,
+          0.156958,
+          0.15525,
+          0.162958,
+          0.154458,
+          0.156791,
+          0.155708,
+          0.160417,
+          0.155166,
+          0.15725,
+          0.157834,
+          0.158583,
+          0.157875,
+          0.15475,
+          0.15775,
+          0.160917,
+          0.152959,
+          0.152083,
+          0.162542,
+          0.157666,
+          0.158625,
+          0.28075,
+          0.2095,
+          0.176584,
+          0.174333,
+          0.169458,
+          0.1615,
+          0.15825,
+          0.156542,
+          0.158167,
+          0.154209,
+          0.154792,
+          0.155125,
+          0.15275
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 5946.127608179683,
+        "total_messages": 50,
+        "total_time_ms": 8.408834
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.1644267,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0,
+        "memory_get_avg_ms": 0.0,
+        "model_time_total_ms": 8.221335,
+        "framework_time_total_ms": 0.18749900000000075
+      },
+      "resources": {
+        "memory_rss_start_mb": 61.34375,
+        "memory_rss_peak_mb": 61.875,
+        "memory_rss_end_mb": 61.875,
+        "memory_delta_mb": 0.53125,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    },
+    "conversation-10": {
+      "iterations": 20,
+      "warmup": 3,
+      "latency": {
+        "min_ms": 1.235708,
+        "max_ms": 1.537125,
+        "avg_ms": 1.3384373999999999,
+        "median_ms": 1.3203335,
+        "p95_ms": 1.4917625,
+        "p99_ms": 1.5280525,
+        "stddev_ms": 0.07194770255915056,
+        "raw_ms": [
+          1.33225,
+          1.259625,
+          1.301333,
+          1.287625,
+          1.235708,
+          1.32125,
+          1.464666,
+          1.333833,
+          1.340208,
+          1.321833,
+          1.315833,
+          1.333375,
+          1.331208,
+          1.489375,
+          1.537125,
+          1.319417,
+          1.3095,
+          1.3125,
+          1.308042,
+          1.314042
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 7471.399110634537,
+        "total_messages": 200,
+        "total_time_ms": 26.768748
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.131141005,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0,
+        "memory_get_avg_ms": 0.0,
+        "model_time_total_ms": 26.228201,
+        "framework_time_total_ms": 0.5405470000000001
+      },
+      "resources": {
+        "memory_rss_start_mb": 62.0,
+        "memory_rss_peak_mb": 62.765625,
+        "memory_rss_end_mb": 62.765625,
+        "memory_delta_mb": 0.765625,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    },
+    "burst-100": {
+      "iterations": 5,
+      "warmup": 2,
+      "latency": {
+        "min_ms": 12.599458,
+        "max_ms": 13.725916,
+        "avg_ms": 13.252124599999998,
+        "median_ms": 13.521792,
+        "p95_ms": 13.696715999999999,
+        "p99_ms": 13.720075999999999,
+        "stddev_ms": 0.4485157567344094,
+        "raw_ms": [
+          12.833541,
+          12.599458,
+          13.579916,
+          13.521792,
+          13.725916
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 7545.959838017219,
+        "total_messages": 500,
+        "total_time_ms": 66.260623
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.12997177,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0,
+        "memory_get_avg_ms": 0.0,
+        "model_time_total_ms": 64.985885,
+        "framework_time_total_ms": 1.2747379999999993
+      },
+      "resources": {
+        "memory_rss_start_mb": 63.28125,
+        "memory_rss_peak_mb": 65.125,
+        "memory_rss_end_mb": 65.125,
+        "memory_delta_mb": 1.84375,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    },
+    "with-should-respond": {
+      "iterations": 20,
+      "warmup": 3,
+      "latency": {
+        "min_ms": 0.624958,
+        "max_ms": 0.793,
+        "avg_ms": 0.67016475,
+        "median_ms": 0.655584,
+        "p95_ms": 0.72851875,
+        "p99_ms": 0.78010375,
+        "stddev_ms": 0.03788381047080006,
+        "raw_ms": [
+          0.793,
+          0.725125,
+          0.686542,
+          0.687875,
+          0.684209,
+          0.667875,
+          0.653584,
+          0.644708,
+          0.651917,
+          0.655209,
+          0.654375,
+          0.650333,
+          0.718208,
+          0.67425,
+          0.655959,
+          0.656167,
+          0.647125,
+          0.640834,
+          0.631042,
+          0.624958
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 7460.851977069818,
+        "total_messages": 100,
+        "total_time_ms": 13.403295
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.13108204,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0,
+        "memory_get_avg_ms": 0.0,
+        "model_time_total_ms": 13.108204,
+        "framework_time_total_ms": 0.2950909999999993
+      },
+      "resources": {
+        "memory_rss_start_mb": 65.203125,
+        "memory_rss_peak_mb": 65.359375,
+        "memory_rss_end_mb": 65.359375,
+        "memory_delta_mb": 0.15625,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    },
+    "provider-scaling-10": {
+      "iterations": 30,
+      "warmup": 3,
+      "latency": {
+        "min_ms": 0.207042,
+        "max_ms": 0.276041,
+        "avg_ms": 0.21754033333333334,
+        "median_ms": 0.21222950000000002,
+        "p95_ms": 0.25056714999999996,
+        "p99_ms": 0.27176379,
+        "stddev_ms": 0.015138707708681375,
+        "raw_ms": [
+          0.276041,
+          0.226917,
+          0.222458,
+          0.21675,
+          0.215584,
+          0.212875,
+          0.212042,
+          0.2125,
+          0.210541,
+          0.210917,
+          0.213209,
+          0.261292,
+          0.237459,
+          0.219708,
+          0.221375,
+          0.21375,
+          0.212417,
+          0.210833,
+          0.209791,
+          0.211541,
+          0.20775,
+          0.208667,
+          0.207042,
+          0.210084,
+          0.211375,
+          0.213292,
+          0.211375,
+          0.207792,
+          0.211916,
+          0.208917
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 4596.848706983073,
+        "total_messages": 30,
+        "total_time_ms": 6.52621
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.21395139999999999,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0,
+        "memory_get_avg_ms": 0.0,
+        "model_time_total_ms": 6.4185419999999995,
+        "framework_time_total_ms": 0.10766800000000032
+      },
+      "resources": {
+        "memory_rss_start_mb": 65.375,
+        "memory_rss_peak_mb": 65.453125,
+        "memory_rss_end_mb": 65.453125,
+        "memory_delta_mb": 0.078125,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    },
+    "provider-scaling-50": {
+      "iterations": 30,
+      "warmup": 3,
+      "latency": {
+        "min_ms": 0.398,
+        "max_ms": 0.471084,
+        "avg_ms": 0.4181916666666667,
+        "median_ms": 0.414854,
+        "p95_ms": 0.45957324999999993,
+        "p99_ms": 0.47060057,
+        "stddev_ms": 0.018024369234147658,
+        "raw_ms": [
+          0.471084,
+          0.432209,
+          0.420583,
+          0.419167,
+          0.419625,
+          0.419542,
+          0.469417,
+          0.437041,
+          0.429959,
+          0.418208,
+          0.415333,
+          0.423,
+          0.408625,
+          0.405833,
+          0.404959,
+          0.406709,
+          0.398958,
+          0.401208,
+          0.398,
+          0.406083,
+          0.423042,
+          0.447542,
+          0.414375,
+          0.410625,
+          0.415791,
+          0.409917,
+          0.404666,
+          0.399083,
+          0.404083,
+          0.411083
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 2391.24803220214,
+        "total_messages": 30,
+        "total_time_ms": 12.54575
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.4145333666666667,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0,
+        "memory_get_avg_ms": 0.0,
+        "model_time_total_ms": 12.436001000000001,
+        "framework_time_total_ms": 0.10974899999999899
+      },
+      "resources": {
+        "memory_rss_start_mb": 65.53125,
+        "memory_rss_peak_mb": 65.578125,
+        "memory_rss_end_mb": 65.578125,
+        "memory_delta_mb": 0.046875,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    },
+    "history-scaling-100": {
+      "iterations": 20,
+      "warmup": 3,
+      "latency": {
+        "min_ms": 0.144167,
+        "max_ms": 0.180917,
+        "avg_ms": 0.15327295000000002,
+        "median_ms": 0.1500205,
+        "p95_ms": 0.1808771,
+        "p99_ms": 0.18090902,
+        "stddev_ms": 0.010144236006102186,
+        "raw_ms": [
+          0.180917,
+          0.152958,
+          0.150167,
+          0.148209,
+          0.147375,
+          0.148208,
+          0.152209,
+          0.149333,
+          0.147667,
+          0.180875,
+          0.162416,
+          0.157917,
+          0.155167,
+          0.15025,
+          0.150083,
+          0.149958,
+          0.146416,
+          0.144167,
+          0.144917,
+          0.14625
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 6524.30843146165,
+        "total_messages": 20,
+        "total_time_ms": 3.065459
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.14982505,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0,
+        "memory_get_avg_ms": 0.0,
+        "model_time_total_ms": 2.996501,
+        "framework_time_total_ms": 0.0689580000000003
+      },
+      "resources": {
+        "memory_rss_start_mb": 65.625,
+        "memory_rss_peak_mb": 65.625,
+        "memory_rss_end_mb": 65.625,
+        "memory_delta_mb": 0.0,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    },
+    "history-scaling-1000": {
+      "iterations": 10,
+      "warmup": 2,
+      "latency": {
+        "min_ms": 0.151708,
+        "max_ms": 0.265458,
+        "avg_ms": 0.17751650000000002,
+        "median_ms": 0.1581455,
+        "p95_ms": 0.24785219999999997,
+        "p99_ms": 0.26193684000000006,
+        "stddev_ms": 0.03626529210209123,
+        "raw_ms": [
+          0.265458,
+          0.1805,
+          0.170416,
+          0.226334,
+          0.156458,
+          0.156083,
+          0.159833,
+          0.155833,
+          0.151708,
+          0.152542
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 5633.279159965412,
+        "total_messages": 10,
+        "total_time_ms": 1.775165
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.1724416,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0,
+        "memory_get_avg_ms": 0.0,
+        "model_time_total_ms": 1.724416,
+        "framework_time_total_ms": 0.050749000000000155
+      },
+      "resources": {
+        "memory_rss_start_mb": 66.328125,
+        "memory_rss_peak_mb": 66.40625,
+        "memory_rss_end_mb": 66.40625,
+        "memory_delta_mb": 0.078125,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    },
+    "concurrent-10": {
+      "iterations": 10,
+      "warmup": 2,
+      "latency": {
+        "min_ms": 1.313542,
+        "max_ms": 1.541375,
+        "avg_ms": 1.3886959,
+        "median_ms": 1.3835834999999999,
+        "p95_ms": 1.4976502999999999,
+        "p99_ms": 1.53263006,
+        "stddev_ms": 0.06626630405032409,
+        "raw_ms": [
+          1.541375,
+          1.407375,
+          1.418583,
+          1.32725,
+          1.313542,
+          1.315458,
+          1.444209,
+          1.390333,
+          1.376834,
+          1.352
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 7201.000593434458,
+        "total_messages": 100,
+        "total_time_ms": 13.886959000000001
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.12599875,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0,
+        "memory_get_avg_ms": 0.0,
+        "model_time_total_ms": 12.599874999999999,
+        "framework_time_total_ms": 1.287084000000002
+      },
+      "resources": {
+        "memory_rss_start_mb": 66.5,
+        "memory_rss_peak_mb": 66.828125,
+        "memory_rss_end_mb": 66.828125,
+        "memory_delta_mb": 0.328125,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    },
+    "db-write-throughput": {
+      "iterations": 5,
+      "warmup": 1,
+      "latency": {
+        "min_ms": 14.726458,
+        "max_ms": 15.780875,
+        "avg_ms": 14.97215,
+        "median_ms": 14.7495,
+        "p95_ms": 15.5961584,
+        "p99_ms": 15.743931680000001,
+        "stddev_ms": 0.40694657948630086,
+        "raw_ms": [
+          15.780875,
+          14.726458,
+          14.746625,
+          14.857292,
+          14.7495
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 667906.7468600034,
+        "total_messages": 50000,
+        "total_time_ms": 74.86075
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.0,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0014972149999999999,
+        "memory_get_avg_ms": 0.0,
+        "model_time_total_ms": 0.0,
+        "framework_time_total_ms": 0.0
+      },
+      "resources": {
+        "memory_rss_start_mb": 76.234375,
+        "memory_rss_peak_mb": 76.234375,
+        "memory_rss_end_mb": 76.234375,
+        "memory_delta_mb": 0.0,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    },
+    "db-read-throughput": {
+      "iterations": 5,
+      "warmup": 1,
+      "latency": {
+        "min_ms": 40835.429916,
+        "max_ms": 40994.39325,
+        "avg_ms": 40917.074008200005,
+        "median_ms": 40934.048166,
+        "p95_ms": 40992.2636168,
+        "p99_ms": 40993.967323360004,
+        "stddev_ms": 68.802471635884,
+        "raw_ms": [
+          40983.745084,
+          40994.39325,
+          40837.753625,
+          40934.048166,
+          40835.429916
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 244.39675227011458,
+        "total_messages": 50000,
+        "total_time_ms": 204585.37004100002
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.0,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0,
+        "memory_get_avg_ms": 4.091707400820001,
+        "model_time_total_ms": 0.0,
+        "framework_time_total_ms": 0.0
+      },
+      "resources": {
+        "memory_rss_start_mb": 101.59375,
+        "memory_rss_peak_mb": 101.71875,
+        "memory_rss_end_mb": 101.71875,
+        "memory_delta_mb": 0.125,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    },
+    "startup-cold": {
+      "iterations": 20,
+      "warmup": 0,
+      "latency": {
+        "min_ms": 0.0535,
+        "max_ms": 0.40925,
+        "avg_ms": 0.08134795,
+        "median_ms": 0.055854,
+        "p95_ms": 0.18639615000000018,
+        "p99_ms": 0.3646792299999997,
+        "stddev_ms": 0.0796733101285964,
+        "raw_ms": [
+          0.174667,
+          0.084083,
+          0.06625,
+          0.059,
+          0.059083,
+          0.055833,
+          0.055375,
+          0.40925,
+          0.056459,
+          0.057375,
+          0.05525,
+          0.054333,
+          0.055875,
+          0.0535,
+          0.053875,
+          0.054875,
+          0.05775,
+          0.054959,
+          0.05375,
+          0.055417
+        ]
+      },
+      "throughput": {
+        "messages_per_second": 12292.872776757127,
+        "total_messages": 20,
+        "total_time_ms": 1.626959
+      },
+      "pipeline": {
+        "compose_state_avg_ms": 0.0,
+        "provider_execution_avg_ms": 0.0,
+        "should_respond_avg_ms": 0.0,
+        "model_call_avg_ms": 0.0,
+        "action_dispatch_avg_ms": 0.0,
+        "evaluator_avg_ms": 0.0,
+        "memory_create_avg_ms": 0.0,
+        "memory_get_avg_ms": 0.0,
+        "model_time_total_ms": 0.0,
+        "framework_time_total_ms": 0.0
+      },
+      "resources": {
+        "memory_rss_start_mb": 101.71875,
+        "memory_rss_peak_mb": 101.71875,
+        "memory_rss_end_mb": 101.71875,
+        "memory_delta_mb": 0.0,
+        "heap_used_start_mb": 0.0,
+        "heap_used_peak_mb": 0.0,
+        "heap_used_end_mb": 0.0
+      }
+    }
+  }
+}

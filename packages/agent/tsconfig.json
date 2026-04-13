@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "strict": false,
+    "skipLibCheck": true,
+    "types": ["node", "bun"],
+    "declaration": false,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../eliza/packages/typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["../../eliza/packages/typescript/src/*"],
+      "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
+      "@elizaos/app-lifeops/*": ["../../plugins/app-lifeops/src/*"],
+      "@elizaos/app-form": ["../../plugins/app-form/src/index.ts"],
+      "@elizaos/app-form/*": ["../../plugins/app-form/src/*"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/shared/*": ["../shared/src/*"]
+    }
+  },
+  "include": ["src"]
+}

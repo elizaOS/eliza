@@ -1,0 +1,14 @@
+{
+  "name": "evm-skill-runner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TypeScript skill runner for EVM benchmark",
+  "type": "module",
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}

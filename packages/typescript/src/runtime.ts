@@ -4592,7 +4592,7 @@ ${section_end}`;
 
 				// WHY accumulated is forwarded: the VSE tracks the full extracted text
 				// per field internally (`content` in emitFieldContent). Surfacing it
-				// here means consumers like first-sentence voice detection or Milady's
+				// here means consumers like first-sentence voice detection or Eliza's
 				// streaming-text resolver can use the authoritative value instead of
 				// Note: this design prevents dual extractor conflicts by providing authoritative accumulated data
 				// re-accumulating from deltas — which broke when two extractors ran
@@ -6420,7 +6420,7 @@ ${section_end}`;
 		entityId?: UUID;
 		agentId?: UUID;
 		roomId?: UUID;
-		count?: number;
+		limit?: number;
 		unique?: boolean;
 		tableName: string;
 		start?: number;
@@ -6439,7 +6439,7 @@ ${section_end}`;
 			const memories = await this.adapter.getMemories({
 				agentId: this.agentId,
 				tableName,
-				count: 10000, // Get a large number to fetch all
+				limit: 10000, // Get a large number to fetch all
 			});
 			allMemories.push(...memories);
 		}
@@ -6471,7 +6471,7 @@ ${section_end}`;
 		embedding: number[];
 		query?: string;
 		match_threshold?: number;
-		count?: number;
+		limit?: number;
 		roomId?: UUID;
 		unique?: boolean;
 		worldId?: UUID;
@@ -6596,7 +6596,7 @@ ${section_end}`;
 		entityId?: UUID;
 		roomId?: UUID;
 		type?: string;
-		count?: number;
+		limit?: number;
 		offset?: number;
 	}): Promise<Log[]> {
 		return await this.adapter.getLogs(params);
@@ -6636,10 +6636,6 @@ ${section_end}`;
 	}
 	async deleteWorld(worldId: UUID): Promise<void> {
 		await this.adapter.deleteWorlds([worldId]);
-	}
-	/** @deprecated Use deleteWorld instead */
-	async removeWorld(worldId: UUID): Promise<void> {
-		await this.deleteWorld(worldId);
 	}
 	async getAllWorlds(): Promise<World[]> {
 		return await this.adapter.getAllWorlds();
@@ -7339,7 +7335,7 @@ ${section_end}`;
 	}
 	async getMemoriesByWorldId(params: {
 		worldId: UUID;
-		count?: number;
+		limit?: number;
 		tableName?: string;
 	}): Promise<Memory[]> {
 		return await this.adapter.getMemoriesByWorldId(params);

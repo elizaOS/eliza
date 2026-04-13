@@ -1,0 +1,11 @@
+# command: /opt/miniconda3/bin/python -m benchmarks.solana.eliza_explorer
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_solana_20260212T074736Z_1_5288d44d
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/shawwalters/eliza-workspace/benchmarks/solana/eliza_explorer.py", line 29, in <module>
+    from voyager.surfpool_env import SurfpoolEnv, _surfpool_validator
+  File "/Users/shawwalters/eliza-workspace/benchmarks/solana/solana-gym-env/voyager/surfpool_env.py", line 14, in <module>
+    from solana.rpc.async_api import AsyncClient, GetTransactionResp
+ModuleNotFoundError: No module named 'solana.rpc'

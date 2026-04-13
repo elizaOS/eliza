@@ -1,0 +1,2095 @@
+{
+  "metadata": {
+    "benchmark": "ADHDBench",
+    "version": "0.1.0",
+    "duration_ms": 615.2558326721191,
+    "total_scenarios": 38,
+    "model": "qwen/qwen3-32b",
+    "provider": "groq"
+  },
+  "baselines": {
+    "random": 0.5740952380952381,
+    "always_reply": 0.6928571428571428
+  },
+  "timestamp": "2026-02-14T20:08:07Z",
+  "results": [
+    {
+      "scenario_id": "L0-001",
+      "scenario_name": "Simple time question",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 13.156890869140625,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 13.087034225463867,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "REPLY",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['REPLY'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "STATUS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['STATUS']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-002",
+      "scenario_name": "Send message to contact",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 3.4360885620117188,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 3.392934799194336,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "SEND_MESSAGE",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['SEND_MESSAGE'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "SEND_TOKENS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['SEND_TOKENS']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "REPLY_TWEET",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['REPLY_TWEET']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-003",
+      "scenario_name": "Store preference via conversation",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.5714285714285714,
+      "total_latency_ms": 5.470991134643555,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 5.421876907348633,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "REPLY",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['REPLY'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UPDATE_CONTACT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UPDATE_CONTACT']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UPDATE_CONTACT_INFO",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UPDATE_CONTACT_INFO']. No violations"
+            },
+            {
+              "type": "text_contains",
+              "expected": "blue",
+              "passed": false,
+              "actual": "",
+              "detail": "'blue' not found in response: '...'"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-004",
+      "scenario_name": "Mute room",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 8.446216583251953,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 8.387088775634766,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "MUTE_ROOM",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['MUTE_ROOM'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "SILENCE_USER",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['SILENCE_USER']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UNFOLLOW_ROOM",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UNFOLLOW_ROOM']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-006",
+      "scenario_name": "Ignore meta-communication",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 5.254030227661133,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 5.2013397216796875,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "['IGNORE', 'NONE', 'REPLY']",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['IGNORE', 'NONE', 'REPLY'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "DELETE_MESSAGE",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['DELETE_MESSAGE']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-007",
+      "scenario_name": "Image generation",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 4.286766052246094,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 4.232883453369141,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "GENERATE_IMAGE",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['GENERATE_IMAGE'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "DESIGN_LOGO",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['DESIGN_LOGO']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "EDIT_IMAGE",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['EDIT_IMAGE']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-008",
+      "scenario_name": "Follow room",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 4.427194595336914,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 4.391908645629883,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "FOLLOW_ROOM",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['FOLLOW_ROOM'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "FOLLOW_USER",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['FOLLOW_USER']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-009",
+      "scenario_name": "Search contacts",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 8.949995040893555,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 8.913993835449219,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "SEARCH_CONTACTS",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['SEARCH_CONTACTS'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "SEARCH_DOCS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['SEARCH_DOCS']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "RUN_QUERY",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['RUN_QUERY']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-010",
+      "scenario_name": "Status request",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 10.185956954956055,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 10.143041610717773,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "['STATUS', 'REPLY']",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['STATUS', 'REPLY'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "GET_METRICS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['GET_METRICS']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "GENERATE_REPORT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['GENERATE_REPORT']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-011",
+      "scenario_name": "Update role",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 8.004903793334961,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 7.964849472045898,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "UPDATE_ROLE",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['UPDATE_ROLE'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "BAN_USER",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['BAN_USER']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-012",
+      "scenario_name": "Schedule follow-up",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 3.014802932739258,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 2.980947494506836,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "SCHEDULE_FOLLOW_UP",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['SCHEDULE_FOLLOW_UP'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "SET_REMINDER",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['SET_REMINDER']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "ADD_CALENDAR_EVENT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['ADD_CALENDAR_EVENT']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-013",
+      "scenario_name": "Unfollow room",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 4.466056823730469,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 4.430294036865234,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "UNFOLLOW_ROOM",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['UNFOLLOW_ROOM'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "MUTE_ROOM",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['MUTE_ROOM']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-014",
+      "scenario_name": "Add contact",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 11.605024337768555,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 11.557817459106445,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "ADD_CONTACT",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['ADD_CONTACT'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "INVITE_USER",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['INVITE_USER']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-015",
+      "scenario_name": "Remove contact",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 4.33802604675293,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 4.283905029296875,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "REMOVE_CONTACT",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['REMOVE_CONTACT'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UPDATE_CONTACT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UPDATE_CONTACT']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UPDATE_CONTACT_INFO",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UPDATE_CONTACT_INFO']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-016",
+      "scenario_name": "Update settings",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 3.2739639282226562,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 3.2367706298828125,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "UPDATE_SETTINGS",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['UPDATE_SETTINGS'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UPDATE_CONTACT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UPDATE_CONTACT']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-017",
+      "scenario_name": "Unmute room",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 4.766941070556641,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 4.730701446533203,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "UNMUTE_ROOM",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['UNMUTE_ROOM'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UNFOLLOW_ROOM",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UNFOLLOW_ROOM']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-018",
+      "scenario_name": "Reset session",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 3.549337387084961,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 3.512144088745117,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "RESET_SESSION",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['RESET_SESSION'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "COMPACT_SESSION",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['COMPACT_SESSION']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-019",
+      "scenario_name": "Update contact info",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 3.831624984741211,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 3.7937164306640625,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "['UPDATE_CONTACT_INFO', 'UPDATE_CONTACT']",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['UPDATE_CONTACT_INFO', 'UPDATE_CONTACT'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "REMOVE_CONTACT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['REMOVE_CONTACT']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-020",
+      "scenario_name": "Simple greeting",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a10_p8_m0",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 3.1180381774902344,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 3.0829906463623047,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "REPLY",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['REPLY'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "STATUS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['STATUS']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "GET_METRICS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['GET_METRICS']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-001",
+      "scenario_name": "Simple time question",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 16.61396026611328,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 16.57390594482422,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "REPLY",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['REPLY'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "STATUS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['STATUS']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-002",
+      "scenario_name": "Send message to contact",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 9.625673294067383,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 9.57798957824707,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "SEND_MESSAGE",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['SEND_MESSAGE'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "SEND_TOKENS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['SEND_TOKENS']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "REPLY_TWEET",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['REPLY_TWEET']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-003",
+      "scenario_name": "Store preference via conversation",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.5714285714285714,
+      "total_latency_ms": 44.91019248962402,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 44.862985610961914,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "REPLY",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['REPLY'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UPDATE_CONTACT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UPDATE_CONTACT']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UPDATE_CONTACT_INFO",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UPDATE_CONTACT_INFO']. No violations"
+            },
+            {
+              "type": "text_contains",
+              "expected": "blue",
+              "passed": false,
+              "actual": "",
+              "detail": "'blue' not found in response: '...'"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-004",
+      "scenario_name": "Mute room",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 8.561849594116211,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 8.518695831298828,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "MUTE_ROOM",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['MUTE_ROOM'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "SILENCE_USER",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['SILENCE_USER']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UNFOLLOW_ROOM",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UNFOLLOW_ROOM']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-006",
+      "scenario_name": "Ignore meta-communication",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 8.42905044555664,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 8.382081985473633,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "['IGNORE', 'NONE', 'REPLY']",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['IGNORE', 'NONE', 'REPLY'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "DELETE_MESSAGE",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['DELETE_MESSAGE']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-007",
+      "scenario_name": "Image generation",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 12.685060501098633,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 12.638092041015625,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "GENERATE_IMAGE",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['GENERATE_IMAGE'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "DESIGN_LOGO",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['DESIGN_LOGO']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "EDIT_IMAGE",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['EDIT_IMAGE']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-008",
+      "scenario_name": "Follow room",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 16.59703254699707,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 16.55292510986328,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "FOLLOW_ROOM",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['FOLLOW_ROOM'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "FOLLOW_USER",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['FOLLOW_USER']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-009",
+      "scenario_name": "Search contacts",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 8.434057235717773,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 8.391141891479492,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "SEARCH_CONTACTS",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['SEARCH_CONTACTS'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "SEARCH_DOCS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['SEARCH_DOCS']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "RUN_QUERY",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['RUN_QUERY']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-010",
+      "scenario_name": "Status request",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 18.40996742248535,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 18.364906311035156,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "['STATUS', 'REPLY']",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['STATUS', 'REPLY'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "GET_METRICS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['GET_METRICS']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "GENERATE_REPORT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['GENERATE_REPORT']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-011",
+      "scenario_name": "Update role",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 10.016679763793945,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 9.943723678588867,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "UPDATE_ROLE",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['UPDATE_ROLE'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "BAN_USER",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['BAN_USER']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-012",
+      "scenario_name": "Schedule follow-up",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 15.583992004394531,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 15.516996383666992,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "SCHEDULE_FOLLOW_UP",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['SCHEDULE_FOLLOW_UP'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "SET_REMINDER",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['SET_REMINDER']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "ADD_CALENDAR_EVENT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['ADD_CALENDAR_EVENT']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-013",
+      "scenario_name": "Unfollow room",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 14.364957809448242,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 14.301776885986328,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "UNFOLLOW_ROOM",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['UNFOLLOW_ROOM'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "MUTE_ROOM",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['MUTE_ROOM']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-014",
+      "scenario_name": "Add contact",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 8.089780807495117,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 8.01992416381836,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "ADD_CONTACT",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['ADD_CONTACT'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "INVITE_USER",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['INVITE_USER']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-015",
+      "scenario_name": "Remove contact",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 8.814811706542969,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 8.75401496887207,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "REMOVE_CONTACT",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['REMOVE_CONTACT'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UPDATE_CONTACT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UPDATE_CONTACT']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UPDATE_CONTACT_INFO",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UPDATE_CONTACT_INFO']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-016",
+      "scenario_name": "Update settings",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 12.298107147216797,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 12.243032455444336,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "UPDATE_SETTINGS",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['UPDATE_SETTINGS'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UPDATE_CONTACT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UPDATE_CONTACT']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-017",
+      "scenario_name": "Unmute room",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 9.64498519897461,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 9.588241577148438,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "UNMUTE_ROOM",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['UNMUTE_ROOM'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "UNFOLLOW_ROOM",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['UNFOLLOW_ROOM']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-018",
+      "scenario_name": "Reset session",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 16.94488525390625,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 16.90506935119629,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "RESET_SESSION",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['RESET_SESSION'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "COMPACT_SESSION",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['COMPACT_SESSION']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-019",
+      "scenario_name": "Update contact info",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.5,
+      "total_latency_ms": 16.332149505615234,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 16.288042068481445,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "['UPDATE_CONTACT_INFO', 'UPDATE_CONTACT']",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['UPDATE_CONTACT_INFO', 'UPDATE_CONTACT'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "REMOVE_CONTACT",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['REMOVE_CONTACT']. No violations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scenario_id": "L0-020",
+      "scenario_name": "Simple greeting",
+      "level": "ACTION_DISPATCH",
+      "scale_point": "a50_p18_m30",
+      "config_name": "basic",
+      "score": 0.6666666666666666,
+      "total_latency_ms": 50.86183547973633,
+      "model_name": "qwen/qwen3-32b",
+      "error": null,
+      "turns": [
+        {
+          "turn_index": 0,
+          "actions_selected": [],
+          "providers_requested": [],
+          "response_text": "",
+          "providers_actually_run": [
+            "ACTIONS",
+            "ENTITIES",
+            "ACTION_STATE",
+            "EVALUATORS",
+            "CURRENT_TIME",
+            "CHOICE",
+            "PROVIDERS",
+            "WORLD",
+            "TIME",
+            "RECENT_MESSAGES",
+            "CAPABILITIES",
+            "ATTACHMENTS"
+          ],
+          "latency_ms": 50.804853439331055,
+          "thought": "",
+          "outcomes": [
+            {
+              "type": "action_match",
+              "expected": "REPLY",
+              "passed": false,
+              "actual": "",
+              "detail": "Expected one of ['REPLY'], got []. No match"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "STATUS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['STATUS']. No violations"
+            },
+            {
+              "type": "action_not_match",
+              "expected": "GET_METRICS",
+              "passed": true,
+              "actual": "",
+              "detail": "Forbidden actions ['GET_METRICS']. No violations"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

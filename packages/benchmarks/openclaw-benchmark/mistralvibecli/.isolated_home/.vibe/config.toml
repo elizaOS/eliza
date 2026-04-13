@@ -1,0 +1,89 @@
+# =============================================================================
+# Mistral Vibe CLI Configuration
+# =============================================================================
+
+# Active model (alias from models list below)
+active_model = "devstral-2"
+
+# UI settings
+textual_theme = "terminal"
+vim_keybindings = false
+
+# Auto-approve dangerous operations (false = ask before file edits, commands)
+auto_approve = false
+
+# Context and session settings
+auto_compact_threshold = 200_000
+context_warnings = false
+
+# =============================================================================
+# Skill Paths
+# =============================================================================
+# Additional directories to search for skills
+skill_paths = []
+
+# Enable/disable specific skills (supports glob patterns)
+# enabled_skills = ["anthropic-*", "ws-python-*"]
+# disabled_skills = ["experimental-*"]
+
+# =============================================================================
+# MCP Servers (External Tool Integrations)
+# =============================================================================
+# Uncomment and configure servers you want to use.
+# API keys are read from environment variables (set in .env)
+
+# --- Web Fetch Server ---
+# Enables fetching web content
+[[mcp_servers]]
+name = "fetch"
+transport = "stdio"
+command = "uvx"
+args = ["mcp-server-fetch"]
+
+# --- Filesystem Server (example for specific directories) ---
+# [[mcp_servers]]
+# name = "filesystem"
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
+
+# --- GitHub Server ---
+# [[mcp_servers]]
+# name = "github"
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-github"]
+# env = { "GITHUB_PERSONAL_ACCESS_TOKEN" = "${GITHUB_TOKEN}" }
+
+# --- Brave Search Server ---
+# [[mcp_servers]]
+# name = "brave_search"
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-brave-search"]
+# env = { "BRAVE_API_KEY" = "${BRAVE_API_KEY}" }
+
+# --- Puppeteer Browser Server ---
+# [[mcp_servers]]
+# name = "puppeteer"
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-puppeteer"]
+
+# =============================================================================
+# Tool Permissions
+# =============================================================================
+# Configure permissions for specific tools
+
+[tools.bash]
+# permission = "always"  # Uncomment to auto-approve shell commands
+# permission = "ask"     # Default: ask before each execution
+
+[tools.write_file]
+# permission = "always"  # Uncomment to auto-approve file writes
+
+# =============================================================================
+# Session Logging
+# =============================================================================
+[session_logging]
+enabled = true

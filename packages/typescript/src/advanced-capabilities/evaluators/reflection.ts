@@ -636,7 +636,7 @@ async function handler(
 		runtime.getMemories({
 			tableName: "facts",
 			roomId,
-			count: 30,
+			limit: 30,
 			unique: true,
 		}),
 	]);

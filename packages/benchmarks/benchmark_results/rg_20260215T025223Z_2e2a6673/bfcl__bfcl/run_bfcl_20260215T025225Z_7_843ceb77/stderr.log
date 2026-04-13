@@ -1,0 +1,3 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python -m benchmarks.bfcl run --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025223Z_2e2a6673/bfcl__bfcl/run_bfcl_20260215T025225Z_7_843ceb77/output --provider groq --model qwen/qwen3-32b
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_bfcl_20260215T025225Z_7_843ceb77

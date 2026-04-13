@@ -1,0 +1,3 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python -m elizaos_tau_bench.cli --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/tau-bench__tau_bench/run_tau_bench_20260215T030215Z_1_7cfe80b7/output --model-provider groq --max-tasks 2 --sample --no-trajectories
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/tau-bench
+# run_id: run_tau_bench_20260215T030215Z_1_7cfe80b7

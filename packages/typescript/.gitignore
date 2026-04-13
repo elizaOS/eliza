@@ -7,8 +7,12 @@ coverage/
 *.tsbuildinfo
 :memory:
 
-# Prevent generated files in src directory
+# Prevent accidental tsc/IDE emit artifacts next to .ts (build output belongs in dist/).
+# Do NOT ignore src/types/generated/** — those protobuf .d.ts files are checked in (buf).
 src/**/*.js
 src/**/*.d.ts
 src/**/*.d.ts.map
+!src/types/generated/**/*.js
+!src/types/generated/**/*.d.ts
+!src/types/generated/**/*.d.ts.map
 !src/**/*.test.js

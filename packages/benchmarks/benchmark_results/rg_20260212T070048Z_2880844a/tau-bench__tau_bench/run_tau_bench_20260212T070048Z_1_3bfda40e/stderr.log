@@ -1,0 +1,4 @@
+# command: /opt/miniconda3/bin/python -m elizaos_tau_bench.cli --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T070048Z_2880844a/tau-bench__tau_bench/run_tau_bench_20260212T070048Z_1_3bfda40e/output --model-provider groq --max-tasks 1 --sample
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_tau_bench_20260212T070048Z_1_3bfda40e
+/opt/miniconda3/bin/python: Error while finding module specification for 'elizaos_tau_bench.cli' (ModuleNotFoundError: No module named 'elizaos_tau_bench')

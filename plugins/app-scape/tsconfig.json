@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts"],
+  "// exclude": "Reset the root tsconfig's exclude list. The root excludes `plugins/` wholesale, which excludes this plugin's own src/ and causes tsc to vacuously pass with TS18003. Resetting to [] lets `bunx tsc --noEmit` actually check our files. rootDir/outDir/emit-related fields are dropped because this tsconfig is a type-check sanity config, not a build config — @elizaos/core resolves via root `paths` to eliza/packages/typescript/src, which lives outside this plugin's src/ and would otherwise trip TS6059.",
+  "exclude": []
+}

@@ -1,0 +1,18 @@
+🌊 Solana Gauntlet vv1.0
+📁 Agent: /Users/shawwalters/eliza-workspace/benchmarks/gauntlet/agents/eliza_agent.py
+🎲 Seed: random
+
+📦 Loading agent...
+    [ElizaOS Agent] Created (runtime will initialize on first scenario)
+   ✅ Agent loaded: Agent
+📋 Loading scenarios...
+🚀 Starting Surfpool...
+       (running in mock mode - Surfpool simulated)
+   ✅ Surfpool ready at http://localhost:8899
+
+============================================================
+🏃 Running benchmark...
+============================================================
+    [ElizaOS Agent] Initializing ElizaOS runtime...
+
+❌ Error: Detected incompatible Protobuf Gencode/Runtime versions when loading eliza/v1/agent.proto: gencode 6.33.5 runtime 5.29.6. Runtime version cannot be older than the linked gencode version. See Protobuf version guarantees at https://protobuf.dev/support/cross-version-runtime-guarantee.

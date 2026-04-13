@@ -1,0 +1,3 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python -m gauntlet.cli run --agent /Users/shawwalters/eliza-workspace/benchmarks/gauntlet/agents/eliza_agent.py --scenarios /Users/shawwalters/eliza-workspace/benchmarks/gauntlet/scenarios --programs /Users/shawwalters/eliza-workspace/benchmarks/gauntlet/programs --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T031215Z_945af7be/gauntlet__gauntlet/run_gauntlet_20260215T031258Z_2_64fad675/output --mock --seed 42
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/gauntlet
+# run_id: run_gauntlet_20260215T031258Z_2_64fad675

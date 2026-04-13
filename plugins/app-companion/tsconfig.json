@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "paths": {
+      "@elizaos/app-core": ["./packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["./packages/app-core/src/*"],
+      "@elizaos/core": ["./packages/typescript/src/index.ts"],
+      "@elizaos/core/*": ["./packages/typescript/src/*"],
+      "@elizaos/agent/*": ["./packages/agent/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
+}

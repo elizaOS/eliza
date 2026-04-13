@@ -213,8 +213,6 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract getMemories(params: {
 		entityId?: UUID;
 		agentId?: UUID;
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		offset?: number;
 		unique?: boolean;
@@ -278,8 +276,6 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		entityId?: UUID;
 		roomId?: UUID;
 		type?: string;
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		offset?: number;
 	}): Promise<Log[]>;
@@ -308,8 +304,6 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		tableName: string;
 		embedding: number[];
 		match_threshold?: number;
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		unique?: boolean;
 		query?: string;
@@ -538,8 +532,6 @@ export abstract class DatabaseAdapter<DB extends object = object>
 
 	abstract getMemoriesByWorldId(params: {
 		worldIds?: UUID[];
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		tableName?: string;
 	}): Promise<Memory[]>;

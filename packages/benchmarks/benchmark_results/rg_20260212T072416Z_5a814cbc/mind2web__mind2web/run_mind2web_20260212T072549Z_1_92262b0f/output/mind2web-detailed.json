@@ -1,0 +1,52 @@
+{
+  "results": [
+    {
+      "task_id": "sample_001",
+      "instruction": "Search for 'wireless headphones' on Amazon and filter by price under $50",
+      "website": "amazon.com",
+      "domain": "shopping",
+      "trial_number": 1,
+      "success": false,
+      "element_accuracy": 0.0,
+      "operation_accuracy": 0.0,
+      "step_accuracy": 0.0,
+      "steps_completed": 0,
+      "total_steps": 3,
+      "latency_ms": 0.20503997802734375,
+      "error": "No model provider plugin available. Set GROQ_API_KEY or OPENAI_API_KEY.",
+      "agent_trajectory": []
+    },
+    {
+      "task_id": "sample_002",
+      "instruction": "Book a one-way flight from New York to Los Angeles for next Monday",
+      "website": "google.com/flights",
+      "domain": "travel",
+      "trial_number": 1,
+      "success": false,
+      "element_accuracy": 0.0,
+      "operation_accuracy": 0.0,
+      "step_accuracy": 0.0,
+      "steps_completed": 0,
+      "total_steps": 2,
+      "latency_ms": 0.09083747863769531,
+      "error": "No model provider plugin available. Set GROQ_API_KEY or OPENAI_API_KEY.",
+      "agent_trajectory": []
+    },
+    {
+      "task_id": "sample_003",
+      "instruction": "Find the contact email for customer support on GitHub",
+      "website": "github.com",
+      "domain": "software",
+      "trial_number": 1,
+      "success": false,
+      "element_accuracy": 0.0,
+      "operation_accuracy": 0.0,
+      "step_accuracy": 0.0,
+      "steps_completed": 0,
+      "total_steps": 1,
+      "latency_ms": 0.07414817810058594,
+      "error": "No model provider plugin available. Set GROQ_API_KEY or OPENAI_API_KEY.",
+      "agent_trajectory": []
+    }
+  ]
+}
