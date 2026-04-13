@@ -95,6 +95,10 @@ export class TaskDrain {
 		if (t.agentId == null || String(t.agentId) !== String(agentId)) {
 			return false;
 		}
+		const tags = Array.isArray(t.tags) ? t.tags : [];
+		if (!tags.includes("queue") || !tags.includes("repeat")) {
+			return false;
+		}
 		const meta = (t.metadata ?? {}) as Record<string, unknown>;
 		for (const [key, value] of Object.entries(this.taskMetadata)) {
 			if (meta[key] !== value) {
