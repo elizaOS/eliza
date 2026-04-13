@@ -1,0 +1,118 @@
+{
+  "id": "6e99a1ad-07d2-4b66-a1ce-ece6d99c20a5",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Help me format column \"spent\" by keeping two decimal points. ",
+  "source": "https://www.youtube.com/watch?v=nl-nXjJurhQ",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/6e99a1ad-07d2-4b66-a1ce-ece6d99c20a5/Keep_Two_decimal_points.xlsx",
+            "path": "/home/user/Keep_Two_decimal_points.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Keep_Two_decimal_points.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/6e99a1ad-07d2-4b66-a1ce-ece6d99c20a5",
+  "related_apps": [
+    "libreoffice calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Keep_Two_decimal_points.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "libreoffice",
+            "--convert-to",
+            "csv:Text - txt - csv (StarCalc):44,34,UTF-8,,,,false,true,true,false,false,1",
+            "--outdir",
+            "/home/user",
+            "/home/user/Keep_Two_decimal_points.xlsx"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": [
+        "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/6e99a1ad-07d2-4b66-a1ce-ece6d99c20a5/Keep_Two_decimal_points_gold.xlsx",
+        "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/6e99a1ad-07d2-4b66-a1ce-ece6d99c20a5/Keep_Two_decimal_points_gold-Sheet1.csv"
+      ],
+      "dest": [
+        "Keep_Two_decimal_points_gold.xlsx",
+        "Keep_Two_decimal_points_gold-Sheet1.csv"
+      ],
+      "multi": true
+    },
+    "result": {
+      "type": "vm_file",
+      "path": [
+        "/home/user/Keep_Two_decimal_points.xlsx",
+        "/home/user/Keep_Two_decimal_points-Sheet1.csv"
+      ],
+      "dest": [
+        "Keep_Two_decimal_points.xlsx",
+        "Keep_Two_decimal_points-Sheet1.csv"
+      ],
+      "multi": true
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_print",
+          "sheet_idx0": "RNSheet1",
+          "sheet_idx1": "ENSheet1"
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

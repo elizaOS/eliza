@@ -1,0 +1,19 @@
+# command: /opt/miniconda3/bin/python /Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py --result_dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T125437Z_0c36f5da/osworld__osworld/run_osworld_20260212T125437Z_4_fbb8cdfe/output --model qwen/qwen3-32b --provider_name docker --observation_type screenshot_a11y_tree --max_tasks 1
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/OSWorld
+# run_id: run_osworld_20260212T125437Z_4_fbb8cdfe
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 60, in <module>
+    from desktop_env.desktop_env import DesktopEnv
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/desktop_env.py", line 13, in <module>
+    from desktop_env.controllers.setup import SetupController
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/controllers/setup.py", line 23, in <module>
+    from desktop_env.evaluators.metrics.utils import compare_urls
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/evaluators/metrics/__init__.py", line 8, in <module>
+    from .chrome import (
+    ...<17 lines>...
+    )
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/evaluators/metrics/chrome.py", line 13, in <module>
+    from desktop_env.evaluators.metrics.utils import are_lists_equal, compare_urls
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/evaluators/metrics/utils.py", line 32, in <module>
+    import tldextract
+ModuleNotFoundError: No module named 'tldextract'

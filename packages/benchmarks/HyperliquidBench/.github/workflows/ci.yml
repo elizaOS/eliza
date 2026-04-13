@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-test-demo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust@v1
+        with:
+          rust-version: stable
+
+      - name: Cache cargo artifacts
+        uses: swatinem/rust-cache@v2
+
+      - name: Format (cargo fmt --check)
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --no-deps -- -D warnings
+
+      - name: Run tests
+        run: cargo test
+
+      - name: Demo benchmark run
+        run: |
+          cargo run -p hl-runner --release -- \
+            --demo \
+            --plan dataset/tasks/hl_perp_basic_01.jsonl:1 \
+            --out runs/demo
+          cargo run -p hl-evaluator --release -- \
+            --input runs/demo/per_action.jsonl \
+            --domains dataset/domains-hl.yaml \
+            --out-dir runs/demo
+
+      - name: Inspect demo score
+        run: jq '.finalScore' runs/demo/eval_score.json
+
+      - name: Upload demo artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-artifacts
+          path: runs/demo

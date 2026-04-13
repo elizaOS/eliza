@@ -1,0 +1,7 @@
+FROM python:3.11-slim
+
+RUN pip install --no-cache-dir pyyaml
+
+COPY scripts/init_workspace.py /init_workspace.py
+
+ENTRYPOINT ["python", "/init_workspace.py"]

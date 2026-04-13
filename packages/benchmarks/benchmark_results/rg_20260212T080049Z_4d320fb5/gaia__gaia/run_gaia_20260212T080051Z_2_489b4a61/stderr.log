@@ -1,0 +1,4 @@
+# command: /opt/miniconda3/bin/python -m elizaos_gaia.cli --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T080049Z_4d320fb5/gaia__gaia/run_gaia_20260212T080051Z_2_489b4a61/output --provider groq --model qwen/qwen3-32b
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/gaia
+# run_id: run_gaia_20260212T080051Z_2_489b4a61
+Fetching 42 files:   0%|          | 0/42 [00:00<?, ?it/s]Fetching 42 files:   0%|          | 0/42 [00:00<?, ?it/s]

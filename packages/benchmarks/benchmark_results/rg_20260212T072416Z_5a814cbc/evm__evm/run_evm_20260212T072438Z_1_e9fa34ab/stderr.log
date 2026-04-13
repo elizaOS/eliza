@@ -1,0 +1,27 @@
+# command: python -m benchmarks.evm.eliza_agent
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/evm
+# run_id: run_evm_20260212T072438Z_1_e9fa34ab
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/shawwalters/eliza-workspace/benchmarks/evm/eliza_agent.py", line 724, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/evm/eliza_agent.py", line 720, in main
+    await go(env)
+  File "/Users/shawwalters/eliza-workspace/benchmarks/evm/eliza_agent.py", line 679, in go
+    await env.reset()
+  File "/Users/shawwalters/eliza-workspace/benchmarks/evm/anvil_env.py", line 100, in reset
+    await self._rpc_call("anvil_reset", [])
+  File "/Users/shawwalters/eliza-workspace/benchmarks/evm/anvil_env.py", line 278, in _rpc_call
+    raise RuntimeError(f"RPC error: {data['error']}")
+RuntimeError: RPC error: {'code': -32603, 'message': 'Not implemented'}

@@ -1,0 +1,101 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "typescript",
+  "profile": "groq",
+  "timestamp": "17711398793N",
+  "iterations": 1,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "iteration": 1,
+      "profile": "groq",
+      "transcriptionMs": 9358.01,
+      "responseTtftMs": 1308.683,
+      "responseTotalMs": 1310.135,
+      "voiceGenerationMs": 295.086,
+      "endToEndMs": 10963.257,
+      "inContext": {
+        "transcript": " Thank you. Thank you. Thank you. Thank you.",
+        "benchmarkContext": "",
+        "prompt": "Thank you. Thank you. Thank you. Thank you.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "You're welcome!",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 61510
+    },
+    {
+      "mode": "non-simple",
+      "iteration": 1,
+      "profile": "groq",
+      "transcriptionMs": 2203.773,
+      "responseTtftMs": 1817.832,
+      "responseTotalMs": 1818.008,
+      "voiceGenerationMs": 284.072,
+      "endToEndMs": 4305.871,
+      "inContext": {
+        "transcript": " Thank you. Thank you. Thank you. Thank you.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Thank you. Thank you. Thank you. Thank you.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "You're welcome!",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 61510
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 9358.01,
+      "avgResponseTtftMs": 1308.683,
+      "avgResponseTotalMs": 1310.135,
+      "avgVoiceGenerationMs": 295.086,
+      "avgEndToEndMs": 10963.257
+    },
+    "non-simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 2203.773,
+      "avgResponseTtftMs": 1817.832,
+      "avgResponseTotalMs": 1818.008,
+      "avgVoiceGenerationMs": 284.072,
+      "avgEndToEndMs": 4305.871
+    }
+  }
+}

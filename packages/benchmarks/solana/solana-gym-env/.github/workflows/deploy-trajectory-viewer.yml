@@ -1,0 +1,45 @@
+name: Deploy Trajectory Viewer
+
+on:
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'docs/trajectory-viewer/**'
+      - '.github/workflows/deploy-trajectory-viewer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+          
+      - name: Install dependencies
+        working-directory: ./docs/trajectory-viewer
+        run: |
+          rm -rf node_modules package-lock.json
+          bun install
+        
+      - name: Build
+        working-directory: ./docs/trajectory-viewer
+        run: bun run build
+        
+      - name: Copy public assets to dist
+        run: |
+          cp -r ./docs/trajectory-viewer/public/data ./docs/trajectory-viewer/dist/ || true
+          cp -r ./docs/trajectory-viewer/public/assets ./docs/trajectory-viewer/dist/ || true
+        
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/trajectory-viewer/dist

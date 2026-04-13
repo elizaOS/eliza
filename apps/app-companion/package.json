@@ -1,0 +1,50 @@
+{
+  "name": "@elizaos/app-companion",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Companion app package with the VRM scene runtime and avatar utilities.",
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "biome check src/",
+    "storybook": "storybook dev -p 6007",
+    "build-storybook": "storybook build"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./ui": "./src/ui.ts",
+    "./plugin": "./src/plugin.ts",
+    "./register": "./src/register.ts",
+    "./assets.json": "./assets.json",
+    "./components/*": "./src/components/*",
+    "./types/*": "./src/types/*",
+    "./emotes": "./src/emotes/index.ts",
+    "./emotes/*": "./src/emotes/*.ts"
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-coding": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "lucide-react": "^0.575.0"
+  },
+  "devDependencies": {
+    "@storybook/addon-a11y": "^8.6.0",
+    "@storybook/addon-essentials": "^8.6.0",
+    "@storybook/addon-themes": "^8.6.0",
+    "@storybook/react": "^8.6.0",
+    "@storybook/react-vite": "^8.6.0",
+    "@types/react": "^19.0.0",
+    "@types/three": "^0.182.0",
+    "storybook": "^8.6.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@elizaos/app-core": "*",
+    "@pixiv/three-vrm": "^3.4.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.182.0"
+  }
+}

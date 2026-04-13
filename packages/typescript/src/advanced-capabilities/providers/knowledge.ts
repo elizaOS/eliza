@@ -46,7 +46,7 @@ export const knowledgeProvider: Provider = {
 			tableName: "knowledge",
 			embedding,
 			query: queryText,
-			count: 5,
+			limit: 5,
 		});
 
 		if (relevantKnowledge.length === 0) {

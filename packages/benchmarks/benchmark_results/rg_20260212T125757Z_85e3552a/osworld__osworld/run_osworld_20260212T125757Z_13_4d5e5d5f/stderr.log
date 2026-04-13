@@ -1,0 +1,9 @@
+# command: /opt/miniconda3/bin/python /Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py --result_dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T125757Z_85e3552a/osworld__osworld/run_osworld_20260212T125757Z_13_4d5e5d5f/output --model qwen/qwen3-32b --provider_name docker --observation_type screenshot_a11y_tree --max_tasks 1
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/OSWorld
+# run_id: run_osworld_20260212T125757Z_13_4d5e5d5f
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 61, in <module>
+    from lib_run_single import run_single_example, setup_logger
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/lib_run_single.py", line 6, in <module>
+    from wrapt_timeout_decorator import *
+ModuleNotFoundError: No module named 'wrapt_timeout_decorator'

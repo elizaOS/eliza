@@ -1,0 +1,128 @@
+{
+  "id": "bc2b57f3-686d-4ec9-87ce-edf850b7e442",
+  "snapshot": "libreoffice_calc",
+  "instruction": "The requirements of my data analysis assignment are listed in \"reminder.docx\" on the desktop. Help me modify my assignment opended accordingly.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/bc2b57f3-686d-4ec9-87ce-edf850b7e442/workbook-with-sample-database.xlsx",
+            "path": "/home/user/Desktop/workbook-with-sample-database.xlsx"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/bc2b57f3-686d-4ec9-87ce-edf850b7e442/reminder.docx",
+            "path": "/home/user/Desktop/reminder.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/workbook-with-sample-database.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/bc2b57f3-686d-4ec9-87ce-edf850b7e442",
+  "related_apps": [
+    "libreoffice_calc",
+    "libreoffice_writer"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "workbook-with-sample-database.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/workbook-with-sample-database.xlsx",
+      "dest": "workbook-with-sample-database.xlsx"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/bc2b57f3-686d-4ec9-87ce-edf850b7e442/workbook-with-sample-database_Gold.xlsx",
+      "dest": "workbook-with-sample-database_Gold.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_name"
+        },
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RI0",
+          "sheet_idx1": "EI0"
+        },
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RI1",
+          "sheet_idx1": "EI1"
+        },
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RI2",
+          "sheet_idx1": "EI2"
+        },
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RI3",
+          "sheet_idx1": "EI3"
+        },
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RI4",
+          "sheet_idx1": "EI4"
+        },
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RI5",
+          "sheet_idx1": "EI5"
+        },
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RI6",
+          "sheet_idx1": "EI6"
+        },
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RI7",
+          "sheet_idx1": "EI7"
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

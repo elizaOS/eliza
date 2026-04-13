@@ -1,0 +1,69 @@
+# command: python scripts/python/run_multienv_eliza.py --result_dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T060922Z_47dacbfb/osworld__osworld/run_osworld_20260215T060922Z_4_9a894882/output --model qwen/qwen3-32b --provider_name docker --observation_type screenshot_a11y_tree --max_steps 10 --max_tasks 1 --headless
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/OSWorld
+# run_id: run_osworld_20260215T060922Z_4_9a894882
+2026-02-14 23:09:37,332 [osworld.eliza.runner] INFO: Loaded 1 tasks
+2026-02-14 23:09:38,552 [OSWorld Desktop Agent] INFO: [2m2026-02-15T06:09:38.552840Z[0m [[32m[1minfo     [0m] [1mInitializing AgentRuntime...  [0m [[0m[1m[34mOSWorld Desktop Agent[0m][0m
+2026-02-14 23:09:39,085 [elizaos] INFO: [2m2026-02-15T06:09:39.085885Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: bootstrap [0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 23:09:39,086 [OSWorld Desktop Agent] INFO: [2m2026-02-15T06:09:39.086135Z[0m [[32m[1minfo     [0m] [1mInitializing Bootstrap plugin [0m [[0m[1m[34mOSWorld Desktop Agent[0m][0m [36magentId[0m=[35m1878cfb3-b571-0c2d-8bff-586262ca2663[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-14 23:09:39,086 [OSWorld Desktop Agent] INFO: [2m2026-02-15T06:09:39.086249Z[0m [[32m[1minfo     [0m] [1mBootstrap plugin initialized  [0m [[0m[1m[34mOSWorld Desktop Agent[0m][0m [36mactionCount[0m=[35m0[0m [36magentId[0m=[35m1878cfb3-b571-0c2d-8bff-586262ca2663[0m [36mevaluatorCount[0m=[35m0[0m [36mproviderCount[0m=[35m0[0m [36mserviceCount[0m=[35m0[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-14 23:09:39,086 [elizaos] INFO: [2m2026-02-15T06:09:39.086351Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: bootstrap[0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 23:09:39,086 [elizaos] INFO: [2m2026-02-15T06:09:39.086420Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: osworld-bench[0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 23:09:39,086 [elizaos] INFO: [2m2026-02-15T06:09:39.086552Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: osworld-bench[0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 23:09:39,086 [OSWorld Desktop Agent] INFO: [2m2026-02-15T06:09:39.086609Z[0m [[32m[1minfo     [0m] [1mAgentRuntime initialized successfully[0m [[0m[1m[34mOSWorld Desktop Agent[0m][0m
+2026-02-14 23:09:39,086 [osworld.eliza.agent] INFO: Eliza OSWorld agent initialized with model=qwen/qwen3-32b, provider=groq
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/client.py", line 275, in _raise_for_status
+    response.raise_for_status()
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 500 Server Error: Internal Server Error for url: http+docker://localhost/version
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/client.py", line 223, in _retrieve_server_version
+    return self.version(api_version=False)["ApiVersion"]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/daemon.py", line 181, in version
+    return self._result(self._get(url), json=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/client.py", line 281, in _result
+    self._raise_for_status(response)
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/client.py", line 277, in _raise_for_status
+    raise create_api_error_from_http_exception(e) from e
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/errors.py", line 39, in create_api_error_from_http_exception
+    raise cls(e, response=response, explanation=explanation) from e
+docker.errors.APIError: 500 Server Error for http+docker://localhost/version: Internal Server Error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 327, in <module>
+    main()
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 323, in main
+    run_benchmark(args)
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 214, in run_benchmark
+    env = DesktopEnv(**env_kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/desktop_env.py", line 154, in __init__
+    self.manager, self.provider = create_vm_manager_and_provider(provider_name, region, use_proxy=False)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/providers/__init__.py", line 33, in create_vm_manager_and_provider
+    return DockerVMManager(), DockerProvider(region)
+                              ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/desktop_env/providers/docker/provider.py", line 27, in __init__
+    self.client = docker.from_env()
+                  ^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/client.py", line 94, in from_env
+    return cls(
+           ^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/client.py", line 45, in __init__
+    self.api = APIClient(*args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/client.py", line 207, in __init__
+    self._version = self._retrieve_server_version()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/docker/api/client.py", line 230, in _retrieve_server_version
+    raise DockerException(
+docker.errors.DockerException: Error while fetching server API version: 500 Server Error for http+docker://localhost/version: Internal Server Error

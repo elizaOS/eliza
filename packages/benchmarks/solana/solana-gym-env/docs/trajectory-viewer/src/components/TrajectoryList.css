@@ -1,0 +1,168 @@
+.trajectory-list {
+  background: transparent;
+  padding: 30px;
+}
+
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.list-header h2 {
+  color: #2d3748;
+  font-size: 28px;
+}
+
+.controls {
+  display: flex;
+  gap: 15px;
+}
+
+.filter-select,
+.sort-select {
+  padding: 8px 12px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #4a5568;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.filter-select:hover,
+.sort-select:hover {
+  border-color: #667eea;
+}
+
+.runs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.run-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  padding: 20px;
+  text-decoration: none;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.run-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  border-color: #667eea;
+}
+
+.run-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.run-id {
+  font-family: monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.model-badge {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.model-badge.model-claude {
+  background: #fef5e7;
+  color: #d68910;
+}
+
+.model-badge.model-gpt {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.model-badge.model-gemini {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.benchmark-badge {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.benchmark-badge.benchmark-basic {
+  background: #f0f9ff;
+  color: #0369a1;
+}
+
+.benchmark-badge.benchmark-swap {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.run-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.stat {
+  text-align: center;
+}
+
+.stat-label {
+  display: block;
+  font-size: 11px;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: #2d3748;
+}
+
+.mini-chart {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.sparkline {
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.run-card:hover .sparkline {
+  opacity: 1;
+}

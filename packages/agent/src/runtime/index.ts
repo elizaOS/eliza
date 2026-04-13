@@ -1,0 +1,12 @@
+export * from "./eliza.js";
+export * from "./eliza-plugin.js";
+export * from "./plugin-lifecycle.js";
+export * from "./plugin-collector.js";
+export { resolvePlugins } from "./plugin-resolver.js";
+export * from "./embedding-presets.js";
+export * from "./onboarding-names.js";
+export * from "./release-plugin-policy.js";
+export * from "./roles.js";
+export * from "./restart.js";
+export * from "./trajectory-persistence.js";
+export * from "./version.js";

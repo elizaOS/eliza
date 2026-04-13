@@ -1,0 +1,190 @@
+// elizaOS ICP Canister Interface
+
+// ========== Error Types ==========
+
+type StorageError = variant {
+    NotReady;
+    NotFound: text;
+    DimensionMismatch: record { expected: nat; actual: nat };
+    Serialization: text;
+    Other: text;
+};
+
+type CanisterError = variant {
+    NotInitialized;
+    AlreadyInitialized;
+    Storage: StorageError;
+    InvalidInput: text;
+    HttpOutcallError: text;
+    VetKeyError: text;
+    Unauthorized;
+    SerializationError: text;
+    InternalError: text;
+};
+
+// ========== Configuration Types ==========
+
+type CharacterConfig = record {
+    name: text;
+    bio: text;
+    system: opt text;
+    personality_traits: vec text;
+    knowledge_base: vec text;
+};
+
+type OpenAIConfig = record {
+    api_url: text;
+    model: text;
+    temperature: float32;
+    max_tokens: opt nat32;
+    api_key: opt text;
+};
+
+// ========== Inference Mode Types ==========
+
+type InferenceMode = variant {
+    ElizaClassic;   // Pattern-based (instant, free, fully on-chain)
+    OpenAI;         // HTTP outcalls (fast, costs cycles + API key)
+    OnChainLLM;     // Self-hosted llama_cpp_canister (slower, fully decentralized)
+    DfinityLLM;     // DFINITY LLM canister (fast, FREE, Llama 3.1 8B / Qwen3 32B)
+};
+
+type OnChainLLMConfig = record {
+    canister_id: principal;
+    model_name: text;
+    max_tokens: nat32;
+    temperature: float32;
+    cache_type_k: text;
+    system_prompt: opt text;
+};
+
+// DFINITY LLM Models (managed by DFINITY, free to use!)
+type DfinityLLMModel = variant {
+    Llama3_1_8B;    // Fast, general purpose
+    Qwen3_32B;      // Larger, more capable
+    Llama4Scout;    // Newer model
+};
+
+type DfinityLLMConfig = record {
+    model: DfinityLLMModel;
+    system_prompt: opt text;
+    enabled: bool;
+};
+
+type InferenceStatus = record {
+    current_mode: InferenceMode;
+    eliza_classic_ready: bool;
+    openai_configured: bool;
+    onchain_llm_configured: bool;
+    onchain_llm_canister_id: opt text;
+    onchain_llm_model: opt text;
+    dfinity_llm_enabled: bool;
+    dfinity_llm_model: opt text;
+};
+
+// ========== Agent Types ==========
+
+type AgentState = record {
+    agent_id: text;
+    character: CharacterConfig;
+    initialized: bool;
+    created_at: nat64;
+    last_active: nat64;
+    message_count: nat64;
+};
+
+// ========== VetKeys Types ==========
+
+type VetKeyContext = record {
+    purpose: text;
+    domain: opt text;
+};
+
+type EncryptedVetKey = record {
+    encrypted_key: blob;
+    public_key: blob;
+    context: VetKeyContext;
+};
+
+// ========== Chat Types ==========
+
+type ChatRequest = record {
+    message: text;
+    user_id: opt text;
+    room_id: opt text;
+};
+
+type ChatResponse = record {
+    message: text;
+    room_id: text;
+    message_id: text;
+    timestamp: nat64;
+};
+
+// ========== Health Types ==========
+
+type HealthStatus = record {
+    status: text;
+    agent_id: opt text;
+    agent_name: opt text;
+    initialized: bool;
+    message_count: nat64;
+    memory_count: nat64;
+    uptime_ns: nat64;
+};
+
+// ========== Service Interface ==========
+
+service : {
+    // Agent Management
+    init_agent: (opt CharacterConfig) -> (variant { Ok: text; Err: CanisterError });
+    configure_openai: (OpenAIConfig) -> (variant { Ok; Err: CanisterError });
+    set_openai_key: (text) -> (variant { Ok; Err: CanisterError });
+    is_openai_ready: () -> (bool) query;
+    configure_vetkd: (principal) -> (variant { Ok; Err: CanisterError });
+    update_character: (CharacterConfig) -> (variant { Ok; Err: CanisterError });
+    get_agent_state: () -> (opt AgentState) query;
+    
+    // Inference Mode Configuration
+    set_inference_mode: (InferenceMode) -> (variant { Ok; Err: CanisterError });
+    get_inference_mode: () -> (InferenceMode) query;
+    configure_onchain_llm: (OnChainLLMConfig) -> (variant { Ok; Err: CanisterError });
+    is_onchain_llm_ready: () -> (bool) query;
+    configure_dfinity_llm: (DfinityLLMConfig) -> (variant { Ok; Err: CanisterError });
+    is_dfinity_llm_ready: () -> (bool) query;
+    get_inference_status: () -> (InferenceStatus) query;
+    check_onchain_llm_health: () -> (variant { Ok: bool; Err: CanisterError });
+    
+    // Chat
+    chat: (ChatRequest) -> (variant { Ok: ChatResponse; Err: CanisterError });
+    get_conversation_history: (text, opt nat32) -> (vec text) query;
+    
+    // Memory Management (JSON strings for flexible schema)
+    create_memory: (text, text, bool) -> (variant { Ok: text; Err: CanisterError });
+    get_memories: (opt text, opt text, text, opt nat32) -> (vec text) query;
+    search_memories: (text, vec float32, opt float32, opt nat32, opt text) -> (vec text) query;
+    delete_memory: (text) -> (variant { Ok; Err: CanisterError });
+    
+    // Room Management
+    create_room: (opt text) -> (variant { Ok: text; Err: CanisterError });
+    get_rooms: () -> (vec text) query;
+    delete_room: (text) -> (variant { Ok; Err: CanisterError });
+    
+    // VetKeys (Secure Key Derivation)
+    get_user_encryption_key: (blob) -> (variant { Ok: EncryptedVetKey; Err: CanisterError });
+    get_vetkd_public_key: () -> (variant { Ok: blob; Err: CanisterError });
+    
+    // System
+    health: () -> (HealthStatus) query;
+    cycles_balance: () -> (nat64) query;
+    whoami: () -> (principal) query;
+    is_openai_enabled: () -> (bool) query;
+    
+    // ELIZA Classic (pattern-based Rogerian psychotherapist - no API keys needed)
+    get_eliza_greeting: () -> (text) query;
+    eliza_classic_chat: (text) -> (text) query;
+    reset_eliza_session: () -> ();
+    
+    // HTTP Transform (required for OpenAI outcalls)
+    transform_openai_response: (record { response: record { status: nat; headers: vec record { name: text; value: text }; body: blob }; context: blob }) -> (record { status: nat; headers: vec record { name: text; value: text }; body: blob }) query;
+}

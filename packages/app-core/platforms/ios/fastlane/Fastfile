@@ -1,0 +1,74 @@
+default_platform(:ios)
+
+platform :ios do
+
+  desc "Sync certificates and provisioning profiles"
+  lane :certs do
+    setup_ci if ENV["CI"]
+
+    match(
+      type: "appstore",
+      app_identifier: "ai.elizaos.app",
+      readonly: is_ci
+    )
+  end
+
+  desc "Build the iOS app for App Store submission"
+  lane :build do
+    certs
+
+    build_app(
+      workspace: "App/App.xcworkspace",
+      scheme: "App",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          "ai.elizaos.app" => "match AppStore ai.elizaos.app"
+        }
+      },
+      output_directory: "build",
+      output_name: "ElizaOSApp.ipa",
+      clean: true,
+      include_bitcode: false
+    )
+  end
+
+  desc "Upload to TestFlight"
+  lane :beta do
+    build
+
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      apple_id: ENV["APP_STORE_APP_ID"]
+    )
+  end
+
+  desc "Submit to App Store for review"
+  lane :release do
+    build
+
+    upload_to_app_store(
+      skip_screenshots: true,
+      skip_metadata: false,
+      force: true,
+      submit_for_review: true,
+      automatic_release: false,
+      precheck_include_in_app_purchases: false,
+      submission_information: {
+        add_id_info_uses_idfa: false,
+        export_compliance_uses_encryption: true,
+        export_compliance_is_exempt: true
+      }
+    )
+  end
+
+  desc "Upload metadata and screenshots only"
+  lane :metadata do
+    upload_to_app_store(
+      skip_binary_upload: true,
+      skip_screenshots: false,
+      force: true
+    )
+  end
+
+end

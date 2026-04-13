@@ -1,0 +1,163 @@
+============================================================
+AgentBench Evaluation - ElizaOS Python
+============================================================
+
+============================================================
+Initializing FULL ElizaOS Pipeline
+============================================================
+
+📦 Loading plugins:
+   • bootstrap (basicCapabilities: providers, actions, evaluators)
+   • openai (model provider)
+
+🤖 Character: BenchmarkAgent
+   System: You are an AI agent. When given a benchmark task, analyze the state and execute ...
+   • agentbench (BENCHMARK provider + BENCHMARK_ACTION)
+   • database: in-memory adapter (for benchmarks)
+
+✅ ElizaOS runtime ready
+   • message_service: enabled (full pipeline)
+   • providers: 15 loaded
+   • actions: 5 registered
+============================================================
+
+Environments to evaluate: ['operating_system']
+
+Starting benchmark...
+[2m2026-02-15T03:08:08.392141Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.398382Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.398642Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.399028Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.458594Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.464507Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.464738Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.465049Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.512634Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.517884Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.518082Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.518381Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.587798Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.596400Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.596639Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.597117Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.659365Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.666259Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.666506Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.666950Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.715646Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.723659Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.723899Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.724229Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.833843Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.845925Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.846164Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.846507Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.899978Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.910194Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.910653Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.911815Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.962304Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.968180Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.968415Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:08.969001Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:09.008275Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:09.015052Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:09.015944Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBenchmarkAgent[0m][0m
+[2m2026-02-15T03:08:09.016401Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBenchmarkAgent[0m][0m
+
+============================================================
+BENCHMARK RESULTS
+============================================================
+
+📊 Overall Performance:
+   Success Rate: 0.0%
+   Total Tasks:  1
+   Passed:       0
+   Failed:       1
+   Avg Duration: 697ms
+
+📋 Per-Environment Breakdown:
+
+   ❌ OPERATING_SYSTEM
+      Success Rate: 0.0%
+      Tasks: 0/1
+      Avg Steps: 10.0
+      Avg Duration: 697ms
+
+📈 Comparison with GPT-4 Baseline:
+   operating_system: 0.0% vs 42.1% (↓42.1%)
+
+💡 Key Findings:
+   • ElizaOS agent capabilities need significant improvement
+   • Needs improvement in: operating_system
+   • Note: baseline scores are published AgentBench results; comparisons are reference-only unless you run the official AgentBench task set.
+
+🎯 Recommendations:
+   • Enhance operating_system environment handling capabilities
+
+📁 Results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T030804Z_bd18dc41/agentbench__agentbench/run_agentbench_20260215T030807Z_2_25a85b07/output
+   - agentbench-results.json
+   - agentbench-report.md
+   - agentbench-detailed.json
+
+============================================================

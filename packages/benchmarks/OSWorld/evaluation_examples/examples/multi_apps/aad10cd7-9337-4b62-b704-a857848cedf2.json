@@ -1,0 +1,76 @@
+{
+  "id": "aad10cd7-9337-4b62-b704-a857848cedf2",
+  "snapshot": "chrome",
+  "instruction": "I want to obtain a local file version of the content from the blog at https://developer.apple.com/design/human-interface-guidelines/searching to facilitate my own revision. Please retain the primary content on this page, specifically from 'searching' to just before 'resources.' Assist me in saving this blog as \"notes.docx\" on the desktop.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/aad10cd7-9337-4b62-b704-a857848cedf2",
+  "related_apps": [
+    "os",
+    "chrome"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "notes.docx - LibreOffice Writer",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5); "
+          ]
+        }
+      }
+    ],
+    "func": "compare_docx_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/aad10cd7-9337-4b62-b704-a857848cedf2/notes.docx",
+      "dest": "notes_Gold.docx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/notes.docx",
+      "dest": "notes.docx"
+    },
+    "options": {
+      "fuzzy_match": true
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

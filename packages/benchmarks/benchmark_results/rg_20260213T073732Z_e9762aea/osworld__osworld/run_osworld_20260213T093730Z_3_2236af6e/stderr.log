@@ -1,0 +1,55 @@
+# command: python scripts/python/run_multienv_eliza.py --result_dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260213T073732Z_e9762aea/osworld__osworld/run_osworld_20260213T093730Z_3_2236af6e/output --model qwen/qwen3-32b --provider_name docker --observation_type screenshot_a11y_tree --max_steps 15 --max_tasks 1 --headless
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/OSWorld
+# run_id: run_osworld_20260213T093730Z_3_2236af6e
+2026-02-13 02:37:35,705 [osworld.eliza.runner] INFO: Loaded 1 tasks
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 327, in <module>
+    main()
+    ~~~~^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 323, in main
+    run_benchmark(args)
+    ~~~~~~~~~~~~~^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 199, in run_benchmark
+    agent = create_eliza_agent(args)
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 168, in create_eliza_agent
+    from mm_agents.eliza_agent import ElizaOSWorldAgent
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/mm_agents/eliza_agent.py", line 39, in <module>
+    from mm_agents.eliza_desktop_actions import ActionCollector
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/mm_agents/eliza_desktop_actions.py", line 29, in <module>
+    from elizaos.types.components import (
+    ...<6 lines>...
+    )
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/__init__.py", line 1, in <module>
+    from elizaos.character import parse_character, validate_character_config
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/character.py", line 10, in <module>
+    from elizaos.types.agent import Character
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/types/__init__.py", line 3, in <module>
+    from elizaos.types.agent import (
+    ...<6 lines>...
+    )
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/types/agent.py", line 5, in <module>
+    from elizaos.types.generated.eliza.v1 import agent_pb2
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/types/generated/eliza/v1/agent_pb2.py", line 12, in <module>
+    _runtime_version.ValidateProtobufRuntimeVersion(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        _runtime_version.Domain.PUBLIC,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        'eliza/v1/agent.proto'
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/runtime_version.py", line 100, in ValidateProtobufRuntimeVersion
+    _ReportVersionError(
+    ~~~~~~~~~~~~~~~~~~~^
+        'Detected incompatible Protobuf Gencode/Runtime versions when loading'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        f' {location}: gencode {gen_version} runtime {version}. Runtime version'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        f' cannot be older than the linked gencode version. {error_prompt}'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/runtime_version.py", line 50, in _ReportVersionError
+    raise VersionError(msg)
+google.protobuf.runtime_version.VersionError: Detected incompatible Protobuf Gencode/Runtime versions when loading eliza/v1/agent.proto: gencode 6.33.5 runtime 5.29.6. Runtime version cannot be older than the linked gencode version. See Protobuf version guarantees at https://protobuf.dev/support/cross-version-runtime-guarantee.

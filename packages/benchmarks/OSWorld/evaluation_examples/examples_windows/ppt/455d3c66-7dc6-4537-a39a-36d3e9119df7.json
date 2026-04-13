@@ -1,0 +1,73 @@
+{
+  "id": "455d3c66-7dc6-4537-a39a-36d3e9119df7",
+  "snapshot": "ppt",
+  "instruction": "Could you help me export the PowerPoint file to a .png image file and save it as res.png at the same position as the file? ",
+  "source": "https://stackoverflow.com/questions/75626383/how-export-libreoffice-impress-to-image",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/ppt/455d3c66-7dc6-4537-a39a-36d3e9119df7/wssf-project-plan-on-a-page.pptx",
+            "path": "C:\\Users\\User\\wssf-project-plan-on-a-page.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\wssf-project-plan-on-a-page.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/455d3c66-7dc6-4537-a39a-36d3e9119df7",
+  "related_apps": [
+    "ppt"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "wssf-project-plan-on-a-page - PowerPoint",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_images",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/ppt/455d3c66-7dc6-4537-a39a-36d3e9119df7/res.png",
+      "dest": "res_gold.png"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\res.png",
+      "dest": "res.png"
+    }
+  }
+}

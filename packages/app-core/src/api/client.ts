@@ -1,0 +1,209 @@
+/**
+ * API client for the backend.
+ *
+ * Thin fetch wrapper + WebSocket for real-time chat/events.
+ * Replaces the gateway WebSocket protocol entirely.
+ *
+ * The ElizaClient class is defined in client-base.ts and re-exported here.
+ * Domain methods are defined via declaration merging + prototype augmentation
+ * in the companion files: client-agent, client-chat, client-wallet,
+ * client-cloud, client-skills.
+ */
+
+import type {
+  AudioGenConfig,
+  AudioGenProvider,
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  ImageConfig,
+  ImageProvider,
+  MediaConfig,
+  MediaMode,
+  ReleaseChannel,
+  VideoConfig,
+  VideoProvider,
+  VisionConfig,
+  VisionProvider,
+} from "@elizaos/agent/contracts/config";
+import type { DropStatus, MintResult } from "@elizaos/agent/contracts/drop";
+import type {
+  AllPermissionsState,
+  PermissionState,
+  PermissionStatus,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+} from "@elizaos/agent/contracts/permissions";
+import type { VerificationResult } from "@elizaos/agent/contracts/verification";
+import type {
+  BscTradeExecuteRequest,
+  BscTradeExecuteResponse,
+  BscTradePreflightResponse,
+  BscTradeQuoteRequest,
+  BscTradeQuoteResponse,
+  BscTradeTxStatusResponse,
+  BscTransferExecuteRequest,
+  BscTransferExecuteResponse,
+  EvmChainBalance,
+  EvmNft,
+  EvmTokenBalance,
+  SolanaNft,
+  SolanaTokenBalance,
+  StewardApprovalActionResponse,
+  StewardApprovalInfo,
+  StewardHistoryResponse,
+  StewardPendingResponse,
+  StewardPolicyResult,
+  StewardStatusResponse,
+  WalletAddresses,
+  WalletBalancesResponse,
+  WalletConfigStatus,
+  WalletConfigUpdateRequest,
+  WalletNftsResponse,
+  WalletRpcChain,
+  WalletRpcCredentialKey,
+  WalletRpcSelections,
+  WalletTradingProfileResponse,
+  WalletTradingProfileSourceFilter,
+  WalletTradingProfileWindow,
+} from "@elizaos/agent/contracts/wallet";
+import {
+  DEFAULT_WALLET_RPC_SELECTIONS,
+  normalizeWalletRpcProviderId,
+  normalizeWalletRpcSelections,
+  WALLET_RPC_PROVIDER_OPTIONS,
+} from "@elizaos/agent/contracts/wallet";
+import type {
+  BrowserWorkspaceSnapshot,
+  BrowserWorkspaceTab,
+} from "@elizaos/agent/services/browser-workspace";
+import type {
+  CloudProviderOption,
+  OnboardingConnectorConfig as ConnectorConfig,
+  InventoryProviderOption,
+  MessageExample,
+  MessageExampleContent,
+  ModelOption,
+  OnboardingConnection,
+  OnboardingData,
+  OnboardingOptions,
+  OpenRouterModelOption,
+  ProviderOption,
+  RpcProviderOption,
+  StylePreset,
+  SubscriptionProviderStatus,
+  SubscriptionStatusResponse,
+} from "@elizaos/shared/contracts/onboarding";
+import type {
+  StewardPendingApproval,
+  StewardSignRequest,
+  StewardSignResponse,
+  StewardTxRecord,
+  StewardTxStatus,
+} from "@elizaos/shared/contracts/wallet";
+
+// Re-export the class from client-base (no circular dependency issues)
+export { ElizaClient } from "./client-base";
+export * from "./client-types";
+export type {
+  AllPermissionsState,
+  AudioGenConfig,
+  AudioGenProvider,
+  BrowserWorkspaceSnapshot,
+  BrowserWorkspaceTab,
+  BscTradeExecuteRequest,
+  BscTradeExecuteResponse,
+  BscTradePreflightResponse,
+  BscTradeQuoteRequest,
+  BscTradeQuoteResponse,
+  BscTradeTxStatusResponse,
+  BscTransferExecuteRequest,
+  BscTransferExecuteResponse,
+  CloudProviderOption,
+  ConnectorConfig,
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  DropStatus,
+  EvmChainBalance,
+  EvmNft,
+  EvmTokenBalance,
+  ImageConfig,
+  ImageProvider,
+  InventoryProviderOption,
+  MediaConfig,
+  MediaMode,
+  MessageExample,
+  MessageExampleContent,
+  MintResult,
+  ModelOption,
+  OnboardingConnection,
+  OnboardingData,
+  OnboardingOptions,
+  OpenRouterModelOption,
+  PermissionState,
+  PermissionStatus,
+  ProviderOption,
+  ReleaseChannel,
+  RpcProviderOption,
+  SolanaNft,
+  SolanaTokenBalance,
+  StewardApprovalActionResponse,
+  StewardApprovalInfo,
+  StewardHistoryResponse,
+  StewardPendingApproval,
+  StewardPendingResponse,
+  StewardPolicyResult,
+  StewardSignRequest,
+  StewardSignResponse,
+  StewardStatusResponse,
+  StewardTxRecord,
+  StewardTxStatus,
+  StylePreset,
+  SubscriptionProviderStatus,
+  SubscriptionStatusResponse,
+  SystemPermissionDefinition as PermissionDefinition,
+  SystemPermissionId,
+  VerificationResult,
+  VideoConfig,
+  VideoProvider,
+  VisionConfig,
+  VisionProvider,
+  WalletAddresses,
+  WalletBalancesResponse,
+  WalletConfigStatus,
+  WalletConfigUpdateRequest,
+  WalletNftsResponse,
+  WalletRpcChain,
+  WalletRpcCredentialKey,
+  WalletRpcSelections,
+  WalletTradingProfileResponse,
+  WalletTradingProfileSourceFilter,
+  WalletTradingProfileWindow,
+};
+export {
+  DEFAULT_WALLET_RPC_SELECTIONS,
+  normalizeWalletRpcProviderId,
+  normalizeWalletRpcSelections,
+  WALLET_RPC_PROVIDER_OPTIONS,
+};
+
+// ---------------------------------------------------------------------------
+// Domain method augmentations (declaration merging + prototype assignment)
+// These import ElizaClient from client-base directly, avoiding circular deps.
+// ---------------------------------------------------------------------------
+
+import "./client-agent";
+import "./client-browser-workspace";
+import "./client-chat";
+import "./client-wallet";
+import "./client-cloud";
+import "./client-skills";
+import "./client-vincent";
+
+// ---------------------------------------------------------------------------
+// Singleton
+// ---------------------------------------------------------------------------
+
+import { ElizaClient as _ElizaClient } from "./client-base";
+export const client = new _ElizaClient();

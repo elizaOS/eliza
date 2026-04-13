@@ -57,7 +57,7 @@ export const adminChatProvider: Provider = {
 		// Get recent messages from/to admin user
 		const adminMessages = await runtime.getMemories({
 			entityId: adminUUID,
-			count: 15,
+			limit: 15,
 			unique: false,
 			tableName: "memories",
 		});

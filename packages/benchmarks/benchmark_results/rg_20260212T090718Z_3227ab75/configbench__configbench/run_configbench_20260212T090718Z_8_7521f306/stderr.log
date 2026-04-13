@@ -1,0 +1,13 @@
+# command: bun run src/index.ts --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T090718Z_3227ab75/configbench__configbench/run_configbench_20260212T090718Z_8_7521f306/output --eliza
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/configbench
+# run_id: run_configbench_20260212T090718Z_8_7521f306
+ Error      #ConfigBench Agent  [AGENT] Database adapter not initialized
+
+[31mFatal error:[0m Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.
+Error: Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.
+    at initialize (/Users/shawwalters/node_modules/@elizaos/core/dist/node/index.node.js:47755:17)
+    at async setup (/Users/shawwalters/eliza-workspace/benchmarks/configbench/src/handlers/eliza.ts:164:69)
+    at async runHandler (/Users/shawwalters/eliza-workspace/benchmarks/configbench/src/runner.ts:10:36)
+    at async runBenchmark (/Users/shawwalters/eliza-workspace/benchmarks/configbench/src/runner.ts:35:28)
+    at async main (/Users/shawwalters/eliza-workspace/benchmarks/configbench/src/index.ts:46:25)
+    at processTicksAndRejections (native:7:39)

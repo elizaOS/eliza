@@ -1,0 +1,50 @@
+{
+  "id": "d68204bf-11c1-4b13-b48b-d303c73d4bf6",
+  "snapshot": "gimp",
+  "instruction": "Divide my image vertically into three equal sections with command line. Then rearrange them in order with a gradient of warm tones, progressively becoming warmer from left to right as a new image \"rearranged.png\".",
+  "source": "",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/d68204bf-11c1-4b13-b48b-d303c73d4bf6/tilearray.png",
+            "path": "/home/user/Desktop/tilearray.png"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"alt\", \"t\"); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "gimp",
+    "os"
+  ],
+  "evaluator": {
+    "func": "check_structure_sim",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/rearranged.png",
+      "dest": "rearranged.png"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/d68204bf-11c1-4b13-b48b-d303c73d4bf6/rearranged_gold.png",
+      "dest": "rearranged_gold.png"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

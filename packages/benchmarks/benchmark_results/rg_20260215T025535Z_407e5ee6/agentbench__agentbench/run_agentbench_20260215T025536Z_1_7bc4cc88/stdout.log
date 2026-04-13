@@ -1,0 +1,11 @@
+============================================================
+AgentBench Evaluation - ElizaOS Python
+============================================================
+
+============================================================
+Initializing FULL ElizaOS Pipeline
+============================================================
+
+📦 Loading plugins:
+   • bootstrap (basicCapabilities: providers, actions, evaluators)
+   • openai (model provider)

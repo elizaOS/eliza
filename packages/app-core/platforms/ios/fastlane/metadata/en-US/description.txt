@@ -1,0 +1,22 @@
+elizaOS App is a personal AI assistant that runs on YOUR device. Built on elizaOS, it connects to your preferred AI provider while keeping your data local and private.
+
+FEATURES
+- Interactive setup — pick a name, personality, and AI provider
+- Support for Anthropic (Claude), OpenAI, Google Gemini, Ollama, and more
+- Web dashboard for managing your agent
+- Plugin system for extensibility
+- Web3 wallet integration (EVM + Solana)
+- Multi-platform: works on iPhone, iPad, Mac, and desktop
+
+PRIVACY FIRST
+Your conversations stay on your device. The app connects directly to AI providers using YOUR API keys — no middleman, no data collection, no cloud relay.
+
+GET STARTED
+1. Install the app
+2. Choose an AI provider and enter your API key
+3. Customize your agent's personality
+4. Start chatting
+
+Supports multiple AI providers including Anthropic Claude (recommended), OpenAI GPT, Google Gemini, Ollama (fully local), Groq, xAI Grok, and DeepSeek.
+
+Open source under the Viral Public License.

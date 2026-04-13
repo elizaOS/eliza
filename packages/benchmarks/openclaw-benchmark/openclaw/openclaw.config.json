@@ -1,0 +1,15 @@
+{
+    "agents": {
+        "defaults": {
+            "sandbox": {
+                "mode": "all",
+                "scope": "session",
+                "workspaceAccess": "rw",
+                "docker": {
+                    "network": "none",
+                    "readOnlyRoot": false
+                }
+            }
+        }
+    }
+}

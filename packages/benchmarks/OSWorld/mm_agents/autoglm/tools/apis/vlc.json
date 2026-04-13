@@ -1,0 +1,171 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.get_playlist",
+            "description": "Gets the current VLC playlist with track information including name, URI and duration.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function", 
+        "function": {
+            "name": "VLCTools.play",
+            "description": "Starts playing the current media in VLC player.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.pause",
+            "description": "Pauses the currently playing media in VLC player.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.next",
+            "description": "Switches to the next media item in the VLC playlist.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.previous",
+            "description": "Switches to the previous media item in the VLC playlist.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.add_to_playlist",
+            "description": "Adds a media file to the VLC playlist.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "uri": {
+                        "type": "string",
+                        "description": "The URI of the media file to add to the playlist, start with 'file://' or 'https://'"
+                    }
+                },
+                "required": ["uri"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.get_current_time",
+            "description": "Gets the current playback time position of the playing media in seconds.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.get_media_duration",
+            "description": "Gets the total duration of the currently playing media file in seconds.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.toggle_fullscreen",
+            "description": "Toggles fullscreen mode for the currently playing video in the media player. If the video is not in fullscreen mode, it will be expanded to fill the entire screen. If it's already in fullscreen mode, it will return to windowed mode.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "enable": {
+                        "type": "boolean",
+                        "description": "Optional parameter to explicitly set fullscreen mode. If true, forces fullscreen mode. If false, exits fullscreen mode. If not provided, the current state is toggled."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.get_settings",
+            "description": "Gets the current settings of the VLC player.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.set_settings",
+            "description": "Sets the settings for the VLC player.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "field": {
+                        "type": "string",
+                        "description": "The name of the setting to set. i.e. input-record-path: the path to the recording folder, qt-bgcone: disable/enable splash cone icon (in 0/1), qt-max-volume: set max volume (in number), qt-minimal-view: hide/show bottom toolbar (in 0/1), global-key-play-pause: disable/enable play&pause key (in 0/1)"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "The value to set for the specified setting, set 0/1 for boolean values"
+                    }
+                },
+                "required": [
+                    "field",
+                    "value"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "VLCTools.get_media_files",
+            "description": "Gets the media files for the specified path.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "The path to the media files"
+                    },
+                    "suffix": {
+                        "type": "array",
+                        "description": "The suffix of the media files, default is ['mp4', 'avi', 'mkv', 'mov', 'mp3', 'm4a', 'wav']"
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    }
+]

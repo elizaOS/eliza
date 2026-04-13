@@ -1,0 +1,1 @@
+Your personal AI assistant that runs locally. Private, fast, and extensible. Supports Claude, GPT, Gemini, Ollama, and more.

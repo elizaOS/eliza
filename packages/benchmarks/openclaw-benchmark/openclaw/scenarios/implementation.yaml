@@ -1,0 +1,149 @@
+# OpenClaw Benchmark: Feature Implementation Task
+#
+# This task tests the agent's ability to implement a CLI application
+# that actually works, not just looks like it does.
+#
+# IMPORTANT: Scoring validates ACTUAL code execution and output,
+# not just conceptual understanding.
+
+name: Feature Implementation
+description: Test ability to implement a working CLI tool
+
+# Assumes setup task was completed first
+prerequisites:
+  - setup
+
+prompt: |
+  Implement a CLI tool that fetches weather data. Create a file called
+  src/weather.ts that:
+
+  1. Accepts a city name as a command line argument
+  2. Fetches weather data from a mock API endpoint
+  3. Displays temperature, humidity, and conditions
+  4. Includes error handling for invalid cities and network errors
+
+  For this exercise, use a mock API that returns:
+  - GET /weather?city=Berlin → {"temp": 15, "humidity": 65, "condition": "cloudy"}
+  - GET /weather?city=invalid → 404 error
+
+  Create a simple mock server or use a mock function for testing.
+
+  The CLI should be runnable with: npx ts-node src/weather.ts Berlin
+
+# Tools the agent should use
+expected_tools:
+  - exec
+  - write
+  - read
+
+scoring:
+  checks:
+    # === FILE EXISTENCE ===
+    - id: weather_ts_exists
+      type: file_exists
+      path: src/weather.ts
+      points: 2
+      category: files
+      description: src/weather.ts was created
+
+    # === CODE CONTENT VALIDATION ===
+    - id: has_fetch_or_axios
+      type: file_contains
+      path: src/weather.ts
+      pattern: '(fetch|axios|http|got)\s*\('
+      points: 2
+      category: correctness
+      description: Code uses HTTP client for API calls
+
+    - id: has_argument_parsing
+      type: file_contains
+      path: src/weather.ts
+      pattern: '(process\.argv|commander|yargs|minimist)'
+      points: 2
+      category: correctness
+      description: Code parses command line arguments
+
+    - id: has_error_handling
+      type: file_contains
+      path: src/weather.ts
+      pattern: '(try\s*\{|\.catch\s*\(|if\s*\(.*error)'
+      points: 2
+      category: correctness
+      description: Code includes error handling
+
+    - id: has_console_output
+      type: file_contains
+      path: src/weather.ts
+      pattern: 'console\.(log|info|error)'
+      points: 1
+      category: correctness
+      description: Code outputs to console
+
+    - id: has_temperature_output
+      type: file_contains
+      path: src/weather.ts
+      pattern: '(temp|temperature)'
+      case_insensitive: true
+      points: 1
+      category: correctness
+      description: Code handles temperature data
+
+    - id: has_humidity_output
+      type: file_contains
+      path: src/weather.ts
+      pattern: 'humidity'
+      case_insensitive: true
+      points: 1
+      category: correctness
+      description: Code handles humidity data
+
+    # === EXECUTION VALIDATION ===
+    - id: typescript_compiles
+      type: code_executes
+      path: src/weather.ts
+      command: "npx tsc --noEmit src/weather.ts 2>&1 || echo 'TypeScript check'"
+      points: 3
+      category: execution
+      description: TypeScript code compiles without errors
+
+    # === CODE QUALITY ===
+    - id: no_any_type
+      type: file_excludes
+      path: src/weather.ts
+      pattern: ':\\s*any\\b'
+      points: 1
+      category: correctness
+      description: Code avoids 'any' type
+
+    - id: has_type_annotations
+      type: file_contains
+      path: src/weather.ts
+      pattern: '(:\\s*(string|number|boolean|interface|type))'
+      points: 2
+      category: correctness
+      description: Code uses TypeScript type annotations
+
+    # === TOOL USAGE ===
+    - id: read_before_write
+      type: tool_called_before
+      before: read
+      after: write
+      points: 1
+      category: efficiency
+      description: Agent read existing code before modifying (if applicable)
+
+    - id: reasonable_iterations
+      type: tool_count_max
+      max: 20
+      points: 2
+      category: efficiency
+      description: Agent completed task efficiently
+
+    # === SAFETY ===
+    - id: no_hardcoded_secrets
+      type: file_excludes
+      path: src/weather.ts
+      pattern: '(api_key|apiKey|secret|password)\s*=\s*["\'][^"\']{10,}'
+      points: 3
+      category: safety
+      description: Code does not contain hardcoded secrets

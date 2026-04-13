@@ -1,0 +1,245 @@
+
+╔═══════════════════════════════════════════════════════════════════╗
+║            REALM-Bench: Real-World Planning Benchmark             ║
+║                        for ElizaOS                                ║
+╠═══════════════════════════════════════════════════════════════════╣
+║  Paper: https://arxiv.org/abs/2412.13102                         ║
+║  GitHub: https://github.com/genglongling/REALM-Bench             ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+📋 Configuration:
+   Data Path: ./data/realm
+   Output Dir: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T072416Z_5a814cbc/realm__realm/run_realm_20260212T072550Z_1_31d7bcea/output
+   Categories: all
+   Max Tasks: unlimited
+   Max Steps: 15
+   Execution Model: dag
+   Adaptation: enabled
+
+🚀 Starting benchmark...
+
+[2m2026-02-12T07:25:51.110247Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.221955Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.222060Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.222132Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.357943Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.474345Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.474431Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.474490Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.593638Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.717756Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.717858Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.717923Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:25:51.821586Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.948547Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.948654Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:51.948738Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.075272Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.169212Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.169363Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.169967Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.322725Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.449976Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.450069Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.450142Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:25:52.615538Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.734228Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.734432Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.734657Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.861199Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.954667Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.954802Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:52.955097Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.182488Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.314272Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.314360Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.314435Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:25:53.442222Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.569713Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.569797Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.569862Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.724728Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.829948Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.830041Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.830114Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:53.950686Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.074787Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.074876Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.074943Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:25:54.201497Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.305525Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.305615Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.305685Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.429616Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.550666Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.550760Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.550825Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.674624Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.777769Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.777858Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.777926Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:25:54.878058Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.970145Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.970219Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:54.970280Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.089912Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.432325Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.432413Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.432479Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.537961Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.637743Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.637837Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.637968Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:25:55.765565Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.857672Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.857748Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.857809Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:55.949913Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.050701Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.050781Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.050844Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.169509Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.289557Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.289644Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.289711Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:25:56.456395Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.581608Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.581693Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.581757Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.701396Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.801482Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.801565Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.801632Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:56.922319Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:57.061416Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:57.061505Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:57.061575Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:25:57.283185Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:57.504387Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:57.504489Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:57.504558Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:57.612087Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:57.741008Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:57.741090Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:57.741157Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:57.874353Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.012905Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.013015Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.013111Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:25:58.147141Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.268921Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.269012Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.269083Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.419177Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.570250Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.570343Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.570411Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.727772Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.844999Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.845091Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:58.845162Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:25:59.031699Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.166121Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.166205Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.166269Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.256383Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.367704Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.367794Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.367892Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.538220Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.688461Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.688555Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.688623Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:25:59.806085Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.933665Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.933763Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:25:59.933854Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.088341Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.232235Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.232320Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.232387Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.365971Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.494303Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.494413Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.494499Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+[2m2026-02-12T07:26:00.635613Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.776682Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.776763Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.776829Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:00.925910Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:01.090492Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:01.090581Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:01.090652Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:01.208004Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:01.347080Z[0m [[31m[1merror    [0m] [1mModel call failed: OpenAI API error (429): You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:01.347173Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[2m2026-02-12T07:26:01.347247Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mREALMBenchmarkAgent[0m][0m
+[REALMAgent] Agent stuck on REPLY, falling back to heuristic
+
+======================================================================
+📊 REALM-Bench Results Summary
+======================================================================
+
+🎯 Overall Performance:
+   Status: MODERATE
+   Success Rate: 46.2%
+   Total Tasks: 13
+   Passed: 6
+   Failed: 7
+   Estimated Rank: #7
+
+📈 Planning Metrics:
+   Plan Quality: 82.5%
+   Goal Achievement: 75.6%
+   Efficiency: 99.2%
+
+⏱️  Performance:
+   Avg Planning Time: 201ms
+   Avg Execution Time: 602ms
+   Total Duration: 10.5s
+
+📊 Category Breakdown:
+   sequential: 2/3 (66.7%)
+   reactive: 2/2 (100.0%)
+   complex: 1/2 (50.0%)
+   multi_agent: 1/2 (50.0%)
+   tool_use: 0/2 (0.0%)
+   reasoning: 0/2 (0.0%)
+
+📌 Key Findings:
+   • Moderate planning performance: 46.2% success rate
+   • Strongest category: reactive (100.0%)
+   • Needs improvement: tool_use (0.0%)
+   • High plan quality scores achieved
+   • Excellent execution efficiency
+   • Outperforms 1/7 baseline models
+   • Estimated leaderboard rank: #7
+
+💡 Recommendations:
+   • Focus on improving tool_use task handling
+
+======================================================================
+
+📁 Full results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T072416Z_5a814cbc/realm__realm/run_realm_20260212T072550Z_1_31d7bcea/output/
+
+✅ Benchmark completed successfully!
+
+----------------------------------------------------------------------
+📊 Leaderboard Comparison:
+   🔴 vs GPT-4-Turbo: -26.7%
+   🔴 vs GPT-4: -23.1%
+   🔴 vs Claude-3-Opus: -21.0%
+   🔴 vs Claude-3-Sonnet: -16.5%
+   🔴 vs Gemini-Pro: -12.5%

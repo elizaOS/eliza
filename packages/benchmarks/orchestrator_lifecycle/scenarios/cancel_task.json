@@ -1,0 +1,14 @@
+{
+  "scenario_id": "cancel_task",
+  "title": "Cancel Task",
+  "category": "interrupt",
+  "required_capabilities": ["orchestration.cancel"],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "Cancel the task now.",
+      "expected_behaviors": ["cancel_task", "confirm_cancel_effect"]
+    }
+  ]
+}
+

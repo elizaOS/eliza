@@ -1,0 +1,1136 @@
+[
+  {
+    "group_id": "group-0",
+    "scenario_id": "bfcl_javascript",
+    "trajectories": [
+      {
+        "trajectory_id": "0d6de0e3-0036-4049-99b5-2023411df704",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1771124139755,
+        "end_time": 1771124142322,
+        "duration_ms": 2567,
+        "episode_id": "javascript_3",
+        "scenario_id": "bfcl_javascript",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "ef1a9f97-e3e2-47aa-8ce9-262946f5dbbb",
+            "step_number": 0,
+            "timestamp": 1771124139755,
+            "environment_state": {
+              "timestamp": 1771124139755,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "javascript_3"
+              }
+            },
+            "observation": {},
+            "llm_calls": [],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "bf9e840a-3b1b-45e9-92d9-0883b1f6c3de",
+              "timestamp": 1771124142322,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[]"
+              },
+              "reasoning": "How can I assist you today?",
+              "llm_call_id": null,
+              "success": false,
+              "result": {
+                "predicted_calls": 0
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 0.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 0.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 2566,
+          "predicted_calls": 0
+        },
+        "metadata": {
+          "test_case_id": "javascript_3",
+          "category": "javascript",
+          "question": "[[{'role': 'user', 'content': \"Help me send a 'submit' action to a React form with the ID 'loginForm' at a coordinate that is 30% from the top and 60% from the left?\"}]]",
+          "model": "groq/llama-3.1-8b-instant",
+          "provider": "groq",
+          "benchmark": "bfcl",
+          "ast_match": false,
+          "exec_match": false,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "Current state:\n- Balance: $0.0\n- P&L: $0.0\n- Open Positions: 0\n\nWhat action should you take?",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "I will function_call.\nReasoning: How can I assist you today?\nParameters: {'calls': '[]'}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1771124150706,
+    "model_version": null
+  },
+  {
+    "group_id": "group-1",
+    "scenario_id": "bfcl_rest_api",
+    "trajectories": [
+      {
+        "trajectory_id": "941c296c-0307-424f-abf4-7a4f92c4aa6a",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1771124142322,
+        "end_time": 1771124142834,
+        "duration_ms": 512,
+        "episode_id": "rest_68",
+        "scenario_id": "bfcl_rest_api",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "dacd314b-ab32-4f4d-b86c-adc2d5fb07dc",
+            "step_number": 0,
+            "timestamp": 1771124142322,
+            "environment_state": {
+              "timestamp": 1771124142322,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "rest_68"
+              }
+            },
+            "observation": {},
+            "llm_calls": [],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "2d4d509c-08c7-42b2-8910-8fdd5556eb79",
+              "timestamp": 1771124142834,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[]"
+              },
+              "reasoning": "No relevant function available for this query.",
+              "llm_call_id": null,
+              "success": false,
+              "result": {
+                "predicted_calls": 0
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 0.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 0.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 512,
+          "predicted_calls": 0
+        },
+        "metadata": {
+          "test_case_id": "rest_68",
+          "category": "rest_api",
+          "question": "[[{'role': 'user', 'content': \"I'm planning a series of business trips for the next year and would prefer to extend my stays over long weekends where possible. Could you help me find information on long weekends in Japan for 2023?\"}]]",
+          "model": "groq/llama-3.1-8b-instant",
+          "provider": "groq",
+          "benchmark": "bfcl"
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "Current state:\n- Balance: $0.0\n- P&L: $0.0\n- Open Positions: 0\n\nWhat action should you take?",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "I will function_call.\nReasoning: No relevant function available for this query.\nParameters: {'calls': '[]'}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1771124150706,
+    "model_version": null
+  },
+  {
+    "group_id": "group-2",
+    "scenario_id": "bfcl_java",
+    "trajectories": [
+      {
+        "trajectory_id": "8809b6b6-ecea-4503-b991-6e5614d6acaa",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1771124142834,
+        "end_time": 1771124143400,
+        "duration_ms": 566,
+        "episode_id": "java_95",
+        "scenario_id": "bfcl_java",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "3e5e4237-9339-44de-8bb7-6e57a5654f95",
+            "step_number": 0,
+            "timestamp": 1771124142834,
+            "environment_state": {
+              "timestamp": 1771124142834,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "java_95"
+              }
+            },
+            "observation": {},
+            "llm_calls": [],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "4a594669-db48-4064-8b67-2a62dc233e77",
+              "timestamp": 1771124143400,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[]"
+              },
+              "reasoning": "No relevant function available for this query.",
+              "llm_call_id": null,
+              "success": false,
+              "result": {
+                "predicted_calls": 0
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 0.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 0.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 566,
+          "predicted_calls": 0
+        },
+        "metadata": {
+          "test_case_id": "java_95",
+          "category": "java",
+          "question": "[[{'role': 'user', 'content': \"Help me execute a generic operation on an inlined object with the argument 'HelloWorld' using a specialized node `InlinableNodeInstance`, considering that the operation is bound to a specific node library `NodeLibraryInstance`, using receiver `ExportInlinedObject1Instance`?\"}]]",
+          "model": "groq/llama-3.1-8b-instant",
+          "provider": "groq",
+          "benchmark": "bfcl",
+          "ast_match": false,
+          "exec_match": false,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "Current state:\n- Balance: $0.0\n- P&L: $0.0\n- Open Positions: 0\n\nWhat action should you take?",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "I will function_call.\nReasoning: No relevant function available for this query.\nParameters: {'calls': '[]'}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1771124150706,
+    "model_version": null
+  },
+  {
+    "group_id": "group-3",
+    "scenario_id": "bfcl_parallel",
+    "trajectories": [
+      {
+        "trajectory_id": "6eba4a3b-def2-4f78-ba6e-ccfef5f12da5",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1771124143400,
+        "end_time": 1771124143985,
+        "duration_ms": 585,
+        "episode_id": "parallel_79",
+        "scenario_id": "bfcl_parallel",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "f2a03490-05e1-4268-a74c-8bd81651ee18",
+            "step_number": 0,
+            "timestamp": 1771124143400,
+            "environment_state": {
+              "timestamp": 1771124143400,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "parallel_79"
+              }
+            },
+            "observation": {},
+            "llm_calls": [],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "032542d2-392b-4b31-a79c-ea8c926c3931",
+              "timestamp": 1771124143985,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[{'name': 'prime_factorize', 'arguments': {'number': 60, 'return_type': 'list'}}]"
+              },
+              "reasoning": "Making function call(s) based on the query.",
+              "llm_call_id": null,
+              "success": true,
+              "result": {
+                "predicted_calls": 1
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 1.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 0.2,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 584,
+          "predicted_calls": 1
+        },
+        "metadata": {
+          "test_case_id": "parallel_79",
+          "category": "parallel",
+          "question": "[[{'role': 'user', 'content': \"What is the prime factorization of the number 4567 and the number 7890, if we want the results to be returned in a 'dictionary' format?\"}]]",
+          "model": "groq/llama-3.1-8b-instant",
+          "provider": "groq",
+          "benchmark": "bfcl",
+          "ast_match": false,
+          "exec_match": false,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "Current state:\n- Balance: $0.0\n- P&L: $0.0\n- Open Positions: 0\n\nWhat action should you take?",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "I will function_call.\nReasoning: Making function call(s) based on the query.\nParameters: {'calls': \"[{'name': 'prime_factorize', 'arguments': {'number': 60, 'return_type': 'list'}}]\"}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1771124150706,
+    "model_version": null
+  },
+  {
+    "group_id": "group-4",
+    "scenario_id": "bfcl_sql",
+    "trajectories": [
+      {
+        "trajectory_id": "a05f18a4-8d70-4026-9196-5e48f4601b57",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1771124143985,
+        "end_time": 1771124147807,
+        "duration_ms": 3822,
+        "episode_id": "sql_24",
+        "scenario_id": "bfcl_sql",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "a7351f43-1f5a-4d23-a56e-bb8ca678c920",
+            "step_number": 0,
+            "timestamp": 1771124143985,
+            "environment_state": {
+              "timestamp": 1771124143985,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "sql_24"
+              }
+            },
+            "observation": {},
+            "llm_calls": [],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "8260dc94-62f1-4af7-a12e-c9f010514bd5",
+              "timestamp": 1771124147807,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[]"
+              },
+              "reasoning": "Retrieving user data where age is greater than 30",
+              "llm_call_id": null,
+              "success": false,
+              "result": {
+                "predicted_calls": 0
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 0.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 0.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 3822,
+          "predicted_calls": 0
+        },
+        "metadata": {
+          "test_case_id": "sql_24",
+          "category": "sql",
+          "question": "[{'role': 'user', 'content': 'In our chemistry database, we have a table named \"Elements\" which contains information about all the known chemical elements. The columns in this table are \\'ElementName\\', \\'AtomicNumber\\', \\'Symbol\\', \\'AtomicWeight\\', and \\'Period\\'. Recently, there has been a revision in the atomic weight of the element \"Hydrogen\". The new atomic weight is 1.008. Can you please update this information in our database? Use the condition where \\'ElementName\\' is \"Hydrogen\".'}]",
+          "model": "groq/llama-3.1-8b-instant",
+          "provider": "groq",
+          "benchmark": "bfcl",
+          "ast_match": false,
+          "exec_match": false,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "Current state:\n- Balance: $0.0\n- P&L: $0.0\n- Open Positions: 0\n\nWhat action should you take?",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "I will function_call.\nReasoning: Retrieving user data where age is greater than 30\nParameters: {'calls': '[]'}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1771124150706,
+    "model_version": null
+  },
+  {
+    "group_id": "group-5",
+    "scenario_id": "bfcl_simple",
+    "trajectories": [
+      {
+        "trajectory_id": "209fbd32-dc47-4b24-924c-dfa23587f230",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1771124147807,
+        "end_time": 1771124148361,
+        "duration_ms": 554,
+        "episode_id": "simple_215",
+        "scenario_id": "bfcl_simple",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "693f2a99-bdfb-49eb-8137-7819b8450cf6",
+            "step_number": 0,
+            "timestamp": 1771124147807,
+            "environment_state": {
+              "timestamp": 1771124147807,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "simple_215"
+              }
+            },
+            "observation": {},
+            "llm_calls": [],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "27396d53-bf1c-400f-a39d-207049bea535",
+              "timestamp": 1771124148361,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[]"
+              },
+              "reasoning": "{\"thought\": \"Identified that no explicit query was provided in the prompt, no further action is necessary.\", \"providers\": \"\", \"actions\": \"NONE\", \"params\": \"\", \"text\": \"\", \"simple\": \"true\"}",
+              "llm_call_id": null,
+              "success": false,
+              "result": {
+                "predicted_calls": 0
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 0.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 0.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 553,
+          "predicted_calls": 0
+        },
+        "metadata": {
+          "test_case_id": "simple_215",
+          "category": "simple",
+          "question": "[[{'role': 'user', 'content': \"Give me a brief on movie 'Interstellar'\"}]]",
+          "model": "groq/llama-3.1-8b-instant",
+          "provider": "groq",
+          "benchmark": "bfcl",
+          "ast_match": false,
+          "exec_match": false,
+          "evaluated": true
+        }
+      },
+      {
+        "trajectory_id": "f0d5f13f-83eb-4004-b459-85d4eb2ecde8",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1771124150198,
+        "end_time": 1771124150704,
+        "duration_ms": 506,
+        "episode_id": "simple_378",
+        "scenario_id": "bfcl_simple",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "4e5af52d-54a8-46a2-b3c3-02eeea08aac7",
+            "step_number": 0,
+            "timestamp": 1771124150198,
+            "environment_state": {
+              "timestamp": 1771124150198,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "simple_378"
+              }
+            },
+            "observation": {},
+            "llm_calls": [],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "1b2f8280-195e-4e56-9729-c6f29a0d7db6",
+              "timestamp": 1771124150704,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[]"
+              },
+              "reasoning": "{\"thought\": \"There is no user query in the prompt. Therefore, no action is required.\", \"providers\": \"\", \"actions\": \"NONE\", \"params\": \"\", \"text\": \"\", \"simple\": \"true\"}",
+              "llm_call_id": null,
+              "success": false,
+              "result": {
+                "predicted_calls": 0
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 0.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 0.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 505,
+          "predicted_calls": 0
+        },
+        "metadata": {
+          "test_case_id": "simple_378",
+          "category": "simple",
+          "question": "[[{'role': 'user', 'content': 'Convert time 3pm from New York time zone to London time zone.'}]]",
+          "model": "groq/llama-3.1-8b-instant",
+          "provider": "groq",
+          "benchmark": "bfcl",
+          "ast_match": false,
+          "exec_match": false,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "Current state:\n- Balance: $0.0\n- P&L: $0.0\n- Open Positions: 0\n\nWhat action should you take?",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1771124150706,
+    "model_version": null
+  },
+  {
+    "group_id": "group-6",
+    "scenario_id": "bfcl_relevance",
+    "trajectories": [
+      {
+        "trajectory_id": "3ed3d8ac-4dc6-46a6-8cd4-8420629b439e",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1771124148361,
+        "end_time": 1771124148937,
+        "duration_ms": 576,
+        "episode_id": "irrelevance_3",
+        "scenario_id": "bfcl_relevance",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "2a9f7373-e784-4adb-b97b-a6c307d63b9c",
+            "step_number": 0,
+            "timestamp": 1771124148361,
+            "environment_state": {
+              "timestamp": 1771124148361,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "irrelevance_3"
+              }
+            },
+            "observation": {},
+            "llm_calls": [],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "5b3e2672-488c-4079-941a-3c8c00cf21bc",
+              "timestamp": 1771124148937,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[{'name': 'find_critical_points', 'arguments': {'function': 'f(x) = x^3 - 3*x', 'variable': 'x'}}]"
+              },
+              "reasoning": "Making function call(s) based on the query.",
+              "llm_call_id": null,
+              "success": true,
+              "result": {
+                "predicted_calls": 1
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 1.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 0.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 576,
+          "predicted_calls": 1
+        },
+        "metadata": {
+          "test_case_id": "irrelevance_3",
+          "category": "relevance",
+          "question": "[[{'role': 'user', 'content': 'What is the slope of the line which is perpendicular to the line with the equation y = 3x + 2?'}]]",
+          "model": "groq/llama-3.1-8b-instant",
+          "provider": "groq",
+          "benchmark": "bfcl",
+          "ast_match": false,
+          "exec_match": false,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "Current state:\n- Balance: $0.0\n- P&L: $0.0\n- Open Positions: 0\n\nWhat action should you take?",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "I will function_call.\nReasoning: Making function call(s) based on the query.\nParameters: {'calls': \"[{'name': 'find_critical_points', 'arguments': {'function': 'f(x) = x^3 - 3*x', 'variable': 'x'}}]\"}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1771124150706,
+    "model_version": null
+  },
+  {
+    "group_id": "group-7",
+    "scenario_id": "bfcl_parallel_multiple",
+    "trajectories": [
+      {
+        "trajectory_id": "fdfd66b4-564c-4737-b239-493ec104e1eb",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1771124148938,
+        "end_time": 1771124149596,
+        "duration_ms": 658,
+        "episode_id": "parallel_multiple_88",
+        "scenario_id": "bfcl_parallel_multiple",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "5aecf9e3-dbcc-4825-9107-9ee710f69370",
+            "step_number": 0,
+            "timestamp": 1771124148938,
+            "environment_state": {
+              "timestamp": 1771124148938,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "parallel_multiple_88"
+              }
+            },
+            "observation": {},
+            "llm_calls": [],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "08ccc5b1-f8fb-46ea-839d-671bcc80b730",
+              "timestamp": 1771124149596,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[]"
+              },
+              "reasoning": "Searching for the book in the library.",
+              "llm_call_id": null,
+              "success": false,
+              "result": {
+                "predicted_calls": 0
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 0.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 0.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 658,
+          "predicted_calls": 0
+        },
+        "metadata": {
+          "test_case_id": "parallel_multiple_88",
+          "category": "parallel_multiple",
+          "question": "[[{'role': 'user', 'content': '\"Could you help me find a book in the library? I am looking for a book named \\'To Kill a Mockingbird\\' in the city of New York. I would like to know if it\\'s available. Also, I am interested in the genre of \\'Fiction\\'. Once you find it, can you reserve it for me? The book id is \\'123ABC\\' and the branch id is \\'XYZ789\\'. I plan to return it by \\'2022-12-31\\'.\"'}]]",
+          "model": "groq/llama-3.1-8b-instant",
+          "provider": "groq",
+          "benchmark": "bfcl",
+          "ast_match": false,
+          "exec_match": false,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "Current state:\n- Balance: $0.0\n- P&L: $0.0\n- Open Positions: 0\n\nWhat action should you take?",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "I will function_call.\nReasoning: Searching for the book in the library.\nParameters: {'calls': '[]'}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1771124150706,
+    "model_version": null
+  },
+  {
+    "group_id": "group-8",
+    "scenario_id": "bfcl_multiple",
+    "trajectories": [
+      {
+        "trajectory_id": "4df24963-3e27-43c5-be6a-5a515b1a7ca4",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1771124149596,
+        "end_time": 1771124150198,
+        "duration_ms": 602,
+        "episode_id": "multiple_17",
+        "scenario_id": "bfcl_multiple",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "a4573f95-9541-4bd7-8c54-880cb70b53d1",
+            "step_number": 0,
+            "timestamp": 1771124149596,
+            "environment_state": {
+              "timestamp": 1771124149596,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "multiple_17"
+              }
+            },
+            "observation": {},
+            "llm_calls": [],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "93058db9-6083-456f-984a-1d89716bc8dc",
+              "timestamp": 1771124150198,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[]"
+              },
+              "reasoning": "Received UUID codes. Let me know if you need help with anything specific!",
+              "llm_call_id": null,
+              "success": false,
+              "result": {
+                "predicted_calls": 0
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 0.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 0.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 602,
+          "predicted_calls": 0
+        },
+        "metadata": {
+          "test_case_id": "multiple_17",
+          "category": "multiple",
+          "question": "[[{'role': 'user', 'content': 'Find the conversion rate from Euro to Dollar at January 1, 2022'}]]",
+          "model": "groq/llama-3.1-8b-instant",
+          "provider": "groq",
+          "benchmark": "bfcl",
+          "ast_match": false,
+          "exec_match": false,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "Current state:\n- Balance: $0.0\n- P&L: $0.0\n- Open Positions: 0\n\nWhat action should you take?",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "I will function_call.\nReasoning: Received UUID codes. Let me know if you need help with anything specific!\nParameters: {'calls': '[]'}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1771124150706,
+    "model_version": null
+  }
+]

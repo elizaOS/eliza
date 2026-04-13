@@ -1,0 +1,4 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python -m benchmarks.swe_bench.cli --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/swe_bench__swe_bench/run_swe_bench_20260215T030124Z_5_dd05749f/output --model qwen/qwen3-32b --provider groq --max-instances 1 --no-docker
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_swe_bench_20260215T030124Z_5_dd05749f
+Downloading readme: 0.00B [00:00, ?B/s]Downloading readme: 3.67kB [00:00, 6.88MB/s]

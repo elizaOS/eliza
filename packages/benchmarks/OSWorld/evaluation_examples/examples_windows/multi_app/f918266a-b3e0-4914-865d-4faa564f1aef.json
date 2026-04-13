@@ -1,0 +1,55 @@
+{
+  "id": "f918266a-b3e0-4914-865d-4faa564f1aef",
+  "snapshot": "vscode",
+  "instruction": "Please complete the code and retrieve the output from the Python script 'calculator.py' located on the desktop and save it as 'log.txt' in the same directory as the Python file.",
+  "source": "GAIA",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/f918266a-b3e0-4914-865d-4faa564f1aef/calculator.zip",
+            "path": "C:\\Users\\User\\Desktop\\calculator.zip"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "C:\\Program Files\\7-Zip\\7z.exe",
+          "x",
+          "C:\\Users\\User\\Desktop\\calculator.zip",
+          "-oC:\\Users\\User\\Desktop"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "del C:\\Users\\User\\Desktop\\calculator.zip",
+        "shell": true
+      }
+    }
+  ],
+  "trajectory": "trajectories/f918266a-b3e0-4914-865d-4faa564f1aef",
+  "related_apps": [
+    "vscode",
+    "os"
+  ],
+  "evaluator": {
+    "func": "compare_text_file",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/f918266a-b3e0-4914-865d-4faa564f1aef/log_Gold.txt",
+      "dest": "log_Gold.txt"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Desktop\\log.txt",
+      "dest": "log.txt"
+    }
+  }
+}

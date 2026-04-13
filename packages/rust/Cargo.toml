@@ -53,6 +53,7 @@ cbc = "0.1"
 cipher = "0.4"
 hex = "0.4"
 aes-gcm = "0.10"
+base64 = "0.22"
 
 # Async runtime
 async-trait = "0.1"

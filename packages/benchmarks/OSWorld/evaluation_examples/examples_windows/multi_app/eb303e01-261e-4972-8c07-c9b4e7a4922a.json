@@ -1,0 +1,82 @@
+{
+  "id": "eb303e01-261e-4972-8c07-c9b4e7a4922a",
+  "snapshot": "libreoffice_impress",
+  "instruction": "Tomorrow, I'm scheduled to deliver a talk, and my PowerPoint slides and speaking notes are saved on the desktop. Help me insert my planned remarks for each slide into the \"note\" section of the PowerPoint as a reminder. I've completed this task for some slides; assist me in completing the remaining part.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/eb303e01-261e-4972-8c07-c9b4e7a4922a/lecture1-2021-with-ink.pptx",
+            "path": "C:\\Users\\User\\Desktop\\lecture1-2021-with-ink.pptx"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/eb303e01-261e-4972-8c07-c9b4e7a4922a/notes.docx",
+            "path": "C:\\Users\\User\\Desktop\\notes.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Desktop\\lecture1-2021-with-ink.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/eb303e01-261e-4972-8c07-c9b4e7a4922a",
+  "related_apps": [
+    "powerpoint",
+    "word"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "lecture1-2021-with-ink - PowerPoint",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5); pyautogui.press(\"enter\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_pptx_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/eb303e01-261e-4972-8c07-c9b4e7a4922a/lecture1-2021-with-ink_Gold.pptx",
+      "dest": "lecture1-2021-with-ink_Gold.pptx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Desktop\\lecture1-2021-with-ink.pptx",
+      "dest": "lecture1-2021-with-ink.pptx"
+    },
+    "options": {
+      "examine_shape": false,
+      "examine_bullets": false
+    }
+  }
+}

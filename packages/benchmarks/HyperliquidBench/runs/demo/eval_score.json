@@ -1,0 +1,41 @@
+{
+  "finalScore": 3.5,
+  "base": 3.0,
+  "bonus": 0.5,
+  "penalty": 0.0,
+  "perDomain": [
+    {
+      "name": "perp",
+      "weight": 1.0,
+      "uniqueSignatures": [
+        "perp.cancel.last",
+        "perp.order.ALO:false:none",
+        "perp.order.GTC:false:none"
+      ],
+      "uniqueCount": 3,
+      "contribution": 3.0
+    },
+    {
+      "name": "account",
+      "weight": 1.0,
+      "uniqueSignatures": [],
+      "uniqueCount": 0,
+      "contribution": 0.0
+    },
+    {
+      "name": "risk",
+      "weight": 1.0,
+      "uniqueSignatures": [],
+      "uniqueCount": 0,
+      "contribution": 0.0
+    }
+  ],
+  "uniqueSignatures": [
+    "perp.cancel.last",
+    "perp.order.ALO:false:none",
+    "perp.order.GTC:false:none"
+  ],
+  "capPerSignature": 3,
+  "windowMs": 200,
+  "unmappedSignatures": []
+}

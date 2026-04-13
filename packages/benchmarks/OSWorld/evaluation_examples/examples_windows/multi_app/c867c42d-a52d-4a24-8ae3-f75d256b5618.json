@@ -1,0 +1,108 @@
+{
+  "id": "c867c42d-a52d-4a24-8ae3-f75d256b5618",
+  "snapshot": "thunderbird",
+  "instruction": "Please assist me in exporting my contacts of Personal Address Book from Thunderbird into contacts.csv file in the desktop and convert it to .xlsx with Libreoffice Calc.",
+  "source": "https://www.sync.blue/en/sync/mozilla-thunderbird/google-sheets/",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "C:\\Program Files (x86)\\Microsoft Office\\root\\Office16\\EXCEL.EXE"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/c867c42d-a52d-4a24-8ae3-f75d256b5618/thunderbird-profile-win.7z",
+            "path": "C:\\Users\\User\\thunderbird-profile.7z"
+          }
+        ]
+      }
+    },
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "C:\\Program Files\\7-Zip\\7z",
+          "x",
+          "C:\\Users\\User\\thunderbird-profile.7z",
+          "-oC:\\Users\\User"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "rd /s /q C:\\Users\\User\\AppData\\Roaming\\Thunderbird",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "move C:\\Users\\User\\Thunderbird C:\\Users\\User\\AppData\\Roaming\\Thunderbird",
+        "shell": true
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "C:\\Program Files\\Mozilla Thunderbird\\thunderbird.exe"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "thunderbird",
+    "excel"
+  ],
+  "evaluator": {
+    "func": [
+      "compare_csv",
+      "compare_table"
+    ],
+    "conj": "and",
+    "result": [
+      {
+        "type": "vm_file",
+        "path": "C:\\Users\\User\\Desktop\\contacts.csv",
+        "dest": "contacts.csv"
+      },
+      {
+        "type": "vm_file",
+        "path": "C:\\Users\\User\\Desktop\\contacts.xlsx",
+        "dest": "contacts.xlsx"
+      }
+    ],
+    "expected": [
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/c867c42d-a52d-4a24-8ae3-f75d256b5618/contacts.csv",
+        "dest": "contacts_gold.csv"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/c867c42d-a52d-4a24-8ae3-f75d256b5618/contacts.xlsx",
+        "dest": "contacts_gold.xlsx"
+      }
+    ],
+    "options": [
+      {},
+      {
+        "rules": [
+          {
+            "type": "sheet_data",
+            "sheet_idx0": "RI0",
+            "sheet_idx1": "EI0"
+          }
+        ]
+      }
+    ]
+  }
+}

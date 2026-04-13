@@ -1,0 +1,634 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.get_workbook_info",
+            "description": "Get workbook info: file path, name, sheets, and active sheet",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.save",
+            "description": "Save workbook to current location",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.get_column_data",
+            "description": "Get all data from specified column",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_name": {
+                        "type": "string",
+                        "description": "Column name (e.g. 'A', 'B')"
+                    }
+                },
+                "required": [
+                    "column_name"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.switch_active_sheet",
+            "description": "Switch to sheet (creates if not exists)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Sheet name"
+                    }
+                },
+                "required": [
+                    "sheet_name"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_column_values",
+            "description": "Set values to column (values only, not formulas)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_name": {
+                        "type": "string",
+                        "description": "Column name (e.g. 'A', 'B')"
+                    },
+                    "data": {
+                        "type": "array",
+                        "description": "Values to write"
+                    },
+                    "start_index": {
+                        "type": "integer",
+                        "description": "First row index (default: 2)"
+                    }
+                },
+                "required": [
+                    "column_name",
+                    "data"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.highlight_range",
+            "description": "Highlight range with color",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_str": {
+                        "type": "string",
+                        "description": "Range (e.g. 'A1:B10')"
+                    },
+                    "color": {
+                        "type": "integer",
+                        "description": "Color value (default: 0xFF0000)"
+                    }
+                },
+                "required": [
+                    "range_str"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.transpose_range",
+            "description": "Transpose range and paste to target cell",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_range": {
+                        "type": "string",
+                        "description": "Source range (e.g. 'A1:B10')"
+                    },
+                    "target_cell": {
+                        "type": "string",
+                        "description": "Target cell (e.g. 'A1')"
+                    }
+                },
+                "required": [
+                    "source_range",
+                    "target_cell"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.export_to_csv",
+            "description": "Export to CSV with same path/name",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.sort_column",
+            "description": "Sort column data",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_name": {
+                        "type": "string",
+                        "description": "Column name (e.g. 'A', 'B')"
+                    },
+                    "ascending": {
+                        "type": "boolean",
+                        "description": "Sort ascending (default: true)"
+                    },
+                    "start_index": {
+                        "type": "integer",
+                        "description": "First row index (default: 2)"
+                    }
+                },
+                "required": [
+                    "column_name"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_validation_list",
+            "description": "Set validation list for column",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_name": {
+                        "type": "string",
+                        "description": "Column name (e.g. 'A', 'B')"
+                    },
+                    "values": {
+                        "type": "array",
+                        "description": "Validation values"
+                    }
+                },
+                "required": [
+                    "column_name",
+                    "values"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.hide_row_data",
+            "description": "Hide rows containing value",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "type": "string",
+                        "description": "Value to hide (default: 'N/A')"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.reorder_columns",
+            "description": "Reorder columns by specified order",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_order": {
+                        "type": "array",
+                        "description": "Column names in desired order (e.g. ['A', 'B', 'C'])"
+                    }
+                },
+                "required": [
+                    "column_order"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.create_pivot_table",
+            "description": "Create pivot table from source sheet",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_sheet": {
+                        "type": "string",
+                        "description": "Source sheet name"
+                    },
+                    "table_name": {
+                        "type": "string",
+                        "description": "Pivot table name"
+                    },
+                    "row_fields": {
+                        "type": "array",
+                        "description": "Row labels (e.g. ['A', 'B'])"
+                    },
+                    "col_fields": {
+                        "type": "array",
+                        "description": "Column labels (e.g. ['A', 'B'])"
+                    },
+                    "value_fields": {
+                        "type": "array",
+                        "description": "Value fields (e.g. ['A', 'B'])"
+                    },
+                    "aggregation_function": {
+                        "type": "string",
+                        "description": "Aggregation function (sum, count, average, min, max)"
+                    },
+                    "target_cell": {
+                        "type": "string",
+                        "description": "Target cell (default: 'A1')"
+                    }
+                },
+                "required": [
+                    "source_sheet",
+                    "table_name",
+                    "value_fields"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.merge_cells",
+            "description": "Merge cells in range",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_str": {
+                        "type": "string",
+                        "description": "Cell range (e.g. 'A1:B10')"
+                    }
+                },
+                "required": [
+                    "range_str"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_cell_value",
+            "description": "Set cell value",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cell": {
+                        "type": "string",
+                        "description": "Cell reference (e.g. 'A1')"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Cell value"
+                    }
+                },
+                "required": [
+                    "cell",
+                    "value"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.format_range",
+            "description": "Apply formatting to range",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_str": {
+                        "type": "string",
+                        "description": "Range (e.g. 'A1:B10')"
+                    },
+                    "background_color": {
+                        "type": "string",
+                        "description": "Background color (e.g. '#0000ff')"
+                    },
+                    "font_color": {
+                        "type": "string",
+                        "description": "Font color (e.g. '#ffffff')"
+                    },
+                    "bold": {
+                        "type": "boolean",
+                        "description": "Bold text"
+                    },
+                    "alignment": {
+                        "type": "string",
+                        "description": "Text alignment (left, center, right)"
+                    }
+                },
+                "required": [
+                    "range_str"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.create_chart",
+            "description": "Create chart from data range",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "chart_type": {
+                        "type": "string",
+                        "description": "Chart type (bar, column, line, pie, scatter, area)"
+                    },
+                    "data_range": {
+                        "type": "string",
+                        "description": "Data range (e.g. 'A1:B10')"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Chart title"
+                    },
+                    "x_axis_title": {
+                        "type": "string",
+                        "description": "X axis title"
+                    },
+                    "y_axis_title": {
+                        "type": "string",
+                        "description": "Y axis title"
+                    }
+                },
+                "required": [
+                    "chart_type",
+                    "data_range"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.freeze_panes",
+            "description": "Freeze rows/columns",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rows": {
+                        "type": "integer",
+                        "description": "Rows to freeze from top"
+                    },
+                    "columns": {
+                        "type": "integer",
+                        "description": "Columns to freeze from left"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.rename_sheet",
+            "description": "Rename worksheet",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "old_name": {
+                        "type": "string",
+                        "description": "Current sheet name"
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "New sheet name"
+                    }
+                },
+                "required": [
+                    "old_name",
+                    "new_name"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.copy_sheet",
+            "description": "Copy worksheet",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_sheet": {
+                        "type": "string",
+                        "description": "Source sheet name"
+                    },
+                    "new_sheet_name": {
+                        "type": "string",
+                        "description": "New sheet name (optional)"
+                    }
+                },
+                "required": [
+                    "source_sheet"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.reorder_sheets",
+            "description": "Change sheet order",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Sheet to move"
+                    },
+                    "position": {
+                        "type": "integer",
+                        "description": "New position (0-based)"
+                    }
+                },
+                "required": [
+                    "sheet_name",
+                    "position"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_chart_legend_position",
+            "description": "Set chart legend position",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "position": {
+                        "type": "string",
+                        "description": "Legend position (top, bottom, left, right, none)"
+                    }
+                },
+                "required": [
+                    "position"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_number_format",
+            "description": "Apply number format to range",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_str": {
+                        "type": "string",
+                        "description": "Range (e.g. 'A1:B10')"
+                    },
+                    "format_type": {
+                        "type": "string",
+                        "description": "Format type (general, number, currency, accounting, date, time, percentage, fraction, scientific, text)"
+                    },
+                    "decimal_places": {
+                        "type": "integer",
+                        "description": "Decimal places (optional)"
+                    }
+                },
+                "required": [
+                    "range_str",
+                    "format_type"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.adjust_column_width",
+            "description": "Adjust column width",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "columns": {
+                        "type": "string",
+                        "description": "Column range (e.g. 'A:C')"
+                    },
+                    "width": {
+                        "type": "number",
+                        "description": "Width in characters"
+                    },
+                    "autofit": {
+                        "type": "boolean",
+                        "description": "Autofit to content"
+                    }
+                },
+                "required": [
+                    "columns"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.adjust_row_height",
+            "description": "Adjust row height",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rows": {
+                        "type": "string",
+                        "description": "Row range (e.g. '1:10')"
+                    },
+                    "height": {
+                        "type": "number",
+                        "description": "Height in points"
+                    },
+                    "autofit": {
+                        "type": "boolean",
+                        "description": "Autofit to content"
+                    }
+                },
+                "required": [
+                    "rows"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.export_to_pdf",
+            "description": "Export to PDF",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "PDF save path (default: same as original)"
+                    },
+                    "sheets": {
+                        "type": "array",
+                        "description": "Sheets to include (default: all)"
+                    },
+                    "open_after_export": {
+                        "type": "boolean",
+                        "description": "Open PDF after export (default: false)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_zoom_level",
+            "description": "Set worksheet zoom level",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "zoom_percentage": {
+                        "type": "integer",
+                        "description": "Zoom percentage (10-400)"
+                    }
+                },
+                "required": [
+                    "zoom_percentage"
+                ]
+            }
+        }
+    }
+]

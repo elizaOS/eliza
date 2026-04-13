@@ -1,0 +1,58 @@
+{
+  "id": "dd60633f-2c72-42ba-8547-6f2c8cb0fdb0",
+  "snapshot": "multiapps",
+  "instruction": "Please extract all Python code and comments from Karpathy's GPT colab code cells (skip markdown parts), merge into \"gpt_dev_pure_code.py\" in Home directory. Include all Python code and # comments from code cells, but exclude markdown docstrings and file headers.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://colab.research.google.com/drive/1JMLa53HDuA-i7ZBmqV7ZnA3c_fvtXnx-?usp=sharing#scrollTo=h5hjCcLDr2WC"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "chrome",
+    "os",
+    "writer"
+  ],
+  "evaluator": {
+    "func": "compare_python_pure_text",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/gpt_dev_pure_code.py",
+      "dest": "gpt_dev_pure_code.py"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/dd60633f-2c72-42ba-8547-6f2c8cb0fdb0/gpt_dev_pure_code_gold.py",
+      "dest": "gpt_dev_pure_code_gold.py"
+    }
+  },
+  "proxy": true,
+  "env_may_change": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,153 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "rust",
+  "profile": "groq",
+  "timestamp": "17711386893N",
+  "iterations": 1,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "iteration": 1,
+      "profile": "groq",
+      "transcriptionMs": 2410.872,
+      "responseTtftMs": 1284.024,
+      "responseTotalMs": 1284.031,
+      "voiceGenerationMs": 698.253,
+      "endToEndMs": 4393.178,
+      "inContext": {
+        "transcript": " Thank you. Thank you. Thank you. Thank you.",
+        "benchmarkContext": "",
+        "prompt": "Thank you. Thank you. Thank you. Thank you.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "I see you’ve shared some code snippets. How can I help you with them?",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 1278
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state"
+          },
+          {
+            "purpose": "compose_state",
+            "providerName": "ACTIONS"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state"
+          }
+        ]
+      },
+      "ttsOutputBytes": 203590
+    },
+    {
+      "mode": "non-simple",
+      "iteration": 1,
+      "profile": "groq",
+      "transcriptionMs": 9599.889,
+      "responseTtftMs": 1120.45,
+      "responseTotalMs": 1120.456,
+      "voiceGenerationMs": 1661.042,
+      "endToEndMs": 12381.398,
+      "inContext": {
+        "transcript": " Thank you. Thank you. Thank you. Newаксимум",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Thank you. Thank you. Thank you. Newаксимум\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Hello! I’d be happy to help generate dialog and actions for {{agentName}}. Could you share a bit more about the character’s role, personality, and the scenario you have in mind?",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "model": "TEXT_LARGE",
+            "purpose": "action",
+            "latencyMs": 1120
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state"
+          },
+          {
+            "purpose": "compose_state",
+            "providerName": "ACTIONS"
+          },
+          {
+            "providerName": "PROVIDERS",
+            "purpose": "compose_state"
+          },
+          {
+            "purpose": "compose_state",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "purpose": "compose_state",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 522310
+    }
+  ],
+  "summary": {
+    "non-simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 9599.889,
+      "avgResponseTtftMs": 1120.45,
+      "avgResponseTotalMs": 1120.456,
+      "avgVoiceGenerationMs": 1661.042,
+      "avgEndToEndMs": 12381.398
+    },
+    "simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 2410.872,
+      "avgResponseTtftMs": 1284.024,
+      "avgResponseTotalMs": 1284.031,
+      "avgVoiceGenerationMs": 698.253,
+      "avgEndToEndMs": 4393.178
+    }
+  }
+}

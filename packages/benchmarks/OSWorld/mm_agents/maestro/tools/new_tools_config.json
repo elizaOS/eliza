@@ -1,0 +1,109 @@
+{
+  "tools": [
+    {
+      "tool_name": "embedding",
+      "provider": "doubao",
+      "model_name": "doubao-embedding-text-240715"
+    },
+    {
+      "tool_name": "query_formulator",
+      "provider": "doubao",
+      "model_name": "doubao-seed-1-6-flash-250615"
+    },
+    {
+      "tool_name": "websearch",
+      "provider": "bocha",
+      "model_name": ""
+    },
+    {
+      "tool_name": "narrative_summarization",
+      "provider": "doubao",
+      "model_name": "doubao-seed-1-6-flash-250615"
+    },
+    {
+      "tool_name": "context_fusion",
+      "provider": "doubao",
+      "model_name": "doubao-seed-1-6-flash-250615"
+    },
+    {
+      "tool_name": "planner_role",
+      "provider": "openrouter",
+      "model_name": "openai/o3"
+    },
+    {
+      "tool_name": "supplement_role",
+      "provider": "openrouter",
+      "model_name": "openai/o3",
+      "enable_search": true
+    },
+    {
+      "tool_name": "dag_translator",
+      "provider": "openrouter",
+      "model_name": "openai/o3"
+    },
+    {
+      "tool_name": "operator_role",
+      "provider": "openrouter",
+      "model_name": "openai/o3",
+      "enable_search": false,
+      "search_provider": "bocha",
+      "search_model": ""
+    },
+    {
+      "tool_name": "technician_role",
+      "provider": "openrouter",
+      "model_name": "openai/o3",
+      "enable_search": false,
+      "search_provider": "bocha",
+      "search_model": ""
+    },
+    {
+      "tool_name": "analyst_role",
+      "provider": "openrouter",
+      "model_name": "openai/o3",
+      "enable_search": false,
+      "search_provider": "bocha",
+      "search_model": ""
+    },
+    {
+      "tool_name": "grounding",
+      "provider": "doubao",
+      "model_name": "doubao-1-5-ui-tars-250428"
+    },
+    {
+      "tool_name": "text_span",
+      "provider": "doubao",
+      "model_name": "doubao-seed-1-6-flash-250615"
+    },
+    {
+      "tool_name": "episode_summarization",
+      "provider": "doubao",
+      "model_name": "doubao-seed-1-6-flash-250615"
+    },
+    {
+      "tool_name": "worker_success_role",
+      "provider": "openrouter",
+      "model_name": "openai/o3"
+    },
+    {
+      "tool_name": "worker_stale_role",
+      "provider": "openrouter",
+      "model_name": "openai/o3"
+    },
+    {
+      "tool_name": "periodic_role",
+      "provider": "openrouter",
+      "model_name": "openai/o3"
+    },
+    {
+      "tool_name": "final_check_role",
+      "provider": "openrouter",
+      "model_name": "openai/o3"
+    },
+    {
+      "tool_name": "objective_alignment",
+      "provider": "openrouter",
+      "model_name": "openai/o3"
+    }
+  ]
+} 

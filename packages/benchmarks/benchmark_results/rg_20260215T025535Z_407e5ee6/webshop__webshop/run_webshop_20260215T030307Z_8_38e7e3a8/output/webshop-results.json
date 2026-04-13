@@ -1,0 +1,14 @@
+{
+  "total_tasks": 1,
+  "total_trials": 1,
+  "success_rate": 0.0,
+  "average_reward": 0.0,
+  "average_turns": 0.0,
+  "average_steps": 0.0,
+  "average_duration_ms": 298.74300956726074,
+  "summary": {
+    "status": "needs_improvement",
+    "timestamp": "2026-02-14T20:03:08.399336",
+    "mode": "real-llm"
+  }
+}

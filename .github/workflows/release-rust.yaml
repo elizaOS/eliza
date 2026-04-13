@@ -39,7 +39,6 @@ on:
           - elizaos-plugin-computeruse
           - elizaos-plugin-elevenlabs
           - elizaos-plugin-eliza-classic
-          - elizaos-plugin-elizacloud
           - elizaos-plugin-evm
           - elizaos-plugin-experience
           - elizaos-plugin-farcaster
@@ -540,8 +539,6 @@ jobs:
             path: plugins/plugin-elevenlabs/rust
           - name: elizaos-plugin-eliza-classic
             path: plugins/plugin-eliza-classic/rust
-          - name: elizaos-plugin-elizacloud
-            path: plugins/plugin-elizacloud/rust
           - name: elizaos-plugin-evm
             path: plugins/plugin-evm/rust
           - name: elizaos-plugin-experience

@@ -1,0 +1,63 @@
+============================================================
+AgentBench Evaluation - ElizaOS Python
+============================================================
+
+Using deterministic mock runtime (for harness validation)
+
+Environments to evaluate: ['operating_system', 'database', 'knowledge_graph', 'lateral_thinking', 'web_shopping']
+
+Starting benchmark...
+
+============================================================
+BENCHMARK RESULTS
+============================================================
+
+📊 Overall Performance:
+   Success Rate: 100.0%
+   Total Tasks:  12
+   Passed:       12
+   Failed:       0
+   Avg Duration: 4ms
+
+📋 Per-Environment Breakdown:
+
+   ✅ OPERATING_SYSTEM
+      Success Rate: 100.0%
+      Tasks: 3/3
+      Avg Steps: 1.0
+      Avg Duration: 12ms
+
+   ✅ DATABASE
+      Success Rate: 100.0%
+      Tasks: 2/2
+      Avg Steps: 1.0
+      Avg Duration: 1ms
+
+   ✅ KNOWLEDGE_GRAPH
+      Success Rate: 100.0%
+      Tasks: 3/3
+      Avg Steps: 1.0
+      Avg Duration: 1ms
+
+   ✅ LATERAL_THINKING
+      Success Rate: 100.0%
+      Tasks: 2/2
+      Avg Steps: 1.0
+      Avg Duration: 1ms
+
+   ✅ WEB_SHOPPING
+      Success Rate: 100.0%
+      Tasks: 2/2
+      Avg Steps: 5.5
+      Avg Duration: 2ms
+
+💡 Key Findings:
+   • ElizaOS demonstrates strong agent capabilities across tested environments
+   • Strong performance in: operating_system, database, knowledge_graph, lateral_thinking, web_shopping
+
+📁 Results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T083301Z_33737b6a/agentbench__agentbench/run_agentbench_20260212T083301Z_3_b8539a67/output
+   - agentbench-results.json
+   - agentbench-report.md
+   - agentbench-detailed.json
+
+============================================================

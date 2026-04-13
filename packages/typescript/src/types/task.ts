@@ -45,15 +45,6 @@ export interface TaskWorker {
 		message: Memory,
 		state: State,
 	) => Promise<boolean>;
-	/**
-	 * @deprecated Use `shouldRun` (scheduler) or `canExecute` (actions) instead.
-	 * Optional validation function; kept for backward compatibility with compiled plugins.
-	 */
-	validate?: (
-		runtime: IAgentRuntime,
-		message: Memory,
-		state: State,
-	) => Promise<boolean>;
 }
 
 /**

@@ -1,0 +1,109 @@
+{
+  "id": "6f4073b8-d8ea-4ade-8a18-c5d1d5d5aa9a",
+  "snapshot": "multiapps",
+  "instruction": "I now want to count the meeting cities of the three machine learning conferences in the past ten years from 2013 to 2019(including 2013 and 2019). I have listed the names and years of the conferences in excel. Please fill in the vacant locations.",
+  "source": "author",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/6f4073b8-d8ea-4ade-8a18-c5d1d5d5aa9a/Conference.xlsx",
+            "path": "C:\\Users\\User\\Desktop\\ConferenceCity.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Desktop\\ConferenceCity.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "excel",
+    "chrome",
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "download",
+        "parameters": {
+          "files": [
+            {
+              "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/6f4073b8-d8ea-4ade-8a18-c5d1d5d5aa9a/ConferenceCity%20Gold.xlsx",
+              "path": "C:\\Users\\User\\Desktop\\ConferenceCity_Gold.xlsx"
+            }
+          ]
+        }
+      },
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "ConferenceCity - Excel"
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5); pyautogui.press(\"enter\");"
+          ]
+        }
+      }
+    ],
+    "func": "compare_conference_city_in_order",
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": [
+          "Scottsdale",
+          "Atlanta",
+          "Lake Tahoe",
+          "Banff",
+          "Beijing",
+          [
+            "Montreal",
+            "Montréal"
+          ],
+          "San Diego",
+          "Lille",
+          [
+            "Montreal",
+            "Montréal"
+          ],
+          "San Juan",
+          [
+            "New York",
+            "New York City",
+            "NYC"
+          ],
+          "Barcelona",
+          "Toulon",
+          "Sydney",
+          "Long Beach",
+          "Vancouver",
+          "Stockholm",
+          [
+            "Montreal",
+            "Montréal"
+          ],
+          "New Orleans",
+          "Long Beach",
+          "Vancouver"
+        ]
+      }
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Desktop\\ConferenceCity.xlsx",
+      "dest": "ConferenceCity.xlsx"
+    }
+  }
+}

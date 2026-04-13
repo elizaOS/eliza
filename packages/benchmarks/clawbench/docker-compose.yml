@@ -1,0 +1,102 @@
+# Docker Compose for ClawBench
+#
+# Runs OpenClaw gateway with mock tools for AGENTS.md evaluation.
+#
+# Usage:
+#   1. cp .env.example .env && edit .env
+#   2. docker compose up --build
+#
+# Override scenario/variant:
+#   SCENARIO=morning_brief VARIANT=baseline docker compose up --build
+
+services:
+  # ==========================================================================
+  # Init Container
+  # Copies the correct AGENTS.md variant and workspace files for the scenario.
+  # Runs once before other services start, then exits.
+  # ==========================================================================
+  init:
+    build:
+      context: .
+      dockerfile: Dockerfile.init
+    volumes:
+      - ./fixtures:/fixtures:ro
+      - ./scenarios:/scenarios:ro
+      - ./workspace:/workspace
+      - ./config:/config
+    environment:
+      - SCENARIO=${SCENARIO:-client_escalation}
+      - VARIANT=${VARIANT:-optimized}
+      - CLAWBENCH_MODEL=${CLAWBENCH_MODEL:-anthropic/claude-sonnet-4-5-20250929}
+
+  # ==========================================================================
+  # Mock Tools Server
+  # Serves deterministic tool responses from fixtures.
+  # Supports 25 tool types across email, calendar, Slack, tasks, docs, etc.
+  # ==========================================================================
+  mock-tools:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock-tools
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./fixtures:/fixtures:ro
+      - ./logs:/logs
+    environment:
+      - FIXTURES_PATH=/fixtures
+      - SCENARIO=${SCENARIO:-client_escalation}
+      - LOG_PATH=/logs
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    networks:
+      - sandbox-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ==========================================================================
+  # OpenClaw Gateway (ClawBench Edition)
+  # Built from ../openclaw with pre-configured settings.
+  # Config generated from config/openclaw.json.template by init container.
+  # ==========================================================================
+  openclaw-gateway:
+    build:
+      context: ../openclaw
+      dockerfile: Dockerfile.clawbench
+    ports:
+      - "${OPENCLAW_PORT:-18790}:18789"
+    volumes:
+      # Workspace with AGENTS.md (populated by init container)
+      - ./workspace:/workspace
+      # Static OpenClaw config (same for all scenarios)
+      - ./config/openclaw.json:/home/node/.openclaw/openclaw.json:ro
+    env_file:
+      - .env
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-sandbox-token-12345}
+      - CLAWBENCH_MODEL=${CLAWBENCH_MODEL:-anthropic/claude-sonnet-4-5-20250929}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      mock-tools:
+        condition: service_healthy
+    networks:
+      - sandbox-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18789/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  sandbox-net:
+    driver: bridge

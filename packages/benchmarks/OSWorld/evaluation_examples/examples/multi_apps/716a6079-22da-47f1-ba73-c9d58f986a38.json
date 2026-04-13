@@ -1,0 +1,55 @@
+{
+  "id": "716a6079-22da-47f1-ba73-c9d58f986a38",
+  "snapshot": "multiapps",
+  "instruction": "I remember there is a file named \"secret.docx\" on this computer, but I can't remember where it is. Please find the path where this file is stored and copy it to the clipboard.",
+  "source": "",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": "mkdir -p /home/user/Data1/List1 && mkdir -p /home/user/Data2/List2 && mkdir -p /home/user/Data3/List3 && mkdir -p /home/user/Data4/List4 && mkdir -p /home/user/Data5/List5",
+        "shell": "true"
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/716a6079-22da-47f1-ba73-c9d58f986a38/Secret%20document.docx",
+            "path": "/home/user/Data3/List3/secret.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "command",
+      "parameters": {
+        "command": "echo {CLIENT_PASSWORD} | sudo -S apt install xsel && xsel -bc",
+        "shell": "true"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "os",
+    "terminal"
+  ],
+  "evaluator": {
+    "func": "is_in_vm_clickboard",
+    "expected": {
+      "type": "vm_command_line",
+      "command": "xsel --clipboard --output",
+      "shell": "true"
+    },
+    "result": {
+      "type": "rule",
+      "rules": {
+        "expected": "/home/user/Data3/List3/secret.docx"
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

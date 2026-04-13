@@ -1,0 +1,12 @@
+{
+  "openai/gpt-5-mini": {
+    "model": "openai/gpt-5-mini",
+    "provider": "openai",
+    "overall_score": 0.11111111111111113,
+    "ast_accuracy": 0.1111111111111111,
+    "exec_accuracy": 0.1111111111111111,
+    "relevance_accuracy": 0.1111111111111111,
+    "total_tests": 9,
+    "timestamp": "2026-02-05T23:14:24.285784"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "basic_benchmark",
+  "description": "Benchmark environment for basic Solana capabilities",
+  "system_prompt_template": "voyager/prompts/basic_system_prompt.txt",
+  "package_json": "voyager/environments/basic_package.json",
+  "timeout": 4000,
+  "reward_config": {
+  },
+  "metrics": {
+    "track_swap_programs": true,
+    "track_instruction_types": true,
+    "track_failed_swaps": true
+  }
+}

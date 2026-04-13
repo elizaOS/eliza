@@ -1,0 +1,20 @@
+  [basic/a10_p8_m0] 1/19  [basic/a10_p8_m0] 2/19  [basic/a10_p8_m0] 3/19  [basic/a10_p8_m0] 4/19  [basic/a10_p8_m0] 5/19  [basic/a10_p8_m0] 6/19  [basic/a10_p8_m0] 7/19  [basic/a10_p8_m0] 8/19  [basic/a10_p8_m0] 9/19  [basic/a10_p8_m0] 10/19  [basic/a10_p8_m0] 11/19  [basic/a10_p8_m0] 12/19  [basic/a10_p8_m0] 13/19  [basic/a10_p8_m0] 14/19  [basic/a10_p8_m0] 15/19  [basic/a10_p8_m0] 16/19  [basic/a10_p8_m0] 17/19  [basic/a10_p8_m0] 18/19  [basic/a10_p8_m0] 19/19  [basic/a50_p18_m30] 1/19  [basic/a50_p18_m30] 2/19  [basic/a50_p18_m30] 3/19  [basic/a50_p18_m30] 4/19  [basic/a50_p18_m30] 5/19  [basic/a50_p18_m30] 6/19  [basic/a50_p18_m30] 7/19  [basic/a50_p18_m30] 8/19  [basic/a50_p18_m30] 9/19  [basic/a50_p18_m30] 10/19  [basic/a50_p18_m30] 11/19  [basic/a50_p18_m30] 12/19  [basic/a50_p18_m30] 13/19  [basic/a50_p18_m30] 14/19  [basic/a50_p18_m30] 15/19  [basic/a50_p18_m30] 16/19  [basic/a50_p18_m30] 17/19  [basic/a50_p18_m30] 18/19  [basic/a50_p18_m30] 19/19
+============================================================
+  ADHDBench Results
+  Model: qwen/qwen3-32b
+  Duration: 615ms
+============================================================
+
+  Baselines:
+    random              : 57.4%
+    always_reply        : 69.3%
+
+  Scaling Curve (basic):
+    a10_p8_m0            [######################..................] 57.4%  (6ms)
+    a50_p18_m30          [######################..................] 57.4%  (16ms)
+
+  Overall: avg=57.4%, perfect=0/38, failed=0/38
+
+
+Benchmark complete. 38 scenario results.
+Results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T030804Z_bd18dc41/adhdbench__adhdbench/run_adhdbench_20260215T030804Z_2_2723f83d/output/

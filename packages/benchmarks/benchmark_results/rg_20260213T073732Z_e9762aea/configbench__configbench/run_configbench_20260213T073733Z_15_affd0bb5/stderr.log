@@ -1,0 +1,7 @@
+# command: bun run src/index.ts --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260213T073732Z_e9762aea/configbench__configbench/run_configbench_20260213T073733Z_15_affd0bb5/output --eliza
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/configbench
+# run_id: run_configbench_20260213T073733Z_15_affd0bb5
+ Warn       [PLUGIN:SQL] Could not install extension (extension=pgcrypto, error=Failed query: CREATE EXTENSION IF NOT EXISTS "pgcrypto"
+params: )
+ Warn       #ConfigBench Agent  [AGENT] No TEXT_EMBEDDING model registered, skipping embedding setup
+ Warn       [PluginActivator] SecretsService not available, activation will be limited

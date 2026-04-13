@@ -1,0 +1,119 @@
+{
+  "id": "23393935-50c7-4a86-aeea-2b78fd089c5c",
+  "snapshot": "os",
+  "instruction": "Recursively go through the folders of the 'photos' directory and copy any .jpg files found into another directory named 'cpjpg'.",
+  "source": "https://superuser.com/questions/91307/copying-only-jpg-from-a-directory-structure-to-another-location-linux",
+  "trajectory": "trajectories/",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "mkdir -p ~/Desktop/photos && mkdir -p ~/Desktop/cpjpg",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "mkdir -p ~/Desktop/photos/vacation && mkdir -p ~/Desktop/photos/family && mkdir -p ~/Desktop/photos/events",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "mkdir -p ~/Desktop/photos/vacation/thailand && mkdir -p ~/Desktop/photos/vacation/hk",
+        "shell": true
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/os/23393935-50c7-4a86-aeea-2b78fd089c5c/monk252520thailand252520wat252520arun252520scaled25255B225255D.jpg",
+            "path": "/home/user/Desktop/photos/vacation/thailand/monk252520thailand252520wat252520arun252520scaled25255B225255D.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/os/23393935-50c7-4a86-aeea-2b78fd089c5c/hong-kong-china.jpg",
+            "path": "/home/user/Desktop/photos/vacation/hk/hong-kong-china.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/os/23393935-50c7-4a86-aeea-2b78fd089c5c/hk_group_photo.jpg",
+            "path": "/home/user/Desktop/photos/vacation/hk/hk_group_photo.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/os/23393935-50c7-4a86-aeea-2b78fd089c5c/us_3.png",
+            "path": "/home/user/Desktop/photos/family/us_3.png"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/os/23393935-50c7-4a86-aeea-2b78fd089c5c/emnlp2023.jpg",
+            "path": "/home/user/Desktop/photos/events/emnlp2023.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "func": "check_moved_jpgs",
+    "result": {
+      "type": "list_directory",
+      "path": "/home/user/Desktop/cpjpg"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": [
+          "emnlp2023.jpg",
+          "hk_group_photo.jpg",
+          "hong-kong-china.jpg",
+          "monk252520thailand252520wat252520arun252520scaled25255B225255D.jpg"
+        ]
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

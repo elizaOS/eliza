@@ -1,0 +1,3 @@
+# command: /opt/miniconda3/bin/python -m benchmarks.mind2web --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T071143Z_5325e486/mind2web__mind2web/run_mind2web_20260212T071320Z_1_ca67e5d5/output --provider groq --max-tasks 1 --sample
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_mind2web_20260212T071320Z_1_ca67e5d5

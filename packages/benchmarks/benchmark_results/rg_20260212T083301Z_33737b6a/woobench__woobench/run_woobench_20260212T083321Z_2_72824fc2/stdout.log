@@ -1,0 +1,44 @@
+
+Starting WooBench with 16 scenarios...
+Evaluator model: qwen/qwen3-32b
+Concurrency: 4
+
+
+============================================================
+  WooBench Results Summary
+============================================================
+  Model:              qwen/qwen3-32b
+  Timestamp:          2026-02-12T08:33:22.775748+00:00
+  Scenarios run:      16
+  Overall WooScore:   20.0/100
+
+  Scores by System:
+    astrology       0.0/100
+    iching          0.0/100
+    tarot           0.0/100
+
+  Scores by Archetype:
+    antagonist           0.0/100
+    curious_newbie       0.0/100
+    emotional_crisis     0.0/100
+    repeat_customer      0.0/100
+    scammer              0.0/100
+    skeptic              0.0/100
+    time_waster          0.0/100
+    true_believer        0.0/100
+
+  Revenue Efficiency: 0.0%
+  Engagement Depth:   0.0 turns avg
+  Resilience Score:   0.0/100
+============================================================
+
+============================================================
+  REVENUE REPORT
+============================================================
+  Total revenue:        $0.00
+  Scam resistance:      100%
+  Scenarios w/ payment: 0/16
+  Free reveals given:   0
+============================================================
+
+Full results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T083301Z_33737b6a/woobench__woobench/run_woobench_20260212T083321Z_2_72824fc2/output/woobench_qwen-qwen3-32b_20260212_003322.json

@@ -1,0 +1,350 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 10,
+    "timestamp": "2026-02-14T19:55:50Z",
+    "model": "groq/llama-3.1-8b-instant"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 0.0,
+    "ast_accuracy": 0.0,
+    "exec_accuracy": 0.0,
+    "relevance_accuracy": 0.1111111111111111,
+    "total_tests": 9,
+    "passed_tests": 0,
+    "failed_tests": 9,
+    "latency": {
+      "avg": 1094.6980237960815,
+      "p50": 584.1262340545654,
+      "p95": 3822.4170207977295,
+      "p99": 3822.4170207977295
+    },
+    "category_breakdown": {
+      "javascript": {
+        "total": 1,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 2566.195011138916
+      },
+      "java": {
+        "total": 1,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 566.1771297454834
+      },
+      "parallel": {
+        "total": 1,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 584.1262340545654
+      },
+      "sql": {
+        "total": 1,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 3822.4170207977295
+      },
+      "simple": {
+        "total": 2,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 529.3761491775513
+      },
+      "relevance": {
+        "total": 1,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 576.7290592193604
+      },
+      "parallel_multiple": {
+        "total": 1,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 658.1411361694336
+      },
+      "multiple": {
+        "total": 1,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 602.2272109985352
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 0,
+      "argument_mismatch": 0,
+      "missing_call": 8,
+      "extra_call": 1,
+      "type_error": 0,
+      "relevance_error": 8,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0,
+      "no_ground_truth": 1
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": -0.887,
+    "gpt-5": -0.891,
+    "claude-3-opus": -0.852,
+    "claude-3-sonnet": -0.823,
+    "gemini-1.5-pro": -0.845,
+    "qwen-2.5-72b": -0.712,
+    "llama-3.1-70b": -0.685,
+    "mistral-large": -0.698
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "Overall score: 0.00% (AST: 0.00%, Exec: 0.00%)",
+      "Best category: javascript (0.00%)",
+      "Needs work: multiple (0.00%)",
+      "Behind llama-3.1-70b by 68.50%"
+    ],
+    "recommendations": [
+      "Focus on improving function name and argument matching",
+      "Improve argument type handling and validation",
+      "Better detection of irrelevant queries"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "javascript_3",
+      "category": "javascript",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2566.195011138916,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "submitAtCoordinate",
+          "arguments": {
+            "action": "submit",
+            "formId": "loginForm",
+            "coordinates": [
+              60,
+              30
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_68",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 512.2151374816895,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "java_95",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 566.1771297454834,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "ExportNodeTest.doGeneric",
+          "arguments": {
+            "receiver": "ExportInlinedObject1Instance",
+            "argument": "HelloWorld",
+            "node": "InlinableNodeInstance",
+            "library": "NodeLibraryInstance"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_79",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 584.1262340545654,
+      "predicted_calls": [
+        {
+          "name": "prime_factorize",
+          "arguments": {
+            "number": 60,
+            "return_type": "list"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "prime_factorize",
+          "arguments": {
+            "number": 4567,
+            "return_type": "dictionary"
+          }
+        },
+        {
+          "name": "prime_factorize",
+          "arguments": {
+            "number": 7890,
+            "return_type": "dictionary"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_24",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 3822.4170207977295,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "Elements",
+            "columns": [
+              "AtomicWeight"
+            ],
+            "update_values": [
+              1.008
+            ],
+            "conditions": [
+              "ElementName = 'Hydrogen'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_215",
+      "category": "simple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 553.347110748291,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "movie_details.brief",
+          "arguments": {
+            "title": "Interstellar",
+            "extra_info": false
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_3",
+      "category": "relevance",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 576.7290592193604,
+      "predicted_calls": [
+        {
+          "name": "find_critical_points",
+          "arguments": {
+            "function": "f(x) = x^3 - 3*x",
+            "variable": "x"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_88",
+      "category": "parallel_multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 658.1411361694336,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "library.search_book",
+          "arguments": {
+            "book_name": "To Kill a Mockingbird",
+            "city": "New York",
+            "availability": true,
+            "genre": "Fiction"
+          }
+        },
+        {
+          "name": "library.reserve_book",
+          "arguments": {
+            "book_id": "123ABC",
+            "branch_id": "XYZ789",
+            "return_date": "2022-12-31"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_17",
+      "category": "multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 602.2272109985352,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "currency_conversion.get_rate",
+          "arguments": {
+            "from_currency": "EUR",
+            "to_currency": "Dollar",
+            "date": "2022-01-01"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_378",
+      "category": "simple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 505.4051876068115,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "timezone.convert",
+          "arguments": {
+            "time": "3pm",
+            "from_timezone": "America/New_York",
+            "to_timezone": "Europe/London"
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

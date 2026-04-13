@@ -1,0 +1,45 @@
+{
+  "timestamp": "2026-02-13T09:38:02.705321+00:00",
+  "handler": "Eliza",
+  "overall_score": 0.6266666666666667,
+  "identity_f1": 0.64,
+  "relationship_f1": 0.7000000000000001,
+  "trust_f1": 0.5,
+  "resolution_f1": 0.6666666666666666,
+  "resolution_false_merge_rate": 0.3333333333333333,
+  "type_accuracy": 0.7142857142857143,
+  "validation_passed": true,
+  "all_suites_perfect": false,
+  "comparison": [
+    {
+      "name": "Perfect (Oracle)",
+      "id_f1": 1.0,
+      "rel_f1": 1.0,
+      "tr_f1": 1.0,
+      "res_f1": 1.0,
+      "fmr": 0.0,
+      "type_acc": 1.0,
+      "ms": 0.0
+    },
+    {
+      "name": "Rolodex (Algorithmic)",
+      "id_f1": 0.9523809523809523,
+      "rel_f1": 0.8888888888888888,
+      "tr_f1": 0.6666666666666666,
+      "res_f1": 1.0,
+      "fmr": 0.0,
+      "type_acc": 0.625,
+      "ms": 1.4412490418180823
+    },
+    {
+      "name": "Eliza (LLM)",
+      "id_f1": 0.64,
+      "rel_f1": 0.7000000000000001,
+      "tr_f1": 0.5,
+      "res_f1": 0.6666666666666666,
+      "fmr": 0.3333333333333333,
+      "type_acc": 0.7142857142857143,
+      "ms": 25476.251290994696
+    }
+  ]
+}

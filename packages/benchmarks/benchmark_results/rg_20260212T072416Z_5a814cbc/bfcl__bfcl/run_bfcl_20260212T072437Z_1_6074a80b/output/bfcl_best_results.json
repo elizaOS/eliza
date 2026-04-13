@@ -1,0 +1,12 @@
+{
+  "unknown": {
+    "model": "unknown",
+    "provider": "groq",
+    "overall_score": 0.11111111111111112,
+    "ast_accuracy": 0.17108753315649866,
+    "exec_accuracy": 0.17108753315649866,
+    "relevance_accuracy": 0.15915119363395225,
+    "total_tests": 1508,
+    "timestamp": "2026-02-11T23:24:38.211264"
+  }
+}

@@ -142,7 +142,7 @@ export const sendToAdminAction: Action = {
 		// Find target room
 		const adminMessages = await runtime.getMemories({
 			roomId: runtime.agentId,
-			count: 10,
+			limit: 10,
 			tableName: "memories",
 		});
 

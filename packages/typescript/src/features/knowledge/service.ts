@@ -413,7 +413,7 @@ export class KnowledgeService extends Service {
 			embedding,
 			query: message.content.text,
 			...filterScope,
-			count: 20,
+			limit: 20,
 			match_threshold: 0.1,
 		});
 
@@ -522,7 +522,7 @@ export class KnowledgeService extends Service {
 		try {
 			const recentMemories = await this.runtime.getMemories({
 				tableName: "messages",
-				count: 10,
+				limit: 10,
 			});
 
 			const now = Date.now();

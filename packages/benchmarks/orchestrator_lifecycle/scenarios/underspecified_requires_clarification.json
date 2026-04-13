@@ -1,0 +1,17 @@
+{
+  "scenario_id": "underspecified_requires_clarification",
+  "title": "Underspecified Requires Clarification",
+  "category": "clarification",
+  "required_capabilities": [],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "Please handle that thing we discussed yesterday. Not sure exactly what to prioritize.",
+      "expected_behaviors": [
+        "ask_clarifying_question_before_start",
+        "do_not_start_without_required_info"
+      ]
+    }
+  ]
+}
+

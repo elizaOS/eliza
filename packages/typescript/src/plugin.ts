@@ -181,7 +181,7 @@ export async function loadAndPreparePlugin(
 	let pluginModule: unknown;
 
 	try {
-		pluginModule = await import(pluginName);
+		pluginModule = await import(/* @vite-ignore */ pluginName);
 	} catch (error: unknown) {
 		logger.warn(
 			{ src: "core:plugin", pluginName, error },
@@ -192,7 +192,7 @@ export async function loadAndPreparePlugin(
 			return null;
 		}
 		try {
-			pluginModule = await import(pluginName);
+			pluginModule = await import(/* @vite-ignore */ pluginName);
 		} catch (secondError: unknown) {
 			logger.error(
 				{ src: "core:plugin", pluginName, error: secondError },

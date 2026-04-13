@@ -1,0 +1,10 @@
+╔══════════════════════════════════════════════════════════╗
+║          Eliza Framework Benchmark — Python             ║
+╚══════════════════════════════════════════════════════════╝
+
+System: Darwin 25.2.0 arm64 | 16 CPUs | 128.0GB RAM
+Runtime: Python 3.12.10
+LLM Mode: mock (deterministic)
+Scenarios: 12 selected
+
+Running: Single Message Processing...

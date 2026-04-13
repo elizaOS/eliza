@@ -650,6 +650,7 @@ async function buildNode() {
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
 				`${TS_SRC}/roles.ts`,
+				`${TS_SRC}/orchestrator/index.ts`,
 			],
 			outdir: "dist/node",
 			target: "node",
@@ -757,6 +758,17 @@ async function buildTesting() {
 	console.log(`✅ Testing module build complete in ${duration}s`);
 }
 
+async function buildNodeOnly() {
+	console.log("🚀 Starting Node-only build process for @elizaos/core");
+	const totalStart = Date.now();
+
+	await Promise.all([buildNode(), buildTesting()]);
+	await generateTypeScriptDeclarations();
+
+	const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
+	console.log(`\n🎉 Node-only build complete in ${totalDuration}s`);
+}
+
 /**
  * Build for both targets
  */
@@ -849,7 +861,10 @@ async function generateTypeScriptDeclarations() {
 }
 
 if (import.meta.main) {
-	buildAll().catch((error) => {
+	const isNodeOnly = process.argv.includes("--node-only");
+	const build = isNodeOnly ? buildNodeOnly : buildAll;
+
+	build().catch((error) => {
 		console.error("Build script error:", error);
 		process.exit(1);
 	});

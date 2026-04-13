@@ -8,28 +8,10 @@
  * - Provides API for UI viewing and export
  */
 
-import { AsyncLocalStorage } from "node:async_hooks";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../logger";
-import { setTrajectoryContextManager } from "../../trajectory-context";
 import type { IAgentRuntime } from "../../types";
 import { Service } from "../../types/service";
-
-const trajectoryStorage = new AsyncLocalStorage<
-	{ trajectoryStepId?: string } | undefined
->();
-
-setTrajectoryContextManager({
-	run<T>(
-		context: { trajectoryStepId?: string } | undefined,
-		fn: () => T | Promise<T>,
-	): T | Promise<T> {
-		return trajectoryStorage.run(context, fn);
-	},
-	active(): { trajectoryStepId?: string } | undefined {
-		return trajectoryStorage.getStore();
-	},
-});
 
 import type {
 	ActionAttempt,
@@ -478,7 +460,7 @@ export class TrajectoriesService extends Service {
 			);
 		}
 
-		// Legacy Milady schema used 32-bit INTEGER for ms timestamps. Upgrade to
+		// Legacy Eliza schema used 32-bit INTEGER for ms timestamps. Upgrade to
 		// BIGINT so runtime timestamps (Date.now()) can be stored safely.
 		// This migration is Postgres-specific. Ignore on adapters that don't support it.
 		for (const statement of [
@@ -843,7 +825,7 @@ export class TrajectoriesService extends Service {
         WHERE id = ${sqlLiteral(trajectoryId)}
       `);
 		} catch (modernErr) {
-			// Compatibility fallback for legacy Milady schema.
+			// Compatibility fallback for legacy Eliza schema.
 			await this.executeRawSql(`
         UPDATE trajectories SET
           status = ${sqlLiteral(status)},

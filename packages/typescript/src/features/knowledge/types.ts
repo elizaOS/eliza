@@ -1,5 +1,6 @@
 import z from "zod";
 import type { Content, UUID } from "../../types";
+import type { ServiceTypeRegistry } from "../../types/service.ts";
 
 /**
  * Local metadata type for stored knowledge items.
@@ -132,6 +133,12 @@ export interface AddKnowledgeOptions {
 	metadata?: Record<string, unknown>;
 }
 
+declare module "../../types/service.ts" {
+	interface ServiceTypeRegistry {
+		KNOWLEDGE: "knowledge";
+	}
+}
+
 declare module "@elizaos/core" {
 	interface ServiceTypeRegistry {
 		KNOWLEDGE: "knowledge";
@@ -140,7 +147,7 @@ declare module "@elizaos/core" {
 
 export const KnowledgeServiceType = {
 	KNOWLEDGE: "knowledge" as const,
-} satisfies Partial<import("@elizaos/core").ServiceTypeRegistry>;
+} satisfies Partial<ServiceTypeRegistry>;
 
 export interface KnowledgeDocumentMetadata extends Record<string, unknown> {
 	type: string; // e.g., 'document', 'website_content'
