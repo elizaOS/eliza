@@ -24,8 +24,8 @@ import type { ActivityEvent } from "../../../../hooks/useActivityEvents";
 import { useApp, usePtySessions } from "../../../../state";
 import { getRunAttentionReasons } from "../../../apps/RunningAppsPanel";
 import { EmptyWidgetState, WidgetSection } from "../shared";
-import type {
 import { Badge, Button } from "@elizaos/ui";
+import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "../types";
