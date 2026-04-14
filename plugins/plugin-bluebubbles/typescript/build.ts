@@ -8,7 +8,7 @@ const distDir = join(import.meta.dirname, "dist");
 rmSync(distDir, { recursive: true, force: true });
 
 // Build
-execSync("npx tsc -p tsconfig.json", {
+execSync("bunx tsc -p tsconfig.json", {
 	cwd: import.meta.dirname,
 	stdio: "inherit",
 });
