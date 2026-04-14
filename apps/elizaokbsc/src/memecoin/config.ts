@@ -63,6 +63,8 @@ import {
   DEFAULT_TREASURY_RESERVE_PCT,
   DEFAULT_TREASURY_STOP_LOSS_PCT,
   DEFAULT_TREASURY_TAKE_PROFIT_RULES,
+  DEFAULT_TREASURY_TRAILING_STOP_ACTIVATE_PCT,
+  DEFAULT_TREASURY_TRAILING_STOP_PCT,
   DEFAULT_TRENDING_POOLS_LIMIT,
 } from "./constants";
 import type { DiscoveryConfig } from "./types";
@@ -205,6 +207,20 @@ export function getDiscoveryConfig(): DiscoveryConfig {
         DEFAULT_TREASURY_EXIT_SCORE_THRESHOLD,
         1,
       ),
+      trailingStopPct: envInt(
+        "ELIZAOK_TREASURY_TRAILING_STOP_PCT",
+        DEFAULT_TREASURY_TRAILING_STOP_PCT,
+        0,
+      ),
+      trailingStopActivatePct: envInt(
+        "ELIZAOK_TREASURY_TRAILING_STOP_ACTIVATE_PCT",
+        DEFAULT_TREASURY_TRAILING_STOP_ACTIVATE_PCT,
+        0,
+      ),
+      gmgnExitEnabled: envBool("ELIZAOK_TREASURY_GMGN_EXIT_ENABLED", true),
+      holderDropExitThreshold: envInt("ELIZAOK_TREASURY_HOLDER_DROP_THRESHOLD", 15, 1),
+      kolExitEnabled: envBool("ELIZAOK_TREASURY_KOL_EXIT_ENABLED", true),
+      topHolderDumpPct: envInt("ELIZAOK_TREASURY_TOP_HOLDER_DUMP_PCT", 20, 1),
     },
     execution: {
       enabled: envBool("ELIZAOK_EXECUTION_ENABLED", DEFAULT_EXECUTION_ENABLED),

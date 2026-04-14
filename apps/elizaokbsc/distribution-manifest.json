@@ -1,0 +1,79 @@
+{
+  "generatedAt": "2026-04-03T18:23:09.552Z",
+  "holderTokenAddress": null,
+  "snapshotPath": "/Users/baoger/eliza/apps/elizaokbsc/holder-snapshot.sample.json",
+  "snapshotSource": "file",
+  "snapshotBlockNumber": null,
+  "selectedAsset": {
+    "mode": "none",
+    "tokenAddress": null,
+    "tokenSymbol": null,
+    "totalAmount": null,
+    "walletBalance": null,
+    "walletQuoteUsd": null,
+    "sourcePositionTokenAddress": null,
+    "reason": "No treasury position passed the current distribution asset policy. NO: paper-only position, wallet verification is unverified, wallet balance is empty, wallet quote is unavailable, wallet quote 0 is below 10 USD | PAAS: paper-only position, wallet verification is unverified, wallet balance is empty, wallet quote is unavailable, wallet quote 0 is below 10 USD | 开运: paper-only position, wallet verification is unverified, wallet balance is empty, wallet quote is unavailable, wallet quote 0 is below 10 USD, unrealized PnL 0 is not positive | Binance brain: paper-only position, wallet verification is unverified, wallet balance is empty, wallet quote is unavailable, wallet quote 0 is below 10 USD, unrealized PnL 0 is not positive"
+  },
+  "minEligibleBalance": 1000,
+  "eligibleHolderCount": 7,
+  "distributionPoolUsd": 4226,
+  "recipients": [
+    {
+      "address": "0x5a4d3d746e7eb0a7a4adf3f1d7ae5f0d6db5c101",
+      "label": "core_long_term_holder",
+      "balance": 250000,
+      "allocationUsd": 1383,
+      "allocationPct": 32.7,
+      "allocationBps": 3272
+    },
+    {
+      "address": "0x8d7f61c2e1f387217bc6f8ee86e3fb95ad0f1202",
+      "label": "community_whale",
+      "balance": 180000,
+      "allocationUsd": 996,
+      "allocationPct": 23.6,
+      "allocationBps": 2356
+    },
+    {
+      "address": "0x9b6a61b8a3876a6cf4f3fdb4e25b6fb1a035a303",
+      "label": "early_supporter",
+      "balance": 120000,
+      "allocationUsd": 664,
+      "allocationPct": 15.7,
+      "allocationBps": 1571
+    },
+    {
+      "address": "0x7f0b2c8d50e6d3d9cbb0d22d4efcb4a71f9d4404",
+      "label": "builder_pool",
+      "balance": 90000,
+      "allocationUsd": 498,
+      "allocationPct": 11.8,
+      "allocationBps": 1178
+    },
+    {
+      "address": "0xa1c8f887d65b476f92dbf0d5c6df1e2db6a3e505",
+      "label": "community_active",
+      "balance": 62000,
+      "allocationUsd": 343,
+      "allocationPct": 8.1,
+      "allocationBps": 812
+    },
+    {
+      "address": "0xc0f8a8d18f75a7dba4530a0f5bb31c95b1ee6606",
+      "label": "holder_alpha",
+      "balance": 40000,
+      "allocationUsd": 221,
+      "allocationPct": 5.2,
+      "allocationBps": 524
+    },
+    {
+      "address": "0xd1f97a6d1af91ce583c59f4bf58d8f7a3bc06707",
+      "label": "holder_beta",
+      "balance": 22000,
+      "allocationUsd": 122,
+      "allocationPct": 2.9,
+      "allocationBps": 288
+    }
+  ],
+  "note": "Distribution is using the configured file snapshot. Recipients are allocated proportionally from the qualified holder set. No treasury position passed the current distribution asset policy. NO: paper-only position, wallet verification is unverified, wallet balance is empty, wallet quote is unavailable, wallet quote 0 is below 10 USD | PAAS: paper-only position, wallet verification is unverified, wallet balance is empty, wallet quote is unavailable, wallet quote 0 is below 10 USD | 开运: paper-only position, wallet verification is unverified, wallet balance is empty, wallet quote is unavailable, wallet quote 0 is below 10 USD, unrealized PnL 0 is not positive | Binance brain: paper-only position, wallet verification is unverified, wallet balance is empty, wallet quote is unavailable, wallet quote 0 is below 10 USD, unrealized PnL 0 is not positive"
+}

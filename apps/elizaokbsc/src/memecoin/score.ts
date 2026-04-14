@@ -2,7 +2,26 @@ import {
   DEFAULT_QUOTE_TOKEN_ADDRESSES,
   TARGET_EARLY_MCAP_USD,
 } from "./constants";
+import type { ScoreWeightBoosts } from "./strategy-absorption";
 import type { PoolSnapshot, ScoredCandidate } from "./types";
+
+const DEFAULT_WEIGHTS: ScoreWeightBoosts = {
+  kolWeight: 1.0,
+  holderWeight: 1.0,
+  liquidityWeight: 1.0,
+  volumeWeight: 1.0,
+  trendingWeight: 1.0,
+};
+
+let activeWeights: ScoreWeightBoosts = { ...DEFAULT_WEIGHTS };
+
+export function setScoreWeights(weights: ScoreWeightBoosts): void {
+  activeWeights = { ...weights };
+}
+
+export function getScoreWeights(): ScoreWeightBoosts {
+  return { ...activeWeights };
+}
 
 function clampScore(score: number): number {
   return Math.max(0, Math.min(100, Math.round(score)));
@@ -21,10 +40,15 @@ function getConviction(score: number): ScoredCandidate["conviction"] {
   return "low";
 }
 
+function w(base: number, weight: number): number {
+  return Math.round(base * weight);
+}
+
 export function scoreCandidate(candidate: PoolSnapshot): ScoredCandidate {
   let score = 30;
   const thesis: string[] = [];
   const risks: string[] = [];
+  const wt = activeWeights;
 
   const effectiveMcap = candidate.marketCapUsd ?? candidate.fdvUsd;
   if (effectiveMcap !== null && effectiveMcap <= TARGET_EARLY_MCAP_USD) {
@@ -48,17 +72,17 @@ export function scoreCandidate(candidate: PoolSnapshot): ScoredCandidate {
   }
 
   if (candidate.reserveUsd >= 20_000) {
-    score += 18;
+    score += w(18, wt.liquidityWeight);
     thesis.push(
       "Liquidity reserve is strong enough for a controlled simulated entry.",
     );
   } else if (candidate.reserveUsd >= 10_000) {
-    score += 12;
+    score += w(12, wt.liquidityWeight);
     thesis.push(
       "Liquidity is adequate for monitoring and possible small-size entry.",
     );
   } else if (candidate.reserveUsd >= 5_000) {
-    score += 5;
+    score += w(5, wt.liquidityWeight);
     thesis.push("Liquidity exists, but size should stay conservative.");
   } else {
     score -= 18;
@@ -68,12 +92,12 @@ export function scoreCandidate(candidate: PoolSnapshot): ScoredCandidate {
   }
 
   if (candidate.volumeUsdM5 >= 5_000) {
-    score += 14;
+    score += w(14, wt.volumeWeight);
     thesis.push(
       "Recent volume confirms live market interest instead of a dead launch.",
     );
   } else if (candidate.volumeUsdM5 >= 1_000) {
-    score += 9;
+    score += w(9, wt.volumeWeight);
     thesis.push(
       "Short-term volume is healthy enough to justify a closer look.",
     );
@@ -119,7 +143,7 @@ export function scoreCandidate(candidate: PoolSnapshot): ScoredCandidate {
   }
 
   if (candidate.source === "trending_pools") {
-    score += 8;
+    score += w(8, wt.trendingWeight);
     thesis.push(
       "Trending-pool discovery suggests the market is already paying attention.",
     );

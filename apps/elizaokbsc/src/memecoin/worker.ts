@@ -16,11 +16,24 @@ import { reconcilePortfolioWithWallet } from "./execution/reconcile";
 import { buildExecutionState } from "./execution/state";
 import { executeTradeLane } from "./execution/trades";
 import { discoverGooCandidates } from "./goo";
+import { enrichCandidatesWithGmgn } from "./gmgn-enrich";
+import { scanPortfolioForExits } from "./gmgn-service";
+import {
+  autoRespawnIfNeeded,
+  buildGooPaperSummary,
+  loadPaperAgents,
+  runPaperAgentCycle,
+  savePaperAgents,
+  spawnDefaultAgentFleet,
+} from "./goo-paper-engine";
 import { buildScanMemo } from "./memo";
 import { loadCandidateHistory, persistScanArtifacts } from "./persist";
 import { buildPortfolioLifecycle, loadPortfolioLifecycle } from "./portfolio";
-import { scoreCandidates } from "./score";
+import { scoreCandidates, setScoreWeights } from "./score";
 import { buildTreasurySimulation } from "./simulation";
+import { pushNotification, setGmgnSignals, setPaperAgents, setPaperSummary } from "./store";
+import type { GmgnSignalSnapshot } from "./store";
+import { applyAbsorptionOverrides, loadAbsorptionState } from "./strategy-absorption";
 
 function cycleErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -61,11 +74,38 @@ export async function runElizaOkDiscoveryCycle(
   );
 
   try {
+    // Apply any absorbed Goo agent strategy overrides
+    const absState = await loadAbsorptionState(config.reportsDir);
+    if (absState.totalAbsorbed > 0) {
+      const upgraded = applyAbsorptionOverrides(config.treasury, absState);
+      Object.assign(config.treasury, upgraded);
+      setScoreWeights(absState.scoreWeightBoosts);
+      runtime.logger.info(
+        { absorbed: absState.totalAbsorbed, lastAt: absState.lastAbsorbedAt, boosts: absState.scoreWeightBoosts },
+        "ElizaOK: Applied absorbed Goo agent strategy overrides",
+      );
+    }
+
     const [rawCandidates, gooCandidates] = await Promise.all([
       discoverBnbPools(config),
       discoverGooCandidates(config.goo),
     ]);
-    const candidates = scoreCandidates(rawCandidates);
+    const scoredCandidates = scoreCandidates(rawCandidates);
+
+    // Enrich top candidates with market intelligence (KOL, holders, smart money)
+    let candidates = scoredCandidates;
+    try {
+      candidates = await enrichCandidatesWithGmgn(scoredCandidates, 15);
+      const boosted = candidates.filter((c: any) => c.gmgnScoreBoost > 0).length;
+      const demoted = candidates.filter((c: any) => c.gmgnScoreBoost < 0).length;
+      runtime.logger.info(
+        { enriched: Math.min(15, candidates.length), boosted, demoted },
+        "ElizaOK: Market intelligence enrichment completed",
+      );
+    } catch (e) {
+      runtime.logger.warn("ElizaOK: Market enrichment failed, using base scores");
+    }
+
     const previousCandidateHistory = await loadCandidateHistory(
       config.reportsDir,
     );
@@ -86,6 +126,65 @@ export async function runElizaOkDiscoveryCycle(
       candidates,
     );
     const previousPortfolio = await loadPortfolioLifecycle(config.reportsDir);
+
+    // Scan smart exit signals for elizaOK's active positions
+    let portfolioGmgnSignals: Record<string, import("./portfolio").GmgnExitSignal> | undefined;
+    const prevActivePositions = previousPortfolio?.activePositions ?? [];
+    if (prevActivePositions.length > 0) {
+      try {
+        const posList = prevActivePositions.map(p => ({
+          tokenAddress: p.tokenAddress,
+          tokenSymbol: p.tokenSymbol,
+        }));
+        const scan = await scanPortfolioForExits(posList);
+        portfolioGmgnSignals = {};
+        for (const [addr, sig] of Object.entries(scan.exitSignals)) {
+          const s = sig as any;
+          portfolioGmgnSignals[addr] = {
+            holderDropPct: s.holderDelta?.deltaPct ?? undefined,
+            kolExited: s.kolSignal?.kolExited ?? false,
+            kolExitCount: s.kolSignal?.kolExitCount ?? 0,
+            topHolderDumpPct: s.topHolderDelta?.deltaPct ?? undefined,
+          };
+        }
+        runtime.logger.info(
+          { positions: prevActivePositions.length, signals: Object.keys(portfolioGmgnSignals).length },
+          "ElizaOK: Smart exit scan for portfolio positions",
+        );
+      } catch {
+        runtime.logger.warn("ElizaOK: Smart exit portfolio scan failed");
+      }
+    }
+
+    // Scan KOL take-profit patterns for active positions
+    let kolTpSignals: Record<string, import("./portfolio").KolTpSignal> | undefined;
+    if (prevActivePositions.length > 0) {
+      try {
+        const { scanPortfolioForKolTp, saveKolTpCache } = await import("./kol-tp-engine");
+        const kolResults = await scanPortfolioForKolTp(
+          prevActivePositions.map(p => ({ tokenAddress: p.tokenAddress, tokenSymbol: p.tokenSymbol })),
+          6,
+        );
+        if (Object.keys(kolResults).length > 0) {
+          kolTpSignals = {};
+          for (const [addr, sig] of Object.entries(kolResults)) {
+            kolTpSignals[addr] = {
+              recommendedTpPct: sig.recommendedTpPct,
+              kolCount: sig.kolCount,
+              confidence: sig.confidence,
+            };
+          }
+          runtime.logger.info(
+            { tokens: Object.keys(kolTpSignals).length },
+            "ElizaOK: KOL take-profit analysis completed",
+          );
+        }
+        await saveKolTpCache(config.reportsDir);
+      } catch {
+        runtime.logger.warn("ElizaOK: KOL TP analysis failed");
+      }
+    }
+
     const paperPortfolioLifecycle = buildPortfolioLifecycle({
       previous: previousPortfolio,
       runId,
@@ -93,6 +192,8 @@ export async function runElizaOkDiscoveryCycle(
       candidates,
       treasurySimulation,
       treasury: config.treasury,
+      gmgnSignals: portfolioGmgnSignals,
+      kolTpSignals,
     });
     const { executionState, tradeLedger } = await executeTradeLane({
       runId,
@@ -111,6 +212,8 @@ export async function runElizaOkDiscoveryCycle(
       treasurySimulation,
       treasury: config.treasury,
       tradeLedger,
+      gmgnSignals: portfolioGmgnSignals,
+      kolTpSignals,
     });
     const portfolioLifecycle = await reconcilePortfolioWithWallet({
       portfolio: provisionalPortfolioLifecycle,
@@ -130,6 +233,31 @@ export async function runElizaOkDiscoveryCycle(
         reportsDir: config.reportsDir,
         rpcUrl: config.execution.rpcUrl,
       });
+    // Push notifications for new portfolio events
+    const prevTimestamps = new Set(
+      (previousPortfolio?.timeline ?? []).map(t => `${t.runId}-${t.tokenAddress}-${t.type}`),
+    );
+    for (const ev of portfolioLifecycle.timeline) {
+      const key = `${ev.runId}-${ev.tokenAddress}-${ev.type}`;
+      if (prevTimestamps.has(key)) continue;
+      if (ev.type === "promoted") {
+        pushNotification({
+          type: "trade_buy",
+          severity: "info",
+          title: `BSC BUY: ${ev.tokenSymbol}`,
+          detail: ev.detail,
+        });
+      } else if (ev.type === "exited") {
+        const isSmartExit = (ev.detail || "").includes("Holder") || (ev.detail || "").includes("KOL") || (ev.detail || "").includes("Top holder") || (ev.detail || "").includes("Smart exit");
+        pushNotification({
+          type: isSmartExit ? "smart_exit" : "trade_sell",
+          severity: isSmartExit ? "warning" : "info",
+          title: `BSC EXIT: ${ev.tokenSymbol}`,
+          detail: ev.detail,
+        });
+      }
+    }
+
     const completedAt = new Date().toISOString();
     const memo = buildScanMemo(
       runId,
@@ -157,6 +285,121 @@ export async function runElizaOkDiscoveryCycle(
       config.reportsDir,
       config.historyLimit,
     );
+
+    // ── Goo Paper Agent cycle ──
+    const bnbPriceEstimate = treasurySimulation.paperCapitalUsd > 0
+      ? treasurySimulation.paperCapitalUsd / 100
+      : 600;
+    let gooAgents = await loadPaperAgents(config.reportsDir);
+    if (gooAgents.length === 0) {
+      gooAgents = spawnDefaultAgentFleet(1.0);
+      runtime.logger.info(
+        { agentCount: gooAgents.length },
+        "ElizaOK: Spawned default Goo paper agent fleet",
+      );
+    }
+
+    // Collect active positions across all agents for smart exit scan
+    const allActivePositions = gooAgents.flatMap(a =>
+      a.positions.filter(p => p.state === "active").map(p => ({
+        tokenAddress: p.tokenAddress,
+        tokenSymbol: p.tokenSymbol,
+      })),
+    );
+    const uniquePositions = Array.from(
+      new Map(allActivePositions.map(p => [p.tokenAddress, p])).values(),
+    );
+
+    let exitSignals: Awaited<ReturnType<typeof scanPortfolioForExits>> | null = null;
+    if (uniquePositions.length > 0) {
+      try {
+        exitSignals = await scanPortfolioForExits(uniquePositions);
+        runtime.logger.info(
+          { scanned: exitSignals.scannedCount, critical: exitSignals.criticalCount, warning: exitSignals.warningCount },
+          "ElizaOK: Smart exit scan completed",
+        );
+        const gmgnSnap: GmgnSignalSnapshot = {
+          scannedAt: new Date().toISOString(),
+          signals: Object.entries(exitSignals.exitSignals).map(([addr, sig]) => ({
+            tokenAddress: addr,
+            tokenSymbol: (sig as any).tokenSymbol ?? addr.slice(0, 6),
+            holderCount: (sig as any).holderDelta?.current ?? 0,
+            holderDelta: (sig as any).holderDelta?.delta ?? 0,
+            holderDeltaPct: (sig as any).holderDelta?.deltaPct ?? 0,
+            kolCount: (sig as any).kolSignal?.currentKolCount ?? 0,
+            topHolderDumpPct: (sig as any).topHolderDelta?.deltaPct ?? 0,
+            severity: (sig as any).shouldExit ? "critical" as const : ((sig as any).holderDelta?.alert === "warning" || (sig as any).topHolderDelta?.alert === "warning") ? "warning" as const : "ok" as const,
+            reasons: (sig as any).reasons ?? [],
+          })),
+          totalScanned: exitSignals.scannedCount,
+          critical: exitSignals.criticalCount,
+          warning: exitSignals.warningCount,
+        };
+        setGmgnSignals(gmgnSnap);
+      } catch (e) {
+        runtime.logger.warn("ElizaOK: Smart exit scan failed, continuing without signals");
+      }
+    }
+
+    gooAgents = gooAgents.map(agent =>
+      runPaperAgentCycle(agent, candidates, bnbPriceEstimate, exitSignals?.exitSignals),
+    );
+    // Auto-acquire high-performing Goo agents
+    const AUTO_ACQUIRE_SCORE = 70;
+    const AUTO_ACQUIRE_MIN_TRADES = 5;
+    const autoAcquireCandidates = gooAgents.filter(
+      a => !a.acquiredByElizaOK && a.chainState !== "dead" &&
+        a.acquisitionScore >= AUTO_ACQUIRE_SCORE &&
+        a.totalTradesCount >= AUTO_ACQUIRE_MIN_TRADES &&
+        a.winRate > 15,
+    );
+    if (autoAcquireCandidates.length > 0) {
+      const { absorbAgentStrategy, loadAbsorptionState: loadAbs, saveAbsorptionState: saveAbs } = await import("./strategy-absorption");
+      const { acquireAgent } = await import("./goo-paper-engine");
+      let absState = await loadAbs(config.reportsDir);
+      for (const candidate of autoAcquireCandidates) {
+        absState = absorbAgentStrategy(candidate, config.treasury, absState);
+        const idx = gooAgents.findIndex(a => a.id === candidate.id);
+        if (idx >= 0) gooAgents[idx] = acquireAgent(gooAgents[idx]);
+        pushNotification({
+          type: "acquisition",
+          severity: "success",
+          title: `Acquired ${candidate.agentName}`,
+          detail: `Strategy: ${candidate.strategy.label} | Win rate: ${candidate.winRate.toFixed(1)}% | Score: ${candidate.acquisitionScore}`,
+        });
+        runtime.logger.info(
+          { agent: candidate.agentName, strategy: candidate.strategy.label, winRate: candidate.winRate, score: candidate.acquisitionScore },
+          "ElizaOK: Auto-acquired Goo agent",
+        );
+      }
+      await saveAbs(config.reportsDir, absState);
+      const upgraded = (await import("./strategy-absorption")).applyAbsorptionOverrides(config.treasury, absState);
+      Object.assign(config.treasury, upgraded);
+      setScoreWeights(absState.scoreWeightBoosts);
+    }
+
+    // Auto-respawn: keep at least 4 alive agents in the arena
+    const respawn = autoRespawnIfNeeded(gooAgents, 1.0);
+    if (respawn.spawned.length > 0) {
+      gooAgents = [...gooAgents, ...respawn.spawned];
+      for (const newA of respawn.spawned) {
+        pushNotification({
+          type: "respawn",
+          severity: "info",
+          title: `New agent: ${newA.agentName}`,
+          detail: `Strategy: ${newA.strategy.label} | Treasury: ${newA.treasuryBnb.toFixed(2)} BNB`,
+        });
+      }
+      runtime.logger.info(
+        { spawned: respawn.spawned.length, names: respawn.spawned.map(a => a.agentName) },
+        `ElizaOK: ${respawn.reason}`,
+      );
+    }
+
+    const gooSummary = buildGooPaperSummary(gooAgents);
+    setPaperAgents(gooAgents);
+    setPaperSummary(gooSummary);
+    await savePaperAgents(config.reportsDir, gooAgents);
 
     runtime.logger.info(
       {
@@ -186,6 +429,10 @@ export async function runElizaOkDiscoveryCycle(
         distributionExecutionExecutedCount:
           distributionExecution.cycleSummary.executedCount,
         reportPath: persisted.reportPath,
+        gooPaperAgentCount: gooAgents.length,
+        gooPaperActiveCount: gooSummary.activeAgents,
+        gooPaperTotalPnlUsd: gooSummary.totalPnlUsd,
+        gooPaperAvgWinRate: gooSummary.averageWinRate,
       },
       "ElizaOK: Treasury discovery cycle completed",
     );

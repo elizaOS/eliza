@@ -11,6 +11,19 @@ import type {
   TreasuryTimelineEvent,
 } from "./types";
 
+export interface GmgnExitSignal {
+  holderDropPct?: number;
+  kolExited?: boolean;
+  kolExitCount?: number;
+  topHolderDumpPct?: number;
+}
+
+export interface KolTpSignal {
+  recommendedTpPct: number;
+  kolCount: number;
+  confidence: "high" | "medium" | "low";
+}
+
 function referenceUsd(candidate: {
   fdvUsd: number | null;
   reserveUsd: number;
@@ -93,6 +106,13 @@ function buildPositionBase(params: {
     takeProfitCount: existing?.takeProfitCount ?? 0,
     takeProfitStagesHit: [...(existing?.takeProfitStagesHit ?? [])],
     exitReason: undefined,
+    peakValueUsd: Math.max(existing?.peakValueUsd ?? 0, currentValueUsd),
+    peakPnlPct: Math.max(
+      existing?.peakPnlPct ?? 0,
+      pnlPct(entryReferenceUsd, currentReferenceUsd),
+    ),
+    trailingStopTriggered: false,
+    gmgnExitReason: undefined,
   };
 }
 
@@ -103,11 +123,41 @@ function applyTakeProfit(
   runId: string,
   generatedAt: string,
   timeline: TreasuryTimelineEvent[],
+  kolTpSignals?: Record<string, KolTpSignal>,
 ): number {
   const currentGainPct = pnlPct(
     position.entryReferenceUsd,
     position.currentReferenceUsd,
   );
+
+  // KOL-adaptive take profit: if KOLs typically sell at X%, and we're past X%, trigger early TP
+  const kolSignal = kolTpSignals?.[position.tokenAddress];
+  if (kolSignal && kolSignal.confidence !== "low" && currentGainPct >= kolSignal.recommendedTpPct) {
+    const kolLabel = `kol_adaptive_${kolSignal.recommendedTpPct.toFixed(0)}`;
+    if (!position.takeProfitStagesHit.includes(kolLabel)) {
+      const sellFraction = kolSignal.confidence === "high" ? 0.30 : 0.20;
+      const soldCostBasisUsd = Math.round(position.allocationUsd * sellFraction);
+      const soldValueUsd = Math.round(position.currentValueUsd * sellFraction);
+      if (soldCostBasisUsd > 0 && soldValueUsd > 0) {
+        position.allocationUsd = Math.max(0, position.allocationUsd - soldCostBasisUsd);
+        position.currentValueUsd = Math.max(0, position.currentValueUsd - soldValueUsd);
+        position.totalProceedsUsd += soldValueUsd;
+        position.realizedPnlUsd += soldValueUsd - soldCostBasisUsd;
+        position.takeProfitCount += 1;
+        position.takeProfitStagesHit.push(kolLabel);
+        position.unrealizedPnlUsd = position.currentValueUsd - position.allocationUsd;
+        position.unrealizedPnlPct = position.allocationUsd > 0
+          ? Math.round((position.unrealizedPnlUsd / position.allocationUsd) * 100 * 10) / 10 : 0;
+        timeline.push({
+          runId, generatedAt, type: "take_profit",
+          tokenAddress: position.tokenAddress, tokenSymbol: position.tokenSymbol,
+          detail: `KOL-adaptive TP: ${kolSignal.kolCount} KOLs avg sell at +${kolSignal.recommendedTpPct.toFixed(0)}%, sold ${(sellFraction*100).toFixed(0)}% (${kolSignal.confidence} confidence).`,
+          stateAfter: position.allocationUsd > 0 ? "active" : "exited",
+        });
+        cashBalanceUsd += soldValueUsd;
+      }
+    }
+  }
 
   for (const rule of treasury.takeProfitRules) {
     if (position.takeProfitStagesHit.includes(rule.label)) continue;
@@ -156,16 +206,72 @@ function applyTakeProfit(
   return cashBalanceUsd;
 }
 
+function checkTrailingStop(
+  position: PortfolioPosition,
+  treasury: TreasuryConfig,
+): string | null {
+  if (treasury.trailingStopPct <= 0) return null;
+  const peakPct = position.peakPnlPct ?? 0;
+  if (peakPct < treasury.trailingStopActivatePct) return null;
+
+  const currentPct = position.unrealizedPnlPct;
+  const drawdown = peakPct - currentPct;
+  if (drawdown >= treasury.trailingStopPct) {
+    return `Trailing stop triggered: peak was +${peakPct.toFixed(1)}%, current +${currentPct.toFixed(1)}%, drawdown ${drawdown.toFixed(1)}% exceeds ${treasury.trailingStopPct}% threshold.`;
+  }
+  return null;
+}
+
+function checkGmgnExit(
+  position: PortfolioPosition,
+  treasury: TreasuryConfig,
+  gmgnSignals?: Record<string, GmgnExitSignal>,
+): string | null {
+  if (!treasury.gmgnExitEnabled || !gmgnSignals) return null;
+  const signal = gmgnSignals[position.tokenAddress];
+  if (!signal) return null;
+
+  if (signal.holderDropPct && Math.abs(signal.holderDropPct) >= treasury.holderDropExitThreshold) {
+    return `Holder exodus: ${signal.holderDropPct.toFixed(1)}% holder drop detected (threshold: ${treasury.holderDropExitThreshold}%).`;
+  }
+  if (treasury.kolExitEnabled && signal.kolExited) {
+    return `KOL exit detected: ${signal.kolExitCount ?? 1} KOL(s) sold their positions.`;
+  }
+  if (signal.topHolderDumpPct && Math.abs(signal.topHolderDumpPct) >= treasury.topHolderDumpPct) {
+    return `Top holder dump: top holders reduced ${Math.abs(signal.topHolderDumpPct).toFixed(1)}% (threshold: ${treasury.topHolderDumpPct}%).`;
+  }
+  return null;
+}
+
 function exitReasonForPosition(
   candidate: ScoredCandidate,
   position: PortfolioPosition,
   treasury: TreasuryConfig,
+  gmgnSignals?: Record<string, GmgnExitSignal>,
 ): string | null {
   if (position.allocationUsd <= 0)
     return "Position fully harvested by take-profit rules.";
+
+  // Smart exit (highest priority — real-time market intelligence)
+  const gmgnReason = checkGmgnExit(position, treasury, gmgnSignals);
+  if (gmgnReason) {
+    position.gmgnExitReason = gmgnReason;
+    return gmgnReason;
+  }
+
+  // Trailing stop (protects gains)
+  const trailingReason = checkTrailingStop(position, treasury);
+  if (trailingReason) {
+    position.trailingStopTriggered = true;
+    return trailingReason;
+  }
+
+  // Hard stop loss
   if (position.unrealizedPnlPct <= treasury.stopLossPct) {
     return `Stop loss triggered at ${position.unrealizedPnlPct}% versus the ${treasury.stopLossPct}% threshold.`;
   }
+
+  // Score degradation
   if (candidate.score <= treasury.exitScoreThreshold) {
     return `Signal score fell to ${candidate.score}, below the treasury exit floor of ${treasury.exitScoreThreshold}.`;
   }
@@ -469,6 +575,8 @@ export function buildPortfolioLifecycle(params: {
   treasurySimulation: TreasurySimulation;
   treasury: TreasuryConfig;
   tradeLedger?: TradeLedger | null;
+  gmgnSignals?: Record<string, GmgnExitSignal>;
+  kolTpSignals?: Record<string, KolTpSignal>;
 }): PortfolioLifecycle {
   const {
     previous,
@@ -478,6 +586,8 @@ export function buildPortfolioLifecycle(params: {
     treasurySimulation,
     treasury,
     tradeLedger,
+    gmgnSignals,
+    kolTpSignals,
   } = params;
   const previousPositions = [
     ...(previous?.activePositions ?? []),
@@ -591,8 +701,9 @@ export function buildPortfolioLifecycle(params: {
       runId,
       generatedAt,
       timeline,
+      kolTpSignals,
     );
-    const exitReason = exitReasonForPosition(candidate, position, treasury);
+    const exitReason = exitReasonForPosition(candidate, position, treasury, gmgnSignals);
 
     if (exitReason) {
       if (position.currentValueUsd > 0) {
@@ -700,6 +811,43 @@ export function buildPortfolioLifecycle(params: {
   const grossPortfolioValueUsd =
     cashBalanceUsd + totalCurrentValueUsd + treasurySimulation.reserveUsd;
 
+  // Compute win/loss from exited positions
+  const exitedWithTrades = exitedPositions.filter(p => p.initialAllocationUsd > 0);
+  const wins = exitedWithTrades.filter(p => p.realizedPnlUsd > 0).length;
+  const losses = exitedWithTrades.filter(p => p.realizedPnlUsd <= 0).length;
+  const prevWins = previous?.winCount ?? 0;
+  const prevLosses = previous?.lossCount ?? 0;
+
+  // Flywheel: distribute realized profits
+  const prevFw = previous?.flywheel ?? {
+    totalProfitUsd: 0, reinvestedUsd: 0, elizaOKBuybackUsd: 0,
+    airdropReserveUsd: 0, cycleCount: 0, lastCycleAt: null,
+    trailingStopSaves: 0, gmgnExitSaves: 0,
+  };
+  const newProfit = Math.max(0, totalRealizedPnlUsd - (prevFw.totalProfitUsd > 0 ? prevFw.totalProfitUsd : 0));
+  const trailingStopSaves = exitedPositions.filter(p => p.trailingStopTriggered).length;
+  const gmgnExitSaves = exitedPositions.filter(p => p.gmgnExitReason).length;
+
+  const flywheel = {
+    totalProfitUsd: Math.max(0, totalRealizedPnlUsd),
+    reinvestedUsd: prevFw.reinvestedUsd + newProfit * 0.70,
+    elizaOKBuybackUsd: prevFw.elizaOKBuybackUsd + newProfit * 0.15,
+    airdropReserveUsd: prevFw.airdropReserveUsd + newProfit * 0.15,
+    cycleCount: prevFw.cycleCount + (newProfit > 0 ? 1 : 0),
+    lastCycleAt: newProfit > 0 ? generatedAt : prevFw.lastCycleAt,
+    trailingStopSaves: Math.max(prevFw.trailingStopSaves, trailingStopSaves),
+    gmgnExitSaves: Math.max(prevFw.gmgnExitSaves, gmgnExitSaves),
+  };
+
+  if (newProfit > 0) {
+    cashBalanceUsd += newProfit * 0.70;
+  }
+
+  const trailingLabel = treasury.trailingStopPct > 0
+    ? `, ${treasury.trailingStopPct}% trailing stop (activates at +${treasury.trailingStopActivatePct}%)`
+    : "";
+  const gmgnLabel = treasury.gmgnExitEnabled ? ", smart exit" : "";
+
   const lifecycle: PortfolioLifecycle = {
     activePositions,
     watchPositions,
@@ -715,8 +863,11 @@ export function buildPortfolioLifecycle(params: {
     totalUnrealizedPnlPct,
     healthNote:
       activePositions.length > 0
-        ? `Portfolio is enforcing staged exits with ${treasury.takeProfitRules.length} take-profit checkpoints and a ${treasury.stopLossPct}% stop loss.`
-        : "No active paper positions yet. The treasury is waiting for stronger setup quality.",
+        ? `Portfolio enforcing ${treasury.takeProfitRules.length} TP stages, ${treasury.stopLossPct}% stop loss${trailingLabel}${gmgnLabel}.`
+        : "No active paper positions. Treasury waiting for high-conviction setups.",
+    flywheel,
+    winCount: Math.max(wins, prevWins),
+    lossCount: Math.max(losses, prevLosses),
   };
 
   return tradeLedger

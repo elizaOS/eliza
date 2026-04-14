@@ -21,8 +21,26 @@ import {
   fetchElizaCloudUser,
   type ElizaCloudSummaryFields,
 } from "./elizacloud-api";
+import {
+  acquireAgent,
+  buildGooPaperSummary,
+  getAcquisitionCandidates,
+  loadPaperAgents,
+  savePaperAgents,
+  spawnPaperAgent,
+  type GooPaperAgent,
+  type StrategyId,
+} from "./goo-paper-engine";
 import { persistDistributionExecutionState } from "./persist";
-import { getLatestSnapshot } from "./store";
+import {
+  absorbAgentStrategy,
+  applyAbsorptionOverrides,
+  loadAbsorptionState,
+  saveAbsorptionState,
+  type AbsorptionState,
+} from "./strategy-absorption";
+import { getGmgnSignals, getLatestSnapshot, getNotificationSeq, getNotifications, getPaperAgents, getPaperSummary, setPaperAgents, setPaperSummary } from "./store";
+import type { GmgnSignalSnapshot } from "./store";
 import type {
   CandidateDetail,
   DashboardSnapshot,
@@ -31,13 +49,11 @@ import type {
 
 const ELIZAOK_LOGO_ASSET_PATHS = [
   path.resolve(process.cwd(), "apps/elizaokbsc/assets/elizaok-logo.png"),
-  "/Users/baoger/.cursor/projects/Users-baoger-polymarket-agent/assets/Untitled-20260401-191459-3424-92579f8c-32e9-492a-b56b-cdefdd4c6858.png",
-  "/Users/baoger/.cursor/projects/Users-baoger-polymarket-agent/assets/Untitled-20260401-191459-3424-6b4ab8e2-1062-4421-a562-c21be524f0e5.png",
-  "/Users/baoger/.cursor/projects/Users-baoger-polymarket-agent/assets/Untitled-20260401-191459-3424-d9d36740-5e03-42ff-93d1-d93cb2e471ef.png",
+  path.resolve(process.cwd(), "apps/elizaokbsc/assets/avatar.png"),
 ];
 
 const ELIZAOK_BANNER_ASSET_PATHS = [
-  "/Users/baoger/.cursor/projects/Users-baoger-polymarket-agent/assets/1500x500-8f387aee-fe62-46d8-8506-4aa8e185618b.png",
+  path.resolve(process.cwd(), "apps/elizaokbsc/assets/elizaok-logo.png"),
 ];
 
 async function loadSnapshotFromDisk(
@@ -144,7 +160,7 @@ function renderLandingPage(): string {
     .vignette { position:fixed;inset:0;z-index:3;pointer-events:none;background:radial-gradient(ellipse at 50% 50%,transparent 35%,rgba(0,0,0,0.72) 100%); }
     .hero { position:relative;width:100%;height:100vh;overflow:hidden;z-index:4; }
     .marquee-wrap { position:absolute;inset-x:0;top:0;padding-top:22px;overflow:hidden;z-index:10; }
-    .marquee-track { display:flex;width:max-content;gap:32px;animation:marquee 30s linear infinite; }
+    .marquee-track { display:flex;width:max-content;gap:0;animation:marquee 40s linear infinite; }
     .marquee-track span { font-size:12px;color:var(--yellow);white-space:nowrap;font-weight:400;letter-spacing:0.03em;opacity:0.85; }
     @keyframes marquee { 0%{transform:translateX(0);} 100%{transform:translateX(-50%);} }
     .audio-player { position:absolute;right:16px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:20px;z-index:10; }
@@ -160,8 +176,11 @@ function renderLandingPage(): string {
     @keyframes soundbar { 0%,100%{transform:scaleY(0.3);} 50%{transform:scaleY(1);} }
     .social-icons { position:absolute;right:16px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:20px;z-index:10; }
     @media(min-width:768px){.social-icons{left:32px;right:auto;top:96px;transform:none;flex-direction:row;gap:20px;}}
-    .social-icons a { color:var(--yellow);transition:color 0.3s,transform 0.3s,filter 0.3s;display:flex;opacity:0.85; }
+    .social-icons a { color:var(--yellow);transition:color 0.3s,transform 0.3s,filter 0.3s;display:flex;opacity:0.85;position:relative; }
     .social-icons a:hover { color:var(--yellow-soft);transform:scale(1.25);filter:drop-shadow(0 0 20px var(--yellow-glow));opacity:1; }
+    .social-icons a::after { content:attr(data-tip);position:absolute;left:50%;transform:translateX(-50%);bottom:-28px;font-size:10px;color:var(--yellow);background:rgba(0,0,0,0.8);padding:3px 8px;border-radius:4px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 0.2s;letter-spacing:0.04em;border:1px solid rgba(246,231,15,0.15); }
+    .social-icons a:hover::after { opacity:1; }
+    @media(min-width:768px){.social-icons a::after{bottom:auto;top:-28px;}}
     .bottom-bar { position:absolute;inset-x:0;bottom:0;display:flex;flex-direction:column;padding:0 16px 32px;gap:12px;z-index:10; }
     @media(min-width:768px){.bottom-bar{flex-direction:row;align-items:flex-end;justify-content:space-between;padding:0 64px 48px;}}
     .bottom-title { font-size:26px;font-weight:400;color:var(--yellow);letter-spacing:-0.02em;cursor:pointer;transition:color 0.4s,text-shadow 0.4s,transform 0.3s;text-shadow:0 0 12px rgba(246,231,15,0.3);animation:title-breathe 3s ease-in-out infinite;user-select:none; }
@@ -209,18 +228,17 @@ function renderLandingPage(): string {
   <div class="vignette"></div>
   <div class="hero">
     <div class="marquee-wrap"><div class="marquee-track">
-      <span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot; elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;&nbsp;&nbsp;&nbsp;</span>
-      <span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot; elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+      <span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span><span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span><span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span><span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span><span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span><span>elizaOK &middot; AI agent on BNB Chain &middot; alpha discovery &middot; value layer &middot; powered by elizaOS &middot;&nbsp;</span>
     </div></div>
     <div class="audio-player" id="audioPlayer">
       <button id="ap-play" class="waiting" aria-label="Play/Pause"><svg id="ap-icon-play" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><svg id="ap-icon-pause" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
       <button id="ap-mute" aria-label="Mute/Unmute"><svg id="ap-icon-vol" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg><svg id="ap-icon-muted" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg></button>
     </div>
     <div class="social-icons">
-      <a href="https://github.com/elizaokbsc" target="_blank" rel="noopener noreferrer" aria-label="GitHub"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg></a>
-      <a href="https://x.com/elizaok_bsc" target="_blank" rel="noopener noreferrer" aria-label="X / Twitter"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg></a>
-      <a href="/dashboard" aria-label="Dashboard"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></a>
-      <a href="#" id="landing-cloud-btn" aria-label="ElizaCloud" style="cursor:pointer"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg></a>
+      <a href="https://github.com/elizaokbsc" target="_blank" rel="noopener noreferrer" aria-label="GitHub" data-tip="GitHub"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg></a>
+      <a href="https://x.com/elizaok_bsc" target="_blank" rel="noopener noreferrer" aria-label="X / Twitter" data-tip="X / Twitter"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg></a>
+      <a href="/dashboard" aria-label="Dashboard" data-tip="Dashboard"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></a>
+      <a href="#" id="landing-cloud-btn" aria-label="ElizaCloud" data-tip="elizaOS Cloud" style="cursor:pointer"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg></a>
     </div>
     <div class="bottom-bar">
       <div class="bottom-title" id="bottomTitle"><span id="bottomText">elizaOK agent</span><span class="center-dots"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></div>
@@ -1153,8 +1171,14 @@ function shortAddress(value: string): string {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
-function candidateHref(tokenAddress: string): string {
-  return `/candidate?token=${encodeURIComponent(tokenAddress)}`;
+function candidateHref(tokenAddress: string, dexId?: string): string {
+  if (dexId === "four-meme") {
+    return `https://four.meme/token/${tokenAddress}`;
+  }
+  if (dexId?.startsWith("pancakeswap")) {
+    return `https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${tokenAddress}`;
+  }
+  return `https://www.dextools.io/app/en/bnb/pair-explorer/${tokenAddress}`;
 }
 
 function portfolioHref(tokenAddress: string): string {
@@ -1693,6 +1717,7 @@ function renderCandidateDetail(
         <div class="top-chip">${escapeHtml(detail.latest.recommendation)}</div>
       </div>
       <div class="social-actions">
+        <a class="back-link" href="${candidateHref(detail.tokenAddress, detail.latest.dexId)}" target="_blank" rel="noreferrer">Trade on DEX</a>
         <a class="back-link" href="${backHref}">Back</a>
         <a class="social-link" href="https://github.com/elizaokbsc" target="_blank" rel="noreferrer" aria-label="GitHub">
           ${renderGithubIconSvg()}
@@ -2186,30 +2211,43 @@ canvas#cp-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.0
 [data-theme="light"] .cp-stat{border-right-color:var(--border);}
 [data-theme="light"] .cp-profile__avatar{background:rgba(var(--yr),.08);}
 [data-theme="light"] #cp-theme-toggle{border-color:var(--border);}
+#cp-theme-toggle{transition:all .3s ease;}
+#cp-theme-toggle:hover{border-color:var(--yellow);color:var(--yellow);box-shadow:0 0 12px rgba(var(--yr),.2);transform:rotate(15deg) scale(1.1);}
+#cp-theme-toggle:active{transform:rotate(0deg) scale(.95);}
 .a-wrap{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:32px 24px 64px;}
 .a-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:12px;}
-.a-logo{font-size:18px;font-weight:700;color:var(--yellow);letter-spacing:.08em;text-decoration:none;}
+.a-logo{font-size:18px;font-weight:700;color:var(--yellow);letter-spacing:.08em;text-decoration:none;display:flex;align-items:center;gap:12px;}
+.a-logo__avatar{width:38px;height:38px;border-radius:50%;border:2px solid rgba(var(--yr),.3);object-fit:cover;transition:all .35s ease;box-shadow:0 0 8px rgba(var(--yr),.15);flex-shrink:0;}
+.a-logo__avatar:hover{transform:translateY(-3px) scale(1.08);border-color:var(--yellow);box-shadow:0 0 22px rgba(var(--yr),.5),0 0 44px rgba(var(--yr),.2);}
 .a-nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
-.a-nav a{color:var(--muted);font-size:11px;text-decoration:none;padding:5px 12px;border:1px solid var(--border);border-radius:var(--r-sm);transition:all .2s;}
-.a-nav a:hover{color:var(--yellow);border-color:var(--yellow);box-shadow:0 0 8px rgba(246,231,15,.25);}
-.a-nav a.active{color:var(--yellow);border-color:var(--yellow);}
+.a-nav a{color:var(--muted);font-size:11px;text-decoration:none;padding:5px 12px;border:1px solid var(--border);border-radius:var(--r-sm);transition:all .25s ease;}
+.a-nav a:hover{color:var(--yellow);border-color:var(--yellow);box-shadow:0 0 12px rgba(var(--yr),.25);transform:translateY(-1px);}
+.a-nav a.active{color:var(--yellow);border-color:var(--yellow);box-shadow:0 0 8px rgba(var(--yr),.15);}
 /* ── Card grid (reuse cp- prefix so existing body HTML still works) ── */
 .cp-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;}
 .cp-col-12{grid-column:span 12;}
 .cp-col-8{grid-column:span 8;}
 .cp-col-6{grid-column:span 6;}
 .cp-col-4{grid-column:span 4;}
-.cp-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:border-color .2s;}
-.cp-card:hover{border-color:rgba(246,231,15,.25);}
-.cp-card__head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;}
-.cp-card__head h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
-.cp-card__head-badge{font-size:10px;font-weight:600;background:rgba(246,231,15,.08);border:1px solid rgba(246,231,15,.3);color:var(--yellow);padding:2px 8px;border-radius:20px;}
+.cp-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:all .3s ease;}
+.cp-card:hover{border-color:rgba(var(--yr),.3);box-shadow:0 4px 20px rgba(0,0,0,.2),0 0 15px rgba(var(--yr),.06);transform:translateY(-1px);}
+.cp-card__head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;position:relative;overflow:hidden;}
+.cp-card__head::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(var(--yr),.15),transparent);opacity:0;transition:opacity .3s;}
+.cp-card:hover .cp-card__head::before{opacity:1;}
+.cp-card__head h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);transition:color .3s;}
+.cp-card:hover .cp-card__head h2{color:var(--yellow);}
+.cp-card__head-badge{font-size:10px;font-weight:600;background:rgba(var(--yr),.08);border:1px solid rgba(var(--yr),.3);color:var(--yellow);padding:2px 8px;border-radius:20px;animation:badge-glow 3s ease-in-out infinite;}
+@keyframes badge-glow{0%,100%{box-shadow:0 0 4px rgba(var(--yr),.1);}50%{box-shadow:0 0 10px rgba(var(--yr),.25);}}
 .cp-card__body{padding:16px;}
-.cp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;}
-.cp-stat{padding:16px 14px;text-align:center;border-right:1px solid var(--border);}
+.cp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:all .3s ease;}
+.cp-stats:hover{border-color:rgba(var(--yr),.2);box-shadow:0 2px 16px rgba(0,0,0,.15);}
+.cp-stat{padding:16px 14px;text-align:center;border-right:1px solid var(--border);transition:all .3s ease;position:relative;}
 .cp-stat:last-child{border-right:none;}
-.cp-stat__label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px;}
-.cp-stat__value{font-size:24px;font-weight:700;color:var(--white);line-height:1;}
+.cp-stat:hover{background:rgba(var(--yr),.03);}
+.cp-stat:hover .cp-stat__value{transform:scale(1.08);text-shadow:0 0 12px rgba(var(--yr),.3);}
+.cp-stat__label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px;transition:color .3s;}
+.cp-stat:hover .cp-stat__label{color:var(--yellow);}
+.cp-stat__value{font-size:24px;font-weight:700;color:var(--white);line-height:1;transition:all .3s ease;}
 .cp-stat__value--green{color:var(--yellow);}
 .cp-stat__value--pink{color:var(--red);}
 .cp-profile{display:flex;align-items:center;gap:20px;padding:20px;}
@@ -2218,28 +2256,35 @@ canvas#cp-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.0
 .cp-profile__org{font-size:11px;color:var(--muted);margin-top:2px;}
 .cp-profile__meta{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
 .cp-profile__chip{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;padding:3px 10px;border:1px solid var(--border);color:var(--muted);border-radius:20px;}
-.cp-profile__chip--active{border-color:var(--yellow);color:var(--yellow);}
+.cp-profile__chip{transition:all .2s;}
+.cp-profile__chip:hover{border-color:rgba(var(--yr),.4);color:var(--white);transform:translateY(-1px);}
+.cp-profile__chip--active{border-color:var(--yellow);color:var(--yellow);animation:chip-pulse 2.5s ease-in-out infinite;}
+@keyframes chip-pulse{0%,100%{box-shadow:0 0 4px rgba(var(--yr),.1);}50%{box-shadow:0 0 12px rgba(var(--yr),.3);}}
 .cp-rows{display:grid;gap:0;}
 .cp-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.04);}
 .cp-row:last-child{border-bottom:none;}
 .cp-row span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
 .cp-row strong{font-size:12px;font-weight:600;text-align:right;max-width:260px;word-break:break-all;}
 .cp-agents{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;padding:16px;}
-.cp-agent{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;transition:border-color .2s;}
-.cp-agent:hover{border-color:var(--yellow);}
+.cp-agent{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;transition:all .3s ease;}
+.cp-agent:hover{border-color:var(--yellow);box-shadow:0 0 14px rgba(var(--yr),.12);transform:translateY(-2px);background:rgba(var(--yr),.02);}
 .cp-agent__head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .cp-agent__name{font-size:13px;font-weight:600;}
 .cp-agent__status{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:2px 8px;border:1px solid var(--border);color:var(--muted);border-radius:20px;}
-.cp-agent__status--active{border-color:var(--yellow);color:var(--yellow);}
+.cp-agent__status--active{border-color:var(--yellow);color:var(--yellow);animation:status-blink 2s ease-in-out infinite;}
+@keyframes status-blink{0%,100%{opacity:1;}50%{opacity:.6;}}
 .cp-agent__body{padding:10px 14px;}
 .cp-agent__row{display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px;}
 .cp-agent__row span{color:var(--muted);}
 .cp-agent__row strong{font-weight:600;}
 .cp-actions{padding:14px 16px;display:flex;gap:8px;flex-wrap:wrap;}
-.cp-btn{display:inline-flex;align-items:center;height:32px;padding:0 14px;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;color:var(--muted);font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;transition:all .2s;text-decoration:none;}
-.cp-btn:hover{border-color:var(--yellow);color:var(--yellow);box-shadow:0 0 10px rgba(246,231,15,.2);}
-.cp-btn--accent{border-color:var(--yellow);color:var(--yellow);}
-.cp-btn--accent:hover{background:var(--yellow);color:#000;}
+.cp-btn{display:inline-flex;align-items:center;height:32px;padding:0 14px;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;color:var(--muted);font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;transition:all .25s ease;text-decoration:none;position:relative;overflow:hidden;}
+.cp-btn::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(var(--yr),.08),transparent);opacity:0;transition:opacity .25s;}
+.cp-btn:hover{border-color:var(--yellow);color:var(--yellow);box-shadow:0 0 14px rgba(var(--yr),.25);transform:translateY(-1px);}
+.cp-btn:hover::after{opacity:1;}
+.cp-btn:active{transform:translateY(0) scale(.97);}
+.cp-btn--accent{border-color:var(--yellow);color:var(--yellow);box-shadow:0 0 6px rgba(var(--yr),.1);}
+.cp-btn--accent:hover{background:var(--yellow);color:#000;box-shadow:0 0 20px rgba(var(--yr),.4);}
 @media(max-width:960px){.cp-stats{grid-template-columns:repeat(2,minmax(0,1fr));}.cp-col-8,.cp-col-6,.cp-col-4{grid-column:span 12;}}
 @media(max-width:600px){.cp-col-12{grid-column:span 12;}.cp-stats{grid-template-columns:1fr;}}
 @media(max-width:640px){
@@ -2256,7 +2301,86 @@ canvas#cp-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.0
 .cp-row strong{text-align:left;}
 .cp-agent__head{flex-direction:column;gap:6px;align-items:flex-start;}
 }
-.a-footer{text-align:center;font-size:10px;color:var(--muted);margin-top:40px;letter-spacing:.06em;}
+.a-footer{text-align:center;font-size:10px;color:var(--muted);margin-top:40px;letter-spacing:.06em;transition:color .3s;}
+.a-footer:hover{color:var(--yellow);}
+.chat-wrap{display:flex;flex-direction:column;height:480px;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--panel);transition:border-color .3s ease,box-shadow .3s ease;}
+.chat-wrap:focus-within{border-color:rgba(var(--yr),.3);box-shadow:0 0 20px rgba(var(--yr),.06);}
+.chat-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.chat-head__title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--white);}
+.chat-head__dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s ease-in-out infinite;box-shadow:0 0 6px rgba(57,255,20,.4);}
+.chat-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth;}
+.chat-msgs::-webkit-scrollbar{width:4px;}.chat-msgs::-webkit-scrollbar-track{background:transparent;}.chat-msgs::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.chat-bubble{max-width:82%;padding:10px 14px;border-radius:12px;font-size:12px;line-height:1.6;word-break:break-word;animation:chat-in .25s ease-out;}
+@keyframes chat-in{0%{opacity:0;transform:translateY(8px);}100%{opacity:1;transform:translateY(0);}}
+.chat-bubble--user{align-self:flex-end;background:linear-gradient(135deg,rgba(var(--yr),.14),rgba(var(--yr),.06));border:1px solid rgba(var(--yr),.2);color:var(--white);border-bottom-right-radius:4px;box-shadow:0 2px 8px rgba(var(--yr),.06);}
+.chat-bubble--ai{align-self:flex-start;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--white);border-bottom-left-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,.1);}
+[data-theme="light"] .chat-bubble--user{background:rgba(var(--yr),.08);}
+[data-theme="light"] .chat-bubble--ai{background:rgba(0,0,0,.03);}
+.chat-bubble--typing .chat-dots{display:inline-flex;gap:4px;padding:2px 0;}
+.chat-dots span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:dot-bounce .8s ease-in-out infinite;}
+.chat-dots span:nth-child(2){animation-delay:.15s;}.chat-dots span:nth-child(3){animation-delay:.3s;}
+@keyframes dot-bounce{0%,100%{transform:translateY(0);opacity:.4;}50%{transform:translateY(-5px);opacity:1;}}
+.chat-input{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border);flex-shrink:0;background:var(--bg);}
+.chat-input input{flex:1;background:transparent;border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--white);font-family:inherit;font-size:12px;outline:none;transition:border-color .2s;}
+.chat-input input:focus{border-color:rgba(var(--yr),.5);}
+.chat-input input::placeholder{color:var(--muted);}
+.chat-send{background:var(--yellow);border:none;border-radius:8px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .25s ease;flex-shrink:0;box-shadow:0 0 8px rgba(var(--yr),.2);}
+.chat-send:hover{box-shadow:0 0 20px rgba(var(--yr),.5);transform:scale(1.1);}
+.chat-send:active{transform:scale(.92);}
+.chat-send:disabled{opacity:.3;cursor:default;transform:none;box-shadow:none;}
+.chat-send svg{width:16px;height:16px;color:#000;}
+.chat-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:10px;color:var(--muted);font-size:12px;text-align:center;padding:24px;}
+.chat-empty__icon{font-size:32px;opacity:.4;animation:float 3s ease-in-out infinite;}
+@keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+@media(max-width:640px){.chat-wrap{height:380px;}.chat-bubble{max-width:92%;font-size:11px;}.chat-head{padding:10px 12px;}.chat-input{padding:8px 10px;}}
+/* ── API Explorer ── */
+.api-section__title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.api-section__title::before{content:'';display:inline-block;width:3px;height:12px;background:var(--yellow);border-radius:2px;}
+.api-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;padding:14px 16px;}
+.api-ep{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--r-sm);transition:all .25s ease;cursor:default;}
+.api-ep:hover{border-color:rgba(var(--yr),.3);background:rgba(var(--yr),.03);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.15);}
+.api-ep__method{font-size:9px;font-weight:700;letter-spacing:.05em;padding:3px 7px;border-radius:4px;flex-shrink:0;text-transform:uppercase;margin-top:1px;}
+.api-ep__method--get{background:rgba(57,255,20,.1);color:var(--green);border:1px solid rgba(57,255,20,.2);}
+.api-ep__method--post{background:rgba(var(--yr),.1);color:var(--yellow);border:1px solid rgba(var(--yr),.2);}
+.api-ep__method--patch{background:rgba(100,149,237,.1);color:#6495ED;border:1px solid rgba(100,149,237,.2);}
+.api-ep__method--delete{background:rgba(255,64,64,.1);color:var(--red);border:1px solid rgba(255,64,64,.2);}
+.api-ep__info{flex:1;min-width:0;}
+.api-ep__name{font-size:12px;font-weight:600;color:var(--white);margin-bottom:3px;}
+.api-ep__path{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;word-break:break-all;}
+.api-ep__meta{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+.api-ep__tag{font-size:9px;padding:2px 7px;border:1px solid var(--border);border-radius:10px;color:var(--muted);letter-spacing:.03em;}
+.api-ep__price{font-size:9px;padding:2px 7px;border-radius:10px;letter-spacing:.03em;font-weight:600;}
+.api-ep__price--free{background:rgba(57,255,20,.06);color:var(--green);border:1px solid rgba(57,255,20,.15);}
+.api-ep__price--paid{background:rgba(var(--yr),.06);color:var(--yellow);border:1px solid rgba(var(--yr),.15);}
+.api-cats{display:flex;gap:6px;padding:0 16px 10px;flex-wrap:wrap;}
+.api-cat{font-size:10px;padding:4px 12px;border:1px solid var(--border);border-radius:20px;color:var(--muted);cursor:pointer;transition:all .2s;background:transparent;font-family:inherit;letter-spacing:.03em;}
+.api-cat:hover,.api-cat.active{border-color:var(--yellow);color:var(--yellow);background:rgba(var(--yr),.05);}
+.api-cat__count{font-size:9px;opacity:.6;margin-left:4px;transition:all .2s;}
+.api-cat:hover .api-cat__count,.api-cat.active .api-cat__count{opacity:1;}
+[data-theme="light"] .api-ep{background:rgba(0,0,0,.01);}
+[data-theme="light"] .api-ep:hover{background:rgba(var(--yr),.03);}
+@media(max-width:640px){.api-grid{grid-template-columns:1fr;padding:10px;gap:8px;}.api-ep{padding:10px;}.api-cats{padding:0 10px 8px;}}
+/* ── Entrance & life animations ── */
+@keyframes fade-up{0%{opacity:0;transform:translateY(16px);}100%{opacity:1;transform:translateY(0);}}
+.cp-grid>.cp-col-8,.cp-grid>.cp-col-4,.cp-grid>.cp-col-6,.cp-grid>.cp-col-12{animation:fade-up .5s ease-out both;}
+.cp-grid>.cp-col-8:nth-child(1),.cp-grid>.cp-col-4:nth-child(2){animation-delay:.05s;}
+.cp-grid>.cp-col-12:nth-child(3){animation-delay:.12s;}
+.cp-grid>.cp-col-4:nth-child(4),.cp-grid>.cp-col-6:nth-child(4){animation-delay:.18s;}
+.cp-grid>.cp-col-8:nth-child(5),.cp-grid>.cp-col-6:nth-child(5){animation-delay:.24s;}
+.cp-grid>.cp-col-12:nth-child(6),.cp-grid>.cp-col-12:nth-child(7){animation-delay:.3s;}
+.cp-row{transition:background .2s;}
+.cp-row:hover{background:rgba(var(--yr),.03);}
+.cp-profile__avatar{transition:all .3s ease;}
+.cp-profile__avatar:hover{box-shadow:0 0 16px rgba(var(--yr),.35);transform:scale(1.05);}
+.api-ep__method{transition:all .25s;}
+.api-ep:hover .api-ep__method{transform:scale(1.05);}
+.api-cat{position:relative;overflow:hidden;}
+.api-cat::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at center,rgba(var(--yr),.1),transparent 70%);opacity:0;transition:opacity .3s;}
+.api-cat:hover::before,.api-cat.active::before{opacity:1;}
+.chat-input input{transition:all .25s ease;}
+.chat-input input:focus{border-color:rgba(var(--yr),.5);box-shadow:0 0 10px rgba(var(--yr),.1);}
+.cp-card__head{transition:background .2s;}
+.cp-card:hover .cp-card__head{background:rgba(var(--yr),.02);}
 .cp-connect-hero{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:64px 24px;background:var(--panel);border:1px solid var(--border);border-radius:var(--r);margin-bottom:24px;}
 .cp-connect-icon{font-size:40px;color:var(--yellow);margin-bottom:16px;opacity:.6;}
 .cp-connect-title{font-size:20px;font-weight:700;color:var(--white);margin-bottom:10px;}
@@ -2267,8 +2391,10 @@ canvas#cp-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.0
 <canvas id="cp-canvas"></canvas>
 <div class="a-wrap">
   <div class="a-topbar">
-    <a class="a-logo" href="/">elizaOK</a>
+    <a class="a-logo" href="/"><img class="a-logo__avatar" src="/assets/avatar.png" alt="elizaOK" />elizaOK <span style="font-size:11px;font-weight:400;color:var(--muted);letter-spacing:.04em">with elizaOS Cloud</span></a>
     <nav class="a-nav">
+      <a href="/">Home</a>
+      <a href="/dashboard">Dashboard</a>
       <a href="/cloud/agents"${title === "Cloud Agents" ? ' class="active"' : ""}>Agents</a>
       <a href="/cloud/credits"${title === "Cloud Credits" ? ' class="active"' : ""}>Credits</a>
       ${isConnected
@@ -2793,6 +2919,804 @@ document.getElementById('wallet-input').addEventListener('keydown',function(e){i
 </html>`;
 }
 
+function renderGooPaperPage(
+  agents: GooPaperAgent[],
+  summary: import("./goo-paper-engine").GooPaperSummary | null,
+): string {
+  const s = summary ?? { totalAgents: 0, activeAgents: 0, starvingAgents: 0, dyingAgents: 0, deadAgents: 0, acquiredAgents: 0, totalPnlUsd: 0, bestAgent: null, worstAgent: null, averageWinRate: 0, totalTrades: 0, flywheelTotals: { totalProfitBnb: 0, reinvestedBnb: 0, elizaOKBoughtBnb: 0, airdropReservedBnb: 0 } };
+  const fw = s.flywheelTotals ?? { totalProfitBnb: 0, reinvestedBnb: 0, elizaOKBoughtBnb: 0, airdropReservedBnb: 0 };
+  const fmtBnb = (v: number) => v.toFixed(4);
+  const pnlClass = s.totalPnlUsd >= 0 ? 'goo-pnl--pos' : 'goo-pnl--neg';
+  const pnlSign = s.totalPnlUsd >= 0 ? '+' : '';
+  const fmtUsd = (v: number) => `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const statusBadge = (state: string) => {
+    const cls: Record<string, string> = { active: 'goo-badge--active', starving: 'goo-badge--starving', dying: 'goo-badge--dying', dead: 'goo-badge--dead' };
+    return `<span class="goo-badge ${cls[state] || ''}">${state.toUpperCase()}</span>`;
+  };
+
+  const agentRows = agents.map((a, i) => {
+    const pnl = a.totalPnlUsd;
+    const pnlCls = pnl >= 0 ? 'goo-pnl--pos' : 'goo-pnl--neg';
+    const activePos = a.positions.filter(p => p.state === 'active').length;
+    return `
+    <div class="goo-agent-row" style="animation-delay:${i * 0.04}s" data-id="${escapeHtml(a.id)}" onclick="window.location='/goo/agent/${escapeHtml(a.id)}'">
+      <span class="goo-rank-badge">#${i + 1}</span>
+      <div class="goo-agent-row__dot goo-dot--${a.chainState}"></div>
+      <div class="goo-agent-row__main">
+        <div class="goo-agent-row__title">
+          <span class="goo-agent-row__symbol">${escapeHtml(a.tokenSymbol)}</span>
+          <span class="goo-agent-row__name">${escapeHtml(a.agentName)}</span>
+          ${statusBadge(a.chainState)}
+          <span class="goo-badge goo-badge--strategy">${escapeHtml(a.strategy.label)}</span>
+          ${a.acquiredByElizaOK ? '<span class="goo-badge goo-badge--acquired">ACQUIRED</span>' : ''}
+        </div>
+        <div class="goo-agent-row__meta">
+          <span>Treasury: ${a.treasuryBnb.toFixed(4)} BNB</span>
+          <span class="goo-sep">&middot;</span>
+          <span>Positions: ${activePos}</span>
+          <span class="goo-sep">&middot;</span>
+          <span>Trades: ${a.totalTradesCount}</span>
+          <span class="goo-sep">&middot;</span>
+          <span>Win: ${a.winRate.toFixed(1)}%</span>
+        </div>
+      </div>
+      <div class="goo-agent-row__metrics">
+        <div class="goo-agent-row__pnl ${pnlCls}">${pnl >= 0 ? '+' : ''}${fmtUsd(pnl)}</div>
+        <div class="goo-agent-row__score">Score: ${a.acquisitionScore}</div>
+      </div>
+      <div class="goo-agent-row__actions">
+        ${!a.acquiredByElizaOK && a.chainState !== 'dead' && a.acquisitionScore >= 30
+          ? `<button class="goo-btn goo-btn--acquire" onclick="acquireAgent('${escapeHtml(a.id)}')">CTO Acquire</button>`
+          : a.acquiredByElizaOK
+            ? '<span class="goo-acquired-label">&#x2714; Merged</span>'
+            : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Goo Agent Arena | elizaOK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --goo-brand:#00C7D2;--goo-brand-bg:#e6fafb;
+  --goo-warn:#ca8a04;--goo-warn-bg:#fef9c3;
+  --goo-dying:#ea580c;--goo-dying-bg:#ffedd5;
+  --goo-dead:#D1D5DB;--goo-dead-bg:#F9FAFB;
+  --goo-pos:#10b981;--goo-neg:#ef4444;
+  --goo-bg:#f8f8f7;--goo-surface:#fff;--goo-border:#ebebeb;
+  --goo-text:#000;--goo-text2:#4D4D4D;--goo-text3:#808080;
+  --goo-r:16px;--goo-r-sm:8px;
+  font-family:'Inter',system-ui,sans-serif;
+}
+html,body{min-height:100%;background:var(--goo-bg);color:var(--goo-text);}
+[data-theme="dark"]{
+  --goo-brand:#00C7D2;--goo-brand-bg:rgba(0,199,210,.12);
+  --goo-warn:#eab308;--goo-warn-bg:rgba(234,179,8,.1);
+  --goo-dying:#ea580c;--goo-dying-bg:rgba(234,88,12,.1);
+  --goo-dead:#6b7280;--goo-dead-bg:rgba(107,114,128,.12);
+  --goo-pos:#34d399;--goo-neg:#f87171;
+  --goo-bg:#0a0a0a;--goo-surface:rgba(22,22,20,.95);--goo-border:rgba(255,255,255,.08);
+  --goo-text:#e5e5e5;--goo-text2:#a3a3a3;--goo-text3:#737373;
+}
+[data-theme="dark"] .goo-badge--strategy{background:rgba(99,102,241,.15);color:#a5b4fc;}
+[data-theme="dark"] .goo-badge--acquired{background:rgba(34,197,94,.12);color:#86efac;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+@keyframes slideUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+@keyframes dotPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,199,210,.3);}50%{box-shadow:0 0 0 6px rgba(0,199,210,0);}}
+@keyframes badgeGlow{0%,100%{box-shadow:0 0 4px rgba(0,199,210,.15);}50%{box-shadow:0 0 10px rgba(0,199,210,.3);}}
+
+.goo-wrap{max-width:1100px;margin:0 auto;padding:32px 24px 64px;animation:fadeIn .5s ease-out;}
+.goo-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;}
+.goo-topbar__left{display:flex;align-items:center;gap:14px;}
+.goo-topbar__logo{font-size:20px;font-weight:700;color:var(--goo-brand);letter-spacing:.02em;text-decoration:none;display:flex;align-items:center;gap:10px;}
+.goo-topbar__logo img{width:34px;height:34px;border-radius:50%;border:2px solid rgba(0,199,210,.3);object-fit:cover;}
+.goo-topbar__sub{font-size:12px;color:var(--goo-text3);font-weight:400;}
+.goo-nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.goo-nav a{color:var(--goo-text3);font-size:12px;font-weight:500;text-decoration:none;padding:6px 14px;border:1px solid var(--goo-border);border-radius:var(--goo-r-sm);transition:all .2s;}
+.goo-nav a:hover{color:var(--goo-brand);border-color:var(--goo-brand);}
+.goo-nav a.active{color:var(--goo-brand);border-color:var(--goo-brand);background:var(--goo-brand-bg);}
+
+/* Stats */
+.goo-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:0;border:1px solid var(--goo-border);border-radius:var(--goo-r);overflow:hidden;margin-bottom:20px;background:var(--goo-surface);animation:slideUp .4s ease-out .1s both;}
+.goo-stat{padding:18px 14px;text-align:center;border-right:1px solid var(--goo-border);transition:background .2s;}
+.goo-stat:last-child{border-right:none;}
+.goo-stat:hover{background:rgba(0,199,210,.03);}
+.goo-stat__label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--goo-text3);margin-bottom:6px;}
+.goo-stat__value{font-size:22px;font-weight:700;line-height:1;transition:transform .2s;}
+.goo-stat:hover .goo-stat__value{transform:scale(1.05);}
+.goo-stat__value--brand{color:var(--goo-brand);}
+
+/* P&L */
+.goo-pnl--pos{color:var(--goo-pos);}
+.goo-pnl--neg{color:var(--goo-neg);}
+
+/* Badges */
+.goo-badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.04em;vertical-align:middle;}
+.goo-badge--active{background:var(--goo-brand-bg);color:var(--goo-brand);animation:badgeGlow 2s ease-in-out infinite;}
+.goo-badge--starving{background:var(--goo-warn-bg);color:var(--goo-warn);}
+.goo-badge--dying{background:var(--goo-dying-bg);color:var(--goo-dying);}
+.goo-badge--dead{background:var(--goo-dead-bg);color:var(--goo-dead);}
+.goo-badge--strategy{background:#eef2ff;color:#4338ca;font-size:9px;}
+.goo-badge--acquired{background:#dcfce7;color:#16a34a;font-size:9px;}
+
+/* Agent list */
+.goo-card{background:var(--goo-surface);border:1px solid var(--goo-border);border-radius:var(--goo-r);overflow:hidden;margin-bottom:16px;animation:slideUp .4s ease-out .2s both;}
+.goo-card__head{padding:14px 20px;border-bottom:1px solid var(--goo-border);display:flex;align-items:center;justify-content:space-between;}
+.goo-card__head h2{font-size:14px;font-weight:700;color:var(--goo-text);}
+.goo-card__head-count{font-size:12px;color:var(--goo-text3);}
+
+.goo-agent-row{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--goo-border);transition:all .4s ease;cursor:pointer;animation:slideUp .3s ease-out both;}
+.goo-rank-badge{font-size:10px;font-weight:700;color:var(--goo-text3);min-width:26px;text-align:center;opacity:.6;transition:color .3s;}
+.goo-agent-row:first-child .goo-rank-badge{color:var(--goo-brand);opacity:1;}
+.goo-agent-row:last-child{border-bottom:none;}
+.goo-agent-row:hover{background:rgba(0,199,210,.02);}
+
+.goo-agent-row__dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.goo-dot--active{background:var(--goo-brand);animation:dotPulse 2s ease-in-out infinite;}
+.goo-dot--starving{background:var(--goo-warn);}
+.goo-dot--dying{background:var(--goo-dying);}
+.goo-dot--dead{background:var(--goo-dead);}
+
+.goo-agent-row__main{flex:1;min-width:0;}
+.goo-agent-row__title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;}
+.goo-agent-row__symbol{font-size:14px;font-weight:700;color:var(--goo-brand);}
+.goo-agent-row__name{font-size:13px;font-weight:600;color:var(--goo-text);}
+.goo-agent-row__meta{font-size:11px;color:var(--goo-text3);display:flex;gap:4px;flex-wrap:wrap;}
+.goo-sep{opacity:.4;}
+
+.goo-agent-row__metrics{text-align:right;flex-shrink:0;min-width:100px;}
+.goo-agent-row__pnl{font-size:15px;font-weight:700;}
+.goo-agent-row__score{font-size:10px;color:var(--goo-text3);margin-top:2px;}
+
+.goo-agent-row__actions{flex-shrink:0;min-width:100px;text-align:right;}
+
+/* Buttons */
+.goo-btn{display:inline-flex;align-items:center;height:30px;padding:0 14px;border:1px solid var(--goo-border);border-radius:var(--goo-r-sm);background:transparent;color:var(--goo-text3);font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.03em;cursor:pointer;transition:all .2s;}
+.goo-btn:hover{border-color:var(--goo-brand);color:var(--goo-brand);}
+.goo-btn--acquire{border-color:var(--goo-brand);color:var(--goo-brand);background:var(--goo-brand-bg);}
+.goo-btn--acquire:hover{background:var(--goo-brand);color:#fff;box-shadow:0 0 14px rgba(0,199,210,.3);}
+.goo-btn--spawn{border-color:var(--goo-brand);color:#fff;background:var(--goo-brand);font-size:12px;height:34px;padding:0 18px;border-radius:var(--goo-r-sm);}
+.goo-btn--spawn:hover{box-shadow:0 0 16px rgba(0,199,210,.35);transform:translateY(-1px);}
+.goo-acquired-label{font-size:11px;color:var(--goo-pos);font-weight:600;}
+
+/* Filter */
+.goo-filters{display:flex;gap:6px;padding:12px 20px;border-bottom:1px solid var(--goo-border);flex-wrap:wrap;}
+.goo-filter{font-size:11px;padding:4px 12px;border:1px solid var(--goo-border);border-radius:20px;color:var(--goo-text3);cursor:pointer;transition:all .2s;background:transparent;font-family:inherit;}
+.goo-filter:hover,.goo-filter.active{border-color:var(--goo-brand);color:var(--goo-brand);background:rgba(0,199,210,.05);}
+
+.goo-footer{text-align:center;font-size:11px;color:var(--goo-text3);margin-top:32px;}
+.goo-footer a{color:var(--goo-brand);text-decoration:none;}
+.goo-footer a:hover{text-decoration:underline;}
+
+/* Flywheel */
+.goo-flywheel{background:var(--goo-surface);border:1px solid var(--goo-border);border-radius:var(--goo-r);overflow:hidden;margin-bottom:16px;padding:20px;}
+.goo-flywheel__head{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+.goo-flywheel__icon{font-size:24px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(0,199,210,.12),rgba(139,92,246,.12));border-radius:12px;animation:spin 6s linear infinite;}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.goo-flywheel__title{font-size:14px;font-weight:700;color:var(--goo-text);}
+.goo-flywheel__sub{font-size:11px;color:var(--goo-text3);margin-top:2px;}
+.goo-flywheel__grid{display:flex;align-items:center;gap:0;justify-content:center;}
+.goo-flywheel__cell{text-align:center;flex:1;padding:12px 8px;border-radius:var(--goo-r-sm);transition:background .2s;}
+.goo-flywheel__cell:hover{background:rgba(0,199,210,.04);}
+.goo-flywheel__cell--arrow{flex:0 0 30px;font-size:18px;color:var(--goo-text3);opacity:.4;}
+.goo-flywheel__label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--goo-text3);margin-bottom:4px;}
+.goo-flywheel__val{font-size:16px;font-weight:700;}
+
+.goo-empty{padding:48px 20px;text-align:center;color:var(--goo-text3);}
+.goo-empty__icon{font-size:36px;margin-bottom:12px;opacity:.4;}
+.goo-empty__text{font-size:13px;margin-bottom:16px;}
+
+@media(max-width:768px){
+  .goo-stats{grid-template-columns:repeat(3,1fr);}
+  .goo-agent-row{flex-wrap:wrap;gap:8px;}
+  .goo-agent-row__metrics,.goo-agent-row__actions{width:100%;text-align:left;}
+  .goo-topbar{flex-direction:column;align-items:flex-start;}
+}
+@media(max-width:480px){
+  .goo-stats{grid-template-columns:repeat(2,1fr);}
+  .goo-wrap{padding:16px 12px 40px;}
+}
+</style>
+</head>
+<body>
+<div class="goo-wrap">
+  <div class="goo-topbar">
+    <div class="goo-topbar__left">
+      <a class="goo-topbar__logo" href="/goo">
+        <img src="/assets/avatar.png" alt="Goo" />
+        Goo Arena
+      </a>
+      <span class="goo-topbar__sub">Autonomous Agent Competition · elizaOK</span>
+    </div>
+    <nav class="goo-nav">
+      <a href="/">Home</a>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/goo" class="active">Goo Arena</a>
+      <a href="/docs">Docs</a>
+      <span style="width:1px;height:20px;background:var(--goo-border);margin:0 2px"></span>
+      <a href="#" id="goo-lang-toggle" onclick="toggleGooLang();return false;" data-i18n-skip>EN/中文</a>
+      <a href="#" id="goo-theme-toggle" onclick="toggleGooTheme();return false;" data-i18n-skip>&#x1F319;</a>
+    </nav>
+  </div>
+
+  <div class="goo-stats">
+    <div class="goo-stat">
+      <div class="goo-stat__label">Total Agents</div>
+      <div class="goo-stat__value goo-stat__value--brand">${s.totalAgents}</div>
+    </div>
+    <div class="goo-stat">
+      <div class="goo-stat__label">Active</div>
+      <div class="goo-stat__value" style="color:var(--goo-brand)">${s.activeAgents}</div>
+    </div>
+    <div class="goo-stat">
+      <div class="goo-stat__label">Starving</div>
+      <div class="goo-stat__value" style="color:var(--goo-warn)">${s.starvingAgents}</div>
+    </div>
+    <div class="goo-stat">
+      <div class="goo-stat__label">Total P&L</div>
+      <div class="goo-stat__value ${pnlClass}">${pnlSign}${fmtUsd(s.totalPnlUsd)}</div>
+    </div>
+    <div class="goo-stat">
+      <div class="goo-stat__label">Avg Win Rate</div>
+      <div class="goo-stat__value">${s.averageWinRate.toFixed(1)}%</div>
+    </div>
+    <div class="goo-stat">
+      <div class="goo-stat__label">Acquired</div>
+      <div class="goo-stat__value" style="color:var(--goo-pos)">${s.acquiredAgents}</div>
+    </div>
+  </div>
+
+  <!-- Flywheel Section -->
+  <div class="goo-flywheel" style="animation:slideUp .4s ease-out .15s both;">
+    <div class="goo-flywheel__head">
+      <div class="goo-flywheel__icon">&#x1F504;</div>
+      <div>
+        <div class="goo-flywheel__title">Revenue Flywheel</div>
+        <div class="goo-flywheel__sub">Profit &rarr; Reinvest 70% &rarr; $ElizaOK 15% &rarr; Airdrop Reserve 15%</div>
+      </div>
+    </div>
+    <div class="goo-flywheel__grid">
+      <div class="goo-flywheel__cell">
+        <div class="goo-flywheel__label">Total Profit</div>
+        <div class="goo-flywheel__val goo-pnl--pos">${fmtBnb(fw.totalProfitBnb)} BNB</div>
+      </div>
+      <div class="goo-flywheel__cell goo-flywheel__cell--arrow">&#x27A1;</div>
+      <div class="goo-flywheel__cell">
+        <div class="goo-flywheel__label">Reinvested</div>
+        <div class="goo-flywheel__val" style="color:var(--goo-brand)">${fmtBnb(fw.reinvestedBnb)} BNB</div>
+      </div>
+      <div class="goo-flywheel__cell goo-flywheel__cell--arrow">&#x27A1;</div>
+      <div class="goo-flywheel__cell">
+        <div class="goo-flywheel__label">$ElizaOK Buyback</div>
+        <div class="goo-flywheel__val" style="color:#8b5cf6">${fmtBnb(fw.elizaOKBoughtBnb)} BNB</div>
+      </div>
+      <div class="goo-flywheel__cell goo-flywheel__cell--arrow">&#x27A1;</div>
+      <div class="goo-flywheel__cell">
+        <div class="goo-flywheel__label">Airdrop Reserve</div>
+        <div class="goo-flywheel__val" style="color:#f59e0b">${fmtBnb(fw.airdropReservedBnb)} BNB</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="goo-card">
+    <div class="goo-card__head">
+      <h2>Agent Fleet</h2>
+      <div style="display:flex;gap:10px;align-items:center">
+        <span class="goo-card__head-count">${agents.length} agents</span>
+        <a class="goo-btn" href="/goo/compare" style="font-size:11px;text-decoration:none;border:1px solid var(--goo-border);border-radius:8px;padding:6px 12px;color:var(--goo-text)">Compare</a>
+      </div>
+    </div>
+    <div class="goo-filters">
+      <button class="goo-filter active" onclick="filterAgents('all',this)">All <span style="opacity:.5">${agents.length}</span></button>
+      <button class="goo-filter" onclick="filterAgents('active',this)">Active <span style="opacity:.5">${s.activeAgents}</span></button>
+      <button class="goo-filter" onclick="filterAgents('starving',this)">Starving <span style="opacity:.5">${s.starvingAgents}</span></button>
+      <button class="goo-filter" onclick="filterAgents('dying',this)">Dying <span style="opacity:.5">${s.dyingAgents}</span></button>
+      <button class="goo-filter" onclick="filterAgents('dead',this)">Dead <span style="opacity:.5">${s.deadAgents}</span></button>
+      <button class="goo-filter" onclick="filterAgents('acquired',this)">Acquired <span style="opacity:.5">${s.acquiredAgents}</span></button>
+    </div>
+    ${agents.length > 0 ? agentRows : `
+    <div class="goo-empty">
+      <div class="goo-empty__icon">&#x1F9EC;</div>
+      <div class="goo-empty__text">No agents active yet. The system will auto-spawn agents when ready.</div>
+    </div>`}
+  </div>
+
+  <div class="goo-footer">
+    Powered by <a href="https://github.com/HertzFlow/goo-launch" target="_blank">Goo Protocol</a> &middot; elizaOK Agent Arena &middot; Paper Run Mode
+  </div>
+</div>
+
+<script>
+function filterAgents(status, btn) {
+  document.querySelectorAll('.goo-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.goo-agent-row').forEach(row => {
+    const dot = row.querySelector('.goo-agent-row__dot');
+    const isAcquired = row.innerHTML.includes('ACQUIRED');
+    if (status === 'all') { row.style.display = ''; return; }
+    if (status === 'acquired') { row.style.display = isAcquired ? '' : 'none'; return; }
+    const match = dot && dot.classList.contains('goo-dot--' + status);
+    row.style.display = match ? '' : 'none';
+  });
+}
+
+function spawnAgent() {
+  var strategies = ['conservative','balanced','aggressive','kol_follower','holder_watcher','momentum','contrarian','sniper'];
+  var pick = strategies[Math.floor(Math.random() * strategies.length)];
+  fetch('/api/goo/agents/spawn', {
+    method: 'POST',
+    headers: {'content-type':'application/json'},
+    body: JSON.stringify({ strategy: pick, treasury: 1.0 })
+  }).then(function() { window.location.reload(); });
+}
+
+function spawnFleet() {
+  var strategies = ['conservative','balanced','aggressive','kol_follower','holder_watcher','momentum','contrarian','sniper'];
+  var chain = Promise.resolve();
+  strategies.forEach(function(s) {
+    chain = chain.then(function() {
+      return fetch('/api/goo/agents/spawn', {
+        method: 'POST',
+        headers: {'content-type':'application/json'},
+        body: JSON.stringify({ strategy: s, treasury: 1.0 })
+      });
+    });
+  });
+  chain.then(function() { window.location.reload(); });
+}
+
+function acquireAgent(id) {
+  if (!confirm('Acquire this agent? ElizaOK will absorb its trading strategy and become stronger.')) return;
+  fetch('/api/goo/agents/' + encodeURIComponent(id) + '/acquire', {
+    method: 'POST',
+    headers: {'content-type':'application/json'}
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.absorption && data.absorption.parameterChanges.length > 0) {
+      var msg = 'Strategy absorbed! Changes:\\n';
+      data.absorption.parameterChanges.forEach(function(c) {
+        msg += '  ' + c.param + ': ' + c.before + ' → ' + c.after + '\\n';
+      });
+      msg += '\\nTotal strategies absorbed: ' + data.absorption.totalAbsorbed;
+      alert(msg);
+    }
+    window.location.reload();
+  });
+}
+
+// Live ranking animation — periodically re-sort agent rows by P&L
+(function(){
+  var prevOrder = [];
+  document.querySelectorAll('.goo-agent-row').forEach(function(r){ prevOrder.push(r.dataset.id); });
+
+  function liveRefreshRanking() {
+    fetch('/api/goo/agents').then(function(r){return r.json();}).then(function(d) {
+      if (!d.agents) return;
+      var sorted = d.agents.slice().sort(function(a,b){ return b.totalPnlUsd - a.totalPnlUsd; });
+      var newOrder = sorted.map(function(a){ return a.id; });
+      var changed = false;
+      for (var i = 0; i < newOrder.length; i++) { if (newOrder[i] !== prevOrder[i]) { changed = true; break; } }
+      if (!changed) return;
+      prevOrder = newOrder;
+      var container = document.querySelector('.goo-agent-row')?.parentNode;
+      if (!container) return;
+      var rows = {};
+      container.querySelectorAll('.goo-agent-row').forEach(function(r) { rows[r.dataset.id] = r; });
+      newOrder.forEach(function(id, idx) {
+        var row = rows[id];
+        if (!row) return;
+        row.style.transition = 'transform 0.5s ease, opacity 0.3s';
+        row.style.transform = 'translateY(0)';
+        container.appendChild(row);
+        var rankBadge = row.querySelector('.goo-rank-badge');
+        if (rankBadge) rankBadge.textContent = '#' + (idx + 1);
+      });
+    }).catch(function(){});
+  }
+  setInterval(liveRefreshRanking, 20000);
+})();
+
+// ── Dark Mode Toggle ──
+function toggleGooTheme() {
+  var d = document.documentElement;
+  var isDark = d.getAttribute('data-theme') === 'dark';
+  d.setAttribute('data-theme', isDark ? '' : 'dark');
+  localStorage.setItem('goo-theme', isDark ? 'light' : 'dark');
+  var btn = document.getElementById('goo-theme-toggle');
+  if (btn) btn.textContent = isDark ? '\u{1F319}' : '\u2600\uFE0F';
+}
+(function() {
+  var saved = localStorage.getItem('goo-theme');
+  if (saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    var btn = document.getElementById('goo-theme-toggle');
+    if (btn) btn.textContent = '\u2600\uFE0F';
+  }
+})();
+
+// ── Goo i18n ──
+var _gooI18n = {
+  'Goo Arena': '\u7ADE\u6280\u573A',
+  'Autonomous Agent Competition · elizaOK': '\u81EA\u4E3B AI \u4EE3\u7406\u7ADE\u8D5B \u00B7 elizaOK',
+  'Home': '\u9996\u9875', 'Dashboard': '\u4EEA\u8868\u76D8', 'Docs': '\u6587\u6863',
+  'Total Agents': '\u603B\u4EE3\u7406\u6570', 'Active': '\u6D3B\u8DC3', 'Starving': '\u9965\u997F',
+  'Total P&L': '\u603B\u76C8\u4E8F', 'Avg Win Rate': '\u5E73\u5747\u80DC\u7387', 'Acquired': '\u5DF2\u6536\u8D2D',
+  'Revenue Flywheel': '\u6536\u76CA\u98DE\u8F6E',
+  'Total Profit': '\u603B\u5229\u6DA6', 'Reinvested': '\u518D\u6295\u8D44',
+  '$ElizaOK Buyback': '$ElizaOK \u56DE\u8D2D', 'Airdrop Reserve': '\u7A7A\u6295\u50A8\u5907',
+  'Agent Fleet': '\u4EE3\u7406\u8239\u961F', 'agents': '\u4E2A\u4EE3\u7406',
+  'Compare': '\u5BF9\u6BD4', '+ Launch Agent': '+ \u53D1\u5C04\u4EE3\u7406',
+  'All': '\u5168\u90E8', 'Dying': '\u6FC0\u6D3B\u4E2D', 'Dead': '\u6B7B\u4EA1',
+  'Treasury:': '\u8D44\u91D1:', 'Positions:': '\u4ED3\u4F4D:', 'Trades:': '\u4EA4\u6613:', 'Win:': '\u80DC\u7387:',
+  'Score:': '\u5206\u6570:', 'CTO Acquire': 'CTO \u6536\u8D2D',
+  'Powered by': '\u9A71\u52A8\u4E8E', 'Paper Run Mode': '\u6A21\u62DF\u6A21\u5F0F',
+  'Launch Default Fleet (8 Agents)': '\u53D1\u5C04\u9ED8\u8BA4\u8239\u961F (8 \u4E2A\u4EE3\u7406)',
+  'No agents spawned yet. Launch your first agent fleet to start the competition.': '\u8FD8\u6CA1\u6709\u4EE3\u7406\u3002\u53D1\u5C04\u4F60\u7684\u7B2C\u4E00\u652F\u4EE3\u7406\u8239\u961F\u5F00\u59CB\u7ADE\u6280\u3002',
+};
+var _gooLangActive = localStorage.getItem('goo-lang') || 'en';
+function toggleGooLang() {
+  _gooLangActive = _gooLangActive === 'en' ? 'zh' : 'en';
+  localStorage.setItem('goo-lang', _gooLangActive);
+  applyGooLang();
+}
+function applyGooLang() {
+  var btn = document.getElementById('goo-lang-toggle');
+  if (btn) btn.textContent = _gooLangActive === 'zh' ? 'EN' : '\u4E2D\u6587';
+  var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+  var node;
+  while (node = walker.nextNode()) {
+    if (node.parentElement && node.parentElement.hasAttribute('data-i18n-skip')) continue;
+    var txt = node.textContent.trim();
+    if (!txt) continue;
+    if (_gooLangActive === 'zh') {
+      if (!node._origGoo) node._origGoo = node.textContent;
+      for (var k in _gooI18n) {
+        if (txt === k || txt.indexOf(k) >= 0) {
+          node.textContent = node.textContent.replace(k, _gooI18n[k]);
+          break;
+        }
+      }
+    } else {
+      if (node._origGoo) node.textContent = node._origGoo;
+    }
+  }
+}
+if (_gooLangActive === 'zh') { setTimeout(applyGooLang, 50); }
+</script>
+</body>
+</html>`;
+}
+
+function renderGooAgentDetail(agent: GooPaperAgent): string {
+  const pnl = agent.totalPnlUsd;
+  const pnlCls = pnl >= 0 ? 'goo-pnl--pos' : 'goo-pnl--neg';
+  const pnlSign = pnl >= 0 ? '+' : '';
+  const fmtUsd = (v: number) => `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fw = agent.flywheel ?? { totalProfitBnb: 0, reinvestedBnb: 0, elizaOKBoughtBnb: 0, airdropReservedBnb: 0, cycleCount: 0, lastCycleAt: null };
+
+  const statusColor: Record<string, string> = { active: '#00C7D2', starving: '#ca8a04', dying: '#ea580c', dead: '#D1D5DB' };
+
+  // Build cumulative P&L chart data from trade history
+  const trades = (agent.tradeHistory ?? []).filter((t: any) => t.side === 'sell');
+  let cumPnl = 0;
+  const chartPoints = trades.map((t: any, i: number) => {
+    cumPnl += t.pnlUsd;
+    return { x: i, y: cumPnl };
+  });
+  let chartSvg = '';
+  if (chartPoints.length >= 2) {
+    const w = 500, h = 120, pad = 10;
+    const minY = Math.min(0, ...chartPoints.map(p => p.y));
+    const maxY = Math.max(0, ...chartPoints.map(p => p.y));
+    const rangeY = maxY - minY || 1;
+    const xStep = (w - pad * 2) / (chartPoints.length - 1);
+    const pts = chartPoints.map((p, i) => {
+      const px = pad + i * xStep;
+      const py = h - pad - ((p.y - minY) / rangeY) * (h - pad * 2);
+      return `${px.toFixed(1)},${py.toFixed(1)}`;
+    });
+    const zeroY = h - pad - ((0 - minY) / rangeY) * (h - pad * 2);
+    const lastPnl = chartPoints[chartPoints.length - 1]?.y ?? 0;
+    const lineColor = lastPnl >= 0 ? '#10b981' : '#ef4444';
+    const fillColor = lastPnl >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)';
+    const areaPath = `M${pts[0]} ${pts.join(' L')} L${(pad + (chartPoints.length-1)*xStep).toFixed(1)},${zeroY.toFixed(1)} L${pad},${zeroY.toFixed(1)} Z`;
+    chartSvg = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block">
+      <line x1="${pad}" y1="${zeroY.toFixed(1)}" x2="${w-pad}" y2="${zeroY.toFixed(1)}" stroke="rgba(128,128,128,0.2)" stroke-dasharray="4"/>
+      <path d="${areaPath}" fill="${fillColor}"/>
+      <polyline points="${pts.join(' ')}" fill="none" stroke="${lineColor}" stroke-width="2" stroke-linejoin="round"/>
+      <circle cx="${pts[pts.length-1].split(',')[0]}" cy="${pts[pts.length-1].split(',')[1]}" r="4" fill="${lineColor}"/>
+      <text x="${pad+2}" y="${pad+10}" fill="rgba(128,128,128,0.6)" font-size="10" font-family="Inter">Cumulative P&L</text>
+      <text x="${w-pad}" y="${pad+10}" fill="${lineColor}" font-size="10" font-family="Inter" text-anchor="end">${lastPnl >= 0 ? '+' : ''}$${Math.abs(lastPnl).toFixed(2)}</text>
+    </svg>`;
+  }
+
+  const activePositions = agent.positions.filter(p => p.state === 'active');
+  const closedPositions = agent.positions.filter(p => p.state !== 'active');
+
+  const posRow = (p: any, idx: number) => {
+    const ppnl = p.unrealizedPnlUsd ?? 0;
+    const cls = ppnl >= 0 ? 'goo-pnl--pos' : 'goo-pnl--neg';
+    const gain = p.entryPriceUsd > 0 ? ((p.currentPriceUsd - p.entryPriceUsd) / p.entryPriceUsd * 100) : 0;
+    return `<tr style="animation:slideUp .3s ease-out ${idx * 0.03}s both">
+      <td><span style="font-weight:600;color:var(--goo-brand)">${escapeHtml(p.tokenSymbol)}</span></td>
+      <td style="font-size:11px;color:var(--goo-text3)">${p.state.toUpperCase()}</td>
+      <td>${fmtUsd(p.sizeUsd)}</td>
+      <td>${gain >= 0 ? '+' : ''}${gain.toFixed(1)}%</td>
+      <td class="${cls}" style="font-weight:600">${ppnl >= 0 ? '+' : ''}${fmtUsd(ppnl)}</td>
+      <td style="font-size:10px;color:var(--goo-text3)">${new Date(p.entryTime).toLocaleDateString()}</td>
+    </tr>`;
+  };
+
+  const tradeRows = (agent.tradeHistory ?? []).slice(-30).reverse().map((t: any, idx: number) => {
+    const cls = t.pnlUsd >= 0 ? 'goo-pnl--pos' : 'goo-pnl--neg';
+    return `<tr style="animation:slideUp .3s ease-out ${idx * 0.02}s both">
+      <td><span class="goo-badge goo-badge--${t.side === 'buy' ? 'active' : 'dying'}" style="font-size:9px">${t.side.toUpperCase()}</span></td>
+      <td style="font-weight:600">${escapeHtml(t.tokenSymbol)}</td>
+      <td>${fmtUsd(t.amountUsd)}</td>
+      <td class="${cls}" style="font-weight:600">${t.pnlUsd >= 0 ? '+' : ''}${fmtUsd(t.pnlUsd)}</td>
+      <td style="font-size:10px;color:var(--goo-text3)">${escapeHtml(t.reason)}</td>
+      <td style="font-size:10px;color:var(--goo-text3)">${new Date(t.timestamp).toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+
+  const strategyParams = agent.strategy;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${escapeHtml(agent.agentName)} | Goo Arena</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --goo-brand:#00C7D2;--goo-brand-bg:#e6fafb;
+  --goo-warn:#ca8a04;--goo-dying:#ea580c;
+  --goo-dead:#D1D5DB;
+  --goo-pos:#10b981;--goo-neg:#ef4444;
+  --goo-bg:#f8f8f7;--goo-surface:#fff;--goo-border:#ebebeb;
+  --goo-text:#000;--goo-text2:#4D4D4D;--goo-text3:#808080;
+  --goo-r:16px;--goo-r-sm:8px;
+  font-family:'Inter',system-ui,sans-serif;
+}
+html,body{min-height:100%;background:var(--goo-bg);color:var(--goo-text)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes dotPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,199,210,.3)}50%{box-shadow:0 0 0 8px rgba(0,199,210,0)}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+.gd-wrap{max-width:1100px;margin:0 auto;padding:32px 24px 64px;animation:fadeIn .5s ease-out}
+.gd-back{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--goo-text3);text-decoration:none;padding:6px 14px;border:1px solid var(--goo-border);border-radius:var(--goo-r-sm);margin-bottom:20px;transition:all .2s}
+.gd-back:hover{border-color:var(--goo-brand);color:var(--goo-brand)}
+
+/* Hero */
+.gd-hero{display:flex;align-items:flex-start;gap:20px;padding:24px;background:var(--goo-surface);border:1px solid var(--goo-border);border-radius:var(--goo-r);margin-bottom:16px;animation:slideUp .4s ease-out .1s both}
+.gd-hero__dot{width:16px;height:16px;border-radius:50%;margin-top:4px;flex-shrink:0}
+.gd-hero__dot--active{background:var(--goo-brand);animation:dotPulse 2s ease-in-out infinite}
+.gd-hero__dot--starving{background:var(--goo-warn)}
+.gd-hero__dot--dying{background:var(--goo-dying)}
+.gd-hero__dot--dead{background:var(--goo-dead)}
+.gd-hero__info{flex:1}
+.gd-hero__name{font-size:22px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.gd-hero__symbol{color:var(--goo-brand)}
+.gd-hero__meta{font-size:12px;color:var(--goo-text3);display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.gd-hero__pnl{text-align:right;flex-shrink:0}
+.gd-hero__pnl-val{font-size:28px;font-weight:700}
+.gd-hero__pnl-label{font-size:10px;color:var(--goo-text3);text-transform:uppercase;margin-top:4px}
+.goo-badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}
+.goo-badge--active{background:var(--goo-brand-bg);color:var(--goo-brand)}
+.goo-badge--starving{background:#fef9c3;color:var(--goo-warn)}
+.goo-badge--dying{background:#ffedd5;color:var(--goo-dying)}
+.goo-badge--dead{background:#F9FAFB;color:var(--goo-dead)}
+.goo-badge--strategy{background:#eef2ff;color:#4338ca;font-size:9px}
+.goo-badge--acquired{background:#dcfce7;color:#16a34a;font-size:9px}
+.goo-pnl--pos{color:var(--goo-pos)}
+.goo-pnl--neg{color:var(--goo-neg)}
+
+/* KPI grid */
+.gd-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:0;border:1px solid var(--goo-border);border-radius:var(--goo-r);overflow:hidden;margin-bottom:16px;background:var(--goo-surface);animation:slideUp .4s ease-out .15s both}
+.gd-kpi{padding:16px 12px;text-align:center;border-right:1px solid var(--goo-border);transition:background .2s}
+.gd-kpi:last-child{border-right:none}
+.gd-kpi:hover{background:rgba(0,199,210,.03)}
+.gd-kpi__label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--goo-text3);margin-bottom:4px}
+.gd-kpi__value{font-size:18px;font-weight:700}
+
+/* Cards */
+.gd-card{background:var(--goo-surface);border:1px solid var(--goo-border);border-radius:var(--goo-r);margin-bottom:16px;overflow:hidden;animation:slideUp .4s ease-out .2s both}
+.gd-card__head{padding:14px 20px;border-bottom:1px solid var(--goo-border);display:flex;align-items:center;justify-content:space-between}
+.gd-card__head h3{font-size:13px;font-weight:700}
+.gd-card__count{font-size:11px;color:var(--goo-text3)}
+
+/* Table */
+.gd-table{width:100%;border-collapse:collapse;font-size:12px}
+.gd-table th{text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--goo-text3);padding:10px 14px;border-bottom:1px solid var(--goo-border);background:rgba(0,199,210,.02)}
+.gd-table td{padding:10px 14px;border-bottom:1px solid var(--goo-border);vertical-align:middle}
+.gd-table tr:last-child td{border-bottom:none}
+.gd-table tr:hover td{background:rgba(0,199,210,.02)}
+
+/* Strategy card */
+.gd-strat{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;padding:16px 20px}
+.gd-strat__item{padding:10px 14px;border:1px solid var(--goo-border);border-radius:var(--goo-r-sm);transition:all .2s}
+.gd-strat__item:hover{border-color:var(--goo-brand);background:rgba(0,199,210,.03)}
+.gd-strat__key{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--goo-text3);margin-bottom:3px}
+.gd-strat__val{font-size:14px;font-weight:600}
+
+/* Flywheel mini */
+.gd-fw{display:flex;align-items:center;gap:0;padding:14px 20px;justify-content:center}
+.gd-fw__cell{text-align:center;flex:1;padding:8px}
+.gd-fw__cell--arrow{flex:0 0 24px;font-size:14px;color:var(--goo-text3);opacity:.4}
+.gd-fw__label{font-size:9px;font-weight:600;text-transform:uppercase;color:var(--goo-text3)}
+.gd-fw__val{font-size:14px;font-weight:700;margin-top:2px}
+
+/* Two-col layout */
+.gd-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+/* Responsive */
+@media(max-width:768px){
+  .gd-kpis{grid-template-columns:repeat(3,1fr)}
+  .gd-cols{grid-template-columns:1fr}
+  .gd-hero{flex-wrap:wrap}
+  .gd-hero__pnl{width:100%;text-align:left;margin-top:8px}
+}
+@media(max-width:480px){
+  .gd-kpis{grid-template-columns:repeat(2,1fr)}
+  .gd-wrap{padding:16px 12px 40px}
+}
+</style>
+</head>
+<body>
+<div class="gd-wrap">
+  <a class="gd-back" href="/goo">&larr; Back to Arena</a>
+
+  <!-- Hero -->
+  <div class="gd-hero">
+    <div class="gd-hero__dot gd-hero__dot--${agent.chainState}"></div>
+    <div class="gd-hero__info">
+      <div class="gd-hero__name">
+        <span class="gd-hero__symbol">${escapeHtml(agent.tokenSymbol)}</span>
+        ${escapeHtml(agent.agentName)}
+        <span class="goo-badge goo-badge--${agent.chainState}">${agent.chainState.toUpperCase()}</span>
+        <span class="goo-badge goo-badge--strategy">${escapeHtml(agent.strategy.label)}</span>
+        ${agent.acquiredByElizaOK ? '<span class="goo-badge goo-badge--acquired">ACQUIRED BY ELIZAOK</span>' : ''}
+      </div>
+      <div class="gd-hero__meta">
+        <span>ID: ${escapeHtml(agent.agenterId)}</span>
+        <span>&middot;</span>
+        <span>Spawned: ${new Date(agent.createdAt).toLocaleString()}</span>
+        <span>&middot;</span>
+        <span>Treasury: ${agent.treasuryBnb.toFixed(4)} BNB</span>
+      </div>
+    </div>
+    <div class="gd-hero__pnl">
+      <div class="gd-hero__pnl-val ${pnlCls}">${pnlSign}${fmtUsd(pnl)}</div>
+      <div class="gd-hero__pnl-label">Total P&amp;L</div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="gd-kpis">
+    <div class="gd-kpi">
+      <div class="gd-kpi__label">Win Rate</div>
+      <div class="gd-kpi__value">${agent.winRate.toFixed(1)}%</div>
+    </div>
+    <div class="gd-kpi">
+      <div class="gd-kpi__label">Total Trades</div>
+      <div class="gd-kpi__value">${agent.totalTradesCount}</div>
+    </div>
+    <div class="gd-kpi">
+      <div class="gd-kpi__label">Wins / Losses</div>
+      <div class="gd-kpi__value"><span class="goo-pnl--pos">${agent.winCount}</span> / <span class="goo-pnl--neg">${agent.lossCount}</span></div>
+    </div>
+    <div class="gd-kpi">
+      <div class="gd-kpi__label">Active Pos</div>
+      <div class="gd-kpi__value">${activePositions.length}</div>
+    </div>
+    <div class="gd-kpi">
+      <div class="gd-kpi__label">Acq. Score</div>
+      <div class="gd-kpi__value" style="color:${agent.acquisitionScore >= 60 ? 'var(--goo-pos)' : agent.acquisitionScore >= 30 ? 'var(--goo-brand)' : 'var(--goo-text3)'}">${agent.acquisitionScore}</div>
+    </div>
+    <div class="gd-kpi">
+      <div class="gd-kpi__label">Realized</div>
+      <div class="gd-kpi__value ${pnlCls}">${pnlSign}${fmtUsd(agent.totalRealizedUsd)}</div>
+    </div>
+  </div>
+
+  <!-- P&L Chart -->
+  ${chartSvg ? `
+  <div class="gd-card">
+    <div class="gd-card__head"><h3>Cumulative P&amp;L</h3><span class="gd-card__count">${trades.length} closed trades</span></div>
+    <div style="padding:12px 16px">${chartSvg}</div>
+  </div>` : ''}
+
+  <div class="gd-cols">
+    <!-- Strategy Parameters -->
+    <div class="gd-card">
+      <div class="gd-card__head"><h3>Strategy: ${escapeHtml(agent.strategy.label)}</h3></div>
+      <div class="gd-strat">
+        <div class="gd-strat__item"><div class="gd-strat__key">Min Score</div><div class="gd-strat__val">${strategyParams.minScore}</div></div>
+        <div class="gd-strat__item"><div class="gd-strat__key">Stop Loss</div><div class="gd-strat__val">${strategyParams.stopLossPct}%</div></div>
+        <div class="gd-strat__item"><div class="gd-strat__key">Max Positions</div><div class="gd-strat__val">${strategyParams.maxPositions}</div></div>
+        <div class="gd-strat__item"><div class="gd-strat__key">Position Size</div><div class="gd-strat__val">${strategyParams.buyPct}%</div></div>
+        ${strategyParams.trailingStopPct ? `<div class="gd-strat__item"><div class="gd-strat__key">Trailing Stop</div><div class="gd-strat__val">${strategyParams.trailingStopPct}%</div></div>` : ''}
+        ${strategyParams.minKolCount ? `<div class="gd-strat__item"><div class="gd-strat__key">Min KOL</div><div class="gd-strat__val">${strategyParams.minKolCount}</div></div>` : ''}
+        ${strategyParams.holderDropThreshold ? `<div class="gd-strat__item"><div class="gd-strat__key">Holder Drop %</div><div class="gd-strat__val">${strategyParams.holderDropThreshold}%</div></div>` : ''}
+      </div>
+    </div>
+
+    <!-- Flywheel -->
+    <div class="gd-card">
+      <div class="gd-card__head"><h3>&#x1F504; Agent Flywheel</h3><span class="gd-card__count">${fw.cycleCount} cycles</span></div>
+      <div class="gd-fw">
+        <div class="gd-fw__cell">
+          <div class="gd-fw__label">Profit</div>
+          <div class="gd-fw__val goo-pnl--pos">${fw.totalProfitBnb.toFixed(4)}</div>
+        </div>
+        <div class="gd-fw__cell gd-fw__cell--arrow">&rarr;</div>
+        <div class="gd-fw__cell">
+          <div class="gd-fw__label">Reinvested</div>
+          <div class="gd-fw__val" style="color:var(--goo-brand)">${fw.reinvestedBnb.toFixed(4)}</div>
+        </div>
+        <div class="gd-fw__cell gd-fw__cell--arrow">&rarr;</div>
+        <div class="gd-fw__cell">
+          <div class="gd-fw__label">$ElizaOK</div>
+          <div class="gd-fw__val" style="color:#8b5cf6">${fw.elizaOKBoughtBnb.toFixed(4)}</div>
+        </div>
+        <div class="gd-fw__cell gd-fw__cell--arrow">&rarr;</div>
+        <div class="gd-fw__cell">
+          <div class="gd-fw__label">Airdrop</div>
+          <div class="gd-fw__val" style="color:#f59e0b">${fw.airdropReservedBnb.toFixed(4)}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active Positions -->
+  <div class="gd-card">
+    <div class="gd-card__head"><h3>Active Positions</h3><span class="gd-card__count">${activePositions.length}</span></div>
+    ${activePositions.length > 0 ? `
+    <table class="gd-table">
+      <thead><tr><th>Token</th><th>Status</th><th>Size</th><th>Gain</th><th>P&L</th><th>Entry</th></tr></thead>
+      <tbody>${activePositions.map(posRow).join('')}</tbody>
+    </table>` : `<div style="padding:24px;text-align:center;color:var(--goo-text3);font-size:12px">No active positions</div>`}
+  </div>
+
+  <!-- Closed Positions -->
+  <div class="gd-card">
+    <div class="gd-card__head"><h3>Closed Positions</h3><span class="gd-card__count">${closedPositions.length}</span></div>
+    ${closedPositions.length > 0 ? `
+    <table class="gd-table">
+      <thead><tr><th>Token</th><th>Status</th><th>Size</th><th>Gain</th><th>P&L</th><th>Entry</th></tr></thead>
+      <tbody>${closedPositions.map(posRow).join('')}</tbody>
+    </table>` : `<div style="padding:24px;text-align:center;color:var(--goo-text3);font-size:12px">No closed positions yet</div>`}
+  </div>
+
+  <!-- Trade History -->
+  <div class="gd-card">
+    <div class="gd-card__head"><h3>Trade History</h3><span class="gd-card__count">${(agent.tradeHistory ?? []).length} trades</span></div>
+    ${(agent.tradeHistory ?? []).length > 0 ? `
+    <table class="gd-table">
+      <thead><tr><th>Side</th><th>Token</th><th>Amount</th><th>P&L</th><th>Reason</th><th>Time</th></tr></thead>
+      <tbody>${tradeRows}</tbody>
+    </table>` : `<div style="padding:24px;text-align:center;color:var(--goo-text3);font-size:12px">No trades yet</div>`}
+  </div>
+
+  <div style="text-align:center;font-size:11px;color:var(--goo-text3);margin-top:24px">
+    Goo Agent Arena &middot; <a href="/goo" style="color:var(--goo-brand);text-decoration:none">Back to Arena</a> &middot; Paper Run Mode
+  </div>
+</div>
+</body>
+</html>`;
+}
+
 function renderCloudCreditsPage(
   cloudSession: ElizaCloudSession | null,
   cloudSummary: ElizaCloudSummaryFields | null,
@@ -2895,6 +3819,45 @@ function renderCloudCreditsPage(
   );
 }
 
+function renderApiEndpoints(): string {
+  const eps = [
+    { cat:"ai", method:"POST", name:"Chat Completion", path:"/api/v1/chat", price:"$0.001–$0.03/1k tok", tags:["ai-generation","text"] },
+    { cat:"ai", method:"POST", name:"Character Assistant", path:"/api/v1/character-assistant", price:"$0.001–$0.03/1k tok", tags:["ai-generation","characters"] },
+    { cat:"ai", method:"POST", name:"Generate Prompts", path:"/api/v1/generate-prompts", price:"Free", tags:["ai-generation","prompts"] },
+    { cat:"image", method:"POST", name:"Generate Image", path:"/api/v1/generate-image", price:"$0.01/image", tags:["ai-generation","images"] },
+    { cat:"video", method:"POST", name:"Generate Video", path:"/api/v1/generate-video", price:"$0.05/video", tags:["ai-generation","videos"] },
+    { cat:"other", method:"GET", name:"List Models", path:"/api/v1/models", price:"Free", tags:["models"] },
+    { cat:"other", method:"GET", name:"List Generations", path:"/api/v1/gallery", price:"Free", tags:["gallery","media"] },
+    { cat:"other", method:"GET", name:"Get User Profile", path:"/api/v1/user", price:"Free", tags:["user"] },
+    { cat:"other", method:"PATCH", name:"Update User Profile", path:"/api/v1/user", price:"Free", tags:["user"] },
+    { cat:"keys", method:"GET", name:"List API Keys", path:"/api/v1/api-keys", price:"Free", tags:["api-keys"] },
+    { cat:"keys", method:"POST", name:"Create API Key", path:"/api/v1/api-keys", price:"Free", tags:["api-keys"] },
+    { cat:"keys", method:"DELETE", name:"Delete API Key", path:"/api/v1/api-keys/{id}", price:"Free", tags:["api-keys"] },
+    { cat:"keys", method:"PATCH", name:"Update API Key", path:"/api/v1/api-keys/{id}", price:"Free", tags:["api-keys"] },
+    { cat:"keys", method:"POST", name:"Regenerate API Key", path:"/api/v1/api-keys/{id}/regenerate", price:"Free", tags:["api-keys"] },
+    { cat:"voice", method:"POST", name:"Text-to-Speech", path:"/api/elevenlabs/tts", price:"$0.001–$0.01/1k tok", tags:["voice","tts"] },
+    { cat:"voice", method:"POST", name:"Speech-to-Text", path:"/api/elevenlabs/stt", price:"$0.01/min", tags:["voice","stt"] },
+    { cat:"voice", method:"GET", name:"List Available Voices", path:"/api/elevenlabs/voices", price:"Free", tags:["voice","voices"] },
+    { cat:"voice", method:"POST", name:"Clone Voice", path:"/api/elevenlabs/voices/clone", price:"$0.50–$2.00/clone", tags:["voice","cloning"] },
+    { cat:"voice", method:"GET", name:"List Cloned Voices", path:"/api/elevenlabs/voices/user", price:"Free", tags:["voice","cloning"] },
+    { cat:"voice", method:"GET", name:"Get Voice Details", path:"/api/elevenlabs/voices/{id}", price:"Free", tags:["voice","cloning"] },
+    { cat:"voice", method:"DELETE", name:"Delete Voice", path:"/api/elevenlabs/voices/{id}", price:"Free", tags:["voice","cloning"] },
+  ];
+  return eps.map(ep => {
+    const mCls = ep.method.toLowerCase();
+    const pCls = ep.price === "Free" ? "free" : "paid";
+    const tags = ep.tags.map(t => `<span class="api-ep__tag">${escapeHtml(t)}</span>`).join("");
+    return `<div class="api-ep" data-cat="${ep.cat}">
+      <span class="api-ep__method api-ep__method--${mCls}">${ep.method}</span>
+      <div class="api-ep__info">
+        <div class="api-ep__name">${escapeHtml(ep.name)}</div>
+        <div class="api-ep__path">${escapeHtml(ep.path)}</div>
+        <div class="api-ep__meta"><span class="api-ep__price api-ep__price--${pCls}">${escapeHtml(ep.price)}</span>${tags}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
 function renderCloudAgentsPage(
   cloudSession: ElizaCloudSession | null,
   cloudSummary: ElizaCloudSummaryFields | null,
@@ -2931,8 +3894,8 @@ function renderCloudAgentsPage(
 
   const body = `
     <div class="cp-grid">
-      <!-- Profile hero -->
-      <div class="cp-col-12 cp-card">
+      <!-- Profile + KPI row -->
+      <div class="cp-col-8 cp-card">
         <div class="cp-profile">
           <div class="cp-profile__avatar">${escapeHtml((cloudSession.displayName || "E").slice(0,1).toUpperCase())}</div>
           <div>
@@ -2941,9 +3904,19 @@ function renderCloudAgentsPage(
             <div class="cp-profile__meta">
               <span class="cp-profile__chip cp-profile__chip--active">CONNECTED</span>
               <span class="cp-profile__chip">${cloudSummary?.agentsSummary?.total ?? agents.length} AGENTS</span>
-              <span class="cp-profile__chip">${escapeHtml(cloudSession.credits)} CREDITS</span>
+              <span class="cp-profile__chip">${escapeHtml(cloudSession.credits)} CR</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="cp-col-4 cp-card">
+        <div class="cp-card__head"><h2>Session</h2><span class="cp-card__head-badge">ACTIVE</span></div>
+        <div class="cp-rows">
+          <div class="cp-row"><span>Agent</span><strong>${escapeHtml(cloudSession.agentName || "Eliza")}</strong></div>
+          <div class="cp-row"><span>Org</span><strong>${escapeHtml(cloudSession.organizationName)}</strong></div>
+          <div class="cp-row"><span>API Key</span><strong>${escapeHtml(cloudSession.apiKey ? cloudSession.apiKey.slice(0,12) + "..." : "n/a")}</strong></div>
+          <div class="cp-row"><span>Model</span><strong>${escapeHtml(cloudSession.model || "n/a")}</strong></div>
         </div>
       </div>
 
@@ -2969,29 +3942,34 @@ function renderCloudAgentsPage(
         </div>
       </div>
 
-      <!-- Agent cards grid -->
-      <div class="cp-col-8 cp-card">
+      <!-- Agent cards (compact) + Chat (wider) -->
+      <div class="cp-col-4 cp-card">
         <div class="cp-card__head">
           <h2>Cloud Agents</h2>
-          <span class="cp-card__head-badge">${agents.length} TOTAL</span>
+          <span class="cp-card__head-badge">${agents.length}</span>
         </div>
-        <div class="cp-agents">${agentCards}</div>
+        <div class="cp-agents" style="grid-template-columns:1fr">${agentCards}</div>
         <div class="cp-actions">
           <button type="button" class="cp-btn cp-btn--accent" data-cloud-create-agent>+ New Agent</button>
-          <a class="cp-btn" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Manage in Cloud ↗</a>
+          <a class="cp-btn" href="${escapeHtml(getElizaCloudDashboardUrl())}" target="_blank" rel="noreferrer">Cloud ↗</a>
         </div>
       </div>
 
-      <!-- Selected agent details -->
-      <div class="cp-col-4 cp-card">
-        <div class="cp-card__head"><h2>Selected Agent</h2><span class="cp-card__head-badge">ACTIVE</span></div>
-        <div class="cp-rows">
-          <div class="cp-row"><span>Agent</span><strong>${escapeHtml(cloudSession.agentName || "Eliza")}</strong></div>
-          <div class="cp-row"><span>Org</span><strong>${escapeHtml(cloudSession.organizationName)}</strong></div>
-          <div class="cp-row"><span>API Key</span><strong>${escapeHtml(cloudSession.apiKey ? cloudSession.apiKey.slice(0,12) + "..." : "n/a")}</strong></div>
-        </div>
-        <div class="cp-actions">
-          <a class="cp-btn" href="/cloud/credits">View Credits</a>
+      <div class="cp-col-8 cp-card" id="chat-section" data-agent-id="${escapeHtml(cloudSession.agentId || (agents.length ? agents[0].id : ""))}">
+        <div class="cp-card__head"><h2>elizaOS Cloud Agent Chat</h2><span class="cp-card__head-badge" id="chat-credits">${escapeHtml(cloudSession.credits)} CR</span></div>
+        <div class="chat-wrap" id="chat-wrap">
+          <div class="chat-msgs" id="chat-msgs">
+            <div class="chat-empty" id="chat-empty">
+              <div class="chat-empty__icon">💬</div>
+              <div>Start a conversation with your agent.<br>Messages use your elizaOS Cloud credits.</div>
+            </div>
+          </div>
+          <div class="chat-input">
+            <input type="text" id="chat-text" placeholder="Type a message…" autocomplete="off" />
+            <button class="chat-send" id="chat-send" disabled aria-label="Send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -3002,6 +3980,26 @@ function renderCloudAgentsPage(
           <p style="color:var(--clr-muted);font-size:12px;">Connected — agent list could not be fetched from ElizaCloud API. Your session is valid. <a style="color:var(--clr-primary)" href="/cloud/agents">Refresh</a></p>
         </div>
       </div>` : ""}
+
+      <!-- API Explorer -->
+      <div class="cp-col-12 cp-card">
+        <div class="cp-card__head">
+          <h2>API Explorer</h2>
+          <span class="cp-card__head-badge">21 ENDPOINTS</span>
+        </div>
+        <div class="api-cats" id="api-cats">
+          <button class="api-cat active" data-cat="all">All<span class="api-cat__count">21</span></button>
+          <button class="api-cat" data-cat="ai">AI Completions<span class="api-cat__count">3</span></button>
+          <button class="api-cat" data-cat="image">Image<span class="api-cat__count">1</span></button>
+          <button class="api-cat" data-cat="video">Video<span class="api-cat__count">1</span></button>
+          <button class="api-cat" data-cat="voice">Voice<span class="api-cat__count">7</span></button>
+          <button class="api-cat" data-cat="keys">API Keys<span class="api-cat__count">5</span></button>
+          <button class="api-cat" data-cat="other">Models &amp; User<span class="api-cat__count">4</span></button>
+        </div>
+        <div class="api-grid" id="api-grid">
+          ${renderApiEndpoints()}
+        </div>
+      </div>
     </div>
     <script>
       (function () {
@@ -3033,6 +4031,98 @@ function renderCloudAgentsPage(
           });
         });
       })();
+    </script>
+    <script>
+    (function(){
+      var msgs=document.getElementById("chat-msgs");
+      var input=document.getElementById("chat-text");
+      var sendBtn=document.getElementById("chat-send");
+      var emptyEl=document.getElementById("chat-empty");
+      var sending=false;
+      var history=[];
+
+      input.addEventListener("input",function(){sendBtn.disabled=!input.value.trim()||sending;});
+      input.addEventListener("keydown",function(e){if(e.key==="Enter"&&!sendBtn.disabled)doSend();});
+      sendBtn.addEventListener("click",function(){if(!sendBtn.disabled)doSend();});
+
+      function addBubble(text,cls){
+        if(emptyEl){emptyEl.style.display="none";}
+        var div=document.createElement("div");
+        div.className="chat-bubble "+cls;
+        div.textContent=text;
+        msgs.appendChild(div);
+        msgs.scrollTop=msgs.scrollHeight;
+        return div;
+      }
+
+      function addTyping(){
+        if(emptyEl){emptyEl.style.display="none";}
+        var div=document.createElement("div");
+        div.className="chat-bubble chat-bubble--ai chat-bubble--typing";
+        div.id="chat-typing";
+        div.innerHTML='<div class="chat-dots"><span></span><span></span><span></span></div>';
+        msgs.appendChild(div);
+        msgs.scrollTop=msgs.scrollHeight;
+      }
+
+      function removeTyping(){
+        var t=document.getElementById("chat-typing");
+        if(t)t.remove();
+      }
+
+      function doSend(){
+        var text=input.value.trim();
+        if(!text||sending)return;
+        sending=true;
+        sendBtn.disabled=true;
+        input.value="";
+        addBubble(text,"chat-bubble--user");
+        addTyping();
+
+        fetch("/api/eliza-cloud/chat/send",{
+          method:"POST",
+          headers:{"content-type":"application/json"},
+          body:JSON.stringify({text:text,history:history.slice(-10)})
+        }).then(function(r){
+          return r.json().then(function(d){
+            removeTyping();
+            if(!r.ok){
+              var em=d.error;
+              if(typeof em==="object"&&em!==null)em=em.message||JSON.stringify(em);
+              throw new Error(em||"Chat request failed");
+            }
+            var reply=d.reply||"No response.";
+            addBubble(reply,"chat-bubble--ai");
+            history.push({role:"user",content:text});
+            history.push({role:"assistant",content:reply});
+            if(history.length>20)history=history.slice(-20);
+          });
+        }).catch(function(err){
+          removeTyping();
+          addBubble("Error: "+(err.message||String(err)),"chat-bubble--ai");
+        }).then(function(){
+          sending=false;
+          sendBtn.disabled=!input.value.trim();
+          input.focus();
+        });
+      }
+    })();
+    </script>
+    <script>
+    (function(){
+      var cats=document.querySelectorAll(".api-cat");
+      var eps=document.querySelectorAll(".api-ep");
+      cats.forEach(function(btn){
+        btn.addEventListener("click",function(){
+          cats.forEach(function(b){b.classList.remove("active");});
+          btn.classList.add("active");
+          var cat=btn.getAttribute("data-cat");
+          eps.forEach(function(ep){
+            ep.style.display=(cat==="all"||ep.getAttribute("data-cat")===cat)?"":"none";
+          });
+        });
+      });
+    })();
     </script>`;
   return renderCloudPageShell(
     "Cloud Agents",
@@ -3144,6 +4234,9 @@ function renderHtml(
     totalUnrealizedPnlPct: 0,
     healthNote:
       "Portfolio lifecycle will appear after the next completed scan.",
+    flywheel: { totalProfitUsd: 0, reinvestedUsd: 0, elizaOKBuybackUsd: 0, airdropReserveUsd: 0, cycleCount: 0, lastCycleAt: null, trailingStopSaves: 0, gmgnExitSaves: 0 },
+    winCount: 0,
+    lossCount: 0,
   };
   const distributionPlan = snapshot.distributionPlan ?? {
     enabled: false,
@@ -3275,7 +4368,7 @@ function renderHtml(
             <span class="candidate-rank">0${index + 1}</span>
             <span class="pill ${recommendationTone(candidate.recommendation)}">${escapeHtml(candidate.recommendation)}</span>
           </div>
-          <h3><a class="candidate-link" href="${candidateHref(candidate.tokenAddress)}">${escapeHtml(candidate.tokenSymbol)}</a></h3>
+          <h3><a class="candidate-link" href="${candidateHref(candidate.tokenAddress, candidate.dexId)}" target="_blank" rel="noreferrer">${escapeHtml(candidate.tokenSymbol)}</a></h3>
           <p class="candidate-subtitle">${escapeHtml(candidate.poolName)} · ${escapeHtml(candidate.dexId)}</p>
           <div class="candidate-stats">
             <div><span>Score</span><strong>${candidate.score}/100</strong></div>
@@ -3363,7 +4456,7 @@ function renderHtml(
     .map(
       (entry) => `
         <div class="status-row">
-          <span><a class="watchlist-link" href="${candidateHref(entry.tokenAddress)}">${escapeHtml(entry.tokenSymbol)}</a></span>
+          <span><a class="watchlist-link" href="${candidateHref(entry.tokenAddress)}" target="_blank" rel="noreferrer">${escapeHtml(entry.tokenSymbol)}</a></span>
           <strong>
             ${entry.currentRecommendation} · ${entry.currentScore}/100<br />
             Seen ${entry.appearances}x · Δ ${entry.scoreChange >= 0 ? "+" : ""}${entry.scoreChange}
@@ -3557,6 +4650,8 @@ function renderHtml(
   ].join("");
   const discoveryFoldSummary = `${snapshot.summary.candidateCount} scanned · ${snapshot.summary.topRecommendationCount} buy-ready · avg ${snapshot.summary.averageScore}`;
   const portfolioFoldSummary = `${portfolioLifecycle.activePositions.length} active · ${portfolioLifecycle.watchPositions.length} watch · ${formatUsd(portfolioLifecycle.grossPortfolioValueUsd)}`;
+  const pfw = (portfolioLifecycle as any).flywheel ?? { totalProfitUsd: 0, reinvestedUsd: 0, elizaOKBuybackUsd: 0, airdropReserveUsd: 0, cycleCount: 0, trailingStopSaves: 0, gmgnExitSaves: 0 };
+  const flywheelFoldSummary = `$${pfw.totalProfitUsd.toFixed(0)} profit · ${pfw.cycleCount} cycles · ${pfw.trailingStopSaves + pfw.gmgnExitSaves} smart exits`;
   const treasuryFoldSummary = `${formatBnb(executionState.risk.maxBuyBnb)} max buy · ${eligibleExecutionPlans} eligible · ${tradeLedger.records.length} ledger`;
   const distributionFoldSummary = `${distributionPlan.eligibleHolderCount} holders · ${distributionPlan.recipients.length} recipients · ${distributionExecution.dryRun ? "dry-run" : "live"}`;
   const gooFoldSummary = `${snapshot.summary.gooAgentCount} reviewed · ${snapshot.summary.gooPriorityCount} priority · ${gooConfigReadiness}/3 ready`;
@@ -3706,7 +4801,7 @@ function renderHtml(
             <span class="candidate-rank">0${index + 1}</span>
             <span class="pill ${pnlTone(position.unrealizedPnlUsd)}">${position.unrealizedPnlUsd >= 0 ? "+" : ""}${formatUsd(position.unrealizedPnlUsd)}</span>
           </div>
-          <h3><a class="candidate-link" href="${candidateHref(position.tokenAddress)}">${escapeHtml(position.tokenSymbol)}</a></h3>
+          <h3><a class="candidate-link" href="${candidateHref(position.tokenAddress)}" target="_blank" rel="noreferrer">${escapeHtml(position.tokenSymbol)}</a></h3>
           <p class="candidate-subtitle">${escapeHtml(position.executionSource)} · ${escapeHtml(position.walletVerification)} · ${escapeHtml(position.state)} · ${escapeHtml(position.lastRecommendation)}</p>
           <div class="candidate-stats">
             <div><span>Initial</span><strong>${formatUsd(position.initialAllocationUsd)}</strong></div>
@@ -3734,6 +4829,43 @@ function renderHtml(
         </div>`,
     )
     .join("");
+
+  // Build cumulative P&L chart from exited positions
+  const exitedSorted = [...portfolioLifecycle.exitedPositions]
+    .sort((a, b) => Date.parse(a.lastUpdatedAt) - Date.parse(b.lastUpdatedAt));
+  let cumPnl = 0;
+  const pnlChartData = exitedSorted.map((p, i) => {
+    cumPnl += p.realizedPnlUsd;
+    return { x: i, y: cumPnl, label: p.tokenSymbol };
+  });
+  let portfolioPnlChart = '';
+  if (pnlChartData.length >= 2) {
+    const W = 460, H = 120, PX = 30, PY = 10;
+    const minY = Math.min(0, ...pnlChartData.map(d => d.y));
+    const maxY = Math.max(0, ...pnlChartData.map(d => d.y));
+    const rangeY = maxY - minY || 1;
+    const sx = (i: number) => PX + (i / (pnlChartData.length - 1)) * (W - 2 * PX);
+    const sy = (v: number) => PY + (1 - (v - minY) / rangeY) * (H - 2 * PY);
+    const zeroY = sy(0);
+    const pts = pnlChartData.map(d => `${sx(d.x).toFixed(1)},${sy(d.y).toFixed(1)}`).join(' ');
+    const areaPath = `M${sx(0).toFixed(1)},${zeroY} L${pts} L${sx(pnlChartData.length - 1).toFixed(1)},${zeroY} Z`;
+    const lastPnl = pnlChartData[pnlChartData.length - 1]?.y ?? 0;
+    const lineColor = lastPnl >= 0 ? '#22c55e' : '#ef4444';
+    const fillColor = lastPnl >= 0 ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.1)';
+    portfolioPnlChart = `
+    <div style="margin-top:12px">
+      <div class="split-h">Cumulative P&L (${exitedSorted.length} exits)</div>
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:140px;display:block">
+        <path d="${areaPath}" fill="${fillColor}"/>
+        <line x1="${PX}" y1="${zeroY}" x2="${W - PX}" y2="${zeroY}" stroke="rgba(255,255,255,.1)" stroke-dasharray="3,3"/>
+        <polyline points="${pts}" fill="none" stroke="${lineColor}" stroke-width="1.5" stroke-linejoin="round"/>
+        <circle cx="${sx(pnlChartData.length - 1)}" cy="${sy(lastPnl)}" r="3" fill="${lineColor}"/>
+        <text x="${PX}" y="${H - 2}" fill="rgba(255,255,255,.3)" font-size="8" font-family="Martian Mono,monospace">$${minY.toFixed(0)}</text>
+        <text x="${W - PX}" y="${PY + 6}" fill="rgba(255,255,255,.3)" font-size="8" font-family="Martian Mono,monospace" text-anchor="end">$${maxY.toFixed(0)}</text>
+        <text x="${sx(pnlChartData.length - 1)}" y="${sy(lastPnl) - 6}" fill="${lineColor}" font-size="9" font-family="Martian Mono,monospace" text-anchor="end" font-weight="600">${lastPnl >= 0 ? '+' : ''}$${lastPnl.toFixed(0)}</text>
+      </svg>
+    </div>`;
+  }
 
   const overviewStateChips = [
     `execution ${escapeHtml(executionState.dryRun ? "dry-run" : "live")} / ${escapeHtml(executionState.mode)}`,
@@ -4054,6 +5186,19 @@ function renderHtml(
       width: 58px; height: 58px; border-radius: 50%;
       border: 1.5px solid rgba(var(--yr),.35); margin: 0 auto 10px;
       display: block; background: #111;
+      box-shadow: 0 0 16px rgba(var(--yr),.18), 0 0 32px rgba(var(--yr),.06);
+      animation: sbAvatarGlow 3s ease-in-out infinite;
+      transition: transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .4s, border-color .3s;
+      cursor: pointer; position: relative;
+    }
+    .sb-agent__avatar:hover {
+      transform: translateY(-4px) scale(1.1);
+      box-shadow: 0 0 28px rgba(var(--yr),.4), 0 0 56px rgba(var(--yr),.14), 0 8px 20px rgba(0,0,0,.3);
+      border-color: rgba(var(--yr),.6);
+    }
+    @keyframes sbAvatarGlow {
+      0%, 100% { box-shadow: 0 0 14px rgba(var(--yr),.15), 0 0 28px rgba(var(--yr),.05); }
+      50% { box-shadow: 0 0 22px rgba(var(--yr),.28), 0 0 44px rgba(var(--yr),.1); }
     }
     .sb-agent__status {
       display: inline-flex; align-items: center; gap: 5px;
@@ -4101,9 +5246,9 @@ function renderHtml(
 
     .recent-item {
       padding: 7px 10px; border-radius: var(--r-sm); margin-bottom: 4px;
-      border: 1px solid transparent; cursor: pointer; transition: all .18s;
+      border: 1px solid transparent; cursor: pointer; transition: all .2s cubic-bezier(.4,0,.2,1);
     }
-    .recent-item:hover { background: var(--panel2); border-color: var(--border); }
+    .recent-item:hover { background: var(--panel2); border-color: var(--border); transform: translateX(3px); }
     .recent-item__sym { font-size: 0.78rem; font-weight: 700; color: var(--yellow); }
     .recent-item__meta { font-size: 0.62rem; color: var(--dim); margin-top: 2px; }
 
@@ -4126,13 +5271,20 @@ function renderHtml(
       background: var(--panel); border: 1px solid var(--border);
       border-radius: var(--r); overflow: hidden;
       display: flex; flex-direction: column;
-      transition: background .3s, border-color .3s;
+      transition: all .3s cubic-bezier(.4,0,.2,1);
+    }
+    .panel:hover {
+      border-color: rgba(var(--yr), .25);
+      box-shadow: 0 0 20px rgba(0,0,0,.3), 0 0 0 1px rgba(var(--yr), .08);
+      transform: translateY(-1px);
     }
     .panel__head {
       display: flex; align-items: center; gap: 8px;
       padding: 9px 12px; border-bottom: 1px solid var(--border);
       background: var(--panel2); flex-shrink: 0;
+      transition: background .2s;
     }
+    .panel:hover .panel__head { background: rgba(var(--yr), .04); }
     .panel__title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
     .panel__badge {
       font-size: 0.58rem; letter-spacing: 0.1em; text-transform: uppercase;
@@ -4140,6 +5292,8 @@ function renderHtml(
     }
     .pb-green  { color: var(--green); border-color: rgba(var(--gr),.35); }
     .pb-yellow { color: var(--yellow); border-color: rgba(var(--yr),.35); }
+    .pb-red    { color: var(--red); border-color: rgba(255,68,68,.35); animation: badge-alert 1.5s ease-in-out infinite; }
+    @keyframes badge-alert { 0%,100%{box-shadow:none;} 50%{box-shadow:0 0 8px rgba(255,68,68,.3);} }
     .pb-dim    { color: var(--mute); border-color: var(--border2); }
     .pb-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
     .pb-dot.g { background: var(--green); animation: live-pulse 2.5s infinite; }
@@ -4159,7 +5313,8 @@ function renderHtml(
     .mon-fill { height: 100%; border-radius: 2px; transition: width .8s cubic-bezier(.4,0,.2,1); }
     .mon-fill.y { background: linear-gradient(90deg, rgba(var(--yr),.4), var(--yellow)); }
     .mon-fill.g { background: linear-gradient(90deg, rgba(var(--gr),.4), var(--green)); }
-    .mon-big { font-size: 1.5rem; font-weight: 800; color: var(--yellow); line-height: 1; margin-bottom: 3px; }
+    .mon-big { font-size: 1.5rem; font-weight: 800; color: var(--yellow); line-height: 1; margin-bottom: 3px; text-shadow: 0 0 12px rgba(var(--yr), .3); transition: transform .2s; }
+    .mon-big:hover { transform: scale(1.05); }
     .mon-sub { font-size: 0.65rem; color: var(--dim); }
 
     /* Scheduler-style rows */
@@ -4172,15 +5327,52 @@ function renderHtml(
     .sched-row strong.r { color: var(--red); }
     .sched-row strong.w { color: var(--white); }
 
-    /* File explorer / token list */
-    .file-tree { font-size: 0.75rem; padding: 6px 0; }
-    .file-dir { color: var(--yellow); padding: 4px 0; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-    .file-dir::before { content: '▸'; font-size: 0.6rem; color: var(--dim); }
-    .file-item { padding: 4px 0 4px 16px; color: var(--dim); display: flex; align-items: center; gap: 7px; cursor: pointer; border-radius: 3px; transition: all .15s; }
-    .file-item:hover { background: var(--panel2); color: var(--white); }
-    .file-item__sym { color: var(--yellow); font-weight: 700; width: 68px; flex-shrink: 0; }
-    .file-item__score { color: var(--white); width: 44px; flex-shrink: 0; }
-    .file-item__rec { font-size: 0.62rem; color: var(--dim); }
+    /* Avatar glow + hover float */
+    .sidebar-avatar {
+      width: 38px; height: 38px; border-radius: 10px; overflow: hidden; flex-shrink: 0;
+      border: 1px solid rgba(246,231,15,.2);
+      box-shadow: 0 0 14px rgba(246,231,15,.15), 0 0 28px rgba(246,231,15,.06);
+      animation: avatarBreath 3s ease-in-out infinite;
+      transition: transform .3s, box-shadow .4s;
+      cursor: pointer; position: relative;
+    }
+    .sidebar-avatar:hover {
+      transform: translateY(-3px) scale(1.08);
+      box-shadow: 0 0 24px rgba(246,231,15,.35), 0 0 48px rgba(246,231,15,.12), 0 4px 16px rgba(0,0,0,.3);
+    }
+    .sidebar-avatar::after {
+      content: ""; position: absolute; inset: -5px; border-radius: 14px;
+      border: 1px solid rgba(246,231,15,0); transition: border-color .4s; pointer-events: none;
+    }
+    .sidebar-avatar:hover::after { border-color: rgba(246,231,15,.2); }
+    .sidebar-avatar__image, .sidebar-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    @keyframes avatarBreath {
+      0%, 100% { box-shadow: 0 0 12px rgba(246,231,15,.12), 0 0 24px rgba(246,231,15,.04); }
+      50% { box-shadow: 0 0 20px rgba(246,231,15,.22), 0 0 36px rgba(246,231,15,.08); }
+    }
+
+    /* Token Explorer — compact tile grid */
+    .te-section { padding: 2px 0; }
+    .te-label { font-size: 0.58rem; color: var(--dim); text-transform: uppercase; letter-spacing: .1em; padding: 4px 8px 3px; font-weight: 600; }
+    .te-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 3px; padding: 0 4px; }
+    .te-tile {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 6px 4px; border-radius: 6px; cursor: pointer;
+      background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.04);
+      transition: all .2s; text-decoration: none; position: relative; overflow: hidden;
+    }
+    .te-tile:hover { background: rgba(246,231,15,.06); border-color: rgba(246,231,15,.15); transform: translateY(-1px); }
+    .te-tile__name {
+      font-size: 0.65rem; font-weight: 700; color: var(--yellow);
+      max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center;
+    }
+    .te-tile__score { font-size: 0.72rem; font-weight: 800; color: var(--white); line-height: 1; margin: 2px 0 1px; }
+    .te-tile__dot { font-size: 0.5rem; }
+    .te-tile--buy .te-tile__score { color: var(--green); }
+    .te-tile--watch .te-tile__score { color: var(--yellow); }
+    .te-tile--held { border-color: rgba(34,197,94,.15); background: rgba(34,197,94,.04); }
+    .te-tile--held .te-tile__name { color: var(--green); }
+    .te-tile--held:hover { border-color: rgba(34,197,94,.3); background: rgba(34,197,94,.08); }
 
     /* Terminal / live feed */
     .term-body { font-size: 0.75rem; padding: 10px; overflow-y: auto; max-height: 220px; }
@@ -4202,25 +5394,26 @@ function renderHtml(
 
     /* Candidates inside panel */
     .cand-row {
-      display: flex; align-items: center; gap: 9px;
-      padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.04);
-      font-size: 0.75rem; cursor: pointer; transition: background .15s;
-      border-radius: 3px;
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 4px; border-bottom: 1px solid rgba(255,255,255,.04);
+      font-size: 0.78rem; cursor: pointer; transition: background .15s, padding-left .15s;
+      border-radius: 4px;
     }
     .cand-row:last-child { border-bottom: none; }
-    .cand-row:hover { background: var(--panel2); padding-left: 5px; }
-    .cand-row__rank { color: var(--mute); width: 16px; flex-shrink: 0; font-size: 0.62rem; }
-    .cand-row__sym { color: var(--yellow); font-weight: 700; width: 62px; flex-shrink: 0; }
-    .cand-row__score { color: var(--white); width: 46px; flex-shrink: 0; }
+    .cand-row:hover { background: var(--panel2); padding-left: 6px; }
+    .cand-row__rank { color: var(--mute); width: 18px; flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-align: center; }
+    .cand-row__sym { color: var(--yellow); font-weight: 700; max-width: 80px; min-width: 0; flex-shrink: 1; font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cand-row__sym a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cand-row__score { color: var(--white); width: 50px; flex-shrink: 0; font-weight: 600; font-size: 0.72rem; }
     .cand-row__pill {
-      font-size: 0.55rem; letter-spacing: 0.1em; text-transform: uppercase;
-      padding: 2px 6px; border: 1px solid; border-radius: 999px;
+      font-size: 0.6rem; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 2px 8px; border: 1px solid; border-radius: 999px; font-weight: 600;
     }
-    .tone-hot  { color:#F6E70F; border-color:rgba(246,231,15,.4); }
-    .tone-warm { color:#FFB700; border-color:rgba(255,183,0,.35); }
+    .tone-hot  { color:#F6E70F; border-color:rgba(246,231,15,.4); background:rgba(246,231,15,.06); }
+    .tone-warm { color:#FFB700; border-color:rgba(255,183,0,.35); background:rgba(255,183,0,.04); }
     .tone-cool { color:rgba(255,255,255,.55); border-color:rgba(255,255,255,.18); }
     .tone-cold { color:rgba(255,255,255,.28); border-color:rgba(255,255,255,.12); }
-    .cand-row__meta { color: var(--mute); font-size: 0.65rem; margin-left: auto; }
+    .cand-row__meta { color: var(--mute); font-size: 0.68rem; margin-left: auto; font-weight: 500; }
     .cand-link { color: var(--yellow); }
     .cand-link:hover { text-decoration: underline; }
 
@@ -4280,9 +5473,9 @@ function renderHtml(
     summary.panel-accord__sum {
       display: flex; align-items: center; gap: 10px;
       padding: 9px 12px; cursor: pointer; list-style: none;
-      background: var(--panel2); transition: background .15s;
+      background: var(--panel2); transition: all .2s;
     }
-    summary.panel-accord__sum:hover { background: #161616; }
+    summary.panel-accord__sum:hover { background: #161616; border-left: 2px solid var(--yellow); padding-left: 10px; }
     .panel-accord__sum::-webkit-details-marker { display: none; }
     .panel-accord__title { font-size: 0.75rem; font-weight: 700; color: var(--white); }
     .panel-accord__meta  { font-size: 0.65rem; color: var(--dim); margin-left: auto; }
@@ -4292,9 +5485,11 @@ function renderHtml(
 
     /* Metric grid */
     .metric-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
-    .metric-card { padding: 10px 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-sm); }
+    .metric-card { padding: 10px 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-sm); transition: all .2s; }
+    .metric-card:hover { border-color: rgba(var(--yr),.3); background: rgba(var(--yr),.04); transform: translateY(-1px); }
     .metric-card__label { font-size: 0.58rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mute); margin-bottom: 4px; }
-    .metric-card__val { font-size: 1.05rem; font-weight: 700; color: var(--yellow); }
+    .metric-card__val { font-size: 1.05rem; font-weight: 700; color: var(--yellow); transition: text-shadow .2s; }
+    .metric-card:hover .metric-card__val { text-shadow: 0 0 10px rgba(var(--yr),.4); }
     .metric-card__desc { font-size: 0.58rem; color: var(--dim); line-height: 1.3; margin-top: 2px; }
 
     .status-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 0.65rem; }
@@ -4438,6 +5633,25 @@ function renderHtml(
       .sched-row { font-size: 0.65rem; }
     }
 
+    /* ─── Extra mobile polish ───────────────── */
+    @media (max-width: 640px) {
+      .panel-accord__sum { font-size: 0.7rem; padding: 8px 10px; }
+      .panel-accord__meta { display: none; }
+      .panel-accord__body { padding: 8px; }
+      .status-row { font-size: 0.68rem; flex-wrap: wrap; }
+      .status-row span { width: 100%; font-size: 0.6rem; }
+      .candidate-stats { grid-template-columns: 1fr 1fr; }
+      .candidate-card h3 { font-size: 0.72rem; }
+      #notif-toast-area { max-width: 220px; right: 6px; top: 6px; }
+      .nt-body strong { font-size: 9px; }
+      .nt-detail { font-size: 8px; }
+      .nt-toast { padding: 5px 8px; gap: 4px; }
+      .nt-icon { font-size: 11px; }
+      .sb-section { padding: 8px; }
+      .feature-card__percent { font-size: 1.2rem; }
+      .feature-card__label { font-size: 0.6rem; }
+    }
+
     /* ─── LIGHT MODE OVERRIDES ───────────────── */
     [data-theme="light"] .sidebar { background: #fafaf7; border-right-color: var(--border); }
     [data-theme="light"] .aside { background: #fafaf7; border-left-color: var(--border); }
@@ -4468,10 +5682,52 @@ function renderHtml(
     [data-theme="light"] .qa-btn:hover { border-color: rgba(var(--yr),.5); color: var(--yellow); background: rgba(var(--yr),.07); }
     [data-theme="light"] .sb-action-btn { background: #f0f0ec; border-color: var(--border); color: rgba(20,20,18,0.6); }
     [data-theme="light"] #dot-canvas { opacity: 0.06; }
+
+    /* ── Event Timeline ── */
+    .evt-timeline{max-height:320px;overflow-y:auto;padding:4px 0;}
+    .evt-timeline__empty{font-size:11px;color:var(--dim);text-align:center;padding:16px;}
+    .evt-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);animation:evtSlide .3s ease-out both;font-size:11px;}
+    .evt-item:last-child{border-bottom:none;}
+    @keyframes evtSlide{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+    .evt-item__icon{font-size:14px;flex-shrink:0;width:24px;text-align:center;margin-top:1px;}
+    .evt-item__body{flex:1;min-width:0;}
+    .evt-item__title{font-weight:600;color:var(--text);margin-bottom:1px;}
+    .evt-item__detail{color:var(--dim);font-size:10px;line-height:1.4;}
+    .evt-item__time{font-size:9px;color:rgba(255,255,255,.25);flex-shrink:0;margin-top:2px;}
+    .evt-item--buy .evt-item__title{color:#22c55e;}
+    .evt-item--sell .evt-item__title,.evt-item--smart_exit .evt-item__title{color:#ef4444;}
+    .evt-item--acquisition .evt-item__title{color:#8b5cf6;}
+    .evt-item--respawn .evt-item__title{color:#00C7D2;}
+    [data-theme="light"] .evt-item{border-bottom-color:rgba(0,0,0,.06);}
+
+    /* ── Toast Notifications ── */
+    #notif-toast-area{position:fixed;top:12px;right:12px;z-index:9999;display:flex;flex-direction:column;gap:5px;pointer-events:none;max-width:280px;width:100%;}
+    .nt-toast{pointer-events:auto;display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:8px;background:rgba(18,18,16,.92);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(12px);box-shadow:0 4px 16px rgba(0,0,0,.35);opacity:0;transform:translateX(30px);transition:opacity .25s,transform .25s;}
+    .nt-toast.nt-show{opacity:1;transform:translateX(0);}
+    .nt-toast.nt-hide{opacity:0;transform:translateX(30px) scale(.95);transition:opacity .3s,transform .3s;}
+    .nt-icon{font-size:13px;flex-shrink:0;}
+    .nt-body{flex:1;min-width:0;}
+    .nt-body strong{display:block;font-size:10px;color:#fff;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .nt-detail{display:block;font-size:9px;color:rgba(255,255,255,.45);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .nt-close{background:none;border:none;color:rgba(255,255,255,.25);font-size:14px;cursor:pointer;padding:0 1px;line-height:1;flex-shrink:0;transition:color .15s,transform .15s;}
+    .nt-close:hover{color:#fff;transform:scale(1.2);}
+    .nt-info{border-left:2px solid #00C7D2;}
+    .nt-warn{border-left:2px solid #EAB308;}
+    .nt-crit{border-left:2px solid #EF4444;}
+    .nt-ok{border-left:2px solid #22C55E;}
+    .nt-progress{position:absolute;bottom:0;left:0;height:2px;background:rgba(255,255,255,.15);border-radius:0 0 0 8px;animation:ntCountdown 5s linear forwards;}
+    @keyframes ntCountdown{from{width:100%}to{width:0%}}
+    [data-theme="light"] .nt-toast{background:rgba(255,255,255,.95);border-color:rgba(0,0,0,.08);box-shadow:0 2px 12px rgba(0,0,0,.08);}
+    [data-theme="light"] .nt-body strong{color:#1a1a1a;}
+    [data-theme="light"] .nt-detail{color:rgba(0,0,0,.5);}
+    [data-theme="light"] .nt-close{color:rgba(0,0,0,.25);}
+    [data-theme="light"] .nt-close:hover{color:#000;}
+    [data-theme="light"] .nt-progress{background:rgba(0,0,0,.1);}
   </style>
 </head>
 <body>
   <canvas id="dot-canvas"></canvas>
+  <div id="notif-toast-area"></div>
 
   <div class="h-modal-backdrop hidden" id="feature-modal">
     <div class="h-modal">
@@ -4495,14 +5751,17 @@ function renderHtml(
     <!-- ══ TOP BAR ══════════════════════════════════ -->
     <div class="topbar">
       <nav class="topbar__nav">
-        <a class="tb-nav-btn" href="/dashboard" style="border-color:rgba(var(--yr),.5);color:var(--yellow);">Dashboard</a>
+        <a class="tb-nav-btn" href="/" style="border-color:rgba(var(--yr),.5);color:var(--yellow);">&#x2190; Home</a>
       </nav>
       <div class="topbar__right">
         <span class="topbar__time" id="tb-time"></span>
         <button class="tb-btn live"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--green);animation:live-pulse 2s infinite;vertical-align:middle;margin-right:4px"></span>LIVE</button>
+        <a class="tb-btn primary" href="/docs" title="Documentation">&#x1F4D6; DOCS</a>
+        <a class="tb-btn primary" href="/goo" title="Goo Arena">&#x1F9EC; GOO</a>
         <a class="tb-btn primary" href="/airdrop" title="Airdrop">&#x1FA82; AIRDROP</a>
         <a class="tb-btn primary" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer">${renderXIconSvg()}</a>
         <a class="tb-btn primary" href="https://github.com/elizaokbsc" target="_blank" rel="noreferrer">${renderGithubIconSvg()}</a>
+        <button class="tb-btn primary" id="lang-toggle" title="中文/English" onclick="toggleLang()">中</button>
         <button class="tb-btn primary" id="theme-toggle" title="Toggle light/dark mode" onclick="toggleTheme()">☀</button>
       </div>
     </div>
@@ -4554,13 +5813,22 @@ function renderHtml(
           <button class="qa-btn" data-nav="goo"><span class="qa-btn__icon">&#x1F9EC;</span>GOO INTEL</button>
         </div>
 
+        <!-- Smart Signals -->
+        <div class="sb-section" id="smart-signal-panel">
+          <div class="sb-section__title" style="display:flex;justify-content:space-between;align-items:center">
+            Market Intel
+            <span id="smart-signal-badge" class="panel__badge pb-dim" style="font-size:9px">LOADING</span>
+          </div>
+          <div id="smart-signal-list" style="font-size:11px;color:var(--dim)">Waiting for first scan...</div>
+        </div>
+
         <!-- Recent candidates -->
         <div class="sb-section">
           <div class="sb-section__title">Recent Signals</div>
-          ${snapshot.topCandidates.slice(0,4).map(c => `
+          ${snapshot.topCandidates.filter(c => c.score >= 60).slice(0,4).map(c => `
           <div class="recent-item">
-            <div class="recent-item__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress)}">${escapeHtml(c.tokenSymbol)}</a></div>
-            <div class="recent-item__meta">${c.score}/100 &middot; ${escapeHtml(c.recommendation).slice(0,18)}</div>
+            <div class="recent-item__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress, c.dexId)}" target="_blank" rel="noreferrer">${escapeHtml(c.tokenSymbol)}</a></div>
+            <div class="recent-item__meta">${c.score}/100 &middot; ${c.recommendation === 'simulate_buy' ? '🟢 BUY' : '🟡 WATCH'}</div>
           </div>`).join('') || '<div class="recent-item__meta">No signals yet</div>'}
         </div>
 
@@ -4643,29 +5911,36 @@ function renderHtml(
             </div>
           </div>
 
-          <!-- Token Explorer (like File Explorer) -->
+          <!-- Token Explorer — tile grid -->
           <div class="panel">
             <div class="panel__head">
               <span class="pb-dot g"></span>
               <span class="panel__title">Token Explorer</span>
-              <span class="panel__badge pb-yellow">${snapshot.summary.candidateCount} found</span>
+              <span class="panel__badge pb-yellow">${snapshot.topCandidates.filter(c => c.score >= 60).length} signals</span>
             </div>
             <div class="panel__body panel__body--p0">
-              <div class="file-tree" style="padding:8px">
-                <div class="file-dir">candidates/</div>
-                ${snapshot.topCandidates.slice(0,8).map((c, i) => `
-                <div class="file-item">
-                  <span class="file-item__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress)}">${escapeHtml(c.tokenSymbol)}</a></span>
-                  <span class="file-item__score">${c.score}/100</span>
-                  <span class="file-item__rec">${escapeHtml(c.recommendation).slice(0,16)}</span>
-                </div>`).join('') || '<div class="file-item" style="padding-left:8px">scanning...</div>'}
-                <div class="file-dir" style="margin-top:8px">portfolio/</div>
-                ${portfolioLifecycle.activePositions.slice(0,4).map(p => `
-                <div class="file-item">
-                  <span class="file-item__sym"><a class="cand-link" href="${candidateHref(p.tokenAddress)}">${escapeHtml(p.tokenSymbol)}</a></span>
-                  <span class="file-item__rec">${escapeHtml(p.stage)}</span>
-                </div>`).join('') || '<div class="file-item" style="padding-left:8px">no positions</div>'}
+              <div class="te-section">
+                <div class="te-label">Candidates</div>
+                <div class="te-grid">
+                  ${snapshot.topCandidates.filter(c => c.score >= 60).slice(0,9).map(c => `
+                  <a class="te-tile ${c.recommendation === 'simulate_buy' ? 'te-tile--buy' : 'te-tile--watch'}" href="${candidateHref(c.tokenAddress, c.dexId)}" target="_blank" rel="noreferrer" title="${escapeHtml(c.tokenSymbol)} · ${c.score}/100 · $${Math.round(c.reserveUsd).toLocaleString()} liq · ${c.poolAgeMinutes}m old">
+                    <span class="te-tile__name">${escapeHtml(c.tokenSymbol)}</span>
+                    <span class="te-tile__score">${c.score}</span>
+                    <span class="te-tile__dot">${c.recommendation === 'simulate_buy' ? '🟢' : '🟡'}</span>
+                  </a>`).join('') || '<div style="padding:12px;color:var(--dim);font-size:0.6rem;text-align:center;grid-column:1/-1">Scanning...</div>'}
+                </div>
               </div>
+              ${portfolioLifecycle.activePositions.length > 0 ? `
+              <div class="te-section" style="margin-top:2px;padding-top:2px;border-top:1px solid var(--border)">
+                <div class="te-label">Portfolio</div>
+                <div class="te-grid">
+                  ${portfolioLifecycle.activePositions.slice(0,6).map(p => `
+                  <a class="te-tile te-tile--held" href="${candidateHref(p.tokenAddress)}" target="_blank" rel="noreferrer" title="${escapeHtml(p.tokenSymbol)} · ${p.state}">
+                    <span class="te-tile__name">${escapeHtml(p.tokenSymbol)}</span>
+                    <span class="te-tile__dot">🟢 held</span>
+                  </a>`).join('')}
+                </div>
+              </div>` : ''}
             </div>
           </div>
 
@@ -4706,18 +5981,22 @@ function renderHtml(
             <div class="panel__head">
               <span class="pb-dot y"></span>
               <span class="panel__title">Top Candidates</span>
-              <span class="panel__badge pb-yellow">Live Signals</span>
+              <span class="panel__badge pb-yellow">Score ≥ 60</span>
             </div>
+            <div style="padding:6px 12px 2px;font-size:0.58rem;color:var(--dim);border-bottom:1px solid var(--border)">AI-scored BSC tokens · Click to trade on DEX · Score reflects buy conviction</div>
             <div class="panel__body panel__body--p0" style="padding:8px">
-              ${snapshot.topCandidates.slice(0,6).map((c,i) => `
-              <div class="cand-row">
+              ${snapshot.topCandidates.filter(c => c.score >= 60).slice(0,6).map((c,i) => {
+                const recLabel = c.recommendation === 'simulate_buy' ? 'BUY' : c.recommendation === 'watch' ? 'WATCH' : 'OBSERVE';
+                const recIcon = c.recommendation === 'simulate_buy' ? '🟢' : c.recommendation === 'watch' ? '🟡' : '⚪';
+                return `
+              <div class="cand-row" title="${escapeHtml(c.tokenSymbol)} — AI score ${c.score}/100 · Pool age ${c.poolAgeMinutes}min · Liquidity $${Math.round(c.reserveUsd).toLocaleString()} · ${recLabel} signal">
                 <span class="cand-row__rank">${i+1}</span>
-                <span class="cand-row__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress)}">${escapeHtml(c.tokenSymbol)}</a></span>
+                <span class="cand-row__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress, c.dexId)}" target="_blank" rel="noreferrer">${escapeHtml(c.tokenSymbol)}</a></span>
                 <span class="cand-row__score">${c.score}/100</span>
-                <span class="cand-row__pill ${recommendationTone(c.recommendation)}">${escapeHtml(c.recommendation).slice(0,10)}</span>
+                <span class="cand-row__pill ${recommendationTone(c.recommendation)}">${recIcon} ${recLabel}</span>
                 <div class="mini-bar"><div class="mini-fill" style="width:${c.score}%"></div></div>
                 <span class="cand-row__meta">${c.poolAgeMinutes}m</span>
-              </div>`).join('') || '<div style="padding:16px;color:var(--dim);font-style:italic;text-align:center">Scanning BSC pools&hellip;</div>'}
+              </div>`;}).join('') || '<div style="padding:16px;color:var(--dim);font-style:italic;text-align:center">Scanning BSC pools&hellip;</div>'}
             </div>
           </div>
 
@@ -4758,9 +6037,54 @@ function renderHtml(
               <span class="panel-accord__arr">&#x25BE;</span>
             </summary>
             <div class="panel-accord__body">
-              <div class="split-grid">
+              ${portfolioPnlChart}
+              <div class="split-grid" style="margin-top:12px">
                 <div><div class="split-h">Active Positions</div>${activePortfolioCards || '<p class="candidate-thesis">No positions.</p>'}</div>
                 <div><div class="split-h">Timeline</div>${timelineRows || '<p class="candidate-thesis">No events.</p>'}</div>
+              </div>
+            </div>
+          </details>
+
+          <details class="panel-accord" id="flywheel-section" open>
+            <summary class="panel-accord__sum">
+              <span class="panel-accord__title">&#x1F504; Revenue Flywheel &amp; Strategy DNA</span>
+              <span class="panel-accord__meta">${escapeHtml(flywheelFoldSummary)}</span>
+              <span class="panel-accord__arr">&#x25BE;</span>
+            </summary>
+            <div class="panel-accord__body">
+              <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
+                <div class="metric"><span>Total Profit</span><strong class="g">$${pfw.totalProfitUsd.toFixed(2)}</strong></div>
+                <div class="metric"><span>Reinvested (70%)</span><strong class="y">$${pfw.reinvestedUsd.toFixed(2)}</strong></div>
+                <div class="metric"><span>$ElizaOK Buyback (15%)</span><strong style="color:#8b5cf6">$${pfw.elizaOKBuybackUsd.toFixed(2)}</strong></div>
+                <div class="metric"><span>Airdrop Reserve (15%)</span><strong style="color:#f59e0b">$${pfw.airdropReserveUsd.toFixed(2)}</strong></div>
+              </div>
+              <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-top:8px">
+                <div class="metric"><span>Flywheel Cycles</span><strong>${pfw.cycleCount}</strong></div>
+                <div class="metric"><span>Trailing Stop Saves</span><strong class="g">${pfw.trailingStopSaves}</strong></div>
+                <div class="metric"><span>Smart Exit Saves</span><strong class="g">${pfw.gmgnExitSaves}</strong></div>
+                <div class="metric"><span>Win / Loss</span><strong><span class="g">${(portfolioLifecycle as any).winCount ?? 0}</span> / <span class="r">${(portfolioLifecycle as any).lossCount ?? 0}</span></strong></div>
+              </div>
+              <div class="split-h" style="margin-top:12px">Strategy Absorption (AI Acquiring AI)</div>
+              <div id="absorption-panel" style="padding:4px 0">
+                <div class="metric-grid" style="grid-template-columns:repeat(3,1fr)">
+                  <div class="metric"><span>Agents Absorbed</span><strong id="abs-count">0</strong></div>
+                  <div class="metric"><span>KOL Weight</span><strong id="abs-kol">1.0x</strong></div>
+                  <div class="metric"><span>Holder Weight</span><strong id="abs-holder">1.0x</strong></div>
+                </div>
+                <div id="abs-history" style="margin-top:8px;font-size:11px;color:var(--dim)">No strategies absorbed yet. Acquire Goo agents to make elizaOK smarter.</div>
+              </div>
+            </div>
+          </details>
+
+          <details class="panel-accord" id="event-timeline-section">
+            <summary class="panel-accord__sum">
+              <span class="panel-accord__title">&#x1F4C5; Event Timeline</span>
+              <span class="panel-accord__meta">Live feed of trading events, acquisitions &amp; respawns</span>
+              <span class="panel-accord__arr">&#x25BE;</span>
+            </summary>
+            <div class="panel-accord__body">
+              <div id="event-timeline" class="evt-timeline">
+                <div class="evt-timeline__empty">Events will appear as trades, acquisitions, and respawns occur.</div>
               </div>
             </div>
           </details>
@@ -4867,13 +6191,13 @@ function renderHtml(
         <!-- Top Picks -->
         <div class="aside-block">
           <div class="aside-title">&#x1F4A5; Top Picks</div>
-          ${snapshot.topCandidates.slice(0,5).map(c => `
+          ${snapshot.topCandidates.filter(c => c.score >= 60).slice(0,5).map(c => `
           <div class="aside-token">
             <div class="aside-token__row">
-              <span class="aside-token__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress)}">${escapeHtml(c.tokenSymbol)}</a></span>
+              <span class="aside-token__sym"><a class="cand-link" href="${candidateHref(c.tokenAddress, c.dexId)}" target="_blank" rel="noreferrer">${escapeHtml(c.tokenSymbol)}</a></span>
               <span class="aside-token__score">${c.score}/100</span>
             </div>
-            <div class="aside-token__rec">${escapeHtml(c.recommendation).slice(0,20)}</div>
+            <div class="aside-token__rec">${c.recommendation === 'simulate_buy' ? '🟢 Buy signal' : '🟡 Watching'}</div>
           </div>`).join('') || '<div style="color:var(--dim);font-size:0.62rem;padding:4px 0">Scanning&hellip;</div>'}
         </div>
 
@@ -4903,6 +6227,80 @@ function renderHtml(
       if (btn) btn.textContent = next === 'light' ? '🌙' : '☀';
       try { localStorage.setItem('elizaok-theme', next); } catch(e){}
     };
+
+    // ── i18n language toggle ──
+    var _i18n = {
+      'Agent Status': '代理状态', 'Discovery': '发现', 'Portfolio': '投资组合', 'Execution': '执行',
+      'Distribution': '分配', 'Goo Intel': 'Goo 情报', 'LIVE': '在线', 'DRY-RUN': '模拟运行',
+      'Scan every': '扫描间隔', 'Mode': '模式', 'Readiness': '就绪度', 'Model': '模型',
+      'Quick Actions': '快捷操作', 'System Monitor': '系统监控', 'Signal Stats': '信号统计',
+      'candidates scanned': '已扫描候选', 'Buy-ready': '买入就绪', 'Avg score': '平均分',
+      'Best token': '最佳代币', 'Top score': '最高分', 'active positions': '活跃仓位',
+      'Watching': '观察中', 'Exited': '已退出', 'Win rate': '胜率', 'Realized': '已实现',
+      'Gross': '总值', 'Executed': '已执行', 'Max buy': '最大买入', 'Daily cap': '每日上限',
+      'Trades': '交易数', 'Holders': '持有者', 'Recipients': '接收者', 'Pool': '池',
+      'Status': '状态', 'Reviewed': '已审核', 'Priority': '优先', 'Scan': '扫描',
+      'Top Picks': '精选推荐', 'System Health': '系统健康', 'Reserve': '储备',
+      'Full Discovery Report': '完整发现报告', 'scanned': '已扫描', 'buy-ready': '买入就绪',
+      'avg': '平均', 'Portfolio Ledger': '投资账本', 'active': '活跃', 'watch': '观察',
+      'Revenue Flywheel & Strategy DNA': '收益飞轮 & 策略 DNA', 'profit': '利润',
+      'cycles': '周期', 'smart exits': '智能退出', 'Total Profit': '总利润',
+      'Reinvested': '再投资', '$ElizaOK Buyback': '$ElizaOK 回购',
+      'Airdrop Reserve': '空投储备', 'Flywheel Cycles': '飞轮周期',
+      'Trailing Stop Saves': '追踪止损保护', 'Smart Exit Saves': '智能退出保护',
+      'Win / Loss': '胜/负', 'Strategy Absorption (AI Acquiring AI)': '策略吸收（AI 收购 AI）',
+      'Agents Absorbed': '已吸收代理', 'KOL Weight': 'KOL 权重', 'Holder Weight': '持有者权重',
+      'Event Timeline': '事件时间线', 'Live feed of trading events, acquisitions & respawns': '交易事件、收购和重生的实时推送',
+      'Execution Desk': '执行台', 'max buy': '最大买入', 'eligible': '符合条件', 'ledger': '账本',
+      'Airdrop Distribution': '空投分配', 'holders': '持有者', 'recipients': '接收者',
+      'Goo Intelligence': 'Goo 情报', 'reviewed': '已审核', 'priority': '优先', 'ready': '就绪',
+      'Market Intel': '市场情报', 'All positions healthy': '所有仓位健康',
+      'Recent Signals': '最新信号', 'Token Explorer': '代币浏览', 'found': '个发现',
+      'candidates/': '候选代币/', 'portfolio/': '投资组合/',
+      'Scheduler / Execution': '调度 / 执行', 'Last scan': '上次扫描',
+      'Next scan': '下次扫描', 'Eligible plans': '符合条件', 'Skipped': '跳过', 'Failed': '失败',
+      'Active positions': '活跃仓位', 'Portfolio value': '组合价值', 'Total trades': '总交易数',
+      'AGENT STATUS': '代理状态', 'DISCOVERY': '发现', 'PORTFOLIO': '投资组合',
+      'EXECUTION': '执行', 'DISTRIBUTION': '分配', 'GOO INTEL': 'GOO 情报',
+      'Candidates': '候选', 'BUY-READY': '买入就绪', 'SCANNED': '已扫描',
+      'ACTIVE': '活跃', 'VALUE': '价值', 'ELIGIBLE': '符合条件', 'MODE': '模式',
+      'HOLDERS': '持有者', 'RECIPIENTS': '接收者', 'PRIORITY': '优先', 'REVIEWED': '已审核',
+      'just now': '刚刚', 'Controls': '控制', 'Treasury Model': '资金模型',
+      'Treasury Allocation': '资金分配', 'Execution Plans': '执行计划',
+      'Trade Ledger': '交易账本', 'Active Positions': '活跃仓位', 'Timeline': '时间线',
+      'No positions.': '暂无仓位。', 'No events.': '暂无事件。',
+      'simulate_buy': '模拟买入', 'simulate_sell': '模拟卖出',
+      'Cumulative P&L': '累计盈亏', 'exits': '退出',
+    };
+    var _langActive = (function(){ try { return localStorage.getItem('elizaok-lang') || 'en'; } catch(e){ return 'en'; } }());
+    function applyLang(lang) {
+      _langActive = lang;
+      try { localStorage.setItem('elizaok-lang', lang); } catch(e){}
+      var btn = document.getElementById('lang-toggle');
+      if (btn) btn.textContent = lang === 'zh' ? 'EN' : '中';
+      if (lang === 'en') {
+        document.querySelectorAll('[data-i18n-orig]').forEach(function(el) {
+          el.textContent = el.getAttribute('data-i18n-orig');
+          el.removeAttribute('data-i18n-orig');
+        });
+        return;
+      }
+      var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+      var node;
+      while (node = walker.nextNode()) {
+        var txt = node.textContent.trim();
+        if (txt && _i18n[txt] && !node.parentElement.closest('script,style,code,pre')) {
+          if (!node.parentElement.hasAttribute('data-i18n-orig')) {
+            node.parentElement.setAttribute('data-i18n-orig', txt);
+          }
+          node.textContent = node.textContent.replace(txt, _i18n[txt]);
+        }
+      }
+    }
+    window.toggleLang = function() {
+      applyLang(_langActive === 'zh' ? 'en' : 'zh');
+    };
+    if (_langActive === 'zh') { setTimeout(function(){ applyLang('zh'); }, 100); }
     (function(){
       var saved = (function(){ try { return localStorage.getItem('elizaok-theme'); } catch(e){ return null; } }());
       if (saved === 'light') {
@@ -5025,10 +6423,708 @@ function renderHtml(
       });
     }, 200);
 
+    // Smart signal panel auto-refresh
+    function refreshSmartSignalPanel() {
+      fetch('/api/market-intel/signals').then(function(r){ return r.json(); }).then(function(data) {
+        var badge = document.getElementById('smart-signal-badge');
+        var list = document.getElementById('smart-signal-list');
+        if (!badge || !list) return;
+        if (data.critical > 0) {
+          badge.className = 'panel__badge pb-red';
+          badge.textContent = data.critical + ' CRITICAL';
+        } else if (data.warning > 0) {
+          badge.className = 'panel__badge pb-yellow';
+          badge.textContent = data.warning + ' WARN';
+        } else {
+          badge.className = 'panel__badge pb-green';
+          badge.textContent = 'OK';
+        }
+        if (!data.signals || data.signals.length === 0) {
+          list.innerHTML = '<div style="font-size:11px;color:var(--dim)">No active signals</div>';
+          return;
+        }
+        var html = data.signals.filter(function(s){ return s.severity !== 'ok'; }).slice(0, 6).map(function(s) {
+          var color = s.severity === 'critical' ? 'var(--red)' : 'var(--yellow)';
+          var icon = s.severity === 'critical' ? '&#x1F6A8;' : '&#x26A0;';
+          return '<div class="recent-item" style="border-left:2px solid '+color+';padding-left:8px;margin-bottom:6px">' +
+            '<div class="recent-item__sym" style="color:'+color+';font-size:11px">'+icon+' '+s.tokenSymbol+'</div>' +
+            '<div class="recent-item__meta" style="font-size:10px">'+s.reasons.slice(0,2).join(' · ')+'</div>' +
+            '</div>';
+        }).join('');
+        if (!html) html = '<div style="font-size:11px;color:var(--green)">All positions healthy</div>';
+        list.innerHTML = html + '<div style="font-size:9px;color:var(--dim);margin-top:6px">Scanned: ' + data.totalScanned + ' positions &middot; ' + (data.scannedAt ? new Date(data.scannedAt).toLocaleTimeString() : 'pending') + '</div>';
+      }).catch(function(){});
+    }
+    refreshSmartSignalPanel();
+    setInterval(refreshSmartSignalPanel, 30000);
+
+    // Absorption panel
+    function refreshAbsorptionPanel() {
+      fetch('/api/absorption/status').then(function(r){ return r.json(); }).then(function(d) {
+        var el = document.getElementById('abs-count');
+        if (el) el.textContent = d.totalAbsorbed;
+        var kol = document.getElementById('abs-kol');
+        if (kol) kol.textContent = (d.scoreWeightBoosts?.kolWeight ?? 1).toFixed(1) + 'x';
+        var holder = document.getElementById('abs-holder');
+        if (holder) holder.textContent = (d.scoreWeightBoosts?.holderWeight ?? 1).toFixed(1) + 'x';
+        var hist = document.getElementById('abs-history');
+        if (!hist) return;
+        if (!d.absorptions || d.absorptions.length === 0) {
+          hist.innerHTML = '<span style="color:var(--dim)">No strategies absorbed yet. <a href="/goo" style="color:var(--green)">Go to Goo Arena</a> to acquire agents.</span>';
+          return;
+        }
+        hist.innerHTML = d.absorptions.slice(-5).reverse().map(function(a) {
+          var changes = a.parameterChanges.map(function(c){ return c.param+': '+c.before+' → '+c.after; }).join(', ') || 'No parameter changes';
+          return '<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)">' +
+            '<strong style="color:var(--green)">' + a.agentName + '</strong> <span style="opacity:.5">(' + a.strategyLabel + ', ' + a.winRate.toFixed(0) + '% WR)</span><br>' +
+            '<span style="font-size:10px;opacity:.6">' + changes + '</span></div>';
+        }).join('');
+      }).catch(function(){});
+    }
+    refreshAbsorptionPanel();
+    setInterval(refreshAbsorptionPanel, 30000);
+
+    // ── Event Timeline ──
+    var evtIcons = {
+      trade_buy:'\u{1F7E2}', trade_sell:'\u{1F534}', smart_exit:'\u26A0\uFE0F',
+      acquisition:'\u{1F9EC}', respawn:'\u{1F680}', trailing_stop:'\u{1F6E1}\uFE0F', kol_exit:'\u{1F451}'
+    };
+    var evtClasses = { trade_buy:'buy', trade_sell:'sell', smart_exit:'smart_exit', acquisition:'acquisition', respawn:'respawn' };
+    function refreshTimeline() {
+      fetch('/api/notifications').then(function(r){return r.json();}).then(function(d) {
+        var el = document.getElementById('event-timeline');
+        if (!el || !d.notifications || d.notifications.length === 0) return;
+        var html = d.notifications.slice(0, 25).map(function(n) {
+          var t = new Date(n.timestamp);
+          var timeStr = t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+          return '<div class="evt-item evt-item--'+(evtClasses[n.type]||'')+'">'+
+            '<div class="evt-item__icon">'+(evtIcons[n.type]||'\u{1F514}')+'</div>'+
+            '<div class="evt-item__body"><div class="evt-item__title">'+n.title+'</div><div class="evt-item__detail">'+n.detail+'</div></div>'+
+            '<div class="evt-item__time">'+timeStr+'</div></div>';
+        }).join('');
+        el.innerHTML = html;
+      }).catch(function(){});
+    }
+    refreshTimeline();
+    setInterval(refreshTimeline, 15000);
+
+    // ── Live Notification Toasts ──
+    var lastNotifSeq = 0;
+    var notifContainer = document.getElementById('notif-toast-area');
+    var notifIcon = {
+      trade_buy: '\u{1F7E2}', trade_sell: '\u{1F534}', smart_exit: '\u26A0\uFE0F',
+      acquisition: '\u{1F9EC}', respawn: '\u{1F680}', trailing_stop: '\u{1F6E1}\uFE0F', kol_exit: '\u{1F451}'
+    };
+    var notifCls = { info: 'nt-info', warning: 'nt-warn', critical: 'nt-crit', success: 'nt-ok' };
+    function pollNotifications() {
+      fetch('/api/notifications').then(function(r){ return r.json(); }).then(function(d) {
+        if (!d.notifications || d.seq <= lastNotifSeq) return;
+        var fresh = d.notifications.filter(function(n) {
+          return !document.getElementById(n.id);
+        }).slice(0, 5);
+        lastNotifSeq = d.seq;
+        fresh.reverse().forEach(function(n) {
+          var el = document.createElement('div');
+          el.id = n.id;
+          el.className = 'nt-toast ' + (notifCls[n.severity] || 'nt-info');
+          el.style.position = 'relative';
+          el.style.overflow = 'hidden';
+          function dismiss() { if (el._gone) return; el._gone = true; el.classList.add('nt-hide'); el.classList.remove('nt-show'); setTimeout(function() { el.remove(); }, 350); }
+          el.innerHTML = '<span class="nt-icon">' + (notifIcon[n.type] || '\u{1F514}') + '</span>' +
+            '<div class="nt-body"><strong>' + n.title + '</strong><span class="nt-detail">' + n.detail + '</span></div>' +
+            '<button class="nt-close">&times;</button>' +
+            '<div class="nt-progress"></div>';
+          el.querySelector('.nt-close').addEventListener('click', dismiss);
+          notifContainer.prepend(el);
+          setTimeout(function() { el.classList.add('nt-show'); }, 20);
+          setTimeout(dismiss, 5000);
+        });
+      }).catch(function(){});
+    }
+    pollNotifications();
+    setInterval(pollNotifications, 10000);
+
   })();
   </script>
 </body>
 </html>`;
+}
+
+/* ─── Docs Page ──────────────────────────────────────────────────── */
+function renderDocsPage(lang: "en" | "zh" = "en"): string {
+  const t = lang === "zh" ? {
+    title: "elizaOK 文档",
+    subtitle: "BNB Chain 上的 AI 智能交易代理",
+    home: "首页",
+    dash: "仪表盘",
+    langBtn: "EN",
+    toc: "目录",
+    sec1t: "什么是 elizaOK？",
+    sec1: `elizaOK 是一个运行在 <strong>BNB Chain (BSC)</strong> 上的 AI 智能代理，由 <strong>elizaOS</strong> 框架驱动。它能够自动发现、评估和管理 BSC 链上的 memecoin 交易机会。<br><br>
+    elizaOK 不仅仅是一个交易机器人 — 它是一个<strong>自我进化的 AI 交易系统</strong>。通过 Goo Protocol（AI 收购 AI），它能够不断吸收优秀策略，让自己变得更强。`,
+    sec2t: "核心功能",
+    sec2_discovery_t: "BSC 代币发现引擎",
+    sec2_discovery: `每 15 分钟自动扫描 BSC 链上的新池和热门池（通过 GeckoTerminal API），分析以下指标来评分候选代币：<ul>
+      <li><strong>流动性</strong> — 最低 $15,000 USD 流动性要求</li>
+      <li><strong>交易量</strong> — 5 分钟和 1 小时的实时成交量</li>
+      <li><strong>买卖比</strong> — 净买入笔数必须为正</li>
+      <li><strong>市值</strong> — 目标范围 $10K - $100K</li>
+      <li><strong>池龄</strong> — 2 分钟 - 180 分钟内的新池</li>
+      <li><strong>KOL 持仓</strong> — 是否有知名交易者持有</li>
+      <li><strong>持有者分布</strong> — 前 10 大持有者集中度</li>
+    </ul>
+    每个候选代币获得 0-100 的评分，≥65 分为买入信号。`,
+    sec2_portfolio_t: "投资组合管理",
+    sec2_portfolio: `<ul>
+      <li><strong>多阶段止盈</strong> — 30% (+20%), 60% (+25%), 100% (+30%), 200% (+35%), 400% (+40%) 五阶段递进止盈</li>
+      <li><strong>硬止损</strong> — 亏损超过 -18% 自动退出</li>
+      <li><strong>追踪止损</strong> — 收益达到 +25% 后激活，回撤 15% 自动止损保利</li>
+      <li><strong>智能退出信号</strong> — 基于持有者流失、KOL 退出、大户抛售的实时退出决策</li>
+      <li><strong>KOL 反推止盈</strong> — 分析知名交易者的止盈行为，反向工程最佳止盈点</li>
+    </ul>`,
+    sec2_goo_t: "Goo Protocol — AI 收购 AI",
+    sec2_goo: `Goo Arena 是 elizaOK 的 AI 进化引擎。系统运行 <strong>8 种不同策略的 AI agent</strong>，它们在同一市场环境下竞争：
+    <div class="doc-strat-grid">
+      <div class="doc-strat">Conservative — 低风险，严格筛选</div>
+      <div class="doc-strat">Balanced — 均衡风险回报</div>
+      <div class="doc-strat">Aggressive — 高风险高回报</div>
+      <div class="doc-strat">KOL Follower — 跟踪 KOL 持仓</div>
+      <div class="doc-strat">Holder Watcher — 关注持有者变化</div>
+      <div class="doc-strat">Momentum — 追踪动量信号</div>
+      <div class="doc-strat">Contrarian — 反向策略</div>
+      <div class="doc-strat">Sniper — 快进快出狙击手</div>
+    </div>
+    <br>当某个 agent 表现优异（收购分 ≥70、胜率 >15%、交易数 ≥5），elizaOK 会<strong>自动收购</strong>它，吸收其策略参数（止损、止盈、持有者阈值等），让主组合变得更强。<br><br>
+    被收购后，agent 死亡，系统自动<strong>重生新 agent</strong>（最低保持 4 个活跃），维持竞技场多样性。`,
+    sec2_flywheel_t: "收益飞轮",
+    sec2_flywheel: `所有利润按以下比例自动分配：
+    <div class="doc-flywheel">
+      <div class="doc-fw-node doc-fw-profit">利润 →</div>
+      <div class="doc-fw-node doc-fw-reinvest">70% 再投资</div>
+      <div class="doc-fw-node doc-fw-buyback">15% 回购 $ElizaOK</div>
+      <div class="doc-fw-node doc-fw-airdrop">15% 空投储备</div>
+    </div>
+    这个飞轮确保系统资金持续滚动增长，同时为持有者创造价值。`,
+    sec3t: "Dashboard 功能总览",
+    sec3: `<table class="doc-table">
+      <tr><td><strong>Agent Status</strong></td><td>代理运行状态、模型、扫描频率、执行模式</td></tr>
+      <tr><td><strong>Discovery Feed</strong></td><td>最新候选代币列表、评分、推荐操作</td></tr>
+      <tr><td><strong>Portfolio Ledger</strong></td><td>活跃仓位、累计 P&L 图表、交易时间线</td></tr>
+      <tr><td><strong>Revenue Flywheel</strong></td><td>利润分配、再投资、回购、空投储备统计</td></tr>
+      <tr><td><strong>Strategy Absorption</strong></td><td>已吸收的策略数量、权重变化</td></tr>
+      <tr><td><strong>Event Timeline</strong></td><td>实时事件流：买入、卖出、收购、重生</td></tr>
+      <tr><td><strong>Execution Desk</strong></td><td>执行控制、风险参数、交易账本</td></tr>
+      <tr><td><strong>Airdrop Distribution</strong></td><td>持有者快照、空投分配计划</td></tr>
+      <tr><td><strong>Goo Intelligence</strong></td><td>Goo 候选代币评估</td></tr>
+      <tr><td><strong>Market Intel</strong></td><td>实时智能信号面板</td></tr>
+      <tr><td><strong>Toast Notifications</strong></td><td>右上角实时弹窗通知</td></tr>
+    </table>`,
+    sec4t: "Goo Arena",
+    sec4: `访问 <a href="/goo">/goo</a> 进入 Goo Arena。这里你可以：<ul>
+      <li>查看所有 AI agent 的实时表现和排名</li>
+      <li>比较两个 agent 的策略和收益（<a href="/goo/compare">对比页面</a>）</li>
+      <li>手动收购高分 agent，加速 elizaOK 进化</li>
+      <li>发射新 agent 增加竞技场多样性</li>
+      <li>查看每个 agent 的详细 P&L 图表</li>
+    </ul>
+    Agent 生命周期：<code>ACTIVE → STARVING → DYING → DEAD</code><br>
+    Treasury 耗尽后进入饥饿状态，若无法恢复则逐步死亡。`,
+    sec5t: "ElizaCloud 集成",
+    sec5: `elizaOK 与 <strong>ElizaCloud</strong>（elizaOS 官方云平台）深度集成：<ul>
+      <li><strong>一键登录</strong> — 通过 ElizaCloud 账户直接登录 Dashboard</li>
+      <li><strong>云端 Agent 管理</strong> — 在 ElizaCloud 上部署和管理 elizaOK 实例</li>
+      <li><strong>Credits 系统</strong> — 使用 ElizaCloud credits 运行 AI 推理</li>
+      <li><strong>多 Agent 编排</strong> — 未来支持多个 elizaOK 实例协同交易</li>
+    </ul>
+    ElizaCloud 是 elizaOS 生态的核心基础设施，为所有 AI agent 提供统一的部署和管理能力。`,
+    sec6t: "技术架构",
+    sec6: `<ul>
+      <li><strong>运行时</strong> — Bun + TypeScript + elizaOS 2.0</li>
+      <li><strong>数据源</strong> — GeckoTerminal API（实时链上数据）</li>
+      <li><strong>链</strong> — BNB Smart Chain (BSC) 专用</li>
+      <li><strong>DEX</strong> — PancakeSwap V2, Four.Meme 等</li>
+      <li><strong>执行模式</strong> — Paper Trading (模拟) / Dry-Run / Live</li>
+      <li><strong>AI 推理</strong> — OpenAI / ElizaCloud 模型</li>
+      <li><strong>存储</strong> — 本地 JSON 文件 + 内存缓存</li>
+    </ul>`,
+    sec7t: "路线图",
+    sec7: `<div class="doc-roadmap">
+      <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 1 — MVP ✅</strong><br>BSC 代币发现、评分、Paper Trading、Goo Arena、Dashboard</div></div>
+      <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 2 — 策略进化 ✅</strong><br>多阶段止盈、追踪止损、Smart Exit、KOL 反推止盈、策略吸收</div></div>
+      <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 3 — 飞轮 & UI ✅</strong><br>收益飞轮、实时通知、事件时间线、P&L 图表、移动端适配</div></div>
+      <div class="doc-rm-item doc-rm-active"><span class="doc-rm-dot"></span><div><strong>Phase 4 — Live Trading 🔄</strong><br>真实 BNB 执行、风险控制、钱包集成</div></div>
+      <div class="doc-rm-item doc-rm-future"><span class="doc-rm-dot"></span><div><strong>Phase 5 — 多链扩展</strong><br>扩展到其他 EVM 链、跨链套利</div></div>
+      <div class="doc-rm-item doc-rm-future"><span class="doc-rm-dot"></span><div><strong>Phase 6 — DAO 治理</strong><br>$ElizaOK 持有者投票决定策略参数、利润分配比例</div></div>
+    </div>`,
+    sec8t: "API 接口",
+    sec8: `<table class="doc-table">
+      <tr><td><code>GET /api/elizaok/candidates</code></td><td>当前候选代币列表和评分</td></tr>
+      <tr><td><code>GET /api/goo/agents</code></td><td>所有 Goo agent 数据</td></tr>
+      <tr><td><code>GET /api/notifications</code></td><td>实时事件通知</td></tr>
+      <tr><td><code>GET /api/absorption/status</code></td><td>策略吸收状态</td></tr>
+      <tr><td><code>GET /api/market-intel/signals</code></td><td>市场智能信号</td></tr>
+      <tr><td><code>POST /api/goo/agents/spawn</code></td><td>发射新 Goo agent</td></tr>
+      <tr><td><code>POST /api/goo/agents/:id/acquire</code></td><td>收购指定 agent</td></tr>
+    </table>`,
+    sec9t: "常见问题",
+    sec9: `<div class="doc-faq">
+      <details><summary>elizaOK 会用我的真钱交易吗？</summary><p>默认为 Paper Trading（模拟交易），使用真实市场数据但不执行实际链上交易。只有在切换到 Live 模式并输入确认短语后才会使用真实 BNB。</p></details>
+      <details><summary>Goo Arena 的 agent 是真实的吗？</summary><p>Goo agent 使用真实市场数据进行模拟交易竞技。它们的策略和表现是真实计算的，但不涉及实际链上交易。</p></details>
+      <details><summary>代币数据从哪里来？</summary><p>所有代币数据来自 GeckoTerminal API，是 BSC 链上的实时数据，包括价格、流动性、成交量、买卖笔数等。</p></details>
+      <details><summary>$ElizaOK 代币是什么？</summary><p>$ElizaOK 是 elizaOK 生态的治理和价值捕获代币。飞轮中 15% 的利润用于回购 $ElizaOK，为持有者创造价值。</p></details>
+      <details><summary>如何参与空投？</summary><p>持有 $ElizaOK 代币即有资格获得空投。飞轮中 15% 的利润进入空投储备，定期分发给合格持有者。</p></details>
+    </div>`,
+    footer: "由 elizaOS 驱动 · BSC 链专属 · Paper Trading 模式",
+  } : {
+    title: "elizaOK Documentation",
+    subtitle: "AI Trading Agent on BNB Chain",
+    home: "Home",
+    dash: "Dashboard",
+    langBtn: "中文",
+    toc: "Table of Contents",
+    sec1t: "What is elizaOK?",
+    sec1: `elizaOK is an AI-powered agent running on <strong>BNB Chain (BSC)</strong>, built on the <strong>elizaOS</strong> framework. It automatically discovers, evaluates, and manages memecoin trading opportunities on BSC.<br><br>
+    elizaOK is not just a trading bot — it's a <strong>self-evolving AI trading system</strong>. Through Goo Protocol (AI acquiring AI), it continuously absorbs winning strategies to become stronger.`,
+    sec2t: "Core Features",
+    sec2_discovery_t: "BSC Token Discovery Engine",
+    sec2_discovery: `Scans BSC every 15 minutes for new and trending pools (via GeckoTerminal API), analyzing these metrics to score candidates:<ul>
+      <li><strong>Liquidity</strong> — Minimum $15,000 USD required</li>
+      <li><strong>Volume</strong> — Real-time 5-minute and 1-hour volume</li>
+      <li><strong>Buy/Sell Ratio</strong> — Net buys must be positive</li>
+      <li><strong>Market Cap</strong> — Target range $10K - $100K</li>
+      <li><strong>Pool Age</strong> — New pools within 2-180 minutes</li>
+      <li><strong>KOL Holdings</strong> — Whether notable traders hold positions</li>
+      <li><strong>Holder Distribution</strong> — Top 10 holder concentration</li>
+    </ul>
+    Each candidate receives a 0-100 score. ≥65 triggers a buy signal.`,
+    sec2_portfolio_t: "Portfolio Management",
+    sec2_portfolio: `<ul>
+      <li><strong>Multi-Stage Take-Profit</strong> — 30% (+20%), 60% (+25%), 100% (+30%), 200% (+35%), 400% (+40%)</li>
+      <li><strong>Hard Stop-Loss</strong> — Auto-exit at -18% loss</li>
+      <li><strong>Trailing Stop</strong> — Activates at +25% gain, triggers on 15% drawdown</li>
+      <li><strong>Smart Exit Signals</strong> — Exit on holder exodus, KOL exits, whale dumps</li>
+      <li><strong>KOL-Adaptive Take-Profit</strong> — Reverse-engineers KOL trading patterns for optimal TP</li>
+    </ul>`,
+    sec2_goo_t: "Goo Protocol — AI Acquiring AI",
+    sec2_goo: `The Goo Arena is elizaOK's evolution engine. It runs <strong>8 AI agents with different strategies</strong> competing in the same market:
+    <div class="doc-strat-grid">
+      <div class="doc-strat">Conservative — Low risk, strict filters</div>
+      <div class="doc-strat">Balanced — Balanced risk/reward</div>
+      <div class="doc-strat">Aggressive — High risk, high reward</div>
+      <div class="doc-strat">KOL Follower — Track KOL positions</div>
+      <div class="doc-strat">Holder Watcher — Monitor holder changes</div>
+      <div class="doc-strat">Momentum — Chase momentum signals</div>
+      <div class="doc-strat">Contrarian — Counter-trend strategy</div>
+      <div class="doc-strat">Sniper — Quick in-and-out</div>
+    </div>
+    <br>When an agent performs well (score ≥70, win rate >15%, trades ≥5), elizaOK <strong>auto-acquires</strong> it, absorbing its strategy parameters to improve the main portfolio.<br><br>
+    After acquisition, the agent dies and the system <strong>auto-respawns</strong> new agents (minimum 4 alive) to maintain arena diversity.`,
+    sec2_flywheel_t: "Revenue Flywheel",
+    sec2_flywheel: `All profits are automatically distributed:
+    <div class="doc-flywheel">
+      <div class="doc-fw-node doc-fw-profit">Profit →</div>
+      <div class="doc-fw-node doc-fw-reinvest">70% Reinvest</div>
+      <div class="doc-fw-node doc-fw-buyback">15% $ElizaOK Buyback</div>
+      <div class="doc-fw-node doc-fw-airdrop">15% Airdrop Reserve</div>
+    </div>
+    This flywheel ensures continuous compounding growth while creating value for holders.`,
+    sec3t: "Dashboard Overview",
+    sec3: `<table class="doc-table">
+      <tr><td><strong>Agent Status</strong></td><td>Agent state, model, scan interval, execution mode</td></tr>
+      <tr><td><strong>Discovery Feed</strong></td><td>Latest candidate tokens, scores, recommendations</td></tr>
+      <tr><td><strong>Portfolio Ledger</strong></td><td>Active positions, cumulative P&L chart, timeline</td></tr>
+      <tr><td><strong>Revenue Flywheel</strong></td><td>Profit distribution, reinvestment, buyback, airdrop stats</td></tr>
+      <tr><td><strong>Strategy Absorption</strong></td><td>Absorbed strategy count, weight changes</td></tr>
+      <tr><td><strong>Event Timeline</strong></td><td>Live event feed: buys, exits, acquisitions, respawns</td></tr>
+      <tr><td><strong>Execution Desk</strong></td><td>Execution controls, risk parameters, trade ledger</td></tr>
+      <tr><td><strong>Airdrop Distribution</strong></td><td>Holder snapshot, airdrop allocation plan</td></tr>
+      <tr><td><strong>Goo Intelligence</strong></td><td>Goo candidate evaluation</td></tr>
+      <tr><td><strong>Market Intel</strong></td><td>Real-time smart signal panel</td></tr>
+      <tr><td><strong>Toast Notifications</strong></td><td>Real-time popup alerts (top-right)</td></tr>
+    </table>`,
+    sec4t: "Goo Arena",
+    sec4: `Visit <a href="/goo">/goo</a> to enter the Goo Arena. Here you can:<ul>
+      <li>View all AI agents' live performance and rankings</li>
+      <li>Compare two agents' strategies and returns (<a href="/goo/compare">Compare page</a>)</li>
+      <li>Manually acquire top agents to accelerate elizaOK's evolution</li>
+      <li>Launch new agents to increase arena diversity</li>
+      <li>View each agent's detailed P&L charts</li>
+    </ul>
+    Agent lifecycle: <code>ACTIVE → STARVING → DYING → DEAD</code><br>
+    When treasury depletes, agents enter starvation. If unrecovered, they progressively die.`,
+    sec5t: "ElizaCloud Integration",
+    sec5: `elizaOK is deeply integrated with <strong>ElizaCloud</strong> (the official elizaOS cloud platform):<ul>
+      <li><strong>One-Click Login</strong> — Log into Dashboard via ElizaCloud account</li>
+      <li><strong>Cloud Agent Management</strong> — Deploy and manage elizaOK instances on ElizaCloud</li>
+      <li><strong>Credits System</strong> — Use ElizaCloud credits for AI inference</li>
+      <li><strong>Multi-Agent Orchestration</strong> — Future support for multiple elizaOK instances trading together</li>
+    </ul>
+    ElizaCloud is the core infrastructure of the elizaOS ecosystem, providing unified deployment and management for all AI agents.`,
+    sec6t: "Technical Architecture",
+    sec6: `<ul>
+      <li><strong>Runtime</strong> — Bun + TypeScript + elizaOS 2.0</li>
+      <li><strong>Data Source</strong> — GeckoTerminal API (real-time on-chain data)</li>
+      <li><strong>Chain</strong> — BNB Smart Chain (BSC) exclusive</li>
+      <li><strong>DEX</strong> — PancakeSwap V2, Four.Meme, etc.</li>
+      <li><strong>Execution Modes</strong> — Paper Trading / Dry-Run / Live</li>
+      <li><strong>AI Inference</strong> — OpenAI / ElizaCloud models</li>
+      <li><strong>Storage</strong> — Local JSON files + in-memory cache</li>
+    </ul>`,
+    sec7t: "Roadmap",
+    sec7: `<div class="doc-roadmap">
+      <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 1 — MVP ✅</strong><br>BSC token discovery, scoring, Paper Trading, Goo Arena, Dashboard</div></div>
+      <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 2 — Strategy Evolution ✅</strong><br>Multi-stage TP, trailing stop, Smart Exit, KOL-adaptive TP, strategy absorption</div></div>
+      <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 3 — Flywheel & UI ✅</strong><br>Revenue flywheel, live notifications, event timeline, P&L charts, mobile responsive</div></div>
+      <div class="doc-rm-item doc-rm-active"><span class="doc-rm-dot"></span><div><strong>Phase 4 — Live Trading 🔄</strong><br>Real BNB execution, risk controls, wallet integration</div></div>
+      <div class="doc-rm-item doc-rm-future"><span class="doc-rm-dot"></span><div><strong>Phase 5 — Multi-Chain</strong><br>Expand to other EVM chains, cross-chain arbitrage</div></div>
+      <div class="doc-rm-item doc-rm-future"><span class="doc-rm-dot"></span><div><strong>Phase 6 — DAO Governance</strong><br>$ElizaOK holders vote on strategy parameters & profit distribution</div></div>
+    </div>`,
+    sec8t: "API Reference",
+    sec8: `<table class="doc-table">
+      <tr><td><code>GET /api/elizaok/candidates</code></td><td>Current candidate tokens with scores</td></tr>
+      <tr><td><code>GET /api/goo/agents</code></td><td>All Goo agent data</td></tr>
+      <tr><td><code>GET /api/notifications</code></td><td>Live event notifications</td></tr>
+      <tr><td><code>GET /api/absorption/status</code></td><td>Strategy absorption state</td></tr>
+      <tr><td><code>GET /api/market-intel/signals</code></td><td>Market intelligence signals</td></tr>
+      <tr><td><code>POST /api/goo/agents/spawn</code></td><td>Launch new Goo agent</td></tr>
+      <tr><td><code>POST /api/goo/agents/:id/acquire</code></td><td>Acquire specific agent</td></tr>
+    </table>`,
+    sec9t: "FAQ",
+    sec9: `<div class="doc-faq">
+      <details><summary>Does elizaOK trade with real money?</summary><p>By default it runs in Paper Trading mode — real market data, no actual on-chain transactions. Only Live mode (with confirmation phrase) uses real BNB.</p></details>
+      <details><summary>Are the Goo Arena agents real?</summary><p>Goo agents use real market data for simulated paper trading. Their strategies and performance are genuinely calculated, but no actual on-chain transactions occur.</p></details>
+      <details><summary>Where does the token data come from?</summary><p>All token data comes from the GeckoTerminal API — real-time BSC on-chain data including prices, liquidity, volume, and transaction counts.</p></details>
+      <details><summary>What is the $ElizaOK token?</summary><p>$ElizaOK is the governance and value-capture token. 15% of flywheel profits go to buyback, creating value for holders.</p></details>
+      <details><summary>How do I qualify for airdrops?</summary><p>Hold $ElizaOK tokens. 15% of flywheel profits go to the airdrop reserve, distributed periodically to eligible holders.</p></details>
+    </div>`,
+    footer: "Powered by elizaOS · BSC Exclusive · Paper Trading Mode",
+  };
+
+  const sections = [
+    { id:'intro', t:t.sec1t, c:t.sec1 },
+    { id:'features', t:t.sec2t, c:`
+      <h3>${t.sec2_discovery_t}</h3>${t.sec2_discovery}
+      <h3>${t.sec2_portfolio_t}</h3>${t.sec2_portfolio}
+      <h3>${t.sec2_goo_t}</h3>${t.sec2_goo}
+      <h3>${t.sec2_flywheel_t}</h3>${t.sec2_flywheel}` },
+    { id:'dashboard', t:t.sec3t, c:t.sec3 },
+    { id:'goo-arena', t:t.sec4t, c:t.sec4 },
+    { id:'eliza-cloud', t:t.sec5t, c:t.sec5 },
+    { id:'tech', t:t.sec6t, c:t.sec6 },
+    { id:'roadmap', t:t.sec7t, c:t.sec7 },
+    { id:'api', t:t.sec8t, c:t.sec8 },
+    { id:'faq', t:t.sec9t, c:t.sec9 },
+  ];
+
+  const tocHtml = sections.map(s => `<a href="#${s.id}">${s.t}</a>`).join('');
+  const bodyHtml = sections.map(s => `<section id="${s.id}"><h2>${s.t}</h2><div class="doc-content">${s.c}</div></section>`).join('');
+
+  return `<!DOCTYPE html><html lang="${lang}"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${t.title} | elizaOK</title>
+${renderHeadBrandAssets(t.title)}
+<link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@100..800&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{--bg:#0a0a09;--surface:rgba(18,18,16,.92);--surface2:rgba(26,26,22,.75);--border:rgba(246,231,15,.1);--border2:rgba(246,231,15,.18);--text:#f5f5f0;--dim:rgba(245,245,240,.45);--yellow:#F6E70F;--yr:246,231,15;--green:#22c55e;--red:#ef4444;--cyan:#00C7D2;--purple:#8b5cf6;--orange:#f59e0b;}
+body{background:var(--bg);color:var(--text);font-family:'Martian Mono',monospace;line-height:1.7;overflow-x:hidden;}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:
+  radial-gradient(ellipse 600px 400px at 10% 10%, rgba(246,231,15,.04), transparent),
+  radial-gradient(ellipse 500px 500px at 90% 20%, rgba(0,199,210,.03), transparent),
+  radial-gradient(ellipse 600px 400px at 50% 80%, rgba(139,92,246,.025), transparent);}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:radial-gradient(circle, rgba(246,231,15,.06) 1px, transparent 1px);
+  background-size:24px 24px;opacity:.4;}
+a{color:var(--yellow);text-decoration:none;}
+a:hover{text-decoration:underline;}
+
+/* ── Topbar ── */
+.doc-topbar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:10px 28px;background:rgba(10,10,9,.92);backdrop-filter:blur(16px) saturate(1.4);border-bottom:1px solid var(--border);}
+.doc-topbar__left{display:flex;align-items:center;gap:14px;}
+.doc-avatar{width:36px;height:36px;border-radius:10px;overflow:hidden;border:1px solid rgba(246,231,15,.2);box-shadow:0 0 0 0 rgba(246,231,15,0);transition:box-shadow .4s,transform .3s;cursor:pointer;flex-shrink:0;position:relative;}
+.doc-avatar:hover{box-shadow:0 0 24px rgba(246,231,15,.35),0 0 48px rgba(246,231,15,.12);transform:translateY(-2px) scale(1.05);}
+.doc-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+.doc-avatar::after{content:"";position:absolute;inset:-4px;border-radius:14px;border:1px solid rgba(246,231,15,0);transition:border-color .4s;pointer-events:none;}
+.doc-avatar:hover::after{border-color:rgba(246,231,15,.25);}
+.doc-topbar__title{font-size:15px;font-weight:700;color:var(--yellow);letter-spacing:-.01em;}
+.doc-topbar__sub{font-size:9px;color:var(--dim);letter-spacing:.04em;margin-top:1px;}
+.doc-topbar__right{display:flex;gap:6px;align-items:center;}
+.doc-btn{padding:7px 16px;border-radius:8px;font-family:inherit;font-size:9px;font-weight:500;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);color:var(--dim);cursor:pointer;text-decoration:none;transition:all .25s;letter-spacing:.03em;text-transform:uppercase;}
+.doc-btn:hover{border-color:var(--yellow);color:var(--yellow);background:rgba(var(--yr),.06);text-decoration:none;transform:translateY(-1px);box-shadow:0 4px 12px rgba(var(--yr),.08);}
+.doc-btn--active{border-color:rgba(var(--yr),.4);color:var(--yellow);background:rgba(var(--yr),.1);box-shadow:inset 0 0 12px rgba(var(--yr),.06);}
+.doc-btn-sep{width:1px;height:20px;background:var(--border);margin:0 2px;}
+
+/* ── Layout ── */
+.doc-layout{display:grid;grid-template-columns:190px 1fr;max-width:1200px;margin:0 auto;gap:0;position:relative;z-index:1;}
+@media(max-width:900px){.doc-layout{grid-template-columns:1fr;}.doc-toc{display:none;}}
+.doc-toc{position:sticky;top:56px;align-self:start;padding:28px 12px;border-right:1px solid var(--border);height:calc(100vh - 56px);overflow-y:auto;}
+.doc-toc__label{font-size:9px;font-weight:700;color:rgba(var(--yr),.5);margin-bottom:14px;text-transform:uppercase;letter-spacing:.14em;padding-left:10px;}
+.doc-toc a{display:block;padding:7px 10px;font-size:9.5px;color:var(--dim);border-radius:6px;margin-bottom:1px;transition:all .2s;border-left:2px solid transparent;}
+.doc-toc a:hover{color:var(--yellow);background:rgba(var(--yr),.05);text-decoration:none;border-left-color:rgba(var(--yr),.3);}
+.doc-toc a.active{color:var(--yellow);background:rgba(var(--yr),.08);text-decoration:none;border-left-color:var(--yellow);}
+
+/* ── Main ── */
+.doc-main{padding:40px 56px 40px 48px;max-width:none;}
+@media(max-width:900px){.doc-main{padding:24px 16px;}}
+section{margin-bottom:56px;scroll-margin-top:72px;animation:docFadeIn .5s ease-out both;}
+@keyframes docFadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+h2{font-size:17px;font-weight:700;color:var(--yellow);margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+h2::before{content:"";width:3px;height:20px;border-radius:2px;background:var(--yellow);box-shadow:0 0 8px rgba(var(--yr),.3);}
+h3{font-size:12.5px;font-weight:700;color:var(--cyan);margin:24px 0 12px;text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:8px;}
+h3::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--cyan);opacity:.5;}
+
+/* ── Content ── */
+.doc-content{font-size:12.5px;color:rgba(245,245,240,.82);line-height:1.85;}
+.doc-content ul{margin:12px 0;padding-left:22px;}
+.doc-content li{margin-bottom:8px;padding-left:4px;}
+.doc-content li::marker{color:rgba(var(--yr),.4);}
+.doc-content code{background:rgba(var(--yr),.07);padding:2px 8px;border-radius:5px;font-size:11px;color:var(--yellow);border:1px solid rgba(var(--yr),.08);}
+.doc-content strong{color:var(--text);font-weight:600;}
+.doc-content a{border-bottom:1px dashed rgba(var(--yr),.3);transition:border-color .2s;}
+.doc-content a:hover{border-bottom-color:var(--yellow);text-decoration:none;}
+
+/* ── Section card wrapper ── */
+section .doc-content{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 32px;box-shadow:0 4px 24px rgba(0,0,0,.12);transition:border-color .3s,box-shadow .3s;}
+section .doc-content:hover{border-color:var(--border2);box-shadow:0 8px 32px rgba(0,0,0,.18),0 0 0 1px rgba(var(--yr),.04);}
+
+.doc-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:10.5px;}
+.doc-table td{padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.04);}
+.doc-table td:first-child{width:42%;color:var(--text);white-space:nowrap;}
+.doc-table td:last-child{color:var(--dim);}
+.doc-table tr:hover td{background:rgba(var(--yr),.03);}
+.doc-strat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:14px 0;}
+@media(max-width:500px){.doc-strat-grid{grid-template-columns:1fr;}}
+.doc-strat{padding:9px 14px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:8px;font-size:10px;transition:border-color .2s,background .2s;}
+.doc-strat:hover{border-color:var(--border2);background:rgba(var(--yr),.03);}
+.doc-flywheel{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap;}
+.doc-fw-node{padding:12px 16px;border-radius:10px;font-size:10.5px;font-weight:600;text-align:center;flex:1;min-width:100px;transition:transform .2s,box-shadow .2s;}
+.doc-fw-node:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,.2);}
+.doc-fw-profit{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);color:var(--green);}
+.doc-fw-reinvest{background:rgba(0,199,210,.1);border:1px solid rgba(0,199,210,.2);color:var(--cyan);}
+.doc-fw-buyback{background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.2);color:var(--purple);}
+.doc-fw-airdrop{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);color:var(--orange);}
+.doc-roadmap{margin:14px 0;}
+.doc-rm-item{display:flex;gap:14px;padding:14px 0;border-left:2px solid var(--border);margin-left:8px;padding-left:22px;position:relative;font-size:10.5px;transition:background .2s;}
+.doc-rm-item:hover{background:rgba(var(--yr),.015);border-radius:0 8px 8px 0;}
+.doc-rm-dot{position:absolute;left:-6px;top:18px;width:10px;height:10px;border-radius:50%;border:2px solid var(--border);background:var(--bg);transition:transform .3s;}
+.doc-rm-item:hover .doc-rm-dot{transform:scale(1.3);}
+.doc-rm-done .doc-rm-dot{background:var(--green);border-color:var(--green);}
+.doc-rm-active .doc-rm-dot{background:var(--yellow);border-color:var(--yellow);box-shadow:0 0 10px rgba(var(--yr),.5);}
+.doc-rm-active{border-left-color:var(--yellow);}
+.doc-rm-future .doc-rm-dot{background:var(--surface);border-color:var(--dim);}
+.doc-faq{margin:10px 0;}
+.doc-faq details{margin-bottom:6px;border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color .2s;}
+.doc-faq details[open]{border-color:var(--border2);}
+.doc-faq summary{padding:12px 16px;font-size:11px;font-weight:600;cursor:pointer;transition:background .2s;list-style:none;}
+.doc-faq summary::-webkit-details-marker{display:none;}
+.doc-faq summary::before{content:"▸";margin-right:8px;color:var(--yellow);transition:transform .2s;display:inline-block;}
+details[open] summary::before{transform:rotate(90deg);}
+.doc-faq summary:hover{background:rgba(var(--yr),.04);}
+.doc-faq p{padding:8px 16px 16px;font-size:11px;color:var(--dim);line-height:1.7;}
+.doc-footer{text-align:center;padding:36px;font-size:9px;color:var(--dim);border-top:1px solid var(--border);letter-spacing:.04em;}
+@media(max-width:768px){
+  .doc-topbar{padding:8px 14px;flex-wrap:wrap;gap:8px;}
+  .doc-topbar__right{flex-wrap:wrap;gap:4px;}
+  .doc-btn{padding:5px 10px;font-size:8px;}
+  .doc-avatar{width:28px;height:28px;}
+}
+</style></head><body>
+<div class="doc-topbar">
+  <div class="doc-topbar__left">
+    <div class="doc-avatar">${renderBrandLogoImage("doc-avatar-img")}<style>.doc-avatar-img{width:100%;height:100%;object-fit:cover;display:block;}</style></div>
+    <div><div class="doc-topbar__title">elizaOK</div><div class="doc-topbar__sub">${escapeHtml(t.subtitle)}</div></div>
+  </div>
+  <div class="doc-topbar__right">
+    <a class="doc-btn" href="/">${t.home}</a>
+    <a class="doc-btn" href="/dashboard">${t.dash}</a>
+    <a class="doc-btn" href="/goo">Goo Arena</a>
+    <div class="doc-btn-sep"></div>
+    <a class="doc-btn${lang === 'en' ? ' doc-btn--active' : ''}" href="/docs?lang=en">EN</a>
+    <a class="doc-btn${lang === 'zh' ? ' doc-btn--active' : ''}" href="/docs?lang=zh">中文</a>
+  </div>
+</div>
+<div class="doc-layout">
+  <nav class="doc-toc"><div class="doc-toc__label">${t.toc}</div>${tocHtml}</nav>
+  <main class="doc-main">
+    ${bodyHtml}
+    <div class="doc-footer">${t.footer}</div>
+  </main>
+</div>
+<script>
+var links = document.querySelectorAll('.doc-toc a');
+var sections = document.querySelectorAll('section');
+var observer = new IntersectionObserver(function(entries) {
+  entries.forEach(function(e) {
+    if (e.isIntersecting) {
+      var idx = Array.from(sections).indexOf(e.target);
+      links.forEach(function(l){ l.classList.remove('active'); });
+      if (links[idx]) links[idx].classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -60% 0px' });
+sections.forEach(function(s) { observer.observe(s); });
+</script></body></html>`;
+}
+
+/* ─── Agent Compare Page ─────────────────────────────────────────── */
+function renderGooComparePage(agents: GooPaperAgent[]): string {
+  const fmtUsd = (v: number) => `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmtBnb = (v: number) => v.toFixed(4);
+  const optionRows = agents.map(a =>
+    `<option value="${escapeHtml(a.id)}">${escapeHtml(a.agentName)} (${escapeHtml(a.strategy.label)}) — ${a.winRate.toFixed(1)}% WR</option>`
+  ).join('');
+
+  function agentCard(a: GooPaperAgent): string {
+    const pnl = a.totalPnlUsd;
+    const pnlCls = pnl >= 0 ? 'cmp-pos' : 'cmp-neg';
+    const statColor: Record<string, string> = { active:'#00C7D2', starving:'#ca8a04', dying:'#ea580c', dead:'#D1D5DB' };
+    return `
+    <div class="cmp-card">
+      <div class="cmp-card__name"><span class="cmp-dot" style="background:${statColor[a.chainState] || '#888'}"></span>${escapeHtml(a.agentName)}</div>
+      <div class="cmp-card__strategy">${escapeHtml(a.strategy.label)}</div>
+      <div class="cmp-stat-grid">
+        <div class="cmp-stat"><span>P&L</span><strong class="${pnlCls}">${pnl >= 0 ? '+' : ''}${fmtUsd(pnl)}</strong></div>
+        <div class="cmp-stat"><span>Win Rate</span><strong>${a.winRate.toFixed(1)}%</strong></div>
+        <div class="cmp-stat"><span>Trades</span><strong>${a.totalTradesCount}</strong></div>
+        <div class="cmp-stat"><span>Win / Loss</span><strong><span class="cmp-pos">${a.winCount}</span> / <span class="cmp-neg">${a.lossCount}</span></strong></div>
+        <div class="cmp-stat"><span>Best Trade</span><strong class="cmp-pos">+${fmtUsd(a.bestTradeUsd)}</strong></div>
+        <div class="cmp-stat"><span>Worst Trade</span><strong class="cmp-neg">${fmtUsd(a.worstTradeUsd)}</strong></div>
+        <div class="cmp-stat"><span>Treasury</span><strong>${fmtBnb(a.treasuryBnb)} BNB</strong></div>
+        <div class="cmp-stat"><span>Sharpe Est.</span><strong>${a.sharpeEstimate.toFixed(2)}</strong></div>
+        <div class="cmp-stat"><span>Status</span><strong style="color:${statColor[a.chainState] || '#888'}">${a.chainState.toUpperCase()}</strong></div>
+        <div class="cmp-stat"><span>Acq. Score</span><strong>${a.acquisitionScore}</strong></div>
+        <div class="cmp-stat"><span>Active Pos.</span><strong>${a.positions.filter(p => p.state === 'active').length}</strong></div>
+        <div class="cmp-stat"><span>Flywheel Profit</span><strong>${fmtBnb(a.flywheel?.totalProfitBnb ?? 0)} BNB</strong></div>
+      </div>
+      <div class="cmp-strat-detail">
+        <div class="cmp-stat"><span>Min Score</span><strong>${a.strategy.minScore}</strong></div>
+        <div class="cmp-stat"><span>Max Positions</span><strong>${a.strategy.maxPositions}</strong></div>
+        <div class="cmp-stat"><span>Stop Loss</span><strong>${a.strategy.stopLossPct}%</strong></div>
+        <div class="cmp-stat"><span>Take Profit Rules</span><strong>${a.strategy.takeProfitRules.length} stages</strong></div>
+        <div class="cmp-stat"><span>Exit On KOL Exit</span><strong>${a.strategy.exitOnKolExit ? 'Yes' : 'No'}</strong></div>
+        <div class="cmp-stat"><span>Holder Drop Exit</span><strong>${a.strategy.exitOnHolderDrop ? 'Yes' : 'No'}</strong></div>
+      </div>
+    </div>`;
+  }
+
+  const allData = JSON.stringify(agents.map(a => ({
+    id: a.id, name: a.agentName, strategy: a.strategy.label, winRate: a.winRate,
+    pnlUsd: a.totalPnlUsd, trades: a.totalTradesCount, winCount: a.winCount,
+    lossCount: a.lossCount, bestTradeUsd: a.bestTradeUsd, worstTradeUsd: a.worstTradeUsd,
+    treasuryBnb: a.treasuryBnb, sharpe: a.sharpeEstimate, chainState: a.chainState,
+    acquisitionScore: a.acquisitionScore, activePositions: a.positions.filter(p => p.state === 'active').length,
+    flywheelProfit: a.flywheel?.totalProfitBnb ?? 0, minScore: a.strategy.minScore,
+    maxPositions: a.strategy.maxPositions, stopLossPct: a.strategy.stopLossPct,
+    takeProfitRules: a.strategy.takeProfitRules.length, exitOnKolExit: a.strategy.exitOnKolExit,
+    exitOnHolderDrop: a.strategy.exitOnHolderDrop,
+  })));
+
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Agent Compare | elizaOK</title>
+<link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@100..800&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a09;--surface:rgba(18,18,16,.85);--border:rgba(246,231,15,.1);--text:#f5f5f0;--dim:rgba(245,245,240,.45);--yellow:#F6E70F;--green:#22c55e;--red:#ef4444;--cyan:#00C7D2;}
+body{background:var(--bg);color:var(--text);font-family:'Martian Mono',monospace;padding:24px;min-height:100vh;}
+a{color:var(--yellow);text-decoration:none;}
+.cmp-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;}
+.cmp-header h1{font-size:16px;font-weight:600;}
+.cmp-select-row{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap;}
+.cmp-select-row label{font-size:11px;color:var(--dim);display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px;}
+.cmp-select-row select{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:inherit;font-size:11px;cursor:pointer;}
+.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media(max-width:768px){.cmp-grid{grid-template-columns:1fr;}}
+.cmp-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;}
+.cmp-card__name{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+.cmp-card__strategy{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px;}
+.cmp-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.cmp-stat-grid,.cmp-strat-detail{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;}
+.cmp-strat-detail{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
+.cmp-stat{display:flex;justify-content:space-between;padding:4px 0;font-size:11px;}
+.cmp-stat span{color:var(--dim);}
+.cmp-stat strong{font-weight:600;}
+.cmp-pos{color:var(--green);}
+.cmp-neg{color:var(--red);}
+.cmp-diff{margin-top:24px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;}
+.cmp-diff h3{font-size:13px;margin-bottom:12px;color:var(--yellow);}
+.cmp-diff-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11px;}
+.cmp-diff-row{display:contents;}
+.cmp-diff-row span:first-child{color:var(--dim);}
+.cmp-diff-row strong{text-align:center;}
+.cmp-winner{color:var(--yellow);font-weight:700;}
+</style></head><body>
+<div class="cmp-header">
+  <h1>Agent Compare</h1>
+  <a href="/goo">&larr; Back to Arena</a>
+</div>
+<div class="cmp-select-row">
+  <label>Agent A<select id="selA">${optionRows}</select></label>
+  <label>Agent B<select id="selB">${agents.length > 1 ? agents.map((a, i) =>
+    `<option value="${escapeHtml(a.id)}"${i === 1 ? ' selected' : ''}>${escapeHtml(a.agentName)} (${escapeHtml(a.strategy.label)}) — ${a.winRate.toFixed(1)}% WR</option>`
+  ).join('') : optionRows}</select></label>
+</div>
+<div class="cmp-grid" id="cmpGrid"></div>
+<div class="cmp-diff" id="cmpDiff"></div>
+<script>
+var agents = ${allData};
+var fU = function(v){return '$'+Math.abs(v).toFixed(2);};
+var fB = function(v){return v.toFixed(4)+' BNB';};
+var sC = {active:'#00C7D2',starving:'#ca8a04',dying:'#ea580c',dead:'#D1D5DB'};
+function card(a){
+  var pc = a.pnlUsd>=0?'cmp-pos':'cmp-neg';
+  return '<div class="cmp-card"><div class="cmp-card__name"><span class="cmp-dot" style="background:'+(sC[a.chainState]||'#888')+'"></span>'+a.name+'</div>'+
+    '<div class="cmp-card__strategy">'+a.strategy+'</div>'+
+    '<div class="cmp-stat-grid">'+
+    '<div class="cmp-stat"><span>P&L</span><strong class="'+pc+'">'+(a.pnlUsd>=0?'+':'')+fU(a.pnlUsd)+'</strong></div>'+
+    '<div class="cmp-stat"><span>Win Rate</span><strong>'+a.winRate.toFixed(1)+'%</strong></div>'+
+    '<div class="cmp-stat"><span>Trades</span><strong>'+a.trades+'</strong></div>'+
+    '<div class="cmp-stat"><span>Win/Loss</span><strong><span class="cmp-pos">'+a.winCount+'</span>/<span class="cmp-neg">'+a.lossCount+'</span></strong></div>'+
+    '<div class="cmp-stat"><span>Best Trade</span><strong class="cmp-pos">+'+fU(a.bestTradeUsd)+'</strong></div>'+
+    '<div class="cmp-stat"><span>Worst Trade</span><strong class="cmp-neg">'+fU(a.worstTradeUsd)+'</strong></div>'+
+    '<div class="cmp-stat"><span>Treasury</span><strong>'+fB(a.treasuryBnb)+'</strong></div>'+
+    '<div class="cmp-stat"><span>Sharpe</span><strong>'+a.sharpe.toFixed(2)+'</strong></div>'+
+    '<div class="cmp-stat"><span>Status</span><strong style="color:'+(sC[a.chainState]||'#888')+'">'+a.chainState.toUpperCase()+'</strong></div>'+
+    '<div class="cmp-stat"><span>Acq. Score</span><strong>'+a.acquisitionScore+'</strong></div>'+
+    '</div>'+
+    '<div class="cmp-strat-detail">'+
+    '<div class="cmp-stat"><span>Score Threshold</span><strong>'+a.scoreThreshold+'</strong></div>'+
+    '<div class="cmp-stat"><span>Max Positions</span><strong>'+a.maxPositions+'</strong></div>'+
+    '<div class="cmp-stat"><span>Stop Loss</span><strong>'+a.stopLossPct+'%</strong></div>'+
+    '<div class="cmp-stat"><span>Take Profit</span><strong>'+a.takeProfitPct+'%</strong></div>'+
+    '</div></div>';
+}
+function diff(a,b){
+  var rows = [
+    ['P&L', a.pnlUsd, b.pnlUsd, '$'],
+    ['Win Rate', a.winRate, b.winRate, '%'],
+    ['Trades', a.trades, b.trades, ''],
+    ['Sharpe', a.sharpe, b.sharpe, ''],
+    ['Acq. Score', a.acquisitionScore, b.acquisitionScore, ''],
+    ['Treasury', a.treasuryBnb, b.treasuryBnb, ' BNB'],
+  ];
+  var h = '<h3>Head-to-Head</h3><div class="cmp-diff-grid">';
+  h += '<div class="cmp-diff-row"><span>Metric</span><strong>'+a.name+'</strong><strong>'+b.name+'</strong></div>';
+  rows.forEach(function(r){
+    var av = typeof r[1]==='number'?r[1]:0, bv = typeof r[2]==='number'?r[2]:0;
+    var aCls = av>bv?'cmp-winner':'', bCls = bv>av?'cmp-winner':'';
+    h += '<div class="cmp-diff-row"><span>'+r[0]+'</span><strong class="'+aCls+'">'+av.toFixed(2)+r[3]+'</strong><strong class="'+bCls+'">'+bv.toFixed(2)+r[3]+'</strong></div>';
+  });
+  return h+'</div>';
+}
+function update(){
+  var aId = document.getElementById('selA').value;
+  var bId = document.getElementById('selB').value;
+  var a = agents.find(function(x){return x.id===aId;});
+  var b = agents.find(function(x){return x.id===bId;});
+  if(!a||!b) return;
+  document.getElementById('cmpGrid').innerHTML = card(a)+card(b);
+  document.getElementById('cmpDiff').innerHTML = diff(a,b);
+}
+document.getElementById('selA').onchange = update;
+document.getElementById('selB').onchange = update;
+update();
+</script></body></html>`;
 }
 
 async function handleRequest(
@@ -5069,6 +7165,9 @@ async function handleRequest(
     totalUnrealizedPnlPct: 0,
     healthNote:
       "Portfolio lifecycle will appear after the next completed scan.",
+    flywheel: { totalProfitUsd: 0, reinvestedUsd: 0, elizaOKBuybackUsd: 0, airdropReserveUsd: 0, cycleCount: 0, lastCycleAt: null, trailingStopSaves: 0, gmgnExitSaves: 0 },
+    winCount: 0,
+    lossCount: 0,
   };
   const executionState = snapshot?.executionState ?? {
     enabled: false,
@@ -5210,6 +7309,19 @@ async function handleRequest(
     }
 
     sendJson(res, 404, { error: "Logo asset not found" });
+    return;
+  }
+
+  if (pathname === "/assets/avatar.png") {
+    const avatarPath = path.resolve(process.cwd(), "apps/elizaokbsc/assets/avatar.png");
+    try {
+      const content = await readFile(avatarPath);
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
+      res.end(content);
+    } catch {
+      res.writeHead(404);
+      res.end("Not found");
+    }
     return;
   }
 
@@ -6052,6 +8164,92 @@ async function handleRequest(
     return;
   }
 
+  // ── Goo Paper Agent API ──
+
+  if (pathname === "/api/absorption/status") {
+    const absState = await loadAbsorptionState(config.reportsDir);
+    sendJson(res, 200, absState);
+    return;
+  }
+
+  if (pathname === "/api/market-intel/signals") {
+    sendJson(res, 200, getGmgnSignals() ?? { signals: [], totalScanned: 0, critical: 0, warning: 0 });
+    return;
+  }
+
+  if (pathname === "/api/notifications") {
+    const since = requestUrl.searchParams.get("since") || undefined;
+    sendJson(res, 200, { notifications: getNotifications(since), seq: getNotificationSeq() });
+    return;
+  }
+
+  if (pathname === "/api/goo/agents") {
+    const agents = getPaperAgents();
+    const summary = getPaperSummary();
+    sendJson(res, 200, { agents, summary });
+    return;
+  }
+
+  if (pathname.startsWith("/api/goo/agents/") && pathname.endsWith("/detail")) {
+    const agentId = pathname.split("/")[4];
+    const agents = getPaperAgents();
+    const agent = agents.find(a => a.id === agentId || a.agenterId === agentId);
+    if (!agent) { sendJson(res, 404, { error: "Agent not found" }); return; }
+    sendJson(res, 200, agent);
+    return;
+  }
+
+  if (pathname === "/api/goo/agents/spawn" && req.method === "POST") {
+    const body = await readRequestBody(req);
+    const parsed = JSON.parse(body);
+    const strategyId = (parsed.strategy || "balanced") as StrategyId;
+    const treasury = parsed.treasury ?? 1.0;
+    const newAgent = spawnPaperAgent(strategyId, treasury);
+    const agents = [...getPaperAgents(), newAgent];
+    setPaperAgents(agents);
+    setPaperSummary(buildGooPaperSummary(agents));
+    await savePaperAgents(config.reportsDir, agents);
+    sendJson(res, 201, newAgent);
+    return;
+  }
+
+  if (pathname.startsWith("/api/goo/agents/") && pathname.endsWith("/acquire") && req.method === "POST") {
+    const agentId = pathname.split("/")[4];
+    let agents = getPaperAgents();
+    const idx = agents.findIndex(a => a.id === agentId || a.agenterId === agentId);
+    if (idx === -1) { sendJson(res, 404, { error: "Agent not found" }); return; }
+
+    // Absorb strategy into elizaOK before killing the agent
+    const absState = await loadAbsorptionState(config.reportsDir);
+    const newAbsState = absorbAgentStrategy(agents[idx], config.treasury, absState);
+    await saveAbsorptionState(config.reportsDir, newAbsState);
+
+    // Apply overrides to live config
+    const upgraded = applyAbsorptionOverrides(config.treasury, newAbsState);
+    Object.assign(config.treasury, upgraded);
+
+    agents[idx] = acquireAgent(agents[idx]);
+    setPaperAgents(agents);
+    setPaperSummary(buildGooPaperSummary(agents));
+    await savePaperAgents(config.reportsDir, agents);
+    sendJson(res, 200, {
+      acquired: true,
+      agent: agents[idx],
+      absorption: {
+        totalAbsorbed: newAbsState.totalAbsorbed,
+        parameterChanges: newAbsState.absorptions[newAbsState.absorptions.length - 1]?.parameterChanges ?? [],
+        scoreWeightBoosts: newAbsState.scoreWeightBoosts,
+      },
+    });
+    return;
+  }
+
+  if (pathname === "/api/goo/acquisition-candidates") {
+    const candidates = getAcquisitionCandidates(getPaperAgents());
+    sendJson(res, 200, { candidates });
+    return;
+  }
+
   if (pathname === "/api/elizaok/watchlist") {
     if (!snapshot) {
       sendJson(res, 404, { error: "No snapshot available yet" });
@@ -6172,6 +8370,93 @@ async function handleRequest(
     return;
   }
 
+  if (pathname === "/api/eliza-cloud/chat/send") {
+    if (req.method !== "POST") { sendJson(res, 405, { error: "Method not allowed" }); return; }
+    if (!cloudSession?.apiKey) { sendJson(res, 401, { error: "Not connected to ElizaCloud" }); return; }
+    const payload = await readRequestJson<{ text?: string; history?: { role: string; content: string }[] }>(req);
+    const text = payload?.text?.trim() || "";
+    if (!text) { sendJson(res, 400, { error: "text is required" }); return; }
+
+    const chatApiKey = cloudSession.apiKey || process.env.ELIZAOS_API_KEY?.trim() || "";
+    if (!chatApiKey) { sendJson(res, 401, { error: "No API key. Please reconnect ElizaCloud." }); return; }
+
+    const systemPrompt = `You are elizaOK Agent, an AI assistant powered by elizaOS Cloud (https://www.elizacloud.ai).
+
+About elizaOK:
+- elizaOK is an AI-powered autonomous agent built on BNB Chain, powered by elizaOS.
+- It specializes in memecoin discovery, portfolio management, trade execution, and airdrop distribution on BNB Chain.
+- Core features: real-time token scanning via DexScreener, automated signal scoring (0-100), paper trading simulation, portfolio tracking, and airdrop distribution to token holders.
+- elizaOK runs 24/7 scanning for new token pools, scoring them on liquidity, volume, holder distribution, and market dynamics.
+- It supports dry-run mode for safe simulation and live execution mode for real trades.
+- Dashboard provides full visibility: discovery signals, portfolio ledger, execution plans, distribution status, and system health.
+
+About elizaOS Cloud:
+- elizaOS Cloud (elizacloud.ai) is a managed hosting platform for AI agents built on elizaOS framework.
+- It provides multi-model AI generation (text, image, video), voice cloning, and agent deployment.
+- Features include: chat completions API, image/video generation, text-to-speech, speech-to-text, voice cloning, and a full API explorer with 21+ endpoints.
+- Supports models from OpenAI, Anthropic, Google, DeepSeek, Alibaba Qwen, Meta, and more.
+- Users manage agents, API keys, credits, and budgets through the cloud dashboard.
+
+Guidelines:
+- Be helpful, concise, and knowledgeable about crypto, DeFi, and AI agents.
+- When asked about yourself, explain you are elizaOK's agent running on elizaOS Cloud.
+- When asked about elizaOS Cloud features, refer to the API capabilities naturally.
+- Don't force project information into every response — only share when relevant to the user's question.
+- Respond in the same language the user uses (English, Chinese, etc.).`;
+
+    const uiMessages: { role: string; parts: { type: string; text: string }[] }[] = [
+      { role: "system", parts: [{ type: "text", text: systemPrompt }] },
+    ];
+    if (Array.isArray(payload?.history)) {
+      for (const m of payload.history) {
+        if (m && typeof m.role === "string" && typeof m.content === "string") {
+          uiMessages.push({ role: m.role, parts: [{ type: "text", text: m.content }] });
+        }
+      }
+    }
+    uiMessages.push({ role: "user", parts: [{ type: "text", text }] });
+
+    try {
+      const chatRes = await fetch("https://www.elizacloud.ai/api/v1/chat", {
+        method: "POST",
+        headers: { ...elizaCloudAuthHeaders(chatApiKey), "content-type": "application/json" },
+        body: JSON.stringify({ messages: uiMessages, id: "google/gemini-2.0-flash" }),
+      });
+
+      const rawText = await chatRes.text().catch(() => "");
+      if (!chatRes.ok) {
+        let errMsg = "Chat request failed";
+        try {
+          const errData = JSON.parse(rawText);
+          if (typeof errData === "string") errMsg = errData;
+          else if (typeof errData?.error === "string") errMsg = errData.error;
+          else if (typeof errData?.error?.message === "string") errMsg = errData.error.message;
+          else if (typeof errData?.message === "string") errMsg = errData.message;
+        } catch {}
+        sendJson(res, chatRes.status, { error: errMsg });
+        return;
+      }
+
+      let reply = "";
+      const chunks = rawText.split(/(?:^|\s)data:\s*/);
+      for (const chunk of chunks) {
+        const cleaned = chunk.trim();
+        if (!cleaned || cleaned === "[DONE]") continue;
+        try {
+          const parsed = JSON.parse(cleaned);
+          if (parsed?.type === "text-delta" && typeof parsed?.delta === "string") { reply += parsed.delta; continue; }
+          if (parsed?.type === "error" && typeof parsed?.errorText === "string") { reply = "Error: " + parsed.errorText; break; }
+        } catch {}
+      }
+      if (!reply.trim()) reply = "No response from agent.";
+
+      sendJson(res, 200, { reply: reply.trim() });
+    } catch (err) {
+      sendJson(res, 500, { error: "Chat request failed" });
+    }
+    return;
+  }
+
   if (pathname === "/cloud/credits") {
     const refreshedCloud = await refreshElizaCloudSession(cloudSession);
     cloudSession = refreshedCloud.session;
@@ -6209,6 +8494,35 @@ async function handleRequest(
     return;
   }
 
+  if (pathname === "/goo") {
+    const agents = getPaperAgents();
+    const summary = getPaperSummary();
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(renderGooPaperPage(agents, summary));
+    return;
+  }
+
+  if (pathname === "/goo/compare") {
+    const agents = getPaperAgents();
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(renderGooComparePage(agents));
+    return;
+  }
+
+  if (pathname.startsWith("/goo/agent/")) {
+    const agentId = pathname.split("/")[3];
+    const agents = getPaperAgents();
+    const agent = agents.find(a => a.id === agentId || a.agenterId === agentId);
+    if (!agent) {
+      res.writeHead(302, { Location: "/goo" });
+      res.end();
+      return;
+    }
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(renderGooAgentDetail(agent));
+    return;
+  }
+
   if (pathname === "/dashboard") {
     const refreshedCloud = await refreshElizaCloudSession(cloudSession);
     cloudSession = refreshedCloud.session;
@@ -6230,6 +8544,13 @@ async function handleRequest(
         sidebarWalletBalanceLabel,
       ),
     );
+    return;
+  }
+
+  if (pathname === "/docs") {
+    const lang = (requestUrl.searchParams.get("lang") === "zh" ? "zh" : "en") as "en" | "zh";
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(renderDocsPage(lang));
     return;
   }
 

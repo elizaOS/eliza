@@ -58,6 +58,12 @@ export interface TreasuryConfig {
   takeProfitRules: TreasuryTakeProfitRule[];
   stopLossPct: number;
   exitScoreThreshold: number;
+  trailingStopPct: number;
+  trailingStopActivatePct: number;
+  gmgnExitEnabled: boolean;
+  holderDropExitThreshold: number;
+  kolExitEnabled: boolean;
+  topHolderDumpPct: number;
 }
 
 export interface TreasuryTakeProfitRule {
@@ -387,6 +393,10 @@ export interface PortfolioPosition {
   takeProfitCount: number;
   takeProfitStagesHit: string[];
   exitReason?: string;
+  peakValueUsd?: number;
+  peakPnlPct?: number;
+  trailingStopTriggered?: boolean;
+  gmgnExitReason?: string;
 }
 
 export interface TreasuryTimelineEvent {
@@ -405,6 +415,17 @@ export interface TreasuryTimelineEvent {
   stateAfter: PortfolioPositionState;
 }
 
+export interface PortfolioFlywheel {
+  totalProfitUsd: number;
+  reinvestedUsd: number;
+  elizaOKBuybackUsd: number;
+  airdropReserveUsd: number;
+  cycleCount: number;
+  lastCycleAt: string | null;
+  trailingStopSaves: number;
+  gmgnExitSaves: number;
+}
+
 export interface PortfolioLifecycle {
   activePositions: PortfolioPosition[];
   watchPositions: PortfolioPosition[];
@@ -419,6 +440,9 @@ export interface PortfolioLifecycle {
   totalUnrealizedPnlUsd: number;
   totalUnrealizedPnlPct: number;
   healthNote: string;
+  flywheel: PortfolioFlywheel;
+  winCount: number;
+  lossCount: number;
 }
 
 export interface HistoryEntry {

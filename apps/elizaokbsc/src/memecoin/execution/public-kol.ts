@@ -92,7 +92,7 @@ async function fetchRankAddresses(
   const response = await fetch(url, { headers: GMGN_HEADERS });
   if (!response.ok) {
     throw new Error(
-      `GMGN public ${orderby} rank request failed: ${response.status} ${response.statusText}`,
+      `Market intel ${orderby} rank request failed: ${response.status} ${response.statusText}`,
     );
   }
 
