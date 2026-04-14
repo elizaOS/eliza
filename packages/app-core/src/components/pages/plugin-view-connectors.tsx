@@ -13,6 +13,7 @@ import {
   resolveManagedDiscordAgentChoice,
 } from "./cloud-dashboard-utils";
 import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
+import { connectorDisplayName } from "./plugin-list-utils";
 import { PagePanel, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, StatusBadge } from "@elizaos/ui";
 import {
   getPluginResourceLinks,
@@ -395,14 +396,14 @@ function ConnectorPluginCard({
     </span>
   );
   const connectorHeaderHeading = (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2">
+    <div className="flex min-w-0 items-start justify-between gap-x-3 gap-y-2">
       <div className="min-w-0">
         <span
           data-testid={`connector-header-${plugin.id}`}
           className="flex min-w-0 flex-wrap items-center gap-2"
         >
           <span className="whitespace-normal break-words [overflow-wrap:anywhere] text-sm font-semibold leading-snug text-txt">
-            {plugin.name}
+            {connectorDisplayName(plugin)}
           </span>
           {hasParams ? (
             <span className="text-xs-tight font-medium text-muted">
@@ -466,7 +467,7 @@ function ConnectorPluginCard({
             handleConnectorSectionToggle(plugin.id);
           }}
           aria-expanded={isExpanded}
-          aria-label={`${isExpanded ? collapseLabel : expandLabel} ${plugin.name}`}
+          aria-label={`${isExpanded ? collapseLabel : expandLabel} ${connectorDisplayName(plugin)}`}
           title={isExpanded ? collapseLabel : expandLabel}
         >
           <ChevronRight
@@ -489,10 +490,10 @@ function ConnectorPluginCard({
         data-testid={`connector-card-${plugin.id}`}
         expanded={isExpanded}
         expandOnCollapsedSurfaceClick
-        className={`transition-all ${
+        className={`border-transparent transition-all ${
           isSelected
-            ? "border-border/45 shadow-[0_18px_40px_rgba(3,5,10,0.16)]"
-            : "border-border/50"
+            ? "shadow-[0_18px_40px_rgba(3,5,10,0.16)]"
+            : ""
         }`}
         onExpandedChange={(nextExpanded) =>
           handleConnectorExpandedChange(plugin.id, nextExpanded)
@@ -739,6 +740,12 @@ function ConnectorPluginCard({
 
 export function ConnectorPluginGroups(props: ConnectorPluginGroupsProps) {
   const groups = groupVisiblePlugins(props.visiblePlugins);
+
+  if (groups.length === 1) {
+    return groups[0].plugins.map((plugin) => (
+      <ConnectorPluginCard key={plugin.id} {...props} plugin={plugin} />
+    ));
+  }
 
   return groups.map((group) => (
     <div

@@ -222,7 +222,7 @@ function buildWorldOptions(
     {
       count: matchingRows.length,
       label: t("conversations.scopeAllWorlds", {
-        defaultValue: "All worlds",
+        defaultValue: "All",
       }),
       value: ALL_WORLDS_SCOPE,
     },

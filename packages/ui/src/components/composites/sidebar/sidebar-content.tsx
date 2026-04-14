@@ -171,7 +171,7 @@ export const SidebarItem = React.forwardRef<HTMLElement, SidebarItemProps>(
     if (as === "div") {
       return (
         <div
-          ref={ref as React.Ref<HTMLDivElement>}
+          ref={ref as unknown as React.Ref<HTMLDivElement>}
           data-sidebar-item
           className={sharedClassName}
           {...props}
@@ -181,7 +181,7 @@ export const SidebarItem = React.forwardRef<HTMLElement, SidebarItemProps>(
 
     return (
       <button
-        ref={ref as React.Ref<HTMLButtonElement>}
+        ref={ref as unknown as React.Ref<HTMLButtonElement>}
         type="button"
         data-sidebar-item
         className={sharedClassName}

@@ -46,5 +46,6 @@
       "react-dom": ["../ui/node_modules/@types/react-dom/index.d.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/**/__tests__/**"]
 }

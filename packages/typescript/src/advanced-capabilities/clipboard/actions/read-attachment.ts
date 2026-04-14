@@ -85,7 +85,7 @@ export const readAttachmentAction: Action = {
 				clipboardResult.requested
 					? clipboardResult.stored
 						? `${clipboardResult.replaced ? "Updated" : "Added"} clipboard item ${clipboardResult.item.id}: ${clipboardResult.item.title}`
-						: `Clipboard add skipped: ${clipboardResult.reason}`
+						: `Clipboard add skipped: ${"reason" in clipboardResult ? clipboardResult.reason : "unknown"}`
 					: "",
 				clipboardResult.requested && clipboardResult.stored
 					? `Clipboard usage: ${clipboardResult.snapshot.items.length}/${clipboardResult.snapshot.maxItems}.`

@@ -1,4 +1,4 @@
-import type { Plugin } from "../../types/plugin.ts";
+import type { Plugin, ServiceClass } from "../../types/plugin.ts";
 import { coreStatusAction } from "./actions/coreStatusAction.ts";
 import { listEjectedPluginsAction } from "./actions/listEjectedPluginsAction.ts";
 import {
@@ -121,7 +121,10 @@ export const pluginManagerPlugin: Plugin = {
 		registryPluginsProvider,
 	],
 	evaluators: [],
-	services: [PluginManagerService, CoreManagerService],
+	services: [
+		PluginManagerService as unknown as ServiceClass,
+		CoreManagerService,
+	],
 };
 
 export default pluginManagerPlugin;

@@ -16,7 +16,7 @@
 
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import { sendJson, sendJsonError } from "@elizaos/app-core";
+import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
 
 const API_VERSION = "2025-04";
 const ORDER_STATUS_FILTER_VALUES = [
