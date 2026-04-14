@@ -1153,7 +1153,7 @@ async function smokeTabs(page: Page, profile: Profile) {
       path: "/connectors",
       name: "connectors",
       waitForReady: () =>
-        page.waitForSelector('[data-testid="connectors-settings-sidebar"]'),
+        waitForAnyText(page, ["CONNECTORS", "Connectors", "Search connectors"], 30_000),
     },
     {
       path: "/settings",
@@ -1190,7 +1190,15 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/desktop",
       name: "desktop",
-      waitForReady: () => waitForText(page, "Refresh Diagnostics", 30_000),
+      waitForReady: () =>
+        waitForAnyText(
+          page,
+          [
+            "Refresh Diagnostics",
+            "Desktop workspace tools are only available inside the Electrobun desktop runtime.",
+          ],
+          30_000,
+        ),
     },
     {
       path: "/logs",

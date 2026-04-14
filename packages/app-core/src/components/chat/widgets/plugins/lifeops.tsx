@@ -11,6 +11,7 @@ import type {
 import { CalendarDays, Mail, Plug2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { Badge } from "@elizaos/ui";
 import { client } from "../../../../api";
 import {
   useGoogleLifeOpsConnector,
@@ -18,7 +19,6 @@ import {
 } from "../../../../hooks";
 import { WidgetSection } from "../shared";
 import type {
-import { Badge } from "@elizaos/ui";
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "../types";

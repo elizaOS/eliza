@@ -20,7 +20,7 @@ export function WidgetSection({
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-bg-hover text-muted">
             {icon}
           </span>
-          <span className="truncate text-xs font-semibold uppercase tracking-[0.08em] text-muted">
+          <span className="truncate text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
             {title}
           </span>
         </div>
@@ -46,7 +46,7 @@ export function EmptyWidgetState({
     <div className="flex flex-col gap-3">
       <div className="flex flex-col items-center justify-center gap-2 py-5 text-center">
         <span className="text-muted/50">{icon}</span>
-        <p className="text-sm text-muted">{title}</p>
+        <p className="text-xs text-muted">{title}</p>
         {description ? (
           <p className="text-xs text-muted/70">{description}</p>
         ) : null}

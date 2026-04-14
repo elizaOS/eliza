@@ -3,20 +3,12 @@
 This document covers running the 'scape plugin end-to-end. The
 **default configuration** already points at the live production
 deployment of 'scape — no extra setup needed to launch it from the
-<<<<<<< HEAD
-eliza apps grid. This document covers overriding those defaults
-=======
 milady apps grid. This document covers overriding those defaults
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 for local dev or running against your own fork's deployment.
 
 ## Default live deployment
 
-<<<<<<< HEAD
-When you click **'scape** in the eliza apps grid, the viewer
-=======
 When you click **'scape** in the milady apps grid, the viewer
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 iframe loads:
 
     https://scape-client-2sqyc.kinsta.page
@@ -33,11 +25,7 @@ build time. It connects to:
 
 **This works out of the box** — open the app, register an
 account on the login screen, play. No env vars required on the
-<<<<<<< HEAD
-eliza side.
-=======
 milady side.
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 **Bot-SDK is live on production.** The autonomous LLM loop connects
 to `wss://scape-96cxt.sevalla.app/botsdk` by default — the same host
@@ -56,30 +44,18 @@ dev stack instead of the production deployment.
 1. **xRSPS running locally**, with the bot-SDK endpoint enabled:
    - `BOT_SDK_TOKEN` set in the environment
    - The main game HTTP server (default port 8080) reachable from
-<<<<<<< HEAD
-     wherever eliza runs — the bot-SDK is routed on the same port
-     at path `/botsdk`
-2. **The React client running** locally (default
-   `http://localhost:3000`)
-3. **eliza runtime** with this plugin installed (it already is if
-=======
      wherever milady runs — the bot-SDK is routed on the same port
      at path `/botsdk`
 2. **The React client running** locally (default
    `http://localhost:3000`)
 3. **milady runtime** with this plugin installed (it already is if
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
    you're in this repo — `plugins/app-scape/` is a workspace package)
 
 ## Environment variables
 
 The plugin reads settings from:
 
-<<<<<<< HEAD
-1. `runtime.getSetting(KEY)` — via character secrets in eliza
-=======
 1. `runtime.getSetting(KEY)` — via character secrets in milady
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 2. `process.env[KEY]` — via shell or systemd unit
 3. Hardcoded defaults (only for localhost dev)
 
@@ -97,11 +73,7 @@ The plugin reads settings from:
 
 ## Playing against the live deployment (no config)
 
-<<<<<<< HEAD
-If you just want to click **'scape** in the eliza apps grid and
-=======
 If you just want to click **'scape** in the milady apps grid and
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 land in the game, you don't need to set anything. The plugin
 defaults to the production deployment URL, so the viewer iframe
 will load the hosted client directly. Register an account on the
@@ -119,11 +91,7 @@ dev stack.
 
 ## Dev loop (single host, autonomous agent)
 
-<<<<<<< HEAD
-Assumes xRSPS and eliza are both running on your laptop and you
-=======
 Assumes xRSPS and milady are both running on your laptop and you
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 want to run the autonomous LLM loop against a local xRSPS server
 with a bot-SDK endpoint enabled.
 
@@ -139,37 +107,21 @@ bun run dev
 watch all three tabs with `Ctrl-A` + arrow keys.
 
 ```bash
-<<<<<<< HEAD
-# Terminal 2 — eliza
-cd ~/eliza
-=======
 # Terminal 2 — milady
 cd ~/milady
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 export SCAPE_CLIENT_URL=http://localhost:3000
 export SCAPE_BOT_SDK_URL=ws://127.0.0.1:8080/botsdk
 export SCAPE_BOT_SDK_TOKEN=dev-secret
 export SCAPE_AGENT_PASSWORD=my-dev-password
-<<<<<<< HEAD
-bun run dev  # or however you start eliza
-=======
 bun run dev  # or however you start milady
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 The plugin connects, auto-registers `scape-agent` as a real account
 on first run, and starts its autonomous loop. The journal file appears
-<<<<<<< HEAD
-at `~/.eliza/scape-journals/scape-scape-agent.toon` (TOON-encoded,
-not JSON).
-
-Click the 'scape tile in the eliza apps grid and the viewer iframe
-=======
 at `~/.milady/scape-journals/scape-scape-agent.toon` (TOON-encoded,
 not JSON).
 
 Click the 'scape tile in the milady apps grid and the viewer iframe
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 loads the local xRSPS React client at `http://localhost:3000` (because
 of the `SCAPE_CLIENT_URL` override). Log in with any username + an
 8+-character password; you're now in the same world as the agent and
@@ -200,15 +152,9 @@ The xRSPS client is a CRA build. Host `build/` on any static host
 that the client needs `REACT_APP_WS_URL` set at build time to point
 at your xRSPS game server, not localhost.
 
-<<<<<<< HEAD
-### 3. Configure eliza
-
-In your eliza character's secrets or the eliza runtime env:
-=======
 ### 3. Configure milady
 
 In your milady character's secrets or the milady runtime env:
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
 ```bash
 SCAPE_CLIENT_URL=https://game-client.yourdomain.com
@@ -221,34 +167,19 @@ SCAPE_LOOP_INTERVAL_MS=15000
 
 ### 4. Verify
 
-<<<<<<< HEAD
-From the eliza runtime host:
-
-```bash
-# HTTP ping: POST a directive to the agent
-curl -X POST https://your-eliza-host/api/apps/scape/prompt \
-=======
 From the milady runtime host:
 
 ```bash
 # HTTP ping: POST a directive to the agent
 curl -X POST https://your-milady-host/api/apps/scape/prompt \
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
   -H "Content-Type: text/toon" \
   -d 'text: mine copper ore near Lumbridge'
 
 # Read the journal
-<<<<<<< HEAD
-curl https://your-eliza-host/api/apps/scape/journal
-
-# Read goals
-curl https://your-eliza-host/api/apps/scape/goals
-=======
 curl https://your-milady-host/api/apps/scape/journal
 
 # Read goals
 curl https://your-milady-host/api/apps/scape/goals
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 ```
 
 And from inside the game as a human player:
@@ -261,17 +192,10 @@ The next LLM step should honor the directive.
 
 ## Operational tips
 
-<<<<<<< HEAD
-- **Journal backups**: `~/.eliza/scape-journals/*.toon` is the
-  agent's long-term memory. Back it up alongside xRSPS
-  `accounts.json` and `player-state.json`.
-- **Multiple agents**: spin up multiple eliza characters, give each
-=======
 - **Journal backups**: `~/.milady/scape-journals/*.toon` is the
   agent's long-term memory. Back it up alongside xRSPS
   `accounts.json` and `player-state.json`.
 - **Multiple agents**: spin up multiple milady characters, give each
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
   a different `SCAPE_AGENT_NAME` + `SCAPE_AGENT_ID`. They get
   separate journals and separate player accounts in xRSPS.
 - **Swap models mid-session**: set `SCAPE_MODEL_SIZE=TEXT_LARGE`

@@ -706,7 +706,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
                 <Button
                   variant="surface"
                   size="icon"
-                  className="h-11 w-11 min-h-touch min-w-touch rounded-xl"
+                  className="h-11 w-11 min-h-touch min-w-touch rounded-sm"
                   onClick={onMobileClose}
                   aria-label={mobileCloseLabel}
                   title={mobileCloseLabel}

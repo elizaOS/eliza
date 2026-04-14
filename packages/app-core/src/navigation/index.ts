@@ -30,6 +30,7 @@ export type BuiltinTab =
   | "chat"
   | "lifeops"
   | "tasks"
+  | "automations"
   | "browser"
   | "companion"
   | "stream"
@@ -63,7 +64,6 @@ export type Tab = BuiltinTab | (string & {});
 
 export const APPS_TOOL_TABS = [
   "lifeops",
-  "tasks",
   "plugins",
   "skills",
   "fine-tuning",
@@ -129,10 +129,10 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Live streaming controls",
   },
   {
-    label: "Heartbeats",
-    tabs: ["triggers"],
+    label: "Automations",
+    tabs: ["automations"],
     icon: Clock3,
-    description: "Scheduled autonomous automations",
+    description: "Tasks, scheduled automations, and recurring workflows",
   },
   {
     label: "Settings",
@@ -206,7 +206,8 @@ const TAB_PATHS: Record<BuiltinTab, string> = {
   apps: "/apps",
   character: "/character",
   "character-select": "/character/select",
-  triggers: "/triggers",
+  automations: "/automations",
+  triggers: "/automations",
   inventory: "/inventory",
   knowledge: "/character/knowledge",
   connectors: "/connectors",
@@ -234,13 +235,14 @@ const LEGACY_PATHS: Record<string, Tab> = {
   "/features": "plugins",
   "/admin": "fine-tuning",
   "/config": "settings",
-  "/triggers": "triggers",
+  "/triggers": "automations",
+  "/heartbeats": "automations",
   // Old top-level paths that moved under /character/
   "/character-select": "character-select",
   "/knowledge": "knowledge",
   // Old top-level paths that moved under /apps/
   "/lifeops": "lifeops",
-  "/tasks": "tasks",
+  "/tasks": "automations",
   "/plugins": "plugins",
   "/skills": "skills",
   "/advanced": "fine-tuning",
@@ -299,7 +301,7 @@ export function resolveInitialTabForPath(
 /** Known apps-tool sub-paths under /apps/ (not actual app slugs). */
 const APPS_SUB_TABS: Record<string, Tab> = {
   lifeops: "lifeops",
-  tasks: "tasks",
+  tasks: "automations",
   plugins: "plugins",
   skills: "skills",
   "fine-tuning": "fine-tuning",
@@ -412,8 +414,10 @@ export function titleForTab(tab: Tab): string {
       return "Character";
     case "character-select":
       return "Character Select";
+    case "automations":
+      return "Automations";
     case "triggers":
-      return "Heartbeats";
+      return "Automations";
     case "inventory":
       return "Wallet";
     case "knowledge":

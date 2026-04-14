@@ -7,11 +7,7 @@
 # 2. Computer Use (Rust tests)
 # 3. Browser Use (TypeScript plugin tests)
 # 4. Browser Extension (WebSocket test harness)
-<<<<<<< HEAD
-# 5. Eliza Core Tests
-=======
 # 5. Milady Core Tests
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 #
 # Usage:
 #   ./test/scripts/validate-all-features.sh [options]
@@ -21,11 +17,7 @@
 #   --computeruse-only Run only Computer Use tests
 #   --browser-only     Run only Browser Use tests
 #   --extension-only   Run only Browser Extension tests
-<<<<<<< HEAD
-#   --app-only     Run only Eliza core tests
-=======
 #   --milady-only     Run only Milady core tests
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 #   --quick            Skip slow tests (Rust build, integration tests)
 #   --report           Generate detailed HTML report
 #   --verbose          Show all output
@@ -49,14 +41,6 @@ BOLD='\033[1m'
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-<<<<<<< HEAD
-ELIZA_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-ELIZA_ROOT="$ELIZA_ROOT/eliza"
-PLUGINS_ROOT="$(cd "$ELIZA_ROOT/plugins" 2>/dev/null && pwd || echo "")"
-
-# Results tracking
-RESULTS_FILE="$(mktemp "${TMPDIR:-/tmp}/eliza-feature-results.XXXXXX")"
-=======
 MILADY_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ELIZA_ROOT="$MILADY_ROOT/eliza"
 PLUGINS_ROOT="$(cd "$MILADY_ROOT/plugins" 2>/dev/null && pwd || echo "")"
@@ -64,31 +48,17 @@ PLUGINS_ROOT="$(cd "$MILADY_ROOT/plugins" 2>/dev/null && pwd || echo "")"
 # Results tracking
 declare -A TEST_RESULTS
 declare -A TEST_COUNTS
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 TOTAL_PASSED=0
 TOTAL_FAILED=0
 TOTAL_SKIPPED=0
 START_TIME=$(date +%s)
 
-<<<<<<< HEAD
-cleanup_results_file() {
-    rm -f "$RESULTS_FILE"
-}
-
-trap cleanup_results_file EXIT
-
-=======
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 # Options
 RUN_VISION=true
 RUN_COMPUTERUSE=true
 RUN_BROWSER=true
 RUN_EXTENSION=true
-<<<<<<< HEAD
-RUN_APP=true
-=======
 RUN_MILADY=true
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 QUICK_MODE=false
 GENERATE_REPORT=false
 VERBOSE=false
@@ -100,50 +70,31 @@ while [[ $# -gt 0 ]]; do
             RUN_COMPUTERUSE=false
             RUN_BROWSER=false
             RUN_EXTENSION=false
-<<<<<<< HEAD
-            RUN_APP=false
-=======
             RUN_MILADY=false
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
             shift
             ;;
         --computeruse-only)
             RUN_VISION=false
             RUN_BROWSER=false
             RUN_EXTENSION=false
-<<<<<<< HEAD
-            RUN_APP=false
-=======
             RUN_MILADY=false
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
             shift
             ;;
         --browser-only)
             RUN_VISION=false
             RUN_COMPUTERUSE=false
             RUN_EXTENSION=false
-<<<<<<< HEAD
-            RUN_APP=false
-=======
             RUN_MILADY=false
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
             shift
             ;;
         --extension-only)
             RUN_VISION=false
             RUN_COMPUTERUSE=false
             RUN_BROWSER=false
-<<<<<<< HEAD
-            RUN_APP=false
-            shift
-            ;;
-        --app-only)
-=======
             RUN_MILADY=false
             shift
             ;;
         --milady-only)
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
             RUN_VISION=false
             RUN_COMPUTERUSE=false
             RUN_BROWSER=false
@@ -202,30 +153,11 @@ log_info() {
     echo -e "  ${BLUE}ℹ${NC} $1"
 }
 
-<<<<<<< HEAD
-record_result() {
-    local name="$1"
-    local status="$2"
-    local passed="$3"
-    local failed="$4"
-    local skipped="$5"
-    local duration="$6"
-
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$name" "$status" "$passed" "$failed" "$skipped" "$duration" >> "$RESULTS_FILE"
-}
-
-=======
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 # Run tests and capture results
 run_test_suite() {
     local name="$1"
     local command="$2"
-<<<<<<< HEAD
-    local working_dir="${3:-$ELIZA_ROOT}"
-=======
     local working_dir="${3:-$MILADY_ROOT}"
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
     log_section "Running: $name"
 
@@ -270,15 +202,11 @@ run_test_suite() {
     fi
 
     # Store results
-<<<<<<< HEAD
-    record_result "$name" "$status" "$passed" "$failed" "$skipped" "$duration"
-=======
     TEST_RESULTS["$name"]=$status
     TEST_COUNTS["${name}_passed"]=$passed
     TEST_COUNTS["${name}_failed"]=$failed
     TEST_COUNTS["${name}_skipped"]=$skipped
     TEST_COUNTS["${name}_duration"]=$duration
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
     TOTAL_PASSED=$((TOTAL_PASSED + passed))
     TOTAL_FAILED=$((TOTAL_FAILED + failed))
@@ -309,11 +237,7 @@ run_vision_tests() {
     run_test_suite \
         "Computer Vision (media-provider.test.ts)" \
         "npx vitest run src/providers/media-provider.test.ts --reporter=basic" \
-<<<<<<< HEAD
-        "$ELIZA_ROOT" || true
-=======
         "$MILADY_ROOT" || true
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 }
 
 # ============================================================================
@@ -409,13 +333,6 @@ run_extension_tests() {
             log_info "  Permissions declared: $permissions"
         fi
 
-<<<<<<< HEAD
-        record_result "Browser Extension - Files" "0" "1" "0" "0" "0"
-        TOTAL_PASSED=$((TOTAL_PASSED + 1))
-    else
-        log_failure "Browser Extension files missing"
-        record_result "Browser Extension - Files" "1" "0" "1" "0" "0"
-=======
         TEST_RESULTS["Browser Extension - Files"]="0"
         TEST_COUNTS["Browser Extension - Files_passed"]=1
         TOTAL_PASSED=$((TOTAL_PASSED + 1))
@@ -423,14 +340,10 @@ run_extension_tests() {
         log_failure "Browser Extension files missing"
         TEST_RESULTS["Browser Extension - Files"]="1"
         TEST_COUNTS["Browser Extension - Files_failed"]=1
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
         TOTAL_FAILED=$((TOTAL_FAILED + 1))
     fi
 }
 
-# ============================================================================
-<<<<<<< HEAD
-# APP CORE TESTS
 # ============================================================================
 run_app_tests() {
     log_header "APP CORE TESTS"
@@ -441,21 +354,10 @@ run_app_tests() {
 run_milady_tests() {
     log_header "MILADY CORE TESTS"
     log_info "Testing Milady core functionality"
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
     if $QUICK_MODE; then
         # Run only a subset of tests
         run_test_suite \
-<<<<<<< HEAD
-            "Eliza - Quick (config + utils)" \
-            "npx vitest run src/config/*.test.ts src/utils/*.test.ts --reporter=basic" \
-            "$ELIZA_ROOT" || true
-    else
-        run_test_suite \
-            "Eliza - Full Test Suite" \
-            "npm test" \
-            "$ELIZA_ROOT" || true
-=======
             "Milady - Quick (config + utils)" \
             "npx vitest run src/config/*.test.ts src/utils/*.test.ts --reporter=basic" \
             "$MILADY_ROOT" || true
@@ -464,7 +366,6 @@ run_milady_tests() {
             "Milady - Full Test Suite" \
             "npm test" \
             "$MILADY_ROOT" || true
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
     fi
 }
 
@@ -472,11 +373,7 @@ run_milady_tests() {
 # REPORT GENERATION
 # ============================================================================
 generate_report() {
-<<<<<<< HEAD
-    local report_file="$ELIZA_ROOT/test-results/feature-validation-report.html"
-=======
     local report_file="$MILADY_ROOT/test-results/feature-validation-report.html"
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
     mkdir -p "$(dirname "$report_file")"
 
     local end_time=$(date +%s)
@@ -551,17 +448,12 @@ generate_report() {
             <tbody>
 EOF
 
-<<<<<<< HEAD
-    while IFS=$'\t' read -r name status passed failed skipped duration; do
-        [[ -n "$name" ]] || continue
-=======
     for name in "${!TEST_RESULTS[@]}"; do
         local status="${TEST_RESULTS[$name]}"
         local passed="${TEST_COUNTS[${name}_passed]:-0}"
         local failed="${TEST_COUNTS[${name}_failed]:-0}"
         local skipped="${TEST_COUNTS[${name}_skipped]:-0}"
         local duration="${TEST_COUNTS[${name}_duration]:-0}"
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
         local status_class="status-pass"
         local status_text="PASS"
@@ -580,11 +472,7 @@ EOF
                     <td>${duration}s</td>
                 </tr>
 EOF
-<<<<<<< HEAD
-    done < "$RESULTS_FILE"
-=======
     done
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
     cat >> "$report_file" << EOF
             </tbody>
@@ -631,11 +519,7 @@ EOF
 # ============================================================================
 main() {
     log_header "FEATURE VALIDATION SUITE"
-<<<<<<< HEAD
-    echo -e "${BOLD}Eliza Root:${NC} $ELIZA_ROOT"
-=======
     echo -e "${BOLD}Milady Root:${NC} $MILADY_ROOT"
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
     echo -e "${BOLD}Eliza Root:${NC} $ELIZA_ROOT"
     echo -e "${BOLD}Plugins Root:${NC} ${PLUGINS_ROOT:-'Not found'}"
     echo -e "${BOLD}Quick Mode:${NC} $QUICK_MODE"
@@ -646,11 +530,7 @@ main() {
     $RUN_COMPUTERUSE && run_computeruse_tests
     $RUN_BROWSER && run_browser_tests
     $RUN_EXTENSION && run_extension_tests
-<<<<<<< HEAD
-    $RUN_APP && run_app_tests
-=======
     $RUN_MILADY && run_milady_tests
->>>>>>> 026a30d5346a0084770e004dfe12b43524c2096e
 
     # Generate report if requested
     $GENERATE_REPORT && generate_report
