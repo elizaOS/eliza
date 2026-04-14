@@ -6,7 +6,12 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node", "bun", "vite/client", "react", "react-dom"],
+    "types": ["node", "bun", "vite/client"],
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../../../node_modules/@types",
+      "../../node_modules"
+    ],
     "allowImportingTsExtensions": true,
     "declaration": false,
     "noEmit": true,
