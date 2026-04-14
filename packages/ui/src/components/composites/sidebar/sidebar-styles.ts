@@ -6,14 +6,14 @@ export const sidebarRootVariants = cva(
     variants: {
       variant: {
         default:
-          "relative isolate min-h-0 h-[calc(100%-1rem)] w-full shrink-0 rounded-l-none rounded-tr-[26px] rounded-br-none border-y-0 border-l-0 border-b border-border/34 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] ring-1 ring-border/12 backdrop-blur-md before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.26),transparent)] after:pointer-events-none after:absolute after:bottom-0 after:right-0 after:top-[1.25rem] after:w-[2px] after:bg-[linear-gradient(180deg,rgba(255,255,255,0.06),transparent_24%,transparent)] lg:border-b-0 lg:border-r dark:ring-white/5 dark:before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.12),transparent)] dark:after:bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent_22%,transparent)]",
+          "relative isolate min-h-0 h-[calc(100%-1rem)] w-full shrink-0 rounded-l-none rounded-tr-none rounded-br-none border-y-0 border-l-0 border-b border-border/34 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] ring-1 ring-border/12 backdrop-blur-md before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.26),transparent)] after:pointer-events-none after:absolute after:bottom-0 after:right-0 after:top-[1.25rem] after:w-[2px] after:bg-[linear-gradient(180deg,rgba(255,255,255,0.06),transparent_24%,transparent)] lg:border-b-0 lg:border-r dark:ring-white/5 dark:before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.12),transparent)] dark:after:bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent_22%,transparent)]",
         mobile:
           "h-full w-full min-w-0 border-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_96%,transparent),color-mix(in_srgb,var(--bg)_92%,transparent))] shadow-none ring-0",
         "game-modal":
           "h-full rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(11,12,17,0.9),rgba(8,10,14,0.82))] shadow-[0_20px_60px_rgba(0,0,0,0.28)] backdrop-blur-xl",
       },
       collapsed: {
-        true: "!w-[4.75rem] !min-w-[4.75rem] rounded-tr-[24px] xl:!w-[4.75rem] xl:!min-w-[4.75rem]",
+        true: "!w-[4.75rem] !min-w-[4.75rem] rounded-tr-none xl:!w-[4.75rem] xl:!min-w-[4.75rem]",
         false: "",
       },
     },
@@ -136,7 +136,7 @@ export const sidebarCollapsedRailListClassName =
 export const sidebarCollapsedActionButtonClassName = "h-11 w-11 rounded-xl";
 
 export const sidebarCollapsedFallbackRootClassName =
-  "!w-[7rem] !min-w-[7rem] rounded-tr-[24px] xl:!w-[7rem] xl:!min-w-[7rem]";
+  "!w-[7rem] !min-w-[7rem] rounded-tr-none xl:!w-[7rem] xl:!min-w-[7rem]";
 
 export const sidebarCollapsedFallbackBodyClassName =
   "custom-scrollbar flex min-h-0 w-full flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3 pt-2 [&_[data-sidebar-panel]]:min-h-0 [&_[data-sidebar-panel]]:gap-2 [&_[data-sidebar-panel]]:rounded-2xl [&_[data-sidebar-panel]]:p-1.5 [&_[data-sidebar-filter-bar]]:hidden [&_[data-sidebar-section-label]]:hidden [&_[data-sidebar-section-header]]:hidden [&_[data-sidebar-toolbar-actions]]:hidden [&_[data-segmented-control]]:grid [&_[data-segmented-control]]:w-full [&_[data-segmented-control]]:max-w-none [&_[data-segmented-control]]:grid-cols-1 [&_[data-segmented-control]]:border-transparent [&_[data-segmented-control]]:bg-transparent [&_[data-segmented-control]]:p-0 [&_[data-segmented-control-button]]:w-full [&_[data-segmented-control-button]]:justify-center [&_[data-segmented-control-button]]:px-2.5 [&_[data-segmented-control-button]]:py-2.5 [&_[data-segmented-control-button]]:text-xs-tight [&_[data-sidebar-item]]:rounded-xl [&_[data-sidebar-item]]:px-2.5 [&_[data-sidebar-item]]:py-2.5 [&_[data-sidebar-item]]:gap-2 [&_[data-sidebar-item]]:items-center [&_[data-sidebar-item]]:justify-center [&_[data-sidebar-item]>div.absolute]:hidden [&_[data-sidebar-item-button]]:w-full [&_[data-sidebar-item-button]]:flex-col [&_[data-sidebar-item-button]]:items-center [&_[data-sidebar-item-button]]:justify-center [&_[data-sidebar-item-button]]:gap-2 [&_[data-sidebar-item-body]]:flex [&_[data-sidebar-item-body]]:w-full [&_[data-sidebar-item-body]]:flex-col [&_[data-sidebar-item-body]]:items-center [&_[data-sidebar-item-body]]:text-center [&_[data-sidebar-item-body]>*+*]:hidden [&_[data-sidebar-item-title]]:line-clamp-2 [&_[data-sidebar-item-title]]:text-center [&_[data-sidebar-item-title]]:text-xs-tight [&_[data-sidebar-item-title]]:leading-tight [&_[data-sidebar-item-description]]:hidden [&_[data-sidebar-item-icon]]:mx-auto [&_[data-sidebar-item-icon]]:mt-0 [&_[data-sidebar-item-action]]:hidden [&_.grid]:grid-cols-1 [&_.grid]:gap-2 [&_button]:min-h-11";

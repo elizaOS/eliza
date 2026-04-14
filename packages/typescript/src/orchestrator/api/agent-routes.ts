@@ -598,7 +598,7 @@ export async function handleAgentRoutes(
       const rawAnthropicKey = ctx.runtime.getSetting("ANTHROPIC_API_KEY") as
         | string
         | undefined;
-      let credentials;
+      let credentials: ReturnType<typeof buildAgentCredentials> | undefined;
       try {
         credentials = buildAgentCredentials(ctx.runtime);
       } catch (error) {

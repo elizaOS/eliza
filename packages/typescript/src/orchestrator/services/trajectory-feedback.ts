@@ -140,14 +140,21 @@ function extractInsights(response: string, purpose: string): string[] {
 
   // Extract explicit DECISION markers
   const decisionPattern = /DECISION:\s*(.+?)(?:\n|$)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = decisionPattern.exec(response)) !== null) {
+  for (
+    let match = decisionPattern.exec(response);
+    match !== null;
+    match = decisionPattern.exec(response)
+  ) {
     insights.push(match[1].trim());
   }
 
   // Extract keyDecision from coordination responses
   const keyDecisionPattern = /"keyDecision"\s*:\s*"([^"]+)"/g;
-  while ((match = keyDecisionPattern.exec(response)) !== null) {
+  for (
+    let match = keyDecisionPattern.exec(response);
+    match !== null;
+    match = keyDecisionPattern.exec(response)
+  ) {
     insights.push(match[1].trim());
   }
 

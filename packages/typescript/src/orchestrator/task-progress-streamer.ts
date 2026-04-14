@@ -95,10 +95,11 @@ export function installTaskProgressStreamer(
       const meta = svc.sessionMetadata?.get(sessionId) as SessionMetadata | undefined;
       if (meta?.roomId) {
         void (async () => {
-          const room = await runtime.getRoom(meta.roomId!).catch(() => null);
+          const roomId = meta.roomId as NonNullable<typeof meta.roomId>;
+          const room = await runtime.getRoom(roomId).catch(() => null);
           if (room?.source) {
             sessionRooms.set(sessionId, {
-              roomId: meta.roomId!,
+              roomId,
               channelId: room.channelId ?? room.id,
               source: room.source,
               serverId: room.serverId,

@@ -464,7 +464,7 @@ export function ConversationsSidebar({
                       <Settings2 className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">
                         {t("conversations.manageConnections", {
-                          defaultValue: "Manage Connections",
+                          defaultValue: "Manage",
                         })}
                       </span>
                     </Button>
