@@ -9,7 +9,7 @@
     "resolveJsonModule": true,
     "declaration": false,
     "outDir": "./dist",
-    "types": ["bun", "node"]
+    "types": ["bun-types", "node"]
   },
   "include": ["*.ts"],
   "exclude": ["node_modules", "dist"]
