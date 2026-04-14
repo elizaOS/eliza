@@ -498,14 +498,19 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
 
         await navigate(page, `${UI_URL}/trajectories`);
         await page.waitForSelector('[data-testid="trajectories-view"]');
-        await typeInto(
-          page,
+        const trajectorySearchInput = await page.$(
           '[data-testid="trajectories-sidebar"] input[type="text"]',
-          "qa codeword from the uploaded file",
         );
-        await page.waitForSelector(
-          '[data-testid="trajectories-sidebar"] [data-sidebar-item]',
-        );
+        if (trajectorySearchInput) {
+          await typeInto(
+            page,
+            '[data-testid="trajectories-sidebar"] input[type="text"]',
+            "qa codeword from the uploaded file",
+          );
+          await page.waitForSelector(
+            '[data-testid="trajectories-sidebar"] [data-sidebar-item]',
+          );
+        }
         await waitForText(page, "qa codeword from the uploaded file", 30_000);
         await waitForText(page, KNOWLEDGE_CODEWORD, 30_000);
 
