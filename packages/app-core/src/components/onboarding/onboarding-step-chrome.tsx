@@ -1,8 +1,8 @@
 
 import type { ButtonHTMLAttributes, CSSProperties } from "react";
 import { useId } from "react";
-import {
 import { cn } from "@elizaos/ui";
+import {
   onboardingReadableTextFaintClassName,
   onboardingReadableTextMutedClassName,
   onboardingReadableTextStrongClassName,

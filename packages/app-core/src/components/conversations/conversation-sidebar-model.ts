@@ -3,8 +3,8 @@ import { normalizeConnectorSource } from "@elizaos/shared/connectors";
 import type * as React from "react";
 
 import type { Conversation } from "../../api/client-types-chat";
-import {
 import { getChatSourceMeta } from "@elizaos/ui";
+import {
   formatRelativeTime,
   getLocalizedConversationTitle,
 } from "./conversation-utils";

@@ -10,8 +10,8 @@ import type {
   FieldRenderProps,
 } from "../../config/config-catalog";
 import { resolveDynamic } from "../../config/config-catalog";
-import {
 import { Button, Checkbox, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, SELECT_FLOATING_LAYER_NAME, SELECT_FLOATING_LAYER_Z_INDEX } from "@elizaos/ui";
+import {
   getConfigInputClassName,
   getConfigTextareaClassName,
 } from "./config-control-primitives";

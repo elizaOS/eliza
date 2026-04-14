@@ -13,8 +13,8 @@ import {
   resolveManagedDiscordAgentChoice,
 } from "./cloud-dashboard-utils";
 import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
-import {
 import { PagePanel, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, StatusBadge } from "@elizaos/ui";
+import {
   getPluginResourceLinks,
   pluginResourceLinkLabel,
   SUBGROUP_LABELS,

@@ -83,8 +83,8 @@ const UploadIcon = ({ className }: { className?: string }) => (
   />
 );
 
-import {
 import { SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, PageLayout } from "@elizaos/ui";
+import {
   type ChangeEvent,
   type ReactNode,
   useCallback,

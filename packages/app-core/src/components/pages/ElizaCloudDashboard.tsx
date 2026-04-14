@@ -25,8 +25,8 @@ import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";
 import { AgentDetailSidebar, CloudAgentCard } from "./cloud-dashboard-panels";
-import {
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Switch } from "@elizaos/ui";
+import {
   autoTopUpFormReducer,
   BILLING_PRESET_AMOUNTS,
   buildAutoTopUpFormState,

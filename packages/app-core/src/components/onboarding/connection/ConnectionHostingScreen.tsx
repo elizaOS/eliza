@@ -8,8 +8,8 @@ import {
   onboardingChoiceCardDescriptionClassName,
   onboardingChoiceCardTitleClassName,
 } from "../onboarding-form-primitives";
-import {
 import { Button } from "@elizaos/ui";
+import {
   OnboardingSecondaryActionButton,
   OnboardingStepHeader,
   onboardingFooterClass,

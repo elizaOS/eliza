@@ -12,8 +12,8 @@ import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { resolveApiUrl } from "../../utils/asset-url";
-import {
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Textarea, ContentLayout } from "@elizaos/ui";
+import {
   DESKTOP_WORKSPACE_SURFACES,
   type DesktopClickAuditItem,
   type DesktopWorkspaceSnapshot,

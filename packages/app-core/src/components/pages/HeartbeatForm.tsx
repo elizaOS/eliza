@@ -2,8 +2,8 @@
 
 import type { TriggerSummary } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
-import {
 import { PagePanel, Button, FieldLabel, FieldSwitch, FormSelect, FormSelectItem, Input, StatusBadge, StatusDot, Textarea } from "@elizaos/ui";
+import {
   DURATION_UNITS,
   durationUnitLabel,
   formFromTrigger,

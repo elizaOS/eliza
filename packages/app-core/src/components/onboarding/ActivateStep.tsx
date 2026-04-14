@@ -1,8 +1,8 @@
 import { useApp } from "../../state/useApp";
 
 import { useBranding } from "../../config/branding";
-import {
 import { Button } from "@elizaos/ui";
+import {
   OnboardingSecondaryActionButton,
   OnboardingStepHeader,
   onboardingFooterClass,

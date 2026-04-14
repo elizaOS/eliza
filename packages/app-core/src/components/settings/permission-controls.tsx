@@ -16,8 +16,8 @@ import {
 import { useApp } from "../../state";
 import { PermissionIcon } from "../permissions/PermissionIcon";
 import type { CapabilityDef, PermissionDef } from "./permission-types";
-import {
 import { Button, StatusBadge, Switch } from "@elizaos/ui";
+import {
   getPermissionAction,
   getPermissionBadge,
   SETTINGS_REFRESH_DELAYS_MS,

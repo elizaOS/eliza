@@ -1,8 +1,8 @@
 
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { useApp } from "../../state";
-import {
 import { Button } from "@elizaos/ui";
+import {
   getPluginResourceLinks,
   iconImageSource,
   pluginResourceLinkLabel,

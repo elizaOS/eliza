@@ -15,8 +15,8 @@ import {
   onboardingChoiceCardRecommendedLabelClassName,
   onboardingChoiceCardTitleClassName,
 } from "../onboarding-form-primitives";
-import {
 import { Button } from "@elizaos/ui";
+import {
   OnboardingStepHeader,
   onboardingBodyTextShadowStyle,
   onboardingFooterClass,

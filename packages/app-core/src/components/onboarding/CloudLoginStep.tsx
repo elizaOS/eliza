@@ -3,8 +3,8 @@ import { useApp } from "../../state/useApp";
 import { useEffect, useRef } from "react";
 import { useBranding } from "../../config";
 import { openExternalUrl } from "../../utils";
-import {
 import { Button, Spinner } from "@elizaos/ui";
+import {
   OnboardingStepHeader,
   onboardingBodyTextShadowStyle,
   onboardingFooterClass,

@@ -7,8 +7,8 @@ import { useApp } from "../../state/useApp";
 
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
-import {
 import { Banner, Button, Checkbox, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from "@elizaos/ui";
+import {
   editorDialogContentClassName,
   editorFieldLabelClassName,
   editorInputClassName,

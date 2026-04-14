@@ -21,8 +21,8 @@ import {
   isOverlayApp,
   overlayAppToRegistryInfo,
 } from "../apps/overlay-app-registry";
-import {
 import { PagePanel } from "@elizaos/ui";
+import {
   getRunAttentionReasons,
   RunningAppsPanel,
 } from "../apps/RunningAppsPanel";

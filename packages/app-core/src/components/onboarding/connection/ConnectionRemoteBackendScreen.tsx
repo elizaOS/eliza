@@ -12,8 +12,8 @@ import {
   onboardingDetailStackClassName,
   onboardingInputClassName,
 } from "../onboarding-form-primitives";
-import {
 import { Button, Input } from "@elizaos/ui";
+import {
   OnboardingSecondaryActionButton,
   OnboardingStepHeader,
   onboardingFooterClass,
