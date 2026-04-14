@@ -12,8 +12,7 @@
     "rootDir": "../..",
     "rewriteRelativeImportExtensions": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
-    "types": [],
-    "typeRoots": ["../../../node_modules/@types", "node_modules/@types"]
+    "types": ["node", "bun", "react", "react-dom", "vite/client"]
   },
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
   "include": ["src"]

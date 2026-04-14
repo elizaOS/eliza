@@ -64,7 +64,7 @@
 	],
 	"scripts": {
 		"postinstall": "node ./scripts/ensure-node-pty.mjs",
-		"prebuild": "[ -d src/types/generated ] || (cd ../schemas && bunx buf generate)",
+		"prebuild": "[ -d src/types/generated ] || (cd ../schemas && bunx buf generate); [ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts",
 		"build": "bun run build.ts",
 		"build:node": "bun run build.ts --node-only",
 		"build:watch": "bun run build.ts --watch",
@@ -121,6 +121,7 @@
 		"drizzle-orm": "^0.45.1",
 		"fast-redact": "^3.5.0",
 		"file-type": "^21.3.0",
+		"fs-extra": "^11.3.2",
 		"git-workspace-service": "0.4.5",
 		"glob": "^13.0.0",
 		"handlebars": "^4.7.8",

@@ -131,8 +131,10 @@
     "@elizaos/app-training": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
+    "@elizaos/plugin-pdf": "workspace:*",
     "@elizaos/plugin-solana": "1.2.6",
     "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/skills": "workspace:*",
     "@elizaos/plugin-wechat": "github:milady-ai/plugin-wechat",
     "@elizaos/shared": "workspace:*",
     "@hapi/boom": "^10.0.1",
@@ -173,6 +175,7 @@
     "canvas": "^3.0.1",
     "sharp": "^0.34.5",
     "typescript": "^5.9.3",
+    "vite": "^8.0.8",
     "vitest": "^4.0.18"
   }
 }
