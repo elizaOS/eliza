@@ -4,6 +4,7 @@ import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
 import { sendJson, sendJsonError } from "./http-helpers.js";
+import { resolveCloudApiKey } from "./wallet-rpc.js";
 
 export interface CloudBillingRouteState {
   config: CloudProxyConfigLike;

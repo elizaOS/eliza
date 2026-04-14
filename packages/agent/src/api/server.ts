@@ -246,6 +246,14 @@ import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
 // handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
 // applyWhatsAppQrOverride is still used by plugin-status routes.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
+import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
+import {
+  clearTelegramAccountAuthState,
+  clearTelegramAccountSession,
+  TelegramAccountAuthSession,
+  telegramAccountAuthStateExists,
+  telegramAccountSessionExists,
+} from "../services/telegram-account-auth.js";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 
 export {
@@ -524,219 +532,28 @@ function initializeOGCodeInState(): void {
   });
 }
 
-// ConversationMeta re-exported from server-types.ts
-export type { ConversationMeta } from "./server-types.js";
-
-import type { ConversationMeta } from "./server-types.js";
-
-// resolveAppUserName, patchTouchesProviderSelection, resolveConversationGreetingText
-// moved to server-helpers.ts; imported in the consolidated import at the top
-
-// AgentStartupDiagnostics, ServerState re-exported from server-types.ts
-export type { AgentStartupDiagnostics, ServerState } from "./server-types.js";
-
-import type { AgentStartupDiagnostics, ServerState } from "./server-types.js";
-
-// ShareIngestItem, SkillEntry, LogEntry, StreamEventType, StreamEventEnvelope
-// re-exported from server-types.ts
+// Canonical server surface types (single source in server-types.ts).
 export type {
+  AgentStartupDiagnostics,
+  ConversationMeta,
   LogEntry,
+  ServerState,
   ShareIngestItem,
   SkillEntry,
   StreamEventEnvelope,
   StreamEventType,
 } from "./server-types.js";
 
-export function resolveConversationGreetingText(
-  runtime: AgentRuntime,
-  lang: string,
-  uiConfig?: ElizaConfig["ui"],
-): string {
-  const pickRandom = (values: string[] | undefined): string => {
-    const choices = (values ?? [])
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-
-    if (choices.length === 0) {
-      return "";
-    }
-
-    return choices[Math.floor(Math.random() * choices.length)] ?? "";
-  };
-
-  const normalizedLanguage = normalizeCharacterLanguage(lang);
-  const characterName = runtime.character.name?.trim();
-  const assistantName = uiConfig?.assistant?.name?.trim();
-
-  // Prefer explicit UI selections over the loaded character card: users pick a
-  // style in onboarding/roster (avatar + preset) while `runtime.character.name`
-  // can still reflect the bundled preset name until save/restart.
-  const preset =
-    resolveStylePresetByAvatarIndex(
-      uiConfig?.avatarIndex,
-      normalizedLanguage,
-    ) ??
-    resolveStylePresetById(uiConfig?.presetId, normalizedLanguage) ??
-    resolveStylePresetByName(assistantName, normalizedLanguage) ??
-    resolveStylePresetByName(characterName, normalizedLanguage);
-
-  const presetGreeting = pickRandom(preset?.postExamples);
-  if (presetGreeting) {
-    return presetGreeting;
-  }
-
-  return pickRandom(runtime.character.postExamples);
-}
-
-export interface AgentStartupDiagnostics {
-  phase: string;
-  attempt: number;
-  lastError?: string;
-  lastErrorAt?: number;
-  nextRetryAt?: number;
-}
-
-export interface ServerState {
-  runtime: AgentRuntime | null;
-  config: ElizaConfig;
-  agentState:
-    | "not_started"
-    | "starting"
-    | "running"
-    | "paused"
-    | "stopped"
-    | "restarting"
-    | "error";
-  agentName: string;
-  model: string | undefined;
-  startedAt: number | undefined;
-  startup: AgentStartupDiagnostics;
-  plugins: PluginEntry[];
-  skills: SkillEntry[];
-  logBuffer: LogEntry[];
-  eventBuffer: StreamEventEnvelope[];
-  nextEventId: number;
-  chatRoomId: UUID | null;
-  chatUserId: UUID | null;
-  chatConnectionReady: { userId: UUID; roomId: UUID; worldId: UUID } | null;
-  chatConnectionPromise: Promise<void> | null;
-  adminEntityId: UUID | null;
-  /** Conversation metadata by conversation id. */
-  conversations: Map<string, ConversationMeta>;
-  /** Pending restore of persisted conversations into the in-memory map. */
-  conversationRestorePromise: Promise<void> | null;
-  /** Tombstones for conversation IDs explicitly deleted by the user. */
-  deletedConversationIds: Set<string>;
-  /** Cloud manager for Eliza Cloud integration (null when cloud is disabled). */
-  cloudManager: CloudRouteState["cloudManager"];
-  sandboxManager: SandboxManager | null;
-  /** App manager for launching and managing elizaOS apps. */
-  appManager: AppManager;
-  /** Fine-tuning/training orchestration service. */
-  trainingService: TrainingServiceLike | null;
-  /** ERC-8004 registry service (null when not configured). */
-  registryService: RegistryService | null;
-  /** Drop/mint service (null when not configured). */
-  dropService: DropService | null;
-  /** In-memory queue for share ingest items. */
-  shareIngestQueue: ShareIngestItem[];
-  /** Broadcast current agent status to all WebSocket clients. Set by startApiServer. */
-  broadcastStatus: (() => void) | null;
-  /** Broadcast an arbitrary JSON message to all WebSocket clients. Set by startApiServer. */
-  broadcastWs: ((data: Record<string, unknown>) => void) | null;
-  /** Broadcast a JSON payload to WebSocket clients bound to a specific client id. */
-  broadcastWsToClientId:
-    | ((clientId: string, data: Record<string, unknown>) => number)
-    | null;
-  /** Currently active conversation ID from the frontend (sent via WS). */
-  activeConversationId: string | null;
-  /** Transient OAuth flow state for subscription auth. */
-  _anthropicFlow?: import("../auth/anthropic.js").AnthropicFlow;
-  _codexFlow?: import("../auth/openai-codex.js").CodexFlow;
-  _codexFlowTimer?: ReturnType<typeof setTimeout>;
-  /** System permission states (cached from the desktop bridge). */
-  permissionStates?: Record<
-    string,
-    import("@elizaos/shared/contracts/permissions").PermissionState
-  >;
-  /** Whether shell access is enabled (can be toggled in UI). */
-  shellEnabled?: boolean;
-  /** Agent automation permission mode for self-directed config changes. */
-  agentAutomationMode?: AgentAutomationMode;
-  /** Wallet trade execution permission mode (user-sign/manual/agent-auto). */
-  tradePermissionMode?: TradePermissionMode;
-  /** Reasons a restart is pending. Empty array = no restart needed. */
-  pendingRestartReasons: string[];
-  /** Route handlers registered by connector plugins (loaded dynamically). */
-  connectorRouteHandlers: ConnectorRouteHandler[];
-  /** Connector health monitor for detecting dead connectors. */
-  connectorHealthMonitor: ConnectorHealthMonitor | null;
-  /** Active WhatsApp pairing sessions (QR code flow). */
-  whatsappPairingSessions?: Map<
-    string,
-    import("../services/whatsapp-pairing.js").WhatsAppPairingSession
-  >;
-  /** Active Signal pairing sessions (device linking flow). */
-  signalPairingSessions?: Map<
-    string,
-    import("../services/signal-pairing.js").SignalPairingSession
-  >;
-  /** Last known Signal pairing snapshots, including terminal failures. */
-  signalPairingSnapshots?: Map<
-    string,
-    import("../services/signal-pairing.js").SignalPairingSnapshot
-  >;
-  /** Active Telegram account auth session (user-account login flow). */
-  telegramAccountAuthSession?:
-    | import("../services/telegram-account-auth.js").TelegramAccountAuthSessionLike
-    | null;
-}
-
-export interface ShareIngestItem {
-  id: string;
-  source: string;
-  title?: string;
-  url?: string;
-  text?: string;
-  suggestedPrompt: string;
-  receivedAt: number;
-}
-
-export interface SkillEntry {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  /** Set automatically when a scan report exists for this skill. */
-  scanStatus?: "clean" | "warning" | "critical" | "blocked" | null;
-}
-
-export interface LogEntry {
-  timestamp: number;
-  level: string;
-  message: string;
-  source: string;
-  tags: string[];
-}
-
-export type StreamEventType =
-  | "agent_event"
-  | "heartbeat_event"
-  | "training_event";
-
-export interface StreamEventEnvelope {
-  type: StreamEventType;
-  version: 1;
-  eventId: string;
-  ts: number;
-  runId?: string;
-  seq?: number;
-  stream?: string;
-  sessionKey?: string;
-  agentId?: string;
-  roomId?: UUID;
-  payload: object;
-}
+import type {
+  AgentStartupDiagnostics,
+  ConversationMeta,
+  LogEntry,
+  ServerState,
+  ShareIngestItem,
+  SkillEntry,
+  StreamEventEnvelope,
+  StreamEventType,
+} from "./server-types.js";
 
 // ---------------------------------------------------------------------------
 // Package root resolution (for reading bundled plugins.json)
@@ -7236,7 +7053,7 @@ export async function startApiServer(opts?: {
               }
               for (const ws of wsClients) {
                 if (ws.readyState === 1 || ws.readyState === 0) {
-                  ws.terminate();
+                  (ws as unknown as { terminate(): void }).terminate();
                 }
               }
               wsClients.clear();
