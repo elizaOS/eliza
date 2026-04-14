@@ -78,7 +78,6 @@
     "bun-types": "latest",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.0.6",
-    "@types/uuid": "^11.0.0",
     "react-test-renderer": "^19.0.0",
     "@vitejs/plugin-react": "^5.1.2",
     "@vitest/coverage-v8": "^4.0.17",
